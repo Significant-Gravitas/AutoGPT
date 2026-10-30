@@ -256,6 +256,20 @@ async def get_brain_dump_plan(
     return await plan_service.get_plan(user_id)
 
 
+@router.post("/plan/settle", operation_id="settle_brain_dump_plan")
+async def settle_brain_dump_plan(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> PlanResponse:
+    """The plan step stops waiting: the plan it shows becomes the plan.
+
+    While the background jobs are still running, the role plan the last
+    ``/plan`` answer carried is stored as the take's tasks and team, so the
+    trial hires, and Home lists, what the step showed; the jobs leave both
+    alone. Once a plan is ready this changes nothing and returns it.
+    """
+    return await plan_service.settle_plan(user_id)
+
+
 @router.post(
     "/plan/hire",
     operation_id="hire_brain_dump_plan",

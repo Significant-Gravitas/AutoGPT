@@ -205,3 +205,57 @@ async def test_a_ranked_plan_keeps_the_ids_its_tasks_were_handed_out_with(
         ("Plan my week", "open"),
         ("Chase invoices", "dismissed"),
     ]
+
+
+async def test_the_greeting_writes_its_tasks_onto_a_take_with_none(user_id: str):
+    await db.start_dump(user_id, "rec-1", BrainDumpInputMode.voice)
+
+    assert await db.store_greeting(user_id, "rec-1", "Hi.", GREETING_PROMPTS)
+
+    stored = await db.get_dump(user_id)
+    assert stored is not None
+    assert (stored.greeting, stored.suggestedPrompts) == ("Hi.", GREETING_PROMPTS)
+
+
+async def test_the_greeting_leaves_tasks_the_step_settled_on_alone(user_id: str):
+    take = await db.start_dump(user_id, "rec-1", BrainDumpInputMode.voice)
+    settled = [{**row, "state": "open"} for row in PLAN_ROWS]
+    assert await db.replace_plan(user_id, "rec-1", take.updatedAt, settled, PLAN_TEAM)
+
+    assert await db.store_greeting(user_id, "rec-1", "Hi.", GREETING_PROMPTS)
+
+    stored = await db.get_dump(user_id)
+    assert stored is not None
+    assert (stored.greeting, stored.suggestedPrompts) == ("Hi.", settled)
+
+
+async def test_a_greeting_for_a_replaced_take_writes_nothing(user_id: str):
+    await db.start_dump(user_id, "rec-1", BrainDumpInputMode.voice)
+    await db.start_dump(user_id, "rec-2", BrainDumpInputMode.voice)
+
+    assert not await db.store_greeting(user_id, "rec-1", "Hi.", GREETING_PROMPTS)
+
+    stored = await db.get_dump(user_id)
+    assert stored is not None
+    assert (stored.greeting, stored.suggestedPrompts) == (None, [])
+
+
+async def test_a_team_from_a_fresh_read_is_stored(user_id: str):
+    take = await db.start_dump(user_id, "rec-1", BrainDumpInputMode.voice)
+
+    assert await db.replace_team(user_id, "rec-1", take.updatedAt, PLAN_TEAM)
+
+    stored = await db.get_dump(user_id)
+    assert stored is not None
+    assert stored.recommendedExperts == PLAN_TEAM
+
+
+async def test_a_team_from_a_stale_read_hits_nothing(user_id: str):
+    take = await db.start_dump(user_id, "rec-1", BrainDumpInputMode.voice)
+    assert await db.store_greeting(user_id, "rec-1", "Hi.", GREETING_PROMPTS)
+
+    assert not await db.replace_team(user_id, "rec-1", take.updatedAt, PLAN_TEAM)
+
+    stored = await db.get_dump(user_id)
+    assert stored is not None
+    assert stored.recommendedExperts is None

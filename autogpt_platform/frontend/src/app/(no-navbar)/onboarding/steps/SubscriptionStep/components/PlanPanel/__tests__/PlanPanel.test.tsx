@@ -408,10 +408,65 @@ describe("PlanPanel while the plan is being written", () => {
     expect(screen.queryByText(/Nothing runs until you pick a task/)).toBeNull();
   });
 
-  test("drops the skeletons once the plan arrives", () => {
-    render(<PlanPanel plan={makePlan()} moment="trial" />);
+  test("drops the skeletons and announces the plan once it arrives", () => {
+    const { rerender } = render(<PlanPanel plan={null} moment="trial" />);
+    const status = screen.getByRole("status");
+
+    rerender(<PlanPanel plan={makePlan()} moment="trial" />);
 
     expect(screen.queryByTestId("plan-panel-pending")).toBeNull();
-    expect(screen.queryByRole("status")).toBeNull();
+    // The same live region, outside the busy skeleton, so the change is read.
+    expect(screen.getByRole("status")).toBe(status);
+    expect(status.textContent).toBe("Your plan is ready");
+    expect(status.closest("[aria-busy]")).toBeNull();
+  });
+
+  test("starts with the tasks and the team both being worked out", () => {
+    render(<PlanPanel plan={null} moment="trial" />);
+
+    expect(progressSteps()).toEqual([
+      ["Turning your brain dump into tasks", "In progress"],
+      ["Finding experts who fit your work", "In progress"],
+      ["Choosing who takes each task", "Pending"],
+    ]);
+  });
+
+  test("ticks off each step the server reports done", () => {
+    const { rerender } = render(
+      <PlanPanel
+        plan={null}
+        progress={{ tasks_written: false, team_chosen: true }}
+        moment="trial"
+      />,
+    );
+    expect(progressSteps()).toEqual([
+      ["Turning your brain dump into tasks", "In progress"],
+      ["Finding experts who fit your work", "Completed"],
+      ["Choosing who takes each task", "Pending"],
+    ]);
+
+    rerender(
+      <PlanPanel
+        plan={null}
+        progress={{ tasks_written: true, team_chosen: true }}
+        moment="trial"
+      />,
+    );
+    expect(progressSteps()).toEqual([
+      ["Turning your brain dump into tasks", "Completed"],
+      ["Finding experts who fit your work", "Completed"],
+      ["Choosing who takes each task", "In progress"],
+    ]);
   });
 });
+
+// Each step's label and the state its mark reads out.
+function progressSteps() {
+  const list = screen.getByRole("list", { name: "Writing your plan" });
+  return within(list)
+    .getAllByRole("listitem")
+    .map((item) => {
+      const mark = item.querySelector(".sr-only")?.textContent ?? "";
+      return [item.textContent?.replace(mark, "") ?? "", mark];
+    });
+}

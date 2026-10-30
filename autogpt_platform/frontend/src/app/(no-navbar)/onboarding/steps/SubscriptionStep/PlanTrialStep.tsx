@@ -22,7 +22,7 @@ export function PlanTrialStep({ hasPaywall }: Props) {
 }
 
 function PaywallPlanStep() {
-  const { plan } = usePlan();
+  const { plan, progress } = usePlan();
   const paywall = usePaywallStep();
   return (
     <PlanStepCard
@@ -31,6 +31,7 @@ function PaywallPlanStep() {
     >
       <PlanPanel
         plan={plan}
+        progress={progress}
         isPageTitle={paywall.isLoading}
         moment={paywall.isLoading || paywall.offer ? "trial" : "subscribe"}
       />
@@ -68,12 +69,13 @@ function PaywallPlanStep() {
 }
 
 function PlanOnlyStep() {
-  const { plan } = usePlan();
+  const { plan, progress } = usePlan();
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
   return (
     <PlanStepCard labelledBy={PLAN_HEADING_ID} twoColumns={false}>
       <PlanPanel
         plan={plan}
+        progress={progress}
         moment="continue"
         standalone
         footer={

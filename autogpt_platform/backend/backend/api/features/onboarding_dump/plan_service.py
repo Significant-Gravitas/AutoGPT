@@ -6,6 +6,10 @@ brain dump the greeting wrote tasks from gives the plan it stored
 (``plan_job``); a skipped, failed or empty one gives the role plan
 (``role_tasks``), stored on first read so its ids stay the ones Home uses.
 
+``settle_plan`` is the step giving up on the wait: while the pipeline is
+still running, the role plan the step shows becomes the take's plan, so the
+hire and Home use what the step showed.
+
 ``hire_plan`` hires that team once the trial is confirmed. It is idempotent
 and never fails the request for one bad template: whoever could not join is
 reported, and their tasks read as Otto's on Home.
@@ -39,6 +43,7 @@ from backend.api.features.onboarding_dump.plan_models import (
     PlanHiredExpert,
     PlanHireFailure,
     PlanHireResponse,
+    PlanProgress,
     PlanResponse,
 )
 from backend.util.exceptions import ExpertLimitExceededError
@@ -47,6 +52,8 @@ logger = logging.getLogger(__name__)
 
 MAX_HEARD_CHARS = 160
 _TERMINAL = (BrainDumpStatus.completed, BrainDumpStatus.failed)
+# Each attempt is one read and one conditional write, as for the plan job.
+_SETTLE_ATTEMPTS = 3
 # Sentences that ask the user to act rather than say what Otto heard.
 _INVITATION = re.compile(
     r"^(pick|choose|here are|here['’]s|tell me|let['’]s|let me|want|start"
@@ -59,12 +66,17 @@ async def get_plan(user_id: str) -> PlanResponse:
     """The plan for the plan step; ``ready=false`` only while the pipeline runs.
 
     While it runs the answer carries the role plan, unstored, so a client
-    that stops waiting still has a true plan to show.
+    that stops waiting still has a true plan to show, and how far the jobs
+    have got. A take whose tasks are already a plan (the plan job ranked
+    them, or the step settled on the role plan) is ready at once.
     """
     dump = await db.get_dump(user_id)
-    if dump is not None and _pending(dump):
+    # A plan stored while the jobs still run: the step settled on the role
+    # plan, or the plan job wrote its own a moment before the completion.
+    early = dump is not None and _pending(dump) and _has_plan(dump)
+    if dump is not None and _pending(dump) and not early:
         prompts, team = await _role_plan(user_id)
-        return await _response(
+        response = await _response(
             user_id,
             suggested_tasks.as_tasks(prompts),
             team,
@@ -72,11 +84,22 @@ async def get_plan(user_id: str) -> PlanResponse:
             source="fallback",
             skipped_dump=False,
         )
+        response.progress = PlanProgress(
+            tasks_written=bool((dump.greeting or "").strip()),
+            team_chosen=dump.recommendedExperts is not None,
+        )
+        return response
     skipped = dump is None or service.nothing_to_reflect(dump)
     stored = suggested_tasks.stored_tasks(dump.suggestedPrompts if dump else None)
-    if dump is not None and not skipped and (dump.greeting or "").strip() and stored:
-        # The greeting wrote these, or the plan job swapped its generic
-        # starters for the role set; either way the pipeline's team owns them.
+    if (
+        dump is not None
+        and not skipped
+        and stored
+        and ((dump.greeting or "").strip() or early)
+    ):
+        # The greeting wrote these, the plan job swapped its generic starters
+        # for the role set, or the step settled on the role plan; either way
+        # the team stored with them owns them.
         wrote_tasks = not role_tasks.is_default_set(stored)
         return await _response(
             user_id,
@@ -94,6 +117,37 @@ async def get_plan(user_id: str) -> PlanResponse:
     )
 
 
+async def settle_plan(user_id: str) -> PlanResponse:
+    """The plan the step shows once it stops waiting, made the take's plan.
+
+    While the pipeline is still running and has not written a plan, the
+    role plan the step was handed is stored as the take's tasks and team:
+    the greeting and team jobs then leave both alone (``db.store_greeting``,
+    ``service._store_team``) and the plan job finds nothing to rank, so the
+    trial hires, and Home lists, what the step showed. Otherwise there is
+    nothing to settle, and this answers like ``get_plan``.
+    """
+    for _ in range(_SETTLE_ATTEMPTS):
+        dump = await db.get_dump(user_id)
+        if dump is None or not _pending(dump) or _has_plan(dump):
+            break
+        prompts, team = await _role_plan(user_id)
+        tasks, capped = plan_owners.cap_team(suggested_tasks.as_tasks(prompts), team)
+        if await db.replace_plan(
+            user_id,
+            dump.recordingId,
+            dump.updatedAt,
+            [suggested_tasks.storable(task) for task in tasks],
+            ExpertRecommendations(experts=capped).model_dump(mode="json"),
+        ):
+            logger.info(
+                f"Brain dump plan for user {user_id} settled on the role plan: "
+                f"{len(tasks)} tasks, {len(capped)} experts"
+            )
+            break
+    return await get_plan(user_id)
+
+
 async def hire_plan(user_id: str) -> PlanHireResponse:
     """Hire the plan's team, skipping anyone already on it.
 
@@ -101,7 +155,9 @@ async def hire_plan(user_id: str) -> PlanHireResponse:
     is reported and the rest go ahead; the active expert limit stops the
     hiring there, and everyone not yet hired is reported with it.
     """
-    team = (await get_plan(user_id)).team
+    # Settled first: a team hired while the pipeline still runs is the one
+    # whose tasks Home then lists, not a team a later plan would replace.
+    team = (await settle_plan(user_id)).team
     active = _on_team(await suggested_tasks.roster_by_template(user_id))
     hired: list[PlanHiredExpert] = []
     failed: list[PlanHireFailure] = []
@@ -224,6 +280,16 @@ def _pending(dump: OnboardingBrainDump) -> bool:
     if dump.status == BrainDumpStatus.transcribing:
         return True
     return not service.nothing_to_reflect(dump) and dump.status not in _TERMINAL
+
+
+def _has_plan(dump: OnboardingBrainDump) -> bool:
+    """Whether the take's tasks are already a plan, each with the id Home
+    uses: the plan job ranked them, or a reader stored them. The greeting's
+    own rows carry no id."""
+    raw = dump.suggestedPrompts
+    return isinstance(raw, list) and any(
+        isinstance(row, dict) and "id" in row for row in raw
+    )
 
 
 async def _role_plan(

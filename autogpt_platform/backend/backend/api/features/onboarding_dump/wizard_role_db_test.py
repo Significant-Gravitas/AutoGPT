@@ -67,7 +67,8 @@ async def test_the_team_job_gets_the_role_picked_in_the_wizard(
     user_id: str, mocker: MockerFixture
 ):
     await _pick_role(user_id, "Sales/BD")
-    mocker.patch.object(service, "_run_completion", new=AsyncMock(return_value=True))
+    mocker.patch.object(service, "_run_greeting", new=AsyncMock(return_value=True))
+    mocker.patch.object(service, "_run_understanding", new=AsyncMock())
     mocker.patch.object(service, "_run_provider_recommendations", new=AsyncMock())
     pick_team = mocker.patch.object(
         recommend_experts,

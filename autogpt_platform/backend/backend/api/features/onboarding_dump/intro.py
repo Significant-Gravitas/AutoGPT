@@ -21,6 +21,7 @@ from backend.api.features.onboarding_dump.providers import (
     known_providers,
     provider_lines,
 )
+from backend.api.features.onboarding_dump.structured import NO_REASONING
 from backend.util.clients import get_openai_client
 from backend.util.settings import Settings
 
@@ -30,9 +31,10 @@ settings = Settings()
 
 _MODEL = os.environ.get("BRAIN_DUMP_GREETING_MODEL", "anthropic/claude-sonnet-5-5")
 _TIMEOUT_SECONDS = 45
-# The model thinks adaptively and the thinking counts against this: at 3,000
-# one call in five came back cut off mid-JSON.
-_MAX_TOKENS = 6_000
+# Reasoning is off (``structured.NO_REASONING``): the plan step waits on this
+# call, and adaptive thinking came before every token of the answer. The
+# answer alone, a greeting and six prompts at their longest, fits in this.
+_MAX_TOKENS = 4_000
 
 # The Langfuse copy of these instructions wins whenever it is reachable,
 # so it must be versioned in lockstep with ``_LOCAL_PROMPT`` — a voice
@@ -199,6 +201,7 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
                     ],
                     temperature=0.6,
                     max_tokens=_MAX_TOKENS,
+                    extra_body=NO_REASONING,
                 ),
                 timeout=_TIMEOUT_SECONDS,
             )

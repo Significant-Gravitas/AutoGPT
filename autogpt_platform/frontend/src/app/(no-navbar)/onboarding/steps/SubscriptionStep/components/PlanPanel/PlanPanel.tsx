@@ -1,3 +1,4 @@
+import type { PlanProgress } from "@/app/api/__generated__/models/planProgress";
 import type { PlanResponse } from "@/app/api/__generated__/models/planResponse";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
@@ -13,12 +14,15 @@ import {
   roleHeard,
 } from "./helpers";
 import { PlanConsentLine } from "./PlanConsentLine";
+import { PlanProgressCard } from "./PlanProgressCard";
 import { PlanTaskCard } from "./PlanTaskCard";
 
 export const PLAN_HEADING_ID = "plan-heading";
 
 interface Props {
   plan: PlanResponse | null;
+  /** How far the server has got while `plan` is still on its way. */
+  progress?: PlanProgress | null;
   moment: ConsentMoment;
   /** The whole card (no paywall). */
   standalone?: boolean;
@@ -33,6 +37,7 @@ interface Props {
 // trial (or Continue) beside or below it.
 export function PlanPanel({
   plan,
+  progress,
   moment,
   standalone = false,
   isPageTitle = standalone,
@@ -60,7 +65,15 @@ export function PlanPanel({
       >
         Here&apos;s what your team does first
       </Text>
-      {plan ? <PlanBody plan={plan} moment={moment} /> : <PlanSkeleton />}
+      {/* Outside the busy skeleton, so the plan landing is announced. */}
+      <span className="sr-only" role="status">
+        {plan ? "Your plan is ready" : "Otto is writing your plan"}
+      </span>
+      {plan ? (
+        <PlanBody plan={plan} moment={moment} />
+      ) : (
+        <PlanSkeleton progress={progress} />
+      )}
       {footer}
     </div>
   );
@@ -111,18 +124,16 @@ function HeardCard({ label, text }: { label: string; text: string }) {
 }
 
 // Sized like the plan it stands in for, so the card does not jump when the
-// plan lands: the heard card, three task cards, then the consent line.
-function PlanSkeleton() {
+// plan lands: the heard card (here, what the server is doing), three task
+// cards, then the consent line.
+function PlanSkeleton({ progress }: { progress?: PlanProgress | null }) {
   return (
     <div
       data-testid="plan-panel-pending"
       className="flex flex-col gap-3.5 [@media(max-height:780px)]:gap-2.5"
       aria-busy
     >
-      <span className="sr-only" role="status">
-        Otto is writing your plan
-      </span>
-      <Skeleton className="h-[5.375rem] rounded-2xl" />
+      <PlanProgressCard progress={progress} />
       <div className="flex flex-col gap-2">
         {Array.from({ length: PLAN_STEP_TASKS }, (_, index) => (
           <Skeleton key={index} className="h-[6.75rem] rounded-2xl" />

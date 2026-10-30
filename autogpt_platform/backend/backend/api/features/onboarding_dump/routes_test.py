@@ -61,6 +61,7 @@ RECOMMENDED_URL = "/onboarding/brain-dump/recommended-providers"
 RECOMMENDED_EXPERTS_URL = "/onboarding/brain-dump/recommended-experts"
 PLAN_URL = "/onboarding/brain-dump/plan"
 PLAN_HIRE_URL = "/onboarding/brain-dump/plan/hire"
+PLAN_SETTLE_URL = "/onboarding/brain-dump/plan/settle"
 SUGGESTED_TASKS_URL = "/onboarding/brain-dump/suggested-tasks"
 
 RECORDING_ID = "rec-1"
@@ -135,6 +136,30 @@ class DumpStore:
         ):
             return False
         self.row.suggestedPrompts = prompts
+        self.row.recommendedExperts = team
+        self.touch()
+        return True
+
+    async def store_greeting(
+        self, user_id: str, recording_id: str, greeting: str, prompts: list[Any]
+    ) -> bool:
+        """Mirrors the real write: the tasks go in only while the take has none."""
+        if self.row is None or self.row.recordingId != recording_id:
+            return False
+        fields: dict[str, Any] = {"greeting": greeting, "errorCode": None}
+        if not self.row.suggestedPrompts:
+            fields["suggestedPrompts"] = prompts
+        return await self.update_dump(user_id, recording_id, **fields)
+
+    async def replace_team(
+        self, user_id: str, recording_id: str, read_at: datetime, team: Any
+    ) -> bool:
+        if (
+            self.row is None
+            or self.row.recordingId != recording_id
+            or self.row.updatedAt != read_at
+        ):
+            return False
         self.row.recommendedExperts = team
         self.touch()
         return True
@@ -283,6 +308,8 @@ def dumps(mocker: MockerFixture) -> DumpStore:
         f"{module}.replace_suggested_prompts", new=store.replace_suggested_prompts
     )
     mocker.patch(f"{module}.replace_plan", new=store.replace_plan)
+    mocker.patch(f"{module}.store_greeting", new=store.store_greeting)
+    mocker.patch(f"{module}.replace_team", new=store.replace_team)
     return store
 
 
@@ -1310,6 +1337,146 @@ def test_a_failed_take_plans_and_hires_from_the_role_not_the_team_it_stored(
     assert [h["name"] for h in hired["hired"]] == ["Max", "Maria"]
     assert hired["failed"] == []
     assert _hired_templates(plan_world["hire_expert"]) == ["tpl-max", "tpl-maria"]
+
+
+def _mid_pipeline(dumps: DumpStore) -> None:
+    """The row as it reads while the greeting and team jobs are still running."""
+    assert dumps.row is not None
+    dumps.row.status = BrainDumpStatus.extracting
+    dumps.row.suggestedPrompts = []
+    dumps.row.greeting = None
+    dumps.row.recommendedExperts = None
+
+
+def test_the_pending_plan_says_how_far_the_jobs_have_got(
+    dumps: DumpStore, plan_world: dict[str, AsyncMock]
+):
+    finalize(input_mode="typed", text=TRANSCRIPT)
+    _mid_pipeline(dumps)
+    assert dumps.row is not None
+
+    progress = [client.get(PLAN_URL).json()["progress"]]
+    dumps.row.recommendedExperts = _llm_team(*ROSTER).model_dump()
+    progress.append(client.get(PLAN_URL).json()["progress"])
+    dumps.row.greeting = HEARD_GREETING
+    progress.append(client.get(PLAN_URL).json()["progress"])
+    dumps.row.status = BrainDumpStatus.completed
+    ready = client.get(PLAN_URL).json()
+
+    assert progress == [
+        {"tasks_written": False, "team_chosen": False},
+        {"tasks_written": False, "team_chosen": True},
+        {"tasks_written": True, "team_chosen": True},
+    ]
+    assert ready["ready"] is True
+    assert ready["progress"] is None
+
+
+def test_settling_mid_pipeline_stores_the_role_plan_the_step_shows(
+    dumps: DumpStore, plan_world: dict[str, AsyncMock]
+):
+    finalize(input_mode="typed", text=TRANSCRIPT)
+    _mid_pipeline(dumps)
+    shown = client.get(PLAN_URL).json()
+
+    settled = client.post(PLAN_SETTLE_URL).json()
+    again = client.get(PLAN_URL).json()
+
+    assert shown["ready"] is False
+    for body in (settled, again):
+        assert body["ready"] is True
+        assert body["source"] == "fallback"
+        assert body["heard"] is None
+        assert body["progress"] is None
+        assert body["tasks"] == shown["tasks"]
+        assert body["team"] == shown["team"]
+    assert [t["title"] for t in settled["tasks"]] == FOUNDER_TITLES
+    assert [e["name"] for e in settled["team"]] == ["Max", "Maria"]
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.extracting
+    assert [e["name"] for e in dumps.row.recommendedExperts["experts"]] == [
+        "Max",
+        "Maria",
+    ]
+
+
+def test_settling_a_ready_plan_changes_nothing(
+    dumps: DumpStore, plan_world: dict[str, AsyncMock], generation: dict[str, AsyncMock]
+):
+    generation["generate_intro"].return_value = (
+        HEARD_GREETING,
+        [SuggestedPrompt(title=f"Task {i}", prompt="Do it.") for i in range(5)],
+    )
+    plan_world["generate_expert_recommendations"].return_value = _llm_team(*ROSTER)
+    finalize(input_mode="typed", text=TRANSCRIPT)
+    ready = client.get(PLAN_URL).json()
+    assert dumps.row is not None
+    stored = (dumps.row.suggestedPrompts, dumps.row.recommendedExperts)
+
+    settled = client.post(PLAN_SETTLE_URL).json()
+
+    assert settled == ready
+    assert settled["source"] == "llm"
+    assert (dumps.row.suggestedPrompts, dumps.row.recommendedExperts) == stored
+
+
+def test_a_plan_the_step_gave_up_on_is_what_the_trial_hires_and_home_lists(
+    dumps: DumpStore,
+    plan_world: dict[str, AsyncMock],
+    generation: dict[str, AsyncMock],
+):
+    """The whole path when the wait runs out: the step shows the role plan
+    while both jobs are still running, and their answers, arriving after,
+    change neither the plan, nor who is hired, nor Home's list."""
+    seen: dict[str, Any] = {}
+
+    async def slow_greeting(transcript: str):
+        # The step's wait runs out while the greeting is being written.
+        seen["shown"] = (await plan_service.settle_plan(dumps.row.userId)).model_dump(
+            mode="json"
+        )
+        return (
+            HEARD_GREETING,
+            [SuggestedPrompt(title=f"Task {i}", prompt="Do it.") for i in range(5)],
+        )
+
+    generation["generate_intro"].side_effect = slow_greeting
+    plan_world["generate_expert_recommendations"].return_value = _llm_team(ROSTER[2])
+
+    finalize(input_mode="typed", text=TRANSCRIPT)
+    shown = seen["shown"]
+    after = client.get(PLAN_URL).json()
+    hired = client.post(PLAN_HIRE_URL).json()
+    home = client.get(SUGGESTED_TASKS_URL).json()["tasks"]
+
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.completed
+    assert dumps.row.greeting == HEARD_GREETING
+    assert [t["title"] for t in shown["tasks"]] == FOUNDER_TITLES
+    assert after["tasks"] == shown["tasks"]
+    assert after["team"] == shown["team"]
+    assert [h["name"] for h in hired["hired"]] == [e["name"] for e in shown["team"]]
+    owners = {e["template_id"]: f"expert-{e['name'].lower()}" for e in shown["team"]}
+    assert [(t["title"], t["expert_id"]) for t in home] == [
+        (t["title"], owners.get(t["expert_template_id"])) for t in shown["tasks"]
+    ]
+
+
+def test_hiring_while_the_jobs_run_settles_the_plan_first(
+    dumps: DumpStore, plan_world: dict[str, AsyncMock]
+):
+    """With no paywall, Continue can come before the plan is ready: the team
+    hired is the one whose tasks Home then lists."""
+    finalize(input_mode="typed", text=TRANSCRIPT)
+    _mid_pipeline(dumps)
+
+    hired = client.post(PLAN_HIRE_URL).json()
+    plan_after = client.get(PLAN_URL).json()
+
+    assert [h["name"] for h in hired["hired"]] == ["Max", "Maria"]
+    assert plan_after["ready"] is True
+    assert [e["name"] for e in plan_after["team"]] == ["Max", "Maria"]
+    assert [t["title"] for t in plan_after["tasks"]] == FOUNDER_TITLES
 
 
 def test_a_user_with_no_dump_gets_the_role_plan_stored_on_first_read(

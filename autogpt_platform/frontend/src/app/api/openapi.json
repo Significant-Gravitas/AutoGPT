@@ -13099,6 +13099,28 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/onboarding/brain-dump/plan/settle": {
+      "post": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Settle Brain Dump Plan",
+        "description": "The plan step stops waiting: the plan it shows becomes the plan.\n\nWhile the background jobs are still running, the role plan the last\n``/plan`` answer carried is stored as the take's tasks and team, so the\ntrial hires, and Home lists, what the step showed; the jobs leave both\nalone. Once a plan is ready this changes nothing and returns it.",
+        "operationId": "settle_brain_dump_plan",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PlanResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/onboarding/brain-dump/recommended-experts": {
       "get": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
@@ -31662,6 +31684,23 @@
         "required": ["template_id", "expert_id", "name"],
         "title": "PlanHiredExpert"
       },
+      "PlanProgress": {
+        "properties": {
+          "tasks_written": {
+            "type": "boolean",
+            "title": "Tasks Written",
+            "default": false
+          },
+          "team_chosen": {
+            "type": "boolean",
+            "title": "Team Chosen",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "PlanProgress",
+        "description": "How far the background jobs have got, for the plan step's checklist.\n\nThe greeting job writes the tasks and the team job picks the experts,\nside by side; the plan job, which orders the tasks and gives each its\nowner, runs once both are done and is what ``ready`` waits on."
+      },
       "PlanResponse": {
         "properties": {
           "ready": { "type": "boolean", "title": "Ready" },
@@ -31686,12 +31725,18 @@
             "type": "array",
             "title": "Tasks",
             "default": []
+          },
+          "progress": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/PlanProgress" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
         "required": ["ready", "source", "skipped_dump"],
         "title": "PlanResponse",
-        "description": "The plan step's content: what Otto heard, the team, and the tasks.\n\n``ready`` is false only while the background jobs are still running;\nthe tasks and team it carries then are the role plan, so a client that\nstops waiting has something true to show. ``source`` is \"llm\" for a\nplan built from the tasks the greeting wrote (ranked by Jev or by the\ndeterministic fallback) and \"fallback\" for a default set: the role\nsets, or the generic starters."
+        "description": "The plan step's content: what Otto heard, the team, and the tasks.\n\n``ready`` is false only while the background jobs are still running;\nthe tasks and team it carries then are the role plan, so a client that\nstops waiting has something true to show, and ``progress`` says how far\nthe jobs have got. ``source`` is \"llm\" for a plan built from the tasks\nthe greeting wrote (ranked by Jev or by the deterministic fallback) and\n\"fallback\" for a default set: the role sets, or the generic starters."
       },
       "Platform": {
         "type": "string",

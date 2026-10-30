@@ -136,6 +136,31 @@ class DumpStore:
             self.transcripts.append(fields["transcript"])
         return True
 
+    async def store_greeting(
+        self, user_id: str, recording_id: str, greeting: str, prompts: list[Any]
+    ) -> bool:
+        """Mirrors the real write: the tasks go in only while the take has none."""
+        if self.row is None or self.row.recordingId != recording_id:
+            return False
+        fields: dict[str, Any] = {"greeting": greeting, "errorCode": None}
+        if not self.row.suggestedPrompts:
+            fields["suggestedPrompts"] = prompts
+        return await self.update_dump(user_id, recording_id, **fields)
+
+    async def replace_team(
+        self, user_id: str, recording_id: str, read_at: datetime, team: Any
+    ) -> bool:
+        """Mirrors the conditional write: a changed or superseded row is missed."""
+        if (
+            self.row is None
+            or self.row.recordingId != recording_id
+            or self.row.updatedAt != read_at
+        ):
+            return False
+        self.row.recommendedExperts = team
+        self.row.updatedAt += timedelta(milliseconds=1)
+        return True
+
     async def claim_transition(
         self,
         user_id: str,
@@ -215,6 +240,8 @@ def dumps(mocker: MockerFixture) -> DumpStore:
     mocker.patch(f"{module}.claim_transition", new=store.claim_transition)
     mocker.patch(f"{module}.mark_greeting_seen", new=store.mark_greeting_seen)
     mocker.patch(f"{module}.replace_plan", new=store.replace_plan)
+    mocker.patch(f"{module}.store_greeting", new=store.store_greeting)
+    mocker.patch(f"{module}.replace_team", new=store.replace_team)
     return store
 
 
@@ -1794,12 +1821,9 @@ async def test_a_failed_team_write_leaves_the_greetings_prompts_as_they_were(
     greeting: AsyncMock,
     mocker: MockerFixture,
 ):
-    async def update(user_id, recording_id, **fields):
-        if "recommendedExperts" in fields:
-            raise RuntimeError("team write failed")
-        return await dumps.update_dump(user_id, recording_id, **fields)
-
-    mocker.patch.object(service.db, "update_dump", side_effect=update)
+    mocker.patch.object(
+        service.db, "replace_team", side_effect=RuntimeError("team write failed")
+    )
     store_plan = mocker.spy(service.plan_job, "store_ranked_plan")
     await start_voice_take(dumps)
 
@@ -1916,3 +1940,151 @@ async def test_intro_card_carries_each_task_s_owner_and_their_name(
         ("tpl-maria", "Maria"),
         (None, None),
     ]
+
+
+# --- What the plan step waits on -----------------------------------------
+
+
+async def _until(condition: Any) -> None:
+    while not condition():
+        await asyncio.sleep(0.01)
+
+
+def _completed(dumps: DumpStore) -> bool:
+    return dumps.row is not None and dumps.row.status == BrainDumpStatus.completed
+
+
+@pytest.mark.asyncio
+async def test_the_plan_is_ready_before_the_provider_picks_finish(
+    dumps: DumpStore, mocker: MockerFixture
+):
+    """The picks are read after the trial, so the plan step never waits on them."""
+    release = asyncio.Event()
+
+    async def picks(transcript: str) -> list:
+        await release.wait()
+        return []
+
+    mocker.patch(
+        "backend.api.features.onboarding_dump.recommend.generate_recommendations",
+        new=picks,
+    )
+    await start_voice_take(dumps)
+    task = asyncio.create_task(finalize_voice())
+    try:
+        await asyncio.wait_for(_until(lambda: _completed(dumps)), timeout=5)
+        assert dumps.row is not None
+        assert dumps.row.recommendedProviders is None
+    finally:
+        release.set()
+        await asyncio.wait_for(task, timeout=5)
+    assert dumps.row.recommendedProviders == []
+
+
+@pytest.mark.asyncio
+async def test_the_plan_is_ready_before_the_understanding_is_stored(
+    dumps: DumpStore, extraction: dict[str, AsyncMock]
+):
+    """The extraction feeds Otto's chats, not the plan, so the plan step never
+    waits on it; the understanding still lands once it finishes."""
+    release = asyncio.Event()
+
+    async def extract(*args: Any, **kwargs: Any) -> BusinessUnderstandingInput:
+        await release.wait()
+        return BusinessUnderstandingInput.model_construct()
+
+    extraction["extract_business_understanding"].side_effect = extract
+    await start_voice_take(dumps)
+    task = asyncio.create_task(finalize_voice())
+    try:
+        await asyncio.wait_for(_until(lambda: _completed(dumps)), timeout=5)
+        extraction["upsert_business_understanding"].assert_not_awaited()
+    finally:
+        release.set()
+        await asyncio.wait_for(task, timeout=5)
+    extraction["upsert_business_understanding"].assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_understanding_write_costs_the_context_not_the_take(
+    dumps: DumpStore, extraction: dict[str, AsyncMock], mocker: MockerFixture
+):
+    extraction["upsert_business_understanding"].side_effect = RuntimeError("db down")
+    mocker.patch(
+        "backend.api.features.onboarding_dump.intro.generate_intro",
+        new=AsyncMock(return_value=("You mentioned the order emails.", [])),
+    )
+    await start_voice_take(dumps)
+
+    await finalize_voice()
+
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.completed
+    assert dumps.row.greeting == "You mentioned the order emails."
+
+
+SETTLED_ROWS = [
+    {"id": "0", "title": "Find 25 leads", "prompt": "Find.", "state": "open"}
+]
+SETTLED_TEAM = {"experts": [], "source": "fallback"}
+
+
+@pytest.mark.asyncio
+async def test_tasks_and_team_stored_while_the_jobs_ran_stand(
+    dumps: DumpStore,
+    templates: AsyncMock,
+    generate_team: AsyncMock,
+    greeting: AsyncMock,
+    mocker: MockerFixture,
+):
+    """The plan step settled on the role plan before either job answered: the
+    greeting still lands for Home, but the tasks and team the step showed,
+    and the trial hires, are not replaced, and there is nothing to rank."""
+    generate_team.return_value = FOUR_EXPERTS
+    replace_plan = mocker.spy(db, "replace_plan")
+    await start_voice_take(dumps)
+
+    async def settle_first(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
+        assert dumps.row is not None
+        dumps.row.suggestedPrompts = SETTLED_ROWS
+        dumps.row.recommendedExperts = SETTLED_TEAM
+        dumps.row.updatedAt += timedelta(milliseconds=1)
+        return "You run a bakery.", GREETING_PROMPTS
+
+    greeting.side_effect = settle_first
+
+    await finalize_voice()
+
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.completed
+    assert dumps.row.greeting == "You run a bakery."
+    assert dumps.row.suggestedPrompts == SETTLED_ROWS
+    assert dumps.row.recommendedExperts == SETTLED_TEAM
+    replace_plan.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_team_write_that_loses_a_race_is_written_on_the_next_read(
+    dumps: DumpStore,
+    templates: AsyncMock,
+    generate_team: AsyncMock,
+    mocker: MockerFixture,
+):
+    """Another write can land between the team job's read and its write; the
+    team goes in on the next read rather than being lost."""
+    attempts: list[datetime] = []
+
+    async def lose_once(user_id, recording_id, read_at, team) -> bool:
+        attempts.append(read_at)
+        if len(attempts) == 1:
+            assert dumps.row is not None
+            dumps.row.updatedAt += timedelta(milliseconds=1)
+        return await dumps.replace_team(user_id, recording_id, read_at, team)
+
+    mocker.patch.object(db, "replace_team", new=lose_once)
+    await start_voice_take(dumps)
+
+    await finalize_voice()
+
+    assert len(attempts) == 2
+    assert _stored_team(dumps)["source"] == "llm"

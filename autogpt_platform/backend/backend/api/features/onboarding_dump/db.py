@@ -139,6 +139,51 @@ async def update_dump(user_id: str, recording_id: str, **fields: Any) -> bool:
     return updated == 1
 
 
+async def store_greeting(
+    user_id: str, recording_id: str, greeting: str, prompts: list[dict[str, Any]]
+) -> bool:
+    """Write the greeting, and the tasks under it while the take has none.
+
+    A list already stored stands: the plan step settled on the role plan
+    while the greeting was being written (``plan_service.settle_plan``), or
+    an earlier attempt at this take wrote one, and its ids may be out.
+    Returns ``False`` when the take has been superseded.
+    """
+    with_tasks = await OnboardingBrainDump.prisma().update_many(
+        where={
+            "userId": user_id,
+            "recordingId": recording_id,
+            "suggestedPrompts": {"equals": Json([])},
+        },
+        data={
+            "greeting": greeting,
+            "errorCode": None,
+            "suggestedPrompts": Json(prompts),
+        },
+    )
+    if with_tasks == 1:
+        return True
+    return await update_dump(user_id, recording_id, greeting=greeting, errorCode=None)
+
+
+async def replace_team(
+    user_id: str, recording_id: str, read_at: datetime, team: dict[str, Any]
+) -> bool:
+    """Write the team job's team, unless the row changed since ``read_at`` or
+    now belongs to another take.
+
+    A conditional write rather than a filter on the column: a reset take
+    holds a JSON null there, an older row a SQL null, and no one filter
+    matches both. Returns ``False`` when it did not land, so the caller
+    re-reads.
+    """
+    updated = await OnboardingBrainDump.prisma().update_many(
+        where={"userId": user_id, "recordingId": recording_id, "updatedAt": read_at},
+        data={"recommendedExperts": Json(team)},
+    )
+    return updated == 1
+
+
 async def claim_transition(
     user_id: str,
     recording_id: str,

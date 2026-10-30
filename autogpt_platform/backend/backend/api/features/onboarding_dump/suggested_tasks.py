@@ -76,7 +76,7 @@ async def update_suggested_tasks(
                 tasks=await with_expert_ids(user_id, tasks), stored=bool(stored)
             )
         if await db.replace_suggested_prompts(
-            user_id, dump.updatedAt, [_storable(task) for task in changed]
+            user_id, dump.updatedAt, [storable(task) for task in changed]
         ):
             return SuggestedTasksResponse(
                 tasks=await with_expert_ids(user_id, changed), stored=True
@@ -103,7 +103,7 @@ async def store_if_empty(
             return stored
         tasks = as_tasks(prompts)
         if await db.replace_suggested_prompts(
-            user_id, dump.updatedAt, [_storable(task) for task in tasks]
+            user_id, dump.updatedAt, [storable(task) for task in tasks]
         ):
             return tasks
     raise ConflictError("Suggestions changed, try again")
@@ -225,8 +225,8 @@ def _apply(task: SuggestedTask, update: SuggestedTasksUpdate) -> SuggestedTask:
     )
 
 
-def _storable(task: SuggestedTask) -> dict[str, Any]:
-    # ``expert_id`` is read fresh each time, never stored.
+def storable(task: SuggestedTask) -> dict[str, Any]:
+    """``task`` as a stored row: ``expert_id`` is read fresh each time."""
     return task.model_dump(mode="json", exclude={"expert_id"})
 
 

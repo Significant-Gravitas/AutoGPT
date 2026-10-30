@@ -1,9 +1,11 @@
 import {
   getBrainDumpPlan,
   type getBrainDumpPlanResponse,
+  settleBrainDumpPlan,
   useGetBrainDumpPlan,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
 import type { PlanResponse } from "@/app/api/__generated__/models/planResponse";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { trackPlan } from "@/services/onboarding/plan-analytics";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -20,8 +22,8 @@ import {
 } from "./helpers";
 
 // The plan step's plan: polled while the pipeline writes it, shown once it is
-// ready or once the wait gives up, and never swapped after that. A plan that
-// lands after the wait gave up is Home's, not this step's.
+// ready or once the wait gives up, and never swapped after that. Giving up
+// settles the plan on the server, so the trial and Home use the one shown.
 export function usePlan() {
   const userID = useOnboardingWizardStore((s) => s.userID);
   const searchParams = useSearchParams();
@@ -65,14 +67,20 @@ export function usePlan() {
     latest.current = answer;
   }, [answer]);
 
+  const giveUp = useStableCallback(async () => {
+    const settled = await settleBrainDumpPlan().catch(() => null);
+    // The plan landed while the settle was on its way, and is already shown.
+    if (latest.current?.ready) return;
+    setGivenUp(
+      settled?.status === 200 ? settled.data : (latest.current ?? EMPTY_PLAN),
+    );
+  });
+
   useEffect(() => {
     if (!isPending) return;
-    const timer = setTimeout(
-      () => setGivenUp(latest.current ?? EMPTY_PLAN),
-      PLAN_MAX_WAIT_MS,
-    );
+    const timer = setTimeout(() => void giveUp(), PLAN_MAX_WAIT_MS);
     return () => clearTimeout(timer);
-  }, [isPending]);
+  }, [isPending, giveUp]);
 
   useEffect(() => {
     if (!plan || restored || reported.current) return;
@@ -88,7 +96,7 @@ export function usePlan() {
     });
   }, [plan, restored, givenUp, userID]);
 
-  return { plan, isPending };
+  return { plan, isPending, progress: plan ? null : answer?.progress };
 }
 
 function answerOf(response: getBrainDumpPlanResponse | undefined) {

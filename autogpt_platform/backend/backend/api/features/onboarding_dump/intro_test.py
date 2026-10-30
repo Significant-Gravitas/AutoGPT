@@ -124,6 +124,16 @@ async def test_an_over_long_greeting_keeps_most_of_itself(
     assert long_greeting.startswith(kept) and long_greeting[len(kept)] == " "
 
 
+@pytest.mark.asyncio
+async def test_the_greeting_is_written_without_thinking_first(client: MagicMock):
+    """The plan step waits on this call, so the model answers straight away
+    rather than thinking before its first token."""
+    await intro.generate_intro(TRANSCRIPT)
+
+    kwargs = client.chat.completions.create.await_args.kwargs
+    assert kwargs["extra_body"] == {"reasoning": {"enabled": False}}
+
+
 def test_both_copies_of_the_instructions_ask_for_the_same_length():
     """The fallback instructions must not cap the greeting below what the
     system message allows, and the clip must sit above both."""

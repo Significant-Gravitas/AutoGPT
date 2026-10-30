@@ -2,6 +2,8 @@ import { getGetBrainDumpPlanQueryKey } from "@/app/api/__generated__/endpoints/b
 import {
   getGetBrainDumpPlanMockHandler200,
   getGetBrainDumpPlanMockHandler401,
+  getSettleBrainDumpPlanMockHandler200,
+  getSettleBrainDumpPlanMockHandler401,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
 import type { PlanResponse } from "@/app/api/__generated__/models/planResponse";
 import { server } from "@/mocks/mock-server";
@@ -32,8 +34,10 @@ vi.mock("next/navigation", () => ({
   useParams: () => ({}),
 }));
 
-const POLL_MS = 2_500;
-const MAX_WAIT_MS = 20_000;
+const POLL_MS = 1_000;
+const MAX_WAIT_MS = 30_000;
+// Long enough for the first answer to land, short of the first poll after it.
+const FIRST_ANSWER_MS = 100;
 const USER_ID = "user-1";
 const SHOWN_PLAN_KEY = `autogpt:onboarding-plan:${USER_ID}`;
 
@@ -80,6 +84,9 @@ const OTHER_READY: PlanResponse = {
   tasks: tasks(3, "other"),
 };
 
+// The same role plan once the server has stored it as the take's plan.
+const SETTLED: PlanResponse = { ...WRITING, ready: true };
+
 const EMPTY_PLAN: PlanResponse = {
   ready: false,
   source: "fallback",
@@ -101,6 +108,17 @@ function servePlans(...answers: PlanResponse[]) {
       const answer = answers[Math.min(requests.count, answers.length - 1)];
       requests.count += 1;
       return answer;
+    }),
+  );
+  return requests;
+}
+
+function serveSettle(answer: PlanResponse | (() => Promise<PlanResponse>)) {
+  const requests = { count: 0 };
+  server.use(
+    getSettleBrainDumpPlanMockHandler200(async () => {
+      requests.count += 1;
+      return typeof answer === "function" ? answer() : answer;
     }),
   );
   return requests;
@@ -154,11 +172,11 @@ afterEach(() => {
 });
 
 describe("usePlan polling", () => {
-  test("polls every 2.5 s while the plan is being written", async () => {
+  test("polls every second while the plan is being written", async () => {
     const requests = servePlans(WRITING);
     const { result } = renderPlan();
 
-    await advance(1_000);
+    await advance(FIRST_ANSWER_MS);
     expect(requests.count).toBe(1);
     expect(result.current.isPending).toBe(true);
     expect(result.current.plan).toBeNull();
@@ -175,7 +193,7 @@ describe("usePlan polling", () => {
     const requests = servePlans(WRITING, WRITING, READY);
     const { result } = renderPlan();
 
-    await advance(1_000 + POLL_MS);
+    await advance(FIRST_ANSWER_MS + POLL_MS);
     expect(result.current.plan).toBeNull();
 
     await advance(POLL_MS);
@@ -188,24 +206,56 @@ describe("usePlan polling", () => {
     expect(result.current.plan).toEqual(READY);
   });
 
-  test("gives up at 20 s and shows the last answer", async () => {
+  test("passes on how far the jobs have got until the plan is shown", async () => {
+    const progress = { tasks_written: false, team_chosen: true };
+    servePlans({ ...WRITING, progress }, READY);
+    const { result } = renderPlan();
+
+    await advance(FIRST_ANSWER_MS);
+    expect(result.current.progress).toEqual(progress);
+
+    await advance(POLL_MS);
+    expect(result.current.plan).toEqual(READY);
+    expect(result.current.progress).toBeNull();
+  });
+});
+
+describe("usePlan giving up", () => {
+  test("settles the plan at 30 s and shows the plan the server settled on", async () => {
     servePlans(WRITING);
+    const settles = serveSettle(SETTLED);
     const { result } = renderPlan();
 
     await advance(MAX_WAIT_MS - 1_000);
     expect(result.current.isPending).toBe(true);
     expect(result.current.plan).toBeNull();
+    expect(settles.count).toBe(0);
 
-    await advance(1_000);
+    await advance(1_000 + FIRST_ANSWER_MS);
+    expect(settles.count).toBe(1);
+    expect(result.current.isPending).toBe(false);
+    expect(result.current.plan).toEqual(SETTLED);
+  });
+
+  test("shows the last answer when the settle fails", async () => {
+    servePlans(WRITING);
+    server.use(getSettleBrainDumpPlanMockHandler401());
+    const { result } = renderPlan();
+
+    await advance(MAX_WAIT_MS + FIRST_ANSWER_MS);
+
     expect(result.current.isPending).toBe(false);
     expect(result.current.plan).toEqual(WRITING);
   });
 
   test("gives up with an empty plan when no answer ever came", async () => {
-    server.use(getGetBrainDumpPlanMockHandler401());
+    server.use(
+      getGetBrainDumpPlanMockHandler401(),
+      getSettleBrainDumpPlanMockHandler401(),
+    );
     const { result } = renderPlan();
 
-    await advance(MAX_WAIT_MS);
+    await advance(MAX_WAIT_MS + FIRST_ANSWER_MS);
 
     expect(result.current.isPending).toBe(false);
     expect(result.current.plan).toEqual(EMPTY_PLAN);
@@ -220,10 +270,11 @@ describe("usePlan polling", () => {
         return answer;
       }),
     );
+    serveSettle(SETTLED);
     const { result, seen } = renderPlan();
 
     await advance(MAX_WAIT_MS + 500);
-    expect(result.current.plan).toEqual(WRITING);
+    expect(result.current.plan).toEqual(SETTLED);
     const asked = requests.count;
     const shownFrom = seen.length;
 
@@ -231,11 +282,11 @@ describe("usePlan polling", () => {
     await advance(POLL_MS * 4);
 
     expect(requests.count).toBe(asked);
-    expect(result.current.plan).toEqual(WRITING);
+    expect(result.current.plan).toEqual(SETTLED);
     expect(seen.slice(shownFrom)).not.toContainEqual(READY);
   });
 
-  test("keeps the given-up plan when a poll in flight at 20 s lands later", async () => {
+  test("keeps the settled plan when a poll in flight at 30 s lands later", async () => {
     let release!: () => void;
     const held = new Promise<void>((resolve) => {
       release = resolve;
@@ -244,24 +295,46 @@ describe("usePlan polling", () => {
     server.use(
       getGetBrainDumpPlanMockHandler200(async () => {
         requests.count += 1;
-        // The poll sent around 17.5 s answers only after the 20 s give-up.
-        if (requests.count === 8) {
+        // The poll sent at 29 s answers only after the 30 s give-up.
+        if (requests.count === 30) {
           await held;
           return READY;
         }
         return WRITING;
       }),
     );
+    serveSettle(SETTLED);
     const { result } = renderPlan();
 
     await advance(MAX_WAIT_MS + 500);
-    expect(requests.count).toBe(8);
-    expect(result.current.plan).toEqual(WRITING);
+    expect(requests.count).toBe(30);
+    expect(result.current.plan).toEqual(SETTLED);
 
     release();
     await advance(POLL_MS);
 
-    expect(result.current.plan).toEqual(WRITING);
+    expect(result.current.plan).toEqual(SETTLED);
+  });
+
+  test("keeps a plan that lands while the settle is on its way", async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    servePlans(...Array<PlanResponse>(30).fill(WRITING), READY);
+    serveSettle(async () => {
+      await held;
+      return SETTLED;
+    });
+    const { result } = renderPlan();
+
+    await advance(MAX_WAIT_MS + 500);
+    expect(result.current.plan).toEqual(READY);
+
+    release();
+    await advance(POLL_MS);
+
+    expect(result.current.plan).toEqual(READY);
   });
 });
 
@@ -292,7 +365,7 @@ describe("usePlan plan_viewed", () => {
     servePlans(WRITING, READY);
     const first = renderPlan();
 
-    await advance(1_000 + POLL_MS);
+    await advance(FIRST_ANSWER_MS + POLL_MS);
     expect(first.result.current.plan).toEqual(READY);
     expect(planViewedCalls()).toHaveLength(1);
     const [, properties] = planViewedCalls()[0];
@@ -321,9 +394,10 @@ describe("usePlan plan_viewed", () => {
 
   test("reports a given-up plan as given up", async () => {
     servePlans(WRITING);
+    serveSettle(SETTLED);
     renderPlan();
 
-    await advance(MAX_WAIT_MS);
+    await advance(MAX_WAIT_MS + FIRST_ANSWER_MS);
 
     expect(planViewedCalls()).toHaveLength(1);
     const [, properties] = planViewedCalls()[0];
@@ -362,7 +436,7 @@ describe("usePlan cached and remembered plans", () => {
     expect(seen[0]).toBeNull();
     expect(result.current.isPending).toBe(true);
 
-    await advance(1_000);
+    await advance(FIRST_ANSWER_MS);
     expect(result.current.plan).toBeNull();
 
     await advance(POLL_MS);
@@ -374,7 +448,7 @@ describe("usePlan cached and remembered plans", () => {
     servePlans(WRITING, READY);
     renderPlan();
 
-    await advance(1_000);
+    await advance(FIRST_ANSWER_MS);
     expect(sessionStorage.getItem(SHOWN_PLAN_KEY)).toBeNull();
 
     await advance(POLL_MS);

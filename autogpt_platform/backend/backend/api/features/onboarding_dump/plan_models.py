@@ -7,15 +7,27 @@ from pydantic import BaseModel
 from backend.api.features.onboarding_dump.models import RecommendedExpert, SuggestedTask
 
 
+class PlanProgress(BaseModel):
+    """How far the background jobs have got, for the plan step's checklist.
+
+    The greeting job writes the tasks and the team job picks the experts,
+    side by side; the plan job, which orders the tasks and gives each its
+    owner, runs once both are done and is what ``ready`` waits on.
+    """
+
+    tasks_written: bool = False
+    team_chosen: bool = False
+
+
 class PlanResponse(BaseModel):
     """The plan step's content: what Otto heard, the team, and the tasks.
 
     ``ready`` is false only while the background jobs are still running;
     the tasks and team it carries then are the role plan, so a client that
-    stops waiting has something true to show. ``source`` is "llm" for a
-    plan built from the tasks the greeting wrote (ranked by Jev or by the
-    deterministic fallback) and "fallback" for a default set: the role
-    sets, or the generic starters.
+    stops waiting has something true to show, and ``progress`` says how far
+    the jobs have got. ``source`` is "llm" for a plan built from the tasks
+    the greeting wrote (ranked by Jev or by the deterministic fallback) and
+    "fallback" for a default set: the role sets, or the generic starters.
     """
 
     ready: bool
@@ -24,6 +36,7 @@ class PlanResponse(BaseModel):
     heard: str | None = None
     team: list[RecommendedExpert] = []
     tasks: list[SuggestedTask] = []
+    progress: PlanProgress | None = None
 
 
 class PlanHiredExpert(BaseModel):

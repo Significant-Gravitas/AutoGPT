@@ -6,6 +6,7 @@ import { setIntroPath } from "@/services/onboarding/brain-dump-handoff";
 import { useEffect, useRef, useState } from "react";
 import * as Sentry from "@sentry/nextjs";
 import { useOnboardingWizardStore } from "../../store";
+import { forgetShownPlan } from "../SubscriptionStep/components/PlanPanel/helpers";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import {
   BRAIN_DUMP_HEADLINE,
@@ -430,6 +431,7 @@ export function useBrainDumpStep() {
     const recordedId = recorder.recordingId;
     recorder.resetQueue();
     setIntroPath("B");
+    forgetShownPlan(useOnboardingWizardStore.getState().userID);
     await saveWizardAnswers();
     // Nothing below can change where a skip goes, so the user is not kept
     // waiting on it.
@@ -485,6 +487,7 @@ export function useBrainDumpStep() {
     await releaseTake(recordingId);
     recorder.resetQueue();
     setIntroPath(path);
+    forgetShownPlan(useOnboardingWizardStore.getState().userID);
     nextStep();
   }
 
