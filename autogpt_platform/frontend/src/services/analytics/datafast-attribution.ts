@@ -1,3 +1,5 @@
+import { hasConsentFor } from "@/services/consent/consent";
+
 const COOKIE_TO_HEADER = {
   datafast_visitor_id: "X-Datafast-Visitor-Id",
   datafast_session_id: "X-Datafast-Session-Id",
@@ -5,9 +7,12 @@ const COOKIE_TO_HEADER = {
 
 // Reads the DataFast attribution cookies (set client-side by the DataFast
 // script) and maps them to request headers. Best-effort: returns only the
-// cookies that exist, and {} during SSR. Never throws.
+// cookies that exist, and {} during SSR or without analytics consent (a
+// cookie an earlier visit left stays unread until the visitor allows it
+// again). Never throws.
 export function getDatafastAttribution(): Record<string, string> {
   if (typeof document === "undefined") return {};
+  if (!hasConsentFor("analytics")) return {};
 
   const jar = new Map(
     document.cookie.split("; ").map((part) => {

@@ -77,7 +77,7 @@ export function HireStep() {
           />
           <div
             ref={gridRef}
-            className="flex max-h-[26rem] w-full flex-wrap justify-center gap-3 overflow-y-auto scrollbar-none"
+            className="scrollbar-none flex max-h-[26rem] w-full flex-wrap justify-center gap-3 overflow-y-auto"
             data-testid="hire-step-grid"
           >
             {step.isPending

@@ -3,7 +3,7 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 export function DashboardSkeleton() {
   return (
     <div className="flex flex-col gap-6 pb-8" aria-busy="true">
-      <div className="flex flex-col gap-3 pl-4 pr-1 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-3 pr-1 pl-4 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-col gap-2">
           <Skeleton className="h-7 w-48" />
           <Skeleton className="mt-1 h-4 w-[420px] max-w-full" />
@@ -19,7 +19,7 @@ export function DashboardSkeleton() {
           >
             <Skeleton className="h-4 w-24" />
             <Skeleton className="h-7 w-16" />
-            <Skeleton className="absolute right-3 top-3 h-7 w-7 rounded-full" />
+            <Skeleton className="absolute top-3 right-3 h-7 w-7 rounded-full" />
           </div>
         ))}
       </div>

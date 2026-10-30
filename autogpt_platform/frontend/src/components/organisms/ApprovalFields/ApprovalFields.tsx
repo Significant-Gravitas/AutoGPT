@@ -74,7 +74,7 @@ export function ApprovalFields({
             </dt>
             <dd
               data-slot="approval-fields-value"
-              className="mb-1.5 min-w-0 text-foreground-strong [overflow-wrap:anywhere] sm:mb-0"
+              className="mb-1.5 min-w-0 [overflow-wrap:anywhere] text-foreground-strong sm:mb-0"
             >
               <FieldOrReference
                 name={field.key}

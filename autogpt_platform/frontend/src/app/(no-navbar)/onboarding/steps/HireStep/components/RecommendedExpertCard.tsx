@@ -53,7 +53,7 @@ export function RecommendedExpertCard({
           aria-label={`Include ${expert.name}`}
           disabled={disabled}
           onClick={onToggleIncluded}
-          className="absolute right-2 top-2 z-10 flex size-7 items-center justify-center rounded-full disabled:cursor-not-allowed"
+          className="absolute top-2 right-2 z-10 flex size-7 items-center justify-center rounded-full disabled:cursor-not-allowed"
         >
           <span
             className={cn(

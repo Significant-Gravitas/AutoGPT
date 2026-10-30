@@ -119,7 +119,7 @@ function renderVideoEmbed(url: string): React.ReactNode {
         <div className="relative aspect-video">
           <YouTubeEmbed
             url={url}
-            className="absolute left-0 top-0 rounded-lg shadow-md"
+            className="absolute top-0 left-0 rounded-lg shadow-md"
           />
         </div>
       </div>
@@ -153,7 +153,7 @@ function renderVideoEmbed(url: string): React.ReactNode {
         <iframe
           src={embedUrl}
           title="Embedded video player"
-          className="absolute left-0 top-0 h-full w-full rounded-lg shadow-md"
+          className="absolute top-0 left-0 h-full w-full rounded-lg shadow-md"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
         />
@@ -241,7 +241,7 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   blockquote: ({ children, ...props }) => (
     <blockquote
-      className="my-4 border-l-4 border-info pl-4 italic text-foreground-body"
+      className="my-4 border-l-4 border-info pl-4 text-foreground-body italic"
       {...props}
     >
       {children}
@@ -259,7 +259,7 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   th: ({ children, ...props }) => (
     <th
-      className="bg-surface-muted px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-foreground-body"
+      className="bg-surface-muted px-4 py-3.5 text-left text-xs font-semibold tracking-wider text-foreground-body uppercase"
       {...props}
     >
       {children}

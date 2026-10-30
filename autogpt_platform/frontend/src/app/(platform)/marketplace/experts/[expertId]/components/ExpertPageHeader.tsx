@@ -58,7 +58,7 @@ export function ExpertHeroBand({ expert }: BandProps) {
         <CategoryTag
           category={area}
           size="medium"
-          className="absolute left-5 top-5 h-7 px-2.5 text-body-sm leading-inherit"
+          className="absolute top-5 left-5 h-7 px-2.5 text-body-sm leading-inherit"
         />
       ) : null}
     </div>

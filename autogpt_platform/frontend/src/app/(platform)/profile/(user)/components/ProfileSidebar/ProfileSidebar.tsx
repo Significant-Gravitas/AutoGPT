@@ -5,8 +5,8 @@ import {
   SheetTrigger,
 } from "@/components/molecules/Dialog/components/SheetPrimitives";
 import { Text } from "@/components/atoms/Text/Text";
-// oxlint-disable-next-line design-system/hugeicons-only -- glyph swap is P11's
-import { Menu } from "lucide-react";
+import { Menu01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export interface ProfileSidebarLink {
   text: string;
@@ -38,9 +38,9 @@ export function ProfileSidebar({ links }: Props) {
         <SheetTrigger asChild>
           <button
             aria-label="Open sidebar menu"
-            className="fixed left-4 top-4 z-50 flex h-14 w-14 items-center justify-center overflow-hidden whitespace-nowrap rounded-lg border border-foreground-tertiary bg-surface-active px-4 py-2 font-sans text-body font-medium leading-5 tracking-tight text-foreground-emphasis transition-colors hover:bg-surface-active/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus disabled:pointer-events-none disabled:opacity-50 md:block lg:hidden"
+            className="fixed top-4 left-4 z-50 flex h-14 w-14 items-center justify-center overflow-hidden rounded-lg border border-foreground-tertiary bg-surface-active px-4 py-2 font-sans text-body leading-5 font-medium tracking-tight whitespace-nowrap text-foreground-base transition-colors hover:bg-surface-active/50 focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 md:block lg:hidden"
           >
-            <Menu className="h-8 w-8 stroke-foreground-base" />
+            <Icon aria-hidden icon={Menu01Icon} className="h-8 w-8" />
             <span className="sr-only">Open sidebar menu</span>
           </button>
         </SheetTrigger>

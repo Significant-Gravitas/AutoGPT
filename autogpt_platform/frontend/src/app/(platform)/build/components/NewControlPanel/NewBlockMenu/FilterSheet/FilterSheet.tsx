@@ -45,7 +45,7 @@ export function FilterSheet({
         {isOpen && (
           <motion.div
             className={cn(
-              "absolute bottom-2 left-2 top-2 z-20 w-3/4 max-w-[22.5rem] space-y-4 overflow-hidden rounded-xl bg-surface pb-4 shadow-md",
+              "absolute top-2 bottom-2 left-2 z-20 w-3/4 max-w-[22.5rem] space-y-4 overflow-hidden rounded-xl bg-surface pb-4 shadow-md",
             )}
             initial={{ x: "-100%", filter: "blur(10px)" }}
             animate={{ x: 0, filter: "blur(0px)" }}

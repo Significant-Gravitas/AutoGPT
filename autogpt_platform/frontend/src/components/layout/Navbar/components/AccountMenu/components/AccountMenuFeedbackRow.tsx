@@ -29,7 +29,7 @@ export function AccountMenuFeedbackRow() {
       data-feedback-trigger
     >
       <span
-        className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-action-hover opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100"
+        className="absolute top-1/2 left-0 h-5 w-[3px] -translate-y-1/2 rounded-full bg-action-hover opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100"
         aria-hidden="true"
       />
       <span className="relative z-10 flex shrink-0 items-center">

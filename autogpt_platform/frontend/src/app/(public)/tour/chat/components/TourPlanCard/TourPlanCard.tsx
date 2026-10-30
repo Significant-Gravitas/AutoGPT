@@ -59,7 +59,7 @@ function TourPlanStepItem({
   return (
     <div
       // oxlint-disable-next-line design-system/no-arbitrary-values -- per-row stagger delay set at runtime through --step-delay
-      className="flex items-start gap-3 py-1.5 duration-500 animate-in fade-in slide-in-from-bottom-2 fill-mode-both [animation-delay:var(--step-delay)]"
+      className="flex items-start gap-3 py-1.5 duration-500 animate-in [animation-delay:var(--step-delay)] fade-in fill-mode-both slide-in-from-bottom-2"
       style={
         {
           "--step-delay": `${index * STEP_STAGGER_MS}ms`,
@@ -68,7 +68,7 @@ function TourPlanStepItem({
       }
     >
       {/* oxlint-disable-next-line design-system/no-arbitrary-values -- per-row check pop-in delay set at runtime through --check-delay */}
-      <span className="mt-0.5 flex shrink-0 text-success duration-300 animate-in fade-in zoom-in-50 fill-mode-both [animation-delay:var(--check-delay)]">
+      <span className="mt-0.5 flex shrink-0 text-success duration-300 animate-in [animation-delay:var(--check-delay)] fade-in fill-mode-both zoom-in-50">
         <Icon icon={CheckmarkCircle02Icon} size={18} aria-label="completed" />
       </span>
       <div className="min-w-0 flex-1">
