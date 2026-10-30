@@ -1379,21 +1379,30 @@ async def test_a_library_graph_is_judged_without_the_listing_around_it(rows, loo
     assert "agent" not in json.loads(result.output)["ask"]
 
 
-@pytest.mark.parametrize("lookup", [{"agent_id": "graph-1"}, {"for_creation": True}])
-async def test_a_library_lookup_without_a_graph_is_not_judged(rows, lookup):
+@pytest.mark.parametrize(
+    "lookup, owned",
+    [
+        ({"agent_id": "graph-1"}, False),
+        ({"for_creation": True}, False),
+        ({"agent_id": "graph-1", "include_graph": True}, True),
+    ],
+)
+async def test_a_library_lookup_without_someone_elses_graph_is_not_judged(
+    rows, lookup, owned
+):
     from backend.copilot.tools.find_library_agent import FindLibraryAgentTool
 
     judge = _judge(_HELD)
-    with patch(f"{_READS}.judge_content", judge), _library_with_graph():
+    with patch(f"{_READS}.judge_content", judge), _library_with_graph(owned):
         result = await _call(FindLibraryAgentTool(), _session(), lookup)
 
     judge.assert_not_awaited()
     assert result.success and rows.rows == {}
 
 
-def _library_with_graph():
+def _library_with_graph(owned: bool = False):
     """One library entry whose graph, typed as ``get_graph`` returns it, carries
-    the marker."""
+    the marker; ``owned`` is whether the user owns that graph."""
     from contextlib import ExitStack
 
     from backend.data.graph import GraphModel, NodeModel
@@ -1404,7 +1413,7 @@ def _library_with_graph():
         description="Sends a digest",
         creator_name="creator",
         status=SimpleNamespace(value="ready"),
-        can_access_graph=True,
+        can_access_graph=owned,
         has_external_trigger=False,
         new_output=False,
         graph_id="graph-1",

@@ -61,7 +61,7 @@ JUDGED_READS: frozenset[str] = frozenset(
         "browser_navigate",
         "browser_screenshot",
         "delegate_to_expert",
-        # Only the graphs it returns: ``include_graph`` alone reaches the judge.
+        # Only a graph it returns that the user does not own reaches the judge.
         "find_library_agent",
         "get_sub_session_result",
         "read_expert_chat",
