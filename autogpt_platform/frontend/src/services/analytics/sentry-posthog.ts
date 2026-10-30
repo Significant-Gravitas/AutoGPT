@@ -32,7 +32,9 @@ export function createPostHogSentryProcessor(dsn: string | undefined) {
 // API request the app reports or a WebSocket error, carries no exception, and
 // PostHog's error tracking can't group an exception event with an empty list.
 // The mirror gets the message as its exception; Sentry's event is unchanged
-// apart from the PostHog links the integration adds to its tags.
+// apart from the PostHog links the integration adds to its tags. With no
+// frames PostHog groups by the text, so query strings and IDs come out of it
+// and one message about many URLs or blocks stays one issue.
 function withMessageAsException(event: ErrorEvent): ErrorEvent {
   if (event.exception?.values?.length || !event.message) return event;
   event.tags ??= {};
@@ -42,12 +44,20 @@ function withMessageAsException(event: ErrorEvent): ErrorEvent {
       values: [
         {
           type: "Error",
-          value: event.message,
+          value: groupableText(event.message),
           mechanism: { type: "sentry-message", handled: true },
         },
       ],
     },
   };
+}
+
+const URL_QUERY = /\?[^\s"'`):]*/g;
+const UUID =
+  /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
+
+function groupableText(message: string) {
+  return message.replace(URL_QUERY, "").replace(UUID, "{id}");
 }
 
 // posthog-js's own wording, matched whole so an app error that merely quotes

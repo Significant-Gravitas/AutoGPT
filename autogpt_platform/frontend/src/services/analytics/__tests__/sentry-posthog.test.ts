@@ -149,7 +149,6 @@ describe("Sentry to PostHog correlation", () => {
       event_id: "0123456789abcdef0123456789abcdef",
       level: "error",
       message: "Request failed on client: GET /api/chat/sessions 502",
-      tags: { environment: "test" },
     };
     expect(processEvent(event)).toBe(event);
     expect(event.exception).toBeUndefined();
@@ -163,6 +162,28 @@ describe("Sentry to PostHog correlation", () => {
           expect.objectContaining({
             type: "Error",
             value: "Request failed on client: GET /api/chat/sessions 502",
+          }),
+        ],
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("mirrors a message without its URL query or IDs, so one message stays one issue", () => {
+    processEvent({
+      type: undefined,
+      event_id: "0123456789abcdef0123456789abcdef",
+      level: "error",
+      message:
+        "Failed to fetch https://files.example.com/out.png?X-Goog-Signature=abc&e=1: 403 (block 9c1f6a52-3c0e-4b7e-9d0a-6f1e2b3c4d5e)",
+    });
+    expect(posthog.capture).toHaveBeenCalledWith(
+      "$exception",
+      expect.objectContaining({
+        $exception_list: [
+          expect.objectContaining({
+            value:
+              "Failed to fetch https://files.example.com/out.png: 403 (block {id})",
           }),
         ],
       }),
