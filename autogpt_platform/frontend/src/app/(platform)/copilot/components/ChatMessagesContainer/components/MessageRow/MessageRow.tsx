@@ -1,6 +1,9 @@
 import { memo, type ReactNode } from "react";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
-import { Message, MessageContent } from "@/components/ai-elements/message";
+import {
+  Message,
+  MessageContent,
+} from "@/components/organisms/Message/Message";
 import type { TurnStats } from "../../../../helpers/convertChatSessionToUiMessages";
 import type { SentFrom } from "../../../../sentFrom";
 import { TurnStatsBar } from "../../../JobStatsBar/TurnStatsBar";
@@ -57,6 +60,9 @@ interface Props {
   onRetry?: () => void;
 }
 
+// memo-boundary: a transcript row. The transcript re-renders on every
+// streamed flush, and a settled row's props stay the same, so only the
+// streaming row renders again.
 export const MessageRow = memo(function MessageRow({
   message,
   isLastAssistant,
@@ -104,7 +110,7 @@ export const MessageRow = memo(function MessageRow({
       <Message
         from={message.role}
         data-message-id={message.id}
-        className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+        className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
       >
         <MessageContent className="group-[.is-assistant]:bg-transparent">
           <WorkCard metadata={runMetadata} preview={runPreview} />
@@ -122,7 +128,7 @@ export const MessageRow = memo(function MessageRow({
       <Message
         from={message.role}
         data-message-id={message.id}
-        className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+        className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
       >
         <MessageContent className="group-[.is-assistant]:bg-transparent">
           <ScheduledChatNoticeCard notice={notice} sessionID={sessionID} />
@@ -142,7 +148,7 @@ export const MessageRow = memo(function MessageRow({
     <Message
       from={message.role}
       data-message-id={message.id}
-      className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+      className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
     >
       <MessageContent className={getMessageContentClassName(compact)}>
         {isAssistant ? (

@@ -32,19 +32,15 @@ function NavItemContent({
 
   return (
     <>
-      <UIIcon
-        icon={Icon}
-        size={16}
-        className={isActive ? "text-black" : "text-[#1F1F20]"}
-      />
+      <UIIcon icon={Icon} size={16} className="text-foreground-base" />
       <Text
         variant="body"
         as="span"
         className={cn(
           "flex-1",
           isActive
-            ? "font-medium text-[#1F1F20]"
-            : "font-normal text-[#505057]",
+            ? "font-medium text-foreground-base"
+            : "font-normal text-foreground-body",
         )}
       >
         {label}
@@ -80,8 +76,8 @@ export function SectionNavItem({ item, isActive }: Props) {
         href={item.href}
         aria-current={isActive ? "page" : undefined}
         className={cn(
-          "flex h-[38px] w-full items-center gap-2 rounded-[8px] px-3 text-[#505057] transition-colors",
-          isActive ? "bg-[#EFEFF0]" : "hover:bg-[#F5F5F6]",
+          "flex h-[38px] w-full items-center gap-2 rounded-lg px-3 text-foreground-body transition-colors",
+          isActive ? "bg-surface-hover" : "hover:bg-surface-hover/60",
         )}
       >
         <NavItemContent

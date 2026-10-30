@@ -89,6 +89,31 @@ def test_complete_step_accepts_tab_intros(step, mocker):
 @pytest.mark.parametrize(
     "step",
     [
+        OnboardingStep.FIRST_RUN_TOUR,
+        OnboardingStep.CHATS_TIP,
+        OnboardingStep.COST_TIP,
+        OnboardingStep.EXPERT_TIP,
+    ],
+)
+def test_complete_step_accepts_first_run_walkthrough(step, mocker):
+    # The first-run walkthrough and its three contextual tips each record
+    # their own step so they show once per user across devices; a 422 here
+    # would bring them back on every visit.
+    mock_complete = mocker.patch(
+        "backend.api.features.onboarding.routes.complete_onboarding_step",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+
+    response = client.post("/onboarding/step", params={"step": step.value})
+
+    assert response.status_code == 200
+    assert mock_complete.await_args.args[1] == step
+
+
+@pytest.mark.parametrize(
+    "step",
+    [
         OnboardingStep.MARKETPLACE_ADD_AGENT,
         OnboardingStep.LIBRARY_RUN_AGENT,
         OnboardingStep.RUN_AGENTS_100,
@@ -119,6 +144,10 @@ def test_complete_step_rejects_rewarded_backend_only_steps(step, mocker):
         OnboardingStep.MARKETPLACE_TAB_INTRO,
         OnboardingStep.BUILD_TAB_INTRO,
         OnboardingStep.WORKFLOWS_MOVED,
+        OnboardingStep.FIRST_RUN_TOUR,
+        OnboardingStep.CHATS_TIP,
+        OnboardingStep.COST_TIP,
+        OnboardingStep.EXPERT_TIP,
     ],
 )
 async def test_intro_steps_grant_no_reward(step, mocker):

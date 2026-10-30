@@ -1,9 +1,11 @@
 import asyncio
 import base64
+import contextvars
 import hashlib
 import hmac
 import logging
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Optional, cast
 from urllib.parse import quote_plus
@@ -35,6 +37,7 @@ from backend.data.notifications import (
 )
 from backend.data.org_migration import ensure_personal_org
 from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
+from backend.data.product_mail_audience import product_mail_audience_where
 from backend.data.profile import ensure_profile
 from backend.data.subscription_trial import get_subscription_trial
 from backend.notifications.audience_enrichment import points_at_excluded_country
@@ -56,6 +59,9 @@ settings = Settings()
 
 # Cache decorator alias for consistent user lookup caching
 cache_user_lookup = cached(maxsize=1000, ttl_seconds=300, shared_cache=True)
+_USER_CACHE_CLEAR_EXECUTOR = ThreadPoolExecutor(
+    max_workers=1, thread_name_prefix="user-cache-clear"
+)
 _INVALID_UNSUBSCRIBE_TOKEN = "Invalid unsubscribe token"
 
 
@@ -765,21 +771,25 @@ async def set_user_email_verification(user_id: str, verified: bool) -> None:
         ) from e
 
 
-async def disable_all_user_notifications(user_id: str) -> None:
+async def disable_all_user_notifications(
+    user_id: str, *, zero_daily_limit: bool = False
+) -> None:
     """Turn the volume knob all the way down.
 
     Used when a user's email bounces or is marked inactive, so we stop trying
-    to reach an address that cannot receive mail.
+    to reach an address that cannot receive mail. `zero_daily_limit` also sets
+    the daily ceiling to zero, as a one-click unsubscribe does, for an address
+    whose owner asked not to be mailed.
     """
+    data: UserUpdateInput = {
+        "briefingFrequency": BriefingFrequency.OFF,
+        "alertsEnabled": False,
+        "notifyOnStoreVerdict": False,
+    }
+    if zero_daily_limit:
+        data["maxEmailsPerDay"] = 0
     try:
-        await PrismaUser.prisma().update(
-            where={"id": user_id},
-            data={
-                "briefingFrequency": BriefingFrequency.OFF,
-                "alertsEnabled": False,
-                "notifyOnStoreVerdict": False,
-            },
-        )
+        await PrismaUser.prisma().update(where={"id": user_id}, data=data)
         # Invalidate cache for this user
         get_user_by_id.cache_delete(user_id)
         logger.info(f"Disabled all notification preferences for user {user_id}")
@@ -824,8 +834,7 @@ def forget_user_email_verification(user_id: str) -> None:
 
 @cache_user_lookup
 async def _user_proved_email(user_id: str) -> bool:
-    """A verified auth identity, or a Google sign-in. Only ever called
-    positionally, so ``forget_user_email_verification`` hits its one key."""
+    """A verified auth identity, or a Google sign-in."""
     try:
         identity = await AuthUser.prisma().find_unique(where={"id": user_id})
         if identity is None:
@@ -955,14 +964,7 @@ async def update_user_timezone(user_id: str, timezone: str) -> User:
             raise ValueError(f"User not found with ID: {user_id}")
 
         # Invalidate user caches so subsequent reads see the new timezone.
-        # get_user_by_id and get_user_by_email are keyed by a single value
-        # and can be deleted surgically; get_or_create_user is keyed by the
-        # JWT-payload dict so we can't delete a single entry — clear it
-        # entirely.
-        get_user_by_id.cache_delete(user_id)
-        if user.email:
-            get_user_by_email.cache_delete(user.email)
-        get_or_create_user.cache_clear()
+        await _invalidate_user_caches(user_id, user.email)
 
         # Dream-system schedules are bound to the timezone at job-creation
         # time; without an eager re-register they'd keep firing at the old
@@ -1069,7 +1071,7 @@ async def record_signup_consent(
             # Same invalidation as update_user_timezone: the MailerLite gate
             # reads the opt-out through get_user_by_id, so a stale cached user
             # would let a checkout opened right after signup through.
-            _invalidate_user_caches(user_id, current.email)
+            await _invalidate_user_caches(user_id, current.email)
         if opted_out and current.email:
             await _unsubscribe_from_marketing(user_id, current.email)
 
@@ -1179,7 +1181,7 @@ async def record_marketing_opt_out_by_email(email: str, source: str) -> str | No
         )
         if not written:
             return None
-        _invalidate_user_caches(row.id, row.email)
+        await _invalidate_user_caches(row.id, row.email)
         return row.id
     except Exception as e:
         # The address stays out of the message: it would reach the logs.
@@ -1220,11 +1222,43 @@ async def record_excluded_country(user_id: str, country: str) -> None:
     )
 
 
-def _invalidate_user_caches(user_id: str, email: str | None) -> None:
+async def _invalidate_user_caches(user_id: str, email: str | None) -> None:
+    # get_user_by_id and get_user_by_email are keyed by a single value and can
+    # be deleted surgically; get_or_create_user is keyed by the JWT-payload
+    # dict, so it can only be cleared whole. That clear SCANs every shard with
+    # the shared cache's synchronous Redis client, seconds on prod's keyspace,
+    # so it runs in a thread rather than stalling every request on this
+    # event loop.
     get_user_by_id.cache_delete(user_id)
     if email:
         get_user_by_email.cache_delete(email)
-    get_or_create_user.cache_clear()
+    await _clear_get_or_create_user_cache()
+
+
+async def _clear_get_or_create_user_cache() -> None:
+    """Serialize whole-cache clears without retaining cancelled callers."""
+    context = contextvars.copy_context()
+    clear = _USER_CACHE_CLEAR_EXECUTOR.submit(
+        context.run, get_or_create_user.cache_clear
+    )
+    awaiting_clear = asyncio.wrap_future(clear)
+    try:
+        await asyncio.shield(awaiting_clear)
+    except asyncio.CancelledError:
+        awaiting_clear.add_done_callback(
+            lambda done: None if done.cancelled() else done.exception()
+        )
+        clear.add_done_callback(
+            lambda done: context.run(_log_cancelled_cache_clear_error, done)
+        )
+        raise
+
+
+def _log_cancelled_cache_clear_error(clear: Future[None]) -> None:
+    try:
+        clear.result()
+    except Exception:
+        logger.exception("User cache clear failed after request cancellation")
 
 
 class BriefingCandidate(BaseModel):
@@ -1257,6 +1291,11 @@ async def get_briefing_candidates(
             "briefingFrequency": {"not": BriefingFrequency.OFF},
             "timezone": {"in": timezones},
         }
+        # The consumer drops a briefing for anyone outside the audience, so
+        # don't queue the work for them.
+        audience = product_mail_audience_where(datetime.now(timezone.utc))
+        if audience is not None:
+            where["AND"] = [audience]
         if after_id:
             where["id"] = {"gt": after_id}
         rows = await prisma.user.find_many(where=where, take=limit, order={"id": "asc"})
@@ -1507,10 +1546,7 @@ async def set_user_default_chat_route(
 
         # Same cache invalidation as update_user_timezone — the route is read
         # through the cached full-user lookup on every unrouted session create.
-        get_user_by_id.cache_delete(user_id)
-        if user.email:
-            get_user_by_email.cache_delete(user.email)
-        get_or_create_user.cache_clear()
+        await _invalidate_user_caches(user_id, user.email)
     except NotFoundError:
         raise
     except Exception as e:

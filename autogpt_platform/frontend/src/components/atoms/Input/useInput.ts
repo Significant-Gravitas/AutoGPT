@@ -1,4 +1,4 @@
-import { InputProps } from "@/components/__legacy__/ui/input";
+import type { BaseInputProps } from "./BaseInput";
 import {
   filterNumberInput,
   filterPhoneInput,
@@ -7,7 +7,7 @@ import {
   removeCommas,
 } from "./helpers";
 
-interface ExtendedInputProps extends InputProps {
+interface ExtendedInputProps extends BaseInputProps {
   decimalCount?: number;
   type?:
     | "text"

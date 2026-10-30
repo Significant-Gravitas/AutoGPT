@@ -22,6 +22,7 @@ from backend.data import briefing as briefing_db
 from backend.data import execution as execution_db
 from backend.data import human_review as review_db
 from backend.data import user as user_db
+from backend.data import workspace as workspace_db
 from backend.data.credit import get_credit_model
 from backend.data.execution import GraphExecutionMeta
 from backend.data.execution_cost_summary import (
@@ -270,7 +271,7 @@ async def _get_work_events(
     # Fail-soft like schedules and credits: a broken audit read costs the
     # Recent work card, not the page.
     try:
-        return await activity_db.list_activity_events(
+        events = await activity_db.list_activity_events(
             user_id,
             since=since,
             categories=["FILE", "INTEGRATION", "SCHEDULE"],
@@ -281,6 +282,29 @@ async def _get_work_events(
             "Home could not load work events for user %s", user_id[:_LOG_ID_CHARS]
         )
         return []
+    try:
+        return await _without_working_files(user_id, events)
+    except Exception:
+        logger.warning(
+            "Home could not check work files for user %s", user_id[:_LOG_ID_CHARS]
+        )
+        # An unchecked file row may be one of Otto's own; the rest still show.
+        return [event for event in events if event.category != "FILE"]
+
+
+async def _without_working_files(
+    user_id: str, events: list[activity_db.ActivityEvent]
+) -> list[activity_db.ActivityEvent]:
+    """Drop the FILE rows logged for Otto's own working files before writes
+    stopped logging them. The migration marks the files (``isInternal``), not
+    these log rows, so the mark is read through each row's file id."""
+    file_ids = [e.object_id for e in events if e.category == "FILE" and e.object_id]
+    internal = await workspace_db.list_internal_file_ids(user_id, file_ids)
+    return [
+        event
+        for event in events
+        if not (event.category == "FILE" and event.object_id in internal)
+    ]
 
 
 async def _get_session_titles(

@@ -30,6 +30,11 @@ from backend.data.notifications import (
     TrialUpdateData,
     get_notif_data_type,
 )
+from backend.data.product_mail_audience import (
+    PRODUCT_MAIL_LAPSE_WINDOW,
+    is_product_mail_recipient,
+    product_mail_allowlist,
+)
 from backend.data.user import (
     FOOTER_CHOICES,
     generate_preference_link,
@@ -52,6 +57,7 @@ from backend.notifications.queue import (
 from backend.notifications.recipient import greeting_name
 from backend.notifications.trial import trial_notice_disposition
 from backend.util.clients import get_database_manager_async_client
+from backend.util.exceptions import EmailUndeliverableError
 from backend.util.logging import TruncatedLogger
 from backend.util.metrics import DiscordChannel, discord_send_alert
 from backend.util.retry import continuous_retry
@@ -75,6 +81,27 @@ def _utc_today() -> date:
     """The cap resets at UTC midnight, matching the Alert engine's own daily
     cap. Both are documented as a follow-up to move to the user's local day."""
     return datetime.now(tz=timezone.utc).date()
+
+
+async def _in_product_audience(user_id: str, kind: NotificationType) -> bool:
+    """USER_NOTIFICATIONS_AUDIENCE and USER_NOTIFICATIONS_ALLOWLIST, logging
+    why when the answer is no."""
+    standing = await get_database_manager_async_client(
+        should_retry=False
+    ).get_product_mail_standing(user_id)
+    if standing and is_product_mail_recipient(standing, datetime.now(timezone.utc)):
+        return True
+    if standing is None:
+        reason = "the account no longer exists"
+    elif product_mail_allowlist() is not None:
+        reason = "not on USER_NOTIFICATIONS_ALLOWLIST"
+    else:
+        reason = (
+            "no plan or trial, and none ended in the last "
+            f"{PRODUCT_MAIL_LAPSE_WINDOW.days} days"
+        )
+    logger.info(f"Skipping {kind} for user {user_id}: {reason}")
+    return False
 
 
 async def _kept_out_since_queued(event: AudienceEventModel) -> bool:
@@ -143,6 +170,9 @@ HANDLER_SHUTDOWN_GRACE_SECONDS = 5
 # request (bad address), 406 an inactive recipient (hard bounce, spam
 # complaint or suppression). Retrying only delays the dead-letter by seconds.
 PERMANENT_POSTMARK_ERROR_CODES = frozenset({300, 406})
+# Only 406 is about the recipient alone; a 300 also covers a missing body or a
+# header limit, which an auth email must fail loudly on rather than skip.
+INACTIVE_RECIPIENT_ERROR_CODE = 406
 SHUTDOWN_TIMEOUT_SECONDS = 10
 CLEANUP_TIMEOUT_SECONDS = SHUTDOWN_TIMEOUT_SECONDS * 2 + 5
 
@@ -280,11 +310,24 @@ class NotificationManager(AppService):
         self, to: str, subject: str, body: str, text_body: str | None = None
     ):
         """One-off transactional email (e.g. Better Auth password-reset links
-        forwarded by the REST API). Deliberately not wrapped in try/except: a
-        delivery failure must reach the RPC caller."""
-        await asyncio.to_thread(
-            self.email_sender.send_email_or_raise, to, subject, body, text_body
-        )
+        forwarded by the REST API). A delivery failure reaches the RPC caller;
+        a recipient Postmark has marked inactive arrives as
+        EmailUndeliverableError."""
+        try:
+            await asyncio.to_thread(
+                self.email_sender.send_email_or_raise, to, subject, body, text_body
+            )
+        except ClientError as e:
+            if e.error_code != INACTIVE_RECIPIENT_ERROR_CODE:
+                raise
+            # Postmark's message names the address; keep it out of our logs.
+            raise EmailUndeliverableError(
+                f"Postmark refused the recipient (error {e.error_code})"
+            ) from None
+
+    @expose
+    async def is_email_suppressed(self, to: str) -> bool:
+        return await asyncio.to_thread(self.email_sender.is_suppressed, to)
 
     @expose
     async def send_owner_email(
@@ -349,6 +392,13 @@ class NotificationManager(AppService):
                 f"Skipping {event.type} for user {event.user_id}: not wanted or "
                 "unverified"
             )
+            return True
+
+        # Before the daily cap, so mail that won't go claims no slot.
+        if event.type not in SERVICE_MESSAGES and not await _in_product_audience(
+            event.user_id, event.type
+        ):
+            # Acked, not retried, like the daily cap.
             return True
 
         # The volume knob's own ceiling, across every product notification.
@@ -807,6 +857,8 @@ class NotificationManager(AppService):
     def cleanup(self):
         self.running = False
         try:
+            if self._run_service_future is None:
+                return  # stopped before `run_service`: nothing to shut down
             shutdown = self._shutdown_service()
             if self.shared_event_loop.is_closed():
                 shutdown.close()
@@ -842,4 +894,5 @@ class NotificationManagerClient(AppServiceClient):
     send_due_briefings = endpoint_to_sync(NotificationManager.send_due_briefings)
     discord_system_alert = endpoint_to_sync(NotificationManager.discord_system_alert)
     send_email_or_raise = endpoint_to_sync(NotificationManager.send_email_or_raise)
+    is_email_suppressed = endpoint_to_sync(NotificationManager.is_email_suppressed)
     send_owner_email = endpoint_to_async(NotificationManager.send_owner_email)

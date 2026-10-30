@@ -19,7 +19,7 @@ const SKELETON_CARDS = 3;
 // Three across at the container's max width, two on tablets, one on phones.
 const CARD_WIDTH_CLASS = "w-full sm:w-[calc(50%-0.375rem)] lg:w-72";
 const EDGE_FADE_CLASS =
-  "pointer-events-none absolute inset-x-0 z-10 h-16 from-gray-100 via-gray-100/70 to-transparent transition-opacity duration-200";
+  "pointer-events-none absolute inset-x-0 z-10 h-16 from-surface-hover via-surface-hover/70 to-transparent transition-opacity duration-200";
 
 // Otto's first act as Head of AI: right after the brain dump, before the
 // user is asked to pay for anything, it proposes the experts that take the
@@ -77,7 +77,7 @@ export function HireStep() {
           />
           <div
             ref={gridRef}
-            className="flex max-h-[26rem] w-full flex-wrap justify-center gap-3 overflow-y-auto scrollbar-none"
+            className="scrollbar-none flex max-h-[26rem] w-full flex-wrap justify-center gap-3 overflow-y-auto"
             data-testid="hire-step-grid"
           >
             {step.isPending
@@ -87,7 +87,7 @@ export function HireStep() {
                     className={cn(
                       EXPERT_CARD_CLASS,
                       CARD_WIDTH_CLASS,
-                      "border-zinc-200",
+                      "border-border-base",
                     )}
                     data-testid="hire-step-pending"
                   >

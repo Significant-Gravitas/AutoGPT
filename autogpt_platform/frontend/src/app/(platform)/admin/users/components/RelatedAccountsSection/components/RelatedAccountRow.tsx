@@ -25,25 +25,19 @@ export function RelatedAccountRow({ account }: Props) {
   return (
     <li className="grid grid-cols-1 gap-x-4 gap-y-1 py-2.5 first:pt-0 last:pb-0 md:grid-cols-[minmax(0,1fr)_minmax(0,auto)_7rem_4.5rem] md:items-center">
       <div className="flex min-w-0 flex-col">
-        <Link
-          href={getAdminUsersHref(account.id)}
-          variant="secondary"
-          className="truncate"
-        >
-          <span translate="no">{account.email}</span>
+        <Link href={getAdminUsersHref(account.id)} variant="secondary">
+          <span translate="no" className="block truncate">
+            {account.email}
+          </span>
         </Link>
         {account.name.trim() ? (
-          <Text variant="small" className="text-zinc-500">
+          <Text variant="small" tone="muted">
             {account.name}
           </Text>
         ) : null}
         <Text
           variant="small"
-          className={
-            account.payment_status === "past_due"
-              ? "text-amber-700"
-              : "text-zinc-500"
-          }
+          tone={account.payment_status === "past_due" ? "warning" : "muted"}
         >
           {getSubscriptionLabel(account.plan, account.payment_status)}
         </Text>
@@ -70,7 +64,7 @@ export function RelatedAccountRow({ account }: Props) {
           </Badge>
         )}
       </div>
-      <Text variant="small" as="span" className="text-zinc-500">
+      <Text variant="small" as="span" tone="muted">
         {formatDate(account.created_at)}
       </Text>
       <span className="md:text-right">

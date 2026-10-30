@@ -62,7 +62,7 @@ describe("VoiceTrace colour", () => {
     vi.useFakeTimers();
     takeMicLevel.mockImplementation(() => 0.02);
     const { container, rerender } = render(
-      <VoiceTrace source="pulse" color="bg-zinc-900" />,
+      <VoiceTrace source="pulse" color="bg-action-hover" />,
     );
     act(() => void vi.advanceTimersByTime(TICK_MS * 5));
 

@@ -24,24 +24,23 @@ export function FilePreviewCard({ file }: Props) {
 
   return (
     <div className="w-80 overflow-hidden" data-testid="artifacts-preview-card">
-      <div className="relative aspect-[16/10] overflow-hidden border-b border-zinc-200 bg-zinc-50">
+      <div className="relative aspect-[16/10] overflow-hidden border-b border-border-base bg-surface-muted">
         <PreviewBody file={file} kind={kind} imageWidth={PREVIEW_IMAGE_WIDTH} />
       </div>
       <div className="flex items-center gap-3 p-3">
-        <Icon
-          icon={getFileTypeIcon(file.mime_type, file.name)}
-          size={20}
-          className="shrink-0 text-zinc-500"
-        />
+        <span className="flex shrink-0 text-foreground-tertiary">
+          <Icon icon={getFileTypeIcon(file.mime_type, file.name)} size={20} />
+        </span>
         <div className="flex min-w-0 flex-1 flex-col">
           <Text
             variant="body-medium"
             as="span"
-            className="truncate text-zinc-900"
+            tone="primary"
+            className="truncate"
           >
             {file.name}
           </Text>
-          <Text variant="small" as="span" className="truncate text-zinc-500">
+          <Text variant="small" as="span" tone="muted" className="truncate">
             {getFileTypeLabel(file.mime_type, file.name)} ·{" "}
             {formatFileSize(file.size_bytes)} ·{" "}
             {formatDayLabel(file.created_at)}

@@ -26,7 +26,7 @@ export function SectionMobileNav({ items, sectionName, showBackLink }: Props) {
   return (
     <div
       className={cn(
-        "bg-[#F9F9FA] px-4 py-3 md:hidden",
+        "bg-surface-muted px-4 py-3 md:hidden",
         showBackLink && "flex items-center gap-2",
       )}
     >
@@ -34,7 +34,7 @@ export function SectionMobileNav({ items, sectionName, showBackLink }: Props) {
         <Link
           href="/copilot"
           aria-label="Back to home"
-          className="flex items-center gap-1 rounded-[8px] py-1 pr-2 text-[#505057] transition-colors hover:text-[#1F1F20]"
+          className="flex items-center gap-1 rounded-lg py-1 pr-2 text-foreground-body transition-colors hover:text-foreground-base"
         >
           <UIIcon icon={ArrowLeft02Icon} size={16} />
         </Link>
@@ -43,16 +43,16 @@ export function SectionMobileNav({ items, sectionName, showBackLink }: Props) {
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="flex w-fit items-center gap-2 rounded-full border border-[#DADADC] bg-white px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-[#3E3E43]"
+            className="flex w-fit items-center gap-2 rounded-full border border-border-base bg-surface px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-action"
             aria-label={`${sectionName} navigation, current: ${current.label}`}
           >
             <span className="flex items-center gap-2">
-              <UIIcon icon={current.Icon} size={16} className="text-black" />
-              <Text
-                variant="body"
-                as="span"
-                className="font-medium text-[#1F1F20]"
-              >
+              <UIIcon
+                icon={current.Icon}
+                size={16}
+                className="text-foreground-base"
+              />
+              <Text variant="body" as="span" className="font-medium">
                 {current.label}
               </Text>
             </span>
@@ -60,7 +60,7 @@ export function SectionMobileNav({ items, sectionName, showBackLink }: Props) {
               icon={ArrowDown01Icon}
               size={16}
               className={cn(
-                "text-[#505057] transition-transform",
+                "text-foreground-body transition-transform",
                 open && "rotate-180",
               )}
             />
@@ -71,7 +71,7 @@ export function SectionMobileNav({ items, sectionName, showBackLink }: Props) {
           sideOffset={8}
           className="w-[calc(100vw-32px)] max-w-sm p-2"
         >
-          <nav className="flex flex-col gap-[4px]">
+          <nav className="flex flex-col gap-1">
             {items.map(({ label, href, Icon, isActive }) => (
               <Link
                 key={href}
@@ -79,14 +79,14 @@ export function SectionMobileNav({ items, sectionName, showBackLink }: Props) {
                 aria-current={isActive ? "page" : undefined}
                 onClick={() => setOpen(false)}
                 className={cn(
-                  "flex h-[38px] items-center gap-2 rounded-[8px] px-3",
-                  isActive ? "bg-[#EFEFF0]" : "hover:bg-[#F5F5F6]",
+                  "flex h-[38px] items-center gap-2 rounded-lg px-3",
+                  isActive ? "bg-surface-hover" : "hover:bg-surface-muted",
                 )}
               >
                 <UIIcon
                   icon={Icon}
                   size={16}
-                  className={isActive ? "text-black" : "text-[#1F1F20]"}
+                  className="text-foreground-base"
                 />
                 <Text
                   variant="body"
@@ -94,8 +94,8 @@ export function SectionMobileNav({ items, sectionName, showBackLink }: Props) {
                   className={cn(
                     "flex-1",
                     isActive
-                      ? "font-medium text-[#1F1F20]"
-                      : "font-normal text-[#505057]",
+                      ? "font-medium text-foreground-base"
+                      : "font-normal text-foreground-body",
                   )}
                 >
                   {label}

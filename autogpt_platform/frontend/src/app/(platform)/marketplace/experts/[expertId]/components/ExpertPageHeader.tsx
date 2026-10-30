@@ -26,7 +26,8 @@ function getTopic(expert: Expert) {
 }
 
 const GLOSSY_STAT =
-  "inline-flex h-8 items-center rounded-full border border-zinc-200 bg-gradient-to-b from-white to-zinc-50 px-3.5 text-sm font-medium text-zinc-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(16,24,40,0.05)]";
+  // oxlint-disable-next-line design-system/no-arbitrary-values -- the gloss highlight and drop shadow have no shadow token
+  "inline-flex h-8 items-center rounded-full border border-border-base bg-gradient-to-b from-surface to-surface-muted px-3.5 text-sm font-medium text-foreground-body shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(16,24,40,0.05)]";
 
 /** The hero band: the expert's colour with two soft glows and the category
  *  on it. The portrait (ExpertHeroIdentity) breaks out of its bottom edge,
@@ -38,23 +39,26 @@ export function ExpertHeroBand({ expert }: BandProps) {
   return (
     <div
       className="relative h-44 overflow-hidden rounded-3xl sm:h-56"
+      /* oxlint-disable design-system/no-inline-styles -- the band is tinted at runtime with the expert's own colour */
       style={{
         backgroundColor: expertPastel(topic),
         backgroundImage: [
-          `radial-gradient(circle at 15% 0%, color-mix(in srgb, ${topic} 45%, white), transparent 55%)`,
-          `radial-gradient(circle at 90% 110%, color-mix(in srgb, ${topic} 35%, white), transparent 50%)`,
+          `radial-gradient(circle at 15% 0%, color-mix(in srgb, ${topic} 45%, rgb(var(--color-card))), transparent 55%)`,
+          `radial-gradient(circle at 90% 110%, color-mix(in srgb, ${topic} 35%, rgb(var(--color-card))), transparent 50%)`,
         ].join(", "),
       }}
+      /* oxlint-enable design-system/no-inline-styles */
     >
       <div
         aria-hidden
-        className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(255,255,255,0.35),transparent_45%)]"
+        // oxlint-disable-next-line design-system/no-arbitrary-values -- a fade over the band; no gradient token
+        className="absolute inset-0 bg-[linear-gradient(to_bottom,rgb(var(--color-card)/0.35),transparent_45%)]"
       />
       {area ? (
         <CategoryTag
           category={area}
           size="medium"
-          className="absolute left-5 top-5 h-7 px-2.5 text-[13px]"
+          className="absolute top-5 left-5 h-7 px-2.5 text-body-sm leading-inherit"
         />
       ) : null}
     </div>
@@ -76,7 +80,11 @@ export function ExpertHeroIdentity({ expert, stats }: IdentityProps) {
           color={expert.color}
           backgroundColor={topic}
           size={128}
-          className="ml-6 rounded-full border border-[#e3e3e3] shadow-[0_12px_32px_-12px_rgba(16,24,40,0.35)] ring-[6px] ring-[#f9f9f9]"
+          /* oxlint-disable design-system/no-restyle -- the hero portrait's frame; ExpertAvatar has no framed size */
+          /* oxlint-disable design-system/no-arbitrary-values -- the 6px halo and drop shadow have no ring or shadow token */
+          className="ml-6 rounded-full border border-border-base shadow-[0_12px_32px_-12px_rgba(16,24,40,0.35)] ring-[6px] ring-surface-muted"
+          /* oxlint-enable design-system/no-arbitrary-values */
+          /* oxlint-enable design-system/no-restyle */
         />
         <div className="mt-4 min-w-0">
           <ExpertIdentityDetails
@@ -89,7 +97,7 @@ export function ExpertHeroIdentity({ expert, stats }: IdentityProps) {
           />
         </div>
         {expert.tagline?.trim() ? (
-          <p className="mt-3 max-w-2xl text-lg leading-8 text-zinc-600">
+          <p className="mt-3 max-w-2xl text-lg leading-8 text-foreground-secondary">
             {expert.tagline}
           </p>
         ) : null}

@@ -65,7 +65,7 @@ function HomeSkeleton() {
   return (
     <section className={SHELL_CLASS} aria-label="Loading Home…">
       <div className={CONTENT_CLASS}>
-        <div className="flex items-end justify-between gap-6 px-1 pb-5 pt-1">
+        <div className="flex items-end justify-between gap-6 px-1 pt-1 pb-5">
           <div className="space-y-2">
             <Skeleton className="h-7 w-64" />
             <Skeleton className="h-4 w-80 max-w-full" />
@@ -96,10 +96,11 @@ interface Props {
 
 function HomeTileSkeleton({ cardClassName }: Props) {
   return (
-    <div className="overflow-hidden rounded-2xl bg-white smooth-shadow-ring-sm">
-      <div className="flex h-10 items-center border-b border-zinc-100 px-4">
+    <div className="overflow-hidden rounded-2xl bg-surface smooth-shadow-ring-sm">
+      <div className="flex h-10 items-center border-b border-separator px-4">
         <Skeleton className="h-3.5 w-28" />
       </div>
+      {/* oxlint-disable-next-line design-system/require-static-classes -- cardClassName is a whole, static class string */}
       <Skeleton className={`${cardClassName} rounded-none`} />
     </div>
   );

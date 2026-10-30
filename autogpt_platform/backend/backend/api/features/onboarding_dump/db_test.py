@@ -101,7 +101,7 @@ async def test_a_new_recording_id_always_claims_the_row(
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "status",
-    [BrainDumpStatus.recording_uploaded, BrainDumpStatus.completed],
+    [BrainDumpStatus.recording_uploaded, BrainDumpStatus.extracting],
 )
 async def test_a_delayed_typed_finalize_cannot_replace_an_active_take(
     mocker: MockerFixture, upsert: AsyncMock, status: BrainDumpStatus

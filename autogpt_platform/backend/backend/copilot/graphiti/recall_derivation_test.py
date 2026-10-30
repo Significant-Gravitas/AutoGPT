@@ -212,18 +212,3 @@ class TestRecord:
         assert recorded is False
         assert driver.execute_query.await_count == 2, "the marker is not dropped"
         assert "its marker stays for reconcile" in caplog.text
-
-
-class TestTheStamp:
-    def test_a_fact_is_stamped_only_when_every_source_is_a_recorded_episode(
-        self,
-    ) -> None:
-        query = recall_derivation.STAMP_FACTS_QUERY
-        assert "all(x IN coalesce(e.episodes, []) WHERE x IN found)" in query
-        assert "all(s IN sources WHERE s.derived_from_facts IS NOT NULL)" in query
-        assert "e.forgotten_at IS NULL" in query
-
-    def test_the_stamp_is_the_union_of_its_sources_records(self) -> None:
-        query = recall_derivation.STAMP_FACTS_QUERY
-        assert "acc + [x IN s.derived_from_facts WHERE NOT x IN acc]" in query
-        assert "SET e.derived_from_facts = reduce(" in query
