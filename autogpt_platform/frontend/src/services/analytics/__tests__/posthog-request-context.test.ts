@@ -4,14 +4,20 @@ import {
   installCookiebot,
   removeCookiebot,
 } from "@/tests/integrations/cookiebot";
-import type { CaptureResult } from "posthog-js";
+import type { CaptureResult, PostHog } from "posthog-js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+type SessionRecordingStatus = NonNullable<
+  PostHog["sessionRecording"]
+>["status"];
 
 const { posthog } = vi.hoisted(() => ({
   posthog: {
     __loaded: true,
     get_session_id: vi.fn(() => "0192f0c4-5f4e-7b4c-9d6e-1a2b3c4d5e6f"),
-    sessionRecording: { status: "active" } as { status: string } | undefined,
+    sessionRecording: { status: "active" } as
+      | { status: SessionRecordingStatus }
+      | undefined,
     get_session_replay_url: vi.fn(
       () => "https://eu.posthog.com/project/1/replay/session-1?t=10",
     ),
@@ -129,7 +135,12 @@ describe("getPostHogReplayUrl", () => {
     expect(getPostHogReplayUrl()).toBe(REPLAY);
   });
 
-  it.each(["disabled", "buffering", "paused", "lazy_loading"])(
+  it.each<SessionRecordingStatus>([
+    "disabled",
+    "buffering",
+    "paused",
+    "lazy_loading",
+  ])(
     "gives nothing while the recording is %s, since nothing is uploaded",
     (status) => {
       installCookiebot({ statistics: true });
