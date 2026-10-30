@@ -6706,6 +6706,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 compaction.get_log_summary(),
             )
     except GeneratorExit:
+        if warm_ctx_task is not None:
+            warm_ctx_task.cancel()
+            warm_ctx_task = None
         # GeneratorExit is raised when the async generator is closed by the
         # caller (e.g. client disconnect, page refresh).  We MUST release the
         # stream lock here because the ``finally`` block at the end of this
@@ -6717,6 +6720,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         await persist_unfolded_rows(session, unsaved_held, log_prefix=log_prefix)
         raise
     except BaseException as e:
+        if warm_ctx_task is not None:
+            warm_ctx_task.cancel()
+            warm_ctx_task = None
         await persist_unfolded_rows(session, unsaved_held, log_prefix=log_prefix)
         # Catch BaseException to handle both Exception and CancelledError
         # (CancelledError inherits from BaseException in Python 3.8+)

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from backend.copilot.response_model import StreamStart
 from backend.copilot.sdk import service
 
 from .retry_scenarios_test import TestFirstTurnWarmContextIsEphemeral as _FirstTurn
@@ -122,6 +123,92 @@ async def test_a_first_turn_that_ends_before_its_query_stops_its_recall():
     assert building.is_set()
     assert outcome == ["cancelled"]
     assert queries == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error_type",
+    [RuntimeError, asyncio.CancelledError, None],
+    ids=["setup-error", "cancelled", "disconnect"],
+)
+async def test_setup_failure_cancels_recall_before_persistence_without_waiting(
+    error_type: type[BaseException] | None,
+):
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+    persisting = asyncio.Event()
+    finish_recall = asyncio.Event()
+    finish_persistence = asyncio.Event()
+    recall_tasks: list[asyncio.Task] = []
+
+    async def recall(*args, **kwargs):
+        task = asyncio.current_task()
+        assert task is not None
+        recall_tasks.append(task)
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+            await finish_recall.wait()
+
+    async def setup_fails(*args, **kwargs):
+        await asyncio.wait_for(started.wait(), _WAIT)
+        assert error_type is not None
+        raise error_type("setup failed")
+
+    async def disconnect_at_start(*args, **kwargs):
+        stream = service.stream_chat_completion_sdk(*args, **kwargs)
+        try:
+            async for event in stream:
+                yield event
+                if isinstance(event, StreamStart):
+                    await asyncio.wait_for(started.wait(), _WAIT)
+                    break
+        finally:
+            await stream.aclose()
+
+    async def persist(*args, **kwargs):
+        persisting.set()
+        await finish_persistence.wait()
+
+    queries: list[str] = []
+    interruption = (
+        (f"{_SVC}._build_system_prompt", dict(new=setup_fails))
+        if error_type is not None
+        else (
+            f"{_FirstTurn.__module__}.stream_chat_completion_sdk",
+            dict(new=disconnect_at_start),
+        )
+    )
+    turn = asyncio.create_task(
+        _run_first_turn(
+            queries,
+            [
+                (f"{_SVC}._fetch_graphiti_context", dict(new=recall)),
+                interruption,
+                (f"{_SVC}.persist_unfolded_rows", dict(new=persist)),
+            ],
+        )
+    )
+    try:
+        await asyncio.wait_for(persisting.wait(), _WAIT)
+        await asyncio.wait_for(cancelled.wait(), _WAIT)
+        assert queries == []
+        assert not turn.done()
+    finally:
+        finish_recall.set()
+        finish_persistence.set()
+        for task in recall_tasks:
+            task.cancel()
+        outcomes = await asyncio.wait_for(
+            asyncio.gather(turn, *recall_tasks, return_exceptions=True), _WAIT
+        )
+
+    if error_type is None:
+        assert outcomes[0] is None
+    else:
+        assert isinstance(outcomes[0], error_type)
 
 
 @pytest.mark.asyncio
