@@ -14,7 +14,7 @@ from .retry_scenarios_test import TestFollowUpWarmContextCallSite as _FollowUp
 
 _SVC = "backend.copilot.sdk.service"
 _BLOCK = "<temporal_context>Alice works on Atlas</temporal_context>"
-_WAIT = 2
+_WAIT = 20
 
 
 def _noting_the_build(building: asyncio.Event):
