@@ -1,5 +1,5 @@
-"""POST /api/account/deletion and /api/account/deletion/feedback, through the
-real service and the real database.
+"""The account deletion routes (delete, feedback, status and keep), through
+the real service and the real database.
 
 Each test gets a throwaway account of its own, removed afterwards with its
 deletion request and this process's closed-account answer for it. Only the
@@ -36,7 +36,12 @@ from pydantic import BaseModel, ConfigDict, SecretStr
 from pytest_mock import MockerFixture
 
 from backend.api.features.account_deletion.rate_limit import FEEDBACK_MAX_REQUESTS
-from backend.api.features.account_deletion.routes import IMPERSONATION_DETAIL, router
+from backend.api.features.account_deletion.routes import (
+    IMPERSONATION_DETAIL,
+    TOO_LATE_DETAIL,
+    router,
+    status_router,
+)
 from backend.data.auth.api_key import create_api_key
 from backend.data.credit import ACCOUNT_DELETION_CANCELLATION_COMMENT
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
@@ -50,7 +55,9 @@ from backend.util.test import SpinTestServer
 
 PACKAGE = "backend.api.features.account_deletion"
 DELETE = "/api/account/deletion"
+STATUS = "/api/account/deletion"
 FEEDBACK = "/api/account/deletion/feedback"
+RESTORE = "/api/account/deletion/restore"
 COMPLETED = PostHogEvent.ACCOUNT_DELETION_COMPLETED.value
 STARTED = PostHogEvent.ACCOUNT_DELETION_STARTED.value
 ANSWERED = PostHogEvent.ACCOUNT_DELETION_FEEDBACK.value
@@ -60,6 +67,7 @@ CLOSED = {"detail": "This account is closed."}
 
 app = fastapi.FastAPI()
 app.include_router(router, prefix="/api")
+app.include_router(status_router, prefix="/api")
 
 
 # ---------------------------------------------------------------------------
@@ -227,17 +235,18 @@ async def test_the_account_is_closed_and_left_for_erasure(
     response = await api.post(DELETE, json=account.confirm())
 
     assert response.status_code == 200
-    assert response.json() == {"status": "scheduled"}
     request = await _deletion_request(account)
     assert request is not None
+    assert _is_scheduled(response, request)
     assert request.source == AccountDeletionSource.SETTINGS
     assert request.completedAt is None
+    assert request.eraseAfter == request.requestedAt + timedelta(days=14)
+    # Not banned: signing in is how the owner keeps the account.
     auth_user = await AuthUser.prisma().find_unique_or_raise(
         where={"id": account.user_id}
     )
-    assert auth_user.banned is True
-    assert auth_user.banReason == "account_deleted"
-    assert auth_user.banExpires is None
+    assert not auth_user.banned
+    assert auth_user.banReason is None
     assert await _session_count(account) == 0
     assert await _api_key_status(account) == APIKeyStatus.REVOKED
     user = await User.prisma().find_unique_or_raise(where={"id": account.user_id})
@@ -300,7 +309,8 @@ async def test_a_repeat_call_answers_200_and_does_nothing_more(
     second = await api.post(DELETE, json=account.confirm())
 
     assert (first.status_code, second.status_code) == (200, 200)
-    assert second.json() == {"status": "scheduled"}
+    assert second.json() == first.json()
+    assert second.json()["status"] == "scheduled"
     edges.stripe_list.assert_not_awaited()
     edges.revoke.assert_not_awaited()
     edges.mailer.send_email_or_raise.assert_not_called()
@@ -441,8 +451,8 @@ async def test_the_old_token_is_refused_afterwards(
 async def test_a_deleted_account_is_answered_as_closed_not_banned(
     account: Account, api: httpx.AsyncClient, edges: Edges, real_ban_lookup: None
 ):
-    """Closing the account bans its sign-in too. The API still answers it as
-    closed, and the deletion route still answers its repeat request."""
+    """Closing the account bans nothing. The API answers it as closed, and the
+    deletion route still answers its repeat request."""
     first = await api.post(DELETE, json=account.confirm())
     # Another worker has no cached answers: it reads the ban and the closure.
     is_user_banned.cache_delete(account.user_id)
@@ -452,31 +462,31 @@ async def test_a_deleted_account_is_answered_as_closed_not_banned(
 
     assert (first.status_code, repeat.status_code) == (200, 200)
     assert (elsewhere.status_code, elsewhere.json()) == (401, CLOSED)
+    assert await is_user_banned(account.user_id) is False
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_an_account_banned_for_another_reason_cannot_delete_itself(
+async def test_an_account_banned_for_another_reason_can_delete_itself(
     account: Account, api: httpx.AsyncClient, edges: Edges, real_ban_lookup: None
 ):
-    """Deleting must not wipe a ban for abuse: the route refuses the account,
-    and the ban keeps its reason."""
+    """Deleting the account is the person's right whatever the ban, and the
+    ban keeps its reason, so they can never sign in to keep the account."""
     await AuthUser.prisma().update(
         where={"id": account.user_id}, data={"banned": True, "banReason": "spam"}
     )
 
     response = await api.post(DELETE, json=account.confirm())
+    elsewhere = await api.post(FEEDBACK, json=ANSWER)
 
-    assert response.status_code == 403
-    assert response.json()["detail"]["code"] == "account_banned"
-    edges.stripe_list.assert_not_awaited()
-    edges.revoke.assert_not_awaited()
-    edges.mailer.send_email_or_raise.assert_not_called()
-    assert (
-        await AccountDeletionRequest.prisma().count(where={"userId": account.user_id})
-        == 0
-    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "scheduled"
+    assert await _deletion_request(account) is not None
+    edges.stripe_list.assert_awaited()
     auth_user = await AuthUser.prisma().find_unique(where={"id": account.user_id})
-    assert auth_user is not None and auth_user.banReason == "spam"
+    assert auth_user is not None
+    assert (auth_user.banned, auth_user.banReason) == (True, "spam")
+    assert elsewhere.status_code == 403
+    assert elsewhere.json()["detail"]["code"] == "account_banned"
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -490,12 +500,16 @@ async def test_the_confirmation_email_replies_to_the_shared_inbox(
     send.assert_called_once()
     to, subject, html, text = send.call_args.args
     assert to == account.email
-    assert subject == "Your AutoGPT account is deleted"
-    assert "Your account is deleted" in html
+    request = await _deletion_request(account)
+    assert request is not None
+    erase_day = f"{request.eraseAfter.day} {request.eraseAfter.strftime('%b %Y')}"
+    assert subject == "Your AutoGPT account is closed"
+    assert "Your account is closed" in html
     assert (
-        "We've closed your AutoGPT account and disconnected your apps. We finish "
-        "removing your data within 30 days. If you have a minute, reply and tell "
-        "us what we could have done better."
+        "We've closed your AutoGPT account, signed you out and disconnected your "
+        f"apps. Changed your mind? Sign in before {erase_day} and choose Keep my "
+        "account. After that, everything in your account is erased. If you have "
+        "a minute, reply and tell us what we could have done better."
     ) in text
     assert send.call_args.kwargs == {"reply_to": "contact@agpt.co"}
 
@@ -641,6 +655,123 @@ def test_both_routes_declare_the_impersonation_refusal():
         assert paths[path]["post"]["responses"]["403"] == {
             "description": IMPERSONATION_DETAIL
         }
+
+
+# ---------------------------------------------------------------------------
+# GET /api/account/deletion and POST /api/account/deletion/restore
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_open_account_has_nothing_scheduled(
+    account: Account, api: httpx.AsyncClient, flag: AsyncMock
+):
+    response = await api.get(STATUS)
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "open", "erase_after": None}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_signing_in_during_the_grace_period_shows_the_erasure_date(
+    account: Account, api: httpx.AsyncClient, edges: Edges
+):
+    await api.post(DELETE, json=account.confirm())
+    # Another worker: it asks the database.
+    forget_account_state(account.user_id)
+
+    response = await api.get(STATUS)
+
+    request = await _deletion_request(account)
+    assert request is not None
+    assert response.status_code == 200
+    assert _is_scheduled(response, request)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_keeping_the_account_opens_it_again(
+    account: Account, api: httpx.AsyncClient, edges: Edges
+):
+    """The request is cancelled and the account works again at once; what the
+    close stopped stays stopped (the API key stays revoked)."""
+    await api.post(DELETE, json=account.confirm())
+
+    kept = await api.post(RESTORE)
+    answered = await api.post(FEEDBACK, json=ANSWER)
+    status = await api.get(STATUS)
+
+    assert (kept.status_code, kept.json()) == (
+        200,
+        {"status": "open", "erase_after": None},
+    )
+    assert answered.status_code == 204
+    assert status.json()["status"] == "open"
+    assert await _deletion_request(account) is None
+    assert await _api_key_status(account) == APIKeyStatus.REVOKED
+    user = await User.prisma().find_unique_or_raise(where={"id": account.user_id})
+    assert user.maxEmailsPerDay == 3
+    # And it can be deleted again, with a new grace period.
+    again = await api.post(DELETE, json=account.confirm())
+    assert again.status_code == 200
+    assert await _deletion_request(account) is not None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_account_cannot_be_kept_after_the_grace_period(
+    account: Account, api: httpx.AsyncClient, edges: Edges
+):
+    await api.post(DELETE, json=account.confirm())
+    await AccountDeletionRequest.prisma().update(
+        where={"userId": account.user_id},
+        data={"eraseAfter": datetime.now(timezone.utc) - timedelta(minutes=1)},
+    )
+
+    response = await api.post(RESTORE)
+
+    assert (response.status_code, response.json()) == (
+        409,
+        {"detail": TOO_LATE_DETAIL},
+    )
+    assert await _deletion_request(account) is not None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_account_can_be_kept_with_the_flag_off(
+    account: Account, api: httpx.AsyncClient, edges: Edges, flag: AsyncMock
+):
+    """Turning the flag off must not strand someone who closed their account
+    while it was on."""
+    await api.post(DELETE, json=account.confirm())
+    flag.return_value = False
+
+    status = await api.get(STATUS)
+    kept = await api.post(RESTORE)
+
+    assert status.json()["status"] == "scheduled"
+    assert kept.status_code == 200
+    assert await _deletion_request(account) is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_admin_acting_as_the_account_cannot_keep_it(
+    account: Account, edges: Edges, mocker: MockerFixture
+):
+    restore = mocker.patch(f"{PACKAGE}.routes.restore_account", new_callable=AsyncMock)
+    admin = {"sub": f"admin-{uuid4()}", "role": "admin"}
+    app.dependency_overrides[get_jwt_payload] = lambda: admin
+    try:
+        async with _client() as client:
+            response = await client.post(
+                RESTORE, headers={"X-Act-As-User-Id": account.user_id}
+            )
+    finally:
+        app.dependency_overrides.pop(get_jwt_payload, None)
+
+    assert (response.status_code, response.json()) == (
+        403,
+        {"detail": IMPERSONATION_DETAIL},
+    )
+    restore.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -924,6 +1055,14 @@ def _no_autopilot_work(mocker: MockerFixture) -> None:
 async def _update(account: Account, data: UserUpdateInput) -> None:
     await User.prisma().update(where={"id": account.user_id}, data=data)
     get_user_by_id.cache_delete(account.user_id)
+
+
+def _is_scheduled(response: httpx.Response, request: AccountDeletionRequest) -> bool:
+    """The answer names the request's erasure date."""
+    body = response.json()
+    return body["status"] == "scheduled" and (
+        datetime.fromisoformat(body["erase_after"]) == request.eraseAfter
+    )
 
 
 async def _deletion_request(account: Account) -> AccountDeletionRequest | None:

@@ -1,5 +1,6 @@
 """Request and response bodies for self-serve account deletion (SECRT-2877)."""
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -25,7 +26,12 @@ class AccountDeletionRequestBody(BaseModel):
 
 
 class AccountDeletionResponse(BaseModel):
-    status: Literal["scheduled"]
+    """Whether the account is closed and waiting to be erased. While it is,
+    ``erase_after`` says when the erasure may start: until then its owner can
+    keep the account."""
+
+    status: Literal["open", "scheduled"]
+    erase_after: datetime | None = None
 
 
 class DeletionFeedbackRequest(BaseModel):

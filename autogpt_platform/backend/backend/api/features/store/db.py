@@ -9,6 +9,7 @@ import prisma.errors
 import prisma.models
 import prisma.types
 
+from backend.data.account_deletion import is_account_closed
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.graph import (
     GraphModel,
@@ -634,7 +635,7 @@ async def get_store_creator(
             where={"username": username}
         )
 
-        if not creator:
+        if not creator or await _is_creator_account_closed(username):
             logger.warning(f"Creator not found: {username}")
             raise store_exceptions.CreatorNotFoundError(f"Creator {username} not found")
 
@@ -645,6 +646,16 @@ async def get_store_creator(
     except Exception as e:
         logger.error(f"Error getting store creator details: {e}")
         raise DatabaseError("Failed to fetch creator details") from e
+
+
+async def _is_creator_account_closed(username: str) -> bool:
+    """A closed account's creator page answers as unknown, until the account
+    is reopened or erased. Its listings are already down, so the creators
+    list (creators with a live listing) leaves it out by itself."""
+    profile = await prisma.models.Profile.prisma().find_unique(
+        where={"username": username}
+    )
+    return profile is not None and await is_account_closed(profile.userId)
 
 
 async def _get_submission_stats(user_id: str) -> store_model.SubmissionStats:

@@ -417,13 +417,17 @@ enum AccountDeletionSource {
 }
 
 // A user's request to delete their account. Its presence closes the account
-// (backend auth rejects the user); the data erasure routine (SECRT-2854)
-// processes rows with completedAt null. No relation to User: the row must
-// outlive the erasure of the User it names.
+// (backend auth rejects the user). Until eraseAfter the owner can change their
+// mind by signing in and keeping the account, which deletes the row; after it
+// the data erasure routine (SECRT-2854) processes rows with completedAt null.
+// No relation to User: the row must outlive the erasure of the User it names.
 model AccountDeletionRequest {
   id                 String                @id @default(uuid())
   userId             String                @unique
   requestedAt        DateTime              @default(now())
+  // requestedAt plus 14 days: the account can be restored before this, and
+  // its data is erased only after it.
+  eraseAfter         DateTime
   source             AccountDeletionSource
   // Set once the confirmation email went out. The erasure routine sends it
   // for a row where this is still null, before it erases the User.

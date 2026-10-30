@@ -26,8 +26,9 @@ MODULE = "backend.api.features.account_deletion.service"
 USER_ID = "user-1"
 EMAIL = "Ada.Lovelace@Example.com"
 TYPED = "  ada.lovelace@example.COM "
+ERASE_AFTER = datetime(2026, 11, 13, 12, 0, tzinfo=timezone.utc)
 
-LOAD = ["get_user_by_id", "is_account_closed"]
+LOAD = ["get_user_by_id", "get_deletion_request"]
 BEFORE_CLOSE = [
     "cancel_all_subscriptions_now",
     "set_auto_top_up",
@@ -68,9 +69,9 @@ def steps(mocker: MockerFixture) -> MagicMock:
         )
         parent.attach_mock(step, name)
     parent.get_user_by_id.return_value = _user()
-    parent.is_account_closed.return_value = False
+    parent.get_deletion_request.return_value = None
     parent.cancel_all_subscriptions_now.return_value = 1
-    parent.close_account.return_value = True
+    parent.close_account.return_value = MagicMock(eraseAfter=ERASE_AFTER)
     return parent
 
 
@@ -79,16 +80,16 @@ def _called(steps: MagicMock) -> list[str]:
 
 
 async def _delete(source: AccountDeletionSource = AccountDeletionSource.SETTINGS):
-    await delete_account(user_id=USER_ID, confirm_email=TYPED, source=source)
+    return await delete_account(user_id=USER_ID, confirm_email=TYPED, source=source)
 
 
 @pytest.mark.asyncio
 async def test_every_step_runs_once_in_order(steps: MagicMock):
-    await _delete()
+    assert await _delete() == ERASE_AFTER
 
     assert _called(steps) == STEPS
     steps.get_user_by_id.assert_awaited_once_with(USER_ID)
-    steps.is_account_closed.assert_awaited_once_with(USER_ID)
+    steps.get_deletion_request.assert_awaited_once_with(USER_ID)
     for name in BEFORE_CLOSE:
         if name != "set_auto_top_up":
             getattr(steps, name).assert_awaited_once_with(USER_ID)
@@ -97,7 +98,7 @@ async def test_every_step_runs_once_in_order(steps: MagicMock):
     )
     steps.remember_account_closed.assert_called_once_with(USER_ID)
     steps.send_account_deleted_email.assert_awaited_once_with(
-        EMAIL, AccountDeletionSource.SETTINGS
+        EMAIL, AccountDeletionSource.SETTINGS, ERASE_AFTER
     )
     steps.mark_confirmation_sent.assert_awaited_once_with(USER_ID)
     steps.capture_anonymous.assert_called_once_with(
@@ -123,7 +124,9 @@ async def test_the_confirmation_email_is_told_the_source(
 ):
     await _delete(source)
 
-    steps.send_account_deleted_email.assert_awaited_once_with(EMAIL, source)
+    steps.send_account_deleted_email.assert_awaited_once_with(
+        EMAIL, source, ERASE_AFTER
+    )
 
 
 @pytest.mark.asyncio
@@ -155,10 +158,11 @@ async def test_a_blank_email_never_matches(steps: MagicMock):
 
 @pytest.mark.asyncio
 async def test_an_account_already_closed_returns_at_once(steps: MagicMock):
-    """A repeat call: no Stripe call, no second email, no second count."""
-    steps.is_account_closed.return_value = True
+    """A repeat call: no Stripe call, no second email, no second count, and
+    the erasure date the first call set."""
+    steps.get_deletion_request.return_value = MagicMock(eraseAfter=ERASE_AFTER)
 
-    await _delete()
+    assert await _delete() == ERASE_AFTER
 
     assert _called(steps) == LOAD
 
@@ -268,11 +272,12 @@ async def test_a_failure_to_mark_the_confirmation_sent_still_succeeds(
 async def test_losing_the_close_race_sends_nothing(steps: MagicMock):
     """A concurrent call closed the account first; it sends the email and
     records the count, so this one must not do either again."""
-    steps.close_account.return_value = False
+    steps.close_account.return_value = None
+    steps.get_deletion_request.side_effect = [None, MagicMock(eraseAfter=ERASE_AFTER)]
 
-    await _delete()
+    assert await _delete() == ERASE_AFTER
 
-    assert _called(steps) == LOAD + BEFORE_CLOSE + CLOSE
+    assert _called(steps) == LOAD + BEFORE_CLOSE + CLOSE + ["get_deletion_request"]
 
 
 @pytest.mark.asyncio
@@ -315,7 +320,9 @@ async def test_a_stalled_confirmation_email_does_not_hold_the_request(
 ):
     mocker.patch(f"{MODULE}.CONFIRMATION_EMAIL_TIMEOUT_SECONDS", 0.05)
 
-    async def stall(email: str, source: AccountDeletionSource) -> None:
+    async def stall(
+        email: str, source: AccountDeletionSource, erase_after: datetime
+    ) -> None:
         await asyncio.Event().wait()
 
     steps.send_account_deleted_email.side_effect = stall

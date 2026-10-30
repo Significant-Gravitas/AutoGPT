@@ -182,6 +182,7 @@ async def test_get_store_creator(mocker):
     mock_creator.return_value.find_unique = AsyncMock()
     # Configure the mock to return values that will pass validation
     mock_creator.return_value.find_unique.return_value = mock_creator_data
+    mocker.patch.object(db, "_is_creator_account_closed", AsyncMock(return_value=False))
 
     # Call function
     result = await db.get_store_creator("creator")
@@ -196,6 +197,28 @@ async def test_get_store_creator(mocker):
     mock_creator.return_value.find_unique.assert_called_once_with(
         where={"username": "creator"}
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_closed_accounts_creator_page_is_not_found(mocker):
+    """Closing an account hides its creator page until it is reopened."""
+    creator = mocker.patch("prisma.models.Creator.prisma")
+    creator.return_value.find_unique = AsyncMock(return_value=MagicMock())
+    profile = mocker.patch("prisma.models.Profile.prisma")
+    profile.return_value.find_unique = AsyncMock(
+        return_value=MagicMock(userId="closed-user")
+    )
+    is_closed = mocker.patch.object(
+        db, "is_account_closed", AsyncMock(return_value=True)
+    )
+
+    with pytest.raises(db.store_exceptions.CreatorNotFoundError):
+        await db.get_store_creator("creator")
+
+    profile.return_value.find_unique.assert_awaited_once_with(
+        where={"username": "creator"}
+    )
+    is_closed.assert_awaited_once_with("closed-user")
 
 
 @pytest.mark.asyncio(loop_scope="session")

@@ -1,7 +1,8 @@
 """Render the fixed account emails through the shared service-email kit: the
-Better Auth link emails and the account-deleted confirmation."""
+Better Auth link emails and the account-closed confirmation."""
 
 import asyncio
+from datetime import datetime
 from typing import Literal, assert_never
 
 from prisma.enums import AccountDeletionSource
@@ -49,12 +50,15 @@ def render_auth_email(
     action_url: str | None = None,
     *,
     reason: str | None = None,
+    preheader: str | None = None,
 ) -> RenderedEmail:
     content = _CONTENT[email_type]
     if content.action and not action_url:
         raise ValueError(f"The {email_type} email needs an action URL")
     if reason:
         content = content.model_copy(update={"reason": reason})
+    if preheader:
+        content = content.model_copy(update={"preheader": preheader})
     assets = settings.config.email_asset_base_url.rstrip("/")
     context = {
         "content": content,
@@ -73,10 +77,17 @@ def render_auth_email(
     )
 
 
-async def send_account_deleted_email(to: str, source: AccountDeletionSource) -> None:
-    """Confirm a closed account to its owner, with replies going to the shared
-    inbox. Raises when delivery fails; the caller decides what that means."""
-    email = render_auth_email("account_deleted", reason=_deletion_reason(source))
+async def send_account_deleted_email(
+    to: str, source: AccountDeletionSource, erase_after: datetime
+) -> None:
+    """Confirm a closed account to its owner, with the date until which they
+    can still keep it and replies going to the shared inbox. Raises when
+    delivery fails; the caller decides what that means."""
+    email = render_auth_email(
+        "account_deleted",
+        reason=_deletion_reason(source),
+        preheader=account_closed_preheader(erase_after),
+    )
     await asyncio.to_thread(
         get_notification_manager_client().send_email_or_raise,
         to,
@@ -84,6 +95,16 @@ async def send_account_deleted_email(to: str, source: AccountDeletionSource) -> 
         email.html,
         email.text,
         reply_to=settings.config.billing_reply_to_email,
+    )
+
+
+def account_closed_preheader(erase_after: datetime) -> str:
+    """How long the owner can still change their mind. The date is the UTC
+    day the erasure may start, so "before" it always leaves time."""
+    day = f"{erase_after.day} {erase_after.strftime('%b %Y')}"
+    return (
+        f"Changed your mind? Sign in before {day} and choose Keep my account. "
+        "After that, everything in your account is erased."
     )
 
 
@@ -163,12 +184,20 @@ _CONTENT: dict[AuthEmailType, AuthEmailContent] = {
             'link, or use "Forgot password" on the login page.'
         ),
     ),
+    # The preheader names the date (account_closed_preheader); this one is
+    # only for a render without it.
     "account_deleted": AuthEmailContent(
-        subject="Your AutoGPT account is deleted",
-        eyebrow="ACCOUNT · DELETED",
-        headline="Your account is deleted",
-        intro="We've closed your AutoGPT account and disconnected your apps.",
-        preheader="We finish removing your data within 30 days.",
+        subject="Your AutoGPT account is closed",
+        eyebrow="ACCOUNT · CLOSED",
+        headline="Your account is closed",
+        intro=(
+            "We've closed your AutoGPT account, signed you out and "
+            "disconnected your apps."
+        ),
+        preheader=(
+            "Changed your mind? Sign in within 14 days and choose Keep my "
+            "account. After that, everything in your account is erased."
+        ),
         reason="You deleted your account in AutoGPT.",
         note="If you have a minute, reply and tell us what we could have done better.",
         close_with_inbox=True,

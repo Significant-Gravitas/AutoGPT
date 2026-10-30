@@ -302,6 +302,7 @@ app.include_router(
 )
 app.include_router(subscription_trial_routes.router, prefix="/api")
 app.include_router(account_deletion_routes.router, prefix="/api")
+app.include_router(account_deletion_routes.status_router, prefix="/api")
 app.include_router(subscription_activation_routes.router, prefix="/api")
 app.include_router(
     api_keys_routes.router,

@@ -246,32 +246,32 @@ class TestClosedAccountCache:
         clock = mocker.patch("autogpt_libs.auth.closed_accounts.time.monotonic")
         clock.return_value = 1_000.0
         await get_user_id(_request(), _payload(OPEN))
-        clock.return_value = 1_000.0 + closed_accounts._OPEN_ACCOUNT_TTL_SECS - 1
+        clock.return_value = 1_000.0 + closed_accounts._ACCOUNT_STATE_TTL_SECS - 1
         await get_user_id(_request(), _payload(OPEN))
         assert backend.is_closed.await_count == 1
 
-        clock.return_value = 1_000.0 + closed_accounts._OPEN_ACCOUNT_TTL_SECS
+        clock.return_value = 1_000.0 + closed_accounts._ACCOUNT_STATE_TTL_SECS
         await get_user_id(_request(), _payload(OPEN))
         assert backend.is_closed.await_count == 2
-        assert closed_accounts._OPEN_ACCOUNT_TTL_SECS == 30
+        assert closed_accounts._ACCOUNT_STATE_TTL_SECS == 30
 
     @pytest.mark.asyncio
-    async def test_a_closed_answer_is_kept_for_fifteen_minutes(
+    async def test_a_closed_answer_is_kept_only_briefly_too(
         self, backend, mocker: MockerFixture
     ):
+        """Its owner can reopen the account within 14 days, from any worker."""
         clock = mocker.patch("autogpt_libs.auth.closed_accounts.time.monotonic")
         clock.return_value = 1_000.0
-        for offset in (0, closed_accounts._CLOSED_ACCOUNT_TTL_SECS - 1):
+        for offset in (0, closed_accounts._ACCOUNT_STATE_TTL_SECS - 1):
             clock.return_value = 1_000.0 + offset
             with pytest.raises(HTTPException):
                 await get_user_id(_request(), _payload(CLOSED))
         assert backend.is_closed.await_count == 1
 
-        clock.return_value = 1_000.0 + closed_accounts._CLOSED_ACCOUNT_TTL_SECS
+        clock.return_value = 1_000.0 + closed_accounts._ACCOUNT_STATE_TTL_SECS
         with pytest.raises(HTTPException):
             await get_user_id(_request(), _payload(CLOSED))
         assert backend.is_closed.await_count == 2
-        assert closed_accounts._CLOSED_ACCOUNT_TTL_SECS == 15 * 60
 
     @pytest.mark.asyncio
     async def test_the_cache_is_bounded(self, backend, mocker: MockerFixture):
@@ -420,21 +420,22 @@ class TestGetUserIdAllowingClosed:
 
 @pytest.fixture
 def bans(backend, mocker: MockerFixture):
-    """Add the ban lookup: ``CLOSED`` is banned, as deleting an account bans
-    it, and ``BANNED`` is banned by an admin without being closed."""
+    """Add the ban lookup: ``BANNED`` is banned by an admin. Deleting an
+    account does not ban it, so ``CLOSED`` is not banned."""
     db_mod = sys.modules["backend.data.db"]
     mocker.patch.object(db_mod, "is_connected", Mock(return_value=True), create=True)
     mocker.patch.object(sys.modules["backend.data"], "db", db_mod, create=True)
     user_mod = types.ModuleType("backend.data.user")
-    is_banned = AsyncMock(side_effect=lambda user_id: user_id in (CLOSED, BANNED))
+    is_banned = AsyncMock(side_effect=lambda user_id: user_id == BANNED)
     mocker.patch.object(user_mod, "is_user_banned", is_banned, create=True)
     mocker.patch.dict(sys.modules, {"backend.data.user": user_mod})
     return is_banned
 
 
 class TestBannedAndClosed:
-    """A deleted account is banned too. It is answered as closed, not banned,
-    and the deletion route still answers its repeat request."""
+    """A closed account is answered as closed. A banned one is refused
+    everywhere except the account deletion routes: deleting the account is
+    the person's right whatever the ban."""
 
     @staticmethod
     def _client(user_id: str) -> TestClient:
@@ -463,14 +464,18 @@ class TestBannedAndClosed:
         assert response.status_code == 200
         assert response.json() == {"user_id": CLOSED}
 
-    @pytest.mark.parametrize(
-        "method, path", [("get", "/me"), ("post", "/account/deletion")]
-    )
-    def test_an_admin_ban_is_still_refused(self, bans, method, path):
-        response = getattr(self._client(BANNED), method)(path)
+    def test_an_admin_ban_is_refused_elsewhere(self, bans):
+        response = self._client(BANNED).get("/me")
 
         assert response.status_code == 403
         assert response.json()["detail"]["code"] == "account_banned"
+
+    def test_a_banned_account_may_still_ask_to_delete_itself(self, bans):
+        response = self._client(BANNED).post("/account/deletion")
+
+        assert response.status_code == 200
+        assert response.json() == {"user_id": BANNED}
+        bans.assert_not_awaited()
 
 
 class TestFailsOpen:
@@ -524,11 +529,11 @@ class TestFailsOpen:
 
         clock.return_value = 1_000.0
         await get_user_id(_request(), _payload(CLOSED))
-        clock.return_value = 1_000.0 + closed_accounts._OPEN_ACCOUNT_TTL_SECS - 1
+        clock.return_value = 1_000.0 + closed_accounts._ACCOUNT_STATE_TTL_SECS - 1
         await get_user_id(_request(), _payload(CLOSED))
         assert backend.is_closed.await_count == 1
 
-        clock.return_value = 1_000.0 + closed_accounts._OPEN_ACCOUNT_TTL_SECS
+        clock.return_value = 1_000.0 + closed_accounts._ACCOUNT_STATE_TTL_SECS
         await get_user_id(_request(), _payload(CLOSED))
         assert backend.is_closed.await_count == 2
 

@@ -1,11 +1,14 @@
 """Self-serve account deletion (SECRT-2877): close an account its owner asked
-to delete.
+to delete. Its data is erased 14 days later (SECRT-2854); until then the
+owner can sign in and keep it (``restore.py``).
 
 ``delete_account`` runs, in this order:
 
 1. Load the user and check the typed email (trimmed, in any case).
 2. Return at once when the account is already closed: a repeat call cancels,
-   revokes and sends nothing, and records no second count.
+   revokes and sends nothing, and records no second count. The person may be
+   banned for another reason: deleting their account is their right, and the
+   ban is left as it is.
 3. Read the plan for the completed count, before Stripe is touched: the
    cancel's webhooks move the tier, and can land while this still runs.
 4. Cancel every Stripe subscription now, with no invoice, and switch off
@@ -16,11 +19,14 @@ to delete.
 5. Disconnect the apps they connected, revoke the API keys and OAuth grants
    AutoGPT issued for them, stop their schedules, triggers, AutoPilot turns
    and runs, and switch off their product and marketing email.
-6. Close the account (``close_account``): the deletion request row, the
-   Better Auth ban, the end of every session and the Marketplace listings
-   taken down, in one transaction. This worker rejects the user at once; the
-   others within their cache TTL.
-7. Send the confirmation email and record one anonymous count.
+6. Close the account (``close_account``): the deletion request row with the
+   date erasure may start (14 days on), the end of every session, the
+   Marketplace listings and reviews taken down, the share links turned off
+   and the chat platforms unlinked, in one transaction. Sign-in is not
+   banned: signing in is how the owner keeps the account. This worker
+   rejects the user at once; the others within their cache TTL.
+7. Send the confirmation email (with the last day to keep the account) and
+   record one anonymous count.
 
 Every step before the close must succeed or raise, so the account never
 closes with a plan still billing. Two are best effort by design:
@@ -49,31 +55,33 @@ step is safe to repeat:
 The steps after the close are best effort: the account is closed, so the call
 succeeds even when the email cannot be sent, and it stops waiting for the email
 after ``CONFIRMATION_EMAIL_TIMEOUT_SECONDS``. A sent email is recorded on the
-request row (``confirmationSentAt``); one that failed is left for the erasure
-routine to send. When two calls race, the one whose ``close_account`` loses
+request row (``confirmationSentAt``); one that failed is left unmarked for the
+erasure routine. When two calls race, the one whose ``close_account`` loses
 returns without sending anything; the winner sends the email and records the
 count.
 
 Hand-off to data erasure (SECRT-2854): the AccountDeletionRequest row is the
-whole hand-off. That routine (not built yet) processes every row whose
-``completedAt`` is still null, so there is nothing to enqueue here. It should
-first rerun ``stop_user_work``: a schedule or trigger whose removal failed here
-is not retried, and neither the scheduler nor the webhook ingress checks for a
+whole hand-off. That routine processes every row whose ``eraseAfter`` has
+passed and whose ``completedAt`` is still null, so there is nothing to enqueue
+here; a row deleted by reopening the account is simply gone. It should first
+rerun ``stop_user_work``: a schedule or trigger whose removal failed here is
+not retried, and neither the scheduler nor the webhook ingress checks for a
 closed account. It must also delete the user's auth identities with the User
-row, or the auth-identity monitor re-creates the User. For a row whose
-``confirmationSentAt`` is still null it must send ``send_account_deleted_email``
-(with the row's ``source``) before it erases the User row (the address goes
-with it), then set the column.
+row, or the auth-identity monitor re-creates the User. A request whose
+``confirmationSentAt`` is still null got no email: by then the 14 days are
+over, so the routine words its own.
 
 Neither the typed email nor the account's email is ever logged.
 """
 
 import asyncio
 import logging
+from datetime import datetime, timezone
 
 import stripe
 from autogpt_libs.auth import remember_account_closed
 from prisma.enums import AccountDeletionSource
+from prisma.models import AccountDeletionRequest
 
 from backend.api.features.account_deletion.analytics import plan_state
 from backend.api.features.account_deletion.connected_apps import revoke_connected_apps
@@ -81,8 +89,9 @@ from backend.api.features.account_deletion.email_opt_out import stop_account_ema
 from backend.api.features.account_deletion.issued_access import revoke_issued_access
 from backend.api.features.account_deletion.scheduled_work import stop_user_work
 from backend.data.account_deletion import (
+    GRACE_PERIOD,
     close_account,
-    is_account_closed,
+    get_deletion_request,
     mark_confirmation_sent,
 )
 from backend.data.credit import cancel_all_subscriptions_now, set_auto_top_up
@@ -117,8 +126,9 @@ class PlanCancellationError(Exception):
 
 async def delete_account(
     user_id: str, confirm_email: str, source: AccountDeletionSource
-) -> None:
-    """Close the account, in the order the module docstring gives.
+) -> datetime:
+    """Close the account, in the order the module docstring gives, and return
+    when its data may be erased: until then its owner can keep it.
 
     Raises EmailMismatchError, having changed nothing, for a different email,
     and PlanCancellationError when Stripe refuses or times out on the cancel:
@@ -127,19 +137,22 @@ async def delete_account(
     """
     user = await get_user_by_id(user_id)
     _check_email(user.email, confirm_email)
-    if await is_account_closed(user_id):
-        return
+    existing = await get_deletion_request(user_id)
+    if existing is not None:
+        return existing.eraseAfter
     plan = plan_state(user.subscription_tier)
     await _cancel_plan(user_id)
     await set_auto_top_up(user_id, AutoTopUpConfig(threshold=0, amount=0))
     await _revoke_and_stop(user_id)
-    if not await _close(user_id, source):
-        return
-    await _send_confirmation(user_id, user.email, source)
+    request = await _close(user_id, source)
+    if request is None:
+        return await _winners_erase_after(user_id)
+    await _send_confirmation(user_id, user.email, source, request.eraseAfter)
     capture_anonymous(
         PostHogEvent.ACCOUNT_DELETION_COMPLETED,
         {"plan_state": plan, "surface": _SURFACES[source]},
     )
+    return request.eraseAfter
 
 
 def _check_email(account_email: str, confirm_email: str) -> None:
@@ -174,29 +187,40 @@ async def _revoke_and_stop(user_id: str) -> None:
     await stop_account_emails(user_id)
 
 
-async def _close(user_id: str, source: AccountDeletionSource) -> bool:
-    """Close the account; False when a concurrent call closed it first."""
-    closed = await close_account(user_id, source)
+async def _close(
+    user_id: str, source: AccountDeletionSource
+) -> AccountDeletionRequest | None:
+    """Close the account; None when a concurrent call closed it first."""
+    request = await close_account(user_id, source)
     # Closed either way, so this worker rejects the user from now on.
     remember_account_closed(user_id)
-    if closed:
+    if request is not None:
         logger.info(f"Account deletion closed the account of user {user_id}")
     else:
         logger.info(
             f"Account deletion for user {user_id} lost the race to a concurrent "
             f"request, which closed the account and sends the confirmation"
         )
-    return closed
+    return request
+
+
+async def _winners_erase_after(user_id: str) -> datetime:
+    """The erasure date the concurrent call that closed the account set."""
+    winner = await get_deletion_request(user_id)
+    if winner is not None:
+        return winner.eraseAfter
+    # Reopened in the meantime: a fresh request would get this date.
+    return datetime.now(timezone.utc) + GRACE_PERIOD
 
 
 async def _send_confirmation(
-    user_id: str, email: str, source: AccountDeletionSource
+    user_id: str, email: str, source: AccountDeletionSource, erase_after: datetime
 ) -> None:
     """Best effort: the account is already closed. One that did not go out
-    stays unmarked on the request row, for the erasure routine to send."""
+    stays unmarked on the request row, for the erasure routine."""
     try:
         await asyncio.wait_for(
-            send_account_deleted_email(email, source),
+            send_account_deleted_email(email, source, erase_after),
             timeout=CONFIRMATION_EMAIL_TIMEOUT_SECONDS,
         )
         await mark_confirmation_sent(user_id)

@@ -29,13 +29,12 @@ class AccountState(Enum):
 
 # Recent answers to "did this user delete their account?", id -> (state,
 # monotonic expiry). Tokens outlive the sessions a close ends, so every request
-# asks; a closed answer is kept long, an open one only briefly, since another
-# worker can close the account at any moment. A failed check is kept as long
-# as an open answer, so a DB outage costs one query per user per TTL.
+# asks. Every answer is kept only briefly: another worker can close the
+# account at any moment, and its owner can reopen it within 14 days. A failed
+# check is kept as long, so a DB outage costs one query per user per TTL.
 _CLOSED_ACCOUNT_CACHE: "OrderedDict[str, tuple[AccountState, float]]" = OrderedDict()
 _CLOSED_ACCOUNT_CACHE_MAX = 10_000
-_CLOSED_ACCOUNT_TTL_SECS = 15 * 60
-_OPEN_ACCOUNT_TTL_SECS = 30
+_ACCOUNT_STATE_TTL_SECS = 30
 # Lookups still running, id -> task: a page load's burst of requests for one
 # user waits on the same query instead of each running its own.
 _LOOKUPS_IN_FLIGHT: "dict[str, asyncio.Task[AccountState]]" = {}
@@ -51,7 +50,11 @@ def remember_account_closed(user_id: str) -> None:
 
 
 def forget_account_state(user_id: str) -> None:
-    """Drop this process's cached answer for *user_id* (test teardown)."""
+    """Drop this process's cached answer for *user_id*.
+
+    For the worker that just reopened the account, so it lets the owner back
+    in at once, and for test teardown.
+    """
     _CLOSED_ACCOUNT_CACHE.pop(user_id, None)
 
 
@@ -141,12 +144,10 @@ def _cached_account_state(user_id: str) -> AccountState | None:
 
 
 def _cache_account_state(user_id: str, state: AccountState) -> None:
-    ttl = (
-        _CLOSED_ACCOUNT_TTL_SECS
-        if state is AccountState.CLOSED
-        else _OPEN_ACCOUNT_TTL_SECS
+    _CLOSED_ACCOUNT_CACHE[user_id] = (
+        state,
+        time.monotonic() + _ACCOUNT_STATE_TTL_SECS,
     )
-    _CLOSED_ACCOUNT_CACHE[user_id] = (state, time.monotonic() + ttl)
     _CLOSED_ACCOUNT_CACHE.move_to_end(user_id)
     while len(_CLOSED_ACCOUNT_CACHE) > _CLOSED_ACCOUNT_CACHE_MAX:
         _CLOSED_ACCOUNT_CACHE.popitem(last=False)

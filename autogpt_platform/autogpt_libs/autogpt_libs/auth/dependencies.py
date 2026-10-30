@@ -159,15 +159,12 @@ async def get_unbanned_jwt_payload(
 
     The resolvers below all read it, and FastAPI resolves it once per request.
     Under impersonation the subject is the admin, who may act as a banned user.
-    Deleting an account bans it too. A closed account passes, so the resolvers
-    answer it as closed and the deletion route can answer a repeat request.
+    Deleting an account does not ban it (its owner signs in to reopen it), so
+    only the account deletion routes skip this check: a banned person may
+    still delete their account (``get_user_id_allowing_closed``).
     """
     user_id = jwt_payload.get("sub")
-    if (
-        user_id
-        and await _is_banned(user_id)
-        and await get_account_state(user_id) is not AccountState.CLOSED
-    ):
+    if user_id and await _is_banned(user_id):
         raise fastapi.HTTPException(status_code=403, detail=ACCOUNT_BANNED_DETAIL)
     return jwt_payload
 
@@ -239,14 +236,16 @@ async def get_user_id(
 
 async def get_user_id_allowing_closed(
     request: fastapi.Request,
-    jwt_payload: dict = fastapi.Security(get_unbanned_jwt_payload),
+    jwt_payload: dict = fastapi.Security(get_jwt_payload),
 ) -> str:
-    """``get_user_id`` that still resolves a closed account.
+    """``get_user_id`` that still resolves a closed or a banned account.
 
-    Only for the account deletion route, so a repeat request for an account it
-    already closed can still answer. A ban that did not come from deleting the
-    account is still refused. A closed account is never self-healed: that
-    would re-create the User row its erasure removes.
+    Only for the account deletion routes: a repeat request for an account
+    already closed still answers, its owner can see when it will be erased and
+    reopen it, and a banned person can still delete their account (a legal
+    right; the ban stays, so they can never sign in to reopen it). A closed
+    account is never self-healed: that would re-create the User row its
+    erasure removes.
     """
     return await _resolve_user_id(request, jwt_payload, allow_closed=True)
 
