@@ -32,7 +32,7 @@ const CommandList = React.forwardRef<
       ref={ref}
       data-slot="command-list"
       className={cn(
-        "max-h-[300px] overflow-y-auto overflow-x-hidden",
+        "max-h-[300px] overflow-x-hidden overflow-y-auto",
         className,
       )}
       {...props}
@@ -65,7 +65,7 @@ const CommandItem = React.forwardRef<
       ref={ref}
       data-slot="command-item"
       className={cn(
-        "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 outline-none data-[disabled=true]:pointer-events-none data-[selected=true]:bg-surface-hover data-[selected=true]:text-foreground-strong data-[disabled=true]:opacity-50",
+        "relative flex cursor-default items-center rounded-sm px-2 py-1.5 outline-none select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-surface-hover data-[selected=true]:text-foreground-strong",
         className,
       )}
       {...props}

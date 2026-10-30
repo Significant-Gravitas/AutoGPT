@@ -575,7 +575,7 @@ export function ExecutionsTable({
                       Stop Selected ({selectedIds.size})
                       {hasOrphanedSelected && (
                         // oxlint-disable-next-line design-system/no-raw-colors -- orange has no role; amber would change the hue (deferred)
-                        <span className="ml-1 text-caption font-medium leading-4 text-orange-200">
+                        <span className="ml-1 text-caption leading-4 font-medium text-orange-200">
                           ({selectedOrphanedIds.length} orphaned)
                         </span>
                       )}
@@ -801,7 +801,7 @@ export function ExecutionsTable({
                             <TableCell>
                               <span
                                 className={cn(
-                                  "inline-flex rounded-full px-2 py-1 text-caption font-semibold leading-4",
+                                  "inline-flex rounded-full px-2 py-1 text-caption leading-4 font-semibold",
                                   execution.status === "RUNNING"
                                     ? "bg-success/30 text-success-foreground"
                                     : // oxlint-disable-next-line design-system/no-raw-colors -- yellow has no role; amber would change the hue (deferred)

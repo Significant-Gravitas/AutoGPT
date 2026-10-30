@@ -23,7 +23,7 @@ export function AuthMarketingPanel({
   children,
 }: Props) {
   return (
-    <div className="flex h-full w-full flex-col justify-between gap-12 px-12 pb-12 pt-10 xl:px-16 xl:pb-16">
+    <div className="flex h-full w-full flex-col justify-between gap-12 px-12 pt-10 pb-12 xl:px-16 xl:pb-16">
       <div className="flex flex-col gap-12">
         <MarketingHeader
           headingLines={headingLines}

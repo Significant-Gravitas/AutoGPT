@@ -59,7 +59,7 @@ export function PaidWelcome({
         >
           Continue to checkout
         </Button>
-        <Text variant="small" tone="muted" className="text-balance text-center">
+        <Text variant="small" tone="muted" className="text-center text-balance">
           <Icon
             icon={SquareLock02Icon}
             size={13}

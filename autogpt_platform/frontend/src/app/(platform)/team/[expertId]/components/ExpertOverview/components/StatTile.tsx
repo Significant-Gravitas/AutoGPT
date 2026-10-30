@@ -24,7 +24,7 @@ export function StatTile({ label, icon, value, detail, isLoading }: Props) {
       {isLoading ? (
         <Skeleton className="mt-1 h-8 w-16 rounded-md" />
       ) : (
-        <p className="font-sans text-heading font-semibold tabular-nums leading-9 tracking-title text-foreground-strong">
+        <p className="font-sans text-heading leading-9 font-semibold tracking-title text-foreground-strong tabular-nums">
           {value ?? "—"}
         </p>
       )}

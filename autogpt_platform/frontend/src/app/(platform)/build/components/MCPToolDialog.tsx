@@ -518,8 +518,8 @@ export function MCPToolDialog({
         <DialogFooter>
           {step === "tool" && (
             <Button
-              // oxlint-disable-next-line design-system/no-legacy-button-variant -- the Button atom's primary/secondary are pills; the rounded-md look stays until that change is approved
-              variant="legacy-outline"
+              variant="compact-outline"
+              size="compact"
               onClick={() => {
                 setStep("url");
                 setSelectedTool(null);
@@ -529,16 +529,16 @@ export function MCPToolDialog({
             </Button>
           )}
           <Button
-            // oxlint-disable-next-line design-system/no-legacy-button-variant -- the Button atom's primary/secondary are pills; the rounded-md look stays until that change is approved
-            variant="legacy-outline"
+            variant="compact-outline"
+            size="compact"
             onClick={handleClose}
           >
             Cancel
           </Button>
           {step === "url" && (
             <Button
-              // oxlint-disable-next-line design-system/no-legacy-button-variant -- the Button atom's primary/secondary are pills; the rounded-md look stays until that change is approved
-              variant="legacy-default"
+              variant="compact-primary"
+              size="compact"
               onClick={
                 authRequired && !showManualToken
                   ? handleOAuthSignIn
@@ -571,8 +571,8 @@ export function MCPToolDialog({
           )}
           {step === "tool" && (
             <Button
-              // oxlint-disable-next-line design-system/no-legacy-button-variant -- the Button atom's primary/secondary are pills; the rounded-md look stays until that change is approved
-              variant="legacy-default"
+              variant="compact-primary"
+              size="compact"
               onClick={handleConfirm}
               disabled={!selectedTool}
             >
@@ -638,7 +638,7 @@ function MCPToolCard({
       }`}
     >
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 pb-1 pt-3">
+      <div className="flex items-center gap-2 px-3 pt-3 pb-1">
         <Text
           variant="body-semibold-tight"
           tone="inherit"
