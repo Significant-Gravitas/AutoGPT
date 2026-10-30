@@ -91,6 +91,7 @@ describe("AccountClosedPage", () => {
     expect(
       await screen.findByText("Your account is open again."),
     ).toBeDefined();
+    expect(screen.getByText(/wait a minute and sign in again/)).toBeDefined();
   });
 
   test("too late to keep it: says so and stays", async () => {

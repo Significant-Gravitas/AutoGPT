@@ -35,7 +35,11 @@ export function useAccountClosedPage() {
       return;
     }
     setIsLeaving(true);
-    toast({ title: "Your account is open again." });
+    toast({
+      title: "Your account is open again.",
+      description:
+        "If AutoGPT still shows it as closed, wait a minute and sign in again. Still closed after a few minutes? Email contact@agpt.co.",
+    });
     // A full load, so every query starts over as the open account.
     window.location.replace("/");
   }
