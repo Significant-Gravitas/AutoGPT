@@ -60,8 +60,11 @@ const URL_QUERY = /\?[^\s"`]*?(?=[:,.;)]*(?:[\s"`]|$))/g;
 const UUID =
   /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
 
+// Never empty: posthog-js falls back to the raw message, query and all, when
+// the exception's value is blank.
 function groupableText(message: string) {
-  return message.replace(URL_QUERY, "").replace(UUID, "{id}");
+  const text = message.replace(URL_QUERY, "").replace(UUID, "{id}").trim();
+  return text || "Error message with no text but a URL query";
 }
 
 // posthog-js's own wording, matched whole so an app error that merely quotes

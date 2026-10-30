@@ -208,6 +208,10 @@ describe("Sentry to PostHog correlation", () => {
       "Failed to fetch https://example.com/?label='quoted'&token=secret retrying",
       "Failed to fetch https://example.com/ retrying",
     ],
+    [
+      "?token=secret&label='quoted'",
+      "Error message with no text but a URL query",
+    ],
   ])("removes the whole query, colons included: %s", (message, value) => {
     processEvent({
       type: undefined,
@@ -218,6 +222,7 @@ describe("Sentry to PostHog correlation", () => {
     expect(posthog.capture).toHaveBeenCalledWith(
       "$exception",
       expect.objectContaining({
+        $exception_message: value,
         $exception_list: [expect.objectContaining({ value })],
       }),
       expect.anything(),
