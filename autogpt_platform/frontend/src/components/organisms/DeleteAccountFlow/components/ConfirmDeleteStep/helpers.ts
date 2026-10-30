@@ -1,4 +1,5 @@
 import type { SubscriptionStatusResponseTier } from "@/app/api/__generated__/models/subscriptionStatusResponseTier";
+import { formatShortDate } from "@/app/(platform)/settings/billing/helpers";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { PLAN_LABEL } from "@/services/billing/subscription-plan";
 
@@ -22,7 +23,7 @@ interface EmailMatchArgs {
 }
 
 const DATA_LINE =
-  "Your chats, Experts, workflows, files and memory are deleted.";
+  "Your chats, Experts, workflows, files and memory are erased after 14 days. Links you shared stop working now.";
 const TRIAL_LABEL = "trial";
 const TRIAL_LINE = "Your trial ends now.";
 const FALLBACK_ERROR = "We couldn't delete your account. Try again.";
@@ -83,6 +84,14 @@ export function getPlanLabel(
 export function emailMatches({ typed, email }: EmailMatchArgs): boolean {
   const expected = normalizeEmail(email);
   return expected !== "" && normalizeEmail(typed) === expected;
+}
+
+export function getClosedToastTitle(
+  eraseAfter: Date | string | null | undefined,
+): string {
+  return eraseAfter
+    ? `Your account is closed. Sign in before ${formatShortDate(eraseAfter)} if you change your mind.`
+    : "Your account is closed. Sign in within 14 days if you change your mind.";
 }
 
 export function getDeletionErrorMessage(error: unknown): string {

@@ -1,7 +1,3 @@
-import {
-  CLOSED_ACCOUNT_ERROR_CODE,
-  CLOSED_ACCOUNT_MESSAGE,
-} from "@/lib/auth/closed-account";
 import type { EmailVerificationNotice } from "@/lib/auth/email-verification";
 
 export const ACCOUNT_BANNED_NOTICE_COPY =
@@ -16,7 +12,12 @@ export const EMAIL_VERIFICATION_NOTICE_COPY: Record<
   verified: "Your email is verified. Log in to continue.",
 };
 
-// The app's own copy, never the error_description from the query.
+// Better Auth's admin plugin refuses a banned account with this code. A
+// deleted account is not banned: its owner signs in to keep it.
+const BANNED_USER_ERROR_CODE = "BANNED_USER";
+
+// A social sign-in refused at the provider callback comes back with its error
+// code. The app's own copy, never the error_description from the query.
 export function getSignInErrorNotice(error: string | null) {
-  return error === CLOSED_ACCOUNT_ERROR_CODE ? CLOSED_ACCOUNT_MESSAGE : null;
+  return error === BANNED_USER_ERROR_CODE ? ACCOUNT_BANNED_NOTICE_COPY : null;
 }

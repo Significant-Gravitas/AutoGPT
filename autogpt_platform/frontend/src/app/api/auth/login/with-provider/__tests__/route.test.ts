@@ -81,7 +81,7 @@ describe("POST /api/auth/login/with-provider", () => {
     });
   });
 
-  it("sends a refused sign-in, such as a closed account, back to /login", async () => {
+  it("sends a refused sign-in, such as a banned account, back to /login", async () => {
     signInSocialMock.mockResolvedValue({ url: "https://discord.com/oauth2" });
 
     await POST(makeProviderRequest({ provider: "discord" }));

@@ -8,9 +8,6 @@ import {
   signupTestUser,
 } from "./utils/signup";
 
-const CLOSED_ACCOUNT_MESSAGE =
-  "This account is closed. If you think this is a mistake, contact contact@agpt.co.";
-
 // The flag ships off: the frontend inlines its override at build time and the
 // backend routes 404 without theirs. CI sets both in platform-fullstack-ci.yml
 // and the Playwright config reads frontend/.env. A skip still fails CI, whose
@@ -26,7 +23,7 @@ test.skip(
   "Set NEXT_PUBLIC_FORCE_FLAG_SELF_SERVE_ACCOUNT_DELETION=true in frontend/.env (then rebuild) and FORCE_FLAG_SELF_SERVE_ACCOUNT_DELETION=true in backend/.env",
 );
 
-test("account deletion happy path: user deletes their account from Settings and can't sign in again", async ({
+test("account deletion happy path: user closes their account from Settings, then signs in and keeps it", async ({
   page,
 }) => {
   test.setTimeout(90000);
@@ -41,7 +38,7 @@ test("account deletion happy path: user deletes their account from Settings and 
   await page.goto("/settings/account");
   await expect(
     page.getByText(
-      "Permanently delete your account and everything in it, disconnect your apps and cancel your plan.",
+      "Close your account, disconnect your apps and cancel your plan. Everything in it is erased after 14 days.",
     ),
   ).toBeVisible({ timeout: 15000 });
   await page
@@ -74,19 +71,27 @@ test("account deletion happy path: user deletes their account from Settings and 
   await expect(deleteButton).toBeEnabled();
   await deleteButton.click();
 
-  await expect(page.getByText("Your account is deleted.")).toBeVisible({
+  await expect(page.getByText(/^Your account is closed\./)).toBeVisible({
     timeout: 20000,
   });
   await expect(page).toHaveURL(/\/login/, { timeout: 20000 });
 
+  // Signing in within the 14 days shows when the account will be erased.
   await page.locator('input[type="email"]').fill(email);
   await page.locator('input[type="password"]').fill(password);
   await page.getByRole("button", { name: "Log in", exact: true }).click();
 
-  await expect(page.getByText(CLOSED_ACCOUNT_MESSAGE)).toBeVisible({
-    timeout: 15000,
-  });
-  await expect(page).toHaveURL(/\/login/);
+  await expect(page).toHaveURL(/\/account-closed/, { timeout: 20000 });
+  await expect(
+    page.getByRole("heading", { name: "Your account is closed" }),
+  ).toBeVisible({ timeout: 15000 });
+  await page.getByRole("button", { name: "Keep my account" }).click();
+
+  await expect(page).not.toHaveURL(/\/account-closed/, { timeout: 20000 });
+  await page.goto("/settings/account");
+  await expect(
+    page.getByRole("button", { name: "Delete account", exact: true }),
+  ).toBeVisible({ timeout: 15000 });
 });
 
 async function connectFakeGitHubKey(page: Page) {

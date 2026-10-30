@@ -1,3 +1,8 @@
+import {
+  isAccountClosedResponse,
+  showAccountClosedScreen,
+} from "./closed-account";
+
 // The backend's `ACCOUNT_BANNED_DETAIL` (autogpt_libs/auth/dependencies.py).
 const ACCOUNT_BANNED_CODE = "account_banned";
 
@@ -31,4 +36,11 @@ export function getPostLogoutPath(search: string) {
 
 export function isBannedNotice(searchParams: URLSearchParams) {
   return searchParams.get(ACCOUNT_NOTICE_PARAM) === BANNED;
+}
+
+// A refused request from the browser: a banned account is signed out, and a
+// closed one is shown when it will be erased, with Keep my account.
+export function handleRefusedAccount(status: number, body: unknown) {
+  if (isAccountBannedResponse(status, body)) signOutBannedAccount();
+  else if (isAccountClosedResponse(status, body)) showAccountClosedScreen();
 }

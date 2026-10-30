@@ -1,5 +1,6 @@
 import { server } from "@/mocks/mock-server";
 import {
+  CLOSED_TOAST,
   GMAIL,
   GOOGLE_CALENDAR,
   NOTION,
@@ -130,10 +131,10 @@ describe("DeleteAccountFlow confirm step", () => {
     const dialog = screen.getByRole("dialog");
     expect(dialog.textContent).toContain("Delete your account?");
     expect(dialog.textContent).toContain(
-      "This permanently deletes your AutoGPT account. You can't undo it.",
+      "This closes your AutoGPT account now and erases it after 14 days.",
     );
     expect(dialog.textContent).toContain(
-      "Your chats, Experts, workflows, files and memory are deleted.",
+      "Your chats, Experts, workflows, files and memory are erased after 14 days. Links you shared stop working now.",
     );
     expect(
       await screen.findByText(
@@ -141,7 +142,7 @@ describe("DeleteAccountFlow confirm step", () => {
       ),
     ).toBeDefined();
     expect(dialog.textContent).toContain(
-      "You'll be signed out right away. We finish removing your data within 30 days.",
+      "You'll be signed out right away. Changed your mind? Sign in within 14 days and choose Keep my account.",
     );
   });
 
@@ -160,7 +161,7 @@ describe("DeleteAccountFlow confirm step", () => {
           .getAllByRole("listitem")
           .map((item) => item.textContent),
       ).toEqual([
-        "Your chats, Experts, workflows, files and memory are deleted.",
+        "Your chats, Experts, workflows, files and memory are erased after 14 days. Links you shared stop working now.",
         "Connected apps like Gmail, Google Calendar and others are disconnected, and our access to them is revoked.",
         "Your Max plan ends now. The rest of this billing period isn't refunded.",
         "Your published workflows are removed from the Marketplace.",
@@ -301,7 +302,7 @@ describe("DeleteAccountFlow confirm step", () => {
     expect(onOpenChange.mock.calls).toEqual([[false]]);
   });
 
-  test("a 200 says the account is deleted and hands signing out to the /logout page", async () => {
+  test("a 200 says the account is closed until when and hands signing out to the /logout page", async () => {
     const requests = recordDeletion();
     openConfirmStep();
     typeEmail("jane@example.com");
@@ -313,9 +314,7 @@ describe("DeleteAccountFlow confirm step", () => {
       { confirm_email: "jane@example.com", source: "settings" },
     ]);
     expect(mocks.replace.mock.calls).toEqual([["/logout"]]);
-    expect(mocks.toast.mock.calls).toEqual([
-      [{ title: "Your account is deleted." }],
-    ]);
+    expect(mocks.toast.mock.calls).toEqual([[{ title: CLOSED_TOAST }]]);
     expect(mocks.logOut).not.toHaveBeenCalled();
     expect(getDeleteButton().disabled).toBe(true);
     expect(getKeepButton().disabled).toBe(true);

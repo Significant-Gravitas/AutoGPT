@@ -13,6 +13,7 @@ import {
 import { server } from "@/mocks/mock-server";
 import { Flag } from "@/services/feature-flags/use-get-flag";
 import {
+  CLOSED_TOAST,
   mockAccountDeletionAPI,
   recordDeletion,
   recordFeedback,
@@ -178,7 +179,7 @@ describe("Settings > Account delete card", () => {
     expect(classes).not.toContain("text-foreground-emphasis");
     const card = button.closest("section");
     expect(card?.textContent).toContain(
-      "Permanently delete your account and everything in it, disconnect your apps and cancel your plan.",
+      "Close your account, disconnect your apps and cancel your plan. Everything in it is erased after 14 days.",
     );
 
     const sections = Array.from(document.querySelectorAll("section"));
@@ -228,7 +229,7 @@ describe("Settings > Account delete card", () => {
       { confirm_email: "user@example.com", source: "settings" },
     ]);
     expect(mocks.logOut).not.toHaveBeenCalled();
-    expect(await screen.findByText("Your account is deleted.")).toBeDefined();
+    expect(await screen.findByText(CLOSED_TOAST)).toBeDefined();
     expect(
       screen.getByRole("dialog", { name: "Delete your account?" }),
     ).toBeDefined();

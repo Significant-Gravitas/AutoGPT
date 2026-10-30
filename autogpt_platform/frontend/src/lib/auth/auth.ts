@@ -14,7 +14,6 @@ import { getTrustedClientIP } from "./client-ip";
 import { DISABLED_AUTH_PATHS } from "./disabled-paths";
 import { assertNotDisposableEmail } from "./disposable-email";
 import { runAfterResponse } from "./background-tasks";
-import { CLOSED_ACCOUNT_MESSAGE } from "./closed-account";
 import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";
 import { sendAuthEmail } from "./email";
 import {
@@ -437,8 +436,7 @@ export const auth = betterAuth({
   },
   socialProviders: getSocialProviders(),
   plugins: [
-    // What a closed (deleted, so banned) account sees when it signs in again.
-    admin({ bannedUserMessage: CLOSED_ACCOUNT_MESSAGE }),
+    admin(),
     jwt({
       schema: {
         jwks: { modelName: "UserAuthJwks" },

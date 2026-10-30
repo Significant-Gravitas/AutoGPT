@@ -8,6 +8,27 @@
   },
   "paths": {
     "/api/account/deletion": {
+      "get": {
+        "tags": ["account"],
+        "summary": "Get account deletion status",
+        "operationId": "getAccountGet account deletion status",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeletionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
       "post": {
         "tags": ["account"],
         "summary": "Delete account",
@@ -93,6 +114,35 @@
             }
           },
           "429": { "description": "Too many answers from this account" }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/account/deletion/restore": {
+      "post": {
+        "tags": ["account"],
+        "summary": "Keep my account",
+        "operationId": "postAccountKeep my account",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeletionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Account deletion isn't available while impersonating a user."
+          },
+          "409": {
+            "description": "It's too late to keep this account: its data is being erased. Contact contact@agpt.co if you need help."
+          }
         },
         "security": [{ "HTTPBearerJWT": [] }]
       }
@@ -19780,13 +19830,21 @@
         "properties": {
           "status": {
             "type": "string",
-            "const": "scheduled",
+            "enum": ["open", "scheduled"],
             "title": "Status"
+          },
+          "erase_after": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Erase After"
           }
         },
         "type": "object",
         "required": ["status"],
-        "title": "AccountDeletionResponse"
+        "title": "AccountDeletionResponse",
+        "description": "Whether the account is closed and waiting to be erased. While it is,\n``erase_after`` says when the erasure may start: until then its owner can\nkeep the account."
       },
       "AccountIP": {
         "properties": {

@@ -466,12 +466,27 @@ describe("customMutator — banned account", () => {
     expect(replace).toHaveBeenCalledWith("/logout?reason=banned");
   });
 
+  it("shows a closed account when it will be erased, with Keep my account", async () => {
+    respondWith(401, { detail: "This account is closed." });
+
+    await expect(customMutator("/api/foo", { method: "GET" })).rejects.toThrow(
+      "This account is closed.",
+    );
+    expect(replace).toHaveBeenCalledWith("/account-closed");
+  });
+
   it.each([
     ["another 403", 403, { detail: "Admin access required" }],
     [
       "the banned code on another status",
       401,
       { detail: { code: "account_banned" } },
+    ],
+    ["another 401", 401, { detail: "Not authenticated" }],
+    [
+      "the closed detail on another status",
+      403,
+      { detail: "This account is closed." },
     ],
   ])("leaves the user signed in on %s", async (_, status, body) => {
     respondWith(status, body);

@@ -1,4 +1,5 @@
 import { TERMS_VERSION } from "@/lib/legal";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { APIError } from "better-auth/api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -126,26 +127,34 @@ describe("login", () => {
     expect(createUserMock).not.toHaveBeenCalled();
   });
 
-  it("passes a closed account's message through instead of a generic error", async () => {
-    // What the admin plugin throws once the session hook finds the user
-    // banned, with bannedUserMessage from lib/auth/auth.ts.
-    signInEmailMock.mockRejectedValue(
-      new APIError("FORBIDDEN", {
-        message:
-          "This account is closed. If you think this is a mistake, contact contact@agpt.co.",
-        code: "BANNED_USER",
+  it("keeps the session of a closed account and sends it to the keep-account screen", async () => {
+    // Every backend route answers a deleted account this way for the 14 days
+    // its owner can still keep it; signing in is how they keep it.
+    signInEmailMock.mockResolvedValue({ user: { id: "user-1" } });
+    createUserMock.mockRejectedValue(
+      new ApiError("This account is closed.", 401, {
+        detail: "This account is closed.",
       }),
     );
 
     const result = await login("closed@example.com", "hunter2-password");
 
-    expect(result).toEqual({
-      success: false,
-      error:
-        "This account is closed. If you think this is a mistake, contact contact@agpt.co.",
-    });
-    expect(createUserMock).not.toHaveBeenCalled();
+    expect(result).toEqual({ success: true, next: "/account-closed" });
+    expect(rollbackSessionMock).not.toHaveBeenCalled();
+    expect(getOnboardingStatusMock).not.toHaveBeenCalled();
     expect(captureExceptionMock).not.toHaveBeenCalled();
+  });
+
+  it("still rolls back on any other 401 from provisioning", async () => {
+    signInEmailMock.mockResolvedValue({ user: { id: "user-1" } });
+    createUserMock.mockRejectedValue(
+      new ApiError("Unauthorized", 401, { detail: "Invalid token" }),
+    );
+
+    const result = await login("user@example.com", "hunter2-password");
+
+    expect(result.success).toBe(false);
+    expect(rollbackSessionMock).toHaveBeenCalledTimes(1);
   });
 
   it("reports email_not_verified so the page can show check-your-inbox", async () => {

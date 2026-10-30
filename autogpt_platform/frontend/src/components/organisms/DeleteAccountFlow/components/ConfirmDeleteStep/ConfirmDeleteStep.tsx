@@ -30,7 +30,7 @@ export function ConfirmDeleteStep({ source, onClose, onBusyChange }: Props) {
     <form noValidate onSubmit={handleSubmit} className="flex flex-col px-0.5">
       <div className="flex flex-col gap-4">
         <Text variant="body" tone="emphasis">
-          This permanently deletes your AutoGPT account. You can&apos;t undo it.
+          This closes your AutoGPT account now and erases it after 14 days.
         </Text>
         <ConsequenceList items={consequences} />
         <div className="flex flex-col gap-2">
@@ -55,8 +55,8 @@ export function ConfirmDeleteStep({ source, onClose, onBusyChange }: Props) {
             wrapperClassName="mb-0"
           />
           <Text variant="small" tone="muted">
-            You&apos;ll be signed out right away. We finish removing your data
-            within 30 days.
+            You&apos;ll be signed out right away. Changed your mind? Sign in
+            within 14 days and choose Keep my account.
           </Text>
         </div>
       </div>

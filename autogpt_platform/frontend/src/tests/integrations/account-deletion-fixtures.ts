@@ -146,12 +146,17 @@ export function recordFeedback(): DeletionFeedbackRequest[] {
   return bodies;
 }
 
+/** When a closed account's data may be erased, as the deletion route answers. */
+export const ERASE_AFTER = new Date("2026-11-13T12:00:00Z");
+export const CLOSED_TOAST =
+  "Your account is closed. Sign in before Nov 13, 2026 if you change your mind.";
+
 export function recordDeletion(): AccountDeletionRequestBody[] {
   const bodies: AccountDeletionRequestBody[] = [];
   server.use(
     getPostAccountDeleteAccountMockHandler200(async ({ request }) => {
       bodies.push((await request.json()) as AccountDeletionRequestBody);
-      return { status: "scheduled" };
+      return { status: "scheduled", erase_after: ERASE_AFTER };
     }),
   );
   return bodies;

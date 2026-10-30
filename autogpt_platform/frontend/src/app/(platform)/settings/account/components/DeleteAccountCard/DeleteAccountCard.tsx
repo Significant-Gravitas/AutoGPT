@@ -39,8 +39,8 @@ export function DeleteAccountCard({ index = 0 }: Props) {
             Delete account
           </Text>
           <Text variant="small" as="span" tone="muted">
-            Permanently delete your account and everything in it, disconnect
-            your apps and cancel your plan.
+            Close your account, disconnect your apps and cancel your plan.
+            Everything in it is erased after 14 days.
           </Text>
         </div>
 
