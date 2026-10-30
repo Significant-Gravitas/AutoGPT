@@ -1,8 +1,7 @@
 import { cn } from "@/lib/utils";
 import { forwardRef } from "react";
 
-export interface BareInputProps
-  extends React.InputHTMLAttributes<HTMLInputElement> {
+export interface BareInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   bare: true;
 }
 
@@ -27,8 +26,7 @@ export const BareInput = forwardRef<HTMLInputElement, BareInputProps>(
   },
 );
 
-export interface BareTextareaProps
-  extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
+export interface BareTextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
   bare: true;
   type: "textarea";
 }

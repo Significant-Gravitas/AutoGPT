@@ -589,9 +589,8 @@ describe("MCPToolDialog tool list", () => {
   });
 
   it("lists a tool's parameters and marks the required ones", async () => {
-    const { postV2DiscoverAvailableToolsOnAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2DiscoverAvailableToolsOnAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValueOnce(
       apiResponse(200, {
         tools: [

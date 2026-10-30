@@ -206,9 +206,8 @@ describe("validateSession", () => {
   });
 
   it("flags deployment skew when the server no longer knows the action", async () => {
-    const { UnrecognizedActionError } = await import(
-      "next/dist/client/components/unrecognized-action-error"
-    );
+    const { UnrecognizedActionError } =
+      await import("next/dist/client/components/unrecognized-action-error");
     validateSessionActionMock.mockRejectedValue(
       new UnrecognizedActionError("Server Action was not found"),
     );

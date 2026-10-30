@@ -8,8 +8,9 @@ import { cn } from "@/lib/utils";
 
 type Measurable = { getBoundingClientRect(): DOMRect };
 
-interface Props
-  extends React.ComponentPropsWithoutRef<typeof PopperPrimitive.Content> {
+interface Props extends React.ComponentPropsWithoutRef<
+  typeof PopperPrimitive.Content
+> {
   /** What the panel sits beside: an element's box, or any measured box. */
   virtualRef: React.RefObject<Measurable | null>;
 }
