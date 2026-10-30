@@ -111,6 +111,7 @@ export function AllVariants() {
                 >
                   Border Radius Classes{" "}
                   <Icon
+                    aria-hidden
                     icon={LinkSquare01Icon}
                     className="inline-block h-3 w-3"
                   />

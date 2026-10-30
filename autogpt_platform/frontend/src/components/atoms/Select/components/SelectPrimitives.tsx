@@ -55,6 +55,7 @@ const SelectTrigger = React.forwardRef<
     {children}
     <SelectPrimitive.Icon asChild>
       <Icon
+        aria-hidden
         icon={UnfoldMoreIcon}
         data-slot="select-icon"
         className="h-4 w-4 opacity-50"
@@ -77,7 +78,12 @@ const SelectScrollUpButton = React.forwardRef<
     )}
     {...props}
   >
-    <Icon icon={ArrowUp01Icon} data-slot="select-scroll-up-icon" size={15} />
+    <Icon
+      aria-hidden
+      icon={ArrowUp01Icon}
+      data-slot="select-scroll-up-icon"
+      size={15}
+    />
   </SelectPrimitive.ScrollUpButton>
 ));
 SelectScrollUpButton.displayName = SelectPrimitive.ScrollUpButton.displayName;
@@ -96,6 +102,7 @@ const SelectScrollDownButton = React.forwardRef<
     {...props}
   >
     <Icon
+      aria-hidden
       icon={ArrowDown01Icon}
       data-slot="select-scroll-down-icon"
       size={15}
@@ -158,6 +165,7 @@ const SelectItem = React.forwardRef<
     >
       <SelectPrimitive.ItemIndicator data-slot="select-item-indicator">
         <Icon
+          aria-hidden
           icon={Tick02Icon}
           data-slot="select-item-check-icon"
           className="h-4 w-4"

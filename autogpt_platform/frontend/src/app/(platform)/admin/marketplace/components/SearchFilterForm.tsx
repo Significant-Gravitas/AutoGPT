@@ -69,7 +69,7 @@ export function SearchAndFilterAdminMarketplace({
           onKeyDown={(e) => isKey(e, "Enter") && handleSearch()}
         />
         <Button variant="compact-outline" size="compact" onClick={handleSearch}>
-          <Icon icon={Search01Icon} className="h-4 w-4" />
+          <Icon aria-hidden icon={Search01Icon} className="h-4 w-4" />
         </Button>
       </div>
 

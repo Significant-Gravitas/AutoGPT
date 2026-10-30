@@ -142,7 +142,7 @@ export function GoogleDrivePickerInput({
                   className="h-6 w-6 flex-shrink-0"
                   onClick={() => handleRemoveFile(idx)}
                 >
-                  <Icon icon={Cancel01Icon} className="h-3 w-3" />
+                  <Icon aria-hidden icon={Cancel01Icon} className="h-3 w-3" />
                 </Button>
               )}
             </div>

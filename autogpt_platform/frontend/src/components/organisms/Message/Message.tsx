@@ -281,7 +281,7 @@ export const MessageBranchPrevious = ({
       variant="compact-ghost"
       {...props}
     >
-      {children ?? <Icon icon={ArrowLeft01Icon} size={14} />}
+      {children ?? <Icon aria-hidden icon={ArrowLeft01Icon} size={14} />}
     </Button>
   );
 };
@@ -304,7 +304,7 @@ export const MessageBranchNext = ({
       variant="compact-ghost"
       {...props}
     >
-      {children ?? <Icon icon={ArrowRight01Icon} size={14} />}
+      {children ?? <Icon aria-hidden icon={ArrowRight01Icon} size={14} />}
     </Button>
   );
 };

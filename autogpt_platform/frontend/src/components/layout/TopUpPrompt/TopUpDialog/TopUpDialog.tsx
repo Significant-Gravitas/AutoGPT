@@ -35,7 +35,11 @@ export function TopUpDialog({
           <span className="inline-flex items-center gap-2">
             {/* oxlint-disable-next-line design-system/no-raw-colors -- orange/yellow hue kept; warning-foreground would be a hue change (deferred visual change) */}
             <span className="flex text-orange-600">
-              <Icon icon={Alert02Icon} className="h-[1.125rem] w-[1.125rem]" />
+              <Icon
+                aria-hidden
+                icon={Alert02Icon}
+                className="h-[1.125rem] w-[1.125rem]"
+              />
             </span>
             You&apos;re out of automation credits
           </span>

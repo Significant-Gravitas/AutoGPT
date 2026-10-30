@@ -26,7 +26,12 @@ const Checkbox = React.forwardRef<
     >
       {/* TODO: Hugeicons' tick is drawn differently; swapping it changes the
           pixels, so the Radix icon stays until a design pass. */}
-      <Icon icon={Tick02Icon} data-slot="checkbox-icon" className="h-4 w-4" />
+      <Icon
+        aria-hidden
+        icon={Tick02Icon}
+        data-slot="checkbox-icon"
+        className="h-4 w-4"
+      />
     </CheckboxPrimitive.Indicator>
   </CheckboxPrimitive.Root>
 ));

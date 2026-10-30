@@ -121,6 +121,7 @@ export function Table({
                       className="text-foreground-subtle transition-colors hover:text-error"
                     >
                       <Icon
+                        aria-hidden
                         icon={Delete02Icon}
                         data-slot="table-delete-row-icon"
                         className="h-4 w-4"
@@ -144,6 +145,7 @@ export function Table({
                     data-slot="table-add-row"
                     leftIcon={
                       <Icon
+                        aria-hidden
                         icon={PlusSignIcon}
                         data-slot="table-add-row-icon"
                         className="h-4 w-4"

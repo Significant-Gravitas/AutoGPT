@@ -35,7 +35,7 @@ export function DownloadAgentAdminButton({
       onClick={handleDownload}
       disabled={isLoading}
     >
-      <Icon icon={LinkSquare01Icon} className="h-4 w-4" />
+      <Icon aria-hidden icon={LinkSquare01Icon} className="h-4 w-4" />
       {isLoading ? "Downloading..." : "Download"}
     </Button>
   );

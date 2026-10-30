@@ -44,12 +44,16 @@ export default function AuthFeedback({
         <div className="text-center text-sm font-medium leading-normal">
           {isError ? (
             <div className="flex items-center justify-center space-x-2 text-error">
-              <Icon icon={AlertCircleIcon} className="h-4 w-4" />
+              <Icon aria-hidden icon={AlertCircleIcon} className="h-4 w-4" />
               <span>{displayMessage}</span>
             </div>
           ) : (
             <div className="flex items-center justify-center space-x-2 text-success">
-              <Icon icon={CheckmarkCircle02Icon} className="h-4 w-4" />
+              <Icon
+                aria-hidden
+                icon={CheckmarkCircle02Icon}
+                className="h-4 w-4"
+              />
               <span>{displayMessage}</span>
             </div>
           )}

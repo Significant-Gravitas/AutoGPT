@@ -57,14 +57,14 @@ export const CustomControls = memo(
     const controls = [
       {
         id: "zoom-in-button",
-        icon: <Icon icon={PlusSignIcon} className="size-3.5" />,
+        icon: <Icon aria-hidden icon={PlusSignIcon} className="size-3.5" />,
         label: "Zoom In",
         onClick: () => zoomIn(),
         className: "h-10 w-10 border-none",
       },
       {
         id: "zoom-out-button",
-        icon: <Icon icon={MinusSignIcon} className="size-3.5" />,
+        icon: <Icon aria-hidden icon={MinusSignIcon} className="size-3.5" />,
         label: "Zoom Out",
         onClick: () => zoomOut(),
         className: "h-10 w-10 border-none",
@@ -72,9 +72,13 @@ export const CustomControls = memo(
       {
         id: "tutorial-button",
         icon: isTutorialLoading ? (
-          <Icon icon={Loading03Icon} className="size-3.5 animate-spin" />
+          <Icon
+            aria-hidden
+            icon={Loading03Icon}
+            className="size-3.5 animate-spin"
+          />
         ) : (
-          <Icon icon={Presentation01Icon} className="size-3.5" />
+          <Icon aria-hidden icon={Presentation01Icon} className="size-3.5" />
         ),
         label: isTutorialLoading ? "Loading Tutorial..." : "Start Tutorial",
         onClick: handleTutorialClick,
@@ -83,7 +87,7 @@ export const CustomControls = memo(
       },
       {
         id: "fit-view-button",
-        icon: <Icon icon={FullScreenIcon} className="size-3.5" />,
+        icon: <Icon aria-hidden icon={FullScreenIcon} className="size-3.5" />,
         label: "Fit View",
         onClick: () => fitView({ padding: 0.2, duration: 800, maxZoom: 1 }),
         className: "h-10 w-10 border-none",
@@ -91,9 +95,9 @@ export const CustomControls = memo(
       {
         id: "lock-button",
         icon: !isLocked ? (
-          <Icon icon={SquareUnlock02Icon} className="size-3.5" />
+          <Icon aria-hidden icon={SquareUnlock02Icon} className="size-3.5" />
         ) : (
-          <Icon icon={SquareLock02Icon} className="size-3.5" />
+          <Icon aria-hidden icon={SquareLock02Icon} className="size-3.5" />
         ),
         label: isReadOnly
           ? "Canvas is locked because this is a read-only workflow"

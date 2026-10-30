@@ -113,6 +113,7 @@ export function AllVariants() {
                 >
                   Margin Classes{" "}
                   <Icon
+                    aria-hidden
                     icon={LinkSquare01Icon}
                     className="inline-block h-3 w-3"
                   />
@@ -133,6 +134,7 @@ export function AllVariants() {
                 >
                   Padding Classes
                   <Icon
+                    aria-hidden
                     icon={LinkSquare01Icon}
                     className="inline-block h-3 w-3"
                   />

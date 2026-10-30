@@ -238,7 +238,7 @@ export const ToggleButtons: Story = {
 export const WithLeftIcon: Story = {
   args: {
     variant: "primary",
-    leftIcon: <Icon icon={PlayIcon} className="h-4 w-4" />,
+    leftIcon: <Icon aria-hidden icon={PlayIcon} className="h-4 w-4" />,
     children: "Play",
   },
 };
@@ -246,7 +246,7 @@ export const WithLeftIcon: Story = {
 export const WithRightIcon: Story = {
   args: {
     variant: "outline",
-    rightIcon: <Icon icon={PlusSignIcon} className="h-4 w-4" />,
+    rightIcon: <Icon aria-hidden icon={PlusSignIcon} className="h-4 w-4" />,
     children: "Add Item",
   },
 };
@@ -255,7 +255,7 @@ export const IconOnly: Story = {
   args: {
     variant: "icon",
     size: "icon",
-    children: <Icon icon={PlusSignIcon} className="h-4 w-4" />,
+    children: <Icon aria-hidden icon={PlusSignIcon} className="h-4 w-4" />,
     "aria-label": "Add item",
   },
 };
@@ -676,7 +676,9 @@ function renderAllVariants() {
               <Button
                 variant="primary"
                 size="large"
-                leftIcon={<Icon icon={PlayIcon} className="h-5 w-5" />}
+                leftIcon={
+                  <Icon aria-hidden icon={PlayIcon} className="h-5 w-5" />
+                }
               >
                 Play
               </Button>
@@ -701,7 +703,9 @@ function renderAllVariants() {
               <Button
                 variant="secondary"
                 size="large"
-                leftIcon={<Icon icon={PlayIcon} className="h-5 w-5" />}
+                leftIcon={
+                  <Icon aria-hidden icon={PlayIcon} className="h-5 w-5" />
+                }
               >
                 Play
               </Button>
@@ -726,7 +730,9 @@ function renderAllVariants() {
               <Button
                 variant="destructive"
                 size="large"
-                leftIcon={<Icon icon={PlayIcon} className="h-5 w-5" />}
+                leftIcon={
+                  <Icon aria-hidden icon={PlayIcon} className="h-5 w-5" />
+                }
               >
                 Play
               </Button>
@@ -751,7 +757,9 @@ function renderAllVariants() {
               <Button
                 variant="outline"
                 size="large"
-                leftIcon={<Icon icon={PlayIcon} className="h-5 w-5" />}
+                leftIcon={
+                  <Icon aria-hidden icon={PlayIcon} className="h-5 w-5" />
+                }
               >
                 Play
               </Button>
@@ -776,7 +784,9 @@ function renderAllVariants() {
               <Button
                 variant="ghost"
                 size="large"
-                leftIcon={<Icon icon={PlayIcon} className="h-5 w-5" />}
+                leftIcon={
+                  <Icon aria-hidden icon={PlayIcon} className="h-5 w-5" />
+                }
               >
                 Play
               </Button>
@@ -809,7 +819,9 @@ function renderAllVariants() {
               <Button
                 variant="primary"
                 size="small"
-                leftIcon={<Icon icon={PlayIcon} className="h-4 w-4" />}
+                leftIcon={
+                  <Icon aria-hidden icon={PlayIcon} className="h-4 w-4" />
+                }
               >
                 Play
               </Button>
@@ -834,7 +846,9 @@ function renderAllVariants() {
               <Button
                 variant="secondary"
                 size="small"
-                leftIcon={<Icon icon={PlayIcon} className="h-4 w-4" />}
+                leftIcon={
+                  <Icon aria-hidden icon={PlayIcon} className="h-4 w-4" />
+                }
               >
                 Play
               </Button>
@@ -859,7 +873,9 @@ function renderAllVariants() {
               <Button
                 variant="destructive"
                 size="small"
-                leftIcon={<Icon icon={PlayIcon} className="h-4 w-4" />}
+                leftIcon={
+                  <Icon aria-hidden icon={PlayIcon} className="h-4 w-4" />
+                }
               >
                 Play
               </Button>
@@ -884,7 +900,9 @@ function renderAllVariants() {
               <Button
                 variant="outline"
                 size="small"
-                leftIcon={<Icon icon={PlayIcon} className="h-4 w-4" />}
+                leftIcon={
+                  <Icon aria-hidden icon={PlayIcon} className="h-4 w-4" />
+                }
               >
                 Play
               </Button>
@@ -909,7 +927,9 @@ function renderAllVariants() {
               <Button
                 variant="ghost"
                 size="small"
-                leftIcon={<Icon icon={PlayIcon} className="h-4 w-4" />}
+                leftIcon={
+                  <Icon aria-hidden icon={PlayIcon} className="h-4 w-4" />
+                }
               >
                 Play
               </Button>
@@ -930,13 +950,13 @@ function renderAllVariants() {
             </div>
             <div className="flex flex-col gap-8">
               <Button variant="icon" size="icon">
-                <Icon icon={PlusSignIcon} className="h-4 w-4" />
+                <Icon aria-hidden icon={PlusSignIcon} className="h-4 w-4" />
               </Button>
               <Button variant="primary" size="icon" className="bg-action">
-                <Icon icon={PlusSignIcon} className="h-4 w-4" />
+                <Icon aria-hidden icon={PlusSignIcon} className="h-4 w-4" />
               </Button>
               <Button variant="icon" size="icon" disabled>
-                <Icon icon={PlusSignIcon} className="h-4 w-4" />
+                <Icon aria-hidden icon={PlusSignIcon} className="h-4 w-4" />
               </Button>
             </div>
           </div>

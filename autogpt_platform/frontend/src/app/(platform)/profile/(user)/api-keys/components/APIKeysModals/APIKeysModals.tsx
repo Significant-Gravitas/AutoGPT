@@ -143,7 +143,7 @@ export const APIKeysModals = () => {
               variant="compact-outline"
               onClick={handleCopyKey}
             >
-              <Icon icon={Copy01Icon} className="h-4 w-4" />
+              <Icon aria-hidden icon={Copy01Icon} className="h-4 w-4" />
             </Button>
           </div>
           <DialogFooter>

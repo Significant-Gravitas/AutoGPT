@@ -30,7 +30,11 @@ export function HelpItem({
           >
             {linkText}
             {external && (
-              <Icon icon={LinkSquare01Icon} className="ml-1 h-3 w-3" />
+              <Icon
+                aria-hidden
+                icon={LinkSquare01Icon}
+                className="ml-1 h-3 w-3"
+              />
             )}
           </Link>
         )}

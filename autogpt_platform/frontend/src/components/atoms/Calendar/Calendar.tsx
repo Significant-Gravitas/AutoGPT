@@ -128,6 +128,7 @@ function Calendar({
           if (props.orientation === "left") {
             return (
               <Icon
+                aria-hidden
                 icon={ArrowLeft01Icon}
                 data-slot="calendar-chevron"
                 className="h-4 w-4"
@@ -136,6 +137,7 @@ function Calendar({
           } else if (props.orientation === "right") {
             return (
               <Icon
+                aria-hidden
                 icon={ArrowRight01Icon}
                 data-slot="calendar-chevron"
                 className="h-4 w-4"
@@ -144,6 +146,7 @@ function Calendar({
           } else if (props.orientation === "down") {
             return (
               <Icon
+                aria-hidden
                 icon={ArrowDown01Icon}
                 data-slot="calendar-chevron"
                 className="h-4 w-4"
@@ -152,6 +155,7 @@ function Calendar({
           } else {
             return (
               <Icon
+                aria-hidden
                 icon={ArrowUp01Icon}
                 data-slot="calendar-chevron"
                 className="h-4 w-4"

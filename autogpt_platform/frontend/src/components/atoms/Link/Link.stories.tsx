@@ -95,7 +95,8 @@ export const WithIcon: Story = {
     href: "https://docs.autogpt.net",
     children: (
       <span className="inline-flex items-center gap-1">
-        Documentation <Icon icon={LinkSquare01Icon} className="h-3 w-3" />
+        Documentation{" "}
+        <Icon aria-hidden icon={LinkSquare01Icon} className="h-3 w-3" />
       </span>
     ),
     isExternal: true,

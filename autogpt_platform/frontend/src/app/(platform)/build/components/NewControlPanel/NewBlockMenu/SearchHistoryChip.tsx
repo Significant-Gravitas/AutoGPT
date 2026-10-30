@@ -32,6 +32,7 @@ export const SearchHistoryChip: SearchHistoryChipComponent = ({
     >
       <span className="flex text-foreground-tertiary">
         <Icon
+          aria-hidden
           icon={ArrowUpRight01Icon}
           className="h-6 w-6"
           strokeWidth={1.25}

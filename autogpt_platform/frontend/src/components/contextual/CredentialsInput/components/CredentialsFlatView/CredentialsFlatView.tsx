@@ -128,7 +128,7 @@ export function CredentialsFlatView({
               )}
               {!isOptional && !selectedCredential && (
                 <span className="inline-flex items-center gap-1 text-error-foreground">
-                  <Icon icon={Alert02Icon} className="size-3.5" />
+                  <Icon aria-hidden icon={Alert02Icon} className="size-3.5" />
                   <span className="font-normal">required</span>
                 </span>
               )}

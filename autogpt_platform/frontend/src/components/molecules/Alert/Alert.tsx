@@ -55,6 +55,7 @@ const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
         {...props}
       >
         <IconComponent
+          aria-hidden
           data-slot="alert-icon"
           className="h-[1.125rem] w-[1.125rem]"
         />

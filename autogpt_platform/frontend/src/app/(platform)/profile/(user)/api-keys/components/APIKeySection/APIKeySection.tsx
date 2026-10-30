@@ -29,7 +29,7 @@ export function APIKeysSection() {
     <>
       {isLoading ? (
         <div className="flex justify-center p-4">
-          <LoadingSpinner variant="circle" size="medium" />
+          <LoadingSpinner variant="circle" size="medium" aria-hidden />
         </div>
       ) : (
         apiKeys &&
@@ -88,7 +88,11 @@ export function APIKeysSection() {
                           variant="compact-ghost"
                           size="compact-sm"
                         >
-                          <Icon icon={MoreVerticalIcon} className="h-4 w-4" />
+                          <Icon
+                            aria-hidden
+                            icon={MoreVerticalIcon}
+                            className="h-4 w-4"
+                          />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">

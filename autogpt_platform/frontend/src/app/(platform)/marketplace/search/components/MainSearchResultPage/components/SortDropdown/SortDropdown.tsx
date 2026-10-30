@@ -43,7 +43,7 @@ export function SortDropdown({ onSort }: Props) {
           <Text variant="large" as="span" tone="emphasis">
             {selected.label}
           </Text>
-          <Icon icon={ArrowDown01Icon} className="h-4 w-4" />
+          <Icon aria-hidden icon={ArrowDown01Icon} className="h-4 w-4" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-[200px]">

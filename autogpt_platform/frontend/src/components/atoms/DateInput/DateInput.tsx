@@ -131,6 +131,7 @@ export const DateInput = ({
             aria-describedby={ariaDescribedBy}
           >
             <Icon
+              aria-hidden
               icon={Calendar03Icon}
               data-slot="date-input-icon"
               className={cn("mr-2", size === "default" ? "h-4 w-4" : "h-3 w-3")}

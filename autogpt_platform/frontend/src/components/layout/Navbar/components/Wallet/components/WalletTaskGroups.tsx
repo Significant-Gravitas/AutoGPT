@@ -212,7 +212,7 @@ export function TaskGroups({ groups }: Props) {
               <span
                 className={`flex text-foreground-base transition-transform duration-300 ease-in-out ${openGroups[group.name] ? "rotate-180" : ""}`}
               >
-                <Icon icon={ArrowDown01Icon} className="h-5 w-5" />
+                <Icon aria-hidden icon={ArrowDown01Icon} className="h-5 w-5" />
               </span>
             </div>
           </div>
@@ -245,7 +245,11 @@ export function TaskGroups({ groups }: Props) {
                     >
                       {isTaskCompleted(task) && (
                         <span className="flex text-success">
-                          <Icon icon={Tick02Icon} className="h-3 w-3" />
+                          <Icon
+                            aria-hidden
+                            icon={Tick02Icon}
+                            className="h-3 w-3"
+                          />
                         </span>
                       )}
                     </div>
@@ -362,7 +366,7 @@ export function TaskGroups({ groups }: Props) {
               {/* Question mark and rectangle */}
               <div className="flex items-center gap-2">
                 <div className="flex h-4 w-4 items-center justify-center">
-                  <Icon icon={HelpCircleIcon} size={24} />
+                  <Icon aria-hidden icon={HelpCircleIcon} size={24} />
                 </div>
                 <div className="h-4 w-64 rounded-full bg-surface-hover" />
               </div>
@@ -373,7 +377,7 @@ export function TaskGroups({ groups }: Props) {
               {/* Question mark and rectangle */}
               <div className="flex items-center gap-2">
                 <div className="flex h-4 w-4 items-center justify-center">
-                  <Icon icon={HelpCircleIcon} size={24} />
+                  <Icon aria-hidden icon={HelpCircleIcon} size={24} />
                 </div>
                 <div className="h-4 w-64 rounded-full bg-surface-hover" />
               </div>

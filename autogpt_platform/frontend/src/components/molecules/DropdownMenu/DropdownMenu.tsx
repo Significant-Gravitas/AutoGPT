@@ -67,6 +67,7 @@ const DropdownMenuSubTrigger = React.forwardRef<
   >
     {children}
     <Icon
+      aria-hidden
       icon={ArrowRight01Icon}
       data-slot="menu-submenu-trigger-icon"
       className="ml-auto h-4 w-4"
@@ -152,6 +153,7 @@ const DropdownMenuCheckboxItem = React.forwardRef<
     >
       <DropdownMenuPrimitive.ItemIndicator data-slot="menu-checkbox-item-indicator">
         <Icon
+          aria-hidden
           icon={Tick02Icon}
           data-slot="menu-checkbox-item-icon"
           className="h-4 w-4"
@@ -183,6 +185,7 @@ const DropdownMenuRadioItem = React.forwardRef<
     >
       <DropdownMenuPrimitive.ItemIndicator data-slot="menu-radio-item-indicator">
         <Icon
+          aria-hidden
           icon={CircleIcon}
           data-slot="menu-radio-item-icon"
           className="h-1.5 w-1.5 fill-current"

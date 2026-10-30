@@ -213,6 +213,7 @@ const MultiSelectorTrigger = forwardRef<
               Remove {item} option
             </span>
             <Icon
+              aria-hidden
               icon={Cancel01Icon}
               data-slot="multi-select-remove-icon"
               className="h-4 w-4 hover:text-error"
@@ -343,6 +344,7 @@ const MultiSelectorItem = forwardRef<
       </Text>
       {isIncluded && (
         <Icon
+          aria-hidden
           icon={Tick02Icon}
           data-slot="multi-select-item-check"
           className="h-4 w-4"

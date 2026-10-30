@@ -64,7 +64,7 @@ export function CopyButton(props: AutogptIconButtonProps) {
     <IconButton
       title={translateString(TranslatableString.CopyButton)}
       {...props}
-      icon={<Icon icon={Copy01Icon} className="h-4 w-4" />}
+      icon={<Icon aria-hidden icon={Copy01Icon} className="h-4 w-4" />}
     />
   );
 }
@@ -77,7 +77,7 @@ export function MoveDownButton(props: AutogptIconButtonProps) {
     <IconButton
       title={translateString(TranslatableString.MoveDownButton)}
       {...props}
-      icon={<Icon icon={ArrowDown01Icon} className="h-4 w-4" />}
+      icon={<Icon aria-hidden icon={ArrowDown01Icon} className="h-4 w-4" />}
     />
   );
 }
@@ -90,7 +90,7 @@ export function MoveUpButton(props: AutogptIconButtonProps) {
     <IconButton
       title={translateString(TranslatableString.MoveUpButton)}
       {...props}
-      icon={<Icon icon={ArrowUp01Icon} className="h-4 w-4" />}
+      icon={<Icon aria-hidden icon={ArrowUp01Icon} className="h-4 w-4" />}
     />
   );
 }

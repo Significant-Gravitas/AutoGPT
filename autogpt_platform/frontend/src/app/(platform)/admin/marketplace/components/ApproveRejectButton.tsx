@@ -67,7 +67,11 @@ export function ApproveRejectButtons({
           }}
         >
           <span className="flex items-center gap-1.5 text-success">
-            <Icon icon={CheckmarkCircle02Icon} className="h-4 w-4" />
+            <Icon
+              aria-hidden
+              icon={CheckmarkCircle02Icon}
+              className="h-4 w-4"
+            />
             Approve
           </span>
         </Button>
@@ -81,7 +85,7 @@ export function ApproveRejectButtons({
         }}
       >
         <span className="flex items-center gap-1.5 text-error-hover">
-          <Icon icon={CancelCircleIcon} className="h-4 w-4" />
+          <Icon aria-hidden icon={CancelCircleIcon} className="h-4 w-4" />
           {isApproved ? "Revoke" : "Reject"}
         </span>
       </Button>

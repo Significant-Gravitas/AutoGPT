@@ -70,7 +70,11 @@ export function CronSchedulerDialog({
           {userTimezone === "not-set" ? (
             <div className="flex items-center gap-2 rounded-xlarge border border-warning-border bg-warning-surface p-3">
               <span className="flex text-warning-foreground">
-                <Icon icon={InformationCircleIcon} className="h-4 w-4" />
+                <Icon
+                  aria-hidden
+                  icon={InformationCircleIcon}
+                  className="h-4 w-4"
+                />
               </span>
               <Text variant="body" tone="warning">
                 No timezone set. Schedule will run in UTC.
@@ -84,7 +88,11 @@ export function CronSchedulerDialog({
           ) : (
             <div className="flex items-center gap-2 rounded-xlarge bg-muted/50 p-3">
               <span className="flex text-muted-foreground">
-                <Icon icon={InformationCircleIcon} className="h-4 w-4" />
+                <Icon
+                  aria-hidden
+                  icon={InformationCircleIcon}
+                  className="h-4 w-4"
+                />
               </span>
               <Text variant="body">
                 Schedule will run in your timezone:{" "}

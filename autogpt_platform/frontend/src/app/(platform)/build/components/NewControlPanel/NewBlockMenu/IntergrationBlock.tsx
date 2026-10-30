@@ -116,7 +116,7 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
           "flex h-7 w-7 items-center justify-center rounded-lg bg-foreground-body text-action-foreground group-disabled:bg-foreground-subtle",
         )}
       >
-        <Icon icon={PlusSignIcon} className="h-5 w-5" />
+        <Icon aria-hidden icon={PlusSignIcon} className="h-5 w-5" />
       </div>
     </Button>
   );

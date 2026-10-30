@@ -72,7 +72,11 @@ export default function SharePage() {
               <div className="p-6">
                 <div className="space-y-4 text-center">
                   <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                    <Icon icon={InformationCircleIcon} className="h-6 w-6" />
+                    <Icon
+                      aria-hidden
+                      icon={InformationCircleIcon}
+                      className="h-6 w-6"
+                    />
                   </div>
                   <div className="space-y-2">
                     <h3 className="text-lg font-semibold">
@@ -109,7 +113,11 @@ export default function SharePage() {
       <div className="mx-auto max-w-6xl">
         <div className="mb-6">
           <Alert>
-            <Icon icon={InformationCircleIcon} className="h-4 w-4" />
+            <Icon
+              aria-hidden
+              icon={InformationCircleIcon}
+              className="h-4 w-4"
+            />
             <AlertDescription>
               This is a publicly shared workflow run result. The person who
               shared this link can disable access at any time.

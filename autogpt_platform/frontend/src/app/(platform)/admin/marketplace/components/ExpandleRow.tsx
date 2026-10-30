@@ -59,9 +59,9 @@ export function ExpandableRow({
       <TableRow className="cursor-pointer">
         <TableCell onClick={() => setExpanded(!expanded)}>
           {expanded ? (
-            <Icon icon={ArrowDown01Icon} className="h-4 w-4" />
+            <Icon aria-hidden icon={ArrowDown01Icon} className="h-4 w-4" />
           ) : (
-            <Icon icon={ArrowRight01Icon} className="h-4 w-4" />
+            <Icon aria-hidden icon={ArrowRight01Icon} className="h-4 w-4" />
           )}
         </TableCell>
         <TableCell onClick={() => setExpanded(!expanded)}>
@@ -93,7 +93,7 @@ export function ExpandableRow({
                   href={`/admin/marketplace/preview/${latestVersion.listing_version_id}`}
                 >
                   <Button size="xs" variant="secondary">
-                    <Icon icon={EyeIcon} className="h-4 w-4" />
+                    <Icon aria-hidden icon={EyeIcon} className="h-4 w-4" />
                     Preview
                   </Button>
                 </Link>
@@ -225,7 +225,11 @@ export function ExpandableRow({
                                   href={`/admin/marketplace/preview/${version.listing_version_id}`}
                                 >
                                   <Button size="xs" variant="secondary">
-                                    <Icon icon={EyeIcon} className="h-4 w-4" />
+                                    <Icon
+                                      aria-hidden
+                                      icon={EyeIcon}
+                                      className="h-4 w-4"
+                                    />
                                     Preview
                                   </Button>
                                 </Link>

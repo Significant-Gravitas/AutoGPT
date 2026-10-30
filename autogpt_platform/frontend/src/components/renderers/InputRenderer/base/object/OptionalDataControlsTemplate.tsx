@@ -18,7 +18,7 @@ export default function OptionalDataControlsTemplate(
         className="rjsf-add-optional-data"
         onClick={onAddClick}
         title={label}
-        icon={<Icon icon={PlusSignCircleIcon} size={24} />}
+        icon={<Icon aria-hidden icon={PlusSignCircleIcon} size={24} />}
         size="small"
       />
     );
