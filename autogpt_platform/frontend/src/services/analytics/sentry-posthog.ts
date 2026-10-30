@@ -52,7 +52,9 @@ function withMessageAsException(event: ErrorEvent): ErrorEvent {
   };
 }
 
-const URL_QUERY = /\?[^\s"'`):]*/g;
+// A query runs to the next space or quote; a colon, comma or full stop just
+// before a space ends the sentence, not the query (`…/out.png?sig=1: 403`).
+const URL_QUERY = /\?[^\s"'`)]*?(?=[:,.;]?(?:[\s"'`)]|$))/g;
 const UUID =
   /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
 

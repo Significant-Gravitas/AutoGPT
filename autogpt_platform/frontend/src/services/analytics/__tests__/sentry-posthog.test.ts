@@ -191,6 +191,31 @@ describe("Sentry to PostHog correlation", () => {
     );
   });
 
+  it.each([
+    [
+      "WebSocket closed: wss://api.example.com/ws?redirect=https://example.com&token=secret",
+      "WebSocket closed: wss://api.example.com/ws",
+    ],
+    [
+      "Failed to fetch https://files.example.com/a.png?t=1:2, retrying.",
+      "Failed to fetch https://files.example.com/a.png, retrying.",
+    ],
+  ])("removes the whole query, colons included: %s", (message, value) => {
+    processEvent({
+      type: undefined,
+      event_id: "0123456789abcdef0123456789abcdef",
+      level: "error",
+      message,
+    });
+    expect(posthog.capture).toHaveBeenCalledWith(
+      "$exception",
+      expect.objectContaining({
+        $exception_list: [expect.objectContaining({ value })],
+      }),
+      expect.anything(),
+    );
+  });
+
   it.each(["fetch", "xhr"])(
     "does not mirror a failed %s response the HttpClient integration reports",
     (type) => {
