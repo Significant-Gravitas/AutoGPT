@@ -19,12 +19,34 @@ export function createPostHogSentryProcessor(dsn: string | undefined) {
         hasConsentFor("analytics") &&
         !posthog.has_opted_out_capturing()
       ) {
-        integration.processEvent(event);
+        integration.processEvent(withMessageAsException(event));
       }
     } catch {
       // An analytics failure must not drop the original Sentry event.
     }
     return event;
+  };
+}
+
+// A message Sentry records at error level, such as a console error, a failed
+// API request the app reports or a WebSocket error, carries no exception, and
+// PostHog's error tracking can't group an exception event with an empty list.
+// The mirror gets the message as its exception; Sentry's event is unchanged
+// apart from the PostHog links the integration adds to its tags.
+function withMessageAsException(event: ErrorEvent): ErrorEvent {
+  if (event.exception?.values?.length || !event.message) return event;
+  event.tags ??= {};
+  return {
+    ...event,
+    exception: {
+      values: [
+        {
+          type: "Error",
+          value: event.message,
+          mechanism: { type: "sentry-message", handled: true },
+        },
+      ],
+    },
   };
 }
 

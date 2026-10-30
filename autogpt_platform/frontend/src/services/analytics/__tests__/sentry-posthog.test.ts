@@ -143,6 +143,33 @@ describe("Sentry to PostHog correlation", () => {
     },
   );
 
+  it("mirrors an error-level message as an exception PostHog can group", () => {
+    const event: ErrorEvent = {
+      type: undefined,
+      event_id: "0123456789abcdef0123456789abcdef",
+      level: "error",
+      message: "Request failed on client: GET /api/chat/sessions 502",
+      tags: { environment: "test" },
+    };
+    expect(processEvent(event)).toBe(event);
+    expect(event.exception).toBeUndefined();
+    expect(event.tags).toHaveProperty("PostHog Person URL");
+    expect(posthog.capture).toHaveBeenCalledWith(
+      "$exception",
+      expect.objectContaining({
+        $exception_message:
+          "Request failed on client: GET /api/chat/sessions 502",
+        $exception_list: [
+          expect.objectContaining({
+            type: "Error",
+            value: "Request failed on client: GET /api/chat/sessions 502",
+          }),
+        ],
+      }),
+      expect.anything(),
+    );
+  });
+
   it.each(["fetch", "xhr"])(
     "does not mirror a failed %s response the HttpClient integration reports",
     (type) => {
