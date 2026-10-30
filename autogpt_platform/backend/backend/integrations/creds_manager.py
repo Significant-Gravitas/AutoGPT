@@ -475,7 +475,16 @@ class IntegrationCredentialsManager:
         # Without the lock a reconnect can land while the refresh is in
         # flight; marking the caller's copy would overwrite it with the dead
         # token. Take the lock update() uses and mark only the refused token.
-        async with self._locked(user_id, credentials.id):
+        try:
+            lock = await self._acquire_lock(
+                user_id, credentials.id, blocking_timeout=_REFRESH_LOCK_WAIT_SECONDS
+            )
+        except TimeoutError:
+            # A running node holds this lock for its whole lease; the caller
+            # still learns the token is dead, it just isn't stored this time.
+            _, marker = mark_reconnect_required(credentials, failure)
+            return marker
+        try:
             current = await self.store.get_creds_by_id(user_id, credentials.id)
             if (
                 current is None
@@ -484,6 +493,8 @@ class IntegrationCredentialsManager:
             ):
                 return None
             return await self._store_reconnect_marker(user_id, current, failure)
+        finally:
+            await self._release_owned_lock(lock)
 
     async def _store_reconnect_marker(
         self,

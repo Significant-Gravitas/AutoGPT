@@ -14,7 +14,10 @@ from pydantic import SecretStr
 
 from backend.blocks.linear._oauth import LinearOAuthHandler
 from backend.data.model import OAuth2Credentials
-from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.creds_manager import (
+    _REFRESH_LOCK_WAIT_SECONDS,
+    IntegrationCredentialsManager,
+)
 from backend.integrations.oauth.github import GitHubOAuthHandler
 from backend.integrations.oauth.google import GoogleOAuthHandler
 from backend.integrations.oauth.refresh_failure import (
@@ -405,7 +408,36 @@ async def test_a_reconnect_during_an_unlocked_refusal_is_not_overwritten(sentry)
 
     assert store.creds is reconnected
     assert reconnect_required(store.creds) is None
-    manager._locked.assert_called_once_with("user-1", snapshot.id)
+    manager._acquire_lock.assert_awaited_once_with(
+        "user-1", snapshot.id, blocking_timeout=_REFRESH_LOCK_WAIT_SECONDS
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_unlocked_refusal_does_not_wait_out_a_running_node(sentry):
+    # A running node holds the credential lock for its whole lease. The
+    # lock-free caller gives up waiting, still gets the reconnect error, and
+    # leaves the stored credential for a caller that can check it.
+    google_response = MagicMock(
+        status=400, headers={}, data=json.dumps({"error": "invalid_grant"}).encode()
+    )
+    manager, store = manager_with(
+        GoogleOAuthHandler(*CLIENT), expiring("google", ["openid"])
+    )
+    manager._acquire_lock = AsyncMock(side_effect=TimeoutError)
+
+    with (
+        patch(
+            "google.auth.transport.requests.Request.__call__",
+            return_value=google_response,
+        ),
+        pytest.raises(CredentialsNeedReconnectError) as raised,
+    ):
+        await manager.refresh_if_needed("user-1", store.creds, lock=False)
+
+    assert raised.value.marker.error_code == "invalid_grant"
+    assert reconnect_required(store.creds) is None
+    store.update_creds.assert_not_awaited()
 
 
 @pytest.mark.asyncio
