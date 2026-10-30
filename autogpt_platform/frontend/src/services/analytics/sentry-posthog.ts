@@ -52,10 +52,11 @@ function withMessageAsException(event: ErrorEvent): ErrorEvent {
   };
 }
 
-// A query runs to the next space or quote; colons, commas, full stops and
-// closing brackets just before a space end the sentence, not the query
-// (`…/out.png?sig=1: 403`, `(see …?id=1)`).
-const URL_QUERY = /\?[^\s"'`]*?(?=[:,.;)]*(?:[\s"'`]|$))/g;
+// A query runs to the next space, double quote or backtick (an apostrophe
+// can sit inside one); colons, commas, full stops and closing brackets just
+// before a space end the sentence, not the query (`…/out.png?sig=1: 403`,
+// `(see …?id=1)`).
+const URL_QUERY = /\?[^\s"`]*?(?=[:,.;)]*(?:[\s"`]|$))/g;
 const UUID =
   /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
 
