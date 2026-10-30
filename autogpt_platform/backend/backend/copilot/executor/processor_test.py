@@ -68,6 +68,10 @@ from backend.integrations.codex.transport import (
     CodexCredentialBusyError,
     CodexCredentialIntegrityError,
 )
+from backend.integrations.oauth.microsoft_recovery import (
+    MicrosoftAuthError,
+    microsoft_recovery,
+)
 from backend.util.exceptions import (
     DatabaseError,
     ExpertNotFoundError,
@@ -1374,6 +1378,59 @@ async def test_microsoft_365_copilot_route_acquires_oauth_lease_and_streams():
     assert microsoft_stream.call_args.kwargs["credential_lease"] is lease
     baseline_stream.assert_not_called()
     sdk_stream.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure, code",
+    [
+        # Microsoft refusing to renew a valid account's grant is not a
+        # missing credential, though MicrosoftAuthError is a ValueError.
+        (
+            MicrosoftAuthError(
+                microsoft_recovery("invalid_grant", "AADSTS70043: expired")
+            ),
+            "microsoft_365_copilot_credential_unavailable",
+        ),
+        (
+            ValueError("no such credential"),
+            "microsoft_365_copilot_credential_not_found",
+        ),
+    ],
+)
+async def test_microsoft_365_copilot_lease_failure_keeps_its_cause(failure, code):
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock(side_effect=failure)
+    completed = AsyncMock()
+
+    with (
+        patch(
+            "backend.copilot.model.get_chat_session",
+            new=AsyncMock(return_value=_microsoft_365_copilot_session()),
+        ),
+        patch(
+            "backend.copilot.executor.processor.IntegrationCredentialsManager",
+            return_value=manager,
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.publish_chunk",
+            new=AsyncMock(),
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+            new=completed,
+        ),
+        pytest.raises(RuntimeError) as raised,
+    ):
+        await CoPilotProcessor()._execute_async(
+            _microsoft_365_copilot_entry(),
+            threading.Event(),
+            MagicMock(),
+            _make_log(),
+        )
+
+    assert str(raised.value) == code
+    assert completed.await_args.kwargs["error_message"] == code
 
 
 @pytest.mark.asyncio

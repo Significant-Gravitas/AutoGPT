@@ -69,6 +69,7 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.microsoft_365_copilot.service import (
     stream_chat_completion_microsoft_365,
 )
+from backend.integrations.oauth.microsoft_recovery import MicrosoftAuthError
 from backend.integrations.oauth.microsoft_services import (
     is_microsoft_365_copilot_credential,
 )
@@ -785,9 +786,12 @@ class CoPilotProcessor:
                     # Only a missing or unusable credential is "not found";
                     # a refresh failure or lock contention on a valid account
                     # keeps its own cause so it is not reported as missing.
+                    # MicrosoftAuthError is a ValueError, but it is Microsoft
+                    # refusing a refresh.
                     code = (
                         "microsoft_365_copilot_credential_not_found"
                         if isinstance(error, ValueError)
+                        and not isinstance(error, MicrosoftAuthError)
                         else "microsoft_365_copilot_credential_unavailable"
                     )
                     raise RuntimeError(code) from error
