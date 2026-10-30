@@ -285,15 +285,30 @@ describe("useChatMentions", () => {
     mockFiles([]);
     const addWorkspaceFile = vi.fn();
 
-    render(
-      <Composer
-        label="composer"
-        initialValue="check "
-        addWorkspaceFile={addWorkspaceFile}
-        integrations={[GOOGLE]}
-      />,
-      { wrapper: Wrapper },
-    );
+    function Harness() {
+      const [value, setValue] = useState("check ");
+      const mentions = useChatMentions({
+        enabled: true,
+        value,
+        setValue,
+        addWorkspaceFile,
+        addWorkspaceFolder: vi.fn(),
+        integrations: [GOOGLE],
+      });
+      return (
+        <textarea
+          aria-label="composer"
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            mentions.detect(e.currentTarget);
+          }}
+          onKeyDown={(e) => mentions.onKeyDown(e)}
+        />
+      );
+    }
+
+    render(<Harness />, { wrapper: Wrapper });
     const textarea = screen.getByLabelText<HTMLTextAreaElement>("composer");
 
     // Caret sits right after "@goo", with more text following it.
@@ -334,14 +349,30 @@ describe("useChatMentions", () => {
         scopes: null,
       },
     ]);
-    render(
-      <Composer
-        label="accounts"
-        integrations={integrations}
-        includeWorkspaceFiles={false}
-      />,
-      { wrapper: Wrapper },
-    );
+    function Harness() {
+      const [value, setValue] = useState("");
+      const mentions = useChatMentions({
+        enabled: true,
+        value,
+        setValue,
+        integrations,
+        includeWorkspaceFiles: false,
+        addWorkspaceFile: vi.fn(),
+        addWorkspaceFolder: vi.fn(),
+      });
+      return (
+        <textarea
+          aria-label="accounts"
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            mentions.detect(e.currentTarget);
+          }}
+          onKeyDown={(e) => mentions.onKeyDown(e)}
+        />
+      );
+    }
+    render(<Harness />, { wrapper: Wrapper });
     const input = screen.getByLabelText<HTMLTextAreaElement>("accounts");
     fireEvent.change(input, { target: { value: "Check my @Work G" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -632,36 +663,6 @@ function renderMentions(args: Partial<MentionArgs> & { value: string }) {
         ...props,
       }),
     { wrapper: Wrapper, initialProps: {} },
-  );
-}
-
-function Composer({
-  label,
-  initialValue = "",
-  ...args
-}: Omit<Partial<MentionArgs>, "value" | "setValue"> & {
-  label: string;
-  initialValue?: string;
-}) {
-  const [value, setValue] = useState(initialValue);
-  const mentions = useChatMentions({
-    enabled: true,
-    value,
-    setValue,
-    addWorkspaceFile: vi.fn(),
-    addWorkspaceFolder: vi.fn(),
-    ...args,
-  });
-  return (
-    <textarea
-      aria-label={label}
-      value={value}
-      onChange={(e) => {
-        setValue(e.target.value);
-        mentions.detect(e.currentTarget);
-      }}
-      onKeyDown={(e) => mentions.onKeyDown(e)}
-    />
   );
 }
 
