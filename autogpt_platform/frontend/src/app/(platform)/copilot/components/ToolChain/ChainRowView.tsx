@@ -161,7 +161,7 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
     !isReasoning &&
     !liveSubSession &&
     row.held?.state !== "waiting" ? (
-      <StepClock />
+      <StepClock stepKey={row.key} />
     ) : null;
 
   return (

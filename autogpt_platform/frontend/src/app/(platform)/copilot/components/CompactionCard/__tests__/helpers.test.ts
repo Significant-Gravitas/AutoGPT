@@ -221,6 +221,12 @@ describe("compactionDetail", () => {
     ).toBe("128K → 31K tokens");
   });
 
+  it("gives exact counts when rounding would hide the drop", () => {
+    expect(
+      compactionDetail({ tokensBefore: 128_010, tokensAfter: 128_000 }),
+    ).toBe("128,010 → 128,000 tokens");
+  });
+
   it("refuses to advertise an inverted token measurement", () => {
     expect(
       compactionDetail({ tokensBefore: 31_000, tokensAfter: 128_000 }),

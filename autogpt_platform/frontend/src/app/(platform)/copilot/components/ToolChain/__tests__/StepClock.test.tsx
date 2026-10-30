@@ -17,9 +17,12 @@ function advanceSeconds(seconds: number) {
   }
 }
 
+let rowCount = 0;
+
 function row(overrides: Partial<ChainRow> = {}): ChainRow {
+  rowCount += 1;
   return {
-    key: "row-1",
+    key: `call-${rowCount}`,
     category: "agent",
     tool: "run_agent",
     text: 'Running workflow "Sticker Designs"…',
@@ -50,14 +53,25 @@ describe("ChainRowView - step clock", () => {
     expect(screen.getByText("2m 5s")).toBeDefined();
   });
 
+  it("keeps counting when the row mounts again", () => {
+    const step = row();
+    const { unmount } = render(<ChainRowView row={step} isLast />);
+    advanceSeconds(300);
+    unmount();
+
+    render(<ChainRowView row={step} isLast />);
+    expect(screen.getByText("5m 0s")).toBeDefined();
+  });
+
   it("drops the clock once the step finishes", () => {
-    const { rerender } = render(<ChainRowView row={row()} isLast />);
+    const step = row();
+    const { rerender } = render(<ChainRowView row={step} isLast />);
     advanceSeconds(30);
     expect(screen.getByText("30s")).toBeDefined();
 
     rerender(
       <ChainRowView
-        row={row({ state: "done", text: 'Ran workflow "Sticker Designs"' })}
+        row={{ ...step, state: "done", text: 'Ran workflow "Sticker Designs"' }}
         isLast
       />,
     );

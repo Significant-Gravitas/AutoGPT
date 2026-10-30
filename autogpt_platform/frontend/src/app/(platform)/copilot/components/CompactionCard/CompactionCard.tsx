@@ -2,6 +2,7 @@
 
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ReloadIcon } from "@hugeicons/core-free-icons";
+import { SHOW_TIME_AFTER_SECONDS } from "../JobStatsBar/constants";
 import { formatElapsed } from "../JobStatsBar/formatElapsed";
 import {
   barPercent,
@@ -12,8 +13,6 @@ import {
 } from "./helpers";
 import { useCompactionProgress } from "./useCompactionProgress";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
-
-export const SHOW_TIME_AFTER_SECONDS = 20;
 
 interface Props {
   phase: CompactionPhase | null;

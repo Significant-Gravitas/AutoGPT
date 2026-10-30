@@ -1,15 +1,37 @@
 "use client";
 
+import { useState } from "react";
+import { SHOW_TIME_AFTER_SECONDS } from "../JobStatsBar/constants";
 import { formatElapsed } from "../JobStatsBar/formatElapsed";
 import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
 
-const SHOW_TIME_AFTER_SECONDS = 20;
+const MAX_REMEMBERED_STEPS = 200;
+const stepStarts = new Map<string, string>();
 
-export function StepClock() {
-  const { elapsedSeconds } = useElapsedTimer(true);
+// When this tab first saw each running step, kept outside the row so a
+// remount (switching chats, expanding the chain) resumes the same count.
+function stepStartedAt(stepKey: string) {
+  const known = stepStarts.get(stepKey);
+  if (known) return known;
+  const startedAt = new Date().toISOString();
+  stepStarts.set(stepKey, startedAt);
+  if (stepStarts.size > MAX_REMEMBERED_STEPS) {
+    const oldest = stepStarts.keys().next().value;
+    if (oldest !== undefined) stepStarts.delete(oldest);
+  }
+  return startedAt;
+}
+
+interface Props {
+  stepKey: string;
+}
+
+export function StepClock({ stepKey }: Props) {
+  const [anchorIso] = useState(() => stepStartedAt(stepKey));
+  const { elapsedSeconds } = useElapsedTimer(true, anchorIso);
   if (elapsedSeconds < SHOW_TIME_AFTER_SECONDS) return null;
   return (
-    <span className="shrink-0 font-mono text-xs tabular-nums text-foreground-subtle">
+    <span className="shrink-0 font-mono text-xs text-foreground-subtle tabular-nums">
       {formatElapsed(elapsedSeconds)}
     </span>
   );

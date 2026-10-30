@@ -16,7 +16,7 @@ export interface CompactionStats {
   messagesBefore?: number;
   messagesAfter?: number;
   // The backend could not condense the history and dropped it instead. A
-  // settled row carrying this reports the reset — never "Condensed…".
+  // settled row carrying this reports the reset, never a summary claim.
   dropped?: true;
 }
 
@@ -148,6 +148,17 @@ export function compactionLabel(
   return "Summarized our earlier messages so I can keep going";
 }
 
+// Rounding can make a real drop read "128K → 128K"; exact counts keep the
+// difference the row is claiming.
+function formatTokenChange(before: number, after: number): string {
+  const rounded = [formatTokens(before), formatTokens(after)];
+  const [from, to] =
+    rounded[0] === rounded[1]
+      ? [before.toLocaleString("en-US"), after.toLocaleString("en-US")]
+      : rounded;
+  return `${from} → ${to} tokens`;
+}
+
 /**
  * The measured before → after for a settled row, kept off the headline for
  * whoever wants it. A number only earns its place when both ends of the
@@ -170,9 +181,7 @@ export function compactionDetail(stats: CompactionStats): string | null {
     stats.tokensAfter !== undefined &&
     stats.tokensAfter < stats.tokensBefore
   ) {
-    parts.push(
-      `${formatTokens(stats.tokensBefore)} → ${formatTokens(stats.tokensAfter)} tokens`,
-    );
+    parts.push(formatTokenChange(stats.tokensBefore, stats.tokensAfter));
   }
   return parts.length > 0 ? parts.join(" · ") : null;
 }

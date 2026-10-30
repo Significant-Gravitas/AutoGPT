@@ -319,7 +319,7 @@ export function MessagePartRenderer({
     case COMPACTION_PART_TYPE: {
       const toolPart = part as ToolUIPart;
       // A failed compaction, or one closed by the abort sentinel (output ""),
-      // condensed nothing — settled "Condensed…" copy would report work that
+      // condensed nothing — a settled summary claim would report work that
       // never happened. Render nothing; failure messaging belongs to the
       // turn-level error surfaces, not a maintenance row. Same predicate the
       // phase derivation uses, so the row and the bar can never disagree.
@@ -327,7 +327,7 @@ export function MessagePartRenderer({
       const settled = toolPart.state === "output-available";
       // A row still open when the stream is over never completed — the
       // user stopped the turn or the connection dropped mid-compaction.
-      // Claiming "Condensed the conversation" would report work that
+      // Claiming a finished summary would report work that
       // never finished, so render nothing, like the abort sentinel.
       if (!isCurrentlyStreaming && !settled) return null;
       const isLiveRow =
