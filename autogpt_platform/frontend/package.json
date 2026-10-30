@@ -164,7 +164,7 @@
     "@vitejs/plugin-react": "5.2.0",
     "@vitest/coverage-v8": "4.1.11",
     "babel-plugin-react-compiler": "1.0.0",
-    "concurrently": "9.2.1",
+    "concurrently": "10.0.6",
     "cross-env": "10.1.0",
     "eslint": "8.57.1",
     "eslint-config-next": "15.5.7",
