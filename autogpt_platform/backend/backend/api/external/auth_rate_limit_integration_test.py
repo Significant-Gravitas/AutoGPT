@@ -154,6 +154,7 @@ async def test_wrong_tail_and_malformed_keys_skip_scrypt(
     client, stored_key, mocker, auth_headers
 ):
     verify = mocker.spy(api_key.keysmith, "verify_key")
+    redis_access = mocker.spy(rate_limit, "get_redis_async")
     plaintext = stored_key[1]
     different_tail = plaintext[:-1] + ("X" if plaintext[-1] != "X" else "Y")
     for value in ("garbage", "agpt_", "agpt_!abmiddle", different_tail):
@@ -161,6 +162,7 @@ async def test_wrong_tail_and_malformed_keys_skip_scrypt(
             await client.get("/auth", headers=auth_headers(value))
         ).status_code == 401
     assert verify.call_count == 0
+    redis_access.assert_not_called()
 
 
 async def test_concurrent_success_refunds_only_its_own_reservation(
@@ -171,17 +173,17 @@ async def test_concurrent_success_refunds_only_its_own_reservation(
     bad = plaintext[:8] + ("X" if plaintext[8] != "X" else "Y") + plaintext[9:]
     ready, release = asyncio.Event(), asyncio.Event()
     entered = 0
-    validate = middleware.validate_api_key
+    validate = api_key._verify_api_key_candidates
 
-    async def wait_then_validate(value):
+    async def wait_then_validate(value, candidates):
         nonlocal entered
         entered += 1
         if entered == 8:
             ready.set()
         await release.wait()
-        return await validate(value)
+        return await validate(value, candidates)
 
-    monkeypatch.setattr(middleware, "validate_api_key", wait_then_validate)
+    monkeypatch.setattr(api_key, "_verify_api_key_candidates", wait_then_validate)
     reserve = mocker.spy(rate_limit, "_reserve")
     verify = mocker.spy(api_key.keysmith, "verify_key")
     pending = asyncio.gather(
@@ -246,6 +248,7 @@ async def test_unrelated_prefixes_do_not_block_valid_key_on_shared_address(
     client, stored_key, mocker, auth_headers
 ):
     verify = mocker.spy(api_key.keysmith, "verify_key")
+    redis_access = mocker.spy(rate_limit, "get_redis_async")
     plaintext = stored_key[1]
     heads = [f"agpt_{i:03d}" for i in range(121) if f"agpt_{i:03d}" != plaintext[:8]]
     for head in heads[:120]:
@@ -253,6 +256,7 @@ async def test_unrelated_prefixes_do_not_block_valid_key_on_shared_address(
             await client.get("/auth", headers=auth_headers(head + "garbage-tail"))
         ).status_code == 401
     assert verify.call_count == 0
+    redis_access.assert_not_called()
     assert (
         await client.get("/auth", headers=auth_headers(plaintext))
     ).status_code == 200

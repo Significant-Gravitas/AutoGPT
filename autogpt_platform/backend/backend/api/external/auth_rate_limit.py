@@ -1,6 +1,8 @@
-"""Reserve a pre-Scrypt budget for failed and in-flight API-key validations.
+"""Reserve a pre-Scrypt budget for stored API-key candidates.
 
 Successful validations refund their reservation; credentials are never cached.
+Unmatched head+tail values never allocate counters; the caller reserves only
+after the active-candidate lookup and before verifying those same candidates.
 Single-key Lua scripts work across Redis cluster slots. The whole admission
 check fails open within 250ms when Redis is unavailable.
 """
@@ -52,7 +54,7 @@ class APIKeyValidationBudget(BaseModel):
 async def enforce_api_key_validate_rate_limit(
     request: Request, plaintext_key: str
 ) -> APIKeyValidationBudget | None:
-    """Reserve before validation, or raise 429 without running Scrypt."""
+    """Reserve for known candidates, or raise 429 without running Scrypt."""
     head = key_head_from_plaintext(plaintext_key)
     ip = client_ip_from_request(request)
     if head is None or ip is None:

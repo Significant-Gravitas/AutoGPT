@@ -1,3 +1,4 @@
+from collections.abc import Awaitable, Callable
 from typing import Annotated, Optional
 
 from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
@@ -8,6 +9,7 @@ from pydantic import BaseModel, ConfigDict
 from starlette.types import Scope
 
 from backend.api.external.auth_rate_limit import (
+    APIKeyValidationBudget,
     enforce_api_key_validate_rate_limit,
     refund_api_key_validate_rate_limit,
 )
@@ -40,6 +42,8 @@ class VerifiedCredential(BaseModel):
 async def resolve_auth_info(
     api_key: str | None = Security(api_key_header),
     bearer: HTTPAuthorizationCredentials | None = Security(bearer_auth),
+    *,
+    before_api_key_verify: Callable[[], Awaitable[None]] | None = None,
 ) -> APIAuthorizationInfo | None:
     """
     Resolve authentication from API key or Bearer token headers.
@@ -49,7 +53,11 @@ async def resolve_auth_info(
     """
     key = _plaintext_api_key(api_key, bearer)
     if key is not None:
-        api_key_info = await validate_api_key(key)
+        api_key_info = (
+            await validate_api_key(key, before_verify=before_api_key_verify)
+            if before_api_key_verify is not None
+            else await validate_api_key(key)
+        )
         if api_key_info:
             await _refuse_banned_owner(api_key_info)
             return api_key_info
@@ -120,17 +128,21 @@ async def require_auth(
         HTTPAuthorizationCredentials | None, Security(bearer_auth)
     ] = None,
 ) -> APIAuthorizationInfo:
-    """Require valid credentials for v1, reserving before API-key verification.
+    """Reserve for v1 only when stored candidates need API-key verification.
 
     v2 uses its own pre-verification limiter and request-scoped auth resolver.
     """
     key = _plaintext_api_key(api_key, bearer)
-    budget = (
-        await enforce_api_key_validate_rate_limit(request, key)
-        if key is not None
-        else None
+    budget: APIKeyValidationBudget | None = None
+
+    async def reserve() -> None:
+        nonlocal budget
+        if key is not None:
+            budget = await enforce_api_key_validate_rate_limit(request, key)
+
+    auth = await resolve_auth_info(
+        api_key=api_key, bearer=bearer, before_api_key_verify=reserve
     )
-    auth = await resolve_auth_info(api_key=api_key, bearer=bearer)
     if auth is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

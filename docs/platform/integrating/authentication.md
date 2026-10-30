@@ -76,8 +76,8 @@ An API key is a password to your account. Keep it on servers and in secret store
 
 ## API-key validation limits on v1
 
-The deprecated `/external-api/v1` API limits failed and in-flight API-key
-validations to 60 per client address and key prefix in a 60-second window.
+The deprecated `/external-api/v1` API limits failed and in-flight cryptographic
+key checks to 60 per client address and key prefix in a 60-second window.
 IPv6 addresses in the same `/64` share a budget; IPv4 addresses are counted
 individually. This applies to both `X-API-Key` and API keys sent as Bearer tokens.
 Successful authentication refunds its reservation; concurrent requests still

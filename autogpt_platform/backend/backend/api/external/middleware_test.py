@@ -78,8 +78,13 @@ def test_explicit_key_wins_for_admission_and_validation(mocker, api_key, bearer,
     admit = mocker.patch.object(
         middleware, "enforce_api_key_validate_rate_limit", return_value=None
     )
+
+    async def validate(value, *, before_verify):
+        await before_verify()
+        return _principal() if valid else None
+
     validate_key = mocker.patch.object(
-        middleware, "validate_api_key", return_value=_principal() if valid else None
+        middleware, "validate_api_key", side_effect=validate
     )
     validate_token = mocker.patch.object(middleware, "validate_access_token")
     mocker.patch.object(middleware, "is_user_banned", return_value=False)
@@ -92,7 +97,8 @@ def test_explicit_key_wins_for_admission_and_validation(mocker, api_key, bearer,
 
     assert response.status_code == (200 if valid else 401)
     assert admit.await_args.args[1] == api_key
-    validate_key.assert_awaited_once_with(api_key)
+    validate_key.assert_awaited_once()
+    assert validate_key.await_args.args == (api_key,)
     validate_token.assert_not_awaited()
     if valid:
         refund.assert_awaited_once_with(None)
