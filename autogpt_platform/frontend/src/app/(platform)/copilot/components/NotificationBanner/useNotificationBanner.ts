@@ -3,6 +3,7 @@ import {
   subscribeToPermission,
 } from "@/components/layout/NotificationSettings/helpers";
 import { useNotificationSettings } from "@/components/layout/NotificationSettings/useNotificationSettings";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { useSyncExternalStore } from "react";
 import { useCopilotUIStore } from "../../store";
 
@@ -26,12 +27,19 @@ export function useNotificationBanner() {
   );
 
   // A granted permission with our switch off is a browser that allowed us
-  // before, e.g. after signing out and back in: one click turns it back on.
+  // before our switch was ever turned on: one click turns it on.
   const canAsk = permission === "default" || permission === "granted";
   const isVisible = canAsk && !isDismissed && !isNotificationsEnabled;
 
-  function handleTurnOn() {
-    void toggleNotifications();
+  // The banner disappears with the focused button, so say it worked.
+  async function handleTurnOn() {
+    await toggleNotifications();
+    if (useCopilotUIStore.getState().isNotificationsEnabled) {
+      toast({
+        title: "Notifications are on",
+        description: "We'll let you know when Otto or your experts finish.",
+      });
+    }
   }
 
   return {

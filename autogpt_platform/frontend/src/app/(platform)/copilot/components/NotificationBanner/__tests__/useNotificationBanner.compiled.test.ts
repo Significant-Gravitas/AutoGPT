@@ -46,5 +46,6 @@ describe("useNotificationBanner under the React Compiler", () => {
 
     expect(code).toContain("react/compiler-runtime");
     expect(code).not.toContain("storage.get(");
+    expect(code).not.toContain("@/services/storage");
   });
 });

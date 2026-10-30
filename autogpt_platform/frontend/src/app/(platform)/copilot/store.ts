@@ -125,8 +125,9 @@ export function getPersistedNotificationsEnabled(): boolean {
   );
 }
 
-// A stored "false" is an off the user chose (sign-out removes the key
-// instead), so it counts like dismissing the turn-on banner.
+// A stored "false" is an off the user chose (an off the browser forced, a
+// revoked permission, removes the key instead), so it counts like dismissing
+// the turn-on banner.
 export function getPersistedNotificationBannerDismissed(): boolean {
   return (
     isClient &&
@@ -237,6 +238,8 @@ interface CopilotUIState {
 
   isNotificationsEnabled: boolean;
   setNotificationsEnabled: (enabled: boolean) => void;
+  /** Off because the browser no longer allows notifications, not a choice. */
+  forgetNotificationsEnabled: () => void;
 
   isNotificationBannerDismissed: boolean;
   dismissNotificationBanner: () => void;
@@ -387,6 +390,10 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   setNotificationsEnabled: (enabled) => {
     storage.set(Key.COPILOT_NOTIFICATIONS_ENABLED, String(enabled));
     set({ isNotificationsEnabled: enabled });
+  },
+  forgetNotificationsEnabled: () => {
+    storage.clean(Key.COPILOT_NOTIFICATIONS_ENABLED);
+    set({ isNotificationsEnabled: false });
   },
 
   isNotificationBannerDismissed: getPersistedNotificationBannerDismissed(),

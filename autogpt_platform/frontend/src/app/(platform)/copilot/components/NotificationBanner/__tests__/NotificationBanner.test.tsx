@@ -96,6 +96,9 @@ describe("NotificationBanner", () => {
     );
     expect(window.localStorage.getItem(ENABLED_KEY)).toBe("true");
     expect(screen.queryByText(BANNER_TEXT)).toBeNull();
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Notifications are on" }),
+    );
   });
 
   it("hides and explains when the browser blocks notifications", async () => {
@@ -218,7 +221,7 @@ describe("getPersistedNotificationBannerDismissed", () => {
     expect(getPersistedNotificationBannerDismissed()).toBe(true);
   });
 
-  it("asks again after sign-out, which removes the stored switch", () => {
+  it("asks again once copilot data is cleared, which removes the stored switch", () => {
     window.localStorage.setItem(ENABLED_KEY, "false");
     window.localStorage.setItem(DISMISSED_KEY, "true");
     useCopilotUIStore.getState().clearCopilotLocalData();

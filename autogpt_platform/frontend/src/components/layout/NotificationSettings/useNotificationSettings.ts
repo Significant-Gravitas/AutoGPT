@@ -24,6 +24,9 @@ export function useNotificationSettings() {
   const isNotificationsEnabled = useCopilotUIStore(
     (s) => s.isNotificationsEnabled,
   );
+  const forgetNotificationsEnabled = useCopilotUIStore(
+    (s) => s.forgetNotificationsEnabled,
+  );
   const setNotificationsEnabled = useCopilotUIStore(
     (s) => s.setNotificationsEnabled,
   );
@@ -49,9 +52,9 @@ export function useNotificationSettings() {
   // still sees the server's "default".
   useEffect(() => {
     if (isNotificationsEnabled && readPermission() !== "granted") {
-      setNotificationsEnabled(false);
+      forgetNotificationsEnabled();
     }
-  }, [permission, isNotificationsEnabled, setNotificationsEnabled]);
+  }, [permission, isNotificationsEnabled, forgetNotificationsEnabled]);
 
   const isSupported = permission !== "unsupported";
   const isBlocked = permission === "denied";
