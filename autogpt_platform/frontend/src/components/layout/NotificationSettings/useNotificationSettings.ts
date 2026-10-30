@@ -2,7 +2,10 @@
 
 import { useEffect, useReducer, useSyncExternalStore } from "react";
 
-import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
+import {
+  hasStoredNotificationsOn,
+  useCopilotUIStore,
+} from "@/app/(platform)/copilot/store";
 import { toast } from "@/components/molecules/Toast/use-toast";
 
 import {
@@ -51,7 +54,10 @@ export function useNotificationSettings() {
   // delivered. This reads the browser directly because the hydration render
   // still sees the server's "default".
   useEffect(() => {
-    if (isNotificationsEnabled && readPermission() !== "granted") {
+    // A revoke while the app was closed leaves the stored "on" behind with
+    // the store already off; forget it too, as a revoke seen live does.
+    const isOn = isNotificationsEnabled || hasStoredNotificationsOn();
+    if (isOn && readPermission() !== "granted") {
       forgetNotificationsEnabled();
     }
   }, [permission, isNotificationsEnabled, forgetNotificationsEnabled]);
