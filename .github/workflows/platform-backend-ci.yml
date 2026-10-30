@@ -95,7 +95,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          ref: 1396094f26e575eac4855add2fbfb9514fc94f7b
+          ref: 804ae424bc8773fda879eea958073a643fb2cf53
           # Full ref history is needed so the "Install Poetry" step below can
           # read poetry.lock off the base branch. `filter: blob:none` keeps
           # every ref reachable while skipping the blob download for all of
@@ -377,7 +377,7 @@ jobs:
           export PYTHONPATH="$RUNNER_TEMP${PYTHONPATH:+:$PYTHONPATH}"
           pytest_args=(
             -p ci_async_diagnostic
-            -s -vv
+            -s -vv -x
             -p no:cacheprovider
             --durations=30
             --cov=backend
