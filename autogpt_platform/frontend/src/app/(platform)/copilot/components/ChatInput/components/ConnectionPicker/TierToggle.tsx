@@ -16,6 +16,7 @@ import type { CopilotLlmModel } from "../../../../store";
 import { isComposingEvent } from "@/lib/keyboard";
 import { nextRovingValue, rovingTabIndex } from "./radioKeys";
 import { Swap } from "./Swap";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Segment {
   tier: CopilotLlmModel;
@@ -79,8 +80,7 @@ export function TierToggle({
       aria-label="Model tier"
       onKeyDown={handleKeyDown}
       className={cn(
-        // TODO(tokens): no exact role for divide-neutral-200
-        "divide-y divide-neutral-200",
+        "divide-y divide-border-base",
         advancedUpgrade && "divide-y-0",
       )}
     >
@@ -113,9 +113,14 @@ export function TierToggle({
               className="flex-none text-foreground-tertiary"
             />
             <span className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate text-sm font-medium text-foreground-strong">
+              <Text
+                variant="body-medium-tight"
+                as="span"
+                tone="primary"
+                className="truncate"
+              >
                 {segment.name ?? segment.label}
-              </span>
+              </Text>
               {segment.model && (
                 <span className="text-sm leading-snug text-foreground-tertiary">
                   <Swap className="max-w-full truncate">{segment.model}</Swap>
@@ -165,9 +170,14 @@ function LockedSegment({ segment }: { segment: Segment }) {
           className="mt-[3px] flex-none text-foreground-subtle"
         />
         <span className="flex min-w-0 flex-col">
-          <span className="truncate text-sm font-medium text-foreground-tertiary">
+          <Text
+            variant="body-medium-tight"
+            as="span"
+            tone="muted"
+            className="truncate"
+          >
             {segment.name ?? segment.label}
-          </span>
+          </Text>
           {segment.model && (
             <span className="text-sm leading-snug text-foreground-subtle">
               <Swap className="max-w-full truncate">{segment.model}</Swap>

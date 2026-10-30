@@ -9,11 +9,8 @@ export const RELEASE_ROW_CLASS = "flex gap-3 px-3.5 py-2.5";
 export const RELEASE_DOT_COLUMN_CLASS =
   "flex w-2.5 shrink-0 justify-center pt-1";
 
-// Spacing above the headline and the details.
-export const RELEASE_HEADLINE_GAP_CLASS = "mt-1";
-export const RELEASE_DETAILS_GAP_CLASS = "mt-0.5";
-
-// Line boxes of the Text variants the row uses: the date line
+// Line boxes of the Text variants the row uses (ReleaseItem's headline and
+// details sit mt-1 and mt-0.5 below the line above, as the skeleton's bars do): the date line
 // (small-medium-tight, 18px with the "Latest" pill), the headline
 // (body-medium) and one line of details (body-tight).
 export const DATE_LINE_HEIGHT_CLASS = "h-4";

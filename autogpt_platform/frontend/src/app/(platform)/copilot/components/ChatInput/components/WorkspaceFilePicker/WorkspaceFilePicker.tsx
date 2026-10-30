@@ -86,16 +86,12 @@ export function WorkspaceFilePicker({
                   onCheckedChange={picker.setExpertOnly}
                 />
                 <label htmlFor="picker-expert-only">
-                  <Text
-                    variant="small-medium"
-                    as="span"
-                    className="text-foreground-body"
-                  >
+                  <Text tone="body" variant="small-medium" as="span">
                     Only {who}&rsquo;s files
                   </Text>
                 </label>
               </div>
-              <Text variant="small" className="text-foreground-tertiary">
+              <Text tone="muted" variant="small">
                 {picker.expertOnly
                   ? `From your chats with ${who}`
                   : "Plus your own files and folders"}

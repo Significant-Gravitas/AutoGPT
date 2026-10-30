@@ -28,6 +28,7 @@ const STATUS_CONFIG: Record<
   scheduled: {
     label: "Scheduled",
     bg: "",
+    // oxlint-disable-next-line design-system/no-raw-colors -- yellow-600 #DFAF00 has no role; gold to amber change deferred (see PR)
     text: "text-yellow-600",
     pulse: false,
   },
@@ -77,8 +78,9 @@ function statusDotColor(status: AgentStatus): string {
     case "listening":
       return "bg-brand";
     case "scheduled":
+      // oxlint-disable-next-line design-system/no-raw-colors -- yellow-500 #F5C000 has no role; yellow to amber change deferred (see PR)
       return "bg-yellow-500";
     case "idle":
-      return "bg-zinc-400";
+      return "bg-foreground-subtle";
   }
 }

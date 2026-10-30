@@ -106,10 +106,7 @@ export const BlockMenuSidebar = () => {
           onClick={() => setDefaultState(item.type as DefaultStateType)}
         />
       ))}
-      <div
-        // TODO(tokens): no fitting role for border-black/10 #141414; #141414 is foreground-base (a text colour)
-        className="ml-[0.5365rem] space-y-2 border-l border-black/10 pl-[0.75rem]"
-      >
+      <div className="ml-[0.5365rem] space-y-2 border-l border-foreground-base/10 pl-3">
         {subMenuItems.map((item) => (
           <MenuItem
             key={item.type}

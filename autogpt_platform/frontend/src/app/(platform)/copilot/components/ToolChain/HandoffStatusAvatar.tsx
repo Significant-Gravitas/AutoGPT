@@ -73,7 +73,10 @@ export function StatusAvatar({
           {badge.icon ? (
             <Icon icon={badge.icon} size={Math.round(badgeSize * 0.7)} />
           ) : (
-            <span className="size-[60%] animate-spin rounded-full border-[1.5px] border-current border-t-transparent motion-reduce:animate-none" />
+            <span
+              // oxlint-disable-next-line design-system/no-arbitrary-values -- a 1.5px spinner stroke inside a small avatar badge; border-2 would thicken it
+              className="size-[60%] animate-spin rounded-full border-[1.5px] border-current border-t-transparent motion-reduce:animate-none"
+            />
           )}
         </span>
       )}
