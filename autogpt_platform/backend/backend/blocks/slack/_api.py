@@ -7,14 +7,14 @@ with a Bearer token in the Authorization header.
 """
 
 import logging
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 from pydantic import BaseModel
 
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
 from backend.util.request import Requests
 
-SlackCredentials = Union[APIKeyCredentials, OAuth2Credentials]
+SlackCredentials = APIKeyCredentials | OAuth2Credentials
 
 logger = logging.getLogger(__name__)
 

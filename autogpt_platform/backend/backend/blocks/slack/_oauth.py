@@ -120,20 +120,32 @@ class SlackOAuthHandler(BaseOAuthHandler):
         if not token_data.get("ok"):
             raise SlackOAuthError(token_data.get("error", "unknown_error"))
 
+        return self._build_credentials(token_data, current_credentials)
+
+    def _build_credentials(
+        self,
+        token_data: dict[str, Any],
+        current_credentials: Optional[OAuth2Credentials],
+    ) -> OAuth2Credentials:
         team = token_data.get("team") or {}
-        metadata = {
-            **(current_credentials.metadata if current_credentials else {}),
+        # A rotating-token refresh response may omit these, so only overwrite
+        # what Slack actually sent back.
+        fresh_metadata = {
             "team_id": team.get("id"),
             "team_name": team.get("name"),
             "bot_user_id": token_data.get("bot_user_id"),
             "app_id": token_data.get("app_id"),
+        }
+        metadata = {
+            **(current_credentials.metadata if current_credentials else {}),
+            **{key: value for key, value in fresh_metadata.items() if value},
         }
 
         scope_str = token_data.get("scope")
         new_credentials = OAuth2Credentials(
             provider=self.PROVIDER_NAME,
             title=current_credentials.title if current_credentials else None,
-            username=team.get("name"),
+            username=metadata.get("team_name"),
             access_token=token_data["access_token"],
             access_token_expires_at=(
                 int(time.time()) + expires_in

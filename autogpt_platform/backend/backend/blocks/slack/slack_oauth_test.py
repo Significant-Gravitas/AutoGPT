@@ -8,7 +8,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
-from backend.blocks.slack._oauth import SlackOAuthError, SlackOAuthHandler
+from backend.blocks.slack._oauth import (
+    SLACK_REVOKE_URL,
+    SLACK_TOKEN_URL,
+    SlackOAuthError,
+    SlackOAuthHandler,
+)
 from backend.data.model import OAuth2Credentials
 
 
@@ -158,6 +163,31 @@ class TestExchangeCodeForTokens:
                     code="bad-code", scopes=["chat:write"], code_verifier=None
                 )
 
+    @pytest.mark.asyncio
+    async def test_sends_form_encoded_code_grant(self):
+        handler = _make_handler()
+        resp = _mock_response(_oauth_response())
+
+        with patch("backend.blocks.slack._oauth.Requests") as MockRequests:
+            post = AsyncMock(return_value=resp)
+            MockRequests.return_value.post = post
+            await handler.exchange_code_for_tokens(
+                code="auth-code", scopes=["chat:write"], code_verifier=None
+            )
+
+        assert post.call_args.args[0] == SLACK_TOKEN_URL
+        assert post.call_args.kwargs["data"] == {
+            "client_id": "test-client-id",
+            "client_secret": "test-client-secret",
+            "grant_type": "authorization_code",
+            "code": "auth-code",
+            "redirect_uri": "https://app.example.com/callback",
+        }
+        assert (
+            post.call_args.kwargs["headers"]["Content-Type"]
+            == "application/x-www-form-urlencoded"
+        )
+
 
 class TestRefreshTokens:
     @pytest.mark.asyncio
@@ -210,6 +240,46 @@ class TestRefreshTokens:
         assert refreshed.refresh_token.get_secret_value() == "xoxe-1-new-refresh"
         assert refreshed.metadata["team_id"] == "T9TK3CUKW"
 
+    @pytest.mark.asyncio
+    async def test_refresh_keeps_metadata_the_response_omits(self):
+        """A refresh response that leaves out team or bot fields must not wipe
+        what the original install stored."""
+        handler = _make_handler()
+        existing_creds = OAuth2Credentials(
+            id="existing-id",
+            provider="slack",
+            access_token=SecretStr("xoxe.xoxb-old-token"),
+            refresh_token=SecretStr("xoxe-1-old-refresh"),
+            scopes=["chat:write"],
+            title="test",
+            username="Test Workspace",
+            metadata={
+                "team_id": "T9TK3CUKW",
+                "team_name": "Test Workspace",
+                "bot_user_id": "U0KRQLJ9H",
+                "app_id": "A0KRD7HC3",
+            },
+        )
+        resp = _mock_response(
+            {
+                "ok": True,
+                "access_token": "xoxe.xoxb-refreshed-token",
+                "expires_in": 43200,
+                "refresh_token": "xoxe-1-new-refresh",
+            }
+        )
+
+        with patch("backend.blocks.slack._oauth.Requests") as MockRequests:
+            post = AsyncMock(return_value=resp)
+            MockRequests.return_value.post = post
+            refreshed = await handler._refresh_tokens(existing_creds)
+
+        assert post.call_args.kwargs["data"]["grant_type"] == "refresh_token"
+        assert post.call_args.kwargs["data"]["refresh_token"] == "xoxe-1-old-refresh"
+        assert refreshed.username == "Test Workspace"
+        assert refreshed.scopes == ["chat:write"]
+        assert refreshed.metadata == existing_creds.metadata
+
 
 class TestRevokeTokens:
     @pytest.mark.asyncio
@@ -228,6 +298,24 @@ class TestRevokeTokens:
             result = await handler.revoke_tokens(creds)
 
         assert result is True
+        post = MockRequests.return_value.post
+        assert post.call_args.args[0] == SLACK_REVOKE_URL
+        assert post.call_args.kwargs["headers"] == {
+            "Authorization": "Bearer xoxb-token"
+        }
+
+    @pytest.mark.asyncio
+    async def test_missing_access_token_raises(self):
+        handler = _make_handler()
+        creds = OAuth2Credentials(
+            provider="slack",
+            access_token=SecretStr(""),
+            scopes=["chat:write"],
+            title="test",
+        )
+
+        with pytest.raises(ValueError, match="No access token to revoke"):
+            await handler.revoke_tokens(creds)
 
     @pytest.mark.asyncio
     async def test_failure_returns_false(self):
