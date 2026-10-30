@@ -33,6 +33,7 @@ import {
   platformUserExists,
   provisionPlatformUser,
 } from "./provision-platform-user";
+import { assertProviderVerifiedEmail } from "./provider-verified-email";
 import {
   recordResetLinkAddress,
   type ResetLinkContext,
@@ -106,6 +107,7 @@ function hasPlatformUser(userId: string) {
 // Better Auth hands database hooks the endpoint context, or null outside one.
 type HookContext = {
   path?: string;
+  params?: Record<string, string | undefined>;
   headers?: Headers;
   request?: Request;
   context?: { options: BetterAuthOptions };
@@ -189,8 +191,12 @@ export const auth = betterAuth({
         // a user row. Existing users and the SQL data-migration bypass it.
         // The thrown message is phrased so the frontend `isWaitlistError()`
         // maps it to the existing "not allowed" modal.
-        before: async (user: { email: string }, ctx: HookContext) => {
+        before: async (
+          user: { email: string; emailVerified?: boolean | null },
+          ctx: HookContext,
+        ) => {
           assertTeamEmailUsesGoogle(user.email, ctx);
+          assertProviderVerifiedEmail(user, ctx);
           const decision = isSignupAllowed(user.email, readSignupGateConfig());
           if (!decision.allowed) {
             throw new APIError("FORBIDDEN", {
