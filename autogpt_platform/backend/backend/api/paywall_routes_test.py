@@ -136,8 +136,8 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/credits/trial/resume",
     "POST /api/credits/{transaction_key}/refund",
     # Onboarding: the wizard, the brain dump and the plan shown beside the
-    # trial, all before anything is paid for. The plan's hire checks the
-    # paywall. POST /api/experts is here from when onboarding hired the
+    # trial (settled when the step stops waiting), all before anything is
+    # paid for. The plan's hire checks the paywall. POST /api/experts is here from when onboarding hired the
     # team before the plan picker.
     "POST /api/experts",
     "GET /api/onboarding",
@@ -149,6 +149,7 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/onboarding/brain-dump/intro/complete",
     "POST /api/onboarding/brain-dump/parts",
     "GET /api/onboarding/brain-dump/plan",
+    "POST /api/onboarding/brain-dump/plan/settle",
     "GET /api/onboarding/brain-dump/recommended-experts",
     "GET /api/onboarding/brain-dump/recommended-providers",
     "GET /api/onboarding/brain-dump/recording",
