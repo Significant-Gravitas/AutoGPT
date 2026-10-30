@@ -18,7 +18,8 @@ import { escapeCurrencyAmounts } from "@/lib/markdown-math";
 import { mermaid } from "@/lib/streamdown-mermaid-plugin";
 import rehypeKatex from "rehype-katex";
 import type { UIMessage } from "ai";
-import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+import { ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import type {
   ButtonHTMLAttributes,
   ComponentProps,
@@ -280,7 +281,7 @@ export const MessageBranchPrevious = ({
       variant="compact-ghost"
       {...props}
     >
-      {children ?? <ChevronLeftIcon size={14} />}
+      {children ?? <Icon aria-hidden icon={ArrowLeft01Icon} size={14} />}
     </Button>
   );
 };
@@ -303,7 +304,7 @@ export const MessageBranchNext = ({
       variant="compact-ghost"
       {...props}
     >
-      {children ?? <ChevronRightIcon size={14} />}
+      {children ?? <Icon aria-hidden icon={ArrowRight01Icon} size={14} />}
     </Button>
   );
 };

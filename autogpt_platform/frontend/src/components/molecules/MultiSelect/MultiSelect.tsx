@@ -10,7 +10,8 @@ import {
 } from "./components/Command";
 import { cn } from "@/lib/utils";
 import { Command as CommandPrimitive } from "cmdk";
-import { X as RemoveIcon, Check } from "lucide-react";
+import { Cancel01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import React, {
   KeyboardEvent,
   createContext,
@@ -211,9 +212,11 @@ const MultiSelectorTrigger = forwardRef<
             <span data-slot="multi-select-remove-label" className="sr-only">
               Remove {item} option
             </span>
-            <RemoveIcon
+            <Icon
+              aria-hidden
+              icon={Cancel01Icon}
               data-slot="multi-select-remove-icon"
-              className="h-4 w-4 hover:stroke-destructive"
+              className="h-4 w-4 hover:text-error"
             />
           </button>
         </Badge>
@@ -340,7 +343,12 @@ const MultiSelectorItem = forwardRef<
         {children}
       </Text>
       {isIncluded && (
-        <Check data-slot="multi-select-item-check" className="h-4 w-4" />
+        <Icon
+          aria-hidden
+          icon={Tick02Icon}
+          data-slot="multi-select-item-check"
+          className="h-4 w-4"
+        />
       )}
     </CommandItem>
   );

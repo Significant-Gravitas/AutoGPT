@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Calendar as CalendarIcon, Clock } from "lucide-react";
+import { Calendar03Icon, Clock01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
 
@@ -194,11 +195,15 @@ export const DateTimeInput = ({
             aria-labelledby={ariaLabelledBy}
             aria-describedby={ariaDescribedBy}
           >
-            <CalendarIcon
+            <Icon
+              aria-hidden
+              icon={Calendar03Icon}
               data-slot="date-time-input-date-icon"
               className={cn("mr-2", size === "default" ? "h-4 w-4" : "h-3 w-3")}
             />
-            <Clock
+            <Icon
+              aria-hidden
+              icon={Clock01Icon}
               data-slot="date-time-input-time-icon"
               className={cn("mr-2", size === "default" ? "h-4 w-4" : "h-3 w-3")}
             />
