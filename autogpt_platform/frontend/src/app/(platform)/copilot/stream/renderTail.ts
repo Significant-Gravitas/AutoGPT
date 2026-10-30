@@ -81,6 +81,10 @@ export function createTailRenderer(sessionId: string) {
           if (savedMessageId) patch(message.id, { savedMessageId });
         }
         const last = rendered.findLast((m) => m.role === "assistant");
+        if (last && !seg.reconciled && seg.lastReplySequence !== null)
+          patch(last.id, {
+            savedMessageId: `${sessionId}-seq-${seg.lastReplySequence}`,
+          });
         if (last && (seg.durationMs !== null || seg.createdAt)) {
           patch(last.id, {
             ...(seg.durationMs !== null ? { durationMs: seg.durationMs } : {}),
@@ -137,8 +141,11 @@ export function statsOfAssistantRuns(
       continue;
     }
     const later = stats.get(message.id);
-    if (later)
-      joined.set(runStart.id, { ...joined.get(runStart.id), ...later });
+    const merged: TurnStats = { ...joined.get(runStart.id), ...later };
+    // A joined bubble is rated by its latest turn's reply, so the earlier
+    // turn's saved id must not stand in while the later one has none yet.
+    if (!later?.savedMessageId) delete merged.savedMessageId;
+    joined.set(runStart.id, merged);
   }
   return joined;
 }

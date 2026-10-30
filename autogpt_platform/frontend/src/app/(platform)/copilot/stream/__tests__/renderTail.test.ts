@@ -160,4 +160,48 @@ describe("createTailRenderer saved bubble ids", () => {
     ]);
     expect(joined.get("turn:turn-1")?.savedMessageId).toBe(`${SESSION}-seq-6`);
   });
+
+  it("rates a joined bubble by nothing until its later turn is saved", () => {
+    const reconciled = reconcileTurn(finishedTurn(), {
+      raw: PERSISTED,
+      rows: PERSISTED.map(logRowFromPersisted),
+    });
+    const continuation = newTurnSegment("turn-2", {
+      ...emptyTurnLog(),
+      turnId: "turn-2",
+      status: "finished",
+      rows: [streamedRow("block-2", "assistant", "Picked it back up.")],
+    });
+    const render = createTailRenderer(SESSION);
+
+    const live = render(snapshot([PROMPT, reconciled, continuation]));
+    expect(
+      statsOfAssistantRuns(live.messages, live.stats).get("turn:turn-1")
+        ?.savedMessageId,
+    ).toBeUndefined();
+
+    const saved = reconcileTurn(continuation, {
+      raw: [{ role: "assistant", content: "Picked it back up.", sequence: 6 }],
+      rows: [
+        logRowFromPersisted({
+          role: "assistant",
+          content: "Picked it back up.",
+          sequence: 6,
+        }),
+      ],
+    });
+    const done = render(snapshot([PROMPT, reconciled, saved]));
+    expect(
+      statsOfAssistantRuns(done.messages, done.stats).get("turn:turn-1")
+        ?.savedMessageId,
+    ).toBe(`${SESSION}-seq-6`);
+  });
+
+  it("names a turn too long to reconcile by its last saved reply row", () => {
+    const longTurn = { ...finishedTurn(), lastReplySequence: 87 };
+
+    const { stats } = createTailRenderer(SESSION)(snapshot([PROMPT, longTurn]));
+
+    expect(stats.get("turn:turn-1")?.savedMessageId).toBe(`${SESSION}-seq-87`);
+  });
 });

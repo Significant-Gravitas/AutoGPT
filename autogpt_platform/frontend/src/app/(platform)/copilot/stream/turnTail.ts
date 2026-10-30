@@ -42,6 +42,9 @@ export interface TurnSegment {
   createdAt: string | null;
   /** When each persisted row was written, by row key. */
   rowCreatedAt: Readonly<Record<string, string>>;
+  /** The last saved reply row of a turn that started before the session
+   *  window and so never reconciles: its reply can still be rated. */
+  lastReplySequence: number | null;
   /** Where an attached turn's rows begin before it names a checkpoint. */
   startHint: number | null;
 }
@@ -81,6 +84,7 @@ export function newTurnSegment(
     durationMs: null,
     createdAt: null,
     rowCreatedAt: {},
+    lastReplySequence: null,
     startHint,
   };
 }
@@ -181,6 +185,16 @@ export function reconcileTurn(
       createdAtOf(persisted.raw[persisted.raw.length - 1]) ?? seg.createdAt,
     rowCreatedAt,
   };
+}
+
+const REPLY_ROLES = new Set(["assistant", "reasoning"]);
+
+/** The last row of a turn's persisted rows a reply rating can name. */
+export function lastReplySequence(raw: readonly PersistedRow[]): number | null {
+  const row = raw.findLast(
+    (r) => typeof r.sequence === "number" && REPLY_ROLES.has(r.role),
+  );
+  return row?.sequence ?? null;
 }
 
 /** A local prompt takes its persisted row's place: sequence, id and timestamp. */

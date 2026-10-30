@@ -33,6 +33,7 @@ import {
   newTurnSegment,
   persistedRows,
   promptFloor,
+  lastReplySequence,
   reconcileTurn,
   tailEndSequence,
   turnRows,
@@ -1054,8 +1055,15 @@ export class TurnRuntime {
     if (!persisted) return;
     // The session GET returns a window; a turn starting before it waits.
     const windowStart = rows[0]?.sequence ?? Infinity;
-    if (view.has_more_messages !== false && windowStart > persisted.start)
+    if (view.has_more_messages !== false && windowStart > persisted.start) {
+      const sequence = lastReplySequence(persisted.raw);
+      if (sequence !== seg.lastReplySequence)
+        this.updateTurn(seg.key, (s) => ({
+          ...s,
+          lastReplySequence: sequence,
+        }));
       return;
+    }
     const drift = diffRows(seg.log.rows, persisted.rows);
     if (drift.length > 0 && !seg.stopped && !seg.frozen) {
       this.deps.report("finish", {
