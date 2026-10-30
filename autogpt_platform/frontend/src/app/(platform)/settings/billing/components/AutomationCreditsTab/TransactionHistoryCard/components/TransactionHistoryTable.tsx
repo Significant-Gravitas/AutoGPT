@@ -49,7 +49,7 @@ export function TransactionHistoryTable({
         </colgroup>
         <thead className="border-b border-border-base bg-surface-muted">
           <tr>
-            <th scope="col" className="py-3 pl-3 pr-2 sm:pl-5">
+            <th scope="col" className="py-3 pr-2 pl-3 sm:pl-5">
               <Text variant="small-medium" as="span" tone="secondary">
                 Activity
               </Text>

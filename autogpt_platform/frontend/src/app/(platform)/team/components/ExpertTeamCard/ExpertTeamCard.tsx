@@ -80,7 +80,7 @@ export function ExpertTeamCard({
   return (
     <div className="relative flex flex-col overflow-hidden rounded-2xl bg-surface smooth-shadow-ring-sm">
       {/* Floated over the cover so the whole body stays one link target. */}
-      <div className="absolute right-4 top-4 z-10 flex items-center gap-1.5">
+      <div className="absolute top-4 right-4 z-10 flex items-center gap-1.5">
         <Button
           variant="secondary"
           size="icon-sm"
@@ -192,7 +192,7 @@ export function ExpertTeamCard({
       />
 
       {isPaused ? (
-        <div className="mx-4 mb-3 flex items-center justify-between gap-2 rounded-lg bg-warning-surface px-3 py-2 ring-1 ring-inset ring-warning-border">
+        <div className="mx-4 mb-3 flex items-center justify-between gap-2 rounded-lg bg-warning-surface px-3 py-2 ring-1 ring-warning-border ring-inset">
           <Text variant="body" tone="warning">
             Schedules paused
           </Text>

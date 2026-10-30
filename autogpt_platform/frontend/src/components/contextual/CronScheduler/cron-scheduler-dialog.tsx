@@ -1,4 +1,3 @@
-/* oxlint-disable design-system/no-legacy-button-variant -- rectangular dialog buttons kept; the pill Button is a deferred visual change (5.7 item 2) */
 import { useEffect, useState } from "react";
 import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { Text } from "@/components/atoms/Text/Text";
@@ -141,10 +140,14 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
           )}
         </div>
         <div className="mt-8 flex justify-end space-x-2">
-          <Button variant="legacy-outline" onClick={() => setOpen(false)}>
+          <Button
+            variant="compact-outline"
+            size="compact"
+            onClick={() => setOpen(false)}
+          >
             Cancel
           </Button>
-          <Button variant="legacy-default" onClick={handleDone}>
+          <Button variant="compact-primary" size="compact" onClick={handleDone}>
             Done
           </Button>
         </div>

@@ -51,7 +51,7 @@ function TimeLabel({
 
   if (!localDate) {
     return (
-      <span className="text-caption-sm tabular-nums leading-inherit text-foreground-tertiary">
+      <span className="text-caption-sm leading-inherit text-foreground-tertiary tabular-nums">
         {labelText}
       </span>
     );
@@ -61,7 +61,7 @@ function TimeLabel({
     <span
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className="cursor-default text-caption-sm tabular-nums leading-inherit text-foreground-tertiary transition-colors hover:text-foreground-body"
+      className="cursor-default text-caption-sm leading-inherit text-foreground-tertiary tabular-nums transition-colors hover:text-foreground-body"
     >
       <span
         key={hovered ? "date" : "label"}
@@ -96,7 +96,7 @@ export function TurnStatsBar({ turnMessages, elapsedSeconds, stats }: Props) {
                 &middot;
               </Text>
             )}
-            <span className="text-caption-sm tabular-nums leading-inherit text-foreground-tertiary">
+            <span className="text-caption-sm leading-inherit text-foreground-tertiary tabular-nums">
               {counter.count} {counter.label}
             </span>
           </span>

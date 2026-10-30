@@ -177,6 +177,7 @@ class BashExecTool(BaseTool):
     """Execute Bash commands on E2B or in a bubblewrap sandbox."""
 
     has_gate_subject = True
+    writes_files = True
 
     @property
     def name(self) -> str:

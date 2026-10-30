@@ -56,7 +56,6 @@ export function Select({
   error,
   id,
   disabled,
-  value,
   onValueChange,
   options,
   size = "medium",
@@ -68,6 +67,7 @@ export function Select({
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
   "aria-describedby": ariaDescribedBy,
+  ...valueProps
 }: SelectFieldProps) {
   const triggerStyles = cn(
     // Base styles matching Input
@@ -87,7 +87,11 @@ export function Select({
   );
 
   const select = (
-    <BaseSelect value={value} onValueChange={onValueChange} disabled={disabled}>
+    <BaseSelect
+      value={"value" in valueProps ? (valueProps.value ?? "") : undefined}
+      onValueChange={onValueChange}
+      disabled={disabled}
+    >
       <SelectTrigger
         data-slot="select-trigger"
         className={triggerStyles}
@@ -154,7 +158,7 @@ export function Select({
         as="span"
         tone="error"
         className={cn(
-          "absolute left-0 top-full mt-1 transition-opacity duration-200",
+          "absolute top-full left-0 mt-1 transition-opacity duration-200",
           error ? "opacity-100" : "opacity-0",
         )}
       >

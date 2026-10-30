@@ -168,7 +168,7 @@ export const AgentInfo = ({
           </div>
 
           {/* Short Description */}
-          <div className="mb-4 line-clamp-2 w-full text-base font-normal leading-normal text-foreground-secondary sm:text-lg lg:mb-5 lg:text-xl lg:leading-7">
+          <div className="mb-4 line-clamp-2 w-full text-base leading-normal font-normal text-foreground-secondary sm:text-lg lg:mb-5 lg:text-xl lg:leading-7">
             {shortDescription}
           </div>
 
@@ -191,7 +191,7 @@ export const AgentInfo = ({
                       icon={PlusSignIcon}
                       size={16}
                       // oxlint-disable-next-line design-system/no-restyle -- the plus spins on hover; Icon has no motion prop
-                      className="transition-transform duration-300 group-hover/add:rotate-90 group-hover/add:scale-125"
+                      className="transition-transform duration-300 group-hover/add:scale-125 group-hover/add:rotate-90"
                     />
                   ) : undefined
                 }

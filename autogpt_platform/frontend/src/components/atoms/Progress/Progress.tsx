@@ -22,7 +22,7 @@ const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
       >
         <div
           data-slot="progress-indicator"
-          className="w-(--progress-width) h-full bg-action transition-all duration-300 ease-in-out"
+          className="h-full w-(--progress-width) bg-action transition-all duration-300 ease-in-out"
           style={
             { "--progress-width": `${percentage}%` } as React.CSSProperties
           }

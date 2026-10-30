@@ -45,7 +45,7 @@ export function MemoryChatPanel({
   const isStreaming = status === "streaming" || status === "submitted";
 
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex flex-col items-end">
+    <div className="pointer-events-none fixed right-4 bottom-4 z-50 flex flex-col items-end">
       <CopilotChatActionsProvider onSend={onSend}>
         <div
           role="complementary"
@@ -98,7 +98,7 @@ export function MemoryChatPanel({
                     queuedMessages={queuedMessages}
                   />
                 </div>
-                <div className="relative shrink-0 border-t border-separator bg-surface px-3 pb-2 pt-2">
+                <div className="relative shrink-0 border-t border-separator bg-surface px-3 pt-2 pb-2">
                   <ChatInput
                     inputId="memory-chat-input"
                     onSend={onSend}

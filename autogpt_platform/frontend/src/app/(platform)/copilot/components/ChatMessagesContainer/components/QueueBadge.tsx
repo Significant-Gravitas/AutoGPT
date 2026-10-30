@@ -67,7 +67,7 @@ export function QueueBadge({ sessionID }: Props) {
       <Tooltip>
         <TooltipTrigger asChild>
           <span
-            className="inline-flex items-center gap-1 rounded-full bg-accent-surface px-2 py-0.5 text-caption-sm font-medium leading-inherit text-accent-strong"
+            className="inline-flex items-center gap-1 rounded-full bg-accent-surface px-2 py-0.5 text-caption-sm leading-inherit font-medium text-accent-strong"
             data-testid="queue-badge-queued"
           >
             <Icon icon={HourglassIcon} size={12} />

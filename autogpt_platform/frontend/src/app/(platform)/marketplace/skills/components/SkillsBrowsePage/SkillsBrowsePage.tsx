@@ -35,7 +35,7 @@ export function SkillsBrowsePage() {
   const { categories } = useStoreCategories();
 
   return (
-    <main className="mx-auto w-full max-w-[1360px] px-6 pb-16 pt-8 md:px-10 lg:px-14">
+    <main className="mx-auto w-full max-w-[1360px] px-6 pt-8 pb-16 md:px-10 lg:px-14">
       <Link
         href="/marketplace#skills"
         className="mb-6 inline-flex w-fit items-center gap-1.5 text-body-sm leading-inherit text-foreground-tertiary transition-colors hover:text-foreground-strong"

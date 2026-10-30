@@ -150,7 +150,7 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
                 placeholder={
                   q.example ? `e.g. ${q.example}` : "Type your answer"
                 }
-                className="rounded-xl bg-surface-muted px-2.5 py-1.5 text-body-sm leading-inherit text-foreground-emphasis ring-1 ring-border-base/70 transition-shadow placeholder:text-foreground-subtle focus:outline-none focus:ring-foreground-subtle"
+                className="rounded-xl bg-surface-muted px-2.5 py-1.5 text-body-sm leading-inherit text-foreground-emphasis ring-1 ring-border-base/70 transition-shadow placeholder:text-foreground-subtle focus:ring-foreground-subtle focus:outline-none"
               />
             </label>
           ),

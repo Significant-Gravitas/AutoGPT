@@ -144,7 +144,7 @@ function OfferFeatures({
   return (
     <ul
       data-slot="offer-features"
-      className="mb-4 mt-3 flex-1 space-y-1.5 border-t border-separator pt-3"
+      className="mt-3 mb-4 flex-1 space-y-1.5 border-t border-separator pt-3"
     >
       {features.map((feature) => (
         <li

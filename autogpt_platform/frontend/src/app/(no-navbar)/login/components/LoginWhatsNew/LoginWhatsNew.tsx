@@ -21,7 +21,7 @@ export function LoginWhatsNew() {
       <div className="flex items-center justify-between gap-4">
         <h2
           id={headingID}
-          className="font-sans text-caption font-medium uppercase tracking-caps text-foreground-secondary"
+          className="font-sans text-caption font-medium tracking-caps text-foreground-secondary uppercase"
         >
           What&apos;s new
         </h2>
@@ -30,7 +30,7 @@ export function LoginWhatsNew() {
             href={CHANGELOG_BASE_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 rounded-sm font-sans text-caption font-medium leading-4 text-foreground-secondary hover:text-foreground-strong hover:underline focus:outline-none focus:ring-2 focus:ring-info focus:ring-offset-2"
+            className="inline-flex items-center gap-1 rounded-sm font-sans text-caption leading-4 font-medium text-foreground-secondary hover:text-foreground-strong hover:underline focus:ring-2 focus:ring-info focus:ring-offset-2 focus:outline-none"
           >
             Full changelog
             <span className="sr-only">(opens in a new tab)</span>
