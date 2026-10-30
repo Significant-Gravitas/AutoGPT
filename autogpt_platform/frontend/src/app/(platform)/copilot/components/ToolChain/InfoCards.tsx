@@ -285,7 +285,7 @@ export function TriggerSetupCard({ output }: OutputProps) {
       </p>
       {url && (
         <div className="flex items-center gap-2 rounded-lg bg-surface-muted p-2 ring-1 ring-border-base/70">
-          <code className="ph-no-capture min-w-0 flex-1 break-all text-xs text-foreground-secondary">
+          <code className="ph-no-capture min-w-0 flex-1 text-xs break-all text-foreground-secondary">
             {url}
           </code>
           <button

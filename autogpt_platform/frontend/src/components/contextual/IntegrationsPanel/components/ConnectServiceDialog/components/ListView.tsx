@@ -34,7 +34,7 @@ export function ListView({
 
   return (
     <div className="flex flex-col gap-4">
-      <Text variant="body" className="text-foreground-body">
+      <Text variant="body" tone="body">
         {description}
       </Text>
 
@@ -42,7 +42,7 @@ export function ListView({
         <Icon
           icon={Search01Icon}
           size={20}
-          className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-foreground-tertiary"
+          className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-foreground-tertiary"
         />
         <input
           type="text"
@@ -50,8 +50,7 @@ export function ListView({
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search services..."
           aria-label="Search services"
-          // TODO(tokens): no exact role for focus:border-purple-400 #925cf7, focus:ring-purple-400 #925cf7, text-[#1F1F20]
-          className="h-[46px] w-full rounded-3xl border border-border-base bg-surface pl-12 pr-4 text-body text-[#1F1F20] placeholder:text-placeholder focus:border-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-400"
+          className="h-[46px] w-full rounded-3xl border border-border-base bg-surface pr-4 pl-12 text-body text-foreground-base placeholder:text-placeholder focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none"
         />
       </div>
 
@@ -62,7 +61,7 @@ export function ListView({
             size={24}
             className="text-foreground-tertiary"
           />
-          <Text variant="body" className="text-foreground-body">
+          <Text variant="body" tone="body">
             {query.trim()
               ? `No services match "${query.trim()}"`
               : "No services available"}
@@ -123,7 +122,7 @@ export function ListView({
           </ScrollArea>
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white to-transparent"
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-surface to-transparent"
           />
         </div>
       )}

@@ -90,7 +90,7 @@ function SubSection({
 }) {
   return (
     <div className="rounded-lg border border-dashed border-info/30 p-3">
-      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-foreground-tertiary">
+      <p className="mb-2 text-xs font-medium tracking-wide text-foreground-tertiary uppercase">
         {label}
       </p>
       {children}
@@ -177,7 +177,7 @@ export default function StyleguidePage() {
       <div className="flex h-[calc(100vh-72px)] bg-surface-muted">
         {/* Sidebar */}
         <nav className="sticky top-0 hidden h-full w-56 shrink-0 overflow-y-auto border-r border-border-base bg-surface px-3 py-6 lg:block">
-          <p className="mb-3 px-2 text-caption-sm font-semibold uppercase leading-inherit tracking-wider text-foreground-subtle">
+          <p className="mb-3 px-2 text-caption-sm leading-inherit font-semibold tracking-wider text-foreground-subtle uppercase">
             Sections
           </p>
           <ul className="space-y-0.5">

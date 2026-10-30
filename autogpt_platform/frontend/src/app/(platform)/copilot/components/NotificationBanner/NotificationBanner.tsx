@@ -18,7 +18,7 @@ import { isPlainLeftClick } from "./helpers";
 import { BellRingIcon, Cancel01Icon } from "@hugeicons/core-free-icons";
 import { createIconComponent, Icon } from "@/components/atoms/Icon/Icon";
 
-// Alert's `icon` prop takes a component (its defaults come from lucide).
+// Alert's `icon` prop takes a component, not icon data.
 const BellRing = createIconComponent(BellRingIcon);
 
 function hiddenOnServer() {

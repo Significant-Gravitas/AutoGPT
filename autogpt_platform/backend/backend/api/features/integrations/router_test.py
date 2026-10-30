@@ -1057,6 +1057,49 @@ class TestDeviceAuthEndpoints:
         assert kwargs["expires_in_seconds"] > 600
         assert kwargs["state_metadata"]["device_code"] == "dev-code-secret"
 
+    def test_initiate_binds_the_code_to_the_connection_it_upgrades(self):
+        """A code that adds permissions to a connection must come back to it.
+
+        Without the binding, whoever signs in on the code's page becomes a
+        separate connection, which the panel then switches to.
+        """
+        handler = MagicMock()
+        handler.handle_default_scopes.side_effect = lambda scopes: scopes
+        handler.initiate_device_auth = AsyncMock(return_value=self._initiation())
+        mock_mgr = MagicMock()
+        mock_mgr.store.store_state_token = AsyncMock(
+            return_value=("state-token", "verifier")
+        )
+        upgrade = AsyncMock(return_value=["userinfo:read", "already:granted"])
+
+        p1, p2, p3, p4 = self._patched(handler, mock_mgr)
+        with (
+            p1,
+            p2,
+            p3,
+            p4,
+            patch(
+                "backend.api.features.integrations.router._prepare_scope_upgrade",
+                upgrade,
+            ),
+        ):
+            response = client.post(
+                f"/{self.PROVIDER}/device-auth/initiate"
+                "?scopes=userinfo:read&credential_id=cred-1"
+            )
+
+        assert response.status_code == 200
+        assert upgrade.await_args.args[1:] == (
+            ProviderName(self.PROVIDER),
+            "cred-1",
+            ["userinfo:read"],
+        )
+        handler.initiate_device_auth.assert_awaited_once_with(
+            ["userinfo:read", "already:granted"]
+        )
+        kwargs = mock_mgr.store.store_state_token.await_args.kwargs
+        assert kwargs["credential_id"] == "cred-1"
+
     def test_initiate_does_not_leak_upstream_error_text(self):
         handler = MagicMock()
         handler.handle_default_scopes.return_value = []

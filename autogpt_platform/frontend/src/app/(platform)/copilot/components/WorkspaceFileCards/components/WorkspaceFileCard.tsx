@@ -36,7 +36,7 @@ export function WorkspaceFileCard({
         />
         {/* Long names fade out rather than ellipsing, so the row keeps a clean
             edge next to the hover actions. */}
-        <span className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-body-md leading-inherit text-foreground-emphasis [mask-image:linear-gradient(to_right,black_calc(100%_-_2rem),transparent)]">
+        <span className="min-w-0 flex-1 overflow-hidden [mask-image:linear-gradient(to_right,black_calc(100%_-_2rem),transparent)] text-body-md leading-inherit whitespace-nowrap text-foreground-emphasis">
           {item.name}
         </span>
       </button>

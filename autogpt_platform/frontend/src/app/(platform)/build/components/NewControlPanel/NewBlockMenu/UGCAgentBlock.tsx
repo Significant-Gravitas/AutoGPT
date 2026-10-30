@@ -41,7 +41,7 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
       type="button"
       className={cn(
         blockMenuButtonBase,
-        "group flex h-[4.375rem] w-full min-w-[7.5rem] items-center justify-start gap-3 whitespace-normal rounded-xl bg-surface-muted p-2.5 pr-3.5 text-start",
+        "group flex h-[4.375rem] w-full min-w-[7.5rem] items-center justify-start gap-3 rounded-xl bg-surface-muted p-2.5 pr-3.5 text-start whitespace-normal",
         "hover:cursor-default hover:bg-surface-hover active:bg-surface-hover active:ring-1 active:ring-border-strong disabled:cursor-not-allowed",
         className,
       )}

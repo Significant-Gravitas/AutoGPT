@@ -44,7 +44,7 @@ export function ExpertSkillListItem({
 
   return (
     <div
-      className="group relative flex h-full flex-col gap-3 rounded-2xl bg-surface p-4 transition-shadow smooth-shadow-ring-sm hover:shadow-md"
+      className="group relative flex h-full flex-col gap-3 rounded-2xl bg-surface p-4 smooth-shadow-ring-sm transition-shadow hover:shadow-md"
       data-testid="expert-skill-row"
     >
       <div className="flex items-start gap-3">
@@ -86,7 +86,7 @@ export function ExpertSkillListItem({
           {shown.map((trigger) => (
             <span
               key={trigger}
-              className="flex min-w-0 max-w-full rounded-full border border-border-base bg-surface-muted px-2.5 py-0.5"
+              className="flex max-w-full min-w-0 rounded-full border border-border-base bg-surface-muted px-2.5 py-0.5"
             >
               <Text
                 variant="small-tight"
@@ -108,7 +108,7 @@ export function ExpertSkillListItem({
         </div>
       ) : null}
 
-      <div className="absolute right-3 top-3 flex items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+      <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
         {learning ? (
           <Button
             variant="ghost"

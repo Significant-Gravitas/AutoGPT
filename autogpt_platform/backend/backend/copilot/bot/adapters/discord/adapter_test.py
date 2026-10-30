@@ -8,6 +8,8 @@ import pytest
 
 from backend.copilot.bot.adapters.base import EditOutcome, FileAttachment
 from backend.copilot.bot.adapters.discord.adapter import (
+    CHANNEL_HISTORY_CHAR_BUDGET,
+    CHANNEL_HISTORY_LIMIT,
     MAX_INBOUND_ATTACHMENTS,
     THREAD_HISTORY_CHAR_BUDGET,
     THREAD_HISTORY_LIMIT,
@@ -17,6 +19,7 @@ from backend.copilot.bot.adapters.discord.adapter import (
 )
 from backend.copilot.bot.adapters.discord.choice_ui import _ChoiceButton
 from backend.copilot.bot.adapters.discord.location import Location, location_of
+from backend.copilot.bot.adapters.shared import budget_history
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.options import TurnOptions
 from backend.copilot.bot.turn_stream import _clarification_message
@@ -674,6 +677,14 @@ class TestRenameThread:
 # ── properties ─────────────────────────────────────────────────────────
 
 
+def _history_channel(*, can_read: bool) -> MagicMock:
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.permissions_for = MagicMock(
+        return_value=MagicMock(view_channel=True, read_message_history=can_read)
+    )
+    return channel
+
+
 class TestThreadHistory:
     @pytest.mark.asyncio
     async def test_thread_started_from_a_post_includes_that_post_first(self):
@@ -738,6 +749,68 @@ class TestThreadHistory:
 
         assert await adapter._thread_history(message) == ()
         channel.parent.fetch_message.assert_not_awaited()
+
+    async def test_fetches_recent_channel_history_chronological(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        bot = _mention(1000, "AutoGPT")
+        earlier = _message("the bot posts the tweet link twice", [])
+        earlier.author = MagicMock(bot=False, id=2000, display_name="Toran")
+        bot_msg = _message("old bot output", [])
+        bot_msg.author = MagicMock(bot=True, id=1000, display_name="AutoGPT")
+        latest = _message("yeah, one link is enough", [])
+        latest.author = MagicMock(bot=False, id=3000, display_name="Nick")
+        channel = _history_channel(can_read=True)
+        channel.history.return_value = _AsyncHistory([latest, bot_msg, earlier])
+        message = _message("<@1000> update the automation for that", [bot])
+        message.channel = channel
+        requester = MagicMock(spec=discord.Member)
+
+        with patch(
+            "backend.copilot.bot.adapters.discord.adapter.budget_history",
+            wraps=budget_history,
+        ) as budget:
+            history = await adapter._channel_history(message, requester)
+
+        channel.permissions_for.assert_called_once_with(requester)
+        channel.history.assert_called_once_with(
+            limit=CHANNEL_HISTORY_LIMIT, before=message, oldest_first=False
+        )
+        assert budget.call_args.kwargs["char_budget"] == CHANNEL_HISTORY_CHAR_BUDGET
+        assert [entry.username for entry in history] == ["Toran", "Nick"]
+        assert history[0].text == "the bot posts the tweet link twice"
+
+    async def test_channel_history_error_returns_nothing(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        channel = _history_channel(can_read=True)
+        channel.history.side_effect = discord.Forbidden(MagicMock(status=403), "no")
+        message = _message("<@1000> hi", [_mention(1000, "AutoGPT")])
+        message.channel = channel
+
+        requester = MagicMock(spec=discord.Member)
+        assert await adapter._channel_history(message, requester) == ()
+
+    async def test_channel_history_is_withheld_from_a_member_who_cannot_read_it(
+        self,
+    ):
+        # The member may post here but not read earlier messages; the bot can,
+        # so reading as the bot would put that history in front of them.
+        adapter, _ = _bare_adapter(bot_id=1000)
+        channel = _history_channel(can_read=False)
+        message = _message("<@1000> sum up the above", [_mention(1000, "AutoGPT")])
+        message.channel = channel
+
+        requester = MagicMock(spec=discord.Member)
+        assert await adapter._channel_history(message, requester) == ()
+        channel.history.assert_not_called()
+
+    async def test_channel_history_without_a_requester_reads_nothing(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        channel = _history_channel(can_read=True)
+        message = _message("<@1000> hi", [_mention(1000, "AutoGPT")])
+        message.channel = channel
+
+        assert await adapter._channel_history(message, None) == ()
+        channel.history.assert_not_called()
 
     async def test_fetches_user_thread_history_chronological(self):
         # Discord returns history newest-first; the adapter reverses it back to
@@ -1366,6 +1439,24 @@ class TestLockedThread:
         await handlers["on_message"](self._channel_message(replied_author_id=3000))
 
         callback.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_channel_reply_to_the_bot_carries_the_channel_history(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        callback = AsyncMock()
+        adapter.on_message(callback)
+        handlers = _register_events_with_mocked_decorator(adapter)
+        msg = self._channel_message(replied_author_id=1000)
+        msg.author = MagicMock(spec=discord.Member, id=2000, bot=False)
+        history = (MagicMock(),)
+
+        with patch.object(
+            adapter, "_channel_history", new=AsyncMock(return_value=history)
+        ) as fetch:
+            await handlers["on_message"](msg)
+
+        fetch.assert_awaited_once_with(msg, msg.author)
+        assert callback.await_args.args[0].thread_history == history
 
     @pytest.mark.asyncio
     async def test_a_thread_reply_to_the_bot_carries_the_thread_history(self):

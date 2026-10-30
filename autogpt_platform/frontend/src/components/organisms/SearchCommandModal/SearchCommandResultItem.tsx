@@ -122,7 +122,7 @@ export function SearchCommandResultItem({
             aria-hidden="true"
             data-slot="search-command-result-item-key"
             className={cn(
-              // TODO(tokens): no shadow token for the key-cap shadow.
+              // oxlint-disable-next-line design-system/no-arbitrary-values -- key-cap shadow, no shadow token holds it
               "inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-md border border-border-base bg-surface px-1 font-sans text-caption-sm leading-inherit text-foreground-secondary shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)] transition-opacity duration-150",
               isHighlighted ? "opacity-100" : "opacity-0",
             )}

@@ -66,7 +66,7 @@ export function HeldCallRow({
               id={headlineButtonId(item.id)}
               aria-haspopup="dialog"
               onClick={onOpen}
-              className="line-clamp-2 min-w-0 rounded-md text-left text-foreground-strong [overflow-wrap:anywhere] hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong"
+              className="line-clamp-2 min-w-0 rounded-md text-left [overflow-wrap:anywhere] text-foreground-strong hover:opacity-80 focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:outline-none"
             >
               <Text variant="body-medium" as="span" className="text-pretty">
                 <HeadlineText item={approval} />
@@ -83,7 +83,7 @@ export function HeldCallRow({
               </Tag>
             )}
             {item.priority === "high" && (
-              <Tag className="bg-warning-surface text-warning-foreground ring-1 ring-inset ring-warning-foreground/10">
+              <Tag className="bg-warning-surface text-warning-foreground ring-1 ring-warning-foreground/10 ring-inset">
                 Waiting
               </Tag>
             )}

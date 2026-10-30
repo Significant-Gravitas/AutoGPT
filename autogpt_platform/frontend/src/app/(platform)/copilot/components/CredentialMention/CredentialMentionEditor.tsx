@@ -189,7 +189,7 @@ export function CredentialMentionEditor({
         onFocus={handleFocus}
         onBlur={handleBlur}
         className={cn(
-          "max-h-48 min-h-10 w-full overflow-y-auto whitespace-pre-wrap break-words bg-transparent px-3 py-2 text-left text-base leading-7 outline-none empty:before:pointer-events-none empty:before:text-foreground-subtle empty:before:content-[attr(data-placeholder)]",
+          "max-h-48 min-h-10 w-full overflow-y-auto bg-transparent px-3 py-2 text-left text-base leading-7 break-words whitespace-pre-wrap outline-none empty:before:pointer-events-none empty:before:text-foreground-subtle empty:before:content-[attr(data-placeholder)]",
           disabled && "cursor-not-allowed opacity-50",
           className,
         )}

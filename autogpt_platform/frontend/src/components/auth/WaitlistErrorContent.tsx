@@ -33,7 +33,7 @@ export function WaitlistErrorContent(props: Props) {
         ) : null}
       </div>
       <div className="flex flex-col gap-2">
-        <Text variant="small" className="text-center text-muted-foreground">
+        <Text variant="small" tone="muted" className="text-center">
           Already joined? Double-check you are using the same email you signed
           up with. Need a hand? Emails us at{" "}
           <a

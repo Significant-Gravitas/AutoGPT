@@ -67,7 +67,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
           variant="large-semibold-tight"
           as="h2"
           tone="primary"
-          className="mx-6 mb-1 mt-6 shrink-0"
+          className="mx-6 mt-6 mb-1 shrink-0"
         >
           {TAB_TITLES[activeTab]}
         </Text>
@@ -96,7 +96,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
           side="right"
           className="flex w-full flex-col p-0 sm:max-w-full"
         >
-          <SheetHeader className="mt-12 px-6 pb-1 pt-2 text-left">
+          <SheetHeader className="mt-12 px-6 pt-2 pb-1 text-left">
             <SheetTitle>
               <Text as="span" variant="lg-semibold" tone="primary">
                 {TAB_TITLES[activeTab]}

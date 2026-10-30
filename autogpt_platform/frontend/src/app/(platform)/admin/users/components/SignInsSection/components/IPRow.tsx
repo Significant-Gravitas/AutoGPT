@@ -93,7 +93,7 @@ export function IPRow({ ip, ownIP }: Props) {
         </Text>
       </div>
       {isExpanded ? (
-        <ul className="flex flex-col gap-1 pl-9 pt-1">
+        <ul className="flex flex-col gap-1 pt-1 pl-9">
           {ip.events.map((event, index) => (
             <li
               key={`${event.kind}-${event.created_at.toISOString()}-${index}`}

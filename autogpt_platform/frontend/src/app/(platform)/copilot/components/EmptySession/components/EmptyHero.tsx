@@ -62,7 +62,7 @@ export function EmptyHero({
         // Keyed on the text so switching recipient re-types the line.
         <TextGenerateEffect
           key={intro}
-          className="mb-8 !font-normal [&>div]:!mt-0 [&_div]:!text-heading-sm [&_div]:!leading-normal [&_div]:!tracking-normal"
+          className="mb-8 !font-normal [&_div]:!text-heading-sm [&_div]:!leading-normal [&_div]:!tracking-normal [&>div]:!mt-0"
           duration={0.6}
           words={intro}
         />

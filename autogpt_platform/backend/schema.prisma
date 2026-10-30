@@ -437,9 +437,10 @@ model UserOnboarding {
   consecutiveRunDays            Int       @default(0)
 
   // The role picked in the wizard: one of RoleStep's option IDs, or "Other"
-  // with the typed text in roleOther. Written only by POST /onboarding/profile:
-  // AutoPilot rewrites the copy in CoPilotUnderstanding, so that is no record
-  // of the pick (backend/data/onboarding_role.py).
+  // with the typed text in roleOther. Written once the role step is answered
+  // (PATCH /onboarding) and by POST /onboarding/profile: AutoPilot rewrites the
+  // copy in CoPilotUnderstanding, so that is no record of the pick
+  // (backend/data/onboarding_role.py).
   role      String?
   roleOther String?
 

@@ -723,7 +723,8 @@ class TestBug3CancelRace:
 
 
 class TestReadOnlyAnnotations:
-    """Tests that all tools get readOnlyHint=True for parallel dispatch."""
+    """Tools get readOnlyHint=True for parallel dispatch, except the ones
+    that write files, which the CLI must run in the model's order."""
 
     def test_parallel_annotation_constant(self):
         """_PARALLEL_ANNOTATION is a ToolAnnotations with readOnlyHint=True."""
@@ -731,6 +732,35 @@ class TestReadOnlyAnnotations:
 
         assert isinstance(_PARALLEL_ANNOTATION, ToolAnnotations)
         assert _PARALLEL_ANNOTATION.readOnlyHint is True
+
+    @pytest.mark.asyncio
+    async def test_file_writers_are_not_read_only(self):
+        """SECRT-3178: ``write_workspace_file(source_path=...)`` in the same
+        message as the ``bash_exec`` building that file ran beside it and
+        stored half the file. Without the hint the CLI orders them."""
+        hints = await self._read_only_hints(create_copilot_mcp_server())
+
+        for name in ("bash_exec", "write_workspace_file", "read_workspace_file"):
+            assert hints[name] is False, name
+        for name in ("run_capability", "list_workspace_files", "find_library_agent"):
+            assert hints[name] is True, name
+
+    @pytest.mark.asyncio
+    async def test_every_registered_tool_follows_writes_files(self):
+        hints = await self._read_only_hints(create_copilot_mcp_server())
+
+        for name, base_tool in TOOL_REGISTRY.items():
+            if name in hints:
+                assert hints[name] is not base_tool.writes_files, name
+
+    @staticmethod
+    async def _read_only_hints(server) -> dict[str, bool | None]:
+        handler = server["instance"].request_handlers[ListToolsRequest]
+        result = await handler(ListToolsRequest(method="tools/list"))
+        return {
+            t.name: t.annotations.readOnlyHint if t.annotations else None
+            for t in result.root.tools
+        }
 
 
 # ---------------------------------------------------------------------------

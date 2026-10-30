@@ -16,12 +16,24 @@ vi.mock("@/lib/auth/client-ip-token", () => ({
 vi.mock("@/services/environment", () => ({
   environment: {
     getAGPTServerBaseUrl: vi.fn(() => "https://backend.test"),
+    isClientSide: vi.fn(() => false),
+    isServerSide: vi.fn(() => true),
   },
+}));
+
+vi.mock("@/lib/auth/server/getServerSession", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/lib/auth/server/getServerSession")
+  >()),
+  readServerSession: vi.fn(),
 }));
 
 import { getClientIPToken } from "@/lib/auth/client-ip-token";
 import { getCountryToken } from "@/lib/auth/country-token";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
+import { readServerSession } from "@/lib/auth/server/getServerSession";
+import { APIError } from "better-auth/api";
+import { encodeImpersonation } from "@/lib/impersonation";
 import { GET, POST } from "../route";
 
 const PRIVATE_IMAGE_HEADER_KEYS = [
@@ -678,5 +690,106 @@ describe("proxy route — response-start timeout", () => {
     expect(await res.json()).toMatchObject({
       error: "Proxy request timed out",
     });
+  });
+});
+
+describe("proxy: admin impersonation header", () => {
+  const ACT_AS = "x-act-as-user-id";
+
+  beforeEach(() => {
+    vi.mocked(getServerAuthToken).mockResolvedValue("test-token");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 200 })),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function sessionAs(id: string, role: string) {
+    vi.mocked(readServerSession).mockResolvedValue({
+      user: { id, role },
+    } as never);
+  }
+
+  async function forwardedActAs(
+    cookieRecord: string | null,
+    requested = "target-a",
+  ) {
+    const req = new NextRequest("https://app.test/api/proxy/api/v1/items", {
+      headers: { [ACT_AS]: requested },
+    });
+    // The test Request drops a Cookie header, so set it on the cookie jar.
+    if (cookieRecord)
+      req.cookies.set("admin-impersonate-user-id", cookieRecord);
+    await GET(req, makeParams(["api", "v1", "items"]));
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    return new Headers((init as RequestInit).headers).get(ACT_AS);
+  }
+
+  it("forwards it for the signed-in admin who chose that target", async () => {
+    sessionAs("admin-1", "admin");
+    expect(
+      await forwardedActAs(
+        encodeImpersonation({ target: "target-a", owner: "admin-1" }),
+      ),
+    ).toBe("target-a");
+  });
+
+  it("drops it when the session is a different admin", async () => {
+    sessionAs("admin-2", "admin");
+    expect(
+      await forwardedActAs(
+        encodeImpersonation({ target: "target-a", owner: "admin-1" }),
+      ),
+    ).toBeNull();
+  });
+
+  it("drops a header no impersonation cookie backs", async () => {
+    sessionAs("admin-1", "admin");
+    expect(await forwardedActAs(null)).toBeNull();
+  });
+
+  it("drops the target when the auth backend rejects the session", async () => {
+    vi.mocked(readServerSession).mockRejectedValue(
+      new APIError("UNAUTHORIZED"),
+    );
+    expect(
+      await forwardedActAs(
+        encodeImpersonation({ target: "target-a", owner: "admin-1" }),
+      ),
+    ).toBeNull();
+  });
+
+  it("fails the request rather than send it as the admin when the session can't be read", async () => {
+    vi.mocked(readServerSession).mockRejectedValue(
+      new APIError("INTERNAL_SERVER_ERROR"),
+    );
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const req = new NextRequest("https://app.test/api/proxy/api/v1/items", {
+      method: "POST",
+      headers: { [ACT_AS]: "target-a" },
+    });
+    req.cookies.set(
+      "admin-impersonate-user-id",
+      encodeImpersonation({ target: "target-a", owner: "admin-1" }),
+    );
+
+    const response = await POST(req, makeParams(["api", "v1", "items"]));
+
+    expect(response.status).toBe(502);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("drops a target the owner's cookie doesn't name", async () => {
+    sessionAs("admin-1", "admin");
+    expect(
+      await forwardedActAs(
+        encodeImpersonation({ target: "target-a", owner: "admin-1" }),
+        "target-b",
+      ),
+    ).toBeNull();
   });
 });

@@ -119,9 +119,8 @@ export function DialogWrap({
           isCompact && compactStyles.content,
           className,
         )}
-        style={{
-          ...styling,
-        }}
+        // oxlint-disable-next-line design-system/no-inline-styles -- the public `styling` prop, passed through from callers
+        style={styling}
       >
         <div
           data-slot="dialog-header"
@@ -151,8 +150,8 @@ export function DialogWrap({
               aria-label="Close"
               data-slot="dialog-close"
               className={cn(
-                "absolute right-4 top-4 z-50 bg-surface",
-                isCompact ? compactStyles.close : "size-[2.5rem]",
+                "absolute top-4 right-4 z-50 bg-surface",
+                isCompact ? "top-3 right-3" : "size-[2.5rem]",
               )}
               withTooltip={false}
             >
@@ -175,7 +174,7 @@ export function DialogWrap({
             ref={scrollRef}
             data-slot="dialog-viewport"
             className={cn(
-              "flex-1 overflow-y-auto overflow-x-hidden px-2",
+              "flex-1 overflow-x-hidden overflow-y-auto px-2",
               scrollbarStyles,
               hasVerticalScrollbar
                 ? "-mr-6 [scrollbar-gutter:stable]"

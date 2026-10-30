@@ -84,7 +84,7 @@ function WalkthroughControl({ player }: { player: Player }) {
       {!player.hasStarted && (
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 bottom-14 top-0 bg-foreground-base/15"
+          className="pointer-events-none absolute inset-x-0 top-0 bottom-14 bg-foreground-base/15"
         />
       )}
       <div className="flex min-h-14 items-center border-t border-border-base/80 bg-surface px-4 py-2">
@@ -113,8 +113,8 @@ function WalkthroughControl({ player }: { player: Player }) {
         onClick={player.togglePlayback}
         className={
           player.hasStarted
-            ? "absolute bottom-2.5 right-3"
-            : "absolute left-1/2 top-[calc(50%-1.75rem)] size-16 -translate-x-1/2 -translate-y-1/2 rounded-full border-surface/20 bg-brand text-action-foreground shadow-xl hover:border-surface/30 hover:bg-accent-strong focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-4"
+            ? "absolute right-3 bottom-2.5"
+            : "absolute top-[calc(50%-1.75rem)] left-1/2 size-16 -translate-x-1/2 -translate-y-1/2 rounded-full border-surface/20 bg-brand text-action-foreground shadow-xl hover:border-surface/30 hover:bg-accent-strong focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-4"
         }
       >
         <Icon icon={icon} size={player.hasStarted ? 14 : 26} aria-hidden />

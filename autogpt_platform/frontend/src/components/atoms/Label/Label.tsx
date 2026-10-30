@@ -13,7 +13,7 @@ export function Label({
     <LabelPrimitive.Root
       data-slot="label"
       className={cn(
-        "text-body font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
+        "text-body leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
         className,
       )}
       {...props}

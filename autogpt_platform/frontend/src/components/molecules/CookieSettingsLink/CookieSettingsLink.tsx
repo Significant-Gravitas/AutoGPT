@@ -32,7 +32,7 @@ export function CookieSettingsLink({ className, beforeOpen }: Props) {
       onClick={handleClick}
       data-slot="cookie-settings-link"
       className={cn(
-        "group inline-flex items-center rounded-md px-2 py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info disabled:cursor-default disabled:opacity-60 sm:py-1",
+        "group inline-flex items-center rounded-md px-2 py-1.5 focus-visible:ring-2 focus-visible:ring-info focus-visible:outline-none disabled:cursor-default disabled:opacity-60 sm:py-1",
         className,
       )}
     >

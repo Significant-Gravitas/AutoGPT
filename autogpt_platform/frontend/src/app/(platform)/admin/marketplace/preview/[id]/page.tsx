@@ -145,7 +145,7 @@ export default function AdminPreviewPage() {
             <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
               Instructions
             </h3>
-            <p className="whitespace-pre-wrap text-sm">{data.instructions}</p>
+            <p className="text-sm whitespace-pre-wrap">{data.instructions}</p>
           </div>
         )}
         {data.recommended_schedule_cron && (

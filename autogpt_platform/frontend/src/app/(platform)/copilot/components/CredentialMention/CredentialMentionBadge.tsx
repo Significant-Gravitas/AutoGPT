@@ -7,7 +7,7 @@ interface Props {
 
 export function CredentialMentionBadge({ name, provider }: Props) {
   return (
-    <span className="mx-0.5 inline-flex max-w-full items-center gap-1.5 rounded-xl border border-info/30 bg-info-surface px-1.5 py-0.5 align-baseline text-sm font-medium leading-5 text-info-foreground">
+    <span className="mx-0.5 inline-flex max-w-full items-center gap-1.5 rounded-xl border border-info/30 bg-info-surface px-1.5 py-0.5 align-baseline text-sm leading-5 font-medium text-info-foreground">
       <IntegrationLogo
         provider={provider === "codex" ? "openai" : provider}
         alt=""

@@ -28,9 +28,9 @@ export function BasesError({ message, onRetry, retrying }: ErrorProps) {
   return (
     <div
       role="alert"
-      className="flex flex-col items-start gap-2 rounded-2xl bg-red-50 p-3"
+      className="flex flex-col items-start gap-2 rounded-2xl bg-error-surface p-3"
     >
-      <Text variant="small" className="text-red-700">
+      <Text variant="small" className="text-error-foreground">
         {message}
       </Text>
       <Button
@@ -53,8 +53,8 @@ interface RefreshProps {
 
 export function NoBasesYet({ onRefresh, refreshing }: RefreshProps) {
   return (
-    <div className="flex flex-col items-start gap-2 rounded-2xl bg-zinc-50 p-3">
-      <Text variant="small" className="text-zinc-700">
+    <div className="flex flex-col items-start gap-2 rounded-2xl bg-surface-muted p-3">
+      <Text variant="small" tone="body">
         Your Airtable has no bases yet. Create an empty one in Airtable, then
         come back and refresh this list.
       </Text>

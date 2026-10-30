@@ -18,7 +18,8 @@ import { escapeCurrencyAmounts } from "@/lib/markdown-math";
 import { mermaid } from "@/lib/streamdown-mermaid-plugin";
 import rehypeKatex from "rehype-katex";
 import type { UIMessage } from "ai";
-import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+import { ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import type {
   ButtonHTMLAttributes,
   ComponentProps,
@@ -42,6 +43,7 @@ export const Message = ({ className, from, ...props }: MessageProps) => (
   <div
     className={cn(
       "group flex w-full max-w-[95%] flex-col gap-2",
+      // oxlint-disable-next-line design-system/no-unknown-classes -- is-user and is-assistant are markers the group-[.is-*] variants below match
       from === "user" ? "is-user ml-auto justify-end" : "is-assistant",
       className,
     )}
@@ -58,12 +60,10 @@ export const MessageContent = ({
 }: MessageContentProps) => (
   <div
     className={cn(
-      "is-user:dark flex w-full min-w-0 max-w-full flex-col gap-2 overflow-hidden text-body leading-5",
+      "flex w-full max-w-full min-w-0 flex-col gap-2 overflow-hidden text-body leading-5",
       "group-[.is-user]:w-fit",
-      // TODO(tokens): no exact role for bg-neutral-100 #F5F5F5; no fitting
-      // role for text-neutral-950 #0A0A0A, which is focus (a focus-ring colour)
-      "group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-neutral-100 group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-neutral-950",
-      "group-[.is-assistant]:text-neutral-950",
+      "group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-surface-hover group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground-base",
+      "group-[.is-assistant]:text-foreground-base",
       className,
     )}
     {...props}
@@ -281,7 +281,7 @@ export const MessageBranchPrevious = ({
       variant="compact-ghost"
       {...props}
     >
-      {children ?? <ChevronLeftIcon size={14} />}
+      {children ?? <Icon aria-hidden icon={ArrowLeft01Icon} size={14} />}
     </Button>
   );
 };
@@ -304,7 +304,7 @@ export const MessageBranchNext = ({
       variant="compact-ghost"
       {...props}
     >
-      {children ?? <ChevronRightIcon size={14} />}
+      {children ?? <Icon aria-hidden icon={ArrowRight01Icon} size={14} />}
     </Button>
   );
 };
@@ -320,8 +320,7 @@ export const MessageBranchPage = ({
   return (
     <ButtonGroupText
       className={cn(
-        // TODO(tokens): no exact role for text-neutral-500 #737373
-        "border-none bg-transparent text-neutral-500 shadow-none",
+        "border-none bg-transparent text-foreground-tertiary shadow-none",
         className,
       )}
       {...props}
@@ -363,10 +362,9 @@ function ExternalLinkModal({
         <Text variant="body">
           You&apos;re about to visit an external website:
         </Text>
-        {/* TODO(tokens): no exact role for bg-neutral-100 #F5F5F5 */}
         <Text
           variant="small-mono"
-          className="mt-2 break-all rounded-md bg-neutral-100 p-3"
+          className="mt-2 rounded-md bg-surface-hover p-3 break-all"
         >
           {url}
         </Text>
@@ -454,13 +452,11 @@ export const MessageResponse = memo(function MessageResponse({
   return (
     <Streamdown
       className={cn(
-        "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre]:!bg-surface",
-        // TODO(tokens): no fitting role for [&_a]:text-blue-500 #3B82F6: info is a
-        // status colour and sidebar-ring a focus ring, not link copy
-        "[&_a]:text-blue-500 [&_a]:no-underline [&_a]:hover:underline",
+        "size-full [&_pre]:!bg-surface [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+        "[&_a]:text-info [&_a]:no-underline [&_a]:hover:underline",
         // Raycast-style markdown tables: a rounded card with a quiet small-caps
         // header, hairline row separators and tabular figures.
-        "[&_table]:w-full [&_table]:border-separate [&_table]:border-spacing-0 [&_table]:border-0 [&_table]:text-body-sm [&_table]:tabular-nums [&_table]:leading-inherit",
+        "[&_table]:w-full [&_table]:border-separate [&_table]:border-spacing-0 [&_table]:border-0 [&_table]:text-body-sm [&_table]:leading-inherit [&_table]:tabular-nums",
         "[&_tbody]:bg-transparent [&_thead]:bg-message-table-header",
         // Streamdown merges className again with its own tailwind-merge
         // (default config), which reads the size roles as colours and drops
@@ -468,18 +464,13 @@ export const MessageResponse = memo(function MessageResponse({
         // their own [&_table_*] scope. th and inline code keep the 20px
         // line-height their own text-sm gives them.
         "[&_table_td]:text-body-sm [&_table_td_code]:text-caption [&_table_td_code]:leading-5 [&_table_th]:text-caption-sm [&_table_th]:leading-5",
-        "[&_th]:h-9 [&_th]:whitespace-nowrap [&_th]:border-b [&_th]:border-border-base [&_th]:px-4 [&_th]:py-0 [&_th]:text-left [&_th]:font-medium [&_th]:uppercase [&_th]:tracking-eyebrow",
-        "[&_th:first-child]:text-shadow-message-table-violet [&_th:last-child]:text-shadow-message-table-blue [&_th]:text-shadow-message-table-indigo",
+        "[&_th]:h-9 [&_th]:border-b [&_th]:border-border-base [&_th]:px-4 [&_th]:py-0 [&_th]:text-left [&_th]:font-medium [&_th]:tracking-eyebrow [&_th]:whitespace-nowrap [&_th]:uppercase",
+        "[&_th]:text-shadow-message-table-indigo [&_th:first-child]:text-shadow-message-table-violet [&_th:last-child]:text-shadow-message-table-blue",
         "[&_td]:border-b [&_td]:border-separator [&_td]:px-4 [&_td]:py-2 [&_td]:align-top [&_td]:text-foreground-body [&_td]:transition-colors",
-        // TODO(tokens): no fitting role for [&_td_strong]:text-zinc-950 #09090B
-        // (foreground, card-foreground and popover-foreground turn #FAFAFA under
-        // .dark), [&_td_code]:bg-zinc-100 #EFEFF0 (surface-hover is a hover fill,
-        // separator a border) or the row hover bg-zinc-50 #F9F9FA (surface-muted
-        // is a resting fill)
-        "[&_td_strong]:font-medium [&_td_strong]:text-zinc-950",
-        "[&_td_code]:whitespace-nowrap [&_td_code]:rounded [&_td_code]:bg-zinc-100 [&_td_code]:px-1 [&_td_code]:py-px [&_td_code]:text-foreground-body",
+        "[&_td_strong]:font-medium [&_td_strong]:text-foreground-base",
+        "[&_td_code]:rounded [&_td_code]:bg-surface-hover [&_td_code]:px-1 [&_td_code]:py-px [&_td_code]:whitespace-nowrap [&_td_code]:text-foreground-body",
         "[&_tbody_tr:last-child_td]:border-b-0",
-        "[&_tbody_tr:hover_td]:bg-zinc-50",
+        "[&_tbody_tr:hover_td]:bg-surface-muted",
         className,
       )}
       components={mergedComponents}
