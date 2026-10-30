@@ -68,7 +68,7 @@ def _raise(exc: Exception):
 
 def _capture_stats(block) -> list:
     merged: list = []
-    block.merge_stats = lambda s: merged.append(s)  # type: ignore[assignment]
+    setattr(block, "merge_stats", merged.append)
     return merged
 
 
@@ -146,6 +146,7 @@ async def test_client_posts_with_bearer_auth():
     assert client.requests.extra_headers == {
         "Authorization": "Bearer mock-search1api-api-key"
     }
+    assert client.requests.retry_max_attempts == 3
 
 
 @pytest.mark.asyncio

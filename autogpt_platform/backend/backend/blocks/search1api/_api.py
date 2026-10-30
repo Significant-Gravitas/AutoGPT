@@ -91,6 +91,9 @@ class Search1APIClient:
         self.requests = Requests(
             trusted_origins=[SEARCH1API_API_URL],
             raise_for_status=False,
+            # Unbounded by default; cap it so a lasting 429/5xx reaches the
+            # error message instead of retrying until the block times out.
+            retry_max_attempts=3,
             extra_headers={
                 "Authorization": f"Bearer {credentials.api_key.get_secret_value()}"
             },
