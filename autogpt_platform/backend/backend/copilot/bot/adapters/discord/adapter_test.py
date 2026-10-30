@@ -2559,6 +2559,28 @@ class TestAddressedToOthers:
         assert ctx is not None
         assert ctx.addressed_to_others is False
 
+    @pytest.mark.asyncio
+    async def test_dm_mentioning_someone_else_is_still_for_us(self):
+        # A 1:1 DM is always addressed to us, like a Slack DM: naming a
+        # teammate or a role in it must not drop the message.
+        adapter, _ = _bare_adapter(bot_id=1000)
+        dm = MagicMock(spec=discord.DMChannel)
+        dm.id = 1551607550107984000
+        msg = _gateway_message(
+            "ask <@2000> and <@&3000> about the outage",
+            [_mention(2000, "Bently")],
+            dm,
+            role_mentions=[_role(3000, "Engineering")],
+        )
+        msg.guild = None
+
+        ctx = await _deliver(adapter, msg)
+
+        assert ctx is not None
+        assert ctx.channel_type == "dm"
+        assert ctx.bot_mentioned is True
+        assert ctx.addressed_to_others is False
+
     def test_mentioning_our_managed_role_counts_as_mentioning_us(self):
         # Discord's autocomplete offers the bot's own integration role next to
         # the bot; picking it must still reach the bot.
