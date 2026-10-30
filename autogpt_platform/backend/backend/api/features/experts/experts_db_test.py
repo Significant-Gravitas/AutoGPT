@@ -95,7 +95,7 @@ _CLOCK_COPY = re.compile(
     r"\b(?:daily|weekly|bi-?weekly|fortnightly|monthly|quarterly|nightly|hourly"
     r"|annually|yearly|weekdays|business days?"
     rf"|(?:every|each) (?:\w+ )?(?:{_CLOCK_PERIODS})"
-    r"|(?:once|twice|\w+ times) a (?:day|week|month|quarter|year)"
+    r"|(?:once|twice|\w+ times) (?:a|per) (?:day|week|month|quarter|year)"
     rf"|(?:{_WEEKDAYS})s)\b"
     r"|\b\d{1,2}(?::\d{2})?\s*[ap]\.?m\b"
     r"|\b(?:[01]?\d|2[0-3]):[0-5]\d\b",
@@ -3861,6 +3861,8 @@ def test_roster_day_one_promises_match_work_the_expert_can_do_on_request(
         "17:45",
         "once a week",
         "twice a week",
+        "twice per week",
+        "three times per month",
         "every two weeks",
         "biweekly",
         "weekdays",
