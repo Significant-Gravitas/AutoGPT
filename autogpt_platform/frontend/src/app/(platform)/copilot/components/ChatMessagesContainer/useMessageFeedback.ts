@@ -84,9 +84,9 @@ export function useMessageFeedback({
 
   function explainNotRateableYet() {
     toast({
-      title: "This reply can't be rated yet",
+      title: "Can't rate this reply yet",
       description:
-        "It isn't saved yet. A reply stopped before it was saved can't be rated.",
+        "It's still being saved. A reply stopped before it was saved can't be rated.",
       duration: 3000,
     });
   }

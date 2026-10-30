@@ -203,8 +203,8 @@ describe("AssistantMessageActions feedback", () => {
     fireEvent.click(downvoteButton());
 
     expect(toastTitles()).toEqual([
-      "This reply can't be rated yet",
-      "This reply can't be rated yet",
+      "Can't rate this reply yet",
+      "Can't rate this reply yet",
     ]);
     expect(
       screen.queryByPlaceholderText(
