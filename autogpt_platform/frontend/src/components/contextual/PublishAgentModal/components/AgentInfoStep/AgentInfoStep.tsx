@@ -201,7 +201,7 @@ export function AgentInfoStep({
                   ) : null}
                 </Text>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pb-4 pt-0">
+              <AccordionContent className="px-1 pt-0 pb-4">
                 <div className="grid gap-x-4 sm:grid-cols-2">
                   <FormField
                     control={form.control}
@@ -310,7 +310,7 @@ export function AgentInfoStep({
                   ) : null}
                 </Text>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pb-4 pt-0">
+              <AccordionContent className="px-1 pt-0 pb-4">
                 <ThumbnailImages
                   agentId={agentId}
                   onImagesChange={handleImagesChange}
@@ -349,7 +349,7 @@ export function AgentInfoStep({
                   ) : null}
                 </Text>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pb-4 pt-0">
+              <AccordionContent className="px-1 pt-0 pb-4">
                 <FormField
                   control={form.control}
                   name="description"
@@ -451,7 +451,7 @@ export function AgentInfoStep({
                       <button
                         type="button"
                         onClick={() => setCronScheduleDialogOpen(true)}
-                        className="flex h-[2.875rem] w-full items-center gap-2 rounded-xl border border-border-base bg-surface px-4 py-2.5 text-left text-foreground-base shadow-none transition-colors hover:border-border-strong focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+                        className="flex h-[2.875rem] w-full items-center gap-2 rounded-xl border border-border-base bg-surface px-4 py-2.5 text-left text-foreground-base shadow-none transition-colors hover:border-border-strong focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none"
                       >
                         <Icon
                           icon={Calendar03Icon}

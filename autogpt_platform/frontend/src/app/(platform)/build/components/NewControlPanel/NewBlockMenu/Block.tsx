@@ -127,7 +127,7 @@ function BlockCard({
         data-id={blockDataId}
         className={cn(
           blockMenuButtonBase,
-          "group flex h-16 w-full min-w-[7.5rem] items-center justify-start space-x-3 whitespace-normal rounded-xl bg-surface-muted px-3.5 py-2.5 text-start",
+          "group flex h-16 w-full min-w-[7.5rem] items-center justify-start space-x-3 rounded-xl bg-surface-muted px-3.5 py-2.5 text-start whitespace-normal",
           "hover:cursor-default hover:bg-surface-hover active:bg-surface-hover active:ring-1 active:ring-border-strong disabled:cursor-not-allowed",
           isMCPBlock && "hover:cursor-pointer",
           className,

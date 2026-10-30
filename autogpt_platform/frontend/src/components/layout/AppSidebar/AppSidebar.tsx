@@ -206,7 +206,7 @@ export function AppSidebar(props: Props) {
 
   return (
     <Sidebar collapsible="icon" {...props}>
-      <SidebarContent className="scroll-py-16 gap-0 overflow-y-auto overflow-x-hidden overscroll-contain [-ms-overflow-style:none] [scrollbar-width:none] group-data-[collapsible=icon]:scroll-pt-24 group-data-[collapsible=icon]:overflow-y-auto [&::-webkit-scrollbar]:hidden">
+      <SidebarContent className="scroll-py-16 [scrollbar-width:none] gap-0 overflow-x-hidden overflow-y-auto overscroll-contain [-ms-overflow-style:none] group-data-[collapsible=icon]:scroll-pt-24 group-data-[collapsible=icon]:overflow-y-auto [&::-webkit-scrollbar]:hidden">
         <AppSidebarHeader />
 
         <motion.div
@@ -239,7 +239,7 @@ export function AppSidebar(props: Props) {
         <SidebarUserActions />
       </SidebarContent>
 
-      <SidebarRail className="w-2 translate-x-0 after:left-0 group-data-[side=left]:-right-2 group-data-[side=right]:-left-2 group-data-[side=right]:after:left-auto group-data-[side=right]:after:right-0 sm:hidden md:flex" />
+      <SidebarRail className="w-2 translate-x-0 group-data-[side=left]:-right-2 group-data-[side=right]:-left-2 after:left-0 group-data-[side=right]:after:right-0 group-data-[side=right]:after:left-auto sm:hidden md:flex" />
     </Sidebar>
   );
 }

@@ -12,7 +12,7 @@ export function ElapsedTime({ seconds }: { seconds: number }) {
 
   return (
     <span
-      className="flex items-center font-poppins text-title font-medium tabular-nums leading-10 text-foreground-strong"
+      className="flex items-center font-poppins text-title leading-10 font-medium text-foreground-strong tabular-nums"
       aria-label={`${seconds} seconds recorded`}
       role="timer"
     >

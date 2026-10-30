@@ -66,7 +66,7 @@ export function ExpertCover({ className, color, status, art }: Props) {
       {statusStyle ? (
         <span
           className={cn(
-            "absolute bottom-3 right-3 flex items-center gap-1 rounded-md px-2 py-0.5 font-sans text-caption font-medium",
+            "absolute right-3 bottom-3 flex items-center gap-1 rounded-md px-2 py-0.5 font-sans text-caption font-medium",
             statusStyle.className,
           )}
         >

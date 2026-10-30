@@ -28,7 +28,7 @@ export function ReleaseItem({ release, isLatest, isLast }: Props) {
       {isLast ? null : (
         <span
           aria-hidden
-          className="pointer-events-none absolute -bottom-4 left-[1.15625rem] top-6 z-10 w-px bg-border-base"
+          className="pointer-events-none absolute top-6 -bottom-4 left-[1.15625rem] z-10 w-px bg-border-base"
         />
       )}
       <a
@@ -39,7 +39,7 @@ export function ReleaseItem({ release, isLatest, isLast }: Props) {
         aria-describedby={details ? detailsID : undefined}
         className={cn(
           RELEASE_ROW_CLASS,
-          "group rounded-xl transition-colors duration-150 hover:bg-surface-hover/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info motion-reduce:transition-none",
+          "group rounded-xl transition-colors duration-150 hover:bg-surface-hover/60 focus-visible:ring-2 focus-visible:ring-info focus-visible:outline-none motion-reduce:transition-none",
         )}
       >
         <span aria-hidden className={RELEASE_DOT_COLUMN_CLASS}>
@@ -58,13 +58,13 @@ export function ReleaseItem({ release, isLatest, isLast }: Props) {
               {release.dateRange}
             </Text>
             {isLatest ? (
-              <span className="rounded-full bg-accent-surface px-2 py-px font-sans text-caption font-medium leading-4 text-accent-strong">
+              <span className="rounded-full bg-accent-surface px-2 py-px font-sans text-caption leading-4 font-medium text-accent-strong">
                 Latest
               </span>
             ) : null}
             <span
               aria-hidden
-              className="ml-auto shrink-0 text-foreground-tertiary transition-[color,transform] duration-150 group-hover:-translate-y-px group-hover:translate-x-px group-hover:text-foreground-strong motion-reduce:transition-none motion-reduce:group-hover:transform-none"
+              className="ml-auto shrink-0 text-foreground-tertiary transition-[color,transform] duration-150 group-hover:translate-x-px group-hover:-translate-y-px group-hover:text-foreground-strong motion-reduce:transition-none motion-reduce:group-hover:transform-none"
             >
               <Icon icon={ArrowUpRight01Icon} size={16} />
             </span>

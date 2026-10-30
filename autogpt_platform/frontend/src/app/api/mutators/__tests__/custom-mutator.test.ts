@@ -9,6 +9,7 @@ vi.mock("@/services/environment", () => ({
     isClientSide: vi.fn(),
     isServerSide: vi.fn(),
     getAGPTServerBaseUrl: vi.fn(() => "http://localhost:8006"),
+    getCookiebotCBID: vi.fn(() => ""),
   },
 }));
 

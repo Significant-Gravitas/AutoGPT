@@ -66,7 +66,7 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
                 variant="small-medium"
                 tone="warning"
                 as="span"
-                className="rounded bg-warning-surface px-1.5 py-px ring-1 ring-inset ring-warning-foreground/10"
+                className="rounded bg-warning-surface px-1.5 py-px ring-1 ring-warning-foreground/10 ring-inset"
               >
                 Waiting
               </Text>
