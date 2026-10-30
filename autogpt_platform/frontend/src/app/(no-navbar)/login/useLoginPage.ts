@@ -7,6 +7,7 @@ import {
   getEmailVerificationNotice,
 } from "@/lib/auth/email-verification";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { isTeamEmail } from "@/lib/auth/team-email-domain";
 import { environment } from "@/services/environment";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -97,7 +98,7 @@ export function useLoginPage() {
     setIsLoading(true);
     setIsLoggingIn(true);
 
-    if (data.email.includes("@agpt.co")) {
+    if (isTeamEmail(data.email)) {
       toast({
         title: "Please use Google SSO to login using an AutoGPT email.",
         variant: "default",
