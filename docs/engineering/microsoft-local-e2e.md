@@ -127,6 +127,18 @@ On the environment's app (dev: `autogpt-dev`, prod: `AutoGPT`):
    Without it, work and school accounts cannot use Continue with Microsoft.
 4. **Certificates & secrets:** the bot's existing secret also serves sign-in.
    Rotate by adding a new secret, deploying it, then removing the old one.
+5. **API permissions:** add the connection's delegated Microsoft Graph
+   permissions: `User.Read`, `openid`, `profile`, `email`, `offline_access`,
+   `Mail.ReadWrite`, `Mail.Send`, `Calendars.ReadWrite`, `Files.ReadWrite`,
+   `Chat.ReadWrite`, and Copilot's `Sites.Read.All`, `Mail.Read`,
+   `People.Read.All`, `OnlineMeetingTranscript.Read.All`, `Chat.Read`,
+   `ChannelMessage.Read.All` and `ExternalItem.Read.All`. Sign-ins ask for
+   their permissions as they go, so this changes nothing for them. It is what
+   an admin approves when they grant consent outside AutoGPT: the Entra admin
+   center and Microsoft's `/adminconsent?client_id=…` link, which
+   `/microsoft-setup` points to in sign-in-code mode, approve only the
+   permissions listed here. Leave Work IQ out: listed, it would fail that
+   approval wherever Microsoft hasn't set Work IQ up (`AADSTS650052`).
 
 Then set `MICROSOFT_BROWSER_SIGN_IN=true`. A secret alone doesn't turn browser
 sign-in on, because the bot's app has one long before it has the redirect.
@@ -136,8 +148,9 @@ app, at `/common` (the Copilot-only connection used `/organizations`). So step
 flag: without it, personal accounts can't sign in. Continue with Microsoft has
 its own switch, below.
 
-Dev's app is configured (2026-10-26) but still needs the flags. Prod needs
-step 1 before this release reaches it, then steps 2 and 3 and the flags.
+Dev's app has steps 1–4 (2026-10-26); step 5 and the flags remain. Prod needs
+step 1 before this release reaches it, and step 5 so an admin's approval
+covers every service; then steps 2 and 3 and the flags.
 
 ## Environment variables
 
