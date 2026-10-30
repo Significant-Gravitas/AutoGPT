@@ -6,12 +6,15 @@ import subprocess
 import sys
 from pathlib import PurePosixPath
 
-
 SHARDS = {
     "data": ["backend/data"],
     "copilot": ["backend/copilot"],
-    "copilot-memory": ["backend/copilot/dream", "backend/copilot/graphiti"],
-    "copilot-billing": ["backend/copilot/billing_e2e"],
+    "memory-experts": [
+        "backend/copilot/dream",
+        "backend/copilot/graphiti",
+        "backend/api/features/experts",
+    ],
+    "sdk-billing": ["backend/copilot/sdk", "backend/copilot/billing_e2e"],
     "billing-threads": [
         "backend/copilot/billing_e2e/thread_billing_test.py",
         "backend/executor/billing_e2e",

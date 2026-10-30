@@ -254,8 +254,8 @@ jobs:
         test-shard:
           - data
           - copilot
-          - copilot-memory
-          - copilot-billing
+          - memory-experts
+          - sdk-billing
           - billing-threads
           - util-executor
           - api
@@ -371,7 +371,7 @@ jobs:
             data)
               database_name="postgres"
               ;;
-            copilot|copilot-memory|copilot-billing|billing-threads|util-executor|api|remainder)
+            copilot|memory-experts|sdk-billing|billing-threads|util-executor|api|remainder)
               database_name="ci_${MATRIX_TEST_SHARD//-/_}"
               ;;
             *)
