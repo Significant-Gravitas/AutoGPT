@@ -27,10 +27,11 @@ class AccountDeletionRequestBody(BaseModel):
 
 class AccountDeletionResponse(BaseModel):
     """Whether the account is closed and waiting to be erased. While it is,
-    ``erase_after`` says when the erasure may start: until then its owner can
-    keep the account."""
+    ``erase_after`` says when the erasure may start: until then (``scheduled``)
+    its owner can keep the account; from then on, or once the erasure has
+    claimed the request, it is ``too_late``."""
 
-    status: Literal["open", "scheduled"]
+    status: Literal["open", "scheduled", "too_late"]
     erase_after: datetime | None = None
 
 

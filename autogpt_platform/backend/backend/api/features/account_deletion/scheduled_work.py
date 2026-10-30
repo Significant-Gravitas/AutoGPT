@@ -53,8 +53,10 @@ async def stop_user_work(user_id: str) -> None:
     unlink only stops new ones); a run can start an AutoPilot turn (AutoPilot
     block) between steps 2 and 3; until the account is closed, a request
     from the user's own session can start work too; and a schedule or trigger
-    whose removal failed is not retried, while neither the scheduler nor the
-    webhook ingress checks for a closed account (the erasure reruns this).
+    whose removal failed is not retried here (the erasure reruns this). Once
+    the account is closed, the gates of runs, AutoPilot turns, webhook
+    deliveries and memory crons (``is_user_refused``) refuse it anyway, so a
+    leftover can't start work.
 
     Best effort: each call that fails is logged and the rest still run, and
     this never raises, so the account can still be closed. Every call is
@@ -87,17 +89,10 @@ async def _remove_schedules(user_id: str) -> None:
             user_id,
             scheduler.remove_morning_briefing_schedule(user_id=user_id),
         ),
-        attempt_step(
-            "remove the nightly batch",
-            user_id,
-            scheduler.delete_nightly_batch_schedule(user_id=user_id),
-        ),
-        attempt_step(
-            "remove the community rebuild",
-            user_id,
-            scheduler.delete_community_rebuild_schedule(user_id=user_id),
-        ),
     )
+    # The memory crons (nightly batch, community rebuild, skill learning) stay
+    # registered: their gate (is_user_refused) skips a closed account, and
+    # they resume on their own if it is kept. The erasure removes them.
 
 
 async def _remove_listed_schedules(scheduler: SchedulerClient, user_id: str) -> None:

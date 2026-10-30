@@ -424,12 +424,12 @@ async def test_schedules_are_removed(
     assert removed == ["job-1", "job-2"]
     for call in scheduler.delete_schedule.await_args_list:
         assert call.kwargs["user_id"] == account.user_id
-    for job in (
-        scheduler.remove_morning_briefing_schedule,
-        scheduler.delete_nightly_batch_schedule,
-        scheduler.delete_community_rebuild_schedule,
-    ):
-        job.assert_awaited_once_with(user_id=account.user_id)
+    scheduler.remove_morning_briefing_schedule.assert_awaited_once_with(
+        user_id=account.user_id
+    )
+    # Gated by is_user_refused instead, so they resume if the account is kept.
+    scheduler.delete_nightly_batch_schedule.assert_not_awaited()
+    scheduler.delete_community_rebuild_schedule.assert_not_awaited()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -502,13 +502,15 @@ async def test_the_confirmation_email_replies_to_the_shared_inbox(
     assert to == account.email
     request = await _deletion_request(account)
     assert request is not None
-    last_day = request.eraseAfter - timedelta(days=1)
+    last_day = (request.eraseAfter - timedelta(hours=36)).date()
     erase_day = f"{last_day.day} {last_day.strftime('%b %Y')}"
     assert subject == "Your AutoGPT account is closed"
     assert "Your account is closed" in html
     assert (
-        "We've closed your AutoGPT account, signed you out and disconnected your "
-        f"apps. Changed your mind? Sign in by {erase_day} and choose Keep my "
+        "We've closed your AutoGPT account, signed you out, disconnected your "
+        "apps and revoked your API keys. Your Marketplace listings and reviews "
+        "are removed, and notification emails stay off until you switch them "
+        f"back on. Changed your mind? Sign in by {erase_day} and choose Keep my "
         "account. After that, everything in your account is erased. If you have "
         "a minute, reply and tell us what we could have done better."
     ) in text
@@ -746,7 +748,10 @@ async def test_the_account_cannot_be_kept_once_its_erasure_started(
         data={"startedAt": datetime.now(timezone.utc)},
     )
 
+    status = await api.get(STATUS)
     response = await api.post(RESTORE)
+
+    assert status.json()["status"] == "too_late"
 
     assert (response.status_code, response.json()) == (
         409,

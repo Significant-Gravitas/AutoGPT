@@ -6,7 +6,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from backend.data import user as user_module
-from backend.data.user import forget_refusal, is_user_refused
+from backend.data.user import account_refusal, forget_refusal, is_user_refused
 
 
 @pytest.fixture
@@ -70,3 +70,17 @@ def test_forget_refusal_never_raises(mocker: MockerFixture):
     )
 
     forget_refusal("user-1")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "banned, closed, reason",
+    [(True, True, "banned"), (False, True, "closed"), (False, False, None)],
+)
+async def test_the_refusal_says_why_and_a_ban_wins(
+    lookups: MagicMock, banned: bool, closed: bool, reason: str | None
+):
+    lookups.banned.return_value = banned
+    lookups.closed.return_value = closed
+
+    assert await account_refusal("user-1") == reason

@@ -15,6 +15,7 @@ from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING, Callable, cast
 
+from autogpt_libs.auth.closed_accounts import ACCOUNT_CLOSED_DETAIL
 from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
 
 from backend.copilot import stream_registry
@@ -62,7 +63,7 @@ from backend.copilot.turn_tracing import (
     turn_origin,
     turn_transaction,
 )
-from backend.data.user import is_user_refused
+from backend.data.user import account_refusal
 from backend.executor.cluster_lock import ClusterLock
 from backend.integrations.codex.transport import CodexCredentialIntegrityError
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -88,6 +89,9 @@ from .utils import CoPilotExecutionEntry, CoPilotLogMetadata
 if TYPE_CHECKING:
     from backend.copilot.model import ChatSession
     from backend.copilot.tree import TurnEnvelope
+
+# The error code a turn refused for a closed account is stored with.
+ACCOUNT_CLOSED_CODE = "account_closed"
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[CoPilotExecutor]")
 
@@ -620,13 +624,18 @@ class CoPilotProcessor:
         try:
             from backend.copilot.model import get_chat_session
 
-            # Every copilot turn starts here, whatever queued it.
-            # A closed account is answered as banned: nobody signed in to it
-            # can see the turn.
-            if entry.user_id and await is_user_refused(entry.user_id):
-                log.info("Turn not started: the account is banned or closed")
-                error_msg = ACCOUNT_BANNED_DETAIL["message"]
-                error_code = ACCOUNT_BANNED_DETAIL["code"]
+            # Every copilot turn starts here, whatever queued it. The chat
+            # keeps the reason, and a closed account can be kept, so it must
+            # not read "banned" afterwards.
+            refusal = entry.user_id and await account_refusal(entry.user_id)
+            if refusal:
+                log.info(f"Turn not started: the account is {refusal}")
+                if refusal == "banned":
+                    error_msg = ACCOUNT_BANNED_DETAIL["message"]
+                    error_code = ACCOUNT_BANNED_DETAIL["code"]
+                else:
+                    error_msg = ACCOUNT_CLOSED_DETAIL
+                    error_code = ACCOUNT_CLOSED_CODE
                 # A refused account is not a failed schedule worth alerting on.
                 scheduled_watch = None
                 return

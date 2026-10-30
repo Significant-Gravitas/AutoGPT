@@ -35,6 +35,7 @@ _BAN_CHECK_SITES = (
 # Background work is refused for a banned or a closed account.
 _REFUSAL_CHECK_SITES = (
     "backend.api.features.integrations.router.is_user_refused",
+    "backend.api.ws_api.is_user_refused",
     "backend.executor.utils.is_user_refused",
 )
 

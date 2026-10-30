@@ -508,6 +508,15 @@ class TestOptionalAuth:
     async def test_an_open_account_reads_as_itself(self, bans, mocker):
         assert await self._resolve(OPEN, mocker) == OPEN
 
+    @pytest.mark.asyncio
+    async def test_a_failed_closed_check_reads_as_signed_out(
+        self, bans, backend, mocker: MockerFixture
+    ):
+        """As a failed ban lookup does: these routes are read-only."""
+        backend.is_closed.side_effect = ConnectionError("db down")
+
+        assert await self._resolve(OPEN, mocker) is None
+
 
 class TestFailsOpen:
     """Without a way to ask, the account is treated as open: the check must

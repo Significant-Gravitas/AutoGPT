@@ -45,7 +45,17 @@ async def get_deletion_status(user_id: str) -> AccountDeletionResponse:
     if request is None:
         forget_account_state(user_id)
         return AccountDeletionResponse(status="open")
-    return AccountDeletionResponse(status="scheduled", erase_after=request.eraseAfter)
+    # The same test reopen_account makes, so the page never offers a keep
+    # the server would refuse, whatever the browser's clock says.
+    too_late = (
+        request.startedAt is not None
+        or request.completedAt is not None
+        or request.eraseAfter <= datetime.now(timezone.utc)
+    )
+    return AccountDeletionResponse(
+        status="too_late" if too_late else "scheduled",
+        erase_after=request.eraseAfter,
+    )
 
 
 async def restore_account(user_id: str) -> None:

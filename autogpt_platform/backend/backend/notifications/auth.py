@@ -99,11 +99,12 @@ async def send_account_deleted_email(
 
 
 def account_closed_preheader(erase_after: datetime) -> str:
-    """How long the owner can still change their mind. Keeping the account is
-    refused from the exact erasure moment, and the reader's day may start
-    hours before or after UTC's, so the email names the day before it, with
-    no time zone: signing in at any time that day is still in time."""
-    last_day = erase_after - timedelta(days=1)
+    """How long the owner can still change their mind, as a date with no time
+    zone. Keeping the account is refused from the exact erasure moment, and
+    the named day must be over by then wherever the reader is: its end is
+    at most 36 hours after its UTC start in the westernmost zone (UTC-12), so
+    the date is the UTC day of ``erase_after`` minus 36 hours."""
+    last_day = (erase_after - timedelta(hours=36)).date()
     day = f"{last_day.day} {last_day.strftime('%b %Y')}"
     return (
         f"Changed your mind? Sign in by {day} and choose Keep my account. "
@@ -194,8 +195,10 @@ _CONTENT: dict[AuthEmailType, AuthEmailContent] = {
         eyebrow="ACCOUNT · CLOSED",
         headline="Your account is closed",
         intro=(
-            "We've closed your AutoGPT account, signed you out and "
-            "disconnected your apps."
+            "We've closed your AutoGPT account, signed you out, disconnected "
+            "your apps and revoked your API keys. Your Marketplace listings and "
+            "reviews are removed, and notification emails stay off until you "
+            "switch them back on."
         ),
         preheader=(
             "Changed your mind? Sign in within 14 days and choose Keep my "

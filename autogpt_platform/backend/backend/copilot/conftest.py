@@ -10,12 +10,15 @@ def _no_bans(mocker):
     retries."""
     for module in (
         "backend.copilot.turn_queue",
-        "backend.copilot.executor.processor",
         "backend.copilot.briefing.generate",
     ):
         mocker.patch(
             f"{module}.is_user_refused", new=mocker.AsyncMock(return_value=False)
         )
+    mocker.patch(
+        "backend.copilot.executor.processor.account_refusal",
+        new=mocker.AsyncMock(return_value=None),
+    )
 
 
 @pytest.fixture(autouse=True)

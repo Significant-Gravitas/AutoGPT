@@ -1,7 +1,7 @@
 """Keeping a closed account: the status the sign-in screen reads, and the
 reopen. routes_test.py runs both against the real database."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -17,7 +17,7 @@ from backend.util.posthog_events import PostHogEvent
 
 MODULE = "backend.api.features.account_deletion.restore"
 USER_ID = "user-1"
-ERASE_AFTER = datetime(2026, 11, 13, 12, 0, tzinfo=timezone.utc)
+ERASE_AFTER = datetime.now(timezone.utc) + timedelta(days=10)
 
 
 @pytest.mark.asyncio
@@ -33,8 +33,32 @@ async def test_an_open_account_has_nothing_scheduled(mocker: MockerFixture):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"startedAt": datetime(2026, 11, 1, tzinfo=timezone.utc)},
+        {"completedAt": datetime(2026, 11, 1, tzinfo=timezone.utc)},
+        {"eraseAfter": datetime(2020, 1, 1, tzinfo=timezone.utc)},
+    ],
+    ids=["erasure-claimed", "erased", "date-passed"],
+)
+async def test_a_closed_account_past_keeping_is_too_late(
+    mocker: MockerFixture, fields: dict
+):
+    request = MagicMock(
+        **{"eraseAfter": ERASE_AFTER, "startedAt": None, "completedAt": None, **fields}
+    )
+    mocker.patch(f"{MODULE}.get_deletion_request", AsyncMock(return_value=request))
+
+    status = await get_deletion_status(USER_ID)
+
+    assert status.status == "too_late"
+    assert status.erase_after == request.eraseAfter
+
+
+@pytest.mark.asyncio
 async def test_a_closed_account_shows_its_erasure_date(mocker: MockerFixture):
-    request = MagicMock(eraseAfter=ERASE_AFTER)
+    request = MagicMock(eraseAfter=ERASE_AFTER, startedAt=None, completedAt=None)
     mocker.patch(f"{MODULE}.get_deletion_request", AsyncMock(return_value=request))
 
     status = await get_deletion_status(USER_ID)

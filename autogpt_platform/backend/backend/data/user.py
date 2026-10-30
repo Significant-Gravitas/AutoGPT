@@ -7,7 +7,7 @@ import logging
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Optional, cast
+from typing import TYPE_CHECKING, Literal, Optional, cast
 from urllib.parse import quote_plus
 
 from autogpt_libs.auth.models import DEFAULT_USER_ID
@@ -285,6 +285,20 @@ async def is_user_account_closed(user_id: str) -> bool:
     return await user_db().is_account_closed(user_id)
 
 
+AccountRefusal = Literal["banned", "closed"]
+
+
+async def account_refusal(user_id: str) -> AccountRefusal | None:
+    """Why no work may run for this account, if so: ``banned`` (the ban wins)
+    or ``closed``. For a caller that tells the two apart, as
+    ``is_user_refused`` does not. Lookup errors propagate."""
+    if await is_user_banned(user_id):
+        return "banned"
+    if await is_user_account_closed(user_id):
+        return "closed"
+    return None
+
+
 async def is_user_refused(user_id: str) -> bool:
     """No work of any kind may run for this account: an admin banned it, or
     its owner closed it (account deletion, for the 14 days they can still keep
@@ -295,12 +309,13 @@ async def is_user_refused(user_id: str) -> bool:
     Each answer is cached for 30 s across processes; closing and keeping an
     account drop it (``forget_refusal``). Lookup errors propagate.
     """
-    return await is_user_banned(user_id) or await is_user_account_closed(user_id)
+    return await account_refusal(user_id) is not None
 
 
 def forget_refusal(user_id: str) -> None:
-    """Drop the cached closed answer for *user_id*, best effort: work stops
-    (or resumes) at once rather than within 30 s."""
+    """Drop the cached closed answer for *user_id*, best effort, so work
+    stops (or resumes) at the next check: within 30 s at worst, when the drop
+    fails and the cached answer has to run out."""
     try:
         is_user_account_closed.cache_delete(user_id)
     except Exception:

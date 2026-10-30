@@ -135,11 +135,11 @@ def cancel_turns(mocker: MockerFixture) -> AsyncMock:
 
 
 def _assert_per_user_jobs_removed(scheduler: MagicMock) -> None:
+    """The briefing goes; the memory crons stay, gated, so they resume if the
+    account is kept."""
     scheduler.remove_morning_briefing_schedule.assert_awaited_once_with(user_id=USER_ID)
-    scheduler.delete_nightly_batch_schedule.assert_awaited_once_with(user_id=USER_ID)
-    scheduler.delete_community_rebuild_schedule.assert_awaited_once_with(
-        user_id=USER_ID
-    )
+    scheduler.delete_nightly_batch_schedule.assert_not_awaited()
+    scheduler.delete_community_rebuild_schedule.assert_not_awaited()
 
 
 def _errors(caplog: pytest.LogCaptureFixture) -> list[str]:
@@ -378,8 +378,6 @@ async def test_nothing_raises_when_every_step_fails(
 ):
     scheduler.get_execution_schedules.side_effect = RuntimeError("down")
     scheduler.remove_morning_briefing_schedule.side_effect = RuntimeError("down")
-    scheduler.delete_nightly_batch_schedule.side_effect = RuntimeError("down")
-    scheduler.delete_community_rebuild_schedule.side_effect = RuntimeError("down")
     deactivate_presets.side_effect = RuntimeError("db down")
     list_triggered_nodes.side_effect = RuntimeError("db down")
     list_runs.side_effect = RuntimeError("db down")
@@ -387,7 +385,7 @@ async def test_nothing_raises_when_every_step_fails(
 
     await stop_user_work(USER_ID)
 
-    assert len(_errors(caplog)) == 7
+    assert len(_errors(caplog)) == 5
 
 
 @pytest.mark.asyncio
@@ -613,8 +611,6 @@ async def test_with_every_call_hung_it_still_returns_promptly(
     for step in (
         scheduler.get_execution_schedules,
         scheduler.remove_morning_briefing_schedule,
-        scheduler.delete_nightly_batch_schedule,
-        scheduler.delete_community_rebuild_schedule,
         deactivate_presets,
         list_triggered_nodes,
         list_runs,
@@ -624,6 +620,6 @@ async def test_with_every_call_hung_it_still_returns_promptly(
 
     await asyncio.wait_for(stop_user_work(USER_ID), timeout=2)
 
-    assert len(_errors(caplog)) == 10
+    assert len(_errors(caplog)) == 8
     warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
     assert any("AutoPilot turn" in w and USER_ID in w for w in warnings)

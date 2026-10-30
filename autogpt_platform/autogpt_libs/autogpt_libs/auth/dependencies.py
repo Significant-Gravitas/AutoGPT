@@ -152,8 +152,9 @@ async def get_optional_user_id(
     if banned:
         return None
     # A closed account is not banned (its owner signs in to keep it), so it is
-    # checked on its own. A failed check answers as the user, as everywhere.
-    if await get_account_state(user_id) is AccountState.CLOSED:
+    # checked on its own. Like a failed ban lookup, a failed check answers as
+    # someone signed out: these routes are read-only, so that costs little.
+    if await get_account_state(user_id) is not AccountState.OPEN:
         return None
     return user_id
 
