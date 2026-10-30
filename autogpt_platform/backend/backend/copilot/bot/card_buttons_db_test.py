@@ -20,6 +20,7 @@ from prisma.models import PendingHumanReview, PlatformLink
 from backend.copilot import stream_registry, woken_turns
 from backend.copilot.active_turns import acquire_turn_slot
 from backend.copilot.bot import sessions as bot_sessions
+from backend.copilot.bot.adapters.base import MessageContext
 from backend.copilot.bot.adapters.discord import choice_ui as discord_ui
 from backend.copilot.bot.adapters.slack.adapter import SlackAdapter
 from backend.copilot.bot.adapters.teams.adapter import TeamsAdapter
@@ -27,7 +28,8 @@ from backend.copilot.bot.adapters.telegram.adapter import TelegramAdapter
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.choices import CARD_KIND
 from backend.copilot.bot.handler import MessageHandler
-from backend.copilot.bot.text import format_batch
+from backend.copilot.bot.prompt import PendingMessage as BatchMessage
+from backend.copilot.bot.prompt import format_batch
 from backend.copilot.context import set_execution_context
 from backend.copilot.gate import channel as gate_channel
 from backend.copilot.gate import chat_rules, check_action, held, resolve_mode
@@ -344,7 +346,12 @@ def delayed_wake():
 
 @pytest.fixture
 def gate_on():
-    with patch("backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=True)):
+    with (
+        patch("backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=True)),
+        patch(
+            "backend.copilot.gate.reads.get_flag_variant", AsyncMock(return_value=True)
+        ),
+    ):
         yield
 
 
@@ -807,8 +814,23 @@ async def test_a_channel_click_wakes_a_turn_judged_on_the_request_and_answered_h
     checkpoint as the engines stream it, lands where the card was."""
     session, _, card = await _held_card(one_linked, test_user_id)
     request = format_batch(
-        [("Someone", one_linked.owner, "Post hello, then pause my weekly report")],
-        one_linked.platform,
+        [
+            BatchMessage(
+                username="Someone",
+                user_id=one_linked.owner,
+                text="Post hello, then pause my weekly report",
+            )
+        ],
+        MessageContext(
+            platform=one_linked.platform,
+            channel_type="thread",
+            server_id=None,
+            channel_id=str(_Discord.thread_id),
+            message_id="m-1",
+            user_id=one_linked.owner,
+            username="Someone",
+            text="Post hello, then pause my weekly report",
+        ),
     )
     await append_and_save_message(
         session.session_id, ChatMessage(role="user", content=request)

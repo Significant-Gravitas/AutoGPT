@@ -42,8 +42,11 @@ def compose_attention_items(
         for session, question in _open_questions(questions or [])
         if _is_answerable(session, expert_by_id)
     )
-    if credits_balance is not None and credits_balance <= 0 and schedules:
-        items.append(_credits_attention(len(schedules)))
+    # Chat follow-ups bill the plan's allowance, not credits; only workflow
+    # schedules stop on an empty balance.
+    workflow_schedules = sum(schedule.kind == "graph" for schedule in schedules)
+    if credits_balance is not None and credits_balance <= 0 and workflow_schedules:
+        items.append(_credits_attention(workflow_schedules))
     return sorted(items, key=_attention_sort_key)
 
 

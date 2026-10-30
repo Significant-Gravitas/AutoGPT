@@ -22,6 +22,8 @@ with, and a batch's status reads ended, unless a test sets its own.
 from __future__ import annotations
 
 import asyncio
+import gc
+from collections.abc import Iterator
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
@@ -57,6 +59,17 @@ async def server():
 async def graph_cleanup():
     """No-op graph cleanup stub."""
     yield
+
+
+@pytest.fixture(autouse=True)
+def no_gc_during_test() -> Iterator[None]:
+    """These tests time the loop against budgets of tenths of a second, and a
+    full collection over the suite's heap stalls it for over a second on CI."""
+    enabled = gc.isenabled()
+    gc.disable()
+    yield
+    if enabled:
+        gc.enable()
 
 
 class FakeAsyncRedis:

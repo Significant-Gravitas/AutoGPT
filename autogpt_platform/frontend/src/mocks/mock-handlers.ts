@@ -22,7 +22,11 @@ import {
   getExecutionsMock,
   getGetV2GetAnsweredReviewsWaitingToRunForChatSessionMockHandler,
 } from "@/app/api/__generated__/endpoints/executions/executions.msw";
-import { getExpertsMock } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import { getGetExperimentsGetExperimentAssignmentMockHandler } from "@/app/api/__generated__/endpoints/experiments/experiments.msw";
+import {
+  getExpertsMock,
+  getGetExpertOnboardingMockHandler200,
+} from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { getFilesMock } from "@/app/api/__generated__/endpoints/files/files.msw";
 import { getGraphsMock } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
 import { getHealthMock } from "@/app/api/__generated__/endpoints/health/health.msw";
@@ -46,6 +50,9 @@ export const mockHandlers = [
   http.get("/api/proxy/api/credits/pro-activation/current", () =>
     HttpResponse.json({ detail: "No activation in progress" }, { status: 404 }),
   ),
+  // No published releases unless a test provides some.
+  http.get("/api/changelog", () => HttpResponse.text("")),
+  http.get("/api/changelog/latest", () => HttpResponse.json({ releases: [] })),
   // No flag vendor unless a test provides one, so every flag serves its default.
   getGetFeatureFlagsMockHandler({ flags: {}, configured: false }),
   ...getAdminMock(),
@@ -82,6 +89,11 @@ export const mockHandlers = [
   // seed receipts into every chat's approval box.
   getGetV2GetAnsweredReviewsWaitingToRunForChatSessionMockHandler([]),
   ...getExecutionsMock(),
+  // Nobody is enrolled by default, so every test sees the control experience.
+  getGetExperimentsGetExperimentAssignmentMockHandler(null),
+  // No setup questions waiting unless a test sets some up; a random chat id
+  // would pull every empty expert chat into that chat.
+  getGetExpertOnboardingMockHandler200(null),
   ...getExpertsMock(),
   ...getFilesMock(),
   ...getGraphsMock(),

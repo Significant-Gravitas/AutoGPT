@@ -21,6 +21,7 @@ export function SpendMeter({ spent, budget, muted, color }: Props) {
   }`;
 
   return (
+    /* oxlint-disable design-system/no-restyle, design-system/no-inline-styles -- Progress has no tinted or muted variant (src/components is P9's); the tint mixes the expert's data colour */
     <Progress
       value={ratio * 100}
       role="progressbar"
@@ -32,21 +33,22 @@ export function SpendMeter({ spent, budget, muted, color }: Props) {
       style={
         color
           ? ({
-              "--meter-track": `color-mix(in srgb, ${color} 45%, white)`,
-              "--meter-fill": `color-mix(in srgb, ${color} 60%, #18181b)`,
+              "--meter-track": `color-mix(in srgb, ${color} 45%, rgb(var(--color-surface)))`,
+              "--meter-fill": `color-mix(in srgb, ${color} 60%, rgb(var(--color-action)))`,
             } as CSSProperties)
           : undefined
       }
       className={cn(
-        "h-1.5 w-full bg-zinc-100",
+        "h-1.5 w-full bg-surface-hover",
         color && "h-2 ![background-color:var(--meter-track)]",
         isOverBudget
-          ? "[&>div]:bg-red-400"
+          ? "[&>div]:bg-error"
           : color
             ? "[&>div]:![background-color:var(--meter-fill)]"
-            : "[&>div]:bg-zinc-400",
+            : "[&>div]:bg-foreground-subtle",
         muted && "opacity-50",
       )}
     />
+    /* oxlint-enable design-system/no-restyle, design-system/no-inline-styles -- end of the SpendMeter tint */
   );
 }

@@ -24,6 +24,7 @@ from backend.copilot.bot.adapters.shared import (
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.choices import QUESTION_KIND, ButtonKind
 from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
+from backend.copilot.bot.options import TurnOptions, parse_turn_options
 from backend.copilot.bot.text import iter_chunks, resolve_mentions
 
 from ..base import (
@@ -39,7 +40,8 @@ from ..base import (
     ReferencedConversation,
     SocketAdapter,
 )
-from . import choice_ui, commands, config, intro
+from . import ask_command, choice_ui, commands, config, intro
+from .location import location_of
 from .references import (
     ReferenceTarget,
     extract_referenced_targets,
@@ -56,6 +58,12 @@ logger = logging.getLogger(__name__)
 # messages when a thread is very long.
 THREAD_HISTORY_LIMIT = 1000
 THREAD_HISTORY_CHAR_BUDGET = 24000
+
+# An @mention in a channel threads off that one message, so without the
+# messages just before it the bot can't tell what "that" refers to. Channels
+# run long and mix topics, so only the recent stretch is read.
+CHANNEL_HISTORY_LIMIT = 30
+CHANNEL_HISTORY_CHAR_BUDGET = 8000
 
 # When a message links or @-mentions other threads/channels, the bot fetches
 # their recent content up-front (same guild only) so the model can read it
@@ -112,6 +120,7 @@ class DiscordAdapter(SocketAdapter):
 
         self._register_events()
         commands.register(self._tree, self._api)
+        ask_command.register(self._tree, self._api, self._dispatch_command)
 
     @property
     def platform_name(self) -> str:
@@ -566,17 +575,24 @@ class DiscordAdapter(SocketAdapter):
 
             channel_type = self._channel_type(message)
             bot_mentioned = self._is_mentioned(message)
+            replied_to_bot = await self._replied_to_bot(message)
 
-            # Channels require an explicit @mention; DMs and threads always forward
-            # (handler checks thread subscription).
-            if channel_type == "channel" and not bot_mentioned:
+            # Channels require an @mention or a reply to the bot; DMs and
+            # threads always forward (handler checks thread subscription).
+            if channel_type == "channel" and not bot_mentioned and not replied_to_bot:
                 return
 
             thread_history = ()
-            if channel_type == "thread" and bot_mentioned:
+            if channel_type == "thread" and (bot_mentioned or replied_to_bot):
                 thread_history = await self._thread_history(message)
+            elif channel_type == "channel":
+                thread_history = await self._channel_history(
+                    message, self._requester_of(message)
+                )
 
-            own_text = self._strip_mentions(message)
+            # Options lead the user's own text; read them before the reply
+            # context is put in front of it.
+            options, own_text = parse_turn_options(self._strip_mentions(message))
             # Scan ONLY the user's own typed message for references. Links inside
             # a forwarded or replied-to message are quoted context, not the
             # user's request, so they must not be auto-fetched or rewritten.
@@ -594,6 +610,7 @@ class DiscordAdapter(SocketAdapter):
             message_text = self._compose_with_forward(message, own_text)
             message_text = await self._with_reply_context(message, message_text)
             attachments, skipped = await self._extract_attachments(message)
+            location = location_of(message.guild, message.channel)
             ctx = MessageContext(
                 platform="discord",
                 channel_type=channel_type,
@@ -604,13 +621,69 @@ class DiscordAdapter(SocketAdapter):
                 username=message.author.display_name,
                 text=message_text,
                 bot_mentioned=bot_mentioned,
+                server_name=location.server_name,
+                channel_name=location.channel_name,
+                public_channel_id=location.public_channel_id,
+                thread_name=location.thread_name,
+                public_thread_id=location.public_thread_id,
+                post_channel_id=location.post_channel_id,
+                replied_to_bot=replied_to_bot,
                 thread_history=thread_history,
                 mentionable_users=self._collect_mentionable_users(message),
                 referenced_conversations=referenced,
                 attachments=attachments,
                 skipped_attachments=skipped,
+                options=options,
             )
             await self._on_message_callback(ctx, self)
+
+    async def _dispatch_command(
+        self,
+        interaction: discord.Interaction,
+        starter: discord.Message,
+        prompt: str,
+        options: TurnOptions,
+    ) -> None:
+        """Run a ``/autogpt`` turn as if ``starter`` were the user's message:
+        a channel threads off it, a DM or thread answers in place."""
+        if self._on_message_callback is None:
+            return
+        user = interaction.user
+        location = location_of(interaction.guild, starter.channel)
+        channel_type = _interaction_channel_type(interaction)
+        # The starter is the bot's own post, so history before it is what the
+        # thread said before the command, as an @mention would see it.
+        thread_history = ()
+        if channel_type == "thread":
+            thread_history = await self._thread_history(starter)
+        elif channel_type == "channel":
+            # The starter is the bot's post, so read as the member who ran
+            # the command, not as its author.
+            thread_history = await self._channel_history(
+                starter, user if isinstance(user, discord.Member) else None
+            )
+        ctx = MessageContext(
+            platform="discord",
+            channel_type=channel_type,
+            server_id=str(interaction.guild.id) if interaction.guild else None,
+            channel_id=str(starter.channel.id),
+            message_id=str(starter.id),
+            user_id=str(user.id),
+            username=user.display_name,
+            text=prompt,
+            # Invoking the command is an explicit call, like an @mention.
+            bot_mentioned=True,
+            server_name=location.server_name,
+            channel_name=location.channel_name,
+            public_channel_id=location.public_channel_id,
+            thread_name=location.thread_name,
+            public_thread_id=location.public_thread_id,
+            post_channel_id=location.post_channel_id,
+            thread_history=thread_history,
+            mentionable_users=((user.display_name, str(user.id)),),
+            options=options,
+        )
+        await self._on_message_callback(ctx, self)
 
     async def _extract_attachments(
         self, message: discord.Message
@@ -669,6 +742,15 @@ class DiscordAdapter(SocketAdapter):
         if bot_user is None:
             return False
         return any(user.id == bot_user.id for user in message.mentions)
+
+    async def _replied_to_bot(self, message: discord.Message) -> bool:
+        """The message is a reply to one of the bot's own messages, fetching
+        the replied-to message when Discord didn't include it."""
+        bot_user = self._client.user
+        if bot_user is None:
+            return False
+        replied = await self._resolve_reply(message)
+        return replied is not None and replied.author.id == bot_user.id
 
     @staticmethod
     def _channel_type(message: discord.Message) -> ChannelType:
@@ -734,14 +816,20 @@ class DiscordAdapter(SocketAdapter):
             return None
         if isinstance(ref.resolved, discord.Message):
             return ref.resolved
+        # A deleted target can only 404, and every such reply runs this check.
+        if isinstance(ref.resolved, discord.DeletedReferencedMessage):
+            return None
         if ref.message_id is None or not isinstance(
             message.channel, discord.abc.Messageable
         ):
             return None
         try:
-            return await message.channel.fetch_message(ref.message_id)
+            fetched = await message.channel.fetch_message(ref.message_id)
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             return None
+        # Keep it so the reply context doesn't fetch the same message again.
+        ref.resolved = fetched
+        return fetched
 
     @staticmethod
     def _forwarded_text(message: discord.Message) -> str:
@@ -908,6 +996,32 @@ class DiscordAdapter(SocketAdapter):
         starter = await self._thread_starter_entry(message.channel)
         return (starter, *history) if starter else history
 
+    async def _channel_history(
+        self, message: discord.Message, requester: Optional[discord.Member]
+    ) -> tuple[MessageHistoryEntry, ...]:
+        """The channel messages before ``message``, as ``requester`` could
+        read them. The bot can see history a member who may post here can't
+        (no ``read_message_history``), so nothing is read for such a member."""
+        channel = message.channel
+        if (
+            requester is None
+            or not isinstance(channel, discord.abc.GuildChannel)
+            or not await self._can_requester_read(channel, requester)
+        ):
+            return ()
+        try:
+            return await self._budgeted_history(
+                channel.history(
+                    limit=CHANNEL_HISTORY_LIMIT,
+                    before=message,
+                    oldest_first=False,
+                ),
+                CHANNEL_HISTORY_CHAR_BUDGET,
+            )
+        except (discord.Forbidden, discord.HTTPException):
+            logger.warning("Could not fetch Discord channel history", exc_info=True)
+            return ()
+
     async def _thread_starter_entry(
         self, thread: discord.Thread
     ) -> Optional[MessageHistoryEntry]:
@@ -980,15 +1094,7 @@ class DiscordAdapter(SocketAdapter):
         """
         if message.guild is None:
             return ()
-        # ``message.author`` IS the guild Member (the gateway attaches it to the
-        # event); ``get_member`` only reads the cache, which is empty without the
-        # privileged members intent — so prefer the author and fall back to the
-        # cache only if it somehow isn't a Member (e.g. a webhook).
-        requester = (
-            message.author
-            if isinstance(message.author, discord.Member)
-            else message.guild.get_member(message.author.id)
-        )
+        requester = self._requester_of(message)
         if requester is None:
             return ()
         targets = extract_referenced_targets(
@@ -1002,6 +1108,18 @@ class DiscordAdapter(SocketAdapter):
             if convo is not None:
                 conversations.append(convo)
         return tuple(conversations)
+
+    @staticmethod
+    def _requester_of(message: discord.Message) -> Optional[discord.Member]:
+        if message.guild is None:
+            return None
+        # ``message.author`` IS the guild Member (the gateway attaches it to the
+        # event); ``get_member`` only reads the cache, which is empty without the
+        # privileged members intent — so prefer the author and fall back to the
+        # cache only if it somehow isn't a Member (e.g. a webhook).
+        if isinstance(message.author, discord.Member):
+            return message.author
+        return message.guild.get_member(message.author.id)
 
     async def _fetch_one_referenced(
         self, guild: discord.Guild, requester: discord.Member, target: ReferenceTarget
@@ -1044,7 +1162,9 @@ class DiscordAdapter(SocketAdapter):
         )
 
     async def _can_requester_read(
-        self, channel: "discord.TextChannel | discord.Thread", requester: discord.Member
+        self,
+        channel: "discord.abc.GuildChannel | discord.Thread",
+        requester: discord.Member,
     ) -> bool:
         """Whether ``requester`` may read ``channel`` themselves.
 
@@ -1065,6 +1185,14 @@ class DiscordAdapter(SocketAdapter):
             except (discord.NotFound, discord.Forbidden, discord.HTTPException):
                 return False
         return True
+
+
+def _interaction_channel_type(interaction: discord.Interaction) -> ChannelType:
+    if interaction.guild is None:
+        return "dm"
+    if isinstance(interaction.channel, discord.Thread):
+        return "thread"
+    return "channel"
 
 
 def _resolve_mentions(

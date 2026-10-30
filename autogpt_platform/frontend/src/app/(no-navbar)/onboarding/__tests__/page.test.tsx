@@ -112,6 +112,12 @@ vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
   getV1CheckIfOnboardingIsCompleted: () =>
     Promise.resolve({ status: 200, data: false }),
 }));
+const { clearSkippedRecordings } = vi.hoisted(() => ({
+  clearSkippedRecordings: vi.fn(),
+}));
+vi.mock("../steps/BrainDumpStep/recordingStore", () => ({
+  clearSkippedRecordings,
+}));
 let tier = "NO_TIER";
 vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
   getGetSubscriptionStatusQueryKey: () => ["/api/credits/subscription"],
@@ -193,6 +199,7 @@ beforeEach(() => {
   );
   completeStep.mockResolvedValue({ status: 200 });
   submitProfile.mockResolvedValue({ status: 200 });
+  clearSkippedRecordings.mockResolvedValue(undefined);
 });
 afterEach(() => {
   cleanup();
@@ -308,6 +315,8 @@ describe("onboarding before payment", () => {
       expect(completeStep).toHaveBeenCalledWith({
         step: "ONBOARDING_COMPLETE",
       });
+      // A skipped brain-dump take is kept for Back only until here.
+      expect(clearSkippedRecordings).toHaveBeenCalledWith("u1");
     },
   );
 
@@ -400,6 +409,7 @@ describe("onboarding before payment", () => {
     expect(routerReplace).not.toHaveBeenCalledWith("/copilot");
     expect(screen.queryByTestId("step-role")).toBeNull();
     expect(patchState).not.toHaveBeenCalled();
+    expect(clearSkippedRecordings).toHaveBeenCalledWith("u1");
   });
 
   it("does not drop progress or redirect when completion fails", async () => {
@@ -411,10 +421,43 @@ describe("onboarding before payment", () => {
     expect(await screen.findByText(/couldn't finish setting up/)).toBeDefined();
     expect(routerReplace).not.toHaveBeenCalledWith("/home");
     expect(localStorage.getItem(progressStorageKey("u1"))).not.toBeNull();
+    expect(clearSkippedRecordings).not.toHaveBeenCalled();
   });
 });
 
 describe("draft recovery", () => {
+  it("saves the role to the account once its step is left, and keeps it at the paywall", async () => {
+    render(<OnboardingPage />);
+    fireEvent.click(await screen.findByTestId("step-team"));
+    fireEvent.click(await screen.findByTestId("step-autopilot"));
+    await screen.findByTestId("step-role");
+    act(() => useOnboardingWizardStore.getState().setRole("Other"));
+    act(() => useOnboardingWizardStore.getState().setOtherRole("Dentist"));
+    fireEvent.click(screen.getByTestId("step-role"));
+    await screen.findByTestId("step-braindump");
+    await waitFor(() =>
+      expect(serverDraft).toMatchObject({
+        currentStep: "painPoints",
+        completedSteps: expect.arrayContaining(["role"]),
+        role: "Other",
+        otherRole: "Dentist",
+      }),
+    );
+    fireEvent.click(screen.getByTestId("step-braindump"));
+    fireEvent.click(await screen.findByTestId("step-hire"));
+    expect(await screen.findByTestId("step-subscription")).toBeDefined();
+    await waitFor(() =>
+      expect(serverDraft).toMatchObject({
+        currentStep: "subscription",
+        completedSteps: expect.arrayContaining(["role", "painPoints", "hire"]),
+        role: "Other",
+        otherRole: "Dentist",
+      }),
+    );
+    expect(submitProfile).not.toHaveBeenCalled();
+    expect(completeStep).not.toHaveBeenCalled();
+  });
+
   it("saves each step in the background without holding navigation", async () => {
     patchState.mockImplementation(() => new Promise(() => {}));
     render(<OnboardingPage />);

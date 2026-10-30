@@ -25,7 +25,7 @@ export function AdminSkillSubmissionFiles({ versionId, files }: Props) {
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
         aria-expanded={isExpanded}
-        className="inline-flex items-center gap-1 rounded-md text-zinc-500 transition-colors hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:ring-offset-2"
+        className="inline-flex items-center gap-1 rounded-md text-foreground-tertiary transition-colors hover:text-foreground-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:ring-offset-2"
         data-testid={`files-${versionId}`}
       >
         <Icon
@@ -33,7 +33,7 @@ export function AdminSkillSubmissionFiles({ versionId, files }: Props) {
           size={14}
           aria-hidden
         />
-        <Text variant="small" className="!text-inherit">
+        <Text variant="small" tone="inherit">
           {files.length === 1 ? "1 file" : `${files.length} files`}
         </Text>
       </button>

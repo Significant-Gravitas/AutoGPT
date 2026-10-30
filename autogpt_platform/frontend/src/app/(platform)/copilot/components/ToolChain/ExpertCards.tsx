@@ -23,7 +23,16 @@ import { type ArtifactRef, useCopilotUIStore } from "../../store";
 import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { SOUL_CHANGE_TOOLS } from "./helpers";
+import { useLiveTipMoment } from "@/app/(platform)/components/ContextualTips/useTipMoment";
 import { asObject, str } from "./resultHelpers";
+import {
+  handoffOutcomeOf,
+  handoffSubject,
+  handoffTaskOf,
+} from "./expertHandoff";
+import { HandoffProposal, HandoffReceipt } from "./ExpertHandoffParts";
+import { HandoffStatus } from "./HandoffStatus";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   output: Record<string, unknown>;
@@ -39,12 +48,18 @@ interface Props {
   onDecide?: (decision: Decision) => void;
   /** Takes the decision back so Approve/Decline can be chosen again. */
   onUndo?: () => void;
+  /** The turn is still streaming: answers wait until the proposals are all
+   *  in, so a click always does what its button says. */
+  waiting?: boolean;
   /** Footer control the group adds once every proposal is decided, or
    *  the sent note after. */
   action?: ReactNode;
   /** Which way the pager just moved — the identity block slides in from
    *  that side while the shell (Details, pager, decision) stays put. */
   stepDirection?: StepDirection;
+  /** Sends a chat message (a hand-off that didn't start offers Try again);
+   *  absent on a read-only transcript. */
+  onSend?: (message: string) => void;
 }
 
 export type StepDirection = "forward" | "back";
@@ -54,10 +69,10 @@ export type Decision = "approved" | "declined";
 // Same shell as the chain's action card (connect / inputs / questions) so
 // every "your turn" card in the thread reads as one family.
 const SHELL =
-  "w-full overflow-hidden rounded-3xl border border-zinc-100 bg-white";
-const HEADER = "flex items-center gap-2.5 border-b border-zinc-100 px-4 py-3";
+  "w-full overflow-hidden rounded-3xl border border-separator bg-surface";
+const HEADER = "flex items-center gap-2.5 border-b border-separator px-4 py-3";
 const FOOTER =
-  "flex items-center justify-between gap-2 border-t border-zinc-100 px-4 py-3";
+  "flex items-center justify-between gap-2 border-t border-separator px-4 py-3";
 
 type ExpertKind = "hire" | "raise" | "update";
 
@@ -99,6 +114,13 @@ interface Proposal {
   kind: ExpertKind | "soul" | null;
   name: string;
   confirmationId: string;
+  /** The "hire and start" choice, when the hire is for a task. */
+  handoff: { confirmationId: string; subject: string; title: string } | null;
+}
+
+function isOpenExpertProposal(part: ToolUIPart) {
+  const kind = proposalOf(part)?.kind;
+  return kind === "hire" || kind === "raise";
 }
 
 /** A hire/raise/Soul preview the user can still say yes or no to. */
@@ -112,16 +134,46 @@ function proposalOf(part: ToolUIPart): Proposal | null {
       kind: "soul",
       name: "your Soul",
       confirmationId,
+      handoff: null,
     };
   }
   const preview = asObject(output.preview);
   if (!confirmationId || !preview) return null;
+  const name = str(preview, "name") ?? "this expert";
+  const task = handoffTaskOf(output);
+  const handoffConfirmationId = str(output, "handoff_confirmation_id");
   return {
     toolCallId: part.toolCallId,
     kind: kindOf(output),
-    name: str(preview, "name") ?? "this expert",
+    name,
     confirmationId,
+    handoff:
+      task && handoffConfirmationId
+        ? {
+            confirmationId: handoffConfirmationId,
+            subject: handoffSubject(name, task),
+            title: task.title,
+          }
+        : null,
   };
+}
+
+/** The line for one answer. A hire proposed for a task asks one question,
+ *  Hire and start or Not now, so its approval is always of the proposal's
+ *  hand-off id, which confirm_expert_change reads as "also start the task".
+ *  Not now declines the hire itself. */
+function answerLine(proposal: Proposal, decision: Decision): string {
+  if (decision === "approved" && proposal.handoff) {
+    return decisionLine(
+      {
+        ...proposal,
+        name: proposal.handoff.subject,
+        confirmationId: proposal.handoff.confirmationId,
+      },
+      "approved",
+    );
+  }
+  return decisionLine(proposal, decision);
 }
 
 // gate/card_approval.py reads the Approved line as the answer to the confirm.
@@ -135,6 +187,14 @@ function decisionLine(proposal: Proposal, decision: Decision): string {
   return decision === "approved"
     ? `Approved: ${verb} ${proposal.name} (confirmation_id: ${proposal.confirmationId}).`
     : `Not approved: do not ${verb} ${proposal.name}, discard that proposal (confirmation_id: ${proposal.confirmationId}).`;
+}
+
+function withoutDecision(
+  decisions: Record<string, Decision>,
+  toolCallId: string,
+) {
+  const { [toolCallId]: _, ...rest } = decisions;
+  return rest;
 }
 
 function toExpertArtifact(
@@ -184,6 +244,8 @@ export function ExpertChangeCard({
   onUndo,
   action,
   stepDirection,
+  waiting = false,
+  onSend,
 }: Props) {
   const [showCharter, setShowCharter] = useState(false);
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
@@ -210,15 +272,95 @@ export function ExpertChangeCard({
   const hasCharter = (!!tagline && !!about) || !!boundaries;
   const showDetails = panelAvailable || hasCharter;
   const showFooter = !!pager || !!onDecide || !!decision || !!action;
-  const header = headerFor(kindOf(output), output.applied === true);
+  const applied = output.applied === true;
+  const header = headerFor(kindOf(output), applied);
+  const task = applied ? null : handoffTaskOf(output);
+  const outcome = applied ? handoffOutcomeOf(output) : null;
+  const stepClassName = cn(
+    stepDirection &&
+      "duration-300 animate-in fade-in fill-mode-both motion-reduce:animate-none",
+    stepDirection === "forward" && "slide-in-from-right-4",
+    stepDirection === "back" && "slide-in-from-left-4",
+  );
+
+  if (outcome) {
+    // Two confirms can share a group (two hires in one send): the pager
+    // stays under the status so every expert's outcome can be reached.
+    return (
+      <div className="flex flex-col gap-2">
+        <HandoffStatus
+          key={artifactId ?? name}
+          outcome={outcome}
+          name={name}
+          expertId={str(expert, "id")}
+          avatarUrl={str(expert, "avatar_url")}
+          color={str(expert, "color")}
+          onSend={onSend}
+        />
+        {(!!pager || !!action) && (
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">{pager}</div>
+            {action}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (task) {
+    return (
+      <div className={SHELL}>
+        <HandoffProposal
+          name={name}
+          role={role}
+          avatarUrl={str(expert, "avatar_url")}
+          color={str(expert, "color")}
+          about={summary}
+          task={task}
+          actions={
+            !decision && onDecide
+              ? {
+                  onStart: () => onDecide("approved"),
+                  onNotNow: () => onDecide("declined"),
+                  disabled: waiting,
+                }
+              : null
+          }
+          onShowProfile={panelAvailable ? handleShowMore : undefined}
+          stepClassName={stepClassName}
+          stepKey={artifactId ?? name}
+        />
+        {(!!pager || !!decision || !!action) && (
+          <DecisionFooter
+            pager={pager}
+            decision={decision}
+            onUndo={onUndo}
+            action={action}
+            chosen={
+              decision
+                ? decision === "approved"
+                  ? "Hire and start chosen"
+                  : "Not now chosen"
+                : undefined
+            }
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className={SHELL}>
       <div className={HEADER}>
-        <Icon icon={header.icon} size={18} className="text-zinc-400" />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-900">
+        <Icon icon={header.icon} size={18} className="text-foreground-subtle" />
+        <Text
+          variant="body-medium-tight"
+          as="span"
+          tone="primary"
+          className="min-w-0 flex-1 truncate"
+        >
           {header.title}
-        </span>
+        </Text>
       </div>
       <div className="px-4 py-3">
         <div
@@ -238,10 +380,18 @@ export function ExpertChangeCard({
             size={32}
           />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] font-medium text-zinc-800">
+            <Text
+              variant="body-sm-medium-inherit"
+              tone="emphasis"
+              className="truncate"
+            >
               {name}
-            </p>
-            {role && <p className="truncate text-xs text-zinc-400">{role}</p>}
+            </Text>
+            {role && (
+              <Text variant="small-tight" tone="subtle" className="truncate">
+                {role}
+              </Text>
+            )}
           </div>
           {showDetails && (
             <Button
@@ -260,7 +410,8 @@ export function ExpertChangeCard({
           <p
             key={`${artifactId ?? name}-summary`}
             className={cn(
-              "pl-[42px] pt-2 text-sm text-zinc-500",
+              // oxlint-disable-next-line design-system/no-arbitrary-values -- aligns the details with the name after the 42px avatar column
+              "pl-[42px] pt-2 text-sm text-foreground-tertiary",
               stepDirection &&
                 "delay-75 duration-300 animate-in fade-in fill-mode-both motion-reduce:animate-none",
               stepDirection === "forward" && "slide-in-from-right-4",
@@ -271,12 +422,19 @@ export function ExpertChangeCard({
           </p>
         )}
         {hasCharter && !panelAvailable && showCharter && (
-          <div className="flex flex-col gap-1 pl-[42px] pt-1.5">
+          <div
+            // oxlint-disable-next-line design-system/no-arbitrary-values -- aligns the details with the name after the 42px avatar column
+            className="flex flex-col gap-1 pl-[42px] pt-1.5"
+          >
             {tagline && about && (
-              <p className="text-sm text-zinc-500">{about}</p>
+              <Text variant="body-tight" tone="muted">
+                {about}
+              </Text>
             )}
             {boundaries && (
-              <p className="text-sm text-zinc-400">Stops at: {boundaries}</p>
+              <Text variant="body-tight" tone="subtle">
+                Stops at: {boundaries}
+              </Text>
             )}
           </div>
         )}
@@ -288,6 +446,7 @@ export function ExpertChangeCard({
           onDecide={onDecide}
           onUndo={onUndo}
           action={action}
+          waiting={waiting}
         />
       )}
     </div>
@@ -310,29 +469,47 @@ function SoulChangeCard({
   onDecide,
   onUndo,
   action,
+  waiting = false,
 }: Props) {
   const showFooter = !!pager || !!onDecide || !!decision || !!action;
   return (
     <div className={SHELL}>
       <div className={HEADER}>
-        <Icon icon={PencilEdit02Icon} size={18} className="text-zinc-400" />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-900">
+        <Icon
+          icon={PencilEdit02Icon}
+          size={18}
+          className="text-foreground-subtle"
+        />
+        <Text
+          variant="body-medium-tight"
+          as="span"
+          tone="primary"
+          className="min-w-0 flex-1 truncate"
+        >
           {output.applied === true ? "Soul updated" : "Update Soul"}
-        </span>
+        </Text>
       </div>
       <div className="flex flex-col gap-3 px-4 py-3">
         {soulChanges(output).map((change) => (
           <section key={change.field} className="flex flex-col gap-0.5">
-            <p className="text-xs font-medium text-zinc-700">
+            <Text variant="small-medium-tight" tone="body">
               {SOUL_LABELS[change.field] ?? change.field}
-            </p>
-            <p className="whitespace-pre-line text-sm text-zinc-700">
+            </Text>
+            <Text
+              variant="body-tight"
+              tone="body"
+              className="whitespace-pre-line"
+            >
               {change.after || "Empty"}
-            </p>
+            </Text>
             {change.before && (
-              <p className="line-clamp-2 text-xs text-zinc-400">
+              <Text
+                variant="small-tight"
+                tone="subtle"
+                className="line-clamp-2"
+              >
                 Was: {change.before}
-              </p>
+              </Text>
             )}
           </section>
         ))}
@@ -344,6 +521,7 @@ function SoulChangeCard({
           onDecide={onDecide}
           onUndo={onUndo}
           action={action}
+          waiting={waiting}
         />
       )}
     </div>
@@ -352,8 +530,11 @@ function SoulChangeCard({
 
 type FooterProps = Pick<
   Props,
-  "pager" | "decision" | "onDecide" | "onUndo" | "action"
->;
+  "pager" | "decision" | "onDecide" | "onUndo" | "action" | "waiting"
+> & {
+  /** What a stored approval will send, for cards offering two approvals. */
+  chosen?: string;
+};
 
 function DecisionFooter({
   pager,
@@ -361,11 +542,18 @@ function DecisionFooter({
   onDecide,
   onUndo,
   action,
+  waiting = false,
+  chosen,
 }: FooterProps) {
   return (
     <div className={FOOTER}>
       <div className="min-w-0">{pager}</div>
       <div className="flex shrink-0 items-center gap-1.5">
+        {chosen && (
+          <Text variant="small-tight" as="span" tone="muted">
+            {chosen}
+          </Text>
+        )}
         {decision && onUndo && (
           <Button
             variant="secondary"
@@ -374,7 +562,11 @@ function DecisionFooter({
             leftIcon={<Icon icon={UndoIcon} size={14} />}
             className="h-8 !min-w-0 px-3"
           >
-            {decision === "approved" ? "Unapprove" : "Undo decline"}
+            {chosen
+              ? "Change"
+              : decision === "approved"
+                ? "Unapprove"
+                : "Undo decline"}
           </Button>
         )}
         {!decision && onDecide && (
@@ -382,6 +574,7 @@ function DecisionFooter({
             <Button
               variant="ghost"
               size="small"
+              disabled={waiting}
               onClick={() => onDecide("declined")}
               className="h-8 !min-w-0 px-3"
             >
@@ -390,6 +583,7 @@ function DecisionFooter({
             <Button
               variant="primary"
               size="small"
+              disabled={waiting}
               onClick={() => onDecide("approved")}
               className="h-8 !min-w-0 px-3"
             >
@@ -427,10 +621,14 @@ export function ExpertChangeCardSkeleton() {
   return (
     <div className={SHELL}>
       <div className={HEADER}>
-        <Icon icon={UserAdd01Icon} size={18} className="text-zinc-400" />
-        <span className="text-sm font-medium text-zinc-900">
+        <Icon
+          icon={UserAdd01Icon}
+          size={18}
+          className="text-foreground-subtle"
+        />
+        <Text variant="body-medium-tight" as="span" tone="primary">
           Create an Expert
-        </span>
+        </Text>
       </div>
       <div className="px-4 py-3">
         <div className="flex items-center gap-2.5">
@@ -440,7 +638,10 @@ export function ExpertChangeCardSkeleton() {
             <Skeleton className="h-3 w-20" />
           </div>
         </div>
-        <div className="flex flex-col gap-1.5 pl-[42px] pt-2.5">
+        <div
+          // oxlint-disable-next-line design-system/no-arbitrary-values -- aligns the details with the name after the 42px avatar column
+          className="flex flex-col gap-1.5 pl-[42px] pt-2.5"
+        >
           <Skeleton className="h-3 w-full" />
           <Skeleton className="h-3 w-4/5" />
         </div>
@@ -458,6 +659,8 @@ interface PartProps {
   onUndo?: () => void;
   action?: ReactNode;
   stepDirection?: StepDirection;
+  waiting?: boolean;
+  onSend?: (message: string) => void;
 }
 
 /** The expert is still being written while the row has no output — hold
@@ -473,6 +676,8 @@ export function ExpertChangePart({
   onUndo,
   action,
   stepDirection,
+  waiting,
+  onSend,
 }: PartProps) {
   if (part.state === "output-error") return <GenericTool part={part} />;
   const output = asObject(part.output);
@@ -488,6 +693,8 @@ export function ExpertChangePart({
         onUndo={onUndo}
         action={action}
         stepDirection={stepDirection}
+        waiting={waiting}
+        onSend={onSend}
       />
     );
   }
@@ -533,6 +740,12 @@ export function ExpertChangeGroup({
   const visible = parts.filter((part) =>
     isVisibleExpertPart(part, isCurrentlyStreaming),
   );
+  // Otto proposing an expert is the moment to say experts can own tasks.
+  // Only live: a decided proposal still reads as open in an old chat.
+  useLiveTipMoment("first-expert", {
+    happened: !readOnly && visible.some(isOpenExpertProposal),
+    isLive: isCurrentlyStreaming,
+  });
   if (visible.length === 0) return null;
 
   const current = Math.min(step, visible.length - 1);
@@ -545,31 +758,23 @@ export function ExpertChangeGroup({
     proposals.length > 0 &&
     proposals.every((proposal) => decisions[proposal.toolCallId]);
   const currentProposal = readOnly ? null : proposalOf(part);
+  // While the turn is still streaming another proposal part can land in
+  // this group, so the send waits for the stream to settle.
+  const sendable = !readOnly && !!actions && !isCurrentlyStreaming;
+  // A lone proposal has nothing to review before the send, so its answer
+  // is the send: one click hires (and hands off), not Approve then Send.
+  const answerSends =
+    sendable && visible.length === 1 && proposals.length === 1;
 
   function goTo(next: number) {
     setDirection(next > current ? "forward" : "back");
     setStep(next);
   }
 
-  function decide(decision: Decision) {
-    if (!currentProposal) return;
-    setDecisions({ ...decisions, [currentProposal.toolCallId]: decision });
-    if (!isLast) goTo(current + 1);
-  }
-
-  function undo() {
-    if (!currentProposal) return;
-    const { [currentProposal.toolCallId]: _, ...rest } = decisions;
-    setDecisions(rest);
-  }
-
-  function send() {
+  function sendMessage(message: string) {
     if (!actions) return;
-    const message = proposals
-      .map((proposal) => decisionLine(proposal, decisions[proposal.toolCallId]))
-      .join("\n");
-    // The card stays marked sent because the message is already in the
-    // thread for Retry — the failure only needs saying.
+    // The message is already in the thread for Retry — the failure only
+    // needs saying.
     void Promise.resolve(actions.onSend(message)).catch((error: unknown) =>
       toastSendFailure({
         title: "Couldn't send message",
@@ -579,7 +784,34 @@ export function ExpertChangeGroup({
           "it is still in the thread, use Retry once you have a plan",
       }),
     );
+  }
+
+  function send(answered: Record<string, Decision>) {
+    sendMessage(
+      proposals
+        .map((proposal) => answerLine(proposal, answered[proposal.toolCallId]))
+        .join("\n"),
+    );
     setSent(true);
+  }
+
+  function decide(decision: Decision) {
+    if (!currentProposal || isCurrentlyStreaming) return;
+    const nextDecisions = {
+      ...decisions,
+      [currentProposal.toolCallId]: decision,
+    };
+    setDecisions(nextDecisions);
+    if (answerSends) {
+      send(nextDecisions);
+      return;
+    }
+    if (!isLast) goTo(current + 1);
+  }
+
+  function undo() {
+    if (!currentProposal) return;
+    setDecisions(withoutDecision(decisions, currentProposal.toolCallId));
   }
 
   const pager = visible.length > 1 && (
@@ -589,7 +821,7 @@ export function ExpertChangeGroup({
         aria-label="Previous expert"
         disabled={current === 0}
         onClick={() => goTo(current - 1)}
-        className="flex size-6 items-center justify-center rounded-lg text-zinc-400 transition-colors enabled:hover:bg-zinc-100 enabled:hover:text-zinc-600 disabled:opacity-35"
+        className="flex size-6 items-center justify-center rounded-lg text-foreground-subtle transition-colors enabled:hover:bg-surface-hover enabled:hover:text-foreground-secondary disabled:opacity-35"
       >
         <Icon icon={ArrowLeft01Icon} size={14} />
       </button>
@@ -606,12 +838,12 @@ export function ExpertChangeGroup({
               "rounded-full transition-all duration-300",
               i === current ? "size-2.5 border-2" : "size-2 border",
               decisions[toolCallId] === "approved"
-                ? "border-emerald-500 bg-emerald-500"
+                ? "border-success bg-success"
                 : decisions[toolCallId] === "declined"
-                  ? "border-red-400 bg-red-400"
+                  ? "border-error bg-error"
                   : i === current
-                    ? "border-zinc-800"
-                    : "border-zinc-300",
+                    ? "border-action"
+                    : "border-border-strong",
             )}
           />
         ))}
@@ -621,21 +853,19 @@ export function ExpertChangeGroup({
         aria-label="Next expert"
         disabled={isLast}
         onClick={() => goTo(current + 1)}
-        className="flex size-6 items-center justify-center rounded-lg text-zinc-400 transition-colors enabled:hover:bg-zinc-100 enabled:hover:text-zinc-600 disabled:opacity-35"
+        className="flex size-6 items-center justify-center rounded-lg text-foreground-subtle transition-colors enabled:hover:bg-surface-hover enabled:hover:text-foreground-secondary disabled:opacity-35"
       >
         <Icon icon={ArrowRight01Icon} size={14} />
       </button>
-      <span className="text-xs text-zinc-400">
+      <Text variant="small-tight" as="span" tone="subtle">
         {current + 1} of {visible.length}
-      </span>
+      </Text>
     </div>
   );
 
-  // While the turn is still streaming another proposal part can land in
-  // this group, so the send waits for the stream to settle.
-  const canSend = !readOnly && !!actions && allDecided && !isCurrentlyStreaming;
+  const canSend = sendable && allDecided;
   const action = sent ? (
-    <span className="flex items-center gap-1 text-xs text-zinc-400">
+    <span className="flex items-center gap-1 text-xs text-foreground-subtle">
       <Icon icon={Tick02Icon} size={14} />
       Sent
     </span>
@@ -644,12 +874,25 @@ export function ExpertChangeGroup({
       variant="primary"
       size="icon"
       aria-label="Send decisions"
-      onClick={send}
+      onClick={() => send(decisions)}
       className="size-8 p-0"
     >
       <Icon icon={SentIcon} size={15} />
     </Button>
   ) : null;
+
+  // A lone hand-off card, once answered, is only the record of the choice:
+  // the expert's own card below says where the work went.
+  const lone = proposals.length === 1 && visible.length === 1;
+  if (sent && lone && proposals[0].handoff) {
+    return (
+      <div className="my-2">
+        <HandoffReceipt>
+          {receiptFor(proposals[0], decisions[proposals[0].toolCallId])}
+        </HandoffReceipt>
+      </div>
+    );
+  }
 
   // The shell (Details, pager, decision buttons) is the same from one
   // expert to the next, so it stays mounted; only the identity block
@@ -665,7 +908,19 @@ export function ExpertChangeGroup({
         onUndo={currentProposal && !sent ? undo : undefined}
         action={action || undefined}
         stepDirection={direction}
+        waiting={isCurrentlyStreaming}
+        onSend={sendable ? sendMessage : undefined}
       />
     </div>
   );
+}
+
+/** The record of the choice, worded as the choice: the confirm runs after
+ *  the send and can still fail, and the expert's own card says what came of
+ *  it. Only a hire proposed for a task shrinks to a receipt. */
+function receiptFor(proposal: Proposal, decision: Decision | undefined) {
+  if (decision === "approved" && proposal.handoff) {
+    return `You chose to hire ${proposal.name} to take on ${proposal.handoff.title}.`;
+  }
+  return `You chose not to hire ${proposal.name} for now.`;
 }

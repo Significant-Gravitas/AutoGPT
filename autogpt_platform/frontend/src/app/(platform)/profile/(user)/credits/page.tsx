@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 import useCredits from "@/hooks/useCredits";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
@@ -25,7 +26,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/__legacy__/ui/table";
+} from "@/components/molecules/Table/components/TablePrimitives";
 
 function CoPilotUsageSection() {
   const router = useRouter();
@@ -42,8 +43,10 @@ function CoPilotUsageSection() {
 
   return (
     <div className="my-6 space-y-4">
-      <h3 className="text-lg font-medium">Expert Usage & Storage</h3>
-      <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-4">
+      <Text variant="lg-medium" as="h3" tone="inherit">
+        Expert Usage & Storage
+      </Text>
+      <div className="flex flex-col gap-3 rounded-lg border border-border-base p-4">
         {usage.daily && (
           <UsageBar
             label="Today"
@@ -60,7 +63,12 @@ function CoPilotUsageSection() {
         )}
         <StorageBar />
       </div>
-      <Button className="w-full" onClick={() => router.push("/copilot")}>
+      <Button
+        variant="compact-primary"
+        size="compact"
+        className="w-full"
+        onClick={() => router.push("/copilot")}
+      >
         Open Otto
       </Button>
     </div>
@@ -161,7 +169,7 @@ export default function CreditsPage() {
 
   return (
     <div className="w-full px-4 sm:px-8 md:min-w-[800px]">
-      <h1 className="mb-6 text-[28px] font-normal text-neutral-900 dark:text-neutral-100 sm:mb-8 sm:text-[35px]">
+      <h1 className="mb-6 text-heading font-normal leading-inherit text-foreground-strong sm:mb-8 sm:text-title sm:leading-inherit">
         Billing
       </h1>
 
@@ -173,17 +181,19 @@ export default function CreditsPage() {
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
         {/* Top-up Form */}
         <div className="space-y-4">
-          <h3 className="text-lg font-medium">Top-up Credits</h3>
+          <Text variant="lg-medium" as="h3" tone="inherit">
+            Top-up Credits
+          </Text>
 
-          <p className="mb-6 text-neutral-600 dark:text-neutral-400">
+          <p className="mb-6 text-foreground-secondary">
             {topupStatus === "success" && (
-              <span className="text-green-500">
+              <span className="text-success">
                 Your payment was successful. Your credits will be updated
                 shortly. Try refreshing the page in case it is not updated.
               </span>
             )}
             {topupStatus === "cancel" && (
-              <span className="text-red-500">
+              <span className="text-error">
                 Payment failed. Your payment method has not been charged.
               </span>
             )}
@@ -193,7 +203,7 @@ export default function CreditsPage() {
             <div>
               <label
                 htmlFor="topUpAmount"
-                className="mb-1 block text-neutral-700"
+                className="mb-1 block text-foreground-body"
               >
                 Top-up amount (USD), minimum $5:
               </label>
@@ -205,12 +215,14 @@ export default function CreditsPage() {
                 min="5"
                 step="1"
                 defaultValue={5}
-                className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
+                className="w-full rounded-md border border-border-base px-4 py-2"
                 required
               />
             </div>
 
             <Button
+              variant="compact-primary"
+              size="compact"
               type="submit"
               className="w-full"
               disabled={isRequestingTopUp || checkoutRedirect.isRedirecting}
@@ -221,12 +233,14 @@ export default function CreditsPage() {
 
           {/* Auto Top-up Form */}
           <form onSubmit={submitAutoTopUpConfig} className="my-6 space-y-4">
-            <h3 className="text-lg font-medium">Automatic Refill Settings</h3>
+            <Text variant="lg-medium" as="h3" tone="inherit">
+              Automatic Refill Settings
+            </Text>
 
             <div>
               <label
                 htmlFor="threshold"
-                className="mb-1 block text-neutral-700"
+                className="mb-1 block text-foreground-body"
               >
                 When my balance goes below this amount:
               </label>
@@ -242,7 +256,7 @@ export default function CreditsPage() {
                 placeholder="Refill threshold, minimum $5"
                 min="5"
                 step="1"
-                className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
+                className="w-full rounded-md border border-border-base px-4 py-2"
                 required
               />
             </div>
@@ -250,7 +264,7 @@ export default function CreditsPage() {
             <div>
               <label
                 htmlFor="autoTopUpAmount"
-                className="mb-1 block text-neutral-700"
+                className="mb-1 block text-foreground-body"
               >
                 Automatically refill my balance with this amount:
               </label>
@@ -264,26 +278,32 @@ export default function CreditsPage() {
                 placeholder="Refill amount, minimum $5"
                 min="5"
                 step="1"
-                className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
+                className="w-full rounded-md border border-border-base px-4 py-2"
                 required
               />
             </div>
 
-            <p className="text-sm">
+            <Text variant="body-tight" tone="inherit">
               <b>Note:</b> For your safety, we will top up your balance{" "}
               <b>at most once</b> per workflow execution to prevent unintended
               excessive charges. Therefore, ensure that the automatic top-up
               amount is sufficient for your workflow&apos;s operation.
-            </p>
+            </Text>
 
             {autoTopUpConfig?.amount ? (
               <>
-                <Button type="submit" className="w-full">
+                <Button
+                  variant="compact-primary"
+                  size="compact"
+                  type="submit"
+                  className="w-full"
+                >
                   Save Changes
                 </Button>
                 <Button
                   className="w-full"
-                  variant="destructive"
+                  variant="compact-destructive"
+                  size="compact"
                   onClick={() =>
                     updateAutoTopUpConfig(0, 0).then(() => {
                       toast({ title: "Auto top-up config disabled! 🎉" });
@@ -294,7 +314,12 @@ export default function CreditsPage() {
                 </Button>
               </>
             ) : (
-              <Button type="submit" className="w-full">
+              <Button
+                variant="compact-primary"
+                size="compact"
+                type="submit"
+                className="w-full"
+              >
                 Enable Auto-Refill
               </Button>
             )}
@@ -306,12 +331,17 @@ export default function CreditsPage() {
 
         <div className="my-6 space-y-4">
           {/* Payment Portal */}
-          <h3 className="text-lg font-medium">Manage Your Payment Methods</h3>
-          <p className="text-neutral-600">
+
+          <Text variant="lg-medium" as="h3" tone="inherit">
+            Manage Your Payment Methods
+          </Text>
+          <p className="text-foreground-secondary">
             You can manage your cards and see your payment history in the
             billing portal.
           </p>
           <Button
+            variant="compact-primary"
+            size="compact"
             type="submit"
             className="w-full"
             onClick={() => openBillingPortal()}
@@ -320,9 +350,12 @@ export default function CreditsPage() {
           </Button>
 
           {/* Transaction History */}
-          <h3 className="text-lg font-medium">Transaction History</h3>
+
+          <Text variant="lg-medium" as="h3" tone="inherit">
+            Transaction History
+          </Text>
           {transactionHistory.transactions.length === 0 && (
-            <p className="text-neutral-600">No transactions found.</p>
+            <p className="text-foreground-secondary">No transactions found.</p>
           )}
           <Table
             className={
@@ -353,12 +386,14 @@ export default function CreditsPage() {
                   </TableCell>
                   <TableCell>{transaction.description}</TableCell>
                   {/* Make it green if it's positive, red if it's negative */}
-                  <TableCell
-                    className={
-                      transaction.amount > 0 ? "text-green-500" : "text-red-500"
-                    }
-                  >
-                    <b>{formatCredits(transaction.amount)}</b>
+                  <TableCell>
+                    <b
+                      className={
+                        transaction.amount > 0 ? "text-success" : "text-error"
+                      }
+                    >
+                      {formatCredits(transaction.amount)}
+                    </b>
                   </TableCell>
                 </TableRow>
               ))}
@@ -366,6 +401,8 @@ export default function CreditsPage() {
           </Table>
           {transactionHistory.next_transaction_time && (
             <Button
+              variant="compact-primary"
+              size="compact"
               type="submit"
               className="w-full"
               onClick={() => fetchTransactionHistory()}
@@ -376,7 +413,9 @@ export default function CreditsPage() {
 
           {refundRequests.length > 0 && (
             <>
-              <h3 className="text-lg font-medium">Your Refund Requests</h3>
+              <Text variant="lg-medium" as="h3" tone="inherit">
+                Your Refund Requests
+              </Text>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -412,7 +451,8 @@ export default function CreditsPage() {
           )}
 
           <Button
-            variant="destructive"
+            variant="compact-destructive"
+            size="compact"
             onClick={() => openRefundModal()}
             className="w-full"
           >

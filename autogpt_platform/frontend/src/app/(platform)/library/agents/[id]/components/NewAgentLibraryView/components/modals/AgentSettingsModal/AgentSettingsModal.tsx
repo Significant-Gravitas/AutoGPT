@@ -56,10 +56,13 @@ export function AgentSettingsModal({
           <Button
             variant="ghost"
             size="small"
-            className="m-0 min-w-0 rounded-full p-0 px-1"
+            // oxlint-disable-next-line design-system/no-restyle -- a text-link-like trigger; no Button size has 4px side padding at 36px tall
+            className="m-0 min-w-0 p-0 px-1"
             aria-label="Workflow Settings"
           >
-            <Icon icon={Settings01Icon} size={18} className="text-zinc-600" />
+            <span className="contents text-foreground-secondary">
+              <Icon icon={Settings01Icon} size={18} />
+            </span>
             <Text variant="small">Workflow Settings</Text>
           </Button>
         </Dialog.Trigger>
@@ -67,13 +70,13 @@ export function AgentSettingsModal({
       <Dialog.Content>
         <div className="space-y-6">
           {showHITLToggle && (
-            <div className="flex w-full flex-col items-start gap-4 rounded-xl border border-zinc-100 bg-white p-6">
+            <div className="flex w-full flex-col items-start gap-4 rounded-xl border border-separator bg-surface p-6">
               <div className="flex w-full items-start justify-between gap-4">
                 <div className="flex-1">
                   <Text variant="large-semibold">
                     Human-in-the-loop approval
                   </Text>
-                  <Text variant="large" className="mt-1 text-zinc-900">
+                  <Text variant="large" tone="primary" className="mt-1">
                     The workflow will pause at human-in-the-loop blocks and wait
                     for your review before continuing
                   </Text>
@@ -88,13 +91,13 @@ export function AgentSettingsModal({
             </div>
           )}
           {showSensitiveActionToggle && (
-            <div className="flex w-full flex-col items-start gap-4 rounded-xl border border-zinc-100 bg-white p-6">
+            <div className="flex w-full flex-col items-start gap-4 rounded-xl border border-separator bg-surface p-6">
               <div className="flex w-full items-start justify-between gap-4">
                 <div className="flex-1">
                   <Text variant="large-semibold">
                     Sensitive action approval
                   </Text>
-                  <Text variant="large" className="mt-1 text-zinc-900">
+                  <Text variant="large" tone="primary" className="mt-1">
                     The workflow will pause at sensitive action blocks and wait
                     for your review before continuing
                   </Text>

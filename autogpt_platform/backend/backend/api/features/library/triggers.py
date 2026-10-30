@@ -10,6 +10,7 @@ import logging
 from typing import Any
 
 from backend.api.features.experts import experts_db
+from backend.api.features.orgs.db import resolve_member_tenancy
 from backend.data.graph import get_graph
 from backend.data.integrations import get_webhook
 from backend.data.model import CredentialsMetaInput, GraphInput
@@ -103,7 +104,11 @@ async def setup_triggered_preset(
             not_found_message=f"Expert #{expert_id} not found",
         )
     else:
-        organization_id, team_id = graph.organization_id, graph.team_id
+        # Like a preset: the graph's org/team where the user belongs to it,
+        # their own otherwise.
+        organization_id, team_id = await resolve_member_tenancy(
+            user_id, graph.organization_id, graph.team_id
+        )
 
     new_webhook, feedback = await setup_webhook_for_block(
         user_id=user_id,
@@ -158,7 +163,7 @@ async def update_triggered_preset(
     if not current:
         raise NotFoundError(f"Preset #{preset_id} not found")
 
-    trigger_inputs_updated, new_webhook = False, None
+    new_webhook = None
     if inputs is not None and credentials is not None:
         graph = await get_graph(
             current.graph_id, current.graph_version, user_id=user_id
@@ -175,7 +180,9 @@ async def update_triggered_preset(
                     not_found_message=f"Preset #{preset_id} not found",
                 )
             else:
-                organization_id, team_id = graph.organization_id, graph.team_id
+                organization_id, team_id = await resolve_member_tenancy(
+                    user_id, graph.organization_id, graph.team_id
+                )
             trigger_config_with_credentials = {
                 **inputs,
                 **(
@@ -193,28 +200,32 @@ async def update_triggered_preset(
                 organization_id=organization_id,
                 team_id=team_id,
             )
-            trigger_inputs_updated = True
             if not new_webhook:
                 raise InvalidInputError(
                     f"Could not update trigger configuration: {feedback}"
                 )
 
-    updated = await db.update_preset(
-        user_id=user_id,
-        preset_id=preset_id,
-        inputs=inputs,
-        credentials=credentials,
-        name=name,
-        description=description,
-        is_active=is_active,
-    )
+    try:
+        updated = await db.update_preset(
+            user_id=user_id,
+            preset_id=preset_id,
+            inputs=inputs,
+            credentials=credentials,
+            name=name,
+            description=description,
+            is_active=is_active,
+        )
+        if new_webhook:
+            updated = await db.set_preset_webhook(user_id, preset_id, new_webhook.id)
+    except Exception:
+        # Until it is attached, a webhook registered for this update is orphaned.
+        if new_webhook and new_webhook.id != current.webhook_id:
+            await _prune_dangling_webhook(user_id, new_webhook.id)
+        raise
 
-    if trigger_inputs_updated:
-        new_webhook_id = new_webhook.id if new_webhook else None
-        updated = await db.set_preset_webhook(user_id, preset_id, new_webhook_id)
-        # Clean up the old webhook if it's no longer referenced.
-        if current.webhook_id and current.webhook_id != new_webhook_id:
-            await _prune_dangling_webhook(user_id, current.webhook_id)
+    # Clean up the old webhook if it's no longer referenced.
+    if new_webhook and current.webhook_id and current.webhook_id != new_webhook.id:
+        await _prune_dangling_webhook(user_id, current.webhook_id)
 
     return updated
 

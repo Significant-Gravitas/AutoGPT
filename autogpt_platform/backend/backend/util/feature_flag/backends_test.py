@@ -30,7 +30,7 @@ from backend.util.feature_flag import (
 )
 from backend.util.settings import AppEnvironment, Config, FeatureFlagBackend
 
-PRICING_EXPERIMENT = "subscription-pricing-page-initial-state"
+SERVER_READ_EXPERIMENT = "server-read-experiment"
 
 
 @pytest.fixture(autouse=True)
@@ -413,7 +413,7 @@ class TestPostHogBackend:
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "flag_key,events",
-        [(PRICING_EXPERIMENT, 1), (Flag.GENERIC_TRIGGER_AGENTS.value, 0)],
+        [(SERVER_READ_EXPERIMENT, 1), (Flag.GENERIC_TRIGGER_AGENTS.value, 0)],
     )
     async def test_only_an_experiment_read_sends_posthog_its_exposure_event(
         self, mocker, monkeypatch, flag_key, events
@@ -421,6 +421,7 @@ class TestPostHogBackend:
         """`$feature_flag_called` is billed per event, and only an experiment
         counts its exposures with it."""
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
+        mocker.patch.object(ff, "EXPERIMENT_FLAGS", frozenset({SERVER_READ_EXPERIMENT}))
         monkeypatch.setattr(
             urllib3.connectionpool.HTTPConnectionPool, "urlopen", _refuse_network
         )
@@ -488,12 +489,13 @@ class TestDualBackend:
         monkeypatch.setattr(
             urllib3.connectionpool.HTTPConnectionPool, "urlopen", _refuse_network
         )
-        posthog_client = _posthog_rolled_out(PRICING_EXPERIMENT)
+        mocker.patch.object(ff, "EXPERIMENT_FLAGS", frozenset({SERVER_READ_EXPERIMENT}))
+        posthog_client = _posthog_rolled_out(SERVER_READ_EXPERIMENT)
         capture = mocker.patch.object(posthog_client, "capture")
         read = mocker.spy(posthog_client, "get_feature_flag_result")
         mocker.patch.object(ph, "get_flag_client", return_value=posthog_client)
         try:
-            await ff.get_feature_flag_value(PRICING_EXPERIMENT, "u-1")
+            await ff.get_feature_flag_value(SERVER_READ_EXPERIMENT, "u-1")
             await drain_shadow_evaluations()
         finally:
             posthog_client.shutdown()

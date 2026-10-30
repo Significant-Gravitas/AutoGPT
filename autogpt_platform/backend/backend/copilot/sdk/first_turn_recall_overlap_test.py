@@ -125,6 +125,78 @@ async def test_a_first_turn_that_ends_before_its_query_stops_its_recall():
 
 
 @pytest.mark.asyncio
+async def test_failed_setup_and_persistence_stop_context_and_recall():
+    started = [asyncio.Event() for _ in range(4)]
+    stopped = [asyncio.Event() for _ in range(4)]
+    reads: list[asyncio.Task] = []
+    persisted = asyncio.Event()
+    persist_attempts = 0
+
+    def held_read(index: int):
+        async def read(*args, **kwargs):
+            task = asyncio.current_task()
+            assert task is not None
+            reads.append(task)
+            started[index].set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                stopped[index].set()
+
+        return read
+
+    async def stop_reads():
+        for task in reads:
+            task.cancel()
+        await asyncio.gather(*reads, return_exceptions=True)
+
+    async def setup_fails(*args, **kwargs):
+        await asyncio.wait_for(
+            asyncio.gather(*(event.wait() for event in started)), _WAIT
+        )
+        raise RuntimeError("setup failed with all context reads running")
+
+    async def persist(*args, **kwargs):
+        nonlocal persist_attempts
+        persist_attempts += 1
+        if persist_attempts == 1:
+            raise RuntimeError("persistence unavailable after setup failed")
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*(event.wait() for event in stopped)), _WAIT
+            )
+            persisted.set()
+        finally:
+            await stop_reads()
+
+    queries: list[str] = []
+    try:
+        with pytest.raises(RuntimeError, match="persistence unavailable after setup"):
+            await asyncio.wait_for(
+                _run_first_turn(
+                    queries,
+                    [
+                        (f"{_SVC}.build_session_context", dict(new=held_read(0))),
+                        (f"{_SVC}.build_skills_context", dict(new=held_read(1))),
+                        (
+                            f"{_SVC}.first_message_expert_context",
+                            dict(new=held_read(2)),
+                        ),
+                        (f"{_SVC}._fetch_graphiti_context", dict(new=held_read(3))),
+                        (f"{_SVC}._build_system_prompt", dict(new=setup_fails)),
+                        (f"{_SVC}.persist_unfolded_rows", dict(new=persist)),
+                    ],
+                ),
+                _WAIT * 5,
+            )
+    finally:
+        await stop_reads()
+
+    assert persisted.is_set()
+    assert queries == []
+
+
+@pytest.mark.asyncio
 async def test_a_follow_up_carries_its_own_refresh_not_a_first_turn_recall():
     recall = AsyncMock(return_value=_BLOCK)
 

@@ -111,11 +111,11 @@ export default function OnboardingPage() {
       {showBack && (
         <Button
           type="button"
-          variant="ghost"
+          variant="toggle"
           size="xs"
           onClick={prevStep}
           leadingIcon={ArrowLeft01Icon}
-          className="absolute left-6 top-6 text-zinc-500 hover:text-zinc-900"
+          className="absolute left-6 top-6"
         >
           Back
         </Button>
@@ -159,10 +159,10 @@ export default function OnboardingPage() {
         <Button
           as="NextLink"
           href="/logout"
-          variant="ghost"
+          variant="toggle"
           size="xs"
           leadingIcon={Logout03Icon}
-          className="absolute bottom-6 left-6 text-zinc-500 hover:text-zinc-900"
+          className="absolute bottom-6 left-6"
         >
           Log out
         </Button>

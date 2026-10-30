@@ -11,7 +11,10 @@ const LIVE_EVENT_NAMES = [
   "brain_dump_canceled",
   "brain_dump_completed",
   "brain_dump_download",
+  "brain_dump_mic_failed",
   "brain_dump_permission_denied",
+  "brain_dump_permission_retried",
+  "brain_dump_prompt_advanced",
   "brain_dump_recovery_shown",
   "brain_dump_recovery_used",
   "brain_dump_restarted",
@@ -21,10 +24,9 @@ const LIVE_EVENT_NAMES = [
   "brain_dump_typed_fallback",
   "briefing_opened",
   "briefing_outcome_clicked",
-  "capability_card_viewed",
-  "capability_cards_completed",
-  "capability_cards_skipped",
   "checkout_abandoned",
+  "contextual_tip_dismissed",
+  "contextual_tip_shown",
   "credential_card_never_rendered",
   "credential_oauth_flow_timed_out",
   "credential_oauth_popup_blocked",
@@ -36,6 +38,10 @@ const LIVE_EVENT_NAMES = [
   "expert_thread_created",
   "experts_section_viewed",
   "feature_flag_mismatched",
+  "first_run_tour_completed",
+  "first_run_tour_shown",
+  "first_run_tour_skipped",
+  "first_run_tour_step_viewed",
   "hire_all_clicked",
   "hire_flow_abandoned",
   "hire_started",
@@ -82,6 +88,10 @@ const PLANNED_EVENT_NAMES: string[] = [];
 // No longer sent, or renamed (SECRT-2722). The names stay reserved: reusing one would
 // splice a different action onto the history PostHog already holds for it.
 const RETIRED_EVENT_NAMES = [
+  // The four-card first-run deck, replaced by first_run_tour_* (SECRT-3149).
+  "capability_card_viewed",
+  "capability_cards_completed",
+  "capability_cards_skipped",
   "experiment_exposed",
   // Renamed to feature_flag_mismatched before it reached production.
   "feature_flag_mismatch",

@@ -25,6 +25,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import Link from "next/link";
 import { folderSummary } from "@/app/(platform)/artifacts/components/WorkspaceFolders/folderTree";
 import type { WorkspaceFolderPartData } from "../../../helpers/workspaceAttachments";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   files: FileUIPart[];
@@ -111,14 +112,16 @@ export function MessageAttachments({
             key={`${file.filename}-${i}`}
             className={`inline-block rounded-lg border p-1.5 ${
               isUser
-                ? "border-purple-300 bg-purple-50"
-                : "border-neutral-200 bg-neutral-50"
+                ? "border-brand/70 bg-accent-surface"
+                : "border-border-base bg-background"
             }`}
           >
             {rendered}
             <div
               className={`mt-1 flex items-center gap-1 px-0.5 text-xs ${
-                isUser ? "text-zinc-600" : "text-neutral-500"
+                isUser
+                  ? "text-foreground-secondary"
+                  : "text-foreground-tertiary"
               }`}
             >
               <span className="truncate">{file.filename || "file"}</span>
@@ -137,21 +140,30 @@ export function MessageAttachments({
         ) : isUser ? (
           <div
             key={`${file.filename}-${i}`}
-            className="min-w-0 rounded-lg border border-purple-300 bg-purple-100 p-3"
+            className="min-w-0 rounded-lg border border-brand/70 bg-accent-surface p-3"
           >
             <div className="flex items-start justify-between gap-2">
               <div className="flex min-w-0 items-center gap-2">
                 <Icon
                   icon={File02Icon}
-                  className="h-5 w-5 shrink-0 text-neutral-400"
+                  className="h-5 w-5 shrink-0 text-foreground-subtle"
                 />
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-zinc-800">
+                  <Text
+                    variant="body-medium-tight"
+                    tone="emphasis"
+                    className="truncate"
+                  >
                     {file.filename || "file"}
-                  </p>
-                  <p className="mt-0.5 truncate font-mono text-xs text-zinc-800">
+                  </Text>
+                  <Text
+                    variant="small-mono-tight"
+                    as="p"
+                    tone="emphasis"
+                    className="mt-0.5 truncate"
+                  >
                     {file.mediaType || "file"}
-                  </p>
+                  </Text>
                 </div>
               </div>
               {file.url && (
@@ -159,7 +171,7 @@ export function MessageAttachments({
                   href={file.url}
                   download
                   aria-label="Download file"
-                  className="shrink-0 text-purple-400 hover:text-purple-600"
+                  className="shrink-0 text-brand hover:text-brand-hover"
                 >
                   <Icon icon={Download04Icon} className="h-5 w-5" />
                 </a>
@@ -175,7 +187,7 @@ export function MessageAttachments({
                     href={file.url}
                     download
                     aria-label="Download file"
-                    className="shrink-0 text-neutral-400 hover:text-neutral-600"
+                    className="shrink-0 text-foreground-subtle hover:text-foreground-secondary"
                   >
                     <Icon icon={Download04Icon} className="h-5 w-5" />
                   </a>
@@ -185,7 +197,7 @@ export function MessageAttachments({
               <div className="flex items-center gap-2">
                 <Icon
                   icon={File02Icon}
-                  className="h-5 w-5 shrink-0 text-neutral-400"
+                  className="h-5 w-5 shrink-0 text-foreground-subtle"
                 />
                 <div className="min-w-0">
                   <ContentCardTitle>{file.filename || "file"}</ContentCardTitle>
@@ -229,25 +241,34 @@ function FolderAttachmentCard({
   readOnly?: boolean;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-3 rounded-lg border border-purple-300 bg-purple-100 p-3">
-      <Icon icon={Folder01Icon} size={20} className="shrink-0 text-zinc-700" />
+    <div className="flex min-w-0 items-center gap-3 rounded-lg border border-brand/70 bg-accent-surface p-3">
+      <Icon
+        icon={Folder01Icon}
+        size={20}
+        className="shrink-0 text-foreground-body"
+      />
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm font-medium text-zinc-800">
+        <Text
+          variant="body-medium-tight"
+          as="span"
+          tone="emphasis"
+          className="truncate"
+        >
           {folder.name}
-        </span>
-        <span className="text-xs text-zinc-600">
+        </Text>
+        <Text variant="small-tight" as="span" tone="secondary">
           {/* The part counts direct files only, so zero is not "Empty". */}
           {folder.fileCount > 0
             ? `Folder · ${folderSummary(folder.fileCount, 0)}`
             : "Folder"}
-        </span>
+        </Text>
       </div>
       {/* The share viewer has no Files page to send anyone to. */}
       {readOnly ? null : (
         <Link
           href={`/artifacts?folder=${encodeURIComponent(folder.id)}`}
           aria-label={`Open folder ${folder.name} in Files`}
-          className="shrink-0 rounded-md p-1 text-zinc-500 transition-colors hover:bg-purple-200 hover:text-zinc-800"
+          className="shrink-0 rounded-md p-1 text-foreground-tertiary transition-colors hover:bg-brand/50 hover:text-foreground-emphasis"
         >
           <Icon icon={LinkSquare01Icon} size={16} />
         </Link>

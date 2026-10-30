@@ -109,14 +109,15 @@ function JSONViewer({ data }: { data: any }) {
       return <span className="text-muted-foreground">undefined</span>;
 
     if (typeof value === "boolean") {
-      return <span className="text-blue-600">{value.toString()}</span>;
+      return <span className="text-info-foreground">{value.toString()}</span>;
     }
 
     if (typeof value === "number") {
-      return <span className="text-green-600">{value}</span>;
+      return <span className="text-success">{value}</span>;
     }
 
     if (typeof value === "string") {
+      // oxlint-disable-next-line design-system/no-raw-colors -- JSON string syntax colour; warning-foreground would be a hue change (deferred visual change)
       return <span className="text-orange-600">&quot;{value}&quot;</span>;
     }
 
@@ -182,7 +183,7 @@ function JSONViewer({ data }: { data: any }) {
             <div className="ml-4 mt-1">
               {keys.map((objKey) => (
                 <div key={objKey} className="flex">
-                  <span className="mr-2 text-purple-600">
+                  <span className="mr-2 text-brand-hover">
                     &quot;{objKey}&quot;:
                   </span>
                   {renderValue(value[objKey], `${key}.${objKey}`)}

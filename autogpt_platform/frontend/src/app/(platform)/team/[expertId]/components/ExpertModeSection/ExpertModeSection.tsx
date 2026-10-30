@@ -33,7 +33,7 @@ function ExpertModeOptions({ expert }: Props) {
   return (
     <section
       aria-label={`${expert.name} approval mode`}
-      className="rounded-xl border border-zinc-200 bg-white p-4"
+      className="rounded-xl border border-border-base bg-surface p-4"
     >
       <Text variant="large-medium">Approvals</Text>
       <Text variant="small" tone="secondary" className="mt-1">
@@ -52,13 +52,13 @@ function ExpertModeOptions({ expert }: Props) {
             <label
               key={option.value}
               className={cn(
-                "flex cursor-pointer items-start gap-3 rounded-xl p-3 text-left transition-colors has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-zinc-800",
+                "flex cursor-pointer items-start gap-3 rounded-xl p-3 text-left transition-colors has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-action",
                 isSelected
-                  ? "bg-white ring-2 ring-inset ring-zinc-800"
-                  : "bg-zinc-50 ring-1 ring-inset ring-zinc-200 hover:bg-zinc-100",
+                  ? "bg-surface ring-2 ring-inset ring-action"
+                  : "bg-surface-muted ring-1 ring-inset ring-border-base hover:bg-surface-hover",
                 option.value === "unsupervised" &&
                   isSelected &&
-                  "bg-amber-50 ring-amber-600",
+                  "bg-warning-surface ring-warning-foreground",
               )}
             >
               <input
@@ -69,20 +69,17 @@ function ExpertModeOptions({ expert }: Props) {
                 onChange={() => selectMode(option.value)}
                 className="sr-only"
               />
-              <Icon
-                icon={option.icon}
-                size={18}
-                className="mt-0.5 shrink-0 text-zinc-700"
-                aria-hidden="true"
-              />
+              <span className="mt-0.5 inline-flex shrink-0 text-foreground-body">
+                <Icon icon={option.icon} size={18} aria-hidden="true" />
+              </span>
               <span className="flex flex-col gap-0.5">
-                <span className="text-sm font-medium text-zinc-900">
+                <Text variant="body-md-medium" as="span" tone="primary">
                   {option.label}
                   {option.value === DEFAULT_AUTOPILOT_MODE ? " (default)" : ""}
-                </span>
-                <span className="text-xs text-zinc-500">
+                </Text>
+                <Text variant="small-tight" as="span" tone="muted">
                   {option.description}
-                </span>
+                </Text>
               </span>
             </label>
           );

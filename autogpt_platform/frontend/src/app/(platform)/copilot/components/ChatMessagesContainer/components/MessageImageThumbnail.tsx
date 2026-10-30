@@ -12,7 +12,8 @@ import { LocalFileImage } from "../../LocalFileImage/LocalFileImage";
 
 // A fixed size, not the image's own width, so the frame doesn't move while
 // the sent image downloads or when it replaces the pending one.
-const FRAME = "overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-100";
+const FRAME =
+  "overflow-hidden rounded-2xl border border-border-base bg-surface-hover";
 const IMAGE = "block size-40 object-cover";
 
 interface Props {
@@ -34,10 +35,10 @@ export function MessageImageThumbnail({ artifact, readOnly }: Props) {
       aria-label={`Open ${artifact.title}`}
       className={cn(
         FRAME,
-        "transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400",
+        "transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle",
       )}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {/* eslint-disable-next-line @next/next/no-img-element -- a user or workspace image URL next/image cannot optimise */}
       <img
         src={artifact.sourceUrl}
         alt={artifact.title}
@@ -73,7 +74,7 @@ export function PendingImageThumbnail({ attachment, fallback }: PendingProps) {
           onError={() => setFailed(true)}
         />
       ) : (
-        // eslint-disable-next-line @next/next/no-img-element
+        // eslint-disable-next-line @next/next/no-img-element -- a user or workspace image URL next/image cannot optimise
         <img
           src={attachment.url}
           alt={attachment.name}
@@ -82,11 +83,11 @@ export function PendingImageThumbnail({ attachment, fallback }: PendingProps) {
         />
       )}
       {attachment.isUploading && (
-        <span className="absolute inset-0 flex items-center justify-center bg-black/20">
+        <span className="absolute inset-0 flex items-center justify-center bg-foreground-base/20">
           <Icon
             icon={Loading03Icon}
             size={20}
-            className="animate-spin text-white"
+            className="animate-spin text-action-foreground"
           />
         </span>
       )}

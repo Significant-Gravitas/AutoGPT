@@ -2,13 +2,16 @@
 
 import { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
-import { Card } from "@/components/atoms/Card/Card";
 import {
+  Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/__legacy__/ui/card";
+} from "@/components/atoms/Card/Card";
+import { Text } from "@/components/atoms/Text/Text";
+import { cn } from "@/lib/utils";
+import { DiagnosticAlertCard } from "./DiagnosticAlertCard";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useDiagnosticsContent } from "./useDiagnosticsContent";
 import { ExecutionsTable } from "./ExecutionsTable";
@@ -35,11 +38,12 @@ export function DiagnosticsContent() {
     return (
       <div className="flex h-64 items-center justify-center">
         <div className="text-center">
-          <Icon
-            icon={Refresh01Icon}
-            className="mx-auto h-8 w-8 animate-spin text-gray-400"
-          />
-          <p className="mt-2 text-gray-500">Loading diagnostics...</p>
+          <span className="mx-auto block h-8 w-8 animate-spin text-foreground-subtle">
+            <Icon icon={Refresh01Icon} className="h-8 w-8" />
+          </span>
+          <p className="mt-2 text-foreground-tertiary">
+            Loading diagnostics...
+          </p>
         </div>
       </div>
     );
@@ -60,7 +64,7 @@ export function DiagnosticsContent() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">System Diagnostics</h1>
-          <p className="text-gray-500">
+          <p className="text-foreground-tertiary">
             Monitor execution and agent system health
           </p>
         </div>
@@ -70,10 +74,11 @@ export function DiagnosticsContent() {
           variant="outline"
           size="small"
         >
-          <Icon
-            icon={Refresh01Icon}
-            className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
-          />
+          <span
+            className={cn("mr-2 block h-4 w-4", isLoading && "animate-spin")}
+          >
+            <Icon icon={Refresh01Icon} className="h-4 w-4" />
+          </span>
           Refresh
         </Button>
       </div>
@@ -82,152 +87,91 @@ export function DiagnosticsContent() {
       <div className="grid gap-4 md:grid-cols-3">
         {executionData && (
           <>
-            {/* Orphaned Executions Alert */}
             {(executionData.orphaned_running > 0 ||
               executionData.orphaned_queued > 0) && (
-              <div
-                className="cursor-pointer transition-all hover:scale-105"
+              <DiagnosticAlertCard
+                tone="orange"
+                title="Orphaned Executions"
+                value={
+                  executionData.orphaned_running + executionData.orphaned_queued
+                }
+                detail={
+                  <>
+                    {executionData.orphaned_running} running,{" "}
+                    {executionData.orphaned_queued} queued ({">"}24h old)
+                  </>
+                }
+                hint="Click to view →"
                 onClick={() => setActiveTab("orphaned")}
-              >
-                <Card className="border-orange-300 bg-orange-50">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-orange-800">
-                      Orphaned Executions
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-3xl font-bold text-orange-900">
-                      {executionData.orphaned_running +
-                        executionData.orphaned_queued}
-                    </p>
-                    <p className="text-sm text-orange-700">
-                      {executionData.orphaned_running} running,{" "}
-                      {executionData.orphaned_queued} queued ({">"}24h old)
-                    </p>
-                    <p className="mt-2 text-xs text-orange-600">
-                      Click to view →
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
+              />
             )}
 
-            {/* Failed Executions Alert */}
             {executionData.failed_count_24h > 0 && (
-              <div
-                className="cursor-pointer transition-all hover:scale-105"
+              <DiagnosticAlertCard
+                tone="error"
+                title="Failed Executions (24h)"
+                value={executionData.failed_count_24h}
+                detail={
+                  <>
+                    {executionData.failed_count_1h} in last hour (
+                    {executionData.failure_rate_24h.toFixed(1)}/hr rate)
+                  </>
+                }
+                hint="Click to view →"
                 onClick={() => setActiveTab("failed")}
-              >
-                <Card className="border-red-300 bg-red-50">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-red-800">
-                      Failed Executions (24h)
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-3xl font-bold text-red-900">
-                      {executionData.failed_count_24h}
-                    </p>
-                    <p className="text-sm text-red-700">
-                      {executionData.failed_count_1h} in last hour (
-                      {executionData.failure_rate_24h.toFixed(1)}/hr rate)
-                    </p>
-                    <p className="mt-2 text-xs text-red-600">Click to view →</p>
-                  </CardContent>
-                </Card>
-              </div>
+              />
             )}
 
-            {/* Long-Running Alert */}
             {executionData.stuck_running_24h > 0 && (
-              <>
-                <div
-                  className="cursor-pointer transition-all hover:scale-105"
-                  onClick={() => setActiveTab("long-running")}
-                >
-                  <Card className="border-yellow-300 bg-yellow-50">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-yellow-800">
-                        Long-Running Executions
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-3xl font-bold text-yellow-900">
-                        {executionData.stuck_running_24h}
-                      </p>
-                      <p className="text-sm text-yellow-700">
-                        Running {">"}24h (oldest:{" "}
-                        {executionData.oldest_running_hours
-                          ? `${Math.floor(executionData.oldest_running_hours)}h`
-                          : "N/A"}
-                        )
-                      </p>
-                      <p className="mt-2 text-xs text-yellow-600">
-                        Click to view →
-                      </p>
-                    </CardContent>
-                  </Card>
-                </div>
-              </>
+              <DiagnosticAlertCard
+                tone="yellow"
+                title="Long-Running Executions"
+                value={executionData.stuck_running_24h}
+                detail={
+                  <>
+                    Running {">"}24h (oldest:{" "}
+                    {executionData.oldest_running_hours
+                      ? `${Math.floor(executionData.oldest_running_hours)}h`
+                      : "N/A"}
+                    )
+                  </>
+                }
+                hint="Click to view →"
+                onClick={() => setActiveTab("long-running")}
+              />
             )}
 
-            {/* Orphaned Schedules Alert */}
             {scheduleData && scheduleData.total_orphaned > 0 && (
-              <div
-                className="cursor-pointer transition-all hover:scale-105"
+              <DiagnosticAlertCard
+                tone="brand"
+                title="Orphaned Schedules"
+                value={scheduleData.total_orphaned}
+                detail={
+                  <>
+                    {scheduleData.orphaned_deleted_graph > 0 &&
+                      `${scheduleData.orphaned_deleted_graph} deleted graph, `}
+                    {scheduleData.orphaned_no_library_access > 0 &&
+                      `${scheduleData.orphaned_no_library_access} no access`}
+                  </>
+                }
+                hint="Click to view schedules →"
                 onClick={() => setActiveTab("all")}
-              >
-                <Card className="border-purple-300 bg-purple-50">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-purple-800">
-                      Orphaned Schedules
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-3xl font-bold text-purple-900">
-                      {scheduleData.total_orphaned}
-                    </p>
-                    <p className="text-sm text-purple-700">
-                      {scheduleData.orphaned_deleted_graph > 0 &&
-                        `${scheduleData.orphaned_deleted_graph} deleted graph, `}
-                      {scheduleData.orphaned_no_library_access > 0 &&
-                        `${scheduleData.orphaned_no_library_access} no access`}
-                    </p>
-                    <p className="mt-2 text-xs text-purple-600">
-                      Click to view schedules →
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
+              />
             )}
 
-            {/* Invalid State Alert */}
             {(executionData.invalid_queued_with_start > 0 ||
               executionData.invalid_running_without_start > 0) && (
-              <div
-                className="cursor-pointer transition-all hover:scale-105"
+              <DiagnosticAlertCard
+                tone="pink"
+                title="Invalid States (Data Corruption)"
+                value={
+                  executionData.invalid_queued_with_start +
+                  executionData.invalid_running_without_start
+                }
+                detail="Requires manual investigation"
+                hint="Click to view (read-only) →"
                 onClick={() => setActiveTab("invalid")}
-              >
-                <Card className="border-pink-300 bg-pink-50">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-pink-800">
-                      Invalid States (Data Corruption)
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-3xl font-bold text-pink-900">
-                      {executionData.invalid_queued_with_start +
-                        executionData.invalid_running_without_start}
-                    </p>
-                    <p className="text-sm text-pink-700">
-                      Requires manual investigation
-                    </p>
-                    <p className="mt-2 text-xs text-pink-600">
-                      Click to view (read-only) →
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
+              />
             )}
           </>
         )}
@@ -246,74 +190,79 @@ export function DiagnosticsContent() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">
+                    <Text variant="body-medium-tight" tone="muted">
                       Running Executions
-                    </p>
+                    </Text>
                     <p className="text-3xl font-bold">
                       {executionData.running_executions}
                     </p>
                   </div>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-                    <div className="h-6 w-6 rounded-full bg-green-500"></div>
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success/30">
+                    <div className="h-6 w-6 rounded-full bg-success"></div>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">
+                    <Text variant="body-medium-tight" tone="muted">
                       Queued in Database
-                    </p>
+                    </Text>
                     <p className="text-3xl font-bold">
                       {executionData.queued_executions_db}
                     </p>
                     {executionData.stuck_queued_1h > 0 && (
+                      // oxlint-disable-next-line design-system/no-raw-colors -- orange has no role; amber would change the hue (deferred)
                       <p className="text-xs text-orange-600">
                         {executionData.stuck_queued_1h} stuck {">"}1h
                       </p>
                     )}
                   </div>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
-                    <div className="h-6 w-6 rounded-full bg-blue-500"></div>
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-info/20">
+                    <div className="h-6 w-6 rounded-full bg-info"></div>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">
+                    <Text variant="body-medium-tight" tone="muted">
                       Queued in RabbitMQ
-                    </p>
+                    </Text>
                     <p className="text-3xl font-bold">
                       {executionData.queued_executions_rabbitmq === -1 ? (
-                        <span className="text-xl text-red-500">Error</span>
+                        <span className="text-xl text-error">Error</span>
                       ) : (
                         executionData.queued_executions_rabbitmq
                       )}
                     </p>
                   </div>
                   <div
-                    className={`flex h-12 w-12 items-center justify-center rounded-full ${
+                    className={cn(
+                      "flex h-12 w-12 items-center justify-center rounded-full",
                       executionData.queued_executions_rabbitmq === -1
-                        ? "bg-red-100"
-                        : "bg-yellow-100"
-                    }`}
+                        ? "bg-error-surface"
+                        : // oxlint-disable-next-line design-system/no-raw-colors -- yellow has no role; amber would change the hue (deferred)
+                          "bg-yellow-100",
+                    )}
                   >
                     <div
-                      className={`h-6 w-6 rounded-full ${
+                      className={cn(
+                        "h-6 w-6 rounded-full",
                         executionData.queued_executions_rabbitmq === -1
-                          ? "bg-red-500"
-                          : "bg-yellow-500"
-                      }`}
+                          ? "bg-error"
+                          : // oxlint-disable-next-line design-system/no-raw-colors -- yellow has no role; amber would change the hue (deferred)
+                            "bg-yellow-500",
+                      )}
                     ></div>
                   </div>
                 </div>
 
-                <div className="text-xs text-gray-400">
+                <div className="text-xs text-foreground-subtle">
                   Last updated:{" "}
                   {new Date(executionData.timestamp).toLocaleString()}
                 </div>
               </div>
             ) : (
-              <p className="text-gray-500">No data available</p>
+              <p className="text-foreground-tertiary">No data available</p>
             )}
           </CardContent>
         </Card>
@@ -330,63 +279,63 @@ export function DiagnosticsContent() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">
+                    <Text variant="body-medium-tight" tone="muted">
                       Completed (24h)
-                    </p>
+                    </Text>
                     <p className="text-3xl font-bold">
                       {executionData.completed_24h}
                     </p>
-                    <p className="text-xs text-gray-600">
+                    <Text variant="small-tight" tone="secondary">
                       {executionData.completed_1h} in last hour
-                    </p>
+                    </Text>
                   </div>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-                    <div className="h-6 w-6 rounded-full bg-green-500"></div>
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success/30">
+                    <div className="h-6 w-6 rounded-full bg-success"></div>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">
+                    <Text variant="body-medium-tight" tone="muted">
                       Throughput Rate
-                    </p>
+                    </Text>
                     <p className="text-3xl font-bold">
                       {executionData.throughput_per_hour.toFixed(1)}
                     </p>
-                    <p className="text-xs text-gray-600">
+                    <Text variant="small-tight" tone="secondary">
                       completions per hour
-                    </p>
+                    </Text>
                   </div>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
-                    <div className="h-6 w-6 rounded-full bg-blue-500"></div>
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-info/20">
+                    <div className="h-6 w-6 rounded-full bg-info"></div>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">
+                    <Text variant="body-medium-tight" tone="muted">
                       Cancel Queue Depth
-                    </p>
+                    </Text>
                     <p className="text-3xl font-bold">
                       {executionData.cancel_queue_depth === -1 ? (
-                        <span className="text-xl text-red-500">Error</span>
+                        <span className="text-xl text-error">Error</span>
                       ) : (
                         executionData.cancel_queue_depth
                       )}
                     </p>
                   </div>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-100">
-                    <div className="h-6 w-6 rounded-full bg-purple-500"></div>
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent-surface">
+                    <div className="h-6 w-6 rounded-full bg-brand"></div>
                   </div>
                 </div>
 
-                <div className="text-xs text-gray-400">
+                <div className="text-xs text-foreground-subtle">
                   Last updated:{" "}
                   {new Date(executionData.timestamp).toLocaleString()}
                 </div>
               </div>
             ) : (
-              <p className="text-gray-500">No data available</p>
+              <p className="text-foreground-tertiary">No data available</p>
             )}
           </CardContent>
         </Card>
@@ -403,66 +352,67 @@ export function DiagnosticsContent() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">
+                    <Text variant="body-medium-tight" tone="muted">
                       User Schedules
-                    </p>
+                    </Text>
                     <p className="text-3xl font-bold">
                       {scheduleData.user_schedules}
                     </p>
                     {scheduleData.total_orphaned > 0 && (
+                      // oxlint-disable-next-line design-system/no-raw-colors -- orange has no role; amber would change the hue (deferred)
                       <p className="text-xs text-orange-600">
                         {scheduleData.total_orphaned} orphaned
                       </p>
                     )}
                   </div>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-100">
-                    <div className="h-6 w-6 rounded-full bg-purple-500"></div>
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent-surface">
+                    <div className="h-6 w-6 rounded-full bg-brand"></div>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">
+                    <Text variant="body-medium-tight" tone="muted">
                       Upcoming Runs (1h)
-                    </p>
+                    </Text>
                     <p className="text-3xl font-bold">
                       {scheduleData.total_runs_next_hour}
                     </p>
-                    <p className="text-xs text-gray-600">
+                    <Text variant="small-tight" tone="secondary">
                       from {scheduleData.schedules_next_hour} schedule
                       {scheduleData.schedules_next_hour !== 1 ? "s" : ""}
-                    </p>
+                    </Text>
                   </div>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
-                    <div className="h-6 w-6 rounded-full bg-blue-500"></div>
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-info/20">
+                    <div className="h-6 w-6 rounded-full bg-info"></div>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">
+                    <Text variant="body-medium-tight" tone="muted">
                       Upcoming Runs (24h)
-                    </p>
+                    </Text>
                     <p className="text-3xl font-bold">
                       {scheduleData.total_runs_next_24h}
                     </p>
-                    <p className="text-xs text-gray-600">
+                    <Text variant="small-tight" tone="secondary">
                       from {scheduleData.schedules_next_24h} schedule
                       {scheduleData.schedules_next_24h !== 1 ? "s" : ""}
-                    </p>
+                    </Text>
                   </div>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-                    <div className="h-6 w-6 rounded-full bg-green-500"></div>
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success/30">
+                    <div className="h-6 w-6 rounded-full bg-success"></div>
                   </div>
                 </div>
 
-                <div className="text-xs text-gray-400">
+                <div className="text-xs text-foreground-subtle">
                   Last updated:{" "}
                   {new Date(scheduleData.timestamp).toLocaleString()}
                 </div>
               </div>
             ) : (
-              <p className="text-gray-500">No data available</p>
+              <p className="text-foreground-tertiary">No data available</p>
             )}
           </CardContent>
         </Card>
@@ -478,48 +428,51 @@ export function DiagnosticsContent() {
         <CardContent>
           <div className="space-y-3 text-sm">
             <div>
+              {/* oxlint-disable-next-line design-system/no-raw-colors -- orange has no role; amber would change the hue (deferred) */}
               <p className="font-semibold text-orange-700">
                 🟠 Orphaned Executions:
               </p>
-              <p className="text-gray-600">
+              <p className="text-foreground-secondary">
                 Executions {">"}24h old in database but not actually running in
                 executor. Usually from executor restarts/crashes. Safe to
                 cleanup (marks as FAILED in DB).
               </p>
             </div>
             <div>
-              <p className="font-semibold text-blue-700">
+              <p className="font-semibold text-info-foreground">
                 🔵 Stuck Queued Executions:
               </p>
-              <p className="text-gray-600">
+              <p className="text-foreground-secondary">
                 QUEUED {">"}1h but never started. Not in RabbitMQ queue. Can
                 cleanup (safe) or requeue (⚠️ costs credits - only if temporary
                 issue like RabbitMQ purge).
               </p>
             </div>
             <div>
+              {/* oxlint-disable-next-line design-system/no-raw-colors -- yellow has no role; amber would change the hue (deferred) */}
               <p className="font-semibold text-yellow-700">
                 🟡 Long-Running Executions:
               </p>
-              <p className="text-gray-600">
+              <p className="text-foreground-secondary">
                 RUNNING status {">"}24h. May be legitimately long jobs or stuck.
                 Review before stopping. Sends cancel signal to executor.
               </p>
             </div>
             <div>
-              <p className="font-semibold text-red-700">
+              <p className="font-semibold text-error-foreground">
                 🔴 Failed Executions:
               </p>
-              <p className="text-gray-600">
+              <p className="text-foreground-secondary">
                 Executions that failed in last 24h. View error messages to
                 identify patterns. Spike in failures indicates system issues.
               </p>
             </div>
             <div>
+              {/* oxlint-disable-next-line design-system/no-raw-colors -- pink has no role; red would change the hue (deferred) */}
               <p className="font-semibold text-pink-700">
                 🩷 Invalid States (Data Corruption):
               </p>
-              <p className="text-gray-600">
+              <p className="text-foreground-secondary">
                 Executions in impossible states (QUEUED with startedAt, RUNNING
                 without startedAt). Indicates DB corruption, race conditions, or
                 crashes. Each requires manual investigation - no bulk actions
@@ -528,14 +481,14 @@ export function DiagnosticsContent() {
             </div>
             <div>
               <p className="font-semibold">Throughput Metrics:</p>
-              <p className="text-gray-600">
+              <p className="text-foreground-secondary">
                 Completions per hour shows system productivity. Declining
                 throughput indicates performance degradation or executor issues.
               </p>
             </div>
             <div>
               <p className="font-semibold">Queue Health:</p>
-              <p className="text-gray-600">
+              <p className="text-foreground-secondary">
                 RabbitMQ depths should be low ({"<"}100). High queues indicate
                 executor can&apos;t keep up. Cancel queue backlog indicates
                 executor processing issues.

@@ -2,6 +2,8 @@
 
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
 import { HomeRecap } from "@/app/(platform)/home/components/HomeRecap/HomeRecap";
+import { tourTarget } from "@/lib/tour-targets";
+import { useFirstRunTourAutoStart } from "@/app/(platform)/components/FirstRunTour/useFirstRunTourAutoStart";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
@@ -11,7 +13,6 @@ import { ConnectionPicker } from "../ChatInput/components/ConnectionPicker/Conne
 import { RecipientChip } from "../ChatInput/components/RecipientChip";
 import { OnboardingIntroCard } from "../OnboardingIntroCard/OnboardingIntroCard";
 import { useOnboardingIntroCard } from "../OnboardingIntroCard/useOnboardingIntroCard";
-import { OnboardingWelcomeDialog } from "../OnboardingWelcomeDialog/OnboardingWelcomeDialog";
 import { SEND_AT_RESET_PLACEHOLDER } from "../SendAtReset/helpers";
 import { SuggestedTasksBlock } from "../SuggestedTasks/SuggestedTasksBlock";
 import { useSuggestedTasks } from "../SuggestedTasks/useSuggestedTasks";
@@ -77,6 +78,10 @@ export function EmptySession({
   const { user } = useAuth();
   const greetingName = getGreetingName(user);
   const intro = useOnboardingIntroCard();
+  useFirstRunTourAutoStart({
+    isPending: intro.isFirstRunPending,
+    onFinished: intro.finishFirstRun,
+  });
 
   const {
     options,
@@ -104,6 +109,7 @@ export function EmptySession({
   const { inputPlaceholder } = useHomeComposer({
     enabled:
       !intro.isVisible && !intro.isAwaitingGreeting && !isKickoffStarting,
+    greetingPath: intro.isVisible ? intro.path : null,
   });
 
   if (isKickoffStarting) {
@@ -112,10 +118,6 @@ export function EmptySession({
 
   return (
     <div className="relative flex h-full flex-1 items-start justify-center overflow-y-auto px-0 py-5 md:px-6 md:py-10">
-      <OnboardingWelcomeDialog
-        isOpen={intro.isWelcomeOpen}
-        onClose={intro.closeWelcome}
-      />
       {/* Which connection the new chat runs on, kept out of the composer and
           in the page corner, level with the inset header's controls. */}
       <div className="absolute right-3 top-3 z-30 empty:hidden">
@@ -137,8 +139,8 @@ export function EmptySession({
               disabled={isComposerDisabled || !!atReset}
             />
           ) : intro.isAwaitingGreeting ? (
-            // Behind the welcome modal's blur and for as long as the
-            // pipeline is still writing. The orb it renders is the same
+            // For as long as the pipeline is still writing, which can be
+            // behind the first-run walkthrough. The orb it renders is the same
             // element the card above puts in its heading, so the swap
             // moves it there rather than replacing it.
             <GreetingLoader />
@@ -157,6 +159,7 @@ export function EmptySession({
           {!intro.isAwaitingGreeting && (
             <div className={cn("mb-6", intro.isVisible && "max-w-[48rem]")}>
               <div
+                {...tourTarget("composer")}
                 className={cn(
                   "text-left transition-colors duration-300 ease-out",
                   // The greeting's prompt card bleeds 1.25rem past the text
@@ -197,6 +200,7 @@ export function EmptySession({
                   onDroppedFilesConsumed={onDroppedFilesConsumed}
                   expertId={expertId}
                   expertName={expertName}
+                  assistantName={selectedExpert?.name ?? expertName ?? null}
                   recipientPicker={
                     intro.isVisible ? recipientPicker : undefined
                   }

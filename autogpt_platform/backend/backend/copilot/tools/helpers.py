@@ -20,7 +20,10 @@ from backend.copilot.constants import (
     MAX_TOOL_WAIT_SECONDS,
 )
 from backend.copilot.context import get_current_permissions, is_unattended_turn
-from backend.copilot.credential_selection import turn_credential_pins
+from backend.copilot.credential_selection import (
+    host_selection_key,
+    turn_credential_pins,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.permissions import denied_block_providers
 from backend.copilot.providers import SUPPORTED_PROVIDERS
@@ -134,13 +137,31 @@ def get_inputs_from_schema(
 
 
 def is_picker_field(schema: Any) -> bool:
-    """A field only a platform-rendered picker can fill (e.g. Google Drive).
+    """A field a platform-rendered picker fills.
 
-    The picker attaches hidden credentials to the chosen resource, so a bare
-    ID or URL typed into the chat can never stand in for it.
+    Google Drive's picker attaches hidden credentials to the chosen file, so a
+    bare ID or URL typed into the chat can never stand in for it. A
+    ``resource_picker`` (an Airtable base) lists what the user's own account
+    holds, so they choose by name instead of digging an id out of a URL.
     """
     return isinstance(schema, dict) and (
-        schema.get("format") == "google-drive-picker" or "auto_credentials" in schema
+        schema.get("format") == "google-drive-picker"
+        or "auto_credentials" in schema
+        or "resource_picker" in schema
+    )
+
+
+def missing_picker_fields(
+    input_schema: dict[str, Any], required: set[str], input_data: dict[str, Any]
+) -> list[str]:
+    """Required picker inputs the call leaves unpicked. The prompt tells the
+    model to pass an unpicked field as null, so an empty value is as missing
+    as an absent one. A call with any of these only shows its setup card."""
+    properties = input_schema.get("properties", {})
+    return sorted(
+        f
+        for f in required
+        if input_data.get(f) in (None, "") and is_picker_field(properties.get(f))
     )
 
 
@@ -148,19 +169,78 @@ def get_picker_inputs_from_schema(
     input_schema: dict[str, Any],
     exclude_fields: set[str] | None = None,
     input_data: dict[str, Any] | None = None,
+    picker_credentials: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Inputs a setup card should render: picker-backed fields only.
 
     Every other input is collected in the chat by the CoPilot asking the
-    user, so the card carries no form for them.
+    user, so the card carries no form for them. ``picker_credentials`` maps a
+    provider to the credential the run will use, which a resource picker
+    lists with.
     """
-    return [
-        entry
+    entries = [
+        _with_picker_credentials(entry, picker_credentials or {})
         for entry in get_inputs_from_schema(
             input_schema, exclude_fields=exclude_fields, input_data=input_data
         )
         if is_picker_field(entry)
     ]
+    return [entry for entry in entries if entry is not None]
+
+
+def _with_picker_credentials(
+    entry: dict[str, Any], by_provider: dict[str, str]
+) -> dict[str, Any] | None:
+    """A resource picker lists with the account the run will use. Without
+    one there is nothing to list, so the card signs in first and the picker
+    follows when the call runs again."""
+    picker = entry.get("resource_picker")
+    if not isinstance(picker, dict):
+        return entry
+    credentials_id = by_provider.get(str(picker.get("provider")))
+    if not credentials_id:
+        return None
+    return {**entry, "resource_picker": {**picker, "credentials_id": credentials_id}}
+
+
+def _unattended_picker_error(
+    block_name: str,
+    input_schema: dict[str, Any],
+    fields: list[str],
+    session_id: str,
+) -> ErrorResponse:
+    """A card in a turn nobody watches is never answered, so say what the
+    user must choose, the way a missing credential is reported."""
+    titles = " and ".join(_field_titles(input_schema, fields))
+    logger.warning(
+        "Unattended copilot turn in session %s: %s needs %s picked",
+        session_id,
+        block_name,
+        titles,
+    )
+    return ErrorResponse(
+        message=(
+            f"This step did not run: it needs the user's {titles}, which they "
+            "choose in a card, and nobody is watching this run. Tell them to "
+            "pick it in a chat, then it can run unattended."
+        ),
+        session_id=session_id,
+    ).from_outside()
+
+
+def _field_titles(input_schema: dict[str, Any], fields: list[str]) -> list[str]:
+    properties = input_schema.get("properties", {})
+    return [str(properties.get(f, {}).get("title") or f) for f in fields]
+
+
+def _picker_message(input_schema: dict[str, Any], fields: list[str]) -> str:
+    """The card's line for a pick: shown to the user as well as the model, so
+    it names each field by its title, never its key."""
+    titles = _field_titles(input_schema, fields)
+    return (
+        f"Choose your {' and '.join(titles)} in the card below. The step runs "
+        "again with your choice."
+    )
 
 
 async def _charge_block_credits(
@@ -349,8 +429,10 @@ async def execute_block(
         try:
             for field_name, cred_meta in matched_credentials.items():
                 credential_field_name = field_name
-                if field_name not in input_data:
-                    input_data[field_name] = cred_meta.model_dump()
+                # Always overwrite: the block runs with the resolved
+                # credential below, so the input it is priced on must name
+                # that same credential, not whatever the model passed.
+                input_data[field_name] = cred_meta.model_dump()
                 if cred_meta.provider == ProviderName.CODEX:
                     lease = await creds_manager.acquire_lease(user_id, cred_meta.id)
                     credential_leases[field_name] = lease
@@ -870,7 +952,7 @@ async def unattended_missing_credentials_error(
     providers -= {""}
     names = ", ".join(sorted(providers)) or "an integration"
     pinned = await _pinned_account_error(
-        subject, providers, session_id, user_id, expert_id
+        subject, _missing_selection_keys(missing), session_id, user_id, expert_id
     )
     if pinned is not None:
         return pinned
@@ -913,6 +995,22 @@ def _single_provider(providers: set[str]) -> dict[str, Any] | None:
     return {"provider": next(iter(providers))} if len(providers) == 1 else None
 
 
+def _missing_selection_keys(missing: dict[str, dict[str, Any]]) -> set[str]:
+    keys = set()
+    for entry in missing.values():
+        provider = provider_slug(entry.get("provider", ""))
+        if not provider:
+            continue
+        keys.add(provider)
+        if "host_scoped" in entry.get("types", []):
+            keys.update(
+                host_selection_key(provider, url)
+                for url in entry.get("discriminator_values", [])
+                if isinstance(url, str)
+            )
+    return keys
+
+
 async def _pinned_account_error(
     subject: str,
     providers: set[str],
@@ -931,7 +1029,8 @@ async def _pinned_account_error(
     unfit = sorted(
         p
         for p in pinned
-        if pins[p].id in by_id and not is_per_target_credential(by_id[pins[p].id])
+        if pins[p].id in by_id
+        and (":" in p or not is_per_target_credential(by_id[pins[p].id]))
     )
     if not lost and not unfit:
         return None
@@ -969,7 +1068,7 @@ async def _pinned_account_error(
             "another account for this schedule, before the next run."
         ),
         error="pinned_credential_missing" if lost else "pinned_credential_unusable",
-        details=_single_provider(set(lost + unfit)),
+        details=_single_provider({p.partition(":")[0] for p in lost + unfit}),
         session_id=session_id,
     ).from_outside()
 
@@ -1016,6 +1115,7 @@ async def prepare_block_for_execution(
     session_id: str,
     dry_run: bool,
     validate_only: bool = False,
+    refs_resolved: bool = False,
 ) -> "BlockPreparation | ToolResponseBase":
     """Validate and prepare a block for execution.
 
@@ -1113,8 +1213,10 @@ async def prepare_block_for_execution(
         ).from_outside()
 
     # Expand @@agptfile: refs using the block's input schema so string/list
-    # fields get the correct deserialization.
-    if input_data:
+    # fields get the correct deserialization. A call the gate reviewed arrives
+    # resolved, and resolving file content again could expand a reference
+    # that is only text inside a file.
+    if input_data and not refs_resolved:
         try:
             input_data = await expand_file_refs_in_args(
                 input_data, user_id, session, input_schema=input_schema
@@ -1137,11 +1239,9 @@ async def prepare_block_for_execution(
     # the picker inline via FormRenderer's custom-field dispatch. Detecting
     # it here (instead of only inside execute_block's auto-creds layer)
     # saves a round trip when the caller omitted the field entirely.
-    picker_fields_missing = [
-        f
-        for f in required_non_credential_keys - provided_input_keys
-        if is_picker_field(input_schema.get("properties", {}).get(f))
-    ]
+    picker_fields_missing = missing_picker_fields(
+        input_schema, required_non_credential_keys, input_data
+    )
 
     # validate_only suppresses the setup-card early-return — the caller is
     # doing static introspection, rendering a picker would violate the
@@ -1168,9 +1268,13 @@ async def prepare_block_for_execution(
         # set up, so its error or grant card stands; the bot is the hint
         # only when nothing of theirs would be.
         owners_fix = bool(grant_hint) or bool(
-            set(turn_credential_pins()) & missing_providers
+            set(turn_credential_pins()) & _missing_selection_keys(missing_entries)
         )
         bot_hint = "" if owners_fix else bot_link_hint(block.name, input_data)
+        if not missing_credentials and is_unattended_turn():
+            return _unattended_picker_error(
+                block.name, input_schema, picker_fields_missing, session_id
+            )
         if missing_credentials and is_unattended_turn():
             unattended = await unattended_missing_credentials_error(
                 f"Block '{block.name}'",
@@ -1196,12 +1300,7 @@ async def prepare_block_for_execution(
                 + bot_hint
             )
         else:
-            message = (
-                f"Block '{block.name}' needs "
-                f"{', '.join(repr(f) for f in picker_fields_missing)} "
-                "picked before it can run. Select in the card below; the "
-                "tool will re-run automatically."
-            )
+            message = _picker_message(input_schema, picker_fields_missing)
         return SetupRequirementsResponse(
             message=message,
             session_id=session_id,
@@ -1219,6 +1318,10 @@ async def prepare_block_for_execution(
                         input_schema,
                         exclude_fields=credentials_fields,
                         input_data=input_data,
+                        picker_credentials={
+                            provider_slug(m.provider): m.id
+                            for m in matched_credentials.values()
+                        },
                     ),
                     "execution_modes": ["immediate"],
                 },
@@ -1404,8 +1507,10 @@ async def check_spend_approval(
     threshold (SECRT-2599). None means the block may run."""
     if session.expert_id is None:
         return None
+    # Price with the credentials the run will use, not the model's own.
+    resolved = {f: m.model_dump() for f, m in prep.matched_credentials.items()}
     cost, _ = block_usage_cost(
-        prep.block, prep.input_data, use_preflight_estimate=False
+        prep.block, {**prep.input_data, **resolved}, use_preflight_estimate=False
     )
     if cost <= 0:
         return None
@@ -1638,6 +1743,10 @@ def require_guide_read(session: ChatSession, tool_name: str):
     # requiring one would waste a round-trip every turn.
     if session.metadata.builder_graph_id:
         return None
+    # An External API call has no earlier calls to find; its client reads the
+    # guide through `get_agent_building_guide` when it wants it.
+    if session.external_caller:
+        return None
     # Building sessions get the guide in the (cached) system prompt — see
     # ``build_builder_system_prompt_suffix``.
     if session.guide_in_system_prompt:
@@ -1702,6 +1811,10 @@ def require_library_check(session: ChatSession, tool_name: str):
     from .models import ErrorResponse  # noqa: PLC0415 — avoid circular import
 
     if session.metadata.builder_graph_id:
+        return None
+    # As in `require_guide_read`: an External API call has no history; its
+    # client searches the library with `find_library_agent` itself.
+    if session.external_caller:
         return None
     if _was_called_for_creation(session):
         return None

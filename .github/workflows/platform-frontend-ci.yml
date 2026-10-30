@@ -43,7 +43,7 @@ defaults:
 jobs:
   tooltip-browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 11
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
@@ -57,7 +57,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Install Chromium
-        run: pnpm exec playwright install --with-deps chromium
+        # No --with-deps: the runner image already has Chromium's libraries, and the
+        # apt fetch it adds can outlast the job's timeout when Ubuntu's mirror is slow.
+        run: pnpm exec playwright install chromium
       - name: Test tooltip browser interactions
         run: pnpm test:tooltip
       - name: Upload browser failure artifacts

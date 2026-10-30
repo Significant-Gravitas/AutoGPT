@@ -10,13 +10,13 @@ export const HeroSection = () => {
   return (
     <div className="mb-16 mt-10 flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-3xl">
-        <h1 className="mb-3 text-center text-3xl font-semibold leading-[1.05] tracking-[-0.02em] text-zinc-900 md:text-[3rem]">
+        <h1 className="mb-3 text-center text-3xl font-semibold leading-none tracking-heading text-foreground-strong md:text-display md:leading-12">
           Hire an AI expert
           <span className="block">
-            for <span className="text-violet-600">your team</span>
+            for <span className="text-brand">your team</span>
           </span>
         </h1>
-        <p className="mb-8 text-center text-[15px] text-zinc-500 md:text-lg">
+        <p className="mb-8 text-center text-body-md leading-inherit text-foreground-tertiary md:text-lg">
           Ready-made specialists who bring their own skills and workflows
           <span className="block">— working in minutes.</span>
         </p>

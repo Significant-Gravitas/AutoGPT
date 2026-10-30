@@ -1,3 +1,4 @@
+import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import type { GoogleDrivePickerConfig } from "@/lib/autogpt-server-api/types";
 import { cn } from "@/lib/utils";
@@ -115,13 +116,13 @@ export function GoogleDrivePickerInput({
               className={cn(
                 "flex items-center gap-2",
                 showRemoveButton
-                  ? "justify-between rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
-                  : "text-sm text-gray-600 dark:text-gray-400",
+                  ? "justify-between rounded-md border border-border-strong bg-surface-muted px-3 py-2 text-sm"
+                  : "text-sm text-foreground-secondary",
               )}
             >
               <div className="flex items-center gap-2 overflow-hidden">
                 {file.iconUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element
+                  // eslint-disable-next-line @next/next/no-img-element -- remote URL from any host, which next/image would need configured
                   <img
                     src={file.iconUrl}
                     alt=""
@@ -149,9 +150,15 @@ export function GoogleDrivePickerInput({
       )}
 
       {/* Error Messages */}
-      {error && <span className="text-sm text-red-500">{error}</span>}
+      {error && (
+        <Text variant="body-tight" as="span" tone="error">
+          {error}
+        </Text>
+      )}
       {pickerError && (
-        <span className="text-sm text-red-500">{pickerError}</span>
+        <Text variant="body-tight" as="span" tone="error">
+          {pickerError}
+        </Text>
       )}
     </div>
   );

@@ -320,7 +320,8 @@ class TestPromptSupplement:
         assert "## AVAILABLE TOOLS" not in SHARED_TOOL_NOTES
         # Keep the high-value workflow rules that are NOT in any tool schema.
         assert "@@agptfile:" in SHARED_TOOL_NOTES
-        assert "find_capability` is MANDATORY" in SHARED_TOOL_NOTES
+        assert "Search it; don't rely on what you remember." in SHARED_TOOL_NOTES
+        assert "start with `find_capability(" in SHARED_TOOL_NOTES
         assert "run_sub_session" in SHARED_TOOL_NOTES
 
     def test_pause_task_scheduled_before_transcript_upload(self):

@@ -112,6 +112,16 @@ export const WithError: Story = {
   },
 };
 
+// `bare`: the element alone, no label, wrapper or error line; every prop
+// reaches the <input> as it is (the search modal's field uses it).
+export const Bare: Story = {
+  render: () => (
+    <div className="w-80">
+      <Input bare placeholder="Search" aria-label="Search" />
+    </div>
+  ),
+};
+
 export const DateInput: Story = {
   args: {
     label: "Date",

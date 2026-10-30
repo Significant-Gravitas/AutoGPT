@@ -144,8 +144,8 @@ export default function ExpertDetailPage() {
         />
 
         {isPaused ? (
-          <div className="flex items-center justify-between gap-2 rounded-lg bg-amber-50 px-4 py-2.5 ring-1 ring-inset ring-amber-200">
-            <Text variant="small" className="text-amber-700">
+          <div className="flex items-center justify-between gap-2 rounded-lg bg-warning-surface px-4 py-2.5 ring-1 ring-inset ring-warning-border">
+            <Text variant="small" tone="warning">
               Schedules paused
             </Text>
             <Button
@@ -161,14 +161,17 @@ export default function ExpertDetailPage() {
 
         <ExpertNeedsYouSection expert={expert} />
 
-        <TabsLine data-profile-tabs variant="compact" defaultValue={initialTab}>
+        <TabsLine variant="compact" defaultValue={initialTab}>
           <TabsLineList
             flush={false}
+            // oxlint-disable-next-line design-system/require-static-classes -- the pill tabs share their classes with team/autopilot; TabsLine has no pill variant (src/components is P9's)
             className={PROFILE_TABS_LIST_CLASS}
+            // oxlint-disable-next-line design-system/require-static-classes -- the pill tabs share their classes with team/autopilot; TabsLine has no pill variant (src/components is P9's)
             indicatorClassName={PROFILE_TABS_INDICATOR_CLASS}
           >
             {TABS.map((tab) => (
               <TabsLineTrigger
+                // oxlint-disable-next-line design-system/require-static-classes -- the pill tabs share their classes with team/autopilot; TabsLine has no pill variant (src/components is P9's)
                 className={PROFILE_TABS_TRIGGER_CLASS}
                 key={tab.value}
                 value={tab.value}
