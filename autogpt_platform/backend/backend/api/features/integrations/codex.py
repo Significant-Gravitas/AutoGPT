@@ -20,7 +20,6 @@ from backend.integrations.codex.models import (
     CodexRateLimitsSnapshot,
 )
 from backend.integrations.credential_lease import CredentialLease
-from backend.integrations.credential_refresh import CredentialRefreshRequired
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.settings import Settings
 
@@ -171,9 +170,6 @@ async def revoke_codex_credentials(
 ) -> bool:
     try:
         lease = await manager.acquire_lease(user_id, credential_id)
-    except CredentialRefreshRequired:
-        await manager.delete_pending_refresh(user_id, credential_id, "codex")
-        return False
     except ValueError:
         return False
     try:

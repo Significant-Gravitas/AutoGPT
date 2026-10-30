@@ -252,7 +252,7 @@ test("the AppImage's name has no version in it, so updating keeps the file's nam
 test("update files are always latest*.yml and nothing is published from a build", () => {
   const config = configured({ AUTOGPT_DESKTOP_VERSION: "1.4.0-rc.1" });
   assert.equal(config.detectUpdateChannel, false);
-  assert.deepEqual(config.publish, [{ provider: "github", owner: "ntindle", repo: "autogpt" }]);
+  assert.deepEqual(config.publish, [{ provider: "github", owner: "Significant-Gravitas", repo: "AutoGPT" }]);
 });
 
 test("the runtime ships inside the app, and the updater ships with the shell", () => {
@@ -307,8 +307,8 @@ function macro(source, name) {
 
 test("every Windows installer closes the programs of its own install only", () => {
   // Install directories are siblings whose names start the same:
-  // ...\Programs\autogpt, ...\Programs\autogpt-voice, ...\Programs\autogpt-voice2.
-  for (const variant of ["", "voice"]) {
+  // ...\Programs\autogpt, ...\Programs\autogpt-experimental, ...\Programs\autogpt-experimental2.
+  for (const variant of ["", "experimental"]) {
     const config = configured({ AUTOGPT_DESKTOP_VARIANT: variant });
     assert.equal(config.nsis.include, "resources/installer.nsh");
     assert.equal(config.directories.buildResources, "resources");
@@ -375,7 +375,7 @@ test("Windows installer process queries preserve literal install paths", {
       { Path: `${directory}\\resources\\runtime\\python\\python.exe`, ProcessId: 102 },
     ];
     const neighbors = [
-      { Path: `${directory}-voice\\AutoGPT.exe`, ProcessId: 201 },
+      { Path: `${directory}-experimental\\AutoGPT.exe`, ProcessId: 201 },
       { Path: `${directory}2\\AutoGPT.exe`, ProcessId: 202 },
       { Path: null, ProcessId: 203 },
     ];
@@ -534,7 +534,7 @@ test("the Windows installer stays one that an update can download in parts", () 
   // Solid, it would be 83 MB smaller (measured: 472 MB against 555 MB) and
   // have no block map: every update would be all of it. `useZip` only takes
   // effect on such an installer.
-  for (const variant of ["", "voice"]) {
+  for (const variant of ["", "experimental"]) {
     const { nsis } = configured({ AUTOGPT_DESKTOP_VARIANT: variant });
     assert.notEqual(nsis.differentialPackage, false);
     assert.equal(nsis.useZip, undefined);

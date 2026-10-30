@@ -32,7 +32,7 @@ const {
 const { withUpdatesMenu } = require("../src/updater");
 
 const normal = identity("");
-const variant = identity("lab");
+const variant = identity("experimental");
 const oneRun = { graphRuns: 1, copilotTurns: 0 };
 const busy = { graphRuns: 2, copilotTurns: 1 };
 
@@ -69,9 +69,9 @@ test("the tray menu has one line about it, and none when nothing runs", () => {
 
 test("the tray icon says which install it is, what runs, and that it is being stopped", () => {
   assert.equal(trayToolTip(normal, IDLE), "AutoGPT");
-  assert.equal(trayToolTip(variant, oneRun), "AutoGPT (lab): 1 agent run in progress");
-  assert.equal(trayToolTip(variant, oneRun, true), "AutoGPT (lab): stopping 1 agent run");
-  assert.equal(trayToolTip(variant, IDLE, true), "AutoGPT (lab)");
+  assert.equal(trayToolTip(variant, oneRun), "AutoGPT (experimental): 1 agent run in progress");
+  assert.equal(trayToolTip(variant, oneRun, true), "AutoGPT (experimental): stopping 1 agent run");
+  assert.equal(trayToolTip(variant, IDLE, true), "AutoGPT (experimental)");
 });
 
 test("with nothing running a quit stops the runtime without asking", () => {
@@ -203,7 +203,7 @@ test("outside macOS the application menu has Quit, so the app can be quit withou
     const quit = items.filter((item) => item.role === "quit");
     assert.equal(quit.length, 1, platform);
     // The role is Electron's app.quit(), which goes through `before-quit` and its question.
-    assert.equal(quit[0].label, "&Quit AutoGPT (lab)");
+    assert.equal(quit[0].label, "&Quit AutoGPT (experimental)");
     assert.equal(quit[0].click, undefined);
     assert.equal(quit[0].accelerator, platform === "linux" ? "Ctrl+Q" : undefined);
     assert.equal(menus[0].label, "&File");
@@ -249,11 +249,11 @@ test("the answers are the buttons, in order, and anything else is a cancel", () 
 test("a variant's question and tray name the variant, never the normal app", () => {
   const question = quitQuestion({ install: variant, activity: oneRun, platform: "win32" });
   const said = [question.title, question.detail, ...question.buttons].join("\n");
-  assert.equal(question.title, "AutoGPT (lab)");
-  assert.deepEqual(question.buttons[1], "Stop and quit AutoGPT (lab)");
-  assert.ok(!/AutoGPT(?! \(lab\))/.test(said), said);
+  assert.equal(question.title, "AutoGPT (experimental)");
+  assert.deepEqual(question.buttons[1], "Stop and quit AutoGPT (experimental)");
+  assert.ok(!/AutoGPT(?! \(experimental\))/.test(said), said);
   const update = updateQuestion({ install: variant, version: "1.2.3", activity: oneRun });
-  assert.ok(!/AutoGPT(?! \(lab\))/.test([update.title, update.message, update.detail].join("\n")));
+  assert.ok(!/AutoGPT(?! \(experimental\))/.test([update.title, update.message, update.detail].join("\n")));
 });
 
 test("restarting to update asks once: with something running it says what a yes stops", () => {

@@ -536,13 +536,6 @@ class Host:
             park()
         self.say(f"stopping: {reason}")
         deadline = time.monotonic() + self.stop_budget
-        refreshes = sys.modules.get("backend.integrations.credential_refresh")
-        if refreshes is not None:
-            drained = refreshes.drain_credential_refreshes(
-                min(refreshes.REFRESH_DRAIN_SECONDS, max(0.0, self.stop_budget - 2.5))
-            )
-            if not drained:
-                self.say("credential refresh did not drain; reconnect may be required")
         if self.foreground:  # upstream's own run owns the services
             leave(code)
         for server in self.servers:

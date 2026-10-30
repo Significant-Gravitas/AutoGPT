@@ -137,7 +137,7 @@ test("macOS cannot replace an app that runs from the disk image or was never mov
 });
 
 test("the release page of a version is its desktop-v tag", () => {
-  assert.equal(releaseUrl("1.4.0"), "https://github.com/ntindle/autogpt/releases/tag/desktop-v1.4.0");
+  assert.equal(releaseUrl("1.4.0"), "https://github.com/Significant-Gravitas/AutoGPT/releases/tag/desktop-v1.4.0");
 });
 
 test("the app looks at the repository the installers say they come from", () => {

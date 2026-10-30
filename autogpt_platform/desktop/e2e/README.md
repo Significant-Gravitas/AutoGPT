@@ -55,7 +55,7 @@ uses.
 | `AUTOGPT_E2E_INSTALLER` | The installer to test: a file, or a directory holding exactly one installer of the kind. When set, the app must not be installed yet, and the last test uninstalls it. |
 | `AUTOGPT_E2E_UPGRADE_INSTALLER` | A build with a higher version, for the upgrade test. Skipped when unset. |
 | `AUTOGPT_E2E_KIND` | `nsis`, `dmg`, `deb` or `appimage`. Default: `nsis` on Windows, `dmg` on macOS, `deb` on Linux. |
-| `AUTOGPT_DESKTOP_VARIANT` | The slug the installers were built with, when they are a variant's (`../README.md`, "Variants"). The install location, the executable, the package and the data directory are then that variant's, from the same definition the build uses (`../src/identity.js`). Unset for the normal app. |
+| `AUTOGPT_DESKTOP_VARIANT` | `experimental` for the separate experimental distribution; unset for the standard app. The install location, executable, package and data directory come from the same fixed identity the build uses (`../src/identity.js`). |
 | `AUTOGPT_E2E_DATA_DIR` | Run the app on this data directory instead of its default one, with its own browser profile inside it. A variant uses the directory next to it, `<directory>-<slug>`, as it does for `AUTOGPT_DESKTOP_DATA_DIR`: the directory itself is the normal app's. |
 | `AUTOGPT_E2E_INSTALL_DIR` | Where the app is installed, if not the default (Windows: the install directory; macOS: the `.app`; AppImage: the directory holding `AutoGPT.AppImage`, or `AutoGPT-<slug>.AppImage` for a variant). |
 | `AUTOGPT_E2E_UNINSTALL` | `1` to let the last test uninstall an app these tests did not install. |

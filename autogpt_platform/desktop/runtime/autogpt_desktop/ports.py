@@ -36,11 +36,9 @@ PREFERRED = {"public": 18473}
 # the app (src/identity.js) prefers a port of its own, so that it and the
 # normal app can both keep their address while both are installed.
 PUBLIC_PORT_VARIABLE = "AUTOGPT_DESKTOP_PUBLIC_PORT"
-# Where the shell puts the public ports of variants (src/identity.js
-# VARIANT_PORT_FIRST and VARIANT_PORT_COUNT). No install picks a port for
-# anything from here by chance: a port is remembered for good, and the
-# database of one install would sit on the address of another.
-VARIANT_PUBLIC_PORTS = range(20000, 30000)
+# Match src/identity.js: other services must not randomly take the
+# experimental app's stable public address.
+EXPERIMENTAL_PUBLIC_PORT = 25500
 
 PORT_NAMES = (
     "public",
@@ -166,11 +164,16 @@ def _answers(port: int) -> bool:
 
 def _free_port(exclude: set[int]) -> int:
     # The normal app's address is kept clear by every install, and so is
-    # this install's own and that of every variant there could be.
-    reserved = exclude | set(PREFERRED.values()) | set(_preferences().values())
+    # this install's own and the experimental app's.
+    reserved = (
+        exclude
+        | set(PREFERRED.values())
+        | set(_preferences().values())
+        | {EXPERIMENTAL_PUBLIC_PORT}
+    )
     for _ in range(1000):
         port = random.choice(PORT_RANGE)
-        if port in reserved or port in VARIANT_PUBLIC_PORTS:
+        if port in reserved:
             continue
         if _is_free(port):
             return port

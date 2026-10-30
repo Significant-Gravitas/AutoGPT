@@ -136,12 +136,9 @@ most three times in five minutes before the app gives up and says so.
 **Stopping.** Earlier idle measurements took about five seconds to quit. The service hosts are asked
 to stop together: with SIGTERM, or on Windows, where a signal cannot reach a
 process without a console, through a named event each host waits on. A host
-first drains admitted credential refreshes, then calls its services'
-`cleanup()` together and leaves when they are done. A host containing the
-executor, copilot executor, scheduler, REST or websocket service has up to
-30 seconds to leave; other service hosts retain the three-second limit.
-An empty refresh registry drains immediately. The host is killed, with
-whatever it started, if it exceeds its limit. The
+calls its services' `cleanup()` together and leaves when they are done.
+Each host has three seconds to leave and is killed, with whatever it started,
+if it exceeds that limit. The
 database-manager is stopped after the other services, whose cleanup writes
 through it. PostgreSQL, Valkey and RabbitMQ are then shut down properly. The
 shell kills a runtime that has not stopped after a minute,
@@ -430,21 +427,6 @@ the Claude Code sign-in used by Self-hosted chat still requires a restart.
 The local sign-in window and callback stay inside the app, with its login
 session. Only the ChatGPT verification page opens in your browser. Closing
 the local window cancels the pending attempt; start the flow again to retry.
-
-Rotating ChatGPT and Linear refreshes retain ownership through the provider
-exchange and durable credential checkpoint even if their caller is
-cancelled. Admission, the provider exchange and checkpoint share a
-20-second deadline, with a five-second cleanup reserve. Normal shutdown
-drains admitted refreshes before stopping their event loops; it does not
-start another refresh while draining.
-
-An uncertain exchange is not replayed automatically. Its durable pending
-marker causes the connection to require reconnection through Settings →
-Integrations. Forced termination, power loss and noncooperative I/O can still
-prevent completion; these limits do not become a claim that an interrupted
-provider operation can always be recovered. The bounded cancellation,
-checkpoint and shutdown behavior has synthetic regression coverage; a live
-provider exchange during process termination is separate validation.
 
 ## AutoPilot and Claude Code
 
@@ -786,7 +768,7 @@ of its modules would have been compared.
 ## Updates
 
 Releases are GitHub Releases of
-[`ntindle/autogpt`](https://github.com/ntindle/autogpt/releases), tagged
+[`Significant-Gravitas/AutoGPT`](https://github.com/Significant-Gravitas/AutoGPT/releases), tagged
 `desktop-v<version>`. An installed app looks at the latest one a minute after
 it has finished starting, and every six hours after that. It never looks
 while it is starting: a database migration runs then, and an update must not
@@ -851,9 +833,8 @@ never taken. On top of that:
   same is true of the first download.
 - **Linux AppImage:** nothing more either; AppImages are not signed.
 
-Every release also has a `SHA256SUMS` file and a build-provenance
-attestation, for checking a download by hand:
-`gh attestation verify <file> --repo ntindle/autogpt`.
+Release publication must supply checksums and provenance separately from these
+CI artifacts. This PR does not publish releases or configure release credentials.
 
 A build that did not come from a release has the version `0.0.0-dev.<n>`
 (`0.0.1-dev.<n>` for the second build the upgrade test installs) and never
@@ -864,8 +845,8 @@ the updater off in any build; the installed-app tests set it.
 
 One configuration, `electron-builder.config.js`, builds signed and unsigned
 installers. Which one comes out depends only on the environment the build
-runs in; the release workflow (on the fork's `main` branch, with its manual
-in `docs/MAINTAINING.md` there) sets it from the secrets it has.
+runs in. The upstream PR workflow disables signing and never publishes;
+release signing credentials and publication remain a separate setup.
 
 | | Without a certificate | With one |
 | --- | --- | --- |
@@ -897,135 +878,35 @@ rules; the short version:
 - `bash build/sign_check_macos.sh <SHA-1>` rehearses all of this on a Mac
   that has the certificate, on a copy of a built app, without notarizing.
 
-## Variants
+## Experimental packages
 
-A variant is an experiment: a branch that changes the platform itself, built
-into an app that installs **next to** the normal one and next to other
-variants. It is a branch plus a name:
+The upstream CI packages a fixed `experimental` identity, selected with
+`AUTOGPT_DESKTOP_VARIANT=experimental`. The only other supported identity is
+the normal app (the variable unset). Arbitrary fork variants and branch-based
+release automation are not part of this integration.
 
-- the branch is `variant/<slug>`, made from `desktop`;
-- the name is the slug: 1 to 24 lower-case letters, digits or hyphens, not
-  starting or ending with a hyphen (`voice`, `local-models`), given to the
-  build as `AUTOGPT_DESKTOP_VARIANT`. It cannot be `updater` or end in
-  `-updater`: the updater's download cache of another install is called that.
-
-Nothing else names a variant. There is no list of them, and no file is edited
-to add one: every name below is derived from the slug in one place,
-[`src/identity.js`](src/identity.js), which the build
-(`electron-builder.config.js`), the shell and the installed-app tests all
-read.
-
-| | Normal app | Variant `voice` |
+| | Normal app | Experimental app |
 | --- | --- | --- |
-| Name in menus, windows, the tray, the installer | AutoGPT | AutoGPT (voice) |
-| App id (bundle id, uninstall entry, Squirrel) | `co.agpt.autogpt.desktop` | `co.agpt.autogpt.desktop.voice` |
-| Windows install directory | `%LOCALAPPDATA%\Programs\autogpt` | `...\Programs\autogpt-voice` |
-| Windows executable | `AutoGPT.exe` | `autogpt-voice.exe` |
-| macOS bundle | `AutoGPT.app` | `autogpt-voice.app` |
-| `.deb` package, command, AppArmor profile | `autogpt` | `autogpt-voice` |
-| `.deb` install directory | `/opt/AutoGPT` | `/opt/AutoGPT (voice)` |
-| Installer files | `AutoGPT-Setup-1.2.3-x64.exe`, ... | `AutoGPT-voice-Setup-1.2.3-x64.exe`, ... |
-| Data directory | `AutoGPT` (see [Where data lives](#where-data-lives)) | `AutoGPT-voice`, in the same place |
-| Electron profile (cookies, the single-instance lock) | `AutoGPT` in the system's app-data folder | `AutoGPT-voice` |
-| Updater's download cache | `autogpt-updater` | `autogpt-voice-updater` |
-| Address it prefers | `http://localhost:18473` | `http://localhost:25954` (from the slug, 20000-29999) |
-| Cookie names in a browser | as the platform names them | `AutoGPT-voice.<name>` |
-| With `AUTOGPT_DESKTOP_DATA_DIR=D:\data` | `D:\data` | `D:\data-voice` |
-| Release tags | `desktop-v<version>` | `desktop-voice-v<version>` |
+| App id | `co.agpt.autogpt.desktop` | `co.agpt.autogpt.desktop.experimental` |
+| Data and Electron profile | `AutoGPT` | `AutoGPT-experimental` |
+| Windows executable / macOS bundle | `AutoGPT` | `autogpt-experimental` |
+| Preferred public port | `18473` | `25500` |
+| Release tag prefix | `desktop-v` | `desktop-experimental-v` |
+| Installer filename prefix | `AutoGPT-` | `AutoGPT-experimental-` |
 
-**Nothing is shared.** A variant has its own database, its own secrets, its
-own ports, its own sign-in, its own browser profile and its own logs. It can
-run at the same time as the normal app. A variant may migrate its database to
-a schema the normal app has never heard of and the normal app's data is not
-touched by it; for the same reason there is no way to move data from one to
-the other, and uninstalling one leaves the others alone.
+The experimental package keeps its own database, secrets, cookies, install
+marker, updater cache and logs. A custom `AUTOGPT_DESKTOP_DATA_DIR` gains an
+`-experimental` suffix, and a profile marked for another identity is refused.
+Packaged identity is fixed by the build, not by launch-time environment.
+The Windows installer matches complete install-directory boundaries so
+updating one package cannot stop processes belonging to the other.
 
-What follows from the separate address: a variant's OAuth redirect URL is its
-own (tray menu, *Copy OAuth redirect URL*), so an integration connected in
-the normal app has to be connected again in the variant. The address is only
-preferred, as for the normal app: an install keeps the port it first got, and
-takes another when that one is taken. Two slugs can hash to the same port;
-the one that starts second on a machine then gets another. No install puts
-one of its internal services on a port between 20000 and 29999, so a
-variant's address is not taken by another install's database.
-
-Four things would be shared if nothing were done about them, and are not:
-
-- **The data directory named in the environment.** `AUTOGPT_DESKTOP_DATA_DIR`
-  is one value for every program a user starts. It names the normal app's
-  directory; a variant takes the one next to it, `<directory>-<slug>`
-  (`src/paths.js`). The installed-app tests follow the same rule.
-- **A data directory reached some other way** (a link, a directory given to
-  one install that is already another's). The first install to use a data
-  directory leaves its name in `autogpt-install.json` there, and an install
-  that finds another's name starts nothing and says so. A directory that
-  holds data and no name is the normal app's.
-- **Cookies in a browser.** *Open in browser* shows every install at
-  `127.0.0.1`, and a browser keeps cookies per host, whatever the port. The
-  runtime's proxy gives a variant's cookies names of their own and passes on
-  to the platform only the cookies of its own install
-  (`runtime/autogpt_desktop/cookies.py`), so signing in to one install does
-  not sign the other out, and an experiment is never sent the normal app's
-  session. The normal app's cookie names are unchanged. In a variant, a
-  cookie that a page sets itself with `document.cookie` does not reach the
-  server, and a script sees the server's cookies under the longer name; the
-  platform's sign-in uses neither.
-- **The programs a Windows installer closes.** electron-builder's installer
-  closes every program whose path starts with the install directory's, and
-  `...\Programs\autogpt` is the start of `...\Programs\autogpt-voice`: an
-  update of the normal app would stop a running variant, database and all.
-  `resources/installer.nsh` replaces that check with one that ends the
-  directory's name with a backslash; `test/packaging.test.js` holds it
-  against electron-builder's template.
-
-**Updates never cross.** The normal app follows the repository's latest
-release. A variant's releases are GitHub *pre-releases* tagged
-`desktop-<slug>-v<version>`, and GitHub's latest release is never a
-pre-release, so the normal app is never shown one. A variant does not look at
-"latest" at all: it is built without that address. It lists the repository's
-releases, takes the highest plain version (`X.Y.Z`) among the tags that are
-exactly its own, and reads that one release. On top of both, every app
-refuses an update unless each file in it is its own installer by name
-(`AutoGPT-voice-...` for `voice`), whatever release it came from.
-`test/variants.test.js` runs electron-updater's two providers against a
-recorded network to hold this in place.
-
-A variant asks `api.github.com` for the release list, without signing in:
-GitHub allows 60 such requests an hour from one address, which the four
-looks a day stay far below. A look that is refused is tried again at the next
-one.
-
-### Making one
-
-```bash
-git switch -c variant/voice desktop        # the experiment lives here
-# ... change anything, anywhere in the repository ...
-git push -u ntindle variant/voice
-```
-
-To build it locally, set the variable for the packaging step (the runtime
-bundle is the same for every variant of one commit):
-
-```bash
-AUTOGPT_DESKTOP_VARIANT=voice npx electron-builder --config electron-builder.config.js --publish never
-AUTOGPT_DESKTOP_VARIANT=voice npm start    # from the source tree, without packaging
-```
-
-The platform CI workflow explicitly selects the `experimental` variant.
-It does not infer identity from a branch name or call the personal fork's
-release workflow.
-
-**A build of a variant branch without the slug is the normal app with the
-experiment's code in it**, and would open the normal app's data. The
-platform packaging workflow always sets a variant. Select a variant
-explicitly when building by hand to keep its data separate.
-
-An installed app is the variant it was built as, whatever
-`AUTOGPT_DESKTOP_VARIANT` says in the environment it is started from; the
-variable only chooses when running from the source tree.
-
-Not verified yet: installing two variants side by side, and an update of an
-installed variant. Both need a build from the workflows.
+Both identities use the organization's release repository and reject assets
+belonging to the other identity. Experimental release selection is restricted
+to its exact tag prefix; it never falls back to the normal app's latest release.
+Current `0.0.0-dev.*` artifacts disable updates and are manual downloads only.
+Installed side-by-side upgrades and release-feed updates still require native
+validation before release.
 
 ## Building
 
@@ -1076,22 +957,19 @@ repository: `build/backend_patches.py` replaces a few exact pieces of its
 text, each offered upstream as a patch in `upstream/`. The build stops when
 upstream has changed one of them.
 
-The desktop integration also changes shared feature gates in source:
-`BashExecTool` is offered only when its sandbox is available, local browser
-tools are disabled in desktop mode, and graph-memory interfaces honor the
-desktop build's unavailable setting before mounting queries. Its chat replay filter
-also preserves valid repeated answers in separate turns. The Codex transport
-retains the cause of credential-load timeouts, while the chat stream registry
-and Redis completion helper deliver errors even when a listener observes the
-failed status before the error chunk. The SDK's native PowerShell tool is
-blocked alongside Bash so Windows chat cannot bypass the sandboxed tools.
-Rotating credential refreshes now retain their leases and durable checkpoint
-across cancellation, use conditional credential writes, expose uncertain
-exchanges for reconnection, and drain before service shutdown. The local
-frontend keeps current platform behavior: the account menu's cloud-only gate
-omits hosted feedback in LOCAL mode. Exact shared source and test paths are
-listed in `runtime/tests/test_fork_surface.py`; the platform workflow watches
-all source trees used by the build.
+The desktop needs shared compatibility changes for unavailable Bash sandboxes,
+configured Claude CLI paths, blocking the SDK's native PowerShell tool, and
+hiding memory interfaces when the service is absent. These are being extracted
+as prerequisite PRs. Local browser tools are disabled only in desktop mode.
+Hosted OAuth refresh policy, chat terminal-error delivery and replay stripping remain the
+platform's existing behavior.
+
+Desktop PR checks run only when desktop files or this workflow change.
+A scheduled compatibility run checks `dev`; GitHub activates that schedule
+when the workflow reaches the default branch. Until then, workflow dispatch
+can run the same checks on `dev`. Packaging and installed lifecycle checks
+remain explicit opt-ins and cannot publish.
+
 The last step, `seal`, removes what a run from the bundle may have left in
 it and refuses a bundle that would write into itself or fetch anything when
 installed, whose `claude-agent-sdk` is not the locked one, whose Claude Code
@@ -1323,13 +1201,11 @@ a newline to stdin instead stops it after ending what is running, for good.
   Historical chat-closure records without an original turn identity are
   retained for manual recovery rather than applied to a potentially newer
   turn.
-- Service cleanup remains bounded. Hosts that can refresh credentials now
-  have a 30-second grace period, including the admitted-refresh drain;
-  other service hosts retain three seconds. Cleanup still unfinished at the
-  deadline does not keep the host alive. After *Stop and quit*, any pending
-  stopped-turn cleanup is retained for startup reconciliation; a plain quit
-  allows interrupted turns to resume. Hard process death can leave a rotating
-  connection requiring reconnection instead of a safe retry.
+- Service cleanup has a three-second host grace period. Cleanup still
+  unfinished at the deadline does not keep the host alive. After *Stop and
+  quit*, pending stopped-turn cleanup is retained for startup reconciliation;
+  a plain quit allows interrupted turns to resume. OAuth refresh policy is
+  unchanged from the shared backend.
 - Runs left with nothing to resume them are failed only while the queue is
   at rest (see [Interrupted agent runs](#how-it-fits-together)). A message
   that goes round for ever, as upstream's does when one agent has 25 runs

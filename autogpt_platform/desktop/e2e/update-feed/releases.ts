@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 
-import { newestRelease } from "../../src/updater";
+import { newestRelease, RELEASE_REPOSITORY } from "../../src/updater";
 import { identity, isOwnUpdateFile } from "../../src/identity";
 import type { ProofConfig } from "./config";
 
-const API = "https://api.github.com/repos/ntindle/autogpt";
-const DOWNLOADS = "https://github.com/ntindle/autogpt/releases/download/";
+const repository = `${RELEASE_REPOSITORY.owner}/${RELEASE_REPOSITORY.repo}`;
+const API = `https://api.github.com/repos/${repository}`;
+const DOWNLOADS = `https://github.com/${repository}/releases/download/`;
 
 interface Release {
   id: number;

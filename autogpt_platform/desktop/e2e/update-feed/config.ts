@@ -1,5 +1,4 @@
 const VERSION = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
-const VARIANT = /^[a-z0-9](?:[a-z0-9-]{0,22}[a-z0-9])?$/;
 
 export function readProofConfig(env: NodeJS.ProcessEnv) {
   function required(name: string) {
@@ -16,8 +15,8 @@ export function readProofConfig(env: NodeJS.ProcessEnv) {
     throw new Error("Real-feed proof requires explicit opt-in and updates=on");
   }
   const variant = env.AUTOGPT_DESKTOP_VARIANT || "";
-  if (variant && (!VARIANT.test(variant) || /(?:^|-)updater$/.test(variant))) {
-    throw new Error("Invalid dedicated feed-test variant");
+  if (variant && variant !== "experimental") {
+    throw new Error("Feed proof supports only the standard or experimental distribution");
   }
   if (!variant && env.AUTOGPT_E2E_FEED_DISPOSABLE_NORMAL !== "1") {
     throw new Error("The normal latest feed requires AUTOGPT_E2E_FEED_DISPOSABLE_NORMAL=1 on a disposable machine");

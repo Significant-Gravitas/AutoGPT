@@ -54,7 +54,9 @@ def test_the_frontend_build_script_is_the_one_the_desktop_build_mirrors():
 def test_workflow_builds_selected_source_without_fork_workflow_or_secrets():
     workflow = CALLER.read_text("utf-8")
     assert "uses: actions/checkout@" in workflow
-    assert "ref:" not in workflow
+    assert (
+        "ref: ${{ github.event_name == 'schedule' && 'dev' || github.ref }}" in workflow
+    )
     assert "ntindle/autogpt/" not in workflow
     assert "secrets:" not in workflow and "secrets." not in workflow
     assert "contents: read" in workflow
@@ -143,22 +145,24 @@ def test_postgres_probe_uploads_only_its_summary_even_after_failure():
     assert "include-hidden-files" not in upload
 
 
-def test_every_path_that_triggers_the_build_exists():
+def test_pull_requests_trigger_desktop_checks_only_for_desktop_changes():
     """A path filter naming a file upstream renamed never triggers again."""
     paths = re.findall(r'^\s+- "([^"]+)"$', CALLER.read_text("utf-8"), re.M)
     assert set(paths) == {
         ".github/workflows/platform-desktop-build.yml",
         "autogpt_platform/desktop/**",
-        "autogpt_platform/backend/**",
-        "autogpt_platform/autogpt_libs/**",
-        "autogpt_platform/frontend/**",
-        "autogpt_platform/single-container/**",
-        "autogpt_platform/db/init/**",
     }
     missing = [path for path in paths if not (REPO / path.removesuffix("/**")).exists()]
     assert (
         not missing
     ), f"the build is triggered by paths that no longer exist: {missing}"
+
+
+def test_shared_source_compatibility_is_checked_on_a_schedule_without_packaging():
+    workflow = CALLER.read_text("utf-8")
+    assert "  schedule:\n    - cron:" in workflow
+    packaging = workflow.split("\n  package:\n", 1)[1]
+    assert "github.event_name == 'schedule'" not in packaging
 
 
 def test_valkey_for_windows_is_built_from_the_archive_the_macos_pin_names():

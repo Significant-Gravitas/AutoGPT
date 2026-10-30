@@ -217,13 +217,6 @@ describe("CredentialsInput – OAuth flow", () => {
 
     await waitFor(() => {
       expect(oAuthLoginMock).toHaveBeenCalledWith("codex", [], undefined);
-      expect(mockOpenOAuthPopup).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
-          sameOriginFlow: true,
-          useCrossOriginListeners: true,
-        }),
-      );
     });
   });
 
@@ -315,7 +308,6 @@ describe("CredentialsInput – OAuth flow", () => {
         stateToken: "state-xyz",
         preOpenedWindow: fakeWindow,
         useCrossOriginListeners: true,
-        sameOriginFlow: false,
       }),
     );
   });

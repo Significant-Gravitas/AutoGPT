@@ -109,17 +109,6 @@ SKILLS_CATALOG_ENTRY = "backend.cli.publish_skills_catalog:main"
 # nothing. The host exits by itself once cleanup is done, just inside it.
 STOP_TIMEOUT_SECONDS = 3
 HOST_STOP_BUDGET_SECONDS = STOP_TIMEOUT_SECONDS - 0.5
-REFRESH_STOP_TIMEOUT_SECONDS = 30
-REFRESH_SERVICES = frozenset(
-    {
-        "executor",
-        "copilot-executor",
-        "rest",
-        "websocket",
-        "scheduler",
-        "swap-credentials",
-    }
-)
 
 # The package is not on a service's path (its cwd is the backend), and it is
 # appended, never put first: its parent directory in the bundle also holds
@@ -270,11 +259,7 @@ def host_argv(bundle: Bundle, group: Group) -> list[str]:
 
 
 def host_stop_timeout(group: Group) -> float:
-    return (
-        REFRESH_STOP_TIMEOUT_SECONDS
-        if REFRESH_SERVICES.intersection(group.services)
-        else STOP_TIMEOUT_SECONDS
-    )
+    return STOP_TIMEOUT_SECONDS
 
 
 def _before_start(

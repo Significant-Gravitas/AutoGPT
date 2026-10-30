@@ -12,7 +12,7 @@ const { parseEvent } = require("../src/runtime");
 
 const DESKTOP = path.join(__dirname, "..");
 const NORMAL = identity("");
-const VARIANT = identity("voice");
+const VARIANT = identity("experimental");
 
 function reported(state) {
   const line = JSON.stringify({
@@ -54,8 +54,8 @@ test("a CLI that did not answer is not called signed out: the line asks for a re
 });
 
 test("a variant names itself, not the normal app", () => {
-  assert.match(claudeCodeLine(reported("in_use"), VARIANT), /Restart AutoGPT \(voice\) after/);
-  assert.match(claudeCodeLine(reported("signed_out"), VARIANT), /restart AutoGPT \(voice\)\.$/);
+  assert.match(claudeCodeLine(reported("in_use"), VARIANT), /Restart AutoGPT \(experimental\) after/);
+  assert.match(claudeCodeLine(reported("signed_out"), VARIANT), /restart AutoGPT \(experimental\)\.$/);
 });
 
 test("every state the runtime reports has a line, and nothing else has one", () => {

@@ -22,7 +22,9 @@ IDENTITY = Path(__file__).resolve().parents[2] / "src" / "identity.js"
 
 
 def shell_constant(name: str) -> int:
-    match = re.search(rf"^const {name} = (\d+);$", IDENTITY.read_text("utf-8"), re.M)
+    match = re.search(
+        rf"^const {name} = (\d+);$", IDENTITY.read_text("utf-8"), re.MULTILINE
+    )
     assert (
         match
     ), f"src/identity.js no longer defines {name}; runtime/autogpt_desktop/ports.py relies on it"
@@ -40,51 +42,31 @@ def test_the_shell_and_the_runtime_agree_on_the_normal_apps_port():
     )
 
 
-def test_every_port_a_variant_can_prefer_is_one_the_runtime_accepts():
-    first = shell_constant("VARIANT_PORT_FIRST")
-    count = shell_constant("VARIANT_PORT_COUNT")
-    assert (
-        first in ports.PORT_RANGE and first + count - 1 in ports.PORT_RANGE
-    ), "src/identity.js picks variant ports outside ports.PORT_RANGE; the runtime ignores those"
-    assert ports.PREFERRED["public"] not in range(
-        first, first + count
-    ), "a variant could be given the normal app's port"
-    assert range(first, first + count) == ports.VARIANT_PUBLIC_PORTS, (
-        "src/identity.js and ports.VARIANT_PUBLIC_PORTS must name the same ports: "
-        "the runtime keeps every other use out of them"
-    )
+def test_the_experimental_port_matches_the_shell_and_stays_reserved():
+    port = shell_constant("EXPERIMENTAL_PUBLIC_PORT")
+    assert port == 25500
+    assert port == ports.EXPERIMENTAL_PUBLIC_PORT
+    assert port in ports.PORT_RANGE
+    assert port != ports.PREFERRED["public"]
 
 
-def test_no_port_is_picked_by_chance_where_variants_have_their_addresses(monkeypatch):
-    """A port is remembered for good: one install's database on another
-    install's address would move that install for ever."""
-    band = ports.VARIANT_PUBLIC_PORTS
-    draws = iter([band.start, band.stop - 1, band.start + 5954])
-    choose = ports.random.choice
-    monkeypatch.setattr(
-        ports.random, "choice", lambda options: next(draws, None) or choose(options)
-    )
-    assert ports._free_port(exclude=set()) not in band
-    assert (
-        next(draws, None) is None
-    ), "the ports in the band were not all drawn and passed over"
-    for _ in range(200):
-        assert ports._free_port(exclude=set()) not in band
-    outside = [port for port in ports.PORT_RANGE if port not in band]
-    assert len(outside) >= 5000, "too few ports are left for an install's services"
+def test_no_service_randomly_takes_the_experimental_public_port(monkeypatch):
+    candidate = 15001
+    draws = iter([ports.EXPERIMENTAL_PUBLIC_PORT, candidate])
+    monkeypatch.setattr(ports.random, "choice", lambda options: next(draws))
+    monkeypatch.setattr(ports, "_is_free", lambda port: True)
+    assert ports._free_port(exclude=set()) == candidate
 
 
-def test_every_service_of_a_new_install_is_outside_the_variants_addresses(
+def test_every_service_of_a_new_install_avoids_the_experimental_address(
     tmp_path, monkeypatch
 ):
-    for asked in (None, str(ports.VARIANT_PUBLIC_PORTS.start + 5954)):
+    for asked in (None, str(ports.EXPERIMENTAL_PUBLIC_PORT)):
         if asked:
             monkeypatch.setenv(ports.PUBLIC_PORT_VARIABLE, asked)
         allocated = ports.allocate(tmp_path / f"ports-{asked}.json")
         others = {name: port for name, port in allocated.items() if name != "public"}
-        assert not [
-            name for name, port in others.items() if port in ports.VARIANT_PUBLIC_PORTS
-        ]
+        assert ports.EXPERIMENTAL_PUBLIC_PORT not in others.values()
 
 
 def test_the_shell_passes_the_variables_the_runtime_reads():
@@ -93,9 +75,9 @@ def test_the_shell_passes_the_variables_the_runtime_reads():
         assert (
             f"{variable}:" in source
         ), f"src/identity.js runtimeEnvironment no longer sets {variable}"
-    # The names the shell passes: `AutoGPT`, and `AutoGPT-<slug>` for a variant.
-    assert "dirName: `AutoGPT-${variant}`" in source
-    for name in ("AutoGPT", "AutoGPT-voice", "AutoGPT-a-b-1", f"AutoGPT-{'x' * 24}"):
+    # The two fixed identities the shell can pass.
+    assert 'dirName: "AutoGPT-experimental"' in source
+    for name in ("AutoGPT", "AutoGPT-experimental"):
         assert install.NAME.fullmatch(name), name
 
 

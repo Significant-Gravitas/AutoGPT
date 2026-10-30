@@ -4,9 +4,9 @@
 // main.js hands in one of electron-updater's updaters and does what the
 // state says.
 //
-// Releases are GitHub Releases of ntindle/autogpt (the release workflow on
-// its `main` branch). There is one channel: the release GitHub marks as the
-// latest. electron-updater reads latest*.yml from it, and accepts a download
+// Releases are GitHub Releases of Significant-Gravitas/AutoGPT. The standard
+// app follows the release GitHub marks as latest. electron-updater reads
+// latest*.yml from it, and accepts a download
 // only if its SHA-512 is the one in that file; on Windows it also checks the
 // publisher once builds are signed, and on macOS Squirrel checks that the
 // new app is signed by the same Developer ID as the running one.
@@ -27,12 +27,11 @@
 // checks go on, and when the latest release is no longer that version (it
 // was withdrawn, or a newer one is out) the app follows.
 //
-// Variants (identity.js) are released in the same repository and never
-// cross: the normal app must not become an experiment, and an experiment
-// must not become the normal app or another experiment.
+// The experimental distribution (identity.js) uses the same repository.
+// Updates never cross between standard and experimental installations.
 //
 // - A variant's releases are GitHub pre-releases tagged
-//   `desktop-<slug>-v<version>`. GitHub's latest release is never a
+//   `desktop-experimental-v<version>`. GitHub's latest release is never a
 //   pre-release, and that one release is all electron-updater's GitHub
 //   provider looks at for the normal app (allowPrerelease is off).
 // - A variant does not use that provider at all. It lists the repository's
@@ -46,8 +45,10 @@ const fs = require("node:fs");
 
 const { NORMAL, isOwnUpdateFile, releaseTag } = require("./identity");
 
-const RELEASES = "https://github.com/ntindle/autogpt/releases";
-const RELEASES_API = "https://api.github.com/repos/ntindle/autogpt/releases";
+const RELEASE_REPOSITORY = Object.freeze({ owner: "Significant-Gravitas", repo: "AutoGPT" });
+const REPOSITORY = `${RELEASE_REPOSITORY.owner}/${RELEASE_REPOSITORY.repo}`;
+const RELEASES = `https://github.com/${REPOSITORY}/releases`;
+const RELEASES_API = `https://api.github.com/repos/${REPOSITORY}/releases`;
 const RELEASES_PER_PAGE = 100;
 // Releases come newest first. A variant that has not been released within
 // the repository's last 500 releases is not offered an update.
@@ -111,7 +112,7 @@ function releaseUrl(version, id = NORMAL) {
 }
 
 // The release a variant updates to: of the published releases whose tag is
-// exactly `desktop-<slug>-v<X.Y.Z>`, the one with the highest version. Null
+// exactly `desktop-experimental-v<X.Y.Z>`, the one with the highest version. Null
 // when there is none. `releases` is GitHub's list (tag_name, draft).
 function newestRelease(releases, id) {
   let newest = null;
@@ -440,6 +441,7 @@ function fileLogger(file) {
 }
 
 module.exports = {
+  RELEASE_REPOSITORY,
   CHECK_EVERY_MS,
   FIRST_CHECK_MS,
   RECHECK_MS,

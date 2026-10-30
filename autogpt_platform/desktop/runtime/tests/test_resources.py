@@ -226,10 +226,10 @@ def test_how_each_host_is_started(bundle: Bundle):
         "--name",
         "swap-credentials",
         "--stop-budget",
-        "29.5",
+        "2.5",
         "swap-credentials=autogpt_desktop.backend_entries:swap_main",
     ]
-    budget = ["--stop-budget", "29.5"]
+    budget = ["--stop-budget", "2.5"]
     assert flags(bundle, workers)[:5] == ["--name", "workers", *budget, "--no-database"]
     assert flags(bundle, workers)[5] == "executor=backend.exec:main"
     assert flags(bundle, websocket) == [
@@ -269,7 +269,7 @@ def test_a_host_process_is_what_the_supervisor_stops_and_restarts(
 
     assert process.name == "workers"
     assert process.cwd == bundle.backend_dir
-    assert process.stop_timeout == apps.REFRESH_STOP_TIMEOUT_SECONDS
+    assert process.stop_timeout == apps.STOP_TIMEOUT_SECONDS
     assert process.env["A"] == "b"
     assert process.before_start is not None
 

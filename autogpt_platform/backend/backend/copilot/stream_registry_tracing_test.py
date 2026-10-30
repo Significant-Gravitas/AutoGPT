@@ -39,9 +39,6 @@ class _SpanPerCommandRedis:
         }
         return await self._command("HGETALL", meta)
 
-    async def get(self, _key):
-        return await self._command("GET", None)
-
     async def xread(self, _streams, count=None, block=None):
         if block is None:
             return await self._command("XREAD", [])

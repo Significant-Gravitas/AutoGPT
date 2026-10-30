@@ -78,7 +78,7 @@ test("existing profiles retain their contents and do not run private creation", 
   assert.equal(claimDataDir(f.data, NORMAL, options), NORMAL.dirName);
   assert.equal(fs.readFileSync(path.join(f.data, "marker"), "utf8"), "kept");
   const before = fs.readFileSync(path.join(f.data, INSTALL_STAMP));
-  assert.equal(claimDataDir(f.data, identity("voice"), options), NORMAL.dirName);
+  assert.equal(claimDataDir(f.data, identity("experimental"), options), NORMAL.dirName);
   assert.deepEqual(fs.readFileSync(path.join(f.data, INSTALL_STAMP)), before);
 });
 
@@ -164,7 +164,7 @@ test("Windows claims a private root before Electron may create a coincident prof
 
 for (const [name, options] of [
   ["private creation failure", { failure: new Error("injected private root failure") }],
-  ["foreign ownership", { owner: "AutoGPT-voice" }],
+  ["foreign ownership", { owner: "AutoGPT-experimental" }],
   ["maintenance refusal", { maintenanceFailure: true }],
 ]) {
   test(`Windows ${name} never schedules boot, profile writes or runtime startup`, () => {

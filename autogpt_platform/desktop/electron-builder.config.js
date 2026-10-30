@@ -12,11 +12,9 @@
 //                              0.0.0-dev.0 otherwise (a development build,
 //                              which never looks for updates)
 //   AUTOGPT_DESKTOP_OUTPUT     where the installers are written; dist
-//   AUTOGPT_DESKTOP_VARIANT    the slug of a variant, such as "voice": an app
-//                              that installs next to the normal one and
-//                              shares nothing with it. Empty for the normal
-//                              app. src/identity.js derives every name here
-//                              from it; README.md, "Variants".
+//   AUTOGPT_DESKTOP_VARIANT    "experimental" for the separate CI distribution;
+//                              empty for the standard app. Existing profile
+//                              and installer identities stay stable.
 //   AUTOGPT_DESKTOP_MAC_SIGN   "developer-id": sign with the Developer ID
 //                              certificate in CSC_LINK (or the keychain),
 //                              hardened runtime, notarize. Anything else:
@@ -48,7 +46,7 @@ try {
 }
 
 const { artifactNames, identity, releaseTag } = require("./src/identity");
-const { releaseFeed } = require("./src/updater");
+const { RELEASE_REPOSITORY, releaseFeed } = require("./src/updater");
 const { beforePack, afterPack } = require("./build/runtime_check");
 const {
   requireNotarizedApp,
@@ -89,8 +87,8 @@ function version() {
 }
 
 // What the packed app's package.json says besides what the file in the
-// repository says. A variant is another package under another name, and
-// src/identity.js variantOf reads the slug back in the installed app.
+// repository says. Experimental builds use their own package name, and
+// src/identity.js reads the fixed distribution identity in the installed app.
 function metadata() {
   // Read by src/updater.js: macOS replaces an app in place only when the
   // old and the new one are signed by the same Developer ID.
@@ -105,7 +103,7 @@ function metadata() {
 }
 
 // Where an installed app looks for updates (written to app-update.yml).
-// Nothing is uploaded from here: the release workflow on `main` does that.
+// Nothing is uploaded from here; publication is a separate release step.
 //
 // The normal app follows the release GitHub marks as the repository's
 // latest. A variant must never do that, so it is not given the means: the
@@ -113,7 +111,7 @@ function metadata() {
 // src/updater.js moves it on to a newer release of the same variant once it
 // has found one.
 function publish() {
-  if (!app.variant) return [{ provider: "github", owner: "ntindle", repo: "autogpt" }];
+  if (!app.variant) return [{ provider: "github", ...RELEASE_REPOSITORY }];
   const built = version().version || require("./package.json").version;
   return [releaseFeed(releaseTag(app, built))];
 }

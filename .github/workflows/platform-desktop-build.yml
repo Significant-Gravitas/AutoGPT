@@ -7,11 +7,8 @@ on:
     paths:
       - ".github/workflows/platform-desktop-build.yml"
       - "autogpt_platform/desktop/**"
-      - "autogpt_platform/backend/**"
-      - "autogpt_platform/autogpt_libs/**"
-      - "autogpt_platform/frontend/**"
-      - "autogpt_platform/single-container/**"
-      - "autogpt_platform/db/init/**"
+  schedule:
+    - cron: "23 6 * * *"
   workflow_dispatch:
     inputs:
       package:
@@ -48,6 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
+          ref: ${{ github.event_name == 'schedule' && 'dev' || github.ref }}
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:

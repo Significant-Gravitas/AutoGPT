@@ -1994,7 +1994,7 @@ def test_lifecycle_smoke_budget_follows_host_grace_and_parallel_tiers(
     install = smoke_test.Install(False)
     install.profile = profile
     assert smoke_test.CANCEL_WAIT_SECONDS == supervisor.CANCEL_WAIT_SECONDS
-    assert smoke_test.stop_runs_budget(install) == 101
+    assert smoke_test.stop_runs_budget(install) == 74
     assert smoke_test.stop_runs_budget(install) < supervisor.STOPPING_RUNS_GRACE_SECONDS
     original = apps.host_stop_timeout
     monkeypatch.setattr(
@@ -2120,9 +2120,9 @@ def test_lifecycle_smoke_total_deadline_includes_the_hurry_delay(
     install.stopping.hurried = hurried
     process = Process(3 if hurried else 20, 102)
     failures = smoke_test.stop_the_runs(process, DESKTOP, tmp_path, install)
-    assert process.killed and process.waits == [98 if hurried else 101]
+    assert process.killed and process.waits == [71 if hurried else 74]
     assert failures == [
-        "the runtime did not stop within 101s of being asked to stop the runs"
+        "the runtime did not stop within 74s of being asked to stop the runs"
     ]
 
 

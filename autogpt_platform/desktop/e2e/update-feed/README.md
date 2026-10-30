@@ -2,13 +2,13 @@
 
 This is a separate, opt-in test. Ordinary installed-app tests still disable
 updates and use their existing installer-over-install upgrade test. Run this
-only after A and B have been published by the reviewed release workflow on
-`ntindle/autogpt`. It never pushes, publishes, changes a feed, or supplies a
-GitHub token to the installed app.
+only after A and B have been published as reviewed releases on
+`Significant-Gravitas/AutoGPT`. It never pushes, publishes, changes a feed, or
+supplies a GitHub token to the installed app.
 
-Use a fresh dedicated `variant/<slug>` with no installation, data, or pending
-update cache on the test machine. The normal app requires a disposable machine
-and `AUTOGPT_E2E_FEED_DISPOSABLE_NORMAL=1`. The test installs A into the app's
+Use the experimental distribution on a fresh test machine with no existing
+installation, data or pending update cache. The normal app requires a
+disposable machine and `AUTOGPT_E2E_FEED_DISPOSABLE_NORMAL=1`. The test installs A into the app's
 default location, creates a test owner and agent, and leaves the installation
 and data available for inspection. Teardown stops remaining test processes;
 that final teardown is not evidence of a graceful B shutdown.
@@ -28,16 +28,16 @@ source SHAs and independently verified artifact hashes):
 ```text
 AUTOGPT_E2E_REAL_FEED=1
 AUTOGPT_DESKTOP_UPDATES=on
-AUTOGPT_DESKTOP_VARIANT=feed-proof
+AUTOGPT_DESKTOP_VARIANT=experimental
 AUTOGPT_E2E_KIND=nsis
-AUTOGPT_E2E_INSTALLER=/path/to/AutoGPT-feed-proof-Setup-1.0.0-x64.exe
+AUTOGPT_E2E_INSTALLER=/path/to/AutoGPT-experimental-Setup-1.0.0-x64.exe
 AUTOGPT_E2E_FEED_FROM_VERSION=1.0.0
 AUTOGPT_E2E_FEED_TO_VERSION=1.0.1
 AUTOGPT_E2E_FEED_FROM_SOURCE=<40 lowercase hex characters>
 AUTOGPT_E2E_FEED_TO_SOURCE=<40 lowercase hex characters>
 AUTOGPT_E2E_FEED_FROM_SHA256=<64 lowercase hex characters>
 AUTOGPT_E2E_FEED_TO_SHA256=<64 lowercase hex characters>
-AUTOGPT_E2E_FEED_TO_ARTIFACT=AutoGPT-feed-proof-Setup-1.0.1-x64.exe
+AUTOGPT_E2E_FEED_TO_ARTIFACT=AutoGPT-experimental-Setup-1.0.1-x64.exe
 ```
 
 From `desktop/e2e`, with its normal dependencies installed:
@@ -67,11 +67,10 @@ release notes, asset digests and B's `SHA256SUMS`. Both source pins must occur i
 their release notes. Those notes identify the workflow's selected product
 source; they are not independent proof that binary contents match source.
 Review the release run and verify its artifact attestations before supplying
-the pins. GitHub's automatic source archive currently follows the **ops tag**,
-not the product SHA in the notes.
+the pins.
 
-A dedicated variant proves its generic GitHub release-asset feed and isolates
-the experiment from normal installs. It does **not** prove the normal app's
+The experimental distribution proves its generic GitHub release-asset feed
+and isolates it from normal installs. It does **not** prove the normal app's
 GitHub latest-provider path. A normal-app proof requires B to be the repository's
 public latest release, which offers B to every eligible normal installation.
 Drafts and `X.Y.Z-rc.N` versions are deliberately unsuitable. Run each platform
