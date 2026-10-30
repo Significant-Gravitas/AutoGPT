@@ -8,8 +8,7 @@ packages = [{ include = "backend", format = "sdist" }]
 
 
 [tool.poetry.dependencies]
-python = ">=3.11,<3.14"
-async-timeout = {version = "^5.0.1", python = "<3.11"}
+python = ">=3.12,<3.14"
 aio-pika = "^9.5.5"
 aiohttp = "^3.10.0"
 aiodns = ">=3.5,<5.0"
@@ -219,11 +218,7 @@ filterwarnings = [
 ]
 
 [tool.ruff]
-# The floor the code needs, not what CI or the image run: ExceptionGroup and
-# TaskGroup are 3.11 builtins and py310 flagged them as undefined names. Kept
-# at the minimum so ruff still reports 3.12+ syntax, which would break the
-# 3.11 leg of the CI matrix.
-target-version = "py311"
+target-version = "py312"
 extend-exclude = ["test/fixtures"]
 # `poetry run format` runs `ruff check --fix .`, which would otherwise rewrite
 # the vendored fixture it walks into.

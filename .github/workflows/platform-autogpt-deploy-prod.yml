@@ -24,7 +24,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
-          python-version: '3.11'
+          python-version: '3.13'
 
       - name: Install Python dependencies
         run: |
@@ -69,7 +69,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
-          python-version: '3.11'
+          python-version: '3.13'
 
       - name: Generate ephemeral secrets
         # backend module imports read settings.secrets, so ENCRYPTION_KEY has to
@@ -80,7 +80,7 @@ jobs:
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.cache/pypoetry
-          key: poetry-${{ runner.os }}-py3.11-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
+          key: poetry-${{ runner.os }}-py3.13-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
 
       - name: Install Poetry
         run: |

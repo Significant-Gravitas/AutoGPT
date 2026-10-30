@@ -6,6 +6,8 @@ on:
     paths:
       - ".github/workflows/platform-backend-ci.yml"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
+      - ".github/workflows/scripts/check_actions_status.py"
+      - ".github/workflows/scripts/test_check_actions_status.py"
       - ".github/scripts/docker-pull-with-retry.sh"
       - ".github/scripts/validate_junit.py"
       - ".github/scripts/test_validate_junit.py"
@@ -22,6 +24,8 @@ on:
     paths:
       - ".github/workflows/platform-backend-ci.yml"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
+      - ".github/workflows/scripts/check_actions_status.py"
+      - ".github/workflows/scripts/test_check_actions_status.py"
       - ".github/scripts/docker-pull-with-retry.sh"
       - ".github/scripts/validate_junit.py"
       - ".github/scripts/test_validate_junit.py"
@@ -113,6 +117,11 @@ jobs:
       - name: Run Linters
         run: poetry run lint --skip-pyright
 
+      - name: Test PR status checker
+        run: >-
+          poetry run python -m unittest discover
+          -s ../../.github/workflows/scripts -p 'test_check_actions_status.py'
+
     env:
       CI: true
       PLAIN_OUTPUT: True
@@ -183,7 +192,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.12", "3.13"]
     runs-on: ubuntu-latest
 
     steps:
@@ -236,7 +245,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.12", "3.13"]
         test-shard:
           - data
           - copilot

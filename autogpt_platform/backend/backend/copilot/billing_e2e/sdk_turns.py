@@ -144,6 +144,7 @@ class SdkTurns:
             "build_skills_update_notice": AsyncMock(return_value=None),
             "build_session_context": AsyncMock(return_value=""),
             "inject_user_context": AsyncMock(return_value=None),
+            "first_message_expert_context": AsyncMock(return_value=""),
             "create_copilot_mcp_server": MagicMock(),
             "create_security_hooks": MagicMock(),
             "get_copilot_tool_names": MagicMock(return_value=[]),

@@ -1,7 +1,13 @@
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
-from check_actions_status import get_paginated_items, process_check_runs
+import requests
+
+from check_actions_status import (
+    get_paginated_items,
+    make_api_request,
+    process_check_runs,
+)
 
 
 PASSING_RUN = {
@@ -179,6 +185,98 @@ class PaginationTests(unittest.TestCase):
 
         self.assertEqual(result, [{"id": 1}, {"id": 2}])
         self.assertEqual(get.call_count, 2)
+
+
+class ApiRequestTests(unittest.TestCase):
+    @staticmethod
+    def response(status: int = 200) -> requests.Response:
+        response = requests.Response()
+        response.status_code = status
+        response.url = "https://api.github.com/repos/example/repo/check-runs"
+        response._content = b'{"check_runs": [{"id": 1}]}'
+        return response
+
+    @patch("check_actions_status.time.sleep")
+    @patch("check_actions_status.requests.get")
+    def test_recovers_from_transient_server_errors(self, get, sleep):
+        for status in (500, 502, 503, 504):
+            with self.subTest(status=status):
+                get.reset_mock()
+                sleep.reset_mock()
+                get.side_effect = [self.response(status), self.response()]
+
+                self.assertEqual(
+                    make_api_request("check-runs", {"Accept": "application/json"}),
+                    ({"check_runs": [{"id": 1}]}, None),
+                )
+                self.assertEqual(get.call_count, 2)
+                sleep.assert_called_once_with(2)
+
+    @patch("check_actions_status.time.sleep")
+    @patch("check_actions_status.requests.get")
+    def test_recovers_from_connection_errors_and_timeouts(self, get, sleep):
+        get.side_effect = [
+            requests.ConnectionError("connection reset"),
+            requests.Timeout("read timeout"),
+            self.response(),
+        ]
+
+        self.assertEqual(
+            make_api_request("check-runs", {}),
+            ({"check_runs": [{"id": 1}]}, None),
+        )
+        self.assertEqual(sleep.call_args_list, [call(2), call(4)])
+
+    @patch("check_actions_status.time.sleep")
+    @patch("check_actions_status.requests.get")
+    def test_persistent_server_errors_fail_closed_after_bounded_retries(
+        self, get, sleep
+    ):
+        get.return_value = self.response(500)
+
+        with self.assertRaises(SystemExit) as raised:
+            make_api_request("check-runs", {})
+
+        self.assertEqual(raised.exception.code, 1)
+        self.assertEqual(get.call_count, 3)
+        self.assertEqual(sleep.call_args_list, [call(2), call(4)])
+
+    @patch("check_actions_status.time.sleep")
+    @patch("check_actions_status.requests.get")
+    def test_client_errors_fail_closed_without_retrying(self, get, sleep):
+        for status in (401, 403, 404, 422, 429):
+            with self.subTest(status=status):
+                get.reset_mock()
+                get.return_value = self.response(status)
+
+                with self.assertRaises(SystemExit) as raised:
+                    make_api_request("check-runs", {})
+
+                self.assertEqual(raised.exception.code, 1)
+                get.assert_called_once_with("check-runs", headers={}, timeout=10)
+                sleep.assert_not_called()
+
+    @patch("check_actions_status.time.sleep")
+    @patch("check_actions_status.requests.get")
+    def test_pagination_keeps_results_when_a_later_page_needs_retry(self, get, sleep):
+        first_page = self.response()
+        first_page.headers["Link"] = '<page-2>; rel="next"'
+        second_page = self.response()
+        second_page._content = b'{"check_runs": [{"id": 2}]}'
+        get.side_effect = [first_page, self.response(503), second_page]
+
+        self.assertEqual(
+            get_paginated_items("page-1", {}, "check_runs"),
+            [{"id": 1}, {"id": 2}],
+        )
+        self.assertEqual(
+            get.call_args_list,
+            [
+                call("page-1", headers={}, timeout=10),
+                call("page-2", headers={}, timeout=10),
+                call("page-2", headers={}, timeout=10),
+            ],
+        )
 
 
 if __name__ == "__main__":

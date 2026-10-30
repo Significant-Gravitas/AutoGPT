@@ -40,8 +40,8 @@ flags:
     paths:
       - autogpt_platform/backend/
     carryforward: true
-    # One upload per backend test shard (3 Pythons x 8 shards); a verdict from fewer is partial.
-    after_n_builds: 24
+    # One upload per backend test shard (2 Pythons x 8 shards); a verdict from fewer is partial.
+    after_n_builds: 16
   platform-frontend:
     paths:
       - autogpt_platform/frontend/src/
