@@ -4,7 +4,7 @@
 &ensp;|&ensp;
 [💻 **User guide**](./usage.md)
 &ensp;|&ensp;
-[🐙 **GitHub**](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt)
+[🐙 **GitHub**](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/original_autogpt)
 
 **Location:** `classic/original_autogpt/` in the GitHub repo
 
