@@ -78,7 +78,7 @@ export function SoulPreviewPanel({
           </h2>
           {roleLabel ? (
             <p
-              className={`text-sm uppercase tracking-caps text-muted-foreground ${REVEAL}`}
+              className={`text-sm tracking-caps text-muted-foreground uppercase ${REVEAL}`}
             >
               {roleLabel}
             </p>

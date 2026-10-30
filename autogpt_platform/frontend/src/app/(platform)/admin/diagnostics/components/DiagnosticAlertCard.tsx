@@ -68,7 +68,7 @@ export function DiagnosticAlertCard({
         <div className="flex flex-col space-y-1.5 p-6 pb-3">
           <h3
             className={cn(
-              "font-semibold leading-none tracking-tight",
+              "leading-none font-semibold tracking-tight",
               colors.title,
             )}
           >

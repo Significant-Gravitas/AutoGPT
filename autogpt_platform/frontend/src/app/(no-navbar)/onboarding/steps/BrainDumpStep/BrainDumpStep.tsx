@@ -72,9 +72,11 @@ export function BrainDumpStep() {
         />
         <RevealGroup
           className={cn(
+            // oxlint-disable-next-line design-system/no-restyle -- RevealGroup/RevealItem are motion wrappers that lay out their children; a wrapper div would split the stagger
             "relative z-10 flex w-full flex-col items-center gap-6 px-4",
             isTyping
-              ? "w-[calc(100vw-3rem)] max-w-3xl [@media(max-height:800px)]:gap-4"
+              ? // oxlint-disable-next-line design-system/no-restyle -- see above
+                "w-[calc(100vw-3rem)] max-w-3xl [@media(max-height:800px)]:gap-4"
               : "max-w-2xl",
           )}
         >
@@ -91,7 +93,9 @@ export function BrainDumpStep() {
             <RevealItem
               blur={false}
               className={cn(
+                // oxlint-disable-next-line design-system/no-restyle -- RevealGroup/RevealItem are motion wrappers that lay out their children; a wrapper div would split the stagger
                 "flex w-full flex-col items-center gap-4",
+                // oxlint-disable-next-line design-system/no-restyle -- see above
                 isTyping && "[@media(max-height:800px)]:gap-2",
               )}
             >

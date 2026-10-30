@@ -43,11 +43,12 @@ export function Timeline({ label, milestones }: Props) {
             {isLast ? null : (
               <span
                 aria-hidden
-                className="absolute bottom-0 left-[1.125rem] top-10 w-px -translate-x-1/2 bg-border-base"
+                className="absolute top-10 bottom-0 left-[1.125rem] w-px -translate-x-1/2 bg-border-base"
               />
             )}
             <span
               aria-hidden
+              // oxlint-disable-next-line design-system/no-inline-styles -- Otto's tint is mixed from the expert palette (ExpertAvatar/colors); no role has it
               style={isFirst ? { backgroundColor: OTTO_TINT } : undefined}
               className={cn(
                 "relative flex size-9 items-center justify-center rounded-full",

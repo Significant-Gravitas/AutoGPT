@@ -42,12 +42,12 @@ export function ToolErrorCard({
                 Technical details
               </summary>
               {error && (
-                <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-error-surface p-2">
+                <pre className="mt-2 max-h-40 overflow-auto rounded bg-error-surface p-2 break-words whitespace-pre-wrap">
                   {error}
                 </pre>
               )}
               {details && (
-                <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-error-surface p-2">
+                <pre className="mt-2 max-h-40 overflow-auto rounded bg-error-surface p-2 break-words whitespace-pre-wrap">
                   {details}
                 </pre>
               )}

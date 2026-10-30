@@ -60,9 +60,7 @@ export function ProActivationDialog({ activation }: Props) {
           </Text>
           <span
             data-slot="pro-activation-dialog-title"
-            // TODO(tokens): SECRT-3152, the 26px size, leading-[1.2] and
-            // tracking-[-0.6px] have no role.
-            className="block text-[26px] font-semibold leading-[1.2] tracking-[-0.6px] text-foreground-strong"
+            className="block text-heading leading-tight font-semibold tracking-heading text-foreground-strong"
           >
             {title}
           </span>

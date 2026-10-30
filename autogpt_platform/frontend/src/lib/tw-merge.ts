@@ -24,7 +24,7 @@ const fontWeights = defaults.classGroups["font-weight"].map((group) =>
     : group,
 );
 
-// Teach tailwind-merge the text token names in tailwind.config.ts, so that
+// Teach tailwind-merge the text token names in globals.css's theme, so that
 // `text-body` is read as a font size rather than a colour (and survives next
 // to `text-zinc-500`) and conflicting sizes, line-heights and letter-spacings
 // collapse to the last one. The radius names do the same for every
@@ -37,8 +37,8 @@ const fontWeights = defaults.classGroups["font-weight"].map((group) =>
 // - `bg-gradient-to-*` is an image, so it no longer replaces `bg-<colour>`;
 // - `border-x` / `border-y` survive next to `border-2`, and `max-h-none` next
 //   to another `max-h-*`, leaving the winner to stylesheet order as before;
-// - the `scrollbar-*` classes are tailwind.scrollbar.ts's, not Tailwind 4's
-//   scrollbar utilities, so none of them replaces another.
+// - the `scrollbar-*` classes are globals.css's port of tailwind-scrollbar,
+//   not Tailwind 4's scrollbar utilities, so none of them replaces another.
 export const twMerge = extendTailwindMerge({
   override: {
     classGroups: {

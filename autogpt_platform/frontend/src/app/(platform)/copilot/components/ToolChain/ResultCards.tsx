@@ -57,7 +57,7 @@ export function StatusPill({ status, className }: StatusPillProps) {
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-caption-sm font-medium leading-inherit",
+        "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-caption-sm leading-inherit font-medium",
         STATUS_STYLES[normalized] ??
           "bg-surface-hover text-foreground-tertiary",
         className,
@@ -101,7 +101,7 @@ export function StatusCard({ label, ok }: StatusCardProps) {
 export function StatCard({ value, label }: StatCardProps) {
   return (
     <div className={`${CARD} ${HALF} flex items-baseline gap-2 p-2.5`}>
-      <span className="text-lg font-semibold leading-none text-foreground-emphasis">
+      <span className="text-lg leading-none font-semibold text-foreground-emphasis">
         {value.toLocaleString()}
       </span>
       <Text
@@ -119,7 +119,7 @@ export function StatCard({ value, label }: StatCardProps) {
 export function ChipList({ label, items }: ChipListProps) {
   return (
     <div className={`${CARD} ${HALF} p-2.5`}>
-      <p className="mb-1.5 text-caption-sm uppercase leading-inherit tracking-wide text-foreground-subtle">
+      <p className="mb-1.5 text-caption-sm leading-inherit tracking-wide text-foreground-subtle uppercase">
         {label}
       </p>
       <div className="flex flex-wrap gap-1">

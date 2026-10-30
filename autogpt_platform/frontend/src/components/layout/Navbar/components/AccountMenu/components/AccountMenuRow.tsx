@@ -33,8 +33,7 @@ function RowBody({
 }) {
   const barClasses = destructive
     ? "absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full bg-error opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100"
-    : // TODO(tokens): no exact role for bg-neutral-900 (#171717)
-      "absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full bg-neutral-900 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100";
+    : "absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full bg-action-hover opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100";
 
   return (
     <>
@@ -50,8 +49,7 @@ function RowBody({
       ) : external ? (
         <Icon
           icon={LinkSquare01Icon}
-          // TODO(tokens): no exact role for text-neutral-700 (#404040)
-          className="relative z-10 shrink-0 text-neutral-700"
+          className="relative z-10 shrink-0 text-foreground-body"
           size={16}
           aria-hidden="true"
         />
@@ -93,10 +91,8 @@ export function AccountMenuRow({
   external = false,
 }: Props) {
   const colorClasses = destructive
-    ? // TODO(tokens): no exact role for text-neutral-700 (#404040); no fitting role for hover:text-red-600, focus-visible:text-red-600 #D93636; #D93636 is error-hover (a hover fill), not a text colour
-      "text-neutral-700 hover:bg-error-surface hover:text-red-600 focus-visible:bg-error-surface focus-visible:text-red-600"
-    : // TODO(tokens): no exact role for text-neutral-700 (#404040), hover:bg-neutral-100 (#F5F5F5), focus-visible:bg-neutral-100 (#F5F5F5)
-      "text-neutral-700 hover:bg-neutral-100 focus-visible:bg-neutral-100";
+    ? "text-foreground-body hover:bg-error-surface hover:text-error-foreground focus-visible:bg-error-surface focus-visible:text-error-foreground"
+    : "text-foreground-body hover:bg-surface-hover focus-visible:bg-surface-hover";
   const rowClasses = cn(baseRowClasses, "font-normal", colorClasses);
 
   if (as === "link" && href) {

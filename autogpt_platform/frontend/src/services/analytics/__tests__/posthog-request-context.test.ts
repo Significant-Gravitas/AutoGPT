@@ -1,4 +1,7 @@
-import { ImpersonationState } from "@/lib/impersonation";
+import {
+  ImpersonationState,
+  setImpersonationViewer,
+} from "@/lib/impersonation";
 import {
   configureCookiebot,
   installCookiebot,
@@ -33,6 +36,13 @@ import {
 } from "../posthog-request-context";
 
 const SESSION = "0192f0c4-5f4e-7b4c-9d6e-1a2b3c4d5e6f";
+const ADMIN = { id: "admin-1", role: "admin" };
+
+// What the auth store does once the admin who chose the target signs in.
+function actAs(userID: string) {
+  ImpersonationState.set(userID, ADMIN.id);
+  setImpersonationViewer(ADMIN);
+}
 
 function event(): CaptureResult {
   return {
@@ -51,13 +61,14 @@ beforeEach(() => {
 
 afterEach(() => {
   ImpersonationState.clear();
+  setImpersonationViewer(null);
   removeCookiebot();
   vi.unstubAllEnvs();
 });
 
 describe("markImpersonatedEvent", () => {
   it("marks every event an admin sends while acting as a user", () => {
-    ImpersonationState.set("user-1");
+    actAs("user-1");
 
     expect(markImpersonatedEvent(event())?.properties).toEqual({
       surface: "billing",
@@ -89,7 +100,7 @@ describe("getPostHogSessionHeader", () => {
 
   it("sends nothing while an admin acts as a user", () => {
     installCookiebot({ statistics: true });
-    ImpersonationState.set("user-1");
+    actAs("user-1");
 
     expect(getPostHogSessionHeader()).toEqual({});
   });

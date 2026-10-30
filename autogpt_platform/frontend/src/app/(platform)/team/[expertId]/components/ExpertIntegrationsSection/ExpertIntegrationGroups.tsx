@@ -128,13 +128,13 @@ export function ExpertIntegrationGroups({
                   <Text variant="body-md-medium" as="span" tone="primary">
                     {group.name}
                   </Text>
-                  <span className="inline-flex items-center justify-center rounded-md bg-surface-hover px-1.5 py-0.5 font-sans text-caption font-medium tabular-nums text-foreground-secondary">
+                  <span className="inline-flex items-center justify-center rounded-md bg-surface-hover px-1.5 py-0.5 font-sans text-caption font-medium text-foreground-secondary tabular-nums">
                     {group.integrations.length}
                   </span>
                 </div>
               </AccordionTrigger>
               {/* oxlint-disable-next-line design-system/no-restyle -- AccordionContent has no flush variant (src/components is P9's) */}
-              <AccordionContent className="px-0 pb-0 pt-0">
+              <AccordionContent className="px-0 pt-0 pb-0">
                 <div className="flex flex-col divide-y divide-separator border-t border-border-base">
                   {group.integrations.map((integration) => (
                     <ExpertIntegrationRow
@@ -164,7 +164,7 @@ function ExpertIntegrationRow({ integration, isRemoving, onRemove }: RowProps) {
   const name = formatCredentialName(integration.title, integration.provider);
   return (
     <div
-      className="flex w-full items-center justify-between py-2.5 pl-3 pr-4"
+      className="flex w-full items-center justify-between py-2.5 pr-4 pl-3"
       data-testid="expert-integration-row"
     >
       <div className="flex flex-col gap-0.5">
@@ -190,7 +190,7 @@ function ExpertIntegrationRow({ integration, isRemoving, onRemove }: RowProps) {
           disabled={isRemoving}
           aria-busy={isRemoving}
           aria-label={`Remove ${name}`}
-          className="inline-flex size-7 items-center justify-center rounded-md text-foreground-tertiary transition-colors hover:bg-surface-hover hover:text-error focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground-subtle disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex size-7 items-center justify-center rounded-md text-foreground-tertiary transition-colors hover:bg-surface-hover hover:text-error focus-visible:ring-1 focus-visible:ring-foreground-subtle focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isRemoving ? (
             <span className="inline-flex animate-spin">

@@ -36,7 +36,7 @@ export function CardStat({ icon, label, singular, count }: StatProps) {
   const word = count === 1 ? singular : label.toLowerCase();
 
   return (
-    <div className="flex items-center gap-1 whitespace-nowrap tabular-nums text-foreground-emphasis">
+    <div className="flex items-center gap-1 whitespace-nowrap text-foreground-emphasis tabular-nums">
       <Icon icon={icon} size={14} className="shrink-0" aria-hidden="true" />
       <Text variant="body-medium" as="dd" tone="emphasis">
         {count}

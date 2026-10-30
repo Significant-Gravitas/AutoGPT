@@ -18,7 +18,7 @@ function TrackingBadge({
   const label = trackingType || "per_run";
   return (
     <span
-      className={`inline-block rounded px-1.5 py-0.5 text-tiny font-medium leading-inherit ${colors[label] || colors.per_run}`}
+      className={`inline-block rounded px-1.5 py-0.5 text-tiny leading-inherit font-medium ${colors[label] || colors.per_run}`}
     >
       {label}
     </span>

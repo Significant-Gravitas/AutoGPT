@@ -37,15 +37,10 @@ export function ScheduleListItem({
       selected={selected}
       icon={
         <IconWrapper
-          // TODO(tokens): no exact role for border-slate-50 (#F7F8F9), bg-yellow-50 (#FEF9E6)
-          className="border-slate-50 bg-yellow-50"
+          // oxlint-disable-next-line design-system/no-raw-colors -- yellow-700 #AE8800 has no role; mustard to orange-brown change deferred (see PR)
+          className="border-surface-muted bg-warning-surface text-yellow-700"
         >
-          <Icon
-            // TODO(tokens): no exact role for text-yellow-700 (#AE8800)
-            icon={TimeScheduleIcon}
-            size={16}
-            className="text-yellow-700"
-          />
+          <Icon icon={TimeScheduleIcon} size={16} />
         </IconWrapper>
       }
       actions={

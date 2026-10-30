@@ -927,12 +927,12 @@ def create_copilot_mcp_server(
 ):
     """Create an in-process MCP server configuration for CoPilot tools.
 
-    All tools are annotated with ``readOnlyHint=True`` so the SDK CLI
-    dispatches concurrent tool calls in parallel rather than sequentially.
-    This is a deliberate override: even side-effect tools use the hint
-    because the MCP tools are already individually sandboxed and the
-    pre-launch duplicate-execution bug (SECRT-2204) is worse than
-    sequential dispatch.
+    Tools are annotated with ``readOnlyHint=True`` so the SDK CLI runs the
+    calls in one message in parallel, even tools with side effects.  The
+    exception is a tool that ``writes_files``: the CLI runs a call without
+    the hint on its own, after the calls written before it and before the
+    ones after, so a copy of a file never starts while the command that
+    builds it is still running (SECRT-3178).
 
     When *use_e2b* is True, five additional MCP file tools are registered
     that route directly to the E2B sandbox filesystem, and the caller should
@@ -970,15 +970,13 @@ def create_copilot_mcp_server(
         handler = create_tool_handler(base_tool)
         schema = _build_input_schema(base_tool)
         required = list(base_tool.parameters.get("required", []))
-        # All tools annotated readOnlyHint=True to enable parallel dispatch.
-        # The SDK CLI uses this hint to dispatch concurrent tool calls in
-        # parallel rather than sequentially.  Side-effect safety is ensured
-        # by the tool implementations themselves (idempotency, credentials).
         decorated = tool(
             tool_name,
             base_tool.description,
             schema,
-            annotations=_PARALLEL_ANNOTATION,
+            annotations=(
+                _MUTATING_ANNOTATION if base_tool.writes_files else _PARALLEL_ANNOTATION
+            ),
         )(
             _make_truncating_wrapper(
                 handler,
