@@ -647,16 +647,11 @@ def _extract_single_text_block(envelope: object) -> str | None:
 _READ_TOOL_NAME = "read_tool_result"
 _READ_TOOL_DESCRIPTION = (
     "Read an SDK-internal tool-result file or a workspace:// URI. "
-    "Use this tool only for host paths under ~/.claude/projects/.../tool-results/ "
-    "(or .../tool-outputs/), and for workspace:// URIs returned by other tools. "
-    "A workspace path like tool-outputs/<id>.json from a truncation notice is "
-    "read with read_workspace_file, not this tool. "
+    "Use this tool only for host paths under ~/.claude/projects/.../tool-results/ or .../tool-outputs/, and for workspace:// URIs returned by other tools. "
+    "Workspace tool-outputs/<id>.json: use read_workspace_file. "
     "For files in the working directory use read_file instead. "
-    "MCP envelopes are auto-unwrapped and JSON payloads pretty-printed, "
-    "so offset/limit (line-based) slice into the actual payload, not the "
-    "envelope wrapper. For piping a slice into another tool's command, "
-    "use `@@agptfile:<absolute-path>[<start>-<end>]` in that tool's "
-    "argument instead — it works in bash_exec and avoids a round-trip."
+    "MCP envelopes are auto-unwrapped and JSON payloads pretty-printed, so offset/limit (line-based) slice into the actual payload, not the envelope wrapper. "
+    "To pipe a slice into another tool, use `@@agptfile:<absolute-path>[<start>-<end>]` in its argument (works in bash_exec)."
 )
 _READ_TOOL_SCHEMA = {
     "type": "object",
