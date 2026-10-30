@@ -532,6 +532,16 @@
       "create_base"
     ]
   },
+  "mcp_companyenrich": {
+    "source": "https://companyenrich.com/solutions/ai-agents",
+    "external": [
+      "enrich_company",
+      "search_companies",
+      "find_similar",
+      "search_people",
+      "reverse_email"
+    ]
+  },
   "mcp_cloudflare": {
     "source": "https://github.com/cloudflare/mcp/blob/main/README.md",
     "read": [
