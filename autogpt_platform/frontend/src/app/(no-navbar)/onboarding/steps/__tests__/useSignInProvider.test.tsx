@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { delay, http, HttpResponse } from "msw";
+import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/mocks/mock-server";
@@ -16,8 +16,14 @@ function renderLookup() {
   return renderHook(() => useSignInProvider(true), { wrapper });
 }
 
-afterEach(() => {
+let releaseLookups = () => {};
+let heldLookups: Promise<unknown>[] = [];
+
+afterEach(async () => {
   vi.useRealTimers();
+  releaseLookups();
+  await Promise.all(heldLookups);
+  heldLookups = [];
 });
 
 describe("useSignInProvider", () => {
@@ -36,11 +42,18 @@ describe("useSignInProvider", () => {
   it("lets onboarding go on when the lookup hangs", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     let lookups = 0;
+    // Held until teardown, past both attempts' timeouts.
+    const released = new Promise<void>((resolve) => {
+      releaseLookups = resolve;
+    });
     server.use(
-      http.get("*/api/auth/sign-in-providers", async () => {
+      http.get("*/api/auth/sign-in-providers", () => {
         lookups += 1;
-        await delay("infinite");
-        return HttpResponse.json({ providers: ["microsoft"] });
+        const reply = released.then(() =>
+          HttpResponse.json({ providers: ["microsoft"] }),
+        );
+        heldLookups.push(reply);
+        return reply;
       }),
     );
     const { result } = renderLookup();

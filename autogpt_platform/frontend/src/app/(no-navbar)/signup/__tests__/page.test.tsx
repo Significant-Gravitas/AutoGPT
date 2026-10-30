@@ -609,23 +609,33 @@ describe("SignupPage", () => {
   test("keeps Google unavailable while a Microsoft sign-up is starting", async () => {
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
     vi.stubEnv("NEXT_PUBLIC_AUTH_MICROSOFT_ENABLED", "true");
-    vi.spyOn(globalThis, "fetch").mockImplementation(
-      () => new Promise<Response>(() => {}),
+    let finish = () => {};
+    const settled = new Promise<Response>((resolve) => {
+      finish = () => resolve(new Response(JSON.stringify({})));
+    });
+    const passThrough = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) =>
+      input === PROVIDER_LOGIN_URL ? settled : passThrough(input, init),
     );
-    render(<SignupPage />);
 
-    fireEvent.click(
-      screen.getByRole("button", { name: /continue with microsoft/i }),
-    );
+    try {
+      render(<SignupPage />);
+      fireEvent.click(
+        screen.getByRole("button", { name: /continue with microsoft/i }),
+      );
 
-    // Two sign-ups at once would race their redirects.
-    await waitFor(() =>
-      expect(
-        screen
-          .getByRole("button", { name: /continue with google/i })
-          .hasAttribute("disabled"),
-      ).toBe(true),
-    );
+      // Two sign-ups at once would race their redirects.
+      await waitFor(() =>
+        expect(
+          screen
+            .getByRole("button", { name: /continue with google/i })
+            .hasAttribute("disabled"),
+        ).toBe(true),
+      );
+    } finally {
+      finish();
+      await settled;
+    }
   });
 
   test("does not link to the demo tour", () => {

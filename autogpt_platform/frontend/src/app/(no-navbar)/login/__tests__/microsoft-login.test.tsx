@@ -1,6 +1,4 @@
-import { delay, http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
-import { server } from "@/mocks/mock-server";
 import {
   fireEvent,
   render,
@@ -27,9 +25,26 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 }));
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
   mockSearchParams = new URLSearchParams();
 });
+
+// Holds the request that starts a provider sign-in until `finish`; every
+// other request goes through.
+function holdProviderRequest() {
+  let finish = () => {};
+  const settled = new Promise<Response>((resolve) => {
+    finish = () => resolve(new Response(JSON.stringify({})));
+  });
+  const passThrough = globalThis.fetch;
+  vi.spyOn(globalThis, "fetch").mockImplementation((input, init) =>
+    String(input).includes("/api/auth/login/with-provider")
+      ? settled
+      : passThrough(input, init),
+  );
+  return { finish, settled };
+}
 
 describe("Continue with Microsoft on the login page", () => {
   test("shows only where the server has Microsoft sign-in set up", () => {
@@ -49,26 +64,26 @@ describe("Continue with Microsoft on the login page", () => {
   test("keeps Google unavailable while Microsoft sign-in is starting", async () => {
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
     vi.stubEnv("NEXT_PUBLIC_AUTH_MICROSOFT_ENABLED", "true");
-    server.use(
-      http.post("*/api/auth/login/with-provider", async () => {
-        await delay("infinite");
-        return HttpResponse.json({});
-      }),
-    );
-    render(<LoginPage />);
+    const { finish, settled } = holdProviderRequest();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: /continue with microsoft/i }),
-    );
+    try {
+      render(<LoginPage />);
+      fireEvent.click(
+        screen.getByRole("button", { name: /continue with microsoft/i }),
+      );
 
-    // Two sign-ins at once would race their redirects.
-    await waitFor(() =>
-      expect(
-        screen
-          .getByRole("button", { name: /continue with google/i })
-          .hasAttribute("disabled"),
-      ).toBe(true),
-    );
+      // Two sign-ins at once would race their redirects.
+      await waitFor(() =>
+        expect(
+          screen
+            .getByRole("button", { name: /continue with google/i })
+            .hasAttribute("disabled"),
+        ).toBe(true),
+      );
+    } finally {
+      finish();
+      await settled;
+    }
   });
 
   test("shows the waitlist answer when the sign-up isn't allowed", async () => {
