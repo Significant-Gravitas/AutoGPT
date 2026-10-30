@@ -30,6 +30,8 @@ export function AIConnectionsSection() {
     connections,
     accountFor,
     credentialFor,
+    credentialsFailed,
+    retryCredentials,
     selectedKey,
     chooseDefault,
     isSaving,
@@ -125,6 +127,8 @@ export function AIConnectionsSection() {
       <ManageConnectionDialog
         connection={managing}
         credential={managing ? credentialFor(managing) : undefined}
+        credentialsFailed={credentialsFailed}
+        onRetryCredentials={retryCredentials}
         onOpenChange={(open) => {
           if (!open) setManaging(null);
         }}

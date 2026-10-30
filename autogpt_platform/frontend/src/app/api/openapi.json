@@ -9857,6 +9857,47 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/integrations/microsoft/check": {
+      "post": {
+        "tags": ["v1", "integrations"],
+        "summary": "Verify Microsoft connection capabilities",
+        "operationId": "postV1Verify microsoft connection capabilities",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postV1Verify_microsoft_connection_capabilities"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MicrosoftAccessCheck"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/integrations/providers": {
       "get": {
         "tags": ["v1", "integrations"],
@@ -10355,6 +10396,15 @@
               "type": "string",
               "title": "Comma-separated list of authorization scopes",
               "default": ""
+            }
+          },
+          {
+            "name": "credential_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "ID of existing credential to upgrade scopes for"
             }
           }
         ],
@@ -21225,6 +21275,14 @@
         "required": ["file"],
         "title": "Body_postV1Upload file to cloud storage"
       },
+      "Body_postV1Verify_microsoft_connection_capabilities": {
+        "properties": {
+          "credential_id": { "type": "string", "title": "Credential Id" }
+        },
+        "type": "object",
+        "required": ["credential_id"],
+        "title": "Body_postV1Verify microsoft connection capabilities"
+      },
       "Body_postV2Add_credits_to_user": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
@@ -23417,6 +23475,12 @@
           "service_icon": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Service Icon"
+          },
+          "microsoft_identity": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/MicrosoftIdentity" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -30182,6 +30246,83 @@
         "required": ["id"],
         "title": "MessageFeedbackResponse",
         "description": "A saved rating of an AutoPilot reply."
+      },
+      "MicrosoftAccessCheck": {
+        "properties": {
+          "verified": { "type": "boolean", "title": "Verified" },
+          "account_type": {
+            "anyOf": [
+              { "type": "string", "enum": ["personal", "work"] },
+              { "type": "null" }
+            ],
+            "title": "Account Type"
+          },
+          "capabilities": {
+            "items": { "$ref": "#/components/schemas/MicrosoftCapability" },
+            "type": "array",
+            "title": "Capabilities"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "admin_consent_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Admin Consent Url"
+          }
+        },
+        "type": "object",
+        "required": ["verified", "account_type", "capabilities", "message"],
+        "title": "MicrosoftAccessCheck"
+      },
+      "MicrosoftCapability": {
+        "properties": {
+          "service": {
+            "type": "string",
+            "enum": [
+              "mail",
+              "calendar",
+              "files",
+              "teams",
+              "copilot",
+              "work_iq"
+            ],
+            "title": "Service"
+          },
+          "name": { "type": "string", "title": "Name" },
+          "status": {
+            "type": "string",
+            "enum": [
+              "available",
+              "permission_needed",
+              "admin_required",
+              "setup_required",
+              "work_account_only",
+              "unavailable"
+            ],
+            "title": "Status"
+          },
+          "scopes": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Scopes",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["service", "name", "status"],
+        "title": "MicrosoftCapability"
+      },
+      "MicrosoftIdentity": {
+        "properties": {
+          "tenant_id": { "type": "string", "title": "Tenant Id" },
+          "account_id": { "type": "string", "title": "Account Id" },
+          "account_type": {
+            "type": "string",
+            "enum": ["personal", "work"],
+            "title": "Account Type"
+          }
+        },
+        "type": "object",
+        "required": ["tenant_id", "account_id", "account_type"],
+        "title": "MicrosoftIdentity"
       },
       "ModelInfo": {
         "properties": {
