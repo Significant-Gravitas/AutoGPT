@@ -61,6 +61,13 @@ class BehaveAs(str, Enum):
     CLOUD = "cloud"
 
 
+class UserNotificationsAudience(str, Enum):
+    """Who product mail (Briefings, Alerts, Verdicts) may reach."""
+
+    SUBSCRIBERS = "subscribers"
+    EVERYONE = "everyone"
+
+
 class FeatureFlagBackend(str, Enum):
     """Which vendor answers a feature flag read.
 
@@ -235,18 +242,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "this is the only per-call wall-clock bound."
         ),
     )
-    enable_auth: bool = Field(
-        default=True,
-        description="If authentication is enabled or not",
-    )
-    auth_legacy_token_deadline: int = Field(
-        default=0,
-        ge=0,
-        description=(
-            "Exclusive Unix timestamp cutoff for accepting user JWTs without sid "
-            "during auth rollout. Zero rejects them immediately."
-        ),
-    )
     enable_subscription_credit_grant: bool = Field(
         default=False,
         description=(
@@ -415,6 +410,24 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "emit 1536-dim vectors to match the hardcoded pgvector column."
         ),
     )
+    public_search_requests_per_minute: int = Field(
+        default=30,
+        ge=1,
+        description="Store search requests one signed-out client may make per minute.",
+    )
+    public_search_user_requests_per_minute: int = Field(
+        default=120,
+        ge=1,
+        description="Store search requests one signed-in account may make per minute.",
+    )
+    public_search_embeddings_per_minute: int = Field(
+        default=1000,
+        ge=0,
+        description=(
+            "New query embeddings store search may request per minute across all "
+            "clients; past it, store search ranks by text match alone."
+        ),
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -429,6 +442,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     websocket_server_port: int = Field(
         default=8001,
         description="The port for the websocket server to run on",
+    )
+
+    websocket_server_metrics_port: int = Field(
+        default=8014,
+        description="The port the websocket server serves its Prometheus metrics "
+        "on when ENABLE_METRICS is set: never the public websocket port, so a "
+        "client of the server can't read them.",
     )
 
     execution_manager_port: int = Field(
@@ -474,6 +494,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for agent server API to run on",
     )
 
+    agent_api_metrics_port: int = Field(
+        default=8013,
+        description="The port the agent server API serves its Prometheus metrics "
+        "on when ENABLE_METRICS is set: never the public API port, so a client of "
+        "the API can't read them.",
+    )
+
     notification_service_port: int = Field(
         default=8007,
         description="The port for notification service daemon to run on",
@@ -509,6 +536,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "This is necessary to make sure webhooks find their way.",
     )
 
+    trusted_proxy_count: int = Field(
+        # Prod is Cloudflare -> Google LB -> pod, so the client is 3rd from the
+        # right; 1 keys every anonymous caller on the LB's address, one bucket.
+        default=3,
+        ge=0,
+        description="How many X-Forwarded-For entries our own proxies append. "
+        "The client IP is that many entries from the right; everything further "
+        "left is caller-controlled and must not be trusted. The default is the "
+        "hosted platform: Cloudflare appends the client, Google's load balancer "
+        "appends Cloudflare's address and its own. 0 ignores the header and uses "
+        "the socket peer.",
+    )
+
     e2b_egress_proxy_address: str = Field(
         default="",
         description="host:port of the SOCKS5 credential swap proxy every E2B box "
@@ -521,6 +561,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="",
         description="Can be used to explicitly set the base URL for the frontend. "
         "This value is then used to generate redirect URLs for OAuth flows.",
+    )
+
+    microsoft_browser_sign_in: bool = Field(
+        default=False,
+        description="Offer browser sign-in for Microsoft connections. Turn it on "
+        "once the Entra app in MICROSOFT_CLIENT_ID has a secret, the Web redirect "
+        "{frontend_base_url}/auth/integrations/oauth_callback, access token "
+        "version 2 and personal accounts in its audience. Until then Microsoft "
+        "connects with sign-in codes.",
     )
 
     trusted_frontend_origins: List[str] = Field(
@@ -682,6 +731,29 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "deferred. Auth emails and internal ops mail are unaffected."
         ),
     )
+    user_notifications_audience: UserNotificationsAudience = Field(
+        default=UserNotificationsAudience.SUBSCRIBERS,
+        description=(
+            "Who gets Briefings, Alerts and Verdicts: subscribers (a plan or "
+            "trial, or one that ended in the last 7 days) or everyone. "
+            "Subscription and trial mail is sent either way."
+        ),
+    )
+    user_notifications_allowlist: str = Field(
+        default="",
+        description=(
+            "Comma-separated email addresses. When set, only these addresses "
+            "get Briefings, Alerts and Verdicts, whatever the audience: for a "
+            "canary run with team inboxes."
+        ),
+    )
+    owner_email_daily_limit: int = Field(
+        default=20,
+        description=(
+            "Most emails a user's own runs may send to that user's account "
+            "address in a UTC day, through SendEmailToMeBlock."
+        ),
+    )
 
     # Separated so each kind carries its own reputation. Marketing mail goes
     # from MailerLite as hello@news.agpt.co and has no sender here.
@@ -710,6 +782,17 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description=(
             "Postmark message stream for Alerts, Briefings and account mail. "
             "Must be a transactional stream, separate from marketing mail."
+        ),
+    )
+    # Off until the privacy policy names email tracking. Auth mail is never
+    # tracked: its links carry sign-in tokens.
+    postmark_track_opens_and_clicks: bool = Field(
+        default=False,
+        description=(
+            "Ask Postmark to track opens (a tracking pixel) and clicks (links "
+            "rewritten through Postmark) in notification emails. Postmark "
+            "reports them to the webhook, which sends email_opened and "
+            "email_clicked to PostHog. Overrides the stream's own setting."
         ),
     )
     email_asset_base_url: str = Field(
@@ -856,6 +939,44 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Hours between platform link token cleanup runs (1-24 hours)",
     )
 
+    auth_ip_event_retention_days: int = Field(
+        default=90,
+        ge=1,
+        le=3650,
+        description=(
+            "Days the sign-up and sign-in IP of an account is kept for the admin "
+            "users page before the daily retention job deletes it (1-3650 days)"
+        ),
+    )
+
+    dream_pass_retention_days: int = Field(
+        default=90,
+        ge=1,
+        le=3650,
+        description=(
+            "Days a finished dream pass's record is kept before the weekly "
+            "retention job deletes it (1-3650 days)"
+        ),
+    )
+
+    dream_demotion_protect_days: int = Field(
+        default=30,
+        ge=0,
+        le=3650,
+        description=(
+            "The dream pass's deterministic recall guard: days after a fact "
+            "was last recalled during which its demotion writes, and the "
+            "ratification sweep's supersession of an unratified proposal, "
+            "leave it alone, unless the demotion is a contradiction or the "
+            "user's own retraction. 0 turns this guard off; it does not change the "
+            "sanitize prompt's own, stricter rule against demoting recalled "
+            "facts for staleness. The default of 30 is a floor, not a tuned "
+            "value: long enough that a few weeks away never makes a relied-on "
+            "memory look unused, to be tuned from the eval driver's "
+            "demotion-damage data (0-3650 days)"
+        ),
+    )
+
     stripe_tier_reconcile_interval_hours: int = Field(
         default=6,
         ge=1,
@@ -934,11 +1055,27 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
 
     feature_flag_backend: FeatureFlagBackend = Field(
-        default=FeatureFlagBackend.LAUNCHDARKLY,
-        description="Which vendor answers feature flag reads: launchdarkly "
-        "(default), posthog, or dual (evaluate both, serve LaunchDarkly, log "
-        "every disagreement).",
+        default=FeatureFlagBackend.POSTHOG,
+        description="Which vendor answers feature flag reads: posthog "
+        "(default), launchdarkly, or dual (evaluate both, serve LaunchDarkly, "
+        "log every disagreement).",
     )
+
+    @field_validator("user_notifications_audience", mode="before")
+    @classmethod
+    def _default_unknown_notifications_audience(cls, v):
+        """A typo falls back to the narrower audience rather than stopping
+        the process from booting."""
+        if not isinstance(v, str):
+            return v
+        try:
+            return UserNotificationsAudience(v.strip().lower())
+        except ValueError:
+            logger.warning(
+                f"Unknown USER_NOTIFICATIONS_AUDIENCE {v!r}, falling back to "
+                f"{UserNotificationsAudience.SUBSCRIBERS.value}"
+            )
+            return UserNotificationsAudience.SUBSCRIBERS
 
     @field_validator("feature_flag_backend", mode="before")
     @classmethod
@@ -955,9 +1092,9 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         except ValueError:
             logger.warning(
                 f"Unknown FEATURE_FLAG_BACKEND {v!r}, "
-                f"falling back to {FeatureFlagBackend.LAUNCHDARKLY.value}"
+                f"falling back to {FeatureFlagBackend.POSTHOG.value}"
             )
-            return FeatureFlagBackend.LAUNCHDARKLY
+            return FeatureFlagBackend.POSTHOG
 
     posthog_flag_definition_cache: FlagDefinitionCacheBackend = Field(
         default=FlagDefinitionCacheBackend.REDIS,
@@ -1151,6 +1288,15 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     """Secrets for the server."""
 
     encryption_key: str = Field(default="", description="Encryption key")
+
+    internal_api_key: str = Field(
+        default="",
+        description="Key every internal service sends on its RPC calls and "
+        "requires on the methods it exposes; every backend service of one "
+        "deployment must have the same value. Setup generates it along with "
+        "the other secrets. Blank derives one from ENCRYPTION_KEY, so an "
+        "install set up before it existed keeps working.",
+    )
 
     rabbitmq_default_user: str = Field(default="", description="RabbitMQ default user")
     rabbitmq_default_pass: str = Field(
@@ -1431,20 +1577,12 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     posthog_host: str = Field(
         default="https://eu.i.posthog.com", description="PostHog host URL"
     )
-    posthog_flags_api_key: str = Field(
-        default="",
-        description="Project API key of the PostHog project feature flags are read "
-        "from, when that is not the analytics project. Dev sets prod's, so both "
-        "share one set of flag definitions while dev's events stay in its own "
-        "project. Blank reads flags from the POSTHOG_API_KEY project.",
-    )
     posthog_secret_key: str = Field(
         default="",
         description="PostHog Feature Flags Secure API Key (project settings > "
-        "Feature Flags) of the project flags are read from, for local flag "
-        "evaluation; without it flag reads fall back to a remote /flags call, or "
-        "serve their defaults when POSTHOG_FLAGS_API_KEY names another project. "
-        "A personal API key also works, but PostHog is deprecating that use.",
+        "Feature Flags), for local flag evaluation; without it flag reads fall back "
+        "to a remote /flags call. A personal API key also works, but PostHog is "
+        "deprecating that use.",
     )
 
     # Add more secret fields as needed

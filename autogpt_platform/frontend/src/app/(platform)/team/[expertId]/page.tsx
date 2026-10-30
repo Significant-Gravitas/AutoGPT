@@ -13,24 +13,18 @@ import {
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
 import { cn } from "@/lib/utils";
-import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import {
+  AiBrain01Icon,
   Calendar03Icon,
   ComputerIcon,
+  DashboardSquare01Icon,
+  Folder01Icon,
   PlugSocketIcon,
   Settings01Icon,
   SparklesIcon,
-  AiBrain01Icon,
-  DashboardSquare01Icon,
-  Folder01Icon,
   WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons";
-import {
-  notFound,
-  useParams,
-  useRouter,
-  useSearchParams,
-} from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { BackToTeamLink } from "../components/BackToTeamLink";
 import { ExpertChatDrawer } from "../components/ExpertChatDrawer/ExpertChatDrawer";
 import { expertToChatTarget } from "../components/ExpertChatDrawer/helpers";
@@ -43,16 +37,17 @@ import {
   PROFILE_TABS_LIST_CLASS,
   PROFILE_TABS_TRIGGER_CLASS,
 } from "../helpers";
-import { ExpertFilesSection } from "./components/ExpertFilesSection/ExpertFilesSection";
-import { ExpertOverview } from "./components/ExpertOverview/ExpertOverview";
-import { ExpertSoulSection } from "./components/ExpertSoulSection";
 import { ExpertComputerSection } from "./components/ExpertComputerSection/ExpertComputerSection";
 import { ExpertDetailHeader } from "./components/ExpertDetailHeader";
+import { ExpertFilesSection } from "./components/ExpertFilesSection/ExpertFilesSection";
 import { ExpertIntegrationsSection } from "./components/ExpertIntegrationsSection/ExpertIntegrationsSection";
+import { ExpertModeSection } from "./components/ExpertModeSection/ExpertModeSection";
 import { ExpertNeedsYouSection } from "./components/ExpertNeedsYouSection/ExpertNeedsYouSection";
+import { ExpertOverview } from "./components/ExpertOverview/ExpertOverview";
 import { ExpertSchedulesSection } from "./components/ExpertSchedulesSection";
 import { ExpertSettingsSection } from "./components/ExpertSettingsSection";
 import { ExpertSkillsSection } from "./components/ExpertSkillsSection";
+import { ExpertSoulSection } from "./components/ExpertSoulSection";
 import { ExpertWorkflowsSection } from "./components/ExpertWorkflowsSection";
 import { useExpertDetailPage } from "./useExpertDetailPage";
 
@@ -81,7 +76,7 @@ export default function ExpertDetailPage() {
     : "basics";
   const requestedSkill = searchParams.get("skill");
   const requestedVersion = searchParams.get("version");
-  const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
+
   const {
     expert,
     isLoading,
@@ -111,10 +106,9 @@ export default function ExpertDetailPage() {
     closeChat,
   } = useExpertDetailPage({
     expertId,
-    enabled: Boolean(enabled) && ready,
   });
 
-  if (!ready || isLoading) {
+  if (isLoading) {
     return (
       <main className={MAIN_CLASS}>
         <Skeleton className="h-20 w-full rounded-xl" />
@@ -122,10 +116,6 @@ export default function ExpertDetailPage() {
         <Skeleton className="h-48 w-full rounded-xl" />
       </main>
     );
-  }
-
-  if (!enabled) {
-    notFound();
   }
 
   if (isError || !expert) {
@@ -154,8 +144,8 @@ export default function ExpertDetailPage() {
         />
 
         {isPaused ? (
-          <div className="flex items-center justify-between gap-2 rounded-lg bg-amber-50 px-4 py-2.5 ring-1 ring-inset ring-amber-200">
-            <Text variant="small" className="text-amber-700">
+          <div className="flex items-center justify-between gap-2 rounded-lg bg-warning-surface px-4 py-2.5 ring-1 ring-warning-border ring-inset">
+            <Text variant="small" tone="warning">
               Schedules paused
             </Text>
             <Button
@@ -169,19 +159,19 @@ export default function ExpertDetailPage() {
           </div>
         ) : null}
 
-        <ExpertNeedsYouSection
-          expert={expert}
-          enabled={Boolean(enabled) && ready}
-        />
+        <ExpertNeedsYouSection expert={expert} />
 
-        <TabsLine data-profile-tabs variant="compact" defaultValue={initialTab}>
+        <TabsLine variant="compact" defaultValue={initialTab}>
           <TabsLineList
             flush={false}
+            // oxlint-disable-next-line design-system/require-static-classes -- the pill tabs share their classes with team/autopilot; TabsLine has no pill variant (src/components is P9's)
             className={PROFILE_TABS_LIST_CLASS}
+            // oxlint-disable-next-line design-system/require-static-classes -- the pill tabs share their classes with team/autopilot; TabsLine has no pill variant (src/components is P9's)
             indicatorClassName={PROFILE_TABS_INDICATOR_CLASS}
           >
             {TABS.map((tab) => (
               <TabsLineTrigger
+                // oxlint-disable-next-line design-system/require-static-classes -- the pill tabs share their classes with team/autopilot; TabsLine has no pill variant (src/components is P9's)
                 className={PROFILE_TABS_TRIGGER_CLASS}
                 key={tab.value}
                 value={tab.value}
@@ -243,7 +233,6 @@ export default function ExpertDetailPage() {
             <ExpertComputerSection
               expertId={expert.id}
               expertName={expert.name}
-              enabled={Boolean(enabled) && ready}
             />
           </TabsLineContent>
 
@@ -266,7 +255,10 @@ export default function ExpertDetailPage() {
           </TabsLineContent>
 
           <TabsLineContent value="settings">
-            <ExpertSettingsSection expert={expert} onFire={openFire} />
+            <div className="flex flex-col gap-4">
+              <ExpertModeSection expert={expert} />
+              <ExpertSettingsSection expert={expert} onFire={openFire} />
+            </div>
           </TabsLineContent>
         </TabsLine>
 

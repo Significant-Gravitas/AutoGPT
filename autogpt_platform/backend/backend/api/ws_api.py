@@ -5,22 +5,22 @@ from typing import Protocol
 import pydantic
 import uvicorn
 from autogpt_libs.auth.jwt_utils import parse_jwt_token_async
-from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
 
-from backend.api.conn_manager import ConnectionManager
+from backend.api.conn_manager import ConnectionManager, _is_ws_close_race
 from backend.api.model import (
     WSMessage,
     WSMethod,
     WSSubscribeGraphExecutionRequest,
     WSSubscribeGraphExecutionsRequest,
 )
-from backend.api.session_auth import require_active_auth_session
 from backend.api.utils.cors import build_cors_params
-from backend.data import db, redis_client
-from backend.data.user import DEFAULT_USER_ID
+from backend.data import redis_client
+from backend.data.user import is_user_banned
 from backend.monitoring.instrumentation import (
     instrument_fastapi,
+    start_metrics_server,
     update_websocket_connections,
 )
 from backend.util.service import AppProcess
@@ -29,41 +29,31 @@ from backend.util.settings import AppEnvironment, Config, Settings
 logger = logging.getLogger(__name__)
 settings = Settings()
 
+ACCOUNT_BANNED_CLOSE_CODE = 4004
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Prisma is needed to resolve graph_id from graph_exec_id on subscribe.
-    await db.connect()
-    # Eager connect to fail-fast if Redis is unreachable.
+    # No Prisma: reads go through the DatabaseManager (db_accessors), so this
+    # server needs no database URL. Eager Redis connect to fail fast.
     await redis_client.get_redis_async()
     try:
         yield
     finally:
-        # Each cleanup is wrapped so one failure doesn't block the rest. The
-        # Redis close silences asyncio's "Unclosed ClusterNode" GC warning at
-        # interpreter shutdown.
+        # Silences asyncio's "Unclosed ClusterNode" GC warning at shutdown.
         try:
             await redis_client.disconnect_async()
         except Exception:
             logger.warning("redis_client.disconnect_async failed", exc_info=True)
-        try:
-            await db.disconnect()
-        except Exception:
-            logger.warning("db.disconnect failed", exc_info=True)
 
 
 docs_url = "/docs" if settings.config.app_env == AppEnvironment.LOCAL else None
 app = FastAPI(lifespan=lifespan, docs_url=docs_url)
 _connection_manager = None
 
-# Add Prometheus instrumentation
-instrument_fastapi(
-    app,
-    service_name="websocket-server",
-    expose_endpoint=True,
-    endpoint="/metrics",
-    include_in_schema=settings.config.app_env == AppEnvironment.LOCAL,
-)
+# Add Prometheus instrumentation. The metrics are served by WebsocketServer.run
+# on their own port, never on this public app.
+instrument_fastapi(app, service_name="websocket-server", expose_endpoint=False)
 
 
 def get_connection_manager():
@@ -74,52 +64,33 @@ def get_connection_manager():
 
 
 async def authenticate_websocket(websocket: WebSocket) -> str:
-    if not settings.config.enable_auth:
-        return DEFAULT_USER_ID
-
     token = websocket.query_params.get("token")
     if not token:
-        await _close_authentication_failure(
-            websocket, code=4001, reason="Missing authentication token"
-        )
+        await websocket.close(code=4001, reason="Missing authentication token")
         return ""
 
     try:
         payload = await parse_jwt_token_async(token)
-        user_id = payload.get("sub")
-        if not user_id:
-            await _close_authentication_failure(
-                websocket, code=4002, reason="Invalid token"
-            )
-            return ""
-        await require_active_auth_session(payload)
-        return user_id
     except ValueError:
-        await _close_authentication_failure(
-            websocket, code=4003, reason="Invalid token"
-        )
+        await websocket.close(code=4003, reason="Invalid token")
         return ""
-    except HTTPException as exc:
-        if exc.status_code == 503:
-            await _close_authentication_failure(
-                websocket, code=1013, reason="Authentication service unavailable"
-            )
-        else:
-            await _close_authentication_failure(
-                websocket, code=4003, reason="Session expired or revoked"
-            )
+    user_id = payload.get("sub")
+    if not user_id:
+        await websocket.close(code=4002, reason="Invalid token")
         return ""
 
-
-async def _close_authentication_failure(
-    websocket: WebSocket, *, code: int, reason: str
-) -> None:
-    """Complete the handshake so the client receives the close frame."""
+    # Refused when the ban can't be read, as a request to a signed-in route is;
+    # 1011 rather than the ban's code, so an outage never reads as a ban.
     try:
-        await websocket.accept()
-        await websocket.close(code=code, reason=reason)
-    except (WebSocketDisconnect, OSError):
-        logger.debug("WebSocket client disconnected during authentication rejection")
+        banned = await is_user_banned(user_id)
+    except Exception:
+        logger.warning(f"Ban lookup failed for user #{user_id}; refusing the socket")
+        await websocket.close(code=1011, reason="Try again")
+        return ""
+    if banned:
+        await websocket.close(code=ACCOUNT_BANNED_CLOSE_CODE, reason="Banned")
+        return ""
+    return user_id
 
 
 # ===================== Message Handlers ===================== #
@@ -271,6 +242,10 @@ async def websocket_router(
     try:
         while True:
             data = await websocket.receive_text()
+            # The socket outlives its token, so a ban ends it at the next message.
+            if await _banned_now(user_id):
+                await websocket.close(code=ACCOUNT_BANNED_CLOSE_CODE, reason="Banned")
+                break
             try:
                 message = WSMessage.model_validate_json(data)
             except pydantic.ValidationError as e:
@@ -328,9 +303,19 @@ async def websocket_router(
                 )
                 continue
             except Exception as e:
+                # The client left mid-handler: there is no one to reply to.
+                if _is_ws_close_race(e, websocket):
+                    break
                 logger.error(
                     f"Error while handling '{message.method.value}' message "
                     f"for user #{user_id}: {e}"
+                )
+                await websocket.send_text(
+                    WSMessage(
+                        method=WSMethod.ERROR,
+                        success=False,
+                        error=f"Could not handle '{message.method.value}'; retry",
+                    ).model_dump_json()
                 )
                 continue
 
@@ -361,6 +346,15 @@ async def websocket_router(
         update_websocket_connections(user_id, -1)
 
 
+async def _banned_now(user_id: str) -> bool:
+    """A lookup that fails keeps the socket; the next message asks again."""
+    try:
+        return await is_user_banned(user_id)
+    except Exception:
+        logger.warning(f"Ban lookup failed for user #{user_id}; keeping the socket")
+        return False
+
+
 @app.get("/")
 @app.get("/health")
 async def health():
@@ -384,6 +378,7 @@ class WebsocketServer(AppProcess):
             allow_headers=["*"],
         )
 
+        start_metrics_server(Config().websocket_server_metrics_port)
         uvicorn.run(
             server_app,
             host=Config().websocket_server_host,

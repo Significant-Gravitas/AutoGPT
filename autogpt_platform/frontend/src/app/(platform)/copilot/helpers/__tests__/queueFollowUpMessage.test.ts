@@ -142,25 +142,4 @@ describe("queueFollowUpMessage", () => {
       /got 429/,
     );
   });
-
-  it("reports a full buffer as an unsent message with retry guidance", async () => {
-    vi.mocked(global.fetch).mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({ detail: "Pending message buffer is full." }),
-        {
-          status: 429,
-          headers: {
-            "X-Error-Code": "pending_buffer_full",
-            "Retry-After": "5",
-          },
-        },
-      ),
-    );
-    await expect(
-      queueFollowUpMessage("sess-1", "keep this"),
-    ).rejects.toMatchObject({
-      name: "QueueFollowUpFullError",
-      message: expect.stringMatching(/not sent.*try again/),
-    });
-  });
 });

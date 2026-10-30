@@ -51,18 +51,22 @@ export function ThumbnailImages({
     <div className="space-y-4">
       <div className="flex flex-col gap-1">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <Text variant="body-medium" as="h3" className="text-textBlack">
+          <Text variant="body-medium" as="h3">
             Media
           </Text>
-          <Text variant="small" as="span" className="text-zinc-500">
+          <Text variant="small" as="span" tone="muted">
             {images.length}/5 images
           </Text>
         </div>
-        <Text variant="small" className="text-zinc-500">
+        <Text variant="small" tone="muted">
           The selected image is submitted first and appears as the marketplace
           thumbnail.
         </Text>
-        {errorMessage && <p className="text-sm text-red-500">{errorMessage}</p>}
+        {errorMessage && (
+          <Text variant="body-tight" tone="error">
+            {errorMessage}
+          </Text>
+        )}
       </div>
 
       <div
@@ -76,7 +80,7 @@ export function ThumbnailImages({
               aria-disabled={isUploading}
               data-testid="thumbnail-add-image-empty"
               className={cn(
-                "inline-flex h-[2.25rem] min-w-[5.5rem] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-700 bg-transparent px-3 py-2 font-sans text-sm font-medium leading-snug text-black transition-colors hover:border-zinc-700 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-950",
+                "inline-flex h-[2.25rem] min-w-[5.5rem] cursor-pointer items-center justify-center gap-1.5 rounded-full border border-foreground-body bg-transparent px-3 py-2 font-sans text-sm leading-snug font-medium whitespace-nowrap text-foreground-base transition-colors hover:border-foreground-body hover:bg-surface-hover focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none",
                 isUploading && "pointer-events-none opacity-60",
               )}
             >
@@ -116,10 +120,10 @@ export function ThumbnailImages({
                     type="button"
                     onClick={() => handleImageSelect(src)}
                     className={cn(
-                      "relative aspect-video h-28 w-44 overflow-hidden rounded-[10px] border-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2",
+                      "relative aspect-video h-28 w-44 overflow-hidden rounded-lg border-2 transition-colors focus-visible:ring-2 focus-visible:ring-action-hover focus-visible:ring-offset-2 focus-visible:outline-none",
                       selectedImage === src
-                        ? "border-zinc-900"
-                        : "border-transparent hover:border-zinc-300",
+                        ? "border-action-hover"
+                        : "border-transparent hover:border-border-strong",
                     )}
                     aria-pressed={selectedImage === src}
                     aria-label={`Select thumbnail ${index + 1}`}
@@ -129,7 +133,7 @@ export function ThumbnailImages({
                       unoptimized={isLocalStoreMediaUrl(src)}
                       alt={`Thumbnail ${index + 1}`}
                       fill
-                      style={{ objectFit: "cover" }}
+                      className="object-cover"
                     />
                   </button>
                   <button
@@ -139,14 +143,14 @@ export function ThumbnailImages({
                       e.stopPropagation();
                       handleRemoveImage(index);
                     }}
-                    className="absolute right-1.5 top-1.5 z-30 inline-flex size-7 cursor-pointer items-center justify-center rounded-full bg-zinc-900/85 text-white shadow-sm backdrop-blur-sm transition-colors hover:bg-zinc-900"
+                    className="absolute top-1.5 right-1.5 z-30 inline-flex size-7 cursor-pointer items-center justify-center rounded-full bg-action-hover/85 text-action-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-action-hover"
                     aria-label={`Remove image ${index + 1}`}
                     data-testid={`thumbnail-remove-${index}`}
                   >
                     <Icon icon={Cancel01Icon} size={14} />
                   </button>
                   {index === 0 ? (
-                    <span className="mt-1 block text-center text-[11px] font-medium text-zinc-500">
+                    <span className="mt-1 block text-center text-caption-sm leading-inherit font-medium text-foreground-tertiary">
                       Thumbnail
                     </span>
                   ) : null}

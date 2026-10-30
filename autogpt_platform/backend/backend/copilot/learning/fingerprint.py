@@ -61,8 +61,15 @@ def behavior_fingerprint(
 
 
 def token_overlap(a: list[str], b: list[str]) -> float:
-    """Jaccard overlap of two token bags (0 when either is empty)."""
+    """Jaccard overlap of two token bags.
+
+    Two empty bags are identical (1.0): a procedure whose steps are all
+    stopwords must still match its own suppression. An empty bag against a
+    non-empty one is 0.
+    """
     left, right = set(a), set(b)
+    if not left and not right:
+        return 1.0
     if not left or not right:
         return 0.0
     return len(left & right) / len(left | right)

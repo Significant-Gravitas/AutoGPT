@@ -46,13 +46,17 @@ export function watchForUnexpectedErrors(
   context: BrowserContext,
   expected: ExpectedResponse[],
 ) {
-  const pending: Promise<string>[] = [];
+  const pending: Promise<string | null>[] = [];
 
   context.on("response", (response) => {
     if (!isApiResponse(response) || response.status() < 400) return;
     if (isExpected(response, expected)) return;
     if (isKnownNoise({ kind: "response", response })) return;
-    pending.push(describeResponse(response));
+    pending.push(
+      isMissingActivation(response).then((missing) =>
+        missing ? null : describeResponse(response),
+      ),
+    );
   });
 
   context.on("console", (message) => {
@@ -74,7 +78,9 @@ export function watchForUnexpectedErrors(
 
   return {
     async collect() {
-      return Promise.all(pending);
+      return (await Promise.all(pending)).filter(
+        (problem): problem is string => problem !== null,
+      );
     },
   };
 }
@@ -112,6 +118,26 @@ function isKnownNoise(candidate: NoiseCandidate) {
     }
     return !noise.message || noise.message.test(candidate.text);
   });
+}
+
+// The optional recovery lookup returns this exact 404 when no activation exists.
+// Different errors, methods, endpoints and response bodies remain findings.
+async function isMissingActivation(response: Response) {
+  if (
+    response.status() !== 404 ||
+    response.request().method() !== "GET" ||
+    new URL(response.url()).pathname !==
+      "/api/proxy/api/credits/pro-activation/current"
+  )
+    return false;
+  const body: unknown = await response.json().catch(() => null);
+  return (
+    body !== null &&
+    typeof body === "object" &&
+    Object.keys(body).length === 1 &&
+    "detail" in body &&
+    body.detail === "No activation is available"
+  );
 }
 
 async function describeResponse(response: Response) {

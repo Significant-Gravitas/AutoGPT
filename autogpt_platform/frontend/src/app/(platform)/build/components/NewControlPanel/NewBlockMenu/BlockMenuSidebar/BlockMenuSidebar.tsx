@@ -1,7 +1,7 @@
 import React from "react";
 import { MenuItem } from "../MenuItem";
 import { useBlockMenuSidebar } from "./useBlockMenuSidebar";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useBlockMenuStore } from "../../../../stores/blockMenuStore";
 import { DefaultStateType } from "../types";
@@ -9,7 +9,7 @@ import { DefaultStateType } from "../types";
 export const BlockMenuSidebar = () => {
   const { data, setDefaultState, defaultState, isLoading, isError, error } =
     useBlockMenuSidebar();
-  const { setIntegration } = useBlockMenuStore();
+  const setIntegration = useBlockMenuStore((state) => state.setIntegration);
   if (isLoading) {
     return (
       <div className="w-fit space-y-2 px-4 pt-4">
@@ -106,7 +106,7 @@ export const BlockMenuSidebar = () => {
           onClick={() => setDefaultState(item.type as DefaultStateType)}
         />
       ))}
-      <div className="ml-[0.5365rem] space-y-2 border-l border-black/10 pl-[0.75rem]">
+      <div className="ml-[0.5365rem] space-y-2 border-l border-foreground-base/10 pl-3">
         {subMenuItems.map((item) => (
           <MenuItem
             key={item.type}

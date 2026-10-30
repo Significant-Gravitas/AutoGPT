@@ -1,5 +1,7 @@
 "use client";
 
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import {
   Sidebar,
   SidebarContent,
@@ -9,11 +11,20 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
-} from "@/components/ui/sidebar";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { isEditableElement } from "@/lib/platform";
+  useSidebar,
+} from "@/components/molecules/Sidebar/Sidebar";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { isEditableElement } from "@/lib/platform";
+import {
+  AddTeamIcon,
+  FlowIcon,
+  Folder01Icon,
+  GridViewIcon,
+  Home10Icon,
+  Store01Icon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
+import { tourTarget, type TourTarget } from "@/lib/tour-targets";
 import { motion, useReducedMotion } from "framer-motion";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -25,21 +36,13 @@ import { CollapsibleNavGroup } from "./components/CollapsibleNavGroup/Collapsibl
 import { ShortcutHint } from "./components/ShortcutHint/ShortcutHint";
 import { SidebarUserActions } from "./components/SidebarUserActions/SidebarUserActions";
 import { useNavItemClassName } from "./useNavItemClassName";
-import {
-  FlowIcon,
-  Folder01Icon,
-  GridViewIcon,
-  Home10Icon,
-  Store01Icon,
-  AddTeamIcon,
-} from "@hugeicons/core-free-icons";
-import type { IconSvgElement } from "@hugeicons/react";
-import { Icon } from "@/components/atoms/Icon/Icon";
 
 type NavLink = {
   name: string;
   href: string;
   icon: IconSvgElement;
+  /** Pointed at by the first-run walkthrough. */
+  tourTarget?: TourTarget;
 };
 
 const MAIN_LINKS: NavLink[] = [
@@ -49,7 +52,12 @@ const MAIN_LINKS: NavLink[] = [
 ];
 
 const WORKSPACE_LINKS: NavLink[] = [
-  { name: "Files", href: "/artifacts", icon: Folder01Icon },
+  {
+    name: "Files",
+    href: "/artifacts",
+    icon: Folder01Icon,
+    tourTarget: "files",
+  },
 ];
 
 function isLinkActive(pathname: string | null, href: string) {
@@ -123,7 +131,7 @@ function NavItem({ link }: NavItemProps) {
   const navItemClassName = useNavItemClassName();
 
   return (
-    <SidebarMenuItem>
+    <SidebarMenuItem {...(link.tourTarget && tourTarget(link.tourTarget))}>
       <SidebarMenuButton
         asChild
         tooltip={link.name}
@@ -165,18 +173,21 @@ type Props = ComponentProps<typeof Sidebar>;
 export function AppSidebar(props: Props) {
   const { isLoggedIn } = useAuth();
   const reduceMotion = useReducedMotion();
+  const { isMobile } = useSidebar();
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
   const router = useRouter();
-  const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
-  const mainLinks = isHireExpertsEnabled
-    ? MAIN_LINKS.filter((link) => link.href !== "/library")
-    : MAIN_LINKS;
-  const filesEnabled = useGetFlag(Flag.ARTIFACTS_PAGE);
-  const workspaceLinks = (
-    isHireExpertsEnabled
-      ? [{ name: "Team", href: "/team", icon: AddTeamIcon }, ...WORKSPACE_LINKS]
-      : WORKSPACE_LINKS
-  ).filter((link) => link.href !== "/artifacts" || filesEnabled);
+
+  const mainLinks = MAIN_LINKS.filter((link) => link.href !== "/library");
+
+  const workspaceLinks = [
+    {
+      name: "Team",
+      href: "/team",
+      icon: AddTeamIcon,
+      tourTarget: "team" as const,
+    },
+    ...WORKSPACE_LINKS,
+  ];
 
   useEffect(() => {
     function handleNewTaskShortcut(event: KeyboardEvent) {
@@ -195,12 +206,14 @@ export function AppSidebar(props: Props) {
 
   return (
     <Sidebar collapsible="icon" {...props}>
-      <SidebarContent className="scroll-py-16 gap-0 overflow-y-auto overflow-x-hidden overscroll-contain [-ms-overflow-style:none] [scrollbar-width:none] group-data-[collapsible=icon]:scroll-pt-24 group-data-[collapsible=icon]:overflow-y-auto [&::-webkit-scrollbar]:hidden">
+      <SidebarContent className="scroll-py-16 [scrollbar-width:none] gap-0 overflow-x-hidden overflow-y-auto overscroll-contain [-ms-overflow-style:none] group-data-[collapsible=icon]:scroll-pt-24 group-data-[collapsible=icon]:overflow-y-auto [&::-webkit-scrollbar]:hidden">
         <AppSidebarHeader />
 
         <motion.div
           variants={sidebarContainerVariants}
-          initial="hidden"
+          // On mobile the sheet's slide is the entrance; a blurred stagger on
+          // top of it delays the items and costs frames on phones.
+          initial={isMobile ? false : "hidden"}
           animate="show"
           className="flex shrink-0 flex-col gap-2"
         >
@@ -213,7 +226,7 @@ export function AppSidebar(props: Props) {
           </motion.div>
 
           {workspaceLinks.length > 0 ? (
-            <motion.div variants={itemVariants}>
+            <motion.div variants={itemVariants} {...tourTarget("workspace")}>
               <CollapsibleNavGroup label="Workspace">
                 <NavMenu links={workspaceLinks} />
               </CollapsibleNavGroup>
@@ -226,7 +239,7 @@ export function AppSidebar(props: Props) {
         <SidebarUserActions />
       </SidebarContent>
 
-      <SidebarRail className="w-2 translate-x-0 after:left-0 group-data-[side=left]:-right-2 group-data-[side=right]:-left-2 group-data-[side=right]:after:left-auto group-data-[side=right]:after:right-0 sm:hidden md:flex" />
+      <SidebarRail className="w-2 translate-x-0 group-data-[side=left]:-right-2 group-data-[side=right]:-left-2 after:left-0 group-data-[side=right]:after:right-0 group-data-[side=right]:after:left-auto sm:hidden md:flex" />
     </Sidebar>
   );
 }

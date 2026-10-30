@@ -16,8 +16,8 @@ export function CharCountedTextarea({ max, value, children }: Props) {
         aria-hidden
         data-testid="char-count"
         className={cn(
-          "pointer-events-none absolute right-0 top-0 z-10 text-xs tabular-nums",
-          over ? "text-rose-600" : "text-zinc-400",
+          "pointer-events-none absolute top-0 right-0 z-10 text-xs tabular-nums",
+          over ? "text-error-foreground" : "text-foreground-subtle",
         )}
       >
         {length} / {max}

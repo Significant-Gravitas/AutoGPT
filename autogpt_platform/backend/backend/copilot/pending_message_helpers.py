@@ -10,8 +10,7 @@ routes.py stays free of Redis/Lua details.
 import asyncio
 import logging
 import uuid
-from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from fastapi import HTTPException
 from pydantic import BaseModel
@@ -23,8 +22,6 @@ from backend.copilot.model import (
     ChatMessage,
     upsert_chat_session,
 )
-from backend.copilot.pending_message_reconciliation import reconcile_pending_rows
-from backend.copilot.pending_message_recovery import restore_pending_messages
 from backend.copilot.pending_messages import (
     MAX_PENDING_MESSAGES,
     PendingMessage,
@@ -33,8 +30,8 @@ from backend.copilot.pending_messages import (
     claim_client_message,
     drain_pending_messages,
     finish_despite_cancellation,
-    format_pending_as_user_message,
     peek_pending_count,
+    pending_message_text,
     push_pending_message,
     push_pending_message_if_session_running,
     release_client_message,
@@ -47,7 +44,7 @@ from backend.copilot.stream_registry import get_session as get_active_session_me
 from backend.copilot.stream_registry import get_session_meta_key
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
-from backend.data.redis_helpers import RedisListCapacityExceeded, incr_with_ttl
+from backend.data.redis_helpers import incr_with_ttl
 from backend.data.workspace import build_files_block, resolve_attachable_workspace_files
 from backend.data.workspace_folder import resolve_attachable_workspace_folders
 from backend.data.workspace_scope import WorkspaceAccessDeniedError
@@ -157,7 +154,6 @@ async def queue_user_message(
     file_ids: list[str] | None = None,
     require_turn_in_flight: bool = False,
     metadata: dict[str, Any] | None = None,
-    message_id: str | None = None,
 ) -> QueuePendingMessageResponse:
     """Push *message* into the per-session pending buffer.
 
@@ -176,14 +172,11 @@ async def queue_user_message(
         context=context,
         metadata=metadata or None,
     )
-    if message_id is not None:
-        pending.id = message_id
     if require_turn_in_flight:
         new_len = await push_pending_message_if_session_running(
             session_id,
             pending,
             session_meta_key=get_session_meta_key(session_id),
-            deduplicate=message_id is not None,
         )
         return QueuePendingMessageResponse(
             buffer_length=new_len or 0,
@@ -298,7 +291,6 @@ async def queue_pending_for_http(
             context=queue_context,
             file_ids=sanitized_file_ids,
             require_turn_in_flight=True,
-            message_id=client_message_id,
         )
     )
     try:
@@ -316,14 +308,6 @@ async def queue_pending_for_http(
                 )
             )
         raise
-    except RedisListCapacityExceeded as exc:
-        if client_message_id is not None:
-            await release_client_message(session_id, client_message_id, claim_owner)
-        raise HTTPException(
-            status_code=429,
-            detail="Pending message buffer is full. Retry after messages are delivered.",
-            headers={"Retry-After": "5", "X-Error-Code": "pending_buffer_full"},
-        ) from exc
     except BaseException:
         if client_message_id is not None:
             await release_client_message(session_id, client_message_id, claim_owner)
@@ -336,9 +320,7 @@ async def queue_pending_for_http(
             detail="Session has no active turn. Start a new turn with POST /stream.",
         )
     if client_message_id is not None:
-        await accept_client_message(
-            session_id, client_message_id, claim_owner, pending=True
-        )
+        await accept_client_message(session_id, client_message_id, claim_owner)
 
     # Push landed — now charge the rate counter.  If this tick crosses the
     # limit we still keep the queued message (next drain will pick it up)
@@ -369,7 +351,7 @@ async def _settle_claim_of_cancelled_push(
         await release_client_message(session_id, client_message_id, owner)
         return
     if response.turn_in_flight:
-        await accept_client_message(session_id, client_message_id, owner, pending=True)
+        await accept_client_message(session_id, client_message_id, owner)
     else:
         await release_client_message(session_id, client_message_id, owner)
 
@@ -436,36 +418,26 @@ async def check_pending_call_rate(user_id: str) -> int:
 
 
 async def drain_pending_safe(
-    session_id: str, log_prefix: str = "", *, drain_backlog: bool = False
+    session_id: str, log_prefix: str = ""
 ) -> list[PendingMessage]:
     """Drain the pending buffer and return the full ``PendingMessage`` objects.
 
-    Preserves already-popped messages if a later Redis call fails.
-    ``drain_backlog`` snapshots the initial length, so new producers cannot
-    extend a turn-start drain. Callers that only need the rendered string
+    Returns ``[]`` on any Redis error so callers can always treat the
+    result as a plain list.  Callers that only need the rendered string
     (turn-start injection, auto-continue combined prompt) wrap this with
     :func:`pending_texts_from` — we return the structured objects so the
     re-queue rollback path can preserve ``file_ids`` / ``context`` that
     would otherwise be stripped by a text-only conversion.
     """
-    messages: list[PendingMessage] = []
     try:
-        if not drain_backlog:
-            return await drain_pending_messages(session_id)
-        count = await peek_pending_count(session_id)
-        for offset in range(0, count, MAX_PENDING_MESSAGES):
-            messages.extend(
-                await drain_pending_messages(
-                    session_id, limit=min(MAX_PENDING_MESSAGES, count - offset)
-                )
-            )
+        return await drain_pending_messages(session_id)
     except Exception:
         logger.warning(
             "%s drain_pending_messages failed, skipping",
             log_prefix or "pending_messages",
             exc_info=True,
         )
-    return messages
+        return []
 
 
 def pending_texts_from(pending: list[PendingMessage]) -> list[str]:
@@ -475,7 +447,7 @@ def pending_texts_from(pending: list[PendingMessage]) -> list[str]:
     turn-start injection (bundles the pending block into the user prompt)
     and the auto-continue combined-message path.
     """
-    return [format_pending_as_user_message(pm)["content"] for pm in pending]
+    return [pending_message_text(pm) for pm in pending]
 
 
 def combine_pending_with_current(
@@ -600,8 +572,8 @@ async def persist_pending_as_user_rows(
       4. If any newly-appended row has ``sequence is None`` → rollback:
          delete the appended rows, restore the transcript snapshot (if
          any), call ``on_rollback(anchor)`` for the caller's own state,
-         then restore the drained batch ahead of newer arrivals without
-         applying the admission cap to already accepted messages.
+         then re-push each ``PendingMessage`` into the primary pending
+         buffer so the next turn-start drain picks them up.
 
     Returns ``True`` when the rows were persisted with sequences, ``False``
     when the rollback path fired.  Callers can use this to decide whether
@@ -615,18 +587,19 @@ async def persist_pending_as_user_rows(
         transcript_builder.snapshot() if transcript_builder is not None else None
     )
 
-    rows = await reconcile_pending_rows(session, pending, content_of)
-    existing = {
-        message.id: i for i, message in enumerate(session.messages) if message.id
-    }
-    for row in rows:
-        if row.id in existing:
-            if row.sequence is not None:
-                session.messages[existing[row.id]] = row
-            continue
-        session.messages.append(row)
+    for pm in pending:
+        content = content_of(pm)
+        session.messages.append(
+            ChatMessage(role="user", content=content, metadata=pm.metadata or None)
+        )
         if transcript_builder is not None:
-            transcript_builder.append_user(content=row.content or "")
+            transcript_builder.append_user(
+                content=(
+                    [{"type": "text", "text": content}, pm.model_image.anthropic()]
+                    if pm.model_image
+                    else content
+                )
+            )
 
     # ``persist_session_safe`` may return a ``model_copy`` of *session* (e.g.
     # when ``upsert_chat_session`` patches a concurrently-updated title).
@@ -638,15 +611,16 @@ async def persist_pending_as_user_rows(
     # ``append_and_save_message`` calls.
     persisted = await persist_session_safe(session, log_prefix)
     persisted_tail = persisted.messages[session_anchor:]
-    if len(persisted_tail) == len(session.messages) - session_anchor and all(
+    if len(persisted_tail) == len(pending) and all(
         m.sequence is not None for m in persisted_tail
     ):
         for caller_msg, persisted_msg in zip(
             session.messages[session_anchor:], persisted_tail
         ):
             caller_msg.sequence = persisted_msg.sequence
-    pending_ids = {message.id for message in pending}
-    if any(m.sequence is None for m in session.messages if m.id in pending_ids):
+    newly_appended = session.messages[session_anchor:]
+
+    if any(m.sequence is None for m in newly_appended):
         logger.warning(
             "%s Mid-turn follow-up persist did not back-fill sequences; "
             "rolling back %d row(s) and re-queueing into the primary buffer",
@@ -658,11 +632,34 @@ async def persist_pending_as_user_rows(
             transcript_builder.restore(transcript_snapshot)
         if on_rollback is not None:
             on_rollback(session_anchor)
-        try:
-            await restore_pending_messages(session.session_id, pending)
-        except Exception:
-            logger.exception(
-                "%s Failed to re-queue mid-turn follow-up on rollback", log_prefix
+        # ``push_pending_message`` uses the bounded ``capped_rpush`` (LTRIM
+        # to ``MAX_PENDING_MESSAGES``).  If ≥``MAX_PENDING_MESSAGES`` fresh
+        # follow-ups arrived between the original drain and this rollback
+        # (heavy typing across a tool boundary), the LTRIM drops oldest
+        # entries — which can include the ones we just re-pushed. The model
+        # already saw that content (mid-turn injection earlier in the
+        # turn), but no DB row lands so the user sees no UI bubble.
+        # Surface a warning so the bounded data-loss path is visible in
+        # prod (it is rare and would otherwise be observable only via the
+        # absence of a bubble).
+        rollback_buffer_at_cap = False
+        for pm in pending:
+            try:
+                new_length = await push_pending_message(session.session_id, pm)
+                if new_length >= MAX_PENDING_MESSAGES:
+                    rollback_buffer_at_cap = True
+            except Exception:
+                logger.exception(
+                    "%s Failed to re-queue mid-turn follow-up on rollback",
+                    log_prefix,
+                )
+        if rollback_buffer_at_cap:
+            logger.warning(
+                "%s Rollback re-push hit pending-buffer cap (MAX=%d); a "
+                "previously queued follow-up may have been LTRIM-displaced "
+                "(silent UI-bubble drop). Investigate if observed.",
+                log_prefix,
+                MAX_PENDING_MESSAGES,
             )
         return False
 
@@ -672,6 +669,34 @@ async def persist_pending_as_user_rows(
         len(pending),
     )
     return True
+
+
+async def persist_unfolded_rows(
+    session: "ChatSession | None",
+    pending: list[PendingMessage],
+    *,
+    log_prefix: str,
+) -> None:
+    """Save rows a turn took but ended before folding in, such as results of
+    approved calls whose approvals it spent. Empties *pending*, so only the
+    first of several exits saves, and never raises over the turn's own error."""
+    if not pending or session is None:
+        return
+    saving = list(pending)
+    pending.clear()
+    try:
+        if any(message.model_image is not None for message in saving):
+            # No model transcript exists yet to retain the pixels. Requeue the
+            # whole batch so the next turn receives its images and order intact.
+            for message in saving:
+                await push_pending_message(session.session_id, message)
+            return
+        await persist_pending_as_user_rows(session, None, saving, log_prefix=log_prefix)
+    except Exception:
+        logger.warning(
+            f"{log_prefix} Could not save {len(saving)} unfolded row(s)",
+            exc_info=True,
+        )
 
 
 def drained_rows_entry(

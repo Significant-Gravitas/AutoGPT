@@ -7,7 +7,9 @@ import {
 } from "@/tests/integrations/test-utils";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { useChatInput } from "../components/ChatInput/useChatInput";
+import { sendWithAttachments } from "../helpers/sendWithAttachments";
 import { useChatSession } from "../useChatSession";
 
 // The first send of a new chat creates the session, and two layers used to
@@ -22,6 +24,12 @@ const billing = vi.hoisted(() => ({ enabled: true }));
 
 vi.mock("@/hooks/useIsBillingEnabled", () => ({
   useIsBillingEnabled: () => billing.enabled,
+}));
+
+const uploadFileDirect = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/direct-upload", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/direct-upload")>()),
+  uploadFileDirect,
 }));
 
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
@@ -53,6 +61,8 @@ vi.mock(
             },
           },
       isError: false,
+      // A list still loading never arrives in these tests.
+      refetch: async () => ({ data: undefined }),
     }),
   }),
 );
@@ -163,14 +173,56 @@ describe("a refused first send", () => {
     expect(textarea.value).toBe("hello");
   });
 
-  it("says once that AI connections are still loading", async () => {
+  it("says once that AI connections could not be checked", async () => {
     transports.loaded = false;
     const textarea = await send("too quick");
 
     expect(toast).toHaveBeenCalledOnce();
     expect(toast).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "AI connections are still loading" }),
+      expect.objectContaining({ title: "Could not check AI connections" }),
     );
     expect(textarea.value).toBe("too quick");
+  });
+});
+
+describe("a refused attachment", () => {
+  function ComposerWithFile() {
+    const sendMessage = vi.fn();
+    const { value, handleChange, handleSubmit } = useChatInput({
+      onSend: (text) =>
+        sendWithAttachments({
+          sessionId: "sess-1",
+          message: {
+            text,
+            files: [new File(["x"], "notes.pdf", { type: "application/pdf" })],
+            parts: [],
+          },
+          sendMessage,
+        }),
+    });
+    return (
+      <form onSubmit={handleSubmit}>
+        <textarea aria-label="Message" value={value} onChange={handleChange} />
+      </form>
+    );
+  }
+
+  it("offers plans once for a paywalled account instead of an upload failure", async () => {
+    uploadFileDirect.mockRejectedValue(
+      new ApiError("A subscription is required.", 402, null),
+    );
+    render(<ComposerWithFile />);
+    const textarea = screen.getByRole<HTMLTextAreaElement>("textbox", {
+      name: "Message",
+    });
+    fireEvent.change(textarea, { target: { value: "summarise this" } });
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() => expect(toast).toHaveBeenCalled());
+    expect(toast).toHaveBeenCalledOnce();
+    expect(toast.mock.calls[0][0]).toMatchObject({
+      title: "Sending needs an active plan",
+    });
+    await waitFor(() => expect(textarea.value).toBe("summarise this"));
   });
 });

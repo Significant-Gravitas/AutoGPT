@@ -18,12 +18,10 @@ export function useConnectionPicker() {
   const query = useGetV2ListChatConnections({
     query: { refetchOnWindowFocus: true, staleTime: 0 },
   });
-  const {
-    copilotLlmAuth,
-    setCopilotLlmAuth,
-    copilotLlmModel,
-    setCopilotLlmModel,
-  } = useCopilotUIStore();
+  const copilotLlmAuth = useCopilotUIStore((s) => s.copilotLlmAuth);
+  const setCopilotLlmAuth = useCopilotUIStore((s) => s.setCopilotLlmAuth);
+  const copilotLlmModel = useCopilotUIStore((s) => s.copilotLlmModel);
+  const setCopilotLlmModel = useCopilotUIStore((s) => s.setCopilotLlmModel);
 
   const offers = visibleOffers(
     query.data?.status === 200 ? query.data.data.offers : undefined,

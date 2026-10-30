@@ -45,9 +45,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     >();
   return {
     ...actual,
-    useFlagStatus: () => ({ enabled: true, ready: true }),
-    useGetFlag: (flag: string) =>
-      flag === "hire-experts" || flag === "dream-skill-learning-enabled",
+    useGetFlag: (flag: string) => flag === "dream-skill-learning-enabled",
   };
 });
 
@@ -462,6 +460,37 @@ describe("Expert skills — learning", () => {
     ).toBe(true);
   });
 
+  test("explains a skill Otto stopped using after a source was removed", async () => {
+    const revoked = {
+      ...v2,
+      state: "invalidated",
+      state_label: "Archived (source unavailable)",
+    };
+    server.use(
+      getGetSkillLearningDetailMockHandler200({
+        ...detail,
+        state: "paused",
+        state_label: "Paused (not in use)",
+        current_version: revoked,
+        versions: [revoked, v1],
+        policy: { ...detail.policy, use_paused: true },
+      }),
+    );
+    searchParams.set("tab", "skills");
+    searchParams.set("skill", "csv-import-checks");
+    render(<ExpertDetailPage />);
+
+    const panel = await screen.findByRole("complementary", {
+      name: "csv-import-checks",
+    });
+    const notice = await within(panel).findByTestId("source-removed-notice");
+    expect(notice.textContent).toContain("Otto stopped using this skill");
+    expect(notice.textContent).toContain("Resume using this skill");
+    expect(
+      within(panel).getByRole("button", { name: "Resume using this skill" }),
+    ).toBeDefined();
+  });
+
   test("navigating to another version resets the selection to the requested record", async () => {
     server.use(
       getGetSkillLearningDetailMockHandler200({
@@ -487,6 +516,7 @@ describe("Expert skills — learning", () => {
     expect(
       (await within(panel).findByTestId("version-state")).textContent,
     ).toBe("Archived (source unavailable)");
+    expect(within(panel).queryByTestId("source-removed-notice")).toBeNull();
     expect(
       within(panel)
         .getByRole("button", { name: "Restore v1" })

@@ -385,6 +385,7 @@ PERSONAL_ACTIVATION_ROUTES = {
 POOLED_MODEL_UNREACHABLE_ROUTES: dict[str, str] = {
     "get_subscription_status": "subscriptions are user-level, not org-pooled",
     "update_subscription_tier": "subscriptions are user-level, not org-pooled",
+    "preview_tier_upgrade": "previews only the caller's owned personal subscription",
     "get_user_auto_top_up": "reads the caller's own User.top_up_config, not org data",
     "stripe_webhook": (
         "unauthenticated by design, verified by Stripe signature; it fulfils "

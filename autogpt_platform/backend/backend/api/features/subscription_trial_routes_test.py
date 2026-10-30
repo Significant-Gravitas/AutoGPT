@@ -15,6 +15,7 @@ from prisma.enums import SubscriptionTier
 from backend.api.features import subscription_trial_routes as routes
 from backend.data.subscription_trial import TrialState
 from backend.data.subscription_trial_config import AcceptedTrialOffer
+from backend.data.subscription_trial_invoice import TrialPaymentDue
 
 
 @pytest.fixture(autouse=True)
@@ -128,6 +129,41 @@ async def test_status_never_exposes_internal_spend_or_stripe_identifiers(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "daily,weekly,total,expected",
+    [
+        (100_000_000, 20_000_000, 20_000_000, "lifetime"),
+        (250_000, 1_000_000, 1_000_000, "rolling"),
+        (5_000_000, 1_000_000, 2_000_000, "rolling"),
+        (2_000_000, 2_000_000, 2_000_000, "lifetime"),
+    ],
+)
+async def test_status_exposes_accepted_usage_policy(
+    trial, daily, weekly, total, expected
+):
+    trial = trial.model_copy(
+        update={
+            "status": "active",
+            "offer": trial.offer.model_copy(
+                update={
+                    "daily_cost_limit": daily,
+                    "weekly_cost_limit": weekly,
+                    "total_cost_limit": total,
+                }
+            ),
+        }
+    )
+    with (
+        patch.object(routes, "get_subscription_trial", AsyncMock(return_value=trial)),
+        patch.object(
+            routes, "has_received_onboarding_credit", AsyncMock(return_value=False)
+        ),
+    ):
+        status = await routes.get_trial_status(trial.user_id)
+    assert status.model_dump().get("usage_policy") == expected
+
+
+@pytest.mark.asyncio
 async def test_status_exposes_safe_rejection_reason(trial):
     trial = trial.model_copy(
         update={"status": "canceled", "rejection_reason": "intro_offer_already_used"}
@@ -140,6 +176,41 @@ async def test_status_exposes_safe_rejection_reason(trial):
     ):
         status = await routes.get_trial_status(trial.user_id)
     assert status.model_dump().get("rejection_reason") == "intro_offer_already_used"
+
+
+@pytest.mark.asyncio
+async def test_past_due_status_carries_the_open_invoice(trial):
+    trial = trial.model_copy(update={"status": "past_due", "subscription_id": "sub_1"})
+    due = TrialPaymentDue(
+        amount_due=5000,
+        currency="usd",
+        payment_url="https://invoice.stripe.com/i/acct_1/test_inv_1",
+    )
+    with (
+        patch.object(routes, "get_subscription_trial", AsyncMock(return_value=trial)),
+        patch.object(
+            routes, "has_received_onboarding_credit", AsyncMock(return_value=False)
+        ),
+        patch.object(
+            routes, "get_trial_payment_due", AsyncMock(return_value=due)
+        ) as lookup,
+    ):
+        status = await routes.get_trial_status(trial.user_id)
+    assert status.payment_due == due
+    lookup.assert_awaited_once_with(trial)
+
+
+@pytest.mark.asyncio
+async def test_status_without_a_failed_charge_has_no_payment_due(trial):
+    with (
+        patch.object(routes, "get_subscription_trial", AsyncMock(return_value=trial)),
+        patch.object(routes, "get_trial_offer", AsyncMock(return_value=None)),
+        patch.object(
+            routes, "has_received_onboarding_credit", AsyncMock(return_value=False)
+        ),
+    ):
+        status = await routes.get_trial_status(trial.user_id)
+    assert status.payment_due is None
 
 
 @pytest.mark.asyncio

@@ -60,7 +60,7 @@ describe("Sentry tunnel", () => {
     expect(authMiddlewareMock).not.toHaveBeenCalled();
   });
 
-  it("forwards only the headers Sentry reads", async () => {
+  it("forwards only the headers Sentry reads, and not the visitor's IP", async () => {
     const response = await middleware(envelopePost(getSentryTunnelURL(DSN)));
 
     expect(forwardedHeaders(response)).toEqual({
@@ -68,7 +68,6 @@ describe("Sentry tunnel", () => {
       "content-type": "text/plain;charset=UTF-8",
       "content-length": "3",
       "user-agent": "Mozilla/5.0",
-      "x-forwarded-for": "203.0.113.7",
     });
   });
 
@@ -138,6 +137,7 @@ function envelopePost(
       "content-type": "text/plain;charset=UTF-8",
       "user-agent": "Mozilla/5.0",
       "x-forwarded-for": "203.0.113.7",
+      "x-vercel-forwarded-for": "203.0.113.7",
       "x-unlisted": "secret",
       ...(contentLength === null ? {} : { "content-length": contentLength }),
     },

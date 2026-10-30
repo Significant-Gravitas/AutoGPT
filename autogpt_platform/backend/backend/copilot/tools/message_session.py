@@ -28,10 +28,8 @@ from backend.copilot.db import get_chat_session_metadata, get_chat_session_statu
 from backend.copilot.expert_context import escape_prompt_xml_tags
 from backend.copilot.model import CHAT_STATUS_IDLE, ChatSession, ChatSessionInfo
 from backend.copilot.pending_message_helpers import queue_user_message
-from backend.copilot.pending_messages import PENDING_BUFFER_FULL_REFUSAL
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.turn_queue import InflightCapExceeded, try_enqueue_turn
-from backend.data.redis_helpers import RedisListCapacityExceeded
 
 from .base import BaseTool
 from .expert_delegation import sent_from_metadata
@@ -136,36 +134,33 @@ class MessageSessionTool(BaseTool):
         # Every delivery path stamps the sender: the row this message becomes
         # is what the target's thread renders as "Sent from".
         provenance = sent_from_metadata(session)
-        try:
-            queued = await queue_user_message(
-                session_id=target_id,
-                message=payload,
-                require_turn_in_flight=True,
-                metadata=provenance,
+        queued = await queue_user_message(
+            session_id=target_id,
+            message=payload,
+            require_turn_in_flight=True,
+            metadata=provenance,
+        )
+        if queued.turn_in_flight:
+            return SessionMessageResponse(
+                message=f"Delivered to session {target_id}, which is mid-turn.",
+                delivery="injected",
+                target_session_id=target_id,
             )
-            if queued.turn_in_flight:
-                return SessionMessageResponse(
-                    message=f"Delivered to session {target_id}, which is mid-turn.",
-                    delivery="injected",
-                    target_session_id=target_id,
-                )
 
-            # A queued target already has a turn coming, and that turn drains the
-            # pending buffer. Enqueueing a second one instead would append a newer
-            # user row, and the dispatcher replays the queued turn from the LATEST
-            # such row — so the user's own submit-time payload (their attachments,
-            # page context and model choice) would be replaced by this message's.
-            if await get_chat_session_status(target.session_id) != CHAT_STATUS_IDLE:
-                await queue_user_message(
-                    session_id=target.session_id, message=payload, metadata=provenance
-                )
-                return SessionMessageResponse(
-                    message=f"Queued for session {target.session_id}'s next turn.",
-                    delivery="queued",
-                    target_session_id=target.session_id,
-                )
-        except RedisListCapacityExceeded:
-            return self._error(PENDING_BUFFER_FULL_REFUSAL, session)
+        # A queued target already has a turn coming, and that turn drains the
+        # pending buffer. Enqueueing a second one instead would append a newer
+        # user row, and the dispatcher replays the queued turn from the LATEST
+        # such row — so the user's own submit-time payload (their attachments,
+        # page context and model choice) would be replaced by this message's.
+        if await get_chat_session_status(target.session_id) != CHAT_STATUS_IDLE:
+            await queue_user_message(
+                session_id=target.session_id, message=payload, metadata=provenance
+            )
+            return SessionMessageResponse(
+                message=f"Queued for session {target.session_id}'s next turn.",
+                delivery="queued",
+                target_session_id=target.session_id,
+            )
 
         return await self._wake(user_id, session, target, payload, provenance)
 

@@ -59,6 +59,11 @@ async def test_delayed_trial_cost_and_later_paid_turn_are_separate(use_sdk):
         patch("backend.copilot.rate_limit._fetch_user_tier", tier),
         patch("backend.copilot.rate_limit.get_redis_async", AsyncMock()),
         patch("backend.copilot.rate_limit._incr_counter_atomic", AsyncMock()),
+        # The pickup budget gate has its own tests (processor_budget_gate_test).
+        patch(
+            "backend.copilot.executor.processor.refusal_for",
+            AsyncMock(return_value=None),
+        ),
         patch("backend.copilot.token_tracking._schedule_cost_log") as cost_log,
         patch(
             "backend.copilot.model.get_chat_session",

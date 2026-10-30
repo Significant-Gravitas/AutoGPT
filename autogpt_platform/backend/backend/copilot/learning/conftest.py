@@ -11,6 +11,13 @@ from unittest.mock import AsyncMock
 import pytest
 import pytest_asyncio
 
+from backend.copilot import usage_activation_fixtures
+
+# A learning run captures the account's usage attribution before its first
+# review (#15208's ``attributed_usage``); every test here gets the ready,
+# untrialed state, and one that needs a trial or a conversion overrides it.
+usage_snapshot = usage_activation_fixtures.usage_snapshot
+
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def server():  # type: ignore[override]
@@ -37,6 +44,10 @@ def fake_store(monkeypatch):
     monkeypatch.setattr(
         "backend.copilot.learning.nightly.load_reviewed_packages",
         AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        "backend.copilot.learning.publish.saved_skill_limit_reached",
+        AsyncMock(return_value=False),
     )
     modules = (
         "retrieval",

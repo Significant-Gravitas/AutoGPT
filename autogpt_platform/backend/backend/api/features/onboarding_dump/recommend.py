@@ -7,16 +7,15 @@ provider registry and picks the handful worth connecting first; anything
 it hallucinates outside the registry is dropped.
 """
 
-import asyncio
 import logging
 import os
 
 from backend.api.features.onboarding_dump.models import RecommendedProvider
-from backend.api.features.onboarding_dump.parsing import parse_response_json
 from backend.api.features.onboarding_dump.providers import (
     known_providers,
     provider_lines,
 )
+from backend.api.features.onboarding_dump.structured import request_json
 from backend.util.clients import get_openai_client
 
 logger = logging.getLogger(__name__)
@@ -24,7 +23,7 @@ logger = logging.getLogger(__name__)
 # Picking six ids off a list is a matching task, not a writing one, and
 # the onboarding loading screen holds the user until it answers — so this
 # runs on the fast model rather than the one that writes the greeting.
-_MODEL = os.environ.get("BRAIN_DUMP_RECOMMEND_MODEL", "anthropic/claude-haiku-4-5")
+_MODEL = os.environ.get("BRAIN_DUMP_RECOMMEND_MODEL", "anthropic/claude-haiku-5.5")
 _TIMEOUT_SECONDS = 30
 
 MAX_RECOMMENDATIONS = 6
@@ -76,21 +75,23 @@ async def generate_recommendations(transcript: str) -> list[RecommendedProvider]
         transcript=text,
     )
     try:
-        response = await asyncio.wait_for(
-            client.chat.completions.create(
-                model=_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.2,
-                max_tokens=1000,
-            ),
+        reply = await request_json(
+            client,
+            model=_MODEL,
+            prompt=prompt,
+            temperature=0.2,
+            max_tokens=1000,
             timeout=_TIMEOUT_SECONDS,
         )
     except Exception as e:  # background job, empty list is fine
         logger.warning("Brain dump recommendation generation failed: %s", e)
         return []
 
-    data = parse_response_json(response.choices[0].message.content or "")
-    return _parse_recommendations(data, set(known))
+    if reply.data is None:
+        logger.warning(
+            f"Brain dump recommendation: non-JSON output ({reply.describe()})"
+        )
+    return _parse_recommendations(reply.data, set(known))
 
 
 def _parse_recommendations(data: object, known: set[str]) -> list[RecommendedProvider]:

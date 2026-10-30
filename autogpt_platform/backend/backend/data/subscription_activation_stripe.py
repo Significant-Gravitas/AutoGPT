@@ -9,6 +9,7 @@ from prisma.models import User
 
 from backend.data import credit
 from backend.data.stripe_client import stripe_call
+from backend.data.subscription_activation_invoice import InvoicePreview
 from backend.data.subscription_activation_models import (
     ActivationItem,
     ActivationPlan,
@@ -17,7 +18,6 @@ from backend.data.subscription_activation_models import (
     ActivationUnavailable,
     BillingInvoice,
     BillingSubscription,
-    InvoicePreview,
     RenewalDiscount,
     RenewalTax,
 )
@@ -150,6 +150,7 @@ def _quoted_terms(
     price: ActivationPrice,
     preview: InvoicePreview,
 ) -> ActivationTerms:
+    period_start, period_end = preview.paid_period(sub.id, price.id)
     return ActivationTerms(
         plan=target,
         price_id=price.id,
@@ -173,6 +174,10 @@ def _quoted_terms(
             "the trial. Cancel before the next renewal to avoid the next charge."
         ),
         expires_at=datetime.now(UTC) + timedelta(minutes=15),
+        trial_ends_at=trial.ends_at,
+        period_starts_at=period_start,
+        next_payment_at=period_end,
+        tax_amount=preview.tax_total(),
     )
 
 

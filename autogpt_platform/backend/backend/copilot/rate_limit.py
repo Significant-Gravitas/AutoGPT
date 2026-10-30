@@ -56,7 +56,7 @@ import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import fastapi
 from autogpt_libs.auth.dependencies import get_user_id
@@ -65,11 +65,17 @@ from pydantic import BaseModel, Field
 from redis.exceptions import RedisClusterException, RedisError
 
 from backend.copilot.trial_cost_context import capture_cost_context
-from backend.copilot.trial_reads import shared_trial_read
+from backend.copilot.trial_reads import forget_usage_state, shared_trial_read
 from backend.copilot.usage_activation import (
     UsageActivationUnavailable,
     get_ready_usage_state,
     usage_keys,
+)
+from backend.copilot.usage_state import (
+    LimitWindow,
+    UsageState,
+    WindowReading,
+    usage_verdict,
 )
 from backend.data.db_accessors import credit_db, user_db
 from backend.data.redis_client import AsyncRedisClient, get_redis_async
@@ -379,6 +385,12 @@ class CoPilotUsageStatus(BaseModel):
         default=0,
         description="Credit cost (in cents) to reset the daily limit. 0 = feature disabled.",
     )
+    # A lifetime trial already shows a spent allowance as a full weekly
+    # window; a trial whose period caps are tighter than its allowance doesn't.
+    trial_spent: bool = False
+    # The weekly window holds the trial's lifetime allowance rather than a
+    # weekly cap: it doesn't refill, and ``resets_at`` is the trial's end.
+    weekly_is_trial_allowance: bool = False
 
 
 class UsageWindowPublic(BaseModel):
@@ -412,6 +424,24 @@ class CoPilotUsagePublic(BaseModel):
     reset_cost: int = Field(
         default=0,
         description="Credit cost (in cents) to reset the daily limit. 0 = feature disabled.",
+    )
+    state: UsageState = Field(
+        default="ok",
+        description="'exhausted' when a turn can't start now (a capped window "
+        "or the trial allowance is used up), 'low' from 80% of the tightest "
+        "window (where the meters turn amber), otherwise 'ok'.",
+    )
+    limiting_window: LimitWindow | None = Field(
+        default=None,
+        description="The limit behind a 'low' or 'exhausted' state: the "
+        "used-up window that refills last, 'trial' for the trial allowance, "
+        "or the fullest window when 'low'. Null when 'ok'.",
+    )
+    resets_at: datetime | None = Field(
+        default=None,
+        description="When the limiting window refills. Null when 'ok', for "
+        "the trial allowance, and for a window that allows nothing (no plan), "
+        "none of which refill.",
     )
 
     @classmethod
@@ -449,19 +479,53 @@ class CoPilotUsagePublic(BaseModel):
                 resets_at=w.resets_at,
             )
 
+        daily, weekly = window(status.daily), window(status.weekly)
+        readings = [
+            reading
+            for reading in (
+                _reading("daily", status.daily, daily),
+                _reading("weekly", status.weekly, weekly),
+            )
+            if reading is not None
+        ]
+        verdict = usage_verdict(
+            readings,
+            weekly_is_trial_allowance=status.weekly_is_trial_allowance,
+            trial_spent=status.trial_spent,
+        )
         return cls(
-            daily=window(status.daily),
-            weekly=window(status.weekly),
+            daily=daily,
+            weekly=weekly,
             tier=status.tier,
             reset_cost=status.reset_cost,
+            state=verdict.state,
+            limiting_window=verdict.limiting_window,
+            resets_at=verdict.resets_at,
         )
+
+
+def _reading(
+    name: Literal["daily", "weekly"],
+    window: UsageWindow,
+    public: UsageWindowPublic | None,
+) -> WindowReading | None:
+    """A capped window as its meter shows it; None when it has no cap."""
+    if public is None:
+        return None
+    return WindowReading(
+        window=name,
+        percent_used=public.percent_used,
+        exhausted=window.used >= window.limit,
+        resets_at=window.resets_at,
+        refills=window.limit > 0,
+    )
 
 
 class RateLimitExceeded(Exception):
     """Raised when a user exceeds their CoPilot usage limit."""
 
-    def __init__(self, window: str, resets_at: datetime):
-        self.window = window
+    def __init__(self, window: LimitWindow, resets_at: datetime):
+        self.window: LimitWindow = window
         self.resets_at = resets_at
         delta = resets_at - datetime.now(UTC)
         total_secs = delta.total_seconds()
@@ -485,6 +549,7 @@ async def get_usage_status(
     weekly_cost_limit: int,
     rate_limit_reset_cost: int = 0,
     tier: SubscriptionTier = DEFAULT_TIER,
+    fail_closed: bool = False,
 ) -> CoPilotUsageStatus:
     """Get current usage status for a user.
 
@@ -496,12 +561,22 @@ async def get_usage_status(
             spend allowed (over-cap immediately).
         rate_limit_reset_cost: Credit cost (cents) to reset daily limit (0 = disabled).
         tier: The user's rate-limit tier (included in the response).
+        fail_closed: Raise ``RateLimitUnavailable`` when the counters can't be
+            read, instead of reporting no usage. For callers that act on the
+            figures rather than show them.
 
     Returns:
         CoPilotUsageStatus with current usage and limits in microdollars.
     """
     now = datetime.now(UTC)
     state = await get_ready_usage_state(user_id)
+    if daily_cost_limit == 0 and weekly_cost_limit == 0:
+        # No plan, or the trial is over: nothing can be spent, so the
+        # counters don't matter. An ended trial still has its stale TRIAL
+        # state here, which reports it as a spent trial rather than no plan.
+        return _no_allowance_status(
+            now, tier, trial_ended=state.tier == SubscriptionTier.TRIAL
+        )
     if await _effective_usage_tier(user_id, state.tier) != tier:
         raise RateLimitUnavailable("Subscription changed while resolving usage limits")
     d_key, w_key = usage_keys(user_id, state.generation, now)
@@ -522,13 +597,16 @@ async def get_usage_status(
         OSError,
         ValueError,
     ) as exc:
-        if state.generation is not None:
+        if state.generation is not None or fail_closed:
             raise RateLimitUnavailable("Paid usage state is unavailable") from exc
         logger.warning("Redis unavailable for usage status, returning zeros")
 
     weekly_reset = _weekly_reset_time(now=now)
+    trial_spent = False
+    weekly_is_trial_allowance = False
     if tier == SubscriptionTier.TRIAL:
-        trial = await credit_db().get_subscription_trial(user_id)
+        trial = await _subscription_trial(user_id)
+        trial_spent = _trial_spent(trial)
         if trial and _trial_uses_total_budget(
             trial, daily_cost_limit, weekly_cost_limit
         ):
@@ -538,6 +616,7 @@ async def get_usage_status(
             weekly_used = trial.cost_microdollars
             weekly_cost_limit = trial.offer.total_cost_limit
             weekly_reset = trial.ends_at or now
+            weekly_is_trial_allowance = True
 
     return CoPilotUsageStatus(
         daily=UsageWindow(
@@ -552,6 +631,32 @@ async def get_usage_status(
         ),
         tier=tier,
         reset_cost=0 if tier == SubscriptionTier.TRIAL else rate_limit_reset_cost,
+        trial_spent=trial_spent,
+        weekly_is_trial_allowance=weekly_is_trial_allowance,
+    )
+
+
+def _no_allowance_status(
+    now: datetime, tier: SubscriptionTier, *, trial_ended: bool
+) -> CoPilotUsageStatus:
+    return CoPilotUsageStatus(
+        daily=UsageWindow(used=0, limit=0, resets_at=_daily_reset_time(now=now)),
+        weekly=UsageWindow(used=0, limit=0, resets_at=_weekly_reset_time(now=now)),
+        tier=tier,
+        reset_cost=0,
+        trial_spent=trial_ended,
+    )
+
+
+def _trial_spent(trial: "TrialState | None") -> bool:
+    """No trial turn may start: the trial is over or its allowance is used.
+
+    The same conditions :func:`check_rate_limit` refuses a trial turn on.
+    """
+    return (
+        trial is None
+        or not trial.active
+        or trial.cost_microdollars >= trial.offer.total_cost_limit
     )
 
 
@@ -788,11 +893,15 @@ async def check_rate_limit(
     # collapse semantics of :func:`get_global_rate_limits` and produced
     # the autopilot paywall bypass. Only an explicitly negative limit — the
     # self-hosted "no cap" sentinel — skips a window.
-    if not skip_daily and daily_cost_limit >= 0 and daily_used >= daily_cost_limit:
-        raise RateLimitExceeded("daily", _daily_reset_time(now=now))
-
+    #
+    # Weekly first: with both windows used up, the user is blocked until the
+    # one that refills last, and the weekly window never refills before the
+    # daily one (on Sundays they refill together).
     if weekly_cost_limit >= 0 and weekly_used >= weekly_cost_limit:
         raise RateLimitExceeded("weekly", _weekly_reset_time(now=now))
+
+    if not skip_daily and daily_cost_limit >= 0 and daily_used >= daily_cost_limit:
+        raise RateLimitExceeded("daily", _daily_reset_time(now=now))
 
 
 def _trial_uses_total_budget(
@@ -1089,6 +1198,9 @@ async def get_user_tier(user_id: str) -> SubscriptionTier:
     if tier == SubscriptionTier.TRIAL:
         return await _effective_usage_tier(user_id, tier)
     if tier == SubscriptionTier.NO_TIER and await _maybe_reconcile_stripe_tier(user_id):
+        # The reconcile wrote the tier: read it again rather than the
+        # request's shared copy from before.
+        forget_usage_state(user_id)
         return SubscriptionTier((await get_ready_usage_state(user_id)).tier)
     return tier
 

@@ -28,6 +28,7 @@ from backend.copilot.tools.skills import (
     list_user_skills,
     read_user_skill_with_body,
 )
+from backend.copilot.trial_cost_context import attributed_usage
 from backend.data.db_accessors import (
     skill_learning_db,
     skill_reviews_db,
@@ -125,6 +126,24 @@ async def _run_under_lease(
         result.skipped = True
         result.skip_reason = "no_eligible_work"
         return
+    await _review_sources(user_id, result, pending, config, lock)
+
+
+@attributed_usage
+async def _review_sources(
+    user_id: str,
+    result: SkillLearningResult,
+    pending: list[LearningSourceRecord],
+    config: ChatConfig,
+    lock: AsyncClusterLock,
+) -> None:
+    """Review the selected sources, each review's spend recorded whether it
+    succeeded or failed, all under the usage attribution the account had
+    when the reviews began (#15208): a conversion while a review runs never
+    moves its charge, and a run started inside one (a chat's "learn this")
+    keeps that one. Captured here, after selection, so an idle account reads
+    no usage state, and inside the pass's crash guard, which keeps an
+    unready usage state from raising out of it."""
     budget_ok, budget_skip = await check_dream_budget(user_id, config=config)
     if budget_skip == "rate_limit_unavailable":
         result.error = f"billing: {budget_skip}"
@@ -298,6 +317,14 @@ async def _process_source(
         expected_epoch=source.epoch,
     )
     if claim is None:
+        previous = await reviews.get_review_for_revision(
+            user_id, source.source_id, source.revision, POLICY_VERSION
+        )
+        if previous is not None and previous.held_by_another_run(result.run_id):
+            # Every exit below writes this revision's row, which would cut
+            # off that run's paid review mid-call; it settles the row itself.
+            result.reviewed += 1
+            return "deferred"
         current = await adapter.revalidate(
             source_id=source.source_id,
             revision=source.revision,
@@ -313,9 +340,6 @@ async def _process_source(
             return await settle_ineligible(
                 user_id, source, result, current.state, problem
             )
-        previous = await reviews.get_review_for_revision(
-            user_id, source.source_id, source.revision, POLICY_VERSION
-        )
         if previous is not None and previous.model_attempts >= MAX_MODEL_ATTEMPTS:
             return await settle(
                 user_id,
@@ -333,7 +357,9 @@ async def _process_source(
             advance=False,
         )
     try:
-        completion = await review_evidence(config, bundle, existing, packages)
+        completion = await review_evidence(
+            config, bundle, existing, packages, user_id, result.run_id
+        )
     except DreamLLMError as exc:
         return await record_provider_error(user_id, source, result, exc, config)
     result.model_calls += 1

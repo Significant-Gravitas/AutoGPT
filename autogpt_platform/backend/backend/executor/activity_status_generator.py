@@ -22,7 +22,6 @@ from backend.data.platform_cost import PlatformCostEntry, usd_to_microdollars
 from backend.executor.cost_tracking import schedule_platform_cost_log
 from backend.util.clients import get_openai_client, openrouter_helper_cost_provider
 from backend.util.exceptions import ExecutionFailureReason
-from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.truncate import truncate
 
 if TYPE_CHECKING:
@@ -250,7 +249,6 @@ async def generate_activity_status_for_execution(
     user_id: str,
     execution_status: ExecutionStatus | None = None,
     model_name: str = _DEFAULT_MODEL_NAME,
-    skip_feature_flag: bool = False,
     system_prompt: str = DEFAULT_SYSTEM_PROMPT,
     user_prompt: str = DEFAULT_USER_PROMPT,
     skip_existing: bool = True,
@@ -267,10 +265,9 @@ async def generate_activity_status_for_execution(
         graph_version: The graph version
         execution_stats: Execution statistics
         db_client: Database client for fetching data
-        user_id: User ID for LaunchDarkly feature flag evaluation
+        user_id: Owner of the execution
         execution_status: The overall execution status (COMPLETED, FAILED, TERMINATED)
         model_name: AI model to use for generation (default: gpt-4o-mini)
-        skip_feature_flag: Whether to skip LaunchDarkly feature flag check
         system_prompt: Custom system prompt template (default: DEFAULT_SYSTEM_PROMPT)
         user_prompt: Custom user prompt template with placeholders (default: DEFAULT_USER_PROMPT)
         skip_existing: Whether to skip if activity_status and correctness_score already exist
@@ -279,13 +276,6 @@ async def generate_activity_status_for_execution(
         Activity status response with activity_status and correctness_score, or
         None if generation is disabled or skipped
     """
-    # Check LaunchDarkly feature flag for AI activity status generation with full context support
-    if not skip_feature_flag and not await is_feature_enabled(
-        Flag.AI_ACTIVITY_STATUS, user_id
-    ):
-        logger.debug("AI activity status generation is disabled via LaunchDarkly")
-        return None
-
     # Check if we should skip existing data (for admin regeneration option).
     if (
         skip_existing

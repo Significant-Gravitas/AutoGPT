@@ -3,6 +3,10 @@ import {
   getListExpertCredentialsMockHandler,
   getListExpertRunsMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import {
+  getGetHomeDashboardMockHandler,
+  getGetHomeDashboardResponseMock200,
+} from "@/app/api/__generated__/endpoints/home/home.msw";
 import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import type { ExpertCredentialRef } from "@/app/api/__generated__/models/expertCredentialRef";
@@ -47,17 +51,6 @@ vi.mock("@/components/contextual/DeviceAuth/DeviceAuthConnectButton", () => ({
 vi.mock("framer-motion", async (importActual) => {
   const actual = await importActual<typeof import("framer-motion")>();
   return { ...actual, useReducedMotion: () => true };
-});
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useFlagStatus: () => ({ enabled: true, ready: true }),
-  };
 });
 
 vi.mock("next/navigation", () => ({
@@ -113,6 +106,9 @@ const linkedin: ExpertCredentialRef = {
 
 beforeEach(() => {
   server.use(
+    getGetHomeDashboardMockHandler(
+      getGetHomeDashboardResponseMock200({ attention: [] }),
+    ),
     getGetExpertMockHandler(maria),
     getGetV1ListExecutionSchedulesForAUserMockHandler([]),
     getListExpertRunsMockHandler([]),

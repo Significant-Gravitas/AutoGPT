@@ -6,6 +6,9 @@ auto_gpt_workspace/*
 .autogpt/
 *.mpeg
 .env
+# Left beside an env file only if scripts/env_sync.py is killed mid-write
+.env-sync-*
+*.sync-lock
 # Root .env files
 /.env
 azure.yaml
@@ -185,6 +188,9 @@ ig*
 !autogpt_platform/frontend/public/experts/**
 !autogpt_platform/frontend/public/autogpt-characters/**
 !autogpt_platform/backend/backend/api/features/experts/avatar_references/**
+# And the copilot price card: an ignored module is untracked, and ruff
+# (force-exclude) and black skip it too, so it would ship unlinted.
+!autogpt_platform/backend/backend/copilot/price_card*.py
 .github_access_token
 LICENSE.rtf
 autogpt_platform/backend/settings.py

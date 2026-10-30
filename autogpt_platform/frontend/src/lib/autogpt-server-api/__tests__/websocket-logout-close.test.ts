@@ -1,4 +1,3 @@
-import { FakeWebSocket } from "./websocket-fake";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/auth/actions", () => ({
@@ -16,7 +15,29 @@ import BackendAPI from "../client";
 // each console.error and console.warn into an event, so such a close has to
 // stay below warn, while a close nobody asked for keeps being reported.
 describe("BackendAPI WebSocket closed by a logout", () => {
-  const sockets = FakeWebSocket.instances;
+  const sockets: FakeWebSocket[] = [];
+
+  class FakeWebSocket {
+    static readonly CONNECTING = 0;
+    static readonly OPEN = 1;
+    static readonly CLOSING = 2;
+    static readonly CLOSED = 3;
+
+    readyState = FakeWebSocket.CONNECTING;
+    onopen: (() => void) | null = null;
+    onclose:
+      | ((event: Pick<CloseEvent, "code" | "reason" | "wasClean">) => void)
+      | null = null;
+    onerror: (() => void) | null = null;
+    onmessage: ((event: MessageEvent) => void) | null = null;
+    state = "connecting";
+    close = vi.fn();
+    send = vi.fn();
+
+    constructor(public url: string) {
+      sockets.push(this);
+    }
+  }
 
   afterEach(() => {
     sockets.length = 0;
@@ -63,8 +84,7 @@ describe("BackendAPI WebSocket closed by a logout", () => {
   it("keeps an open socket another tab's logout closed out of the warn log", async () => {
     const logs = spyOnConsole();
     const { socket } = await connect();
-    socket.open();
-    socket.pong();
+    socket.state = "connected";
 
     setWebSocketDisconnectIntent();
     socket.onclose!({ code: 1005, reason: "", wasClean: true });

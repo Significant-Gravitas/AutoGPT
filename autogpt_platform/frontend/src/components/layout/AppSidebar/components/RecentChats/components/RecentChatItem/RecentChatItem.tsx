@@ -13,10 +13,11 @@ import {
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar";
+} from "@/components/molecules/Sidebar/Sidebar";
 import Link, { useLinkStatus } from "next/link";
-import { useRef } from "react";
+import { memo, useRef } from "react";
 import {
+  BookOpen01Icon,
   Delete02Icon,
   Download04Icon,
   Loading03Icon,
@@ -53,6 +54,8 @@ interface Props {
   onRename: (id: string, title: string | null | undefined) => void;
   onExport: (id: string, title: string | null | undefined) => void;
   onShare: (id: string) => void;
+  isLearningEnabled: boolean;
+  onExcludeFromLearning: (id: string) => void;
   onDelete: (id: string, title: string | null | undefined) => void;
 }
 
@@ -66,12 +69,14 @@ function ChatLinkLoader() {
   return (
     <LoadingSpinner
       size="small"
-      className="ml-auto !size-4 shrink-0 text-zinc-500"
+      className="ml-auto !size-4 shrink-0 text-foreground-tertiary"
     />
   );
 }
 
-export function RecentChatItem({
+// Memoised: the list hands every row the same shared callbacks (taking the
+// session id), so a list refetch only re-renders rows whose session changed.
+export const RecentChatItem = memo(function RecentChatItem({
   session,
   isActive,
   isEditing,
@@ -86,6 +91,8 @@ export function RecentChatItem({
   onRename,
   onExport,
   onShare,
+  isLearningEnabled,
+  onExcludeFromLearning,
   onDelete,
 }: Props) {
   const title = session.title || "Untitled chat";
@@ -124,7 +131,7 @@ export function RecentChatItem({
             }
             onSubmitRename(session.id);
           }}
-          className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-800 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 max-md:py-2 max-md:text-base"
+          className="w-full rounded-md border border-border-strong bg-surface px-2 py-1 text-body leading-5 text-foreground-emphasis outline-none focus:border-brand focus:ring-1 focus:ring-brand max-md:py-2 max-md:text-body-lg max-md:leading-6"
         />
       </SidebarMenuItem>
     );
@@ -136,13 +143,14 @@ export function RecentChatItem({
         asChild
         isActive={isActive}
         tooltip={title}
-        className="font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal hover:!bg-zinc-100 max-md:h-11 max-md:!pr-11 max-md:text-[15px]"
+        // leading-5 keeps SidebarMenuButton's 20px line-height under max-md:text-body-md.
+        className="font-normal hover:!bg-surface-hover data-[active=true]:!bg-surface-hover data-[active=true]:font-normal max-md:h-11 max-md:!pr-11 max-md:text-body-md max-md:leading-5"
       >
         <Link href={`/home?sessionId=${session.id}`}>
           {session.is_processing ? (
             <LoadingSpinner
               size="small"
-              className="size-4 shrink-0 text-purple-600"
+              className="size-4 shrink-0 text-brand-hover"
             />
           ) : hasPlatformLogo ? (
             <ChatOriginIcon sourcePlatform={session.source_platform} />
@@ -203,10 +211,16 @@ export function RecentChatItem({
             <Icon icon={Share03Icon} className="mr-2 h-4 w-4" />
             Share chat
           </DropdownMenuItem>
+          {isLearningEnabled && (
+            <DropdownMenuItem onClick={() => onExcludeFromLearning(session.id)}>
+              <Icon icon={BookOpen01Icon} className="mr-2 h-4 w-4" />
+              Exclude from learning
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem
             onClick={() => onDelete(session.id, session.title)}
             disabled={isDeleting}
-            className="text-red-600 focus:bg-red-50 focus:text-red-600"
+            className="text-error-foreground focus:bg-error-surface focus:text-error-foreground"
           >
             <Icon icon={Delete02Icon} className="mr-2 h-4 w-4" />
             Delete chat
@@ -215,4 +229,4 @@ export function RecentChatItem({
       </DropdownMenu>
     </SidebarMenuItem>
   );
-}
+});

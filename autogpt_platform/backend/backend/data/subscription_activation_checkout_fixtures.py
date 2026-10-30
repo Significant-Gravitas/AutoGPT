@@ -117,3 +117,20 @@ def max_attempt(attempt, boundaries, trial, live_subscription):
         update={"confirmed_at": datetime.now(UTC)}
     )
     return attempt
+
+
+def preview_lines(price_id: str, interval: str = "month"):
+    return {
+        "data": [
+            {
+                "type": "subscription",
+                "subscription": "sub_1",
+                "price": {"id": price_id},
+                "period": {
+                    "start": 1791374400,
+                    "end": 1822910400 if interval == "year" else 1794052800,
+                },
+            }
+        ],
+        "has_more": False,
+    }

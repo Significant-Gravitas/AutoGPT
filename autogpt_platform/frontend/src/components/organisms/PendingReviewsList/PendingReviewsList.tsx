@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
+import type { ReviewItem } from "@/app/api/__generated__/models/reviewItem";
 import { PendingReviewCard } from "@/components/organisms/PendingReviewCard/PendingReviewCard";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
@@ -13,6 +14,9 @@ import {
   Clock01Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { AttentionCard } from "@/components/organisms/AttentionCard/AttentionCard";
+import { SpendApprovalCard } from "./components/SpendApprovalCard/SpendApprovalCard";
+import { spendSummary } from "./components/SpendApprovalCard/helpers";
 
 interface PendingReviewsListProps {
   reviews: PendingHumanReviewModel[];
@@ -22,6 +26,9 @@ interface PendingReviewsListProps {
 
 // Copilot action-gate approvals bind exact arguments; auto-approve cannot apply.
 export const COPILOT_GATE_NODE_PREFIX = "copilot-node-gate-";
+// An expert's spend approval (backend SPEND_REVIEW_MARKER) unlocks her week,
+// not a node, so auto-approving its node would do nothing.
+const SPEND_REVIEW_MARKER = "expert-spend:";
 
 export function PendingReviewsList({
   reviews,
@@ -72,7 +79,9 @@ export function PendingReviewsList({
   }, [reviews]);
 
   const { processReviews: submitReviewAction, isProcessing } =
-    useProcessReviews({ onSettled: onReviewComplete });
+    useProcessReviews();
+  // Held for a whole group, whose runs are sent one request after another.
+  const isBusy = isProcessing || pendingAction !== null;
 
   function handleReviewDataChange(nodeExecId: string, data: string) {
     setReviewDataMap((prev) => ({ ...prev, [nodeExecId]: data }));
@@ -123,7 +132,7 @@ export function PendingReviewsList({
     }
 
     setPendingAction({ nodeId, action: approved ? "approve" : "reject" });
-    const reviewItems = [];
+    const reviewItems: ReviewItem[] = [];
 
     for (const review of groupReviews) {
       const reviewData = reviewDataMap[review.node_exec_id];
@@ -132,17 +141,24 @@ export function PendingReviewsList({
       let parsedData: any = undefined;
 
       if (!autoApproveThisNode) {
-        if (review.editable && reviewData) {
+        // An emptied draft is "" here and must fail the parse below, not
+        // fall back to the original payload the reviewer just cleared.
+        if (review.editable && reviewData !== undefined) {
           try {
             parsedData = JSON.parse(reviewData);
           } catch (error) {
-            toast({
-              title: "Invalid JSON",
-              description: `Please fix the JSON format in review for node ${review.node_exec_id}: ${error instanceof Error ? error.message : "Invalid syntax"}`,
-              variant: "destructive",
-            });
-            setPendingAction(null);
-            return;
+            // A rejection sends nothing the reviewer edited, so a broken
+            // draft only has to block an approval.
+            if (approved) {
+              toast({
+                title: "Invalid JSON",
+                description: `Please fix the JSON format in review for node ${review.node_exec_id}: ${error instanceof Error ? error.message : "Invalid syntax"}`,
+                variant: "destructive",
+              });
+              setPendingAction(null);
+              return;
+            }
+            parsedData = review.payload;
           }
         } else {
           parsedData = review.payload;
@@ -157,24 +173,49 @@ export function PendingReviewsList({
       });
     }
 
+    let submitted = false;
     try {
-      const res = await submitReviewAction(reviewItems, groupReviews);
-
-      if (res.status !== 200) {
-        toast({
-          title: "Failed to process reviews",
-          description: "Unexpected response from server",
-          variant: "destructive",
-        });
-        return;
+      const result = {
+        approved_count: 0,
+        rejected_count: 0,
+        failed_count: 0,
+        errors: [] as string[],
+      };
+      const failures: string[] = [];
+      let failedReviews = 0;
+      // A group can span several runs, and the endpoint takes one at a time;
+      // a run whose request fails must not keep the others from being sent.
+      for (const batch of batchesByScope(reviewItems, groupReviews)) {
+        submitted = true;
+        try {
+          const res = await submitReviewAction(batch.items, batch.reviews);
+          if (res.status === 200) {
+            result.approved_count += res.data.approved_count;
+            result.rejected_count += res.data.rejected_count;
+            result.failed_count += res.data.failed_count;
+            if (res.data.error) result.errors.push(res.data.error);
+            continue;
+          }
+          failures.push("Unexpected response from server");
+        } catch (error) {
+          failures.push(
+            error instanceof Error ? error.message : "An error occurred",
+          );
+        }
+        failedReviews += batch.items.length;
       }
 
-      const result = res.data;
-
-      if (result.failed_count > 0) {
+      const succeeded = result.approved_count + result.rejected_count;
+      if (failures.length > 0 && succeeded === 0) {
+        toast({
+          title: "Failed to process reviews",
+          description: [...new Set(failures)].join(" "),
+          variant: "destructive",
+        });
+      } else if (failures.length > 0 || result.failed_count > 0) {
         toast({
           title: "Reviews partially processed",
-          description: `${result.approved_count + result.rejected_count} succeeded, ${result.failed_count} failed. ${result.error || "Some reviews could not be processed."}`,
+          description: `${succeeded} succeeded, ${result.failed_count + failedReviews} failed. ${[...result.errors, ...new Set(failures)].join(" ") || "Some reviews could not be processed."}`,
           variant: "destructive",
         });
       } else {
@@ -184,21 +225,18 @@ export function PendingReviewsList({
           variant: "default",
         });
       }
-    } catch (error) {
-      toast({
-        title: "Failed to process reviews",
-        description:
-          error instanceof Error ? error.message : "An error occurred",
-        variant: "destructive",
-      });
     } finally {
       setPendingAction(null);
+      if (submitted) onReviewComplete?.();
     }
   }
 
   if (reviews.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
+      <div
+        data-slot="pending-reviews-list-empty"
+        className="flex flex-col items-center justify-center py-12 text-center"
+      >
         <Icon
           icon={Clock01Icon}
           size={48}
@@ -215,149 +253,220 @@ export function PendingReviewsList({
     );
   }
 
+  const groups = Object.entries(groupedReviews);
+  const spendCards = groups.flatMap(([nodeId, nodeReviews]) => {
+    const summary = isSpendReview(nodeId) ? spendSummary(nodeReviews) : null;
+    return summary ? [{ nodeId, summary }] : [];
+  });
+  const reviewGroups = groups.filter(
+    ([nodeId]) => !spendCards.some((card) => card.nodeId === nodeId),
+  );
+
   return (
-    <div className="space-y-7 rounded-xl border border-yellow-150 bg-yellow-25 p-6">
-      <div className="space-y-6">
-        <div className="flex items-start gap-2">
-          <Icon
-            icon={Alert01Icon}
-            size={28}
-            className="fill-yellow-600 text-white"
-          />
-          <Text
-            variant="large-semibold"
-            className="overflow-hidden text-ellipsis text-textBlack"
-          >
-            Your review is needed
-          </Text>
-        </div>
-        <Text variant="large" className="text-textGrey">
-          {reviews.every((review) => isGateReview(review.node_id))
-            ? "Otto is waiting for your approval before the action below."
-            : "This workflow is paused until you approve the step below. Check what it will do, and edit it if needed."}
-        </Text>
-      </div>
-
-      <div className="space-y-7">
-        {Object.entries(groupedReviews).map(([nodeId, nodeReviews]) => {
-          const isCollapsed = collapsedGroups[nodeId] ?? false;
-          const reviewCount = nodeReviews.length;
-          const groupAction =
-            pendingAction?.nodeId === nodeId ? pendingAction.action : null;
-
-          const firstReview = nodeReviews[0];
-          const reviewTitle =
-            firstReview?.action ?? firstReview?.instructions ?? "Review";
-          const workflowName = firstReview?.agent_name;
-
-          const getShortenedNodeId = (id: string) => {
-            if (id.length <= 8) return id;
-            return `${id.slice(0, 4)}...${id.slice(-4)}`;
-          };
-
-          return (
-            <div key={nodeId} className="space-y-4">
-              <button
-                onClick={() => toggleGroupCollapse(nodeId)}
-                className="flex w-full items-center gap-2 text-left"
+    <div data-slot="pending-reviews-list-stack" className="flex flex-col gap-3">
+      {spendCards.map(({ nodeId, summary }) => (
+        <SpendApprovalCard
+          key={nodeId}
+          summary={summary}
+          pendingAction={
+            pendingAction?.nodeId === nodeId ? pendingAction.action : null
+          }
+          disabled={isBusy}
+          onDecide={(approved) => processGroup(nodeId, approved)}
+        />
+      ))}
+      {reviewGroups.length > 0 && (
+        <AttentionCard.Root
+          variant="caution"
+          density="spacious"
+          data-slot="pending-reviews-list"
+        >
+          <div data-slot="pending-reviews-list-header" className="space-y-6">
+            <AttentionCard.Row
+              align="start"
+              data-slot="pending-reviews-list-title"
+            >
+              <AttentionCard.Icon>
+                <Icon icon={Alert01Icon} size={28} />
+              </AttentionCard.Icon>
+              <Text
+                variant="large-semibold"
+                className="overflow-hidden text-ellipsis text-textBlack"
               >
-                {isCollapsed ? (
-                  <Icon
-                    icon={ArrowRight01Icon}
-                    size={20}
-                    className="text-gray-600"
-                  />
-                ) : (
-                  <Icon
-                    icon={ArrowDown01Icon}
-                    size={20}
-                    className="text-gray-600"
-                  />
-                )}
-                <div className="flex-1">
-                  <Text variant="body" className="font-semibold text-gray-900">
-                    {reviewTitle}
-                  </Text>
-                  {(workflowName ||
-                    (!firstReview?.action && !isGateReview(nodeId))) && (
-                    <Text variant="small" className="text-gray-500">
-                      {workflowName
-                        ? `In workflow “${workflowName}”`
-                        : `Node #${getShortenedNodeId(nodeId)}`}
-                    </Text>
-                  )}
-                </div>
-                <span className="text-xs text-gray-600">
-                  {reviewCount} {reviewCount === 1 ? "review" : "reviews"}
-                </span>
-              </button>
+                Your review is needed
+              </Text>
+            </AttentionCard.Row>
+            <Text variant="large" className="text-textGrey">
+              {reviewGroups.every(([nodeId]) => isGateReview(nodeId))
+                ? "Otto is waiting for your approval before the action below."
+                : "This workflow is paused until you approve the step below. Check what it will do, and edit it if needed."}
+            </Text>
+          </div>
 
-              {!isCollapsed && (
-                <div className="space-y-4">
-                  {nodeReviews.map((review) => (
-                    <PendingReviewCard
-                      key={review.node_exec_id}
-                      review={review}
-                      onReviewDataChange={handleReviewDataChange}
-                      autoApproveFuture={autoApproveFutureMap[nodeId] || false}
-                      externalDataValue={reviewDataMap[review.node_exec_id]}
-                      showAutoApprove={false}
-                    />
-                  ))}
+          <div data-slot="pending-reviews-list-groups" className="space-y-7">
+            {reviewGroups.map(([nodeId, nodeReviews]) => {
+              const isCollapsed = collapsedGroups[nodeId] ?? false;
+              const reviewCount = nodeReviews.length;
+              const groupAction =
+                pendingAction?.nodeId === nodeId ? pendingAction.action : null;
 
-                  {!isGateReview(nodeId) && (
-                    <div className="flex items-center gap-3 pt-2">
-                      <Switch
-                        checked={autoApproveFutureMap[nodeId] || false}
-                        onCheckedChange={(enabled: boolean) =>
-                          handleAutoApproveFutureToggle(nodeId, enabled)
-                        }
-                      />
-                      <Text variant="small" className="text-gray-700">
-                        Auto-approve future executions of this node
-                      </Text>
+              const firstReview = nodeReviews[0];
+              const reviewTitle =
+                firstReview?.action ?? firstReview?.instructions ?? "Review";
+              const workflowName = firstReview?.agent_name;
+
+              const getShortenedNodeId = (id: string) => {
+                if (id.length <= 8) return id;
+                return `${id.slice(0, 4)}...${id.slice(-4)}`;
+              };
+
+              return (
+                <div
+                  key={nodeId}
+                  data-slot="pending-reviews-list-group"
+                  className="space-y-4"
+                >
+                  <AttentionCard.Row asChild align="center">
+                    <button
+                      onClick={() => toggleGroupCollapse(nodeId)}
+                      data-slot="pending-reviews-list-group-toggle"
+                      className="w-full text-left"
+                    >
+                      {isCollapsed ? (
+                        <Icon
+                          icon={ArrowRight01Icon}
+                          size={20}
+                          className="text-foreground-secondary"
+                        />
+                      ) : (
+                        <Icon
+                          icon={ArrowDown01Icon}
+                          size={20}
+                          className="text-foreground-secondary"
+                        />
+                      )}
+                      <div
+                        data-slot="pending-reviews-list-group-heading"
+                        className="flex-1"
+                      >
+                        <Text variant="body-semibold">{reviewTitle}</Text>
+                        {(workflowName ||
+                          (!firstReview?.action && !isGateReview(nodeId))) && (
+                          <Text variant="small" tone="muted">
+                            {workflowName
+                              ? `In workflow “${workflowName}”`
+                              : `Node #${getShortenedNodeId(nodeId)}`}
+                          </Text>
+                        )}
+                      </div>
+                      <AttentionCard.Count data-slot="pending-reviews-list-group-count">
+                        {reviewCount} {reviewCount === 1 ? "review" : "reviews"}
+                      </AttentionCard.Count>
+                    </button>
+                  </AttentionCard.Row>
+
+                  {!isCollapsed && (
+                    <div
+                      data-slot="pending-reviews-list-group-body"
+                      className="space-y-4"
+                    >
+                      {nodeReviews.map((review) => (
+                        <PendingReviewCard
+                          key={review.node_exec_id}
+                          review={review}
+                          onReviewDataChange={handleReviewDataChange}
+                          autoApproveFuture={
+                            autoApproveFutureMap[nodeId] || false
+                          }
+                          externalDataValue={reviewDataMap[review.node_exec_id]}
+                          showAutoApprove={false}
+                        />
+                      ))}
+
+                      {!isGateReview(nodeId) && !isSpendReview(nodeId) && (
+                        <div
+                          data-slot="pending-reviews-list-auto-approve"
+                          className="flex items-center gap-3 pt-2"
+                        >
+                          <Switch
+                            checked={autoApproveFutureMap[nodeId] || false}
+                            onCheckedChange={(enabled: boolean) =>
+                              handleAutoApproveFutureToggle(nodeId, enabled)
+                            }
+                          />
+                          <Text variant="small" tone="body">
+                            Auto-approve future executions of this node
+                          </Text>
+                        </div>
+                      )}
+
+                      <AttentionCard.Actions
+                        placement="footer"
+                        data-slot="pending-reviews-list-actions"
+                      >
+                        <Button
+                          onClick={() => processGroup(nodeId, true)}
+                          disabled={isBusy}
+                          variant="primary"
+                          className="flex min-w-20 items-center justify-center gap-2 rounded-full px-4 py-3"
+                          loading={groupAction === "approve"}
+                        >
+                          {reviewCount === 1
+                            ? "Approve"
+                            : `Approve ${reviewCount} reviews`}
+                        </Button>
+                        <Button
+                          onClick={() => processGroup(nodeId, false)}
+                          disabled={isBusy}
+                          variant="destructive"
+                          className="flex min-w-20 items-center justify-center gap-2 rounded-full bg-error-hover px-4 py-3"
+                          loading={groupAction === "reject"}
+                        >
+                          {reviewCount === 1
+                            ? "Reject"
+                            : `Reject ${reviewCount} reviews`}
+                        </Button>
+                      </AttentionCard.Actions>
                     </div>
                   )}
-
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    <Button
-                      onClick={() => processGroup(nodeId, true)}
-                      disabled={isProcessing}
-                      variant="primary"
-                      className="flex min-w-20 items-center justify-center gap-2 rounded-full px-4 py-3"
-                      loading={groupAction === "approve" && isProcessing}
-                    >
-                      {reviewCount === 1
-                        ? "Approve"
-                        : `Approve ${reviewCount} reviews`}
-                    </Button>
-                    <Button
-                      onClick={() => processGroup(nodeId, false)}
-                      disabled={isProcessing}
-                      variant="destructive"
-                      className="flex min-w-20 items-center justify-center gap-2 rounded-full bg-red-600 px-4 py-3"
-                      loading={groupAction === "reject" && isProcessing}
-                    >
-                      {reviewCount === 1
-                        ? "Reject"
-                        : `Reject ${reviewCount} reviews`}
-                    </Button>
-                  </div>
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+              );
+            })}
+          </div>
 
-      <Text variant="small" className="text-textGrey">
-        Each decision applies only to the reviews shown above it. You can turn
-        auto-approval on or off using the toggle for each node.
-      </Text>
+          <Text variant="small" className="text-textGrey">
+            Each decision applies only to the reviews shown above it. You can
+            turn auto-approval on or off using the toggle for each node.
+          </Text>
+        </AttentionCard.Root>
+      )}
     </div>
   );
 }
 
 function isGateReview(nodeId: string | null | undefined) {
   return !!nodeId?.startsWith(COPILOT_GATE_NODE_PREFIX);
+}
+
+function isSpendReview(nodeId: string) {
+  return nodeId.includes(SPEND_REVIEW_MARKER);
+}
+
+// One request per run or chat, in the order the group shows its reviews.
+function batchesByScope(
+  items: ReviewItem[],
+  reviews: PendingHumanReviewModel[],
+) {
+  const batches = new Map<
+    string,
+    { items: ReviewItem[]; reviews: PendingHumanReviewModel[] }
+  >();
+  reviews.forEach((review, i) => {
+    const scope = review.graph_exec_id ?? review.session_id ?? "";
+    const batch = batches.get(scope) ?? { items: [], reviews: [] };
+    batch.items.push(items[i]);
+    batch.reviews.push(review);
+    batches.set(scope, batch);
+  });
+  return [...batches.values()];
 }

@@ -254,7 +254,21 @@ async def test_partially_used_and_exhausted_trials_keep_accepted_offer(
 ):
     trial.cost_microdollars = cost
     call = AsyncMock(
-        return_value={"customer": "cus_1", "currency": "usd", "amount_due": 4200}
+        return_value={
+            "customer": "cus_1",
+            "currency": "usd",
+            "amount_due": 4200,
+            "lines": {
+                "data": [
+                    {
+                        "type": "subscription",
+                        "subscription": "sub_1",
+                        "price": {"id": "price_pro"},
+                        "period": {"start": 1791374400, "end": 1794052800},
+                    }
+                ]
+            },
+        }
     )
     monkeypatch.setattr(billing, "stripe_call", call)
     terms = await billing.quote_terms(trial, live_subscription)

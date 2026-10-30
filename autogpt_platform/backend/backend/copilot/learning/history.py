@@ -42,6 +42,7 @@ async def record_registry_write(
     keep_auto_improve: bool | None,
     files: list[SkillVersionFile] | None = None,
     content_approvals: list[SkillContentApproval] | None = None,
+    only_if_head_at: int | None = None,
 ) -> SkillVersionRecord | None:
     """Append the version for a workspace write that already succeeded.
 
@@ -49,10 +50,17 @@ async def record_registry_write(
     is the truth of what the file now says; a concurrent automated commit
     that loses the race is superseded by the human write, never the other
     way round. Never raises — history must not fail the write it records.
+
+    ``only_if_head_at`` is for bytes read earlier without the write lock: a
+    single compare-and-swap against that head position, no retry. If the
+    head has moved since (a deletion, or any other write), the bytes are
+    stale and nothing is recorded.
     """
     try:
         versions = skill_versions_db()
         head = await versions.ensure_head(user_id, expert_id, skill_name)
+        if only_if_head_at is not None and head.current_version != only_if_head_at:
+            return None
         if head.content_hash == content_hash(rendered) and head.current_version_id:
             current = await versions.get_version(user_id, head.current_version_id)
             if (
@@ -69,7 +77,7 @@ async def record_registry_write(
             ):
                 return None
         auto_improve = _auto_improve_after(origin, keep_auto_improve)
-        for _ in range(3):
+        for _ in range(3 if only_if_head_at is None else 1):
             result = await skill_publication_db().commit_version_safe(
                 user_id,
                 head=head,

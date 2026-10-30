@@ -3,7 +3,6 @@
   "venvPath": ".",
   "venv": ".venv",
   "include": ["backend"],
-  "exclude": ["**/node_modules", "**/__pycache__", "**/.*", "test/fixtures"],
   "ignore": [
     "backend/**/*_test.py",
     "backend/**/*conftest.py",

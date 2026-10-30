@@ -43,6 +43,11 @@ from backend.copilot.learning.content_checks import (
     check_skill_bundle,
     collect_content_approvals,
 )
+from backend.copilot.learning.fingerprint import (
+    behavior_fingerprint,
+    behavior_tokens,
+    evidence_fingerprint,
+)
 from backend.copilot.learning.history import record_registry_write
 from backend.copilot.learning.retrieval import (
     mark_index_revision_seen,
@@ -57,8 +62,10 @@ from backend.copilot.service import SKILLS_UPDATE_TAG, strip_server_injected_tag
 from backend.data.db_accessors import (
     experts_db,
     skill_db,
+    skill_deletion_db,
     skill_versions_db,
     workspace_db,
+    workspace_skill_db,
 )
 from backend.data.redis_client import get_redis_async
 from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT
@@ -71,6 +78,7 @@ from backend.data.skill_capacity import SkillLimitError, SkillOwnedError
 from backend.data.skill_capacity import normalize_skill_origin as _normalize_origin
 from backend.data.skill_capacity import skill_name_key
 from backend.data.skill_content_approvals import SkillContentApproval
+from backend.data.skill_deletion import DeletedBehavior
 from backend.data.skill_learning import owner_key_for
 from backend.data.skill_package import (
     SKILL_MD,
@@ -80,7 +88,7 @@ from backend.data.skill_package import (
     package_tree_sha256,
 )
 from backend.data.skill_version_files import SkillVersionFile
-from backend.data.skill_versions import content_hash
+from backend.data.skill_versions import SkillVersionRecord, content_hash
 from backend.data.workspace_scope import (
     EXPERT_SKILL_SCOPE_DENIED,
     WorkspaceAccessDeniedError,
@@ -90,7 +98,8 @@ from backend.data.workspace_scope import (
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import ConflictError
 from backend.util.feature_flag import Flag, is_feature_enabled
-from backend.util.workspace import WorkspaceManager
+from backend.util.settings import Config
+from backend.util.workspace import SkillPackageFile, WorkspaceManager
 from backend.util.workspace_storage import compute_file_checksum
 
 if TYPE_CHECKING:
@@ -347,6 +356,14 @@ def budget_origin(skill: ParsedSkill) -> str:
     """The budget a stored skill fills: its recorded origin, or the owner's
     for a row that has none."""
     return skill.origin or SKILL_ORIGIN_USER
+
+
+def _keeps_install(origin: str | None, baseline: SkillBaseline | None) -> bool:
+    """An installed copy that records its install stays installed when its
+    owner edits it: the write keeps its marketplace origin and the baseline a
+    later update merges into. :func:`_write_skill` and
+    :func:`saved_skill_limit_reached` both decide by this."""
+    return origin == SKILL_ORIGIN_MARKETPLACE and baseline is not None
 
 
 def parse_skill_markdown(text: str, fallback_name: str = "") -> ParsedSkill | None:
@@ -727,14 +744,20 @@ async def delete_user_skill(
     (personal Otto's when ``None``).
 
     The whole tree goes, however many files it holds — a package written
-    before the cap existed still has to be removable.  Returns the normalised
-    slug on success so callers can echo it back.
+    before the cap existed still has to be removable.  Before any file goes,
+    and under the per-owner write lock, the skill's version history is ended
+    and the deleted behaviour suppressed (:func:`_record_deletion`), so
+    neither a source revocation nor overnight learning brings it back.
+    Returns the normalised slug on success so callers can echo it back.
     Raises :class:`BuiltInSkillError` for default skills,
-    :class:`SkillNotFoundError` if the skill does not exist, and
-    ``ValueError`` if ``name`` is blank.  Sibling-file cleanup is
-    best-effort — a transient delete failure on a non-SKILL.md file logs
-    but does not abort the overall delete (the SKILL.md removal is what
-    makes the skill disappear from ``<available_skills>``).
+    :class:`SkillNotFoundError` if the skill does not exist, ``ValueError``
+    if ``name`` is blank, and :class:`SkillWriteLockError` or
+    :class:`SkillVersionConflictError` when the delete could not be ordered
+    with other writes to the owner's skills; nothing was deleted then.
+    Sibling-file cleanup is best-effort — a transient delete failure on a
+    non-SKILL.md file logs but does not abort the overall delete (the
+    SKILL.md removal is what makes the skill disappear from
+    ``<available_skills>``).
     """
     slug = name.strip().lower()
     if not slug:
@@ -743,6 +766,30 @@ async def delete_user_skill(
         raise BuiltInSkillError(f"'{slug}' is a built-in skill and cannot be deleted")
 
     manager = await _get_user_skill_manager(user_id, scope)
+    lock = await _acquire_skill_write_lock(user_id, expert_id)
+    if lock is None:
+        raise SkillWriteLockError(
+            "could not order the delete with other changes to these skills; "
+            "try again"
+        )
+    try:
+        await _delete_skill_files(user_id, slug, expert_id, manager, lock)
+    finally:
+        await _release_skill_write_lock(lock, user_id)
+    await invalidate_skills_index_cache(user_id, expert_id)
+    if expert_id is not None:
+        await experts_db().remove_expert_skill_name(user_id, expert_id, slug)
+    return slug
+
+
+async def _delete_skill_files(
+    user_id: str,
+    slug: str,
+    expert_id: str | None,
+    manager: WorkspaceManager,
+    lock: AsyncClusterLock,
+) -> None:
+    """The delete itself; the caller holds the write lock."""
     info = await manager.get_file_info_by_path(_skill_md_path(slug, expert_id))
     if info is None:
         if expert_id is not None:
@@ -753,29 +800,20 @@ async def delete_user_skill(
 
     # Audit-log the delete BEFORE the workspace mutation runs so the
     # log row is present even if the delete itself raises mid-cleanup.
-    # Decode best-effort: a malformed body is fine for the audit trail —
-    # the slug + truncated description is what an operator needs to
-    # correlate later support requests.
-    description_for_log = ""
-    try:
-        raw = await manager.read_file(_skill_md_path(slug, expert_id))
-        try:
-            text = raw.decode("utf-8")
-        except UnicodeDecodeError:
-            text = ""
-        if text:
-            parsed = parse_skill_markdown(text, fallback_name=slug)
-            if parsed is not None:
-                description_for_log = parsed.description
-    except Exception:
-        # Audit-log enrichment is best-effort; failure must not block the
-        # delete the user requested.
-        pass
+    # The description is best-effort — the slug + truncated description is
+    # what an operator needs to correlate later support requests.
+    parsed = await _read_deleted_skill(manager, slug, expert_id)
     logger.info(
         "[skills] user %s… deleting skill %s: %s",
         user_id[:8],
         slug,
-        description_for_log[:60],
+        (parsed.description if parsed else "")[:60],
+    )
+    await _record_deletion(
+        user_id,
+        expert_id,
+        slug,
+        await _package_behavior(manager, expert_id, slug, parsed),
     )
 
     await manager.delete_file(info.id)
@@ -786,6 +824,16 @@ async def delete_user_skill(
     # it rather than spinning it.
     attempted: set[str] = set()
     while True:
+        if not await lock.refresh():
+            # A writer that took the lock over may have just stored a package
+            # in this folder; leftover files are the lesser harm.
+            logger.warning(
+                "[skills] lost the write lock deleting %s for user %s — "
+                "leaving any remaining files",
+                slug,
+                user_id[:8],
+            )
+            break
         try:
             siblings = await _list_package_files(manager, skill_folder(expert_id), slug)
         except Exception:
@@ -803,10 +851,123 @@ async def delete_user_skill(
                     sibling.path,
                     exc_info=True,
                 )
-    await invalidate_skills_index_cache(user_id, expert_id)
-    if expert_id is not None:
-        await experts_db().remove_expert_skill_name(user_id, expert_id, slug)
-    return slug
+
+
+async def _read_deleted_skill(
+    manager: WorkspaceManager, slug: str, expert_id: str | None
+) -> ParsedSkill | None:
+    try:
+        raw = await manager.read_file(_skill_md_path(slug, expert_id))
+        return parse_skill_markdown(raw.decode("utf-8"), fallback_name=slug)
+    except Exception:
+        # Reading is best-effort; failure must not block the delete the
+        # user requested.
+        return None
+
+
+async def _record_deletion(
+    user_id: str,
+    expert_id: str | None,
+    slug: str,
+    deleted: DeletedBehavior | None,
+) -> None:
+    """End *slug*'s version history and suppress what is being deleted.
+
+    Both the package as it stands and the version the head names are
+    suppressed: learning never reapplies either, a near copy becomes a
+    decision for the owner, and a different skill may still be learned
+    under the name. Phase 1 of a publication takes no write lock, so the
+    head can move between this read and the transaction; it is read again
+    a few times before the delete gives up.
+    """
+    versions = skill_versions_db()
+    current_id: str | None = None
+    for _ in range(3):
+        head = await versions.get_head(user_id, owner_key_for(expert_id), slug)
+        current_id = head.current_version_id if head is not None else None
+        current = (
+            await versions.get_version(user_id, current_id) if current_id else None
+        )
+        behaviors = {
+            b.behavior_fingerprint: b
+            for b in (deleted, _version_behavior(current))
+            if b is not None
+        }
+        result = await skill_deletion_db().record_skill_deletion(
+            user_id,
+            expert_id=expert_id,
+            skill_name=slug,
+            expected_current_version_id=current_id,
+            behaviors=list(behaviors.values()),
+            actor_user_id=user_id,
+        )
+        if result.committed:
+            return
+    raise SkillVersionConflictError(current_id, None)
+
+
+async def _package_behavior(
+    manager: WorkspaceManager,
+    expert_id: str | None,
+    slug: str,
+    parsed: ParsedSkill | None,
+) -> DeletedBehavior | None:
+    """The behaviour of the package being deleted, as learning would
+    fingerprint a proposal of it."""
+    if parsed is None:
+        return None
+    try:
+        files = await _read_package_files(
+            manager, skill_folder(expert_id), slug, complete=True
+        )
+    except Exception:
+        # Over the files cap, or a file that cannot be read. The body alone
+        # still catches the procedure: an exact copy then becomes a decision
+        # for the owner instead of being suppressed outright. Refusing the
+        # delete instead would leave a package with a lost file undeletable.
+        logger.warning(
+            "[skills] could not read the files of %s to record its deletion",
+            slug,
+            exc_info=True,
+        )
+        files = []
+    return _deleted_behavior(
+        slug,
+        parsed.body,
+        [
+            SkillVersionFile.from_content(f.relative_path, f.content, f.is_executable)
+            for f in files
+        ],
+    )
+
+
+def _version_behavior(version: SkillVersionRecord | None) -> DeletedBehavior | None:
+    if version is None or not version.content:
+        return None
+    parsed = parse_skill_markdown(version.content, fallback_name=version.skill_name)
+    if parsed is None:
+        return None
+    return _deleted_behavior(
+        version.skill_name,
+        parsed.body,
+        version.files,
+        [str(e.get("ref", "")) for e in version.evidence],
+    )
+
+
+def _deleted_behavior(
+    skill_name: str,
+    body: str,
+    files: list[SkillVersionFile] | None,
+    evidence_refs: list[str] | None = None,
+) -> DeletedBehavior:
+    return DeletedBehavior(
+        behavior_fingerprint=behavior_fingerprint(skill_name, body, files),
+        behavior_tokens=behavior_tokens(body),
+        evidence_fingerprints=(
+            [evidence_fingerprint(evidence_refs)] if evidence_refs else []
+        ),
+    )
 
 
 class SkillContentBlockedError(ValueError):
@@ -995,7 +1156,8 @@ async def store_user_skills(
 ) -> list[StoredSkill | Exception]:
     """:func:`store_user_skill` for several skills under one write lock and
     one listing of the owner's folder; returns each write's outcome in order,
-    so one bad skill fails alone."""
+    so one bad skill fails alone. File/storage configuration is read once
+    per batch; each package still checks the current storage quota."""
     outcomes: list[StoredSkill | Exception | None] = []
     prepared: list[tuple[int, _PreparedSkill]] = []
     for write in writes:
@@ -1008,38 +1170,17 @@ async def store_user_skills(
         return cast(list[StoredSkill | Exception], outcomes)
 
     # Coordinate ordinary package writes; the database owns the hard cap.
-    lock: AsyncClusterLock | None = None
-    lock_held = False
-    try:
-        lock = AsyncClusterLock(
-            redis=await get_redis_async(),
-            key=f"{_SKILL_WRITE_LOCK_KEY_PREFIX}{user_id}:{expert_id or 'autopilot'}",
-            owner_id=uuid.uuid4().hex,
-            timeout=_SKILL_WRITE_LOCK_TTL_SECONDS,
-        )
-        for _ in range(10):
-            if (await lock.try_acquire()) == lock.owner_id:
-                lock_held = True
-                break
-            await asyncio.sleep(0.1)
-    except Exception:
-        logger.warning(
-            "[skills] failed to acquire write lock for user %s — "
-            "falling back to unlocked best-effort write",
-            user_id,
-            exc_info=True,
-        )
+    # Without the lock they fall back to a best-effort unlocked write.
+    lock = await _acquire_skill_write_lock(user_id, expert_id)
+    lock_held = lock is not None
     try:
         manager = await _get_user_skill_manager(user_id, scope)
         existing = await _list_user_skills_from_workspace(user_id, expert_id, scope)
         same_origin = {s.name for s in existing if budget_origin(s) == origin}
         owners = {s.name for s in existing if s.origin == SKILL_ORIGIN_USER}
-        copies = {
-            s.name: s
-            for s in existing
-            if s.origin == SKILL_ORIGIN_MARKETPLACE and s.baseline is not None
-        }
+        copies = {s.name: s for s in existing if _keeps_install(s.origin, s.baseline)}
         stored: list[tuple[int, str]] = []
+        config: Config | None = None
         for index, skill in prepared:
             # A batch outlasts one lease, so renew it before each skill. Once
             # it is lost another writer may hold the key: finish best-effort,
@@ -1073,8 +1214,17 @@ async def store_user_skills(
                         )
                     )
                 is_new = skill.parsed.name not in same_origin
+                if config is None:
+                    config = Config()
                 checksums = await _write_skill(
-                    manager, skill, expert_id, origin, same_origin, owners, copies
+                    manager,
+                    skill,
+                    expert_id,
+                    origin,
+                    same_origin,
+                    owners,
+                    copies,
+                    config,
                 )
             except Exception as e:
                 outcomes[index] = e
@@ -1097,14 +1247,43 @@ async def store_user_skills(
         return cast(list[StoredSkill | Exception], outcomes)
     finally:
         if lock is not None and lock_held:
-            try:
-                await lock.release()
-            except Exception:
-                logger.warning(
-                    "[skills] failed to release write lock for user %s",
-                    user_id,
-                    exc_info=True,
-                )
+            await _release_skill_write_lock(lock, user_id)
+
+
+async def _acquire_skill_write_lock(
+    user_id: str, expert_id: str | None
+) -> AsyncClusterLock | None:
+    """Take the owner's skill write lock, or ``None`` when it stays held
+    elsewhere for about a second or Redis cannot be reached."""
+    try:
+        lock = AsyncClusterLock(
+            redis=await get_redis_async(),
+            key=f"{_SKILL_WRITE_LOCK_KEY_PREFIX}{user_id}:{expert_id or 'autopilot'}",
+            owner_id=uuid.uuid4().hex,
+            timeout=_SKILL_WRITE_LOCK_TTL_SECONDS,
+        )
+        for _ in range(10):
+            if (await lock.try_acquire()) == lock.owner_id:
+                return lock
+            await asyncio.sleep(0.1)
+    except Exception:
+        logger.warning(
+            "[skills] failed to acquire write lock for user %s",
+            user_id,
+            exc_info=True,
+        )
+    return None
+
+
+async def _release_skill_write_lock(lock: AsyncClusterLock, user_id: str) -> None:
+    try:
+        await lock.release()
+    except Exception:
+        logger.warning(
+            "[skills] failed to release write lock for user %s",
+            user_id,
+            exc_info=True,
+        )
 
 
 async def _require_current_head(
@@ -1352,6 +1531,7 @@ async def _write_skill(
     same_origin: set[str],
     owners: set[str],
     copies: Mapping[str, ParsedSkill],
+    config: Config,
 ) -> frozenset[str]:
     """Write one prepared package; return the SHA-256 of every file written.
 
@@ -1388,61 +1568,46 @@ async def _write_skill(
         metadata.update(_baseline_metadata(baseline))
     folder = skill_folder(expert_id)
     stale = await _stale_files(manager, folder, name, skill)
-    # The root is what indexes the skill, so it goes last: a new skill
-    # that fails part-way is never indexed.  An upsert cannot be made
-    # atomic here — the old bytes are gone once overwritten.  Serial
-    # because ``write_file``'s quota check is read-then-write.
-    existing_paths = {f.path for f in stale}
     current = {f.path: f for f in stale}
     written: set[str] = set()
     checksums: set[str] = set()
-    try:
-        for entry in skill.files or []:
-            path = f"{folder}/{name}/{entry.relative_path}"
-            written.add(path)
-            digest = compute_file_checksum(entry.content)
-            kept = current.get(path)
-            if (
-                kept is not None
-                and kept.checksum == digest
-                and kept.is_executable == entry.is_executable
-            ):
-                # Same bytes already there: a delta write leaves it alone.
-                checksums.add(digest)
-                continue
-            await manager.write_file(
-                content=entry.content,
-                filename=entry.relative_path.rsplit("/", 1)[-1],
+    changed: list[SkillPackageFile] = []
+    for entry in skill.files or []:
+        path = f"{folder}/{name}/{entry.relative_path}"
+        written.add(path)
+        digest = compute_file_checksum(entry.content)
+        checksums.add(digest)
+        kept = current.get(path)
+        if (
+            kept is not None
+            and kept.checksum == digest
+            and kept.is_executable == entry.is_executable
+        ):
+            # Same bytes already there: a delta write leaves it alone.
+            continue
+        changed.append(
+            SkillPackageFile(
                 path=path,
-                mime_type=None,
-                overwrite=True,
-                metadata=({_META_EXECUTABLE: True} if entry.is_executable else None),
-                scanned_checksums=skill.scanned_checksums,
+                content=entry.content,
+                metadata={_META_EXECUTABLE: True} if entry.is_executable else None,
             )
-            checksums.add(digest)
-        await _delete_paths(
-            manager,
-            {f.path for f in stale if f.path not in written},
-            stale,
-            strict=True,
         )
-        skill_md = skill.rendered.encode("utf-8")
-        await manager.write_file(
-            content=skill_md,
-            filename="SKILL.md",
+    skill_md = skill.rendered.encode("utf-8")
+    # One change for the whole package: a failure leaves the previous
+    # package as it was, never new files beside an old SKILL.md.
+    await manager.write_skill_package(
+        root=SkillPackageFile(
             path=_skill_md_path(name, expert_id),
+            content=skill_md,
             mime_type="text/markdown",
-            overwrite=True,
             metadata=metadata,
-            scanned_checksums=skill.scanned_checksums,
-        )
-        checksums.add(compute_file_checksum(skill_md))
-    except Exception:
-        # Not a rollback: a file already here keeps the new bytes, so an
-        # upsert can fail mixed. Undo only what this call created — deleting
-        # the rest would turn a failed write into a lost file.
-        await _delete_paths(manager, written - existing_paths)
-        raise
+        ),
+        files=changed,
+        removed_paths=sorted(f.path for f in stale if f.path not in written),
+        scanned_checksums=skill.scanned_checksums,
+        config=config,
+    )
+    checksums.add(compute_file_checksum(skill_md))
     return frozenset(checksums)
 
 
@@ -1468,30 +1633,6 @@ async def _stale_files(
             f"'{name}' changed while its update was prepared; it is compared again"
         )
     return [info for path, info in listed.items() if path != SKILL_MD]
-
-
-async def _delete_paths(
-    manager: WorkspaceManager,
-    paths: set[str],
-    known: list[SkillFileInfo] | None = None,
-    *,
-    strict: bool = False,
-) -> None:
-    """Require stale-file removal for exact replacements; cleanup is best-effort."""
-    ids = {f.path: f.file_id for f in known or []}
-    for path in paths:
-        try:
-            file_id = ids.get(path)
-            if file_id is None:
-                info = await manager.get_file_info_by_path(path)
-                if info is None:
-                    continue
-                file_id = info.id
-            await manager.delete_file(file_id)
-        except Exception:
-            if strict:
-                raise
-            logger.warning("[skills] failed to delete %s", path, exc_info=True)
 
 
 async def _parse_skill_from_workspace(
@@ -1736,6 +1877,28 @@ async def invalidate_skills_index_cache(
         pass
 
 
+async def saved_skill_limit_reached(
+    user_id: str, expert_id: str | None, name: str
+) -> bool:
+    """Whether saving ``name`` as the owner's skill would need a saved-skill
+    slot the owner no longer has, by the same count of live roots the
+    workspace enforces. A marketplace copy that records its install stays
+    installed when edited (:func:`_keeps_install`) and needs no saved slot;
+    any other root moves into, or already fills, the saved budget."""
+    workspace = await workspace_db().get_or_create_workspace(user_id)
+    path = _skill_md_path(name, expert_id)
+    root = await workspace_db().get_workspace_file_by_path(workspace.id, path)
+    meta = root.metadata if root is not None and root.metadata else {}
+    origin = (
+        SKILL_ORIGIN_MARKETPLACE
+        if _keeps_install(_skill_origin(meta), _baseline_from_metadata(meta))
+        else SKILL_ORIGIN_USER
+    )
+    return not await workspace_skill_db().skill_root_has_room(
+        workspace.id, path, origin
+    )
+
+
 async def list_user_skills(
     user_id: str,
     expert_id: str | None = None,
@@ -1882,8 +2045,10 @@ async def _reconcile_marketplace_copies(
             "[skills] could not read active marketplace versions", exc_info=True
         )
         return skills
-    manager = await _get_user_skill_manager(user_id, scope)
     backoff = await _read_update_backoff(user_id, expert_id)
+    # Looked up for the first copy that is actually updated: on most cold
+    # turns every copy is current, and the lookup is a database round trip.
+    manager: WorkspaceManager | None = None
     flags: dict[str, str] = {}
     rewritten: list[str] = []
     failed: dict[str, str] = {}
@@ -1910,6 +2075,8 @@ async def _reconcile_marketplace_copies(
         # An attempt spends budget whether or not it lands, so copies that
         # cannot be updated bound the turn like the ones that can.
         budget -= 1
+        if manager is None:
+            manager = await _get_user_skill_manager(user_id, scope)
         try:
             outcome = await _update_copy(
                 manager, user_id, expert_id, scope, skill, current
@@ -2931,6 +3098,10 @@ class StoreSkillTool(BaseTool):
     (name, description, optional triggers) plus a markdown body.
     """
 
+    # Updates the skill index, which ``list_skills`` reads back.  Run on its own
+    # so a ``list_skills`` call in the same message sees the update.
+    writes_files = True
+
     @property
     def name(self) -> str:
         return "store_skill"
@@ -3118,6 +3289,8 @@ async def resolve_loaded_skill_version(
 class ReadSkillTool(BaseTool):
     """Load a skill by name: its body, its package listing, and a copy of
     that package in the working directory the model's shell runs in."""
+
+    writes_files = True
 
     @property
     def name(self) -> str:
@@ -3357,6 +3530,10 @@ class ReadSkillTool(BaseTool):
 class DeleteSkillTool(BaseTool):
     """Remove a user-created skill (cannot delete built-in defaults)."""
 
+    # Removes from the skill index, which ``list_skills`` reads back.  Run on its
+    # own so a ``list_skills`` call in the same message sees the removal.
+    writes_files = True
+
     @property
     def name(self) -> str:
         return "delete_skill"
@@ -3420,7 +3597,7 @@ class DeleteSkillTool(BaseTool):
             return ErrorResponse(message=str(exc), session_id=session_id)
         except SkillNotFoundError as exc:
             return ErrorResponse(message=str(exc), session_id=session_id)
-        except ConflictError as exc:
+        except (ConflictError, SkillWriteLockError, SkillVersionConflictError) as exc:
             return ErrorResponse(message=str(exc), session_id=session_id)
         except Exception as exc:
             logger.exception("[skills] delete failed for %s", name)

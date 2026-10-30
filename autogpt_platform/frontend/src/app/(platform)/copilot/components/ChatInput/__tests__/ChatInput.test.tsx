@@ -1,4 +1,3 @@
-import { QueueFollowUpFullError } from "../../../helpers/queueFollowUpMessage";
 import {
   render,
   screen,
@@ -80,21 +79,22 @@ const mockSetInitialPrompt = vi.fn((value: string | null) => {
 });
 
 vi.mock("@/app/(platform)/copilot/store", () => ({
-  useCopilotUIStore: () => ({
-    copilotLlmModel: mockCopilotLlmModel,
-    setCopilotLlmModel: mockSetCopilotLlmModel,
-    copilotLlmAuth: {
-      authProvider: mockCopilotLlmAuthProvider,
-      credentialId: null,
-    },
-    setCopilotLlmAuth: vi.fn(),
-    isDryRun: false,
-    setIsDryRun: vi.fn(),
-    initialPrompt: mockInitialPrompt,
-    setInitialPrompt: mockSetInitialPrompt,
-    sentMessageCount: 0,
-    notifyMessageSent: vi.fn(),
-  }),
+  useCopilotUIStore: (selector: (state: Record<string, unknown>) => unknown) =>
+    selector({
+      copilotLlmModel: mockCopilotLlmModel,
+      setCopilotLlmModel: mockSetCopilotLlmModel,
+      copilotLlmAuth: {
+        authProvider: mockCopilotLlmAuthProvider,
+        credentialId: null,
+      },
+      setCopilotLlmAuth: vi.fn(),
+      isDryRun: false,
+      setIsDryRun: vi.fn(),
+      initialPrompt: mockInitialPrompt,
+      setInitialPrompt: mockSetInitialPrompt,
+      sentMessageCount: 0,
+      notifyMessageSent: vi.fn(),
+    }),
 }));
 
 let mockFlagValue = false;
@@ -120,9 +120,12 @@ const voiceDismiss = vi.fn();
 let mockTranscriptionError: string | null = null;
 let mockHasFailedRecording = false;
 let mockIsTranscribing = false;
+// Real for the focus tests: the hook focuses the composer too.
+let mockRealVoiceRecording = false;
 
-vi.mock("../useVoiceRecording", () => ({
-  useVoiceRecording: () => ({
+vi.mock("../useVoiceRecording", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../useVoiceRecording")>();
+  const stub = () => ({
     isRecording: false,
     isTranscribing: mockIsTranscribing,
     transcriptionError: mockTranscriptionError,
@@ -136,10 +139,14 @@ vi.mock("../useVoiceRecording", () => ({
     showMicButton: false,
     isInputDisabled: false,
     audioStream: null,
-  }),
-}));
+  });
+  return {
+    useVoiceRecording: (args: Parameters<typeof real.useVoiceRecording>[0]) =>
+      (mockRealVoiceRecording ? real.useVoiceRecording : stub)(args),
+  };
+});
 
-vi.mock("@/components/ai-elements/prompt-input", () => ({
+vi.mock("@/components/organisms/PromptInput/PromptInput", () => ({
   PromptInputSubmit: ({
     disabled,
     status,
@@ -208,7 +215,12 @@ vi.mock("../components/ComposerPlusMenu", () => ({
     extraItems = [],
   }: {
     onClearGuidedPrompt?: () => void;
-    extraItems?: { key: string; label: string; onSelect: () => void }[];
+    extraItems?: {
+      key: string;
+      label: string;
+      onSelect: () => void;
+      disabled?: boolean;
+    }[];
   }) => (
     <>
       <button
@@ -221,6 +233,7 @@ vi.mock("../components/ComposerPlusMenu", () => ({
           key={item.key}
           type="button"
           role="menuitem"
+          disabled={item.disabled}
           onClick={item.onSelect}
         >
           {item.label}
@@ -266,6 +279,7 @@ afterEach(() => {
   mockTranscriptionError = null;
   mockHasFailedRecording = false;
   mockIsTranscribing = false;
+  mockRealVoiceRecording = false;
 });
 
 describe("ChatInput composer row", () => {
@@ -277,6 +291,110 @@ describe("ChatInput composer row", () => {
     ).map((addon) => addon.getAttribute("data-align"));
 
     expect(aligns).toEqual(["inline-start", "inline-end"]);
+  });
+
+  it("leaves focus in a menu the user opened while it was still loading", () => {
+    // Home re-enables the composer once it has loaded; a profile menu opened
+    // before then lost focus to it, and Radix closes a popover on focus-out.
+    const { rerender } = render(
+      <>
+        <div role="dialog" aria-label="Profile menu">
+          <button type="button">Show me around</button>
+        </div>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" disabled />
+      </>,
+    );
+    const menuItem = screen.getByRole("button", { name: "Show me around" });
+    menuItem.focus();
+
+    rerender(
+      <>
+        <div role="dialog" aria-label="Profile menu">
+          <button type="button">Show me around</button>
+        </div>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" />
+      </>,
+    );
+
+    expect(document.activeElement).toBe(menuItem);
+  });
+
+  it.each([
+    { draft: "no draft", initialPrompt: null },
+    { draft: "a prompt from the link", initialPrompt: "Teach me a new skill" },
+  ])(
+    "leaves focus in a menu that was already open when it mounted, with $draft",
+    ({ initialPrompt }) => {
+      // Home mounts its composer only once the greeting has loaded.
+      mockRealVoiceRecording = true;
+      mockInitialPrompt = initialPrompt;
+      const { rerender } = render(
+        <>
+          <div role="dialog" aria-label="Profile menu">
+            <button type="button">Show me around</button>
+          </div>
+          {/* Holds the composer's slot, so the rerender keeps the menu mounted. */}
+          {null}
+        </>,
+      );
+      const menuItem = screen.getByRole("button", { name: "Show me around" });
+      menuItem.focus();
+
+      rerender(
+        <>
+          <div role="dialog" aria-label="Profile menu">
+            <button type="button">Show me around</button>
+          </div>
+          <ChatInput onSend={mockOnSend} sessionId="session-1" />
+        </>,
+      );
+
+      expect(document.activeElement).toBe(menuItem);
+    },
+  );
+
+  it("takes focus from a dialog that is on its way out", () => {
+    // A sheet closing (picking a chat in the phone's sidebar) stays mounted
+    // through its exit animation, with focus still inside it.
+    const { rerender } = render(
+      <>
+        <div role="dialog" aria-label="Sidebar" data-state="closed">
+          <button type="button">A chat</button>
+        </div>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" disabled />
+      </>,
+    );
+    screen.getByRole("button", { name: "A chat", hidden: true }).focus();
+
+    rerender(
+      <>
+        <div role="dialog" aria-label="Sidebar" data-state="closed">
+          <button type="button">A chat</button>
+        </div>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" />
+      </>,
+    );
+
+    expect(document.activeElement).toBe(screen.getByTestId("textarea"));
+  });
+
+  it("still takes focus inside the dialog it lives in", () => {
+    const { rerender } = render(
+      <div role="dialog" aria-label="Expert chat">
+        <button type="button">Close</button>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" disabled />
+      </div>,
+    );
+    screen.getByRole("button", { name: "Close" }).focus();
+
+    rerender(
+      <div role="dialog" aria-label="Expert chat">
+        <button type="button">Close</button>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" />
+      </div>,
+    );
+
+    expect(document.activeElement).toBe(screen.getByTestId("textarea"));
   });
 
   it("focuses the message box when the addon gutter is clicked", () => {
@@ -295,6 +413,18 @@ describe("ChatInput composer row", () => {
     expect(document.activeElement).toBe(textarea);
   });
 });
+
+// Secondary composer controls live behind the "..." overflow menu.
+function openOverflow() {
+  fireEvent.click(screen.getByTestId("composer-overflow-button"));
+}
+
+// Negative assertions are only meaningful with the panel open when the
+// menu exists at all (it is absent when no control qualifies).
+function openOverflowIfPresent() {
+  const trigger = screen.queryByTestId("composer-overflow-button");
+  if (trigger) fireEvent.click(trigger);
+}
 
 describe("ChatInput token devtool entry", () => {
   it("lists Token usage in the + menu while the brain-dump tray is disabled", () => {
@@ -326,6 +456,98 @@ describe("ChatInput token devtool entry", () => {
     render(<ChatInput onSend={mockOnSend} sessionId={null} />);
 
     expect(screen.queryByRole("menuitem", { name: "Token usage" })).toBeNull();
+  });
+});
+
+describe("ChatInput + menu entries", () => {
+  it("starts voice mode from the + menu, not the overflow panel", () => {
+    const onStart = vi.fn();
+    render(
+      <ChatInput
+        onSend={mockOnSend}
+        sessionId="session-1"
+        voiceMode={{ onStart }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Voice mode" }));
+
+    expect(onStart).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("composer-overflow-button")).toBeNull();
+  });
+
+  it("keeps Voice mode out of the menu when the flag is off", () => {
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    expect(screen.queryByRole("menuitem", { name: "Voice mode" })).toBeNull();
+  });
+
+  it("disables Voice mode while it cannot start", () => {
+    render(
+      <ChatInput
+        onSend={mockOnSend}
+        sessionId="session-1"
+        voiceMode={{ onStart: vi.fn(), disabled: true }}
+      />,
+    );
+
+    const item = screen.getByRole("menuitem", {
+      name: "Voice mode",
+    }) as HTMLButtonElement;
+    expect(item.disabled).toBe(true);
+  });
+
+  it("opens Model and connection in a dialog, even with nothing to choose", async () => {
+    // The mocked lone connection has one model behind both tiers, which is
+    // the case where the old anchored sheet rendered nothing at all.
+    render(<ChatInput onSend={mockOnSend} />);
+
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Model and connection" }),
+    );
+
+    expect(await screen.findByText("AutoGPT Platform")).toBeDefined();
+  });
+
+  it.each([
+    { isStreaming: true },
+    { stacked: true },
+    { variant: "compact" as const },
+  ])(
+    "keeps the model dialog closed after hiding its control: %o",
+    async (props) => {
+      const { rerender } = render(<ChatInput onSend={mockOnSend} hasSession />);
+
+      fireEvent.click(
+        screen.getByRole("menuitem", { name: "Model and connection" }),
+      );
+      expect(
+        await screen.findByRole("dialog", { name: "Model and connection" }),
+      ).toBeDefined();
+
+      rerender(<ChatInput onSend={mockOnSend} hasSession {...props} />);
+      expect(screen.queryByRole("dialog")).toBeNull();
+
+      rerender(<ChatInput onSend={mockOnSend} hasSession />);
+      expect(screen.queryByRole("dialog")).toBeNull();
+
+      fireEvent.click(
+        screen.getByRole("menuitem", { name: "Model and connection" }),
+      );
+      expect(
+        await screen.findByRole("dialog", { name: "Model and connection" }),
+      ).toBeDefined();
+    },
+  );
+
+  it("opens Token usage in a dialog", async () => {
+    mockTokenDevtoolEnabled = true;
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    expect(screen.queryByText("Context window")).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Token usage" }));
+
+    expect(await screen.findByText("Context window")).toBeDefined();
   });
 });
 
@@ -461,11 +683,10 @@ describe("ChatInput Enter while streaming", () => {
     expect(textarea.value).toBe("");
   });
 
-  it.each([
-    new Error("Session has no active turn"),
-    new QueueFollowUpFullError(),
-  ])("puts the text back and toasts when queueing fails: %s", async (error) => {
-    const onEnqueue = vi.fn().mockRejectedValue(error);
+  it("puts the text back and toasts when queueing fails", async () => {
+    const onEnqueue = vi
+      .fn()
+      .mockRejectedValue(new Error("Session has no active turn"));
     render(<ChatInput onSend={mockOnSend} onEnqueue={onEnqueue} isStreaming />);
     const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
     fireEvent.change(textarea, { target: { value: "and then?" } });
@@ -476,7 +697,6 @@ describe("ChatInput Enter while streaming", () => {
     expect(toast).toHaveBeenCalledWith(
       expect.objectContaining({
         title: "Couldn't send message",
-        description: expect.stringContaining(error.message),
         variant: "destructive",
       }),
     );
@@ -546,6 +766,35 @@ describe("ChatInput Enter while streaming", () => {
     expect(screen.queryByLabelText(/queue message/i)).toBeNull();
   });
 
+  it("queues files attached during a reply through onSend when the host can hold them", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    const onEnqueue = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ChatInput
+        onSend={onSend}
+        onEnqueue={onEnqueue}
+        isStreaming
+        canAttachWhileStreaming
+      />,
+    );
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        files: [new File(["png"], "shot.png", { type: "image/png" })],
+      },
+    });
+    fireEvent.change(textarea, { target: { value: "see attached" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /queue message/i }));
+    });
+    expect(onEnqueue).not.toHaveBeenCalled();
+    expect(onSend).toHaveBeenCalledWith(
+      "see attached",
+      [expect.any(File)],
+      undefined,
+    );
+  });
+
   it("falls back to a normal send when nothing can queue", async () => {
     const onSend = vi.fn().mockResolvedValue(undefined);
     render(<ChatInput onSend={onSend} isStreaming />);
@@ -562,12 +811,14 @@ describe("ChatInput dry-run toggle", () => {
   it("does not render dry-run toggle when flag is disabled", () => {
     mockFlagValue = false;
     render(<ChatInput onSend={mockOnSend} />);
+    openOverflowIfPresent();
     expect(screen.queryByTestId("dry-run-toggle")).toBeNull();
   });
 
   it("renders dry-run toggle when flag is enabled and no session", () => {
     mockFlagValue = true;
     render(<ChatInput onSend={mockOnSend} hasSession={false} />);
+    openOverflow();
     expect(screen.getByTestId("dry-run-toggle")).toBeDefined();
   });
 
@@ -575,6 +826,7 @@ describe("ChatInput dry-run toggle", () => {
     mockFlagValue = true;
     render(<ChatInput onSend={mockOnSend} hasSession />);
     // isDryRun is false in mock, hasSession is true → toggle hidden
+    openOverflowIfPresent();
     expect(screen.queryByTestId("dry-run-toggle")).toBeNull();
   });
 
@@ -582,6 +834,7 @@ describe("ChatInput dry-run toggle", () => {
     const { toast } = await import("@/components/molecules/Toast/use-toast");
     mockFlagValue = true;
     render(<ChatInput onSend={mockOnSend} />);
+    openOverflow();
     fireEvent.click(screen.getByTestId("dry-run-toggle"));
     // isDryRun was false → next is true
     expect(toast).toHaveBeenCalledWith(
@@ -593,6 +846,23 @@ describe("ChatInput dry-run toggle", () => {
 });
 
 describe("ChatInput guided prompt prefill", () => {
+  it("prefills a guided prompt without opening the keyboard on touch devices", async () => {
+    const matchMedia = vi.spyOn(window, "matchMedia").mockReturnValue({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as unknown as MediaQueryList);
+    try {
+      mockInitialPrompt = NEW_SKILL_PROMPT;
+      render(<ChatInput onSend={mockOnSend} />);
+      const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+      await waitFor(() => expect(textarea.value).toBe(NEW_SKILL_PROMPT));
+      expect(document.activeElement).not.toBe(textarea);
+    } finally {
+      matchMedia.mockRestore();
+    }
+  });
+
   it("prefills the composer and focuses it when an initial prompt arrives after mount", async () => {
     const { rerender } = render(<ChatInput onSend={mockOnSend} />);
     const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
@@ -664,6 +934,22 @@ describe("ChatInput guided prompt prefill", () => {
 });
 
 describe("ChatInput submit behavior", () => {
+  it("preserves an editable draft while a usage cap blocks submission", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(<ChatInput onSend={onSend} sendDisabled />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    expect(textarea.disabled).toBe(false);
+    fireEvent.change(textarea, { target: { value: "My next idea" } });
+    fireEvent.submit(textarea.closest("form")!);
+    expect(onSend).not.toHaveBeenCalled();
+    expect(textarea.value).toBe("My next idea");
+    rerender(<ChatInput onSend={onSend} sendDisabled={false} />);
+    fireEvent.submit(textarea.closest("form")!);
+    await waitFor(() =>
+      expect(onSend).toHaveBeenCalledWith("My next idea", undefined, undefined),
+    );
+  });
+
   it("does not call onSend when textarea is empty", () => {
     const onSend = vi.fn().mockResolvedValue(undefined);
     render(<ChatInput onSend={onSend} />);
@@ -904,6 +1190,25 @@ describe("ChatInput clipboard paste", () => {
     const [message, files] = onSend.mock.calls[0];
     expect(message).toBe("");
     expect(files).toHaveLength(1);
+  });
+
+  it("says why Send at reset is off for files attached before it", async () => {
+    const onSchedule = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(<ChatInput onSend={vi.fn()} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    const image = new File(["png-bytes"], "image.png", { type: "image/png" });
+    pasteFiles(textarea, [image]);
+    expect(screen.queryByText(/Only text can wait for the reset/)).toBeNull();
+
+    // The budget runs out with the file still attached.
+    rerender(<ChatInput onSend={vi.fn()} atReset={{ onSchedule }} />);
+    fireEvent.change(textarea, { target: { value: "see screenshot" } });
+    fireEvent.submit(textarea.closest("form")!);
+
+    expect(
+      await screen.findByText(/Only text can wait for the reset/),
+    ).toBeDefined();
+    expect(onSchedule).not.toHaveBeenCalled();
   });
 
   it("keeps the original name of pasted non-generic files", async () => {

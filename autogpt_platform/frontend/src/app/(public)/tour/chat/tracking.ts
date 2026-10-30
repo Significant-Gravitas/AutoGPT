@@ -24,14 +24,20 @@ export function trackTourStart() {
     {},
     { oncePerTabKey: POSTHOG_TOUR_START_KEY },
   );
+  // DataFast's guard is marked only once the event goes out: an event dropped
+  // because consent was not known yet gets another chance on the next mount.
   try {
     if (sessionStorage.getItem(TOUR_START_SESSION_KEY)) return;
-    sessionStorage.setItem(TOUR_START_SESSION_KEY, "1");
   } catch {
     // In-app browsers may block sessionStorage — double-counting a visit
     // beats dropping it.
   }
-  analytics.sendDatafastEvent("tour_start", {});
+  if (!analytics.sendDatafastEvent("tour_start", {})) return;
+  try {
+    sessionStorage.setItem(TOUR_START_SESSION_KEY, "1");
+  } catch {
+    // See above.
+  }
 }
 
 export function trackTourScenarioStart(scenarioId: string) {

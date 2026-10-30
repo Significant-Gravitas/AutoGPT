@@ -472,8 +472,7 @@ assert_pinned_topology_environment() {
     DATABASE_API_PORT=8005 AGENT_API_HOST=127.0.0.1 AGENT_API_PORT=8006 \
     NOTIFICATION_SERVICE_PORT=8007 COPILOT_EXECUTOR_PORT=8008 \
     PLATFORM_LINKING_SERVICE_PORT=8009 COPILOT_CHAT_BRIDGE_PORT=8010 \
-    BATCH_EXECUTOR_PORT=8011 SWAP_CREDENTIAL_SERVICE_PORT=8012 \
-    FORCE_FLAG_GRAPHITI_MEMORY=true; do
+    BATCH_EXECUTOR_PORT=8011 SWAP_CREDENTIAL_SERVICE_PORT=8012; do
     grep -Fxq "${expected}" <<<"${process_env}"
   done
 }
@@ -565,6 +564,7 @@ forbidden = {
     "DIRECT_URL",
     "ENCRYPTION_KEY",
     "GRAPHITI_FALKORDB_PASSWORD",
+    "INTERNAL_API_KEY",
     "POSTGRES_PASSWORD",
     "RABBITMQ_DEFAULT_PASS",
     "REDIS_PASSWORD",
@@ -896,34 +896,28 @@ PY
 
 assert_request_tokens_absent_from_logs() {
   local sentinel=AUTOGPT_LOG_SENTINEL_6f2b3cb87e9a
+  local websocket_key=dGhlIHNhbXBsZSBub25jZQ== # pragma: allowlist secret # gitleaks:allow
+  local websocket_status
   local container_logs
 
   curl --fail --silent --show-error --max-time 30 \
     "${PUBLIC_URL}/_agpt/health?token=${sentinel}" >/dev/null
   curl --silent --show-error --max-time 30 \
     "${PUBLIC_URL}/link/${sentinel}?token=${sentinel}" >/dev/null
-  docker exec --interactive --user autogpt \
-    --env "SMOKE_PUBLIC_URL=${PUBLIC_URL}" \
-    --env "SMOKE_LOG_SENTINEL=${sentinel}" \
-    "${CONTAINER_NAME}" \
-    /app/autogpt_platform/backend/.venv/bin/python - <<'PY'
-import os
-
-from websockets.exceptions import ConnectionClosedError
-from websockets.sync.client import connect
-
-url = f"ws://127.0.0.1:3000/_agpt/ws?token={os.environ['SMOKE_LOG_SENTINEL']}"
-with connect(
-    url, origin=os.environ["SMOKE_PUBLIC_URL"], open_timeout=10, close_timeout=3
-) as websocket:
-    try:
-        websocket.recv(timeout=10)
-    except ConnectionClosedError as exc:
-        if exc.rcvd is None or exc.rcvd.code != 4003:
-            raise SystemExit("invalid-token WebSocket did not close with code 4003")
-    else:
-        raise SystemExit("invalid-token WebSocket received application data")
-PY
+  websocket_status="$(
+    curl --silent --show-error --max-time 30 --http1.1 \
+      --output /dev/null --write-out '%{http_code}' \
+      --header 'Connection: Upgrade' \
+      --header 'Upgrade: websocket' \
+      --header 'Sec-WebSocket-Version: 13' \
+      --header "Sec-WebSocket-Key: ${websocket_key}" \
+      --header "Origin: ${PUBLIC_URL}" \
+      "${PUBLIC_URL}/_agpt/ws?token=${sentinel}"
+  )"
+  [[ "${websocket_status}" == 403 ]] || {
+    echo "invalid-token WebSocket handshake returned ${websocket_status}, expected 403" >&2
+    return 1
+  }
   sleep 2
   if ! container_logs="$(docker logs "${CONTAINER_NAME}" 2>&1)"; then
     echo "could not inspect container logs for request-token leakage" >&2
@@ -1023,7 +1017,6 @@ assert_memory_contract() {
     --workdir /app/autogpt_platform/backend \
     "${CONTAINER_NAME}" \
     /app/autogpt_platform/backend/.venv/bin/python - "${action}" <<'PY'
-import asyncio
 import shlex
 import sys
 from pathlib import Path
@@ -1072,10 +1065,6 @@ result = graph.query(
     "MATCH (n:MemorySmoke {id: 'persistent-memory'}) RETURN count(n)"
 )
 assert int(result.result_set[0][0]) == 1, result.result_set
-
-from backend.copilot.graphiti.config import is_enabled_for_user
-
-assert asyncio.run(is_enabled_for_user("single-container-smoke")) is True
 
 if action == "cleanup":
     redis.execute_command("GRAPH.DELETE", graph.name)

@@ -15,6 +15,13 @@ from datetime import datetime, timezone
 from typing import Any
 
 from backend.data.skill_content_approvals import SkillContentApproval
+from backend.data.skill_deletion import (
+    DELETED_ORIGIN,
+    DELETED_REASON,
+    DELETED_STATE,
+    DeletedBehavior,
+    SkillDeletion,
+)
 from backend.data.skill_learning import (
     LearningAccessError,
     LearningSourceRecord,
@@ -28,6 +35,7 @@ from backend.data.skill_publication import (
     VersionDraft,
 )
 from backend.data.skill_reviews import (
+    LIVE_REVIEW_SECONDS,
     TERMINAL_REVIEW_DISPOSITIONS,
     LearningReviewRecord,
     LearningRunSummary,
@@ -279,6 +287,7 @@ class FakeLearningStore:
         cost_microdollars: int | None = None,
         completed: bool = True,
         expected_run_id: str | None = None,
+        live_seconds: int = LIVE_REVIEW_SECONDS,
     ) -> LearningReviewRecord:
         source = await self.require_owned_source(user_id, source_id)
         key = self._review_key(source_id, source_revision, policy_version)
@@ -291,6 +300,7 @@ class FakeLearningStore:
             existing.disposition in TERMINAL_REVIEW_DISPOSITIONS
             or existing.disposition == APPLIED_PENDING_DISPOSITION
             or (expected_run_id is not None and existing.run_id != expected_run_id)
+            or existing.held_by_another_run(run_id, live_seconds)
         ):
             return existing
         if existing is not None and existing.replay is not None and not completed:
@@ -336,6 +346,7 @@ class FakeLearningStore:
             output_tokens=output_tokens,
             cost_microdollars=cost_microdollars,
             created_at=existing.created_at if existing else _now(),
+            updated_at=_now(),
             completed_at=_now() if completed else None,
         )
         self.reviews[key] = record
@@ -351,6 +362,7 @@ class FakeLearningStore:
         run_id: str,
         max_attempts: int,
         expected_epoch: int,
+        live_seconds: int = LIVE_REVIEW_SECONDS,
     ) -> LearningReviewRecord | None:
         source = await self.get_source(user_id, source_id)
         if (
@@ -368,6 +380,7 @@ class FakeLearningStore:
             or existing.disposition in TERMINAL_REVIEW_DISPOSITIONS
             or existing.disposition == "applied_pending"
             or existing.replay is not None
+            or existing.held_by_another_run(run_id, live_seconds)
         ):
             return None
         if existing is None:
@@ -388,6 +401,7 @@ class FakeLearningStore:
                 "disposition": "reviewing",
                 "reason": "review started",
                 "completed_at": None,
+                "updated_at": _now(),
             }
         )
         self.reviews[self._review_key(source_id, source_revision, policy_version)] = (
@@ -423,6 +437,7 @@ class FakeLearningStore:
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
                 "cost_microdollars": cost_microdollars,
+                "updated_at": _now(),
             }
         )
         return True
@@ -440,7 +455,9 @@ class FakeLearningStore:
             or row.completed_at is not None
         ):
             return False
-        self.reviews[key] = row.model_copy(update={"replay": replay})
+        self.reviews[key] = row.model_copy(
+            update={"replay": replay, "updated_at": _now()}
+        )
         return True
 
     async def get_review_for_revision(
@@ -569,6 +586,22 @@ class FakeLearningStore:
         head = head.model_copy(update=update)
         self._put_head(head)
         return head
+
+    async def pause_use_if_current(
+        self, user_id: str, head_id: str, version_id: str
+    ) -> bool:
+        head = next(
+            (
+                h
+                for h in self.heads.values()
+                if h.id == head_id and h.user_id == user_id
+            ),
+            None,
+        )
+        if head is None or head.current_version_id != version_id:
+            return False
+        self._put_head(head.model_copy(update={"use_paused_at": _now()}))
+        return True
 
     # ---- versions ------------------------------------------------------
 
@@ -775,6 +808,7 @@ class FakeLearningStore:
                     "disposition": "applied",
                     "reason": reason,
                     "completed_at": _now(),
+                    "updated_at": _now(),
                     "replay": None,
                 }
             )
@@ -811,6 +845,7 @@ class FakeLearningStore:
                     "disposition": disposition,
                     "reason": reason,
                     "completed_at": _now(),
+                    "updated_at": _now(),
                     "replay": None,
                 }
             )
@@ -950,6 +985,88 @@ class FakeLearningStore:
         ]
         latest = max(rows, key=lambda v: v.version, default=None)
         return latest.id if latest else None
+
+    # ---- deletion ------------------------------------------------------
+
+    async def record_skill_deletion(
+        self,
+        user_id: str,
+        *,
+        expert_id: str | None,
+        skill_name: str,
+        expected_current_version_id: str | None,
+        behaviors: list[DeletedBehavior],
+        actor_user_id: str | None,
+    ) -> SkillDeletion:
+        owner_key = owner_key_for(expert_id)
+        head = await self.get_head(user_id, owner_key, skill_name)
+        current_id = head.current_version_id if head is not None else None
+        if current_id != expected_current_version_id:
+            return SkillDeletion(committed=False)
+        for behavior in behaviors:
+            if not await self.find_suppression(
+                user_id, owner_key, skill_name, behavior.behavior_fingerprint
+            ):
+                await self.add_suppression(
+                    user_id,
+                    expert_id=expert_id,
+                    skill_name=skill_name,
+                    behavior_fingerprint=behavior.behavior_fingerprint,
+                    behavior_tokens=behavior.behavior_tokens,
+                    evidence_fingerprints=behavior.evidence_fingerprints,
+                    actor_user_id=actor_user_id,
+                    reason="deleted by the owner",
+                )
+        if head is None:
+            head = await self.ensure_head(user_id, expert_id, skill_name)
+        marker = await self.create_version(
+            user_id,
+            head=head,
+            content="",
+            description="",
+            triggers=[],
+            origin=DELETED_ORIGIN,
+            summary=f"Deleted v{head.current_version}" if current_id else "Deleted",
+            state=DELETED_STATE,
+            actor_user_id=actor_user_id,
+        )
+        self._put_head(
+            head.model_copy(
+                update={
+                    "current_version": marker.version,
+                    "current_version_id": None,
+                    "content_hash": None,
+                    "auto_improve": True,
+                    "learning_paused_at": None,
+                    "use_paused_at": None,
+                }
+            )
+        )
+        history = [
+            v
+            for v in self.versions.values()
+            if v.user_id == user_id and v.head_id == head.id
+        ]
+        pending = [v for v in history if v.state == PENDING_WRITE_STATE]
+        for version in pending:
+            await self.abandon_publication(
+                user_id,
+                version_id=version.id,
+                review_id=version.review_id,
+                reason=DELETED_REASON,
+                disposition="suppressed",
+            )
+        archived = [v.id for v in history if v.state in ("ready", "needs_decision")]
+        for version_id in archived:
+            await self.set_version_state(
+                user_id, version_id, "archived", DELETED_REASON
+            )
+        return SkillDeletion(
+            committed=True,
+            marker=marker,
+            archived_version_ids=archived,
+            abandoned_version_ids=[v.id for v in pending],
+        )
 
     # ---- suppressions + use events -------------------------------------
 

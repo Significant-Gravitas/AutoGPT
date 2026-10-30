@@ -30,7 +30,7 @@ export function APIKeyListSkeleton() {
     <motion.div
       role="status"
       aria-label="Loading API keys"
-      className="flex w-full flex-col divide-y divide-zinc-200 overflow-hidden rounded-2xl border border-zinc-200 bg-white"
+      className="flex w-full flex-col divide-y divide-border-base overflow-hidden rounded-2xl border border-border-base bg-surface"
       initial={reduceMotion ? false : "hidden"}
       animate={reduceMotion ? undefined : "show"}
       variants={reduceMotion ? undefined : SKELETON_CONTAINER_VARIANTS}
@@ -38,7 +38,7 @@ export function APIKeyListSkeleton() {
       {PLACEHOLDER_ROWS.map((i) => (
         <motion.div
           key={i}
-          className="flex items-center justify-between py-4 pl-3 pr-5"
+          className="flex items-center justify-between py-4 pr-5 pl-3"
           variants={reduceMotion ? undefined : SKELETON_ITEM_VARIANTS}
         >
           <div className="flex items-center gap-3">

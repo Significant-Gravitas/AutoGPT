@@ -48,21 +48,21 @@ async def test_virus_rejection_abandons_the_snapshot_without_repeat_review(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "error",
+    "error, disposition",
     [
-        VirusScanError("scanner unavailable"),
-        StorageUploadError("upload unavailable"),
-        SkillLimitError("skill capacity reached"),
-        ValueError("storage quota exceeded"),
+        (VirusScanError("scanner unavailable"), "write_failed"),
+        (StorageUploadError("upload unavailable"), "write_failed"),
+        (SkillLimitError("skill capacity reached"), "paused"),
+        (ValueError("storage quota exceeded"), "write_failed"),
     ],
     ids=["scanner", "storage", "capacity", "quota"],
 )
 async def test_recoverable_publication_failure_replays_without_model_calls(
-    fake_store, adapter, boundaries, error
+    fake_store, adapter, boundaries, error, disposition
 ):
     source = await _source(fake_store)
     boundaries["write"].side_effect = error
-    assert (await _run()).dispositions == {"write_failed": 1}
+    assert (await _run()).dispositions == {disposition: 1}
     version = (await fake_store.list_pending_publications(USER))[0]
     assert (await fake_store.get_source(USER, source.id)).has_unprocessed_revision
     boundaries["write"].side_effect = None
