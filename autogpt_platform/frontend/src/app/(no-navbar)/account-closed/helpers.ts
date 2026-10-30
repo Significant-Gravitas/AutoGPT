@@ -30,8 +30,6 @@ interface PageViewArgs {
   isLoading: boolean;
   isError: boolean;
   status: AccountDeletionResponseStatus | undefined;
-  eraseAfter: Date | string | null | undefined;
-  now?: Date;
 }
 
 export function getPageView({
@@ -40,21 +38,16 @@ export function getPageView({
   isLoading,
   isError,
   status,
-  eraseAfter,
-  now = new Date(),
 }: PageViewArgs): PageView {
   if (isKept) return "open";
-  if (isTooLate) return "too_late";
-  // Not kept on this page: never closed, or kept earlier. Back to the app.
+  // The server decides: a 409 on Keep, or its too_late status once the date
+  // has passed or the erasure has started. Never the device clock.
+  if (isTooLate || status === "too_late") return "too_late";
+  // Not kept on this page: never closed, or kept earlier (a reload, another
+  // tab). Back to the app, once ordinary requests answer it as open.
   if (status === "open") return "leaving";
   if (isLoading) return "loading";
   if (isError || !status) return "error";
-  if (status === "too_late") return "too_late";
-  // The server says too_late once the date has passed or the erasure has
-  // started; the device clock is only a fallback.
-  if (eraseAfter && new Date(eraseAfter).getTime() <= now.getTime()) {
-    return "too_late";
-  }
   return "closed";
 }
 

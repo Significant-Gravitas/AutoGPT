@@ -34,15 +34,30 @@ export function useAccountClosedPage() {
     isLoading: status.isLoading,
     isError: status.isError,
     status: status.data?.status,
-    eraseAfter: status.data?.erase_after,
   });
+  const isLeavingOpen = view === "leaving";
 
   useEffect(
     function leaveAnOpenAccount() {
-      // Never closed, or kept before this visit: nothing to say here.
-      if (view === "leaving") window.location.replace("/");
+      // Never closed, or kept before this visit. Another server may still
+      // answer it as closed and send the app straight back here, so this
+      // waits for ordinary requests to answer it as open first (or gives up
+      // after the probe cap and goes anyway).
+      if (!isLeavingOpen) return;
+      let cancelled = false;
+      waitUntilAnsweredAsOpen({
+        probe: () => getV1GetUserTimezone(),
+        isCancelled: () => cancelled,
+        settings: { ...OPEN_PROBE, minWaitMS: 0 },
+        keptAt: 0,
+      }).then(function goToTheApp() {
+        if (!cancelled) window.location.replace("/");
+      });
+      return function stopWaiting() {
+        cancelled = true;
+      };
     },
-    [view],
+    [isLeavingOpen],
   );
 
   useEffect(

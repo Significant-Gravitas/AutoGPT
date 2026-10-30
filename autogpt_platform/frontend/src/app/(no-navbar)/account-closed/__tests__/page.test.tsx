@@ -221,17 +221,31 @@ describe("AccountClosedPage", () => {
     expect(mocks.replace).toHaveBeenCalledWith("/logout");
   });
 
-  test("an account that wasn't kept on this page goes back to the app", async () => {
-    // Never closed (say /login?next=/account-closed), or kept earlier.
+  test("an account that wasn't kept on this page goes back to the app once it answers as open", async () => {
+    // Never closed (say /login?next=/account-closed), or kept earlier: a
+    // reload or a second tab while other servers still cache "closed".
     status({ status: "open", erase_after: null });
+    const probes = probeRefuses(2);
     renderPage();
 
     await waitFor(() => expect(locationReplace).toHaveBeenCalledWith("/"));
+    // Two closed answers, then two open ones in a row, before leaving.
+    expect(probes.count).toBe(4);
+    expect(locationReplace).toHaveBeenCalledTimes(1);
     expect(
       screen.queryByRole("heading", { name: "Your account is open again" }),
     ).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Keep my account" }),
     ).toBeNull();
+  });
+
+  test("it still goes back to the app once the probes give up", async () => {
+    status({ status: "open", erase_after: null });
+    const probes = probeRefuses(1000);
+    renderPage();
+
+    await waitFor(() => expect(locationReplace).toHaveBeenCalledWith("/"));
+    expect(probes.count).toBe(20);
   });
 });

@@ -20,7 +20,7 @@ from autogpt_libs.auth import forget_account_state
 
 from backend.api.features.account_deletion.analytics import tenure_bucket
 from backend.api.features.account_deletion.models import AccountDeletionResponse
-from backend.api.features.store.cache import forget_creator_page
+from backend.api.features.store.cache import forget_store_listings
 from backend.data.account_deletion import (
     ReopenOutcome,
     get_deletion_request,
@@ -77,7 +77,7 @@ async def restore_account(user_id: str) -> None:
     if outcome is not ReopenOutcome.REOPENED:
         return
     logger.info(f"Account deletion cancelled: user {user_id} kept the account")
-    await forget_creator_page(user_id)
+    forget_store_listings()
     if request is not None:
         await _count_kept(user_id, request.eraseAfter)
 

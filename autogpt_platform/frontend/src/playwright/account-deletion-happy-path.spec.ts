@@ -26,7 +26,8 @@ test.skip(
 test("account deletion happy path: user closes their account from Settings, then signs in and keeps it", async ({
   page,
 }) => {
-  test.setTimeout(90000);
+  // Continue waits at least 35 s after Keep for every server's cache.
+  test.setTimeout(150000);
 
   const email = generateTestEmail();
   const password = await generateTestPassword();
@@ -89,7 +90,9 @@ test("account deletion happy path: user closes their account from Settings, then
   await expect(
     page.getByRole("heading", { name: "Your account is open again" }),
   ).toBeVisible({ timeout: 15000 });
-  await page.getByRole("button", { name: "Continue to AutoGPT" }).click();
+  const proceed = page.getByRole("button", { name: "Continue to AutoGPT" });
+  await expect(proceed).toBeVisible({ timeout: 60000 });
+  await proceed.click();
 
   await expect(page).not.toHaveURL(/\/account-closed/, { timeout: 20000 });
   await page.goto("/settings/account");

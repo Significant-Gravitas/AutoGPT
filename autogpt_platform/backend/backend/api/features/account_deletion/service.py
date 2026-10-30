@@ -62,14 +62,18 @@ count.
 
 Hand-off to data erasure (SECRT-2854): the AccountDeletionRequest row is the
 whole hand-off. That routine processes every row whose ``eraseAfter`` has
-passed and whose ``completedAt`` is still null, so there is nothing to enqueue
-here; a row deleted by reopening the account is simply gone. It should first
-rerun ``stop_user_work``: a schedule or trigger whose removal failed here is
-not retried, and neither the scheduler nor the webhook ingress checks for a
-closed account. It must also delete the user's auth identities with the User
-row, or the auth-identity monitor re-creates the User. A request whose
-``confirmationSentAt`` is still null got no email: by then the 14 days are
-over, so the routine words its own.
+passed and whose ``startedAt`` and ``completedAt`` are still null, claiming it
+by setting ``startedAt`` before it erases anything, so there is nothing to
+enqueue here; a row deleted by reopening the account is simply gone. It
+should first rerun ``stop_user_work``, as a schedule or trigger whose removal
+failed here is not retried (``is_user_refused`` keeps them from starting work
+meanwhile). It owns removing the memory crons closing leaves registered so
+they resume if the account is kept: ``delete_nightly_batch_schedule``,
+``delete_community_rebuild_schedule`` and ``delete_skill_learning_schedule``,
+for the account and for each of its experts. It must also delete the user's
+auth identities with the User row, or the auth-identity monitor re-creates
+the User. A request whose ``confirmationSentAt`` is still null got no email:
+by then the 14 days are over, so the routine words its own.
 
 Neither the typed email nor the account's email is ever logged.
 """
@@ -88,7 +92,7 @@ from backend.api.features.account_deletion.connected_apps import revoke_connecte
 from backend.api.features.account_deletion.email_opt_out import stop_account_emails
 from backend.api.features.account_deletion.issued_access import revoke_issued_access
 from backend.api.features.account_deletion.scheduled_work import stop_user_work
-from backend.api.features.store.cache import forget_creator_page
+from backend.api.features.store.cache import forget_store_listings
 from backend.data.account_deletion import (
     GRACE_PERIOD,
     close_account,
@@ -194,10 +198,11 @@ async def _close(
     """Close the account; None when a concurrent call closed it first."""
     request = await close_account(user_id, source)
     # Closed either way, so this worker rejects the user from now on, no
-    # background work starts for it, and its creator page is hidden at once.
+    # background work starts for it, and its listings and creator page leave
+    # the store at once (the transaction has committed).
     remember_account_closed(user_id)
     forget_refusal(user_id)
-    await forget_creator_page(user_id)
+    forget_store_listings()
     if request is not None:
         logger.info(f"Account deletion closed the account of user {user_id}")
     else:

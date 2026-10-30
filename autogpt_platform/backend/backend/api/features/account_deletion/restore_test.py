@@ -73,7 +73,7 @@ def edges(mocker: MockerFixture) -> MagicMock:
     for name, kind in (
         ("forget_account_state", MagicMock),
         ("forget_refusal", MagicMock),
-        ("forget_creator_page", AsyncMock),
+        ("forget_store_listings", MagicMock),
         ("capture_anonymous", MagicMock),
     ):
         parent.attach_mock(mocker.patch(f"{MODULE}.{name}", new_callable=kind), name)
@@ -104,7 +104,7 @@ async def test_keeping_the_account_lets_the_owner_and_its_work_back_at_once(
 
     edges.forget_account_state.assert_called_once_with(USER_ID)
     edges.forget_refusal.assert_called_once_with(USER_ID)
-    edges.forget_creator_page.assert_awaited_once_with(USER_ID)
+    edges.forget_store_listings.assert_called_once_with()
     [(event, properties)] = [c.args for c in edges.capture_anonymous.call_args_list]
     assert event is PostHogEvent.ACCOUNT_DELETION_KEPT
     assert properties["tenure_bucket"] == "90d+"
@@ -132,7 +132,7 @@ async def test_a_failed_count_still_keeps_the_account(
 
     await restore_account(USER_ID)
 
-    edges.forget_creator_page.assert_awaited_once_with(USER_ID)
+    edges.forget_store_listings.assert_called_once_with()
 
 
 @pytest.mark.asyncio

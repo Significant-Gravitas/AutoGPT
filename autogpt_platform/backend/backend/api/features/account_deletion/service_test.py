@@ -41,7 +41,7 @@ CLOSE = [
     "close_account",
     "remember_account_closed",
     "forget_refusal",
-    "forget_creator_page",
+    "forget_store_listings",
 ]
 AFTER_CLOSE = [
     "send_account_deleted_email",
@@ -51,7 +51,12 @@ AFTER_CLOSE = [
 STEPS = LOAD + BEFORE_CLOSE + CLOSE + AFTER_CLOSE
 # A confirmation that did not go out is left unmarked for the erasure routine.
 UNSENT = [name for name in STEPS if name != "mark_confirmation_sent"]
-SYNC_STEPS = {"remember_account_closed", "forget_refusal", "capture_anonymous"}
+SYNC_STEPS = {
+    "remember_account_closed",
+    "forget_refusal",
+    "forget_store_listings",
+    "capture_anonymous",
+}
 
 
 def _user() -> MagicMock:
@@ -103,7 +108,7 @@ async def test_every_step_runs_once_in_order(steps: MagicMock):
     )
     steps.remember_account_closed.assert_called_once_with(USER_ID)
     steps.forget_refusal.assert_called_once_with(USER_ID)
-    steps.forget_creator_page.assert_awaited_once_with(USER_ID)
+    steps.forget_store_listings.assert_called_once_with()
     steps.send_account_deleted_email.assert_awaited_once_with(
         EMAIL, AccountDeletionSource.SETTINGS, ERASE_AFTER
     )

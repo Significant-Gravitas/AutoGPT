@@ -110,61 +110,26 @@ describe("getPageView", () => {
     isTooLate: false,
     isLoading: false,
     isError: false,
-    now: new Date("2026-11-13T12:00:00Z"),
   };
 
-  test("a closed account before its erasure date can be kept", () => {
-    expect(
-      getPageView({
-        ...base,
-        status: "scheduled",
-        eraseAfter: "2026-11-13T12:00:01Z",
-      }),
-    ).toBe("closed");
-  });
-
-  test("from the erasure moment on it is too late", () => {
-    expect(
-      getPageView({
-        ...base,
-        status: "scheduled",
-        eraseAfter: "2026-11-13T12:00:00Z",
-      }),
-    ).toBe("too_late");
+  test("a scheduled account can be kept, whatever the device clock says", () => {
+    expect(getPageView({ ...base, status: "scheduled" })).toBe("closed");
   });
 
   test("an account kept on this page is open; any other open one leaves", () => {
-    expect(
-      getPageView({
-        ...base,
-        isKept: true,
-        status: "scheduled",
-        eraseAfter: null,
-      }),
-    ).toBe("open");
-    expect(getPageView({ ...base, status: "open", eraseAfter: null })).toBe(
-      "leaving",
+    expect(getPageView({ ...base, isKept: true, status: "scheduled" })).toBe(
+      "open",
     );
+    expect(getPageView({ ...base, status: "open" })).toBe("leaving");
   });
 
-  test("the server's too_late wins over the device clock", () => {
-    expect(
-      getPageView({
-        ...base,
-        status: "too_late",
-        eraseAfter: "2099-01-01T00:00:00Z",
-      }),
-    ).toBe("too_late");
+  test("the server's too_late status is too late", () => {
+    expect(getPageView({ ...base, status: "too_late" })).toBe("too_late");
   });
 
-  test("a 409 on Keep is too late, whatever the device clock says", () => {
-    expect(
-      getPageView({
-        ...base,
-        isTooLate: true,
-        status: "scheduled",
-        eraseAfter: "2099-01-01T00:00:00Z",
-      }),
-    ).toBe("too_late");
+  test("a 409 on Keep is too late", () => {
+    expect(getPageView({ ...base, isTooLate: true, status: "scheduled" })).toBe(
+      "too_late",
+    );
   });
 });
