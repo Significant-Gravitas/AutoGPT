@@ -4900,14 +4900,14 @@ tests = ["coverage-conditional-plugin (>=0.9.0)", "portalocker[redis]", "pytest 
 
 [[package]]
 name = "posthog"
-version = "7.75.11"
+version = "7.80.3"
 description = "Integrate PostHog into any python application."
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "posthog-7.75.11-py3-none-any.whl", hash = "sha256:c65d173b24ec82cbf0f977f4779348512a7f71b761809786e87ae47e347ebab1"},
-    {file = "posthog-7.75.11.tar.gz", hash = "sha256:c55e8de3943cc9cd86a8eda893f5ea1b9d631f52a2758dd14c0c17ef52632908"},
+    {file = "posthog-7.80.3-py3-none-any.whl", hash = "sha256:1529e3d0bf62e27deff48cfb421d6c2ba6cce46cb7383ae10673826f53890b81"},
+    {file = "posthog-7.80.3.tar.gz", hash = "sha256:e6425062577d4723e4d84936344bf8f4fe21a176546211817a2cf987b4b80e58"},
 ]
 
 [package.dependencies]
@@ -4920,8 +4920,9 @@ typing-extensions = ">=4.2.0"
 async = ["httpx (>=0.27.0,<1.0)"]
 dev = ["django-stubs", "griffe", "lxml", "mypy", "mypy-baseline", "packaging", "pre-commit", "pydantic (>=2.12.0)", "ruff", "setuptools", "tomli", "tomli_w", "twine", "types-requests", "types-setuptools", "wheel"]
 langchain = ["langchain (>=1.3.9)"]
+metrics = ["opentelemetry-exporter-otlp-proto-http (>=1.39.0)", "opentelemetry-instrumentation (>=0.60b0)", "opentelemetry-instrumentation-system-metrics (>=0.60b0)", "opentelemetry-sdk (>=1.39.0)"]
 otel = ["opentelemetry-exporter-otlp-proto-http (>=1.20.0)", "opentelemetry-sdk (>=1.20.0)"]
-test = ["anthropic (>=0.72)", "celery (>=5.3,<6)", "claude-agent-sdk", "coverage", "django (>=5.2.15,<6.0)", "djangorestframework (>=3.15,<4)", "fastapi (>=0.115,<1)", "fastmcp (>=2.0)", "flask (>=2.2)", "freezegun (==1.5.1)", "gevent (>=25.4.1) ; implementation_name == \"cpython\"", "google-genai", "jsonschema (>=4.0)", "langchain (>=1.3.9)", "langchain-anthropic (>=1.0)", "langchain-community (>=0.4)", "langchain-core (>=1.0)", "langchain-openai (>=1.1.14)", "langgraph (>=1.0)", "langgraph-checkpoint (>=4.1.1)", "mcp (>=1.28.1,<2)", "openai-agents (>=0.18)", "opentelemetry-exporter-otlp-proto-http (>=1.20.0)", "opentelemetry-instrumentation-celery (>=0.41b0)", "opentelemetry-sdk (>=1.20.0)", "parameterized (>=0.8.1)", "pydantic (>=2.12.0)", "pytest", "pytest-asyncio", "pytest-bdd (>=8.1.0)", "pytest-timeout", "python-dateutil (>=2.9.0.post0)", "tiktoken (>=0.12.0)", "tzdata", "zstandard (>=0.23.0)"]
+test = ["anthropic (>=0.72)", "celery (>=5.3,<6)", "claude-agent-sdk", "coverage", "django (>=5.2.15,<6.0)", "djangorestframework (>=3.15,<4)", "fastapi (>=0.115,<1)", "fastmcp (>=2.0)", "flask (>=2.2)", "freezegun (==1.5.1)", "gevent (>=25.4.1) ; implementation_name == \"cpython\"", "google-genai", "jsonschema (>=4.0)", "langchain (>=1.3.9)", "langchain-anthropic (>=1.0)", "langchain-community (>=0.4)", "langchain-core (>=1.0)", "langchain-openai (>=1.1.14)", "langgraph (>=1.0)", "langgraph-checkpoint (>=4.1.1)", "mcp (>=1.28.1,<2)", "openai-agents (>=0.18)", "opentelemetry-exporter-otlp-proto-http (>=1.20.0)", "opentelemetry-instrumentation (>=0.60b0)", "opentelemetry-instrumentation-aiohttp-client (>=0.60b0)", "opentelemetry-instrumentation-celery (>=0.41b0)", "opentelemetry-instrumentation-django (>=0.60b0)", "opentelemetry-instrumentation-flask (>=0.60b0)", "opentelemetry-instrumentation-httpx (>=0.60b0)", "opentelemetry-instrumentation-requests (>=0.60b0)", "opentelemetry-instrumentation-sqlite3 (>=0.60b0)", "opentelemetry-instrumentation-system-metrics (>=0.60b0)", "opentelemetry-instrumentation-wsgi (>=0.60b0)", "opentelemetry-sdk (>=1.20.0)", "parameterized (>=0.8.1)", "pydantic (>=2.12.0)", "pytest", "pytest-asyncio", "pytest-bdd (>=8.1.0)", "pytest-timeout", "python-dateutil (>=2.9.0.post0)", "tiktoken (>=0.12.0)", "tzdata", "zstandard (>=0.23.0)"]
 zstd = ["zstandard (>=0.23.0)"]
 
 [[package]]
@@ -8857,4 +8858,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.14"
-content-hash = "bea458e04accc10856d685eb8169b3be710e975052f609a7ca9b7882e6da8c9a"
+content-hash = "5b837b484da72a24217fcff3a905b9c6276adb9064c027674283e178cb030d97"
