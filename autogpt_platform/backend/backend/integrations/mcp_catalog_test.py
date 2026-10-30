@@ -20,6 +20,31 @@ def test_catalog_loads_validated_entries():
     assert get_mcp_catalog()
 
 
+def test_companyenrich_uses_bearer_auth_and_paid_tools_require_approval():
+    url = "https://mcp.companyenrich.com/mcp"
+    entry = get_mcp_catalog_entry_for_url(url)
+
+    assert entry is not None
+    assert entry.name == "mcp_companyenrich"
+    assert entry.display_name == "CompanyEnrich"
+    assert entry.mcp_server.connection_mode == "hosted"
+    assert entry.mcp_server.auth_methods == ["bearer"]
+    assert entry.mcp_server.oauth_scopes is None
+    assert (
+        entry.mcp_server.documentation_url
+        == "https://docs.companyenrich.com/docs/mcp-server"
+    )
+    for tool in (
+        "enrich_company",
+        "search_companies",
+        "find_similar",
+        "search_people",
+        "reverse_email",
+    ):
+        assert mcp_tool_effect(url, tool) == "external"
+    assert mcp_tool_effect(url, "unlisted_tool") is None
+
+
 def test_posthog_catalog_entry_uses_hosted_authentication():
     entry = get_mcp_catalog_entry_for_url("https://mcp.posthog.com/mcp")
 
