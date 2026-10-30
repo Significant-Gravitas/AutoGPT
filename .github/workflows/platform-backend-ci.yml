@@ -1,4 +1,4 @@
-name: Backend billing await diagnostic
+name: Backend SDK await diagnostic
 
 on:
   workflow_dispatch:
@@ -19,7 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.13"]
-        test-shard: [copilot-billing, billing-threads]
+        test-shard: [sdk-billing]
     runs-on: ubuntu-latest
 
     services:
@@ -95,7 +95,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          ref: ${{ github.sha }}
+          ref: 1396094f26e575eac4855add2fbfb9514fc94f7b
           # Full ref history is needed so the "Install Poetry" step below can
           # read poetry.lock off the base branch. `filter: blob:none` keeps
           # every ref reachable while skipping the blob download for all of
@@ -106,6 +106,11 @@ jobs:
           fetch-depth: 0
           filter: blob:none
           submodules: true
+
+      - name: Load bounded task diagnostic
+        run: >-
+          git show 03e535ac213fd5ae13fdd4fa84c8b12c6e3e6d95:.github/scripts/ci_async_diagnostic.py
+          > "$RUNNER_TEMP/ci_async_diagnostic.py"
 
       - name: Checkout skills catalog
         # The expert roster and the marketplace skills live in a separate
@@ -131,7 +136,7 @@ jobs:
             data)
               database_name="postgres"
               ;;
-            copilot|copilot-memory|copilot-billing|billing-threads|util-executor|api|remainder)
+            copilot|memory-experts|sdk-billing|billing-threads|util-executor|api|remainder)
               database_name="ci_${MATRIX_TEST_SHARD//-/_}"
               ;;
             *)
@@ -369,7 +374,7 @@ jobs:
         run: |
           export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${DATABASE_NAME}"
           export DIRECT_URL="$DATABASE_URL"
-          export PYTHONPATH="$GITHUB_WORKSPACE/.github/scripts${PYTHONPATH:+:$PYTHONPATH}"
+          export PYTHONPATH="$RUNNER_TEMP${PYTHONPATH:+:$PYTHONPATH}"
           pytest_args=(
             -p ci_async_diagnostic
             -s -vv
@@ -381,12 +386,6 @@ jobs:
             --cov-report="xml:coverage-${TEST_SHARD}.xml"
             --junitxml="junit-${TEST_SHARD}.xml"
           )
-          if [[ "${{ runner.debug }}" == "1" ]]; then
-            pytest_args+=(-s -vv -o log_cli=true -o log_cli_level=DEBUG)
-          else
-            pytest_args+=(-q)
-          fi
-
           python ../../.github/scripts/backend_test_shard.py "$TEST_SHARD" -- "${pytest_args[@]}"
 
       - name: Validate test reports
