@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resetCopilotChatRegistry } from "@/app/(platform)/copilot/copilotChatRegistry";
 import { TEST_BACKEND_BASE_URL } from "@/app/(platform)/copilot/__tests__/sse-helpers";
@@ -75,9 +75,12 @@ function mockAccountScope(understanding: () => MemoryUnderstanding) {
 }
 
 beforeEach(() => {
+  vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY", undefined);
   resetCopilotChatRegistry();
   window.history.replaceState({}, "", "/settings/memory");
 });
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe("What Otto knows about your work", () => {
   it("lists what onboarding stored, before any chat", async () => {
@@ -215,3 +218,85 @@ describe("What Otto knows about your work", () => {
 function settle() {
   return new Promise((resolve) => setTimeout(resolve, 300));
 }
+
+describe.each(["CLOUD", "LOCAL"])("memory availability in %s", (mode) => {
+  beforeEach(() => vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", mode));
+
+  it.each(["/settings/memory", "/settings/memory?expert=expert-maria"])(
+    "keeps the normal header and onboarding without graph requests at %s when disabled",
+    async (path) => {
+      vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY", "false");
+      window.history.replaceState({}, "", path);
+      const graphRequest = vi.fn();
+      server.use(
+        getListMyMemoryFactsMockHandler200(() => {
+          graphRequest();
+          return { expert_id: null, items: [] };
+        }),
+        getGetMyMemoryOverviewMockHandler200(() => {
+          graphRequest();
+          return { expert_id: null, facts: 0, entities: 0, episodes: 0 };
+        }),
+        getListMyExpertMemoryFactsMockHandler200(() => {
+          graphRequest();
+          return { expert_id: "expert-maria", items: [] };
+        }),
+        getGetMyExpertMemoryOverviewMockHandler200(() => {
+          graphRequest();
+          return {
+            expert_id: "expert-maria",
+            facts: 0,
+            entities: 0,
+            episodes: 0,
+          };
+        }),
+        getGetMyBusinessUnderstandingMockHandler200(KEPT),
+      );
+
+      render(<SettingsMemoryPage />);
+
+      const heading = screen.getByRole("heading", { name: "Memory", level: 1 });
+      const header = heading.parentElement;
+      expect(header?.tagName).toBe("HEADER");
+      expect(header?.className).toBe("flex min-w-0 flex-col pb-2 pl-4");
+      const note = screen.getByText(
+        "Long-term memory is unavailable on this installation.",
+      );
+      expect(note.parentElement).toBe(header);
+      expect(note.classList.contains("mt-4")).toBe(true);
+      expect(note.classList.contains("max-w-[600px]")).toBe(true);
+      expect(note.classList.contains("text-foreground-body")).toBe(true);
+      expect(await screen.findByText("Harbor Bikes")).toBeDefined();
+      expect(screen.getByRole("button", { name: "Forget this" })).toBeDefined();
+      expect(screen.queryByRole("button", { name: /erase/i })).toBeNull();
+      expect(graphRequest).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([undefined, "true"])(
+    "keeps graph memory and onboarding with override %s",
+    async (override) => {
+      vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY", override);
+      mockAccountScope(() => KEPT);
+      const graphRequest = vi.fn();
+      server.use(
+        getListMyMemoryFactsMockHandler200(() => {
+          graphRequest();
+          return { expert_id: null, items: [] };
+        }),
+      );
+
+      render(<SettingsMemoryPage />);
+
+      expect(await screen.findByText("Harbor Bikes")).toBeDefined();
+      expect(await screen.findByText(/Nothing remembered yet/)).toBeDefined();
+      expect(screen.getByRole("button", { name: /erase/i })).toBeDefined();
+      expect(graphRequest).toHaveBeenCalled();
+      expect(
+        screen.queryByText(
+          "Long-term memory is unavailable on this installation.",
+        ),
+      ).toBeNull();
+    },
+  );
+});

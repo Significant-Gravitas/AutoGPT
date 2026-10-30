@@ -3,6 +3,7 @@
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useEffect } from "react";
+import { environment } from "@/services/environment";
 
 import { SkillLearningSheet } from "@/components/organisms/SkillLearningSheet/SkillLearningSheet";
 import { EraseMemoryCard } from "./components/EraseMemoryCard";
@@ -23,6 +24,26 @@ export default function SettingsMemoryPage() {
     document.title = "Memory – AutoGPT Platform";
   }, []);
 
+  if (!environment.isGraphMemoryAvailable()) {
+    return (
+      <div className="flex flex-col gap-4">
+        <header className="flex min-w-0 flex-col pb-2 pl-4">
+          <Text variant="h4" as="h1">
+            Memory
+          </Text>
+          <Text variant="body" tone="body" className="mt-4 max-w-[600px]">
+            Long-term memory is unavailable on this installation.
+          </Text>
+        </header>
+        <UnderstandingCard />
+      </div>
+    );
+  }
+
+  return <MemorySettings />;
+}
+
+function MemorySettings() {
   const {
     scopeExpertID,
     selectScope,
