@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
+from ipaddress import IPv6Address, IPv6Network
 from typing import Annotated
 from uuid import uuid4
 
@@ -36,13 +37,8 @@ async def stored_key(server):
         await User.prisma().delete(where={"id": user.id})
 
 
-@pytest_asyncio.fixture
-async def client(stored_key, monkeypatch, mocker):
-    await get_redis_async()
-    monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_REDIS_TIMEOUT_SECONDS", 10)
-    mocker.patch.object(rate_limit, "datetime").now.return_value = datetime(
-        2026, 1, 1, 0, 0, 17, tzinfo=UTC
-    )
+@pytest.fixture
+def app():
     app = fastapi.FastAPI()
 
     @app.get("/auth")
@@ -51,6 +47,16 @@ async def client(stored_key, monkeypatch, mocker):
     ):
         return {"user_id": auth.user_id}
 
+    return app
+
+
+@pytest_asyncio.fixture
+async def client(stored_key, monkeypatch, mocker, app):
+    await get_redis_async()
+    monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_REDIS_TIMEOUT_SECONDS", 10)
+    mocker.patch.object(rate_limit, "datetime").now.return_value = datetime(
+        2026, 1, 1, 0, 0, 17, tzinfo=UTC
+    )
     transport = httpx.ASGITransport(app, client=(random_client_ip(), 1234))
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
@@ -70,7 +76,6 @@ async def test_successful_requests_do_not_exhaust_budget(
     client, stored_key, monkeypatch, auth_headers
 ):
     monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_PER_IP_HEAD_MAX_REQUESTS", 3)
-    monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_IP_MAX_REQUESTS", 5)
     info, plaintext = stored_key
     for _ in range(8):
         response = await client.get("/auth", headers=auth_headers(plaintext))
@@ -105,7 +110,6 @@ async def test_all_keys_with_same_head_and_tail_authenticate(stored_key):
 
 async def test_missing_peer_does_not_create_global_bucket(stored_key, monkeypatch):
     monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_PER_IP_HEAD_MAX_REQUESTS", 1)
-    monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_IP_MAX_REQUESTS", 1)
     request = Request({"type": "http", "headers": [], "client": None})
     for _ in range(3):
         budget = await rate_limit.enforce_api_key_validate_rate_limit(
@@ -133,7 +137,6 @@ async def test_concurrent_invalid_burst_stops_real_scrypt(
     client, stored_key, monkeypatch, mocker, auth_headers
 ):
     monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_PER_IP_HEAD_MAX_REQUESTS", 3)
-    monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_IP_MAX_REQUESTS", 100)
     verify = mocker.spy(api_key.keysmith, "verify_key")
     plaintext = stored_key[1]
     bad = plaintext[:8] + ("X" if plaintext[8] != "X" else "Y") + plaintext[9:]
@@ -164,7 +167,6 @@ async def test_concurrent_success_refunds_only_its_own_reservation(
     client, stored_key, monkeypatch, mocker, auth_headers
 ):
     monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_PER_IP_HEAD_MAX_REQUESTS", 8)
-    monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_IP_MAX_REQUESTS", 20)
     plaintext = stored_key[1]
     bad = plaintext[:8] + ("X" if plaintext[8] != "X" else "Y") + plaintext[9:]
     ready, release = asyncio.Event(), asyncio.Event()
@@ -193,7 +195,6 @@ async def test_concurrent_success_refunds_only_its_own_reservation(
         budget = reserve.call_args.args[0]
         redis = await get_redis_async()
         assert await redis.get(budget.head_key) == "8"
-        assert await redis.get(budget.ip_key) == "8"
         assert (
             await client.get("/auth", headers=auth_headers(plaintext))
         ).status_code == 429
@@ -206,12 +207,10 @@ async def test_concurrent_success_refunds_only_its_own_reservation(
     assert verify.call_count == 8
     # Three failed validations and the denied in-flight request remain charged.
     assert await redis.get(budget.head_key) == "4"
-    assert await redis.get(budget.ip_key) == "4"
     assert (
         await client.get("/auth", headers=auth_headers(plaintext))
     ).status_code == 200
     assert await redis.get(budget.head_key) == "4"
-    assert await redis.get(budget.ip_key) == "4"
 
 
 @pytest.mark.parametrize("state", [APIKeyStatus.REVOKED, APIKeyStatus.SUSPENDED])
@@ -243,23 +242,45 @@ async def test_legacy_key_still_authenticates_and_migrates(
     assert api_key.keysmith.verify_key(plaintext, migrated.hash, migrated.salt)
 
 
-async def test_head_rotation_cannot_escape_ip_budget_and_other_clients_work(
-    client, stored_key, monkeypatch, auth_headers
+async def test_unrelated_prefixes_do_not_block_valid_key_on_shared_address(
+    client, stored_key, mocker, auth_headers
 ):
-    monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_IP_MAX_REQUESTS", 3)
-    for head in ("agpt_AAA", "agpt_BBB", "agpt_CCC"):
+    verify = mocker.spy(api_key.keysmith, "verify_key")
+    plaintext = stored_key[1]
+    heads = [f"agpt_{i:03d}" for i in range(121) if f"agpt_{i:03d}" != plaintext[:8]]
+    for head in heads[:120]:
         assert (
-            await client.get("/auth", headers=auth_headers(head + "garbage"))
+            await client.get("/auth", headers=auth_headers(head + "garbage-tail"))
         ).status_code == 401
+    assert verify.call_count == 0
     assert (
-        await client.get("/auth", headers=auth_headers(stored_key[1]))
-    ).status_code == 429
-    request = Request(
-        {"type": "http", "headers": [], "client": (random_client_ip(), 1234)}
-    )
-    authenticated = await middleware.require_auth(request, stored_key[1], None)
-    assert authenticated.type == "api_key"
-    assert authenticated.user_id == stored_key[0].user_id
+        await client.get("/auth", headers=auth_headers(plaintext))
+    ).status_code == 200
+    assert verify.call_count == 1
+
+
+async def test_ipv6_rotation_shares_budget_but_other_subnet_still_works(
+    client, app, stored_key, monkeypatch, mocker, auth_headers
+):
+    monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_PER_IP_HEAD_MAX_REQUESTS", 3)
+    verify = mocker.spy(api_key.keysmith, "verify_key")
+    plaintext = stored_key[1]
+    bad = plaintext[:8] + ("X" if plaintext[8] != "X" else "Y") + plaintext[9:]
+    subnet = IPv6Network(f"{random_client_ip()}/64", strict=False)
+    responses = []
+    for suffix in range(1, 5):
+        transport = httpx.ASGITransport(app, client=(str(subnet[suffix]), 1234))
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            responses.append(await c.get("/auth", headers=auth_headers(bad)))
+    assert [r.status_code for r in responses] == [401, 401, 401, 429]
+    assert verify.call_count == 3
+    other_ip = str(IPv6Address(int(subnet.network_address) + (1 << 64)))
+    transport = httpx.ASGITransport(app, client=(other_ip, 1234))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        assert (
+            await c.get("/auth", headers=auth_headers(plaintext))
+        ).status_code == 200
+    assert verify.call_count == 4
 
 
 async def test_fixed_window_expires_and_late_refund_does_not_recreate_it(
@@ -279,7 +300,6 @@ async def test_fixed_window_expires_and_late_refund_does_not_recreate_it(
     redis = await get_redis_async()
     assert 0 < await redis.pttl(budget.head_key) <= 60000
     await redis.expire(budget.head_key, 0)
-    await redis.expire(budget.ip_key, 0)
     clock.now.return_value += timedelta(minutes=1)
     new_budget = await rate_limit.enforce_api_key_validate_rate_limit(
         request, stored_key[1]

@@ -11,6 +11,7 @@ import pytest_asyncio
 from fastapi import FastAPI, HTTPException, Request, Security
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import RedisClusterException
+from uvicorn._types import HTTPScope
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from backend.api.external import auth_rate_limit as rate_limit
@@ -60,8 +61,14 @@ def test_invalid_peer_has_no_shared_bucket(host):
 def test_ipv6_identity_is_canonical():
     assert (
         rate_limit.client_ip_from_request(request("2001:0db8:0:0:0:0:0:1"))
-        == "2001:db8::1"
+        == "2001:db8::/64"
     )
+
+
+def test_ipv4_mapped_ipv6_uses_ipv4_budget():
+    assert rate_limit.client_ip_from_request(
+        request("::ffff:192.0.2.10")
+    ) == rate_limit.client_ip_from_request(request("192.0.2.10"))
 
 
 def test_raw_forwarded_header_is_ignored():
@@ -86,7 +93,20 @@ async def test_uvicorn_trust_boundary(peer, forwarded, expected):
         observed.append(rate_limit.client_ip_from_request(Request(scope)))
 
     proxy = ProxyHeadersMiddleware(app, trusted_hosts=["127.0.0.1"])
-    scope = request(peer, forwarded).scope | {"scheme": "http"}
+    scope = HTTPScope(
+        type="http",
+        asgi={"version": "3.0", "spec_version": "2.3"},
+        http_version="1.1",
+        method="GET",
+        scheme="http",
+        path="/auth",
+        raw_path=b"/auth",
+        query_string=b"",
+        root_path="",
+        headers=[(b"x-forwarded-for", forwarded.encode())],
+        client=(peer, 1234),
+        server=None,
+    )
     await proxy(scope, AsyncMock(), AsyncMock())
     assert observed == [expected]
 
@@ -117,7 +137,9 @@ async def test_limiter_logic_failure_does_not_reach_key_validation(
     mocker, error, client, credential_headers
 ):
     redis = mocker.Mock()
-    redis.eval = AsyncMock(return_value=rate_limit.AUTH_VALIDATE_IP_MAX_REQUESTS + 1)
+    redis.eval = AsyncMock(
+        return_value=rate_limit.AUTH_VALIDATE_PER_IP_HEAD_MAX_REQUESTS + 1
+    )
     mocker.patch.object(rate_limit, "get_redis_async", return_value=redis)
     mocker.patch.object(
         rate_limit, "record_rate_limit_hit", side_effect=error("metric failure")
@@ -142,7 +164,7 @@ async def test_timeout_is_bounded_and_cancels_the_pending_operation(mocker, refu
 
     mocker.patch.object(rate_limit, "get_redis_async", new=stalled_connection)
     mocker.patch.object(rate_limit, "AUTH_VALIDATE_REDIS_TIMEOUT_SECONDS", 0.02)
-    budget = rate_limit.APIKeyValidationBudget(ip_key="ip", head_key="head")
+    budget = rate_limit.APIKeyValidationBudget(head_key="head")
     operation = (
         rate_limit.refund_api_key_validate_rate_limit(budget)
         if refund
@@ -156,7 +178,7 @@ async def test_refund_failure_preserves_success(mocker):
     mocker.patch.object(
         rate_limit, "get_redis_async", side_effect=RedisConnectionError("down")
     )
-    budget = rate_limit.APIKeyValidationBudget(ip_key="ip", head_key="head")
+    budget = rate_limit.APIKeyValidationBudget(head_key="head")
     await rate_limit.refund_api_key_validate_rate_limit(budget)
 
 
@@ -202,7 +224,7 @@ async def test_invalid_key_under_budget_returns_401(mocker, client, credential_h
 async def test_success_refunds_after_the_owner_check(
     mocker, client, credential_headers
 ):
-    budget = rate_limit.APIKeyValidationBudget(ip_key="ip", head_key="head")
+    budget = rate_limit.APIKeyValidationBudget(head_key="head")
     admit = mocker.patch.object(
         middleware, "enforce_api_key_validate_rate_limit", return_value=budget
     )

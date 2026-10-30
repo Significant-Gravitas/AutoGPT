@@ -77,33 +77,24 @@ An API key is a password to your account. Keep it on servers and in secret store
 ## API-key validation limits on v1
 
 The deprecated `/external-api/v1` API limits failed and in-flight API-key
-validations to 60 per client IP and key prefix, and 120 per IP, in a 60-second
-window. This applies to both `X-API-Key` and API keys sent as Bearer tokens.
+validations to 60 per client address and key prefix in a 60-second window.
+IPv6 addresses in the same `/64` share a budget; IPv4 addresses are counted
+individually. This applies to both `X-API-Key` and API keys sent as Bearer tokens.
 Successful authentication refunds its reservation; concurrent requests still
 occupy reservations until validation completes. A burst of valid requests can
 therefore receive `429` while earlier requests are still being verified.
-Shared-NAT clients share the IP ceiling. Excess attempts receive `429` with
-`Retry-After` before expensive key verification. v2 has its own
-[pre-verification limits](api-conventions.md#rate-limits).
+Callers sharing an address and key prefix share this budget; other prefixes
+have independent budgets. Excess attempts receive `429` with `Retry-After`.
+v2 has its own [pre-verification limits](api-conventions.md#rate-limits).
 
-Active candidates are filtered by stored prefix and suffix, including legacy
-keys. All matching candidates remain eligible for verification; this does not
-impose a fixed cap on hashes per admitted request or cache credentials.
-
-For self-hosting v1, configure Uvicorn's `FORWARDED_ALLOW_IPS` to trust only the
-actual reverse proxy chain and restrict direct backend access. The limiter uses
-the ASGI client address, never raw `X-Forwarded-For`. Bundled Nginx replaces that
-header with its connection's remote address and connects to Uvicorn over
-loopback. An additional outer proxy needs explicit trusted client-address
-restoration; otherwise all its callers share one budget. Never use blanket `*`
-trust on a reachable backend. Verify separate caller budgets and forged-header
-resistance through the complete deployed chain before enabling this limit.
-
-Missing or invalid client addresses skip throttling. Redis admission has a
-250ms deadline and fails open. Successful authentication has a separate 250ms
-deadline for refunding its reservation; a failed refund leaves the charge until
-expiry. Working Redis and trustworthy client attribution are prerequisites for
-enforcement.
+For self-hosting, this limit applies automatically when Redis is available and
+the server has a valid client address. Set Uvicorn's `FORWARDED_ALLOW_IPS` to your
+own reverse proxies' addresses, never `*`, and restrict direct backend access.
+Bundled Nginx passes its connection's remote address to Uvicorn over loopback.
+If another proxy sits in front of Nginx, configure trusted client-address
+restoration there; otherwise its callers share a budget for each key prefix.
+Verify separate caller budgets and resistance to forged forwarding headers
+through the complete deployed chain.
 
 ## Check what a key can do
 

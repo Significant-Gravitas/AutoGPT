@@ -10,7 +10,7 @@ import logging
 import re
 from collections.abc import Awaitable
 from datetime import UTC, datetime
-from ipaddress import ip_address
+from ipaddress import IPv6Address, ip_address, ip_network
 from typing import cast
 
 from autogpt_libs.api_key.keysmith import APIKeySmith
@@ -25,7 +25,6 @@ logger = logging.getLogger(__name__)
 
 AUTH_VALIDATE_WINDOW_SECONDS = 60
 AUTH_VALIDATE_PER_IP_HEAD_MAX_REQUESTS = 60
-AUTH_VALIDATE_IP_MAX_REQUESTS = 120
 AUTH_VALIDATE_REDIS_TIMEOUT_SECONDS = 0.25
 
 _INCR_OPEN_WINDOW = """
@@ -47,7 +46,6 @@ _REDIS_FAILURES = (RedisError, RedisClusterException, TimeoutError)
 
 
 class APIKeyValidationBudget(BaseModel):
-    ip_key: str = Field(repr=False)
     head_key: str = Field(repr=False)
 
 
@@ -63,7 +61,6 @@ async def enforce_api_key_validate_rate_limit(
     now = datetime.now(UTC)
     window = int(now.timestamp()) // AUTH_VALIDATE_WINDOW_SECONDS
     budget = APIKeyValidationBudget(
-        ip_key=f"external_api:auth_validate:ip:{ip}:{window}",
         head_key=f"external_api:auth_validate:rl:{ip}:{head}:{window}",
     )
     try:
@@ -95,6 +92,7 @@ async def refund_api_key_validate_rate_limit(
 def client_ip_from_request(request: Request) -> str | None:
     """Use the server's trusted-proxy-resolved peer, never raw forwarding headers.
 
+    IPv6 clients share a /64 budget; IPv4-mapped addresses use their IPv4 budget.
     Missing peers skip IP limiting rather than sharing a global anonymous bucket.
     Deployments must supply a client address and configure trusted proxy handling
     at the ASGI server boundary to enforce these per-client budgets.
@@ -102,9 +100,15 @@ def client_ip_from_request(request: Request) -> str | None:
     if request.client is None:
         return None
     try:
-        return ip_address(request.client.host).compressed
+        address = ip_address(request.client.host)
     except ValueError:
         return None
+    if address.version == 6:
+        ipv6 = IPv6Address(address)
+        if ipv6.ipv4_mapped is not None:
+            return ipv6.ipv4_mapped.compressed
+        return ip_network(f"{ipv6}/64", strict=False).with_prefixlen
+    return address.compressed
 
 
 def key_head_from_plaintext(plaintext_key: str) -> str | None:
@@ -118,28 +122,25 @@ def key_head_from_plaintext(plaintext_key: str) -> str | None:
 
 
 async def _reserve(budget: APIKeyValidationBudget, now: datetime) -> None:
-    for key, limit in (
-        (budget.ip_key, AUTH_VALIDATE_IP_MAX_REQUESTS),
-        (budget.head_key, AUTH_VALIDATE_PER_IP_HEAD_MAX_REQUESTS),
-    ):
-        count = await _eval(_INCR_OPEN_WINDOW, key, str(AUTH_VALIDATE_WINDOW_SECONDS))
-        if count > limit:
-            record_rate_limit_hit("external_api:auth_validate", "anonymous")
-            raise HTTPException(
-                status_code=429,
-                detail="Too many API key authentication attempts. Try again shortly.",
-                headers={
-                    "Retry-After": str(
-                        AUTH_VALIDATE_WINDOW_SECONDS
-                        - int(now.timestamp()) % AUTH_VALIDATE_WINDOW_SECONDS
-                    )
-                },
-            )
+    count = await _eval(
+        _INCR_OPEN_WINDOW, budget.head_key, str(AUTH_VALIDATE_WINDOW_SECONDS)
+    )
+    if count > AUTH_VALIDATE_PER_IP_HEAD_MAX_REQUESTS:
+        record_rate_limit_hit("external_api:auth_validate", "anonymous")
+        raise HTTPException(
+            status_code=429,
+            detail="Too many API key authentication attempts. Try again shortly.",
+            headers={
+                "Retry-After": str(
+                    AUTH_VALIDATE_WINDOW_SECONDS
+                    - int(now.timestamp()) % AUTH_VALIDATE_WINDOW_SECONDS
+                )
+            },
+        )
 
 
 async def _refund(budget: APIKeyValidationBudget) -> None:
-    for key in (budget.ip_key, budget.head_key):
-        await _eval(_REFUND_WINDOW, key)
+    await _eval(_REFUND_WINDOW, budget.head_key)
 
 
 async def _eval(script: str, key: str, *args: str) -> int:
