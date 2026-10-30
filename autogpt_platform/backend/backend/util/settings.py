@@ -563,6 +563,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "This value is then used to generate redirect URLs for OAuth flows.",
     )
 
+    microsoft_browser_sign_in: bool = Field(
+        default=False,
+        description="Offer browser sign-in for Microsoft connections. Turn it on "
+        "once the Entra app in MICROSOFT_CLIENT_ID has a secret, the Web redirect "
+        "{frontend_base_url}/auth/integrations/oauth_callback, access token "
+        "version 2 and personal accounts in its audience. Until then Microsoft "
+        "connects with sign-in codes.",
+    )
+
     trusted_frontend_origins: List[str] = Field(
         default=[],
         description="Extra frontend origins (in addition to frontend_base_url) "
