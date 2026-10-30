@@ -16,6 +16,14 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast: mockToast }),
 }));
 
+const mockRefreshSessionAction = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/auth/actions", () => ({
+  refreshSession: mockRefreshSessionAction,
+  getCurrentUser: vi.fn(),
+  validateSession: vi.fn(),
+  serverLogout: vi.fn(),
+}));
+
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({
     refreshSession: mockRefreshSession,
@@ -127,6 +135,38 @@ describe("EditNameDialog", () => {
       );
     });
     expect(mockToast).not.toHaveBeenCalledWith({ title: "Name updated" });
+  });
+
+  test("a refresh that can't reach the server is reported, not left unhandled", async () => {
+    // The real store and refresh helper; only the server action fails.
+    const { useAuthStore } = await import("@/lib/auth/hooks/useAuthStore");
+    const user = { id: "user-1", email: "a@example.com" } as never;
+    useAuthStore.setState({ user, hasLoadedUser: true });
+    mockRefreshSession.mockImplementation(() =>
+      useAuthStore.getState().refreshSession(),
+    );
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    mockRefreshSessionAction.mockRejectedValue(
+      new TypeError("Failed to fetch"),
+    );
+    mockUpdateNameSuccess();
+
+    render(<EditNameDialog currentName="Alice" />);
+
+    const input = await openDialogAndGetInput();
+    fireEvent.change(input, { target: { value: "Bob" } });
+    fireEvent.click(getSaveButton());
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Name saved, but session refresh failed",
+          variant: "destructive",
+        }),
+      );
+    });
+    expect(useAuthStore.getState().user).toBe(user);
+    useAuthStore.setState({ user: null, hasLoadedUser: false });
   });
 
   test("disables Save button while input is empty", async () => {

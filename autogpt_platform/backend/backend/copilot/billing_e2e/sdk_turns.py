@@ -72,12 +72,18 @@ class SdkTurns:
         # files from the same place.
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(self._config_dir))
-        # Where a direct-Anthropic CLI sends its requests; the key is never
-        # checked. OpenRouter and Codex turns override both.
+        # Where a direct-Anthropic CLI sends its requests, which that route
+        # carries over from this process; the key is never checked.
+        # OpenRouter and Codex turns override both.
         monkeypatch.setenv("ANTHROPIC_BASE_URL", f"{provider.url}/anthropic")
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-billing-e2e")
-        if cli_max_retries is not None:
-            monkeypatch.setenv("CLAUDE_CODE_MAX_RETRIES", str(cli_max_retries))
+        # The CLI keeps nothing else of this process's environment, so a
+        # setting for it goes in the launch's own.
+        self._cli_env = (
+            {"CLAUDE_CODE_MAX_RETRIES": str(cli_max_retries)}
+            if cli_max_retries is not None
+            else {}
+        )
         monkeypatch.setattr(sdk_env, "config", config)
         monkeypatch.setattr(
             openrouter_cost,
@@ -168,6 +174,7 @@ class SdkTurns:
         options.hooks = None
         options.allowed_tools = []
         options.disallowed_tools = []
+        options.env = {**options.env, **self._cli_env}
         return ClaudeSDKClient(*args, options=options, **kwargs)
 
     def _governor(self, **kwargs: Any) -> TurnGovernor:

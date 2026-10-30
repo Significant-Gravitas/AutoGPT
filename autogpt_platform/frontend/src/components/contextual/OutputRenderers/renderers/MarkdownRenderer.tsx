@@ -84,7 +84,7 @@ function renderPlainLink(url: string, label: React.ReactNode = url) {
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-blue-600 underline"
+      className="text-info-foreground underline"
     >
       {label}
     </a>
@@ -119,7 +119,7 @@ function renderVideoEmbed(url: string): React.ReactNode {
         <div className="relative aspect-video">
           <YouTubeEmbed
             url={url}
-            className="absolute left-0 top-0 rounded-lg shadow-md"
+            className="absolute top-0 left-0 rounded-lg shadow-md"
           />
         </div>
       </div>
@@ -153,7 +153,7 @@ function renderVideoEmbed(url: string): React.ReactNode {
         <iframe
           src={embedUrl}
           title="Embedded video player"
-          className="absolute left-0 top-0 h-full w-full rounded-lg shadow-md"
+          className="absolute top-0 left-0 h-full w-full rounded-lg shadow-md"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
         />
@@ -200,7 +200,7 @@ const MARKDOWN_COMPONENTS: Components = {
   // Custom components for better rendering
   pre: ({ children, ...props }) => (
     <pre
-      className="my-4 overflow-x-auto rounded-md bg-gray-900 p-4 dark:bg-gray-950"
+      className="my-4 overflow-x-auto rounded-md bg-action-hover p-4"
       {...props}
     >
       {children}
@@ -212,7 +212,7 @@ const MARKDOWN_COMPONENTS: Components = {
     if (isInline) {
       return (
         <code
-          className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-sm text-gray-800 dark:bg-gray-800 dark:text-gray-200"
+          className="rounded bg-surface-hover px-1.5 py-0.5 font-mono text-sm text-foreground-emphasis"
           {...props}
         >
           {children}
@@ -221,7 +221,7 @@ const MARKDOWN_COMPONENTS: Components = {
     }
     // Block code is handled by rehype-highlight
     return (
-      <code className="font-mono text-sm text-gray-100" {...props}>
+      <code className="font-mono text-sm text-action-foreground" {...props}>
         {children}
       </code>
     );
@@ -231,7 +231,7 @@ const MARKDOWN_COMPONENTS: Components = {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-black underline decoration-1 underline-offset-2 transition-colors"
+      className="text-foreground-base underline decoration-1 underline-offset-2 transition-colors"
       {...props}
     >
       <InsideLinkContext.Provider value={true}>
@@ -241,7 +241,7 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   blockquote: ({ children, ...props }) => (
     <blockquote
-      className="my-4 border-l-4 border-blue-500 pl-4 italic text-gray-700 dark:border-blue-400 dark:text-gray-300"
+      className="my-4 border-l-4 border-info pl-4 text-foreground-body italic"
       {...props}
     >
       {children}
@@ -250,7 +250,7 @@ const MARKDOWN_COMPONENTS: Components = {
   table: ({ children, ...props }) => (
     <div className="my-4 overflow-x-auto">
       <table
-        className="min-w-full divide-y divide-gray-200 border-y border-gray-200 dark:divide-gray-700 dark:border-gray-700"
+        className="min-w-full divide-y divide-border-base border-y border-border-base"
         {...props}
       >
         {children}
@@ -259,7 +259,7 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   th: ({ children, ...props }) => (
     <th
-      className="bg-gray-50 px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+      className="bg-surface-muted px-4 py-3.5 text-left text-xs font-semibold tracking-wider text-foreground-body uppercase"
       {...props}
     >
       {children}
@@ -267,7 +267,7 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   td: ({ children, ...props }) => (
     <td
-      className="border-t border-gray-200 px-4 py-3.5 text-sm text-gray-600 dark:border-gray-700 dark:text-gray-400"
+      className="border-t border-border-base px-4 py-3.5 text-sm text-foreground-secondary"
       {...props}
     >
       {children}
@@ -279,7 +279,7 @@ const MARKDOWN_COMPONENTS: Components = {
       return (
         <input
           type="checkbox"
-          className="mr-2 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-70"
+          className="mr-2 h-4 w-4 rounded border-border-strong text-info-foreground focus:ring-info disabled:cursor-not-allowed disabled:opacity-70"
           disabled
           {...props}
         />
@@ -305,7 +305,7 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   li: ({ children, ...props }: any) => (
     <li
-      className={`text-gray-700 dark:text-gray-300 ${
+      className={`text-foreground-body ${
         props.className?.includes("task-list-item") ? "flex items-start" : ""
       }`}
       {...props}
@@ -315,16 +315,13 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   // Better heading styles
   h1: ({ children, ...props }) => (
-    <h1
-      className="my-6 text-3xl font-bold text-gray-900 dark:text-gray-100"
-      {...props}
-    >
+    <h1 className="my-6 text-3xl font-bold text-foreground-base" {...props}>
       {children}
     </h1>
   ),
   h2: ({ children, ...props }) => (
     <h2
-      className="my-5 text-2xl font-semibold text-gray-800 dark:text-gray-200"
+      className="my-5 text-2xl font-semibold text-foreground-emphasis"
       {...props}
     >
       {children}
@@ -332,43 +329,35 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   h3: ({ children, ...props }) => (
     <h3
-      className="my-4 text-xl font-semibold text-gray-800 dark:text-gray-200"
+      className="my-4 text-xl font-semibold text-foreground-emphasis"
       {...props}
     >
       {children}
     </h3>
   ),
   h4: ({ children, ...props }) => (
-    <h4
-      className="my-3 text-lg font-medium text-gray-700 dark:text-gray-300"
-      {...props}
-    >
+    <h4 className="my-3 text-lg font-medium text-foreground-body" {...props}>
       {children}
     </h4>
   ),
   h5: ({ children, ...props }) => (
-    <h5
-      className="my-2 text-base font-medium text-gray-700 dark:text-gray-300"
-      {...props}
-    >
+    <h5 className="my-2 text-base font-medium text-foreground-body" {...props}>
       {children}
     </h5>
   ),
   h6: ({ children, ...props }) => (
     <h6
-      className="my-2 text-sm font-medium text-gray-600 dark:text-gray-400"
+      className="my-2 text-sm font-medium text-foreground-secondary"
       {...props}
     >
       {children}
     </h6>
   ),
   // Horizontal rule
-  hr: ({ ...props }) => (
-    <hr className="my-6 border-gray-300 dark:border-gray-700" {...props} />
-  ),
+  hr: ({ ...props }) => <hr className="my-6 border-border-strong" {...props} />,
   // Strikethrough (GFM)
   del: ({ children, ...props }) => (
-    <del className="text-gray-500 line-through dark:text-gray-500" {...props}>
+    <del className="text-foreground-tertiary line-through" {...props}>
       {children}
     </del>
   ),
@@ -383,7 +372,7 @@ const MARKDOWN_COMPONENTS: Components = {
     }
 
     return (
-      // eslint-disable-next-line @next/next/no-img-element
+      // eslint-disable-next-line @next/next/no-img-element -- remote URL from any host, which next/image would need configured
       <img
         src={src}
         alt={alt}
@@ -415,10 +404,7 @@ const MARKDOWN_COMPONENTS: Components = {
     }
 
     return (
-      <p
-        className="my-3 leading-relaxed text-gray-700 dark:text-gray-300"
-        {...props}
-      >
+      <p className="my-3 leading-relaxed text-foreground-body" {...props}>
         {children}
       </p>
     );
@@ -434,7 +420,7 @@ function renderMarkdown(
   return (
     <div className="markdown-output">
       <ReactMarkdown
-        className="prose prose-sm dark:prose-invert max-w-none"
+        className="max-w-none"
         remarkPlugins={[
           remarkGfm, // GitHub Flavored Markdown (tables, task lists, strikethrough)
           [remarkMath, { singleDollarTextMath: true }], // Math support for LaTeX

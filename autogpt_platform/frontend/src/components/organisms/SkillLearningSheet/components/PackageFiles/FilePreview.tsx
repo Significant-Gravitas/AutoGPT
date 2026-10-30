@@ -9,13 +9,16 @@ interface Props {
 export function FilePreview({ file, label }: Props) {
   if (!file) return null;
   return (
-    <div className="min-w-0">
+    <div data-slot="skill-learning-sheet-file-preview" className="min-w-0">
       <Text variant="small" tone="secondary">
         {label} · {file.size_bytes.toLocaleString()} bytes
         {file.is_executable ? " · Executable" : ""}
       </Text>
       {file.content != null ? (
-        <pre className="mt-1 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md bg-zinc-900 p-3 text-xs text-zinc-100">
+        <pre
+          data-slot="skill-learning-sheet-file-preview-content"
+          className="mt-1 max-h-80 overflow-auto rounded-md bg-action-hover p-3 text-xs break-words whitespace-pre-wrap text-action-foreground"
+        >
           {file.content ||
             (file.content_truncated ? "(preview unavailable)" : "(empty file)")}
         </pre>

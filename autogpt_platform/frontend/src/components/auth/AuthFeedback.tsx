@@ -1,6 +1,11 @@
+import { Text } from "@/components/atoms/Text/Text";
 import { HelpItem } from "@/components/auth/help-item";
-import { Card, CardContent } from "@/components/__legacy__/ui/card";
-import { AlertCircle, CheckCircle } from "lucide-react";
+import { Card, CardContent } from "@/components/atoms/Card/Card";
+import {
+  AlertCircleIcon,
+  CheckmarkCircle02Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { BehaveAs } from "@/services/environment";
 
 interface Props {
@@ -36,15 +41,19 @@ export default function AuthFeedback({
     <div className="mt-4 w-full space-y-4">
       {/* Message feedback */}
       {displayMessage && (
-        <div className="text-center text-sm font-medium leading-normal">
+        <div className="text-center text-sm leading-normal font-medium">
           {isError ? (
-            <div className="flex items-center justify-center space-x-2 text-red-500">
-              <AlertCircle className="h-4 w-4" />
+            <div className="flex items-center justify-center space-x-2 text-error">
+              <Icon aria-hidden icon={AlertCircleIcon} className="h-4 w-4" />
               <span>{displayMessage}</span>
             </div>
           ) : (
-            <div className="flex items-center justify-center space-x-2 text-green-600">
-              <CheckCircle className="h-4 w-4" />
+            <div className="flex items-center justify-center space-x-2 text-success">
+              <Icon
+                aria-hidden
+                icon={CheckmarkCircle02Icon}
+                className="h-4 w-4"
+              />
               <span>{displayMessage}</span>
             </div>
           )}
@@ -54,12 +63,20 @@ export default function AuthFeedback({
       {/* Cloud-specific help */}
       {showCloudHelp &&
         (isSignupFlow ? (
-          <Card className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <Card
+            variant="outlined"
+            className="overflow-hidden rounded-lg border border-border-base bg-surface shadow-sm"
+          >
             <CardContent className="p-0">
-              <div className="divide-y divide-slate-100">
-                <span className="my-3 block text-center text-sm font-medium text-red-500">
+              <div className="divide-y divide-separator">
+                <Text
+                  variant="body-medium-tight"
+                  as="span"
+                  tone="error"
+                  className="my-3 block text-center"
+                >
                   The provided email may not be allowed to sign up.
-                </span>
+                </Text>
                 <HelpItem
                   title="AutoGPT Platform is currently in closed beta. "
                   description="You can join "
@@ -77,9 +94,12 @@ export default function AuthFeedback({
             </CardContent>
           </Card>
         ) : (
-          <Card className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <Card
+            variant="outlined"
+            className="overflow-hidden rounded-lg border border-border-base bg-surface shadow-sm"
+          >
             <CardContent className="p-0">
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y divide-separator">
                 <HelpItem
                   title="Having trouble logging in?"
                   description="Make sure you've already "
@@ -93,8 +113,11 @@ export default function AuthFeedback({
 
       {/* Local-specific help */}
       {showLocalHelp && (
-        <Card className="w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="w-full divide-y divide-slate-100">
+        <Card
+          variant="outlined"
+          className="w-full overflow-hidden rounded-lg border border-border-base bg-surface shadow-sm"
+        >
+          <div className="w-full divide-y divide-separator">
             <HelpItem
               title="Having trouble getting AutoGPT running locally?"
               description="Ask for help on our"

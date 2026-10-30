@@ -362,10 +362,10 @@ class LowBalanceCause(BaseCause[Literal[AlertCause.LOW_BALANCE]]):
     @property
     def preheader(self) -> str:
         if self.days_left is None:
-            return f"{self.balance_display} remaining."
+            return f"{self.balance_display} left."
         return (
-            f"At {self.daily_rate_display}/day the {self.balance_display} remaining "
-            f"run out around {self.runs_out_label}."
+            f"At about {self.daily_rate_display} a day, the {self.balance_display} "
+            f"you have left runs out around {self.runs_out_label}."
         )
 
     @property
@@ -408,7 +408,7 @@ class ZeroBalanceCause(BaseCause[Literal[AlertCause.ZERO_BALANCE]]):
 
     @property
     def preheader(self) -> str:
-        return f"{self.agent} needs {self.shortfall_display} more credits to finish."
+        return f"{self.agent} needs {self.shortfall_display} more to finish."
 
     @property
     def body(self) -> str:
@@ -436,12 +436,12 @@ class GuardrailCause(BaseCause[Literal[AlertCause.GUARDRAIL]]):
 
     @property
     def headline(self) -> str:
-        return f"{self.agent} hit its spend limit"
+        return f"{self.agent} hit its budget"
 
     @property
     def preheader(self) -> str:
         return (
-            f"Reached its {self.limit_display}-credit limit for this "
+            f"Reached its {self.limit_display} budget for this "
             f"{self.period_noun} and stopped mid-run."
         )
 
@@ -451,7 +451,7 @@ class GuardrailCause(BaseCause[Literal[AlertCause.GUARDRAIL]]):
 
     @property
     def cta_label(self) -> str:
-        return "Review spend limit"
+        return "Review budget"
 
     @property
     def agent_label(self) -> str:
@@ -459,7 +459,7 @@ class GuardrailCause(BaseCause[Literal[AlertCause.GUARDRAIL]]):
 
     @property
     def tag(self) -> str | None:
-        return "spend limit hit"
+        return "budget hit"
 
 
 AlertCausePayload = Annotated[

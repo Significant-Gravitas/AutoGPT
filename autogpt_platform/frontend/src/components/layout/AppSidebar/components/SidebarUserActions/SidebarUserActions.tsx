@@ -1,17 +1,22 @@
 "use client";
 
+import { tourTarget } from "@/lib/tour-targets";
 import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
 import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 import { okData } from "@/app/api/helpers";
 import { AccountMenu } from "@/components/layout/Navbar/components/AccountMenu/AccountMenu";
 import { Wallet } from "@/components/layout/Navbar/components/Wallet/Wallet";
 import { getAccountMenuItems } from "@/components/layout/Navbar/helpers";
-import { SidebarFooter, useSidebar } from "@/components/ui/sidebar";
+import {
+  SidebarFooter,
+  useSidebar,
+} from "@/components/molecules/Sidebar/Sidebar";
 import {
   Tooltip as SidebarTooltip,
   TooltipContent as SidebarTooltipContent,
   TooltipTrigger as SidebarTooltipTrigger,
-} from "@/components/ui/tooltip";
+  TooltipPortal,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 
@@ -51,20 +56,30 @@ export function SidebarUserActions() {
   );
 
   return (
-    <SidebarFooter className="sticky bottom-0 z-10 mt-auto shrink-0 border-t border-zinc-100 bg-sidebar px-4">
+    <SidebarFooter
+      {...tourTarget("account")}
+      className="sticky bottom-0 z-10 mt-auto shrink-0 border-t border-separator bg-sidebar px-4"
+    >
       <div className="flex w-full items-center justify-between group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1">
         {isCollapsed ? (
-          <SidebarTooltip>
+          <SidebarTooltip inheritDelay>
             <SidebarTooltipTrigger asChild>
               <div>{accountMenu}</div>
             </SidebarTooltipTrigger>
-            <SidebarTooltipContent side="right">Account</SidebarTooltipContent>
+            <TooltipPortal>
+              <SidebarTooltipContent side="right">
+                Account
+              </SidebarTooltipContent>
+            </TooltipPortal>
           </SidebarTooltip>
         ) : (
           accountMenu
         )}
+        {/* Shown in the collapsed rail too: a new account starts there, and
+            a wallet that only appears once the sidebar is expanded is one
+            new users never find. */}
         {profile && (
-          <div className="group-data-[collapsible=icon]:hidden">
+          <div {...tourTarget("wallet")}>
             <Wallet key={profile.username} compact />
           </div>
         )}

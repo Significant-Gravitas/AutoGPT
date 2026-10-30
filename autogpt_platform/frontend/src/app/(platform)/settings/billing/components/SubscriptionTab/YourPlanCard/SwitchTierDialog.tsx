@@ -50,13 +50,14 @@ export function SwitchTierDialog({
       variant="compact"
       title={
         <div className="space-y-2 pr-7">
-          <Text variant="small" className="text-zinc-500">
+          <Text variant="small" tone="muted">
             {title ? "Your subscription" : `Upgrade to ${targetTierLabel}`}
           </Text>
           <Text
-            variant="h3"
+            variant="h3-tracking-tight"
             as="span"
-            className="block text-[26px] leading-8 tracking-tight"
+            // oxlint-disable-next-line design-system/no-restyle -- the dialog title sits on a 32px line under its eyebrow
+            className="block leading-8"
           >
             {title ?? `Upgrade to ${targetTierLabel}`}
           </Text>
@@ -67,7 +68,7 @@ export function SwitchTierDialog({
     >
       <Dialog.Content>
         {usageCarriesOver && (
-          <Text variant="body" className="mb-5 leading-6 text-zinc-600">
+          <Text variant="body" tone="secondary" className="mb-5">
             {usageMultiplier
               ? `${usageMultiplier} times the usage of Pro and priority support.`
               : "More room for demanding work and priority support."}
@@ -78,7 +79,7 @@ export function SwitchTierDialog({
         ) : (
           <>
             {priceCents !== undefined && (
-              <div className="mb-5 flex flex-wrap items-baseline justify-between gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-5">
+              <div className="mb-5 flex flex-wrap items-baseline justify-between gap-3 rounded-2xl border border-border-base bg-surface-muted p-5">
                 <Text variant="large-medium">AutoGPT {targetTierLabel}</Text>
                 <div>
                   <Text variant="h3" as="span">
@@ -91,7 +92,7 @@ export function SwitchTierDialog({
                 </div>
               </div>
             )}
-            <Text variant="body" as="span" className="text-zinc-700">
+            <Text variant="body" as="span" tone="body">
               {body}
             </Text>
           </>
@@ -100,7 +101,8 @@ export function SwitchTierDialog({
           <Text
             variant="small"
             tone="secondary"
-            className="mt-4 rounded-xl bg-zinc-50 p-4 leading-6"
+            // oxlint-disable-next-line design-system/no-restyle -- the carry-over note is a tinted block at a 24px line height
+            className="mt-4 rounded-xl bg-surface-muted p-4 leading-6"
           >
             You can keep going once payment goes through. What you’ve already
             used counts toward Max’s limit
@@ -111,6 +113,7 @@ export function SwitchTierDialog({
         )}
         <Dialog.Footer
           className={
+            // oxlint-disable-next-line design-system/no-restyle -- the carry-over footer stacks its two buttons
             usageCarriesOver ? "flex-col items-stretch gap-2" : undefined
           }
         >

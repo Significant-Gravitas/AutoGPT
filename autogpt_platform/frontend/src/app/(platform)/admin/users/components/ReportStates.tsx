@@ -22,14 +22,14 @@ interface ErrorProps {
 export function ReportError({ message, isForbidden, onRetry }: ErrorProps) {
   if (isForbidden) {
     return (
-      <Text variant="small" className="text-zinc-500">
+      <Text variant="small" tone="muted">
         You no longer have admin access. Sign in again.
       </Text>
     );
   }
   return (
     <div className="flex items-center justify-between gap-4">
-      <Text variant="small" className="text-zinc-500">
+      <Text variant="small" tone="muted">
         {message}
       </Text>
       <Button variant="secondary" size="small" onClick={onRetry}>

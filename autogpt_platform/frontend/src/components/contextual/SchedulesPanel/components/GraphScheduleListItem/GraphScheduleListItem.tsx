@@ -28,6 +28,8 @@ interface Props {
   iconClassName?: string;
   /** Size override for the View/Delete buttons, e.g. compact row actions. */
   actionClassName?: string;
+  /** `body-md` inside a profile tab, whose copy reads at 15px. */
+  textSize?: "body" | "body-md";
 }
 
 export function GraphScheduleListItem({
@@ -36,6 +38,7 @@ export function GraphScheduleListItem({
   className,
   iconClassName,
   actionClassName,
+  textSize = "body",
 }: Props) {
   const {
     nextRunLabel,
@@ -57,7 +60,7 @@ export function GraphScheduleListItem({
   return (
     <div
       className={cn(
-        "flex w-full flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between",
+        "flex w-full flex-col gap-3 rounded-lg border border-border-base bg-surface p-3 sm:flex-row sm:items-center sm:justify-between",
         className,
       )}
       data-testid="schedule-row"
@@ -71,41 +74,41 @@ export function GraphScheduleListItem({
       >
         <div
           className={cn(
-            "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-slate-50 bg-emerald-50",
+            "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-separator bg-success-surface",
             iconClassName,
           )}
         >
           <Icon
             icon={Calendar03Icon}
             size={18}
-            className={iconClassName ? "text-inherit" : "text-emerald-700"}
+            className={
+              iconClassName ? "text-inherit" : "text-success-foreground"
+            }
           />
         </div>
         <div className="flex min-w-0 flex-col gap-1">
           <Text
-            variant="body-medium"
+            variant={textSize === "body-md" ? "body-md-medium" : "body-medium"}
             className="block w-full truncate text-ellipsis"
           >
             {agentLabel}
           </Text>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-            <Text
-              variant="small"
-              className="!text-zinc-500"
-              title={nextRunTitle}
-            >
+            <Text variant="small" tone="muted" title={nextRunTitle}>
               {nextRunLabel}
             </Text>
-            <span className="text-zinc-300">•</span>
-            <Text variant="small" className="!text-zinc-500">
+            <span className="text-foreground-disabled">•</span>
+            <Text variant="small" tone="muted">
               {recurrenceLabel}
             </Text>
-            <span className="text-zinc-300">•</span>
+            <span className="text-foreground-disabled">•</span>
             <span
-              className="rounded-md bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700"
+              className="flex rounded-md bg-success-surface px-2 py-0.5"
               data-testid="schedule-kind-badge"
             >
-              Workflow run
+              <Text variant="small-tight" as="span" tone="success-strong">
+                Workflow run
+              </Text>
             </span>
           </div>
         </div>
@@ -145,23 +148,23 @@ export function GraphScheduleListItem({
         <Dialog.Content>
           <div className="flex flex-col gap-5">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50">
+              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-success/20 bg-success-surface">
                 <Icon
                   icon={Calendar03Icon}
                   size={20}
-                  className="text-emerald-700"
+                  className="text-success-foreground"
                 />
               </div>
               <div className="min-w-0">
                 <Text variant="body-medium" className="truncate">
                   {agentLabel}
                 </Text>
-                <Text variant="small" className="!text-zinc-500">
+                <Text variant="small" tone="muted">
                   Recurring workflow run
                 </Text>
               </div>
             </div>
-            <dl className="divide-y divide-zinc-100 overflow-hidden rounded-xl border border-zinc-200/80 bg-zinc-50/60">
+            <dl className="divide-y divide-separator overflow-hidden rounded-xl border border-border-base/80 bg-surface-muted/60">
               <ScheduleMetaRow
                 label="Next run"
                 value={nextRunValue}
@@ -228,16 +231,18 @@ function ScheduleMetaRow({
 }) {
   return (
     <div className="flex items-baseline justify-between gap-6 px-4 py-2.5">
-      <dt className="flex-shrink-0 text-[13px] text-zinc-500">{label}</dt>
-      <dd
-        className={cn(
-          "min-w-0 truncate text-right text-[13px] font-medium text-zinc-800",
-          mono && "font-mono text-xs font-normal tracking-tight text-zinc-600",
-        )}
+      <dt className="flex-shrink-0 text-body-sm leading-inherit text-foreground-tertiary">
+        {label}
+      </dt>
+      <Text
+        as="dd"
+        variant={mono ? "small-mono-tight-tracking" : "body-sm-medium-inherit"}
+        tone={mono ? "secondary" : "emphasis"}
+        className="min-w-0 truncate text-right"
         title={title ?? value}
       >
         {value}
-      </dd>
+      </Text>
     </div>
   );
 }

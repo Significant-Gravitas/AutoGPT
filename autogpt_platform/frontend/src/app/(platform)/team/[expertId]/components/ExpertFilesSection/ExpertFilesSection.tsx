@@ -41,12 +41,14 @@ export function ExpertFilesSection({ expertId, expertName }: Props) {
         </Text>
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <ToolbarSearch
+            textSize="body-md"
             id="expert-files-search"
             label="Search files"
             value={files.query}
             onChange={files.setQuery}
           />
           <PillFilterMenu
+            textSize="body-md"
             label="Filter files"
             value={files.filter}
             defaultValue="all"
@@ -64,6 +66,7 @@ export function ExpertFilesSection({ expertId, expertName }: Props) {
         </div>
       ) : files.isError ? (
         <ErrorCard
+          textSize="body-md"
           context={`${expertName}'s files`}
           hint="We could not load the files."
           onRetry={() => files.refetch()}
@@ -71,34 +74,26 @@ export function ExpertFilesSection({ expertId, expertName }: Props) {
       ) : files.files.length === 0 ? (
         <SectionEmptyState
           tiles={[
-            <Icon
-              key="image"
-              icon={Image01Icon}
-              size={22}
-              className="text-sky-500"
-            />,
-            <Icon
-              key="table"
-              icon={Table01Icon}
-              size={22}
-              className="text-emerald-500"
-            />,
-            <Icon
-              key="doc"
-              icon={File02Icon}
-              size={22}
-              className="text-violet-500"
-            />,
+            // oxlint-disable-next-line design-system/no-raw-colors -- sky has no role; info blue would change the hue (deferred)
+            <span key="image" className="inline-flex text-sky-500">
+              <Icon icon={Image01Icon} size={22} />
+            </span>,
+            <span key="table" className="inline-flex text-success">
+              <Icon icon={Table01Icon} size={22} />
+            </span>,
+            <span key="doc" className="inline-flex text-brand">
+              <Icon icon={File02Icon} size={22} />
+            </span>,
           ]}
           title="No files yet"
           description={`Files you share with ${expertName} and documents it creates show up here.`}
         />
       ) : files.visible.length === 0 ? (
-        <Text variant="body" tone="muted" className="pt-4">
+        <Text variant="body-md" tone="muted" className="mt-4">
           No files match.
         </Text>
       ) : (
-        <div className="mt-4 rounded-2xl bg-white p-2 smooth-shadow-ring-sm">
+        <div className="mt-4 rounded-2xl bg-surface p-2 smooth-shadow-ring-sm">
           <ul aria-label={`${expertName}'s files`} className="flex flex-col">
             {files.visible.map((file) => (
               <li key={file.id}>
@@ -107,7 +102,7 @@ export function ExpertFilesSection({ expertId, expertName }: Props) {
             ))}
           </ul>
           {files.hasMore ? (
-            <Text variant="small" className="px-2 pb-1 pt-2 !text-zinc-500">
+            <Text variant="small" tone="muted" className="mx-2 mt-2 mb-1">
               Showing the latest 200 files.
             </Text>
           ) : null}

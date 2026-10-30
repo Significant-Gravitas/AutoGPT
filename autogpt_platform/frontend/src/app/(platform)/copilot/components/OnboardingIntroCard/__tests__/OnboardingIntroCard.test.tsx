@@ -93,6 +93,18 @@ describe("OnboardingIntroCard — content", () => {
     expect(screen.getByText(FOOTER)).toBeDefined();
   });
 
+  it("says Hey there to a user it has no name for", () => {
+    const { container } = render(
+      <OnboardingIntroCard
+        name={null}
+        greeting={GREETING}
+        suggestions={makeSuggestions(PROMPTS)}
+      />,
+    );
+
+    expect(normalizeWhitespace(container)).toContain("Hey there");
+  });
+
   it("renders a row for a prompt whose icon slug the frontend does not know", () => {
     render(
       <OnboardingIntroCard
@@ -190,7 +202,7 @@ describe("OnboardingIntroCard — transcript copy", () => {
       "I spend Mondays rebuilding the same report.",
     );
     await waitFor(() =>
-      expect(container.querySelector(".text-emerald-600")).not.toBeNull(),
+      expect(container.querySelector(".text-success")).not.toBeNull(),
     );
     expect(toastSpy).not.toHaveBeenCalled();
   });
@@ -219,7 +231,7 @@ describe("OnboardingIntroCard — transcript copy", () => {
       }),
     );
     // No tick: the copy never happened.
-    expect(container.querySelector(".text-emerald-600")).toBeNull();
+    expect(container.querySelector(".text-success")).toBeNull();
   });
 
   it("drops the confirmation tick again after a couple of seconds", async () => {
@@ -237,13 +249,13 @@ describe("OnboardingIntroCard — transcript copy", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: COPY_LABEL }));
     });
-    expect(container.querySelector(".text-emerald-600")).not.toBeNull();
+    expect(container.querySelector(".text-success")).not.toBeNull();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
 
-    expect(container.querySelector(".text-emerald-600")).toBeNull();
+    expect(container.querySelector(".text-success")).toBeNull();
     vi.useRealTimers();
   });
 });

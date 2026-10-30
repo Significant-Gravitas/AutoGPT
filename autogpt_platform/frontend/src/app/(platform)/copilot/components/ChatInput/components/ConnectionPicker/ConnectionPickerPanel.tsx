@@ -124,7 +124,7 @@ export function ConnectionPickerPanel({ picker, rows }: Props) {
           <SectionLabel>Model tier</SectionLabel>
           <div
             className={cn(
-              "overflow-hidden rounded-xl border border-neutral-200 bg-white",
+              "overflow-hidden rounded-xl border border-border-base bg-surface",
               showMaxUpgrade && "border-0",
             )}
           >
@@ -158,7 +158,7 @@ export function ConnectionPickerPanel({ picker, rows }: Props) {
         <div
           className={cn(
             "mt-4",
-            showMaxUpgrade && "border-t border-zinc-200 pt-4",
+            showMaxUpgrade && "border-t border-border-base pt-4",
           )}
         >
           <SectionLabel>Add a connection</SectionLabel>
@@ -178,14 +178,20 @@ export function ConnectionPickerPanel({ picker, rows }: Props) {
  */
 function OfferMark({ offer }: { offer: AIConnectionOffer }) {
   if (offer.auth_method === "deployment") {
-    return <Icon icon={CloudServerIcon} size={20} className="text-zinc-500" />;
+    return (
+      <Icon
+        icon={CloudServerIcon}
+        size={20}
+        className="text-foreground-tertiary"
+      />
+    );
   }
   return <IntegrationLogo provider={offer.provider_family} size={20} />;
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="px-3 pb-1.5 pt-3 text-[11px] font-medium uppercase tracking-[0.06em] text-zinc-500 first:pt-0">
+    <p className="px-3 pt-3 pb-1.5 text-caption-sm leading-inherit font-medium tracking-eyebrow text-foreground-tertiary uppercase first:pt-0">
       {children}
     </p>
   );

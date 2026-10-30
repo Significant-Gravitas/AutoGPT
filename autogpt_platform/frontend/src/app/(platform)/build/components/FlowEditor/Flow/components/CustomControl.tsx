@@ -5,7 +5,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { LockIcon, LockOpenIcon } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useTutorialStore } from "@/app/(platform)/build/stores/tutorialStore";
@@ -16,6 +15,8 @@ import {
   MinusSignIcon,
   PlusSignIcon,
   Presentation01Icon,
+  SquareLock02Icon,
+  SquareUnlock02Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -56,14 +57,14 @@ export const CustomControls = memo(
     const controls = [
       {
         id: "zoom-in-button",
-        icon: <Icon icon={PlusSignIcon} className="size-3.5 text-zinc-600" />,
+        icon: <Icon aria-hidden icon={PlusSignIcon} className="size-3.5" />,
         label: "Zoom In",
         onClick: () => zoomIn(),
         className: "h-10 w-10 border-none",
       },
       {
         id: "zoom-out-button",
-        icon: <Icon icon={MinusSignIcon} className="size-3.5 text-zinc-600" />,
+        icon: <Icon aria-hidden icon={MinusSignIcon} className="size-3.5" />,
         label: "Zoom Out",
         onClick: () => zoomOut(),
         className: "h-10 w-10 border-none",
@@ -72,20 +73,21 @@ export const CustomControls = memo(
         id: "tutorial-button",
         icon: isTutorialLoading ? (
           <Icon
+            aria-hidden
             icon={Loading03Icon}
-            className="size-3.5 animate-spin text-zinc-600"
+            className="size-3.5 animate-spin"
           />
         ) : (
-          <Icon icon={Presentation01Icon} className="size-3.5 text-zinc-600" />
+          <Icon aria-hidden icon={Presentation01Icon} className="size-3.5" />
         ),
         label: isTutorialLoading ? "Loading Tutorial..." : "Start Tutorial",
         onClick: handleTutorialClick,
-        className: `h-10 w-10 border-none ${isTutorialRunning || isTutorialLoading ? "bg-zinc-100" : "bg-white"}`,
+        className: `h-10 w-10 border-none ${isTutorialRunning || isTutorialLoading ? "bg-surface-hover" : "bg-surface"}`,
         disabled: isTutorialLoading,
       },
       {
         id: "fit-view-button",
-        icon: <Icon icon={FullScreenIcon} className="size-3.5 text-zinc-600" />,
+        icon: <Icon aria-hidden icon={FullScreenIcon} className="size-3.5" />,
         label: "Fit View",
         onClick: () => fitView({ padding: 0.2, duration: 800, maxZoom: 1 }),
         className: "h-10 w-10 border-none",
@@ -93,15 +95,15 @@ export const CustomControls = memo(
       {
         id: "lock-button",
         icon: !isLocked ? (
-          <LockOpenIcon className="size-3.5 text-zinc-600" />
+          <Icon aria-hidden icon={SquareUnlock02Icon} className="size-3.5" />
         ) : (
-          <LockIcon className="size-3.5 text-zinc-600" />
+          <Icon aria-hidden icon={SquareLock02Icon} className="size-3.5" />
         ),
         label: isReadOnly
           ? "Canvas is locked because this is a read-only workflow"
           : "Toggle Lock",
         onClick: () => setIsLocked(!isLocked),
-        className: `h-10 w-10 border-none ${isLocked ? "bg-zinc-100" : "bg-white"}`,
+        className: `h-10 w-10 border-none ${isLocked ? "bg-surface-hover" : "bg-surface"}`,
         disabled: isReadOnly,
       },
     ];
@@ -109,7 +111,7 @@ export const CustomControls = memo(
     return (
       <div
         data-id="custom-controls"
-        className="absolute bottom-4 left-4 z-10 flex flex-col items-center gap-2 rounded-full bg-white px-1 py-2 shadow-lg"
+        className="absolute bottom-4 left-4 z-10 flex flex-col items-center gap-2 rounded-full bg-surface px-1 py-2 shadow-lg"
       >
         {controls.map((control) => (
           <Tooltip key={control.id} delayDuration={0}>
@@ -122,7 +124,9 @@ export const CustomControls = memo(
                 data-id={control.id}
                 disabled={"disabled" in control ? control.disabled : false}
               >
-                {control.icon}
+                <span className="flex text-foreground-secondary">
+                  {control.icon}
+                </span>
                 <span className="sr-only">{control.label}</span>
               </Button>
             </TooltipTrigger>

@@ -45,6 +45,7 @@ from .env import (
     cli_prompt_text,
     cli_user_message,
 )
+from .launch_env import launch_options
 from .service import process_cli_restore
 from .tool_adapter import get_copilot_tool_names, get_sdk_disallowed_tools
 
@@ -75,7 +76,11 @@ def cli_path(monkeypatch: pytest.MonkeyPatch) -> str:
     if override and not Path(override).is_file():
         pytest.fail(f"The CLI path override {override!r} is not a file")
     # A run inside Claude Code inherits its CLAUDE_* flags, which change the CLI.
-    for key in [k for k in os.environ if k.startswith("CLAUDE")]:
+    for key in [
+        k
+        for k in os.environ
+        if k.startswith("CLAUDE") and k != "CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK"
+    ]:
         monkeypatch.delenv(key)
     try:
         return require_verbatim_prompts_cli(override or None)
@@ -252,7 +257,7 @@ async def _run(options: ClaudeAgentOptions, sends: list[Send]) -> dict[str, Any]
 
     async def turns() -> None:
         nonlocal init
-        async with ClaudeSDKClient(options) as client:
+        async with ClaudeSDKClient(launch_options(options)) as client:
             for send in sends:
                 await send(client)
                 async for message in client.receive_response():

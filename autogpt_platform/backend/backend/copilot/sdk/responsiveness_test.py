@@ -119,6 +119,7 @@ async def test_enqueue_graphiti_turn_uses_expert_session_scope():
         "private prompt",
         assistant_msg="private response",
         expert_id="expert-1",
+        bridge_origin=False,
     )
 
 

@@ -14,27 +14,28 @@ import { getWorkflowCredentialProviders } from "./WorkflowCredentialStack";
 const STATUS = {
   "needs-setup": {
     label: "Needs setup",
-    className: "bg-amber-50 text-amber-700",
+    className: "bg-warning-surface text-warning-foreground",
     icon: Alert01Icon,
-    iconClassName: "bg-amber-50 text-amber-600",
+    iconClassName: "bg-warning-surface text-warning-foreground",
   },
   scheduled: {
     label: "Scheduled",
-    className: "bg-white text-zinc-700",
+    className: "bg-surface text-foreground-body",
     icon: Calendar03Icon,
-    iconClassName: "bg-violet-50 text-violet-600",
+    iconClassName: "bg-accent-surface text-brand",
   },
   trigger: {
     label: "Triggered",
-    className: "bg-white text-zinc-700",
+    className: "bg-surface text-foreground-body",
     icon: FlashIcon,
+    // oxlint-disable-next-line design-system/no-raw-colors -- sky has no role; info blue would change the hue (deferred)
     iconClassName: "bg-sky-50 text-sky-600",
   },
   manual: {
     label: "Manual",
-    className: "bg-white text-zinc-500",
+    className: "bg-surface text-foreground-tertiary",
     icon: PlayIcon,
-    iconClassName: "bg-zinc-100 text-zinc-500",
+    iconClassName: "bg-surface-hover text-foreground-tertiary",
   },
 } as const;
 
