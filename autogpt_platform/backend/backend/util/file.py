@@ -4,10 +4,12 @@ import re
 import shutil
 import tempfile
 import uuid
+from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlparse
 
+from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel
 
 from backend.util.cloud_storage import get_cloud_storage_handler
@@ -202,8 +204,11 @@ async def store_media_file(
         return ext if ext else ".bin"
 
     def _file_to_data_uri(path: Path) -> str:
+        content = path.read_bytes()
         mime_type = get_mime_type(str(path))
-        b64 = base64.b64encode(path.read_bytes()).decode("utf-8")
+        if mime_type not in {"image/png", "image/jpeg", "image/webp"}:
+            mime_type = _image_mime_type(content, mime_type)
+        b64 = base64.b64encode(content).decode("utf-8")
         return f"data:{mime_type};base64,{b64}"
 
     def _ensure_inside_base(path_candidate: Path, base: Path) -> Path:
@@ -425,6 +430,25 @@ async def store_media_file(
 
     else:
         raise ValueError(f"Invalid return_format: {return_format}")
+
+
+def _image_mime_type(content: bytes, fallback: str) -> str:
+    """Recover canonical image MIME from bytes when names or headers are inconclusive."""
+    try:
+        with Image.open(BytesIO(content)) as image:
+            image.verify()
+            # Pillow reports multi-picture JPEGs (e.g. iPhone HDR photos) as MPO.
+            if image.format == "MPO":
+                return "image/jpeg"
+            return Image.MIME.get(image.format or "", fallback)
+    except (
+        UnidentifiedImageError,
+        OSError,
+        SyntaxError,
+        ValueError,
+        Image.DecompressionBombError,
+    ):
+        return fallback
 
 
 def get_dir_size(path: Path) -> int:

@@ -270,6 +270,9 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Jev Yes No](block-integrations/typesafe/yes_no.md#jev-yes-no) | Ask Jev a plain-language yes/no question and forward data to the chosen pin, or unsure below your confidence threshold |
 | [Jina Chunking](block-integrations/jina/chunking.md#jina-chunking) | Chunks texts using Jina AI's segmentation service |
 | [Jina Embedding](block-integrations/jina/embeddings.md#jina-embedding) | Generates embeddings using Jina AI |
+| [Nace Choice](block-integrations/nace/choice.md#nace-choice) | Make a typed choice with Drex Max about text and up to 8 images |
+| [Nace Score](block-integrations/nace/score.md#nace-score) | Score text and up to 8 images with Drex Max using an explicit ordered scale |
+| [Nace Yes No](block-integrations/nace/yes_no.md#nace-yes-no) | Ask Drex Max a plain-language yes/no question about text and up to 8 images, and forward data to the chosen pin, or unsure below your confidence threshold |
 | [Orchestrator](block-integrations/llm.md#orchestrator) | Uses AI to intelligently decide what tool to use |
 | [Perplexity](block-integrations/llm.md#perplexity) | Query Perplexity's sonar models with real-time web search capabilities and receive annotated responses with source citations |
 | [Replicate Flux Advanced Model](block-integrations/replicate/flux_advanced.md#replicate-flux-advanced-model) | This block runs Flux models on Replicate with advanced settings |
