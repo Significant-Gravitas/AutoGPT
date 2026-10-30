@@ -138,11 +138,11 @@ class AggregateSkipTests(unittest.TestCase):
         self.assertIn("data-copy", diagnostic)
 
     def test_unconfigured_python_version_reports_fail(self):
-        self.write_report("3.13", "data", [])
+        self.write_report("3.11", "data", [])
         result, diagnostic = self.run_validator()
         self.assertEqual(result, 1)
         self.assertIn("unexpected", diagnostic)
-        self.assertIn("py3.13", diagnostic)
+        self.assertIn("py3.11", diagnostic)
 
     def test_invalid_or_incomplete_reports_fail(self):
         cases = (
@@ -200,7 +200,7 @@ class AggregateSkipTests(unittest.TestCase):
             )
             self.assertEqual(validate_junit_main(arguments), 1)
             self.assertEqual(
-                validate_junit_main(arguments + ["--python-version", "3.13"]), 1
+                validate_junit_main(arguments + ["--python-version", "3.11"]), 1
             )
 
     def test_invalid_policy_is_rejected_before_validation(self):

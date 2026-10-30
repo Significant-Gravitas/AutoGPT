@@ -122,6 +122,11 @@ jobs:
           poetry run python -m unittest discover
           -s ../../.github/workflows/scripts -p 'test_check_actions_status.py'
 
+      - name: Test backend skip policy helpers
+        run: >-
+          poetry run python -m unittest discover
+          -s ../../.github/scripts -p 'test_validate_backend_skips.py'
+
     env:
       CI: true
       PLAIN_OUTPUT: True
@@ -350,6 +355,8 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           repository: Significant-Gravitas/skills-catalog
+          # Update the roster-content assertions alongside this catalog snapshot.
+          ref: 7ed3b73314d5186120e8d4006febfd7e1c92cf08
           path: skills-catalog
 
       - name: Configure test shard
