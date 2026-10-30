@@ -1,7 +1,10 @@
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useCopilotUIStore } from "../../../store";
+import {
+  getPersistedNotificationBannerDismissed,
+  useCopilotUIStore,
+} from "../../../store";
 import { NotificationBanner } from "../NotificationBanner";
 
 vi.mock("@sentry/nextjs", () => ({
@@ -63,6 +66,7 @@ describe("NotificationBanner", () => {
     window.localStorage.clear();
     useCopilotUIStore.setState({
       isNotificationsEnabled: false,
+      isNotificationBannerDismissed: false,
       isSoundEnabled: true,
     });
   });
@@ -145,7 +149,7 @@ describe("NotificationBanner", () => {
 
   it("does not render when already dismissed", () => {
     stubNotification("default");
-    window.localStorage.setItem(DISMISSED_KEY, "true");
+    useCopilotUIStore.setState({ isNotificationBannerDismissed: true });
 
     const { container } = render(<NotificationBanner />);
 
@@ -169,27 +173,59 @@ describe("NotificationBanner", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it("dismisses banner and sets localStorage on dismiss click", async () => {
+  it("hides for good once dismissed", async () => {
     stubNotification("default");
-    render(<NotificationBanner />);
+    const { rerender } = render(<NotificationBanner />);
 
     await userEvent.click(screen.getByLabelText("Dismiss"));
 
     expect(window.localStorage.getItem(DISMISSED_KEY)).toBe("true");
     expect(screen.queryByText(BANNER_TEXT)).toBeNull();
+    rerender(<NotificationBanner />);
+    expect(screen.queryByText(BANNER_TEXT)).toBeNull();
   });
 
-  it("hides once notifications are turned on from another tab", () => {
-    stubNotification("default");
+  it("hides once notifications are switched on elsewhere", () => {
+    stubNotification("granted");
     render(<NotificationBanner />);
     expect(screen.getByText(BANNER_TEXT)).toBeDefined();
 
-    stubNotification("granted");
-    window.localStorage.setItem(ENABLED_KEY, "true");
+    // What the cross-tab sync does when another tab switches them on.
     act(() => {
-      window.dispatchEvent(new Event("focus"));
+      useCopilotUIStore.setState({ isNotificationsEnabled: true });
     });
 
     expect(screen.queryByText(BANNER_TEXT)).toBeNull();
+  });
+});
+
+describe("getPersistedNotificationBannerDismissed", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it("is false for a browser that never chose", () => {
+    expect(getPersistedNotificationBannerDismissed()).toBe(false);
+  });
+
+  it("is true once the banner was dismissed", () => {
+    window.localStorage.setItem(DISMISSED_KEY, "true");
+    expect(getPersistedNotificationBannerDismissed()).toBe(true);
+  });
+
+  it("treats notifications switched off before as dismissed", () => {
+    window.localStorage.setItem(ENABLED_KEY, "false");
+    expect(getPersistedNotificationBannerDismissed()).toBe(true);
+  });
+
+  it("asks again after sign-out, which removes the stored switch", () => {
+    window.localStorage.setItem(ENABLED_KEY, "false");
+    window.localStorage.setItem(DISMISSED_KEY, "true");
+    useCopilotUIStore.getState().clearCopilotLocalData();
+
+    expect(getPersistedNotificationBannerDismissed()).toBe(false);
+    expect(useCopilotUIStore.getState().isNotificationBannerDismissed).toBe(
+      false,
+    );
   });
 });

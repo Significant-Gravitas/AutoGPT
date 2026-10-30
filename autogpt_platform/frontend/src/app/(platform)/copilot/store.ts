@@ -125,6 +125,16 @@ export function getPersistedNotificationsEnabled(): boolean {
   );
 }
 
+// A stored "false" is an off the user chose (sign-out removes the key
+// instead), so it counts like dismissing the turn-on banner.
+export function getPersistedNotificationBannerDismissed(): boolean {
+  return (
+    isClient &&
+    (storage.get(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED) === "true" ||
+      storage.get(Key.COPILOT_NOTIFICATIONS_ENABLED) === "false")
+  );
+}
+
 function getPersistedTab(): ContextPanelTab {
   if (!isClient) return "files";
   const saved = storage.get(Key.COPILOT_CONTEXT_PANEL_TAB);
@@ -227,6 +237,9 @@ interface CopilotUIState {
 
   isNotificationsEnabled: boolean;
   setNotificationsEnabled: (enabled: boolean) => void;
+
+  isNotificationBannerDismissed: boolean;
+  dismissNotificationBanner: () => void;
 
   isSoundEnabled: boolean;
   toggleSound: () => void;
@@ -374,6 +387,12 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   setNotificationsEnabled: (enabled) => {
     storage.set(Key.COPILOT_NOTIFICATIONS_ENABLED, String(enabled));
     set({ isNotificationsEnabled: enabled });
+  },
+
+  isNotificationBannerDismissed: getPersistedNotificationBannerDismissed(),
+  dismissNotificationBanner: () => {
+    storage.set(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED, "true");
+    set({ isNotificationBannerDismissed: true });
   },
 
   isSoundEnabled:
@@ -752,6 +771,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       artifactPanelWidth: DEFAULT_ARTIFACT_PANEL_WIDTH,
       isSearchOpen: false,
       isNotificationsEnabled: false,
+      isNotificationBannerDismissed: false,
       isSoundEnabled: true,
       contextPanelExpert: null,
       artifactPanel: {

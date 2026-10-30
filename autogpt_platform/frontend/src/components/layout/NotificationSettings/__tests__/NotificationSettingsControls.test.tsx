@@ -77,6 +77,9 @@ describe("NotificationSettingsControls", () => {
     expect(
       window.localStorage.getItem("copilot-notification-banner-dismissed"),
     ).toBe("true");
+    expect(useCopilotUIStore.getState().isNotificationBannerDismissed).toBe(
+      true,
+    );
   });
 
   it("asks the browser for permission when switching on", async () => {
