@@ -15,7 +15,7 @@ The rules were turned on with about 9,000 existing violations, so each rule is a
 - `scripts/eslint-rules/design-system-baseline.json` holds, per file and rule, how many violations the file had when the rule was turned on.
 - A file at or under its count passes. A file over its count fails, and the error lists every violation of that rule in the file, since lint can't tell which one is new.
 - A file the baseline doesn't list must have none. That covers every new file.
-- A file with fewer violations than its count gets a warning (`design-system/baseline-outdated`), which doesn't fail lint.
+- A file with fewer violations than its count fails too (`design-system/baseline-outdated`), so a removed violation is locked in: run `pnpm lint:ds-baseline` and commit the lower count.
 - A violation suppressed with an `oxlint-disable` or `eslint-disable` comment doesn't count, the same as when the baseline is written.
 
 To update the baseline, run this from `autogpt_platform/frontend`:
@@ -121,10 +121,10 @@ Hugeicons only: icon data from `@hugeicons/core-free-icons`, rendered with the `
 
 ## Legacy components
 
-Feature code never imports from `src/components/__legacy__`, from any other `legacy/` path or from `@/components/ui`. Import the atom, molecule or organism in `src/components` instead; Storybook shows them. `LegacyButton`, the `legacy-*` Button variants and sizes (`variant="legacy-outline"`, `size="legacy-sm"`) and the Button's internal variant helpers are only for the Button atom itself.
+Feature code never imports from `src/components/__legacy__`, from any other `legacy/` path or from `@/components/ui`. Import the atom, molecule or organism in `src/components` instead; Storybook shows them. `src/components/__legacy__`, `LegacyButton` and the `legacy-*` Button variants and sizes are deleted; the rules below keep them from coming back. The rounded-md look they drew is the Button's `compact-*` variants and sizes. The Button's internal variant helpers are only for the Button atom itself.
 
 - **Rule `design-system/no-legacy-import`:** the imports.
-- **Rule `design-system/no-legacy-button-variant`:** the `legacy-*` variants. The error names the design-system variant to use instead. It doesn't look the same, so check the screen.
+- **Rule `design-system/no-legacy-button-variant`:** the `legacy-*` variants, should one come back. The error names the design-system variant to use instead.
 
 ## Escape hatch
 
