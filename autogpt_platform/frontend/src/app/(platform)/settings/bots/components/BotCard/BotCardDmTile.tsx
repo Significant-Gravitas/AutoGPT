@@ -38,17 +38,13 @@ export function BotCardDmTile({
 
   return (
     <div className="flex items-center justify-between gap-3 rounded-large border border-border-base px-4 py-3">
-      <div className="flex min-w-0 items-center gap-3">
-        <Icon
-          icon={Chatting01Icon}
-          size={20}
-          className="shrink-0 text-foreground-tertiary"
-        />
+      <div className="flex min-w-0 items-center gap-3 text-foreground-tertiary">
+        <Icon icon={Chatting01Icon} size={20} className="shrink-0" />
         <div className="flex min-w-0 flex-col">
-          <Text variant="body-medium" as="span" className="text-textBlack">
+          <Text variant="body-medium" as="span">
             {title}
           </Text>
-          <Text variant="small" as="span" className="text-foreground-tertiary">
+          <Text variant="small" as="span" tone="muted">
             {subtitle}
           </Text>
         </div>

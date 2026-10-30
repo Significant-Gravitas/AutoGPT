@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncGenerator, Sequence
+from collections.abc import AsyncGenerator, Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol, TypedDict
 
@@ -165,6 +165,7 @@ async def tool_call_loop(
     max_iterations: int = -1,
     last_iteration_message: str | None = None,
     parallel_tool_calls: bool = True,
+    runs_alone: Callable[[LLMToolCall], bool] | None = None,
 ) -> AsyncGenerator[ToolCallLoopResult, None]:
     """Run a tool-calling conversation loop as an async generator.
 
@@ -192,6 +193,10 @@ async def tool_call_loop(
             calls from a single LLM response concurrently via
             ``asyncio.gather``.  Set to False when tool calls may have
             ordering dependencies or mutate shared state.
+        runs_alone: When parallel, the calls this returns True for run on
+            their own, after the calls before them and before the ones
+            after, as the Claude Code CLI runs a tool that is not
+            read-only.  The calls between them still overlap.
 
     Yields:
         ToolCallLoopResult after each iteration. Check ``finished_naturally``
@@ -250,11 +255,11 @@ async def tool_call_loop(
             # streaming events appended to a shared list) may interleave
             # nondeterministically.  Each event carries its own tool-call
             # identifier, so consumers must correlate by ID.
-            tool_results: list[ToolCallResult] = list(
-                await asyncio.gather(
-                    *(execute_tool(tc, tools) for tc in response.tool_calls)
+            tool_results: list[ToolCallResult] = []
+            for batch in _batches(response.tool_calls, runs_alone):
+                tool_results.extend(
+                    await asyncio.gather(*(execute_tool(tc, tools) for tc in batch))
                 )
-            )
         else:
             # Sequential: preserves ordering guarantees for callers that
             # need deterministic execution order.
@@ -283,3 +288,24 @@ async def tool_call_loop(
         iterations=iteration,
         finished_naturally=False,
     )
+
+
+def _batches(
+    tool_calls: Sequence[LLMToolCall],
+    runs_alone: Callable[[LLMToolCall], bool] | None,
+) -> list[list[LLMToolCall]]:
+    """Split *tool_calls* into batches run one after another: each call
+    ``runs_alone`` picks is a batch of its own, and the calls between them
+    share one."""
+    batches: list[list[LLMToolCall]] = []
+    shared: list[LLMToolCall] | None = None
+    for call in tool_calls:
+        if runs_alone is not None and runs_alone(call):
+            batches.append([call])
+            shared = None
+        elif shared is None:
+            shared = [call]
+            batches.append(shared)
+        else:
+            shared.append(call)
+    return batches

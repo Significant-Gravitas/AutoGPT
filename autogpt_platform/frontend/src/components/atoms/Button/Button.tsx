@@ -11,17 +11,18 @@ import {
   ButtonProps,
   extendedButtonVariants,
   ICON_ONLY_SIZES,
-  isLegacyButton,
 } from "./helpers";
-import { LegacyButton } from "./LegacyButton";
+import { CompactButtonProps, isCompactButton } from "./compact-variants";
+import { CompactButton } from "./CompactButton";
 import { Loading03Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
-export function Button(props: ButtonProps) {
-  if (isLegacyButton(props)) return <LegacyButton {...props} />;
+export function Button(props: ButtonProps | CompactButtonProps) {
+  if (isCompactButton(props)) return <CompactButton {...props} />;
 
   const {
-    className,
+    className: callerClassName,
+    textSize = "body",
     variant,
     size,
     loading = false,
@@ -34,6 +35,10 @@ export function Button(props: ButtonProps) {
     asChild: _asChild, // Destructure to prevent passing to DOM
     ...restProps
   } = props;
+  const className =
+    textSize === "body-md"
+      ? cn(callerClassName, "text-body-md")
+      : callerClassName;
 
   const disabled = "disabled" in props ? props.disabled : false;
   const isDisabled = disabled;

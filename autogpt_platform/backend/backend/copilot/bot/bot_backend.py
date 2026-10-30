@@ -17,18 +17,22 @@ from typing import Any, AsyncGenerator, Awaitable, Callable, Optional
 from pydantic import BaseModel
 
 from backend.copilot import stream_registry, woken_turns
+from backend.copilot.config import CopilotLLMModel
 from backend.copilot.model import get_chat_session
 from backend.copilot.response_model import (
     StreamError,
     StreamFinish,
     StreamTextDelta,
     StreamToolOutputAvailable,
+    StreamTurnPaused,
 )
+from backend.copilot.turn_pause import TurnPause
 from backend.data.redis_client import get_redis_async
 from backend.platform_linking.models import (
     MAX_BOT_MESSAGE_CHARS,
     BotChatRequest,
     BotEventInput,
+    BotExpert,
     BotGuildInput,
     CardAnswer,
     CardTurn,
@@ -51,6 +55,7 @@ from backend.util.exceptions import (
 )
 
 from .adapters.base import InboundAttachment
+from .pauses import pause_note
 from .prompt import clamp_prompt
 
 # How long to wait for a single chunk from the copilot stream before giving
@@ -73,12 +78,15 @@ class BotStreamError(Exception):
     """A copilot stream couldn't produce a successful reply.
 
     Carries a bounded ``error_kind`` so the handler can attribute analytics
-    accurately instead of guessing from the inline text.
+    accurately instead of guessing from the inline text, and the backend's
+    ``code`` (when the stream sent one) so the user can be told what kind of
+    failure it was.
     """
 
-    def __init__(self, error_kind: str, message: str):
+    def __init__(self, error_kind: str, message: str, code: str | None = None):
         super().__init__(message)
         self.error_kind = error_kind
+        self.code = code
 
 
 class ChatTurnDeniedError(Exception):
@@ -390,6 +398,7 @@ class BotBackend:
         platform_user_id: str,
         platform_server_id: str | None,
         session_id: str | None,
+        expert_id: str | None = None,
     ) -> EnsureSessionResult:
         """Resolve (or create) the copilot session for this conversation.
 
@@ -404,6 +413,18 @@ class BotBackend:
             platform_user_id=platform_user_id,
             platform_server_id=platform_server_id,
             session_id=session_id,
+            expert_id=expert_id,
+        )
+
+    async def list_user_experts(
+        self, platform: str, platform_user_id: str, platform_server_id: str | None
+    ) -> list[BotExpert]:
+        """The hired experts this conversation can route a turn to (none in a
+        server: expert sessions are DM-only)."""
+        return await self._client.list_user_experts(
+            platform=Platform(platform.upper()),
+            platform_user_id=platform_user_id,
+            platform_server_id=platform_server_id,
         )
 
     async def upload_workspace_files(
@@ -505,7 +526,10 @@ class BotBackend:
         session_id: Optional[str] = None,
         platform_server_id: Optional[str] = None,
         file_ids: Optional[list[str]] = None,
+        expert_id: str | None = None,
+        model: CopilotLLMModel | None = None,
         on_session_id: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_notice: Optional[Callable[[str], Awaitable[None]]] = None,
         on_setup_required: SetupRequiredCallback | None = None,
         on_setup_dropped: SetupDroppedCallback | None = None,
         on_clarification_needed: ClarificationNeededCallback | None = None,
@@ -527,6 +551,8 @@ class BotBackend:
                 session_id=session_id,
                 platform_server_id=platform_server_id,
                 file_ids=file_ids or [],
+                expert_id=expert_id,
+                model=model,
             )
         )
         if handle.denial is not None:
@@ -535,6 +561,8 @@ class BotBackend:
             raise ChatTurnDeniedError(handle.denial)
         if on_session_id:
             await on_session_id(handle.session_id)
+        if handle.notice and on_notice:
+            await on_notice(handle.notice)
         async for chunk in self.stream_turn(
             handle,
             on_setup_required=on_setup_required,
@@ -663,13 +691,26 @@ class BotBackend:
                     ):
                         cards_posted.add(review_id)
                         await on_approval_needed(handle.session_id, review_id)
+                elif isinstance(chunk, StreamTurnPaused):
+                    # The turn stopped at a limit on purpose; StreamFinish
+                    # follows. Say how to pick it up, after its checkpoint.
+                    if last_text_block_id is not None:
+                        yield "\n\n"
+                    yield pause_note(TurnPause.model_validate(chunk.pause))
                 elif isinstance(chunk, StreamFinish):
                     return
                 elif isinstance(chunk, StreamError):
-                    logger.error("Stream error from backend: %s", chunk.errorText)
+                    # Reported once, with its chat reference, by the turn
+                    # streamer; logging it at error here too would double it.
+                    logger.warning(
+                        "Stream error from backend: %s (code=%s)",
+                        chunk.errorText,
+                        chunk.code,
+                    )
                     raise BotStreamError(
                         "backend_stream_error",
                         chunk.errorText,
+                        code=chunk.code,
                     )
                 # Other StreamX types (StreamStart, StreamTextStart, tool events,
                 # etc.) are emitted by the executor for the frontend UI and

@@ -19,7 +19,9 @@ from backend.copilot.context import (
     is_allowed_local_path,
     is_sdk_tool_path,
     is_unattended_turn,
+    looks_like_sdk_tool_result_path,
     resolve_sandbox_path,
+    sdk_tool_result_redirect_hint,
     set_execution_context,
     set_turn_unattended,
 )
@@ -266,6 +268,35 @@ def test_resolve_sandbox_path_tmp_prefix_collision_raises():
         resolve_sandbox_path("/tmp_evil/malicious.txt")
 
 
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("cat /root/.claude/projects/-tmp-abc/def/tool-results/toolu_01.json", True),
+        (
+            (
+                "cd /root/.claude/projects/-tmp-abc/def/tool-results/ && "
+                "python3 -c \"open('toolu_01.json')\""
+            ),
+            True,
+        ),
+        ("ls -t /root/.claude/projects/*/*/tool-results/", True),
+        ("ls ~/.claude/projects", True),
+        ("find .claude/projects -name '*.json'", True),
+        ("cat tool-outputs/toolu_x.json", True),
+        ("ls my-pipeline/tool-outputs/data.json", False),
+        ("ls $HOME/.claude/projects", True),
+        (f"ls {SDK_PROJECTS_DIR}/x", True),
+        ("ls /home/user/my-repo/.claude/projects", False),
+        ("cat my-repo/.claude/projects/notes.md", False),
+        ("ls /home/user/.claude/projects-backup/x", False),
+        ("cat /home/user/.claude/settings.json", False),
+        ("", False),
+    ],
+)
+def test_looks_like_sdk_tool_result_path(text, expected):
+    assert looks_like_sdk_tool_result_path(text) is expected
+
+
 class TestSdkToolResultRedirectHint:
     """``sdk_tool_result_redirect_hint`` builds the "Offending fragment"
     line from the path-shaped token in *path_or_command*, not from the
@@ -274,8 +305,6 @@ class TestSdkToolResultRedirectHint:
     ``Offending fragment: 'cat'`` — useless to the model."""
 
     def test_absolute_sdk_path_in_bash_command(self):
-        from backend.copilot.context import sdk_tool_result_redirect_hint
-
         cmd = (
             "cat /root/.claude/projects/-tmp-abc/def/tool-results/"
             "toolu_x.json | jq ."
@@ -288,8 +317,6 @@ class TestSdkToolResultRedirectHint:
         assert "'cat'" not in msg
 
     def test_quoted_path_unwraps_quotes(self):
-        from backend.copilot.context import sdk_tool_result_redirect_hint
-
         cmd = 'cat "/root/.claude/projects/-a/b/tool-results/x.json"'
         msg = sdk_tool_result_redirect_hint(cmd)
         assert (
@@ -297,22 +324,27 @@ class TestSdkToolResultRedirectHint:
             in msg
         )
 
-    def test_relative_shorthand(self):
-        from backend.copilot.context import sdk_tool_result_redirect_hint
+    def test_cd_into_tool_results_dir(self):
+        cmd = (
+            "cd /root/.claude/projects/-tmp-abc/def/tool-results/ && "
+            "python3 -c \"open('toolu_01.json')\""
+        )
+        msg = sdk_tool_result_redirect_hint(cmd)
+        assert (
+            "Offending fragment: '/root/.claude/projects/-tmp-abc/def/tool-results/'"
+            in msg
+        )
 
+    def test_relative_shorthand(self):
         msg = sdk_tool_result_redirect_hint("cat tool-outputs/toolu_x.json | head")
         assert "Offending fragment: 'tool-outputs/toolu_x.json'" in msg
 
     def test_bare_path_input(self):
         # ``read_workspace_file`` passes a bare path, not a command.
-        from backend.copilot.context import sdk_tool_result_redirect_hint
-
         msg = sdk_tool_result_redirect_hint("tool-outputs/toolu_y.json")
         assert "Offending fragment: 'tool-outputs/toolu_y.json'" in msg
 
     def test_empty_input_fragment(self):
-        from backend.copilot.context import sdk_tool_result_redirect_hint
-
         # Defensive: never crash on an empty input; the message just
         # echoes an empty fragment.
         msg = sdk_tool_result_redirect_hint("")

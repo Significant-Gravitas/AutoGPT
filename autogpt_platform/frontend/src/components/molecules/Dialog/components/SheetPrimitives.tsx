@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import * as SheetPrimitive from "@radix-ui/react-dialog";
-import { Cross2Icon } from "@radix-ui/react-icons";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
@@ -33,7 +34,7 @@ const SheetOverlay = React.forwardRef<
   <SheetPrimitive.Overlay
     data-slot="sheet-overlay"
     className={cn(
-      "fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-50 bg-black/80 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
       className,
     )}
     {...props}
@@ -42,10 +43,8 @@ const SheetOverlay = React.forwardRef<
 ));
 SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;
 
-// The dark: classes never apply (forcedTheme="light") and are DS6's
-// (SECRT-3116) to delete.
 const sheetVariants = cva(
-  "fixed z-50 gap-4 bg-surface p-6 shadow-lg transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500 data-[state=open]:animate-in data-[state=closed]:animate-out dark:bg-neutral-950",
+  "fixed z-50 gap-4 bg-surface p-6 shadow-lg transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500 data-[state=open]:animate-in data-[state=closed]:animate-out",
   {
     variants: {
       side: {
@@ -67,7 +66,6 @@ interface SheetContentProps
   extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
     VariantProps<typeof sheetVariants> {}
 
-// TODO(tokens): no role holds neutral-100 (#F5F5F5).
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
@@ -82,9 +80,14 @@ const SheetContent = React.forwardRef<
     >
       <SheetPrimitive.Close
         data-slot="sheet-close"
-        className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-surface transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-focus focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-neutral-100 dark:ring-offset-neutral-950 dark:focus:ring-neutral-300 dark:data-[state=open]:bg-neutral-800"
+        className="absolute top-4 right-4 rounded-sm opacity-70 ring-offset-surface transition-opacity hover:opacity-100 focus:ring-2 focus:ring-focus focus:ring-offset-2 focus:outline-none disabled:pointer-events-none data-[state=open]:bg-surface-hover"
       >
-        <Cross2Icon data-slot="sheet-close-icon" className="h-4 w-4" />
+        <Icon
+          aria-hidden
+          icon={Cancel01Icon}
+          data-slot="sheet-close-icon"
+          className="h-4 w-4"
+        />
         <span data-slot="sheet-close-label" className="sr-only">
           Close
         </span>
@@ -110,9 +113,7 @@ const SheetHeader = ({
 );
 SheetHeader.displayName = "SheetHeader";
 
-// TODO(tokens): no size role for text-lg (18px). neutral-950 (#0A0A0A) is held
-// only by the `focus` role, the focus-ring colour, which is not a text colour
-// (SECRT-3154).
+// TODO(tokens): no size role for text-lg (18px). SECRT-3152
 const SheetTitle = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Title>,
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Title>
@@ -120,16 +121,12 @@ const SheetTitle = React.forwardRef<
   <SheetPrimitive.Title
     ref={ref}
     data-slot="sheet-title"
-    className={cn(
-      "text-lg font-semibold text-neutral-950 dark:text-neutral-50",
-      className,
-    )}
+    className={cn("text-lg font-semibold text-foreground-base", className)}
     {...props}
   />
 ));
 SheetTitle.displayName = SheetPrimitive.Title.displayName;
 
-// TODO(tokens): no role holds neutral-500 (#737373).
 const SheetDescription = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Description>,
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Description>
@@ -137,10 +134,7 @@ const SheetDescription = React.forwardRef<
   <SheetPrimitive.Description
     ref={ref}
     data-slot="sheet-description"
-    className={cn(
-      "text-body leading-5 text-neutral-500 dark:text-neutral-400",
-      className,
-    )}
+    className={cn("text-body leading-5 text-foreground-tertiary", className)}
     {...props}
   />
 ));

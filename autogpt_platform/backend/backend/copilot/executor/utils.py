@@ -393,6 +393,16 @@ class CancelCoPilotEvent(BaseModel):
 # ============ Queue Publishing Helpers ============ #
 
 
+class TurnPublishUnconfirmed(Exception):
+    """Publishing a turn raised, so the broker may hold it or not.
+
+    A publish can fail after the broker took the message (a lost confirm),
+    so unlike any failure before it, this one does not prove the turn was
+    never sent. A caller deciding whether to send a task again must treat it
+    as possibly running. The original error is the ``__cause__``.
+    """
+
+
 async def enqueue_copilot_turn(
     session_id: str,
     user_id: str | None,
@@ -439,7 +449,6 @@ async def enqueue_copilot_turn(
         is_user_message: Whether the message is from the user (vs system/assistant)
         context: Optional context for the message (e.g., {url: str, content: str})
         file_ids: Optional workspace file IDs attached to the user's message
-        mode: Otto mode override ('fast' or 'extended_thinking'). None = server default.
         model: Per-request model tier ('standard' or 'advanced'). None = server default.
         permissions: Capability filter inherited from a parent run (sub-Otto).
             None = no filter.
@@ -478,11 +487,16 @@ async def enqueue_copilot_turn(
     )
 
     queue_client = await get_async_copilot_queue()
-    await queue_client.publish_message(
-        routing_key=COPILOT_EXECUTION_ROUTING_KEY,
-        message=entry.model_dump_json(),
-        exchange=COPILOT_EXECUTION_EXCHANGE,
-    )
+    try:
+        await queue_client.publish_message(
+            routing_key=COPILOT_EXECUTION_ROUTING_KEY,
+            message=entry.model_dump_json(),
+            exchange=COPILOT_EXECUTION_EXCHANGE,
+        )
+    except Exception as e:
+        raise TurnPublishUnconfirmed(
+            f"The turn's publish raised; it may or may not be queued: {e}"
+        ) from e
 
 
 async def schedule_turn(
@@ -712,7 +726,14 @@ async def dispatch_turn(
     finally:
         if not committed:
             if admitted_here:
-                await release_turn(envelope)
+                try:
+                    await release_turn(envelope)
+                except BaseException:
+                    # Same rule as the meta cleanup below: never mask the
+                    # original error, and never skip the rest of the cleanup.
+                    logger.exception(
+                        f"dispatch_turn: tree release failed for session={session_id}"
+                    )
             try:
                 await stream_registry.delete_session_meta(session_id)
             except BaseException:

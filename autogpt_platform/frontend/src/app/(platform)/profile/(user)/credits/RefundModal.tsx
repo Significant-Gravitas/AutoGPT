@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { AlertCircle } from "lucide-react";
+import { AlertCircleIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 import { CreditTransaction } from "@/lib/autogpt-server-api";
 
@@ -18,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/atoms/Select/components/SelectPrimitives";
-import { Textarea } from "@/components/__legacy__/ui/textarea";
+import { Textarea } from "@/components/atoms/Textarea/Textarea";
 
 interface RefundModalProps {
   isOpen: boolean;
@@ -78,22 +79,16 @@ export const RefundModal = ({
         <div className="py-4">
           <div className="space-y-4">
             {error && (
-              <Text
-                variant="body-tight"
-                as="div"
-                className="flex items-center gap-2 rounded-md border border-destructive bg-destructive/10 p-3 text-destructive"
-              >
-                <AlertCircle className="h-4 w-4" />
-                <p>{error}</p>
-              </Text>
+              <div className="flex items-center gap-2 rounded-md border border-destructive bg-destructive/10 p-3 text-destructive">
+                <Icon aria-hidden icon={AlertCircleIcon} className="h-4 w-4" />
+                <Text variant="body-tight" tone="inherit">
+                  {error}
+                </Text>
+              </div>
             )}
 
             {transactions.length === 0 ? (
-              <Text
-                variant="body-tight"
-                // TODO(tokens): no exact role (text-gray-500 #6B7280)
-                className="text-gray-500"
-              >
+              <Text variant="body-tight" tone="muted">
                 No eligible transactions found for refund.
               </Text>
             ) : (
@@ -149,10 +144,18 @@ export const RefundModal = ({
           </div>
         </div>
         <div className="flex justify-end space-x-4">
-          <Button variant="legacy-outline" onClick={handleClose}>
+          <Button
+            variant="compact-outline"
+            size="compact"
+            onClick={handleClose}
+          >
             Cancel
           </Button>
-          <Button variant="legacy-default" onClick={handleRefundRequest}>
+          <Button
+            variant="compact-primary"
+            size="compact"
+            onClick={handleRefundRequest}
+          >
             Request Refund
           </Button>
         </div>

@@ -39,7 +39,7 @@ export function StackSection({
           className="text-foreground-tertiary"
           aria-hidden
         />
-        <Text variant="small-medium" className="!text-foreground-body">
+        <Text tone="body" variant="small-medium">
           {title}
           {count === undefined ? "" : ` (${count})`}
         </Text>
@@ -48,7 +48,7 @@ export function StackSection({
       {plain ? (
         <div className="px-3">{children}</div>
       ) : (
-        <div className="rounded-lg bg-surface/90 px-3 py-1 backdrop-blur smooth-shadow-ring-sm">
+        <div className="rounded-lg bg-surface/90 px-3 py-1 smooth-shadow-ring-sm backdrop-blur">
           {children}
         </div>
       )}

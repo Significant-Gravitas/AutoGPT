@@ -6,7 +6,7 @@ import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { BellRingIcon, Cancel01Icon } from "@hugeicons/core-free-icons";
 import { useNotificationBanner } from "./useNotificationBanner";
 
-// Alert's `icon` prop takes a component (its defaults come from lucide).
+// Alert's `icon` prop takes a component, not icon data.
 const BellRing = createIconComponent(BellRingIcon);
 
 export function NotificationBanner() {
@@ -30,7 +30,7 @@ export function NotificationBanner() {
           onClick={handleDismiss}
           aria-label="Dismiss"
           title="Dismiss"
-          // TODO(tokens): no exact role for hover:border-[#FFE4BF], hover:bg-[#FFE4BF]
+          // oxlint-disable-next-line design-system/no-arbitrary-values -- peach hover on the banner; the nearest role (warning-border) is a yellow hue, deferred
           className="hover:border-[#FFE4BF] hover:bg-[#FFE4BF]"
         >
           <Icon icon={Cancel01Icon} className="h-4 w-4" />
