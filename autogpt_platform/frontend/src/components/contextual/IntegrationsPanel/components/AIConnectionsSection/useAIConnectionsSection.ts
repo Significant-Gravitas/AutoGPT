@@ -101,6 +101,10 @@ export function useAIConnectionsSection() {
     void connectionsQuery.refetch();
   }
 
+  function retryCredentials() {
+    void credentialsQuery.refetch();
+  }
+
   const { connect: connectChatGPT, isPending: isConnectingChatGPT } =
     useOAuthConnect({
       provider: "codex",
@@ -115,6 +119,8 @@ export function useAIConnectionsSection() {
     connections: offers,
     accountFor,
     credentialFor,
+    credentialsFailed: credentialsQuery.isError,
+    retryCredentials,
     selectedKey,
     chooseDefault,
     isSaving,
