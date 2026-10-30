@@ -15,6 +15,14 @@ def test_file_writers_named_directly_run_alone():
     assert writes_files(_call("read_workspace_file", {"path": "a.csv"}))
 
 
+def test_skill_updates_run_alone_so_list_skills_sees_them():
+    """``list_skills`` re-checks the index after a store or delete in the same
+    message, so those calls must not overlap it."""
+    assert writes_files(_call("store_skill", {"name": "x", "description": "d"}))
+    assert writes_files(_call("delete_skill", {"name": "x"}))
+    assert not writes_files(_call("list_skills", {}))
+
+
 def test_tools_that_write_no_files_overlap():
     assert not writes_files(_call("web_search", {"query": "weather"}))
     assert not writes_files(_call("list_workspace_files", {}))
