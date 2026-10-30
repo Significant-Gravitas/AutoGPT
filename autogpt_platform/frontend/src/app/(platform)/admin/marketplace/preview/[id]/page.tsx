@@ -1,8 +1,5 @@
 "use client";
 
-// TODO(tokens): no role for these colours yet, so they stay raw:
-// text-amber-600 #D97706.
-
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AgentInfo } from "@/app/(platform)/marketplace/components/AgentInfo/AgentInfo";
@@ -97,7 +94,7 @@ export default function AdminPreviewPage() {
         </button>
 
         <div className="flex items-center gap-3">
-          <span className="rounded-md bg-warning/20 px-3 py-1 text-sm font-medium text-amber-600">
+          <span className="rounded-md bg-warning/20 px-3 py-1 text-sm font-medium text-warning-foreground">
             Admin Preview
             {!data.has_approved_version && " — Pending Approval"}
           </span>

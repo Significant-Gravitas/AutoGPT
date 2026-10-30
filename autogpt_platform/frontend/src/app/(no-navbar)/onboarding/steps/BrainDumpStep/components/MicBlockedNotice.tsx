@@ -1,6 +1,5 @@
 "use client";
 
-import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { MicOff01Icon } from "@hugeicons/core-free-icons";
@@ -52,27 +51,21 @@ export function MicBlockedNotice({
   return (
     <div
       role="alert"
-      className="flex w-full max-w-[640px] items-start gap-2.5 self-start rounded-xl bg-surface-hover px-3 py-2.5 text-left"
+      className="flex w-full max-w-[640px] items-start gap-2.5 self-start rounded-xl bg-surface-hover px-3 py-2.5 text-left text-warning-foreground"
     >
-      <Icon
-        icon={MicOff01Icon}
-        size={18}
-        className="mt-0.5 shrink-0 text-warning-foreground"
-      />
+      <Icon icon={MicOff01Icon} size={18} className="mt-0.5 shrink-0" />
       <Text variant="body" tone="secondary">
         <Text variant="body-medium" as="span">
           {copy.reason}
         </Text>{" "}
         {copy.howTo}{" "}
-        <Button
+        <button
           type="button"
-          variant="ghost"
-          size="xs"
           onClick={onRetry}
-          className="inline h-auto rounded-sm p-0 align-baseline text-body text-foreground-base underline underline-offset-4 hover:bg-transparent hover:text-foreground-strong"
+          className="inline whitespace-nowrap rounded-sm border border-transparent align-baseline font-sans text-body font-medium text-foreground-base underline underline-offset-4 transition-colors hover:text-foreground-strong focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus"
         >
           try the microphone again
-        </Button>
+        </button>
         .
       </Text>
     </div>

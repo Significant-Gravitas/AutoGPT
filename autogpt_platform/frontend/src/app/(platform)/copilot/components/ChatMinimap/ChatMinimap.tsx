@@ -51,7 +51,7 @@ export const ChatMinimap = memo(function ChatMinimap({
         {entries.map((entry, index) => (
           <div
             key={entry.id}
-            className="relative cursor-pointer py-[3px]"
+            className="relative cursor-pointer py-0.5"
             onMouseEnter={() => setHovered(index)}
             onFocus={() => setHovered(index)}
             onBlur={() => setHovered(null)}

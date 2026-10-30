@@ -61,7 +61,7 @@ export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
     return (
       <SidebarProvider style={{ "--sidebar-width": "19rem" } as CSSProperties}>
         <TourSidebar variant="marketplace" />
-        <SidebarInset className="bg-[#f9f9f9]">
+        <SidebarInset className="bg-surface-muted">
           <div className="flex shrink-0 items-center px-4 pt-4 md:hidden">
             <SidebarTrigger />
           </div>
@@ -88,7 +88,7 @@ export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
         {showChangelog && !isFirstRunTourOpen ? <ChangelogPopup /> : null}
         <FirstRunTour />
         <ContextualTips />
-        <SidebarInset className="bg-[#f9f9f9]">
+        <SidebarInset className="bg-surface-muted">
           <header
             className={cn(
               "flex shrink-0 items-center pb-4 pt-6",

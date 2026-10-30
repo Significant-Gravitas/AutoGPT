@@ -5,9 +5,7 @@ import { ArrowUpRight01Icon } from "@hugeicons/core-free-icons";
 import { useId } from "react";
 import { getReleaseLabel, Release } from "../helpers";
 import {
-  RELEASE_DETAILS_GAP_CLASS,
   RELEASE_DOT_COLUMN_CLASS,
-  RELEASE_HEADLINE_GAP_CLASS,
   RELEASE_ROW_CLASS,
 } from "./releaseRowLayout";
 
@@ -64,22 +62,19 @@ export function ReleaseItem({ release, isLatest, isLast }: Props) {
                 Latest
               </span>
             ) : null}
-            <Icon
-              icon={ArrowUpRight01Icon}
-              size={16}
+            <span
               aria-hidden
               className="ml-auto shrink-0 text-foreground-tertiary transition-[color,transform] duration-150 group-hover:-translate-y-px group-hover:translate-x-px group-hover:text-foreground-strong motion-reduce:transition-none motion-reduce:group-hover:transform-none"
-            />
+            >
+              <Icon icon={ArrowUpRight01Icon} size={16} />
+            </span>
           </span>
           <Text
             as="span"
             variant="body-medium"
             tone="primary"
             title={headline.length > CLAMP_HINT_CHARS ? headline : undefined}
-            className={cn(
-              RELEASE_HEADLINE_GAP_CLASS,
-              "line-clamp-3 [overflow-wrap:anywhere]",
-            )}
+            className="mt-1 line-clamp-3 [overflow-wrap:anywhere]"
           >
             {headline}
           </Text>
@@ -90,10 +85,7 @@ export function ReleaseItem({ release, isLatest, isLast }: Props) {
               variant="body-tight"
               tone="secondary"
               title={details.length > CLAMP_HINT_CHARS ? details : undefined}
-              className={cn(
-                RELEASE_DETAILS_GAP_CLASS,
-                "line-clamp-3 [overflow-wrap:anywhere]",
-              )}
+              className="mt-0.5 line-clamp-3 [overflow-wrap:anywhere]"
             >
               {details}
             </Text>

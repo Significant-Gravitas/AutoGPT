@@ -71,7 +71,7 @@ export function VoiceTrace({ source, className, color }: Props) {
   return (
     <div
       className={cn(
-        "flex h-6 items-center justify-center gap-[4px] overflow-hidden",
+        "flex h-6 items-center justify-center gap-1 overflow-hidden",
         className,
       )}
       aria-hidden="true"

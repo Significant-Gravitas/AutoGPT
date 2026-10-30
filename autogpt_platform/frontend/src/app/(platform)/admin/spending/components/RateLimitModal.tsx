@@ -1,8 +1,5 @@
 "use client";
 
-// TODO(tokens): no role for these colours yet, so they stay raw:
-// text-gray-500 #6B7280.
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import {
@@ -117,7 +114,7 @@ export function RateLimitModal({
           </DialogHeader>
 
           {isLoading && (
-            <div className="py-8 text-center text-gray-500">
+            <div className="py-8 text-center text-foreground-tertiary">
               Loading rate limits...
             </div>
           )}
@@ -131,7 +128,7 @@ export function RateLimitModal({
           )}
 
           {!isLoading && !rateLimitData && (
-            <div className="py-8 text-center text-gray-500">
+            <div className="py-8 text-center text-foreground-tertiary">
               No rate limit data available for this user.
             </div>
           )}

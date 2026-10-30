@@ -2,13 +2,21 @@
  * Swaps raw palette and arbitrary typography classes for the design tokens
  * in tailwind.config.ts / src/app/globals.css (SECRT-3099, DS1).
  *
- * Exact matches only: a class is rewritten when the tables below list it, and
- * `scripts/check-token-equivalence.ts` proves every rewrite renders the same
- * computed value. Anything else is left alone and stays at `warn` in the lint
- * until someone defines a token for it.
+ * Two kinds of rewrite:
+ * - exact (TOKEN_GROUPS, SIZE_TOKENS): `scripts/check-token-equivalence.ts`
+ *   proves each one renders the same computed value;
+ * - snapped (SNAP_GROUPS, SNAP_SIZE_TOKENS): the role with the nearest value,
+ *   per the SECRT-3097 plan (5.1 greys, 5.2 hues, 5.6 type). These move
+ *   pixels a little, so the equivalence check leaves them out. Rows the plan
+ *   flagged as noticeably different (a new hue, a much paler fill) sit in
+ *   FLAGGED_SNAP_GROUPS and only run with `--flagged`.
+ * Anything else is left alone and stays at `warn` in the lint until someone
+ * defines a token for it.
  *
- *   npx tsx scripts/codemod-tokens.ts <file|dir>...          # dry run
- *   npx tsx scripts/codemod-tokens.ts --write <file|dir>...  # rewrite files
+ *   npx tsx scripts/codemod-tokens.ts <file|dir>...            # dry run
+ *   npx tsx scripts/codemod-tokens.ts --write <file|dir>...    # rewrite files
+ *   npx tsx scripts/codemod-tokens.ts --exact ...              # exact rows only
+ *   npx tsx scripts/codemod-tokens.ts --flagged ...            # + flagged rows
  *
  * Variant prefixes (`hover:`, `md:`, `data-[state=open]:`), `!important` and
  * opacity modifiers (`/50`) are kept as they are.
@@ -24,7 +32,10 @@
  *   `leading-*`: plain CSS and cn() resolve those differently, so no single
  *   rewrite is exact.
  *
- * DS2 and DS5 tickets run this script; they do not edit it.
+ * A snapped token that carries its own opacity (`bg-error/20`) is skipped,
+ * and reported, on a class that already has one (`bg-red-200/50`).
+ *
+ * Directory PRs run this script; they do not edit it.
  */
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { extname, join, relative } from "node:path";
@@ -54,7 +65,6 @@ export const TOKEN_GROUPS: TokenGroup[] = [
       { token: "bg-surface-hover", replaces: ["bg-zinc-100"] },
       { token: "bg-surface-active", replaces: ["bg-zinc-200"] },
       { token: "bg-overlay", replaces: ["bg-stone-500"] },
-      { token: "bg-background", replaces: ["bg-neutral-50"] },
     ],
   },
   {
@@ -79,7 +89,6 @@ export const TOKEN_GROUPS: TokenGroup[] = [
         token: "placeholder:text-placeholder",
         replaces: ["placeholder:text-zinc-500"],
       },
-      { token: "text-foreground", replaces: ["text-zinc-950"] },
     ],
   },
   {
@@ -209,8 +218,320 @@ export const SIZE_TOKENS: TokenMapping[] = [
   { token: "text-display", replaces: ["text-[44px]", "text-[2.75rem]"] },
 ];
 
+/** Colour utilities a snapped role is written into, by how the class uses it. */
+const TEXT_UTILITIES = ["text", "fill", "stroke", "decoration", "caret"];
+const FILL_UTILITIES = ["bg", "from", "via", "to"];
+const LINE_UTILITIES = [
+  "border",
+  "border-x",
+  "border-y",
+  "border-t",
+  "border-r",
+  "border-b",
+  "border-l",
+  "ring",
+  "ring-offset",
+  "divide",
+  "outline",
+  "shadow",
+];
+
+/**
+ * One palette step and its nearest role: `text` as text or an icon colour,
+ * `fill` as a background, `line` as a border, ring, divider or outline. A
+ * use the row leaves out is not rewritten, e.g. `bg-gray-500`.
+ */
+interface ColorSnap {
+  step: string;
+  text?: string;
+  fill?: string;
+  line?: string;
+}
+
+function everywhere(step: string, role: string): ColorSnap {
+  return { step, text: role, fill: role, line: role };
+}
+
+function snapGroup(group: string, snaps: ColorSnap[]): TokenGroup {
+  const mappings: TokenMapping[] = [];
+  const add = (utilities: string[], step: string, role?: string) => {
+    if (!role) return;
+    for (const utility of utilities) {
+      mappings.push({
+        token: `${utility}-${role}`,
+        replaces: [`${utility}-${step}`],
+      });
+    }
+  };
+  for (const { step, text, fill, line } of snaps) {
+    add(TEXT_UTILITIES, step, text);
+    add(FILL_UTILITIES, step, fill);
+    add(LINE_UTILITIES, step, line);
+    if (text) {
+      const placeholder = text === "foreground-tertiary" ? "placeholder" : text;
+      mappings.push({
+        token: `placeholder:text-${placeholder}`,
+        replaces: [`placeholder:text-${step}`],
+      });
+    }
+  }
+  return { group, kind: "color", mappings };
+}
+
+/** Plan 5.1: the grey ramps onto the neutral roles. */
+const GREY_SNAPS: ColorSnap[] = [
+  ...["gray", "neutral", "slate"].flatMap((ramp): ColorSnap[] => [
+    { step: `${ramp}-50`, fill: "surface-muted", line: "surface-muted" },
+    { step: `${ramp}-100`, fill: "surface-hover", line: "separator" },
+    { step: `${ramp}-200`, fill: "surface-active", line: "border-base" },
+    { step: `${ramp}-300`, fill: "border-strong", line: "border-strong" },
+    { step: `${ramp}-500`, text: "foreground-tertiary" },
+    { step: `${ramp}-600`, text: "foreground-secondary" },
+    { step: `${ramp}-700`, text: "foreground-body" },
+  ]),
+  { step: "gray-400", text: "foreground-subtle", line: "border-strong" },
+  { step: "neutral-400", text: "foreground-subtle" },
+  { step: "slate-400", text: "foreground-subtle" },
+  {
+    step: "gray-800",
+    text: "foreground-emphasis",
+    fill: "action",
+    line: "action",
+  },
+  {
+    step: "gray-900",
+    text: "foreground-base",
+    fill: "action-hover",
+    line: "action-hover",
+  },
+  {
+    step: "neutral-800",
+    text: "foreground-emphasis",
+    fill: "action",
+    line: "action",
+  },
+  {
+    step: "neutral-900",
+    text: "foreground-strong",
+    fill: "action-hover",
+    line: "action-hover",
+  },
+  { step: "neutral-950", text: "foreground-base", fill: "focus" },
+  { step: "neutral-50", text: "action-foreground" },
+  // Inside build/, slate-200 as a node ring is `node-border` (same hex):
+  // swap those by hand.
+  { step: "slate-800", text: "foreground-body" },
+  { step: "slate-900", text: "foreground-strong" },
+  { step: "slate-950", text: "foreground-base" },
+  // zinc is the roles' own ramp, so these are zero-pixel except zinc-950.
+  { step: "zinc-50", fill: "surface-muted", line: "surface-muted" },
+  { step: "zinc-100", fill: "surface-hover", line: "separator" },
+  { step: "zinc-200", fill: "surface-active", line: "border-base" },
+  {
+    step: "zinc-300",
+    text: "foreground-disabled",
+    fill: "border-strong",
+    line: "border-strong",
+  },
+  everywhere("zinc-400", "foreground-subtle"),
+  everywhere("zinc-500", "foreground-tertiary"),
+  everywhere("zinc-600", "foreground-secondary"),
+  everywhere("zinc-700", "foreground-body"),
+  {
+    step: "zinc-800",
+    text: "foreground-emphasis",
+    fill: "action",
+    line: "action",
+  },
+  {
+    step: "zinc-900",
+    text: "foreground-strong",
+    fill: "action-hover",
+    line: "action-hover",
+  },
+  { step: "zinc-950", text: "foreground-base" },
+  { step: "stone-400", text: "foreground-subtle" },
+  { step: "stone-800", text: "foreground-emphasis" },
+  {
+    step: "white",
+    text: "action-foreground",
+    fill: "surface",
+    line: "surface",
+  },
+  { step: "black", text: "foreground-base" },
+];
+
+/** Plan 5.2: status and accent hues, the rows not flagged. */
+const HUE_SNAPS: ColorSnap[] = [
+  {
+    step: "red-600",
+    text: "error-foreground",
+    fill: "error-hover",
+    line: "error-hover",
+  },
+  everywhere("red-400", "error"),
+  everywhere("red-500", "error"),
+  { step: "red-50", fill: "error-surface" },
+  { step: "red-100", fill: "error-surface" },
+  { step: "red-200", fill: "error/20", line: "error/20" },
+  { step: "red-300", fill: "error/40", line: "error/40" },
+  { step: "red-700", text: "error-foreground" },
+  { step: "red-800", text: "error-foreground" },
+  { step: "amber-600", text: "warning-foreground" },
+  { step: "amber-700", text: "warning-foreground" },
+  { step: "amber-800", text: "warning-foreground" },
+  { step: "amber-900", text: "warning-foreground" },
+  everywhere("amber-400", "warning"),
+  everywhere("amber-500", "warning"),
+  { step: "amber-50", fill: "warning-surface" },
+  { step: "amber-100", fill: "warning-surface" },
+  { step: "amber-200", fill: "warning-border", line: "warning-border" },
+  { step: "amber-300", fill: "warning-border", line: "warning-border" },
+  { step: "yellow-50", fill: "warning-surface" },
+  { step: "yellow-100", fill: "warning-surface" },
+  { step: "yellow-150", fill: "warning-surface" },
+  { step: "yellow-200", fill: "warning-border", line: "warning-border" },
+  // As text, 300 and 400 are light greens on dark or green fills; see the
+  // flagged rows.
+  { step: "green-300", fill: "success", line: "success" },
+  { step: "green-400", fill: "success", line: "success" },
+  everywhere("green-500", "success"),
+  everywhere("green-600", "success"),
+  { step: "green-50", fill: "success-surface" },
+  { step: "green-700", text: "success-foreground" },
+  everywhere("emerald-500", "success"),
+  everywhere("emerald-600", "success"),
+  { step: "emerald-700", text: "success-foreground" },
+  { step: "emerald-50", fill: "success-surface" },
+  everywhere("blue-500", "info"),
+  { step: "blue-600", text: "info-foreground" },
+  { step: "blue-700", text: "info-foreground" },
+  { step: "blue-800", text: "info-foreground" },
+  { step: "blue-50", fill: "info-surface" },
+  { step: "blue-100", fill: "info-surface" },
+  { step: "blue-200", fill: "info/30", line: "info/30" },
+  { step: "blue-300", fill: "info/50", line: "info/50" },
+  everywhere("purple-300", "brand"),
+  everywhere("purple-400", "brand"),
+  everywhere("purple-500", "brand"),
+  everywhere("purple-600", "brand-hover"),
+  everywhere("purple-700", "accent-strong"),
+  everywhere("purple-800", "accent-strong"),
+  { step: "purple-50", fill: "accent-surface" },
+  { step: "purple-100", fill: "accent-surface" },
+  { step: "purple-200", fill: "brand/30", line: "brand/30" },
+  everywhere("violet-500", "brand"),
+  everywhere("violet-600", "brand"),
+  everywhere("violet-700", "accent-strong"),
+  { step: "violet-50", fill: "accent-surface" },
+  { step: "violet-100", fill: "accent-surface" },
+  { step: "violet-200", fill: "brand/20", line: "brand/20" },
+];
+
+/**
+ * Plan 5.2 rows flagged as noticeably different: a new hue, a much paler
+ * fill, a lighter label on a pale chip. `--flagged` only, once approved.
+ * indigo-* has no single target (info or brand by use) and is left out.
+ */
+const FLAGGED_SNAPS: ColorSnap[] = [
+  { step: "red-900", text: "error-foreground" },
+  { step: "green-300", text: "success" },
+  { step: "green-400", text: "success" },
+  { step: "yellow-700", text: "warning-foreground" },
+  everywhere("orange-500", "warning"),
+  { step: "orange-600", text: "warning-foreground" },
+  { step: "orange-200", fill: "warning-border", line: "warning-border" },
+  { step: "green-100", fill: "success-surface", line: "success/40" },
+  { step: "green-200", fill: "success-surface", line: "success/40" },
+  { step: "emerald-300", text: "success/60" },
+  everywhere("sky-500", "info"),
+  { step: "sky-50", fill: "info-surface" },
+  everywhere("violet-400", "brand"),
+  { step: "violet-300", text: "brand/40", fill: "brand/40", line: "brand/40" },
+  everywhere("rose-500", "error"),
+  everywhere("rose-600", "error-hover"),
+  { step: "rose-700", text: "error-foreground" },
+  { step: "rose-50", fill: "error-surface" },
+];
+
+/** Plan 5.6: arbitrary letter-spacing and line-height to the nearest step. */
+const TYPE_SNAPS: TokenGroup = {
+  group: "Type (snapped)",
+  kind: "typography",
+  mappings: [
+    { token: "tracking-caps", replaces: ["tracking-[0.14em]"] },
+    {
+      token: "tracking-eyebrow",
+      replaces: [
+        "tracking-[1.1px]",
+        "tracking-[0.04em]",
+        "tracking-[0.06785rem]",
+      ],
+    },
+    {
+      token: "tracking-display",
+      replaces: [
+        "tracking-[-0.055em]",
+        "tracking-[-0.045em]",
+        "tracking-[-0.035em]",
+      ],
+    },
+    { token: "tracking-heading", replaces: ["tracking-[-0.6px]"] },
+    {
+      token: "tracking-title",
+      replaces: [
+        "tracking-[-0.08px]",
+        "tracking-[-0.01313rem]",
+        "tracking-[-0.033rem]",
+        "tracking-[-0.02rem]",
+      ],
+    },
+    { token: "leading-none", replaces: ["leading-[1]", "leading-[1.05]"] },
+    { token: "leading-tight", replaces: ["leading-[1.2]"] },
+    { token: "leading-snug", replaces: ["leading-[1.35]", "leading-[1.4]"] },
+    { token: "leading-6.5", replaces: ["leading-[1.6rem]"] },
+    { token: "leading-12", replaces: ["leading-[50px]"] },
+  ],
+};
+
+export const SNAP_GROUPS: TokenGroup[] = [
+  snapGroup("Greys (snapped)", GREY_SNAPS),
+  snapGroup("Hues (snapped)", HUE_SNAPS),
+  TYPE_SNAPS,
+];
+
+export const FLAGGED_SNAP_GROUPS: TokenGroup[] = [
+  snapGroup("Hues (flagged)", FLAGGED_SNAPS),
+];
+
+/** Plan 5.6: raw sizes to the nearest size role, at most 4px away. */
+export const SNAP_SIZE_TOKENS: TokenMapping[] = [
+  { token: "text-tiny", replaces: ["text-[9px]"] },
+  { token: "text-caption-sm", replaces: ["text-[0.7rem]", "text-[0.6785rem]"] },
+  {
+    token: "text-body-sm",
+    replaces: ["text-[0.8rem]", "text-[12.5px]"],
+  },
+  { token: "text-body-lg", replaces: ["text-[17px]", "text-[1.125rem]"] },
+  { token: "text-lead", replaces: ["text-[1.3rem]"] },
+  { token: "text-heading-sm", replaces: ["text-[23px]"] },
+  { token: "text-heading", replaces: ["text-[26px]", "text-[1.625rem]"] },
+  { token: "text-title", replaces: ["text-[35px]", "text-[36px]"] },
+  { token: "text-display", replaces: ["text-[3rem]"] },
+];
+
+export interface MapOptions {
+  /** Add the snapped rows (nearest role) to the exact ones. */
+  snap?: boolean;
+  /** Add the flagged snapped rows too. */
+  flagged?: boolean;
+}
+
 /** old class -> token class. Throws if a class is claimed twice. */
-export function buildReplacementMap() {
+export function buildReplacementMap({
+  snap = false,
+  flagged = false,
+}: MapOptions = {}) {
   const map = new Map<string, string>();
   const claim = (oldClass: string, token: string) => {
     const existing = map.get(oldClass);
@@ -219,7 +540,12 @@ export function buildReplacementMap() {
     }
     map.set(oldClass, token);
   };
-  for (const group of TOKEN_GROUPS) {
+  const groups = [
+    ...TOKEN_GROUPS,
+    ...(snap ? SNAP_GROUPS : []),
+    ...(flagged ? FLAGGED_SNAP_GROUPS : []),
+  ];
+  for (const group of groups) {
     for (const mapping of group.mappings) {
       for (const oldClass of mapping.replaces) claim(oldClass, mapping.token);
     }
@@ -227,9 +553,10 @@ export function buildReplacementMap() {
   return map;
 }
 
-export function buildSizeMap() {
+export function buildSizeMap({ snap = false }: MapOptions = {}) {
   const map = new Map<string, string>();
-  for (const mapping of SIZE_TOKENS) {
+  const mappings = [...SIZE_TOKENS, ...(snap ? SNAP_SIZE_TOKENS : [])];
+  for (const mapping of mappings) {
     for (const oldClass of mapping.replaces) map.set(oldClass, mapping.token);
   }
   return map;
@@ -307,6 +634,14 @@ export function rewriteClassList(
     const p = parsed[i];
     if (!p) return word;
     const simple = map.get(`${p.keyed}${p.utility}`);
+    if (simple && p.opacity && simple.includes("/")) {
+      changes.push({
+        from: word,
+        to: word,
+        skipped: `${simple} has its own opacity`,
+      });
+      return word;
+    }
     if (simple) {
       const next = `${p.variants}${p.keyed}${p.bang}${simple.slice(p.keyed.length)}${p.opacity}`;
       changes.push({ from: word, to: next });
@@ -369,15 +704,17 @@ function collectFiles(path: string, out: string[]) {
 
 function main(argv: string[]) {
   const write = argv.includes("--write");
+  const flagged = argv.includes("--flagged");
   const targets = argv.filter((arg) => !arg.startsWith("--"));
   if (targets.length === 0) {
     console.error(
-      "usage: npx tsx scripts/codemod-tokens.ts [--write] <file|dir>...",
+      "usage: npx tsx scripts/codemod-tokens.ts [--write] [--exact | --flagged] <file|dir>...",
     );
     return 2;
   }
-  const map = buildReplacementMap();
-  const sizeMap = buildSizeMap();
+  const options = { snap: !argv.includes("--exact"), flagged };
+  const map = buildReplacementMap(options);
+  const sizeMap = buildSizeMap(options);
   const files: string[] = [];
   for (const target of targets) collectFiles(target, files);
 
@@ -400,7 +737,7 @@ function main(argv: string[]) {
     if (write) writeFileSync(file, output);
   }
   console.log(
-    `${total} replacement(s), ${skipped} size class(es) skipped, in ${files.length} file(s)${write ? "" : " (dry run, pass --write to apply)"}`,
+    `${total} replacement(s), ${skipped} class(es) skipped, in ${files.length} file(s)${write ? "" : " (dry run, pass --write to apply)"}`,
   );
   return 0;
 }
