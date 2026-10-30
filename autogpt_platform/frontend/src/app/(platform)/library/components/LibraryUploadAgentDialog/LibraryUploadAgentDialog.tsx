@@ -46,14 +46,14 @@ export default function LibraryUploadAgentDialog() {
           size="small"
         >
           <Icon icon={Upload03Icon} width={18} height={18} />
-          <span className="">Upload workflow</span>
+          <span>Upload workflow</span>
         </Button>
       </Dialog.Trigger>
       <Dialog.Content>
         <Form
           form={form}
           onSubmit={onSubmit}
-          className="flex flex-col justify-center gap-0 px-1"
+          className="mx-1 flex flex-col justify-center"
         >
           <FormField
             control={form.control}
@@ -65,7 +65,7 @@ export default function LibraryUploadAgentDialog() {
                     {...field}
                     id={field.name}
                     label="Workflow name"
-                    className="w-full rounded-[10px]"
+                    className="w-full"
                   />
                 </FormControl>
                 <FormMessage />
@@ -84,7 +84,7 @@ export default function LibraryUploadAgentDialog() {
                     id={field.name}
                     label="Workflow description"
                     type="textarea"
-                    className="w-full rounded-[10px]"
+                    className="w-full"
                   />
                 </FormControl>
                 <FormMessage />
@@ -122,10 +122,7 @@ export default function LibraryUploadAgentDialog() {
           >
             {isUploading ? (
               <div className="flex items-center gap-2">
-                <LoadingSpinner
-                  size="small"
-                  className="text-action-foreground"
-                />
+                <LoadingSpinner size="small" />
                 <span>Uploading...</span>
               </div>
             ) : (

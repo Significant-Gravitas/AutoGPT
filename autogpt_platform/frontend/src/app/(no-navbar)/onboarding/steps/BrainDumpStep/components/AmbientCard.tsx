@@ -1,6 +1,5 @@
 "use client";
 
-import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 import type { AmbientContent } from "./useAmbientPrompts";
@@ -63,21 +62,12 @@ export function AmbientCard({
           transition={{ duration: reduceMotion ? 0 : 0.45, ease: EASE }}
           className={cn(content.isQuote && "italic")}
         >
-          <Text
-            variant="small-semibold"
-            as="span"
-            className="block text-caption-sm uppercase tracking-eyebrow text-accent-strong"
-          >
+          <span className="block font-sans text-caption-sm font-semibold uppercase tracking-eyebrow text-accent-strong">
             {content.label}
-          </Text>
-          <Text
-            variant="body"
-            as="span"
-            tone="secondary"
-            className="block text-body-sm"
-          >
+          </span>
+          <span className="block font-sans text-body-sm font-normal text-foreground-secondary">
             {content.text}
-          </Text>
+          </span>
         </motion.div>
       </AnimatePresence>
     </motion.div>

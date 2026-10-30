@@ -6,6 +6,7 @@ import { swatchClassFor } from "@/app/(platform)/raise/components/ColorStep/help
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
 import type { ExpertArtifact } from "../../../store";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   expert: ExpertArtifact;
@@ -79,13 +80,17 @@ export function ExpertArtifactContent({ expert: artifact }: Props) {
           size={48}
         />
         <div className="min-w-0">
-          <p className="truncate text-base font-semibold text-foreground-strong">
+          <Text
+            variant="large-semibold-tight"
+            tone="primary"
+            className="truncate"
+          >
             {expert.name}
-          </p>
+          </Text>
           {expert.role && (
-            <p className="truncate text-sm text-foreground-tertiary">
+            <Text variant="body-tight" tone="muted" className="truncate">
               {expert.role}
-            </p>
+            </Text>
           )}
         </div>
       </div>

@@ -31,8 +31,7 @@ export function ExpertDayOne({ name, items, accent }: Props) {
             <span
               aria-hidden="true"
               className={cn(
-                // TODO(tokens): no fitting role for ring-white #FEFEFE; #FEFEFE is surface (a surface fill), action-foreground (a text colour)
-                "relative flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold tabular-nums ring-4 ring-white",
+                "relative flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold tabular-nums ring-4 ring-surface",
                 accent.pill,
               )}
             >

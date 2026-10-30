@@ -6,6 +6,7 @@ import { useCopilotModal } from "../../useCopilotModal";
 import { ConnectorRow } from "./ConnectorRow";
 import { McpConnectorRow } from "./McpConnectorRow";
 import type { ConnectorRow as Row, McpConnectorRequest } from "./helpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   rows: Row[];
@@ -35,12 +36,12 @@ export function ConnectionsSection({ rows, mcp }: Props) {
           className="text-foreground-subtle"
         />
         <div className="min-w-0 flex-1">
-          <h3 className="text-base font-medium text-foreground-strong">
+          <Text variant="large-medium-tight" as="h3" tone="primary">
             {remaining.length ? "Connect your apps" : "Your apps are connected"}
-          </h3>
-          <p className="mt-1 text-sm text-foreground-tertiary">
+          </Text>
+          <Text variant="body-tight" tone="muted" className="mt-1">
             Choose the accounts Otto should use.
-          </p>
+          </Text>
         </div>
         <span
           role="status"
@@ -58,18 +59,18 @@ export function ConnectionsSection({ rows, mcp }: Props) {
       ))}
       {remaining.length > 0 && rows.length + mcpRows.length > 1 && (
         <div className="border-t border-separator px-4 py-2.5">
-          <span className="text-sm text-foreground-tertiary">
+          <Text variant="body-tight" as="span" tone="muted">
             Still to connect: {remaining.join(", ")}
-          </span>
+          </Text>
         </div>
       )}
       <div className="space-y-2 border-t border-separator bg-surface-muted px-4 py-3">
-        <p className="text-sm text-foreground-tertiary">
+        <Text variant="body-tight" tone="muted">
           {remaining.length
             ? "Once these apps are connected, Otto will continue."
             : "Connections are ready. Otto can continue setting up your workflow."}
-        </p>
-        <span className="text-sm text-foreground-tertiary">
+        </Text>
+        <Text variant="body-tight" as="span" tone="muted">
           Looking for something else?{" "}
           <button
             type="button"
@@ -78,7 +79,7 @@ export function ConnectionsSection({ rows, mcp }: Props) {
           >
             Browse all connectors
           </button>
-        </span>
+        </Text>
       </div>
     </div>
   );

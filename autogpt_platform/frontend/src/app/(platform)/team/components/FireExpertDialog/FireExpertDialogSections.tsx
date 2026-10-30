@@ -137,8 +137,7 @@ function FireLine({ children }: FireLineProps) {
     <li className="flex items-start gap-2.5">
       <span
         aria-hidden
-        // TODO(tokens): no fitting role for bg-zinc-300 #C5C5C9; #C5C5C9 is foreground-disabled (a text colour), border-strong (a border colour)
-        className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-zinc-300"
+        className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-border-strong"
       />
       <Text variant="body" tone="secondary">
         {children}

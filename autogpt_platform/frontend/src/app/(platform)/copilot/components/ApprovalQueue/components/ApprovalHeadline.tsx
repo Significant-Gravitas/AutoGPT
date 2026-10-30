@@ -27,7 +27,7 @@ export function ApprovalHeadline({ item, compact = false }: Props) {
         variant="body"
         as={compact ? "span" : "h3"}
         className={cn(
-          "min-w-0 flex-1 pt-[3px] text-foreground-strong",
+          "min-w-0 flex-1 pt-0.5 text-foreground-strong",
           compact ? "truncate" : "text-pretty",
         )}
       >

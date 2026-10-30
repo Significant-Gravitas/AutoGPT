@@ -8,6 +8,7 @@ import {
   isUnparseableJsonOutput,
   reportCorruptedToolOutput,
 } from "../../helpers/toolOutput";
+import { Text } from "@/components/atoms/Text/Text";
 
 type Props = {
   part: ToolUIPart;
@@ -91,14 +92,16 @@ export function ConnectIntegrationTool({ part }: Props) {
       </div>
 
       {isError && errorMessage && (
-        <p className="mt-1 text-sm text-error">{errorMessage}</p>
+        <Text variant="body-tight" tone="error" className="mt-1">
+          {errorMessage}
+        </Text>
       )}
 
       {isCorrupted && (
-        <p className="mt-1 text-sm text-error">
+        <Text variant="body-tight" tone="error" className="mt-1">
           The sign-in card data arrived corrupted and can&apos;t be shown. Ask
           your expert to retry connecting {providerName}.
-        </p>
+        </Text>
       )}
 
       {output && (

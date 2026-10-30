@@ -114,3 +114,20 @@ describe("MarkdownRenderer images", () => {
     expect(container.querySelector("video, iframe")).toBeNull();
   });
 });
+
+describe("MarkdownRenderer elements", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("renders small headings, rules and strikethrough", () => {
+    const container = renderMarkdown(
+      "#### Fourth\n\n##### Fifth\n\n---\n\nThis is ~~gone~~ now.",
+    );
+
+    expect(container.querySelector("h4")?.textContent).toBe("Fourth");
+    expect(container.querySelector("h5")?.textContent).toBe("Fifth");
+    expect(container.querySelector("hr")).toBeTruthy();
+    expect(container.querySelector("del")?.textContent).toBe("gone");
+  });
+});

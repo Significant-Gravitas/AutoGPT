@@ -62,14 +62,14 @@ function Logo() {
         alt="AutoGPT"
         width={120}
         height={54}
-        className="hidden h-7 w-auto dark:block"
+        className="hidden h-7 w-auto"
       />
       <Image
         src="/autogpt-logo-light-bg.png"
         alt="AutoGPT"
         width={120}
         height={54}
-        className="block h-7 w-auto dark:hidden"
+        className="block h-7 w-auto"
         priority
       />
     </Link>

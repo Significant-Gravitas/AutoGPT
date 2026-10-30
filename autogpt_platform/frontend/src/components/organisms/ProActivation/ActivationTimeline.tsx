@@ -42,9 +42,7 @@ export function ActivationTimeline({ terms }: Props) {
         <span
           aria-hidden="true"
           data-slot="activation-timeline-dot"
-          // TODO(tokens): no border role for zinc-400 (border-strong is
-          // zinc-300).
-          className="mt-1.5 h-2.5 w-2.5 rounded-full border border-zinc-400 bg-surface"
+          className="mt-1.5 h-2.5 w-2.5 rounded-full border border-border-strong bg-surface"
         />
         <span
           data-slot="activation-timeline-date"

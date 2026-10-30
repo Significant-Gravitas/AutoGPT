@@ -16,8 +16,8 @@ const APPEARANCE: Record<
   Exclude<VoiceState, "off">,
   { source: TraceSource; color: string }
 > = {
-  listening: { source: "mic", color: "bg-emerald-500" },
-  hearing: { source: "mic", color: "bg-emerald-500" },
+  listening: { source: "mic", color: "bg-success" },
+  hearing: { source: "mic", color: "bg-success" },
   transcribing: { source: "pulse", color: "bg-accent" },
   thinking: { source: "pulse", color: "bg-accent" },
   speaking: { source: "speech", color: "bg-action-hover" },
@@ -50,10 +50,9 @@ export function VoiceModeBar({
   if (failure) {
     return (
       <div className="flex w-full flex-wrap items-center gap-2 py-1.5 pl-3 pr-1.5">
-        {/* TODO(tokens): no exact text role for red-600 (#D93636) */}
         <span
           role="alert"
-          className="min-w-0 flex-1 truncate text-sm text-red-600"
+          className="min-w-0 flex-1 truncate text-sm text-error-foreground"
         >
           {failure.message}
         </span>
