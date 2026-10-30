@@ -89,6 +89,12 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
   const scopeRef = useRef(scopeExpertID);
   const scopeGenRef = useRef(0);
   useEffect(() => {
+    return () => {
+      scopeGenRef.current += 1;
+    };
+  }, []);
+
+  useEffect(() => {
     if (scopeRef.current === scopeExpertID) return;
     scopeRef.current = scopeExpertID;
     scopeGenRef.current += 1;
@@ -120,12 +126,13 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
       pendingPromptRef.current = MEMORY_CHAT_PROMPTS[lastSeedRef.current];
       setSessionId(response.data.id);
     } catch (err) {
+      if (generation !== scopeGenRef.current) return;
       if (toastIfPlanRequired(err, "The memory chat needs an active plan")) {
-        if (generation === scopeGenRef.current) setIsOpen(false);
+        setIsOpen(false);
         return;
       }
       Sentry.captureException(err);
-      if (generation === scopeGenRef.current) setStartError(true);
+      setStartError(true);
     } finally {
       // Only release the lock if this call still owns it — a superseded
       // create must not unlock a newer scope's in-flight create.
