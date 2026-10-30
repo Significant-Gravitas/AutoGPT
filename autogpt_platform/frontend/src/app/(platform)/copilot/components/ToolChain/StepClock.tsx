@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { SHOW_TIME_AFTER_SECONDS } from "../JobStatsBar/constants";
 import { formatElapsed } from "../JobStatsBar/formatElapsed";
 import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
+import type { ChainRow } from "./helpers";
 
 const MAX_REMEMBERED_STEPS = 200;
 const stepStarts = new Map<string, string>();
@@ -25,6 +26,16 @@ function stepStartedAt(stepKey: string) {
     if (oldest !== undefined) stepStarts.delete(oldest);
   }
   return startedAt;
+}
+
+// Every running step's start is noted as soon as the chain has its row, so a
+// step outside the streaming window still counts from then once expanded.
+export function useNoteRunningSteps(rows: readonly ChainRow[]) {
+  useEffect(() => {
+    for (const row of rows) {
+      if (row.state === "running") stepStartedAt(row.key);
+    }
+  }, [rows]);
 }
 
 // Some providers reuse call ids across chats, so a finished step's start must

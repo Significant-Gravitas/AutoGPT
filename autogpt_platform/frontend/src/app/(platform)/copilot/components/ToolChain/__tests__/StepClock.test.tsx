@@ -1,6 +1,13 @@
-import { act, cleanup, render, screen } from "@/tests/integrations/test-utils";
+import {
+  act,
+  cleanup,
+  render,
+  renderHook,
+  screen,
+} from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChainRowView } from "../ChainRowView";
+import { useNoteRunningSteps } from "../StepClock";
 import type { ChainRow } from "../helpers";
 
 vi.mock("../SwapText", () => ({
@@ -144,5 +151,14 @@ describe("ChainRowView - step clock", () => {
     render(<ChainRowView row={step} isLast />);
     advanceSeconds(20);
     expect(screen.getByText("20s")).toBeDefined();
+  });
+
+  it("counts a step the chain had but didn't show from when the chain got it", () => {
+    const hidden = row();
+    renderHook(() => useNoteRunningSteps([hidden]));
+    advanceSeconds(60);
+
+    render(<ChainRowView row={hidden} isLast />);
+    expect(screen.getByText("1m 0s")).toBeDefined();
   });
 });
