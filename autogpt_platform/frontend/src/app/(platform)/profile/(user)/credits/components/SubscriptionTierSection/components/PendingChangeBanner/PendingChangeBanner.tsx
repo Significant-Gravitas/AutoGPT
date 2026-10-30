@@ -32,8 +32,8 @@ export function PendingChangeBanner({
     <div
       role="status"
       aria-live="polite"
-      // TODO(tokens): no exact role (border-violet-500 #8B5CF6, text-violet-800 #5B21B6)
-      className="flex flex-col gap-2 rounded-md border border-violet-500 bg-accent-surface px-3 py-2 text-violet-800 sm:flex-row sm:items-center sm:justify-between"
+      // oxlint-disable-next-line design-system/no-raw-colors -- violet-800 #5B21B6 has no role (accent-strong #6D28D9 is lighter); deferred
+      className="flex flex-col gap-2 rounded-md border border-brand bg-accent-surface px-3 py-2 text-violet-800 sm:flex-row sm:items-center sm:justify-between"
     >
       <Text variant="body-tight" as="p" tone="inherit">
         {isCancellation ? (

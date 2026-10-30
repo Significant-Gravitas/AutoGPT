@@ -41,9 +41,9 @@ export function ThinkingIndicator({
 
   return (
     <span
+      className="inline-flex w-fit items-center gap-2.5 text-sm text-foreground-secondary"
       role="status"
       aria-live="polite"
-      className="inline-flex w-fit items-center gap-2.5 text-sm text-foreground-secondary"
     >
       <DrawnLineLoader className="text-foreground-secondary" size={16} />
       <SwapText
@@ -52,7 +52,7 @@ export function ThinkingIndicator({
         className="text-sm"
       />
       {showTime && (
-        <span className="font-mono text-xs tabular-nums text-foreground-subtle">
+        <span className="font-mono text-xs text-foreground-subtle tabular-nums">
           {formatElapsed(seconds)}
         </span>
       )}

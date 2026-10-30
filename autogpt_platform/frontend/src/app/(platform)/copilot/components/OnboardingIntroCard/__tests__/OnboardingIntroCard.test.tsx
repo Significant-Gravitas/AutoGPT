@@ -284,7 +284,7 @@ describe("OnboardingIntroCard — transcript copy", () => {
 
     expect(writeText).toHaveBeenCalledExactlyOnceWith(TRANSCRIPT);
     await waitFor(() =>
-      expect(container.querySelector(".text-emerald-600")).not.toBeNull(),
+      expect(container.querySelector(".text-success")).not.toBeNull(),
     );
     expect(toastSpy).not.toHaveBeenCalled();
   });
@@ -306,7 +306,7 @@ describe("OnboardingIntroCard — transcript copy", () => {
       }),
     );
     // No tick: the copy never happened.
-    expect(container.querySelector(".text-emerald-600")).toBeNull();
+    expect(container.querySelector(".text-success")).toBeNull();
   });
 
   it("drops the confirmation tick again after a couple of seconds", async () => {
@@ -317,13 +317,13 @@ describe("OnboardingIntroCard — transcript copy", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: COPY_LABEL }));
     });
-    expect(container.querySelector(".text-emerald-600")).not.toBeNull();
+    expect(container.querySelector(".text-success")).not.toBeNull();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
 
-    expect(container.querySelector(".text-emerald-600")).toBeNull();
+    expect(container.querySelector(".text-success")).toBeNull();
     vi.useRealTimers();
   });
 });
