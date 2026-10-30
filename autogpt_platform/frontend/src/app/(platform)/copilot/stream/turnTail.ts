@@ -192,9 +192,17 @@ const REPLY_ROLES = new Set(["assistant", "reasoning"]);
 /**
  * The last row of a turn's persisted rows a reply rating can name, only if it
  * answers the turn's latest user row: one before it belongs to an earlier
- * bubble, not the last one this id is put on.
+ * bubble, not the last one this id is put on. A user row the turn didn't
+ * send (another tab's turn in the same window) leaves the owner unclear, so
+ * nothing is named.
  */
-export function lastReplySequence(raw: readonly PersistedRow[]): number | null {
+export function lastReplySequence(
+  raw: readonly PersistedRow[],
+  ownUserTexts: ReadonlySet<string>,
+): number | null {
+  const isForeign = (r: PersistedRow) =>
+    r.role === "user" && !ownUserTexts.has(String(r.content ?? ""));
+  if (raw.some(isForeign)) return null;
   const lastUser = raw.findLastIndex((r) => r.role === "user");
   const row = raw
     .slice(lastUser + 1)

@@ -1056,7 +1056,10 @@ export class TurnRuntime {
     // The session GET returns a window; a turn starting before it waits.
     const windowStart = rows[0]?.sequence ?? Infinity;
     if (view.has_more_messages !== false && windowStart > persisted.start) {
-      const sequence = lastReplySequence(persisted.raw);
+      const ownUserTexts = new Set(
+        seg.log.rows.filter((r) => r.role === "user").map((r) => r.content),
+      );
+      const sequence = lastReplySequence(persisted.raw, ownUserTexts);
       // A turn whose rows left the window keeps the id it already learned.
       if (sequence !== null && sequence !== seg.lastReplySequence)
         this.updateTurn(seg.key, (s) => ({
