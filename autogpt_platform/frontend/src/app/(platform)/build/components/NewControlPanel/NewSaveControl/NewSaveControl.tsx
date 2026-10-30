@@ -1,5 +1,6 @@
+import { FormProvider } from "react-hook-form";
 import { Card, CardContent, CardFooter } from "@/components/atoms/Card/Card";
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { FormField } from "@/components/molecules/Form/Form";
 import {
   Popover,
   PopoverContent,
@@ -47,22 +48,15 @@ export const NewSaveControl = () => {
         </TooltipTrigger>
         <TooltipContent side="right">Save</TooltipContent>
       </Tooltip>
-      {/* TODO(tokens): today's popover look. No exact role: border-neutral-200
-          #E5E5E5; text-neutral-950 #0A0A0A is the `focus` role, a ring colour,
-          not a text colour (SECRT-3154). */}
       <PopoverContent
         side="right"
         sideOffset={15}
         align="start"
         data-id="save-control-popover-content"
-        className="w-96 max-w-[400px] rounded-xlarge border-neutral-200 text-neutral-950 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-50"
+        className="w-96 max-w-[400px] rounded-xlarge border-border-base text-foreground-base"
       >
-        <Card
-          variant="outlined"
-          // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:bg-slate-900 #2A313A
-          className="border-none dark:bg-slate-900"
-        >
-          <Form {...form}>
+        <Card variant="outlined" className="border-none">
+          <FormProvider {...form}>
             <form onSubmit={form.handleSubmit(handleSave)}>
               <CardContent className="p-0">
                 <div className="space-y-3">
@@ -123,8 +117,7 @@ export const NewSaveControl = () => {
                   variant="primary"
                   type="submit"
                   size="small"
-                  // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:bg-slate-700 #475263, dark:text-slate-100 #EFF1F4, dark:hover:bg-slate-800 #475263
-                  className="w-full dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-800"
+                  className="w-full"
                   data-id="save-control-save-agent"
                   data-testid="save-control-save-agent-button"
                   disabled={isSaving}
@@ -134,7 +127,7 @@ export const NewSaveControl = () => {
                 </Button>
               </CardFooter>
             </form>
-          </Form>
+          </FormProvider>
         </Card>
       </PopoverContent>
     </Popover>

@@ -32,8 +32,7 @@ const VERDICTS: Record<string, VerdictStyle> = {
   block: {
     label: "Blocked",
     icon: Alert02Icon,
-    // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover (a fill and line colour)
-    chip: "bg-error-surface text-red-600",
+    chip: "bg-error-surface text-error-foreground",
   },
   insufficient: {
     label: "Not checked",
@@ -72,13 +71,10 @@ export function ConsultVerdictCard({ output }: Props) {
           size={28}
         />
         <div className="min-w-0 flex-1">
-          <Text
-            variant="body-medium"
-            className="truncate text-foreground-emphasis"
-          >
+          <Text tone="emphasis" variant="body-medium" className="truncate">
             {str(reviewer, "name") ?? "A teammate"}
           </Text>
-          <Text variant="small" className="truncate text-foreground-tertiary">
+          <Text tone="muted" variant="small" className="truncate">
             {str(reviewer, "role") ?? "checked this"}
           </Text>
         </div>
@@ -93,7 +89,7 @@ export function ConsultVerdictCard({ output }: Props) {
         </span>
       </div>
       {reason ? (
-        <Text variant="small" className="mt-2 px-0.5 text-foreground-secondary">
+        <Text tone="secondary" variant="small" className="mt-2 px-0.5">
           {reason}
         </Text>
       ) : null}
@@ -104,7 +100,7 @@ export function ConsultVerdictCard({ output }: Props) {
               key={`${index}-${quote}`}
               className="border-l-2 border-border-base pl-2 text-foreground-tertiary"
             >
-              <Text variant="small" className="text-foreground-tertiary">
+              <Text tone="muted" variant="small">
                 {quote}
               </Text>
             </li>

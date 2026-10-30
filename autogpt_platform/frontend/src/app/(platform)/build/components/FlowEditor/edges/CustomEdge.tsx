@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useState, type CSSProperties } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import {
   BaseEdge,
@@ -67,10 +67,10 @@ const CustomEdge = ({
       <path
         d={edgePath}
         fill="none"
-        // TODO(tokens): no exact role: "black" #000000, an invisible hit area (strokeOpacity 0)
-        stroke="black"
+        stroke="currentColor"
         strokeOpacity={0}
         strokeWidth={20}
+        // oxlint-disable-next-line design-system/no-unknown-classes -- xyflow's own class for an edge's hit area
         className="react-flow__edge-interaction cursor-pointer"
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
@@ -80,12 +80,12 @@ const CustomEdge = ({
         interactionWidth={0}
         markerEnd={markerEnd}
         className={cn(
+          // oxlint-disable-next-line design-system/no-arbitrary-values -- a static edge is 1.5px; the stroke-width scale only has 0, 1 and 2
           isStatic && "!stroke-[1.5px] [stroke-dasharray:6]",
           isBroken
-            ? "!stroke-error !stroke-[2px] [stroke-dasharray:4]"
+            ? "!stroke-error !stroke-2 [stroke-dasharray:4]"
             : selected
-              ? // TODO(tokens): no fitting role for stroke-zinc-800 #3E3E43; #3E3E43 is foreground-emphasis (a text colour), action (a button fill)
-                "stroke-zinc-800"
+              ? "stroke-foreground-emphasis"
               : edgeColorClass
                 ? cn(edgeColorClass, "opacity-70 hover:opacity-100")
                 : "stroke-edge/50 hover:stroke-edge",
@@ -101,7 +101,7 @@ const CustomEdge = ({
         <Button
           onClick={handleRemoveEdge}
           className={cn(
-            "absolute h-fit min-w-0 p-1 transition-opacity",
+            "pointer-events-auto absolute top-[var(--label-y)] left-[var(--label-x)] h-fit min-w-0 -translate-x-1/2 -translate-y-1/2 p-1 transition-opacity",
             isBroken
               ? "bg-error opacity-100 hover:bg-error-hover"
               : isHovered
@@ -109,10 +109,12 @@ const CustomEdge = ({
                 : "opacity-0",
           )}
           variant={isBroken ? "primary" : "secondary"}
-          style={{
-            transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-            pointerEvents: "all",
-          }}
+          style={
+            {
+              "--label-x": `${labelX}px`,
+              "--label-y": `${labelY}px`,
+            } as CSSProperties
+          }
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
         >

@@ -28,13 +28,13 @@ const BaseAccordionTrigger = React.forwardRef<
     <AccordionPrimitive.Trigger
       ref={ref}
       className={cn(
-        "flex flex-1 items-center justify-between py-4 text-left text-body font-medium leading-5 transition-all hover:underline [&[data-state=open]>svg]:rotate-180",
+        "flex flex-1 items-center justify-between py-4 text-left text-body leading-5 font-medium transition-all hover:underline [&[data-state=open]>svg]:rotate-180",
         className,
       )}
       {...props}
     >
       {children}
-      <ChevronDown className="h-4 w-4 shrink-0 text-neutral-500 transition-transform duration-200 dark:text-neutral-400" />
+      <ChevronDown className="h-4 w-4 shrink-0 text-foreground-tertiary transition-transform duration-200" />
     </AccordionPrimitive.Trigger>
   </AccordionPrimitive.Header>
 ));
@@ -49,7 +49,7 @@ const BaseAccordionContent = React.forwardRef<
     className="overflow-hidden text-body leading-5 data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down"
     {...props}
   >
-    <div className={cn("pb-4 pt-0", className)}>{children}</div>
+    <div className={cn("pt-0 pb-4", className)}>{children}</div>
   </AccordionPrimitive.Content>
 ));
 BaseAccordionContent.displayName = AccordionPrimitive.Content.displayName;
@@ -68,11 +68,23 @@ const AccordionItem = React.forwardRef<
 ));
 AccordionItem.displayName = "AccordionItem";
 
+interface TextSizeProps {
+  /** `body-md` inside a profile tab, whose copy reads at 15px. */
+  textSize?: "body" | "body-md";
+}
+
 const AccordionTrigger = React.forwardRef<
   React.ElementRef<typeof BaseAccordionTrigger>,
-  React.ComponentPropsWithoutRef<typeof BaseAccordionTrigger>
->((props, ref) => (
-  <BaseAccordionTrigger ref={ref} data-slot="accordion-trigger" {...props} />
+  React.ComponentPropsWithoutRef<typeof BaseAccordionTrigger> & TextSizeProps
+>(({ textSize = "body", className, ...props }, ref) => (
+  <BaseAccordionTrigger
+    ref={ref}
+    data-slot="accordion-trigger"
+    className={
+      textSize === "body-md" ? cn(className, "text-body-md") : className
+    }
+    {...props}
+  />
 ));
 AccordionTrigger.displayName = "AccordionTrigger";
 

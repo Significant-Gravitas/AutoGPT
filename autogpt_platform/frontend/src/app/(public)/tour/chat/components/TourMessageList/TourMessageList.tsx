@@ -19,9 +19,8 @@ import { TourStreamingText } from "./TourStreamingText";
 // Mirrors the real copilot's MessageContent overrides (purple user bubble,
 // 1rem text) so the tour chat reads exactly like the product.
 const MESSAGE_CONTENT_CLASSES =
-  "text-base leading-relaxed " +
-  "group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0] " +
-  "group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900";
+  // oxlint-disable-next-line design-system/no-restyle -- the copilot's purple user bubble; MessageContent has no variant for it
+  "text-body-lg leading-relaxed group-[.is-user]:rounded-xl group-[.is-user]:rounded-br-none group-[.is-user]:bg-accent-surface group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-foreground-strong group-[.is-assistant]:text-foreground-strong";
 
 const CARD_ANIMATION_CLASSES =
   "animate-in fade-in slide-in-from-bottom-2 fill-mode-both duration-500";
@@ -41,27 +40,29 @@ export function TourMessageList({ messages, isStreaming, footer }: Props) {
 
   return (
     <Conversation className="min-h-0 flex-1">
-      <ConversationContent className="gap-6 px-3 pb-6 pt-4">
+      {/* oxlint-disable-next-line design-system/no-restyle -- the tour thread's tighter spacing; ConversationContent has no size for it */}
+      <ConversationContent className="gap-6 px-3 pt-4 pb-6">
         {messages.map((message) => (
-          <Message
+          <div
             key={message.id}
-            from={message.role}
             className="duration-300 animate-in fade-in slide-in-from-bottom-2"
           >
-            <MessageContent className={MESSAGE_CONTENT_CLASSES}>
-              {message.parts.map((part, index) => (
-                <TourPartRenderer
-                  key={`${message.id}-${index}`}
-                  part={part}
-                  role={message.role}
-                  hasFollowingPart={index < message.parts.length - 1}
-                  followsCard={
-                    index > 0 && message.parts[index - 1].type !== "text"
-                  }
-                />
-              ))}
-            </MessageContent>
-          </Message>
+            <Message from={message.role}>
+              <MessageContent className={MESSAGE_CONTENT_CLASSES}>
+                {message.parts.map((part, index) => (
+                  <TourPartRenderer
+                    key={`${message.id}-${index}`}
+                    part={part}
+                    role={message.role}
+                    hasFollowingPart={index < message.parts.length - 1}
+                    followsCard={
+                      index > 0 && message.parts[index - 1].type !== "text"
+                    }
+                  />
+                ))}
+              </MessageContent>
+            </Message>
+          </div>
         ))}
         {/* The demo has no backend status stream, so it names the state
             itself — the indicator shows no label otherwise. */}

@@ -29,12 +29,12 @@ export function DownloadAgentAdminButton({
 
   return (
     <Button
-      size="legacy-sm"
-      variant="legacy-outline"
+      size="xs"
+      variant="secondary"
       onClick={handleDownload}
       disabled={isLoading}
     >
-      <ExternalLink className="mr-2 h-4 w-4" />
+      <ExternalLink className="h-4 w-4" />
       {isLoading ? "Downloading..." : "Download"}
     </Button>
   );

@@ -28,6 +28,9 @@ vi.mock("@sentry/nextjs", () => {
     httpClientIntegration: stubIntegration("HttpClient"),
     featureFlagsIntegration: stubIntegration("FeatureFlags"),
     replayIntegration: stubIntegration("Replay"),
+    browserSessionIntegration: stubIntegration("BrowserSession"),
+    userTimingIntegration: stubIntegration("UserTiming"),
+    withStaticSpan: <T>(callback: T) => callback,
     captureRouterTransitionStart: vi.fn(),
   };
 });
@@ -194,15 +197,17 @@ describe("Sentry client instrumentation", () => {
     expect(mirrorEvent).toHaveBeenCalledTimes(2);
   });
 
-  it("traces every transaction but profiles one in ten", async () => {
+  it("traces every transaction but profiles one session in ten", async () => {
     vi.resetModules();
     initMock.mockClear();
     await import("../../instrumentation-client");
 
-    const { tracesSampleRate, profilesSampleRate } = initMock.mock.calls[0][0];
+    const { tracesSampleRate, profileSessionSampleRate, profileLifecycle } =
+      initMock.mock.calls[0][0];
 
     expect(tracesSampleRate).toBe(1);
-    expect(profilesSampleRate).toBe(0.1);
+    expect(profileSessionSampleRate).toBe(0.1);
+    expect(profileLifecycle).toBe("trace");
   });
 
   it("records no session replay", async () => {

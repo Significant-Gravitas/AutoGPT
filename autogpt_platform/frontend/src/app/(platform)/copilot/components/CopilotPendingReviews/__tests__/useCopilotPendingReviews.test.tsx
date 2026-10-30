@@ -37,7 +37,9 @@ describe("useCopilotPendingReviews", () => {
     const calls = countRequests("COMPLETED");
     renderHook(
       () =>
-        useCopilotPendingReviews({ graphExecId: "exec-1", graphId: "graph-1" }),
+        useCopilotPendingReviews({
+          runs: [{ graphExecId: "exec-1", graphId: "graph-1" }],
+        }),
       { wrapper },
     );
     await waitFor(() => expect(calls.reviews).toBeGreaterThan(0));
@@ -52,7 +54,9 @@ describe("useCopilotPendingReviews", () => {
     const calls = countRequests("RUNNING");
     renderHook(
       () =>
-        useCopilotPendingReviews({ graphExecId: "exec-1", graphId: "graph-1" }),
+        useCopilotPendingReviews({
+          runs: [{ graphExecId: "exec-1", graphId: "graph-1" }],
+        }),
       { wrapper },
     );
     await waitFor(() => expect(calls.execution).toBeGreaterThan(0));
@@ -76,7 +80,9 @@ describe("useCopilotPendingReviews", () => {
     );
     renderHook(
       () =>
-        useCopilotPendingReviews({ graphExecId: "exec-1", graphId: "graph-1" }),
+        useCopilotPendingReviews({
+          runs: [{ graphExecId: "exec-1", graphId: "graph-1" }],
+        }),
       { wrapper },
     );
 
@@ -120,7 +126,9 @@ describe("useCopilotPendingReviews", () => {
     const calls = countRequests("REVIEW");
     renderHook(
       () =>
-        useCopilotPendingReviews({ graphExecId: "exec-1", graphId: "graph-1" }),
+        useCopilotPendingReviews({
+          runs: [{ graphExecId: "exec-1", graphId: "graph-1" }],
+        }),
       { wrapper },
     );
     await waitFor(() => expect(calls.reviews).toBeGreaterThan(0));

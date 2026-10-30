@@ -16,6 +16,7 @@ import {
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import type { ChatRule, RuleScope } from "../../helpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   label: string;
@@ -65,8 +66,7 @@ export function ApproveSplitButton({
             disabled={disabled}
             aria-label="More ways to approve"
             withTooltip={false}
-            // TODO(tokens): no fitting role for border-l-zinc-600 #68686F; #68686F is foreground-secondary (a text colour)
-            className="min-w-0 rounded-l-none border-l-zinc-600 px-2"
+            className="min-w-0 rounded-l-none border-l-foreground-secondary px-2"
           >
             <Icon icon={ArrowDown01Icon} size={14} aria-hidden />
           </Button>
@@ -80,10 +80,12 @@ export function ApproveSplitButton({
                 onSelect={() => onApprove(rule, scope)}
                 className="flex flex-col items-start gap-0.5 py-2"
               >
-                <span className="text-sm text-foreground-strong">{title}</span>
-                <span className="text-xs text-foreground-tertiary">
+                <Text variant="body-tight" as="span" tone="primary">
+                  {title}
+                </Text>
+                <Text variant="small-tight" as="span" tone="muted">
                   {detail}
-                </span>
+                </Text>
               </DropdownMenuItem>
             );
           })}

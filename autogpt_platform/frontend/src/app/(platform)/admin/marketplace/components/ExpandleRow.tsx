@@ -1,9 +1,5 @@
 "use client";
 
-// TODO(tokens): no role for these colours yet, so they stay raw:
-// bg-gray-500 #6B7280, bg-green-500 #16A34A, text-gray-400 #9CA3AF,
-// text-pink-600 #D7428B.
-
 import { useState } from "react";
 import {
   TableRow,
@@ -13,7 +9,6 @@ import {
   TableHead,
   TableBody,
 } from "@/components/molecules/Table/components/TablePrimitives";
-import { Badge } from "@/components/__legacy__/ui/badge";
 import { ChevronDown, ChevronRight, Eye } from "lucide-react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
@@ -22,20 +17,26 @@ import type { StoreSubmissionAdminView } from "@/app/api/__generated__/models/st
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import { cn } from "@/lib/utils";
 import { ApproveRejectButtons } from "./ApproveRejectButton";
 import { DownloadAgentAdminButton } from "./DownloadAgentButton";
+
+const STATUS_CHIP =
+  "inline-flex cursor-default items-center rounded-md border border-transparent px-2.5 py-0.5 text-caption font-semibold leading-4 text-action-foreground shadow";
 
 // Moved the getStatusBadge function into the client component
 const getStatusBadge = (status: SubmissionStatus) => {
   switch (status) {
     case SubmissionStatus.PENDING:
-      return <Badge className="bg-warning">Pending</Badge>;
+      return <span className={cn(STATUS_CHIP, "bg-warning")}>Pending</span>;
     case SubmissionStatus.APPROVED:
-      return <Badge className="bg-green-500">Approved</Badge>;
+      return <span className={cn(STATUS_CHIP, "bg-success")}>Approved</span>;
     case SubmissionStatus.REJECTED:
-      return <Badge className="bg-error">Rejected</Badge>;
+      return <span className={cn(STATUS_CHIP, "bg-error")}>Rejected</span>;
     default:
-      return <Badge className="bg-gray-500">Draft</Badge>;
+      return (
+        <span className={cn(STATUS_CHIP, "bg-foreground-tertiary")}>Draft</span>
+      );
   }
 };
 
@@ -50,7 +51,7 @@ export function ExpandableRow({
 
   return (
     <>
-      <TableRow className="cursor-pointer hover:bg-muted/50">
+      <TableRow className="cursor-pointer">
         <TableCell onClick={() => setExpanded(!expanded)}>
           {expanded ? (
             <ChevronDown className="h-4 w-4" />
@@ -58,11 +59,10 @@ export function ExpandableRow({
             <ChevronRight className="h-4 w-4" />
           )}
         </TableCell>
-        <TableCell
-          className="font-medium"
-          onClick={() => setExpanded(!expanded)}
-        >
-          {latestVersion?.name || "Unnamed Agent"}
+        <TableCell onClick={() => setExpanded(!expanded)}>
+          <span className="font-medium">
+            {latestVersion?.name || "Unnamed Agent"}
+          </span>
         </TableCell>
         <TableCell onClick={() => setExpanded(!expanded)}>
           {listing.creator_email || "Unknown"}
@@ -87,8 +87,8 @@ export function ExpandableRow({
                 <Link
                   href={`/admin/marketplace/preview/${latestVersion.listing_version_id}`}
                 >
-                  <Button size="legacy-sm" variant="legacy-outline">
-                    <Eye className="mr-2 h-4 w-4" />
+                  <Button size="xs" variant="secondary">
+                    <Eye className="h-4 w-4" />
                     Preview
                   </Button>
                 </Link>
@@ -109,7 +109,7 @@ export function ExpandableRow({
       {/* Expanded version history */}
       {expanded && (
         <TableRow>
-          <TableCell colSpan={7} className="border-t-0 p-0">
+          <td colSpan={7} className="p-0">
             <div className="bg-muted/30 px-4 py-3">
               <Text
                 variant="body-semibold-tight"
@@ -148,7 +148,9 @@ export function ExpandableRow({
                           v{version.listing_version || "?"}
                           {version.listing_version_id ===
                             listing.active_listing_version_id && (
-                            <Badge className="ml-2 bg-info">Active</Badge>
+                            <span className={cn(STATUS_CHIP, "ml-2 bg-info")}>
+                              Active
+                            </span>
                           )}
                         </TableCell>
                         <TableCell>{getStatusBadge(version.status)}</TableCell>
@@ -173,7 +175,7 @@ export function ExpandableRow({
                               )
                             : "Not reviewed"}
                         </TableCell>
-                        <TableCell className="max-w-xs truncate">
+                        <TableCell className="max-w-xs overflow-hidden">
                           {version.review_comments ? (
                             <div
                               className="truncate"
@@ -182,21 +184,22 @@ export function ExpandableRow({
                               {version.review_comments}
                             </div>
                           ) : (
-                            <span className="text-gray-400">
+                            <span className="block truncate text-foreground-subtle">
                               No external comments
                             </span>
                           )}
                         </TableCell>
-                        <TableCell className="max-w-xs truncate">
+                        <TableCell className="max-w-xs overflow-hidden">
                           {version.internal_comments ? (
                             <div
+                              // oxlint-disable-next-line design-system/no-raw-colors -- pink has no role; a role would change the hue (deferred)
                               className="truncate text-pink-600"
                               title={version.internal_comments}
                             >
                               {version.internal_comments}
                             </div>
                           ) : (
-                            <span className="text-gray-400">
+                            <span className="block truncate text-foreground-subtle">
                               No internal comments
                             </span>
                           )}
@@ -216,11 +219,8 @@ export function ExpandableRow({
                                 <Link
                                   href={`/admin/marketplace/preview/${version.listing_version_id}`}
                                 >
-                                  <Button
-                                    size="legacy-sm"
-                                    variant="legacy-outline"
-                                  >
-                                    <Eye className="mr-2 h-4 w-4" />
+                                  <Button size="xs" variant="secondary">
+                                    <Eye className="h-4 w-4" />
                                     Preview
                                   </Button>
                                 </Link>
@@ -242,7 +242,7 @@ export function ExpandableRow({
                 </TableBody>
               </Table>
             </div>
-          </TableCell>
+          </td>
         </TableRow>
       )}
     </>

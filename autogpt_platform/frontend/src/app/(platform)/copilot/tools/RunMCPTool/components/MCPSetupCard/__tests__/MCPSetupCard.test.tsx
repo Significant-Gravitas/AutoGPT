@@ -1051,10 +1051,10 @@ describe("MCPSetupCard", () => {
     } as unknown as CredentialsProvidersContextType;
     let registeredEntry: ChainActionEntry | null = null;
     const chainActions = {
-      register: vi.fn((entry: ChainActionEntry) => {
+      register: vi.fn((_owner: string, entry: ChainActionEntry) => {
         registeredEntry = entry;
       }),
-      unregister: vi.fn((_id: string) => {}),
+      unregister: vi.fn((_owner: string) => {}),
     };
 
     function setupCard(
@@ -1116,7 +1116,7 @@ describe("MCPSetupCard", () => {
 
     let registeredEntry: ChainActionEntry | null = null;
     const chainActions = {
-      register: vi.fn((entry: ChainActionEntry) => {
+      register: vi.fn((_owner: string, entry: ChainActionEntry) => {
         registeredEntry = entry;
       }),
       unregister: vi.fn(),
