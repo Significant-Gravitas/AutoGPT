@@ -2,14 +2,13 @@
 
 import * as React from "react";
 import { Calendar as CalendarIcon } from "lucide-react";
-import { Button } from "@/components/__legacy__/ui/button";
 import { cn } from "@/lib/utils";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/__legacy__/ui/popover";
-import { Calendar } from "@/components/__legacy__/ui/calendar";
+} from "@/components/molecules/Popover/Popover";
+import { Calendar } from "@/components/atoms/Calendar/Calendar";
 
 function toLocalISODateString(d: Date) {
   const year = d.getFullYear();
@@ -83,14 +82,15 @@ export const DateInput = ({
   const isDisabled = disabled || readonly;
 
   const triggerStyles = cn(
+    "inline-flex h-9 items-center whitespace-nowrap py-2 transition-colors hover:bg-surface-hover hover:text-foreground-strong focus-visible:outline-none focus-visible:ring-0 disabled:pointer-events-none disabled:opacity-50",
     // Base styles matching other form components
     "rounded-3xl border border-border-base bg-surface px-4 shadow-none",
     "font-normal text-foreground-base w-full text-body leading-5",
-    "placeholder:font-normal !placeholder:text-placeholder",
+    "placeholder:font-normal",
     // Focus and hover states
     "focus:border-foreground-subtle focus:shadow-none focus:outline-none focus:ring-1 focus:ring-foreground-subtle focus:ring-offset-0",
     // Error state
-    error && "border-1.5 border-error focus:border-error focus:ring-error",
+    error && "border-error focus:border-error focus:ring-error",
     // Placeholder styling
     !selected && "text-foreground-subtle",
     "justify-start text-left",
@@ -106,21 +106,21 @@ export const DateInput = ({
   );
 
   return (
-    <div className="flex flex-col gap-1">
+    <div data-slot="date-input" className="flex flex-col gap-1">
       {label && !hideLabel && (
-        // TODO(tokens): no role is gray-700 #374151.
         <label
+          data-slot="date-input-label"
           htmlFor={id}
-          className="text-body font-medium leading-5 text-gray-700"
+          className="text-body leading-5 font-medium text-foreground-body"
         >
           {label}
         </label>
       )}
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <Button
+          <button
+            data-slot="date-input-trigger"
             type="button"
-            variant="ghost"
             className={triggerStyles}
             disabled={isDisabled}
             autoFocus={autoFocus}
@@ -130,13 +130,19 @@ export const DateInput = ({
             aria-describedby={ariaDescribedBy}
           >
             <CalendarIcon
+              data-slot="date-input-icon"
               className={cn("mr-2", size === "default" ? "h-4 w-4" : "h-3 w-3")}
             />
             {buttonText}
-          </Button>
+          </button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" sideOffset={6}>
+        <PopoverContent
+          data-slot="date-input-popup"
+          className="w-auto rounded-medium border-border-base p-0 text-foreground-base"
+          sideOffset={6}
+        >
           <Calendar
+            data-slot="date-input-calendar"
             mode="single"
             selected={selected}
             onSelect={setDate}
@@ -148,7 +154,14 @@ export const DateInput = ({
           />
         </PopoverContent>
       </Popover>
-      {error && <span className="text-body leading-5 text-error">{error}</span>}
+      {error && (
+        <span
+          data-slot="date-input-error"
+          className="text-body leading-5 text-error"
+        >
+          {error}
+        </span>
+      )}
     </div>
   );
 };

@@ -2,7 +2,10 @@
 
 import { CredentialMentionText } from "../../CredentialMention/CredentialMentionText";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Message, MessageContent } from "@/components/ai-elements/message";
+import {
+  Message,
+  MessageContent,
+} from "@/components/organisms/Message/Message";
 import { cn } from "@/lib/utils";
 import { Loading03Icon } from "@hugeicons/core-free-icons";
 import type {
@@ -16,6 +19,7 @@ import {
 import { useElapsedTimer } from "../../JobStatsBar/useElapsedTimer";
 import { PendingImageThumbnail } from "./MessageImageThumbnail";
 import { ThinkingIndicator } from "./ThinkingIndicator";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   pendingSend: PendingUploadSend;
@@ -50,28 +54,28 @@ function PendingArtifactCard({ attachment }: CardProps) {
     attachment.sizeBytes,
   );
   return (
-    <div className="my-1 flex w-full min-w-0 items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-3 py-2.5 text-left">
+    <div className="my-1 flex w-full min-w-0 items-center gap-3 rounded-2xl border border-border-base bg-surface px-3 py-2.5 text-left">
       <Icon
         icon={classification.icon}
         size={20}
-        className="shrink-0 text-zinc-400"
+        className="shrink-0 text-foreground-subtle"
       />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-zinc-900">
+        <Text variant="body-medium-tight" tone="primary" className="truncate">
           {attachment.name}
-        </p>
-        <p className="text-xs text-zinc-400">
-          <span className="inline-block rounded-full bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-500">
+        </Text>
+        <Text variant="small-tight" tone="subtle">
+          <span className="inline-block rounded-full bg-info-surface px-1.5 py-0.5 text-xs font-medium text-info">
             {classification.label}
           </span>
           {attachment.sizeBytes ? ` • ${formatSize(attachment.sizeBytes)}` : ""}
-        </p>
+        </Text>
       </div>
       {attachment.isUploading && (
         <Icon
           icon={Loading03Icon}
           size={16}
-          className="shrink-0 animate-spin text-zinc-400"
+          className="shrink-0 animate-spin text-foreground-subtle"
         />
       )}
     </div>
@@ -105,18 +109,18 @@ export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
         from="user"
         data-testid="pending-upload-message"
         data-message-id={PENDING_UPLOAD_MESSAGE_ID}
-        className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+        className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
       >
         {pendingSend.text && (
           <MessageContent
             className={cn(
               isCompact
                 ? "text-sm leading-6 group-[.is-user]:rounded-xl"
-                : "text-[1rem] leading-relaxed group-[.is-user]:rounded-3xl",
-              "group-[.is-user]:bg-zinc-900 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-50",
+                : "text-body-lg leading-relaxed group-[.is-user]:rounded-3xl",
+              "group-[.is-user]:bg-action-hover group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-action-foreground",
             )}
           >
-            <div className="whitespace-pre-wrap break-words">
+            <div className="break-words whitespace-pre-wrap">
               <CredentialMentionText text={pendingSend.text} />
             </div>
           </MessageContent>
@@ -145,9 +149,9 @@ export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
       </Message>
       <Message
         from="assistant"
-        className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+        className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
       >
-        <MessageContent className="text-[1rem] leading-relaxed">
+        <MessageContent className="text-body-lg leading-relaxed">
           {/* Announce the status on its own: the indicator's elapsed timer
               ticks every second, so a live region around the whole thing
               would re-read the upload state on every tick. */}

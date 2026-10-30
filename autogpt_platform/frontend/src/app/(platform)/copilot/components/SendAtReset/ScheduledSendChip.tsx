@@ -25,19 +25,19 @@ export function ScheduledSendChip({ job, onEdit, onCancel, isBusy }: Props) {
     <div
       role="status"
       aria-label="Scheduled message"
-      className="mb-2 flex items-center justify-between gap-3 rounded-2xl border border-purple-200 bg-purple-50 px-3 py-2"
+      className="mb-2 flex items-center justify-between gap-3 rounded-2xl border border-brand/50 bg-accent-surface px-3 py-2"
     >
       <div className="flex min-w-0 items-center gap-2">
         <Icon
           icon={Clock01Icon}
           size={16}
-          className="shrink-0 text-purple-600"
+          className="shrink-0 text-brand-hover"
         />
-        <Text variant="small-medium" className="shrink-0 !text-purple-900">
+        <Text variant="small-medium" className="shrink-0 !text-accent-strong">
           {isDue ? "Sending…" : label}
         </Text>
         {job.message && (
-          <Text variant="small" className="min-w-0 truncate !text-zinc-500">
+          <Text tone="muted" variant="small" className="min-w-0 truncate">
             {job.message}
           </Text>
         )}

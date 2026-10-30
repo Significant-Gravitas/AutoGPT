@@ -21,6 +21,7 @@ export function ExpertBadge({ expertId, className }: Props) {
       title={`From ${expert.name}`}
       data-testid="artifacts-expert-badge"
     >
+      {/* oxlint-disable-next-line design-system/no-restyle -- the avatar sits nearer the edge than a label; Badge has no leading-avatar size */}
       <Badge variant="info" size="small" className="pl-1">
         <span aria-hidden className="flex shrink-0">
           <ExpertAvatar

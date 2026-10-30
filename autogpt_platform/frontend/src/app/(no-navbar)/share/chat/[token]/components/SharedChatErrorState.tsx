@@ -11,12 +11,8 @@ export function SharedChatErrorState({ onRetry }: Props) {
     <div className="flex h-full w-full flex-1 items-center justify-center">
       <div className="mx-auto w-full max-w-md p-6">
         <div className="space-y-4 rounded-lg border border-dashed border-border-strong p-6 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-surface-hover">
-            <Icon
-              icon={InformationCircleIcon}
-              size={24}
-              className="text-foreground-tertiary"
-            />
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-surface-hover text-foreground-tertiary">
+            <Icon icon={InformationCircleIcon} size={24} />
           </div>
           <div className="space-y-2">
             <h3 className="text-lg font-semibold">Share link not found</h3>

@@ -38,8 +38,11 @@ export function ActivationStatus({
     attempt?.error_code ?? "",
   );
   return (
-    <div className="space-y-6">
-      <div className="rounded-xlarge border border-border-base bg-surface-muted p-5">
+    <div data-slot="activation-status" className="space-y-6">
+      <div
+        data-slot="activation-status-panel"
+        className="rounded-xlarge border border-border-base bg-surface-muted p-5"
+      >
         <Icon
           icon={
             isReady
@@ -51,10 +54,8 @@ export function ActivationStatus({
           size={24}
           className={
             !isReady && !payment && !failed && !notApplicable
-              ? // TODO(tokens): no role for violet-600 (accent-strong is
-                // violet-700).
-                "mb-4 animate-spin text-violet-600"
-              : "mb-4 text-violet-600"
+              ? "mb-4 animate-spin text-brand"
+              : "mb-4 text-brand"
           }
         />
         <Text variant="body" className="text-foreground-body">

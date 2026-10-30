@@ -9,7 +9,7 @@ function UserTable({ data }: Props) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
-        <thead className="border-b text-xs uppercase text-muted-foreground">
+        <thead className="border-b text-xs text-muted-foreground uppercase">
           <tr>
             <th scope="col" className="px-4 py-3">
               User

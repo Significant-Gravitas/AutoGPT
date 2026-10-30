@@ -15,8 +15,7 @@ interface Props {
 }
 
 const TILE =
-  // TODO(tokens): no exact role: focus-visible:ring-violet-600 #7C3AED
-  "flex w-full items-center gap-3 rounded-xl border border-border-base/80 bg-surface p-2.5 text-left outline-none transition-colors hover:border-border-strong focus-visible:ring-2 focus-visible:ring-violet-600";
+  "flex w-full items-center gap-3 rounded-xl border border-border-base/80 bg-surface p-2.5 text-left outline-none transition-colors hover:border-border-strong focus-visible:ring-2 focus-visible:ring-brand";
 
 export function ShelfTile({
   media,

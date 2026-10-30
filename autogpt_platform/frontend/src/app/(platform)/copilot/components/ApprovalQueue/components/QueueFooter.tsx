@@ -16,10 +16,10 @@ interface Props {
 
 export function QueueFooter({ rejectAll, onContinue, busy }: Props) {
   return (
-    <div className="flex flex-wrap items-center gap-2 border-t border-zinc-100 bg-zinc-50/60 px-4 py-2 text-sm">
+    <div className="flex flex-wrap items-center gap-2 border-t border-separator bg-surface-muted/60 px-4 py-2 text-sm">
       {rejectAll?.confirming ? (
         <>
-          <span role="alert" className="text-zinc-700">
+          <span role="alert" className="text-foreground-body">
             Reject all {rejectAll.count}? {AUTOPILOT_NAME} will be told none of
             them ran.
           </span>

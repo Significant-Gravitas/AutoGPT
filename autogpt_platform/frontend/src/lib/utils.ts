@@ -1,7 +1,7 @@
 import { type ClassValue, clsx } from "clsx";
 import _isEmpty from "lodash/isEmpty";
-import { extendTailwindMerge } from "tailwind-merge";
 
+import { twMerge } from "@/lib/tw-merge";
 import {
   BlockIOObjectSubSchema,
   BlockIORootSchema,
@@ -9,44 +9,6 @@ import {
   GraphInputSubSchema,
   GraphOutputSubSchema,
 } from "@/lib/autogpt-server-api/types";
-
-// Teach tailwind-merge the text token names in tailwind.config.ts, so that
-// `text-body` is read as a font size rather than a colour (and survives next
-// to `text-zinc-500`) and conflicting sizes, line-heights and letter-spacings
-// collapse to the last one.
-//
-// TODO(tokens): SECRT-3155. The custom radius names (rounded-xsmall …
-// rounded-2xlarge) are not registered yet: registering them changes what
-// renders wherever a caller overrides a radius (CancelRecordingDialog,
-// TextInputExpanderModal), so those call sites are fixed first.
-const twMerge = extendTailwindMerge({
-  extend: {
-    classGroups: {
-      "font-size": [
-        {
-          text: [
-            "tiny",
-            "caption-sm",
-            "caption",
-            "body-sm",
-            "body",
-            "body-md",
-            "body-lg",
-            "lead",
-            "heading-sm",
-            "heading",
-            "title",
-            "display",
-          ],
-        },
-      ],
-      leading: [{ leading: ["inherit"] }],
-      tracking: [
-        { tracking: ["display", "heading", "title", "caps", "eyebrow"] },
-      ],
-    },
-  },
-});
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));

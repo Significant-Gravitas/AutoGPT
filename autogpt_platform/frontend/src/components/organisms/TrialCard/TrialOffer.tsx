@@ -15,17 +15,25 @@ export function TrialOffer({ trial, isStarting, isBlocked, onStart }: Props) {
   const offer = trial.offer;
   if (!offer) return null;
   return (
-    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between md:gap-8">
-      <div className="flex min-w-0 flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-2">
+    <div
+      data-slot="trial-offer"
+      className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between md:gap-8"
+    >
+      <div
+        data-slot="trial-offer-details"
+        className="flex min-w-0 flex-col gap-2"
+      >
+        <div
+          data-slot="trial-offer-header"
+          className="flex flex-wrap items-center gap-2"
+        >
           <TrialTitle>
             Try AutoGPT {trialPlanLabels[offer.tier]} for {offer.duration_days}{" "}
             days
           </TrialTitle>
           <span
-            // TODO(tokens): no role for the purple-100 pill or its purple-700
-            // text.
-            className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-tiny font-medium leading-inherit text-purple-700"
+            data-slot="trial-offer-pill"
+            className="inline-flex items-center rounded-full bg-accent-surface px-2 py-0.5 text-tiny leading-inherit font-medium text-accent-strong"
           >
             No charge today
           </span>

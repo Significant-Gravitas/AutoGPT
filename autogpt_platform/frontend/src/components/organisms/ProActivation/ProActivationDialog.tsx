@@ -51,14 +51,16 @@ export function ProActivationDialog({ activation }: Props) {
       controlled={{ isOpen, set: setOpen }}
       styling={{ maxWidth: "560px" }}
       title={
-        <div className="space-y-2 pr-7">
+        <div
+          data-slot="pro-activation-dialog-heading"
+          className="space-y-2 pr-7"
+        >
           <Text variant="small-medium" tone="muted">
             {review ? "Payment review" : `AutoGPT ${plan}`}
           </Text>
           <span
-            // TODO(tokens): SECRT-3152, the 26px size, leading-[1.2] and
-            // tracking-[-0.6px] have no role.
-            className="block text-[26px] font-semibold leading-[1.2] tracking-[-0.6px] text-foreground-strong"
+            data-slot="pro-activation-dialog-title"
+            className="block text-heading leading-tight font-semibold tracking-heading text-foreground-strong"
           >
             {title}
           </span>
@@ -66,10 +68,11 @@ export function ProActivationDialog({ activation }: Props) {
       }
     >
       <Dialog.Content>
-        <div className="space-y-5">
+        <div data-slot="pro-activation-dialog-body" className="space-y-5">
           {error && (
             <div
               role="alert"
+              data-slot="pro-activation-dialog-error"
               className="rounded-large border border-warning-border bg-warning-surface p-4 text-sm text-foreground-body"
             >
               {error}

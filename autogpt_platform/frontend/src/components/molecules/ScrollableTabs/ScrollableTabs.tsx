@@ -39,7 +39,10 @@ export function ScrollableTabs({ children, className, defaultValue }: Props) {
         scrollContainer,
       }}
     >
-      <div className={cn("relative flex flex-col", className)}>
+      <div
+        data-slot="scrollable-tabs"
+        className={cn("relative flex flex-col", className)}
+      >
         {listElement}
         <div
           ref={(node) => {
@@ -47,9 +50,16 @@ export function ScrollableTabs({ children, className, defaultValue }: Props) {
               contentContainerRef.current = node;
             }
           }}
-          className="max-h-[64rem] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border-strong"
+          data-slot="scrollable-tabs-viewport"
+          className="scrollbar-thin max-h-[64rem] scrollbar-thumb-border-strong scrollbar-track-transparent overflow-y-auto"
         >
-          <div className="min-h-full pb-[200px]">{contentElements}</div>
+          <div
+            data-slot="scrollable-tabs-panels"
+            // oxlint-disable-next-line design-system/no-arbitrary-values -- 200px scroll runway below the last panel; the scale has no 200px step
+            className="min-h-full pb-[200px]"
+          >
+            {contentElements}
+          </div>
         </div>
       </div>
     </ScrollableTabsContext.Provider>

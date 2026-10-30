@@ -233,11 +233,11 @@ export function NewAgentLibraryView() {
           fixed column on the right, and both panels own their scroll on
           desktop (h-svh + minmax rows). Children's mb-3 would overflow the
           viewport-sized rows. */}
-      <div className="grid h-full w-full min-w-0 grid-cols-1 gap-4 px-4 pb-3 pt-3 lg:h-svh lg:grid-cols-[minmax(0,1fr)_340px] lg:grid-rows-[minmax(0,1fr)] lg:[&>*]:mb-0">
+      <div className="grid h-full w-full min-w-0 grid-cols-1 gap-4 px-4 pt-3 pb-3 lg:h-svh lg:grid-cols-[minmax(0,1fr)_340px] lg:grid-rows-[minmax(0,1fr)] lg:[&>*]:mb-0">
         <SectionWrap className="mb-3 block lg:order-2 lg:flex lg:min-h-0 lg:flex-col">
           <div
             className={cn(
-              "border-b border-zinc-100 pb-5",
+              "border-b border-separator pb-5",
               AGENT_LIBRARY_SECTION_PADDING_X,
             )}
           >

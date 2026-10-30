@@ -37,27 +37,18 @@ export function ProviderGroup({
       className="w-full overflow-hidden rounded-2xl border border-border-base bg-surface"
     >
       <AccordionItem value={provider.id} className="border-b-0">
-        <AccordionTrigger
-          // TODO(tokens): no exact role for [&>svg]:text-[#1F1F20]
-          className="px-3 py-3 pr-5 hover:no-underline [&>svg]:text-[#1F1F20]"
-        >
+        <AccordionTrigger className="px-3 py-3 pr-5 hover:no-underline [&>svg]:text-foreground-base">
           <div className="flex items-center gap-3">
             <ProviderAvatar provider={provider} />
-            <span
-              // TODO(tokens): no exact text token for tracking-[-0.08px]
-              className="text-body-lg font-medium leading-6.5 tracking-[-0.08px] text-foreground-base"
-            >
+            <span className="text-body-lg leading-6.5 font-medium tracking-title text-foreground-base">
               {provider.name}
             </span>
-            <span
-              // TODO(tokens): no exact role for bg-[#EFF1F4]
-              className="inline-flex items-center justify-center rounded-[10px] bg-[#EFF1F4] px-2 py-[2px] text-body font-medium leading-5.5 text-foreground-base"
-            >
+            <span className="inline-flex items-center justify-center rounded-lg bg-surface-hover px-2 py-0.5 text-body leading-5.5 font-medium text-foreground-base">
               {count}
             </span>
           </div>
         </AccordionTrigger>
-        <AccordionContent className="px-0 pb-0 pt-0">
+        <AccordionContent className="px-0 pt-0 pb-0">
           <div className="flex flex-col divide-y divide-border-base border-t border-border-base">
             {provider.credentials.map((credential) => (
               <CredentialRow
@@ -84,8 +75,7 @@ function ProviderAvatar({ provider }: { provider: ProviderGroupView }) {
     return (
       <div
         aria-hidden="true"
-        // TODO(tokens): no exact role for bg-[#D9D9D9]
-        className="flex size-6 items-center justify-center rounded-full bg-[#D9D9D9] text-tiny font-semibold uppercase leading-inherit text-foreground-body"
+        className="flex size-6 items-center justify-center rounded-full bg-surface-active text-tiny leading-inherit font-semibold text-foreground-body uppercase"
         data-testid={`provider-avatar-${provider.id}`}
       >
         {provider.name?.charAt(0) ?? provider.id.charAt(0)}

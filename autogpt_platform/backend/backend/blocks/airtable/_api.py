@@ -27,8 +27,14 @@ def _convert_bools(
     return obj
 
 
+class AirtableWebhookEvent(str, Enum):
+    TABLE_DATA = "tableData"
+    TABLE_FIELDS = "tableFields"
+    TABLE_METADATA = "tableMetadata"
+
+
 class WebhookFilters(BaseModel):
-    dataTypes: list[str]
+    dataTypes: list[AirtableWebhookEvent]
     changeTypes: list[str] | None = None
     fromSources: list[str] | None = None
     sourceOptions: dict | None = None
@@ -610,26 +616,35 @@ async def create_field(
     field_type: TableFieldType,
     name: str,
     description: str | None = None,
-    options: dict[str, str] | None = None,
-) -> dict[str, str | dict[str, str]]:
+    options: dict[str, Any] | None = None,
+) -> dict[str, Any]:
 
     assert (
         field_type in TABLE_FIELD_TYPES
     ), f"Field type {field_type} is not valid. Valid types are {TABLE_FIELD_TYPES}."
-    params: dict[str, str | dict[str, str]] = {}
+    params: dict[str, Any] = {}
     params["type"] = field_type
     params["name"] = name
     if description:
         params["description"] = description
     if options:
-        params["options"] = options
+        params["options"] = _field_options(options)
 
     response = await Requests().post(
         f"https://api.airtable.com/v0/meta/bases/{base_id}/tables/{table_id}/fields",
         headers={"Authorization": credentials.auth_header()},
-        json=_convert_bools(params),
+        json=params,
     )
     return response.json()
+
+
+def _field_options(options: dict[str, Any]) -> dict[str, Any]:
+    """Option values may arrive as "true"/"false" strings; choice names are
+    text and stay as written, even "True"."""
+    return {
+        key: value if key == "choices" else _convert_bools(value)
+        for key, value in options.items()
+    }
 
 
 async def update_field(

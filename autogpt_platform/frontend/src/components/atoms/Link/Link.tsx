@@ -47,6 +47,7 @@ const Link = forwardRef<HTMLAnchorElement, LinkProps>(function Link(
     return (
       <a
         ref={ref}
+        data-slot="link"
         href={href}
         target="_blank"
         rel="noopener noreferrer"
@@ -59,7 +60,13 @@ const Link = forwardRef<HTMLAnchorElement, LinkProps>(function Link(
   }
 
   return (
-    <NextLink ref={ref} href={href} className={linkClasses} {...props}>
+    <NextLink
+      ref={ref}
+      data-slot="link"
+      href={href}
+      className={linkClasses}
+      {...props}
+    >
       {children}
     </NextLink>
   );

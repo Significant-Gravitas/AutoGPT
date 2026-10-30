@@ -55,8 +55,12 @@ export const TimeInput: React.FC<TimeInputProps> = ({
     error && "!border !border-error focus:border-error focus:ring-error";
 
   const input = (
-    <div className={cn("relative", wrapperClassName)}>
+    <div
+      data-slot="time-input-wrapper"
+      className={cn("relative", wrapperClassName)}
+    >
       <input
+        data-slot="time-input-control"
         type="time"
         value={value}
         onChange={handleChange}
@@ -86,14 +90,18 @@ export const TimeInput: React.FC<TimeInputProps> = ({
   );
 
   const inputWithError = (
-    <div className={cn("relative mb-6", wrapperClassName)}>
+    <div
+      data-slot="time-input-field"
+      className={cn("relative mb-6", wrapperClassName)}
+    >
       {input}
       <Text
+        data-slot="time-input-error"
         variant="small-medium"
         as="span"
         tone="error"
         className={cn(
-          "absolute left-0 top-full mt-1 transition-opacity duration-200",
+          "absolute top-full left-0 mt-1 transition-opacity duration-200",
           error ? "opacity-100" : "opacity-0",
         )}
       >
@@ -106,13 +114,21 @@ export const TimeInput: React.FC<TimeInputProps> = ({
   return hideLabel || !label ? (
     inputWithError
   ) : (
-    <label htmlFor={id} className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <Text variant="body-medium" as="span">
+    <label data-slot="time-input" htmlFor={id} className="flex flex-col gap-2">
+      <div
+        data-slot="time-input-header"
+        className="flex items-center justify-between"
+      >
+        <Text data-slot="time-input-label" variant="body-medium" as="span">
           {label}
         </Text>
         {hint ? (
-          <Text variant="small" as="span" tone="subtle">
+          <Text
+            data-slot="time-input-hint"
+            variant="small"
+            as="span"
+            tone="subtle"
+          >
             {hint}
           </Text>
         ) : null}

@@ -10,14 +10,10 @@ const alertVariants = cva(
     variants: {
       variant: {
         default: "bg-surface text-foreground-emphasis [&>svg]:text-brand",
-        // TODO(tokens): no role for orange-50 at 0x80 (#FFF3E680), yellow-300
-        // (#F8D554) or orange-600 (#E77B00).
         warning:
-          "bg-[#FFF3E680] border-yellow-300 text-foreground-emphasis [&>svg]:text-orange-600",
-        // TODO(tokens): no role for red-100 at 0x80 (#FDECEC80) or red-300
-        // (#F69999).
+          "bg-warning-surface border-warning-border text-foreground-emphasis [&>svg]:text-warning-foreground",
         error:
-          "bg-[#FDECEC80] border-red-300 text-foreground-emphasis [&>svg]:text-error",
+          "bg-error-surface border-error/40 text-foreground-emphasis [&>svg]:text-error",
       },
     },
     defaultVariants: {
@@ -49,10 +45,14 @@ const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
       <div
         ref={ref}
         role="alert"
+        data-slot="alert"
         className={cn(alertVariants({ variant: currentVariant }), className)}
         {...props}
       >
-        <IconComponent className="h-[1.125rem] w-[1.125rem]" />
+        <IconComponent
+          data-slot="alert-icon"
+          className="h-[1.125rem] w-[1.125rem]"
+        />
         {children}
       </div>
     );
@@ -67,7 +67,8 @@ const AlertTitle = React.forwardRef<
   // TODO(tokens): no tracking role for tracking-tight (-0.025em).
   <h5
     ref={ref}
-    className={cn("mb-1 font-medium leading-none tracking-tight", className)}
+    data-slot="alert-title"
+    className={cn("mb-1 leading-none font-medium tracking-tight", className)}
     {...props}
   />
 ));
@@ -80,6 +81,7 @@ const AlertDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
+    data-slot="alert-description"
     className={cn("text-body leading-5 [&_p]:leading-relaxed", className)}
     {...props}
   />

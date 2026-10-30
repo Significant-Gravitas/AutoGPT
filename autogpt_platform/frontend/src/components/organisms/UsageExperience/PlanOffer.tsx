@@ -59,20 +59,24 @@ export function PlanOffer({
   return (
     <section
       aria-label={`${name} plan`}
-      // TODO(tokens): no role for the purple-200 border or the purple-50 to
-      // blue-50 gradient.
-      className="rounded-2xl border border-purple-200 bg-gradient-to-br from-purple-50 via-white to-blue-50 p-5 sm:p-6"
+      data-slot="plan-offer"
+      className="rounded-2xl border border-brand/30 bg-gradient-to-br from-accent-surface via-surface to-info-surface p-5 sm:p-6"
     >
-      <div className="mb-5 flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
+      <div
+        data-slot="plan-offer-header"
+        className="mb-5 flex items-start justify-between gap-3"
+      >
+        <div
+          data-slot="plan-offer-identity"
+          className="flex min-w-0 items-center gap-3"
+        >
           <span
-            // TODO(tokens): no role for the purple-200 border or purple-600
-            // icon.
-            className="hidden size-10 shrink-0 items-center justify-center rounded-xl border border-purple-200 bg-surface text-purple-600 min-[360px]:flex"
+            data-slot="plan-offer-icon"
+            className="hidden size-10 shrink-0 items-center justify-center rounded-xl border border-brand/30 bg-surface text-brand min-[360px]:flex"
           >
             <Icon icon={SparklesIcon} size={20} />
           </span>
-          <div>
+          <div data-slot="plan-offer-heading">
             <Text variant="h4" className="!text-xl">
               {name}
             </Text>
@@ -82,7 +86,7 @@ export function PlanOffer({
           </div>
         </div>
         {amount && (
-          <div className="shrink-0 text-right">
+          <div data-slot="plan-offer-price" className="shrink-0 text-right">
             <Text variant="h4" className="!text-2xl">
               {amount}
             </Text>
@@ -92,18 +96,17 @@ export function PlanOffer({
           </div>
         )}
       </div>
-      <ul className="mb-5 space-y-2.5">
+      <ul data-slot="plan-offer-features" className="mb-5 space-y-2.5">
         {features.map((feature) => (
           <li
             key={feature}
+            data-slot="plan-offer-feature"
             className="flex gap-2.5 text-sm leading-5 text-foreground-body"
           >
             <Icon
               icon={Tick02Icon}
               size={16}
-              // TODO(tokens): no role for the purple-600 icon; brand-hover is a
-              // hover fill.
-              className="mt-0.5 shrink-0 text-purple-600"
+              className="mt-0.5 shrink-0 text-brand"
             />
             {feature}
           </li>

@@ -5,8 +5,6 @@ interface Props extends React.SVGProps<SVGSVGElement> {
   wordmarkColor?: string;
 }
 
-// TODO(tokens): brand artwork. The logo's own colours (#669CF6, the gradient
-// stops #000030, #9900FF, #4285F4, and the clip-path fill) are not UI roles.
 export function AutoGPTLogo({
   hideText = false,
   wordmarkColor = "#000030",
@@ -19,6 +17,7 @@ export function AutoGPTLogo({
 
   return (
     <svg
+      data-slot="autogpt-logo"
       viewBox="0 0 89 40"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
@@ -55,10 +54,12 @@ export function AutoGPTLogo({
         )}
         <path
           d="M87.4713 32.257C88.2434 32.257 88.8693 31.6311 88.8693 30.859C88.8693 30.0869 88.2434 29.4609 87.4713 29.4609C86.6992 29.4609 86.0732 30.0869 86.0732 30.859C86.0732 31.6311 86.6992 32.257 87.4713 32.257Z"
+          // oxlint-disable-next-line design-system/no-raw-colors -- AutoGPT logo brand colour, no role
           fill="#669CF6"
         />
         <path
           d="M49.2167 39.9475C49.9888 39.9475 50.6147 39.3215 50.6147 38.5494C50.6147 37.7773 49.9888 37.1514 49.2167 37.1514C48.4445 37.1514 47.8186 37.7773 47.8186 38.5494C47.8186 39.3215 48.4445 39.9475 49.2167 39.9475Z"
+          // oxlint-disable-next-line design-system/no-raw-colors -- AutoGPT logo brand colour, no role
           fill="#669CF6"
         />
       </g>
@@ -71,7 +72,9 @@ export function AutoGPTLogo({
           y2="33.2932"
           gradientUnits="userSpaceOnUse"
         >
+          {/* oxlint-disable-next-line design-system/no-raw-colors -- AutoGPT logo brand colour, no role */}
           <stop stopColor="#000030" />
+          {/* oxlint-disable-next-line design-system/no-raw-colors -- AutoGPT logo brand colour, no role */}
           <stop offset="1" stopColor="#9900FF" />
         </linearGradient>
         <linearGradient
@@ -82,7 +85,9 @@ export function AutoGPTLogo({
           y2="33.2951"
           gradientUnits="userSpaceOnUse"
         >
+          {/* oxlint-disable-next-line design-system/no-raw-colors -- AutoGPT logo brand colour, no role */}
           <stop stopColor="#000030" />
+          {/* oxlint-disable-next-line design-system/no-raw-colors -- AutoGPT logo brand colour, no role */}
           <stop offset="1" stopColor="#4285F4" />
         </linearGradient>
         <linearGradient
@@ -93,7 +98,9 @@ export function AutoGPTLogo({
           y2="-3.94009"
           gradientUnits="userSpaceOnUse"
         >
+          {/* oxlint-disable-next-line design-system/no-raw-colors -- AutoGPT logo brand colour, no role */}
           <stop stopColor="#4285F4" />
+          {/* oxlint-disable-next-line design-system/no-raw-colors -- AutoGPT logo brand colour, no role */}
           <stop offset="1" stopColor="#9900FF" />
         </linearGradient>
         <linearGradient
@@ -104,7 +111,9 @@ export function AutoGPTLogo({
           y2="34.5465"
           gradientUnits="userSpaceOnUse"
         >
+          {/* oxlint-disable-next-line design-system/no-raw-colors -- AutoGPT logo brand colour, no role */}
           <stop stopColor="#000030" />
+          {/* oxlint-disable-next-line design-system/no-raw-colors -- AutoGPT logo brand colour, no role */}
           <stop offset="1" stopColor="#4285F4" />
         </linearGradient>
         <linearGradient
@@ -115,11 +124,13 @@ export function AutoGPTLogo({
           y2="30.9756"
           gradientUnits="userSpaceOnUse"
         >
+          {/* oxlint-disable-next-line design-system/no-raw-colors -- AutoGPT logo brand colour, no role */}
           <stop stopColor="#4285F4" />
+          {/* oxlint-disable-next-line design-system/no-raw-colors -- AutoGPT logo brand colour, no role */}
           <stop offset="1" stopColor="#9900FF" />
         </linearGradient>
         <clipPath id={clipId}>
-          <rect width="88.8696" height="40" fill="white" />
+          <rect width="88.8696" height="40" />
         </clipPath>
       </defs>
     </svg>

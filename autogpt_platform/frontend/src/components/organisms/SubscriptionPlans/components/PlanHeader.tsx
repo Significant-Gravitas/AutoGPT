@@ -13,7 +13,10 @@ type Props = Pick<SubscriptionPlansProps, "billing" | "onBillingChange"> & {
 
 export function PlanHeader({ header, ...billing }: Props) {
   return (
-    <header className="mb-5 flex flex-col items-center text-center">
+    <header
+      data-slot="plan-header"
+      className="mb-5 flex flex-col items-center text-center"
+    >
       {header === undefined ? <DefaultHeading /> : header}
       <BillingToggle {...billing} />
     </header>
@@ -27,7 +30,8 @@ function DefaultHeading() {
       <Text variant="h3" as="h1" className="leading-9">
         Choose the plan that&apos;s right for{" "}
         <span
-          // TODO(tokens): no role for the indigo-500 gradient stop.
+          data-slot="plan-header-heading-accent"
+          // oxlint-disable-next-line design-system/no-raw-colors -- brand-to-indigo gradient text, no to- role holds indigo
           className="bg-gradient-to-r from-brand to-indigo-500 bg-clip-text text-transparent"
         >
           you

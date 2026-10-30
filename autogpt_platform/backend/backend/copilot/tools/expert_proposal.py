@@ -39,6 +39,7 @@ from .models import (
     ExpertChangeAppliedResponse,
     ExpertChangeKind,
     ExpertChangePreview,
+    ExpertHandoffTask,
     ExpertSummary,
     ToolResponseBase,
 )
@@ -52,6 +53,9 @@ _PROPOSAL_KEY_PREFIX = "copilot:expert_change_proposal:"
 # answered with "already done" instead of the same message an expired
 # preview gets.
 _CONSUMED_KEY_PREFIX = "copilot:expert_change_consumed:"
+# Claimed by whichever of a hire's two ids (the plain hire / hire and start)
+# is confirmed first, so one approval can never hire twice.
+_CLAIM_KEY_PREFIX = "copilot:expert_change_claim:"
 _LOG_ID_PREFIX_LENGTH = 12
 _PREVIEW_TOOLS = "tool:hire_expert, tool:raise_expert or tool:update_expert"
 
@@ -87,6 +91,12 @@ class ExpertChangeProposal(BaseModel):
     # gate refuses it rather than reading it as "answered at -1", which any
     # session with one sequenced user message would clear.
     user_turn_watermark: int | None = None
+    # Only for a hire proposed for a task already in the chat (see
+    # ``hire_expert``): the task, whether confirming this id hands it over,
+    # and the id of the other choice for the same hire.
+    handoff: ExpertHandoffTask | None = None
+    hand_off: bool = False
+    sibling_confirmation_id: str | None = None
 
 
 def proposal_key(confirmation_id: str) -> str:
@@ -95,6 +105,10 @@ def proposal_key(confirmation_id: str) -> str:
 
 def _consumed_key(confirmation_id: str) -> str:
     return f"{_CONSUMED_KEY_PREFIX}{confirmation_id}"
+
+
+def _claim_key(confirmation_id: str, sibling_confirmation_id: str) -> str:
+    return f"{_CLAIM_KEY_PREFIX}{min(confirmation_id, sibling_confirmation_id)}"
 
 
 def _stale_preview_error(session_id: str) -> ErrorResponse:
@@ -292,13 +306,49 @@ async def load_bound_proposal(
     if user_turn_watermark(session) <= proposal.user_turn_watermark:
         return _unapproved_preview_error(session.session_id)
 
+    sibling = proposal.sibling_confirmation_id
+    if sibling is None:
+        return await _consume(redis, confirmation_id, session.session_id, proposal)
+    # One hire parked two ways (the plain hire / "hire and start"): a SET NX
+    # on a key both ids share decides which answer takes it. The other id's
+    # proposal is left in place and refused by this claim, so nothing is
+    # destroyed before this confirm is sure to complete; a failure releases
+    # the claim and the user's answer stays answerable. One shared key rather
+    # than a multi-key DEL, because the two proposal keys can sit on
+    # different cluster slots.
+    claim = _claim_key(confirmation_id, sibling)
+    if not await redis.set(claim, confirmation_id, nx=True, ex=PROPOSAL_TTL_SECONDS):
+        return _already_confirmed_error(session.session_id)
+    try:
+        consumed = await _consume(redis, confirmation_id, session.session_id, proposal)
+    except BaseException:
+        await _release_claim(redis, claim)
+        raise
+    if isinstance(consumed, ErrorResponse):
+        await _release_claim(redis, claim)
+    return consumed
+
+
+async def _consume(
+    redis: AsyncRedisClient,
+    confirmation_id: str,
+    session_id: str,
+    proposal: ExpertChangeProposal,
+) -> ExpertChangeProposal | ErrorResponse:
     # GET and DEL are intentionally separate: binding must be checked before
     # consumption so a mismatched caller cannot invalidate a legitimate
     # proposal.
-    if await redis.delete(key) == 0:
-        return _stale_preview_error(session.session_id)
+    if await redis.delete(proposal_key(confirmation_id)) == 0:
+        return _stale_preview_error(session_id)
     await redis.setex(_consumed_key(confirmation_id), PROPOSAL_TTL_SECONDS, "1")
     return proposal
+
+
+async def _release_claim(redis: AsyncRedisClient, claim: str) -> None:
+    try:
+        await redis.delete(claim)
+    except Exception:
+        logger.warning("Could not release a hire's confirm claim", exc_info=True)
 
 
 async def apply_proposal(
@@ -344,14 +394,14 @@ async def _apply_hire(
     except Exception as e:
         return _hire_failure_response(e, session_id)
     return ExpertChangeAppliedResponse(
-        message=_hire_message(result.expert.name),
+        message=hire_message(result.expert.name),
         session_id=session_id,
         kind="hire",
         expert=_summary(result.expert),
     )
 
 
-def _hire_message(name: str) -> str:
+def hire_message(name: str) -> str:
     return (
         f"{name} is hired and on the team; their workflows and skills finish "
         "installing in the background. Tell the user who joined and what they own."

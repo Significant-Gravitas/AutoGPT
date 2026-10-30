@@ -27,16 +27,19 @@ interface Props {
 
 export function RenewalDetails({ terms }: Props) {
   return (
-    <div className="space-y-2">
+    <div data-slot="renewal-details" className="space-y-2">
       {terms.renewal_discounts?.map((discount, index) => (
         <Text key={index} variant="small" tone="secondary">
           {discountText(discount, terms.currency)}
         </Text>
       ))}
-      <details className="group text-sm text-foreground-tertiary">
+      <details
+        data-slot="renewal-details-terms"
+        className="group text-sm text-foreground-tertiary"
+      >
         <summary
-          // TODO(tokens): no role for the violet-500 focus outline.
-          className="w-fit cursor-pointer rounded-small underline decoration-border-strong underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500"
+          data-slot="renewal-details-terms-toggle"
+          className="w-fit cursor-pointer rounded-small underline decoration-border-strong underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
         >
           Full renewal terms
         </summary>
