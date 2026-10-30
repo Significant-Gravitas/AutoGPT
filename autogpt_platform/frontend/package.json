@@ -111,7 +111,7 @@
     "posthog-js": "1.438.13",
     "react": "19.3.1",
     "react-currency-input-field": "4.0.14",
-    "react-day-picker": "9.11.1",
+    "react-day-picker": "10.0.2",
     "react-dom": "19.3.1",
     "react-force-graph-2d": "1.29.2",
     "react-hook-form": "7.90.0",
