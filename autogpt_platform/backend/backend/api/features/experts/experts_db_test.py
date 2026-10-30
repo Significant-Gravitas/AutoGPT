@@ -81,12 +81,14 @@ FINANCE_AND_ANALYTICS_EXPERTS = ("Mina", "Theo", "Quinn")
 UNATTENDED_SAFE_PRELOADS = {"personalized-morning-coffee-newsletter"}
 _WEEKDAYS = "monday|tuesday|wednesday|thursday|friday|saturday|sunday"
 # A day-one title or timing that reads as a recurring cadence or a time of
-# day: "day 1", "on request", "after CRM export" and "with every ad" pass.
+# day ("weekly", "every Monday", "9am", "at 09:00"): "day 1", "on request",
+# "after CRM export" and "with every ad" pass.
 _CLOCK_COPY = re.compile(
     r"\b(?:daily|weekly|fortnightly|monthly|quarterly|nightly|hourly"
     rf"|(?:every|each) (?:day|week|month|morning|evening|night|weekday|{_WEEKDAYS})"
     rf"|(?:{_WEEKDAYS})s)\b"
-    r"|\b\d{1,2}(?::\d{2})?\s*[ap]\.?m\b",
+    r"|\b\d{1,2}(?::\d{2})?\s*[ap]\.?m\b"
+    r"|\b(?:[01]?\d|2[0-3]):[0-5]\d\b",
     re.IGNORECASE,
 )
 EXPECTED_WAVE_THREE = (
@@ -3836,6 +3838,31 @@ def test_roster_day_one_promises_match_work_the_expert_can_do_on_request(
                 assert not _CLOCK_COPY.search(copy), (name, copy)
 
 
+@pytest.mark.parametrize(
+    "copy",
+    ["weekly", "Every Monday", "Fridays", "9am", "8:30 pm", "at 09:00", "17:45"],
+)
+def test_clock_copy_catches_cadences_and_times_of_day(copy: str):
+    assert _CLOCK_COPY.search(copy)
+
+
+@pytest.mark.parametrize(
+    "copy",
+    [
+        "day 1",
+        "week 1",
+        "on request",
+        "after CRM export",
+        "once your numbers are connected",
+        "with every ad",
+        "Your week, protected",
+        "Pricing from £3.50",
+    ],
+)
+def test_clock_copy_passes_draft_work_timings(copy: str):
+    assert not _CLOCK_COPY.search(copy)
+
+
 def test_finance_and_analytics_roster_pack_is_skills_only(
     roster_by_name: dict[str, seed.RosterEntry],
 ):
@@ -3912,6 +3939,9 @@ async def test_roster_preloads_resolve_and_hire_installs_cleanly(
         }
         declared = {expected[p["slug"]]: p["cron"] for p in entry["preloads"]}
         assert installed == declared, persona
+        for workflow in results[persona].expert.workflows:
+            if workflow.schedule_cron:
+                assert workflow.schedule_id, (persona, workflow.schedule_cron)
     assert all(result.expert.day_one == [] for result in results.values())
 
 
