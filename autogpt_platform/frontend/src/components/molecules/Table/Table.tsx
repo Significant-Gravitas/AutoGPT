@@ -61,7 +61,7 @@ export function Table({
                 <TableHead
                   key={column}
                   data-slot="table-head"
-                  className="h-10 px-3 text-body font-medium leading-5 text-foreground-secondary"
+                  className="h-10 px-3 text-body leading-5 font-medium text-foreground-secondary"
                 >
                   {formatColumnTitle(column)}
                 </TableHead>

@@ -19,7 +19,7 @@ export function WorkCard({ metadata, preview }: Props) {
 
   return (
     <div
-      className="max-w-md rounded-2xl bg-surface p-4 ring-1 ring-inset ring-border-base/60"
+      className="max-w-md rounded-2xl bg-surface p-4 ring-1 ring-border-base/60 ring-inset"
       data-testid="work-card"
     >
       <div className="flex items-start justify-between gap-3">

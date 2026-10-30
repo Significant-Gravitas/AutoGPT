@@ -175,6 +175,7 @@ function ratchet(
   name: string,
   inner: Rule.RuleModule,
   rewrite?: Rewrite,
+  keep: (report: Report) => boolean = () => true,
 ): Rule.RuleModule {
   const messages = (inner.meta?.messages ?? {}) as Record<string, string>;
   return {
@@ -187,7 +188,9 @@ function ratchet(
         {
           get(_, key) {
             if (key === "report")
-              return (report: Report) => reports.push(report);
+              return (report: Report) => {
+                if (keep(report)) reports.push(report);
+              };
             const value = Reflect.get(target, key, target);
             return typeof value === "function" ? value.bind(target) : value;
           },
@@ -251,7 +254,8 @@ function readColorRoles(): ColorRole[] {
     path.join(FRONTEND_ROOT, "src/app/globals.css"),
     "utf8",
   );
-  const root = css.slice(css.indexOf(":root {"), css.indexOf(".dark {"));
+  const start = css.indexOf(":root {");
+  const root = css.slice(start, css.indexOf("\n}", start));
   const roles: ColorRole[] = [];
   const line =
     /--color-([a-z-]+):\s*(\d+)\s+(\d+)\s+(\d+);(?:\s*\/\*\s*([a-z]+(?:-\d+)?)\b)?/g;
@@ -346,7 +350,16 @@ export function colorAdvice(className: string) {
   );
   if (same.length > 0)
     return `Use ${same.map((role) => asClass(role.name)).join(" or ")} instead: the design token with the same colour.`;
-  return `No ${utility}- token has this exact colour. Use the ${utility}- role that fits what the element means (${family.map((role) => role.name).join(", ")}) and check the screen, since the colour changes; or add a role in src/app/globals.css and tailwind.config.ts.`;
+  return `No ${utility}- token has this exact colour. Use the ${utility}- role that fits what the element means (${family.map((role) => role.name).join(", ")}) and check the screen, since the colour changes; or add a role in src/app/globals.css (its :root and @theme).`;
+}
+
+// @shadcn/lint also reports any colour-like class that is not a theme token
+// once the theme declares one (globals.css's `@theme`). With scanAllStrings it
+// reads that into every string (`fill-mode-both`, `shadow-subtle`, SVG
+// attributes in generated data), so only the palette and hard-coded colours
+// are reported, as before the roles moved into `@theme`.
+function isPaletteOrHardcodedColor(report: Report) {
+  return !String(report.messageId ?? "").startsWith("undeclaredToken");
 }
 
 function quotedClass(message: string, report: Report) {
@@ -404,7 +417,7 @@ const noDarkVariant: Rule.RuleModule = {
       for (const match of text.matchAll(THEME_VARIANT)) {
         context.report({
           node,
-          message: `"${match[0]}" is a ${match[2]}: class. The app has one theme: tailwind.config.ts ties dark: to a .dark-mode class that is never set, so this never renders. Delete it and keep the light value; the colour tokens (bg-surface, text-foreground-*, border-border-base) carry the theme.`,
+          message: `"${match[0]}" is a ${match[2]}: class. The app has one theme: globals.css ties dark: to a .dark class that is never set, so this never renders. Delete it and keep the light value; the colour tokens (bg-surface, text-foreground-*, border-border-base) carry the theme.`,
         });
       }
     });
@@ -635,6 +648,7 @@ const plugin = {
       "no-raw-colors",
       shadcnRules["no-raw-colors"],
       rewriteRawColor,
+      isPaletteOrHardcodedColor,
     ),
     "no-arbitrary-values": ratchet(
       "no-arbitrary-values",

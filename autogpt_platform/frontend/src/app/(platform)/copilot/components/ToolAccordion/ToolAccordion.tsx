@@ -43,7 +43,7 @@ export function ToolAccordion({
     <div
       className={cn(
         "mt-2 w-full rounded-xl border border-border-base/70 bg-surface px-3 py-2 shadow-sm",
-        "duration-500 animate-in fade-in slide-in-from-bottom-2 fill-mode-both",
+        "duration-500 animate-in fade-in fill-mode-both slide-in-from-bottom-2",
         className,
       )}
     >
@@ -98,7 +98,7 @@ export function ToolAccordion({
             className="overflow-hidden"
             style={{ willChange: "height, opacity, filter" }}
           >
-            <div className="max-h-[24rem] overflow-y-auto pb-2 pt-3">
+            <div className="max-h-[24rem] overflow-y-auto pt-3 pb-2">
               {children}
             </div>
           </motion.div>

@@ -136,7 +136,7 @@ export function TourSidebar({ variant = "tour" }: Props) {
                       asChild
                       tooltip="Marketplace"
                       // oxlint-disable-next-line design-system/no-restyle -- the tour sidebar's darker hover and 20px-icon collapsed padding; SidebarMenuButton has no variant for them
-                      className="hover:!bg-surface-active group-data-[collapsible=icon]:!p-1.5 [&>svg]:size-5"
+                      className="group-data-[collapsible=icon]:!p-1.5 hover:!bg-surface-active [&>svg]:size-5"
                     >
                       <Link href="/marketplace">
                         <Icon icon={Store01Icon} className="size-5" />

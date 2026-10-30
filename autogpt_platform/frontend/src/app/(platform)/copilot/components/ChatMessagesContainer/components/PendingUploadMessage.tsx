@@ -109,7 +109,7 @@ export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
         from="user"
         data-testid="pending-upload-message"
         data-message-id={PENDING_UPLOAD_MESSAGE_ID}
-        className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+        className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
       >
         {pendingSend.text && (
           <MessageContent
@@ -120,7 +120,7 @@ export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
               "group-[.is-user]:bg-action-hover group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-action-foreground",
             )}
           >
-            <div className="whitespace-pre-wrap break-words">
+            <div className="break-words whitespace-pre-wrap">
               <CredentialMentionText text={pendingSend.text} />
             </div>
           </MessageContent>
@@ -149,7 +149,7 @@ export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
       </Message>
       <Message
         from="assistant"
-        className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+        className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
       >
         <MessageContent className="text-body-lg leading-relaxed">
           {/* Announce the status on its own: the indicator's elapsed timer

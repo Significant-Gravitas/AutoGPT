@@ -158,7 +158,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
             ) : (
               <>
                 <pre
-                  className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-medium bg-surface-muted p-3 text-sm text-foreground-emphasis"
+                  className="max-h-[60vh] overflow-auto rounded-medium bg-surface-muted p-3 text-sm whitespace-pre-wrap text-foreground-emphasis"
                   data-testid="skill-view-body"
                 >
                   {detail?.body || "(no body)"}
@@ -179,7 +179,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
                         >
                           <span className="break-all">{row.label}</span>
                           {row.sizeLabel ? (
-                            <span className="flex-shrink-0 tabular-nums text-foreground-subtle">
+                            <span className="flex-shrink-0 text-foreground-subtle tabular-nums">
                               {row.sizeLabel}
                             </span>
                           ) : null}

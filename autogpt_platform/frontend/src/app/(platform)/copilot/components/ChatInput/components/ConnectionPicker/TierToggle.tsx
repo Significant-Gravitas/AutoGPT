@@ -196,7 +196,7 @@ function LockedSegment({ segment }: { segment: Segment }) {
           href={segment.lock.href}
           // Indented past the lock glyph so it lines up under the reason it
           // answers, the way it reads when it follows that sentence inline.
-          className="ml-6 mt-1 w-fit text-caption-sm font-medium leading-inherit text-foreground-strong underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong"
+          className="mt-1 ml-6 w-fit text-caption-sm leading-inherit font-medium text-foreground-strong underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:outline-none"
         >
           See plans
         </Link>

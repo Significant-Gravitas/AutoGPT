@@ -50,7 +50,7 @@ export function ArtifactReactPreview({ source, title }: Props) {
         <p className="text-sm font-medium text-error-foreground">
           Failed to render React preview
         </p>
-        <pre className="whitespace-pre-wrap break-words rounded-md bg-error-surface p-3 font-mono text-xs text-error-foreground">
+        <pre className="rounded-md bg-error-surface p-3 font-mono text-xs break-words whitespace-pre-wrap text-error-foreground">
           {error}
         </pre>
       </div>

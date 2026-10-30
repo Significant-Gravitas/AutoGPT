@@ -37,14 +37,14 @@ export function ConnectProviderRow({
       type="button"
       onClick={() => onSelect(provider.id)}
       className={cn(
-        "group flex h-14 w-full items-center gap-2.5 rounded-md border border-border-base bg-surface px-3 text-left transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-action-hover active:bg-surface-hover",
+        "group flex h-14 w-full items-center gap-2.5 rounded-md border border-border-base bg-surface px-3 text-left transition-colors hover:bg-surface-muted focus-visible:ring-1 focus-visible:ring-action-hover focus-visible:outline-none active:bg-surface-hover",
         className,
       )}
     >
       {broken ? (
         <div
           aria-hidden
-          className="flex size-7 shrink-0 items-center justify-center rounded-md bg-surface-hover text-caption font-semibold uppercase leading-inherit text-foreground-secondary"
+          className="flex size-7 shrink-0 items-center justify-center rounded-md bg-surface-hover text-caption leading-inherit font-semibold text-foreground-secondary uppercase"
         >
           {provider.name?.charAt(0) ?? provider.id.charAt(0)}
         </div>

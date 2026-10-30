@@ -34,7 +34,7 @@ export const AnchoredPanel = React.forwardRef<HTMLDivElement, Props>(
             sideOffset={sideOffset}
             data-slot="anchored-panel"
             className={cn(
-              "z-50 w-72 rounded-lg border border-border-base bg-surface p-4 text-foreground-strong shadow-md outline-none animate-in fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+              "z-50 w-72 rounded-lg border border-border-base bg-surface p-4 text-foreground-strong shadow-md animate-in outline-none fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
               className,
             )}
             {...props}

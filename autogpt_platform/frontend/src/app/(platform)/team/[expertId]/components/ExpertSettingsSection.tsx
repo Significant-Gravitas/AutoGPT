@@ -94,7 +94,7 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
               {pauseNames.map((item) => (
                 <span
                   key={item.id}
-                  className="flex min-w-0 max-w-full rounded-full border border-warning-border bg-warning-surface px-2.5 py-0.5"
+                  className="flex max-w-full min-w-0 rounded-full border border-warning-border bg-warning-surface px-2.5 py-0.5"
                 >
                   <Text
                     variant="small-tight"

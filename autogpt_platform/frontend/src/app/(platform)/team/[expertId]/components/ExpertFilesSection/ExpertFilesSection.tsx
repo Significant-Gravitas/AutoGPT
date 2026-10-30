@@ -102,7 +102,7 @@ export function ExpertFilesSection({ expertId, expertName }: Props) {
             ))}
           </ul>
           {files.hasMore ? (
-            <Text variant="small" tone="muted" className="mx-2 mb-1 mt-2">
+            <Text variant="small" tone="muted" className="mx-2 mt-2 mb-1">
               Showing the latest 200 files.
             </Text>
           ) : null}

@@ -230,7 +230,7 @@ function OutputTablePreview({ rows, columns }: OutputTablePreviewProps) {
   return (
     <div
       data-slot="work-output-sheet-table-preview"
-      className="overflow-x-auto rounded-xl ring-1 ring-inset ring-border-base"
+      className="overflow-x-auto rounded-xl ring-1 ring-border-base ring-inset"
     >
       <table
         data-slot="work-output-sheet-table-grid"

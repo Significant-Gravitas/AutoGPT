@@ -61,7 +61,7 @@ export function EditScheduleModal({
             variant="ghost"
             size="small"
             // oxlint-disable-next-line design-system/require-static-classes -- callers outside library pass layout/size overrides
-            className={triggerClassName ?? "absolute -right-2 -top-2"}
+            className={triggerClassName ?? "absolute -top-2 -right-2"}
           >
             <Icon icon={PencilEdit02Icon} className="size-4" /> Edit schedule
           </Button>

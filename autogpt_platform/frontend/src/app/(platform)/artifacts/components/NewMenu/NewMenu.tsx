@@ -47,7 +47,7 @@ export function NewMenu({ selectedFolderId, selectedFolderName }: Props) {
             disabled={isUploading}
             className={cn(
               extendedButtonVariants({ variant: "primary", size: "small" }),
-              "min-w-0 gap-1.5 pl-4 pr-3",
+              "min-w-0 gap-1.5 pr-3 pl-4",
             )}
             data-testid="artifacts-new-menu"
           >
