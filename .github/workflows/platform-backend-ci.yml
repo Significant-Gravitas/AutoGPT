@@ -112,6 +112,11 @@ jobs:
           git show 03e535ac213fd5ae13fdd4fa84c8b12c6e3e6d95:.github/scripts/ci_async_diagnostic.py
           > "$RUNNER_TEMP/ci_async_diagnostic.py"
 
+      - name: Apply candidate SDK context isolation
+        run: |
+          git show "${{ github.sha }}:.github/scripts/ci-sdk-context-isolation.patch" | git apply
+          git diff --check
+
       - name: Checkout skills catalog
         # The expert roster and the marketplace skills live in a separate
         # repo. The shards read it from SKILLS_CATALOG_PATH so no test
@@ -338,6 +343,12 @@ jobs:
 
       - name: Install Python dependencies
         run: poetry install
+
+      - name: Check candidate harness style
+        run: |
+          poetry run black --check backend/copilot/sdk/retry_scenarios_test.py
+          poetry run isort --check-only -p backend backend/copilot/sdk/retry_scenarios_test.py
+          poetry run ruff check backend/copilot/sdk/retry_scenarios_test.py
 
       - name: Generate Prisma Client
         run: poetry run prisma generate && poetry run gen-prisma-stub

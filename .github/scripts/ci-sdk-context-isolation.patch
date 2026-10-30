@@ -1,0 +1,13 @@
+diff --git a/autogpt_platform/backend/backend/copilot/sdk/retry_scenarios_test.py b/autogpt_platform/backend/backend/copilot/sdk/retry_scenarios_test.py
+index b82ea37ef9..eb4fdcb4fa 100644
+--- a/autogpt_platform/backend/backend/copilot/sdk/retry_scenarios_test.py
++++ b/autogpt_platform/backend/backend/copilot/sdk/retry_scenarios_test.py
+@@ -1047,7 +1047,7 @@ def _make_sdk_patches(
+             dict(new_callable=AsyncMock, return_value=""),
+         ),
+         (
+-            f"{_SVC}.first_message_expert_context",
++            "backend.copilot.service.build_expert_context",
+             dict(new_callable=AsyncMock, return_value=""),
+         ),
+         # Same for the per-turn skills drift notice: it lists the user's
