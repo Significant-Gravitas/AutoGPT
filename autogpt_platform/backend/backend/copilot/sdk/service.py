@@ -5284,6 +5284,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     turn_cache_creation_tokens = 0
     turn_cost_usd: float | None = None
     graphiti_enabled = False
+    # A first turn's memory recall, awaited where its query is sent.
+    warm_ctx_task: asyncio.Task[tuple[bool, str]] | None = None
     pre_attempt_msg_count = 0
     # Checkpoint turn_start can span auto-continues; capture only this call.
     learning_turn_start = len(session.messages)
@@ -5430,14 +5432,20 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # box it may already have opened (and the expert turn it counted)
         # must still be published so the finally below pauses and releases it.
         e2b_task = asyncio.create_task(_setup_e2b())
+        # A first turn's recalled memories go into its query, not into the
+        # CLI's options (``_append_warm_context``), so the setup doesn't wait
+        # for them: the recall runs on while the query is built and is
+        # awaited where the query is sent.
+        if not has_history:
+            warm_ctx_task = asyncio.create_task(
+                _fetch_graphiti_context(user_id, session, message)
+            )
         try:
             (
                 (base_system_prompt, understanding),
-                (graphiti_enabled, warm_ctx),
                 _restore,
             ) = await asyncio.gather(
                 _build_system_prompt(user_id if not has_history else None),
-                _fetch_graphiti_context(user_id, session, message),
                 # Restore CLI session — single GCS round-trip covers both
                 # --resume and builder state.  message_count watermark lives
                 # in the companion .meta.json alongside the session file.
@@ -5454,6 +5462,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             with contextlib.suppress(BaseException):
                 e2b_sandbox = await e2b_task
             raise
+        graphiti_enabled = _graphiti_enabled(user_id)
         e2b_sandbox = await e2b_task
 
         use_e2b = e2b_sandbox is not None
@@ -5956,7 +5965,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # prepended AFTER sanitize_user_supplied_context runs — preventing
             # trusted server-injected blocks from being stripped by the sanitizer.
             # inject_user_context persists the fully prefixed message to DB.
-            # The first turn's warm context (``warm_ctx``) is not passed: it
+            # The first turn's warm context (``warm_ctx_task``) is not passed: it
             # goes into the query only, marked, like every later turn's block
             # (``_append_warm_context`` below), so a fact forgotten later in
             # the session is in no stored message and no uploaded transcript.
@@ -6145,17 +6154,20 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         )
 
         # SECRT-2378: warm context goes into the query only, marked, on every
-        # turn (see ``_append_warm_context``): the block the setup fetch read
-        # on a session's first turn, a refresh on a follow-up. Every send of
-        # the query carries a block read for it: this one, and each retry
-        # below (``_resend_with_fresh_warm_context``), which rebuilds from the
-        # query as it is here, before the block.
+        # turn (see ``_append_warm_context``): the block the first turn's
+        # recall read (started with the setup), a refresh on a follow-up.
+        # Every send of the query carries a block read for it: this one, and
+        # each retry below (``_resend_with_fresh_warm_context``), which
+        # rebuilds from the query as it is here, before the block.
         warm_context_base = query_message
+        first_turn_block = None
+        if warm_ctx_task is not None:
+            _, first_turn_block = await warm_ctx_task
         query_message = await append_warm_context(
             warm_context_base,
             was_compacted=was_compacted,
             pending=pending_warm_ctx,
-            first_turn_block=None if has_history else warm_ctx,
+            first_turn_block=first_turn_block,
         )
 
         # When running without --resume and no prior transcript in storage,
@@ -6694,6 +6706,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 compaction.get_log_summary(),
             )
     except GeneratorExit:
+        if warm_ctx_task is not None:
+            warm_ctx_task.cancel()
+            warm_ctx_task = None
         # GeneratorExit is raised when the async generator is closed by the
         # caller (e.g. client disconnect, page refresh).  We MUST release the
         # stream lock here because the ``finally`` block at the end of this
@@ -6705,6 +6720,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         await persist_unfolded_rows(session, unsaved_held, log_prefix=log_prefix)
         raise
     except BaseException as e:
+        if warm_ctx_task is not None:
+            warm_ctx_task.cancel()
+            warm_ctx_task = None
         await persist_unfolded_rows(session, unsaved_held, log_prefix=log_prefix)
         # Catch BaseException to handle both Exception and CancelledError
         # (CancelledError inherits from BaseException in Python 3.8+)
@@ -6777,6 +6795,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         turn_error = sys.exception()
         if first_turn_context is not None:
             first_turn_context.close()
+        # A turn that ended before its query no longer wants the recall.
+        # Cancelling, rather than awaiting, adds no await to this cleanup, and
+        # also suppresses an unretrieved-exception warning for a finished task.
+        if warm_ctx_task is not None:
+            warm_ctx_task.cancel()
         try:
             tool_display_bridge.reset()
             await persist_unfolded_rows(session, unsaved_held, log_prefix=log_prefix)
@@ -7317,6 +7340,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 return
 
 
+def _graphiti_enabled(user_id: str | None) -> bool:
+    """Memory is on for every signed-in user. The setup reads it without
+    waiting for a first turn's recall (``_fetch_graphiti_context``)."""
+    return bool(user_id)
+
+
 async def _fetch_graphiti_context(
     user_id: str | None,
     session: ChatSession,
@@ -7332,7 +7361,7 @@ async def _fetch_graphiti_context(
     never stored in the user's message. Skips the fetch on follow-up turns
     (history > 1 message) and when the user is anonymous.
     """
-    if not user_id:
+    if not _graphiti_enabled(user_id):
         return False, ""
     if not (user_id and len(session.messages) <= 1):
         return True, ""

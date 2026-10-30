@@ -67,7 +67,7 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
       draggable={true}
       variant={"ghost"}
       className={cn(
-        "group flex h-16 w-full min-w-[7.5rem] items-center justify-start gap-3 whitespace-normal rounded-xl bg-surface-muted px-3.5 py-2.5 text-start shadow-none",
+        "group flex h-16 w-full min-w-[7.5rem] items-center justify-start gap-3 rounded-xl bg-surface-muted px-3.5 py-2.5 text-start whitespace-normal shadow-none",
         "hover:cursor-default hover:bg-surface-hover focus:ring-0 active:bg-surface-hover active:ring-1 active:ring-border-strong disabled:cursor-not-allowed",
         className,
       )}

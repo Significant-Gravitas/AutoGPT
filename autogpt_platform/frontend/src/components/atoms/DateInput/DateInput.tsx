@@ -112,7 +112,7 @@ export const DateInput = ({
         <label
           data-slot="date-input-label"
           htmlFor={id}
-          className="text-body font-medium leading-5 text-foreground-body"
+          className="text-body leading-5 font-medium text-foreground-body"
         >
           {label}
         </label>

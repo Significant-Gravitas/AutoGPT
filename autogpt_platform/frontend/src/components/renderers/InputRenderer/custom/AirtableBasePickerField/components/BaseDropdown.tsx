@@ -106,7 +106,7 @@ export function BaseDropdown({
           aria-required="true"
           className={cn(
             "flex h-9 w-full min-w-0 items-center gap-2 rounded-xl border border-border-base bg-surface px-4 text-start text-sm transition-colors",
-            "hover:border-border-strong focus:border-foreground-subtle focus:outline-none focus:ring-1 focus:ring-foreground-subtle",
+            "hover:border-border-strong focus:border-foreground-subtle focus:ring-1 focus:ring-foreground-subtle focus:outline-none",
             chosen ? "text-foreground-strong" : "text-foreground-subtle",
           )}
         >

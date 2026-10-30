@@ -22,7 +22,7 @@ export function LibrarySearchBar({ setSearchTerm }: Props) {
           icon={Search01Icon}
           width={18}
           height={18}
-          className="absolute left-4 top-[34%] z-20 -translate-y-1/2"
+          className="absolute top-[34%] left-4 z-20 -translate-y-1/2"
         />
       </span>
 

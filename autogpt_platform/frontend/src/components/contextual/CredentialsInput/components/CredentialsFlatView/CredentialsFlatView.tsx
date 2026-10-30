@@ -40,7 +40,7 @@ function ProviderConnectRow({
       {broken ? (
         <div
           aria-hidden
-          className="flex size-7 shrink-0 items-center justify-center rounded-md bg-surface text-caption font-semibold uppercase leading-inherit text-foreground-secondary"
+          className="flex size-7 shrink-0 items-center justify-center rounded-md bg-surface text-caption leading-inherit font-semibold text-foreground-secondary uppercase"
         >
           {displayName.charAt(0)}
         </div>
@@ -56,7 +56,7 @@ function ProviderConnectRow({
           onError={() => setBroken(true)}
         />
       )}
-      <span className="min-w-0 flex-1 truncate text-body font-medium leading-5.5 text-foreground-emphasis">
+      <span className="min-w-0 flex-1 truncate text-body leading-5.5 font-medium text-foreground-emphasis">
         {displayName}
       </span>
       <Button

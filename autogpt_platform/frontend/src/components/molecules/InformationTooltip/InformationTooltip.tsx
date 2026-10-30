@@ -30,7 +30,7 @@ export function InformationTooltip({ description, iconSize = 24 }: Props) {
             aria-label="More information"
             onClick={(event) => event.preventDefault()}
             data-slot="information-tooltip-trigger"
-            className="inline-flex flex-none items-center justify-center rounded-full p-1 text-current hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong"
+            className="inline-flex flex-none items-center justify-center rounded-full p-1 text-current hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:outline-none"
           >
             <Icon
               icon={InformationCircleIcon}

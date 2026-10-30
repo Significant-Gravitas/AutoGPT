@@ -19,7 +19,7 @@ export const NewControlPanel = memo(function NewControlPanel({
   return (
     <section
       className={cn(
-        "absolute left-4 top-10 z-10 overflow-hidden rounded-2xl border-none bg-surface p-0 shadow",
+        "absolute top-10 left-4 z-10 overflow-hidden rounded-2xl border-none bg-surface p-0 shadow",
       )}
     >
       <div className="flex flex-col items-center justify-center rounded-2xl p-0">

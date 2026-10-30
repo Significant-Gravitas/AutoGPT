@@ -472,7 +472,7 @@ export const ChatInput = memo(function ChatInput({
           // the pill's deep shadow, so it reads as a surface the text sits on.
           stacked &&
             // oxlint-disable-next-line design-system/no-arbitrary-values -- the card composer's shallow two-layer drop; no shadow token has it
-            "gap-3 !rounded-3xl border-border-base px-3.5 pb-3.5 pt-3 shadow-[0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02)] has-[[data-slot=input-group-control]:focus-visible]:border-border-strong",
+            "gap-3 !rounded-3xl border-border-base px-3.5 pt-3 pb-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02)] has-[[data-slot=input-group-control]:focus-visible]:border-border-strong",
           isCompact &&
             "!rounded-xl border-border-base shadow-message-table has-[[data-slot=input-group-control]:focus-visible]:border-foreground-subtle",
           isRecording &&
@@ -539,7 +539,7 @@ export const ChatInput = memo(function ChatInput({
                 stacked
                   ? cn(
                       CARD_ICON_BUTTON_CLASS,
-                      "[&[aria-expanded=true]_svg]:rotate-45 [&_svg]:transition-transform [&_svg]:duration-200",
+                      "[&_svg]:transition-transform [&_svg]:duration-200 [&[aria-expanded=true]_svg]:rotate-45",
                     )
                   : iconButtonClass
               }

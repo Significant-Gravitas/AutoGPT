@@ -1,6 +1,6 @@
 // The colour roles, grouped by job. Each is an RGB triplet in
-// src/app/globals.css (`--color-<name>`); tailwind.config.ts registers every
-// one as a Tailwind colour and the Tokens/Colors story draws them from here.
+// src/app/globals.css (`--color-<name>`), which its `@theme` registers as a
+// Tailwind colour; the Tokens/Colors story draws them from here.
 export const COLOR_ROLE_GROUPS = [
   {
     name: "Surfaces",

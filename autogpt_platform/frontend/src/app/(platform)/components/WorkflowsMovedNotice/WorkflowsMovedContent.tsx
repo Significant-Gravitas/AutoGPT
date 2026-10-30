@@ -14,14 +14,14 @@ export function WorkflowsMovedContent({ titleRef, onDismiss }: Props) {
   return (
     <>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <div className="px-6 pb-3 pt-5 sm:px-8">
-          <p className="mb-1.5 text-xs font-medium uppercase tracking-widest text-accent-strong">
+        <div className="px-6 pt-5 pb-3 sm:px-8">
+          <p className="mb-1.5 text-xs font-medium tracking-widest text-accent-strong uppercase">
             Workspace update
           </p>
           <Dialog.Title
             ref={titleRef}
             tabIndex={-1}
-            className="pr-7 text-2xl font-semibold leading-tight tracking-tight text-foreground-strong outline-none sm:text-heading sm:leading-tight"
+            className="pr-7 text-2xl leading-tight font-semibold tracking-tight text-foreground-strong outline-none sm:text-heading sm:leading-tight"
           >
             Your agents have moved
           </Dialog.Title>

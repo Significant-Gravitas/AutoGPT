@@ -1,7 +1,8 @@
 /* Read only by @shadcn/lint, so that design-system/no-unknown-classes knows
-   every class tailwind.config.ts generates. components.json points the shadcn
-   CLI and the lint's theme tokens at globals.css, which has no
+   every class this project generates: the theme, variants and utilities in
+   globals.css and what tailwind.config.ts still adds. components.json points
+   the shadcn CLI and the lint's theme tokens at globals.css, which has no
    `@import "tailwindcss"`, so the lint finds this file as its Tailwind entry.
    Nothing imports it, so it never ships. */
 @import "tailwindcss";
-@config "../../tailwind.config.ts";
+@import "./globals.css";

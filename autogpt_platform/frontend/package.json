@@ -185,7 +185,6 @@
     "require-in-the-middle": "8.0.1",
     "storybook": "9.1.21",
     "tailwindcss": "4.3.3",
-    "tailwindcss-v3": "npm:tailwindcss@3.4.17",
     "typescript": "5.9.3",
     "vite": "7.3.1",
     "vite-tsconfig-paths": "6.0.4",

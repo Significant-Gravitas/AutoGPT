@@ -33,7 +33,7 @@ export function TrialOffer({ trial, isStarting, isBlocked, onStart }: Props) {
           </TrialTitle>
           <span
             data-slot="trial-offer-pill"
-            className="inline-flex items-center rounded-full bg-accent-surface px-2 py-0.5 text-tiny font-medium leading-inherit text-accent-strong"
+            className="inline-flex items-center rounded-full bg-accent-surface px-2 py-0.5 text-tiny leading-inherit font-medium text-accent-strong"
           >
             No charge today
           </span>

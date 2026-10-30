@@ -16,11 +16,11 @@ export function ProviderRow({ provider, onSelect }: Props) {
     <button
       type="button"
       onClick={() => onSelect(provider.id)}
-      className="group flex min-h-20 w-full items-center gap-3 rounded-xl border border-border-base bg-surface px-3.5 py-2.5 text-left transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand active:bg-surface-hover"
+      className="group flex min-h-20 w-full items-center gap-3 rounded-xl border border-border-base bg-surface px-3.5 py-2.5 text-left transition-colors hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none active:bg-surface-hover"
     >
       <ProviderLogo provider={provider} size="md" />
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-body font-medium leading-5.5 text-foreground-emphasis">
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-body leading-5.5 font-medium text-foreground-emphasis">
           <span>{provider.name}</span>
           {provider.mcpServer &&
             provider.mcpServer.connection_mode !== "hosted" && (

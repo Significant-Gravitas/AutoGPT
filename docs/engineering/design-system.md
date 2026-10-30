@@ -33,7 +33,7 @@ Never raise a count to make new code pass. Fix the code, or suppress the one lin
 
 ## Tokens
 
-Colour comes from the role tokens in `src/app/globals.css` (`--color-<role>`, registered in `tailwind.config.ts`). Use them with any colour utility, opacity modifiers included: `bg-surface`, `text-foreground-secondary`, `border-border-base`, `ring-focus`, `bg-overlay/20`.
+Colour comes from the role tokens in `src/app/globals.css` (`--color-<role>` on `:root`, registered in its `@theme`). Use them with any colour utility, opacity modifiers included: `bg-surface`, `text-foreground-secondary`, `border-border-base`, `ring-focus`, `bg-overlay/20`.
 
 - Surfaces: `canvas`, `surface`, `surface-muted`, `surface-hover`, `surface-active`, `overlay`
 - Text: `foreground-base`, `foreground-strong`, `foreground-emphasis`, `foreground-body`, `foreground-secondary`, `foreground-tertiary`, `foreground-subtle`, `foreground-disabled`, `placeholder`
@@ -42,7 +42,7 @@ Colour comes from the role tokens in `src/app/globals.css` (`--color-<role>`, re
 - Status: `error`, `error-hover`, `error-foreground`, `error-surface`, `warning`, `warning-foreground`, `warning-surface`, `warning-border`, `success`, `success-foreground`, `success-surface`, `info`, `info-foreground`, `info-surface`
 - Builder: `builder-canvas`, `builder-grid`, `node-surface`, `node-border`, `node-selected`, `edge`, `handle`
 
-The raw palette (`zinc-*`, `neutral-*`, `purple-*`, …) and hex values belong in `globals.css` only.
+The raw palette (`zinc-*`, `neutral-*`, `purple-*`, …) lives in `tailwind.v3-preset.ts`, and hex values belong in `globals.css` only. The palette stays out of `globals.css`'s `@theme` because `@shadcn/lint` reads every colour there as a token.
 
 - **Rule `design-system/no-raw-colors`:** palette classes such as `bg-zinc-200`, in `className`, `cn()`/`cva()` and any other string.
 - **Rule `design-system/no-arbitrary-values`:** arbitrary colours such as `bg-[#fff]` and `text-[rgb(…)]`.
@@ -54,13 +54,13 @@ The error names the token with the same colour when one exists: `"text-zinc-500"
 When you migrate a class, keep the value: same value, new name. If no role has the exact value, leave the class and add `// TODO(tokens)`. Never pick the nearest role.
 
 `src/components/__tests__/design-system-contract.test.ts` checks that:
-- every role in `globals.css` is registered in `tailwind.config.ts`, and the other way round;
+- every role on `globals.css`'s `:root` is registered in its `@theme`, and the other way round, and `color-roles.ts` lists them all;
 - `.dark` only redefines names that `:root` declares;
-- the raw palette in `src/components/styles/colors.ts` gets no new colours.
+- the app's palette values (`APP_COLORS` in `tailwind.v3-preset.ts`) get no new colours, and `globals.css` declares none.
 
 ## Dark mode
 
-No `dark:` or `light:` classes. A theme is a set of token values, not a second set of classes. `tailwind.config.ts` ties `dark:` to a `.dark-mode` class the app never sets, so these classes never render. Delete them and keep the light value; the role tokens carry the theme. Rule: `design-system/no-dark-variant`.
+No `dark:` or `light:` classes. A theme is a set of token values, not a second set of classes. `globals.css` ties `dark:` to a `.dark` ancestor (`@custom-variant dark`), which the app never sets, so these classes never render. Delete them and keep the light value; the role tokens carry the theme. Rule: `design-system/no-dark-variant`.
 
 ## Primitives
 
@@ -76,7 +76,7 @@ Each primitive marks its root element with `data-slot`. The contract test lists 
 
 Every class must be one this project's Tailwind generates: a typo such as `text-md` or `flex-end` silently renders nothing. Rule: `design-system/no-unknown-classes`.
 
-`components.json` keeps `tailwind.css` at `src/app/globals.css`, the stylesheet the app loads. That is where the shadcn CLI writes, and where `@shadcn/lint` reads the colour tokens from. `globals.css` has no `@import "tailwindcss"` (Tailwind 3 compat), so for the grammar `@shadcn/lint` falls back to the one stylesheet that does: `src/app/tailwind-grammar.css`, which imports Tailwind and `tailwind.config.ts`. Nothing imports that file, so it never ships. `design-system.mts` drops the notice `@shadcn/lint` prints about this fallback. A few class names that aren't Tailwind are allowed in `.oxlintrc.json`: the PostHog and xyflow markers (`ph-no-capture`, `nodrag`, `nowheel`, `nopan`) and the classes `globals.css` defines (`agpt-*`, `markdown-output`).
+`components.json` keeps `tailwind.css` at `src/app/globals.css`, the stylesheet the app loads. That is where the shadcn CLI writes, and where `@shadcn/lint` reads the colour tokens from. `globals.css` has no `@import "tailwindcss"` (Tailwind 3 compat), so for the grammar `@shadcn/lint` falls back to the one stylesheet that does: `src/app/tailwind-grammar.css`, which imports Tailwind and `globals.css` (and through it `tailwind.config.ts`). Nothing imports that file, so it never ships. `design-system.mts` drops the notice `@shadcn/lint` prints about this fallback. A few class names that aren't Tailwind are allowed in `.oxlintrc.json`: the PostHog and xyflow markers (`ph-no-capture`, `nodrag`, `nowheel`, `nopan`) and the classes `globals.css` defines (`agpt-*`, `markdown-output`).
 
 ## Styles
 

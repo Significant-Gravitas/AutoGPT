@@ -43,7 +43,7 @@ export function Timeline({ label, milestones }: Props) {
             {isLast ? null : (
               <span
                 aria-hidden
-                className="absolute bottom-0 left-[1.125rem] top-10 w-px -translate-x-1/2 bg-border-base"
+                className="absolute top-10 bottom-0 left-[1.125rem] w-px -translate-x-1/2 bg-border-base"
               />
             )}
             <span
