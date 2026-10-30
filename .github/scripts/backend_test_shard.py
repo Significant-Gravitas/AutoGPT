@@ -4,26 +4,44 @@ import argparse
 import os
 import subprocess
 import sys
+from pathlib import PurePosixPath
 
 
 SHARDS = {
     "data": ["backend/data"],
     "copilot": ["backend/copilot"],
+    "copilot-memory": ["backend/copilot/dream", "backend/copilot/graphiti"],
+    "copilot-billing": ["backend/copilot/billing_e2e"],
+    "billing-threads": [
+        "backend/copilot/billing_e2e/thread_billing_test.py",
+        "backend/executor/billing_e2e",
+    ],
     "util-executor": ["backend/util", "backend/executor"],
+    "api": ["backend/api"],
 }
 
 
 def shard_args(shard: str) -> list[str]:
     if shard in SHARDS:
-        return ["-c", "pyproject.toml", *SHARDS[shard]]
-    if shard != "remainder":
+        paths = SHARDS[shard]
+        # Nested groups own their subtrees, including individually split files.
+        ignored = [
+            path
+            for other, group in SHARDS.items()
+            if other != shard
+            for path in group
+            if any(PurePosixPath(path).is_relative_to(parent) for parent in paths)
+        ]
+    elif shard == "remainder":
+        paths = [".", "../../.github/scripts"]
+        ignored = [path for group in SHARDS.values() for path in group]
+    else:
         raise ValueError(f"Unknown backend test shard: {shard}")
     return [
         "-c",
         "pyproject.toml",
-        ".",
-        "../../.github/scripts",
-        *(f"--ignore={path}" for paths in SHARDS.values() for path in paths),
+        *paths,
+        *(f"--ignore={path}" for path in ignored),
     ]
 
 

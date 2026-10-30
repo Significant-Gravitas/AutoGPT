@@ -109,11 +109,16 @@ class AggregateSkipTests(unittest.TestCase):
         self.assertIn("Python 3.11", diagnostic)
 
     def test_missing_shard_report_fails_even_when_all_skips_are_present(self):
-        self.report_path("3.12", "copilot").unlink()
-        result, diagnostic = self.run_validator()
-        self.assertEqual(result, 1)
-        self.assertIn("Python 3.12, shard copilot", diagnostic)
-        self.assertIn("missing or empty", diagnostic)
+        for shard in SHARDS:
+            with self.subTest(shard=shard):
+                report = self.report_path("3.12", shard)
+                original = report.read_bytes()
+                report.unlink()
+                result, diagnostic = self.run_validator()
+                self.assertEqual(result, 1)
+                self.assertIn(f"Python 3.12, shard {shard}", diagnostic)
+                self.assertIn("missing or empty", diagnostic)
+                report.write_bytes(original)
 
     def test_missing_entire_python_version_fails(self):
         for shard in (*SHARDS, "remainder"):

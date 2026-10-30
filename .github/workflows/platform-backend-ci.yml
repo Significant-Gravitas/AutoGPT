@@ -228,7 +228,7 @@ jobs:
     name: test (${{ matrix.python-version }}, ${{ matrix.test-shard }})
     permissions:
       contents: read
-    # Each Python leg preserves the complete suite while its four disjoint path
+    # Each Python leg preserves the complete suite while its eight disjoint path
     # groups run on separate standard runners. The cap is a hang guard, not a
     # performance budget: on merge_group a cancelled job reads as a failed
     # check and ejects the PR from the queue, so keep it well above p99.
@@ -237,7 +237,15 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
-        test-shard: [data, copilot, util-executor, remainder]
+        test-shard:
+          - data
+          - copilot
+          - copilot-memory
+          - copilot-billing
+          - billing-threads
+          - util-executor
+          - api
+          - remainder
     runs-on: ubuntu-latest
 
     services:
@@ -347,11 +355,8 @@ jobs:
             data)
               database_name="postgres"
               ;;
-            copilot|remainder)
-              database_name="ci_${MATRIX_TEST_SHARD}"
-              ;;
-            util-executor)
-              database_name="ci_util_executor"
+            copilot|copilot-memory|copilot-billing|billing-threads|util-executor|api|remainder)
+              database_name="ci_${MATRIX_TEST_SHARD//-/_}"
               ;;
             *)
               echo "Unknown backend test shard: $MATRIX_TEST_SHARD" >&2
@@ -590,6 +595,7 @@ jobs:
           export DIRECT_URL="$DATABASE_URL"
           pytest_args=(
             -p no:cacheprovider
+            --durations=30
             --cov=backend
             --cov-branch
             --cov-report=
