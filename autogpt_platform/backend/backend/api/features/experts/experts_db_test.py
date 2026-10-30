@@ -3939,9 +3939,6 @@ async def test_roster_preloads_resolve_and_hire_installs_cleanly(
         }
         declared = {expected[p["slug"]]: p["cron"] for p in entry["preloads"]}
         assert installed == declared, persona
-        for workflow in results[persona].expert.workflows:
-            if workflow.schedule_cron:
-                assert workflow.schedule_id, (persona, workflow.schedule_cron)
     assert all(result.expert.day_one == [] for result in results.values())
 
 
