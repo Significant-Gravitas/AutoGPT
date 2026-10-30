@@ -275,42 +275,46 @@ export const VariantMatrix: Story = {
   render: renderVariantMatrix,
 };
 
-// The pre-design-system looks, kept at today's pixels for the screens that
-// still use them.
-export const LegacyVariants: Story = {
-  render: renderLegacyVariants,
+// The rounded-md family for dialogs, forms and toggle rows that keep the
+// pre-pill look; what the legacy-* variants became.
+export const CompactVariants: Story = {
+  render: renderCompactVariants,
 };
 
 // Render functions as function declarations
-const LEGACY_VARIANTS = [
-  "legacy-default",
-  "legacy-destructive",
-  "legacy-outline",
-  "legacy-ghost",
-  "legacy-link",
+const COMPACT_VARIANTS = [
+  "compact-primary",
+  "compact-destructive",
+  "compact-outline",
+  "compact-ghost",
 ] as const;
 
-const LEGACY_SIZES = ["legacy-default", "legacy-sm", "legacy-icon"] as const;
+const COMPACT_SIZES = [
+  "compact",
+  "compact-sm",
+  "compact-icon",
+  "compact-icon-sm",
+] as const;
 
-function renderLegacyVariants() {
+function renderCompactVariants() {
   return (
     <div className="space-y-6 p-8">
-      {LEGACY_VARIANTS.map((variant) => (
+      {COMPACT_VARIANTS.map((variant) => (
         <div key={variant} className="space-y-2">
           <Text variant="small-medium" tone="muted">
             {variant}
           </Text>
           <div className="flex flex-wrap items-center gap-3">
-            {LEGACY_SIZES.map((size) => (
+            {COMPACT_SIZES.map((size) => (
               <Button key={size} variant={variant} size={size}>
-                {size === "legacy-icon" ? (
+                {size.startsWith("compact-icon") ? (
                   <Icon icon={PlusSignIcon} size={16} />
                 ) : (
                   size
                 )}
               </Button>
             ))}
-            <Button variant={variant} disabled>
+            <Button variant={variant} size="compact" disabled>
               Disabled
             </Button>
           </div>

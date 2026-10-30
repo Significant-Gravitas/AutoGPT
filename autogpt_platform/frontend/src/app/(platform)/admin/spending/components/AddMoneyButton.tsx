@@ -136,16 +136,16 @@ export function AdminAddMoneyButton({
             <DialogFooter>
               <Button
                 type="button"
-                // oxlint-disable-next-line design-system/no-legacy-button-variant -- primary/secondary are pills; shape change deferred (plan 5.7 item 2)
-                variant="legacy-outline"
+                variant="compact-outline"
+                size="compact"
                 onClick={() => setIsAddMoneyDialogOpen(false)}
                 disabled={isSubmitting}
               >
                 Cancel
               </Button>
               <Button
-                // oxlint-disable-next-line design-system/no-legacy-button-variant -- primary/secondary are pills; shape change deferred (plan 5.7 item 2)
-                variant="legacy-default"
+                variant="compact-primary"
+                size="compact"
                 type="submit"
                 disabled={isSubmitting}
               >

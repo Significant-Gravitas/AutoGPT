@@ -659,9 +659,6 @@
   "src/app/(platform)/dev/brain-dump-debug/components/TimingPanel.tsx": {
     "no-restyle": 1
   },
-  "src/app/(platform)/error.tsx": {
-    "no-raw-colors": 2
-  },
   "src/app/(platform)/home/components/AgentTeam/AgentTeam.tsx": {
     "no-restyle": 2
   },
@@ -755,28 +752,7 @@
   "src/app/(platform)/raise/components/RaiseFlow/RaiseFlow.tsx": {
     "no-restyle": 7
   },
-  "src/app/global-error.tsx": {
-    "no-raw-colors": 1
-  },
-  "src/components/__legacy__/Button.tsx": {
-    "no-dark-variant": 14,
-    "no-raw-colors": 31
-  },
-  "src/components/__legacy__/Sidebar.tsx": {
-    "hugeicons-only": 1,
-    "no-dark-variant": 10,
-    "no-raw-colors": 15,
-    "no-restyle": 3,
-    "no-unknown-classes": 1
-  },
-  "src/components/__legacy__/Status.tsx": {
-    "no-arbitrary-values": 1,
-    "no-dark-variant": 9,
-    "no-raw-colors": 18
-  },
   "src/components/atoms/Button/helpers.ts": {
-    "no-dark-variant": 13,
-    "no-raw-colors": 22,
     "no-unknown-classes": 7
   },
   "src/components/atoms/Text/helpers.ts": {
@@ -1063,9 +1039,6 @@
   "src/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner.tsx": {
     "no-restyle": 2
   },
-  "src/components/overview.stories.tsx": {
-    "no-unknown-classes": 6
-  },
   "src/components/renderers/InputRenderer/base/anyof/components/AnyOfFieldTitle.tsx": {
     "no-restyle": 6,
     "require-static-classes": 1
@@ -1126,28 +1099,7 @@
   "src/components/renderers/InputRenderer/custom/MultiSelectField/MultiSelectField.tsx": {
     "no-restyle": 8
   },
-  "src/components/styles/scrollbars.ts": {
-    "no-raw-colors": 1
-  },
-  "src/components/tokens/helpers/StoryCode.tsx": {
-    "no-raw-colors": 2
-  },
-  "src/components/tokens/typography.stories.tsx": {
-    "no-unknown-classes": 1
-  },
-  "src/lib/auth-redirect.ts": {
-    "require-suppression-reason": 1
-  },
-  "src/lib/autogpt-server-api/helpers.ts": {
-    "require-suppression-reason": 1
-  },
-  "src/lib/share/routes.ts": {
-    "no-arbitrary-values": 1
-  },
   "src/services/experts/useHireFlow.tsx": {
     "no-restyle": 5
-  },
-  "src/tests/integrations/setup-nextjs-mocks.tsx": {
-    "require-suppression-reason": 1
   }
 }
