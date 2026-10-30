@@ -1,4 +1,4 @@
-name: Backend remainder diagnostic and Python floor lock
+name: Backend billing await diagnostic
 
 on:
   workflow_dispatch:
@@ -9,57 +9,24 @@ defaults:
     working-directory: autogpt_platform/backend
 
 jobs:
-  prepare-python312-lock:
-    permissions:
-      contents: read
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
-        with:
-          python-version: "3.12"
-      - run: python -m pip install poetry==2.5.1
-      - name: Raise the supported Python floor
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path("pyproject.toml")
-          content = path.read_text().replace('python = ">=3.11,<3.14"', 'python = ">=3.12,<3.14"')
-          content = content.replace('async-timeout = {version = "^5.0.1", python = "<3.11"}\n', '')
-          path.write_text(content)
-          PY
-          poetry lock
-          poetry check --lock
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: backend-python312-lock
-          path: autogpt_platform/backend/poetry.lock
-          if-no-files-found: error
   test:
     name: test (${{ matrix.python-version }}, ${{ matrix.test-shard }})
     permissions:
       contents: read
-    # Each Python leg preserves the complete suite while its eight disjoint path
-    # groups run on separate standard runners. The cap is a hang guard, not a
-    # performance budget: on merge_group a cancelled job reads as a failed
-    # check and ejects the PR from the queue, so keep it well above p99.
+    # Diagnostic run: stop any test still waiting after 150 seconds.
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.13"]
-        test-shard: ["remainder"]
-        include:
-          - python-version: "3.13"
-            python-patch: "3.13.18"
+        test-shard: [copilot-billing, billing-threads]
     runs-on: ubuntu-latest
 
     services:
       # Redis is provisioned as a real 3-shard cluster below via docker
       # run (see the "Start Redis Cluster" step). GHA services can't
       # override the image CMD or stand up multi-container clusters, so
-      # that setup is inlined — it mirrors the topology of the local dev
+      # that setup is inlined â€” it mirrors the topology of the local dev
       # compose stack (autogpt_platform/docker-compose.platform.yml) and
       # prod helm chart.
       rabbitmq:
@@ -103,7 +70,7 @@ jobs:
       # the compose stack writes. Integration tests in
       # ``backend/copilot/graphiti/*_integration_test.py`` skip cleanly
       # via the ``falkordb_available`` fixture when the port isn't open
-      # (e.g. on a contributor's laptop) — this service makes the port
+      # (e.g. on a contributor's laptop) â€” this service makes the port
       # available in CI so the integration suite actually runs.
       # ``redis-cli`` ships inside the FalkorDB image; the healthcheck
       # passes ``-a`` so AUTH succeeds rather than the daemon rejecting
@@ -148,11 +115,9 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           repository: Significant-Gravitas/skills-catalog
-          ref: 26cf2253b2ffb1a4d97c8a50b1faf7b15352c32e
+          # Update the roster-content assertions alongside this catalog snapshot.
+          ref: 7ed3b73314d5186120e8d4006febfd7e1c92cf08
           path: skills-catalog
-
-      - name: Apply benchmark dependency range
-        run: git apply ../../.github/benchmarks/python314-dependencies.patch
 
       - name: Configure test shard
         shell: bash
@@ -160,7 +125,7 @@ jobs:
           MATRIX_TEST_SHARD: ${{ matrix.test-shard }}
         run: |
           # The trial tests' safety guard only accepts localhost:5432/postgres
-          # under GITHUB_ACTIONS, and the per-shard names are cosmetic anyway —
+          # under GITHUB_ACTIONS, and the per-shard names are cosmetic anyway â€”
           # each shard already has its own runner and its own Postgres container.
           case "$MATRIX_TEST_SHARD" in
             data)
@@ -328,7 +293,7 @@ jobs:
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
-          python-version: ${{ matrix.python-patch }}
+          python-version: ${{ matrix.python-version }}
 
       - name: Set up Python dependency cache
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
@@ -367,15 +332,7 @@ jobs:
           BASE_REF: ${{ github.base_ref || github.event.merge_group.base_ref }}
 
       - name: Install Python dependencies
-        run: |
-          poetry env use "$(command -v python)"
-          poetry install
-
-      - name: Record benchmark environment
-        env:
-          EXPECTED_PYTHON: ${{ matrix.python-patch }}
-        run: |
-          poetry run python ../../.github/scripts/record_python_benchmark.py
+        run: poetry install
 
       - name: Generate Prisma Client
         run: poetry run prisma generate && poetry run gen-prisma-stub
@@ -430,10 +387,7 @@ jobs:
             pytest_args+=(-q)
           fi
 
-          poetry run pytest -c pyproject.toml . \
-            --ignore=backend/data --ignore=backend/copilot \
-            --ignore=backend/util --ignore=backend/executor --ignore=backend/api \
-            "${pytest_args[@]}"
+          python ../../.github/scripts/backend_test_shard.py "$TEST_SHARD" -- "${pytest_args[@]}"
 
       - name: Validate test reports
         if: ${{ always() }}
@@ -466,7 +420,6 @@ jobs:
           path: |
             autogpt_platform/backend/junit-${{ matrix.test-shard }}.xml
             autogpt_platform/backend/coverage-${{ matrix.test-shard }}.xml
-            autogpt_platform/backend/benchmark-environment.json
           if-no-files-found: error
 
     env:
