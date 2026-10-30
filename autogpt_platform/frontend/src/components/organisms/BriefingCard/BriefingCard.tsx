@@ -10,6 +10,7 @@ import {
 import type { BriefingResponse } from "@/app/api/__generated__/models/briefingResponse";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { AttentionCard } from "@/components/organisms/AttentionCard/AttentionCard";
 import { cn } from "@/lib/utils";
 import { RunRow } from "./components/RunRow";
 import { COLLAPSED_ROWS, formatBriefingDate, hasRecapContent } from "./helpers";
@@ -44,35 +45,45 @@ export function BriefingCard({ briefing, className }: Props) {
   const hasMore = run_items.length > COLLAPSED_ROWS;
 
   return (
-    <section className={cn("text-left", className)}>
-      <div className="mb-2 flex items-center gap-2 px-2">
-        <Icon icon={News01Icon} size={16} className="text-zinc-400" />
-        <Text variant="body" className="text-zinc-700">
+    <section data-slot="briefing-card" className={cn("text-left", className)}>
+      <div
+        data-slot="briefing-card-header"
+        className="mb-2 flex items-center gap-2 px-2"
+      >
+        <Icon icon={News01Icon} size={16} className="text-foreground-subtle" />
+        <Text variant="body" className="text-foreground-body">
           Recap
         </Text>
         {/* Both stops stay at or below purple-600 so the lightest painted
             pixel still clears WCAG AA (4.5:1) against the white card. */}
         <Text
           variant="body"
-          className="bg-gradient-to-r from-purple-800 to-purple-600 bg-clip-text text-transparent"
+          // oxlint-disable-next-line design-system/no-raw-colors -- purple gradient text, no from- role holds purple-800
+          className="bg-gradient-to-r from-purple-800 to-brand-hover bg-clip-text text-transparent"
         >
           {formatBriefingDate(briefing.briefing_date)}
         </Text>
       </div>
 
-      <div className="overflow-hidden rounded-3xl bg-white shadow-zinc-950 smooth-shadow-ring-sm">
+      <AttentionCard.Root
+        variant="elevated"
+        density="flush"
+        data-slot="briefing-card-panel"
+      >
         <motion.div
           // Real height, not a layout transform: the page below has to reflow
           // with the card, and a transform would scale the rows' text.
           initial={false}
           animate={{ height: height ?? "auto" }}
           transition={heightTransition}
+          data-slot="briefing-card-viewport"
           className="relative"
         >
           <ul
             ref={listRef}
+            data-slot="briefing-card-list"
             className={cn(
-              "h-full divide-y divide-zinc-100",
+              "h-full divide-y divide-separator",
               isShowingAll
                 ? "overflow-y-auto scrollbar-none"
                 : "overflow-hidden",
@@ -106,7 +117,10 @@ export function BriefingCard({ briefing, className }: Props) {
           <button
             type="button"
             onClick={toggleShowAll}
-            className="flex w-full items-center justify-center gap-1.5 border-t border-zinc-100 px-4 py-3 text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-900"
+            data-slot="briefing-card-toggle"
+            // The hairline stays the button's own top border: a separate
+            // Separator would move the button, and its focus outline, 1px.
+            className="flex w-full items-center justify-center gap-1.5 border-t border-separator px-4 py-3 text-foreground-tertiary transition-colors hover:bg-surface-muted hover:text-foreground-strong"
           >
             <Text variant="small-medium" className="text-inherit">
               {isShowingAll
@@ -123,7 +137,7 @@ export function BriefingCard({ briefing, className }: Props) {
             />
           </button>
         ) : null}
-      </div>
+      </AttentionCard.Root>
     </section>
   );
 }
@@ -145,11 +159,12 @@ function ScrollArrow({
       initial={false}
       animate={{ opacity: isVisible ? 1 : 0 }}
       transition={{ duration: shouldReduceMotion ? 0 : 0.15 }}
+      data-slot="briefing-card-scroll-arrow"
       className={cn(
         "pointer-events-none absolute inset-x-0 flex h-12 items-center justify-center",
         isUp
-          ? "top-0 bg-gradient-to-b from-white via-white/85 to-transparent"
-          : "bottom-0 bg-gradient-to-t from-white via-white/85 to-transparent",
+          ? "top-0 bg-gradient-to-b from-surface via-surface/85 to-transparent"
+          : "bottom-0 bg-gradient-to-t from-surface via-surface/85 to-transparent",
       )}
     >
       <button
@@ -158,8 +173,9 @@ function ScrollArrow({
         tabIndex={isVisible ? 0 : -1}
         aria-hidden={!isVisible}
         aria-label={isUp ? "Scroll up" : "Scroll down"}
+        data-slot="briefing-card-scroll-arrow-control"
         className={cn(
-          "flex size-8 items-center justify-center rounded-full bg-white text-zinc-500 shadow-zinc-950 transition-colors smooth-shadow-ring-sm hover:text-zinc-900",
+          "flex size-8 items-center justify-center rounded-full bg-surface text-foreground-tertiary shadow-foreground-base transition-colors smooth-shadow-ring-sm hover:text-foreground-strong",
           isVisible && "pointer-events-auto",
         )}
       >

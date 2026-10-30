@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING
 import click
 
 if TYPE_CHECKING:
+    from backend.data.stripe_subscription_facts import StripeSubscriptionFacts
+    from backend.data.subscription_trial import TrialState
     from backend.notifications.checkout_backfill import OpenerPlan
     from backend.notifications.mailerlite_backfill import (
         Customer,
@@ -13,7 +15,10 @@ if TYPE_CHECKING:
     )
     from backend.notifications.mailerlite_field_backfill import FieldPlan, Person
 
+logger = logging.getLogger(__name__)
+
 _ACCOUNT_PAGE = 5000
+_SKIPPED_SINCE_PLAN = "opted out or seen in Iran or Russia since the plan (skipped)"
 
 
 @click.command(name="mailerlite-backfill")
@@ -40,10 +45,13 @@ def mailerlite_backfill_command(
     the customers on a trial that is not set to cancel.
 
     Fields: every account with a Stripe customer that MailerLite already holds
-    gets its subscription_status and dates. Nobody is created here: a Stripe
-    customer alone does not mean they opened checkout (the billing portal
-    makes one too), so new people come only from mailerlite-checkout-backfill.
-    Accounts without a Stripe customer are never read.
+    gets its subscription_status and dates, by the mapping PostHog's status
+    comes from: only a paying subscriber is subscribed. Nobody is created
+    here: a Stripe customer alone does not mean they opened checkout (the
+    billing portal makes one too), so new people come only from
+    mailerlite-checkout-backfill. Accounts without a Stripe customer are
+    never read. Accounts that opted out of marketing, or that a signal places
+    in Iran or Russia, are never written, removals included.
 
     Dry run by default: prints counts and one pseudonymised line per customer,
     and writes nothing. Idempotent, so a partial or repeated --apply is safe,
@@ -69,6 +77,9 @@ def mailerlite_checkout_backfill_command(apply: bool, yes: bool):
     checkout_opened_date (their first session), email_type, signin_method,
     country and country_code (the Stripe billing address, else the browser's
     timezone), country_source and exclude_de_at, plus their status and dates.
+    Openers who opted out of marketing, or whom a signal places in Iran or
+    Russia, are counted and never written. Their onboarding role is
+    onboarding-role-backfill's.
 
     Visits one person every two seconds, re-reading each just before the
     write so nothing the live checkout event wrote meanwhile is overwritten.
@@ -121,6 +132,7 @@ async def _run(
     *, apply: bool, yes: bool, fields_only: bool, groups_only: bool = False
 ) -> None:
     from backend.data.db import connect, disconnect
+    from backend.data.user import is_marketing_opted_out
     from backend.notifications import mailerlite, mailerlite_backfill
     from backend.notifications import mailerlite_field_backfill as field_backfill
     from backend.notifications.mailerlite import MailerLiteNotConfigured
@@ -135,9 +147,10 @@ async def _run(
     except MailerLiteNotConfigured as e:
         raise click.ClickException(str(e))
     subscriptions = await _stripe_subscriptions()
+    billing_countries = await stripe_billing_countries()
     await connect()
     try:
-        people = await _people(subscriptions)
+        people = await _people(subscriptions, billing_countries)
     finally:
         await disconnect()
 
@@ -162,95 +175,168 @@ async def _run(
             f"\nWrite {due} group changes and {len(fields.changes)} field updates?",
             abort=True,
         )
-    if due and audience is not None:
-        result = await mailerlite_backfill.apply(changes, audience)
-        for decision in CHANGES:
-            click.echo(
-                f"{decision.value}: {result.succeeded[decision]} ok, "
-                f"{result.failed[decision]} failed"
+    # Connected again for the writes: each is checked against the account as
+    # it is now, since the plan is older (`consent.KeptOut`).
+    await connect()
+    try:
+        if due and audience is not None:
+            result = await mailerlite_backfill.apply(
+                changes, audience, kept_out=is_marketing_opted_out
             )
-    if fields.changes:
-        await mailerlite.ensure_fields()
-        ok, failed = await field_backfill.apply(fields.changes, _progress)
-        click.echo(f"fields: {ok} ok, {failed} failed")
+            for decision in CHANGES:
+                click.echo(
+                    f"{decision.value}: {result.succeeded[decision]} ok, "
+                    f"{result.failed[decision]} failed"
+                )
+            click.echo(f"{_SKIPPED_SINCE_PLAN}: {result.skipped}")
+        if fields.changes:
+            await mailerlite.ensure_fields()
+            ok, failed, skipped = await field_backfill.apply(
+                fields.changes, _progress, kept_out=is_marketing_opted_out
+            )
+            click.echo(
+                f"fields: {ok} ok, {failed} failed, {skipped} {_SKIPPED_SINCE_PLAN}"
+            )
+    finally:
+        await disconnect()
 
 
-async def _stripe_subscriptions() -> "dict[str, list[Subscription]]":
-    """Every Stripe subscription, by customer ID."""
+async def _stripe_subscriptions() -> "dict[str, list[StripeSubscriptionFacts]]":
+    """Every Stripe subscription, by customer ID, listed as the lifecycle
+    sweep lists them, so the status follows the same rules."""
     import stripe
 
-    from backend.data.stripe_client import stripe_call, stripe_list_items
-    from backend.notifications.mailerlite_backfill import Subscription
+    from backend.data.posthog_lifecycle_sync import all_subscriptions_by_customer
     from backend.util.settings import Settings
 
     stripe.api_key = Settings().secrets.stripe_api_key
-    subscriptions: dict[str, list[Subscription]] = {}
-    page = await stripe_call(stripe.Subscription.list_async, status="all", limit=100)
-    async for sub in stripe_list_items(page):
-        # Not expanded, so this is the customer ID.
-        subscriptions.setdefault(str(sub.customer), []).append(_subscription(sub))
-    return subscriptions
+    return await all_subscriptions_by_customer()
 
 
-def _subscription(sub) -> "Subscription":
+async def stripe_billing_countries(
+    sessions: list[dict] | None = None,
+) -> dict[str, str]:
+    """Every Stripe customer's billing country, by customer ID: the
+    Customer's address, else one a Checkout Session collected. Checkouts
+    from before they set `customer_update` never copied the address onto
+    the Customer. An Iranian or Russian country from any of them wins, so
+    the exclusion sees it (`consent.py`). Pass `sessions` when they are
+    already listed."""
+    import stripe
+
+    from backend.data.stripe_client import stripe_call, stripe_list_items
+    from backend.notifications.audience_enrichment import billing_country
+    from backend.util.settings import Settings
+
+    stripe.api_key = Settings().secrets.stripe_api_key
+    countries: dict[str, str] = {}
+    page = await stripe_call(stripe.Customer.list_async, limit=100)
+    async for customer in stripe_list_items(page):
+        country = (customer.get("address") or {}).get("country")
+        _keep_country(countries, customer.id, country)
+    for session in sessions if sessions is not None else await checkout_sessions():
+        customer = session.get("customer")
+        if isinstance(customer, str):
+            _keep_country(countries, customer, billing_country(session))
+    return countries
+
+
+async def checkout_sessions() -> list[dict]:
+    """Every Stripe Checkout Session."""
+    import stripe
+
+    from backend.data.stripe_client import stripe_call, stripe_list_items
+
+    page = await stripe_call(stripe.checkout.Session.list_async, limit=100)
+    return [session async for session in stripe_list_items(page)]
+
+
+def first_opens(sessions: list[dict]) -> dict[str, int]:
+    """When each Stripe customer first opened checkout: its first Checkout
+    Session's creation, as a Unix timestamp, by customer ID."""
+    opens: dict[str, int] = {}
+    for session in sessions:
+        customer = session.get("customer")
+        if isinstance(customer, str):
+            created = int(session["created"])
+            opens[customer] = min(opens.get(customer, created), created)
+    return opens
+
+
+def _keep_country(
+    countries: dict[str, str], customer_id: str, country: str | None
+) -> None:
+    """Hold `country` for the customer unless it already has one, or the one
+    it has is not excluded and this one is."""
+    from backend.notifications.audience_enrichment import excluded_country
+
+    if not country:
+        return
+    held = countries.get(customer_id)
+    if held is None or (excluded_country((country,)) and not excluded_country((held,))):
+        countries[customer_id] = str(country)
+
+
+def _subscription(
+    sub: "StripeSubscriptionFacts", trial: "TrialState | None"
+) -> "Subscription":
+    """The fields the group backfill reads (`mailerlite_backfill.classify`)."""
     from backend.notifications.mailerlite_backfill import Subscription
 
     return Subscription(
-        id=str(sub.id),
-        status=str(sub.status),
-        cancel_at_period_end=bool(sub.get("cancel_at_period_end")),
-        from_trial=bool((sub.get("metadata") or {}).get("trial_enrollment_id")),
-        start_date=sub.get("start_date"),
-        trial_start=sub.get("trial_start"),
-        trial_end=sub.get("trial_end"),
-        canceled_at=sub.get("canceled_at"),
-        ended_at=sub.get("ended_at"),
+        id=sub.id,
+        status=sub.status,
+        cancel_at_period_end=sub.cancel_at_period_end,
+        from_trial=sub.trial_enrollment_id is not None,
+        converted=trial is not None
+        and trial.converted_at is not None
+        and trial.subscription_id == sub.id,
     )
 
 
-def _refresher(converted: set[str]):
-    """One customer's subscriptions as Stripe has them now, so the checkout
-    backfill writes the current status rather than its snapshot's: a trial
-    that converts during the run is not written back as a trial."""
+async def _refresh(person: "Person") -> "Person":
+    """The person with their subscriptions as Stripe has them now and their
+    trial row as it is now, so the checkout backfill writes the current
+    status rather than its snapshot's: a trial that converts during the run
+    is not written back as a trial. An unreadable trial row raises, and the
+    person is left for the next run."""
+    import prisma.models
 
-    async def refresh(customer_id: str) -> "list[Subscription]":
-        import stripe
+    from backend.data.posthog_lifecycle_sync import list_customer_subscriptions
+    from backend.data.subscription_trial import TrialState
 
-        from backend.data.stripe_client import stripe_call, stripe_list_items
-
-        page = await stripe_call(
-            stripe.Subscription.list_async,
-            customer=customer_id,
-            status="all",
-            limit=100,
-        )
-        return [
-            _subscription(sub).model_copy(
-                update={"converted": str(sub.id) in converted}
-            )
-            async for sub in stripe_list_items(page)
-        ]
-
-    return refresh
+    subscriptions = (
+        await list_customer_subscriptions(person.stripe_customer_id)
+        if person.stripe_customer_id
+        else []
+    )
+    row = await prisma.models.SubscriptionTrial.prisma().find_unique(
+        where={"userId": person.user_id}
+    )
+    return person.model_copy(
+        update={
+            "subscriptions": subscriptions,
+            "trial": TrialState.from_db(row) if row else None,
+        }
+    )
 
 
-async def _people(subscriptions: "dict[str, list[Subscription]]") -> "list[Person]":
+async def _people(
+    subscriptions: "dict[str, list[StripeSubscriptionFacts]]",
+    billing_countries: dict[str, str],
+) -> "list[Person]":
     """Every account with a Stripe customer, paged, with its Stripe
-    subscriptions. Accounts without one never reached checkout, so they are
-    not read at all. Having one is not proof of a checkout either: callers
-    that create MailerLite subscribers must also check for a Checkout Session.
-    The account's email is used, as the live handlers do, never Stripe's."""
+    subscriptions, trial and billing country. Accounts without one never
+    reached checkout, so they are not read at all. Having one is not proof of
+    a checkout either: callers that create MailerLite subscribers must also
+    check for a Checkout Session. The account's email is used, as the live
+    handlers do, never Stripe's. An account whose trial row can't be read is
+    left out, rather than written as if it had no trial."""
     import prisma.models
 
     from backend.notifications.mailerlite_field_backfill import Person
 
-    converted = {
-        t.stripeSubscriptionId
-        for t in await prisma.models.SubscriptionTrial.prisma().find_many(
-            where={"convertedAt": {"not": None}}
-        )
-        if t.stripeSubscriptionId
-    }
+    trials = await _trials()
     people: list[Person] = []
     cursor: str | None = None
     while True:
@@ -261,23 +347,44 @@ async def _people(subscriptions: "dict[str, list[Subscription]]") -> "list[Perso
             **({"cursor": {"id": cursor}, "skip": 1} if cursor else {}),
         )
         for user in page:
-            subs = subscriptions.get(user.stripeCustomerId or "", [])
+            if user.id in trials and trials[user.id] is None:
+                continue
             people.append(
                 Person(
                     user_id=user.id,
                     email=user.email,
                     created_at=user.createdAt,
-                    subscriptions=[
-                        s.model_copy(update={"converted": s.id in converted})
-                        for s in subs
-                    ],
+                    subscriptions=subscriptions.get(user.stripeCustomerId or "", []),
+                    trial=trials.get(user.id),
                     stripe_customer_id=user.stripeCustomerId,
                     timezone=user.timezone,
+                    marketing_opt_out_at=user.marketingOptOutAt,
+                    billing_country=billing_countries.get(user.stripeCustomerId or ""),
+                    excluded_country=user.marketingExcludedCountry,
                 )
             )
         if len(page) < _ACCOUNT_PAGE:
             return people
         cursor = page[-1].id
+
+
+async def _trials() -> "dict[str, TrialState | None]":
+    """Every trial row by user ID. None marks one that can't be read."""
+    import prisma.models
+
+    from backend.data.subscription_trial import TrialState
+
+    trials: dict[str, TrialState | None] = {}
+    for row in await prisma.models.SubscriptionTrial.prisma().find_many():
+        try:
+            trials[row.userId] = TrialState.from_db(row)
+        except Exception:
+            trials[row.userId] = None
+            logger.warning(
+                f"Unreadable trial row for user {row.userId}; account skipped",
+                exc_info=True,
+            )
+    return trials
 
 
 def _customer(person: "Person") -> "Customer":
@@ -286,18 +393,22 @@ def _customer(person: "Person") -> "Customer":
     return Customer(
         user_id=person.user_id,
         email=person.email,
-        subscriptions=person.subscriptions,
+        subscriptions=[_subscription(s, person.trial) for s in person.subscriptions],
+        marketing_opt_out_at=person.marketing_opt_out_at,
+        timezone=person.timezone,
+        billing_country=person.billing_country,
+        excluded_country=person.excluded_country,
     )
 
 
 def _report(changes: "list[PlannedChange]", unmatched: int) -> None:
     from collections import Counter
 
-    from backend.notifications.mailerlite import _pseudonym
+    from backend.notifications.mailerlite import pseudonym
 
     for change in changes:
         click.echo(
-            f"{_pseudonym(change.customer.email)}  {change.standing.value:<16}  "
+            f"{pseudonym(change.customer.email)}  {change.standing.value:<16}  "
             + ", ".join(d.value for d in change.decisions)
         )
     counts = Counter(d.value for c in changes for d in c.decisions)
@@ -317,6 +428,9 @@ def _report_fields(plan: "FieldPlan", accounts: int) -> None:
     for status, count in plan.statuses.items():
         click.echo(f"  {status.value}: {count}")
     click.echo(f"  invalid email (skipped): {plan.invalid}")
+    click.echo(f"  opted out of marketing (skipped): {plan.opted_out}")
+    click.echo(f"  placed in Iran or Russia (skipped): {plan.excluded_country}")
+    click.echo(f"  not in MailerLite (skipped): {plan.not_held}")
     click.echo(
         f"{len(plan.changes)} existing MailerLite subscribers to update "
         "(nobody is created here; see mailerlite-checkout-backfill)"
@@ -334,7 +448,7 @@ async def _run_checkout(*, apply: bool, yes: bool) -> None:
     import stripe
 
     from backend.data.db import connect, disconnect
-    from backend.data.stripe_client import stripe_call, stripe_list_items
+    from backend.data.user import is_marketing_opted_out
     from backend.notifications import checkout_backfill, mailerlite
     from backend.notifications import mailerlite_field_backfill as field_backfill
     from backend.notifications.mailerlite import MailerLiteNotConfigured
@@ -355,26 +469,16 @@ async def _run_checkout(*, apply: bool, yes: bool) -> None:
         raise click.ClickException(str(e))
 
     stripe.api_key = settings.secrets.stripe_api_key
-    first_open: dict[str, int] = {}
-    page = await stripe_call(stripe.checkout.Session.list_async, limit=100)
-    async for session in stripe_list_items(page):
-        customer = session.get("customer")
-        if isinstance(customer, str):
-            first_open[customer] = min(
-                first_open.get(customer, session.created), session.created
-            )
-    billing_countries: dict[str, str] = {}
-    page = await stripe_call(stripe.Customer.list_async, limit=100)
-    async for customer in stripe_list_items(page):
-        country = (customer.get("address") or {}).get("country")
-        if country:
-            billing_countries[customer.id] = str(country)
+    # Listed once, for the first opens and the billing countries alike.
+    sessions = await checkout_sessions()
+    first_open = first_opens(sessions)
+    billing_countries = await stripe_billing_countries(sessions)
     subscriptions = await _stripe_subscriptions()
 
     await connect()
     try:
-        people = await _people(subscriptions)
-        providers = await _signin_providers()
+        people = await _people(subscriptions, billing_countries)
+        providers = await signin_providers_by_account()
     finally:
         await disconnect()
 
@@ -383,7 +487,7 @@ async def _run_checkout(*, apply: bool, yes: bool) -> None:
             person=person,
             opened_at=first_open[person.stripe_customer_id],
             signin_providers=providers.get(person.user_id, []),
-            stripe_country=billing_countries.get(person.stripe_customer_id),
+            stripe_country=person.billing_country,
         )
         for person in people
         if person.stripe_customer_id in first_open
@@ -407,10 +511,19 @@ async def _run_checkout(*, apply: bool, yes: bool) -> None:
             f"\nWrite {len(plan.changes)} checkout openers to MailerLite?", abort=True
         )
     await mailerlite.ensure_fields()
-    converted = {s.id for p in people for s in p.subscriptions if s.converted}
-    ok, failed, skipped = await checkout_backfill.apply(
-        plan.changes, group_id, _checkout_progress, refresh=_refresher(converted)
-    )
+    # Connected again for the writes: each opener is checked against the
+    # account as it is now, since the plan is older (`consent.KeptOut`).
+    await connect()
+    try:
+        ok, failed, skipped = await checkout_backfill.apply(
+            plan.changes,
+            group_id,
+            _checkout_progress,
+            refresh=_refresh,
+            kept_out=is_marketing_opted_out,
+        )
+    finally:
+        await disconnect()
     _finish_checkout(ok, failed, skipped)
 
 
@@ -419,7 +532,8 @@ def _finish_checkout(ok: int, failed: int, skipped: int) -> None:
     on past each failure, but a Job or script must not read a partial run as
     done. A rerun retries only what is left."""
     click.echo(
-        f"checkout openers: {ok} ok, {failed} failed, {skipped} already up to date"
+        f"checkout openers: {ok} ok, {failed} failed, {skipped} already up to "
+        "date or no longer to be written"
     )
     if failed:
         raise click.ClickException(
@@ -429,7 +543,7 @@ def _finish_checkout(ok: int, failed: int, skipped: int) -> None:
     click.echo("Run the dry run again to confirm nothing is left.")
 
 
-async def _signin_providers() -> dict[str, list[str]]:
+async def signin_providers_by_account() -> dict[str, list[str]]:
     """Every account's Better Auth providers, by account id."""
     from backend.data.db import query_raw_with_schema
 
@@ -463,6 +577,8 @@ def _report_checkout(
     )
     click.echo("  Accounts without a Stripe customer: never read or written")
     click.echo(f"  invalid email (skipped): {plan.invalid}")
+    click.echo(f"  opted out of marketing (skipped): {plan.opted_out}")
+    click.echo(f"  placed in Iran or Russia (skipped): {plan.excluded_country}")
     click.echo(f"\nCountry source: {counts(plan.country_sources)}")
     click.echo(f"Countries: {counts(plan.countries)}")
     click.echo(f"exclude_de_at=yes: {plan.exclude_de_at}")

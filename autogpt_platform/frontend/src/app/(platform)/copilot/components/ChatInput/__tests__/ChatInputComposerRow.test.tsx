@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatInput } from "../ChatInput";
 
 vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
+  useGetV2ListChatTransports: () => ({ data: undefined }),
   postV2CancelSessionTask: vi.fn(),
   // A lone platform connection whose tiers resolve to one model: the picker
   // presents nothing, which keeps these tests about the composer itself.
@@ -47,21 +48,22 @@ vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
 }));
 
 vi.mock("@/app/(platform)/copilot/store", () => ({
-  useCopilotUIStore: () => ({
-    copilotChatMode: "extended_thinking",
-    setCopilotChatMode: vi.fn(),
-    copilotModePinned: false,
-    copilotLlmModel: "standard",
-    setCopilotLlmModel: vi.fn(),
-    copilotLlmAuth: { authProvider: "platform", credentialId: null },
-    setCopilotLlmAuth: vi.fn(),
-    isDryRun: false,
-    setIsDryRun: vi.fn(),
-    initialPrompt: null,
-    setInitialPrompt: vi.fn(),
-    sentMessageCount: 0,
-    notifyMessageSent: vi.fn(),
-  }),
+  useCopilotUIStore: (selector: (state: Record<string, unknown>) => unknown) =>
+    selector({
+      copilotChatMode: "extended_thinking",
+      setCopilotChatMode: vi.fn(),
+      copilotModePinned: false,
+      copilotLlmModel: "standard",
+      setCopilotLlmModel: vi.fn(),
+      copilotLlmAuth: { authProvider: "platform", credentialId: null },
+      setCopilotLlmAuth: vi.fn(),
+      isDryRun: false,
+      setIsDryRun: vi.fn(),
+      initialPrompt: null,
+      setInitialPrompt: vi.fn(),
+      sentMessageCount: 0,
+      notifyMessageSent: vi.fn(),
+    }),
 }));
 
 vi.mock("@/services/feature-flags/use-get-flag", () => ({

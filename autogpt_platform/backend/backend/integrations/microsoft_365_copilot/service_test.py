@@ -91,8 +91,12 @@ async def test_service_streams_and_persists_graph_conversation(mocker) -> None:
     mocker.patch.object(service, "Microsoft365CopilotClient", _FakeClient)
     mocker.patch.object(
         service,
-        "get_user_by_id",
-        new=AsyncMock(return_value=SimpleNamespace(timezone="America/Chicago")),
+        "user_db",
+        return_value=SimpleNamespace(
+            get_user_by_id=AsyncMock(
+                return_value=SimpleNamespace(timezone="America/Chicago")
+            )
+        ),
     )
 
     events = [
@@ -159,8 +163,10 @@ async def test_service_deduplicates_against_original_persisted_user_text(
     mocker.patch.object(service, "Microsoft365CopilotClient", _FakeClient)
     mocker.patch.object(
         service,
-        "get_user_by_id",
-        new=AsyncMock(return_value=SimpleNamespace(timezone="UTC")),
+        "user_db",
+        return_value=SimpleNamespace(
+            get_user_by_id=AsyncMock(return_value=SimpleNamespace(timezone="UTC"))
+        ),
     )
 
     _ = [
@@ -217,8 +223,10 @@ async def test_service_replaces_an_expired_graph_conversation(mocker) -> None:
     )
     mocker.patch.object(
         service,
-        "get_user_by_id",
-        new=AsyncMock(return_value=SimpleNamespace(timezone="UTC")),
+        "user_db",
+        return_value=SimpleNamespace(
+            get_user_by_id=AsyncMock(return_value=SimpleNamespace(timezone="UTC"))
+        ),
     )
 
     events = [
@@ -258,8 +266,10 @@ async def test_service_closes_stream_after_midstream_failure(mocker) -> None:
     mocker.patch.object(service, "Microsoft365CopilotClient", _MidStreamFailureClient)
     mocker.patch.object(
         service,
-        "get_user_by_id",
-        new=AsyncMock(return_value=SimpleNamespace(timezone="UTC")),
+        "user_db",
+        return_value=SimpleNamespace(
+            get_user_by_id=AsyncMock(return_value=SimpleNamespace(timezone="UTC"))
+        ),
     )
 
     events = [

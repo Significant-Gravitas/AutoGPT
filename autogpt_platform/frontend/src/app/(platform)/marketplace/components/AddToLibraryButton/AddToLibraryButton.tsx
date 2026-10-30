@@ -12,7 +12,6 @@ import { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgen
 import { Button } from "@/components/atoms/Button/Button";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { analytics } from "@/services/analytics";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -36,16 +35,18 @@ function UndoActions({
         variant="primary"
         size="small"
         as="NextLink"
-        className="bg-neutral-200 text-zinc-900 hover:bg-neutral-300 hover:text-zinc-800"
+        // oxlint-disable-next-line design-system/no-restyle -- a light button on the dark toast; no Button variant is light-on-dark
+        className="bg-surface-active text-foreground-strong hover:bg-border-strong hover:text-foreground-emphasis"
         href={libraryHref}
       >
-        Open agent
+        Open workflow
       </Button>
       <Button
         variant="ghost"
         size="small"
         loading={isUndoing}
-        className="border-none text-zinc-200 hover:bg-transparent hover:text-zinc-400"
+        // oxlint-disable-next-line design-system/no-restyle -- a quiet text button on the dark toast; no Button variant is light-on-dark
+        className="border-none text-surface-active hover:bg-transparent hover:text-foreground-subtle"
         onClick={async () => {
           setIsUndoing(true);
           try {
@@ -119,7 +120,7 @@ export function AddToLibraryButton({
       const details = await getV2GetSpecificAgent(creatorSlug, agentSlug);
 
       if (details.status !== 200) {
-        throw new Error("Failed to fetch agent details");
+        throw new Error("Failed to fetch workflow details");
       }
 
       const { data: response } = await addToLibrary({
@@ -135,13 +136,8 @@ export function AddToLibraryButton({
         queryKey: getGetV2ListLibraryAgentsQueryKey(),
       });
 
-      analytics.sendDatafastEvent("add_to_library", {
-        name: data.name,
-        id: data.id,
-      });
-
       const addedToast = toast({
-        title: `Agent ${agentName} added to your library.`,
+        title: `Workflow ${agentName} added to your library.`,
         description: (
           <UndoActions
             libraryAgentID={data.id}
@@ -176,7 +172,7 @@ export function AddToLibraryButton({
       Sentry.captureException(error);
       toast({
         title: "Error",
-        description: "Failed to add agent to library. Please try again.",
+        description: "Failed to add workflow to library. Please try again.",
         variant: "destructive",
       });
     }

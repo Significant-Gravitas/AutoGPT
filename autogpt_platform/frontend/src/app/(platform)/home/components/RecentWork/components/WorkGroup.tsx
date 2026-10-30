@@ -30,6 +30,7 @@ export function WorkGroup({ group, timezone }: Props) {
         as="span"
         className={cn(
           "shrink-0 rounded-full border px-1.5 capitalize leading-4",
+          // oxlint-disable-next-line design-system/require-static-classes -- ACTOR_CHIPS holds whole, static class strings
           chip.className,
         )}
       >
@@ -47,7 +48,7 @@ export function WorkGroup({ group, timezone }: Props) {
         <Icon
           icon={ArrowUpRight01Icon}
           size={14}
-          className="shrink-0 text-zinc-300 transition-colors group-hover:text-zinc-600"
+          className="shrink-0 text-foreground-disabled transition-colors group-hover:text-foreground-secondary"
           aria-hidden="true"
         />
       ) : null}
@@ -56,11 +57,11 @@ export function WorkGroup({ group, timezone }: Props) {
 
   return (
     <article aria-label={actor.name}>
-      <div className="bg-zinc-100/80 px-4 py-2">
+      <div className="bg-surface-hover/80 px-4 py-2">
         {actor.link ? (
           <Link
             href={actor.link}
-            className="group block rounded outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+            className="group block rounded outline-none focus-visible:ring-2 focus-visible:ring-border-strong"
           >
             {header}
           </Link>
@@ -69,7 +70,7 @@ export function WorkGroup({ group, timezone }: Props) {
         )}
       </div>
       {runs.length > 0 ? (
-        <div className="divide-y divide-zinc-100 px-4">
+        <div className="divide-y divide-separator px-4">
           {runs.map((run) => (
             <OutcomeRow
               key={run.id}

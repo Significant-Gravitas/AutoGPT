@@ -16,11 +16,6 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
-const sendDatafastEvent = vi.hoisted(() => vi.fn());
-vi.mock("@/services/analytics", () => ({
-  analytics: { sendDatafastEvent },
-}));
-
 const toastMock = vi.fn();
 vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
   const actual =
@@ -51,12 +46,11 @@ const run = {
 
 afterEach(() => {
   toastMock.mockClear();
-  sendDatafastEvent.mockClear();
   server.resetHandlers();
 });
 
 describe("useSelectedRunActions", () => {
-  test("handleRunAgain records a run_agent goal from the rerun surface", async () => {
+  test("handleRunAgain selects the new run", async () => {
     server.use(
       getPostV1ExecuteGraphAgentMockHandler({
         id: "run-1",
@@ -83,14 +77,9 @@ describe("useSelectedRunActions", () => {
     await waitFor(() => {
       expect(onSelectRun).toHaveBeenCalledWith("run-1");
     });
-    expect(sendDatafastEvent).toHaveBeenCalledExactlyOnceWith("run_agent", {
-      id: "graph-xyz",
-      name: "My agent",
-      surface: "rerun",
-    });
   });
 
-  test("handleRunAgain without a run surfaces a destructive toast and no goal", async () => {
+  test("handleRunAgain without a run surfaces a destructive toast", async () => {
     const { result } = renderHook(
       () => useSelectedRunActions({ agentGraphId: "graph-xyz", agent }),
       { wrapper },
@@ -106,6 +95,5 @@ describe("useSelectedRunActions", () => {
         variant: "destructive",
       }),
     );
-    expect(sendDatafastEvent).not.toHaveBeenCalled();
   });
 });

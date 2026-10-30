@@ -19,6 +19,7 @@ def test_captures_to_posthog_with_the_user_as_distinct_id():
         distinct_id="user-1",
         properties={"template_id": "tpl-1", "environment": "dev", "source": "platform"},
         uuid=None,
+        timestamp=None,
     )
 
 

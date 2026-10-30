@@ -57,12 +57,12 @@ export function EmptyTasks({
         queryKey: getGetV2ListLibraryAgentsQueryKey(),
       });
 
-      toast({ title: "Agent deleted" });
+      toast({ title: "Workflow deleted" });
       setShowDeleteDialog(false);
       router.push("/library");
     } catch (error: unknown) {
       toast({
-        title: "Failed to delete agent",
+        title: "Failed to delete workflow",
         description:
           error instanceof Error
             ? error.message
@@ -84,13 +84,13 @@ export function EmptyTasks({
       if (res.status === 200) {
         const filename = `${agent.name}_v${agent.graph_version}.json`;
         exportAsJSONFile(res.data as any, filename);
-        toast({ title: "Agent exported" });
+        toast({ title: "Workflow exported" });
       } else {
-        toast({ title: "Failed to export agent", variant: "destructive" });
+        toast({ title: "Failed to export workflow", variant: "destructive" });
       }
     } catch (e: any) {
       toast({
-        title: "Failed to export agent",
+        title: "Failed to export workflow",
         description: e?.message,
         variant: "destructive",
       });
@@ -109,12 +109,17 @@ export function EmptyTasks({
           <div className="flex flex-col items-center gap-12">
             <div className="flex items-center justify-between gap-2">
               <div className="flex flex-col items-center gap-2">
-                <Text variant="h3" className="text-center text-[1.375rem]">
+                <Text
+                  variant="h4"
+                  as="h3"
+                  // oxlint-disable-next-line design-system/no-restyle -- no heading variant keeps the parent line height; h4 alone would move the empty state by 9px
+                  className="text-center leading-inherit"
+                >
                   Ready to get started?
                 </Text>
                 <Text variant="large" className="text-center">
-                  Run your agent and this space will fill with your agent&apos;s
-                  activity
+                  Run your workflow and this space will fill with your
+                  workflow&apos;s activity
                 </Text>
               </div>
             </div>
@@ -137,9 +142,9 @@ export function EmptyTasks({
         </div>
       </RunDetailCard>
 
-      <div className="mt-4 flex flex-col gap-10 rounded-large border border-zinc-200 p-6 lg:mt-0 lg:w-[29.5rem]">
-        <Text variant="label" className="text-zinc-500">
-          About this agent
+      <div className="mt-4 flex flex-col gap-10 rounded-large border border-border-base p-6 lg:mt-0 lg:w-[29.5rem]">
+        <Text variant="label" tone="muted">
+          About this workflow
         </Text>
         <div className="flex flex-col gap-2">
           <Text variant="h4">{agent.name}</Text>
@@ -152,27 +157,24 @@ export function EmptyTasks({
         <ShowMoreText
           previewLimit={170}
           variant="body"
-          className="-mt-4 text-textGrey"
+          // oxlint-disable-next-line design-system/no-restyle -- ShowMoreText has no tone prop yet
+          className="-mt-4 text-foreground-body"
         >
           {agent.description ||
-            `This agent is not yet published. Once it is published, You can publish your agent by clicking the "Publish" button in the agent editor.`}
+            `This workflow is not yet published. Once it is published, You can publish your workflow by clicking the "Publish" button in the workflow editor.`}
         </ShowMoreText>
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-20">
             <div className="flex flex-col gap-0">
-              <Text variant="body-medium" className="text-black">
-                Agent created on
-              </Text>
-              <Text variant="body" className="text-textGrey">
+              <Text variant="body-medium">Workflow created on</Text>
+              <Text variant="body" tone="body">
                 {createdAt}
               </Text>
             </div>
             {isUpdated ? (
               <div className="flex flex-col gap-0">
-                <Text variant="body-medium" className="text-black">
-                  Agent updated on
-                </Text>
-                <Text variant="body" className="text-textGrey">
+                <Text variant="body-medium">Workflow updated on</Text>
+                <Text variant="body" tone="body">
                   {updatedAt}
                 </Text>
               </div>
@@ -184,18 +186,18 @@ export function EmptyTasks({
                 href={`/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`}
                 target="_blank"
               >
-                Edit agent
+                Edit workflow
               </Link>
             </Button>
             <Button variant="secondary" size="small" onClick={handleExport}>
-              Export agent to file
+              Export workflow to file
             </Button>
             <Button
               variant="secondary"
               size="small"
               onClick={() => setShowDeleteDialog(true)}
             >
-              Delete agent
+              Delete workflow
             </Button>
           </div>
         </div>
@@ -207,13 +209,13 @@ export function EmptyTasks({
           set: setShowDeleteDialog,
         }}
         styling={{ maxWidth: "32rem" }}
-        title="Delete agent"
+        title="Delete workflow"
       >
         <Dialog.Content>
           <div>
             <Text variant="large">
-              Are you sure you want to delete this agent? This action cannot be
-              undone.
+              Are you sure you want to delete this workflow? This action cannot
+              be undone.
             </Text>
             <Dialog.Footer>
               <Button
@@ -228,7 +230,7 @@ export function EmptyTasks({
                 onClick={handleDeleteAgent}
                 loading={isDeletingAgent}
               >
-                Delete Agent
+                Delete Workflow
               </Button>
             </Dialog.Footer>
           </div>

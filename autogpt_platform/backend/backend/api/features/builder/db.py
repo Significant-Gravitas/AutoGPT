@@ -208,33 +208,30 @@ async def update_search(
     user_id: str, search: SearchEntry, organization_id: str | None = None
 ) -> str:
     """
-    Upsert a search request for the user and return the search ID.
+    Update the user's search entry with ``search.search_id``, or create one when
+    that id is missing or not the user's, and return the entry's ID.
     """
     if search.search_id:
-        # Update existing search
-        await prisma.models.BuilderSearchHistory.prisma().update(
-            where={
-                "id": search.search_id,
-            },
+        updated = await prisma.models.BuilderSearchHistory.prisma().update_many(
+            where={"id": search.search_id, "userId": user_id},
             data={
                 "searchQuery": search.search_query or "",
                 "filter": search.filter or [],  # type: ignore
                 "byCreator": search.by_creator or [],
             },
         )
-        return search.search_id
-    else:
-        # Create new search
-        new_search = await prisma.models.BuilderSearchHistory.prisma().create(
-            data={
-                "userId": user_id,
-                "searchQuery": search.search_query or "",
-                "filter": search.filter or [],  # type: ignore
-                "byCreator": search.by_creator or [],
-                **({"organizationId": organization_id} if organization_id else {}),
-            }
-        )
-        return new_search.id
+        if updated:
+            return search.search_id
+    new_search = await prisma.models.BuilderSearchHistory.prisma().create(
+        data={
+            "userId": user_id,
+            "searchQuery": search.search_query or "",
+            "filter": search.filter or [],  # type: ignore
+            "byCreator": search.by_creator or [],
+            **({"organizationId": organization_id} if organization_id else {}),
+        }
+    )
+    return new_search.id
 
 
 async def get_recent_searches(user_id: str, limit: int = 5) -> list[SearchEntry]:

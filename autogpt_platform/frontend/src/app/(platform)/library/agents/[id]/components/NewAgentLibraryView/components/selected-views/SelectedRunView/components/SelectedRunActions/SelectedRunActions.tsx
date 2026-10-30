@@ -64,16 +64,16 @@ export function SelectedRunActions({
           {isRunningAgain ? (
             <LoadingSpinner size="small" />
           ) : (
-            <div className="gap- relative flex flex-col items-center justify-center">
+            <div className="relative flex flex-col items-center justify-center">
               <Icon
                 icon={CornerLeftUpIcon}
                 size={16}
-                className="relative bottom-[4px] z-0 rotate-90 text-zinc-700"
+                className="relative bottom-[4px] z-0 rotate-90"
               />
               <Icon
                 icon={CornerRightDownIcon}
                 size={16}
-                className="absolute bottom-[-5px] z-10 rotate-90 text-zinc-700"
+                className="absolute bottom-[-5px] z-10 rotate-90"
               />
             </div>
           )}
@@ -81,12 +81,11 @@ export function SelectedRunActions({
       ) : null}
       {canStop ? (
         <Button
-          variant="icon"
+          variant="destructive"
           size="icon"
           aria-label="Stop task"
           onClick={handleStopRun}
           disabled={isStopping}
-          className="border-red-600 bg-red-600 text-white hover:border-red-800 hover:bg-red-800"
         >
           <Icon icon={StopIcon} size={18} />
         </Button>
@@ -100,7 +99,7 @@ export function SelectedRunActions({
           target="_blank"
           aria-label="View task details"
         >
-          <Icon icon={EyeIcon} size={18} className="text-zinc-700" />
+          <Icon icon={EyeIcon} size={18} />
         </Button>
       ) : null}
       <ShareRunButton
@@ -118,7 +117,7 @@ export function SelectedRunActions({
             onClick={() => setIsCreateTemplateModalOpen(true)}
             title="Create template"
           >
-            <Icon icon={Album01Icon} size={18} className="text-zinc-700" />
+            <Icon icon={Album01Icon} size={18} />
           </Button>
           <CreateTemplateModal
             isOpen={isCreateTemplateModalOpen}

@@ -115,7 +115,10 @@ export function FloatingReviewsPanel({
   }
 
   return (
-    <div className={cn("fixed bottom-20 right-4 z-50", className)}>
+    <div
+      data-slot="floating-reviews-panel"
+      className={cn("fixed bottom-20 right-4 z-50", className)}
+    >
       {!isOpen && pendingReviews.length > 0 && (
         <Button
           onClick={() => setIsOpen(true)}
@@ -129,7 +132,10 @@ export function FloatingReviewsPanel({
       )}
 
       {isOpen && (
-        <div className="relative flex max-h-[80vh] max-w-2xl flex-col overflow-hidden rounded-lg shadow-2xl">
+        <div
+          data-slot="floating-reviews-panel-dialog"
+          className="relative flex max-h-[80vh] max-w-2xl flex-col overflow-hidden rounded-lg shadow-2xl"
+        >
           <Button
             onClick={() => setIsOpen(false)}
             variant="icon"
@@ -139,9 +145,15 @@ export function FloatingReviewsPanel({
             <Icon icon={Cancel01Icon} size={16} />
           </Button>
 
-          <div className="flex-1 overflow-y-auto">
+          <div
+            data-slot="floating-reviews-panel-body"
+            className="flex-1 overflow-y-auto"
+          >
             {isLoading ? (
-              <div className="py-8 text-center">
+              <div
+                data-slot="floating-reviews-panel-loading"
+                className="py-8 text-center"
+              >
                 <Text variant="body" className="text-muted-foreground">
                   Loading reviews...
                 </Text>

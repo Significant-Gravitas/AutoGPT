@@ -19,9 +19,18 @@ export function useProcessReviews({
   const queryClient = useQueryClient();
   const { mutateAsync, isPending } = usePostV2ProcessReviewAction();
 
-  async function processReviews(items: ReviewItem[], scopes: ReviewScope[]) {
+  async function processReviews(
+    items: ReviewItem[],
+    scopes: ReviewScope[],
+    { waitForOtherCards = false }: { waitForOtherCards?: boolean } = {},
+  ) {
     try {
-      return await mutateAsync({ data: { reviews: items } });
+      return await mutateAsync({
+        data: {
+          reviews: items,
+          ...(waitForOtherCards ? { wait_for_other_cards: true } : {}),
+        },
+      });
     } finally {
       // Awaited so callers can keep a row locked until the refetch settles;
       // firing and forgetting leaves React Query serving the just-acted-on

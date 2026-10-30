@@ -1,5 +1,6 @@
 """Tests for the schedule routes."""
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock
 
 import fastapi
@@ -10,8 +11,10 @@ from fastapi.routing import APIRoute
 
 from backend.api.features.schedules.routes import router
 from backend.api.rest_api import app as real_app
+from backend.copilot.scheduled_chats import cadence_service
+from backend.copilot.scheduled_chats.service import PausedScheduledChat
 from backend.executor import scheduler
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -53,7 +56,21 @@ EXPECTED_OPERATIONS = {
     ),
     ("get", "/api/schedules"): "getV1List execution schedules for a user",
     ("get", "/api/schedules/followups"): "listCopilotFollowupSchedules",
+    ("get", "/api/schedules/followups/paused"): "listPausedScheduledChats",
+    (
+        "post",
+        "/api/schedules/followups/{schedule_key}/resume",
+    ): "resumeScheduledChat",
+    (
+        "get",
+        "/api/schedules/followups/{schedule_key}/cadence",
+    ): "getScheduledChatCadence",
+    (
+        "post",
+        "/api/schedules/followups/{schedule_key}/cadence",
+    ): "setScheduledChatCadence",
     ("delete", "/api/schedules/{schedule_id}"): "deleteV1Delete execution schedule",
+    ("patch", "/api/schedules/{schedule_id}"): "patchV1Update execution schedule",
 }
 
 
@@ -224,6 +241,10 @@ def test_list_all_schedules_does_not_scope_to_a_graph(
 
 def test_delete_schedule_returns_the_id(mocker: pytest_mock.MockFixture) -> None:
     sched = _patch_scheduler(mocker, delete_schedule=AsyncMock())
+    mocker.patch(
+        "backend.api.features.schedules.routes.forget.forget_scheduled_chat",
+        AsyncMock(),
+    )
 
     response = client.delete("/schedules/sched-1")
 
@@ -232,14 +253,273 @@ def test_delete_schedule_returns_the_id(mocker: pytest_mock.MockFixture) -> None
     assert sched.delete_schedule.await_args.args[0] == "sched-1"
 
 
+def test_deleting_a_schedule_forgets_its_failure_streak(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """A paused chat that is deleted must not stay listed as paused, raise
+    its alert, or answer Resume."""
+    _patch_scheduler(mocker, delete_schedule=AsyncMock())
+    forget = mocker.patch(
+        "backend.api.features.schedules.routes.forget.forget_scheduled_chat",
+        AsyncMock(),
+    )
+
+    response = client.delete("/schedules/sched-1")
+
+    assert response.status_code == 200
+    forget.assert_awaited_once_with(test_user_id, "sched-1")
+
+
+def test_a_retried_delete_still_forgets_the_streak(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """The job went, then the streak cleanup failed: the retry finds no job,
+    and must still clear the streak, or the chat stays listed as paused."""
+    _patch_scheduler(
+        mocker, delete_schedule=AsyncMock(side_effect=NotFoundError("gone"))
+    )
+    forget = mocker.patch(
+        "backend.api.features.schedules.routes.forget.forget_scheduled_chat",
+        AsyncMock(),
+    )
+
+    assert client.delete("/schedules/sched-1").status_code == 404
+    forget.assert_awaited_once_with(test_user_id, "sched-1")
+
+
+def test_a_delete_whose_streak_cleanup_fails_still_reports_the_delete(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The job is gone by then. A 500 would tell the owner the delete
+    failed; the paused row it leaves is cleared by deleting it again."""
+    _patch_scheduler(mocker, delete_schedule=AsyncMock())
+    mocker.patch(
+        "backend.api.features.schedules.routes.forget.forget_scheduled_chat",
+        AsyncMock(side_effect=RuntimeError("database down")),
+    )
+
+    response = client.delete("/schedules/sched-1")
+
+    assert response.status_code == 200
+    assert response.json() == {"id": "sched-1"}
+
+
+def test_paused_scheduled_chats_are_listed_for_the_caller(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    paused = PausedScheduledChat(
+        schedule_key="routine-1",
+        title="Discord monitor",
+        session_id="session-1",
+        reason="chat_link",
+        provider="discord",
+        summary="Paused: can't post to Discord",
+        paused_at=datetime(2026, 10, 11, tzinfo=timezone.utc),
+    )
+    listing = mocker.patch(
+        "backend.api.features.schedules.routes.scheduled_chats"
+        ".list_paused_scheduled_chats",
+        AsyncMock(return_value=[paused]),
+    )
+
+    response = client.get("/schedules/followups/paused")
+
+    assert response.status_code == 200
+    assert response.json()[0]["schedule_key"] == "routine-1"
+    assert response.json()[0]["summary"] == "Paused: can't post to Discord"
+    listing.assert_awaited_once_with(test_user_id)
+
+
+def test_resume_scheduled_chat_resumes_the_callers_chat(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    resume = mocker.patch(
+        "backend.api.features.schedules.routes.scheduled_chats.resume_scheduled_chat",
+        AsyncMock(return_value=True),
+    )
+
+    response = client.post("/schedules/followups/routine-1/resume")
+
+    assert response.status_code == 200
+    assert response.json() == {"resumed": True}
+    resume.assert_awaited_once_with(test_user_id, "routine-1")
+
+
+def test_resume_scheduled_chat_maps_nothing_paused_to_404(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A second click on an old card, or a chat resumed some other way."""
+    mocker.patch(
+        "backend.api.features.schedules.routes.scheduled_chats.resume_scheduled_chat",
+        AsyncMock(return_value=False),
+    )
+
+    response = client.post("/schedules/followups/routine-1/resume")
+
+    assert response.status_code == 404
+
+
+def test_a_resume_the_scheduler_refuses_can_be_tried_again(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.schedules.routes.scheduled_chats.resume_scheduled_chat",
+        AsyncMock(side_effect=RuntimeError("scheduler down")),
+    )
+
+    response = client.post("/schedules/followups/routine-1/resume")
+
+    assert response.status_code == 503
+
+
+def _cadence(**overrides) -> cadence_service.ScheduledChatCadence:
+    fields = dict(
+        schedule_key="routine-1",
+        title="Discord monitor",
+        current="Every minute",
+        timezone="America/Chicago",
+        options=[
+            cadence_service.CadenceOption(cron="0 * * * *", label="Every hour"),
+        ],
+    )
+    fields.update(overrides)
+    return cadence_service.ScheduledChatCadence(**fields)
+
+
+def test_get_cadence_offers_the_callers_chat_its_cadences(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    get = mocker.patch(
+        "backend.api.features.schedules.routes.cadence_service.get_cadence",
+        AsyncMock(return_value=_cadence()),
+    )
+
+    response = client.get("/schedules/followups/routine-1/cadence")
+
+    assert response.status_code == 200
+    assert response.json()["options"] == [{"cron": "0 * * * *", "label": "Every hour"}]
+    get.assert_awaited_once_with(test_user_id, "routine-1")
+
+
+def test_set_cadence_applies_the_chosen_one(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    set_ = mocker.patch(
+        "backend.api.features.schedules.routes.cadence_service.set_cadence",
+        AsyncMock(return_value=_cadence(current="Every hour", options=[])),
+    )
+
+    response = client.post(
+        "/schedules/followups/routine-1/cadence", json={"cron": "0 * * * *"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["current"] == "Every hour"
+    set_.assert_awaited_once_with(test_user_id, "routine-1", "0 * * * *")
+
+
+@pytest.mark.parametrize(
+    ("error", "status"),
+    [
+        (cadence_service.CadenceNotOffered("* * * * *"), 400),
+        (cadence_service.CadenceNotFound("routine-1"), 404),
+        (cadence_service.ScheduledChatPaused("routine-1"), 409),
+        (RuntimeError("scheduler down"), 503),
+    ],
+    ids=["not-offered", "not-found", "paused", "scheduler-down"],
+)
+def test_set_cadence_maps_each_refusal(
+    mocker: pytest_mock.MockFixture, error: Exception, status: int
+) -> None:
+    mocker.patch(
+        "backend.api.features.schedules.routes.cadence_service.set_cadence",
+        AsyncMock(side_effect=error),
+    )
+
+    response = client.post(
+        "/schedules/followups/routine-1/cadence", json={"cron": "* * * * *"}
+    )
+
+    assert response.status_code == status
+
+
 def test_delete_schedule_maps_not_found_to_404(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     _patch_scheduler(
         mocker, delete_schedule=AsyncMock(side_effect=NotFoundError("gone"))
     )
+    mocker.patch(
+        "backend.api.features.schedules.routes.forget.forget_scheduled_chat",
+        AsyncMock(),
+    )
 
     response = client.delete("/schedules/missing")
+
+    assert response.status_code == 404
+
+
+def test_update_schedule_rejects_an_empty_timezone(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """An empty timezone is a bad value, not an omitted one: it must not be
+    silently ignored while the rest of the edit is saved."""
+    sched = _patch_scheduler(mocker, update_execution_schedule=AsyncMock())
+
+    response = client.patch("/schedules/sched-1", json={"timezone": ""})
+
+    assert response.status_code == 422
+    sched.update_execution_schedule.assert_not_awaited()
+
+
+def test_update_schedule_forwards_only_the_sent_fields(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Omitted fields go through as None so the scheduler keeps them, and the
+    next run comes back in the schedule's own timezone, as on create."""
+    updated = scheduler.GraphExecutionJobInfo(
+        id="sched-1",
+        name="Evening report",
+        next_run_time="2026-10-12T22:30:00+00:00",
+        timezone="America/New_York",
+        user_id="test-user-id",
+        graph_id="graph-1",
+        graph_version=1,
+        cron="30 18 * * 1,2,3,4,5",
+        input_data={},
+    )
+    sched = _patch_scheduler(
+        mocker, update_execution_schedule=AsyncMock(return_value=updated)
+    )
+
+    response = client.patch(
+        "/schedules/sched-1",
+        json={"name": "Evening report", "cron": "30 18 * * 1,2,3,4,5"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["next_run_time"] == "2026-10-12T18:30:00-04:00"
+    kwargs = sched.update_execution_schedule.await_args.kwargs
+    assert kwargs["schedule_id"] == "sched-1"
+    assert (kwargs["name"], kwargs["cron"]) == ("Evening report", "30 18 * * 1,2,3,4,5")
+    assert (
+        kwargs["user_timezone"],
+        kwargs["input_data"],
+        kwargs["input_credentials"],
+    ) == (None, None, None)
+
+
+@pytest.mark.parametrize(
+    "error", [NotFoundError("gone"), NotAuthorizedError("not yours")]
+)
+def test_update_schedule_hides_other_users_schedules_behind_404(
+    mocker: pytest_mock.MockFixture, error: Exception
+) -> None:
+    """A schedule someone else owns must look exactly like a missing one, so
+    ids can't be probed by editing them."""
+    _patch_scheduler(mocker, update_execution_schedule=AsyncMock(side_effect=error))
+
+    response = client.patch("/schedules/sched-1", json={"cron": "0 9 * * 1-5"})
 
     assert response.status_code == 404
 
