@@ -14,11 +14,18 @@ function claimLaunch(directory, options = {}) {
   return claimLaunchWithProbe(directory, { processStarted: () => 12345, ...options });
 }
 
-function fixture(t) {
+function fixture(t, alias = false) {
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "autogpt-launch-test-"));
   t.after(() => fs.rmSync(temporary, { recursive: true, force: true }));
-  const data = path.join(temporary, "AutoGPT");
-  return { temporary, data, ...maintenancePaths(data) };
+  let parent = temporary;
+  if (alias) {
+    const target = path.join(temporary, "target");
+    parent = path.join(temporary, "alias");
+    fs.mkdirSync(target);
+    fs.symlinkSync(target, parent, process.platform === "win32" ? "junction" : "dir");
+  }
+  const data = path.join(parent, "AutoGPT");
+  return { temporary: parent, data, ...maintenancePaths(data) };
 }
 
 test("a launch publishes its live lease before the data directory exists", (t) => {
@@ -92,8 +99,8 @@ test("shell claims maintenance exclusion before profile and single-instance writ
   assert.ok(lease < source.indexOf("app.requestSingleInstanceLock()"));
 });
 
-test("new launches remove only confirmed dead leases for the same data root", (t) => {
-  const f = fixture(t);
+for (const alias of [false, true]) test(`new launches remove only confirmed dead leases (aliased root: ${alias})`, (t) => {
+  const f = fixture(t, alias);
   const prefix = `.autogpt-shell-${f.key}-`;
   const records = new Map([
     [`${prefix}dead.json`, '{"pid":234}'],
@@ -108,7 +115,9 @@ test("new launches remove only confirmed dead leases for the same data root", (t
   for (const [name, value] of records) fs.writeFileSync(path.join(f.temporary, name), value);
   const read = fs.readFileSync;
   t.mock.method(fs, "readFileSync", (file, ...args) => {
-    if (file === path.join(f.temporary, `${prefix}unreadable.json`)) throw Object.assign(new Error("denied"), { code: "EACCES" });
+    if (typeof file === "string" && path.basename(file) === `${prefix}unreadable.json`) {
+      throw Object.assign(new Error("denied"), { code: "EACCES" });
+    }
     return read(file, ...args);
   });
   t.mock.method(process, "kill", (pid, signal) => {

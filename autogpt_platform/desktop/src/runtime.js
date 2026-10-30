@@ -77,6 +77,20 @@ class Runtime extends EventEmitter {
       ? fs.createWriteStream(this.logFile, { flags: "a" })
       : null;
     this.log = log;
+    let stdioClosed = false;
+    let settled = false;
+    let logFailed = false;
+    log?.on("error", () => {
+      if (logFailed) return;
+      logFailed = true;
+      this.emit("log", "Runtime file logging is unavailable.");
+    });
+    const writeLog = (line) => {
+      if (log && !logFailed && !log.destroyed && !log.writableEnded) log.write(line);
+    };
+    const finishLog = () => {
+      if (stdioClosed && settled && log && !log.destroyed && !log.writableEnded) log.end();
+    };
     this.child = spawn(this.command, this.args, {
       cwd: this.cwd,
       env: { ...process.env, ...this.env },
@@ -97,15 +111,20 @@ class Runtime extends EventEmitter {
             });
           } catch (error) {
             const message = `Runtime cleanup could not complete: ${error.message}`;
-            log?.write(`${message}\n`);
+            writeLog(`${message}\n`);
             this.emit("log", message);
           }
         }
-        log?.end();
+        settled = true;
+        finishLog();
         this.emit("exit", { code, signal, expected: this.stopping });
         resolve({ code, signal });
       };
       this.child.once("exit", settle);
+      this.child.once("close", () => {
+        stdioClosed = true;
+        finishLog();
+      });
       // A runtime that died took the pipe with it; a request written to it
       // then is lost, not an error of the shell's.
       this.child.stdin?.on("error", () => {});
@@ -117,7 +136,7 @@ class Runtime extends EventEmitter {
     });
 
     readline.createInterface({ input: this.child.stdout }).on("line", (line) => {
-      log?.write(`${line}\n`);
+      writeLog(`${line}\n`);
       const event = parseEvent(line);
       if (!event) return this.emit("log", line);
       if (this.stopping && Number.isFinite(event.grace_seconds)) {
@@ -126,7 +145,7 @@ class Runtime extends EventEmitter {
       this.emit("event", event);
     });
     readline.createInterface({ input: this.child.stderr }).on("line", (line) => {
-      log?.write(`${line}\n`);
+      writeLog(`${line}\n`);
       this.emit("log", line);
     });
   }

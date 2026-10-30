@@ -6,7 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
 const { EventEmitter } = require("node:events");
-const { PassThrough } = require("node:stream");
+const { PassThrough, Writable } = require("node:stream");
 const vm = require("node:vm");
 
 const { Runtime, parseEvent, killRecorded } = require("../src/runtime");
@@ -244,10 +244,14 @@ function writeRegistry(entries) {
   return registry;
 }
 
-function controlledRuntime(spawn) {
+function controlledRuntime(spawn, log) {
   const module = { exports: {} };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../src/runtime.js"), "utf8"), {
-    require(name) { return name === "node:child_process" ? { spawn } : require(name); },
+    require(name) {
+      if (name === "node:child_process") return { spawn };
+      if (name === "node:fs" && log) return { ...fs, createWriteStream: () => log };
+      return require(name);
+    },
     module, process, setTimeout, clearTimeout,
   });
   return module.exports;
@@ -317,4 +321,67 @@ test("runtime exit and stop wait for verified cleanup, once only", async () => {
   assert.equal(exited, true);
   assert.equal(stopped, true);
   for (const stream of [child.stdin, child.stdout, child.stderr]) stream.end();
+});
+
+
+function logFixture(t, { registry, failWrite = false } = {}) {
+  const child = Object.assign(new EventEmitter(), {
+    pid: 1234, stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(),
+  });
+  const chunks = [];
+  const sink = new Writable({ write(chunk, encoding, callback) {
+    chunks.push(chunk.toString());
+    callback(failWrite ? Object.assign(new Error("disk unavailable"), { code: "EIO" }) : null);
+  } });
+  const helper = new EventEmitter();
+  let spawned = 0;
+  const { Runtime: Controlled } = controlledRuntime(() => ++spawned === 1 ? child : helper, sink);
+  const runtime = new Controlled({ command: "fixture", logFile: "fixture.log", registryFile: registry });
+  const collected = collect(runtime);
+  t.after(() => {
+    for (const stream of [child.stdin, child.stdout, child.stderr, sink]) stream.destroy();
+  });
+  runtime.start();
+  return { child, chunks, sink, helper, runtime, ...collected };
+}
+
+test("buffered child output after exit is logged before stdio closes", async (t) => {
+  const f = logFixture(t);
+  f.child.stdout.write("before exit\n");
+  f.child.emit("exit", 3, null);
+  await f.runtime.exited;
+  assert.equal(f.sink.writableEnded, false);
+  f.child.stdout.write("buffered stdout\n");
+  f.child.stderr.write("buffered stderr\n");
+  f.child.emit("close", 3, null);
+  assert.equal(f.sink.writableEnded, true);
+  assert.deepEqual(f.chunks, ["before exit\n", "buffered stdout\n", "buffered stderr\n"]);
+  f.child.stdout.write("late fixture line\n");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(f.chunks.length, 3);
+  assert.ok(f.logs.includes("late fixture line"));
+});
+
+test("stdio close waits for reaper diagnostics before ending the log", async (t) => {
+  const f = logFixture(t, { registry: writeRegistry([]) });
+  f.child.emit("exit", 3, null);
+  f.child.emit("close", 3, null);
+  assert.equal(f.sink.writableEnded, false);
+  f.helper.emit("close", 1, null);
+  await f.runtime.exited;
+  assert.equal(f.sink.writableEnded, true);
+  assert.match(f.chunks.join(""), /Runtime cleanup could not complete/);
+});
+
+test("file write errors cannot interrupt child output or exit delivery", async (t) => {
+  const f = logFixture(t, { failWrite: true });
+  f.child.stdout.write("first line\n");
+  await new Promise((resolve) => setImmediate(resolve));
+  f.child.stderr.write("after failure\n");
+  f.child.emit("exit", 3, null);
+  f.child.emit("close", 3, null);
+  const result = await f.runtime.exited;
+  assert.equal(result.code, 3);
+  assert.ok(f.logs.includes("after failure"));
+  assert.equal(f.logs.filter((line) => line === "Runtime file logging is unavailable.").length, 1);
 });
