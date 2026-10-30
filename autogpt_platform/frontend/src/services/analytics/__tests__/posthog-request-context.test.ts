@@ -139,6 +139,15 @@ describe("getPostHogReplayUrl", () => {
     expect(getPostHogReplayUrl()).toBe("");
   });
 
+  it("gives nothing while a stored impersonation waits for the viewer to load", () => {
+    installCookiebot({ statistics: true });
+    ImpersonationState.set("user-1", ADMIN.id);
+    setImpersonationViewer(null);
+
+    expect(ImpersonationState.get()).toBeNull();
+    expect(getPostHogReplayUrl()).toBe("");
+  });
+
   it("links a sampled-in session too", () => {
     installCookiebot({ statistics: true });
     posthog.sessionRecording = { status: "sampled" };

@@ -44,7 +44,10 @@ export function getPostHogSessionHeader(): Record<string, string> {
 // sampled-out or still-buffering session runs the recorder but sends nothing,
 // so its link would lead nowhere.
 export function getPostHogReplayUrl(): string {
-  if (!isOwnSessionShareable()) return "";
+  // Any stored impersonation, even before the signed-in viewer is known (as
+  // right after a reload), withholds the link: it would be the admin's
+  // session.
+  if (!isOwnSessionShareable() || ImpersonationState.read()) return "";
   try {
     const status = posthog.sessionRecording?.status;
     if (status !== "active" && status !== "sampled") return "";
