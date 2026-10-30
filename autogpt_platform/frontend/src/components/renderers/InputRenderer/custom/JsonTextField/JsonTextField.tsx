@@ -126,11 +126,7 @@ export const JsonTextField = (props: FieldProps) => {
         </Tooltip>
       </div>
       {schema.description && (
-        <span
-          // TODO(tokens): no exact role for text-gray-500 #6b7280
-          id={descriptionId}
-          className="text-xs text-gray-500"
-        >
+        <span id={descriptionId} className="text-xs text-foreground-tertiary">
           {schema.description}
         </span>
       )}

@@ -15,6 +15,8 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 import { login as loginAction } from "./actions";
+import { isTeamEmail } from "@/lib/auth/team-email";
+import { clearImpersonationEverywhere } from "@/lib/impersonation";
 
 export function useLoginPage() {
   useCaptureMarketingPrompt();
@@ -63,6 +65,8 @@ export function useLoginPage() {
   async function handleProviderLogin(provider: LoginProvider) {
     setIsGoogleLoading(true);
     setIsLoggingIn(true);
+    // Leftover impersonation (expired admin session, pre-fix cookie) would 403 a non-admin.
+    clearImpersonationEverywhere();
 
     try {
       // Include next URL in OAuth flow if present
@@ -97,7 +101,7 @@ export function useLoginPage() {
     setIsLoading(true);
     setIsLoggingIn(true);
 
-    if (data.email.includes("@agpt.co")) {
+    if (isTeamEmail(data.email)) {
       toast({
         title: "Please use Google SSO to login using an AutoGPT email.",
         variant: "default",
@@ -107,6 +111,8 @@ export function useLoginPage() {
       setIsLoggingIn(false);
       return;
     }
+
+    clearImpersonationEverywhere();
 
     try {
       const result = await loginAction(data.email, data.password, nextUrl);

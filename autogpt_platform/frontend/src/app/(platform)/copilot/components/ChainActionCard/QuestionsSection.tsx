@@ -17,6 +17,7 @@ import {
 import type { QuestionRequest } from "./helpers";
 import { QuestionAnswerField } from "./QuestionAnswerField";
 import { QuestionMultiAnswerField } from "./QuestionMultiAnswerField";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   requests: QuestionRequest[];
@@ -67,9 +68,9 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
             size={18}
             className="text-foreground-subtle"
           />
-          <span className="text-sm font-medium text-foreground-strong">
+          <Text variant="body-medium-tight" as="span" tone="primary">
             Answer a few questions
-          </span>
+          </Text>
         </span>
         <button
           type="button"
@@ -143,8 +144,7 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
                   (i === current
                     ? "size-2.5 border-2 border-action"
                     : i < current
-                      ? // TODO(tokens): no fitting role for bg-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
-                        "size-2 bg-zinc-400"
+                      ? "size-2 bg-foreground-subtle"
                       : "size-2 border border-border-strong")
                 }
               />

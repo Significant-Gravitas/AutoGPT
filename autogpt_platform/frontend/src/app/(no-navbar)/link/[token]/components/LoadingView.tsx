@@ -15,12 +15,10 @@ export function LoadingView({
   return (
     <AuthCard title={title}>
       <div className="flex flex-col items-center gap-4">
-        <Icon
-          icon={Loading03Icon}
-          size={48}
-          className="animate-spin text-primary"
-        />
-        <Text variant="body-medium" className="text-muted-foreground">
+        <div className="animate-spin text-foreground-strong">
+          <Icon icon={Loading03Icon} size={48} />
+        </div>
+        <Text variant="body-medium" tone="muted">
           {message}
         </Text>
       </div>

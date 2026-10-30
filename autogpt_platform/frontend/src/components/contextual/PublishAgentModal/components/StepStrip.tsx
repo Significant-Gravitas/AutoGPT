@@ -26,7 +26,7 @@ export function StepStrip({ currentStep }: Props) {
   return (
     <div className="flex flex-col gap-6 px-1 pb-6 sm:px-2">
       <div className="flex items-center gap-2 pr-12">
-        <Text variant="lead-medium" as="span" className="text-textBlack">
+        <Text variant="lead-medium" as="span">
           Publish workflow
         </Text>
       </div>
@@ -128,13 +128,12 @@ export function StepStrip({ currentStep }: Props) {
                   <motion.span
                     initial={false}
                     animate={{ scaleX: isComplete ? 1 : 0 }}
-                    style={{ transformOrigin: "left" }}
                     transition={
                       shouldReduceMotion
                         ? { duration: 0 }
                         : { duration: 0.32, ease: [0.16, 1, 0.3, 1] }
                     }
-                    className="absolute inset-x-0 top-0 border-t border-solid border-action-hover"
+                    className="absolute inset-x-0 top-0 origin-left border-t border-solid border-action-hover"
                   />
                 </li>
               ) : null}

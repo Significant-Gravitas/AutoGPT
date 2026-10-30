@@ -91,11 +91,9 @@ function ScheduleWorkflowRow({ workflow, onScheduleCreated }: RowProps) {
       disabled={!agent}
       className="flex w-full items-center gap-3 rounded-2xl border border-border-base px-4 py-3 text-left transition-colors hover:bg-surface-muted disabled:opacity-60"
     >
-      <Icon
-        icon={Calendar03Icon}
-        size={18}
-        className="shrink-0 text-foreground-tertiary"
-      />
+      <span className="inline-flex shrink-0 text-foreground-tertiary">
+        <Icon icon={Calendar03Icon} size={18} />
+      </span>
       <span className="min-w-0 flex-1">
         <Text
           variant="body-medium"
@@ -116,11 +114,9 @@ function ScheduleWorkflowRow({ workflow, onScheduleCreated }: RowProps) {
           </Text>
         ) : null}
       </span>
-      <Icon
-        icon={ArrowRight01Icon}
-        size={16}
-        className="shrink-0 text-foreground-subtle"
-      />
+      <span className="inline-flex shrink-0 text-foreground-subtle">
+        <Icon icon={ArrowRight01Icon} size={16} />
+      </span>
     </button>
   );
 

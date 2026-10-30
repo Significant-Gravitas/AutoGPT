@@ -48,6 +48,7 @@ export function Timeline({ label, milestones }: Props) {
             )}
             <span
               aria-hidden
+              // oxlint-disable-next-line design-system/no-inline-styles -- Otto's tint is mixed from the expert palette (ExpertAvatar/colors); no role has it
               style={isFirst ? { backgroundColor: OTTO_TINT } : undefined}
               className={cn(
                 "relative flex size-9 items-center justify-center rounded-full",

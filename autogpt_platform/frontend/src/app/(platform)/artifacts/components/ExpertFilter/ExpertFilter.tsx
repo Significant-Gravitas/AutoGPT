@@ -32,11 +32,7 @@ export function ExpertFilter({ experts, value, onChange }: Props) {
   return (
     <LayoutGroup id="artifacts-expert-filter">
       <div className="flex flex-col gap-1">
-        <Text
-          variant="small"
-          as="span"
-          className="pl-4 text-foreground-tertiary"
-        >
+        <Text variant="small" as="span" tone="muted" className="ml-4">
           From
         </Text>
         <div
@@ -91,8 +87,7 @@ function ExpertTab({
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle, a text colour
-        "relative flex max-w-48 items-center gap-2 rounded-full py-1.5 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-zinc-400",
+        "relative flex max-w-48 items-center gap-2 rounded-full py-1.5 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-foreground-subtle",
         hasAvatar ? "pl-1.5 pr-3.5" : "px-4",
         active
           ? "text-foreground-strong"

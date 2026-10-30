@@ -32,31 +32,23 @@ const bannerStyles: Record<
 > = {
   action: {
     bg: "bg-accent-surface",
-    // TODO(tokens): no exact role: ring-violet-200 #DDD6FE
-    ring: "ring-violet-200",
-    // TODO(tokens): no exact role: text-violet-800 #5B21B6
-    text: "text-violet-800",
+    ring: "ring-brand/20",
+    text: "text-accent-strong",
   },
   info: {
     bg: "bg-info-surface",
-    // TODO(tokens): no exact role: ring-blue-200 #BFDBFE
-    ring: "ring-blue-200",
-    // TODO(tokens): no exact role: text-blue-800 #1E40AF
-    text: "text-blue-800",
+    ring: "ring-info/30",
+    text: "text-info-foreground",
   },
   warning: {
     bg: "bg-warning-surface",
-    // TODO(tokens): no fitting role for ring-amber-200 #FDE68A; #FDE68A is warning-border (a border colour), and this is a ring (QUALITY 41(b))
-    ring: "ring-amber-200",
-    // TODO(tokens): no exact role: text-amber-800 #92400E
-    text: "text-amber-800",
+    ring: "ring-warning-border",
+    text: "text-warning-foreground",
   },
   success: {
     bg: "bg-success-surface",
-    // TODO(tokens): no exact role: ring-green-200 #94D5AC
-    ring: "ring-green-200",
-    // TODO(tokens): no exact role: text-green-800 #0C5A29
-    text: "text-green-800",
+    ring: "ring-success/40",
+    text: "text-success-foreground",
   },
 };
 

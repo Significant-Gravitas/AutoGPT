@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { cn } from "@/lib/utils";
 import { formatElapsed } from "../helpers";
 
 // Each digit is its own slot, so only the digits that actually changed pop:
@@ -18,8 +19,10 @@ export function ElapsedTime({ seconds }: { seconds: number }) {
       {characters.map((character, index) => (
         <span
           key={index}
-          className="relative inline-flex justify-center"
-          style={{ width: character === ":" ? "0.3em" : "0.62em" }}
+          className={cn(
+            "relative inline-flex justify-center",
+            character === ":" ? "w-[0.3em]" : "w-[0.62em]",
+          )}
           aria-hidden
         >
           <AnimatePresence initial={false} mode="popLayout">

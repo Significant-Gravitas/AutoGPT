@@ -94,18 +94,12 @@ export function CredentialRow({
             : readOnly
               ? "w-fit"
               : "",
+        (showCaret || asSelectTrigger) && "cursor-pointer",
+        readOnly && !showCaret && !asSelectTrigger && "cursor-default",
       )}
       onClick={readOnly || showCaret || asSelectTrigger ? undefined : onSelect}
-      style={
-        readOnly || showCaret || asSelectTrigger
-          ? { cursor: showCaret || asSelectTrigger ? "pointer" : "default" }
-          : undefined
-      }
     >
-      <div
-        // TODO(tokens): no exact role for bg-gray-900 #111827
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-900"
-      >
+      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-action-hover">
         <ProviderIcon className="h-3 w-3 text-action-foreground" />
       </div>
       <TypeIcon className="h-5 w-5 shrink-0 text-foreground-emphasis" />
@@ -146,22 +140,19 @@ export function CredentialRow({
       {(showCaret || (asSelectTrigger && !readOnly)) && (
         <Icon
           icon={ArrowDown01Icon}
-          // TODO(tokens): no exact role for text-gray-400 #9ca3af
-          className="h-4 w-4 shrink-0 text-gray-400"
+          className="h-4 w-4 shrink-0 text-foreground-subtle"
         />
       )}
       {!readOnly && !showCaret && !asSelectTrigger && onDelete && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
-              // TODO(tokens): no exact role for hover:bg-gray-100 #f3f4f6
-              className="ml-auto shrink-0 rounded p-1 hover:bg-gray-100"
+              className="ml-auto shrink-0 rounded p-1 hover:bg-surface-hover"
               onClick={(e) => e.stopPropagation()}
             >
               <Icon
-                // TODO(tokens): no exact role for text-gray-400 #9ca3af
                 icon={MoreVerticalIcon}
-                className="h-5 w-5 text-gray-400"
+                className="h-5 w-5 text-foreground-subtle"
               />
             </button>
           </DropdownMenuTrigger>

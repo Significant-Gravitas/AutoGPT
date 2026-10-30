@@ -251,7 +251,7 @@ export function CredentialsInput({
           )}
 
           {oAuthError && (
-            <Text variant="body" className="mt-2 text-error">
+            <Text variant="body" tone="error" className="mt-2">
               Error: {oAuthError}
             </Text>
           )}

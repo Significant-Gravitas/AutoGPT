@@ -29,6 +29,7 @@ interface Props {
 export function OttoCover({ art }: Props) {
   const image = COVER_ART[art];
   return (
+    // oxlint-disable-next-line design-system/no-arbitrary-values -- the warm studio colour baked into the cover art; no role has it
     <div className="flex items-center justify-center bg-[#FDFCF8] px-6 pb-2 pt-6 sm:py-10 lg:px-10">
       <Image
         src={image.src}

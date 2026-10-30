@@ -19,9 +19,9 @@ export function APIKeySelectionBar({
   onDeleteSelected,
 }: Props) {
   return (
-    <div className="flex w-full items-center justify-between rounded-[4px] border border-border-base bg-surface-hover px-4 py-2">
+    <div className="flex w-full items-center justify-between rounded-xsmall border border-border-base bg-surface-hover px-4 py-2">
       <div className="flex items-center gap-5">
-        <Text variant="body" as="span" className="text-foreground-body">
+        <Text variant="body" as="span" tone="body">
           {selectedCount} selected
         </Text>
         {!allSelected && (

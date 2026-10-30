@@ -68,15 +68,8 @@ export function CronSchedulerDialog({
           {/* Timezone info */}
           {userTimezone === "not-set" ? (
             <div className="flex items-center gap-2 rounded-xlarge border border-warning-border bg-warning-surface p-3">
-              <InfoIcon
-                // TODO(tokens): no exact role: text-amber-600 #D97706
-                className="h-4 w-4 text-amber-600"
-              />
-              <Text
-                // TODO(tokens): no exact role: text-amber-800 #92400E
-                variant="body"
-                className="text-amber-800"
-              >
+              <InfoIcon className="h-4 w-4 text-warning-foreground" />
+              <Text variant="body" tone="warning">
                 No timezone set. Schedule will run in UTC.
                 <a href="/settings/account" className="ml-1 underline">
                   <Text variant="body" as="span" tone="inherit">
