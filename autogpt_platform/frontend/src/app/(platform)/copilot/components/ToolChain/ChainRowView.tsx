@@ -40,7 +40,7 @@ function ReasoningStream({ text, live }: ReasoningStreamProps) {
         "text-body-sm leading-5 text-foreground-subtle",
         live
           ? "max-h-24 overflow-hidden [mask-image:linear-gradient(to_bottom,transparent_0,black_16px,black_100%)]"
-          : "max-h-64 overflow-y-auto scrollbar-none",
+          : "scrollbar-none max-h-64 overflow-y-auto",
       )}
     >
       <p className="whitespace-pre-wrap">{text}</p>
@@ -215,10 +215,7 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
           </div>
         )}
         {row.detail && (
-          <p
-            // TODO(tokens): no exact role for text-red-400
-            className="animate-fade-in truncate text-xs text-red-400 motion-reduce:animate-none"
-          >
+          <p className="animate-fade-in truncate text-xs text-error motion-reduce:animate-none">
             {row.detail}
           </p>
         )}
@@ -230,7 +227,7 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
           >
             <div
               className={cn(
-                "px-px pb-px pt-1.5",
+                "px-px pt-1.5 pb-px",
                 showContent && PANEL_REVEAL,
                 hidesOutputFromReplay(row) && HIDDEN_FROM_REPLAY,
               )}

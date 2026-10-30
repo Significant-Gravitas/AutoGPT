@@ -45,17 +45,18 @@ export const GraphMenuSearchBar: React.FC<GraphMenuSearchBarProps> = ({
         onKeyDown={onKeyDown}
         placeholder={"Search this workflow for blocks, inputs, outputs..."}
         className={cn(
-          "m-0 border-none p-0 font-sans text-body-lg font-normal leading-6 text-foreground-emphasis shadow-none outline-none",
-          "placeholder:text-foreground-subtle focus:shadow-none focus:outline-none focus:ring-0",
+          "m-0 border-none p-0 font-sans text-body-lg leading-6 font-normal text-foreground-emphasis shadow-none outline-none",
+          "placeholder:text-foreground-subtle focus:shadow-none focus:ring-0 focus:outline-none",
         )}
         autoFocus
       />
       {searchQuery.length > 0 && (
         <Button
-          variant="legacy-ghost"
-          size={"legacy-sm"}
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Clear search"
+          withTooltip={false}
           onClick={handleClear}
-          className="p-0 hover:bg-transparent"
         >
           <Icon
             icon={Cancel01Icon}

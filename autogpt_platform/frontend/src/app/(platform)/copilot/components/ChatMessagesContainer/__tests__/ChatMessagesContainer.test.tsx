@@ -151,8 +151,8 @@ vi.mock("../../CopilotPendingReviews/CopilotPendingReviews", () => ({
 }));
 // Tests below override this default by re-mocking ../helpers as needed.
 vi.mock("../helpers", async (importOriginal) => ({
-  extractReviewTarget: (await importOriginal<typeof import("../helpers")>())
-    .extractReviewTarget,
+  extractReviewTargets: (await importOriginal<typeof import("../helpers")>())
+    .extractReviewTargets,
   getLatestCompactionPhase: () => null,
   getTurnMessages: () => [],
   isChainableToolPart: () => false,
@@ -1904,7 +1904,32 @@ describe("ChatMessagesContainer — pending reviews", () => {
       />,
     );
 
-    expect(mounted()).toEqual([{ graphExecId: "exec-9" }, chatList(false, 0)]);
+    expect(mounted()).toEqual([
+      { runs: [{ graphExecId: "exec-9" }] },
+      chatList(false, 0),
+    ]);
+  });
+
+  it("finds the reviews of every run that paused, not only the newest", () => {
+    // Four runs of one expert each waiting on her spend approval (T554).
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={["exec-1", "exec-2", "exec-3", "exec-4"].flatMap((id) =>
+          withToolOutput({
+            execution_id: id,
+            graph_id: "g-1",
+            status: "REVIEW",
+          }),
+        )}
+      />,
+    );
+
+    expect(
+      mounted()[0]
+        .runs.map((run: { graphExecId: string }) => run.graphExecId)
+        .sort(),
+    ).toEqual(["exec-1", "exec-2", "exec-3", "exec-4"]);
   });
 
   it("keeps the chat's held cards loaded while a newer run is the review target", () => {
@@ -1919,7 +1944,10 @@ describe("ChatMessagesContainer — pending reviews", () => {
     );
 
     // One held call on screen: fetched, but polled only if a card comes back.
-    expect(mounted()).toEqual([{ graphExecId: "exec-9" }, chatList(false, 1)]);
+    expect(mounted()).toEqual([
+      { runs: [{ graphExecId: "exec-9" }] },
+      chatList(false, 1),
+    ]);
   });
 
   it("refetches the chat's list at once for a new held call while it is the target", () => {

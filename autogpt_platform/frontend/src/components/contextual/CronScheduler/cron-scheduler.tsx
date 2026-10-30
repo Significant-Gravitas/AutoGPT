@@ -306,7 +306,8 @@ export function CronScheduler({
           <div className="flex items-center gap-2">
             <Label>On</Label>
             <Button
-              variant="legacy-outline"
+              variant="compact-outline"
+              size="compact"
               className="h-8 px-2 py-1"
               onClick={() => {
                 if (selectedWeekDays.length === weekDays.length) {
@@ -323,7 +324,8 @@ export function CronScheduler({
               </Text>
             </Button>
             <Button
-              variant="legacy-outline"
+              variant="compact-outline"
+              size="compact"
               className="h-8 px-2 py-1"
               onClick={() => setSelectedWeekDays([1, 2, 3, 4, 5])}
             >
@@ -332,7 +334,8 @@ export function CronScheduler({
               </Text>
             </Button>
             <Button
-              variant="legacy-outline"
+              variant="compact-outline"
+              size="compact"
               className="h-8 px-2 py-1"
               onClick={() => setSelectedWeekDays([0, 6])}
             >
@@ -347,9 +350,10 @@ export function CronScheduler({
                 key={day.value}
                 variant={
                   selectedWeekDays.includes(day.value)
-                    ? "legacy-default"
-                    : "legacy-outline"
+                    ? "compact-primary"
+                    : "compact-outline"
                 }
+                size="compact"
                 className="h-10 w-10 p-0"
                 onClick={() => {
                   setSelectedWeekDays((prev) =>
@@ -377,9 +381,10 @@ export function CronScheduler({
             <Button
               variant={
                 selectedMonthDays.length === 31
-                  ? "legacy-default"
-                  : "legacy-outline"
+                  ? "compact-primary"
+                  : "compact-outline"
               }
+              size="compact"
               onClick={() => {
                 setSelectedMonthDays(
                   Array.from({ length: 31 }, (_, i) => i + 1),
@@ -391,9 +396,10 @@ export function CronScheduler({
             <Button
               variant={
                 selectedMonthDays.length < 31 && selectedMonthDays.length > 0
-                  ? "legacy-default"
-                  : "legacy-outline"
+                  ? "compact-primary"
+                  : "compact-outline"
               }
+              size="compact"
               onClick={() => {
                 setSelectedMonthDays([]);
               }}
@@ -401,13 +407,15 @@ export function CronScheduler({
               Customize
             </Button>
             <Button
-              variant="legacy-outline"
+              variant="compact-outline"
+              size="compact"
               onClick={() => setSelectedMonthDays([15])}
             >
               15th
             </Button>
             <Button
-              variant="legacy-outline"
+              variant="compact-outline"
+              size="compact"
               onClick={() => setSelectedMonthDays([31])}
             >
               Last Day
@@ -420,9 +428,10 @@ export function CronScheduler({
                   key={i + 1}
                   variant={
                     selectedMonthDays.includes(i + 1)
-                      ? "legacy-default"
-                      : "legacy-outline"
+                      ? "compact-primary"
+                      : "compact-outline"
                   }
+                  size="compact"
                   className="h-10 w-10 p-0"
                   onClick={() => {
                     setSelectedMonthDays((prev) =>
@@ -449,7 +458,8 @@ export function CronScheduler({
           <Label>Months</Label>
           <div className="flex gap-2">
             <Button
-              variant="legacy-outline"
+              variant="compact-outline"
+              size="compact"
               className="h-8 px-2 py-1"
               onClick={() => {
                 if (selectedMonths.length === months.length) {
@@ -476,9 +486,10 @@ export function CronScheduler({
                   key={i}
                   variant={
                     selectedMonths.includes(monthNumber)
-                      ? "legacy-default"
-                      : "legacy-outline"
+                      ? "compact-primary"
+                      : "compact-outline"
                   }
+                  size="compact"
                   className="px-2 py-1"
                   onClick={() => {
                     setSelectedMonths((prev) =>

@@ -75,10 +75,10 @@ describe("Button compact sizes", () => {
   });
 });
 
-describe("Button legacy variants", () => {
-  it("renders a plain button with the children as they are", () => {
+describe("Button compact variants", () => {
+  it("renders a rounded-md button with the children as they are", () => {
     render(
-      <Button variant="legacy-outline" className="space-x-3">
+      <Button variant="compact-outline" size="compact" className="space-x-3">
         <span>One</span>
         <span>Two</span>
       </Button>,
@@ -86,29 +86,32 @@ describe("Button legacy variants", () => {
     const el = screen.getByRole("button", { name: "One Two" });
     expect(el.children).toHaveLength(2);
     expect(el.querySelector(".contents")).toBeNull();
-    expect(el.className).toContain("border-neutral-200");
+    expect(el.className).toContain("rounded-md");
+    expect(el.className).not.toContain("rounded-full");
+    expect(el.className).toContain("border-border-base");
     expect(el.className).toContain("h-9 px-4 py-2");
     expect(el.className).toContain("space-x-3");
   });
 
   it("applies the size, and lets the caller's classes win", () => {
     render(
-      <Button variant="legacy-default" size="legacy-sm" className="text-xs">
+      <Button variant="compact-primary" size="compact-sm" className="h-10">
         Save
       </Button>,
     );
     const el = screen.getByRole("button", { name: "Save" });
-    expect(el.className).toContain("h-8");
-    expect(el.className).toContain("text-xs");
-    expect(el.className).not.toContain("text-caption");
-    expect(el.className).not.toContain("leading-4");
+    expect(el.className).toContain("bg-action");
+    expect(el.className).toContain("h-10");
+    expect(el.className).not.toContain("h-8");
+    expect(el.className).toContain("text-caption");
   });
 
   it("forwards the ref and the caller's props", () => {
     let node: HTMLButtonElement | null = null;
     render(
       <Button
-        variant="legacy-ghost"
+        variant="compact-ghost"
+        size="compact"
         ref={(el) => {
           node = el;
         }}
@@ -121,23 +124,7 @@ describe("Button legacy variants", () => {
     const el = screen.getByTestId("ghost");
     expect(node).toBe(el);
     expect(el).toHaveProperty("disabled", true);
-  });
-
-  it("adds no slot of its own, like the old component, and keeps the caller's", () => {
-    render(
-      <>
-        <Button variant="legacy-outline">Plain</Button>
-        <Button variant="legacy-ghost" data-slot="date-input-trigger">
-          Pick
-        </Button>
-      </>,
-    );
-    expect(
-      screen.getByRole("button", { name: "Plain" }).hasAttribute("data-slot"),
-    ).toBe(false);
-    expect(
-      screen.getByRole("button", { name: "Pick" }).getAttribute("data-slot"),
-    ).toBe("date-input-trigger");
+    expect(el.getAttribute("data-slot")).toBe("button");
   });
 });
 
@@ -172,5 +159,51 @@ describe("Button slots", () => {
     const el = screen.getByRole("button", { name: "Edit" });
     expect(el.getAttribute("data-slot")).toBe("button");
     expect(el.querySelector("[data-slot=button-icon]")).not.toBeNull();
+  });
+});
+
+describe("Button textSize", () => {
+  it("keeps the size's text-body by default", () => {
+    renderButton({ size: "small", children: "Save" });
+    const el = screen.getByRole("button", { name: "Save" });
+    expect(el.className).toContain("text-body");
+    expect(el.className).not.toContain("text-body-md");
+  });
+
+  it.each([
+    ["small", "button"],
+    ["large", "button"],
+    ["small", "loading"],
+    ["large", "loading"],
+    ["small", "NextLink"],
+    ["large", "NextLink"],
+  ] as const)(
+    "replaces the %s size's text-body and leading with text-body-md (%s)",
+    (size, kind) => {
+      renderButton({
+        size,
+        textSize: "body-md",
+        children: "Save",
+        ...(kind === "loading" ? { loading: true } : {}),
+        ...(kind === "NextLink" ? { as: "NextLink", href: "/x" } : {}),
+      } as Partial<ButtonProps>);
+      const el =
+        kind === "NextLink"
+          ? screen.getByRole("link", { name: "Save" })
+          : screen.getByRole("button", { name: "Save" });
+      const classes = el.className.split(" ");
+      expect(classes).toContain("text-body-md");
+      for (const stale of ["text-body", "leading-5", "leading-snug"])
+        expect(classes).not.toContain(stale);
+    },
+  );
+
+  it("replaces text-body with text-body-md on the link variant", () => {
+    renderButton({ variant: "link", textSize: "body-md", children: "Save" });
+    const classes = screen
+      .getByRole("button", { name: "Save" })
+      .className.split(" ");
+    expect(classes).toContain("text-body-md");
+    expect(classes).not.toContain("text-body");
   });
 });

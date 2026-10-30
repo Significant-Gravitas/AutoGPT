@@ -1,9 +1,9 @@
+/* oxlint-disable design-system/no-raw-colors -- illustration artwork: a fixed palette, not UI colour */
 type Props = {
   className?: string;
 };
 
 export function EmptySchedulesIllustration({ className }: Props) {
-  // TODO(tokens): no exact role for the illustration colours #101720, #2973E8, #D5C0FC, #F48282, #FF9C0F, #FFFFFE; no fitting role for the luminance-mask fill white #FFFFFF; #FFFFFF is card, a surface fill
   return (
     <div className={className}>
       <svg
@@ -35,7 +35,6 @@ export function EmptySchedulesIllustration({ className }: Props) {
         />
         <mask
           id="mask0_912_14740"
-          style={{ maskType: "luminance" }}
           maskUnits="userSpaceOnUse"
           x="126"
           y="24"
@@ -63,7 +62,6 @@ export function EmptySchedulesIllustration({ className }: Props) {
         />
         <mask
           id="mask1_912_14740"
-          style={{ maskType: "luminance" }}
           maskUnits="userSpaceOnUse"
           x="134"
           y="40"
@@ -187,7 +185,6 @@ export function EmptySchedulesIllustration({ className }: Props) {
         />
         <mask
           id="mask2_912_14740"
-          style={{ maskType: "luminance" }}
           maskUnits="userSpaceOnUse"
           x="0"
           y="33"
@@ -251,7 +248,6 @@ export function EmptySchedulesIllustration({ className }: Props) {
         />
         <mask
           id="mask3_912_14740"
-          style={{ maskType: "luminance" }}
           maskUnits="userSpaceOnUse"
           x="272"
           y="33"

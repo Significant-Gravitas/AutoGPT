@@ -41,9 +41,10 @@ function ShimmerBar({ delay, className }: ShimmerBarProps) {
   return (
     <span
       aria-hidden
+      // oxlint-disable-next-line design-system/no-inline-styles -- per-row stagger computed at runtime
       style={{ animationDelay: `${delay * 140}ms` }}
       className={cn(
-        // TODO(tokens): no exact role (bg-[linear-gradient(90deg,theme(colors.zinc.100)_25%,theme(colors.zinc.50)_50%,theme(colors.zinc.100)_75%)])
+        // oxlint-disable-next-line design-system/no-arbitrary-values -- the shimmer sweep (gradient, size, timing) has no token
         "block animate-shimmer bg-[linear-gradient(90deg,theme(colors.zinc.100)_25%,theme(colors.zinc.50)_50%,theme(colors.zinc.100)_75%)] bg-[length:200%_100%] [animation-duration:1.4s] [animation-timing-function:linear] motion-reduce:animate-none motion-reduce:bg-surface-hover",
         className,
       )}

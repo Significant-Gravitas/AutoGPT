@@ -28,9 +28,8 @@ export function OutcomeRow({ outcome, timezone, showAgentName }: Props) {
       <span
         className={cn(
           "flex size-[18px] shrink-0 items-center justify-center rounded-md",
-          // TODO(tokens): no exact role (bg-rose-50 #FFF1F2, text-rose-600 #E11D48)
           failed
-            ? "bg-rose-50 text-rose-600"
+            ? "bg-error-surface text-error-hover"
             : "bg-surface-hover text-foreground-tertiary",
         )}
       >
@@ -79,11 +78,7 @@ export function OutcomeRow({ outcome, timezone, showAgentName }: Props) {
 function RunMeta({ outcome, timezone, showAgentName }: Props) {
   const parts = [
     outcome.status === "failed" ? (
-      <span
-        // TODO(tokens): no exact role (text-rose-600 #E11D48)
-        key="status"
-        className="font-medium text-rose-600"
-      >
+      <span key="status" className="font-medium text-error-hover">
         Failed
       </span>
     ) : null,

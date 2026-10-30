@@ -7,6 +7,12 @@ import type { Variant } from "../Text/helpers";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import { BaseInput, type BaseInputProps } from "./BaseInput";
 import { useInput } from "./useInput";
+import {
+  BareInput,
+  BareTextarea,
+  type BareInputProps,
+  type BareTextareaProps,
+} from "./BareInput";
 import { EyeIcon, EyeOffIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -43,9 +49,38 @@ export interface TextFieldProps
   rows?: number;
   amountPrefix?: string;
   amountSuffix?: string;
+  /** `body-md` sets the value at the text-body-md role (15px/1.5rem) for
+   *  sizes whose text is text-body, e.g. inside a profile tab. */
+  textSize?: "body" | "body-md";
 }
 
-export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
+// `<Input bare>` renders only the element, as the deleted components/ui/input
+// and textarea did; anything else is the labelled field. The field's
+// signature comes last, so ComponentProps<typeof Input> stays the field's.
+export const Input = forwardRef<
+  InputElement,
+  TextFieldProps | BareInputProps | BareTextareaProps
+>(function Input(props, ref) {
+  if ("bare" in props && props.bare) {
+    if (props.type === "textarea") {
+      return (
+        <BareTextarea
+          {...(props as BareTextareaProps)}
+          ref={ref as React.Ref<HTMLTextAreaElement>}
+        />
+      );
+    }
+    return (
+      <BareInput
+        {...(props as BareInputProps)}
+        ref={ref as React.Ref<HTMLInputElement>}
+      />
+    );
+  }
+  return <TextField {...(props as TextFieldProps)} ref={ref} />;
+}) as unknown as typeof BareTextarea & typeof BareInput & typeof TextField;
+
+const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
   {
     className,
     label,
@@ -62,6 +97,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
     amountPrefix,
     amountSuffix,
     onKeyDown,
+    textSize = "body",
     ...props
   },
   ref,
@@ -103,10 +139,11 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
     "font-normal text-foreground-base",
     "placeholder:font-normal placeholder:text-placeholder",
     // Focus and hover states
-    // TODO(tokens): no role is purple-400 #925CF7, the focus border and ring.
-    "focus:border-purple-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-purple-400 focus:ring-offset-0",
+    "focus:border-brand focus:shadow-none focus:outline-none focus:ring-1 focus:ring-brand focus:ring-offset-0",
     className,
   );
+
+  const bodyTextClass = textSize === "body-md" ? "text-body-md" : "text-body";
 
   const errorStyles =
     error && "!border !border-error focus:border-error focus:ring-error";
@@ -125,11 +162,12 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
             size === "small" && [
               "min-h-9", // 36px minimum
               "py-2",
-              "text-body",
+              bodyTextClass,
               "placeholder:text-body",
             ],
             size === "medium" && [
-              "min-h-[2.875rem] text-body", // 46px minimum (current default)
+              "min-h-[2.875rem]", // 46px minimum (current default)
+              bodyTextClass,
               "py-2.5",
             ],
           )}
@@ -163,10 +201,14 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
             size === "small" && [
               "h-9",
               "py-2",
-              "text-body",
+              bodyTextClass,
               "placeholder:text-body",
             ],
-            size === "medium" && ["h-[2.875rem]", "py-2.5"],
+            size === "medium" && [
+              "h-[2.875rem]",
+              "py-2.5",
+              textSize === "body-md" && "text-body-md",
+            ],
           )}
           placeholder={placeholder || label}
           // CurrencyInput gives unformatted numeric string in value param
@@ -209,12 +251,14 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           size === "small" && [
             "h-9", // 36px
             "py-2",
-            "text-body", // 14px font, 22px line height
+            bodyTextClass, // 14px font, 22px line height
             "placeholder:text-body",
           ],
           size === "medium" && [
             "h-[2.875rem]", // 46px (current default)
             "py-2.5",
+            // Medium sets no size by default; body-md is opt-in.
+            textSize === "body-md" && "text-body-md",
           ],
         )}
         placeholder={placeholder || label}
@@ -241,7 +285,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           type="button"
           onClick={handleTogglePassword}
           disabled={props.disabled}
-          className="absolute right-4 top-1/2 -translate-y-1/2 text-foreground-subtle transition-colors hover:text-foreground-secondary disabled:cursor-not-allowed disabled:opacity-50"
+          className="absolute top-1/2 right-4 -translate-y-1/2 text-foreground-subtle transition-colors hover:text-foreground-secondary disabled:cursor-not-allowed disabled:opacity-50"
           aria-label={showPassword ? "Hide password" : "Show password"}
           aria-pressed={showPassword}
           aria-controls={inputId}
@@ -276,7 +320,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
         as="span"
         tone="error"
         className={cn(
-          "absolute left-0 top-full mt-1 transition-opacity duration-200",
+          "absolute top-full left-0 mt-1 transition-opacity duration-200",
           error ? "opacity-100" : "opacity-0",
         )}
       >
@@ -300,6 +344,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
               data-slot="input-label-text"
               variant={labelVariant}
               as="span"
+              // oxlint-disable-next-line design-system/require-static-classes -- labelClassName is a caller override that existing call sites outside the design system still use
               className={cn("text-foreground-base", labelClassName)}
             >
               {label}

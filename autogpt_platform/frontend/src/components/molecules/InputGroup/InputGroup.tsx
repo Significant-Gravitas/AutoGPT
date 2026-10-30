@@ -4,8 +4,8 @@ import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
 
 function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
@@ -13,8 +13,7 @@ function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
       data-slot="input-group"
       role="group"
       className={cn(
-        // TODO(tokens): no role holds neutral-200 #E5E5E5 (`border` is #E4E4E7).
-        "group/input-group relative flex w-full items-center rounded-xlarge border border-neutral-200 bg-surface shadow-sm outline-none transition-[color,box-shadow]",
+        "group/input-group relative flex w-full items-center rounded-xlarge border border-border-base bg-surface shadow-sm transition-[color,box-shadow] outline-none",
         "min-w-0 has-[>textarea]:h-auto",
 
         // Variants based on alignment.
@@ -22,8 +21,7 @@ function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
         "has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-end]]:flex-col",
 
         // Focus state.
-        // TODO(tokens): zinc-400 #ADADB3 is `foreground-subtle`, a text role; no border or ring role holds it (SECRT-3154).
-        "has-[[data-slot=input-group-control]:focus-visible]:border-zinc-400 has-[[data-slot=input-group-control]:focus-visible]:ring-1 has-[[data-slot=input-group-control]:focus-visible]:ring-zinc-400",
+        "has-[[data-slot=input-group-control]:focus-visible]:border-border-strong has-[[data-slot=input-group-control]:focus-visible]:ring-1 has-[[data-slot=input-group-control]:focus-visible]:ring-border-strong",
 
         className,
       )}
@@ -74,22 +72,12 @@ function InputGroupAddon({
   );
 }
 
-const inputGroupButtonVariants = cva(
-  "text-body leading-5 shadow-none flex min-w-0 gap-2 items-center",
-  {
-    variants: {
-      size: {
-        xs: "h-6 gap-1 px-2 rounded-md has-[>svg]:px-2",
-        sm: "h-8 px-2.5 gap-1.5 rounded-md has-[>svg]:px-2.5",
-        "icon-xs": "size-6 rounded-md p-0 has-[>svg]:p-0",
-        "icon-sm": "size-8 rounded-md p-0 has-[>svg]:p-0",
-      },
-    },
-    defaultVariants: {
-      size: "xs",
-    },
-  },
-);
+// Callers name the looks of the deleted ui/button by their old names; this map
+// keeps that API on the Button atom's compact family.
+const INPUT_GROUP_BUTTON_VARIANT = {
+  default: "compact-primary",
+  ghost: "compact-ghost",
+} as const;
 
 function InputGroupButton({
   className,
@@ -97,14 +85,24 @@ function InputGroupButton({
   variant = "ghost",
   size = "xs",
   ...props
-}: Omit<React.ComponentProps<typeof Button>, "size"> &
-  VariantProps<typeof inputGroupButtonVariants>) {
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  size?: "xs" | "sm" | "icon-xs" | "icon-sm" | null;
+  variant?: keyof typeof INPUT_GROUP_BUTTON_VARIANT;
+}) {
   return (
     <Button
       type={type}
       data-size={size}
-      variant={variant}
-      className={cn(inputGroupButtonVariants({ size }), className)}
+      variant={INPUT_GROUP_BUTTON_VARIANT[variant]}
+      size="compact"
+      className={cn(
+        "flex min-w-0 items-center gap-2 text-body leading-5 shadow-none",
+        size === "xs" && "h-6 gap-1 rounded-md px-2 has-[>svg]:px-2",
+        size === "sm" && "h-8 gap-1.5 rounded-md px-2.5 has-[>svg]:px-2.5",
+        size === "icon-xs" && "size-6 rounded-md p-0 has-[>svg]:p-0",
+        size === "icon-sm" && "size-8 rounded-md p-0 has-[>svg]:p-0",
+        className,
+      )}
       {...props}
     />
   );
@@ -115,7 +113,9 @@ const InputGroupTextarea = React.forwardRef<
   React.ComponentProps<"textarea">
 >(({ className, ...props }, ref) => {
   return (
-    <Textarea
+    <Input
+      bare
+      type="textarea"
       ref={ref}
       data-slot="input-group-control"
       className={cn(

@@ -1,3 +1,4 @@
+import { APIError } from "better-auth/api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const getServerSessionMock = vi.fn();
@@ -20,8 +21,10 @@ vi.mock("../auth", () => ({
   },
 }));
 
-vi.mock("../server/getServerSession", () => ({
+vi.mock("../server/getServerSession", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../server/getServerSession")>()),
   getServerSession: () => getServerSessionMock(),
+  readServerSession: () => getServerSessionMock(),
 }));
 
 vi.mock("@/lib/auth/server/getServerAuthToken", () => ({
@@ -127,15 +130,55 @@ describe("validateSession", () => {
     expect(result.redirectPath).toBeUndefined();
   });
 
-  it("falls back to a login redirect when the session lookup throws", async () => {
+  it("reports the session as unavailable, not invalid, when the lookup throws", async () => {
     getServerSessionMock.mockRejectedValue(new Error("db unavailable"));
 
     const result = await validateSession("/library");
 
+    expect(result.isUnavailable).toBe(true);
+    expect(result.redirectPath).toBeUndefined();
+  });
+
+  it("treats an auth-backend 401 as an invalid session", async () => {
+    getServerSessionMock.mockRejectedValue(new APIError("UNAUTHORIZED"));
+
+    const result = await validateSession("/library");
+
     expect(result.isValid).toBe(false);
+    expect(result.isUnavailable).toBeUndefined();
     expect(result.redirectPath).toBe(
       `/login?next=${encodeURIComponent("/library")}`,
     );
+  });
+
+  it("returns an invalid session instead of throwing when the path is missing", async () => {
+    const warnSpy = vi
+      .spyOn(console, "warn")
+      .mockImplementation(() => undefined);
+    getServerSessionMock.mockResolvedValue(null);
+
+    const result = await validateSession(undefined);
+
+    expect(result).toEqual({
+      user: null,
+      isValid: false,
+      redirectPath: undefined,
+    });
+    expect(warnSpy).toHaveBeenCalledWith(
+      "validateSession called without a valid currentPath:",
+      undefined,
+    );
+  });
+
+  it("does not rethrow from the catch block when the path is missing", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    getServerSessionMock.mockRejectedValue(new Error("db unavailable"));
+
+    const result = await validateSession(null);
+
+    expect(result.isValid).toBe(false);
+    expect(result.user).toBeNull();
+    expect(result.redirectPath).toBeUndefined();
   });
 });
 
@@ -233,6 +276,21 @@ describe("serverLogout", () => {
     expect(captureExceptionMock).toHaveBeenCalledWith(revocationError);
   });
 
+  it("expires the admin impersonation cookie so it can't outlive the session", async () => {
+    signOutMock.mockResolvedValue({ success: true });
+    cookieJar.set("better-auth.session_token", "tok");
+    cookieJar.set("admin-impersonate-user-id", "impersonated-user");
+
+    await serverLogout();
+
+    expect(cookieJar.has("admin-impersonate-user-id")).toBe(false);
+    const expiry = setCalls.find((c) => c.name === "admin-impersonate-user-id");
+    expect(expiry?.options?.maxAge).toBe(0);
+    expect(expiry?.options?.path).toBe("/");
+    // Set client-side with Secure (lib/impersonation.ts); match it.
+    expect(expiry?.options?.secure).toBe(true);
+  });
+
   it("expires __Secure- cookies WITH the Secure attribute so HTTPS logout isn't rejected", async () => {
     // Regression: a bare cookies().delete() emits Set-Cookie without `Secure`,
     // which the browser rejects for `__Secure-`-prefixed cookies over HTTPS —
@@ -293,6 +351,10 @@ describe("refreshSession", () => {
 
     const result = await refreshSession();
 
-    expect(result).toEqual({ user: null, error: "connection reset" });
+    expect(result).toEqual({
+      user: null,
+      error: "connection reset",
+      isUnavailable: true,
+    });
   });
 });

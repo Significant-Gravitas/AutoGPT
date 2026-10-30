@@ -339,6 +339,165 @@ describe("useBrainDumpRecorder", () => {
     expect(result.current.permissionDenied).toBe(false);
   });
 
+  describe("the browser's answer", () => {
+    it("is reported before the take starts, which sends its prompt set", async () => {
+      const onMicAnswer = vi.fn();
+      const { result } = renderHook(() =>
+        useBrainDumpRecorder({ promptSet: "Operations" }),
+      );
+
+      let started: boolean | undefined;
+      await act(async () => {
+        started = await result.current.start({ onMicAnswer });
+      });
+
+      expect(started).toBe(true);
+      expect(onMicAnswer).toHaveBeenCalledExactlyOnceWith("granted");
+      expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_started", {
+        prompt_set: "Operations",
+      });
+      const startedCall = vi
+        .mocked(trackBrainDump)
+        .mock.calls.findIndex(([event]) => event === "brain_dump_started");
+      expect(onMicAnswer.mock.invocationCallOrder[0]).toBeLessThan(
+        vi.mocked(trackBrainDump).mock.invocationCallOrder[startedCall],
+      );
+    });
+
+    it("is a denial for a refusal, tracked exactly as before", async () => {
+      stubGetUserMedia(
+        vi.fn().mockRejectedValue(new DOMException("no", "NotAllowedError")),
+      );
+      const onMicAnswer = vi.fn();
+      const { result } = renderHook(() => useBrainDumpRecorder());
+
+      await act(async () => {
+        await result.current.start({ onMicAnswer });
+      });
+
+      expect(onMicAnswer).toHaveBeenCalledExactlyOnceWith("denied");
+      expect(vi.mocked(trackBrainDump).mock.calls).toEqual([
+        ["brain_dump_mic_failed", { error_name: "NotAllowedError" }],
+        ["brain_dump_permission_denied"],
+      ]);
+    });
+
+    it("is unavailable for any other microphone error", async () => {
+      stubGetUserMedia(
+        vi.fn().mockRejectedValue(new DOMException("gone", "NotFoundError")),
+      );
+      const onMicAnswer = vi.fn();
+      const { result } = renderHook(() => useBrainDumpRecorder());
+
+      await act(async () => {
+        await result.current.start({ onMicAnswer });
+      });
+
+      expect(onMicAnswer).toHaveBeenCalledExactlyOnceWith("unavailable");
+    });
+
+    it("starts no take when the caller moves on during the first write", async () => {
+      const track = { stop: vi.fn() };
+      stubGetUserMedia(vi.fn().mockResolvedValue({ getTracks: () => [track] }));
+      const shouldRecord = vi
+        .fn()
+        .mockReturnValueOnce(true)
+        .mockReturnValue(false);
+      const { result } = renderHook(() => useBrainDumpRecorder());
+
+      let started: boolean | undefined;
+      await act(async () => {
+        started = await result.current.start({ shouldRecord });
+      });
+
+      expect(started).toBe(false);
+      expect(shouldRecord).toHaveBeenCalledTimes(2);
+      expect(track.stop).toHaveBeenCalled();
+      expect(trackBrainDump).not.toHaveBeenCalledWith(
+        "brain_dump_started",
+        expect.anything(),
+      );
+    });
+
+    it("starts no take when the caller no longer wants one", async () => {
+      const track = { stop: vi.fn() };
+      stubGetUserMedia(vi.fn().mockResolvedValue({ getTracks: () => [track] }));
+      const onMicAnswer = vi.fn();
+      const { result } = renderHook(() => useBrainDumpRecorder());
+
+      let started: boolean | undefined;
+      await act(async () => {
+        started = await result.current.start({
+          onMicAnswer,
+          shouldRecord: () => false,
+        });
+      });
+
+      expect(started).toBe(false);
+      expect(onMicAnswer).toHaveBeenCalledExactlyOnceWith("granted");
+      expect(track.stop).toHaveBeenCalled();
+      expect(result.current.recordingId).toBeNull();
+      expect(trackBrainDump).not.toHaveBeenCalledWith(
+        "brain_dump_started",
+        expect.anything(),
+      );
+    });
+  });
+
+  // A dismissed prompt asks again, and a blocked site can be allowed from
+  // the address bar: a refusal can be cleared and the take started anew.
+  it("starts a take after a refusal is cleared and the retry is allowed", async () => {
+    const getUserMedia = vi
+      .fn()
+      .mockRejectedValueOnce(new DOMException("no", "NotAllowedError"))
+      .mockResolvedValue({ getTracks: () => [] });
+    stubGetUserMedia(getUserMedia);
+    const { result } = renderHook(() => useBrainDumpRecorder());
+    await act(async () => {
+      await result.current.start();
+    });
+    expect(result.current.permissionDenied).toBe(true);
+
+    act(() => {
+      result.current.clearPermissionDenied();
+    });
+    expect(result.current.permissionDenied).toBe(false);
+    let started: boolean | undefined;
+    await act(async () => {
+      started = await result.current.start();
+    });
+
+    expect(started).toBe(true);
+    expect(result.current.phase).toBe("recording");
+    expect(result.current.permissionDenied).toBe(false);
+  });
+
+  it("reports a second refusal on a retry like the first", async () => {
+    stubGetUserMedia(
+      vi.fn().mockRejectedValue(new DOMException("no", "NotAllowedError")),
+    );
+    const { result } = renderHook(() => useBrainDumpRecorder());
+    await act(async () => {
+      await result.current.start();
+    });
+
+    act(() => {
+      result.current.clearPermissionDenied();
+    });
+    await act(async () => {
+      await result.current.start();
+    });
+
+    expect(result.current.permissionDenied).toBe(true);
+    expect(
+      vi
+        .mocked(trackBrainDump)
+        .mock.calls.filter(
+          ([event]) => event === "brain_dump_permission_denied",
+        ),
+    ).toHaveLength(2);
+  });
+
   // The ordering is the contract: a chunk is durable before the network
   // is ever offered it.
   it("persists a chunk before handing it to the upload queue", async () => {

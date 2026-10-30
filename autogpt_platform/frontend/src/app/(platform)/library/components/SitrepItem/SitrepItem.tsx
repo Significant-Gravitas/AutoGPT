@@ -48,12 +48,13 @@ const PRIORITY_CONFIG: Record<
   },
   stale: {
     icon: ClockFadingIcon,
+    // oxlint-disable-next-line design-system/no-raw-colors -- yellow-600 #DFAF00 has no role; gold to amber change deferred (see PR)
     color: "text-yellow-600",
-    bg: "bg-yellow-50",
+    bg: "bg-warning-surface",
   },
   warning: {
     icon: Alert02Icon,
-    color: "text-amber-600",
+    color: "text-warning-foreground",
     bg: "bg-warning-surface",
   },
   success: {
@@ -64,12 +65,13 @@ const PRIORITY_CONFIG: Record<
   listening: {
     icon: EarIcon,
     color: "text-brand",
-    bg: "bg-purple-50",
+    bg: "bg-accent-surface",
   },
   scheduled: {
     icon: Calendar03Icon,
+    // oxlint-disable-next-line design-system/no-raw-colors -- yellow-600 #DFAF00 has no role; gold to amber change deferred (see PR)
     color: "text-yellow-600",
-    bg: "bg-yellow-50",
+    bg: "bg-warning-surface",
   },
   idle: {
     icon: MoonIcon,
@@ -108,32 +110,28 @@ export function SitrepItem({ item }: Props) {
             className={cn(
               "flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full",
               config.bg,
+              config.color,
             )}
           >
             {config.cssSpinner ? (
               <div
-                // TODO(tokens): no token for the ring spinner's gradient and mask (#0000, #000)
-                className="aspect-square h-[21px] w-[21px] animate-spin rounded-[50%] text-foreground-emphasis [-webkit-mask:radial-gradient(farthest-side,#0000_calc(100%_-_3px),#000_0)] [background:radial-gradient(farthest-side,currentColor_94%,#0000)_top/3px_3px_no-repeat,conic-gradient(#0000_30%,currentColor)] [mask:radial-gradient(farthest-side,#0000_calc(100%_-_3px),#000_0)]"
+                // oxlint-disable-next-line design-system/no-arbitrary-values -- the CSS ring spinner is drawn with a gradient and mask; no token
+                className="aspect-square h-[21px] w-[21px] animate-spin rounded-full [-webkit-mask:radial-gradient(farthest-side,#0000_calc(100%_-_3px),#000_0)] [background:radial-gradient(farthest-side,currentColor_94%,#0000)_top/3px_3px_no-repeat,conic-gradient(#0000_30%,currentColor)] [mask:radial-gradient(farthest-side,#0000_calc(100%_-_3px),#000_0)]"
               />
             ) : (
-              config.icon && (
-                <Icon icon={config.icon} size={14} className={config.color} />
-              )
+              config.icon && <Icon icon={config.icon} size={14} />
             )}
           </div>
         )}
 
         <div className="min-w-0 flex-1">
-          <Text
-            variant="body-medium"
-            className="leading-tight text-foreground-strong"
-          >
+          <Text variant="body-medium-lh-snug" tone="primary">
             {item.agentName}
           </Text>
           <OverflowText
             value={item.message}
-            variant="small"
-            className="leading-tight text-foreground-tertiary"
+            variant="small-lh-tight"
+            tone="muted"
           />
         </div>
       </div>
@@ -142,7 +140,7 @@ export function SitrepItem({ item }: Props) {
         {item.priority === "success" || item.priority === "warning" ? (
           <NextLink
             href={`/library/agents/${item.agentID}${item.executionID ? `?activeItem=${item.executionID}` : ""}`}
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-body-sm font-medium leading-inherit text-foreground-secondary transition-colors hover:bg-surface-muted hover:text-foreground-emphasis"
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-body-sm leading-inherit font-medium text-foreground-secondary transition-colors hover:bg-surface-muted hover:text-foreground-emphasis"
           >
             <Icon icon={EyeIcon} size={14} className="shrink-0" />
             See task
@@ -157,7 +155,7 @@ export function SitrepItem({ item }: Props) {
         <button
           type="button"
           onClick={handleAskAutoPilot}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-body-sm font-medium leading-inherit text-foreground-secondary transition-colors hover:bg-surface-muted hover:text-foreground-emphasis"
+          className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-body-sm leading-inherit font-medium text-foreground-secondary transition-colors hover:bg-surface-muted hover:text-foreground-emphasis"
         >
           <Icon icon={Chatting01Icon} size={14} className="shrink-0" />
           Ask Otto

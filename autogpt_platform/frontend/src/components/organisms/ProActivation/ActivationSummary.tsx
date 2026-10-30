@@ -44,7 +44,7 @@ export function ActivationSummary({ terms }: Props) {
         </p>
         <p
           data-slot="activation-summary-price"
-          className="text-sm tabular-nums text-foreground-secondary"
+          className="text-sm text-foreground-secondary tabular-nums"
         >
           {formatAmount(terms.renewal_unit_amount, terms.currency)} /{" "}
           {intervalLabel(

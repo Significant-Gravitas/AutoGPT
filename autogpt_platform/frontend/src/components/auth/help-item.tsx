@@ -1,4 +1,6 @@
-import { ExternalLink } from "lucide-react";
+import { Text } from "@/components/atoms/Text/Text";
+import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import Link from "next/link";
 
 interface HelpItemProps {
@@ -18,28 +20,25 @@ export function HelpItem({
 
   return (
     <div className="p-4">
-      <h3
-        // TODO(tokens): no exact role for text-slate-950 (#020617)
-        className="mb-1 text-sm font-medium text-slate-950"
-      >
-        {title}
-      </h3>
-      <p
-        // TODO(tokens): no exact role for text-slate-600 (#5B6A7E)
-        className="text-sm text-slate-600"
-      >
+      <h3 className="mb-1 text-sm font-medium text-foreground-base">{title}</h3>
+      <Text variant="body-tight" tone="secondary">
         {description}{" "}
         {linkText && (
           <Link
             href={href}
-            // TODO(tokens): no exact role for text-slate-950 (#020617), hover:text-slate-700 (#475263)
-            className="inline-flex items-center font-medium text-slate-950 hover:text-slate-700"
+            className="inline-flex items-center font-medium text-foreground-base hover:text-foreground-body"
           >
             {linkText}
-            {external && <ExternalLink className="ml-1 h-3 w-3" />}
+            {external && (
+              <Icon
+                aria-hidden
+                icon={LinkSquare01Icon}
+                className="ml-1 h-3 w-3"
+              />
+            )}
           </Link>
         )}
-      </p>
+      </Text>
     </div>
   );
 }
