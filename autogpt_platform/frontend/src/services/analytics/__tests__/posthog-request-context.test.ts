@@ -134,7 +134,7 @@ describe("getPostHogReplayUrl", () => {
 
   it("gives nothing while an admin acts as a user", () => {
     installCookiebot({ statistics: true });
-    ImpersonationState.set("user-1");
+    actAs("user-1");
 
     expect(getPostHogReplayUrl()).toBe("");
   });
