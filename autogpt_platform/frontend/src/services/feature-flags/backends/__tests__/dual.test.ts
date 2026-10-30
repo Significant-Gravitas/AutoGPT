@@ -81,6 +81,7 @@ describe("feature-flag mismatch report", () => {
     });
     await Sentry.flush(2000);
 
+    expect(sent).toHaveLength(3);
     // Sentry may hand the events over in any order.
     const first = sentWithMessage(
       "Feature flag mismatch: enable-platform-payment (LaunchDarkly=true, PostHog=false)",
