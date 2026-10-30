@@ -200,6 +200,10 @@ describe("Sentry to PostHog correlation", () => {
       "Failed to fetch https://files.example.com/a.png?t=1:2, retrying.",
       "Failed to fetch https://files.example.com/a.png, retrying.",
     ],
+    [
+      "Redirect failed (https://app.example.com/login?return_to=/foo)bar&token=secret) retrying",
+      "Redirect failed (https://app.example.com/login) retrying",
+    ],
   ])("removes the whole query, colons included: %s", (message, value) => {
     processEvent({
       type: undefined,
