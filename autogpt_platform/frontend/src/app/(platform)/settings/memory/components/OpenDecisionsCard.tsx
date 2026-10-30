@@ -27,26 +27,23 @@ export function OpenDecisionsCard({
   if (decisions.length === 0) return null;
   return (
     <div
-      className="flex flex-col rounded-[18px] border border-warning-border bg-warning-surface/40 px-4 py-4 shadow-[0_1px_2px_rgba(15,15,20,0.04)]"
+      className="flex flex-col rounded-large border border-warning-border bg-warning-surface/40 px-4 py-4 shadow-message-table"
       data-testid="open-decisions-card"
     >
-      <Text variant="body-medium" as="span" className="text-textBlack">
+      <Text variant="body-medium" as="span">
         Needs your decision
       </Text>
-      <Text variant="small" as="span" className="text-foreground-tertiary">
+      <Text variant="small" as="span" tone="muted">
         Proposed changes to skills you control. Unrelated learning continues.
       </Text>
-      <ul
-        // TODO(tokens): no exact role (divide-amber-100 #FEF3C7)
-        className="mt-2 flex flex-col divide-y divide-amber-100"
-      >
+      <ul className="mt-2 flex flex-col divide-y divide-warning/20">
         {decisions.map((proposal) => (
           <li
             key={proposal.id}
             className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
           >
             <div className="min-w-0">
-              <Text variant="small-medium" as="span" className="text-textBlack">
+              <Text variant="small-medium" as="span">
                 <Link
                   href={skillDetailHref({
                     expertId: proposal.expert_id,
@@ -61,11 +58,7 @@ export function OpenDecisionsCard({
                 {experts.find((expert) => expert.id === proposal.expert_id)
                   ?.name ?? "Otto"}
               </Text>
-              <Text
-                variant="small"
-                as="p"
-                className="text-foreground-secondary"
-              >
+              <Text variant="small" as="p" tone="secondary">
                 {proposal.summary || proposal.description} —{" "}
                 {proposal.state_reason}
               </Text>

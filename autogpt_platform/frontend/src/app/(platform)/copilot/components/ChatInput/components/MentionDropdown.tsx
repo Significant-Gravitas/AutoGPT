@@ -16,6 +16,7 @@ import {
 import { Icon } from "@/components/atoms/Icon/Icon";
 import type { IntegrationMention } from "../helpers";
 import type { MentionOption } from "../useChatMentions";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   /** Integrations first, then folders and files, then "Connect an
@@ -137,10 +138,7 @@ export function MentionDropdown({
           return null;
         })}
         {isError ? (
-          <p
-            // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover (a fill and line colour)
-            className="flex items-center gap-2 px-3 py-2 text-sm text-red-600"
-          >
+          <p className="flex items-center gap-2 px-3 py-2 text-sm text-error-foreground">
             <Icon icon={AlertCircleIcon} className="h-4 w-4 shrink-0" />
             Couldn&apos;t load files. Try again.
           </p>
@@ -217,10 +215,15 @@ function IntegrationOption({
         <span className="block truncate font-medium" title={integration.name}>
           {integration.name}
         </span>
-        <span className="block truncate text-xs text-foreground-tertiary">
+        <Text
+          variant="small-tight"
+          as="span"
+          tone="muted"
+          className="block truncate"
+        >
           {integration.providerName}
           {integration.username ? ` · ${integration.username}` : ""}
-        </span>
+        </Text>
       </span>
     </>
   );
@@ -240,7 +243,9 @@ function FolderOption({
         className="h-4 w-4 shrink-0 text-foreground-strong"
       />
       <span className="min-w-0 flex-1 truncate">{folder.name}</span>
-      <span className="shrink-0 text-xs text-foreground-tertiary">{count}</span>
+      <Text variant="small-tight" as="span" tone="muted" className="shrink-0">
+        {count}
+      </Text>
     </>
   );
 }
@@ -261,7 +266,7 @@ function SectionHeading({ label }: { label: string }) {
   return (
     <p
       role="presentation"
-      className="px-3 pb-1 pt-2 text-left text-xs font-medium uppercase tracking-wide text-foreground-subtle"
+      className="px-3 pt-2 pb-1 text-left text-xs font-medium tracking-wide text-foreground-subtle uppercase"
     >
       {label}
     </p>

@@ -37,7 +37,7 @@ export function CredentialRow({
   return (
     <div
       data-selected={selected}
-      className="flex w-full items-center justify-between py-3 pl-3 pr-5 transition-colors data-[selected=true]:bg-surface-hover"
+      className="flex w-full items-center justify-between py-3 pr-5 pl-3 transition-colors data-[selected=true]:bg-surface-hover"
     >
       <div className="flex items-center gap-3">
         {credential.isManaged ? (
@@ -49,8 +49,7 @@ export function CredentialRow({
             aria-checked={selected}
             aria-label={`Select ${credential.title}`}
             onClick={onToggleSelected}
-            // TODO(tokens): no exact role for focus-visible:ring-zinc-800 #3E3E43; #3E3E43 is action, the button fill
-            className={`shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800 ${
+            className={`shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-action ${
               selected
                 ? "text-foreground-emphasis hover:text-foreground-strong"
                 : "text-foreground-tertiary hover:text-foreground-body"
@@ -66,26 +65,17 @@ export function CredentialRow({
 
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-3">
-            <span
-              // TODO(tokens): no exact role for text-[#1F1F20]
-              className="text-body font-medium leading-5.5 text-[#1F1F20]"
-            >
+            <span className="text-body leading-5.5 font-medium text-foreground-base">
               {credential.title}
             </span>
-            <span
-              // TODO(tokens): no exact role for bg-[#EFF1F4]
-              className="inline-flex items-center justify-center rounded-[10px] bg-[#EFF1F4] px-2 py-[2px] text-caption font-medium leading-5 text-foreground-body"
-            >
+            <span className="inline-flex items-center justify-center rounded-lg bg-surface-hover px-2 py-0.5 text-caption leading-5 font-medium text-foreground-body">
               {credential.isSignIn
                 ? "For chats"
                 : typeBadgeLabel(credential.type)}
             </span>
           </div>
           <div className="flex items-center gap-3 leading-5">
-            <span
-              // TODO(tokens): no exact text token for tracking-[1.1px]
-              className="text-caption-sm font-medium uppercase leading-inherit tracking-[1.1px] text-foreground-body"
-            >
+            <span className="text-caption-sm leading-inherit font-medium tracking-eyebrow text-foreground-body uppercase">
               {credential.blocksNote ?? formatMaskedValue(credential)}
             </span>
           </div>
@@ -98,8 +88,7 @@ export function CredentialRow({
             <TooltipTrigger asChild>
               <span
                 tabIndex={0}
-                // TODO(tokens): no exact role for focus-visible:ring-zinc-800 #3E3E43; #3E3E43 is action, the button fill; no exact text token for tracking-[1.1px]
-                className="text-caption-sm font-medium uppercase leading-inherit tracking-[1.1px] text-foreground-body focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800"
+                className="text-caption-sm leading-inherit font-medium tracking-eyebrow text-foreground-body uppercase focus:outline-none focus-visible:ring-2 focus-visible:ring-action"
               >
                 Managed
               </span>
@@ -116,8 +105,7 @@ export function CredentialRow({
           disabled={isDeleting}
           aria-busy={isDeleting}
           aria-label={`Delete ${credential.title}`}
-          // TODO(tokens): no exact role for focus-visible:ring-purple-400 #925cf7, text-[#1F1F20], disabled:hover:text-[#1F1F20]
-          className="inline-flex size-5 items-center justify-center text-[#1F1F20] transition-colors hover:text-error focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-400 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-[#1F1F20]"
+          className="inline-flex size-5 items-center justify-center text-foreground-base transition-colors hover:text-error focus-visible:ring-1 focus-visible:ring-brand focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-foreground-base"
         >
           {isDeleting ? (
             <Icon icon={Loading03Icon} size={20} className="animate-spin" />

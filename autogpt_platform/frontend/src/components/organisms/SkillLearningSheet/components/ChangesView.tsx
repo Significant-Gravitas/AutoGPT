@@ -105,9 +105,7 @@ export function ChangesView({ version, versions, onSelect }: Props) {
       {showRaw ? (
         <pre
           data-slot="skill-learning-sheet-changes-raw-diff"
-          // TODO(tokens): no foreground role for zinc-100 (#EFEFF0) on the dark
-          // code surface.
-          className="overflow-x-auto rounded-lg bg-action-hover p-3 text-xs text-zinc-100"
+          className="overflow-x-auto rounded-lg bg-action-hover p-3 text-xs text-action-foreground"
         >
           {lineDiff(before, after) || "(no line-level differences)"}
         </pre>

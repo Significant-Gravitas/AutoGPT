@@ -31,7 +31,7 @@ export function OAuthConnectButton({
 
   return (
     <div className="flex flex-col gap-3">
-      <Text variant="body" className="text-foreground-body">
+      <Text variant="body" tone="body">
         We&apos;ll open a {providerName} sign-in window. Approve access there to
         finish connecting.
       </Text>
@@ -46,11 +46,7 @@ export function OAuthConnectButton({
         {buttonLabel ?? `Continue with ${providerName}`}
       </Button>
       {termsNotice && (
-        <Text
-          // TODO(tokens): no exact role for text-[#8A8A90]
-          variant="small"
-          className="text-[#8A8A90]"
-        >
+        <Text variant="small" tone="muted">
           Linked runs are sent to {termsNotice} under your own account and
           follow {termsNotice}&apos;s terms.
         </Text>

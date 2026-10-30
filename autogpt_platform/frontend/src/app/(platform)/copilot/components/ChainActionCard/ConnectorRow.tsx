@@ -23,6 +23,7 @@ import { useContext, useEffect, useRef, useState } from "react";
 import type { ConnectorRow as Row } from "./helpers";
 import { useExpertCredentialSelection } from "./useExpertCredentialSelection";
 import type { ExpertGrant } from "../SetupRequirementsCard/helpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   row: Row;
@@ -314,33 +315,50 @@ export function ConnectorRow({ row }: Props) {
       </span>
 
       <div className="flex min-w-32 flex-1 flex-col gap-1">
-        <span className="truncate text-sm font-medium text-foreground-strong">
+        <Text
+          variant="body-medium-tight"
+          as="span"
+          tone="primary"
+          className="truncate"
+        >
           {row.displayName}
-        </span>
+        </Text>
         {grantError && !isDialogOpen ? (
-          <span
-            // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover (a fill and line colour)
-            className="truncate text-xs text-red-600"
-          >
+          <span className="truncate text-xs text-error-foreground">
             {grantError}
           </span>
         ) : expertGrant && !isSatisfied ? (
-          <span className="truncate text-xs text-foreground-tertiary">
+          <Text
+            variant="small-tight"
+            as="span"
+            tone="muted"
+            className="truncate"
+          >
             {grantableOptions.length > 0
               ? "Needs this expert's access"
               : "This expert needs its own access"}
-          </span>
+          </Text>
         ) : (
           row.description && (
-            <span className="truncate text-xs text-foreground-tertiary">
+            <Text
+              variant="small-tight"
+              as="span"
+              tone="muted"
+              className="truncate"
+            >
               {row.description}
-            </span>
+            </Text>
           )
         )}
         {isSatisfied && row.selected?.title && (
-          <span className="break-words text-xs text-foreground-tertiary">
+          <Text
+            variant="small-tight"
+            as="span"
+            tone="muted"
+            className="break-words"
+          >
             {row.selected.title}
-          </span>
+          </Text>
         )}
         {awaitingReconnect && (
           <span className="text-xs text-error-foreground">

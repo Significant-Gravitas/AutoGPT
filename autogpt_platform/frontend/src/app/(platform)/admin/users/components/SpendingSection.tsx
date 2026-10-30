@@ -1,5 +1,5 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Link } from "@/components/atoms/Link/Link";
+import NextLink from "next/link";
 import { ArrowUpRight01Icon } from "@hugeicons/core-free-icons";
 import { AdminSection } from "../../components/AdminSection";
 import { getSpendingSearchHref, getUserPlatformCostsHref } from "../helpers";
@@ -19,19 +19,15 @@ export function SpendingSection({ userId }: Props) {
       <ul className="-mx-2 flex flex-col">
         {links.map((link) => (
           <li key={link.href}>
-            <Link
-              variant="secondary"
+            <NextLink
               href={link.href}
-              className="flex items-center justify-between rounded-lg px-2 py-1.5 no-underline hover:bg-surface-muted"
+              className="flex items-center justify-between rounded-lg px-2 py-1.5 font-sans text-body font-medium text-foreground-base hover:bg-surface-muted focus:ring-2 focus:ring-info focus:ring-offset-2 focus:outline-none"
             >
               {link.label}
-              <Icon
-                icon={ArrowUpRight01Icon}
-                size={16}
-                className="text-foreground-tertiary"
-                aria-hidden
-              />
-            </Link>
+              <span className="flex text-foreground-tertiary">
+                <Icon icon={ArrowUpRight01Icon} size={16} aria-hidden />
+              </span>
+            </NextLink>
           </li>
         ))}
       </ul>

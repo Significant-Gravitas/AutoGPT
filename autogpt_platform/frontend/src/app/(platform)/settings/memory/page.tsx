@@ -46,13 +46,10 @@ export default function SettingsMemoryPage() {
   return (
     <div className="flex flex-col gap-4">
       <header className="flex min-w-0 flex-col pb-2 pl-4">
-        <Text variant="h4" as="h1" className="leading-7 text-textBlack">
+        <Text variant="h4" as="h1">
           Memory
         </Text>
-        <Text
-          variant="body"
-          className="mt-4 max-w-[600px] text-foreground-body"
-        >
+        <Text variant="body" tone="body" className="mt-4 max-w-[600px]">
           {"What AutoGPT remembers about you — and who remembers it."}
         </Text>
       </header>

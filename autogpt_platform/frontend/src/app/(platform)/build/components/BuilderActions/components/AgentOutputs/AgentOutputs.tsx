@@ -127,8 +127,8 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                   <Text
                     variant="small-medium-tight"
                     as="span"
-                    // TODO(tokens): no exact role: bg-yellow-100 #FCEBB0, text-yellow-800 #876A00; dark-mode classes kept as written (QUALITY 43): no exact role: dark:bg-yellow-900/30 #675100, dark:text-yellow-400 #F7CD33
-                    className="rounded-md bg-yellow-100 px-2 py-0.5 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
+                    // oxlint-disable-next-line design-system/no-raw-colors -- mustard yellow has no role; the warning roles are amber, deferred until approved
+                    className="rounded-md bg-yellow-100 px-2 py-0.5 text-yellow-800"
                   >
                     Beta
                   </Text>
@@ -158,10 +158,7 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                         </Text>
                       </Label>
                       {group.metadata.description && (
-                        <Label
-                          // TODO(tokens): no exact role: text-gray-600 #4B5563
-                          className="mt-1 block text-gray-600"
-                        >
+                        <Label className="mt-1 block text-foreground-secondary">
                           <Text
                             variant="body-medium-tight"
                             as="span"
@@ -184,10 +181,7 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                   </div>
                 ))
               ) : (
-                <div
-                  // TODO(tokens): no exact role: text-gray-500 #6B7280
-                  className="flex h-full items-center justify-center text-gray-500"
-                >
+                <div className="flex h-full items-center justify-center text-foreground-tertiary">
                   <p>No output blocks available.</p>
                 </div>
               )}
