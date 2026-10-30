@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { SHOW_TIME_AFTER_SECONDS } from "../JobStatsBar/constants";
 import { formatElapsed } from "../JobStatsBar/formatElapsed";
 import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
@@ -25,6 +25,14 @@ function stepStartedAt(stepKey: string) {
     if (oldest !== undefined) stepStarts.delete(oldest);
   }
   return startedAt;
+}
+
+// Some providers reuse call ids across chats, so a finished step's start must
+// not outlive it.
+export function useForgetSettledStep(stepKey: string, isRunning: boolean) {
+  useEffect(() => {
+    if (!isRunning) stepStarts.delete(stepKey);
+  }, [stepKey, isRunning]);
 }
 
 interface Props {

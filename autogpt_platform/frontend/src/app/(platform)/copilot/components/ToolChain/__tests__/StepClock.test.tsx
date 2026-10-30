@@ -133,4 +133,16 @@ describe("ChainRowView - step clock", () => {
     advanceSeconds(20);
     expect(screen.getByText("20s").getAttribute("aria-hidden")).toBe("true");
   });
+
+  it("starts a reused call id from zero once its earlier step finished", () => {
+    const step = row();
+    const { rerender, unmount } = render(<ChainRowView row={step} isLast />);
+    advanceSeconds(120);
+    rerender(<ChainRowView row={{ ...step, state: "done" }} isLast />);
+    unmount();
+
+    render(<ChainRowView row={step} isLast />);
+    advanceSeconds(20);
+    expect(screen.getByText("20s")).toBeDefined();
+  });
 });
