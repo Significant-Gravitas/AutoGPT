@@ -41,7 +41,9 @@ def has_full_sandbox() -> bool:
     return _BWRAP_AVAILABLE
 
 
-WORKSPACE_PREFIX = "/tmp/copilot-"
+WORKSPACE_PREFIX = os.path.normpath(
+    os.environ.get("COPILOT_WORKSPACE_PREFIX") or "/tmp/copilot-"
+)
 
 
 def make_session_path(session_id: str) -> str:
@@ -52,7 +54,7 @@ def make_session_path(session_id: str) -> str:
 
     Steps:
         1. Strip all characters except ``[A-Za-z0-9-]``.
-        2. Construct ``/tmp/copilot-<safe_id>``.
+        2. Append the safe ID to the configured workspace prefix.
         3. Validate via ``os.path.normpath`` + ``startswith`` (CodeQL-recognised
            sanitizer) to prevent path traversal.
 
