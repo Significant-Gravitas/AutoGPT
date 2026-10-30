@@ -77,10 +77,6 @@ function fail(status: number, url: string, method = "GET") {
   });
 }
 
-function sortedFingerprints() {
-  return sent.map((event) => JSON.stringify(event.fingerprint)).sort();
-}
-
 // Sentry's flush waits on real timers, so close the dedupe window on fake ones
 // and hand back the real clock before flushing.
 async function closeWindowAndFlush() {
@@ -124,9 +120,19 @@ describe("client request failures in Sentry", () => {
       "POST /api/credits/trial/cancel",
       "5xx",
     ];
-    expect(sortedFingerprints()).toEqual(
-      [sessions, sessions, trialCancel].map((f) => JSON.stringify(f)).sort(),
-    );
+    expect(sent).toHaveLength(3);
+    expect(
+      Object.fromEntries(
+        sent.map((event) => [
+          event.contexts?.request_failure?.path,
+          event.fingerprint,
+        ]),
+      ),
+    ).toEqual({
+      [`/api/chat/sessions/${SESSION_A}`]: sessions,
+      [`/api/chat/sessions/${SESSION_B}`]: sessions,
+      "/api/credits/trial/cancel": trialCancel,
+    });
   });
 
   it("reports a request the app got wrong as a warning in its own 4xx issue", async () => {
