@@ -1046,6 +1046,10 @@ def _make_sdk_patches(
             f"{_SVC}.build_skills_context",
             dict(new_callable=AsyncMock, return_value=""),
         ),
+        (
+            f"{_SVC}.first_message_expert_context",
+            dict(new_callable=AsyncMock, return_value=""),
+        ),
         # Same for the per-turn skills drift notice: it lists the user's
         # skills from the workspace, which without a Prisma connection goes
         # over RPC to a database manager that isn't running here, retried

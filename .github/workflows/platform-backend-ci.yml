@@ -6,6 +6,8 @@ on:
     paths:
       - ".github/workflows/platform-backend-ci.yml"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
+      - ".github/workflows/scripts/check_actions_status.py"
+      - ".github/workflows/scripts/test_check_actions_status.py"
       - ".github/scripts/docker-pull-with-retry.sh"
       - ".github/scripts/validate_junit.py"
       - ".github/scripts/test_validate_junit.py"
@@ -22,6 +24,8 @@ on:
     paths:
       - ".github/workflows/platform-backend-ci.yml"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
+      - ".github/workflows/scripts/check_actions_status.py"
+      - ".github/workflows/scripts/test_check_actions_status.py"
       - ".github/scripts/docker-pull-with-retry.sh"
       - ".github/scripts/validate_junit.py"
       - ".github/scripts/test_validate_junit.py"
@@ -113,6 +117,16 @@ jobs:
       - name: Run Linters
         run: poetry run lint --skip-pyright
 
+      - name: Test PR status checker
+        run: >-
+          poetry run python -m unittest discover
+          -s ../../.github/workflows/scripts -p 'test_check_actions_status.py'
+
+      - name: Test backend skip policy helpers
+        run: >-
+          poetry run python -m unittest discover
+          -s ../../.github/scripts -p 'test_validate_backend_skips.py'
+
     env:
       CI: true
       PLAIN_OUTPUT: True
@@ -183,7 +197,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.12", "3.13"]
     runs-on: ubuntu-latest
 
     steps:
@@ -228,7 +242,7 @@ jobs:
     name: test (${{ matrix.python-version }}, ${{ matrix.test-shard }})
     permissions:
       contents: read
-    # Each Python leg preserves the complete suite while its four disjoint path
+    # Each Python leg preserves the complete suite while its eight disjoint path
     # groups run on separate standard runners. The cap is a hang guard, not a
     # performance budget: on merge_group a cancelled job reads as a failed
     # check and ejects the PR from the queue, so keep it well above p99.
@@ -236,8 +250,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
-        test-shard: [data, copilot, util-executor, remainder]
+        python-version: ["3.12", "3.13"]
+        test-shard:
+          - data
+          - copilot
+          - memory-experts
+          - sdk-billing
+          - billing-threads
+          - util-executor
+          - api
+          - remainder
     runs-on: ubuntu-latest
 
     services:
@@ -333,6 +355,8 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           repository: Significant-Gravitas/skills-catalog
+          # Update the roster-content assertions alongside this catalog snapshot.
+          ref: 7ed3b73314d5186120e8d4006febfd7e1c92cf08
           path: skills-catalog
 
       - name: Configure test shard
@@ -347,11 +371,8 @@ jobs:
             data)
               database_name="postgres"
               ;;
-            copilot|remainder)
-              database_name="ci_${MATRIX_TEST_SHARD}"
-              ;;
-            util-executor)
-              database_name="ci_util_executor"
+            copilot|memory-experts|sdk-billing|billing-threads|util-executor|api|remainder)
+              database_name="ci_${MATRIX_TEST_SHARD//-/_}"
               ;;
             *)
               echo "Unknown backend test shard: $MATRIX_TEST_SHARD" >&2
@@ -590,6 +611,7 @@ jobs:
           export DIRECT_URL="$DATABASE_URL"
           pytest_args=(
             -p no:cacheprovider
+            --durations=30
             --cov=backend
             --cov-branch
             --cov-report=

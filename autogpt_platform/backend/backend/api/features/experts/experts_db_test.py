@@ -156,7 +156,7 @@ EXPECTED_WAVE_THREE = {
     "Noor": {
         "role": "PR & Communications",
         "categories": ["marketing", "content"],
-        "timings": ["day 1", "on request"],
+        "timings": ["day 1", "on request", "on request"],
     },
     "Casey": {
         "role": "Code Review & QA",
@@ -164,9 +164,9 @@ EXPECTED_WAVE_THREE = {
         "timings": ["after access", "on request"],
     },
     "Ines": {
-        "role": "People Ops & HR (Non-Advisory)",
+        "role": "People Ops & HR",
         "categories": ["operations"],
-        "timings": ["day 1", "on request"],
+        "timings": ["day 1", "on request", "on request"],
     },
     "Omar": {
         "role": "RevOps & CRM Hygiene",
@@ -174,14 +174,14 @@ EXPECTED_WAVE_THREE = {
         "timings": ["after CRM export", "on request"],
     },
     "Lena": {
-        "role": "Privacy & Compliance (Non-Advisory)",
+        "role": "Privacy & Compliance",
         "categories": ["operations"],
-        "timings": ["day 1", "on request"],
+        "timings": ["on request", "day 1", "on request"],
     },
     "Kai": {
         "role": "Executive Assistant",
         "categories": ["support", "operations"],
-        "timings": ["after inbox access", "on request"],
+        "timings": ["after inbox access", "day 1", "on request"],
     },
 }
 
@@ -3918,16 +3918,18 @@ def test_roster_day_one_promises_match_work_the_expert_can_do_on_request(
         "on request",
     ]
     assert [(item.title, item.timing) for item in day_one["Harper"]] == [
-        ("A hiring plan grounded in the role", "day 1"),
-        ("A fair scorecard before screening", "day 1"),
+        ("Why your role isn't filling", "day 1"),
+        ("A scorecard and loop before screening", "day 1"),
+        ("Your finalists, with a call", "on request"),
     ]
     assert [(item.title, item.timing) for item in day_one["Vera"]] == [
-        ("Your next vendor choice, compared", "day 1"),
-        ("Renewals and spend risks surfaced", "on request"),
+        ("Your next vendor choice, made", "day 1"),
+        ("Every renewal before it bites", "on request"),
     ]
     assert [(item.title, item.timing) for item in day_one["Ellis"]] == [
-        ("Key terms in one clear record", "day 1"),
-        ("Playbook gaps ready for counsel", "on request"),
+        ("Your contract, triaged and redlined", "day 1"),
+        ("Every renewal and notice date in one place", "day 1"),
+        ("Your negotiating playbook", "week 1"),
     ]
     for name in ("Jules", "Nadia", "Remy", "Frankie"):
         assert day_one[name] == [], name
@@ -3940,10 +3942,11 @@ def test_roster_day_one_promises_match_work_the_expert_can_do_on_request(
     ]
     assert [item.timing for item in day_one["Devon"]] == [
         "after access",
-        "on request",
+        "day 1",
     ]
     assert [item.timing for item in day_one["Riley"]] == [
         "after data access",
+        "day 1",
         "on request",
     ]
     assert [item.timing for item in day_one["Jordan"]] == [

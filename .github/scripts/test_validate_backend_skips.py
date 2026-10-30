@@ -25,7 +25,7 @@ class AggregateSkipTests(unittest.TestCase):
         self.policy_file = self.directory / "policy.json"
         self.policy = {
             "common": ["backend.example.test_shared"],
-            "python_versions": {"3.11": [], "3.12": []},
+            "python_versions": {"3.12": [], "3.13": []},
         }
         for version in self.policy["python_versions"]:
             for shard in (*SHARDS, "remainder"):
@@ -74,21 +74,21 @@ class AggregateSkipTests(unittest.TestCase):
         self.policy["common"].append("backend.example.test_removed")
         result, diagnostic = self.run_validator()
         self.assertEqual(result, 1)
-        self.assertIn("Python 3.11", diagnostic)
+        self.assertIn("Python 3.12", diagnostic)
         self.assertIn("stale", diagnostic)
         self.assertIn("backend.example.test_removed", diagnostic)
         self.assertIn("policy.json", diagnostic)
 
     def test_a_common_entry_cannot_be_hidden_by_another_python_version(self):
-        self.write_report("3.12", "remainder", [])
+        self.write_report("3.13", "remainder", [])
         result, diagnostic = self.run_validator()
         self.assertEqual(result, 1)
-        self.assertIn("Python 3.12", diagnostic)
+        self.assertIn("Python 3.13", diagnostic)
         self.assertIn("backend.example.test_shared", diagnostic)
 
     def test_explicit_python_version_specific_skip_passes(self):
-        self.policy["python_versions"]["3.12"] = ["backend.example.test_version_only"]
-        self.write_report("3.12", "data", ["test_version_only"])
+        self.policy["python_versions"]["3.13"] = ["backend.example.test_version_only"]
+        self.write_report("3.13", "data", ["test_version_only"])
         self.assertEqual(self.run_validator()[0], 0)
 
     def test_same_skip_can_be_explicit_for_multiple_versions(self):
@@ -100,44 +100,49 @@ class AggregateSkipTests(unittest.TestCase):
         self.assertEqual(self.run_validator()[0], 0)
 
     def test_python_specific_allowance_cannot_permit_skip_in_another_version(self):
-        self.policy["python_versions"]["3.12"] = ["backend.example.test_version_only"]
-        self.write_report("3.11", "data", ["test_version_only"])
+        self.policy["python_versions"]["3.13"] = ["backend.example.test_version_only"]
         self.write_report("3.12", "data", ["test_version_only"])
+        self.write_report("3.13", "data", ["test_version_only"])
         result, diagnostic = self.run_validator()
         self.assertEqual(result, 1)
         self.assertIn("unapproved skipped test IDs", diagnostic)
-        self.assertIn("Python 3.11", diagnostic)
+        self.assertIn("Python 3.12", diagnostic)
 
     def test_missing_shard_report_fails_even_when_all_skips_are_present(self):
-        self.report_path("3.12", "copilot").unlink()
-        result, diagnostic = self.run_validator()
-        self.assertEqual(result, 1)
-        self.assertIn("Python 3.12, shard copilot", diagnostic)
-        self.assertIn("missing or empty", diagnostic)
+        for shard in SHARDS:
+            with self.subTest(shard=shard):
+                report = self.report_path("3.13", shard)
+                original = report.read_bytes()
+                report.unlink()
+                result, diagnostic = self.run_validator()
+                self.assertEqual(result, 1)
+                self.assertIn(f"Python 3.13, shard {shard}", diagnostic)
+                self.assertIn("missing or empty", diagnostic)
+                report.write_bytes(original)
 
     def test_missing_entire_python_version_fails(self):
         for shard in (*SHARDS, "remainder"):
-            report = self.report_path("3.12", shard)
+            report = self.report_path("3.13", shard)
             report.unlink()
             report.parent.rmdir()
         result, diagnostic = self.run_validator()
         self.assertEqual(result, 1)
         self.assertIn("missing", diagnostic)
-        self.assertIn("py3.12", diagnostic)
+        self.assertIn("py3.13", diagnostic)
 
     def test_unknown_or_duplicate_shard_artifact_fails(self):
-        self.write_report("3.11", "data-copy", [])
+        self.write_report("3.12", "data-copy", [])
         result, diagnostic = self.run_validator()
         self.assertEqual(result, 1)
         self.assertIn("unexpected", diagnostic)
         self.assertIn("data-copy", diagnostic)
 
     def test_unconfigured_python_version_reports_fail(self):
-        self.write_report("3.13", "data", [])
+        self.write_report("3.11", "data", [])
         result, diagnostic = self.run_validator()
         self.assertEqual(result, 1)
         self.assertIn("unexpected", diagnostic)
-        self.assertIn("py3.13", diagnostic)
+        self.assertIn("py3.11", diagnostic)
 
     def test_invalid_or_incomplete_reports_fail(self):
         cases = (
@@ -155,13 +160,13 @@ class AggregateSkipTests(unittest.TestCase):
         )
         for content, expected in cases:
             with self.subTest(content=content):
-                self.report_path("3.11", "data").write_text(content)
+                self.report_path("3.12", "data").write_text(content)
                 result, diagnostic = self.run_validator()
                 self.assertEqual(result, 1)
                 self.assertIn(expected, diagnostic)
 
     def test_new_skip_remains_rejected(self):
-        self.write_report("3.11", "data", ["test_unapproved"])
+        self.write_report("3.12", "data", ["test_unapproved"])
         result, diagnostic = self.run_validator()
         self.assertEqual(result, 1)
         self.assertIn("unapproved skipped test IDs", diagnostic)
@@ -170,9 +175,9 @@ class AggregateSkipTests(unittest.TestCase):
         self.policy["secret_gated"] = {
             "EXAMPLE_API_KEY": ["backend.example.test_needs_secret"]
         }
-        self.write_report("3.11", "data", ["test_needs_secret"])
+        self.write_report("3.12", "data", ["test_needs_secret"])
         self.assertEqual(self.run_validator()[0], 0)
-        self.write_report("3.11", "data", [])
+        self.write_report("3.12", "data", [])
         self.assertEqual(self.run_validator()[0], 0)
 
     def test_aggregate_validation_requires_explicit_versions(self):
@@ -182,57 +187,57 @@ class AggregateSkipTests(unittest.TestCase):
         self.assertIn("explicit python_versions", diagnostic)
 
     def test_per_shard_validator_uses_the_same_version_specific_policy(self):
-        self.policy["python_versions"]["3.12"] = ["backend.example.test_version_only"]
-        report = self.write_report("3.12", "data", ["test_version_only"])
+        self.policy["python_versions"]["3.13"] = ["backend.example.test_version_only"]
+        report = self.write_report("3.13", "data", ["test_version_only"])
         self.policy_file.write_text(json.dumps(self.policy))
         arguments = ["--allow-skips-from", str(self.policy_file), str(report)]
         self.assertEqual(
-            validate_junit_main(arguments + ["--python-version", "3.12"]), 0
+            validate_junit_main(arguments + ["--python-version", "3.13"]), 0
         )
         with patch("sys.stderr"):
             self.assertEqual(
-                validate_junit_main(arguments + ["--python-version", "3.11"]), 1
+                validate_junit_main(arguments + ["--python-version", "3.12"]), 1
             )
             self.assertEqual(validate_junit_main(arguments), 1)
             self.assertEqual(
-                validate_junit_main(arguments + ["--python-version", "3.13"]), 1
+                validate_junit_main(arguments + ["--python-version", "3.11"]), 1
             )
 
     def test_invalid_policy_is_rejected_before_validation(self):
         invalid = (
             {},
             {"common": [], "python_versions": {}},
-            {"common": [], "python_versions": {"3.11.1": []}},
+            {"common": [], "python_versions": {"3.12.1": []}},
             {
                 "common": ["backend.test", "backend.test"],
-                "python_versions": {"3.11": []},
+                "python_versions": {"3.12": []},
             },
             {
                 "common": [],
-                "python_versions": {"3.11": ["backend.test", "backend.test"]},
+                "python_versions": {"3.12": ["backend.test", "backend.test"]},
             },
-            {"common": ["backend.test"], "python_versions": {"3.11": ["backend.test"]}},
-            {"common": [], "python_versions": {"3.11": [""]}},
-            {"common": [], "python_versions": {"3.11": []}, "typo": []},
-            {"common": [], "python_versions": {"3.11": []}, "secret_gated": []},
+            {"common": ["backend.test"], "python_versions": {"3.12": ["backend.test"]}},
+            {"common": [], "python_versions": {"3.12": [""]}},
+            {"common": [], "python_versions": {"3.12": []}, "typo": []},
+            {"common": [], "python_versions": {"3.12": []}, "secret_gated": []},
             {
                 "common": [],
-                "python_versions": {"3.11": []},
+                "python_versions": {"3.12": []},
                 "secret_gated": {"lowercase_key": ["backend.test"]},
             },
             {
                 "common": ["backend.test"],
-                "python_versions": {"3.11": []},
+                "python_versions": {"3.12": []},
                 "secret_gated": {"EXAMPLE_API_KEY": ["backend.test"]},
             },
             {
                 "common": [],
-                "python_versions": {"3.11": ["backend.test"]},
+                "python_versions": {"3.12": ["backend.test"]},
                 "secret_gated": {"EXAMPLE_API_KEY": ["backend.test"]},
             },
             {
                 "common": [],
-                "python_versions": {"3.11": []},
+                "python_versions": {"3.12": []},
                 "secret_gated": {"EXAMPLE_API_KEY": ["backend.test", "backend.test"]},
             },
         )

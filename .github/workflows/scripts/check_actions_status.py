@@ -6,6 +6,8 @@ import time
 from typing import Dict, List, Optional, Tuple
 
 CHECK_INTERVAL = 30
+API_REQUEST_ATTEMPTS = 3
+RETRYABLE_STATUS_CODES = {500, 502, 503, 504}
 PASSING_CONCLUSIONS = {"success", "skipped", "neutral"}
 # Check runs whose outcome says nothing about the code: they post review
 # comments, and they conclude "failure" when the reviewer itself could not
@@ -52,15 +54,25 @@ def get_environment_variables() -> Tuple[str, str, str, str, str]:
 
 def make_api_request(url: str, headers: Dict[str, str]) -> Tuple[Dict, Optional[str]]:
     """Make an API request and return its JSON and next-page URL."""
-    try:
-        print("Making API request to:", url)
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        next_url = response.links.get("next", {}).get("url")
-        return response.json(), next_url
-    except requests.RequestException as e:
-        print(f"Error: API request failed. {e}")
-        sys.exit(1)
+    for attempt in range(API_REQUEST_ATTEMPTS):
+        try:
+            print("Making API request to:", url)
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+            next_url = response.links.get("next", {}).get("url")
+            return response.json(), next_url
+        except requests.RequestException as e:
+            retryable = isinstance(e, (requests.ConnectionError, requests.Timeout)) or (
+                e.response is not None
+                and e.response.status_code in RETRYABLE_STATUS_CODES
+            )
+            if not retryable or attempt == API_REQUEST_ATTEMPTS - 1:
+                print(f"Error: API request failed. {e}")
+                sys.exit(1)
+            delay = 2 ** (attempt + 1)
+            print(f"Transient API error: {e}. Retrying in {delay} seconds...")
+            time.sleep(delay)
+    raise AssertionError("API request attempts exhausted without a result")
 
 
 def get_paginated_items(url: str, headers: Dict[str, str], item_key: str) -> List[Dict]:
