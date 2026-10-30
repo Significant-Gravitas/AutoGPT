@@ -1,13 +1,63 @@
 "use client";
 
+import * as AccordionPrimitive from "@radix-ui/react-accordion";
+import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import * as React from "react";
 
-import {
-  Accordion as BaseAccordion,
-  AccordionContent as BaseAccordionContent,
-  AccordionItem as BaseAccordionItem,
-  AccordionTrigger as BaseAccordionTrigger,
-} from "@/components/ui/accordion";
+import { cn } from "@/lib/utils";
+
+const BaseAccordion = AccordionPrimitive.Root;
+
+const BaseAccordionItem = React.forwardRef<
+  React.ElementRef<typeof AccordionPrimitive.Item>,
+  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Item>
+>(({ className, ...props }, ref) => (
+  <AccordionPrimitive.Item
+    ref={ref}
+    className={cn("border-b", className)}
+    {...props}
+  />
+));
+BaseAccordionItem.displayName = "AccordionItem";
+
+const BaseAccordionTrigger = React.forwardRef<
+  React.ElementRef<typeof AccordionPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Trigger>
+>(({ className, children, ...props }, ref) => (
+  <AccordionPrimitive.Header className="flex">
+    <AccordionPrimitive.Trigger
+      ref={ref}
+      className={cn(
+        "flex flex-1 items-center justify-between py-4 text-left text-body leading-5 font-medium transition-all hover:underline [&[data-state=open]>svg]:rotate-180",
+        className,
+      )}
+      {...props}
+    >
+      {children}
+      <Icon
+        aria-hidden
+        icon={ArrowDown01Icon}
+        className="h-4 w-4 shrink-0 text-foreground-tertiary transition-transform duration-200"
+      />
+    </AccordionPrimitive.Trigger>
+  </AccordionPrimitive.Header>
+));
+BaseAccordionTrigger.displayName = AccordionPrimitive.Trigger.displayName;
+
+const BaseAccordionContent = React.forwardRef<
+  React.ElementRef<typeof AccordionPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Content>
+>(({ className, children, ...props }, ref) => (
+  <AccordionPrimitive.Content
+    ref={ref}
+    className="overflow-hidden text-body leading-5 data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down"
+    {...props}
+  >
+    <div className={cn("pt-0 pb-4", className)}>{children}</div>
+  </AccordionPrimitive.Content>
+));
+BaseAccordionContent.displayName = AccordionPrimitive.Content.displayName;
 
 const Accordion = React.forwardRef<
   React.ElementRef<typeof BaseAccordion>,
@@ -23,11 +73,23 @@ const AccordionItem = React.forwardRef<
 ));
 AccordionItem.displayName = "AccordionItem";
 
+interface TextSizeProps {
+  /** `body-md` inside a profile tab, whose copy reads at 15px. */
+  textSize?: "body" | "body-md";
+}
+
 const AccordionTrigger = React.forwardRef<
   React.ElementRef<typeof BaseAccordionTrigger>,
-  React.ComponentPropsWithoutRef<typeof BaseAccordionTrigger>
->((props, ref) => (
-  <BaseAccordionTrigger ref={ref} data-slot="accordion-trigger" {...props} />
+  React.ComponentPropsWithoutRef<typeof BaseAccordionTrigger> & TextSizeProps
+>(({ textSize = "body", className, ...props }, ref) => (
+  <BaseAccordionTrigger
+    ref={ref}
+    data-slot="accordion-trigger"
+    className={
+      textSize === "body-md" ? cn(className, "text-body-md") : className
+    }
+    {...props}
+  />
 ));
 AccordionTrigger.displayName = "AccordionTrigger";
 

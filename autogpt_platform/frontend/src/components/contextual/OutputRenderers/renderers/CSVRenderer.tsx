@@ -1,3 +1,4 @@
+import { Text } from "@/components/atoms/Text/Text";
 import React, { useMemo, useState } from "react";
 import {
   OutputRenderer,
@@ -132,14 +133,14 @@ function CSVTable({
               >
                 <button
                   type="button"
-                  className="flex w-full cursor-pointer select-none items-center gap-1 hover:bg-surface-hover"
+                  className="flex w-full cursor-pointer items-center gap-1 select-none hover:bg-surface-hover"
                   onClick={() => handleSort(i)}
                 >
                   {header}
                   {sortCol === i && (
-                    <span className="text-xs">
+                    <Text variant="small-tight" as="span" tone="inherit">
                       {sortAsc ? "\u25B2" : "\u25BC"}
-                    </span>
+                    </Text>
                   )}
                 </button>
               </th>

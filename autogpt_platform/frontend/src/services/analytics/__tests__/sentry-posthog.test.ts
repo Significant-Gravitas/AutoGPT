@@ -143,6 +143,92 @@ describe("Sentry to PostHog correlation", () => {
     },
   );
 
+  it("mirrors an error-level message as an exception PostHog can group", () => {
+    const event: ErrorEvent = {
+      type: undefined,
+      event_id: "0123456789abcdef0123456789abcdef",
+      level: "error",
+      message: "Request failed on client: GET /api/chat/sessions 502",
+    };
+    expect(processEvent(event)).toBe(event);
+    expect(event.exception).toBeUndefined();
+    expect(event.tags).toHaveProperty("PostHog Person URL");
+    expect(posthog.capture).toHaveBeenCalledWith(
+      "$exception",
+      expect.objectContaining({
+        $exception_message:
+          "Request failed on client: GET /api/chat/sessions 502",
+        $exception_list: [
+          expect.objectContaining({
+            type: "Error",
+            value: "Request failed on client: GET /api/chat/sessions 502",
+          }),
+        ],
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("mirrors a message without its URL query or IDs, so one message stays one issue", () => {
+    processEvent({
+      type: undefined,
+      event_id: "0123456789abcdef0123456789abcdef",
+      level: "error",
+      message:
+        "Failed to fetch https://files.example.com/out.png?X-Goog-Signature=abc&e=1: 403 (block 9c1f6a52-3c0e-4b7e-9d0a-6f1e2b3c4d5e)",
+    });
+    expect(posthog.capture).toHaveBeenCalledWith(
+      "$exception",
+      expect.objectContaining({
+        $exception_list: [
+          expect.objectContaining({
+            value:
+              "Failed to fetch https://files.example.com/out.png: 403 (block {id})",
+          }),
+        ],
+      }),
+      expect.anything(),
+    );
+  });
+
+  it.each([
+    [
+      "WebSocket closed: wss://api.example.com/ws?redirect=https://example.com&token=secret",
+      "WebSocket closed: wss://api.example.com/ws",
+    ],
+    [
+      "Failed to fetch https://files.example.com/a.png?t=1:2, retrying.",
+      "Failed to fetch https://files.example.com/a.png, retrying.",
+    ],
+    [
+      "Redirect failed (https://app.example.com/login?return_to=/foo)bar&token=secret) retrying",
+      "Redirect failed (https://app.example.com/login) retrying",
+    ],
+    [
+      "Failed to fetch https://example.com/?label='quoted'&token=secret retrying",
+      "Failed to fetch https://example.com/ retrying",
+    ],
+    [
+      "?token=secret&label='quoted'",
+      "Error message with no text but a URL query",
+    ],
+  ])("removes the whole query, colons included: %s", (message, value) => {
+    processEvent({
+      type: undefined,
+      event_id: "0123456789abcdef0123456789abcdef",
+      level: "error",
+      message,
+    });
+    expect(posthog.capture).toHaveBeenCalledWith(
+      "$exception",
+      expect.objectContaining({
+        $exception_message: value,
+        $exception_list: [expect.objectContaining({ value })],
+      }),
+      expect.anything(),
+    );
+  });
+
   it.each(["fetch", "xhr"])(
     "does not mirror a failed %s response the HttpClient integration reports",
     (type) => {

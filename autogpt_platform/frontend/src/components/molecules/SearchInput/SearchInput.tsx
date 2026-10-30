@@ -30,10 +30,10 @@ const sizeStyles = {
   medium: "h-[46px] pl-12 pr-10 text-body leading-5.5",
 } as const;
 
-const iconOffset = {
-  xsmall: { left: "left-2.5", right: "right-1" },
-  small: { left: "left-3", right: "right-2" },
-  medium: { left: "left-4", right: "right-3" },
+const iconRightOffset = {
+  xsmall: "right-1",
+  small: "right-2",
+  medium: "right-3",
 } as const;
 
 export const SearchInput = forwardRef<HTMLInputElement, Props>(
@@ -66,7 +66,9 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
           size={size === "medium" ? 20 : size === "small" ? 16 : 14}
           className={cn(
             "pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground",
-            iconOffset[size].left,
+            size === "xsmall" && "left-2.5",
+            size === "small" && "left-3",
+            size === "medium" && "left-4",
           )}
         />
         <input
@@ -83,7 +85,7 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
           autoComplete={autoComplete}
           spellCheck={spellCheck}
           className={cn(
-            "w-full rounded-xl border border-input bg-background text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
+            "w-full rounded-xl border border-input bg-background text-foreground placeholder:text-muted-foreground focus:border-ring focus:ring-1 focus:ring-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-60",
             sizeStyles[size],
             "[&::-webkit-search-cancel-button]:appearance-none",
           )}
@@ -95,7 +97,7 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
             data-slot="search-input-spinner"
             className={cn(
               "absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center text-muted-foreground",
-              iconOffset[size].right,
+              iconRightOffset[size],
             )}
           >
             <Icon
@@ -112,8 +114,8 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
             aria-label="Clear search"
             data-slot="search-input-clear"
             className={cn(
-              "absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              iconOffset[size].right,
+              "absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+              iconRightOffset[size],
             )}
           >
             <Icon

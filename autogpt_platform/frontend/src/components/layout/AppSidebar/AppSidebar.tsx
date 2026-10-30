@@ -12,7 +12,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
   useSidebar,
-} from "@/components/ui/sidebar";
+} from "@/components/molecules/Sidebar/Sidebar";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { isEditableElement } from "@/lib/platform";
 import {
@@ -24,6 +24,7 @@ import {
   Store01Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
+import { tourTarget, type TourTarget } from "@/lib/tour-targets";
 import { motion, useReducedMotion } from "framer-motion";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -40,6 +41,8 @@ type NavLink = {
   name: string;
   href: string;
   icon: IconSvgElement;
+  /** Pointed at by the first-run walkthrough. */
+  tourTarget?: TourTarget;
 };
 
 const MAIN_LINKS: NavLink[] = [
@@ -49,7 +52,12 @@ const MAIN_LINKS: NavLink[] = [
 ];
 
 const WORKSPACE_LINKS: NavLink[] = [
-  { name: "Files", href: "/artifacts", icon: Folder01Icon },
+  {
+    name: "Files",
+    href: "/artifacts",
+    icon: Folder01Icon,
+    tourTarget: "files",
+  },
 ];
 
 function isLinkActive(pathname: string | null, href: string) {
@@ -123,7 +131,7 @@ function NavItem({ link }: NavItemProps) {
   const navItemClassName = useNavItemClassName();
 
   return (
-    <SidebarMenuItem>
+    <SidebarMenuItem {...(link.tourTarget && tourTarget(link.tourTarget))}>
       <SidebarMenuButton
         asChild
         tooltip={link.name}
@@ -172,7 +180,12 @@ export function AppSidebar(props: Props) {
   const mainLinks = MAIN_LINKS.filter((link) => link.href !== "/library");
 
   const workspaceLinks = [
-    { name: "Team", href: "/team", icon: AddTeamIcon },
+    {
+      name: "Team",
+      href: "/team",
+      icon: AddTeamIcon,
+      tourTarget: "team" as const,
+    },
     ...WORKSPACE_LINKS,
   ];
 
@@ -193,7 +206,7 @@ export function AppSidebar(props: Props) {
 
   return (
     <Sidebar collapsible="icon" {...props}>
-      <SidebarContent className="scroll-py-16 gap-0 overflow-y-auto overflow-x-hidden overscroll-contain [-ms-overflow-style:none] [scrollbar-width:none] group-data-[collapsible=icon]:scroll-pt-24 group-data-[collapsible=icon]:overflow-y-auto [&::-webkit-scrollbar]:hidden">
+      <SidebarContent className="scroll-py-16 [scrollbar-width:none] gap-0 overflow-x-hidden overflow-y-auto overscroll-contain [-ms-overflow-style:none] group-data-[collapsible=icon]:scroll-pt-24 group-data-[collapsible=icon]:overflow-y-auto [&::-webkit-scrollbar]:hidden">
         <AppSidebarHeader />
 
         <motion.div
@@ -213,7 +226,7 @@ export function AppSidebar(props: Props) {
           </motion.div>
 
           {workspaceLinks.length > 0 ? (
-            <motion.div variants={itemVariants}>
+            <motion.div variants={itemVariants} {...tourTarget("workspace")}>
               <CollapsibleNavGroup label="Workspace">
                 <NavMenu links={workspaceLinks} />
               </CollapsibleNavGroup>
@@ -226,7 +239,7 @@ export function AppSidebar(props: Props) {
         <SidebarUserActions />
       </SidebarContent>
 
-      <SidebarRail className="w-2 translate-x-0 after:left-0 group-data-[side=left]:-right-2 group-data-[side=right]:-left-2 group-data-[side=right]:after:left-auto group-data-[side=right]:after:right-0 sm:hidden md:flex" />
+      <SidebarRail className="w-2 translate-x-0 group-data-[side=left]:-right-2 group-data-[side=right]:-left-2 after:left-0 group-data-[side=right]:after:right-0 group-data-[side=right]:after:left-auto sm:hidden md:flex" />
     </Sidebar>
   );
 }

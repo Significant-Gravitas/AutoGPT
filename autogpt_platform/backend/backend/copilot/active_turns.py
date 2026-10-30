@@ -225,6 +225,17 @@ async def acquire_turn_slot(
 
     try:
         yield handle
-    finally:
+    except BaseException:
+        # Cleanup on a failure path: a release that fails too must not replace
+        # the error the caller acts on (a publish that may have reached the
+        # broker would otherwise read as a turn that was never sent).
         if handle.admitted and not handle._kept:
-            await release_turn_slot(user_id, session_id)
+            try:
+                await release_turn_slot(user_id, session_id)
+            except Exception:
+                logger.exception(
+                    f"acquire_turn_slot: release failed for session={session_id}"
+                )
+        raise
+    if handle.admitted and not handle._kept:
+        await release_turn_slot(user_id, session_id)

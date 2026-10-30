@@ -19,13 +19,52 @@ export function createPostHogSentryProcessor(dsn: string | undefined) {
         hasConsentFor("analytics") &&
         !posthog.has_opted_out_capturing()
       ) {
-        integration.processEvent(event);
+        integration.processEvent(withMessageAsException(event));
       }
     } catch {
       // An analytics failure must not drop the original Sentry event.
     }
     return event;
   };
+}
+
+// A message Sentry records at error level, such as a console error, a failed
+// API request the app reports or a WebSocket error, carries no exception, and
+// PostHog's error tracking can't group an exception event with an empty list.
+// The mirror gets the message as its exception; Sentry's event is unchanged
+// apart from the PostHog links the integration adds to its tags. With no
+// frames PostHog groups by the text, so query strings and IDs come out of it
+// and one message about many URLs or blocks stays one issue.
+function withMessageAsException(event: ErrorEvent): ErrorEvent {
+  if (event.exception?.values?.length || !event.message) return event;
+  event.tags ??= {};
+  return {
+    ...event,
+    exception: {
+      values: [
+        {
+          type: "Error",
+          value: groupableText(event.message),
+          mechanism: { type: "sentry-message", handled: true },
+        },
+      ],
+    },
+  };
+}
+
+// A query runs to the next space, double quote or backtick (an apostrophe
+// can sit inside one); colons, commas, full stops and closing brackets just
+// before a space end the sentence, not the query (`…/out.png?sig=1: 403`,
+// `(see …?id=1)`).
+const URL_QUERY = /\?[^\s"`]*?(?=[:,.;)]*(?:[\s"`]|$))/g;
+const UUID =
+  /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
+
+// Never empty: posthog-js falls back to the raw message, query and all, when
+// the exception's value is blank.
+function groupableText(message: string) {
+  const text = message.replace(URL_QUERY, "").replace(UUID, "{id}").trim();
+  return text || "Error message with no text but a URL query";
 }
 
 // posthog-js's own wording, matched whole so an app error that merely quotes

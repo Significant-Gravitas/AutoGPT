@@ -12,6 +12,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import NextLink from "next/link";
+import { tourStartingPoint, tourTarget } from "@/lib/tour-targets";
 import { getChatHref, getPromptIcon, getTaskState } from "./helpers";
 
 interface Props {
@@ -39,6 +40,7 @@ export function SuggestedTaskList({
 
   return (
     <ol
+      {...tourTarget("first-tasks")}
       className={cn(
         "divide-y divide-separator overflow-hidden rounded-lg border border-border-base bg-surface",
         className,
@@ -86,6 +88,7 @@ export function SuggestedTaskList({
               ) : (
                 <button
                   type="button"
+                  {...tourStartingPoint()}
                   disabled={isBusy}
                   onClick={() => onSend(task)}
                   className={cn(

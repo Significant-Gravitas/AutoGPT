@@ -1,7 +1,6 @@
 """Unit tests for resolve_tracking and log_system_credential_cost."""
 
 import asyncio
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -19,167 +18,155 @@ from backend.executor.cost_tracking import (
 # ---------------------------------------------------------------------------
 
 
+# provider, NodeExecutionStats fields, input_data, (tracking type, amount)
+_TRACKING_CASES = {
+    "provider_cost_returns_cost_usd": (
+        "openai",
+        {"provider_cost": 0.0042},
+        {},
+        ("cost_usd", 0.0042),
+    ),
+    "token_counts_return_tokens": (
+        "anthropic",
+        {"input_token_count": 300, "output_token_count": 100},
+        {},
+        ("tokens", 400.0),
+    ),
+    "token_counts_only_input": (
+        "groq",
+        {"input_token_count": 500},
+        {},
+        ("tokens", 500.0),
+    ),
+    "unreal_speech_returns_characters": (
+        "unreal_speech",
+        {},
+        {"text": "Hello world"},
+        ("characters", 11.0),
+    ),
+    "unreal_speech_empty_text": (
+        "unreal_speech",
+        {},
+        {"text": ""},
+        ("characters", 0.0),
+    ),
+    "unreal_speech_non_string_text": (
+        "unreal_speech",
+        {},
+        {"text": 123},
+        ("characters", 0.0),
+    ),
+    "d_id_uses_script_input": (
+        "d_id",
+        {},
+        {"script_input": "Hello"},
+        ("characters", 5.0),
+    ),
+    "elevenlabs_uses_text": (
+        "elevenlabs",
+        {},
+        {"text": "Say this"},
+        ("characters", 8.0),
+    ),
+    "elevenlabs_fallback_to_text_when_no_script_input": (
+        "elevenlabs",
+        {},
+        {"text": "Fallback text"},
+        ("characters", 13.0),
+    ),
+    # VideoNarrationBlock (elevenlabs) sends `script`, not script_input/text.
+    "elevenlabs_uses_script_field": (
+        "elevenlabs",
+        {},
+        {"script": "Narration"},
+        ("characters", 9.0),
+    ),
+    "block_declared_cost_type_items": (
+        "google_maps",
+        {"provider_cost": 5.0, "provider_cost_type": "items"},
+        {},
+        ("items", 5.0),
+    ),
+    "block_declared_cost_type_characters": (
+        "unreal_speech",
+        {"provider_cost": 42.0, "provider_cost_type": "characters"},
+        {},
+        ("characters", 42.0),
+    ),
+    "block_declared_cost_type_wins_over_tokens": (
+        "openai",
+        {
+            "provider_cost": 1.0,
+            "provider_cost_type": "per_run",
+            "input_token_count": 500,
+        },
+        {},
+        ("per_run", 1.0),
+    ),
+    "e2b_returns_sandbox_seconds": (
+        "e2b",
+        {"walltime": 45.123},
+        {},
+        ("sandbox_seconds", 45.123),
+    ),
+    "e2b_no_walltime": ("e2b", {"walltime": 0}, {}, ("sandbox_seconds", 0.0)),
+    "fal_returns_walltime": ("fal", {"walltime": 12.5}, {}, ("walltime_seconds", 12.5)),
+    "revid_returns_walltime": (
+        "revid",
+        {"walltime": 60.0},
+        {},
+        ("walltime_seconds", 60.0),
+    ),
+    "replicate_returns_walltime": (
+        "replicate",
+        {"walltime": 30.0},
+        {},
+        ("walltime_seconds", 30.0),
+    ),
+    "unknown_provider_returns_per_run": ("google_maps", {}, {}, ("per_run", 1.0)),
+    "negative_provider_cost_clamped_to_zero": (
+        "openrouter",
+        {"provider_cost": -0.005},
+        {},
+        ("cost_usd", 0.0),
+    ),
+    "negative_block_declared_cost_clamped_to_zero": (
+        "google_maps",
+        {"provider_cost": -1.0, "provider_cost_type": "items"},
+        {},
+        ("items", 0.0),
+    ),
+    "provider_cost_takes_precedence_over_tokens": (
+        "openai",
+        {"provider_cost": 0.01, "input_token_count": 500, "output_token_count": 200},
+        {},
+        ("cost_usd", 0.01),
+    ),
+    # 0.0 is falsy, but free-tier or fully cached OpenRouter calls do cost 0.
+    "provider_cost_zero_is_not_none": (
+        "open_router",
+        {"provider_cost": 0.0},
+        {},
+        ("cost_usd", 0.0),
+    ),
+    "tokens_take_precedence_over_provider_specific": (
+        "fal",
+        {"input_token_count": 100, "walltime": 10.0},
+        {},
+        ("tokens", 100.0),
+    ),
+}
+
+
 class TestResolveTracking:
-    def _stats(self, **overrides: Any) -> NodeExecutionStats:
-        return NodeExecutionStats(**overrides)
-
-    def test_provider_cost_returns_cost_usd(self):
-        stats = self._stats(provider_cost=0.0042)
-        tt, amt = resolve_tracking("openai", stats, {})
-        assert tt == "cost_usd"
-        assert amt == 0.0042
-
-    def test_token_counts_return_tokens(self):
-        stats = self._stats(input_token_count=300, output_token_count=100)
-        tt, amt = resolve_tracking("anthropic", stats, {})
-        assert tt == "tokens"
-        assert amt == 400.0
-
-    def test_token_counts_only_input(self):
-        stats = self._stats(input_token_count=500)
-        tt, amt = resolve_tracking("groq", stats, {})
-        assert tt == "tokens"
-        assert amt == 500.0
-
-    def test_unreal_speech_returns_characters(self):
-        stats = self._stats()
-        tt, amt = resolve_tracking("unreal_speech", stats, {"text": "Hello world"})
-        assert tt == "characters"
-        assert amt == 11.0
-
-    def test_unreal_speech_empty_text(self):
-        stats = self._stats()
-        tt, amt = resolve_tracking("unreal_speech", stats, {"text": ""})
-        assert tt == "characters"
-        assert amt == 0.0
-
-    def test_unreal_speech_non_string_text(self):
-        stats = self._stats()
-        tt, amt = resolve_tracking("unreal_speech", stats, {"text": 123})
-        assert tt == "characters"
-        assert amt == 0.0
-
-    def test_d_id_uses_script_input(self):
-        stats = self._stats()
-        tt, amt = resolve_tracking("d_id", stats, {"script_input": "Hello"})
-        assert tt == "characters"
-        assert amt == 5.0
-
-    def test_elevenlabs_uses_text(self):
-        stats = self._stats()
-        tt, amt = resolve_tracking("elevenlabs", stats, {"text": "Say this"})
-        assert tt == "characters"
-        assert amt == 8.0
-
-    def test_elevenlabs_fallback_to_text_when_no_script_input(self):
-        stats = self._stats()
-        tt, amt = resolve_tracking("elevenlabs", stats, {"text": "Fallback text"})
-        assert tt == "characters"
-        assert amt == 13.0
-
-    def test_elevenlabs_uses_script_field(self):
-        """VideoNarrationBlock (elevenlabs) uses `script` field, not script_input/text."""
-        stats = self._stats()
-        tt, amt = resolve_tracking("elevenlabs", stats, {"script": "Narration"})
-        assert tt == "characters"
-        assert amt == 9.0
-
-    def test_block_declared_cost_type_items(self):
-        """Block explicitly setting provider_cost_type='items' short-circuits heuristics."""
-        stats = self._stats(provider_cost=5.0, provider_cost_type="items")
-        tt, amt = resolve_tracking("google_maps", stats, {})
-        assert tt == "items"
-        assert amt == 5.0
-
-    def test_block_declared_cost_type_characters(self):
-        """TTS block can declare characters directly, bypassing input_data lookup."""
-        stats = self._stats(provider_cost=42.0, provider_cost_type="characters")
-        tt, amt = resolve_tracking("unreal_speech", stats, {})
-        assert tt == "characters"
-        assert amt == 42.0
-
-    def test_block_declared_cost_type_wins_over_tokens(self):
-        """provider_cost_type takes precedence over token-based heuristic."""
-        stats = self._stats(
-            provider_cost=1.0,
-            provider_cost_type="per_run",
-            input_token_count=500,
-        )
-        tt, amt = resolve_tracking("openai", stats, {})
-        assert tt == "per_run"
-        assert amt == 1.0
-
-    def test_e2b_returns_sandbox_seconds(self):
-        stats = self._stats(walltime=45.123)
-        tt, amt = resolve_tracking("e2b", stats, {})
-        assert tt == "sandbox_seconds"
-        assert amt == 45.123
-
-    def test_e2b_no_walltime(self):
-        stats = self._stats(walltime=0)
-        tt, amt = resolve_tracking("e2b", stats, {})
-        assert tt == "sandbox_seconds"
-        assert amt == 0.0
-
-    def test_fal_returns_walltime(self):
-        stats = self._stats(walltime=12.5)
-        tt, amt = resolve_tracking("fal", stats, {})
-        assert tt == "walltime_seconds"
-        assert amt == 12.5
-
-    def test_revid_returns_walltime(self):
-        stats = self._stats(walltime=60.0)
-        tt, amt = resolve_tracking("revid", stats, {})
-        assert tt == "walltime_seconds"
-        assert amt == 60.0
-
-    def test_replicate_returns_walltime(self):
-        stats = self._stats(walltime=30.0)
-        tt, amt = resolve_tracking("replicate", stats, {})
-        assert tt == "walltime_seconds"
-        assert amt == 30.0
-
-    def test_unknown_provider_returns_per_run(self):
-        stats = self._stats()
-        tt, amt = resolve_tracking("google_maps", stats, {})
-        assert tt == "per_run"
-        assert amt == 1.0
-
-    def test_negative_provider_cost_clamped_to_zero(self):
-        """Negative provider_cost values must be clamped to 0."""
-        stats = self._stats(provider_cost=-0.005)
-        tt, amt = resolve_tracking("openrouter", stats, {})
-        assert tt == "cost_usd"
-        assert amt == 0.0
-
-    def test_negative_block_declared_cost_clamped_to_zero(self):
-        """Negative block-declared cost must also be clamped to 0."""
-        stats = self._stats(provider_cost=-1.0, provider_cost_type="items")
-        tt, amt = resolve_tracking("google_maps", stats, {})
-        assert tt == "items"
-        assert amt == 0.0
-
-    def test_provider_cost_takes_precedence_over_tokens(self):
-        stats = self._stats(
-            provider_cost=0.01, input_token_count=500, output_token_count=200
-        )
-        tt, amt = resolve_tracking("openai", stats, {})
-        assert tt == "cost_usd"
-        assert amt == 0.01
-
-    def test_provider_cost_zero_is_not_none(self):
-        """provider_cost=0.0 is falsy but should still be tracked as cost_usd
-        (e.g. free-tier or fully-cached responses from OpenRouter)."""
-        stats = self._stats(provider_cost=0.0)
-        tt, amt = resolve_tracking("open_router", stats, {})
-        assert tt == "cost_usd"
-        assert amt == 0.0
-
-    def test_tokens_take_precedence_over_provider_specific(self):
-        stats = self._stats(input_token_count=100, walltime=10.0)
-        tt, amt = resolve_tracking("fal", stats, {})
-        assert tt == "tokens"
-        assert amt == 100.0
+    @pytest.mark.parametrize(
+        "provider, stats, input_data, expected",
+        _TRACKING_CASES.values(),
+        ids=_TRACKING_CASES,
+    )
+    def test_resolve_tracking(self, provider, stats, input_data, expected):
+        stats = NodeExecutionStats(**stats)
+        assert resolve_tracking(provider, stats, input_data) == expected
 
 
 # ---------------------------------------------------------------------------
