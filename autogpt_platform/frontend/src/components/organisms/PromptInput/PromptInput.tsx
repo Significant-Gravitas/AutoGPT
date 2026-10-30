@@ -24,12 +24,13 @@ import {
   InputGroupButton,
   InputGroupTextarea,
 } from "@/components/molecules/InputGroup/InputGroup";
-import { Spinner } from "@/components/ui/spinner";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+  TooltipPortal,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
 import { Children, useInsertionEffect, useLayoutEffect, useRef } from "react";
 import { ArrowUp02Icon, StopIcon } from "@hugeicons/core-free-icons";
@@ -317,14 +318,16 @@ export function PromptInputButton({
   const side = typeof tooltip === "string" ? "top" : (tooltip.side ?? "top");
 
   return (
-    <Tooltip>
+    <Tooltip inheritDelay>
       <TooltipTrigger asChild>{button}</TooltipTrigger>
-      <TooltipContent side={side}>
-        {tooltipContent}
-        {shortcut && (
-          <span className="ml-2 text-muted-foreground">{shortcut}</span>
-        )}
-      </TooltipContent>
+      <TooltipPortal>
+        <TooltipContent side={side}>
+          {tooltipContent}
+          {shortcut && (
+            <span className="ml-2 text-muted-foreground">{shortcut}</span>
+          )}
+        </TooltipContent>
+      </TooltipPortal>
     </Tooltip>
   );
 }
@@ -356,7 +359,7 @@ export function PromptInputSubmit({
   let Icon = <UIIcon icon={ArrowUp02Icon} className="size-4" />;
 
   if (status === "submitted") {
-    Icon = <Spinner />;
+    Icon = <LoadingSpinner size="small" role="status" aria-label="Loading" />;
   } else if (status === "streaming") {
     Icon = <UIIcon icon={StopIcon} className="size-4" />;
   }
@@ -378,13 +381,7 @@ export function PromptInputSubmit({
     <InputGroupButton
       aria-label={canStop ? "Stop" : "Submit"}
       className={cn(
-        // TODO(tokens): no fitting role for the borders border-zinc-800 #3E3E43 and
-        // hover:border-zinc-900 #2C2C30 (action and action-hover are fills,
-        // foreground-emphasis and foreground-strong text colours) or the disabled
-        // colours zinc-200 #DADADC and white #FEFEFE (surface-active is a pressed
-        // fill, border-base a resting border, surface a resting fill,
-        // action-foreground the text on an action fill)
-        "size-[2.625rem] rounded-full border-zinc-800 bg-action text-action-foreground hover:border-zinc-900 hover:bg-action-hover disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100",
+        "size-[2.625rem] rounded-full border-action bg-action text-action-foreground hover:border-action-hover hover:bg-action-hover disabled:border-border-base disabled:bg-surface-active disabled:text-action-foreground disabled:opacity-100",
         className,
       )}
       disabled={isDisabled}

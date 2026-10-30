@@ -1,3 +1,4 @@
+import { Text } from "@/components/atoms/Text/Text";
 import { type ReactNode, useState } from "react";
 import {
   OutputRenderer,
@@ -64,12 +65,11 @@ function WorkspaceImage({ src, alt }: { src: string; alt: string }) {
       {!loaded && (
         <Skeleton className="absolute inset-0 h-full min-h-40 w-full rounded-md" />
       )}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {/* eslint-disable-next-line @next/next/no-img-element -- remote URL from any host, which next/image would need configured */}
       <img
         src={src}
         alt={alt}
-        // TODO(tokens): no exact role for border-gray-200 #e5e7eb; #e5e7eb is sidebar-border, the sidebar only
-        className={`h-auto max-w-full rounded-md border border-gray-200 ${loaded ? "opacity-100" : "min-h-40 opacity-0"}`}
+        className={`h-auto max-w-full rounded-md border border-border-base ${loaded ? "opacity-100" : "min-h-40 opacity-0"}`}
         loading="lazy"
         onLoad={() => setLoaded(true)}
         onError={() => setLoaded(true)}
@@ -88,8 +88,7 @@ function WorkspaceVideo({ src, mimeType }: { src: string; mimeType: string }) {
       )}
       <video
         controls
-        // TODO(tokens): no exact role for border-gray-200 #e5e7eb; #e5e7eb is sidebar-border, the sidebar only
-        className={`h-auto max-w-full rounded-md border border-gray-200 ${loaded ? "opacity-100" : "min-h-40 opacity-0"}`}
+        className={`h-auto max-w-full rounded-md border border-border-base ${loaded ? "opacity-100" : "min-h-40 opacity-0"}`}
         preload="metadata"
         onLoadedMetadata={() => setLoaded(true)}
         onError={() => setLoaded(true)}
@@ -150,37 +149,26 @@ function renderWorkspaceFile(
   // Generic file card with icon and download link
   const label = getFileTypeLabel(mimeType);
   return (
-    <div
-      // TODO(tokens): no exact role for border-gray-200 #e5e7eb, bg-gray-50 #f9fafb; #e5e7eb is sidebar-border, the sidebar only
-      className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3"
-    >
+    <div className="flex items-center gap-3 rounded-lg border border-border-base bg-surface-muted p-3">
       <Icon
         icon={File02Icon}
         size={28}
-        // TODO(tokens): no exact role for text-gray-500 #6b7280
-        className="flex-shrink-0 text-gray-500"
+        className="flex-shrink-0 text-foreground-tertiary"
       />
       <div className="flex min-w-0 flex-1 flex-col">
-        <span
-          // TODO(tokens): no exact role for text-gray-900 #111827
-          className="truncate text-sm font-medium text-gray-900"
-        >
+        <span className="truncate text-sm font-medium text-foreground-base">
           {metadata?.filename || label}
         </span>
         {mimeType && (
-          <span
-            // TODO(tokens): no exact role for text-gray-500 #6b7280
-            className="text-xs text-gray-500"
-          >
+          <Text variant="small-tight" as="span" tone="muted">
             {mimeType}
-          </span>
+          </Text>
         )}
       </div>
       <a
         href={downloadURL}
         download
-        // TODO(tokens): no exact role for text-gray-500 #6b7280, hover:bg-gray-200 #e5e7eb, hover:text-gray-700 #374151; #e5e7eb is sidebar-border, the sidebar only
-        className="flex-shrink-0 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-700"
+        className="flex-shrink-0 rounded-md p-1.5 text-foreground-tertiary transition-colors hover:bg-surface-active hover:text-foreground-body"
       >
         <Icon icon={Download04Icon} size={18} />
       </a>

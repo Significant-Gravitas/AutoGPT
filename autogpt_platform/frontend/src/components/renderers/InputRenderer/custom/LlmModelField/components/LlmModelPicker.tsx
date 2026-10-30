@@ -142,12 +142,12 @@ export function LlmModelPicker({
           disabled={disabled}
           className={cn(
             "flex w-full min-w-[15rem] items-center rounded-lg border border-border-base bg-surface px-3 py-2 text-left",
-            "hover:border-border-strong focus:outline-none focus:ring-2 focus:ring-border-base",
+            "hover:border-border-strong focus:ring-2 focus:ring-border-base focus:outline-none",
             disabled && "cursor-not-allowed opacity-60",
           )}
         >
           <LlmIcon value={triggerCreator} />
-          <Text variant="body" className="ml-1 flex-1 text-foreground-strong">
+          <Text variant="body" tone="primary" className="ml-1 flex-1">
             {triggerTitle}
           </Text>
           <Icon
@@ -159,7 +159,7 @@ export function LlmModelPicker({
       <PopoverContent
         align="start"
         sideOffset={4}
-        className="w-(--radix-popover-trigger-width) max-h-[45vh] min-w-[16rem] overflow-y-auto rounded-md border border-border-base bg-surface p-0 shadow-[0px_1px_4px_rgba(12,12,13,0.12)]"
+        className="max-h-[45vh] w-(--radix-popover-trigger-width) min-w-[16rem] overflow-y-auto rounded-md border border-border-base bg-surface p-0 shadow"
       >
         {view === "creator" && (
           <div className="flex flex-col">

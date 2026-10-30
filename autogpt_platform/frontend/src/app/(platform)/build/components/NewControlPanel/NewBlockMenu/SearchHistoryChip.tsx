@@ -1,8 +1,9 @@
-import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { blockMenuButtonBase } from "./style";
 import { cn } from "@/lib/utils";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import React, { ButtonHTMLAttributes } from "react";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -19,24 +20,28 @@ export const SearchHistoryChip: SearchHistoryChipComponent = ({
   ...rest
 }) => {
   return (
-    <Button
-      variant="legacy-default"
+    <button
+      type="button"
       className={cn(
-        "my-[1px] h-[2.25rem] space-x-1 rounded-[1.5rem] bg-surface-muted p-[0.375rem] pr-[0.625rem] shadow-none",
-        // TODO(tokens): no fitting role for active:bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this is the pressed state (QUALITY 41); no fitting role for active:ring-zinc-300 #C5C5C9; #C5C5C9 is border-strong (a border colour) and foreground-disabled (a text colour), and this is a ring (QUALITY 41(b))
-        "hover:cursor-default hover:bg-surface-hover focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300",
+        blockMenuButtonBase,
+        "my-px h-[2.25rem] space-x-1 rounded-3xl bg-surface-muted p-1.5 pr-2.5",
+        "hover:cursor-default hover:bg-surface-hover active:bg-surface-hover active:ring-1 active:ring-border-strong",
         className,
       )}
       {...rest}
     >
-      <ArrowUpRight
-        className="h-6 w-6 text-foreground-tertiary"
-        strokeWidth={1.25}
-      />
+      <span className="flex text-foreground-tertiary">
+        <Icon
+          aria-hidden
+          icon={ArrowUpRight01Icon}
+          className="h-6 w-6"
+          strokeWidth={1.25}
+        />
+      </span>
       <Text variant="body" as="span" tone="emphasis">
         {content}
       </Text>
-    </Button>
+    </button>
   );
 };
 
@@ -45,11 +50,7 @@ const SearchHistoryChipSkeleton: React.FC<{ className?: string }> = ({
 }) => {
   return (
     <Skeleton
-      className={cn(
-        // TODO(tokens): no fitting role for bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this fill is not a hover state (QUALITY 41)
-        "h-[2.25rem] w-32 rounded-[1.5rem] bg-zinc-100",
-        className,
-      )}
+      className={cn("h-[2.25rem] w-32 rounded-3xl bg-surface-hover", className)}
     />
   );
 };

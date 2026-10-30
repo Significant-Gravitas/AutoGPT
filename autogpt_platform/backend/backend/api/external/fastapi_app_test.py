@@ -1,5 +1,6 @@
 """The external API's own addresses, as the host app mounts it."""
 
+import re
 from urllib.parse import urljoin
 
 import fastapi
@@ -7,6 +8,7 @@ import fastapi.testclient
 import pytest
 
 from backend.api.external.fastapi_app import external_api
+from backend.api.external.v1.app import DESCRIPTION as V1_DESCRIPTION
 
 
 @pytest.fixture
@@ -26,6 +28,15 @@ def test_the_root_redirects_to_v2s_docs_behind_any_proxy_prefix(
     assert urljoin(page, response.headers["location"]) == (
         f"https://example.com{prefix}/api/v2/docs"
     )
+
+
+@pytest.mark.parametrize("prefix", ["", "/_agpt"])
+def test_v1s_docs_link_to_v2s_docs_behind_any_proxy_prefix(prefix: str) -> None:
+    link = re.search(r"\[v2\]\(([^)]+)\)", V1_DESCRIPTION)
+
+    assert link
+    page = f"https://example.com{prefix}/external-api/v1/docs"
+    assert urljoin(page, link.group(1)) == f"https://example.com{prefix}/api/v2/docs"
 
 
 @pytest.mark.parametrize("path", ["/docs", "/redoc", "/versions.json"])

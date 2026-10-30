@@ -1,6 +1,7 @@
 /*
   Tailwind CSS 3.4.17's default theme (MIT License, https://tailwindcss.com),
-  copied from its stubs/config.full.js with the colour palette inlined.
+  copied from its stubs/config.full.js with the colour palette inlined, and
+  this app's palette values over it (APP_COLORS).
 
   Tailwind 4 changed most of these defaults: oklch colours, renamed shadow,
   radius, blur and drop-shadow steps, a 1px ring, rem breakpoints and a
@@ -8,6 +9,12 @@
   a preset, and globals.css leaves out Tailwind 4's own default theme, so
   every class keeps the value Tailwind 3 gave it and a class Tailwind 3 had no
   value for still generates nothing.
+
+  The font families, sizes, line-heights, letter-spacings and radii are in
+  globals.css's `@theme`, and Tailwind 4 reads every colour utility
+  (`bg-`, `ring-`, `fill-`, ...) from the palette, so those keys are not
+  here. The palette stays in JS: it is raw, and @shadcn/lint would read any
+  colour in a `@theme` of globals.css as a design token.
 
   Two keys differ from the original. `maxWidth` writes out its `screen-*`
   steps, because Tailwind 4 passes no `breakpoints` helper. The
@@ -311,11 +318,143 @@ const colors = {
   },
 };
 
+// This app's own palette values, which replace Tailwind 3's step for step
+// (a family keeps Tailwind 3's other steps, as `theme.extend` merged them).
+// Frozen: a new colour is a role in src/app/globals.css, never a palette
+// entry (src/components/__tests__/design-system-contract.test.ts).
+export const APP_COLORS = {
+  slate: {
+    50: "#F7F8F9",
+    100: "#EFF1F4",
+    200: "#CFD4DB",
+    300: "#B8BFCA",
+    400: "#8A97A8",
+    500: "#64748B",
+    600: "#5B6A7E",
+    700: "#475263",
+    800: "#475263",
+    900: "#2A313A",
+  },
+  zinc: {
+    50: "#F9F9FA",
+    100: "#EFEFF0",
+    200: "#DADADC",
+    300: "#C5C5C9",
+    400: "#ADADB3",
+    500: "#83838C",
+    600: "#68686F",
+    700: "#505057",
+    800: "#3E3E43",
+    900: "#2C2C30",
+  },
+  red: {
+    50: "#FEF5F5",
+    100: "#FDECEC",
+    200: "#FAC5C5",
+    300: "#F69999",
+    400: "#F26969",
+    500: "#EF4444",
+    600: "#D93636",
+    700: "#AA3030",
+    800: "#832525",
+    900: "#641D1D ",
+  },
+  orange: {
+    50: "#fff3e6",
+    100: "#ffdab0",
+    200: "#ffc88a",
+    300: "#feaf54",
+    400: "#fe9f33",
+    500: "#fe8700",
+    600: "#e77b00",
+    700: "#b46000",
+    800: "#8c4a00",
+    900: "#6b3900",
+  },
+  yellow: {
+    25: "#FFFCF3",
+    50: "#fef9e6",
+    100: "#fcebb0",
+    150: "#FDEFBF",
+    200: "#fae28a",
+    300: "#f8d554",
+    400: "#f7cd33",
+    500: "#f5c000",
+    600: "#DFAF00",
+    700: "#ae8800",
+    800: "#876a00",
+    900: "#675100",
+  },
+  green: {
+    50: "#e8f6ed",
+    100: "#b7e2c7",
+    200: "#94d5ac",
+    300: "#63c186",
+    400: "#45b56e",
+    500: "#16a34a",
+    600: "#149443",
+    700: "#107435",
+    800: "#0c5a29",
+    900: "#09441f",
+  },
+  purple: {
+    50: "#f1ebfe",
+    100: "#efe8fe",
+    200: "#c0a1fa",
+    300: "#a476f8",
+    400: "#925cf7",
+    500: "#7733f5",
+    600: "#6c2edf",
+    700: "#5424ae",
+    800: "#411c87",
+    900: "#321567",
+  },
+  pink: {
+    50: "#fdedf5",
+    100: "#f9c6df",
+    200: "#f6abd0",
+    300: "#f284bb",
+    400: "#f06dad",
+    500: "#ec4899",
+    600: "#d7428b",
+    700: "#a8336d",
+    800: "#822854",
+    900: "#631e40",
+  },
+
+  // Special semantic colors
+  white: "#fefefe",
+  black: "#141414",
+  textGrey: "#505057",
+  textBlack: "#1F1F20",
+  bgLightGrey: "#F3F4F6",
+  customGray: {
+    "100": "#d9d9d9",
+    "200": "#a8a8a8",
+    "300": "#878787",
+    "400": "#646464",
+    "500": "#474747",
+    "600": "#282828",
+    "700": "#272727",
+  },
+};
+
+type Palette = Record<string, string | Record<string, string>>;
+
+function withAppColors(palette: Palette, overrides: Palette): Palette {
+  const merged: Palette = { ...palette };
+  for (const [name, value] of Object.entries(overrides)) {
+    const own = merged[name];
+    merged[name] =
+      typeof value === "object" && typeof own === "object"
+        ? { ...own, ...value }
+        : value;
+  }
+  return merged;
+}
+
 const theme: Config["theme"] = {
-  accentColor: ({ theme }) => ({
-    ...theme("colors"),
-    auto: "auto",
-  }),
+  colors: withAppColors(colors, APP_COLORS),
   animation: {
     none: "none",
     spin: "spin 1s linear infinite",
@@ -348,7 +487,6 @@ const theme: Config["theme"] = {
   backdropOpacity: ({ theme }) => theme("opacity"),
   backdropSaturate: ({ theme }) => theme("saturate"),
   backdropSepia: ({ theme }) => theme("sepia"),
-  backgroundColor: ({ theme }) => theme("colors"),
   backgroundImage: {
     none: "none",
     "gradient-to-t": "linear-gradient(var(--tw-gradient-stops))",
@@ -388,22 +526,7 @@ const theme: Config["theme"] = {
     "2xl": "40px",
     "3xl": "64px",
   },
-  borderColor: ({ theme }) => ({
-    ...theme("colors"),
-    DEFAULT: theme("colors.gray.200", "currentColor"),
-  }),
   borderOpacity: ({ theme }) => theme("opacity"),
-  borderRadius: {
-    none: "0px",
-    sm: "0.125rem",
-    DEFAULT: "0.25rem",
-    md: "0.375rem",
-    lg: "0.5rem",
-    xl: "0.75rem",
-    "2xl": "1rem",
-    "3xl": "1.5rem",
-    full: "9999px",
-  },
   borderSpacing: ({ theme }) => ({
     ...theme("spacing"),
   }),
@@ -424,7 +547,6 @@ const theme: Config["theme"] = {
     inner: "inset 0 2px 4px 0 rgb(0 0 0 / 0.05)",
     none: "none",
   },
-  boxShadowColor: ({ theme }) => theme("colors"),
   brightness: {
     0: "0",
     50: ".5",
@@ -438,8 +560,6 @@ const theme: Config["theme"] = {
     150: "1.5",
     200: "2",
   },
-  caretColor: ({ theme }) => theme("colors"),
-  colors,
   columns: {
     auto: "auto",
     1: "1",
@@ -519,7 +639,6 @@ const theme: Config["theme"] = {
     "zoom-in": "zoom-in",
     "zoom-out": "zoom-out",
   },
-  divideColor: ({ theme }) => theme("borderColor"),
   divideOpacity: ({ theme }) => theme("borderOpacity"),
   divideWidth: ({ theme }) => theme("borderWidth"),
   dropShadow: {
@@ -531,10 +650,6 @@ const theme: Config["theme"] = {
     "2xl": "0 25px 25px rgb(0 0 0 / 0.15)",
     none: "0 0 #0000",
   },
-  fill: ({ theme }) => ({
-    none: "none",
-    ...theme("colors"),
-  }),
   flex: {
     1: "1 1 0%",
     auto: "1 1 auto",
@@ -580,50 +695,6 @@ const theme: Config["theme"] = {
     0: "0",
     DEFAULT: "1",
   },
-  fontFamily: {
-    sans: [
-      "ui-sans-serif",
-      "system-ui",
-      "sans-serif",
-      '"Apple Color Emoji"',
-      '"Segoe UI Emoji"',
-      '"Segoe UI Symbol"',
-      '"Noto Color Emoji"',
-    ],
-    serif: [
-      "ui-serif",
-      "Georgia",
-      "Cambria",
-      '"Times New Roman"',
-      "Times",
-      "serif",
-    ],
-    mono: [
-      "ui-monospace",
-      "SFMono-Regular",
-      "Menlo",
-      "Monaco",
-      "Consolas",
-      '"Liberation Mono"',
-      '"Courier New"',
-      "monospace",
-    ],
-  },
-  fontSize: {
-    xs: ["0.75rem", { lineHeight: "1rem" }],
-    sm: ["0.875rem", { lineHeight: "1.25rem" }],
-    base: ["1rem", { lineHeight: "1.5rem" }],
-    lg: ["1.125rem", { lineHeight: "1.75rem" }],
-    xl: ["1.25rem", { lineHeight: "1.75rem" }],
-    "2xl": ["1.5rem", { lineHeight: "2rem" }],
-    "3xl": ["1.875rem", { lineHeight: "2.25rem" }],
-    "4xl": ["2.25rem", { lineHeight: "2.5rem" }],
-    "5xl": ["3rem", { lineHeight: "1" }],
-    "6xl": ["3.75rem", { lineHeight: "1" }],
-    "7xl": ["4.5rem", { lineHeight: "1" }],
-    "8xl": ["6rem", { lineHeight: "1" }],
-    "9xl": ["8rem", { lineHeight: "1" }],
-  },
   fontWeight: {
     thin: "100",
     extralight: "200",
@@ -636,7 +707,6 @@ const theme: Config["theme"] = {
     black: "900",
   },
   gap: ({ theme }) => theme("spacing"),
-  gradientColorStops: ({ theme }) => theme("colors"),
   gradientColorStopPositions: {
     "0%": "0%",
     "5%": "5%",
@@ -882,30 +952,6 @@ const theme: Config["theme"] = {
       },
     },
   },
-  letterSpacing: {
-    tighter: "-0.05em",
-    tight: "-0.025em",
-    normal: "0em",
-    wide: "0.025em",
-    wider: "0.05em",
-    widest: "0.1em",
-  },
-  lineHeight: {
-    none: "1",
-    tight: "1.25",
-    snug: "1.375",
-    normal: "1.5",
-    relaxed: "1.625",
-    loose: "2",
-    3: ".75rem",
-    4: "1rem",
-    5: "1.25rem",
-    6: "1.5rem",
-    7: "1.75rem",
-    8: "2rem",
-    9: "2.25rem",
-    10: "2.5rem",
-  },
   listStyleType: {
     none: "none",
     disc: "disc",
@@ -1032,7 +1078,6 @@ const theme: Config["theme"] = {
     11: "11",
     12: "12",
   },
-  outlineColor: ({ theme }) => theme("colors"),
   outlineOffset: {
     0: "0px",
     1: "1px",
@@ -1048,13 +1093,7 @@ const theme: Config["theme"] = {
     8: "8px",
   },
   padding: ({ theme }) => theme("spacing"),
-  placeholderColor: ({ theme }) => theme("colors"),
   placeholderOpacity: ({ theme }) => theme("opacity"),
-  ringColor: ({ theme }) => ({
-    DEFAULT: theme("colors.blue.500", "#3b82f6"),
-    ...theme("colors"),
-  }),
-  ringOffsetColor: ({ theme }) => theme("colors"),
   ringOffsetWidth: {
     0: "0px",
     1: "1px",
@@ -1167,10 +1206,6 @@ const theme: Config["theme"] = {
     80: "20rem",
     96: "24rem",
   },
-  stroke: ({ theme }) => ({
-    none: "none",
-    ...theme("colors"),
-  }),
   strokeWidth: {
     0: "0",
     1: "1",
@@ -1178,8 +1213,6 @@ const theme: Config["theme"] = {
   },
   supports: {},
   data: {},
-  textColor: ({ theme }) => theme("colors"),
-  textDecorationColor: ({ theme }) => theme("colors"),
   textDecorationThickness: {
     auto: "auto",
     "from-font": "from-font",

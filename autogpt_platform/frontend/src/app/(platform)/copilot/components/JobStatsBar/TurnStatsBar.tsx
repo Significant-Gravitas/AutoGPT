@@ -6,6 +6,7 @@ import { useState } from "react";
 import type { TurnStats } from "../../helpers/convertChatSessionToUiMessages";
 import { getTurnEndLabel, getTurnOutcome } from "./helpers";
 import { getWorkDoneCounters } from "./useWorkDoneCounters";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   turnMessages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -107,9 +108,9 @@ export function TurnStatsBar({
         return (
           <span key={counter.category} className="flex items-center gap-1.5">
             {needsDot && (
-              <span aria-hidden className="text-foreground-subtle">
+              <Text variant="small-tight" as="span" tone="disabled" aria-hidden>
                 &middot;
-              </span>
+              </Text>
             )}
             <span>
               {counter.count} {counter.label}

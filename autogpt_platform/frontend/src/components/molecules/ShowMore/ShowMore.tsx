@@ -45,12 +45,7 @@ export function ShowMore({
     <Text
       variant={variant}
       data-slot="show-more"
-      className={cn(
-        isExpanded
-          ? "flex-end flex flex-wrap items-center"
-          : "flex-start flex flex-wrap items-center",
-        className,
-      )}
+      className={cn("flex flex-wrap items-center", className)}
     >
       {displayText}
       {!isExpanded && "..."}

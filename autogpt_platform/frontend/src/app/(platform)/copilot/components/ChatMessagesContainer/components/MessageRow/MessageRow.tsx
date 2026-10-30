@@ -113,7 +113,7 @@ export const MessageRow = memo(function MessageRow({
       <Message
         from={message.role}
         data-message-id={message.id}
-        className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+        className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
       >
         <MessageContent className="group-[.is-assistant]:bg-transparent">
           <WorkCard metadata={runMetadata} preview={runPreview} />
@@ -131,7 +131,7 @@ export const MessageRow = memo(function MessageRow({
       <Message
         from={message.role}
         data-message-id={message.id}
-        className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+        className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
       >
         <MessageContent className="group-[.is-assistant]:bg-transparent">
           <ScheduledChatNoticeCard notice={notice} sessionID={sessionID} />
@@ -151,7 +151,7 @@ export const MessageRow = memo(function MessageRow({
     <Message
       from={message.role}
       data-message-id={message.id}
-      className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+      className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
     >
       <MessageContent className={getMessageContentClassName(compact)}>
         {isAssistant ? (

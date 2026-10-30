@@ -80,14 +80,13 @@ export const HorizontalScroll: React.FC<HorizontalScrollAreaProps> = ({
           <button
             type="button"
             aria-label="Scroll left"
-            className="pointer-events-none absolute left-2 top-5 -translate-y-1/2 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
+            className="pointer-events-none absolute top-5 left-2 -translate-y-1/2 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
             onClick={() => scrollByDelta(-scrollAmount)}
           >
             <Icon
               icon={ArrowLeft02Icon}
               size={28}
-              // TODO(tokens): no fitting role for bg-zinc-700 #505057; #505057 is foreground-body (a text colour)
-              className="rounded-full bg-zinc-700 p-1 text-action-foreground drop-shadow"
+              className="rounded-full bg-foreground-body p-1 text-action-foreground drop-shadow"
             />
           </button>
         )}
@@ -95,14 +94,13 @@ export const HorizontalScroll: React.FC<HorizontalScrollAreaProps> = ({
           <button
             type="button"
             aria-label="Scroll right"
-            className="pointer-events-none absolute right-2 top-5 -translate-y-1/2 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
+            className="pointer-events-none absolute top-5 right-2 -translate-y-1/2 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
             onClick={() => scrollByDelta(scrollAmount)}
           >
             <Icon
               icon={ArrowRight02Icon}
               size={28}
-              // TODO(tokens): no fitting role for bg-zinc-700 #505057; #505057 is foreground-body (a text colour)
-              className="rounded-full bg-zinc-700 p-1 text-action-foreground drop-shadow"
+              className="rounded-full bg-foreground-body p-1 text-action-foreground drop-shadow"
             />
           </button>
         )}
