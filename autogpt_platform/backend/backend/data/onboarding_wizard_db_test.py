@@ -33,6 +33,7 @@ async def users_with_drafts(server: SpinTestServer):
                 "userId": user_id,
                 "wizardProgress": SafeJson(wizard_progress()),
                 "wizardRevision": DRAFT_REVISION,
+                "role": "Marketing",
             }
         )
     yield user_ids
@@ -51,6 +52,8 @@ async def test_reset_clears_only_the_users_own_draft(users_with_drafts):
         wizard_progress(),
         DRAFT_REVISION,
     )
+    # The role is kept from the draft, so it is reset with it.
+    assert (reset.role, other.role) == (None, "Marketing")
 
 
 async def test_explicit_null_clears_the_draft(users_with_drafts):
@@ -69,6 +72,29 @@ async def test_explicit_null_clears_the_draft(users_with_drafts):
 
     row = await read_row(user_id)
     assert (row.wizardProgress, row.wizardRevision) == (None, DRAFT_REVISION + 1)
+
+
+async def test_a_draft_past_the_role_step_keeps_its_role(users_with_drafts):
+    user_id, _ = users_with_drafts
+    draft = wizard_progress(role="Other", otherRole="Dentist")
+
+    await update_user_onboarding(
+        user_id,
+        UserOnboardingUpdate.model_validate(
+            {
+                "wizardProgress": draft,
+                "wizardRevision": DRAFT_REVISION,
+                "wizardUserId": user_id,
+            }
+        ),
+    )
+
+    row = await read_row(user_id)
+    assert (row.role, row.roleOther, row.wizardRevision) == (
+        "Other",
+        "Dentist",
+        DRAFT_REVISION + 1,
+    )
 
 
 async def read_row(user_id: str) -> UserOnboarding:

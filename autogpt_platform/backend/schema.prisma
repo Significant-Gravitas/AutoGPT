@@ -437,9 +437,10 @@ model UserOnboarding {
   consecutiveRunDays            Int       @default(0)
 
   // The role picked in the wizard: one of RoleStep's option IDs, or "Other"
-  // with the typed text in roleOther. Written only by POST /onboarding/profile:
-  // AutoPilot rewrites the copy in CoPilotUnderstanding, so that is no record
-  // of the pick (backend/data/onboarding_role.py).
+  // with the typed text in roleOther. Written once the role step is answered
+  // (PATCH /onboarding) and by POST /onboarding/profile: AutoPilot rewrites the
+  // copy in CoPilotUnderstanding, so that is no record of the pick
+  // (backend/data/onboarding_role.py).
   role      String?
   roleOther String?
 
@@ -1395,7 +1396,11 @@ model LibraryFolder {
   visibility     ResourceVisibility @default(PRIVATE)
   Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
 
-  @@unique([userId, parentId, name]) // Name unique per parent per user
+  // Names are unique among LIVE siblings, which Prisma cannot express: both
+  // rules are partial unique indexes created in migration
+  // 20261008180000_library_folder_name_unique_partial
+  // ("LibraryFolder_userId_parentId_name_live_key" and
+  // "LibraryFolder_userId_name_root_live_key").
   @@index([organizationId])
 }
 

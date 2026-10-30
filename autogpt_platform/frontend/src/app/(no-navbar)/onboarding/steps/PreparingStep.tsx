@@ -1,11 +1,13 @@
 "use client";
 
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { TypingText } from "@/components/molecules/TypingText/TypingText";
 import { cn } from "@/lib/utils";
-import { Tick02Icon } from "@hugeicons/core-free-icons";
+import {
+  ChecklistMark,
+  type ChecklistState,
+} from "../components/ChecklistMark";
 import { usePreparingStep } from "./usePreparingStep";
 
 interface Props {
@@ -33,35 +35,38 @@ export function PreparingStep({ onComplete }: Props) {
 
       <div className="h-0.5 w-full overflow-hidden bg-surface-hover">
         <div
-          className="h-full bg-action-hover transition-all duration-100 ease-linear"
-          style={{ width: `${progress}%` }}
+          className="h-full w-[var(--progress)] bg-action-hover transition-all duration-100 ease-linear"
+          style={{ "--progress": `${progress}%` } as React.CSSProperties}
         />
       </div>
 
-      <ul className="flex flex-col gap-2">
-        {checklist.map((item, i) => (
-          <li key={item} className="flex items-center gap-2">
-            <Icon
-              icon={Tick02Icon}
-              size={16}
-              className={cn(
-                "shrink-0 transition-colors",
-                i < completedItems
-                  ? "text-foreground-strong"
-                  : "text-foreground-disabled",
-              )}
-            />
-            <Text
-              variant="body"
-              as="span"
-              tone={i < completedItems ? "primary" : "muted"}
-              className="transition-colors"
-            >
-              {item}
-            </Text>
-          </li>
-        ))}
+      <ul className="flex flex-col gap-3">
+        {checklist.map((item, i) => {
+          const state = getChecklistState(i, completedItems);
+          return (
+            <li key={item} className="flex items-center gap-3">
+              <ChecklistMark key={state} state={state} />
+              <span
+                className={cn(
+                  "font-sans text-body-lg transition-colors",
+                  state === "active" ? "font-medium" : "font-normal",
+                  state === "pending"
+                    ? "text-foreground-tertiary"
+                    : "text-foreground-strong",
+                )}
+              >
+                {item}
+              </span>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
+}
+
+function getChecklistState(index: number, completedItems: number) {
+  if (index < completedItems) return "done" satisfies ChecklistState;
+  if (index === completedItems) return "active" satisfies ChecklistState;
+  return "pending" satisfies ChecklistState;
 }

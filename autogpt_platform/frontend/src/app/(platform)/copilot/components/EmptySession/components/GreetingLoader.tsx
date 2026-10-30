@@ -1,15 +1,14 @@
 "use client";
 
-import { GlassOrb } from "@/components/molecules/GlassOrb/GlassOrb";
+import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   GREETING_ORB_LAYOUT_ID,
   ORB_FLIP_TRANSITION,
   ORB_FLIP_TRANSITION_REDUCED,
-  SMALL_ORB_PARAMS,
 } from "../../../helpers/greetingOrb";
 
-// What the page is while the greeting is still being written: the orb,
+// What the page is while the greeting is still being written: Otto,
 // alone, breathing in the middle of the empty session. It carries the
 // intro card's `layoutId`, so when the greeting lands this exact element
 // travels into the heading instead of being swapped out for a copy.
@@ -22,15 +21,15 @@ export function GreetingLoader() {
       className="flex w-full justify-center py-10"
       data-testid="greeting-loader"
     >
-      {/* The orb is decorative and hidden from assistive tech, so the wait
-          needs saying out loud — the composer is withheld until it ends. */}
+      {/* The avatar alone doesn't say what is happening, so the wait needs
+          saying out loud — the composer is withheld until it ends. */}
       <span className="sr-only">Writing your greeting</span>
       <motion.span
         layoutId={GREETING_ORB_LAYOUT_ID}
         className="relative block size-16"
         // A fade rather than an instant paint: every copilot load renders
         // one pre-mount frame, and without this the flag-off user sees the
-        // orb blink before the regular hero replaces it.
+        // avatar blink before the regular hero replaces it.
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{
@@ -55,7 +54,7 @@ export function GreetingLoader() {
             ease: "easeInOut",
           }}
         >
-          <GlassOrb params={SMALL_ORB_PARAMS} />
+          <AutopilotAvatar size={64} transparent className="size-full" />
         </motion.span>
       </motion.span>
     </div>

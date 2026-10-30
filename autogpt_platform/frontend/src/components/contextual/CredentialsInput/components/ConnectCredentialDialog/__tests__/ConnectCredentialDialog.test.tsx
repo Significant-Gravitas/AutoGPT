@@ -28,7 +28,9 @@ vi.mock(
       onSelectMethod,
       hostScopedHost,
       onInlineConnectSuccess,
+      workflowConnect,
     }: {
+      workflowConnect?: { onSignIn: () => void; isConnecting: boolean };
       provider: { id: string; name: string; supportedAuthTypes: string[] };
       selectedMethod: string | null;
       onSelectMethod: (method: string) => void;
@@ -36,6 +38,16 @@ vi.mock(
       onInlineConnectSuccess: () => void;
     }) => (
       <div data-testid="connect-method-view">
+        {workflowConnect && (
+          <button
+            onClick={workflowConnect.onSignIn}
+            disabled={workflowConnect.isConnecting}
+          >
+            {workflowConnect.isConnecting
+              ? "Connecting…"
+              : `Continue with ${provider.name}`}
+          </button>
+        )}
         <span>Connect AutoGPT to {provider.name}</span>
         <span data-testid="auth-methods">
           {provider.supportedAuthTypes.join(",")}
@@ -236,27 +248,12 @@ describe("ConnectCredentialDialog", () => {
     expect(apiKey.form.reset).toHaveBeenCalledOnce();
   });
 
-  it("disables Continue until a method is selected", () => {
-    renderDialog();
-
-    const cont = screen.getByText("Continue").closest("button");
-    expect(cont?.disabled).toBe(true);
-
-    fireEvent.click(screen.getByText("select-oauth2"));
-    expect(screen.getByTestId("selected-method").textContent).toBe("oauth2");
-    expect(screen.getByText("Continue").closest("button")?.disabled).toBe(
-      false,
-    );
-  });
-
-  it("starts the OAuth flow when Continue is clicked with OAuth selected", () => {
+  it("offers sign-in without selecting an auth method first", () => {
     const oauth = makeOAuthReturn();
     mockUseOAuthConnect.mockReturnValue(oauth);
     renderDialog();
-
-    fireEvent.click(screen.getByText("select-oauth2"));
-    fireEvent.click(screen.getByText("Continue"));
-
+    expect(screen.queryByText("Continue")).toBeNull();
+    fireEvent.click(screen.getByText("Continue with GitHub"));
     expect(oauth.connect).toHaveBeenCalledOnce();
   });
 
@@ -264,7 +261,7 @@ describe("ConnectCredentialDialog", () => {
     mockUseApiKeyConnectForm.mockReturnValue(
       makeApiKeyReturn({ isValid: false }),
     );
-    renderDialog();
+    renderDialog({ schema: { ...baseSchema, credentials_types: ["api_key"] } });
 
     fireEvent.click(screen.getByText("select-api_key"));
     expect(screen.getByText("Continue").closest("button")?.disabled).toBe(true);
@@ -273,7 +270,7 @@ describe("ConnectCredentialDialog", () => {
   it("submits the API key form from Continue once valid", () => {
     const apiKey = makeApiKeyReturn({ isValid: true });
     mockUseApiKeyConnectForm.mockReturnValue(apiKey);
-    renderDialog();
+    renderDialog({ schema: { ...baseSchema, credentials_types: ["api_key"] } });
 
     fireEvent.click(screen.getByText("select-api_key"));
     fireEvent.click(screen.getByText("Continue"));
@@ -431,7 +428,7 @@ describe("ConnectCredentialDialog with existing accounts", () => {
     fireEvent.click(screen.getByText("Add new"));
 
     expect(screen.getByTestId("connect-method-view")).toBeDefined();
-    expect(screen.getByText("Continue")).toBeDefined();
+    expect(screen.getByText("Continue with GitHub")).toBeDefined();
     expect(screen.queryByText("Use existing")).toBeNull();
   });
 

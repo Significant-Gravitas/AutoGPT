@@ -12,6 +12,7 @@ import { CredentialMentionMarkdown } from "../../CredentialMention/CredentialMen
 import { CARD_SEND_BUTTON_CLASS } from "../helpers";
 import { useChatMentions } from "../useChatMentions";
 import { useConnectedIntegrations } from "../useConnectedIntegrations";
+import { MentionConnectDialog } from "./MentionConnectDialog";
 import { MentionDropdown } from "./MentionDropdown";
 import { mentionStoryHandlers } from "./mentionStoryFixtures";
 
@@ -45,7 +46,7 @@ function AccountMentionComposer({ expertId }: Props) {
             variant="large-loose"
             tone="primary"
             data-testid="sent-message"
-            className="max-w-full whitespace-pre-wrap rounded-3xl bg-surface-hover px-4 py-2.5"
+            className="max-w-full rounded-3xl bg-surface-hover px-4 py-2.5 whitespace-pre-wrap"
           >
             <CredentialMentionMarkdown>{sent}</CredentialMentionMarkdown>
           </Text>
@@ -66,7 +67,13 @@ function AccountMentionComposer({ expertId }: Props) {
             onHighlight={mentions.setHighlightedIndex}
           />
         )}
-        <InputGroup className="flex-col gap-3 !rounded-3xl border-border-base px-3.5 pb-3.5 pt-3 shadow-sm has-[[data-slot=input-group-control]:focus-visible]:ring-0">
+        <MentionConnectDialog
+          request={mentions.connectRequest}
+          expertId={expertId}
+          onCancel={mentions.cancelConnect}
+          onConnected={mentions.resumeAfterConnect}
+        />
+        <InputGroup className="flex-col gap-3 !rounded-3xl border-border-base px-3.5 pt-3 pb-3.5 shadow-sm has-[[data-slot=input-group-control]:focus-visible]:ring-0">
           {attachments.map((name) => (
             <Text
               key={name}
@@ -171,5 +178,28 @@ export const SentMessage: Story = {
     await expect(
       within(canvasElement).getByTestId("sent-message"),
     ).toHaveTextContent("Personal Gmail");
+  },
+};
+
+export const NoMatchingIntegration: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.type(canvas.getByRole("textbox"), "Summarise my @linear");
+    await expect(
+      await canvas.findByRole("option", { name: /Connect an integration/ }),
+    ).toHaveAttribute("aria-selected", "false");
+  },
+};
+
+export const ConnectFromMention: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.type(canvas.getByRole("textbox"), "Summarise my @linear");
+    await canvas.findByText("No matching files or integrations.");
+    await userEvent.keyboard("{ArrowDown}{Enter}");
+    const body = within(canvasElement.ownerDocument.body);
+    await expect(
+      await body.findByRole("textbox", { name: "Search services" }),
+    ).toHaveValue("linear");
   },
 };

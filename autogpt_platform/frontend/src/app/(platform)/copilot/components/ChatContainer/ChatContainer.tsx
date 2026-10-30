@@ -508,7 +508,7 @@ export const ChatContainer = ({
             <SessionNotFound />
           ) : sessionId ? (
             <div className="relative flex h-full min-h-0 w-full flex-col bg-surface">
-              <div className="absolute right-0 top-0 z-30">
+              <div className="absolute top-0 right-0 z-30">
                 <ContextPanelToggle
                   sessionId={sessionId}
                   expert={chatExpert}
@@ -623,6 +623,7 @@ export const ChatContainer = ({
                           expertId={expertIdentity?.id ?? null}
                           modeSelector={modeSelector}
                           expertName={expertIdentity?.name ?? null}
+                          assistantName={expertIdentity?.name ?? null}
                           voiceMode={voiceMode}
                           voiceBar={voiceBar}
                         />

@@ -73,8 +73,7 @@ export function AssistantMessageActions({
           aria-disabled={!canRate}
           className={cn(
             !canRate && "opacity-50",
-            // TODO(tokens): no exact role for text-green-300, hover:text-green-300
-            feedback === "upvote" && "text-green-300 hover:text-green-300",
+            feedback === "upvote" && "text-success/60 hover:text-success/60",
             feedback === "downvote" && "!opacity-20",
           )}
         >
@@ -90,8 +89,7 @@ export function AssistantMessageActions({
           aria-disabled={!canRate}
           className={cn(
             !canRate && "opacity-50",
-            // TODO(tokens): no exact role for text-red-300, hover:text-red-300
-            feedback === "downvote" && "text-red-300 hover:text-red-300",
+            feedback === "downvote" && "text-error/60 hover:text-error/60",
             feedback === "upvote" && "!opacity-20",
           )}
         >

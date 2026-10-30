@@ -1,11 +1,11 @@
 "use client";
 
+import { FormProvider } from "react-hook-form";
 import {
-  Form,
   FormControl,
   FormField,
   FormItem,
-} from "@/components/__legacy__/ui/form";
+} from "@/components/molecules/Form/Form";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { Select } from "@/components/atoms/Select/Select";
@@ -40,15 +40,11 @@ export function NotificationForm({ preferences, user }: NotificationFormProps) {
       <Text variant="h3" size="large-semibold">
         Notifications
       </Text>
-      <Text
-        // TODO(tokens): no exact role (text-slate-400 #8A97A8)
-        variant="body"
-        className="mt-2 text-slate-400"
-      >
+      <Text variant="body" tone="muted" className="mt-2">
         Billing and account messages are always sent — they are about your
         account, not a promotion.
       </Text>
-      <Form {...form}>
+      <FormProvider {...form}>
         <form
           onSubmit={form.handleSubmit(onSubmit)}
           className="mt-6 flex flex-col gap-10"
@@ -58,8 +54,8 @@ export function NotificationForm({ preferences, user }: NotificationFormProps) {
               control={form.control}
               name="briefingFrequency"
               render={({ field }) => (
-                <FormItem className="flex flex-col gap-2">
-                  <div className="space-y-0.5">
+                <FormItem className="flex flex-col">
+                  <div className="mb-2 space-y-0.5">
                     <Text variant="h4" size="body-medium">
                       Briefing
                     </Text>
@@ -158,7 +154,7 @@ export function NotificationForm({ preferences, user }: NotificationFormProps) {
             </Button>
           </div>
         </form>
-      </Form>
+      </FormProvider>
     </div>
   );
 }

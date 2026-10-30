@@ -164,7 +164,7 @@ export function usePlatformCostContent(searchParams: InitialSearchParams) {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       if (data.truncated) {
-        // eslint-disable-next-line no-console
+        // eslint-disable-next-line no-console -- tell the admin the CSV export was cut short
         console.warn(
           `Export truncated: only the first ${data.total_rows} rows were included.`,
         );

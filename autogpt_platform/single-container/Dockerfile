@@ -4,7 +4,7 @@
 # be copied into the Debian appliance image. Browser-facing service URLs are
 # intentionally same-origin paths; the in-container reverse proxy decides
 # where they land at runtime.
-FROM node:24.22.1-bookworm-slim@sha256:1681862882da07ee5476fee047bcf34138833f1df42633bb25bcb0f438d5bf3d AS frontend
+FROM node:24.22.1-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS frontend
 
 WORKDIR /app
 RUN corepack enable
@@ -33,7 +33,7 @@ RUN pnpm run generate:api \
     && NODE_OPTIONS="--max-old-space-size=8192" pnpm build \
     && rm -f .env .env.local .env.production
 
-FROM node:24.22.1-bookworm-slim@sha256:1681862882da07ee5476fee047bcf34138833f1df42633bb25bcb0f438d5bf3d AS node-runtime
+FROM node:24.22.1-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS node-runtime
 
 ARG NPM_VERSION=12.0.2
 RUN npm install --global "npm@${NPM_VERSION}" \
@@ -45,6 +45,7 @@ FROM rabbitmq:4.3.6@sha256:3e5cc23235b0eb850f604e8ace10d9a9b6d05be3e36730e53522e
 
 # FalkorDB provides the Graphiti memory store. Copy only the server and module;
 # its browser UI is not part of the appliance image.
+# Ahead of infra's 4.12.5 until every FalkorDB pin and the Redis license bundle move together (OPEN-3746, #16224).
 FROM falkordb/falkordb-server:v4.20.1@sha256:8b676c2e72271f5d06541136eb214b0db50180636cc86f7ee38d63287e9b8d13 AS falkordb
 
 # autogpt-backend is supplied by Docker Bake from the existing backend
