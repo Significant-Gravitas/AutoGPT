@@ -79,13 +79,13 @@ export function OutputActions({
         className={cn(isPrimary ? "min-w-0" : "")}
       >
         {copied ? (
-          <Icon icon={Tick02Icon} className="size-4 text-green-600" />
+          <Icon icon={Tick02Icon} className="size-4 text-success" />
         ) : (
           <Icon
             icon={Copy01Icon}
             className={cn(
               "size-4",
-              isPrimary ? "text-white" : "text-neutral-500",
+              isPrimary ? "text-action-foreground" : "text-foreground-tertiary",
             )}
           />
         )}
@@ -103,7 +103,7 @@ export function OutputActions({
           icon={Download04Icon}
           className={cn(
             "size-4",
-            isPrimary ? "text-white" : "text-neutral-500",
+            isPrimary ? "text-action-foreground" : "text-foreground-tertiary",
           )}
         />
         {isPrimary && <span>Download All</span>}

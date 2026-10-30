@@ -14,25 +14,25 @@ it.each([
 });
 
 describe("semantic progress", () => {
-  it("resumes after an optional hire step disappears", () => {
+  it("resumes at hiring after personalization", () => {
     expect(
       resumeStep({
         progress: makeProgress({
           currentStep: "hire",
-          completedSteps: ["role", "painPoints"],
+          completedSteps: ["team", "autopilot", "role", "painPoints"],
         }),
         steps: buildStepLayout({ hasPaywall: true }),
       }),
-    ).toBe(3);
+    ).toBe(5);
   });
   it("honors a previous-step URL without allowing an incomplete step to be skipped", () => {
     const progress = makeProgress({
       currentStep: "subscription",
-      completedSteps: ["role", "painPoints"],
+      completedSteps: ["team", "autopilot", "role", "painPoints"],
     });
     const steps = buildStepLayout({ hasPaywall: true });
-    expect(resumeStep({ progress, steps, requestedStep: "role" })).toBe(1);
-    expect(resumeStep({ progress, steps, requestedStep: "preparing" })).toBe(3);
+    expect(resumeStep({ progress, steps, requestedStep: "role" })).toBe(3);
+    expect(resumeStep({ progress, steps, requestedStep: "preparing" })).toBe(5);
   });
 });
 

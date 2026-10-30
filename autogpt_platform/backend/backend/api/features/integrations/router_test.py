@@ -1057,6 +1057,49 @@ class TestDeviceAuthEndpoints:
         assert kwargs["expires_in_seconds"] > 600
         assert kwargs["state_metadata"]["device_code"] == "dev-code-secret"
 
+    def test_initiate_binds_the_code_to_the_connection_it_upgrades(self):
+        """A code that adds permissions to a connection must come back to it.
+
+        Without the binding, whoever signs in on the code's page becomes a
+        separate connection, which the panel then switches to.
+        """
+        handler = MagicMock()
+        handler.handle_default_scopes.side_effect = lambda scopes: scopes
+        handler.initiate_device_auth = AsyncMock(return_value=self._initiation())
+        mock_mgr = MagicMock()
+        mock_mgr.store.store_state_token = AsyncMock(
+            return_value=("state-token", "verifier")
+        )
+        upgrade = AsyncMock(return_value=["userinfo:read", "already:granted"])
+
+        p1, p2, p3, p4 = self._patched(handler, mock_mgr)
+        with (
+            p1,
+            p2,
+            p3,
+            p4,
+            patch(
+                "backend.api.features.integrations.router._prepare_scope_upgrade",
+                upgrade,
+            ),
+        ):
+            response = client.post(
+                f"/{self.PROVIDER}/device-auth/initiate"
+                "?scopes=userinfo:read&credential_id=cred-1"
+            )
+
+        assert response.status_code == 200
+        assert upgrade.await_args.args[1:] == (
+            ProviderName(self.PROVIDER),
+            "cred-1",
+            ["userinfo:read"],
+        )
+        handler.initiate_device_auth.assert_awaited_once_with(
+            ["userinfo:read", "already:granted"]
+        )
+        kwargs = mock_mgr.store.store_state_token.await_args.kwargs
+        assert kwargs["credential_id"] == "cred-1"
+
     def test_initiate_does_not_leak_upstream_error_text(self):
         handler = MagicMock()
         handler.handle_default_scopes.return_value = []
@@ -1125,7 +1168,9 @@ class TestDeviceAuthEndpoints:
 
         mock_mgr.store.consume_state_token.assert_not_awaited()
 
-    def test_poll_race_loser_does_not_create_a_second_credential(self):
+    def test_poll_race_loser_does_not_create_a_second_credential(
+        self, resume_after_reconnect: MagicMock
+    ):
         """Two polls can both see an approval; only the one that consumes wins.
 
         `consume_state_token` returning None means another poll already handled
@@ -1184,6 +1229,7 @@ class TestDeviceAuthEndpoints:
         assert response.json()["status"] == "approved"
         assert response.json()["credentials"] is None
         mock_merge.assert_not_awaited()
+        resume_after_reconnect.assert_not_called()
 
     def test_poll_does_not_leak_upstream_error_text(self):
         handler = MagicMock()
@@ -1204,7 +1250,9 @@ class TestDeviceAuthEndpoints:
         assert response.status_code == 502
         assert "internal-host-1" not in response.text
 
-    def test_poll_stores_the_credential_on_the_winning_approval(self):
+    def test_poll_stores_the_credential_on_the_winning_approval(
+        self, resume_after_reconnect: MagicMock
+    ):
         """The primary success path: consume wins, credential is stored.
 
         Every other approved-status test here makes `consume_state_token`
@@ -1264,6 +1312,8 @@ class TestDeviceAuthEndpoints:
         assert stored.scopes == ["userinfo:read", "payment_methods.agentic"]
         # And no secret rides along in the response.
         assert "do-not-leak" not in response.text
+        # Only the winner resumes the scheduled chats this connect fixes.
+        resume_after_reconnect.assert_called_once_with(JWT_USER_ID, "stripe_link")
 
     def test_poll_maps_a_missing_user_row_to_an_invalid_token(self):
         """A caller with no backend User row raises a Prisma RecordNotFound in

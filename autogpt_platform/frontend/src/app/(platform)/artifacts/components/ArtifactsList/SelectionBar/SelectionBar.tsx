@@ -41,13 +41,13 @@ export function SelectionBar({
       data-testid="artifacts-selection-bar"
     >
       <div className="flex items-center gap-3">
-        <Text variant="body-medium" as="span" className="text-zinc-900">
+        <Text variant="body-medium" as="span" tone="primary">
           {count} selected
         </Text>
         {count < totalCount ? (
           <button
             type="button"
-            className="text-sm text-zinc-500 underline-offset-2 hover:text-zinc-900 hover:underline"
+            className="text-sm text-foreground-tertiary underline-offset-2 hover:text-foreground-strong hover:underline"
             onClick={onSelectAll}
             data-testid="artifacts-select-all"
           >
@@ -70,7 +70,8 @@ export function SelectionBar({
           size="xs"
           disabled={isDeleting}
           onClick={handleDelete}
-          className="text-red-600 hover:bg-red-50 hover:text-red-700"
+          // oxlint-disable-next-line design-system/no-restyle -- a red outline action; the destructive variant is a red fill
+          className="text-error-hover hover:bg-error-surface hover:text-error-foreground"
           data-testid="artifacts-selection-delete"
         >
           <Icon icon={Delete02Icon} size={14} />
@@ -79,7 +80,7 @@ export function SelectionBar({
         <button
           type="button"
           aria-label="Clear selection"
-          className="inline-flex h-7 w-7 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-full text-foreground-tertiary transition-colors hover:bg-surface-hover hover:text-foreground-strong"
           onClick={onClear}
           data-testid="artifacts-selection-clear"
         >

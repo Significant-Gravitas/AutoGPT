@@ -24,9 +24,9 @@ export function ReceiptRelations({
   )
     return null;
   return (
-    <div className="mt-4 space-y-2 border-t border-zinc-200 pt-3">
+    <div className="mt-4 space-y-2 border-t border-border-base pt-3">
       {transaction.parent_execution_id && (
-        <Text variant="small" className="text-zinc-600">
+        <Text variant="small" tone="secondary">
           Started by
         </Text>
       )}
@@ -44,7 +44,7 @@ export function ReceiptRelations({
         />
       )}
       {(related.length > 0 || transaction.related_executions_has_more) && (
-        <Text variant="small" className="text-zinc-600">
+        <Text variant="small" tone="secondary">
           Other workflows used by this run
         </Text>
       )}
@@ -57,14 +57,14 @@ export function ReceiptRelations({
           onSelectRelated={onSelectRelated}
         />
       ))}
-      <Text variant="small" className="text-zinc-600">
+      <Text variant="small" tone="secondary">
         Any credit charges for related runs appear separately.
         {related.length > 0
           ? " The task page includes related runs in its total."
           : ""}
       </Text>
       {transaction.related_executions_has_more && (
-        <Text variant="small" className="text-zinc-600">
+        <Text variant="small" tone="secondary">
           More related runs are not shown here.
         </Text>
       )}
@@ -104,8 +104,8 @@ function RelatedExecution({
         <Button
           variant="ghost"
           size="small"
-          unmask={false}
-          className="min-h-11 min-w-0 whitespace-normal px-0 text-left text-purple-700"
+          // oxlint-disable-next-line design-system/no-restyle -- a bare text toggle inside the receipt; no Button variant drops the padding
+          className="min-h-11 min-w-0 whitespace-normal px-0 text-left text-accent-strong"
           onClick={() => onSelectRelated(execution.execution_id)}
         >
           {name}
@@ -113,17 +113,16 @@ function RelatedExecution({
       ) : href ? (
         <Link
           href={href}
-          className="inline-flex min-h-11 items-center text-purple-700"
+          // oxlint-disable-next-line design-system/no-restyle -- related-run links are brand-coloured; Link has no brand variant
+          className="inline-flex min-h-11 items-center text-accent-strong"
         >
           {name}
         </Link>
       ) : (
-        <Text variant="small" unmask={false}>
-          {name}
-        </Text>
+        <Text variant="small">{name}</Text>
       )}
       {amount != null && (
-        <TransactionAmount amount={amount} className="text-xs" />
+        <TransactionAmount amount={amount} variant="small-medium" />
       )}
     </div>
   );

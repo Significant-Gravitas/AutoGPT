@@ -72,15 +72,25 @@ export function YourPlanCard({ index = 0, showUsage = false }: Props) {
   if (isLoading || !plan) {
     return (
       <motion.div {...sectionMotion}>
-        <Skeleton className="h-[100px] rounded-[18px]" />
+        <Skeleton className="h-[100px] rounded-2xl" />
       </motion.div>
     );
   }
 
+  const planBadgeLabel = !plan.isPaidPlan
+    ? "Inactive"
+    : plan.isPendingCancel
+      ? "Cancellation scheduled"
+      : plan.isPendingDowngrade
+        ? "Downgrade scheduled"
+        : plan.isPendingCycleSwitch
+          ? "Cycle switch scheduled"
+          : "Active";
+
   return (
     <motion.section {...sectionMotion} className="flex w-full flex-col gap-4">
       <div className="sr-only">
-        <Text variant="body-medium" as="span" className="text-textBlack">
+        <Text variant="body-medium" as="span">
           Your plan
         </Text>
       </div>
@@ -88,30 +98,25 @@ export function YourPlanCard({ index = 0, showUsage = false }: Props) {
       <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-3 py-4">
         <div className="flex min-w-0 flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <Text variant="large-semibold" as="h2" className="text-textBlack">
+            <Text variant="large-semibold" as="h2">
               {plan.label}
             </Text>
-            <Badge
-              variant="success"
-              size="small"
-              className={
-                plan.isPendingCancel ||
-                plan.isPendingDowngrade ||
-                plan.isPendingCycleSwitch
-                  ? "bg-amber-100 text-amber-800"
-                  : "bg-violet-100 text-violet-800"
-              }
-            >
-              {!plan.isPaidPlan
-                ? "Inactive"
-                : plan.isPendingCancel
-                  ? "Cancellation scheduled"
-                  : plan.isPendingDowngrade
-                    ? "Downgrade scheduled"
-                    : plan.isPendingCycleSwitch
-                      ? "Cycle switch scheduled"
-                      : "Active"}
-            </Badge>
+            {plan.isPendingCancel ||
+            plan.isPendingDowngrade ||
+            plan.isPendingCycleSwitch ? (
+              <Badge variant="warning" size="small">
+                {planBadgeLabel}
+              </Badge>
+            ) : (
+              <Badge
+                variant="success"
+                size="small"
+                // oxlint-disable-next-line design-system/no-restyle -- the plan badge is brand-tinted; Badge has no brand tint
+                className="bg-brand/10 text-accent-strong"
+              >
+                {planBadgeLabel}
+              </Badge>
+            )}
             {isCycleToggleVisible ? (
               <CycleToggle
                 value={selectedCycle}
@@ -121,18 +126,18 @@ export function YourPlanCard({ index = 0, showUsage = false }: Props) {
             ) : null}
           </div>
           {plan.isAdminManaged ? (
-            <Text variant="body" as="span" className="text-zinc-700">
+            <Text variant="body" as="span" tone="body">
               Managed by your AutoGPT account team.{" "}
               <a
                 href={ENTERPRISE_CONTACT_URL}
-                className="font-medium text-purple-500 no-underline hover:text-purple-600"
+                className="font-medium text-brand no-underline hover:text-brand-hover"
               >
                 Contact us
               </a>{" "}
               for changes.
             </Text>
           ) : plan.isPaidPlan ? (
-            <Text variant="body" as="span" className="text-zinc-700">
+            <Text variant="body" as="span" tone="body">
               {formatCents(plan.monthlyCostCents)}
               {plan.billingCycle === "yearly" ? " / year" : " / month"}
               {plan.isPendingCancel && plan.pendingEffectiveAt
@@ -146,7 +151,7 @@ export function YourPlanCard({ index = 0, showUsage = false }: Props) {
                       : null}
             </Text>
           ) : (
-            <Text variant="body" as="span" className="text-zinc-700">
+            <Text variant="body" as="span" tone="body">
               Pick a plan to continue using AutoGPT.
             </Text>
           )}
@@ -154,7 +159,7 @@ export function YourPlanCard({ index = 0, showUsage = false }: Props) {
           plan.isPendingCycleSwitch &&
           plan.pendingEffectiveAt &&
           plan.pendingCycle ? (
-            <Text variant="small" as="span" className="text-zinc-500">
+            <Text variant="small" as="span" tone="muted">
               Switching to {plan.pendingCycle} {plan.label} on{" "}
               {formatShortDate(plan.pendingEffectiveAt)} · No charge today
             </Text>
@@ -194,8 +199,6 @@ export function YourPlanCard({ index = 0, showUsage = false }: Props) {
               size="small"
               onClick={onManage}
               disabled={!canManagePortal}
-              data-fast-goal="billing_portal_open"
-              data-fast-goal-surface="settings_billing"
             >
               Manage subscription
             </Button>
@@ -209,10 +212,6 @@ export function YourPlanCard({ index = 0, showUsage = false }: Props) {
               onClick={onUpgrade}
               disabled={isUpdatingTier || isRedirecting}
               loading={isUpdatingTier && !plan.nextTierIsTeamLink}
-              data-fast-goal="subscription_upgrade_click"
-              data-fast-goal-from={plan.label}
-              data-fast-goal-to={plan.nextTierLabel}
-              data-fast-goal-surface="settings_billing"
               rightIcon={
                 plan.nextTierIsTeamLink ? (
                   <Icon icon={LinkSquare01Icon} size={14} aria-hidden="true" />

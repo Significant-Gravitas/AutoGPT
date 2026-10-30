@@ -49,6 +49,7 @@ from backend.copilot.credential_selection import CredentialPin, CredentialPins
 from backend.copilot.scheduled_chats.forget import forget_routine
 from backend.data.user import get_user_by_id
 from backend.util.clients import get_scheduler_client
+from backend.util.exceptions import RoutineNotFoundError, RoutineUnansweredAsksError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
@@ -120,19 +121,6 @@ async def get_routine(routine_id: str) -> ExpertRoutine | None:
         where={"id": routine_id}
     )
     return to_model(row) if row is not None else None
-
-
-class RoutineNotFoundError(Exception):
-    """No such routine on this owner."""
-
-
-class RoutineUnansweredAsksError(Exception):
-    """The routine still has questions nobody answered.
-
-    A seeded proposal names what it needs to know — which repo, which inbox,
-    what hour. Scheduling it before those are answered would run it against
-    guesses on somebody's account, every day, unattended.
-    """
 
 
 async def install_routines(
@@ -274,6 +262,15 @@ async def enable_routine(
         # without this the row would say PINNED and behave like FRESH. The tool
         # always supplies one; this closes the RPC path, which does not.
         raise ValueError("A PINNED routine needs the chat it should fire into.")
+    # A THREAD routine that stays one keeps the thread its first fire minted,
+    # through a new cadence or prompt: its jobs name no chat, since each fire
+    # reads the row's, so the row is what has to keep it.
+    thread = (
+        row.sessionId
+        if mode == prisma.enums.ExpertRoutineSession.THREAD
+        and row.sessionMode == prisma.enums.ExpertRoutineSession.THREAD
+        else None
+    )
     schedule_ids = await create_routine_schedules(
         user_id=user_id,
         expert_id=expert_id,
@@ -291,7 +288,7 @@ async def enable_routine(
         "runAt": resolved_run_at,
         "scheduleIds": schedule_ids,
         "sessionMode": mode,
-        "sessionId": pinned,
+        "sessionId": pinned or thread,
         "enabledAt": now,
         # Re-arming a spent one-shot makes it pending again; leaving the old
         # stamp would enable a row that still reads as already run.

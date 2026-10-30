@@ -640,7 +640,8 @@ async def test_a_take_back_racing_a_new_registration_is_repaired_next_pass(
 
         report = await asyncio.wait_for(scope_reconcile.reconcile(crons), TIMEOUT)
 
-        assert report.restored == [learning]
+        assert report.restored == [_COMMUNITY, learning]
+        assert str(_job(service, _COMMUNITY).trigger.timezone) == TOKYO
         restored = _job(service, learning)
         assert str(restored.trigger.timezone) == TOKYO
         assert env.db.rows[USER].learning_job_id == learning

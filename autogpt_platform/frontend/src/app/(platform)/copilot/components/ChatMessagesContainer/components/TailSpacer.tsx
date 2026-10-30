@@ -48,16 +48,16 @@ export const TailSpacer = memo(function TailSpacer({
       applyHeight(0);
       return;
     }
-    const message = content.querySelector(
-      `[data-message-id="${CSS.escape(messageID)}"]`,
-    );
-    if (!(message instanceof HTMLElement)) {
-      applyHeight(0);
-      return;
-    }
+    const selector = `[data-message-id="${CSS.escape(messageID)}"]`;
+    if (!content.querySelector(selector)) applyHeight(0);
 
     function measure() {
-      if (!scroller || !spacer || !(message instanceof HTMLElement)) return;
+      if (!scroller || !spacer || !content) return;
+      // Looked up on every pass: the windowed transcript unmounts a row that
+      // scrolls far out of view and mounts a new node when it comes back.
+      // While it is away the last height stands.
+      const message = content.querySelector(selector);
+      if (!(message instanceof HTMLElement)) return;
       // Measured against the spacer's own top, which sits above its height —
       // reading the content box instead would feed this back into itself.
       const turnHeight =

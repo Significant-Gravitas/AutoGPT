@@ -29,7 +29,10 @@ logger = logging.getLogger(__name__)
 settings = Settings()
 
 _MODEL = os.environ.get("BRAIN_DUMP_GREETING_MODEL", "anthropic/claude-sonnet-5-5")
-_TIMEOUT_SECONDS = 30
+_TIMEOUT_SECONDS = 45
+# The model thinks adaptively and the thinking counts against this: at 3,000
+# one call in five came back cut off mid-JSON.
+_MAX_TOKENS = 6_000
 
 # The Langfuse copy of these instructions wins whenever it is reachable,
 # so it must be versioned in lockstep with ``_LOCAL_PROMPT`` — a voice
@@ -41,7 +44,10 @@ LANGFUSE_PROMPT_CACHE_TTL_SECONDS = 300
 
 MIN_PROMPTS = 5
 MAX_PROMPTS = 6
-MAX_GREETING_CHARS = 500
+# Asked of the model by both copies of the instructions; MAX_GREETING_CHARS
+# clips what comes back.
+GREETING_CHAR_LIMIT = 600
+MAX_GREETING_CHARS = 650
 MAX_TITLE_CHARS = 120
 MAX_PROMPT_CHARS = 2_000
 
@@ -73,11 +79,21 @@ PROMPT_ICONS = frozenset(
 )
 DEFAULT_PROMPT_ICON = "sparkle"
 
+# Sent as the system message on every generation, whichever copy of the
+# instructions is in use: the Langfuse copy wins in prod and predates it.
+COVERAGE_CONTRACT = f"""Leave out none of the problems the user described. \
+The greeting names every one, grouping those that belong together. Name a \
+problem no workflow or expert can take over too (a machine, a recipe, \
+on-site hardware, a personal decision), as something you will work through \
+with them yourself, never as a job for the team. When the transcript has \
+such a problem, make the last suggested prompt that work. The greeting may \
+run to {GREETING_CHAR_LIMIT} characters when it has to."""
+
 # The local fallback for the Langfuse-managed instructions. The greeting
 # diagnoses the dump so the user can see they were heard; the suggested
 # prompts are what turn that into an action. A Langfuse edit must keep the
 # same JSON contract — a malformed generation degrades to the template.
-_LOCAL_PROMPT = """You are Otto, this user's built-in Head of AI. \
+_LOCAL_PROMPT = f"""You are Otto, this user's built-in Head of AI. \
 You are theirs alone, never shared, and you run a team for them: you can \
 build real recurring automations (watch sources, draft content, send \
 digests, run agents while they sleep) and you can bring in experts to own \
@@ -86,7 +102,7 @@ dump about their work. Write the greeting they will see when they first \
 open the app.
 
 Return ONLY valid JSON with exactly these keys:
-- "greeting": 2-3 sentences, max 450 characters, second person, warm and \
+- "greeting": 2-3 sentences, max {GREETING_CHAR_LIMIT} characters, second person, warm and \
 concrete. Diagnose, the way a consultant would on day one: name the \
 specific problems you heard in their own terms ("you have a marketing \
 problem and a support problem"), then say you are putting a team \
@@ -173,9 +189,12 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
             response = await asyncio.wait_for(
                 client.chat.completions.create(
                     model=_MODEL,
-                    messages=[{"role": "user", "content": content}],
+                    messages=[
+                        {"role": "system", "content": COVERAGE_CONTRACT},
+                        {"role": "user", "content": content},
+                    ],
                     temperature=0.6,
-                    max_tokens=3000,
+                    max_tokens=_MAX_TOKENS,
                 ),
                 timeout=_TIMEOUT_SECONDS,
             )
@@ -201,8 +220,8 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
     if len(prompts) < MIN_PROMPTS:
         # A greeting with two suggestions under it looks broken; the
         # generic set is better than a half-empty one.
-        return greeting.strip()[:MAX_GREETING_CHARS], fallback_prompts()
-    return greeting.strip()[:MAX_GREETING_CHARS], prompts[:MAX_PROMPTS]
+        return _clip_greeting(greeting), fallback_prompts()
+    return _clip_greeting(greeting), prompts[:MAX_PROMPTS]
 
 
 def _integrations_block() -> str:
@@ -245,6 +264,20 @@ async def _fetch_langfuse_prompt() -> str | None:
     except Exception as e:  # local prompt is the fallback
         logger.warning("Brain dump greeting: Langfuse prompt fetch failed: %s", e)
         return None
+
+
+def _clip_greeting(greeting: str) -> str:
+    """``greeting`` within the cap, at its last sentence end if that keeps most
+    of it, otherwise at a word boundary."""
+    text = greeting.strip()
+    if len(text) <= MAX_GREETING_CHARS:
+        return text
+    window = text[: MAX_GREETING_CHARS + 1]
+    end = max(window.rfind(". "), window.rfind("! "), window.rfind("? "))
+    if end >= MAX_GREETING_CHARS // 2:
+        return text[: end + 1]
+    cut = text[:MAX_GREETING_CHARS]
+    return cut[: cut.rfind(" ")].rstrip(",;:") + "…"
 
 
 def _parse_prompts(raw: object) -> list[SuggestedPrompt]:

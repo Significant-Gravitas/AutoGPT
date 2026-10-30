@@ -20,20 +20,17 @@ import { ExpertAvatar } from "./ExpertAvatar/ExpertAvatar";
 // Otto's product-facing title when a session carries no expert identity.
 const DEFAULT_EXPERT_ROLE = "Head of AI";
 
-export type FloatingControls = "classic" | "newLayout";
+export type FloatingControls = "newLayout";
 
-// Below `lg` the chip joins the floating controls' row. Classic: centred on
-// MobileHeader's 46px buttons (20px down, 16px in), one button gap after the
-// last one; the chat column starts 8px in. New layout: the sidebar button
-// moves into the chip itself (see PlatformChrome) and the files and
-// integrations buttons onto the composer (ComposerPanelTab), so the chip
-// stands alone, centred near the top edge.
+// Below `lg` the sidebar button moves into the chip itself (see
+// PlatformChrome) and the files and integrations buttons onto the composer
+// (ComposerPanelTab), so the chip stands alone, centred near the top edge.
 const floatingControlsClassName: Record<FloatingControls, string> = {
-  classic: "max-lg:top-5 max-lg:pl-[116px]",
   newLayout: "max-lg:top-2 max-lg:justify-center",
 };
 
-const chipButtonClassName = "size-9 shrink-0 rounded-full hover:bg-zinc-100";
+const chipButtonClassName =
+  "size-9 shrink-0 rounded-full hover:bg-surface-hover";
 
 interface Props {
   expertIdentity?: ExpertIdentity | null;
@@ -62,7 +59,6 @@ export function ThreadHeader({
   const role = expertIdentity?.role ?? DEFAULT_EXPERT_ROLE;
   const jobTitle = expertIdentity?.jobTitle;
   const roleLabel = jobTitle || getExpertRoleLabel(role);
-  // Only the new layout mounts the app sidebar.
   const hasSidebar = Boolean(useAppSidebarToggle());
   const hasSidebarButton = floatingControls === "newLayout" && hasSidebar;
 
@@ -76,7 +72,7 @@ export function ThreadHeader({
       >
         <div
           className={cn(
-            "pointer-events-auto flex min-w-0 items-center gap-1 rounded-full border border-zinc-200/70 bg-white/75 py-1 pl-1.5 pr-5 shadow-sm backdrop-blur-md max-lg:shadow-md",
+            "pointer-events-auto flex min-w-0 items-center gap-1 rounded-full border border-border-base/70 bg-surface/75 py-1 pl-1.5 pr-5 shadow-sm backdrop-blur-md max-lg:shadow-md",
             hasSidebarButton && "max-md:pl-1",
           )}
         >

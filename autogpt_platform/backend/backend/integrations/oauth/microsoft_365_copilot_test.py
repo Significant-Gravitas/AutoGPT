@@ -11,6 +11,22 @@ from backend.integrations.oauth.microsoft_365_copilot import (
 )
 
 
+@pytest.fixture(autouse=True)
+def app_secrets(mocker) -> MagicMock:
+    """No Microsoft app unless a test configures one.
+
+    Settings are read once at import, so a developer's own app in ``.env``
+    would otherwise reach these tests, and a failed assertion on a token
+    request would print its secret.
+    """
+    secrets = mocker.patch(
+        "backend.integrations.oauth.microsoft_365_copilot.Settings"
+    ).return_value.secrets
+    secrets.microsoft_client_id = ""
+    secrets.microsoft_client_secret = ""
+    return secrets
+
+
 def _mock_client(mocker, responses: list[MagicMock]) -> AsyncMock:
     client = AsyncMock()
     client.post = AsyncMock(side_effect=responses)
@@ -26,10 +42,7 @@ def _mock_client(mocker, responses: list[MagicMock]) -> AsyncMock:
 
 
 @pytest.mark.asyncio
-async def test_device_auth_uses_public_client_without_secret(
-    mocker, monkeypatch
-) -> None:
-    monkeypatch.delenv("MICROSOFT_CLIENT_ID", raising=False)
+async def test_device_auth_uses_public_client_without_secret(mocker) -> None:
     response = MagicMock(status_code=200)
     response.json.return_value = {
         "device_code": "device-code",
@@ -108,6 +121,41 @@ async def test_poll_and_refresh_rotate_tokens_without_secret(
         assert call.kwargs["data"]["client_id"] == "configured-client"
         assert "client_secret" not in call.kwargs["data"]
     client.get.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_configured_app_sends_its_secret_on_poll_and_refresh(
+    mocker, app_secrets
+) -> None:
+    app_secrets.microsoft_client_id = "configured-client"
+    app_secrets.microsoft_client_secret = "configured-secret"
+    poll = MagicMock(status_code=200)
+    poll.json.return_value = {
+        "access_token": "access-one",
+        "refresh_token": "refresh-one",
+        "expires_in": 3600,
+        "scope": "User.Read Mail.Read",
+    }
+    refresh = MagicMock(status_code=200)
+    refresh.json.return_value = {
+        "access_token": "access-two",
+        "refresh_token": "refresh-two",
+        "expires_in": 3600,
+        "scope": "User.Read Mail.Read",
+    }
+    client = _mock_client(mocker, [poll, refresh])
+    client.get.return_value = MagicMock(
+        status_code=200, json=MagicMock(return_value={})
+    )
+    handler = Microsoft365CopilotDeviceAuthHandler()
+
+    result = await handler.poll_for_tokens("device-code")
+    assert result.credentials is not None
+    await handler.refresh_tokens(result.credentials)
+
+    for call in client.post.await_args_list:
+        assert call.kwargs["data"]["client_id"] == "configured-client"
+        assert call.kwargs["data"]["client_secret"] == "configured-secret"
 
 
 @pytest.mark.asyncio

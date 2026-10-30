@@ -26,6 +26,7 @@ from backend.data.subscription_activation import (
 )
 from backend.data.subscription_trial import TrialState
 from backend.data.subscription_trial_config import AcceptedTrialOffer
+from backend.data.subscription_trial_integration_fixtures import pin_usage_clock
 from backend.util.json import SafeJson
 
 
@@ -36,6 +37,7 @@ class ActivationCase(BaseModel):
     subscription: dict
     invoices: list[dict]
     redis: AsyncRedisClient
+    usage_now: datetime
 
     @property
     def invoice(self) -> dict:
@@ -132,18 +134,18 @@ class ActivationCase(BaseModel):
         return TrialState.from_db(row)
 
     async def counters(self, generation: str | None) -> tuple[int, int]:
-        keys = usage_keys(self.user_id, generation, datetime.now(UTC))
+        keys = usage_keys(self.user_id, generation, self.usage_now)
         values = [int(await self.redis.get(key) or 0) for key in keys]
         return values[0], values[1]
 
     async def add_cost(self, generation: str | None, cost: int) -> None:
-        for key in usage_keys(self.user_id, generation, datetime.now(UTC)):
+        for key in usage_keys(self.user_id, generation, self.usage_now):
             value = int(await self.redis.get(key) or 0) + cost
             await self.redis.set(key, value)
 
 
 @pytest_asyncio.fixture
-async def activation_case(mocker):
+async def activation_case(mocker, monkeypatch):
     target = urlparse(db.DATABASE_URL)
     local = (target.hostname, target.port, target.path) == (
         "127.0.0.1",
@@ -205,6 +207,7 @@ async def activation_case(mocker):
         user_id=user_id,
         invoices=[invoice],
         redis=await get_redis_async(),
+        usage_now=pin_usage_clock(monkeypatch),
         subscription={
             "id": subscription_id,
             "object": "subscription",

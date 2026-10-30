@@ -1,3 +1,5 @@
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import type { User } from "@/lib/auth/types";
 import { ImpersonationState } from "@/lib/impersonation";
 import { server } from "@/mocks/mock-server";
 import {
@@ -55,6 +57,8 @@ beforeEach(() => {
   mockToast.mockReset();
   reloadMock.mockReset();
   auth.user = { id: "admin-self" };
+  // A target is recorded against the admin the auth store has signed in.
+  useAuthStore.setState({ user: { id: "admin-self", role: "admin" } as User });
   // happy-dom can't navigate; a started impersonation reloads the page.
   Object.defineProperty(window.location, "reload", {
     configurable: true,
@@ -63,7 +67,10 @@ beforeEach(() => {
   mockUserRoutes(ALEX);
 });
 
-afterEach(() => ImpersonationState.clear());
+afterEach(() => {
+  ImpersonationState.clear();
+  useAuthStore.setState({ user: null });
+});
 
 describe("/admin/users", () => {
   it("shows a user found by exact email with their plan, organisations and filtered money links", async () => {
@@ -336,6 +343,8 @@ function mockUserRoutes(user: typeof ALEX) {
     http.get(`*/api/admin/users/${user.id}/organizations`, () =>
       HttpResponse.json([ORGANISATION]),
     ),
+    // The admin's own session, for the Sign-ins card's "that's you" warning.
+    http.get("*/api/auth/get-session", () => HttpResponse.json(null)),
   );
 }
 

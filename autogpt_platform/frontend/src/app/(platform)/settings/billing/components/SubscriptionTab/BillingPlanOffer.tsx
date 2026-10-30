@@ -9,7 +9,6 @@ interface Props {
   quiet?: boolean;
   description?: string;
   price: string | null;
-  isTrialOffer?: boolean;
   benefits: string[];
   actionLabel: string;
   caption: string;
@@ -23,7 +22,6 @@ export function BillingPlanOffer({
   quiet = false,
   description,
   price,
-  isTrialOffer = false,
   benefits,
   actionLabel,
   caption,
@@ -35,26 +33,32 @@ export function BillingPlanOffer({
       aria-label={`AutoGPT ${target}`}
       className={
         quiet
-          ? "flex h-full flex-col rounded-2xl border border-zinc-200 bg-white p-6"
-          : "flex h-full flex-col rounded-2xl border border-purple-200 bg-gradient-to-br from-purple-50 via-white to-blue-50 p-6"
+          ? "flex h-full flex-col rounded-2xl border border-border-base bg-surface p-6"
+          : "flex h-full flex-col rounded-2xl border border-brand/30 bg-gradient-to-br from-accent-surface via-surface to-info-surface p-6"
       }
     >
       <div className="flex items-center gap-2.5">
-        <span className="flex size-7 items-center justify-center rounded-lg bg-purple-100 text-purple-700">
+        <span className="flex size-7 items-center justify-center rounded-lg bg-accent-surface text-accent-strong">
           <Icon icon={SparklesIcon} size={17} />
         </span>
-        <Text variant="small-medium" className="text-purple-800">
+        <Text
+          variant="small-medium"
+          // oxlint-disable-next-line design-system/no-restyle -- no Text tone for accent-strong yet (Text helpers belong to P2)
+          className="text-accent-strong"
+        >
           AutoGPT {target}
         </Text>
       </div>
       <Text
         variant="h4"
         as="h2"
-        className="mb-3 mt-4 text-[23px] leading-8 tracking-[-0.04em]"
+        // oxlint-disable-next-line design-system/no-restyle -- the plan title is set tight on a 32px line; no Text variant has it
+        className="mb-3 mt-4 leading-8 tracking-display"
       >
         {title}
       </Text>
       {description && (
+        // oxlint-disable-next-line design-system/no-restyle -- caption copy at a 24px line height; no Text variant has it
         <Text variant="small" tone="secondary" className="mb-4 leading-6">
           {description}
         </Text>
@@ -63,9 +67,9 @@ export function BillingPlanOffer({
         <div className="flex flex-wrap items-baseline gap-1.5">
           <Text
             variant="h2"
-            unmask={!isTrialOffer}
             as="span"
-            className="font-sans text-[36px] font-semibold leading-10 tracking-[-0.045em]"
+            // oxlint-disable-next-line design-system/no-restyle -- the price is a sans display number; no Text variant has it
+            className="font-sans text-title font-semibold leading-10 tracking-display"
           >
             {price.split(" / ")[0]}
           </Text>
@@ -76,13 +80,12 @@ export function BillingPlanOffer({
       )}
       <ul className="my-5 space-y-2.5">
         {benefits.map((benefit) => (
-          <li key={benefit} className="flex items-start gap-2">
-            <Icon
-              icon={Tick02Icon}
-              size={15}
-              className="mt-0.5 shrink-0 text-purple-700"
-            />
-            <Text variant="small" className="text-zinc-700">
+          <li
+            key={benefit}
+            className="flex items-start gap-2 text-accent-strong"
+          >
+            <Icon icon={Tick02Icon} size={15} className="mt-0.5 shrink-0" />
+            <Text variant="small" tone="body">
               {benefit}
             </Text>
           </li>
@@ -94,14 +97,13 @@ export function BillingPlanOffer({
         className="mt-auto w-full"
         onClick={onAction}
         disabled={disabled}
-        unmask={!isTrialOffer}
       >
         {actionLabel}
       </Button>
       <Text
-        variant="small"
+        variant="small-loose"
         tone="secondary"
-        className="mt-2.5 text-center text-xs leading-5"
+        className="mt-2.5 text-center"
       >
         {caption}
       </Text>

@@ -8,6 +8,7 @@ import { builderRunBeads } from "./builder-run-beads";
 import { builderTypeField } from "./builder-type-field";
 import { copilotBackgroundStream } from "./copilot-background-stream";
 import { copilotIdle } from "./copilot-idle";
+import { copilotOpenLongThread } from "./copilot-open-long-thread";
 import { copilotResizeDrag } from "./copilot-resize-drag";
 import { copilotStreamCode } from "./copilot-stream-code";
 import { copilotStreamReply } from "./copilot-stream-reply";
@@ -37,6 +38,7 @@ export const SCENARIOS: Scenario[] = [
   builderTypeField,
   builderBlockMenuSearch,
   builderLoadGraph,
+  copilotOpenLongThread,
 ];
 
 export function findScenario(name: string) {

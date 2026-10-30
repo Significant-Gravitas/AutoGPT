@@ -6,9 +6,11 @@ import {
   getListPausedScheduledChatsMockHandler,
   getResumeScheduledChatMockHandler,
 } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
+import { getGetHomeDashboardQueryKey } from "@/app/api/__generated__/endpoints/home/home";
 import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotTurnJobInfo";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { server } from "@/mocks/mock-server";
+import { QueryClient } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import {
   fireEvent,
@@ -575,10 +577,18 @@ describe("FollowupsPage", () => {
     // A paused chat is still something scheduled: no empty state.
     expect(screen.queryByTestId("followups-empty")).toBeNull();
 
+    const invalidate = vi.spyOn(QueryClient.prototype, "invalidateQueries");
     fireEvent.click(
       within(row).getByRole("button", { name: "Resume Discord monitor" }),
     );
     await waitFor(() => expect(resumedKey).toBe("routine-1"));
+    // Home lists the paused chat under Needs you, so it is refreshed too.
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: getGetHomeDashboardQueryKey(),
+      }),
+    );
+    invalidate.mockRestore();
   });
 
   test("a paused follow-up can be deleted from its row", async () => {

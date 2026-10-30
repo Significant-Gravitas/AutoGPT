@@ -61,7 +61,7 @@ describe("the user page's money links", () => {
 
     expect(mockGrantHistory).toHaveBeenCalledWith(
       expect.objectContaining({ initialSearch: USER_ID }),
-      expect.anything(),
+      undefined,
     );
   });
 });

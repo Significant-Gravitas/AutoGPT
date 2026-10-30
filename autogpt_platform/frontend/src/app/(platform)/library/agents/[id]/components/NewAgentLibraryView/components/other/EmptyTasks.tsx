@@ -109,7 +109,12 @@ export function EmptyTasks({
           <div className="flex flex-col items-center gap-12">
             <div className="flex items-center justify-between gap-2">
               <div className="flex flex-col items-center gap-2">
-                <Text variant="h3" className="text-center text-[1.375rem]">
+                <Text
+                  variant="h4"
+                  as="h3"
+                  // oxlint-disable-next-line design-system/no-restyle -- no heading variant keeps the parent line height; h4 alone would move the empty state by 9px
+                  className="text-center leading-inherit"
+                >
                   Ready to get started?
                 </Text>
                 <Text variant="large" className="text-center">
@@ -137,8 +142,8 @@ export function EmptyTasks({
         </div>
       </RunDetailCard>
 
-      <div className="mt-4 flex flex-col gap-10 rounded-large border border-zinc-200 p-6 lg:mt-0 lg:w-[29.5rem]">
-        <Text variant="label" className="text-zinc-500">
+      <div className="mt-4 flex flex-col gap-10 rounded-large border border-border-base p-6 lg:mt-0 lg:w-[29.5rem]">
+        <Text variant="label" tone="muted">
           About this workflow
         </Text>
         <div className="flex flex-col gap-2">
@@ -152,7 +157,8 @@ export function EmptyTasks({
         <ShowMoreText
           previewLimit={170}
           variant="body"
-          className="-mt-4 text-textGrey"
+          // oxlint-disable-next-line design-system/no-restyle -- ShowMoreText has no tone prop yet
+          className="-mt-4 text-foreground-body"
         >
           {agent.description ||
             `This workflow is not yet published. Once it is published, You can publish your workflow by clicking the "Publish" button in the workflow editor.`}
@@ -160,19 +166,15 @@ export function EmptyTasks({
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-20">
             <div className="flex flex-col gap-0">
-              <Text variant="body-medium" className="text-black">
-                Workflow created on
-              </Text>
-              <Text variant="body" className="text-textGrey">
+              <Text variant="body-medium">Workflow created on</Text>
+              <Text variant="body" tone="body">
                 {createdAt}
               </Text>
             </div>
             {isUpdated ? (
               <div className="flex flex-col gap-0">
-                <Text variant="body-medium" className="text-black">
-                  Workflow updated on
-                </Text>
-                <Text variant="body" className="text-textGrey">
+                <Text variant="body-medium">Workflow updated on</Text>
+                <Text variant="body" tone="body">
                   {updatedAt}
                 </Text>
               </div>

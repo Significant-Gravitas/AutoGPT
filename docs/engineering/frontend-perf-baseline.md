@@ -870,3 +870,51 @@ Added with SECRT-3012: `dev` app code at `8eb406275`, same machine and settings.
 | `PopperAnchor props:children` | 1,417 |
 | `Text mount` | 1,260 |
 | `Text props:children` | 1,154 |
+
+## copilot-open-long-thread · baseline — median of 3 runs
+
+Measured on `dev` at `a7fe56d05` (2026-10-20), before the transcript was windowed (SECRT-3011), with `--channel chrome`. Opening the 2,000-message chat mounts 924 rows in one commit; the longest task is about 2.5 s.
+
+| metric | median | range | spread |
+| --- | --- | --- | --- |
+| commits | 27 | 27 – 28 | 3.7% |
+| total renders | 59,027 | 59,025 – 59,042 | 0.0% |
+| renders per commit | 2,186.1 | 2,108.6 – 2,186.2 | 3.5% |
+| max renders in one commit | 38,844 | 38,844 – 38,844 | 0.0% |
+| script time (ms) | 2,546 | 2,537 – 2,708 | 6.7% |
+| task time (ms) | 3,337 | 3,240 – 3,387 | 4.4% |
+| layout time (ms) | 72 | 71 – 80 | 12.5% |
+| style recalc time (ms) | 209 | 194 – 230 | 16.9% |
+| long tasks (≥ 50 ms) | 8 | 8 – 8 | 0.0% |
+| long task total (ms) | 3,007 | 2,986 – 3,155 | 5.6% |
+| heap used after GC (MB) | 119.8 | 119.7 – 119.8 | 0.1% |
+
+**Top components (median renders)**
+
+| name | renders |
+| --- | --- |
+| `Tooltip` | 3,337 |
+| `TooltipContent` | 3,337 |
+| `Streamdown` | 2,772 |
+| `Presence` | 2,303 |
+| `TooltipProvider` | 2,238 |
+| `Popper` | 2,235 |
+| `PopperAnchor` | 2,235 |
+| `PopperProvider` | 2,235 |
+| `Primitive.button` | 2,235 |
+| `Primitive.button.Slot` | 2,235 |
+
+**Top render causes (median renders)**
+
+| name | renders |
+| --- | --- |
+| `Tooltip mount` | 2,194 |
+| `TooltipContent mount` | 2,194 |
+| `Streamdown state#1` | 1,848 |
+| `Presence props:children` | 1,196 |
+| `Block mount` | 1,177 |
+| `Ie mount` | 1,177 |
+| `HugeiconsIcon mount` | 1,146 |
+| `Icon mount` | 1,146 |
+| `Primitive.div props:children` | 1,136 |
+| `Primitive.div.Slot props:children` | 1,136 |

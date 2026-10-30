@@ -52,7 +52,7 @@ async def test_learning_alone_registers_and_records_the_accounts_cron(env):
         "skipped": True,
         "reason": "dream_pass_disabled",
     }
-    assert env.scheduler.jobs == {LEARNING: PARIS}
+    assert env.scheduler.jobs == {f"community_rebuild_{USER}": PARIS, LEARNING: PARIS}
     row = env.db.rows[USER]
     assert (row.state, row.learning_job_id, row.nightly_job_id) == (
         ACTIVE,
@@ -186,7 +186,7 @@ async def test_a_timezone_change_reaches_an_owner_with_only_learning_on(env):
     results = await registry.reregister_user(USER)
 
     assert results[USER]["skill_learning_nightly"]["id"] == LEARNING
-    assert env.scheduler.jobs == {LEARNING: TOKYO}
+    assert env.scheduler.jobs == {f"community_rebuild_{USER}": TOKYO, LEARNING: TOKYO}
 
 
 def _backfill_finds(monkeypatch: pytest.MonkeyPatch, learning_owners: list[str]):
@@ -229,7 +229,7 @@ async def test_the_backfill_adopts_a_graphless_accounts_legacy_learning_cron(
 
     assert (report.accounts, report.learning_accounts) == (1, 1)
     assert env.db.rows[USER].learning_job_id == LEARNING
-    assert env.scheduler.jobs == {LEARNING: PARIS}
+    assert env.scheduler.jobs == {f"community_rebuild_{USER}": PARIS, LEARNING: PARIS}
 
 
 @pytest.mark.asyncio

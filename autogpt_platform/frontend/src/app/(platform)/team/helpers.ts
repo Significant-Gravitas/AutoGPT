@@ -49,7 +49,7 @@ export const AUTOPILOT_BLURB =
   "Your built-in generalist. It answers questions, runs workflows, and delegates work across your hired experts.";
 
 export const AUTOPILOT_PILL_CLASS =
-  "border border-zinc-200 bg-zinc-50 text-zinc-700";
+  "border border-border-base bg-surface-muted text-foreground-body";
 
 /** Otto owns whatever no hired expert does: every library workflow that
  *  is not installed on an expert, shaped like an expert workflow so the expert
@@ -427,8 +427,8 @@ export function chunkLibraryAgentIDs(workflows: ExpertWorkflowRef[]) {
 // sets no z-index, so its grey track paints first, the pill (z-10) over it
 // and the labels (z-20) on top.
 export const PROFILE_TABS_LIST_CLASS =
-  "relative w-full gap-0.5 overflow-x-auto rounded-full border-b-0 bg-zinc-100/80 p-1 [&>button]:flex-1";
+  "relative w-full gap-0.5 overflow-x-auto rounded-full border-b-0 bg-surface-hover/80 p-1 [&>button]:flex-1";
 export const PROFILE_TABS_INDICATOR_CLASS =
-  "pointer-events-none z-10 bottom-1 top-1 h-auto rounded-full bg-white shadow-sm ring-1 ring-zinc-200/70";
+  "pointer-events-none z-10 bottom-1 top-1 h-auto rounded-full bg-surface shadow-sm ring-1 ring-border-base/70";
 export const PROFILE_TABS_TRIGGER_CLASS =
-  "z-20 rounded-full px-3.5 py-1.5 text-[15px] max-sm:px-2 text-zinc-500 transition-colors hover:text-zinc-900 data-[state=active]:text-zinc-900 [&_svg]:!size-4";
+  "z-20 rounded-full px-3.5 py-1.5 text-body-md leading-inherit max-sm:px-2 text-foreground-tertiary transition-colors hover:text-foreground-strong data-[state=active]:text-foreground-strong [&_svg]:!size-4";

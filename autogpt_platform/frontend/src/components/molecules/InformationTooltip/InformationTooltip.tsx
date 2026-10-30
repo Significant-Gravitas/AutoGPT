@@ -28,18 +28,24 @@ export function InformationTooltip({ description, iconSize = 24 }: Props) {
             type="button"
             aria-label="More information"
             onClick={(event) => event.preventDefault()}
-            className="inline-flex flex-none items-center justify-center rounded-full p-1 text-current hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+            data-slot="information-tooltip-trigger"
+            className="inline-flex flex-none items-center justify-center rounded-full p-1 text-current hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong"
           >
-            <Info aria-hidden size={iconSize} />
+            <Info
+              data-slot="information-tooltip-icon"
+              aria-hidden
+              size={iconSize}
+            />
           </button>
         </TooltipTrigger>
-        <TooltipContent>
+        <TooltipContent data-slot="information-tooltip-popup">
           <ReactMarkdown
             components={{
               a: ({ node: _, ...props }) => (
                 <a
                   target="_blank"
-                  className="pointer-events-auto text-blue-400 underline"
+                  data-slot="information-tooltip-link"
+                  className="pointer-events-auto text-info underline"
                   {...props}
                 />
               ),

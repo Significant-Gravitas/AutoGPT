@@ -1,5 +1,5 @@
 import { http, HttpResponse } from "msw";
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
   act,
   render,
@@ -8,12 +8,13 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
-import { getPostV1RequestCreditTopUpMockHandler } from "@/app/api/__generated__/endpoints/credits/credits.msw";
 import { restoreFromBackForwardCache } from "@/tests/integrations/back-forward-cache";
 
 import { TopUpForm } from "../TopUpForm";
 
 const routerPush = vi.hoisted(() => vi.fn());
+
+const CHECKOUT_URL = "https://checkout.stripe.com/pay/cs_test_top_up";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: routerPush, replace: vi.fn(), prefetch: vi.fn() }),
@@ -25,16 +26,19 @@ vi.mock("next/navigation", () => ({
 function captureTopUpRequest() {
   let body: unknown = null;
   server.use(
-    getPostV1RequestCreditTopUpMockHandler(
-      async (info: { request: Request }) => {
-        body = await info.request.json();
-      },
-    ),
+    http.post("*/api/credits", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ checkout_url: CHECKOUT_URL });
+    }),
   );
   return { getBody: () => body };
 }
 
 describe("TopUpForm", () => {
+  beforeEach(() => {
+    routerPush.mockClear();
+  });
+
   test("submits the entered amount converted to cents", async () => {
     const { getBody } = captureTopUpRequest();
 
@@ -46,6 +50,8 @@ describe("TopUpForm", () => {
     fireEvent.click(screen.getByRole("button", { name: /top up/i }));
 
     await waitFor(() => expect(getBody()).toEqual({ credit_amount: 1500 }));
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith(CHECKOUT_URL));
+    await act(async () => {});
   });
 
   test("rejects amounts below the $5 minimum without calling the API", async () => {
@@ -65,9 +71,10 @@ describe("TopUpForm", () => {
   test("disables the submit button while the checkout request is in flight", async () => {
     // Hold the request open so the in-flight loading state is observable.
     server.use(
-      getPostV1RequestCreditTopUpMockHandler(
-        () => new Promise((resolve) => setTimeout(resolve, 300)),
-      ),
+      http.post("*/api/credits", async () => {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        return HttpResponse.json({ checkout_url: CHECKOUT_URL });
+      }),
     );
 
     render(<TopUpForm />);
@@ -79,6 +86,13 @@ describe("TopUpForm", () => {
 
     const button = await screen.findByRole("button", { name: /redirecting/i });
     expect((button as HTMLButtonElement).disabled).toBe(true);
+
+    // Let the held request finish inside the test: settling it after the
+    // file's environment is torn down fails the whole run.
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith(CHECKOUT_URL), {
+      timeout: 2000,
+    });
+    await act(async () => {});
   });
 
   test("stays busy while Stripe loads, and is usable again after Back restores the page", async () => {

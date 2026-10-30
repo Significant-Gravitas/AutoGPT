@@ -37,6 +37,7 @@ export function CategoryStep({ selectedCategory, color, onPick }: Props) {
           <span
             aria-hidden
             className="size-3 shrink-0 rounded-full"
+            // oxlint-disable-next-line design-system/no-inline-styles -- the swatch is the category's own colour, from data
             style={{ backgroundColor: option.hex }}
           />
           {option.label}

@@ -155,14 +155,11 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            className="absolute right-2 top-1 rounded p-1.5 transition-opacity hover:bg-neutral-100"
+            className="absolute right-2 top-1 rounded p-1.5 text-foreground-secondary transition-opacity hover:bg-surface-hover"
             onClick={(e) => e.stopPropagation()}
             aria-label="More actions"
           >
-            <Icon
-              icon={MoreHorizontalIcon}
-              className="h-5 w-5 text-neutral-600"
-            />
+            <Icon icon={MoreHorizontalIcon} className="h-5 w-5" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -188,7 +185,6 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
               handleDuplicateAgent();
             }}
             disabled={isDuplicatingAgent}
-            className="flex items-center gap-2"
           >
             Duplicate workflow
           </DropdownMenuItem>
@@ -198,7 +194,6 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
               e.stopPropagation();
               setShowMoveDialog(true);
             }}
-            className="flex items-center gap-2"
           >
             Move to folder
           </DropdownMenuItem>
@@ -211,7 +206,6 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
                   handleRemoveFromFolder();
                 }}
                 disabled={isRemovingFromFolder}
-                className="flex items-center gap-2"
               >
                 Remove from folder
               </DropdownMenuItem>
@@ -223,7 +217,8 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
               e.stopPropagation();
               setShowDeleteDialog(true);
             }}
-            className="flex items-center gap-2 text-red-600 focus:bg-red-50 focus:text-red-600"
+            // oxlint-disable-next-line design-system/no-restyle -- DropdownMenuItem has no destructive variant
+            className="text-error-foreground focus:bg-error-surface focus:text-error-foreground"
           >
             Delete workflow
           </DropdownMenuItem>

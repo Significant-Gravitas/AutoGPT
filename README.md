@@ -29,6 +29,9 @@
   <a href="https://discord.gg/autogpt">
     <img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdiscord.com%2Fapi%2Fv10%2Finvites%2Fautogpt%3Fwith_counts%3Dtrue&amp;query=%24.approximate_member_count&amp;label=Discord&amp;suffix=%20members&amp;logo=discord&amp;logoColor=white&amp;color=5865F2" alt="Join the AutoGPT Discord community — member count" />
   </a>
+  <a href="https://hub.docker.com/r/significantgravitas/autogpt">
+    <img src="https://img.shields.io/docker/v/significantgravitas/autogpt?sort=semver&label=Docker%20Hub&color=2496ED&logo=docker&logoColor=white" alt="AutoGPT image on Docker Hub" />
+  </a>
 </p>
 
 ## One conversation. The right expertise.
@@ -80,14 +83,47 @@ The hosted Platform is a paid service. See [current plans, trial terms, and usag
 
 Run AutoGPT on your own infrastructure. You provide model credentials, configure the deployment, and manage its updates and operation.
 
-Follow the [self-hosting guide](https://agpt.co/docs/platform/self-hosting/getting-started) for current requirements and supported installation paths. The [installer reference](docs/platform/installer.md) tracks appliance release availability; use the manual setup while its release gates are pending.
+The quickest way to self-host is the single-container image on
+Docker Hub, [`significantgravitas/autogpt`](https://hub.docker.com/r/significantgravitas/autogpt):
 
-[Read the self-hosting guide →](https://agpt.co/docs/platform/self-hosting/getting-started)
+```bash
+docker run -d \
+  --name autogpt \
+  --restart unless-stopped \
+  --shm-size 2g \
+  --ulimit nofile=65536:65536 \
+  --log-driver json-file \
+  --log-opt max-size=50m \
+  --log-opt max-file=5 \
+  -p 127.0.0.1:3000:3000 \
+  -e AUTOGPT_PUBLIC_URL=http://localhost:3000 \
+  -v autogpt-data:/data \
+  significantgravitas/autogpt:latest
+```
+
+Give the first boot a few minutes, then open
+[http://localhost:3000](http://localhost:3000), create your account, and make it
+the administrator:
+
+```bash
+docker exec autogpt autogpt-admin promote you@example.com
+```
+
+Requirements, closing signup, ports, model providers, backups, and upgrades are
+covered in the guide:
+
+[Read the single-container guide →](https://agpt.co/docs/platform/self-hosting/single-container)
+
+On Linux, macOS, and Windows, the [installer](https://agpt.co/docs/platform/self-hosting/installer#install)
+sets up the same image with one command.
+
+To run each service in its own container with Docker Compose, or to develop from
+source, use the [manual self-hosting guide](https://agpt.co/docs/platform/self-hosting/getting-started#manual-setup).
 
 | | Hosted Platform | Self-hosted |
 | --- | --- | --- |
 | Setup and operations | Managed by AutoGPT | Managed by you |
-| Model access | Built in | Bring your own model credentials |
+| Model access | Built in | Bring your own model credentials or a local model |
 | Cost | Paid plan and usage | Your infrastructure and model usage |
 | Data and infrastructure | Hosted by AutoGPT | Runs on your infrastructure |
 
@@ -100,6 +136,7 @@ Experts can use skills and workflows to do their jobs. The visual builder lets y
 - **[Visual builder](https://agpt.co/product/build/?utm_source=github&utm_medium=referral&utm_campaign=autogpt_readme&utm_content=build):** connect blocks, branch logic, and control the steps.
 - **[Marketplace](https://platform.agpt.co/marketplace?utm_source=github&utm_medium=referral&utm_campaign=autogpt_readme&utm_content=marketplace):** discover workflows you can adapt to your work.
 - **[Integrations](https://agpt.co/docs/integrations):** connect the tools your team uses.
+- **[API and MCP server](https://agpt.co/docs/platform/api-and-integrations/api-guide):** run and build workflows from your own code, or from an AI coding agent.
 
 ## Build with us
 

@@ -13,8 +13,6 @@ interface Props {
   destructive?: boolean;
   as?: "link" | "button";
   external?: boolean;
-  // New sidebar layout variant: lighter text weight + external-link glyph.
-  newLayout?: boolean;
 }
 
 const baseRowClasses =
@@ -34,8 +32,8 @@ function RowBody({
   pending?: boolean;
 }) {
   const barClasses = destructive
-    ? "absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full bg-red-500 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100"
-    : "absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full bg-neutral-900 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100";
+    ? "absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full bg-error opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100"
+    : "absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full bg-action-hover opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100";
 
   return (
     <>
@@ -51,7 +49,7 @@ function RowBody({
       ) : external ? (
         <Icon
           icon={LinkSquare01Icon}
-          className="relative z-10 shrink-0 text-neutral-700"
+          className="relative z-10 shrink-0 text-foreground-body"
           size={16}
           aria-hidden="true"
         />
@@ -91,16 +89,11 @@ export function AccountMenuRow({
   destructive = false,
   as = "link",
   external = false,
-  newLayout = false,
 }: Props) {
   const colorClasses = destructive
-    ? "text-neutral-700 hover:bg-red-50 hover:text-red-600 focus-visible:bg-red-50 focus-visible:text-red-600"
-    : "text-neutral-700 hover:bg-neutral-100 focus-visible:bg-neutral-100";
-  const rowClasses = cn(
-    baseRowClasses,
-    newLayout ? "font-normal" : "font-medium",
-    colorClasses,
-  );
+    ? "text-foreground-body hover:bg-error-surface hover:text-error-foreground focus-visible:bg-error-surface focus-visible:text-error-foreground"
+    : "text-foreground-body hover:bg-surface-hover focus-visible:bg-surface-hover";
+  const rowClasses = cn(baseRowClasses, "font-normal", colorClasses);
 
   if (as === "link" && href) {
     if (external) {
@@ -115,7 +108,7 @@ export function AccountMenuRow({
             icon={icon}
             label={label}
             destructive={destructive}
-            external={newLayout}
+            external
           />
         </a>
       );

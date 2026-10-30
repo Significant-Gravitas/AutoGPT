@@ -806,6 +806,7 @@ class TestRequestContextProvisioning:
 
         assert ctx.org_id == "org-personal"
         assert ctx.is_org_owner is True
+        assert prisma.orgmember.find_first.await_args is not None
         assert prisma.orgmember.find_first.await_args.kwargs["include"] == {"Org": True}
         prisma.orgmember.find_unique.assert_not_awaited()
 
@@ -864,6 +865,7 @@ class TestRequestContextProvisioning:
 
         assert ctx.org_id == "org-named"
         prisma.orgmember.find_first.assert_not_awaited()
+        assert prisma.orgmember.find_unique.await_args is not None
         assert prisma.orgmember.find_unique.await_args.kwargs["where"] == {
             "orgId_userId": {"orgId": "org-named", "userId": "user-1"}
         }

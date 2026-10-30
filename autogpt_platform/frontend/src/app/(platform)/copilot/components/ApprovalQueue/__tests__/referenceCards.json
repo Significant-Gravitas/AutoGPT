@@ -81,7 +81,8 @@
           "object_key": "folder_id"
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "delete_folder",
       "editable": false,
@@ -301,8 +302,8 @@
           }
         ],
         "reference_totals": {
-          "agent_ids": 7,
-          "folder_id": 1
+          "folder_id": 1,
+          "agent_ids": 7
         },
         "tool_call_id": "call-move_agents_to_folder",
         "turn": 1,
@@ -325,7 +326,8 @@
           "object_key": "folder_id"
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "move_agents_to_folder",
       "editable": false,
@@ -414,97 +416,10 @@
           "object_key": "schedule_id"
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "pause_schedule",
-      "editable": false,
-      "status": "WAITING"
-    }
-  },
-  {
-    "story": "Hire expert",
-    "review": {
-      "node_exec_id": "copilot-node-gate-hire_expert:3ffe656fbe28a59c",
-      "node_id": "copilot-node-gate-hire_expert",
-      "user_id": "user-1",
-      "session_id": "s1",
-      "graph_exec_id": null,
-      "graph_id": null,
-      "graph_version": null,
-      "payload": {
-        "tool": "hire_expert",
-        "arguments": {
-          "template_id": "tpl-ada",
-          "name": "Ada"
-        },
-        "clipped": [],
-        "fields": [
-          {
-            "key": "template_id",
-            "label": "Template",
-            "format": null
-          },
-          {
-            "key": "name",
-            "label": "Name",
-            "format": null
-          }
-        ],
-        "references": [
-          {
-            "key": "template_id",
-            "entity": "expert_template",
-            "id": "tpl-ada",
-            "name": "Ada",
-            "href": "/marketplace/experts/tpl-ada",
-            "kind": "Expert template",
-            "description": "Keeps the books balanced.",
-            "meta": [
-              {
-                "text": "Finance",
-                "cron": null,
-                "label": null,
-                "at": null
-              }
-            ],
-            "avatar_url": null,
-            "avatar_color": "#7c3aed",
-            "skills": [
-              "Month-end close",
-              "Receipt matching",
-              "Cash forecast",
-              "Payroll"
-            ],
-            "summary": "Finance"
-          }
-        ],
-        "reference_totals": {
-          "template_id": 1
-        },
-        "tool_call_id": "call-hire_expert",
-        "turn": 1,
-        "mode": "ask_first",
-        "subject": {
-          "kind": "tool",
-          "key": "hire_expert",
-          "name": "Hire",
-          "effect": "platform",
-          "irreversible": false,
-          "block_id": null
-        },
-        "reason": "Ask First is on for this chat, so this action needs your approval.",
-        "reason_kind": "mode",
-        "decided_by": null,
-        "chat_rules_allowed": ["allow", "judge"],
-        "headline": {
-          "ask": "Hire",
-          "object": "Ada",
-          "object_key": "name"
-        },
-        "spend": null,
-        "workflow": null
-      },
-      "instructions": "hire_expert",
       "editable": false,
       "status": "WAITING"
     }
@@ -591,7 +506,8 @@
           "object_key": "session_id"
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "message_session",
       "editable": false,
@@ -702,7 +618,8 @@
           "object_key": "credential_id"
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "grant_expert_credential",
       "editable": false,
@@ -791,7 +708,8 @@
           "object_key": "agent_id"
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "edit_agent",
       "editable": false,
@@ -868,7 +786,8 @@
           "object_key": "preset_id"
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "update_preset",
       "editable": false,
@@ -945,7 +864,8 @@
           "object_key": "preset_id"
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "delete_preset",
       "editable": false,
@@ -1022,7 +942,8 @@
           "object_key": "routine_id"
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "schedule_routine",
       "editable": false,
@@ -1139,7 +1060,8 @@
           "object_key": null
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "install_expert_workflow",
       "editable": false,
@@ -1209,7 +1131,8 @@
           "object_key": "workflow_id"
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "remove_expert_workflow",
       "editable": false,
@@ -1264,7 +1187,12 @@
             ],
             "avatar_url": null,
             "avatar_color": "#7c3aed",
-            "skills": ["Release notes", "Changelog"],
+            "skills": [
+              "Release notes",
+              "Changelog",
+              "Incident review",
+              "Hotfixes"
+            ],
             "summary": "Release manager · Engineering"
           }
         ],
@@ -1292,7 +1220,8 @@
           "object_key": "confirmation_id"
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "confirm_expert_change",
       "editable": false,
@@ -1393,7 +1322,8 @@
           "object_key": "path"
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "delete_workspace_file",
       "editable": false,
@@ -1463,7 +1393,8 @@
           "object_key": null
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "delete_preset",
       "editable": false,
@@ -1558,7 +1489,8 @@
           "object_key": null
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "schedule_followup",
       "editable": false,
@@ -1617,7 +1549,8 @@
           "object_key": null
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "schedule_followup",
       "editable": false,
@@ -1706,7 +1639,8 @@
           "object_key": "expert_id"
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "delegate_to_expert",
       "editable": false,

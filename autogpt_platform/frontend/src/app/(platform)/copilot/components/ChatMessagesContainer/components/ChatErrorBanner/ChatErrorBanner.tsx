@@ -5,6 +5,7 @@ import {
   describeChatError,
   type ChatErrorAction,
 } from "../../../../chatErrorGuidance";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   error: Error;
@@ -24,15 +25,19 @@ export function ChatErrorBanner({ error }: Props) {
   return (
     <div
       data-testid="chat-error-banner"
-      className="rounded-lg bg-red-50 p-4 text-sm text-red-700"
+      className="rounded-lg bg-error-surface p-4 text-sm text-error-foreground"
     >
       <details>
         <summary className="cursor-pointer font-medium">{title}</summary>
-        <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-red-600">
+        <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-error-foreground">
           {error.message}
         </pre>
       </details>
-      {note ? <p className="mt-1 text-xs text-zinc-500">{note}</p> : null}
+      {note ? (
+        <Text variant="small-tight" tone="muted" className="mt-1">
+          {note}
+        </Text>
+      ) : null}
       {action ? (
         <Button
           as="NextLink"

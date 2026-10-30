@@ -1,5 +1,6 @@
 "use client";
 
+// oxlint-disable-next-line design-system/no-legacy-import -- a menu trigger the size of its label; the Button atom's min-width would widen it
 import { extendedButtonVariants } from "@/components/atoms/Button/helpers";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import {
@@ -51,7 +52,9 @@ export function NewMenu({ selectedFolderId, selectedFolderName }: Props) {
             data-testid="artifacts-new-menu"
           >
             {isUploading ? (
-              <Icon icon={Loading03Icon} size={16} className="animate-spin" />
+              <span className="flex animate-spin">
+                <Icon icon={Loading03Icon} size={16} />
+              </span>
             ) : null}
             {isUploading ? "Uploading…" : "New"}
             <Icon icon={ArrowDown01Icon} size={16} />

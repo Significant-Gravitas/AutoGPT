@@ -1,10 +1,8 @@
-from unittest.mock import AsyncMock, patch
-
 import pytest
 
 from backend.copilot.config import ChatConfig
 
-from .config import GraphitiConfig, is_enabled_for_user
+from .config import GraphitiConfig
 
 _ENV_VARS_TO_CLEAR = (
     "GRAPHITI_FALKORDB_HOST",
@@ -20,6 +18,7 @@ _ENV_VARS_TO_CLEAR = (
     "CHAT_BASE_URL",
     "GRAPHITI_LLM_MODEL",
     "GRAPHITI_RERANKER_MODEL",
+    "GRAPHITI_RERANKER_OPENROUTER_VARIANT",
     "GRAPHITI_EMBEDDER_MODEL",
 )
 
@@ -126,6 +125,46 @@ class TestResolveLlmBaseUrl:
         )
         cfg = GraphitiConfig(llm_base_url="")
         assert cfg.resolve_llm_base_url() == "http://ollama.lan:11434/v1"
+
+
+class TestResolveRerankerModel:
+    """Through OpenRouter the reranker asks for the throughput-sorted
+    variant, which OpenAI's priority tier may serve; nowhere else does a
+    variant suffix mean anything."""
+
+    def test_openrouter_gets_the_nitro_variant_by_default(self) -> None:
+        cfg = GraphitiConfig(llm_base_url="")
+        assert cfg.resolve_reranker_model() == "gpt-6-luna:nitro"
+
+    def test_another_model_on_openrouter_gets_the_variant_too(self) -> None:
+        cfg = GraphitiConfig(llm_base_url="", reranker_model="openai/gpt-4.1-nano")
+        assert cfg.resolve_reranker_model() == "openai/gpt-4.1-nano:nitro"
+
+    def test_a_model_naming_its_own_variant_is_sent_as_named(self) -> None:
+        cfg = GraphitiConfig(
+            llm_base_url="", reranker_model="openai/gpt-4.1-nano:floor"
+        )
+        assert cfg.resolve_reranker_model() == "openai/gpt-4.1-nano:floor"
+
+    def test_an_empty_variant_sends_the_model_as_named(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("GRAPHITI_RERANKER_OPENROUTER_VARIANT", "")
+        cfg = GraphitiConfig(llm_base_url="")
+        assert cfg.resolve_reranker_model() == "gpt-6-luna"
+
+    def test_a_custom_endpoint_gets_the_model_as_named(self) -> None:
+        cfg = GraphitiConfig(llm_base_url="https://api.openai.com/v1")
+        assert cfg.resolve_reranker_model() == "gpt-6-luna"
+
+    def test_local_transport_gets_the_local_model_as_named(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _patch_chat_cfg(monkeypatch, _local_chat_cfg())
+        cfg = GraphitiConfig(llm_base_url="")
+        assert cfg.resolve_reranker_model() == (
+            "hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M"
+        )
 
 
 class TestResolveEmbedderApiKey:
@@ -262,25 +301,3 @@ class TestApplyLocalGraphitiModels:
         cfg = GraphitiConfig()
         assert cfg.llm_model == model
         assert cfg.reranker_model == model
-
-
-class TestIsEnabledForUser:
-    @pytest.mark.asyncio
-    async def test_none_user_returns_false(self) -> None:
-        result = await is_enabled_for_user(None)
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_empty_user_returns_false(self) -> None:
-        result = await is_enabled_for_user("")
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_delegates_to_feature_flag(self) -> None:
-        with patch(
-            "backend.util.feature_flag.is_feature_enabled",
-            new_callable=AsyncMock,
-            return_value=True,
-        ):
-            result = await is_enabled_for_user("some-user-id")
-        assert result is True

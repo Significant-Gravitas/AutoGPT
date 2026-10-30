@@ -130,11 +130,17 @@ async def _handle_help(interaction: discord.Interaction) -> None:
         "**AutoGPT Bot**\n\n"
         "Mention me in a server or DM me directly to chat.\n\n"
         "**Commands:**\n"
+        "- `/autogpt` — Ask a question, optionally picking an expert "
+        "(DMs only) and a mode\n"
         "- `/setup` — Link this server to your AutoGPT account\n"
         "- `/new` — Start a fresh conversation (DMs & threads)\n"
         "- `/resume` — Resume a past conversation (DMs only)\n"
         "- `/help` — Show this message\n"
         "- `/unlink` — Manage linked accounts\n\n"
+        "**Options:** start a message with `expert=<name>` to ask one of "
+        "your experts (DMs only; quote names with spaces, e.g. "
+        '`expert="Bolt the Builder"`), and/or `mode=fast` or `mode=smart`. '
+        "Use `/new` to go back to Otto.\n\n"
         "**How it works:**\n"
         "- In a server: the person who runs `/setup` pays for usage\n"
         "- In DMs: you link and pay for your own usage\n",

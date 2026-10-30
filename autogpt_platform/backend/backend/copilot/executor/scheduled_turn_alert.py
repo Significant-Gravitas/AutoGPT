@@ -99,11 +99,15 @@ class ScheduledTurnWatch:
             return
         if not isinstance(chunk, StreamToolOutputAvailable):
             return
+        # The CLI's own tools stay out, whatever they return: a missed Read or
+        # Grep is the model probing, and a file it read can hold anything,
+        # an error payload included.
+        if not _ours(chunk.toolName):
+            return
         error_type = tool_error_type(chunk.output)
         # A platform tool can also fail without an ErrorResponse payload (a
-        # login prompt, a held read, a plain-text error). The CLI's own tools
-        # stay out: a missed Read or Grep is the model probing, not a failure.
-        if error_type is None and not chunk.success and _ours(chunk.toolName):
+        # login prompt, a held read, a plain-text error).
+        if error_type is None and not chunk.success:
             error_type = UNCLASSIFIED
         tool = chunk.toolName or "unknown"
         if error_type is not None:
@@ -112,7 +116,7 @@ class ScheduledTurnWatch:
                 error_type=UNCLASSIFIED, text_hash=text_hash(chunk.output)
             )
             self._failure_details.append((tool, detail))
-        elif _ours(chunk.toolName) and chunk.toolName not in _LOOKUP_TOOLS:
+        elif chunk.toolName not in _LOOKUP_TOOLS:
             self._tool_successes += 1
 
     def outcome(self, turn_error: str | None) -> RunOutcome:

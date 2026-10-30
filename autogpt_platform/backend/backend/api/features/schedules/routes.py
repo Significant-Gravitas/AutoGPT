@@ -4,7 +4,12 @@ from typing import Annotated, Any
 from autogpt_libs.auth import get_request_context, get_user_id, requires_user
 from autogpt_libs.auth.models import RequestContext
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Security
-from starlette.status import HTTP_404_NOT_FOUND, HTTP_503_SERVICE_UNAVAILABLE
+from starlette.status import (
+    HTTP_400_BAD_REQUEST,
+    HTTP_404_NOT_FOUND,
+    HTTP_409_CONFLICT,
+    HTTP_503_SERVICE_UNAVAILABLE,
+)
 
 from backend.api.features.experts import experts_db
 from backend.api.features.schedule_visibility import visible_graph_schedules
@@ -12,8 +17,10 @@ from backend.api.features.schedules.model import (
     ResumeScheduledChatResponse,
     ScheduleCreationRequest,
     ScheduleUpdateRequest,
+    SetScheduledChatCadenceRequest,
 )
 from backend.copilot.rate_limit import enforce_payment_paywall
+from backend.copilot.scheduled_chats import cadence_service, forget
 from backend.copilot.scheduled_chats import service as scheduled_chats
 from backend.data import graph as graph_db
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
@@ -216,6 +223,65 @@ async def resume_scheduled_chat(
     return ResumeScheduledChatResponse(resumed=True)
 
 
+@router.get(
+    path="/schedules/followups/{schedule_key}/cadence",
+    summary="How often a scheduled chat runs, and how it could run less often",
+    operation_id="getScheduledChatCadence",
+)
+async def get_scheduled_chat_cadence(
+    user_id: Annotated[str, Security(get_user_id)],
+    schedule_key: str = Path(
+        ..., description="The routine's id, or the follow-up's schedule id"
+    ),
+) -> cadence_service.ScheduledChatCadence:
+    try:
+        return await cadence_service.get_cadence(user_id, schedule_key)
+    except Exception as e:
+        raise _cadence_error(e, schedule_key) from e
+
+
+@router.post(
+    dependencies=[Depends(enforce_payment_paywall)],
+    path="/schedules/followups/{schedule_key}/cadence",
+    summary="Run a scheduled chat less often",
+    operation_id="setScheduledChatCadence",
+)
+async def set_scheduled_chat_cadence(
+    user_id: Annotated[str, Security(get_user_id)],
+    body: SetScheduledChatCadenceRequest,
+    schedule_key: str = Path(
+        ..., description="The routine's id, or the follow-up's schedule id"
+    ),
+) -> cadence_service.ScheduledChatCadence:
+    try:
+        return await cadence_service.set_cadence(user_id, schedule_key, body.cron)
+    except Exception as e:
+        raise _cadence_error(e, schedule_key) from e
+
+
+def _cadence_error(error: Exception, schedule_key: str) -> HTTPException:
+    if isinstance(error, cadence_service.CadenceNotOffered):
+        return HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail="That cadence is not one this scheduled chat can switch to.",
+        )
+    if isinstance(error, cadence_service.CadenceNotFound):
+        return HTTPException(
+            status_code=HTTP_404_NOT_FOUND,
+            detail="This scheduled chat has no cadence to change.",
+        )
+    if isinstance(error, cadence_service.ScheduledChatPaused):
+        return HTTPException(
+            status_code=HTTP_409_CONFLICT,
+            detail="This scheduled chat is paused. Resume it first.",
+        )
+    logger.exception("Could not change the cadence of scheduled chat %s", schedule_key)
+    return HTTPException(
+        status_code=HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Its cadence could not be changed just now. Try again.",
+    )
+
+
 @router.delete(
     path="/schedules/{schedule_id}",
     summary="Delete execution schedule",
@@ -245,7 +311,7 @@ async def _forget_scheduled_chat(user_id: str, schedule_id: str) -> None:
     answered: a 500 would say the delete failed. A streak left behind keeps
     the chat listed as paused, and deleting it from there again clears it."""
     try:
-        await scheduled_chats.forget_scheduled_chat(user_id, schedule_id)
+        await forget.forget_scheduled_chat(user_id, schedule_id)
     except Exception:
         logger.warning(
             "Could not clear the failure streak of deleted schedule %s",

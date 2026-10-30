@@ -90,11 +90,15 @@ def wait_for_redis_cluster(max_retries=30, delay=2):
                     "../.env",
                     "exec",
                     "redis-0",
-                    "redis-cli",
-                    "-p",
-                    "17000",
-                    "cluster",
-                    "info",
+                    # The shards require REDIS_PASSWORD from backend/.env once
+                    # it is set; the shard has it in its own environment.
+                    "sh",
+                    "-c",
+                    (
+                        'if [ -n "$REDIS_PASSWORD" ]; then '
+                        'export REDISCLI_AUTH="$REDIS_PASSWORD"; fi; '
+                        "redis-cli -p 17000 cluster info"
+                    ),
                 ],
                 check=False,  # readiness is read from stdout, not from the exit code
                 capture_output=True,

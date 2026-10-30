@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { motion, useReducedMotion } from "framer-motion";
-import { memo, useMemo, useState } from "react";
+import { memo, useState } from "react";
 import {
   haveSameMinimapRows,
   tickColor,
@@ -17,6 +17,9 @@ const CARD_TRANSITION = { duration: 0.15, delay: 0.0875 } as const;
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
+  /** Scrolls to a message whose row is not in the DOM: the transcript only
+   *  mounts the rows near the viewport. */
+  onJumpToUnmounted?: (messageID: string) => void;
 }
 
 /**
@@ -25,10 +28,15 @@ interface Props {
  * one reveals that turn's opening line, and clicking scrolls the transcript to
  * it, so a long thread stays navigable without dragging the scrollbar.
  */
-export const ChatMinimap = memo(function ChatMinimap({ messages }: Props) {
+// memo-boundary: `messages` is a new array on every streamed flush, and the
+// comparator below renders the rail again only when the user rows change.
+export const ChatMinimap = memo(function ChatMinimap({
+  messages,
+  onJumpToUnmounted,
+}: Props) {
   const [hovered, setHovered] = useState<number | null>(null);
   const reducedMotion = useReducedMotion();
-  const entries = useMemo(() => toMinimapEntries(messages), [messages]);
+  const entries = toMinimapEntries(messages);
 
   if (entries.length < 3) return null;
 
@@ -43,15 +51,15 @@ export const ChatMinimap = memo(function ChatMinimap({ messages }: Props) {
         {entries.map((entry, index) => (
           <div
             key={entry.id}
-            className="relative cursor-pointer py-[3px]"
+            className="relative cursor-pointer py-0.5"
             onMouseEnter={() => setHovered(index)}
             onFocus={() => setHovered(index)}
             onBlur={() => setHovered(null)}
-            onClick={() => scrollToMessage(entry.id)}
+            onClick={() => scrollToMessage(entry.id, onJumpToUnmounted)}
             onKeyDown={(e) => {
               if (isKey(e, "Enter", " ")) {
                 e.preventDefault();
-                scrollToMessage(entry.id);
+                scrollToMessage(entry.id, onJumpToUnmounted);
               }
               if (isKey(e, "Escape")) {
                 setHovered(null);
@@ -79,13 +87,13 @@ export const ChatMinimap = memo(function ChatMinimap({ messages }: Props) {
                 }
                 animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
                 transition={reducedMotion ? { duration: 0 } : CARD_TRANSITION}
-                className="absolute left-[40px] top-1/2 z-30 w-80 origin-left -translate-y-1/2 rounded-2xl bg-white p-3.5 smooth-shadow-ring-sm"
+                className="absolute left-[40px] top-1/2 z-30 w-80 origin-left -translate-y-1/2 rounded-2xl bg-surface p-3.5 smooth-shadow-ring-sm"
               >
-                <p className="truncate text-[15px] text-zinc-900">
+                <p className="truncate text-body-md leading-inherit text-foreground-strong">
                   {entry.title}
                 </p>
                 {entry.body && (
-                  <p className="mt-1 line-clamp-3 text-[15px] leading-relaxed text-zinc-400">
+                  <p className="mt-1 line-clamp-3 text-body-md leading-relaxed text-foreground-subtle">
                     {entry.body}
                   </p>
                 )}
@@ -102,8 +110,14 @@ function areSameMinimapProps(prev: Props, next: Props) {
   return haveSameMinimapRows(prev.messages, next.messages);
 }
 
-function scrollToMessage(id: string) {
-  document
-    .querySelector(`[data-message-id="${CSS.escape(id)}"]`)
-    ?.scrollIntoView({ behavior: "smooth", block: "center" });
+function scrollToMessage(
+  id: string,
+  onJumpToUnmounted?: (messageID: string) => void,
+) {
+  const row = document.querySelector(`[data-message-id="${CSS.escape(id)}"]`);
+  if (row) {
+    row.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+  onJumpToUnmounted?.(id);
 }
