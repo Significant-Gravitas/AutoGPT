@@ -6,6 +6,7 @@ import {
 import { setSessionCookie } from "better-auth/cookies";
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
+import { MOBILE_AUTH_CALLBACK_PATH } from "./mobile-app-links";
 import { mobileConsentPage } from "./mobile-consent-page";
 
 const startSchema = z.object({
@@ -57,8 +58,9 @@ export function mobileAuth() {
           });
           ctx.setHeader("Cache-Control", "no-store");
           ctx.setHeader("Referrer-Policy", "no-referrer");
+          // A verified app link: only our signed apps can claim this URL.
           throw ctx.redirect(
-            `autogpt://auth/callback?${new URLSearchParams({
+            `${origin}${MOBILE_AUTH_CALLBACK_PATH}?${new URLSearchParams({
               code,
               state: ctx.body.state,
             })}`,

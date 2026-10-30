@@ -22,6 +22,7 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         buildConfigField("String", "APP_ORIGIN", "\"$appOrigin\"")
+        manifestPlaceholders["appHost"] = originURI.host
     }
     buildFeatures { buildConfig = true }
     buildTypes {

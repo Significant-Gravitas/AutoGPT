@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
   name: "AutoGPTShell",
-  platforms: [.macOS(.v13), .iOS(.v16)],
+  platforms: [.macOS(.v13), .iOS("17.4")],
   products: [.library(name: "ShellCore", targets: ["ShellCore"])],
   targets: [
     .target(name: "ShellCore", path: "AutoGPT/Core"),

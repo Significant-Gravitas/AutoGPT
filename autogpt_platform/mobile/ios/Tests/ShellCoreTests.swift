@@ -15,29 +15,37 @@ final class ShellCoreTests: XCTestCase {
     }
   }
 
-  func testCallbackNeedsTheRightStateAndAnExactRoute() throws {
+  func testCallbackNeedsTheRightStateAndOurHTTPSRoute() throws {
+    let policy = NavigationPolicy(origin: URL(string: "https://platform.agpt.co")!)
     let attempt = AuthAttempt()
     let code = String(repeating: "a", count: 43)
-    let valid = URL(string: "autogpt://auth/callback?code=\(code)&state=\(attempt.state)")!
+    let query = "?code=\(code)&state=\(attempt.state)"
+    let valid = URL(string: "https://platform.agpt.co/auth/mobile/callback" + query)!
     XCTAssertEqual(
-      attempt.exchangeBody(callback: valid), "code=\(code)&verifier=\(attempt.verifier)")
+      attempt.exchangeBody(callback: valid, policy: policy),
+      "code=\(code)&verifier=\(attempt.verifier)")
     for value in [
-      "autogpt://auth/callback?code=\(code)&state=wrong",
-      "autogpt://evil/callback?code=\(code)&state=\(attempt.state)",
-      "https://auth/callback?code=\(code)&state=\(attempt.state)",
+      "https://platform.agpt.co/auth/mobile/callback?code=\(code)&state=wrong",
+      valid.absoluteString + "&code=\(code)",
+      "autogpt://auth/callback" + query,
+      "https://platform.agpt.co.evil.com/auth/mobile/callback" + query,
+      "https://platform.agpt.co:444/auth/mobile/callback" + query,
+      "http://platform.agpt.co/auth/mobile/callback" + query,
+      "https://platform.agpt.co/auth/mobile/callback/x" + query,
+      valid.absoluteString + "#fragment",
     ] {
-      XCTAssertNil(attempt.exchangeBody(callback: URL(string: value)!))
+      XCTAssertNil(attempt.exchangeBody(callback: URL(string: value)!, policy: policy), value)
     }
-    XCTAssertNil(
-      attempt.exchangeBody(callback: URL(string: valid.absoluteString + "&code=\(code)")!))
   }
 
   func testAnExpiredAttemptCannotRedeemItsCallback() {
+    let policy = NavigationPolicy(origin: URL(string: "https://platform.agpt.co")!)
     let attempt = AuthAttempt(createdAt: Date(timeIntervalSinceNow: -600))
+    let code = String(repeating: "a", count: 43)
     let callback = URL(
       string:
-        "autogpt://auth/callback?code=\(String(repeating: "a", count: 43))&state=\(attempt.state)")!
-    XCTAssertNil(attempt.exchangeBody(callback: callback))
+        "https://platform.agpt.co/auth/mobile/callback?code=\(code)&state=\(attempt.state)")!
+    XCTAssertNil(attempt.exchangeBody(callback: callback, policy: policy))
   }
 
   func testBlobDownloadsMustBelongToTheTrustedOrigin() {

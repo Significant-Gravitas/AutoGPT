@@ -120,7 +120,7 @@ class MainActivity : ComponentActivity() {
     private fun handleAuthCallback(intent: Intent) {
         val uri = intent.data ?: return
         intent.data = null
-        val body = attempt?.exchangeBody(uri.toString())
+        val body = attempt?.exchangeBody(uri.toString(), policy)
         if (body == null) { showMessage("Sign-in expired or did not match this device. Tap Sign in to try again."); return }
         attempt = null
         lifecycleScope.launch {

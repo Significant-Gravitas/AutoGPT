@@ -16,11 +16,10 @@ class AuthAttempt(
         return "$origin/api/auth/mobile/start?challenge=$challenge&state=$state"
     }
 
-    fun exchangeBody(callback: String): String? = runCatching {
+    fun exchangeBody(callback: String, policy: NavigationPolicy): String? = runCatching {
         val uri = URI(callback)
-        if (System.currentTimeMillis() - createdAt >= 600_000 || uri.scheme != "autogpt" ||
-            uri.host != "auth" || uri.path != "/callback" || uri.rawUserInfo != null ||
-            uri.port != -1 || uri.fragment != null) return null
+        if (System.currentTimeMillis() - createdAt >= 600_000 || !policy.isTrusted(callback) ||
+            uri.path != CALLBACK_PATH || uri.fragment != null) return null
         val items = uri.rawQuery?.split("&")?.map {
             val pair = it.split("=", limit = 2)
             URLDecoder.decode(pair[0], "UTF-8") to URLDecoder.decode(pair.getOrElse(1) { "" }, "UTF-8")
@@ -33,6 +32,8 @@ class AuthAttempt(
     }.getOrNull()
 
     companion object {
+        const val CALLBACK_PATH = "/auth/mobile/callback"
+
         private fun randomToken(): String = encode(ByteArray(32).also { SecureRandom().nextBytes(it) })
         private fun encode(bytes: ByteArray): String = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
     }
