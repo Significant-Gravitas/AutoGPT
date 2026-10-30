@@ -34,10 +34,10 @@ export function DashboardHeader({
       className="flex flex-col gap-5 pb-2 pl-4 pr-1 md:flex-row md:items-end md:justify-between"
     >
       <div className="flex min-w-0 flex-col">
-        <Text variant="h4" as="h1" className="leading-[28px] text-textBlack">
+        <Text variant="h4" as="h1">
           Creator dashboard
         </Text>
-        <Text variant="body" className="mt-3 max-w-[640px] text-zinc-700">
+        <Text variant="body" tone="body" className="mt-3 max-w-[640px]">
           Track your store submissions, see how they perform, and ship updates
           for the workflows you publish.
         </Text>

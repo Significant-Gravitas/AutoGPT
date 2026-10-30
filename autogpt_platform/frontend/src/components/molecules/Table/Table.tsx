@@ -6,7 +6,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/__legacy__/ui/table";
+} from "./components/TablePrimitives";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
@@ -46,31 +46,49 @@ export function Table({
   const showAddButton = allowAddRow && !readOnly;
 
   return (
-    <div className={cn("flex flex-col gap-3", className)}>
-      <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
-        <BaseTable>
-          <TableHeader>
-            <TableRow className="border-b border-zinc-100 bg-zinc-50/50">
+    <div data-slot="table" className={cn("flex flex-col gap-3", className)}>
+      <div
+        data-slot="table-frame"
+        className="overflow-hidden rounded-xl border border-border-base bg-surface"
+      >
+        <BaseTable data-slot="table-element">
+          <TableHeader data-slot="table-header">
+            <TableRow
+              data-slot="table-header-row"
+              className="border-b border-separator bg-surface-muted/50"
+            >
               {columns.map((column) => (
                 <TableHead
                   key={column}
-                  className="h-10 px-3 text-sm font-medium text-zinc-600"
+                  data-slot="table-head"
+                  className="h-10 px-3 text-body font-medium leading-5 text-foreground-secondary"
                 >
                   {formatColumnTitle(column)}
                 </TableHead>
               ))}
-              {showDeleteColumn && <TableHead className="w-[50px]" />}
+              {showDeleteColumn && (
+                <TableHead data-slot="table-head" className="w-[50px]" />
+              )}
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <TableBody data-slot="table-body">
             {rows.map((row, rowIndex) => (
-              <TableRow key={rowIndex} className="border-none">
+              <TableRow
+                key={rowIndex}
+                data-slot="table-row"
+                className="border-none"
+              >
                 {columns.map((column) => (
-                  <TableCell key={`${rowIndex}-${column}`} className="p-2">
+                  <TableCell
+                    key={`${rowIndex}-${column}`}
+                    data-slot="table-cell"
+                    className="p-2"
+                  >
                     {readOnly ? (
                       <Text
                         variant="body"
-                        className="px-3 py-2 text-sm text-zinc-800"
+                        data-slot="table-cell-text"
+                        className="px-3 py-2 text-body leading-5 text-foreground-emphasis"
                       >
                         {row[column] || "-"}
                       </Text>
@@ -86,28 +104,34 @@ export function Table({
                         placeholder={formatPlaceholder(column)}
                         size="small"
                         wrapperClassName="mb-0"
+                        data-slot="table-cell-input"
                       />
                     )}
                   </TableCell>
                 ))}
                 {showDeleteColumn && (
-                  <TableCell className="p-2">
+                  <TableCell data-slot="table-cell" className="p-2">
                     <Button
                       variant="icon"
                       size="icon"
                       onClick={() => handleDeleteRow(rowIndex)}
                       aria-label="Delete row"
-                      className="text-zinc-400 transition-colors hover:text-red-500"
+                      data-slot="table-delete-row"
+                      className="text-foreground-subtle transition-colors hover:text-error"
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Trash2
+                        data-slot="table-delete-row-icon"
+                        className="h-4 w-4"
+                      />
                     </Button>
                   </TableCell>
                 )}
               </TableRow>
             ))}
             {showAddButton && (
-              <TableRow>
+              <TableRow data-slot="table-row">
                 <TableCell
+                  data-slot="table-cell"
                   colSpan={columns.length + (showDeleteColumn ? 1 : 0)}
                   className="p-2"
                 >
@@ -115,7 +139,13 @@ export function Table({
                     variant="outline"
                     size="small"
                     onClick={handleAddRow}
-                    leftIcon={<Plus className="h-4 w-4" />}
+                    data-slot="table-add-row"
+                    leftIcon={
+                      <Plus
+                        data-slot="table-add-row-icon"
+                        className="h-4 w-4"
+                      />
+                    }
                     className="w-fit"
                   >
                     {addRowLabel}

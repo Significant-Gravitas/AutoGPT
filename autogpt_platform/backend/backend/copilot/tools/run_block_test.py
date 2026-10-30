@@ -708,7 +708,12 @@ class TestRunBlockInputValidation:
             )
 
         assert isinstance(response, SetupRequirementsResponse)
-        assert "'spreadsheet'" in response.message
+        # The card shows this line to the user, so it names the field by its
+        # title (the key here, since the schema gives none), never quoted.
+        assert response.message == (
+            "Choose your spreadsheet in the card below. The step runs again "
+            "with your choice."
+        )
         inputs = response.setup_info.requirements["inputs"]
         picker_field = next((i for i in inputs if i["name"] == "spreadsheet"), None)
         assert picker_field is not None
@@ -1720,7 +1725,7 @@ class TestSpendApproval:
         return block
 
     @staticmethod
-    def _patches(block, gate, *, cost: int = 5, flag: bool = True):
+    def _patches(block, gate, *, cost: int = 5, billing_enabled: bool = True):
         credit = MagicMock(
             get_credits=AsyncMock(return_value=1_000), spend_credits=AsyncMock()
         )
@@ -1741,8 +1746,8 @@ class TestSpendApproval:
             patch("backend.copilot.tools.helpers.credit_db", return_value=credit),
             patch("backend.copilot.tools.helpers.workspace_db", return_value=workspace),
             patch(
-                "backend.copilot.tools.helpers.is_feature_enabled",
-                AsyncMock(return_value=flag),
+                "backend.copilot.tools.helpers.Settings",
+                return_value=MagicMock(config=MagicMock(enable_credit=billing_enabled)),
             ),
         ]
 
@@ -1796,11 +1801,11 @@ class TestSpendApproval:
         gate.spend_approval_required.assert_not_awaited()
 
     @pytest.mark.asyncio(loop_scope="session")
-    @pytest.mark.parametrize("flag", [True, False])
-    async def test_below_threshold_meters_only_with_the_flag_but_always_scopes(
-        self, flag
+    @pytest.mark.parametrize("billing_enabled", [True, False])
+    async def test_below_threshold_meters_only_when_billing_enabled_but_always_scopes(
+        self, billing_enabled
     ):
-        """The flag gates who is metered, never whose file scope the block
+        """Billing controls who is metered, never whose file scope the block
         runs in — ``workspace://`` inputs resolve against the session's expert
         either way."""
         session = make_session(user_id=_TEST_USER_ID, expert_id="expert-1")
@@ -1818,12 +1823,14 @@ class TestSpendApproval:
         with patch(
             "backend.copilot.tools.helpers.add_weekly_spend", AsyncMock()
         ) as add_spend:
-            response = await self._run(session, block, gate, flag=flag)
+            response = await self._run(
+                session, block, gate, billing_enabled=billing_enabled
+            )
 
         assert isinstance(response, BlockOutputResponse)
         assert block.executed
         assert captured["ctx"].expert_id == "expert-1"
-        if flag:
+        if billing_enabled:
             add_spend.assert_awaited_once_with("expert-1", 5)
         else:
             add_spend.assert_not_awaited()

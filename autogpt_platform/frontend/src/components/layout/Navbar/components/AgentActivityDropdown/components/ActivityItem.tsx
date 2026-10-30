@@ -26,7 +26,7 @@ function ActivityNavIndicator() {
     return (
       <LoadingSpinner
         size="small"
-        className="shrink-0 text-neutral-400"
+        className="shrink-0 text-foreground-subtle"
         aria-hidden="true"
       />
     );
@@ -35,7 +35,7 @@ function ActivityNavIndicator() {
     <Icon
       icon={ArrowUpRight01Icon}
       size={16}
-      className="shrink-0 text-neutral-400"
+      className="shrink-0 text-foreground-subtle"
       aria-hidden="true"
     />
   );
@@ -49,46 +49,41 @@ export function ActivityItem({ execution }: Props) {
   function getStatusIcon() {
     switch (execution.status) {
       case AgentExecutionStatus.QUEUED:
-        return (
-          <Icon icon={Clock01Icon} size={18} className="text-purple-500" />
-        );
+        return <Icon icon={Clock01Icon} size={18} className="text-brand" />;
       case AgentExecutionStatus.RUNNING:
         return (
           <Icon
             icon={Loading03Icon}
             size={18}
-            className="animate-spin text-purple-500"
+            className="animate-spin text-brand"
           />
         );
       case AgentExecutionStatus.COMPLETED:
         return isCompletedWithErrors(execution) ? (
-          <Icon icon={Alert02Icon} size={18} className="text-amber-600" />
-        ) : (
           <Icon
-            icon={CheckmarkCircle02Icon}
+            icon={Alert02Icon}
             size={18}
-            className="text-purple-500"
+            className="text-warning-foreground"
           />
+        ) : (
+          <Icon icon={CheckmarkCircle02Icon} size={18} className="text-brand" />
         );
       case AgentExecutionStatus.FAILED:
-        return (
-          <Icon icon={Alert01Icon} size={18} className="text-purple-500" />
-        );
+        return <Icon icon={Alert01Icon} size={18} className="text-brand" />;
       case AgentExecutionStatus.TERMINATED:
-        return (
-          <Icon icon={StopCircleIcon} size={18} className="text-purple-500" />
-        );
+        return <Icon icon={StopCircleIcon} size={18} className="text-brand" />;
       case AgentExecutionStatus.INCOMPLETE:
         return (
-          <Icon
-            icon={MinusSignCircleIcon}
-            size={18}
-            className="text-purple-500"
-          />
+          <Icon icon={MinusSignCircleIcon} size={18} className="text-brand" />
         );
       case AgentExecutionStatus.REVIEW:
         return (
-          <Icon icon={Alert01Icon} size={18} className="text-yellow-600" />
+          <Icon
+            icon={Alert01Icon}
+            size={18}
+            // oxlint-disable-next-line design-system/no-raw-colors -- orange/yellow hue kept; warning-foreground would be a hue change (deferred visual change)
+            className="text-yellow-600"
+          />
         );
       default:
         return null;
@@ -158,10 +153,7 @@ export function ActivityItem({ execution }: Props) {
       {/* Icon + Agent Name */}
       <div className="flex items-center space-x-2">
         {getStatusIcon()}
-        <Text
-          variant="small-medium"
-          className="max-w-44 truncate text-gray-900"
-        >
+        <Text variant="small-medium" className="max-w-44 truncate">
           {execution.agent_name}
         </Text>
       </div>
@@ -172,7 +164,11 @@ export function ActivityItem({ execution }: Props) {
           <Text
             key={index}
             variant="small"
-            className={index === 0 ? "!text-zinc-600" : "!text-zinc-500"}
+            className={
+              index === 0
+                ? "!text-foreground-secondary"
+                : "!text-foreground-tertiary"
+            }
           >
             {line}
           </Text>

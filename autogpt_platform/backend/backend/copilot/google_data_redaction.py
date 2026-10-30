@@ -55,6 +55,7 @@ from backend.integrations.providers import ProviderName
 from backend.util.settings import Settings
 
 REDACTED = "[redacted: Google data]"
+_IMAGE_REDACTED = "[redacted: image data]"
 
 # Set on a ``tool-outputs/`` workspace file that saved a Google block's output,
 # so reading it back is recognised as Google data too.
@@ -82,8 +83,9 @@ _redacting_every_text: ContextVar[bool] = ContextVar(
 
 def redact_google_data(data: Any) -> Any:
     """Return *data* with Google block calls and results replaced by
-    :data:`REDACTED`. Everything else is returned unchanged, unless
-    :func:`tracing_google_data` is active, when every text is replaced."""
+    :data:`REDACTED` and image payloads omitted. Everything else is returned
+    unchanged, unless :func:`tracing_google_data` is active, when every text
+    is replaced."""
     if _redacting_every_text.get():
         return _redact_every_text(data)
     return _redact(data, _google_call_ids(data))
@@ -234,6 +236,7 @@ def _redact(node: Any, google_ids: set[str]) -> Any:
         return [_redact(item, google_ids) for item in node]
     if not isinstance(node, dict):
         return node
+    node = _without_image_data(node)
     redacted = {key: _redact(value, google_ids) for key, value in node.items()}
     if _answered_call_id(node) in google_ids and "content" in node:
         redacted["content"] = REDACTED
@@ -243,6 +246,23 @@ def _redact(node: Any, google_ids: set[str]) -> Any:
     if is_google_call(node):
         redacted = _without_payload(redacted)
     return redacted
+
+
+def _without_image_data(node: dict[str, Any]) -> dict[str, Any]:
+    """Wire image blocks lose provenance on replay, so never trace their pixels."""
+    if node.get("type") == "image":
+        if "data" in node:
+            node = {**node, "data": _IMAGE_REDACTED}
+        source = node.get("source")
+        if isinstance(source, dict) and source.get("type") == "base64":
+            return {**node, "source": {**source, "data": _IMAGE_REDACTED}}
+    if node.get("type") == "image_url":
+        image_url = node.get("image_url")
+        if isinstance(image_url, dict):
+            return {**node, "image_url": {**image_url, "url": _IMAGE_REDACTED}}
+    if node.get("type") == "input_image" and "image_url" in node:
+        return {**node, "image_url": _IMAGE_REDACTED}
+    return node
 
 
 def _redact_every_text(node: Any) -> Any:

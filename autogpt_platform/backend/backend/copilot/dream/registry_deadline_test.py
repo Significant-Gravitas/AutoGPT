@@ -161,7 +161,7 @@ async def test_a_slow_resume_is_cut_off_as_a_whole_not_per_call(env, monkeypatch
         (env.db, "record_scope_jobs"),
         (env.scheduler, "add_scope_community_rebuild_schedule"),
         (env.scheduler, "add_scope_nightly_batch_schedule"),
-        (scope_jobs, "is_feature_enabled"),
+        (scope_jobs, "evaluate_feature_flag"),
         (registry, "resolve_user_timezone"),
     ):
         monkeypatch.setattr(owner, name, _slowed(getattr(owner, name), step))
@@ -184,14 +184,17 @@ def _slowed(call: Callable[..., Awaitable[Any]], seconds: float):
 @pytest.mark.asyncio
 async def test_a_new_expert_registration_is_bounded_when_flags_hang(env, monkeypatch):
     hang = Hang()
-    monkeypatch.setattr(scope_jobs, "is_feature_enabled", hang.forever)
+    monkeypatch.setattr(scope_jobs, "evaluate_feature_flag", hang.forever)
     started = time.monotonic()
 
     await registry.ensure_expert_scheduled(USER, "expert-1")
 
     assert time.monotonic() - started < PROMPT
-    assert hang.started == hang.cancelled == 2
-    assert env.db.rows == {}
+    assert hang.started == hang.cancelled == 1
+    assert env.db.rows[EXPERT.scope_key].community_job_id == (
+        f"community_rebuild_{EXPERT.scope_key}"
+    )
+    assert env.db.rows[EXPERT.scope_key].nightly_job_id is None
 
 
 @pytest.mark.asyncio

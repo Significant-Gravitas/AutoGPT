@@ -1,4 +1,4 @@
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { beautifyString, cn } from "@/lib/utils";
 import { Plus } from "lucide-react";
 import Image from "next/image";
@@ -8,7 +8,8 @@ import { Button } from "@/components/atoms/Button/Button";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
 import { useAddBlockToBuilder } from "./hooks/useAddBlockToBuilder";
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
-import { blockDragPreviewStyle } from "./style";
+import { blockDragPreviewClassName, blockDragPreviewStyle } from "./style";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
@@ -48,6 +49,7 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
 
     const dragPreview = document.createElement("div");
     dragPreview.style.cssText = blockDragPreviewStyle;
+    dragPreview.className = blockDragPreviewClassName;
     dragPreview.textContent = beautifyString(title || "").replace(
       / Block$/,
       "",
@@ -64,15 +66,15 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
       draggable={true}
       variant={"ghost"}
       className={cn(
-        "group flex h-16 w-full min-w-[7.5rem] items-center justify-start gap-3 whitespace-normal rounded-[0.75rem] bg-zinc-50 px-[0.875rem] py-[0.625rem] text-start shadow-none",
-        "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:cursor-not-allowed",
+        "group flex h-16 w-full min-w-[7.5rem] items-center justify-start gap-3 whitespace-normal rounded-xl bg-surface-muted px-3.5 py-2.5 text-start shadow-none",
+        "hover:cursor-default hover:bg-surface-hover focus:ring-0 active:bg-surface-hover active:ring-1 active:ring-border-strong disabled:cursor-not-allowed",
         className,
       )}
       onDragStart={handleDragStart}
       onClick={handleClick}
       {...rest}
     >
-      <div className="relative h-[2.625rem] w-[2.625rem] rounded-[0.5rem] bg-white">
+      <div className="relative h-[2.625rem] w-[2.625rem] rounded-lg bg-surface">
         {icon_url && (
           <Image
             src={icon_url}
@@ -85,33 +87,35 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
       </div>
       <div className="flex flex-1 flex-col items-start gap-0.5">
         {title && (
-          <span
-            className={cn(
-              "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
-            )}
+          <Text
+            variant="body-medium"
+            as="span"
+            tone="emphasis"
+            className={cn("line-clamp-1 group-disabled:text-foreground-subtle")}
           >
             {highlightText(
               beautifyString(title).replace(/ Block$/, ""),
               highlightedText,
             )}
-          </span>
+          </Text>
         )}
         {description && (
-          <span
-            className={cn(
-              "line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
-            )}
+          <Text
+            variant="small-loose"
+            as="span"
+            tone="muted"
+            className={cn("line-clamp-1 group-disabled:text-foreground-subtle")}
           >
-            {highlightText(description, highlightedText)}
-          </span>
+            {highlightText(description, highlightedText, "small-bold-loose")}
+          </Text>
         )}
       </div>
       <div
         className={cn(
-          "flex h-7 w-7 items-center justify-center rounded-[0.5rem] bg-zinc-700 group-disabled:bg-zinc-400",
+          "flex h-7 w-7 items-center justify-center rounded-lg bg-foreground-body group-disabled:bg-foreground-subtle",
         )}
       >
-        <Plus className="h-5 w-5 text-zinc-50" strokeWidth={2} />
+        <Plus className="h-5 w-5 text-action-foreground" strokeWidth={2} />
       </div>
     </Button>
   );
@@ -121,16 +125,16 @@ const IntegrationBlockSkeleton = ({ className }: { className?: string }) => {
   return (
     <Skeleton
       className={cn(
-        "flex h-16 w-full min-w-[7.5rem] animate-pulse items-center justify-start gap-3 rounded-[0.75rem] bg-zinc-100 px-[0.875rem] py-[0.625rem]",
+        "flex h-16 w-full min-w-[7.5rem] animate-pulse items-center justify-start gap-3 rounded-xl bg-surface-hover px-3.5 py-2.5",
         className,
       )}
     >
-      <Skeleton className="h-[2.625rem] w-[2.625rem] rounded-[0.5rem] bg-zinc-200" />
+      <Skeleton className="h-[2.625rem] w-[2.625rem] rounded-lg bg-surface-active" />
       <div className="flex flex-1 flex-col items-start gap-0.5">
-        <Skeleton className="h-[1.375rem] w-24 rounded bg-zinc-200" />
-        <Skeleton className="h-5 w-32 rounded bg-zinc-200" />
+        <Skeleton className="h-[1.375rem] w-24 rounded bg-surface-active" />
+        <Skeleton className="h-5 w-32 rounded bg-surface-active" />
       </div>
-      <Skeleton className="h-7 w-7 rounded-[0.5rem] bg-zinc-200" />
+      <Skeleton className="h-7 w-7 rounded-lg bg-surface-active" />
     </Skeleton>
   );
 };

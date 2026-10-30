@@ -11,6 +11,7 @@ from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field, JsonValue, ValidationError
 
 from backend.api.features.experts import scheduling as experts_scheduling
+from backend.api.features.orgs.db import resolve_member_tenancy
 from backend.blocks import get_block
 from backend.blocks._base import Block, BlockCostType, BlockSchema, BlockType
 from backend.copilot.rate_limit import UserPaywalledError, is_user_paywalled
@@ -1229,6 +1230,18 @@ async def _resolve_expert_execution_tenancy(
     return await get_experts_db().resolve_private_expert_tenancy(user_id, expert_id)
 
 
+async def _resolve_runner_tenancy(
+    user_id: str, organization_id: str | None, team_id: str | None
+) -> tuple[str | None, str | None]:
+    """``resolve_member_tenancy`` for a run's org/team, called directly in the
+    API server and through the DB manager in the scheduler and executor."""
+    if prisma.is_connected():
+        return await resolve_member_tenancy(user_id, organization_id, team_id)
+    return await get_database_manager_async_client().resolve_member_tenancy(
+        user_id, organization_id, team_id
+    )
+
+
 async def _enforce_expert_credential_scope(
     user_id: str,
     expert_id: str,
@@ -1415,6 +1428,7 @@ async def _add_graph_execution(
         raise UserBannedError("This account is banned, so its workflows can't run.")
 
     is_new_execution = graph_exec_id is None
+    tenancy_replaced = False
     context_expert_id = execution_context.expert_id if execution_context else None
     if expert_id is not None and context_expert_id not in (None, expert_id):
         raise ValueError(
@@ -1503,6 +1517,12 @@ async def _add_graph_execution(
                     )
                     graph_exec.status = ExecutionStatus.TERMINATED
                     return graph_exec
+        else:
+            # Any other run resumes in the org and team it's stored in,
+            # whatever the caller passes. One whose runner has left them since
+            # isn't moved, as it has already run there: the executor stops it
+            # when it picks it up.
+            organization_id, team_id = graph_exec.organization_id, graph_exec.team_id
 
         # The row stores the caller's raw masks and the run-time credential
         # inputs separately; rebuild the credential masks the same way the
@@ -1572,6 +1592,20 @@ async def _add_graph_execution(
             is_sub_graph=parent_exec_id is not None,
             dry_run=dry_run,
         )
+
+        if organization_id and not expert_id:
+            # The org/team comes from whatever started the run: a request's
+            # verified context, a parent run, a preset, a trigger or a
+            # schedule. As for a request, it's kept only if the user belongs
+            # to it; otherwise the run gets the user's own default.
+            member_org_id, member_team_id = await _resolve_runner_tenancy(
+                user_id, organization_id, team_id
+            )
+            tenancy_replaced = (member_org_id, member_team_id) != (
+                organization_id,
+                team_id,
+            )
+            organization_id, team_id = member_org_id, member_team_id
 
         # Tenant a NEW execution at creation: several callers arrive with a
         # falsy organization_id — legacy schedules (empty organizationId),
@@ -1704,10 +1738,23 @@ async def _add_graph_execution(
                 "expert_id": expert_id,
             }
         )
+    elif tenancy_replaced:
+        # Billing reads the context, not the row, and a sub-graph is handed
+        # its parent's: the org/team the run was moved to must replace it.
+        execution_context = execution_context.model_copy(
+            update={"organization_id": organization_id, "team_id": team_id}
+        )
+    elif not is_new_execution:
+        # A resumed run's context gets the org/team the run is stored with,
+        # in place of any the caller's names. Review resume builds one with
+        # neither, before they're known.
+        execution_context = execution_context.model_copy(
+            update={"organization_id": organization_id, "team_id": team_id}
+        )
     elif execution_context.organization_id is None and graph_exec.organization_id:
-        # A caller-supplied context (e.g. review-resume, admin-requeue) may
-        # be built before org/team are known. Backfill from the persisted
-        # row so billing and sub-graph runs aren't tenant-blind on resume.
+        # A caller-supplied context (e.g. a sub-graph's, whose parent run is
+        # untenanted) may have no org/team. Backfill from the persisted row
+        # so billing and sub-graph runs aren't tenant-blind.
         execution_context = execution_context.model_copy(
             update={
                 "organization_id": graph_exec.organization_id,
@@ -1903,14 +1950,48 @@ class ExecutionOutputEntry(BaseModel):
     produced_at: float = Field(default_factory=time.monotonic, exclude=True)
 
 
+# How long a stopped run's cleanup waits for nodes whose block is still running
+# after the cancel. The cleanup gives all its nodes this one grace together, so
+# blocks that ignore the cancel can't hold a stop past stop_graph_execution's
+# 15 s wait.
+NODE_UNWIND_GRACE_SECONDS = 5.0
+
+
 class NodeExecutionProgress:
     def __init__(self):
         self.output: dict[str, list[ExecutionOutputEntry]] = defaultdict(list)
         self.tasks: dict[str, Future] = {}
         self._lock = threading.Lock()
+        # A stop marks a node's future done at once, before its task has
+        # unwound to the bookkeeping for its block, so wait_for_done watches
+        # the task itself and then the bookkeeping. See wait_for_done.
+        self._unwinding: dict[asyncio.Future, str] = {}
+        self._settling: dict[asyncio.Future, str] = {}
 
     def add_task(self, node_exec_id: str, task: Future):
         self.tasks[node_exec_id] = task
+
+    def track_unwinding(self, node_exec_id: str, task: asyncio.Future) -> None:
+        self._track(self._unwinding, node_exec_id, task)
+
+    def track_settling(self, node_exec_id: str, settle: asyncio.Future) -> None:
+        self._track(self._settling, node_exec_id, settle)
+
+    def _track(
+        self,
+        pending: dict[asyncio.Future, str],
+        node_exec_id: str,
+        work: asyncio.Future,
+    ) -> None:
+        with self._lock:
+            pending[work] = node_exec_id
+        work.add_done_callback(lambda done: self._untrack(pending, done))
+
+    def _untrack(
+        self, pending: dict[asyncio.Future, str], work: asyncio.Future
+    ) -> None:
+        with self._lock:
+            pending.pop(work, None)
 
     def add_output(self, output: ExecutionOutputEntry):
         with self._lock:
@@ -1966,26 +2047,41 @@ class NodeExecutionProgress:
             cancelled_ids.append(task_id)
         return cancelled_ids
 
-    def wait_for_done(self, timeout: float = 5.0):
+    def wait_for_done(self, timeout: float = 5.0, unwind_until: float | None = None):
         """
         Wait for all cancelled tasks to complete cancellation.
 
+        A node's bookkeeping, which begins once its block has finished, is
+        waited for in full: the run's terminal write would otherwise fail
+        the node before its own status lands. A node whose block is still
+        running is waited for up to NODE_UNWIND_GRACE_SECONDS, since a block
+        may ignore the cancel.
+
         Args:
             timeout: Maximum time to wait for cancellation in seconds
+            unwind_until: When to stop waiting for a node whose block is still
+                running (a time.time() value); by default
+                NODE_UNWIND_GRACE_SECONDS from now
         """
         start_time = time.time()
+        if unwind_until is None:
+            unwind_until = start_time + NODE_UNWIND_GRACE_SECONDS
 
         while time.time() - start_time < timeout:
             while self.pop_output():
                 pass
 
-            if self.is_done():
+            unwound = not self._unwinding or time.time() >= unwind_until
+            if self.is_done() and unwound and not self._settling:
                 return
 
             time.sleep(0.1)  # Small delay to avoid busy waiting
 
+        with self._lock:
+            settling = sorted(self._settling.values())
         raise TimeoutError(
-            f"Timeout waiting for cancellation of tasks: {list(self.tasks.keys())}"
+            "Timeout waiting for cancellation of tasks: "
+            f"{list(self.tasks.keys()) + settling}"
         )
 
     def _pop_done_task(self, exec_id: str) -> bool:

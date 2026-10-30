@@ -3,7 +3,7 @@ from itertools import permutations
 
 import pytest
 
-from backend.data.credit import PAYMENT_FAILURE_CANCELLATION_COMMENT
+from backend.data.credit import REPLACED_PLAN_CANCELLATION_COMMENT
 from backend.data.posthog_lifecycle import (
     LifecycleSnapshot,
     LifecycleUser,
@@ -260,7 +260,9 @@ def test_only_our_own_cancel_comments_mean_we_canceled(comment, expected):
 
 
 def test_every_comment_we_cancel_with_is_recognised_as_ours():
-    ours = [PAYMENT_FAILURE_CANCELLATION_COMMENT] + [
+    # Plans cancelled for non-payment before #15345 still carry
+    # ``autogpt:payment_failed``.
+    ours = ["autogpt:payment_failed", REPLACED_PLAN_CANCELLATION_COMMENT] + [
         reason.stripe_comment for reason in TrialRejectionReason
     ]
     for comment in ours:

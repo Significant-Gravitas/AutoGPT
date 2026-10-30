@@ -15,7 +15,7 @@ import pytest
 
 from backend.util.feature_flag import Flag
 
-from . import registry, scope_crons, scope_jobs
+from . import registry, registry_backfill, scope_crons, scope_jobs
 from .registry_fakes_test import (
     ACCOUNT,
     ACTIVE,
@@ -33,6 +33,63 @@ from .registry_fakes_test import (
 @pytest.fixture
 def env(monkeypatch: pytest.MonkeyPatch) -> RegistryEnv:
     return install_registry_env(monkeypatch)
+
+
+@pytest.mark.asyncio
+async def test_community_registers_without_a_flag_provider(env, monkeypatch):
+    flag = AsyncMock(return_value=(False, False))
+    monkeypatch.setattr(scope_jobs, "evaluate_feature_flag", flag)
+    env.flags = {}
+
+    result = await registry.ensure_scope_scheduled(ACCOUNT)
+
+    assert result["community_rebuild"]["id"] == f"community_rebuild_{USER}"
+    assert env.db.rows[USER].nightly_job_id is None
+    assert env.db.rows[USER].learning_job_id is None
+    assert result["dream_nightly_batch"]["reason"] == "flag_unavailable"
+    assert result["skill_learning_nightly"]["reason"] == "flag_unavailable"
+    assert registry_backfill._classify(result) == "registered"
+    assert [call.args[0] for call in flag.await_args_list] == [
+        Flag.DREAM_PASS_ENABLED,
+        Flag.DREAM_SKILL_LEARNING_ENABLED,
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider_raises", [False, True])
+async def test_community_refresh_preserves_unknown_dream_and_learning_intent(
+    env, monkeypatch, provider_raises
+):
+    env.flags[Flag.DREAM_SKILL_LEARNING_ENABLED] = True
+    await registry.ensure_scope_scheduled(ACCOUNT)
+    for job_id in (f"dream_nightly_batch_{USER}", f"skill_learning_nightly_{USER}"):
+        del env.scheduler.jobs[job_id]
+        del env.scheduler.scopes[job_id]
+    await env.reconcile()
+    assert len(env.scheduler.tagged) == 2
+    env.timezone = TOKYO
+    monkeypatch.setattr(
+        scope_jobs,
+        "evaluate_feature_flag",
+        AsyncMock(
+            return_value=(False, False),
+            side_effect=(
+                RuntimeError("provider unavailable") if provider_raises else None
+            ),
+        ),
+    )
+    env.flags = {}
+
+    result = await registry.ensure_scope_scheduled(ACCOUNT, force_refresh=True)
+
+    row = env.db.rows[USER]
+    assert result["dream_nightly_batch"]["reason"] == "flag_unavailable"
+    assert result["skill_learning_nightly"]["reason"] == "flag_unavailable"
+    assert row.nightly_job_id == f"dream_nightly_batch_{USER}"
+    assert row.learning_job_id == f"skill_learning_nightly_{USER}"
+    report = await env.reconcile()
+    assert report.dropped == []
+    assert set(env.scheduler.jobs.values()) == {TOKYO}
 
 
 @pytest.mark.asyncio
@@ -88,7 +145,7 @@ async def test_an_expert_write_registers_the_expert_not_the_account(env):
 
 
 @pytest.mark.asyncio
-async def test_flags_off_cost_no_read_and_no_rpc(env):
+async def test_other_flags_off_still_requires_community_registry(env):
     env.flags = {}
     env.db.fail = True  # any read would raise
 
@@ -97,7 +154,7 @@ async def test_flags_off_cost_no_read_and_no_rpc(env):
     assert result == {
         "community_rebuild": {
             "skipped": True,
-            "reason": "graphiti_communities_disabled",
+            "reason": "registry_unavailable",
         },
         "dream_nightly_batch": {"skipped": True, "reason": "dream_pass_disabled"},
         "skill_learning_nightly": {
@@ -110,13 +167,13 @@ async def test_flags_off_cost_no_read_and_no_rpc(env):
 
 @pytest.mark.asyncio
 async def test_one_flag_off_still_registers_the_other(env):
-    env.flags[Flag.GRAPHITI_COMMUNITIES_ENABLED] = False
+    env.flags[Flag.DREAM_PASS_ENABLED] = False
 
     result = await registry.ensure_scope_scheduled(ACCOUNT)
 
-    assert result["community_rebuild"]["reason"] == "graphiti_communities_disabled"
-    assert env.db.rows[USER].nightly_job_id == f"dream_nightly_batch_{USER}"
-    assert env.db.rows[USER].community_job_id is None
+    assert result["dream_nightly_batch"]["reason"] == "dream_pass_disabled"
+    assert env.db.rows[USER].community_job_id == f"community_rebuild_{USER}"
+    assert env.db.rows[USER].nightly_job_id is None
 
 
 @pytest.mark.asyncio

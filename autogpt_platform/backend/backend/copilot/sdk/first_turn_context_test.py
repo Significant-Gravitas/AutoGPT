@@ -1,5 +1,6 @@
 import asyncio
 import gc
+import inspect
 import logging
 from unittest.mock import AsyncMock
 
@@ -101,6 +102,33 @@ async def test_closing_stops_the_reads_a_turn_never_awaited() -> None:
     await asyncio.wait_for(all_cancelled.wait(), timeout=2)
 
     assert sorted(cancelled) == ["expert", "session", "skills"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("has_user", [True, False])
+async def test_closing_before_dispatch_closes_all_reads(has_user: bool) -> None:
+    started = [asyncio.Event() for _ in range(3)]
+    reads = [
+        _value(name, event)
+        for name, event in zip(("session", "skills", "expert"), started)
+    ]
+    session, skills, expert = reads
+    if not has_user:
+        session.close()
+    context = FirstTurnContext(session if has_user else None, skills, expert)
+    try:
+        context.close()
+        checkpoint = asyncio.get_running_loop().create_future()
+        asyncio.get_running_loop().call_soon(checkpoint.set_result, None)
+        await checkpoint
+
+        assert not any(event.is_set() for event in started)
+        assert [inspect.getcoroutinestate(read) for read in reads] == [
+            inspect.CORO_CLOSED
+        ] * 3
+    finally:
+        for read in reads:
+            read.close()
 
 
 @pytest.mark.asyncio

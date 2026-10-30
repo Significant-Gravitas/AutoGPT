@@ -164,6 +164,7 @@ async def test_enqueue_graphiti_turn_uses_expert_session_scope() -> None:
         "private prompt",
         assistant_msg="private response",
         expert_id="expert-1",
+        bridge_origin=False,
     )
 
 
@@ -3207,15 +3208,8 @@ class _StopAfterExpertsGate(Exception):
     ``experts_enabled`` — before any LLM call would be attempted."""
 
 
-async def _run_baseline_until_experts_gate(
-    *, user_id: str | None, hire_experts_enabled: bool
-) -> AsyncMock:
-    """Drive the real generator up to (and one statement past) the
-    hire-experts flag check, with every other I/O dependency stubbed out.
-
-    Returns the ``is_feature_enabled`` mock so callers can assert whether
-    (and how) it was called.
-    """
+async def _run_baseline_until_experts_gate(*, user_id: str | None) -> AsyncMock:
+    """Capture expert authorization before the generator can make a provider call."""
     session = ChatSession.new("owner-1", dry_run=False)
     session.title = "already titled"  # skip the async title-generation task
 
@@ -3249,17 +3243,13 @@ async def _run_baseline_until_experts_gate(
             new=AsyncMock(return_value=("system prompt", None)),
         ),
         patch(
-            "backend.copilot.baseline.service.is_enabled_for_user",
-            new=AsyncMock(return_value=False),
-        ),
-        patch(
-            "backend.copilot.baseline.service.is_feature_enabled",
-            new=AsyncMock(return_value=hire_experts_enabled),
-        ) as is_feature_enabled_mock,
-        patch(
             "backend.copilot.baseline.service.build_builder_system_prompt_suffix",
             new=AsyncMock(side_effect=_StopAfterExpertsGate),
         ),
+        patch(
+            "backend.copilot.baseline.service.get_expert_oversight_supplement",
+            return_value="",
+        ) as oversight_mock,
         pytest.raises(_StopAfterExpertsGate),
     ):
         async for _ in stream_chat_completion_baseline(
@@ -3270,7 +3260,7 @@ async def _run_baseline_until_experts_gate(
         ):
             pass
 
-    return is_feature_enabled_mock
+    return oversight_mock
 
 
 class _StopAtAttachments(Exception):
@@ -3320,15 +3310,11 @@ async def test_execution_context_is_set_before_attachments_are_prepared() -> Non
             new=AsyncMock(return_value=("system prompt", None)),
         ),
         patch(
-            "backend.copilot.baseline.service.is_enabled_for_user",
-            new=AsyncMock(return_value=False),
-        ),
-        patch(
-            "backend.copilot.baseline.service.is_feature_enabled",
-            new=AsyncMock(return_value=False),
-        ),
-        patch(
             "backend.copilot.baseline.service.build_builder_system_prompt_suffix",
+            new=AsyncMock(return_value=""),
+        ),
+        patch(
+            "backend.copilot.baseline.service._fetch_graphiti_context",
             new=AsyncMock(return_value=""),
         ),
         patch(
@@ -3361,26 +3347,12 @@ async def test_execution_context_is_set_before_attachments_are_prepared() -> Non
     assert seen == [("user-1", session)]
 
 
-class TestBaselineExpertsFlagGuard:
-    """``experts_enabled = bool(user_id) and await is_feature_enabled(...)``:
-    an anonymous turn (``user_id=None``) must fail closed WITHOUT resolving
-    the flag at all — a bare ``await is_feature_enabled(...)`` would await
-    None as a positional arg and/or silently enable the team surface for
-    turns with no user."""
-
+class TestBaselineExpertsAuthorization:
     @pytest.mark.asyncio
-    async def test_anonymous_turn_never_calls_the_hire_experts_flag(self) -> None:
-        is_feature_enabled_mock = await _run_baseline_until_experts_gate(
-            user_id=None, hire_experts_enabled=True
-        )
-        is_feature_enabled_mock.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_authenticated_turn_resolves_the_hire_experts_flag(self) -> None:
-        is_feature_enabled_mock = await _run_baseline_until_experts_gate(
-            user_id="user-1", hire_experts_enabled=True
-        )
-        is_feature_enabled_mock.assert_awaited_once()
+    @pytest.mark.parametrize("user_id,expected", [(None, False), ("user-1", True)])
+    async def test_expert_tools_require_authentication(self, user_id, expected):
+        oversight = await _run_baseline_until_experts_gate(user_id=user_id)
+        oversight.assert_called_once_with(experts_enabled=expected, expert_id=None)
 
 
 class TestBaselineToolExecutorForwardsDisabledGroups:
@@ -3491,15 +3463,6 @@ async def test_follow_up_turn_wires_the_refresh_with_turn_state() -> None:
         patch(
             "backend.copilot.baseline.service._build_system_prompt",
             new=AsyncMock(return_value=("system prompt", None)),
-        ),
-        # The Graphiti gate: on for this turn, so the refresh must be wired.
-        patch(
-            "backend.copilot.baseline.service.is_enabled_for_user",
-            new=AsyncMock(return_value=True),
-        ),
-        patch(
-            "backend.copilot.baseline.service.is_feature_enabled",
-            new=AsyncMock(return_value=False),
         ),
         patch(
             "backend.copilot.baseline.service.build_builder_system_prompt_suffix",
@@ -3658,8 +3621,6 @@ async def _run_baseline_turn(
             f"{_BASELINE}._build_system_prompt",
             dict(new=AsyncMock(return_value=("system prompt", None))),
         ),
-        (f"{_BASELINE}.is_enabled_for_user", dict(new=AsyncMock(return_value=True))),
-        (f"{_BASELINE}.is_feature_enabled", dict(new=AsyncMock(return_value=False))),
         (
             f"{_BASELINE}.build_builder_system_prompt_suffix",
             dict(new=AsyncMock(return_value="")),

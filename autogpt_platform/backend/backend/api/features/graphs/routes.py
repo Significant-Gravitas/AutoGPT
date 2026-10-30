@@ -42,14 +42,14 @@ async def list_graphs(
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> Sequence[graph_db.GraphMeta]:
-    paginated_result = await graph_db.list_graphs_paginated(
+    graphs, _ = await graph_db.list_graphs_paginated(
         user_id=user_id,
         page=1,
         page_size=250,
         filter_by="active",
         organization_id=ctx.org_id,
     )
-    return paginated_result.graphs
+    return graphs
 
 
 @router.get(
@@ -77,7 +77,10 @@ async def get_graph(
     )
     if not graph:
         raise HTTPException(status_code=404, detail=f"Workflow #{graph_id} not found.")
-    return graph
+    # Teammates and library members can read a graph they don't own; what
+    # they get never carries the owner's stored secrets, trigger subscription
+    # or identity, whatever `for_export` says.
+    return _shared_if_not_owner(graph, user_id)
 
 
 @router.get(
@@ -97,7 +100,16 @@ async def get_graph_all_versions(
     )
     if not graphs:
         raise HTTPException(status_code=404, detail=f"Workflow #{graph_id} not found.")
-    return graphs
+    return [_shared_if_not_owner(graph, user_id) for graph in graphs]
+
+
+def _shared_if_not_owner(
+    graph: graph_db.GraphModel, user_id: str
+) -> graph_db.GraphModel:
+    # An export comes back with its owner blanked, so an owner's own export
+    # takes the `shared_copy` branch too. That is harmless only as long as
+    # `shared_copy` removes nothing an export keeps.
+    return graph if graph.user_id == user_id else graph.shared_copy()
 
 
 @router.post(
@@ -197,8 +209,8 @@ async def update_graph(
 
     skipped_webhook_presets: list[library_model.SkippedWebhookPreset] = []
     if new_graph_version.is_active:
-        await library_db.update_library_agent_version_and_settings(
-            user_id, new_graph_version
+        await library_db.update_agent_version_in_library(
+            user_id, new_graph_version.id, new_graph_version.version
         )
         await graph_db.set_graph_active_version(
             graph_id=graph_id, version=new_graph_version.version, user_id=user_id
@@ -267,8 +279,8 @@ async def set_graph_active_version(
     )
 
     # Keep the library agent up to date with the new active version
-    await library_db.update_library_agent_version_and_settings(
-        user_id, new_active_graph
+    await library_db.update_agent_version_in_library(
+        user_id, new_active_graph.id, new_active_graph.version
     )
 
     if current_active_graph and current_active_graph.version != new_active_version:

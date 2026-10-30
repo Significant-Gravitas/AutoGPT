@@ -45,7 +45,7 @@ export function ExistingCredentialsView({
   return (
     <div className="flex flex-col gap-5 pt-2">
       <div className="flex items-center justify-center gap-6">
-        <span className="relative flex h-20 w-20 items-center justify-center rounded-full bg-white shadow-[0_8px_24px_rgba(0,0,0,0.08)] ring-1 ring-zinc-100">
+        <span className="relative flex h-20 w-20 items-center justify-center rounded-full bg-surface shadow-lg ring-1 ring-separator">
           <AutoGPTLogo
             hideText
             className="absolute left-1/2 top-1/2 h-8 w-[4.4rem] -translate-x-[77%] -translate-y-1/2"
@@ -53,19 +53,22 @@ export function ExistingCredentialsView({
         </span>
         <span aria-hidden className="grid grid-cols-3 gap-1.5">
           {Array.from({ length: 9 }, (_, dot) => (
-            <span key={dot} className="h-1 w-1 rounded-full bg-[#5b21b6]/30" />
+            <span
+              key={dot}
+              className="h-1 w-1 rounded-full bg-accent-strong/30"
+            />
           ))}
         </span>
-        <span className="flex h-20 w-20 items-center justify-center rounded-full bg-white shadow-[0_8px_24px_rgba(0,0,0,0.08)] ring-1 ring-zinc-100">
+        <span className="flex h-20 w-20 items-center justify-center rounded-full bg-surface shadow-lg ring-1 ring-separator">
           <ProviderAvatar id={provider} name={displayName} />
         </span>
       </div>
 
       <div className="flex flex-col gap-1.5 text-center">
-        <Text variant="h3" className="!text-[1.25rem] text-zinc-900">
+        <Text variant="h3" tone="primary" className="!text-lead !leading-10">
           {TITLES[purpose](displayName)}
         </Text>
-        <Text variant="body" className="!text-zinc-500">
+        <Text variant="body" tone="muted">
           {DESCRIPTIONS[purpose]}
         </Text>
       </div>
@@ -73,7 +76,7 @@ export function ExistingCredentialsView({
       <div
         role="radiogroup"
         aria-label="Account"
-        className="flex flex-col gap-1 rounded-2xl bg-neutral-100 p-1.5"
+        className="flex flex-col gap-1 rounded-2xl bg-surface-hover p-1.5"
       >
         {credentials.map((credential) => {
           const isSelected = credential.id === selectedId;
@@ -86,37 +89,42 @@ export function ExistingCredentialsView({
               onClick={() => onSelect(credential.id)}
               className={
                 isSelected
-                  ? "flex w-full items-center gap-3 rounded-xl bg-white p-3 text-left shadow-sm"
-                  : "flex w-full items-center gap-3 rounded-xl p-3 text-left transition-colors hover:bg-white/60"
+                  ? "flex w-full items-center gap-3 rounded-xl bg-surface p-3 text-left shadow-sm"
+                  : "flex w-full items-center gap-3 rounded-xl p-3 text-left transition-colors hover:bg-surface/60"
               }
             >
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-surface shadow-sm">
                 <Icon
                   icon={
                     credential.type === "oauth2" ? SecurityCheckIcon : Key01Icon
                   }
                   size={22}
-                  className="text-zinc-700"
+                  className="text-foreground-body"
                 />
               </span>
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="truncate text-sm font-semibold text-zinc-900">
+                <Text
+                  variant="body-semibold-tight"
+                  as="span"
+                  tone="primary"
+                  className="truncate"
+                >
                   {credential.title}
-                </span>
-                <span className="text-xs text-zinc-500">
+                </Text>
+                <Text variant="small-tight" as="span" tone="muted">
                   {credential.type === "oauth2" ? "OAuth" : "API key"}
-                </span>
+                </Text>
               </span>
               <span
                 aria-hidden
                 className={
                   isSelected
-                    ? "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-violet-600"
-                    : "h-5 w-5 shrink-0 rounded-full border-2 border-zinc-200"
+                    ? "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-brand"
+                    : "h-5 w-5 shrink-0 rounded-full border-2 border-border-base"
                 }
               >
                 {isSelected && (
-                  <span className="h-2.5 w-2.5 rounded-full bg-violet-600" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-brand" />
                 )}
               </span>
             </button>

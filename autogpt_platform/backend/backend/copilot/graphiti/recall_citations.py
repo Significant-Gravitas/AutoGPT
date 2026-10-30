@@ -22,16 +22,14 @@ bounded like the cascade; a walk stopped by its bound drops the write too).
 A forget's cascade walks through such a fact to what rests on it, and the
 write would rest on it the same way, carrying that content.
 
-The ``statement`` comparison is kept as defence in depth. apply no longer
-sends a write that cites nothing: it drops one before it is queued
-(``dream/citations.py``), so nothing in the codebase sets ``statement``
-today. Should a write carrying only a ``statement`` reach the worker, it is
-compared with the sentence every forgotten fact keeps for audit, lower-cased
-and with its whitespace collapsed, as graphiti's own exact-match dedup
-compares. It has no endpoints until graphiti extracts it, so that comparison
-spans the graph: it drops more than a same-endpoints one would, never less.
-A sentence a hard forget erased (``recall_erase.py``) is no longer there to
-compare with.
+The ``statement`` comparison is defence in depth. Apply drops uncited
+writes before queueing them (``dream/citations.py``); a worker handed a
+write carrying only a ``statement`` compares it with the sentence every
+forgotten fact keeps for audit, lower-cased and with its whitespace collapsed,
+as graphiti's own exact-match dedup compares. It has no endpoints until
+graphiti extracts it, so that comparison spans the graph: it drops more
+than a same-endpoints one would, never less.
+A sentence a hard forget erased (``recall_erase.py``) is absent for comparison.
 
 Once written, what a dream write cites is recorded where a later forget
 finds it (``recall_derivation.py``).

@@ -44,9 +44,10 @@ const STEPS: Step[] = [
 ];
 
 const NODE_CLASS: Record<StepState, string> = {
-  done: "bg-emerald-500 text-white",
-  current: "bg-amber-50 text-amber-700 ring-2 ring-amber-300",
-  upcoming: "bg-zinc-100 text-zinc-400",
+  done: "bg-success text-action-foreground",
+  current:
+    "bg-warning-surface text-warning-foreground ring-2 ring-warning-border",
+  upcoming: "bg-surface-hover text-foreground-subtle",
 };
 
 interface Props {
@@ -61,7 +62,7 @@ export function ReviewStepper({ shouldReduceMotion }: Props) {
       transition={{ duration: 0.24, ease: "easeOut", delay: 0.24 }}
       className="mt-6 flex w-full max-w-md flex-col gap-3 px-2"
     >
-      <Text variant="body-medium" as="span" className="text-textBlack">
+      <Text variant="body-medium" as="span">
         What happens next
       </Text>
       <ol className="flex flex-col">
@@ -82,7 +83,9 @@ export function ReviewStepper({ shouldReduceMotion }: Props) {
                   <span
                     className={cn(
                       "mt-1 min-h-[18px] w-px flex-1",
-                      step.state === "done" ? "bg-emerald-300" : "bg-zinc-200",
+                      step.state === "done"
+                        ? "bg-success/60"
+                        : "bg-surface-active",
                     )}
                   />
                 ) : null}
@@ -93,8 +96,8 @@ export function ReviewStepper({ shouldReduceMotion }: Props) {
                   as="span"
                   className={
                     step.state === "upcoming"
-                      ? "text-zinc-400"
-                      : "text-textBlack"
+                      ? "text-foreground-subtle"
+                      : "text-foreground-base"
                   }
                 >
                   {step.title}
@@ -103,14 +106,14 @@ export function ReviewStepper({ shouldReduceMotion }: Props) {
                   variant="small"
                   className={
                     step.state === "upcoming"
-                      ? "text-zinc-400"
-                      : "text-zinc-500"
+                      ? "text-foreground-subtle"
+                      : "text-foreground-tertiary"
                   }
                 >
                   {step.description}
                 </Text>
                 {step.note ? (
-                  <Text variant="small" className="mt-1 text-amber-700">
+                  <Text variant="small" tone="warning" className="mt-1">
                     {step.note}
                   </Text>
                 ) : null}

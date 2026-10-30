@@ -34,24 +34,26 @@ export function StatsOverview({ stats, index = 0 }: Props) {
       label: "Total submissions",
       value: stats.total.toLocaleString(),
       Icon: Layers01Icon,
-      iconClass: "bg-violet-50 text-violet-700 ring-violet-200",
+      iconClass: "bg-accent-surface text-accent-strong ring-brand/20",
     },
     {
       label: "Approved",
       value: stats.approved.toLocaleString(),
       Icon: CheckmarkCircle02Icon,
-      iconClass: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+      iconClass: "bg-success-surface text-success-foreground ring-success/30",
     },
     {
       label: "In review",
       value: stats.pending.toLocaleString(),
       Icon: Clock01Icon,
-      iconClass: "bg-amber-50 text-amber-700 ring-amber-200",
+      iconClass:
+        "bg-warning-surface text-warning-foreground ring-warning-border",
     },
     {
       label: "Total runs",
       value: formatRuns(stats.totalRuns),
       Icon: PlayIcon,
+      // oxlint-disable-next-line design-system/no-raw-colors -- sky tile kept until the cyan -> info hue change is approved
       iconClass: "bg-sky-50 text-sky-700 ring-sky-200",
     },
   ];
@@ -77,28 +79,23 @@ export function StatsOverview({ stats, index = 0 }: Props) {
       ))}
 
       {stats.averageRating !== null ? (
-        <div className="col-span-2 flex items-center justify-between gap-3 rounded-[18px] border border-zinc-200 bg-gradient-to-br from-amber-50/60 to-white px-4 py-4 shadow-[0_1px_2px_rgba(15,15,20,0.04)] lg:col-span-4">
+        <div className="col-span-2 flex items-center justify-between gap-3 rounded-large border border-border-base bg-gradient-to-br from-warning-surface/60 to-surface px-4 py-4 shadow-message-table lg:col-span-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-100 text-amber-700 ring-1 ring-inset ring-amber-200">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-warning/20 text-warning-foreground ring-1 ring-inset ring-warning-border">
               <UIIcon icon={StarIcon} size={18} />
             </div>
             <div className="flex flex-col">
-              <Text variant="body-medium" as="span" className="text-textBlack">
+              <Text variant="body-medium" as="span">
                 Average rating
               </Text>
-              <Text variant="small" className="text-zinc-500">
+              <Text variant="small" tone="muted">
                 Across all submissions with reviews.
               </Text>
             </div>
           </div>
-          <Text
-            variant="h3"
-            as="span"
-            size="large-medium"
-            className="text-textBlack"
-          >
+          <Text variant="h3" as="span" size="large-medium">
             {stats.averageRating.toFixed(1)}
-            <span className="text-zinc-400"> / 5</span>
+            <span className="text-foreground-subtle"> / 5</span>
           </Text>
         </div>
       ) : null}
@@ -109,16 +106,16 @@ export function StatsOverview({ stats, index = 0 }: Props) {
 function StatTileCard({ tile }: { tile: StatTile }) {
   const { label, value, iconClass } = tile;
   return (
-    <div className="relative flex min-h-[120px] flex-col justify-between gap-2 rounded-[18px] border border-zinc-200 bg-white px-4 py-5 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+    <div className="relative flex min-h-[120px] flex-col justify-between gap-2 rounded-large border border-border-base bg-surface px-4 py-5 shadow-message-table">
       <div
         className={`absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full ring-1 ring-inset ${iconClass}`}
       >
         <UIIcon icon={tile.Icon} size={14} />
       </div>
-      <Text variant="body" as="span" className="pr-10 text-zinc-800">
+      <Text variant="body" as="span" tone="emphasis" className="mr-10">
         {label}
       </Text>
-      <Text variant="h4" as="span" className="text-textBlack">
+      <Text variant="h4" as="span">
         {value}
       </Text>
     </div>

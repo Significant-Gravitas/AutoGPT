@@ -166,17 +166,17 @@ function MemoryScopeView({ expertID }: MemoryScopeViewProps) {
           hiddenEdgeTypes={hiddenEdgeTypes}
           setHiddenEdgeTypes={setHiddenEdgeTypes}
         />
-        <div className="col-span-12 rounded-md border bg-white md:col-span-7">
+        <div className="col-span-12 rounded-md border bg-surface md:col-span-7">
           {graph.isLoading ? (
-            <div className="flex h-[70vh] items-center justify-center text-sm text-gray-500">
+            <div className="flex h-[70vh] items-center justify-center text-sm text-foreground-tertiary">
               Loading graph…
             </div>
           ) : graph.error || scopeMismatchError ? (
-            <div className="p-6 text-sm text-red-700">
+            <div className="p-6 text-sm text-error-foreground">
               Failed to load graph: {String(graph.error ?? scopeMismatchError)}
             </div>
           ) : nodes.length === 0 ? (
-            <div className="flex h-[70vh] flex-col items-center justify-center text-sm text-gray-500">
+            <div className="flex h-[70vh] flex-col items-center justify-center text-sm text-foreground-tertiary">
               No memory yet. Start a chat session to populate it.
             </div>
           ) : (
@@ -221,14 +221,14 @@ interface OverviewStripProps {
 function OverviewStrip({ loading, error, data }: OverviewStripProps) {
   if (loading) {
     return (
-      <div className="rounded-md border bg-white p-3 text-sm text-gray-500">
+      <div className="rounded-md border bg-surface p-3 text-sm text-foreground-tertiary">
         Loading overview…
       </div>
     );
   }
   if (error) {
     return (
-      <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+      <div className="rounded-md border border-error/20 bg-error-surface p-3 text-sm text-error-foreground">
         Failed to load overview: {String(error)}
       </div>
     );
@@ -245,10 +245,10 @@ function OverviewStrip({ loading, error, data }: OverviewStripProps) {
       ].map((stat) => (
         <div
           key={stat.label}
-          className="rounded-md border bg-white p-3 text-center"
+          className="rounded-md border bg-surface p-3 text-center"
         >
           <div className="text-xl font-bold">{stat.value}</div>
-          <div className="text-xs uppercase tracking-wide text-gray-500">
+          <div className="text-xs uppercase tracking-wide text-foreground-tertiary">
             {stat.label}
           </div>
         </div>
@@ -308,9 +308,9 @@ function ControlBar({
   const dreamActive = !!dreamActiveJobId;
   const nightlyActive = !!nightlyActiveJobId;
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-md border bg-white p-3 text-sm">
+    <div className="flex flex-wrap items-center gap-3 rounded-md border bg-surface p-3 text-sm">
       {readOnly ? (
-        <span className="rounded bg-gray-100 px-2 py-1 text-xs text-gray-600">
+        <span className="rounded bg-surface-hover px-2 py-1 text-xs text-foreground-secondary">
           Read-only
         </span>
       ) : (
@@ -330,7 +330,7 @@ function ControlBar({
           nightlyStatus={nightlyStatus}
         />
       )}
-      <label className="flex items-center gap-2 text-gray-700">
+      <label className="flex items-center gap-2 text-foreground-body">
         <input
           type="checkbox"
           checked={includeCommunities}
@@ -338,7 +338,7 @@ function ControlBar({
         />
         Communities
       </label>
-      <label className="flex items-center gap-2 text-gray-700">
+      <label className="flex items-center gap-2 text-foreground-body">
         <input
           type="checkbox"
           checked={includeEpisodes}
@@ -346,10 +346,10 @@ function ControlBar({
         />
         Episodes (noisy)
       </label>
-      <span className="ml-auto text-xs text-gray-500">
+      <span className="ml-auto text-xs text-foreground-tertiary">
         {nodeCount} nodes · {edgeCount} edges
         {truncated && (
-          <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-amber-800">
+          <span className="ml-2 rounded bg-warning-surface px-2 py-0.5 text-warning-foreground">
             truncated
           </span>
         )}
@@ -408,8 +408,8 @@ function Sidebar({
   }
   return (
     <div className="col-span-12 space-y-3 md:col-span-3">
-      <div className="rounded-md border bg-white p-3">
-        <h3 className="mb-2 text-xs font-semibold uppercase text-gray-500">
+      <div className="rounded-md border bg-surface p-3">
+        <h3 className="mb-2 text-xs font-semibold uppercase text-foreground-tertiary">
           Labels
         </h3>
         <div className="flex flex-wrap gap-1.5">
@@ -426,8 +426,8 @@ function Sidebar({
                   }
                   className={`rounded-full border px-2 py-0.5 text-xs ${
                     hidden
-                      ? "border-gray-300 text-gray-400 line-through"
-                      : "border-gray-700 text-gray-700"
+                      ? "border-border-strong text-foreground-subtle line-through"
+                      : "border-foreground-emphasis text-foreground-body"
                   }`}
                 >
                   {k} ({count})
@@ -436,8 +436,8 @@ function Sidebar({
             })}
         </div>
       </div>
-      <div className="rounded-md border bg-white p-3">
-        <h3 className="mb-2 text-xs font-semibold uppercase text-gray-500">
+      <div className="rounded-md border bg-surface p-3">
+        <h3 className="mb-2 text-xs font-semibold uppercase text-foreground-tertiary">
           Relationships
         </h3>
         <div className="flex flex-wrap gap-1.5">
@@ -454,8 +454,8 @@ function Sidebar({
                   }
                   className={`rounded-full border px-2 py-0.5 text-xs ${
                     hidden
-                      ? "border-gray-300 text-gray-400 line-through"
-                      : "border-gray-700 text-gray-700"
+                      ? "border-border-strong text-foreground-subtle line-through"
+                      : "border-foreground-emphasis text-foreground-body"
                   }`}
                 >
                   {k} ({count})
@@ -499,9 +499,11 @@ function DreamResultPanel({ result, onDismiss }: DreamResultPanelProps) {
   return (
     <div className="space-y-2" data-testid="dream-result-panel">
       <div className="flex items-center justify-between gap-2">
-        <Text variant="small-medium" as="span" className="text-gray-700">
+        <Text variant="small-medium" as="span" tone="body">
           Last dream pass{" "}
-          <span className="font-mono text-gray-500">{result.passID}</span>
+          <span className="font-mono text-foreground-tertiary">
+            {result.passID}
+          </span>
         </Text>
         <Button variant="ghost" size="small" onClick={onDismiss}>
           Dismiss
@@ -518,9 +520,11 @@ function DreamResultPanel({ result, onDismiss }: DreamResultPanelProps) {
 function DetailPanel({ node, neighbors, onClear }: DetailPanelProps) {
   return (
     <div className="col-span-12 md:col-span-2">
-      <div className="rounded-md border bg-white p-3 text-sm">
+      <div className="rounded-md border bg-surface p-3 text-sm">
         {!node ? (
-          <div className="text-gray-500">Click a node to inspect.</div>
+          <div className="text-foreground-tertiary">
+            Click a node to inspect.
+          </div>
         ) : (
           <>
             <div className="flex items-start justify-between gap-2">
@@ -528,43 +532,49 @@ function DetailPanel({ node, neighbors, onClear }: DetailPanelProps) {
                 <div className="truncate text-base font-semibold">
                   {node.name ?? node.uuid.slice(0, 12)}
                 </div>
-                <div className="text-xs text-gray-500">
+                <div className="text-xs text-foreground-tertiary">
                   {node.type ?? node.label}
                 </div>
               </div>
               <button
                 type="button"
                 onClick={onClear}
-                className="text-xs text-gray-400 hover:text-gray-600"
+                className="text-xs text-foreground-subtle hover:text-foreground-secondary"
                 aria-label="Clear selection"
               >
                 ✕
               </button>
             </div>
-            <div className="mt-2 font-mono text-[10px] text-gray-400">
+            <div className="mt-2 font-mono text-tiny leading-inherit text-foreground-subtle">
               {node.uuid}
             </div>
             {node.summary && (
-              <div className="mt-3 whitespace-pre-wrap text-xs text-gray-700">
+              <div className="mt-3 whitespace-pre-wrap text-xs text-foreground-body">
                 {node.summary}
               </div>
             )}
-            <h4 className="mt-4 text-xs font-semibold uppercase text-gray-500">
+            <h4 className="mt-4 text-xs font-semibold uppercase text-foreground-tertiary">
               {neighbors.length} edges
             </h4>
             <ul className="mt-1 max-h-72 space-y-1 overflow-y-auto text-xs">
               {neighbors.map(({ edge, otherUuid }) => (
-                <li key={edge.uuid} className="border-l-2 border-gray-200 pl-2">
-                  <div className="text-gray-700">
+                <li
+                  key={edge.uuid}
+                  className="border-l-2 border-border-base pl-2"
+                >
+                  <div className="text-foreground-body">
                     <span className="font-medium">{edge.label}</span>
                     {edge.name && (
-                      <span className="text-gray-500"> · {edge.name}</span>
+                      <span className="text-foreground-tertiary">
+                        {" "}
+                        · {edge.name}
+                      </span>
                     )}
                   </div>
                   {edge.fact && (
-                    <div className="text-gray-600">{edge.fact}</div>
+                    <div className="text-foreground-secondary">{edge.fact}</div>
                   )}
-                  <div className="font-mono text-[10px] text-gray-400">
+                  <div className="font-mono text-tiny leading-inherit text-foreground-subtle">
                     → {otherUuid.slice(0, 12)}
                   </div>
                 </li>

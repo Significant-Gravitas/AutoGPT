@@ -91,7 +91,7 @@ export function tickScale(index: number, hovered: number | null): number {
 }
 
 export function tickColor(distance: number | null): string {
-  if (distance === 0) return "bg-zinc-800";
-  if (distance === 1) return "bg-zinc-500";
-  return "bg-zinc-400";
+  if (distance === 0) return "bg-action";
+  if (distance === 1) return "bg-foreground-tertiary";
+  return "bg-foreground-subtle";
 }

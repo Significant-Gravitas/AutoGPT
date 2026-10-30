@@ -27,34 +27,31 @@ class FirstTurnContext:
         skills_ctx: Coroutine[Any, Any, str],
         expert_ctx: Coroutine[Any, Any, str],
     ) -> None:
-        self._session_ctx = asyncio.create_task(_or_empty(session_ctx))
-        self._skills_ctx = asyncio.create_task(_skills_index(skills_ctx))
+        self._session_ctx = (
+            asyncio.create_task(session_ctx) if session_ctx is not None else None
+        )
+        self._skills_ctx = asyncio.create_task(skills_ctx)
         self._expert_ctx = asyncio.create_task(expert_ctx)
 
     async def results(self) -> tuple[str, str, str]:
-        """The session block, the skills index and the expert block. A
-        failed session or expert read raises here, where the turn read them
-        before; a failed skills read is logged and leaves the index empty."""
-        return await self._session_ctx, await self._skills_ctx, await self._expert_ctx
+        """Await the blocks in their original order. Skills failures leave an
+        empty index; the session and expert builders handle their own fallbacks."""
+        session_ctx = await self._session_ctx if self._session_ctx is not None else ""
+        try:
+            skills_ctx = await self._skills_ctx
+        except Exception:
+            logger.exception(
+                "[skills] failed to build skills_ctx — proceeding without it"
+            )
+            skills_ctx = ""
+        return session_ctx, skills_ctx, await self._expert_ctx
 
     def close(self) -> None:
         """Cancel the reads without waiting for them, so it adds no await to
         the turn's cleanup, where a second cancellation could cut the rest
         of it short."""
         for task in (self._session_ctx, self._skills_ctx, self._expert_ctx):
-            # Also on a read that already failed: cancelling it marks the
-            # error handled, so it isn't logged as never retrieved.
-            task.cancel()
-
-
-async def _or_empty(read: Coroutine[Any, Any, str] | None) -> str:
-    return "" if read is None else await read
-
-
-async def _skills_index(read: Coroutine[Any, Any, str]) -> str:
-    # Failures here MUST NOT block the turn: log and go on with no index.
-    try:
-        return await read
-    except Exception:
-        logger.exception("[skills] failed to build skills_ctx — proceeding without it")
-        return ""
+            if task is not None:
+                # cancel() also suppresses asyncio's unretrieved-exception
+                # report for a task that finished before cleanup.
+                task.cancel()
