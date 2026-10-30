@@ -8,7 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import React, { useState, type ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { connectedIntegrationsFromCredentials } from "../helpers";
 import { useChatMentions } from "../useChatMentions";
 
@@ -96,22 +96,9 @@ afterEach(() => {
 
 describe("useChatMentions", () => {
   it("opens on an @token at the caret and queries workspace files", async () => {
-    mockListWorkspaceFiles.mockResolvedValue({
-      status: 200,
-      data: { files: [FILE], has_more: false },
-    });
+    mockFiles([FILE]);
 
-    const { result } = renderHook(
-      () =>
-        useChatMentions({
-          enabled: true,
-          value: "hi @al",
-          setValue: vi.fn(),
-          addWorkspaceFile: vi.fn(),
-          addWorkspaceFolder: vi.fn(),
-        }),
-      { wrapper: Wrapper },
-    );
+    const { result } = renderMentions({ value: "hi @al" });
 
     act(() => result.current.detect(fakeTextarea("hi @al")));
     expect(result.current.isOpen).toBe(true);
@@ -126,58 +113,29 @@ describe("useChatMentions", () => {
   });
 
   it("stays closed when there is no @token before the caret", () => {
-    const { result } = renderHook(
-      () =>
-        useChatMentions({
-          enabled: true,
-          value: "hello world",
-          setValue: vi.fn(),
-          addWorkspaceFile: vi.fn(),
-          addWorkspaceFolder: vi.fn(),
-        }),
-      { wrapper: Wrapper },
-    );
+    const { result } = renderMentions({ value: "hello world" });
 
     act(() => result.current.detect(fakeTextarea("hello world")));
     expect(result.current.isOpen).toBe(false);
   });
 
   it("does not open while disabled", () => {
-    const { result } = renderHook(
-      () =>
-        useChatMentions({
-          enabled: false,
-          value: "hi @al",
-          setValue: vi.fn(),
-          addWorkspaceFile: vi.fn(),
-          addWorkspaceFolder: vi.fn(),
-        }),
-      { wrapper: Wrapper },
-    );
+    const { result } = renderMentions({ enabled: false, value: "hi @al" });
 
     act(() => result.current.detect(fakeTextarea("hi @al")));
     expect(result.current.isOpen).toBe(false);
   });
 
   it("strips the @query and attaches the file when accepted via Enter", async () => {
-    mockListWorkspaceFiles.mockResolvedValue({
-      status: 200,
-      data: { files: [FILE], has_more: false },
-    });
+    mockFiles([FILE]);
     const setValue = vi.fn();
     const addWorkspaceFile = vi.fn();
 
-    const { result } = renderHook(
-      () =>
-        useChatMentions({
-          enabled: true,
-          value: "hi @al",
-          setValue,
-          addWorkspaceFile,
-          addWorkspaceFolder: vi.fn(),
-        }),
-      { wrapper: Wrapper },
-    );
+    const { result } = renderMentions({
+      value: "hi @al",
+      setValue,
+      addWorkspaceFile,
+    });
 
     act(() => result.current.detect(fakeTextarea("hi @al")));
     await waitFor(() => expect(result.current.options).toHaveLength(2));
@@ -194,23 +152,10 @@ describe("useChatMentions", () => {
   });
 
   it("closes on Escape without attaching", async () => {
-    mockListWorkspaceFiles.mockResolvedValue({
-      status: 200,
-      data: { files: [FILE], has_more: false },
-    });
+    mockFiles([FILE]);
     const addWorkspaceFile = vi.fn();
 
-    const { result } = renderHook(
-      () =>
-        useChatMentions({
-          enabled: true,
-          value: "hi @al",
-          setValue: vi.fn(),
-          addWorkspaceFile,
-          addWorkspaceFolder: vi.fn(),
-        }),
-      { wrapper: Wrapper },
-    );
+    const { result } = renderMentions({ value: "hi @al", addWorkspaceFile });
 
     act(() => result.current.detect(fakeTextarea("hi @al")));
     await waitFor(() => expect(result.current.options).toHaveLength(2));
@@ -224,25 +169,9 @@ describe("useChatMentions", () => {
   });
 
   it("navigates results with arrow keys but ignores composing keydowns", async () => {
-    mockListWorkspaceFiles.mockResolvedValue({
-      status: 200,
-      data: {
-        files: [FILE, { ...FILE, id: "file-2", name: "beta.txt" }],
-        has_more: false,
-      },
-    });
+    mockFiles([FILE, { ...FILE, id: "file-2", name: "beta.txt" }]);
 
-    const { result } = renderHook(
-      () =>
-        useChatMentions({
-          enabled: true,
-          value: "hi @",
-          setValue: vi.fn(),
-          addWorkspaceFile: vi.fn(),
-          addWorkspaceFolder: vi.fn(),
-        }),
-      { wrapper: Wrapper },
-    );
+    const { result } = renderMentions({ value: "hi @" });
 
     act(() => result.current.detect(fakeTextarea("hi @")));
     await waitFor(() => expect(result.current.options).toHaveLength(3));
@@ -264,24 +193,15 @@ describe("useChatMentions", () => {
   });
 
   it("does not accept a mention on a composing Enter or Tab", async () => {
-    mockListWorkspaceFiles.mockResolvedValue({
-      status: 200,
-      data: { files: [FILE], has_more: false },
-    });
+    mockFiles([FILE]);
     const setValue = vi.fn();
     const addWorkspaceFile = vi.fn();
 
-    const { result } = renderHook(
-      () =>
-        useChatMentions({
-          enabled: true,
-          value: "hi @al",
-          setValue,
-          addWorkspaceFile,
-          addWorkspaceFolder: vi.fn(),
-        }),
-      { wrapper: Wrapper },
-    );
+    const { result } = renderMentions({
+      value: "hi @al",
+      setValue,
+      addWorkspaceFile,
+    });
 
     act(() => result.current.detect(fakeTextarea("hi @al")));
     await waitFor(() => expect(result.current.options).toHaveLength(2));
@@ -303,24 +223,15 @@ describe("useChatMentions", () => {
   });
 
   it("ignores accept when the highlighted item is out of bounds", async () => {
-    mockListWorkspaceFiles.mockResolvedValue({
-      status: 200,
-      data: { files: [FILE], has_more: false },
-    });
+    mockFiles([FILE]);
     const setValue = vi.fn();
     const addWorkspaceFile = vi.fn();
 
-    const { result } = renderHook(
-      () =>
-        useChatMentions({
-          enabled: true,
-          value: "hi @al",
-          setValue,
-          addWorkspaceFile,
-          addWorkspaceFolder: vi.fn(),
-        }),
-      { wrapper: Wrapper },
-    );
+    const { result } = renderMentions({
+      value: "hi @al",
+      setValue,
+      addWorkspaceFile,
+    });
 
     act(() => result.current.detect(fakeTextarea("hi @al")));
     await waitFor(() => expect(result.current.options).toHaveLength(2));
@@ -335,23 +246,12 @@ describe("useChatMentions", () => {
   });
 
   it("lists matching integrations above the file results", async () => {
-    mockListWorkspaceFiles.mockResolvedValue({
-      status: 200,
-      data: { files: [FILE], has_more: false },
-    });
+    mockFiles([FILE]);
 
-    const { result } = renderHook(
-      () =>
-        useChatMentions({
-          enabled: true,
-          value: "hi @g",
-          setValue: vi.fn(),
-          addWorkspaceFile: vi.fn(),
-          addWorkspaceFolder: vi.fn(),
-          integrations: [GITHUB, GOOGLE],
-        }),
-      { wrapper: Wrapper },
-    );
+    const { result } = renderMentions({
+      value: "hi @g",
+      integrations: [GITHUB, GOOGLE],
+    });
 
     act(() => result.current.detect(fakeTextarea("hi @g")));
     expect(result.current.hasIntegrations).toBe(true);
@@ -367,23 +267,12 @@ describe("useChatMentions", () => {
   });
 
   it("narrows integrations by the typed query without waiting on the debounce", () => {
-    mockListWorkspaceFiles.mockResolvedValue({
-      status: 200,
-      data: { files: [], has_more: false },
-    });
+    mockFiles([]);
 
-    const { result } = renderHook(
-      () =>
-        useChatMentions({
-          enabled: true,
-          value: "hi @goo",
-          setValue: vi.fn(),
-          addWorkspaceFile: vi.fn(),
-          addWorkspaceFolder: vi.fn(),
-          integrations: [GITHUB, GOOGLE],
-        }),
-      { wrapper: Wrapper },
-    );
+    const { result } = renderMentions({
+      value: "hi @goo",
+      integrations: [GITHUB, GOOGLE],
+    });
 
     act(() => result.current.detect(fakeTextarea("hi @goo")));
     expect(result.current.options).toEqual([
@@ -393,36 +282,18 @@ describe("useChatMentions", () => {
   });
 
   it("inserts the integration token into the prompt and moves the caret after it", async () => {
-    mockListWorkspaceFiles.mockResolvedValue({
-      status: 200,
-      data: { files: [], has_more: false },
-    });
+    mockFiles([]);
     const addWorkspaceFile = vi.fn();
 
-    function Harness() {
-      const [value, setValue] = useState("check ");
-      const mentions = useChatMentions({
-        enabled: true,
-        value,
-        setValue,
-        addWorkspaceFile,
-        addWorkspaceFolder: vi.fn(),
-        integrations: [GOOGLE],
-      });
-      return (
-        <textarea
-          aria-label="composer"
-          value={value}
-          onChange={(e) => {
-            setValue(e.target.value);
-            mentions.detect(e.currentTarget);
-          }}
-          onKeyDown={(e) => mentions.onKeyDown(e)}
-        />
-      );
-    }
-
-    render(<Harness />, { wrapper: Wrapper });
+    render(
+      <Composer
+        label="composer"
+        initialValue="check "
+        addWorkspaceFile={addWorkspaceFile}
+        integrations={[GOOGLE]}
+      />,
+      { wrapper: Wrapper },
+    );
     const textarea = screen.getByLabelText<HTMLTextAreaElement>("composer");
 
     // Caret sits right after "@goo", with more text following it.
@@ -463,30 +334,14 @@ describe("useChatMentions", () => {
         scopes: null,
       },
     ]);
-    function Harness() {
-      const [value, setValue] = useState("");
-      const mentions = useChatMentions({
-        enabled: true,
-        value,
-        setValue,
-        integrations,
-        includeWorkspaceFiles: false,
-        addWorkspaceFile: vi.fn(),
-        addWorkspaceFolder: vi.fn(),
-      });
-      return (
-        <textarea
-          aria-label="accounts"
-          value={value}
-          onChange={(e) => {
-            setValue(e.target.value);
-            mentions.detect(e.currentTarget);
-          }}
-          onKeyDown={(e) => mentions.onKeyDown(e)}
-        />
-      );
-    }
-    render(<Harness />, { wrapper: Wrapper });
+    render(
+      <Composer
+        label="accounts"
+        integrations={integrations}
+        includeWorkspaceFiles={false}
+      />,
+      { wrapper: Wrapper },
+    );
     const input = screen.getByLabelText<HTMLTextAreaElement>("accounts");
     fireEvent.change(input, { target: { value: "Check my @Work G" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -503,19 +358,11 @@ describe("useChatMentions", () => {
   });
 
   it("offers only the way to connect one when workspace files are off and nothing is connected", () => {
-    const { result } = renderHook(
-      () =>
-        useChatMentions({
-          enabled: true,
-          value: "hi @",
-          setValue: vi.fn(),
-          addWorkspaceFile: vi.fn(),
-          addWorkspaceFolder: vi.fn(),
-          includeWorkspaceFiles: false,
-          integrations: [],
-        }),
-      { wrapper: Wrapper },
-    );
+    const { result } = renderMentions({
+      value: "hi @",
+      includeWorkspaceFiles: false,
+      integrations: [],
+    });
 
     act(() => result.current.detect(fakeTextarea("hi @")));
     expect(result.current.isOpen).toBe(true);
@@ -524,19 +371,11 @@ describe("useChatMentions", () => {
   });
 
   it("offers only integrations and never queries files when workspace files are off", () => {
-    const { result } = renderHook(
-      () =>
-        useChatMentions({
-          enabled: true,
-          value: "hi @",
-          setValue: vi.fn(),
-          addWorkspaceFile: vi.fn(),
-          addWorkspaceFolder: vi.fn(),
-          includeWorkspaceFiles: false,
-          integrations: [GOOGLE],
-        }),
-      { wrapper: Wrapper },
-    );
+    const { result } = renderMentions({
+      value: "hi @",
+      includeWorkspaceFiles: false,
+      integrations: [GOOGLE],
+    });
 
     act(() => result.current.detect(fakeTextarea("hi @")));
     expect(result.current.isOpen).toBe(true);
@@ -551,25 +390,14 @@ describe("useChatMentions", () => {
 
   it("hands the @query to the connect dialog and reopens it once connected", () => {
     const setValue = vi.fn();
-    const { result } = renderHook(
-      () =>
-        useChatMentions({
-          enabled: true,
-          value: "ask @linear",
-          setValue,
-          addWorkspaceFile: vi.fn(),
-          addWorkspaceFolder: vi.fn(),
-          includeWorkspaceFiles: false,
-          integrations: [GOOGLE],
-        }),
-      { wrapper: Wrapper },
-    );
-
-    const textarea = {
+    const { result } = renderMentions({
       value: "ask @linear",
-      selectionStart: 11,
-      setSelectionRange: vi.fn(),
-    };
+      setValue,
+      includeWorkspaceFiles: false,
+      integrations: [GOOGLE],
+    });
+
+    const textarea = caretTextarea("ask @linear");
     act(() => result.current.detect(textarea));
     expect(result.current.options).toEqual([
       { kind: "connect", query: "linear" },
@@ -595,19 +423,11 @@ describe("useChatMentions", () => {
   });
 
   it("lets Enter through to send when nothing matched and the connect row was not chosen", () => {
-    const { result } = renderHook(
-      () =>
-        useChatMentions({
-          enabled: true,
-          value: "ask @john",
-          setValue: vi.fn(),
-          addWorkspaceFile: vi.fn(),
-          addWorkspaceFolder: vi.fn(),
-          includeWorkspaceFiles: false,
-          integrations: [GOOGLE],
-        }),
-      { wrapper: Wrapper },
-    );
+    const { result } = renderMentions({
+      value: "ask @john",
+      includeWorkspaceFiles: false,
+      integrations: [GOOGLE],
+    });
 
     act(() => result.current.detect(fakeTextarea("ask @john")));
     const enter = keyEvent("Enter");
@@ -619,23 +439,11 @@ describe("useChatMentions", () => {
   });
 
   it("does not reopen once the user has typed on while the grant was in flight", () => {
-    const { result } = renderHook(
-      () =>
-        useChatMentions({
-          enabled: true,
-          value: "ask @sentry",
-          setValue: vi.fn(),
-          addWorkspaceFile: vi.fn(),
-          addWorkspaceFolder: vi.fn(),
-          includeWorkspaceFiles: false,
-        }),
-      { wrapper: Wrapper },
-    );
-    const textarea = {
+    const { result } = renderMentions({
       value: "ask @sentry",
-      selectionStart: 11,
-      setSelectionRange: vi.fn(),
-    };
+      includeWorkspaceFiles: false,
+    });
+    const textarea = caretTextarea("ask @sentry");
     const request = chooseConnect(result, textarea);
 
     textarea.value = "ask @sentry2";
@@ -645,23 +453,11 @@ describe("useChatMentions", () => {
   });
 
   it("does not reopen when the @query is no longer where it was", () => {
-    const { result, rerender } = renderHook(
-      ({ value }) =>
-        useChatMentions({
-          enabled: true,
-          value,
-          setValue: vi.fn(),
-          addWorkspaceFile: vi.fn(),
-          addWorkspaceFolder: vi.fn(),
-          includeWorkspaceFiles: false,
-        }),
-      { wrapper: Wrapper, initialProps: { value: "ask @linear" } },
-    );
-    const textarea = {
+    const { result, rerender } = renderMentions({
       value: "ask @linear",
-      selectionStart: 11,
-      setSelectionRange: vi.fn(),
-    };
+      includeWorkspaceFiles: false,
+    });
+    const textarea = caretTextarea("ask @linear");
     const request = chooseConnect(result, textarea);
 
     textarea.value = "ask @lin";
@@ -671,23 +467,11 @@ describe("useChatMentions", () => {
   });
 
   it("an earlier connect finishing late leaves a newer Connect dialog open", () => {
-    const { result } = renderHook(
-      () =>
-        useChatMentions({
-          enabled: true,
-          value: "ask @sentry",
-          setValue: vi.fn(),
-          addWorkspaceFile: vi.fn(),
-          addWorkspaceFolder: vi.fn(),
-          includeWorkspaceFiles: false,
-        }),
-      { wrapper: Wrapper },
-    );
-    const textarea = {
+    const { result } = renderMentions({
       value: "ask @sentry",
-      selectionStart: 11,
-      setSelectionRange: vi.fn(),
-    };
+      includeWorkspaceFiles: false,
+    });
+    const textarea = caretTextarea("ask @sentry");
     const first = chooseConnect(result, textarea);
     // The dialog closes on success while the expert grant is still running.
     act(() => result.current.cancelConnect());
@@ -707,24 +491,12 @@ describe("useChatMentions", () => {
       name: "mcp.sentry.dev",
       token: "@mcp.sentry.dev",
     };
-    const { result, rerender } = renderHook(
-      ({ integrations }) =>
-        useChatMentions({
-          enabled: true,
-          value: "ask @errors",
-          setValue: vi.fn(),
-          addWorkspaceFile: vi.fn(),
-          addWorkspaceFolder: vi.fn(),
-          includeWorkspaceFiles: false,
-          integrations,
-        }),
-      { wrapper: Wrapper, initialProps: { integrations: [GOOGLE] } },
-    );
-    const textarea = {
+    const { result, rerender } = renderMentions({
       value: "ask @errors",
-      selectionStart: 11,
-      setSelectionRange: vi.fn(),
-    };
+      includeWorkspaceFiles: false,
+      integrations: [GOOGLE],
+    });
+    const textarea = caretTextarea("ask @errors");
     const request = chooseConnect(result, textarea);
 
     rerender({ integrations: [GOOGLE, SENTRY] });
@@ -743,19 +515,11 @@ describe("useChatMentions", () => {
   });
 
   it("forgets a Connect highlight once the mention ends", () => {
-    const { result } = renderHook(
-      () =>
-        useChatMentions({
-          enabled: true,
-          value: "ask @john",
-          setValue: vi.fn(),
-          addWorkspaceFile: vi.fn(),
-          addWorkspaceFolder: vi.fn(),
-          includeWorkspaceFiles: false,
-          integrations: [GOOGLE],
-        }),
-      { wrapper: Wrapper },
-    );
+    const { result } = renderMentions({
+      value: "ask @john",
+      includeWorkspaceFiles: false,
+      integrations: [GOOGLE],
+    });
 
     act(() => result.current.detect(fakeTextarea("ask @john")));
     act(() => {
@@ -773,30 +537,22 @@ describe("useChatMentions", () => {
   });
 
   describe("Connect row always ends the mention list", () => {
+    beforeEach(() => {
+      // Each search answers only its own query, so a stale result is visible.
+      mockListWorkspaceFiles.mockImplementation(({ q }: { q?: string }) =>
+        Promise.resolve(filesPage([fileNamed(`${q ?? ""}.txt`)])),
+      );
+    });
+
     function fileNamed(name: string) {
       return { ...FILE, id: `file-${name}`, name };
     }
 
     it("stays last, carrying the live query, while a second integration is typed before the file search catches up", async () => {
-      // Each search answers only its own query, so a stale result is visible.
-      mockListWorkspaceFiles.mockImplementation(({ q }: { q?: string }) =>
-        Promise.resolve({
-          status: 200,
-          data: { files: [fileNamed(`${q ?? ""}.txt`)], has_more: false },
-        }),
-      );
-      const { result, rerender } = renderHook(
-        ({ value }) =>
-          useChatMentions({
-            enabled: true,
-            value,
-            setValue: vi.fn(),
-            addWorkspaceFile: vi.fn(),
-            addWorkspaceFolder: vi.fn(),
-            integrations: [GITHUB, GOOGLE],
-          }),
-        { wrapper: Wrapper, initialProps: { value: "hi @gi" } },
-      );
+      const { result, rerender } = renderMentions({
+        value: "hi @gi",
+        integrations: [GITHUB, GOOGLE],
+      });
 
       act(() => result.current.detect(fakeTextarea("hi @gi")));
       await waitFor(() =>
@@ -832,24 +588,10 @@ describe("useChatMentions", () => {
     });
 
     it("opens the dialog for the latest query when Connect is reached by keyboard mid-race", async () => {
-      mockListWorkspaceFiles.mockImplementation(({ q }: { q?: string }) =>
-        Promise.resolve({
-          status: 200,
-          data: { files: [fileNamed(`${q ?? ""}.txt`)], has_more: false },
-        }),
-      );
-      const { result, rerender } = renderHook(
-        ({ value }) =>
-          useChatMentions({
-            enabled: true,
-            value,
-            setValue: vi.fn(),
-            addWorkspaceFile: vi.fn(),
-            addWorkspaceFolder: vi.fn(),
-            integrations: [GITHUB, GOOGLE],
-          }),
-        { wrapper: Wrapper, initialProps: { value: "hi @gi" } },
-      );
+      const { result, rerender } = renderMentions({
+        value: "hi @gi",
+        integrations: [GITHUB, GOOGLE],
+      });
 
       act(() => result.current.detect(fakeTextarea("hi @gi")));
       await waitFor(() => expect(result.current.options).toHaveLength(3));
@@ -875,3 +617,63 @@ describe("useChatMentions", () => {
     });
   });
 });
+
+type MentionArgs = Parameters<typeof useChatMentions>[0];
+
+function renderMentions(args: Partial<MentionArgs> & { value: string }) {
+  return renderHook(
+    (props: Partial<MentionArgs>) =>
+      useChatMentions({
+        enabled: true,
+        setValue: vi.fn(),
+        addWorkspaceFile: vi.fn(),
+        addWorkspaceFolder: vi.fn(),
+        ...args,
+        ...props,
+      }),
+    { wrapper: Wrapper, initialProps: {} },
+  );
+}
+
+function Composer({
+  label,
+  initialValue = "",
+  ...args
+}: Omit<Partial<MentionArgs>, "value" | "setValue"> & {
+  label: string;
+  initialValue?: string;
+}) {
+  const [value, setValue] = useState(initialValue);
+  const mentions = useChatMentions({
+    enabled: true,
+    value,
+    setValue,
+    addWorkspaceFile: vi.fn(),
+    addWorkspaceFolder: vi.fn(),
+    ...args,
+  });
+  return (
+    <textarea
+      aria-label={label}
+      value={value}
+      onChange={(e) => {
+        setValue(e.target.value);
+        mentions.detect(e.currentTarget);
+      }}
+      onKeyDown={(e) => mentions.onKeyDown(e)}
+    />
+  );
+}
+
+function mockFiles(files: (typeof FILE)[]) {
+  mockListWorkspaceFiles.mockResolvedValue(filesPage(files));
+}
+
+function filesPage(files: (typeof FILE)[]) {
+  return { status: 200, data: { files, has_more: false } };
+}
+
+/** A textarea whose caret the hook can move, at the end of `value`. */
+function caretTextarea(value: string) {
+  return { value, selectionStart: value.length, setSelectionRange: vi.fn() };
+}
