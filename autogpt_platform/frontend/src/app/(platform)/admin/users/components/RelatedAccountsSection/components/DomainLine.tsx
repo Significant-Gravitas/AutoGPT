@@ -18,15 +18,18 @@ export function DomainLine({ report, signedInUserId }: Props) {
 
   if (domain.is_public_provider) {
     return (
-      <Text variant="body" className="text-foreground-body">
-        Email domain {name} is a public mail provider, so its accounts
-        aren&apos;t listed and it can&apos;t be blocked.
+      <Text variant="body" tone="body">
+        Email domain {name} is a public mail provider, so it isn&apos;t used to
+        link accounts and can&apos;t be blocked.
+        {report.related.length > 0
+          ? " The accounts below share a sign-in IP with this one."
+          : null}
       </Text>
     );
   }
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <Text variant="body" className="text-foreground-body">
+      <Text variant="body" tone="body">
         Email domain {name} ·{" "}
         {domain.other_account_count > 0
           ? pluralize(domain.other_account_count, "other account")

@@ -19,7 +19,7 @@ export function PlanComparison({ plans }: Props) {
                 key={plan.key}
                 scope="col"
                 data-slot="plan-comparison-column"
-                className="pb-3 pr-3 font-medium"
+                className="pr-3 pb-3 font-medium"
               >
                 {plan.name}
                 {plan.usage && ` · ${plan.usage} usage`}

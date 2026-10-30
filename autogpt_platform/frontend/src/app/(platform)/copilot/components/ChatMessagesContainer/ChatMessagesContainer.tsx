@@ -535,7 +535,7 @@ export function ChatMessagesContainer({
       >
         <ConversationContent
           className={cn(
-            "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-4 pb-4 pt-14 md:px-6",
+            "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-4 pt-14 pb-4 md:px-6",
             isCompact && "gap-4 px-4 pt-4",
             showThreadHeader && floatingControls && "max-lg:pt-20",
             !showThreadHeader && "pt-4",
@@ -580,7 +580,7 @@ export function ChatMessagesContainer({
           {showIndicator && lastMessage?.role !== "assistant" && (
             <Message
               from="assistant"
-              className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+              className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
             >
               <MessageContent className="text-body-lg leading-relaxed">
                 {indicator}

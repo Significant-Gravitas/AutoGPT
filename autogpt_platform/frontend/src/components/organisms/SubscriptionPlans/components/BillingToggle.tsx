@@ -31,8 +31,7 @@ export function BillingToggle({ billing, onBillingChange }: Props) {
           {cycle === "yearly" && (
             <span
               data-slot="billing-toggle-savings"
-              // TODO(tokens): no role for emerald-600; success is green-600.
-              className="text-xs text-emerald-600"
+              className="text-xs text-success"
             >
               Save 15%
             </span>

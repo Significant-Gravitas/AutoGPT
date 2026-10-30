@@ -105,9 +105,9 @@ export function BaseDropdown({
           aria-describedby={`${labelID}-hint`}
           aria-required="true"
           className={cn(
-            "flex h-9 w-full min-w-0 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 text-start text-sm transition-colors",
-            "hover:border-zinc-300 focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400",
-            chosen ? "text-zinc-900" : "text-zinc-400",
+            "flex h-9 w-full min-w-0 items-center gap-2 rounded-xl border border-border-base bg-surface px-4 text-start text-sm transition-colors",
+            "hover:border-border-strong focus:border-foreground-subtle focus:ring-1 focus:ring-foreground-subtle focus:outline-none",
+            chosen ? "text-foreground-strong" : "text-foreground-subtle",
           )}
         >
           <span className="min-w-0 flex-1 truncate">
@@ -116,7 +116,7 @@ export function BaseDropdown({
           <Icon
             icon={UnfoldMoreIcon}
             size={16}
-            className="shrink-0 text-zinc-500"
+            className="shrink-0 text-foreground-tertiary"
           />
         </button>
       </PopoverTrigger>
@@ -162,18 +162,23 @@ export function BaseDropdown({
                 onClick={() => pick(base.id)}
                 onKeyDown={(event) => handleOptionKeyDown(event, base.id)}
                 className={cn(
-                  "flex w-full min-w-0 items-center gap-3 rounded-lg px-3 py-2 text-start text-sm leading-snug text-zinc-800 transition-colors",
-                  "hover:bg-zinc-100 focus:bg-zinc-100 focus:outline-none",
-                  isSelected && "font-medium text-zinc-900",
+                  "flex w-full min-w-0 items-center gap-3 rounded-lg px-3 py-2 text-start text-sm leading-snug text-foreground-emphasis transition-colors",
+                  "hover:bg-surface-hover focus:bg-surface-hover focus:outline-none",
+                  isSelected && "font-medium text-foreground-strong",
                   locked &&
-                    "cursor-not-allowed text-zinc-400 hover:bg-transparent",
+                    "cursor-not-allowed text-foreground-subtle hover:bg-transparent",
                 )}
               >
                 <span className="min-w-0 flex-1 break-words">{base.name}</span>
                 {locked && (
-                  <span className="shrink-0 text-xs text-zinc-500">
+                  <Text
+                    variant="small-tight"
+                    as="span"
+                    tone="muted"
+                    className="shrink-0"
+                  >
                     {lockedReason(base.access, needed)}
-                  </span>
+                  </Text>
                 )}
                 {isSelected && (
                   <Icon icon={Tick02Icon} size={16} className="shrink-0" />
@@ -182,7 +187,7 @@ export function BaseDropdown({
             );
           })}
           {shown.length === 0 && (
-            <Text variant="small" className="px-3 py-2 text-zinc-500">
+            <Text variant="small" tone="muted" className="px-3 py-2">
               No base matches “{search.trim()}”.
             </Text>
           )}

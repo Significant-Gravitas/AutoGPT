@@ -37,7 +37,6 @@ export function TypedFallback({
             label="Your brain dump"
             hideLabel
             rows={rows}
-            className="rounded-xl border-border-base"
             placeholder="What repeats every week? What would you hand off first?"
             value={value}
             onChange={(e) => onChange(e.target.value)}

@@ -1,4 +1,5 @@
 "use client";
+import { Text } from "@/components/atoms/Text/Text";
 
 import { Button } from "@/components/atoms/Button/Button";
 import { credentialService } from "@/components/contextual/CredentialsInput/service-identity";
@@ -45,9 +46,9 @@ export function WorkflowConnectionView({
         <h3 className="text-xl font-medium text-foreground-strong">
           Connect {provider.name}
         </h3>
-        <p className="mt-2 text-sm text-foreground-tertiary">
+        <Text variant="body-tight" tone="muted" className="mt-2">
           Choose the account Otto should use for this workflow.
-        </p>
+        </Text>
       </div>
       {hasSignIn ? (
         <>
@@ -66,9 +67,9 @@ export function WorkflowConnectionView({
               ? "Connecting…"
               : `Continue with ${provider.name}`}
           </Button>
-          <p className="text-center text-xs text-foreground-tertiary">
+          <Text variant="small-tight" tone="muted" className="text-center">
             Sign in on the app&apos;s own page, then return here.
-          </p>
+          </Text>
           {hasKey && (
             <details className="border-t border-separator pt-4">
               <summary className="cursor-pointer text-sm text-foreground-tertiary">

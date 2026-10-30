@@ -23,7 +23,7 @@ export function HeldPassage({ passage }: Props) {
       <blockquote
         id={id}
         className={cn(
-          "whitespace-pre-wrap border-l-2 border-warning bg-warning-surface/60 px-3 py-2 text-sm text-foreground-emphasis [overflow-wrap:anywhere]",
+          "border-l-2 border-warning bg-warning-surface/60 px-3 py-2 text-sm [overflow-wrap:anywhere] whitespace-pre-wrap text-foreground-emphasis",
           long &&
             !expanded &&
             "max-h-40 overflow-hidden [mask-image:linear-gradient(to_bottom,black_70%,transparent)]",

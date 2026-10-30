@@ -2,8 +2,8 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import tailwindConfig from "../../../tailwind.config";
-import { colors } from "../styles/colors";
+import { APP_COLORS } from "../../../tailwind.v3-preset";
+import { COLOR_ROLES } from "../styles/color-roles";
 
 // The contract between the design tokens, the Tailwind config and the
 // primitives (SECRT-3097). See docs/engineering/design-system.md.
@@ -14,42 +14,68 @@ const globalsCss = readFileSync(
   "utf8",
 );
 
+// Colours declared in every top-level rule whose selector list includes
+// `selector`; empty when there is none.
 function declaredColors(selector: string) {
-  const start = globalsCss.indexOf(`${selector} {`);
-  const block = globalsCss.slice(start, globalsCss.indexOf("\n}", start));
-  return new Set([...block.matchAll(/--color-([a-z-]+):/g)].map((m) => m[1]));
+  const names = new Set<string>();
+  for (const [, selectors, block] of globalsCss.matchAll(
+    /^([^\s{}@/*][^{}]*)\{([^{}]*)\}/gm,
+  )) {
+    if (!selectors.split(",").some((s) => s.trim() === selector)) continue;
+    for (const m of block.matchAll(/--color-([a-z-]+):/g)) names.add(m[1]);
+  }
+  return names;
 }
 
-function registeredColors(value: unknown): string[] {
-  if (typeof value === "string")
-    return [...value.matchAll(/var\(--color-([a-z-]+)\)/g)].map((m) => m[1]);
-  if (value && typeof value === "object")
-    return Object.values(value).flatMap(registeredColors);
-  return [];
+// Colours the `@theme` blocks register, each as `rgb(var(--color-<name>) / 1)`
+// so the class reads the triplet of the same name on `:root`.
+function registeredColors() {
+  const names = new Set<string>();
+  for (const [, block] of globalsCss.matchAll(/^@theme[^{]*\{([^}]*)\}/gm)) {
+    for (const [, name, read] of block.matchAll(
+      /--color-([a-z-]+):\s*rgb\(\s*var\(--color-([a-z-]+)\) \/ 1\s*\);/g,
+    )) {
+      expect(read, name).toBe(name);
+      names.add(name);
+    }
+  }
+  return names;
 }
 
 describe("colour tokens", () => {
   const root = declaredColors(":root");
-  const registered = new Set(
-    registeredColors(tailwindConfig.theme?.extend?.colors),
-  );
+  const registered = registeredColors();
 
   it("registers every colour globals.css declares, and nothing it does not", () => {
     expect([...root].filter((name) => !registered.has(name))).toEqual([]);
     expect([...registered].filter((name) => !root.has(name))).toEqual([]);
   });
 
+  it("lists every role in color-roles.ts, the Tokens/Colors story's source", () => {
+    const shadcnAlias = (name: string) =>
+      new RegExp(`^  --color-${name}: var\\(--color-`, "m").test(globalsCss);
+    expect([...root].filter((name) => !shadcnAlias(name)).sort()).toEqual(
+      [...COLOR_ROLES].sort(),
+    );
+  });
+
   it("only overrides names :root declares in .dark", () => {
+    expect(root.size).toBeGreaterThan(0);
     const dark = declaredColors(".dark");
-    expect(dark.size).toBeGreaterThan(0);
     expect([...dark].filter((name) => !root.has(name))).toEqual([]);
   });
 
+  it("has one dark selector, `.dark`", () => {
+    expect(globalsCss).toContain("@custom-variant dark (&:is(.dark *));");
+    expect(globalsCss).not.toMatch(/\.dark-mode|data-theme=["']?dark/);
+  });
+
   it("keeps the raw palette frozen; new colours are roles in globals.css", () => {
-    expect(Object.keys(colors).sort()).toEqual(
+    expect(Object.keys(APP_COLORS).sort()).toEqual(
       [
         "bgLightGrey",
         "black",
+        "customGray",
         "green",
         "orange",
         "pink",
@@ -63,6 +89,7 @@ describe("colour tokens", () => {
         "zinc",
       ].sort(),
     );
+    expect(globalsCss).not.toMatch(/^\s*--color-[a-z]+-\d+:/m);
   });
 });
 
@@ -95,13 +122,11 @@ describe("components.json", () => {
 });
 
 // Primitives mark their root element with data-slot so callers and tests can
-// target their parts. These predate the rule; fix one and delete it here.
-const UNSLOTTED_PRIMITIVES = [
+// target their parts. These two render no element of their own (a text
+// fragment; the Radix Dialog or vaul Drawer root), so there is nothing to mark.
+const ELEMENTLESS_PRIMITIVES = [
   "src/components/atoms/RelativeTime/RelativeTime.tsx",
   "src/components/molecules/Dialog/Dialog.tsx",
-  "src/components/molecules/RunStatusBadge/RunStatusBadge.tsx",
-  "src/components/molecules/Sheet/Sheet.tsx",
-  "src/components/molecules/Sidebar/Sidebar.tsx",
 ];
 
 function primitiveFiles() {
@@ -121,6 +146,6 @@ describe("primitives", () => {
           "data-slot",
         ),
     );
-    expect(unslotted).toEqual(UNSLOTTED_PRIMITIVES);
+    expect(unslotted).toEqual(ELEMENTLESS_PRIMITIVES);
   });
 });
