@@ -6,10 +6,12 @@ type ChatMessage = UIMessage<unknown, UIDataTypes, UITools>;
 
 function replySignature(reply: ChatMessage | undefined) {
   if (!reply) return "";
-  const last = reply.parts[reply.parts.length - 1];
-  const state = last && "state" in last ? String(last.state) : "";
-  const size = last && "text" in last ? last.text.length : 0;
-  return `${reply.id}:${reply.parts.length}:${state}:${size}`;
+  const parts = reply.parts.map((part) => {
+    const state = "state" in part ? String(part.state) : "";
+    const size = "text" in part ? part.text.length : 0;
+    return `${part.type}:${state}:${size}`;
+  });
+  return `${reply.id}|${parts.join(",")}`;
 }
 
 interface Props {

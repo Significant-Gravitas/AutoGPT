@@ -16,6 +16,7 @@ interface Props {
   /** The latest turn's stream has really ended: no error, no reconnect,
    *  restore or follow-up check still running. */
   isSettled?: boolean;
+  isSettling?: boolean;
 }
 
 function formatLocalDate(iso: string): string {
@@ -79,11 +80,17 @@ export function TurnStatsBar({
   stats,
   isLatest = true,
   isSettled = true,
+  isSettling = false,
 }: Props) {
   const { counters } = getWorkDoneCounters(turnMessages);
   const displaySeconds = resolveDisplaySeconds(elapsedSeconds, stats);
   const localDate = stats?.createdAt ? formatLocalDate(stats.createdAt) : null;
-  const outcome = getDisplayedOutcome(turnMessages, isLatest, isSettled);
+  const outcome = getDisplayedOutcome(
+    turnMessages,
+    isLatest,
+    isSettled,
+    isSettling,
+  );
 
   const seconds =
     displaySeconds !== undefined && displaySeconds > 0 ? displaySeconds : null;

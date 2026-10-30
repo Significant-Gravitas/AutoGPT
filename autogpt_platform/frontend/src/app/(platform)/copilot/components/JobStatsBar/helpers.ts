@@ -17,7 +17,6 @@ const STOP_MARKER_TEXTS = new Set([
 
 // A held action is only ever answered in a later turn, so an approval or
 // review card left in the turn keeps it open whatever the model did next.
-const HELD_RESULT_TYPES = new Set(["approval_required", "review_required"]);
 
 // Results that leave the turn waiting on the user (a sign-in or setup)
 // unless the model went on to other work after them.
@@ -39,8 +38,15 @@ function resultType(part: Part) {
   return typeof type === "string" ? type : null;
 }
 
+// A refusal with no review behind it (declined, already used) waits on no one.
 function isHeldResult(part: Part) {
-  return HELD_RESULT_TYPES.has(resultType(part) ?? "");
+  if (!isToolPart(part) || !("output" in part)) return false;
+  const output = asObject(part.output);
+  return (
+    output?.type === "review_required" ||
+    (output?.type === "approval_required" &&
+      typeof output.review_id === "string")
+  );
 }
 
 function isWaitingResult(part: Part) {
@@ -110,16 +116,19 @@ export function getTurnOutcome(turnMessages: ChatMessage[]): TurnOutcome {
  * Only the latest turn says how it ended, and only once its stream has
  * really ended; earlier turns keep the plain "Thought for" line. A finished
  * turn whose stream is still settling shows just its time, so the line
- * doesn't read "Thought for" and then switch to "Done".
+ * doesn't read "Thought for" and then switch to "Done"; one that can't settle
+ * (an error, a host that doesn't report it) reads "Thought for".
  */
 export function getDisplayedOutcome(
   turnMessages: ChatMessage[],
   isLatest: boolean,
   isSettled: boolean,
+  isSettling: boolean,
 ): TurnOutcome {
   if (!isLatest) return "unsettled";
   const outcome = getTurnOutcome(turnMessages);
-  return outcome === "done" && !isSettled ? "settling" : outcome;
+  if (outcome !== "done" || isSettled) return outcome;
+  return isSettling ? "settling" : "unsettled";
 }
 
 export function getTurnEndLabel(

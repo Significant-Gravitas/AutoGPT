@@ -497,6 +497,7 @@ export function ChatMessagesContainer({
         isLastInTurn={isLastInTurn}
         isLatestTurn={isLastRow}
         isTurnSettled={!isLastRow || isTurnSettled}
+        isTurnSettling={isLastRow && isTurnBusy}
         turnStat={turnStats?.get(message.id)}
         turnMessages={
           showsTurnStats

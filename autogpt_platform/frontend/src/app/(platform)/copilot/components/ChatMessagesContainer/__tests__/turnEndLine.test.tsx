@@ -316,7 +316,16 @@ describe("ChatMessagesContainer — end of a turn", () => {
         status="submitted"
       />,
     );
-    rerender(<ChatMessagesContainer {...settled} />);
+    // A rebuilt list makes a new object for the untouched earlier reply.
+    rerender(
+      <ChatMessagesContainer
+        {...settled}
+        messages={[
+          userMessage,
+          { ...ranWorkflow, parts: [...ranWorkflow.parts] },
+        ]}
+      />,
+    );
 
     expect(announcement(container)).toBe("");
   });
@@ -332,6 +341,8 @@ describe("ChatMessagesContainer — end of a turn", () => {
       />,
     );
 
-    expect(screen.getByTestId("turn-end-line").textContent).toMatch(/^42s/);
+    expect(screen.getByTestId("turn-end-line").textContent).toMatch(
+      /^Thought for 42s/,
+    );
   });
 });

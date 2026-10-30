@@ -277,7 +277,10 @@ describe("TurnStatsBar — how the turn ended", () => {
     [
       "an approval card still open after other work",
       [
-        { ...ranWorkflow, output: { type: "approval_required" } },
+        {
+          ...ranWorkflow,
+          output: { type: "approval_required", review_id: "r1" },
+        },
         { ...ranWorkflow, toolCallId: "t2" },
         { type: "text", text: "Waiting on you for the first one." },
       ],
@@ -417,11 +420,45 @@ describe("TurnStatsBar — live elapsed timer", () => {
         turnMessages={[assistant([reply])]}
         stats={{ durationMs: 12_000 }}
         isSettled={false}
+        isSettling
       />,
     );
     const line = screen.getByTestId("turn-end-line");
     expect(line.textContent).toBe("12s");
     expect(line.querySelector("svg")).toBeNull();
+  });
+
+  it("reads thought for when the latest turn can't settle, e.g. after an error", () => {
+    render(
+      <TurnStatsBar
+        turnMessages={[assistant([reply])]}
+        stats={{ durationMs: 12_000 }}
+        isSettled={false}
+      />,
+    );
+    expect(screen.getByTestId("turn-end-line").textContent).toBe(
+      "Thought for 12s",
+    );
+  });
+
+  it("says done after an approval the gate refused outright", () => {
+    render(
+      <TurnStatsBar
+        turnMessages={[
+          assistant([
+            {
+              ...ranWorkflow,
+              output: { type: "approval_required", review_id: null },
+            },
+            { type: "text", text: "You declined that, so I left it." },
+          ]),
+        ]}
+        stats={{ durationMs: 12_000 }}
+      />,
+    );
+    expect(screen.getByTestId("turn-end-line").textContent).toMatch(
+      /^Done in 12s/,
+    );
   });
 
   it("keeps an earlier turn with no time or work to show empty", () => {
