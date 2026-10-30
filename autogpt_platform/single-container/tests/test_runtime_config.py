@@ -566,6 +566,157 @@ class FillEnvSecretsTest(unittest.TestCase):
 
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 
+    def test_fills_a_blank_vapid_pair_from_one_generated_key(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            path.write_text("VAPID_PRIVATE_KEY=\nVAPID_PUBLIC_KEY=\n", encoding="utf-8")
+
+            filled = runtime_config.fill_env_blanks(path)
+
+            self.assertEqual(filled, ["VAPID_PRIVATE_KEY", "VAPID_PUBLIC_KEY"])
+            values = _env_values(path)
+            private = _base64url_decode(values["VAPID_PRIVATE_KEY"])
+            public = _base64url_decode(values["VAPID_PUBLIC_KEY"])
+            self.assertEqual(len(private), 32)
+            self.assertEqual(len(public), 65)
+            # The public key written is the one for the private key written.
+            self.assertEqual(
+                public,
+                runtime_config._p256_public_point(int.from_bytes(private, "big")),
+            )
+            self.assertEqual(runtime_config.fill_env_blanks(path), [])
+
+    def test_a_vapid_pair_the_operator_set_is_kept(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            path.write_text(
+                "VAPID_PRIVATE_KEY=their-private\nVAPID_PUBLIC_KEY=their-public\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(runtime_config.fill_env_blanks(path), [])
+
+            values = _env_values(path)
+            self.assertEqual(values["VAPID_PRIVATE_KEY"], "their-private")
+            self.assertEqual(values["VAPID_PUBLIC_KEY"], "their-public")
+
+    def test_a_half_set_vapid_pair_is_refused_not_half_filled(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            path.write_text(
+                "VAPID_PRIVATE_KEY=their-private\nVAPID_PUBLIC_KEY=\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "must be set together"):
+                runtime_config.fill_env_blanks(path)
+
+            self.assertEqual(_env_values(path)["VAPID_PUBLIC_KEY"], "")
+
+    def test_a_published_vapid_pair_is_replaced(self) -> None:
+        """The pair signs nothing that is stored, so like a service password a
+        published one is replaced rather than kept (the backend refuses to
+        send pushes with it either way)."""
+        published = {
+            "private": "pretend-shipped-private",
+            "public": "pretend-shipped-public",
+        }
+        digests = frozenset(
+            hashlib.sha256(value.encode()).hexdigest() for value in published.values()
+        )
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.object(runtime_config, "PUBLISHED_VAPID_DIGESTS", digests),
+        ):
+            path = Path(directory) / ".env"
+            path.write_text(
+                f"VAPID_PRIVATE_KEY={published['private']}\n"
+                f"VAPID_PUBLIC_KEY={published['public']}\n",
+                encoding="utf-8",
+            )
+
+            filled = runtime_config.fill_env_blanks(path)
+
+            self.assertEqual(filled, ["VAPID_PRIVATE_KEY", "VAPID_PUBLIC_KEY"])
+            values = _env_values(path)
+            self.assertNotIn(values["VAPID_PRIVATE_KEY"], published.values())
+            self.assertNotIn(values["VAPID_PUBLIC_KEY"], published.values())
+            private = _base64url_decode(values["VAPID_PRIVATE_KEY"])
+            self.assertEqual(
+                _base64url_decode(values["VAPID_PUBLIC_KEY"]),
+                runtime_config._p256_public_point(int.from_bytes(private, "big")),
+            )
+
+    def test_published_vapid_pair_in_the_environment_is_regenerated(self) -> None:
+        """The single-container first boot takes the pair from the environment,
+        unless it is the published one."""
+        environment = {
+            "VAPID_PRIVATE_KEY": "pretend-shipped-private",
+            "VAPID_PUBLIC_KEY": "pretend-shipped-public",
+        }
+        digests = frozenset(
+            hashlib.sha256(value.encode()).hexdigest() for value in environment.values()
+        )
+        with mock.patch.object(runtime_config, "PUBLISHED_VAPID_DIGESTS", digests):
+            private, public = runtime_config._configured_or_generated_vapid(environment)
+
+        self.assertNotIn(private, environment.values())
+        self.assertEqual(len(_base64url_decode(private)), 32)
+        self.assertEqual(len(_base64url_decode(public)), 65)
+        kept = {
+            "VAPID_PRIVATE_KEY": "their-private",
+            "VAPID_PUBLIC_KEY": "their-public",
+        }
+        self.assertEqual(
+            runtime_config._configured_or_generated_vapid(kept),
+            ("their-private", "their-public"),
+        )
+
+    def test_p256_public_point_matches_the_rfc_6979_test_vector(self) -> None:
+        """RFC 6979 appendix A.2.5: the P-256 key pair every implementation
+        agrees on, so the interpreter-only arithmetic is checked against a
+        published answer, not against itself."""
+        private = 0xC9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721
+        expected = (
+            b"\x04"
+            + (
+                0x60FED4BA255A9D31C961EB74C6356D68C049B8923B61FA6CE669622E60F29FB6
+            ).to_bytes(32, "big")
+            + (
+                0x7903FE1008B8BC99A41AE9E95628BC64F2F1B20C2D7E9F5177A3C294D4462299
+            ).to_bytes(32, "big")
+        )
+
+        self.assertEqual(runtime_config._p256_public_point(private), expected)
+
+    def test_key_generation_needs_no_cryptography_package(self) -> None:
+        """`make init-env` runs under the system interpreter, which has no
+        `cryptography`: the pair is then made with the interpreter alone."""
+        with mock.patch.dict(sys.modules, {"cryptography": None}):
+            private, public = runtime_config._generate_p256_keypair()
+
+        self.assertEqual(len(private), 32)
+        self.assertEqual(
+            public, runtime_config._p256_public_point(int.from_bytes(private, "big"))
+        )
+
+    def test_interpreter_only_p256_agrees_with_cryptography(self) -> None:
+        try:
+            from cryptography.hazmat.primitives.asymmetric import ec
+        except ImportError:
+            self.skipTest("cryptography is not installed in this interpreter")
+
+        private, public = runtime_config._generate_p256_keypair()
+        scalar = int.from_bytes(private, "big")
+        point = ec.derive_private_key(scalar, ec.SECP256R1()).public_key()
+        numbers = point.public_numbers()
+
+        self.assertEqual(
+            public,
+            b"\x04" + numbers.x.to_bytes(32, "big") + numbers.y.to_bytes(32, "big"),
+        )
+        self.assertEqual(runtime_config._p256_public_point(scalar), public)
+
     def test_published_digests_match_the_backend_startup_check(self) -> None:
         """The backend warns about the same published passwords this replaces."""
         guard = (
@@ -584,6 +735,20 @@ class FillEnvSecretsTest(unittest.TestCase):
 
         digests = ast.literal_eval(assignment.value)
         self.assertEqual(digests, set(runtime_config.PUBLISHED_CREDENTIAL_DIGESTS))
+        vapid = next(
+            node
+            for node in ast.walk(ast.parse(guard))
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name)
+                and target.id == "_RETIRED_VAPID_PRIVATE_KEY_DIGESTS"
+                for target in node.targets
+            )
+        )
+        # The key the push sender refuses is one `fill-env` replaces.
+        self.assertTrue(
+            ast.literal_eval(vapid.value) <= set(runtime_config.PUBLISHED_VAPID_DIGESTS)
+        )
         self.assertTrue(digests)
         self.assertTrue(
             all(re.fullmatch(r"[0-9a-f]{64}", digest) for digest in digests)
@@ -1400,6 +1565,10 @@ class FillEnvServicePasswordsTest(unittest.TestCase):
             _env_values(self.root / relative_path)
             for relative_path in (".env", "backend/.env", "frontend/.env")
         ]
+
+
+def _base64url_decode(value: str) -> bytes:
+    return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
 
 
 def _copy_env_default(platform_root: Path, root: Path, relative_path: str) -> Path:

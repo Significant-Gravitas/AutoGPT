@@ -71,11 +71,37 @@ _PUBLISHED_CREDENTIAL_DIGESTS = {
 }
 
 
+# SHA-256 of the Web Push (VAPID) private key backend/.env.default shipped from
+# #12723 (2026-04-29) until it was retired. Anyone holding it can sign push
+# notifications to this site's users, so `data/push_sender.py` refuses to send
+# with it; the backend still starts, since nothing stored depends on the pair,
+# and `make init-env` replaces a published pair with a generated one.
+_RETIRED_VAPID_PRIVATE_KEY_DIGESTS = {
+    "9c17b969b0d1d745c4fea96adce535472a5ce3c39dc1339905692c2177c950d5",  # pragma: allowlist secret
+}
+VAPID_HINT = (
+    "Clear VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY in autogpt_platform/backend/.env "
+    "and run `make init-env` in autogpt_platform/ to generate a pair for this "
+    "install. Browsers subscribed under the old pair stop receiving pushes until "
+    "they turn notifications off and on again."
+)
+
+
+def vapid_private_key_is_published(value: str) -> bool:
+    """Whether a Web Push private key is one this repository published."""
+    if not value:
+        return False
+    return (
+        hashlib.sha256(value.encode()).hexdigest() in _RETIRED_VAPID_PRIVATE_KEY_DIGESTS
+    )
+
+
 def check_secrets(settings: Settings | None = None) -> None:
     """Raise if a required secret is missing or is a known-published value."""
     settings = settings or Settings()
     _warn_on_published_credentials(settings)
     _warn_on_missing_passwords(settings)
+    _warn_on_published_vapid_key(settings)
     secrets = settings.secrets
     configured = {
         "ENCRYPTION_KEY": secrets.encryption_key,
@@ -107,6 +133,16 @@ def check_secrets(settings: Settings | None = None) -> None:
             "links cannot be signed. "
             + MISSING_HINT.replace("ENCRYPTION_KEY", "UNSUBSCRIBE_SECRET_KEY")
         )
+
+
+def _warn_on_published_vapid_key(settings: Settings) -> None:
+    if not vapid_private_key_is_published(settings.secrets.vapid_private_key):
+        return
+    logger.warning(
+        "[SECURITY] VAPID_PRIVATE_KEY is the Web Push key pair published in this "
+        "repository's public .env.default, so anyone can sign push notifications "
+        f"to this site's users. No push is sent until it is replaced. {VAPID_HINT}"
+    )
 
 
 def _warn_on_published_credentials(settings: Settings) -> None:

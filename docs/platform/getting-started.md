@@ -262,6 +262,13 @@ with the one `.env.default` used to contain. This applies to Docker Compose
 installs; the Docker Hub image generates its own secrets on first boot and
 keeps them in its data volume.
 
+The Web Push signing pair, `VAPID_PRIVATE_KEY` and `VAPID_PUBLIC_KEY`, shipped
+with a value from April to October 2026 and is now blank and generated the same
+way. The backend starts on the published pair but sends no push notifications
+with it; `make init-env` replaces a published pair with a generated one, since
+nothing stored depends on it. Browsers subscribed under the old pair stop
+receiving pushes until notifications are turned off and on again in the app.
+
 A fresh install needs nothing beyond `make init-env` (or
 `installer/setup-autogpt.sh` / `setup-autogpt.bat`, which do the same). An
 install that already set its own values needs nothing either. Follow the steps

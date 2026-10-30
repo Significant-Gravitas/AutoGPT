@@ -201,10 +201,12 @@ def fill_env_blanks(path: Path) -> list[str]:
         lambda: _shared_database_password(path)
     )
 
+    vapid_keypair = functools.lru_cache(maxsize=None)(_generate_vapid_keypair)
+
     filled: list[str] = []
     replacements: list[tuple[Setting, str]] = []
     for setting in settings:
-        value = _new_value(setting, text, path, database_password)
+        value = _new_value(setting, text, path, database_password, vapid_keypair)
         if value is not None:
             replacements.append((setting, value))
             filled.append(setting.name)
@@ -214,7 +216,9 @@ def fill_env_blanks(path: Path) -> list[str]:
 
     added: list[tuple[str, str]] = []
     for name in _missing_credentials(path, {setting.name for setting in settings}):
-        value = _new_value(Setting(name, "", True, 0, 0), "", path, database_password)
+        value = _new_value(
+            Setting(name, "", True, 0, 0), "", path, database_password, vapid_keypair
+        )
         if value is not None:
             added.append((name, value))
     if added:
@@ -270,7 +274,11 @@ def _check_passwords_are_plain(path: Path, settings: list[Setting]) -> None:
 
 
 def _new_value(
-    setting: Setting, text: str, path: Path, database_password: Callable[[], str]
+    setting: Setting,
+    text: str,
+    path: Path,
+    database_password: Callable[[], str],
+    vapid_keypair: Callable[[], tuple[str, str]],
 ) -> str | None:
     """What `fill_env_blanks` writes in place of a setting's value as written,
     or None to keep it."""
@@ -280,6 +288,8 @@ def _new_value(
     if name in ("DATABASE_URL", "DIRECT_URL"):
         written = text[setting.start : setting.end]
         return _database_url(written, value, path, database_password)
+    if name in VAPID_KEY_SETTINGS:
+        return _vapid_value(name, path, vapid_keypair)
     if name in BUNDLED_SERVICE_HOSTS and not _uses_bundled_service(
         name, _file_settings(path)
     ):
@@ -292,6 +302,39 @@ def _new_value(
     if not value or (name in CREDENTIALS and _is_published(value)):
         return generator()
     return None
+
+
+def _vapid_value(
+    name: str, path: Path, vapid_keypair: Callable[[], tuple[str, str]]
+) -> str | None:
+    """The Web Push key pair is filled as one: a blank or published pair gets a
+    freshly generated private key and the public key that belongs to it. A
+    pair with one side set and the other blank can't be completed (the public
+    key is derived from the private one, never the reverse), so it is refused
+    rather than half-filled. Nothing stored depends on the pair, so replacing
+    a published one costs only the browsers' push subscriptions."""
+    effective = _file_settings(path)
+    unset = [
+        setting is None or _is_unset_vapid_key(setting.value)
+        for setting in (effective.get(key) for key in VAPID_KEY_SETTINGS)
+    ]
+    if not any(unset):
+        return None
+    if not all(unset):
+        raise ValueError(
+            f"VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY in {path} must be set "
+            "together: one is set and the other is blank (or the published "
+            "value). Clear both and run this again to generate a pair, or set "
+            "both from one pair you generated."
+        )
+    return vapid_keypair()[VAPID_KEY_SETTINGS.index(name)]
+
+
+def _is_unset_vapid_key(value: str) -> bool:
+    return (
+        not value
+        or hashlib.sha256(value.encode()).hexdigest() in PUBLISHED_VAPID_DIGESTS
+    )
 
 
 def _database_url(
@@ -737,14 +780,26 @@ def _configured_or_generated_vapid(
     public = environment.get("VAPID_PUBLIC_KEY")
     if bool(private) != bool(public):
         raise ValueError("VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY must be set together")
-    return (private, public) if private and public else _generate_vapid_keypair()
+    if not private or not public or _is_unset_vapid_key(private):
+        return _generate_vapid_keypair()
+    return private, public
 
 
 def _generate_vapid_keypair() -> tuple[str, str]:
+    """A fresh P-256 key pair in the form Web Push takes: the raw 32-byte
+    private scalar and the 65-byte uncompressed public point, base64url."""
+    private, public = _generate_p256_keypair()
+    return _base64url(private), _base64url(public)
+
+
+def _generate_p256_keypair() -> tuple[bytes, bytes]:
     try:
         from cryptography.hazmat.primitives.asymmetric import ec
-    except ImportError as exc:
-        raise ValueError("cryptography is required to generate VAPID keys") from exc
+    except ImportError:
+        # `make init-env` runs this under the system interpreter, which has
+        # no `cryptography`; the single-container image always has it.
+        scalar = secrets.randbelow(_P256_N - 1) + 1
+        return scalar.to_bytes(32, "big"), _p256_public_point(scalar)
 
     key = ec.generate_private_key(ec.SECP256R1())
     numbers = key.private_numbers()
@@ -755,7 +810,62 @@ def _generate_vapid_keypair() -> tuple[str, str]:
         + public_numbers.x.to_bytes(32, "big")
         + public_numbers.y.to_bytes(32, "big")
     )
-    return _base64url(private), _base64url(public)
+    return private, public
+
+
+# NIST P-256 (secp256r1), the curve Web Push (RFC 8292) signs with. Only key
+# generation is done here, once per install, so plain affine arithmetic
+# with no constant-time concern is enough.
+_P256_P = 0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF
+_P256_A = _P256_P - 3
+_P256_N = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
+_P256_G = (
+    0x6B17D1F2E12C4247F8BCE6E563A440F277037D812DEB33A0F4A13945D898C296,
+    0x4FE342E2FE1A7F9B8EE7EB4A7C0F9E162BCE33576B315ECECBB6406837BF51F5,
+)
+
+
+def _p256_public_point(scalar: int) -> bytes:
+    """The uncompressed public point for a private scalar, as X9.62 bytes."""
+    point = _p256_multiply(scalar, _P256_G)
+    if point is None:
+        raise ValueError("P-256 scalar out of range")
+    x, y = point
+    return b"\x04" + x.to_bytes(32, "big") + y.to_bytes(32, "big")
+
+
+def _p256_multiply(
+    scalar: int, point: tuple[int, int] | None
+) -> tuple[int, int] | None:
+    result = None
+    addend = point
+    while scalar:
+        if scalar & 1:
+            result = _p256_add(result, addend)
+        addend = _p256_add(addend, addend)
+        scalar >>= 1
+    return result
+
+
+def _p256_add(
+    first: tuple[int, int] | None, second: tuple[int, int] | None
+) -> tuple[int, int] | None:
+    if first is None:
+        return second
+    if second is None:
+        return first
+    x1, y1 = first
+    x2, y2 = second
+    if x1 == x2 and (y1 + y2) % _P256_P == 0:
+        return None
+    if first == second:
+        slope = (3 * x1 * x1 + _P256_A) * pow(2 * y1, -1, _P256_P)
+    else:
+        slope = (y2 - y1) * pow(x2 - x1, -1, _P256_P)
+    slope %= _P256_P
+    x3 = (slope * slope - x1 - x2) % _P256_P
+    y3 = (slope * (x1 - x3) - y1) % _P256_P
+    return x3, y3
 
 
 def _fernet_key() -> str:
@@ -813,6 +923,23 @@ PUBLISHED_CREDENTIAL_DIGESTS = frozenset(
     }
 )
 
+# The Web Push (VAPID) signing key pair in backend/.env. `fill-env` fills the
+# two as one, from a single generated key, and a published pair counts as
+# blank: the pair signs nothing that is stored, so replacing it costs only
+# the browsers' push subscriptions. frontend/.env's NEXT_PUBLIC_VAPID_PUBLIC_KEY
+# is left alone: blank, the app fetches the public key from the backend.
+VAPID_KEY_SETTINGS = ("VAPID_PRIVATE_KEY", "VAPID_PUBLIC_KEY")
+
+# SHA-256 of the private and public key backend/.env.default shipped from
+# #12723 (2026-04-29) until the pair was retired. Re-derive from git history:
+#   git log -p -- autogpt_platform/backend/.env.default | grep '^+VAPID_'
+PUBLISHED_VAPID_DIGESTS = frozenset(
+    {
+        "9c17b969b0d1d745c4fea96adce535472a5ce3c39dc1339905692c2177c950d5",  # pragma: allowlist secret
+        "e43d052ec7d9be1b083d4843020f8c468cd65c67479c325ff3799531a7bbeaab",  # pragma: allowlist secret
+    }
+)
+
 # Secrets already retired from the public .env.default files (SECRT-2611).
 # `check-env-defaults` keeps them blank: entropy scanners do not reliably catch
 # a freshly generated key pasted back into one of these lines, so the invariant
@@ -827,6 +954,7 @@ BLANK_IN_ENV_DEFAULT: dict[str, tuple[str, ...]] = {
         "UNSUBSCRIBE_SECRET_KEY",
         "INTERNAL_API_KEY",
         "GRAPHITI_FALKORDB_PASSWORD",
+        *VAPID_KEY_SETTINGS,
     ),
     "frontend/.env.default": ("BETTER_AUTH_SECRET", "DATABASE_URL"),
 }
