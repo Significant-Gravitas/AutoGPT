@@ -169,7 +169,7 @@ export default function CreditsPage() {
 
   return (
     <div className="w-full px-4 sm:px-8 md:min-w-[800px]">
-      <h1 className="mb-6 text-heading font-normal leading-inherit text-foreground-strong sm:mb-8 sm:text-title sm:leading-inherit">
+      <h1 className="mb-6 text-heading leading-inherit font-normal text-foreground-strong sm:mb-8 sm:text-title sm:leading-inherit">
         Billing
       </h1>
 

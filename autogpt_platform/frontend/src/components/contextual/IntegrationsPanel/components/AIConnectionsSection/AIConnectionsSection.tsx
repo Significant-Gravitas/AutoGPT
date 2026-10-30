@@ -58,7 +58,7 @@ export function AIConnectionsSection() {
         as="h2"
         id="ai-connections-heading"
         tone="body"
-        className="uppercase tracking-eyebrow"
+        className="tracking-eyebrow uppercase"
       >
         AI subscriptions
       </Text>
@@ -189,18 +189,18 @@ function ConnectionRow({
           {connection.auth_method !== "deployment" &&
             connection.credential_id &&
             isSelectable(connection) && (
-              <span className="inline-flex items-center gap-1 rounded-lg bg-success-surface px-2 py-0.5 text-body-sm font-medium leading-5 text-success-foreground">
+              <span className="inline-flex items-center gap-1 rounded-lg bg-success-surface px-2 py-0.5 text-body-sm leading-5 font-medium text-success-foreground">
                 <Icon icon={CheckmarkCircle02Icon} size={13} />
                 Connected
               </span>
             )}
           {account && (
-            <span className="max-w-full truncate rounded-lg bg-surface-hover px-2 py-0.5 text-body-sm font-medium leading-5 text-foreground-body">
+            <span className="max-w-full truncate rounded-lg bg-surface-hover px-2 py-0.5 text-body-sm leading-5 font-medium text-foreground-body">
               {account}
             </span>
           )}
           {isSelected && (
-            <span className="inline-flex items-center gap-1 rounded-lg bg-accent-surface px-2 py-0.5 text-body-sm font-medium leading-5 text-accent-strong">
+            <span className="inline-flex items-center gap-1 rounded-lg bg-accent-surface px-2 py-0.5 text-body-sm leading-5 font-medium text-accent-strong">
               <Icon icon={SparklesIcon} size={13} />
               Used for new chats
             </span>
@@ -260,7 +260,7 @@ function ConnectionRow({
         onClick={onSelect}
         className={cn(
           "flex min-w-0 flex-1 items-start gap-3 rounded-2xl p-4 text-left",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand",
+          "focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none",
           isSaving && "cursor-progress opacity-70",
         )}
       >

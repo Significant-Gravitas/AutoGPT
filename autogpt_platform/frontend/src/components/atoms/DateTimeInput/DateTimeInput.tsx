@@ -228,7 +228,7 @@ export const DateTimeInput = ({
               <label
                 data-slot="date-time-input-time-label"
                 htmlFor={timeInputId}
-                className="mb-2 block text-body font-medium leading-5 text-foreground-body"
+                className="mb-2 block text-body leading-5 font-medium text-foreground-body"
               >
                 Time
               </label>
@@ -253,7 +253,7 @@ export const DateTimeInput = ({
           as="span"
           tone="error"
           className={cn(
-            "absolute left-0 top-full mt-1 transition-opacity duration-200",
+            "absolute top-full left-0 mt-1 transition-opacity duration-200",
             error ? "opacity-100" : "opacity-0",
           )}
         >

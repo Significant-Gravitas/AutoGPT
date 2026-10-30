@@ -14,9 +14,9 @@ export function UpcomingRow({ item }: Props) {
   return (
     <div
       // oxlint-disable-next-line design-system/no-arbitrary-values -- the 60px indent lines the row up with the timeline column; the spacing scale has 14 (56px) and 16 (64px)
-      className="relative flex items-center gap-3 py-2 pl-[3.75rem] pr-4"
+      className="relative flex items-center gap-3 py-2 pr-4 pl-[3.75rem]"
     >
-      <span className="absolute left-4 top-1/2 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-surface">
+      <span className="absolute top-1/2 left-4 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-surface">
         <TaskMarker item={item} />
       </span>
       <div className="min-w-0 flex-1">

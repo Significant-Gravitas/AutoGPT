@@ -58,7 +58,7 @@ export function StepStrip({ currentStep }: Props) {
                       : { duration: 0.22, ease: [0.16, 1, 0.3, 1] }
                   }
                   className={cn(
-                    "flex size-6 shrink-0 items-center justify-center rounded-full text-caption font-medium leading-inherit transition-colors",
+                    "flex size-6 shrink-0 items-center justify-center rounded-full text-caption leading-inherit font-medium transition-colors",
                     isCurrent
                       ? "bg-action-hover text-action-foreground"
                       : isComplete

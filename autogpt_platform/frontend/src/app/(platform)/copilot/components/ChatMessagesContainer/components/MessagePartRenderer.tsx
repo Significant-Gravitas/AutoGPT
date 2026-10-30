@@ -200,7 +200,7 @@ export function MessagePartRenderer({
       const isActive = reasoningState === "streaming";
       return (
         <ReasoningCollapse key={key} isActive={isActive}>
-          <pre className="whitespace-pre-wrap text-sm text-foreground-body">
+          <pre className="text-sm whitespace-pre-wrap text-foreground-body">
             {reasoningText}
           </pre>
         </ReasoningCollapse>
@@ -233,7 +233,7 @@ export function MessagePartRenderer({
         return (
           <div
             key={key}
-            className="my-2 rounded-lg bg-surface-hover px-3 py-2 text-sm italic text-foreground-secondary"
+            className="my-2 rounded-lg bg-surface-hover px-3 py-2 text-sm text-foreground-secondary italic"
           >
             {markerText}
           </div>

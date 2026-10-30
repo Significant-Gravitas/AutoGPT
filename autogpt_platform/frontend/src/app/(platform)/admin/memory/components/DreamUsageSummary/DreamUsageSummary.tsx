@@ -68,7 +68,7 @@ export function DreamUsageSummary({ usage }: Props) {
               <tr>
                 <td
                   colSpan={7}
-                  className="px-2 py-2 text-center italic text-foreground-tertiary"
+                  className="px-2 py-2 text-center text-foreground-tertiary italic"
                 >
                   No per-phase data recorded.
                 </td>

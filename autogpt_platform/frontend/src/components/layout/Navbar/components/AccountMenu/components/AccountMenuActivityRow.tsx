@@ -35,7 +35,7 @@ export function AccountMenuActivityRow() {
           data-testid="account-menu-activity-trigger"
         >
           <span
-            className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-action-hover opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100"
+            className="absolute top-1/2 left-0 h-5 w-[3px] -translate-y-1/2 rounded-full bg-action-hover opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100"
             aria-hidden="true"
           />
           <span className="relative z-10 flex shrink-0 items-center">
@@ -45,7 +45,7 @@ export function AccountMenuActivityRow() {
           {totalCount > 0 && (
             <span
               data-testid="account-menu-activity-total"
-              className="relative z-10 flex h-5 min-w-5 items-center justify-center rounded-full bg-surface-active px-1.5 text-caption-sm font-semibold leading-inherit text-foreground-body"
+              className="relative z-10 flex h-5 min-w-5 items-center justify-center rounded-full bg-surface-active px-1.5 text-caption-sm leading-inherit font-semibold text-foreground-body"
             >
               {formatNotificationCount(totalCount)}
             </span>

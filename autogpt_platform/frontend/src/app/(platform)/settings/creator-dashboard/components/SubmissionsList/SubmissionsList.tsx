@@ -88,7 +88,7 @@ export function SubmissionsList({
       className="flex w-full flex-col gap-3"
       data-testid="submissions-list"
     >
-      <div className="flex items-center justify-between pl-4 pr-1">
+      <div className="flex items-center justify-between pr-1 pl-4">
         <div className="flex items-center gap-2">
           <Text variant="body-medium" as="span">
             Submissions

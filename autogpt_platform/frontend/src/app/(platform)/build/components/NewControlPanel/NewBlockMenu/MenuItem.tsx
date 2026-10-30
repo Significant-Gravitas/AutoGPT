@@ -26,7 +26,7 @@ export const MenuItem: React.FC<Props> = ({
       data-id={menuItemType ? `menu-item-${menuItemType}` : undefined}
       className={cn(
         blockMenuButtonBase,
-        "flex h-[2.375rem] w-[12.875rem] justify-between whitespace-normal rounded-lg bg-transparent p-2 pl-3",
+        "flex h-[2.375rem] w-[12.875rem] justify-between rounded-lg bg-transparent p-2 pl-3 whitespace-normal",
         "hover:cursor-default hover:bg-surface-hover",
         selected && "bg-surface-hover",
         className,
