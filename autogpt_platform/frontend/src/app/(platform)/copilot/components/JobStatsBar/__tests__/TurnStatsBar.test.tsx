@@ -6,6 +6,7 @@ import {
 } from "@/tests/integrations/test-utils";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FROZEN_NOTE } from "../../../stream/turnTail";
 import { CANCELLED_MARKER } from "../../../useCopilotStop";
 import { TurnStatsBar } from "../TurnStatsBar";
 import { useElapsedTimer } from "../useElapsedTimer";
@@ -264,6 +265,23 @@ describe("TurnStatsBar — how the turn ended", () => {
       "a pause",
       [reply, { type: "data-turn-paused", data: { reason: "daily" } }],
     ],
+    [
+      "a reply cut off mid-stream",
+      [{ type: "text", text: "Here are your", state: "streaming" }],
+    ],
+    [
+      "thinking cut off mid-stream",
+      [{ type: "reasoning", text: "Weighing", state: "streaming" }],
+    ],
+    ["a frozen turn's note", [reply, { type: "text", text: FROZEN_NOTE }]],
+    [
+      "an approval card still open after other work",
+      [
+        { ...ranWorkflow, output: { type: "approval_required" } },
+        { ...ranWorkflow, toolCallId: "t2" },
+        { type: "text", text: "Waiting on you for the first one." },
+      ],
+    ],
   ] as [string, unknown[]][])(
     "never says done for a turn that ended in %s",
     (_, parts) => {
@@ -373,14 +391,6 @@ describe("TurnStatsBar — live elapsed timer", () => {
         reply,
       ],
     ],
-    [
-      "an approval it went on to run",
-      [
-        { ...ranWorkflow, output: { type: "approval_required" } },
-        { ...ranWorkflow, toolCallId: "t2" },
-        reply,
-      ],
-    ],
   ] as [string, unknown[]][])(
     "says done for a turn that finished after %s",
     (_, parts) => {
@@ -410,7 +420,7 @@ describe("TurnStatsBar — live elapsed timer", () => {
       />,
     );
     const line = screen.getByTestId("turn-end-line");
-    expect(line.textContent).toBe("Thought for 12s");
+    expect(line.textContent).toBe("12s");
     expect(line.querySelector("svg")).toBeNull();
   });
 

@@ -127,6 +127,7 @@ const baseProps = {
   isLoadingMore: false,
   onLoadMore: vi.fn(),
   onRetry: vi.fn(),
+  isTurnSettling: false,
 } satisfies ComponentProps<typeof ChatMessagesContainer>;
 
 function advanceSeconds(seconds: number) {
@@ -318,5 +319,19 @@ describe("ChatMessagesContainer — end of a turn", () => {
     rerender(<ChatMessagesContainer {...settled} />);
 
     expect(announcement(container)).toBe("");
+  });
+
+  it("never says done in a host that doesn't report whether the turn settled", () => {
+    const { isTurnSettling: _, ...hostProps } = baseProps;
+    render(
+      <ChatMessagesContainer
+        {...hostProps}
+        messages={[userMessage, ranWorkflow]}
+        status="ready"
+        turnStats={new Map([["assistant-1", { durationMs: 42_000 }]])}
+      />,
+    );
+
+    expect(screen.getByTestId("turn-end-line").textContent).toMatch(/^42s/);
   });
 });

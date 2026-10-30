@@ -8,18 +8,20 @@ import { formatElapsed } from "./formatElapsed";
 
 type ChatMessage = UIMessage<unknown, UIDataTypes, UITools>;
 
-export type TurnOutcome = "done" | "stopped" | "unsettled";
+export type TurnOutcome = "done" | "stopped" | "unsettled" | "settling";
 
 const STOP_MARKER_TEXTS = new Set([
   "operation cancelled",
   "execution stopped by user",
 ]);
 
-// Results that leave the turn waiting on the user (a review, an approval, a
-// sign-in or setup) rather than finished.
+// A held action is only ever answered in a later turn, so an approval or
+// review card left in the turn keeps it open whatever the model did next.
+const HELD_RESULT_TYPES = new Set(["approval_required", "review_required"]);
+
+// Results that leave the turn waiting on the user (a sign-in or setup)
+// unless the model went on to other work after them.
 const WAITING_RESULT_TYPES = new Set([
-  "approval_required",
-  "review_required",
   "setup_requirements",
   "need_login",
   "trigger_config_required",
@@ -31,10 +33,25 @@ function isToolPart(part: Part) {
   return part.type.startsWith("tool-");
 }
 
-function isWaitingResult(part: Part) {
-  if (!isToolPart(part) || !("output" in part)) return false;
+function resultType(part: Part) {
+  if (!isToolPart(part) || !("output" in part)) return null;
   const type = asObject(part.output)?.type;
-  return typeof type === "string" && WAITING_RESULT_TYPES.has(type);
+  return typeof type === "string" ? type : null;
+}
+
+function isHeldResult(part: Part) {
+  return HELD_RESULT_TYPES.has(resultType(part) ?? "");
+}
+
+function isWaitingResult(part: Part) {
+  return WAITING_RESULT_TYPES.has(resultType(part) ?? "");
+}
+
+function isStillStreaming(part: Part) {
+  return (
+    (part.type === "text" || part.type === "reasoning") &&
+    part.state === "streaming"
+  );
 }
 
 /**
@@ -43,6 +60,8 @@ function isWaitingResult(part: Part) {
  * last step that failed with nothing after it leave it "unsettled". So do a
  * pause or a result waiting on the user, unless the turn went on to run
  * more work after it (a continuation after "Keep going" or an approval).
+ * Text still marked streaming was cut off (a stream that gave up), since a
+ * finished part is always marked done.
  */
 export function getTurnOutcome(turnMessages: ChatMessage[]): TurnOutcome {
   const parts = turnMessages
@@ -60,7 +79,13 @@ export function getTurnOutcome(turnMessages: ChatMessage[]): TurnOutcome {
     }
   }
 
-  if (parts.some(isToolCallPending)) return "unsettled";
+  if (
+    parts.some(isToolCallPending) ||
+    parts.some(isStillStreaming) ||
+    parts.some(isHeldResult)
+  ) {
+    return "unsettled";
+  }
 
   const lastWork = parts.findLast(
     (part) => isToolPart(part) || (part.type === "text" && part.text.trim()),
@@ -83,7 +108,9 @@ export function getTurnOutcome(turnMessages: ChatMessage[]): TurnOutcome {
 
 /**
  * Only the latest turn says how it ended, and only once its stream has
- * really ended; earlier turns keep the plain "Thought for" line.
+ * really ended; earlier turns keep the plain "Thought for" line. A finished
+ * turn whose stream is still settling shows just its time, so the line
+ * doesn't read "Thought for" and then switch to "Done".
  */
 export function getDisplayedOutcome(
   turnMessages: ChatMessage[],
@@ -92,7 +119,7 @@ export function getDisplayedOutcome(
 ): TurnOutcome {
   if (!isLatest) return "unsettled";
   const outcome = getTurnOutcome(turnMessages);
-  return outcome === "done" && !isSettled ? "unsettled" : outcome;
+  return outcome === "done" && !isSettled ? "settling" : outcome;
 }
 
 export function getTurnEndLabel(
@@ -102,6 +129,7 @@ export function getTurnEndLabel(
   const time = seconds === null ? null : formatElapsed(seconds);
   if (outcome === "done") return time ? `Done in ${time}` : "Done";
   if (outcome === "stopped") return time ? `Stopped after ${time}` : "Stopped";
+  if (outcome === "settling") return time;
   return time ? `Thought for ${time}` : null;
 }
 

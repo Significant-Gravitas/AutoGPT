@@ -409,7 +409,10 @@ export function ChatMessagesContainer({
   const isActivelyStreaming = status === "streaming" || status === "submitted";
   const isTurnBusy =
     isActivelyStreaming || !!isRestoringActiveSession || !!isTurnSettling;
-  const isTurnSettled = !isTurnBusy && status !== "error" && !error;
+  // A host that doesn't report reconnects and finish probes can't tell a
+  // settled turn from a pause between them, so it never claims "Done".
+  const isTurnSettled =
+    isTurnSettling !== undefined && !isTurnBusy && status !== "error" && !error;
   useCostReplyMoment({
     messages,
     isStreaming: isActivelyStreaming,
