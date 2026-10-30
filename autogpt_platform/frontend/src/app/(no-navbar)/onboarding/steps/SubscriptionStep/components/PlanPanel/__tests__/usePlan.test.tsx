@@ -316,6 +316,27 @@ describe("usePlan giving up", () => {
     expect(result.current.plan).toEqual(SETTLED);
   });
 
+  test("settles only once a skip still on its way has landed", async () => {
+    servePlans(WRITING);
+    const settles = serveSettle(SETTLED);
+    const { result } = renderPlan();
+    await advance(FIRST_ANSWER_MS);
+    // Back, then Skip, with the wait about to run out.
+    let land!: () => void;
+    skip.current = new Promise<void>((resolve) => {
+      land = resolve;
+    });
+
+    await advance(MAX_WAIT_MS);
+    expect(settles.count).toBe(0);
+    expect(result.current.plan).toBeNull();
+
+    land();
+    await advance(FIRST_ANSWER_MS);
+    expect(settles.count).toBe(1);
+    expect(result.current.plan).toEqual(SETTLED);
+  });
+
   test("keeps a plan that lands while the settle is on its way", async () => {
     let release!: () => void;
     const held = new Promise<void>((resolve) => {
@@ -410,6 +431,29 @@ describe("usePlan plan_viewed", () => {
       gave_up: true,
     });
     expect(properties.wait_ms).toBeGreaterThanOrEqual(MAX_WAIT_MS);
+  });
+
+  test("reports a plan that landed after the wait ran out as given up", async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    servePlans(...Array<PlanResponse>(30).fill(WRITING), READY);
+    serveSettle(async () => {
+      await held;
+      return SETTLED;
+    });
+    renderPlan();
+
+    await advance(MAX_WAIT_MS + 500);
+
+    expect(planViewedCalls()).toHaveLength(1);
+    expect(planViewedCalls()[0][1]).toMatchObject({
+      plan_source: "llm",
+      gave_up: true,
+    });
+    release();
+    await advance(FIRST_ANSWER_MS);
   });
 
   test("reports nothing while the plan is still pending", async () => {

@@ -106,7 +106,8 @@ export const BrainDumpEvent = {
 // (`via: plan`).
 export const PlanEvent = {
   // Once per mount of the plan step, when the plan first renders. `gave_up`
-  // is true when the step stopped waiting and showed the role plan.
+  // is true when the 30 s wait ran out before a plan was shown (the step then
+  // settles the plan); `plan_source` says whose plan that was.
   PLAN_VIEWED: "plan_viewed",
   // The preparing screen hired the plan's team: how many joined and how
   // many could not.

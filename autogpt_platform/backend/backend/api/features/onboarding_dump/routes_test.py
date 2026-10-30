@@ -1400,6 +1400,25 @@ def test_settling_mid_pipeline_stores_the_role_plan_the_step_shows(
     ]
 
 
+def test_a_take_settled_while_it_is_transcribed_is_not_called_skipped(
+    dumps: DumpStore, plan_world: dict[str, AsyncMock]
+):
+    """A retried finalize can hand the step a take whose transcription is
+    still running; giving up on it settles a recorded take, not a skip."""
+    finalize(input_mode="typed", text=TRANSCRIPT)
+    _mid_pipeline(dumps)
+    assert dumps.row is not None
+    dumps.row.status = BrainDumpStatus.transcribing
+    dumps.row.transcript = None
+
+    settled = client.post(PLAN_SETTLE_URL).json()
+
+    assert settled["ready"] is True
+    assert settled["skipped_dump"] is False
+    assert [t["title"] for t in settled["tasks"]] == FOUNDER_TITLES
+    assert [e["name"] for e in settled["team"]] == ["Max", "Maria"]
+
+
 def test_settling_a_ready_plan_changes_nothing(
     dumps: DumpStore, plan_world: dict[str, AsyncMock], generation: dict[str, AsyncMock]
 ):

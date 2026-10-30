@@ -36,6 +36,7 @@ export function usePlan() {
   const latest = useRef<PlanResponse | null>(null);
   const mountedAt = useRef(0);
   const reported = useRef(false);
+  const waitRanOut = useRef(false);
 
   const query = useGetBrainDumpPlan({
     query: {
@@ -68,6 +69,8 @@ export function usePlan() {
   }, [answer]);
 
   const giveUp = useStableCallback(async () => {
+    waitRanOut.current = true;
+    await whenSkipSettled();
     const settled = await settleBrainDumpPlan().catch(() => null);
     // The plan landed while the settle was on its way, and is already shown.
     if (latest.current?.ready) return;
@@ -92,9 +95,9 @@ export function usePlan() {
       tasks: getStepTasks(plan).length,
       experts: plan.team?.length ?? 0,
       wait_ms: Math.max(0, Date.now() - mountedAt.current),
-      gave_up: givenUp !== null,
+      gave_up: waitRanOut.current,
     });
-  }, [plan, restored, givenUp, userID]);
+  }, [plan, restored, userID]);
 
   return { plan, isPending, progress: plan ? null : answer?.progress };
 }

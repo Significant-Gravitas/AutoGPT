@@ -421,8 +421,22 @@ describe("PlanPanel while the plan is being written", () => {
     expect(status.closest("[aria-busy]")).toBeNull();
   });
 
-  test("starts with the tasks and the team both being worked out", () => {
+  test("shows no steps until the server has reported any", () => {
     render(<PlanPanel plan={null} moment="trial" />);
+
+    expect(
+      screen.queryByRole("list", { name: "Writing your plan" }),
+    ).toBeNull();
+  });
+
+  test("starts with the tasks and the team both being worked out", () => {
+    render(
+      <PlanPanel
+        plan={null}
+        progress={{ tasks_written: false, team_chosen: false }}
+        moment="trial"
+      />,
+    );
 
     expect(progressSteps()).toEqual([
       ["Turning your brain dump into tasks", "In progress"],

@@ -92,9 +92,9 @@ const PROGRESS_STEPS = [
   "Choosing who takes each task",
 ] as const;
 
-export function getProgressSteps(progress: PlanProgress | null | undefined) {
-  const written = Boolean(progress?.tasks_written);
-  const chosen = Boolean(progress?.team_chosen);
+export function getProgressSteps(progress: PlanProgress) {
+  const written = Boolean(progress.tasks_written);
+  const chosen = Boolean(progress.team_chosen);
   const states: ChecklistState[] = [
     written ? "done" : "active",
     chosen ? "done" : "active",

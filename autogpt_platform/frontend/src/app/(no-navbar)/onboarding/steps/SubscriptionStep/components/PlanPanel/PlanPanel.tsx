@@ -133,7 +133,13 @@ function PlanSkeleton({ progress }: { progress?: PlanProgress | null }) {
       className="flex flex-col gap-3.5 [@media(max-height:780px)]:gap-2.5"
       aria-busy
     >
-      <PlanProgressCard progress={progress} />
+      {/* Only what the server reports: a skip that has not landed yet
+          would otherwise read as a brain dump being turned into tasks. */}
+      {progress ? (
+        <PlanProgressCard progress={progress} />
+      ) : (
+        <Skeleton className="h-[5.375rem] rounded-2xl" />
+      )}
       <div className="flex flex-col gap-2">
         {Array.from({ length: PLAN_STEP_TASKS }, (_, index) => (
           <Skeleton key={index} className="h-[6.75rem] rounded-2xl" />

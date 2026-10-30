@@ -4,7 +4,7 @@ import { ChecklistMark } from "../../../../components/ChecklistMark";
 import { getProgressSteps } from "./helpers";
 
 interface Props {
-  progress: PlanProgress | null | undefined;
+  progress: PlanProgress;
 }
 
 // Stands where the heard card will be, and reports the server's own progress

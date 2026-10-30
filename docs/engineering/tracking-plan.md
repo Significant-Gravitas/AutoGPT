@@ -359,7 +359,7 @@ merges the website pageviews into the new user:
 | `intro_path` | browser | live | `path` | The intro path (A/B) is chosen. |
 | `intro_followup_sent` | browser | live | `chars` | First message after the intro card. |
 | `later_dump_completed` | browser | live | — | A brain dump sent later from the composer. |
-| `plan_viewed` | browser | live | `plan_source` (`llm`, `fallback`), `skipped_dump`, `tasks` (shown, at most 3), `experts` (the plan's team), `wait_ms` (from the step's mount), `gave_up` (the step stopped waiting at 30 s and showed the role plan, which it then stores as the take's plan) | The plan step first shows a plan, once per mount. A plan restored on a Stripe cancel return is not reported again. |
+| `plan_viewed` | browser | live | `plan_source` (`llm`, `fallback`), `skipped_dump`, `tasks` (shown, at most 3), `experts` (the plan's team), `wait_ms` (from the step's mount), `gave_up` (the 30 s wait ran out before a plan was shown, so the step settled the plan; `plan_source` tells the pipeline's plan, if it landed just in time, from the role plan) | The plan step first shows a plan, once per mount. A plan restored on a Stripe cancel return is not reported again. |
 | `plan_experts_hired` | browser | live | `hired`, `failed`, `via` (`preparing`) | The preparing screen hired the plan's team, after the trial (or plan) is confirmed, or with no paywall. The hires themselves are `expert_hired` with `via: plan`. |
 | `tab_intro_shown` | browser | live | `tab` | A tab intro card is shown. |
 | `tab_intro_cta_clicked` | browser | live | `tab`, `cta` | Its primary CTA is used. |

@@ -89,7 +89,9 @@ async def get_plan(user_id: str) -> PlanResponse:
             team_chosen=dump.recommendedExperts is not None,
         )
         return response
-    skipped = dump is None or service.nothing_to_reflect(dump)
+    # A take settled while still being transcribed has no transcript yet,
+    # but it was recorded, not skipped.
+    skipped = dump is None or (service.nothing_to_reflect(dump) and not early)
     stored = suggested_tasks.stored_tasks(dump.suggestedPrompts if dump else None)
     if (
         dump is not None
