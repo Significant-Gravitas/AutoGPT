@@ -3098,6 +3098,10 @@ class StoreSkillTool(BaseTool):
     (name, description, optional triggers) plus a markdown body.
     """
 
+    # Updates the skill index, which ``list_skills`` reads back.  Run on its own
+    # so a ``list_skills`` call in the same message sees the update.
+    writes_files = True
+
     @property
     def name(self) -> str:
         return "store_skill"
@@ -3525,6 +3529,10 @@ class ReadSkillTool(BaseTool):
 
 class DeleteSkillTool(BaseTool):
     """Remove a user-created skill (cannot delete built-in defaults)."""
+
+    # Removes from the skill index, which ``list_skills`` reads back.  Run on its
+    # own so a ``list_skills`` call in the same message sees the removal.
+    writes_files = True
 
     @property
     def name(self) -> str:
