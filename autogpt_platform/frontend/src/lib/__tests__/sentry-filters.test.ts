@@ -236,7 +236,7 @@ describe("Sentry user privacy filters", () => {
 
   it("drops every IP attribute from logs, transactions and spans", () => {
     const trace = { trace_id: "a".repeat(32), span_id: "b".repeat(16) };
-    const span = { ...trace, start_timestamp: 1 };
+    const span = { ...trace, start_timestamp: 1, status: "ok" };
 
     const log = stripLogUserPII({
       level: "info",

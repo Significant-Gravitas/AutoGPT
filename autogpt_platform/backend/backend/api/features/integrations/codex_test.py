@@ -252,6 +252,7 @@ def test_codex_callback_persists_one_safe_credential():
         "service": "codex",
         "service_name": None,
         "service_icon": "codex",
+        "microsoft_identity": None,
     }
     raw_response = response.text
     assert "access-secret" not in raw_response

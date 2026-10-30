@@ -8,7 +8,7 @@ import { useIsChatSession } from "../../useIsChatSession";
 // Mobile header buttons float over the content, so they get a pill surface to
 // stay readable against whatever scrolls underneath.
 const mobileTriggerClassName =
-  "rounded-full border border-[#DADADC] bg-white shadow-md hover:bg-[#F5F5F6]";
+  "rounded-full border border-border-base bg-surface shadow-md hover:bg-surface-muted";
 
 export function InsetHeaderSidebarTrigger() {
   const isChatSession = useIsChatSession();

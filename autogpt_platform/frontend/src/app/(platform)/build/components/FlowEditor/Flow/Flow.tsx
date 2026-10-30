@@ -72,10 +72,7 @@ export const Flow = () => {
   );
 
   return (
-    <div
-      // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:bg-slate-900 #2A313A
-      className="flex h-full w-full dark:bg-slate-900"
-    >
+    <div className="flex h-full w-full">
       <div className="relative flex-1">
         <FlowCanvas
           onDragOver={onDragOver}

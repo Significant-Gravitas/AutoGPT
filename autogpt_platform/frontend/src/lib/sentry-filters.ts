@@ -160,7 +160,28 @@ function withoutPrivateAttributes<V>(attributes: Record<string, V>) {
 
 type SentryOptions = NonNullable<Parameters<typeof init>[0]>;
 type SentryLog = Parameters<NonNullable<SentryOptions["beforeSendLog"]>>[0];
-type SentrySpan = Parameters<NonNullable<SentryOptions["beforeSendSpan"]>>[0];
+type SentrySpan = NonNullable<Event["spans"]>[number];
+
+// The names the SDK treats as private in headers and query parameters.
+const SDK_PRIVATE_NAMES = {
+  deny: ["forwarded", "-ip", "remote-", "via", "-user"],
+};
+
+// Sentry collects user details, cookies, headers and bodies unless told not
+// to. This keeps it to what it collected while told to send no personal data,
+// which the filters here then narrow further.
+export const SENTRY_DATA_COLLECTION = {
+  userInfo: false,
+  cookies: false,
+  httpHeaders: { request: SDK_PRIVATE_NAMES, response: SDK_PRIVATE_NAMES },
+  httpBodies: [],
+  urlQueryParams: SDK_PRIVATE_NAMES,
+  genAI: { inputs: false, outputs: false },
+  databaseQueryData: false,
+  queues: false,
+  graphQL: { document: false, variables: false },
+  frameContextLines: 7,
+} satisfies SentryOptions["dataCollection"];
 
 // Logs are known to Sentry by the user id only, like errors and transactions.
 export function stripLogUserPII(log: SentryLog): SentryLog {

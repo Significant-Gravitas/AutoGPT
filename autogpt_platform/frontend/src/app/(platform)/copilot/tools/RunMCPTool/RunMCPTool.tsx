@@ -20,6 +20,7 @@ import {
 } from "../../helpers/toolOutput";
 import { PlugSocketIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 export interface RunMCPToolPart {
   type: string;
@@ -77,16 +78,15 @@ export function RunMCPToolComponent({ part }: Props) {
       </div>
 
       {isCorrupted && (
-        <p className="mt-1 text-sm text-error">
+        <Text variant="body-tight" tone="error" className="mt-1">
           The result data arrived corrupted, so any sign-in or setup card it
           contained can&apos;t be shown. Ask your expert to retry this step.
-        </p>
+        </Text>
       )}
 
       {/* Error detail card */}
       {errorOutput && (
-        // TODO(tokens): no exact role for red-200 #FAC5C5
-        <div className="mt-2 rounded-lg border border-red-200 bg-error-surface px-3 py-2 text-sm text-error-foreground">
+        <div className="mt-2 rounded-lg border border-error/30 bg-error-surface px-3 py-2 text-sm text-error-foreground">
           {errorOutput.message}
           {errorOutput.error && (
             <pre className="mt-1 whitespace-pre-wrap break-words text-xs opacity-80">

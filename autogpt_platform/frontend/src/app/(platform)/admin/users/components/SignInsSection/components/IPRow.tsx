@@ -75,11 +75,7 @@ export function IPRow({ ip, ownIP }: Props) {
       <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 pl-9">
         <Tooltip>
           <TooltipTrigger asChild>
-            <Text
-              variant="small"
-              as="span"
-              className="text-foreground-secondary"
-            >
+            <Text variant="small" as="span" tone="secondary">
               {summariseUserAgent(ip.last_user_agent)}
             </Text>
           </TooltipTrigger>
@@ -87,10 +83,10 @@ export function IPRow({ ip, ownIP }: Props) {
             {ip.last_user_agent ?? "No user agent"}
           </TooltipContent>
         </Tooltip>
-        <Text variant="small" as="span" className="text-foreground-tertiary">
+        <Text variant="small" as="span" tone="muted">
           {formatDateTime(ip.last_seen)} (<RelativeTime date={ip.last_seen} />)
         </Text>
-        <Text variant="small" as="span" className="text-foreground-secondary">
+        <Text variant="small" as="span" tone="secondary">
           {ip.other_account_count > 0
             ? pluralize(ip.other_account_count, "other account")
             : "—"}
@@ -102,10 +98,7 @@ export function IPRow({ ip, ownIP }: Props) {
             <li
               key={`${event.kind}-${event.created_at.toISOString()}-${index}`}
             >
-              <Text
-                variant="small"
-                className="break-words text-foreground-tertiary"
-              >
+              <Text variant="small" className="break-words" tone="muted">
                 {formatDateTime(event.created_at)} ·{" "}
                 {event.kind === "SIGN_UP" ? "Sign-up" : "Sign-in"} ·{" "}
                 {event.user_agent ?? "No user agent"}
@@ -114,7 +107,7 @@ export function IPRow({ ip, ownIP }: Props) {
           ))}
           {hiddenEvents > 0 ? (
             <li>
-              <Text variant="small" className="text-foreground-tertiary">
+              <Text variant="small" tone="muted">
                 and {hiddenEvents.toLocaleString("en-GB")} more
               </Text>
             </li>
@@ -127,12 +120,7 @@ export function IPRow({ ip, ownIP }: Props) {
 
 function Address({ ip }: { ip: AccountIP }) {
   const address = (
-    <Text
-      variant="body"
-      as="span"
-      className="font-mono text-body-sm leading-inherit"
-      translate="no"
-    >
+    <Text variant="body-mono-tight" as="span" translate="no">
       {ip.display_address}
     </Text>
   );

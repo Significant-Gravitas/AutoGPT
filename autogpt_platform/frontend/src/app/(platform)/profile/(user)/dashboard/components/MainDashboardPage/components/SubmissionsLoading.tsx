@@ -4,11 +4,7 @@ export function SubmissionsLoading() {
   return (
     <div className="space-y-4">
       {Array.from({ length: 3 }).map((_, i) => (
-        <div
-          key={i}
-          // TODO(tokens): no exact role (border-neutral-200 #E5E5E5, dark:border-neutral-700)
-          className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-700"
-        >
+        <div key={i} className="rounded-lg border border-border-base p-4">
           <div className="flex items-center gap-4">
             <Skeleton className="h-16 w-16 rounded-lg" />
             <div className="flex-1 space-y-2">

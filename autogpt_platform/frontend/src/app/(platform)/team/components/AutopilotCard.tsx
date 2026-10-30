@@ -52,8 +52,8 @@ export function AutopilotCard({
           <AutopilotAvatar
             size={88}
             backgroundColor={AUTOPILOT_COVER_COLOR}
-            // TODO(tokens): no exact role: border-[#e3e3e3] #E3E3E3
-            className="relative z-10 -mt-12 ml-1 rounded-full border border-[#e3e3e3] ring-4 ring-background"
+            // oxlint-disable-next-line design-system/no-restyle -- AutopilotAvatar has no bordered variant (src/components is P9's)
+            className="relative z-10 -mt-12 ml-1 rounded-full border border-border-base ring-4 ring-surface"
           />
         </div>
 
@@ -61,7 +61,7 @@ export function AutopilotCard({
           <Text
             variant="lead-medium"
             tone="primary"
-            className="w-full truncate pb-1"
+            className="mb-1 w-full truncate"
           >
             {AUTOPILOT_NAME}
           </Text>
@@ -69,6 +69,7 @@ export function AutopilotCard({
               topic tags and should not read as a different kind of thing. */}
           <span
             className={cn(CHIP_SHAPE, CHIP_SIZE.small, "h-[22px] max-w-full")}
+            // oxlint-disable-next-line design-system/no-inline-styles -- the tag colour is per-topic data from marketplace's categoryTagStyle (P7)
             style={categoryTagStyle(AUTOPILOT_COVER_COLOR)}
           >
             <Icon icon={SparklesIcon} size={12} className="shrink-0" />

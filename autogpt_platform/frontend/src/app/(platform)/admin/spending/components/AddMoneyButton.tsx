@@ -1,8 +1,5 @@
 "use client";
 
-// TODO(tokens): no role for these colours yet, so they stay raw:
-// bg-gray-50 #F9FAFB, text-gray-500 #6B7280.
-
 import { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import {
@@ -66,8 +63,8 @@ export function AdminAddMoneyButton({
   return (
     <>
       <Button
-        size="legacy-sm"
-        variant="legacy-default"
+        size="xs"
+        variant="primary"
         onClick={(e) => {
           e.stopPropagation();
           setIsAddMoneyDialogOpen(true);
@@ -84,7 +81,7 @@ export function AdminAddMoneyButton({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add Dollars</DialogTitle>
-            <DialogDescription className="pt-2">
+            <DialogDescription className="mt-2">
               <div className="mb-2">
                 <span className="font-medium">User:</span> {userEmail}
               </div>
@@ -107,13 +104,14 @@ export function AdminAddMoneyButton({
               <div className="grid gap-2">
                 <Label htmlFor="dollarAmount">Amount (in dollars)</Label>
                 <div className="flex">
-                  <div className="flex items-center justify-center rounded-l-md border border-r-0 bg-gray-50 px-3 text-gray-500">
+                  <div className="flex items-center justify-center rounded-l-md border border-r-0 bg-surface-muted px-3 text-foreground-tertiary">
                     $
                   </div>
                   <BaseInput
                     id="dollarAmount"
                     type="number"
                     step="0.01"
+                    // oxlint-disable-next-line design-system/no-restyle -- BaseInput has no attached-addon variant (src/components is P9's)
                     className="rounded-l-none"
                     value={dollarAmount}
                     onChange={(e) => setDollarAmount(e.target.value)}
@@ -138,6 +136,7 @@ export function AdminAddMoneyButton({
             <DialogFooter>
               <Button
                 type="button"
+                // oxlint-disable-next-line design-system/no-legacy-button-variant -- primary/secondary are pills; shape change deferred (plan 5.7 item 2)
                 variant="legacy-outline"
                 onClick={() => setIsAddMoneyDialogOpen(false)}
                 disabled={isSubmitting}
@@ -145,6 +144,7 @@ export function AdminAddMoneyButton({
                 Cancel
               </Button>
               <Button
+                // oxlint-disable-next-line design-system/no-legacy-button-variant -- primary/secondary are pills; shape change deferred (plan 5.7 item 2)
                 variant="legacy-default"
                 type="submit"
                 disabled={isSubmitting}

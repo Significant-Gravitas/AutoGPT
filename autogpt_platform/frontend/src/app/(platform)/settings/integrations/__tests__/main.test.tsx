@@ -1,3 +1,4 @@
+import { http, HttpResponse } from "msw";
 import { describe, expect, test, vi } from "vitest";
 
 import {
@@ -48,6 +49,12 @@ function makeProvider(
     supported_auth_types: ["oauth2", "api_key"],
     ...overrides,
   };
+}
+
+function noMicrosoftAccounts() {
+  return http.get("*/api/internal/integrations/:provider/credentials", () =>
+    HttpResponse.json([]),
+  );
 }
 
 describe("SettingsIntegrationsPage — list", () => {
@@ -338,10 +345,13 @@ describe("SettingsIntegrationsPage — search", () => {
 });
 
 describe("SettingsIntegrationsPage — connect dialog", () => {
-  test("starts Microsoft device sign-in from the AI subscriptions logo card", async () => {
+  test("connects Microsoft with a sign-in code from the AI subscriptions logo card", async () => {
     server.use(
       getGetV2ListChatConnectionsMockHandler200({ offers: [] }),
       getGetV1ListCredentialsMockHandler([]),
+      // No app secret on the server, so Microsoft offers no browser sign-in.
+      getGetV1ListProvidersMockHandler([]),
+      noMicrosoftAccounts(),
       getPostV1InitiateDeviceCodeOauthFlowMockHandler200({
         state_token: "test-state",
         user_code: "TEST-CODE",
@@ -367,14 +377,12 @@ describe("SettingsIntegrationsPage — connect dialog", () => {
       ),
     ).toBeDefined();
     fireEvent.click(
-      within(dialog).getByRole("button", {
-        name: "Connect Microsoft 365 Copilot",
-      }),
+      await within(dialog).findByRole("button", { name: "Connect Microsoft" }),
     );
     expect(await within(dialog).findByText("TEST-CODE")).toBeDefined();
     expect(
       within(dialog)
-        .getByRole("link", { name: "Open Microsoft 365 Copilot" })
+        .getByRole("link", { name: "Open Microsoft" })
         .getAttribute("href"),
     ).toBe("https://microsoft.com/devicelogin");
   });
@@ -385,11 +393,13 @@ describe("SettingsIntegrationsPage — connect dialog", () => {
       getGetV1ListCredentialsMockHandler([]),
       getGetV1ListProvidersMockHandler([
         makeProvider({
-          name: "microsoft_365_copilot",
-          description: "Use your work or school Microsoft 365 Copilot plan",
-          supported_auth_types: ["device_code"],
+          name: "microsoft",
+          description:
+            "Mail, calendar, files, Teams chats, Microsoft 365 Copilot and Work IQ",
+          supported_auth_types: ["oauth2", "device_code"],
         }),
       ]),
+      noMicrosoftAccounts(),
     );
     render(<SettingsIntegrationsPage />);
     fireEvent.click(
@@ -397,20 +407,20 @@ describe("SettingsIntegrationsPage — connect dialog", () => {
     );
     const dialog = await screen.findByRole("dialog");
     const provider = await within(dialog).findByRole("button", {
-      name: /Microsoft 365 Copilot/,
+      name: /Microsoft/,
     });
     expect(provider.querySelector("img")?.getAttribute("src")).toContain(
       "/integrations/microsoft.webp",
     );
     fireEvent.click(provider);
     expect(
-      (
-        await within(dialog).findByAltText("Microsoft 365 Copilot logo")
-      ).getAttribute("src"),
+      (await within(dialog).findByAltText("Microsoft logo")).getAttribute(
+        "src",
+      ),
     ).toContain("/integrations/microsoft.webp");
     expect(
-      within(dialog).getByRole("button", {
-        name: "Connect Microsoft 365 Copilot",
+      await within(dialog).findByRole("button", {
+        name: "Sign in with Microsoft",
       }),
     ).toBeDefined();
   });

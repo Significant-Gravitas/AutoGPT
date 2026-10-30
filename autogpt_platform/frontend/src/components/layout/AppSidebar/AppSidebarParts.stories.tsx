@@ -140,7 +140,7 @@ interface FrameProps {
 function PartFrame({ label, collapsed = false, testID, children }: FrameProps) {
   return (
     <div className="flex flex-col gap-2">
-      <Text variant="body" as="p" className="text-foreground-subtle">
+      <Text variant="body" as="p" tone="subtle">
         {label}
       </Text>
       <div
@@ -162,7 +162,7 @@ function PartFrame({ label, collapsed = false, testID, children }: FrameProps) {
 function SidebarStateReadout() {
   const { state } = useSidebar();
   return (
-    <Text variant="body" as="p" className="text-foreground-subtle">
+    <Text variant="body" as="p" tone="subtle">
       Sidebar state: {state}
     </Text>
   );
@@ -179,7 +179,7 @@ function TriggerCell({
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <Text variant="body" as="p" className="text-foreground-subtle">
+      <Text variant="body" as="p" tone="subtle">
         {label}
       </Text>
       <div

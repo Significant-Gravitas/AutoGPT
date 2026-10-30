@@ -140,8 +140,7 @@ export function OnboardingIntroCard({
                     <Icon
                       icon={Tick02Icon}
                       size={16}
-                      // TODO(tokens): no exact role for text-emerald-600
-                      className="text-emerald-600"
+                      className="text-success"
                     />
                   ) : (
                     <Icon icon={Copy01Icon} size={16} />

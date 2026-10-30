@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { useId } from "react";
+import { useId, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import type { Box } from "../helpers";
 
@@ -31,6 +31,7 @@ export function TourScrim({ boxes, dim = true }: Props) {
         <svg className="absolute inset-0 h-full w-full">
           <defs>
             <mask id={maskID}>
+              {/* oxlint-disable-next-line design-system/no-raw-colors -- mask luminance, not a colour: white keeps the dim */}
               <rect width="100%" height="100%" fill="white" />
               {boxes.map((box, index) => (
                 <rect
@@ -40,6 +41,7 @@ export function TourScrim({ boxes, dim = true }: Props) {
                   width={box.width}
                   height={box.height}
                   rx={HOLE_RADIUS}
+                  // oxlint-disable-next-line design-system/no-raw-colors -- mask luminance, not a colour: black cuts the hole
                   fill="black"
                 />
               ))}
@@ -48,7 +50,7 @@ export function TourScrim({ boxes, dim = true }: Props) {
           <rect
             width="100%"
             height="100%"
-            className="fill-zinc-950/55"
+            className="fill-foreground-base/55"
             mask={`url(#${maskID})`}
           />
         </svg>
@@ -57,19 +59,23 @@ export function TourScrim({ boxes, dim = true }: Props) {
         <div
           key={index}
           className={cn(
-            "absolute rounded-xl transition-[top,left,width,height] duration-300 ease-out motion-reduce:transition-none",
+            "absolute left-[var(--box-left)] top-[var(--box-top)] h-[var(--box-height)] w-[var(--box-width)] rounded-xl transition-[top,left,width,height] duration-300 ease-out motion-reduce:transition-none",
             // Over the dim the lit hole is the highlight; the edge only
             // crisps it. On an undimmed page a dark ring has to carry it.
             dim
-              ? "shadow-[0_0_0_1.5px_rgb(255_255_255/0.9),0_0_0_6px_rgb(255_255_255/0.14)]"
-              : "shadow-[0_0_0_2px_rgb(var(--color-surface)),0_0_0_4px_rgb(var(--color-foreground-strong)),0_8px_24px_-8px_rgb(0_0_0/0.25)]",
+              ? // oxlint-disable-next-line design-system/no-arbitrary-values -- the spotlight's two-ring halo has no shadow token
+                "shadow-[0_0_0_1.5px_rgb(255_255_255/0.9),0_0_0_6px_rgb(255_255_255/0.14)]"
+              : // oxlint-disable-next-line design-system/no-arbitrary-values -- the spotlight's two-ring halo has no shadow token
+                "shadow-[0_0_0_2px_rgb(var(--color-surface)),0_0_0_4px_rgb(var(--color-foreground-strong)),0_8px_24px_-8px_rgb(0_0_0/0.25)]",
           )}
-          style={{
-            top: box.top,
-            left: box.left,
-            width: box.width,
-            height: box.height,
-          }}
+          style={
+            {
+              "--box-top": `${box.top}px`,
+              "--box-left": `${box.left}px`,
+              "--box-width": `${box.width}px`,
+              "--box-height": `${box.height}px`,
+            } as CSSProperties
+          }
         />
       ))}
     </div>,

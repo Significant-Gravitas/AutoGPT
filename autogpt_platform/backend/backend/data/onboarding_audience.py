@@ -1,11 +1,12 @@
 """Queue the onboarding role for the account's MailerLite subscriber.
 
-On cloud the paywall comes first, so the wizard's role is answered after
-checkout opened, once the account is a checkout opener in MailerLite. It is
-written onto that subscriber and never creates one: only checkout openers
-belong in MailerLite (`mailerlite.record_onboarding_profile`). Someone who
-answers before opening checkout gets their role with the checkout event
-instead (`checkout_audience`).
+The wizard's role is answered before the paywall, so most people are not in
+MailerLite yet: they get their role with the checkout event
+(`checkout_audience`), which reads the kept pick, or else the one in a valid
+saved wizard draft (`get_answered_role`). This only fills in someone
+who already opened checkout, such as a person who went back and changed
+their pick; it never creates a subscriber, since only checkout openers belong
+in MailerLite (`mailerlite.record_onboarding_profile`).
 
 Nothing is queued for an account that may not be in MailerLite at all
 (`notifications/consent.py`), and nothing here ever raises: the profile is
