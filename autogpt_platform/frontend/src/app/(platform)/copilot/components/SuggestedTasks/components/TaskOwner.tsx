@@ -8,16 +8,14 @@ const AVATAR_SIZE = 28;
 
 export function OwnerAvatar({ owner }: { owner: TaskOwner }) {
   if (owner.kind === "otto")
-    return (
-      <AutopilotAvatar size={AVATAR_SIZE} className="shrink-0 rounded-full" />
-    );
+    return <AutopilotAvatar size={AVATAR_SIZE} className="shrink-0" />;
   return (
     <ExpertAvatar
       name={owner.expert.name}
       avatarUrl={owner.expert.avatarUrl}
       backgroundColor={owner.expert.color ?? undefined}
       size={AVATAR_SIZE}
-      className="shrink-0 rounded-full"
+      className="shrink-0"
     />
   );
 }
@@ -26,13 +24,10 @@ export function OwnerAvatar({ owner }: { owner: TaskOwner }) {
 export function OwnerLabel({ owner }: { owner: TaskOwner }) {
   if (owner.kind === "otto")
     return (
-      <Text
-        variant="small-medium"
-        as="span"
-        className="text-accent-strong sm:whitespace-nowrap"
-      >
+      // Text has no accent tone, so the role classes go on the span.
+      <span className="font-sans text-caption font-medium text-accent-strong sm:whitespace-nowrap">
         Otto
-      </Text>
+      </span>
     );
   const role = owner.expert.role ? getExpertRoleLabel(owner.expert.role) : null;
   return (

@@ -475,12 +475,11 @@ describe("draft recovery", () => {
       }),
     );
     fireEvent.click(screen.getByTestId("step-braindump"));
-    fireEvent.click(await screen.findByTestId("step-hire"));
     expect(await screen.findByTestId("step-subscription")).toBeDefined();
     await waitFor(() =>
       expect(serverDraft).toMatchObject({
         currentStep: "subscription",
-        completedSteps: expect.arrayContaining(["role", "painPoints", "hire"]),
+        completedSteps: expect.arrayContaining(["role", "painPoints"]),
         role: "Other",
         otherRole: "Dentist",
       }),

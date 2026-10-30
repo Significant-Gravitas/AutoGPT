@@ -42,12 +42,12 @@ export function PlanPanel({
     <div
       data-testid="plan-panel"
       className={cn(
-        "flex flex-col gap-3.5 bg-surface-muted px-5 pb-5 pt-6 sm:px-7 [@media(max-height:780px)]:gap-2.5 [@media(max-height:780px)]:py-5",
-        !standalone && "border-b border-border-base lg:border-b-0 lg:border-r",
+        "flex flex-col gap-3.5 bg-surface-muted px-5 pt-6 pb-5 sm:px-7 [@media(max-height:780px)]:gap-2.5 [@media(max-height:780px)]:py-5",
+        !standalone && "border-b border-border-base lg:border-r lg:border-b-0",
       )}
     >
       <div className="flex items-center gap-2">
-        <AutopilotAvatar size={26} className="rounded-full" />
+        <AutopilotAvatar size={26} />
         <Text variant="small-medium" as="span" tone="secondary">
           Otto&apos;s plan
         </Text>

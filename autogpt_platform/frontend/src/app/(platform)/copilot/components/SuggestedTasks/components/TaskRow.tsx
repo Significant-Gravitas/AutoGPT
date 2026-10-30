@@ -3,14 +3,11 @@
 import type { SuggestedTask } from "@/app/api/__generated__/models/suggestedTask";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { tourStartingPoint } from "@/lib/tour-targets";
 import { cn } from "@/lib/utils";
-import {
-  ArrowRight01Icon,
-  Cancel01Icon,
-  Loading03Icon,
-} from "@hugeicons/core-free-icons";
+import { ArrowRight01Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
 import { motion, useReducedMotion } from "framer-motion";
 import NextLink from "next/link";
 import { useId } from "react";
@@ -87,7 +84,8 @@ export function TaskRow({
             <Text
               variant="small"
               as="span"
-              className="text-success-foreground sm:whitespace-nowrap"
+              tone="success-strong"
+              className="sm:whitespace-nowrap"
             >
               In progress with {name}
             </Text>
@@ -118,29 +116,35 @@ export function TaskRow({
           >
             <OwnerLabel owner={owner} />
           </RowText>
-          <Icon
-            icon={isSending ? Loading03Icon : ArrowRight01Icon}
-            size={15}
+          <span
             className={cn(
               "shrink-0 self-center text-foreground-tertiary",
-              isSending ? "animate-spin" : "hidden sm:block",
+              isSending ? "flex" : "hidden sm:flex",
             )}
-          />
+          >
+            {isSending ? (
+              <LoadingSpinner size="small" />
+            ) : (
+              <Icon icon={ArrowRight01Icon} size={15} />
+            )}
+          </span>
         </button>
       )}
       {!isSent ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          withTooltip={false}
-          aria-label={`Remove: ${task.title}`}
-          disabled={isRemoveDisabled}
-          onClick={() => onRemove(task)}
-          className="mr-2 mt-3 shrink-0 text-foreground-tertiary opacity-0 transition-opacity duration-150 hover:text-foreground-body focus-visible:opacity-100 group-hover/row:opacity-100 sm:mt-0 [@media(hover:none)]:opacity-100"
-        >
-          <Icon icon={Cancel01Icon} size={14} />
-        </Button>
+        // Shown on hover or focus, and always on touch screens.
+        <span className="mt-3 mr-2 flex shrink-0 opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-within:opacity-100 sm:mt-0 [@media(hover:none)]:opacity-100">
+          <Button
+            type="button"
+            variant="toggle"
+            size="icon-xs"
+            withTooltip={false}
+            aria-label={`Remove: ${task.title}`}
+            disabled={isRemoveDisabled}
+            onClick={() => onRemove(task)}
+          >
+            <Icon icon={Cancel01Icon} size={14} />
+          </Button>
+        </span>
       ) : (
         // Keeps the titles of sent rows aligned with the rest.
         <span aria-hidden className="mr-2 size-6 shrink-0" />
@@ -182,7 +186,7 @@ function RowText({
           {isStartHere ? (
             <span
               id={pillID}
-              className="mr-2 inline-block -translate-y-px rounded-full bg-accent-strong/10 px-2 py-0.5 align-middle text-[10.5px] font-semibold uppercase leading-4 tracking-[0.08em] text-accent-strong"
+              className="mr-2 inline-block -translate-y-px rounded-full bg-accent-strong/10 px-2 py-0.5 align-middle text-caption-sm font-semibold tracking-eyebrow text-accent-strong uppercase"
             >
               Start here
             </span>

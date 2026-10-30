@@ -81,7 +81,8 @@ function PlanOnlyStep() {
             variant="primary"
             size="large"
             onClick={nextStep}
-            className="mt-1 h-12 w-full text-base"
+            textSize="body-md"
+            className="mt-1 h-12 w-full"
           >
             Continue
           </Button>

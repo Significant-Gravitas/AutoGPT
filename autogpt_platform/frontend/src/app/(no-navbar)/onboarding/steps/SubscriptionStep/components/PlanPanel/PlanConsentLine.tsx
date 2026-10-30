@@ -17,13 +17,18 @@ export function PlanConsentLine({ team, moment }: Props) {
       {team.length > 0 ? (
         <span aria-hidden className="flex shrink-0 -space-x-1.5">
           {team.map((expert) => (
-            <ExpertAvatar
+            // The ring separates the overlapping faces; it follows the
+            // avatar's own rounded-xl corner.
+            <span
               key={expert.template_id}
-              name={expert.name}
-              avatarUrl={expert.avatar_url ?? null}
-              size={FACE_SIZE}
-              className="rounded-full ring-2 ring-surface-muted"
-            />
+              className="flex rounded-xl ring-2 ring-surface-muted"
+            >
+              <ExpertAvatar
+                name={expert.name}
+                avatarUrl={expert.avatar_url ?? null}
+                size={FACE_SIZE}
+              />
+            </span>
           ))}
         </span>
       ) : null}

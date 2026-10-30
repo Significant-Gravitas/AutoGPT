@@ -30,14 +30,13 @@ export function PlanTaskCard({ task, owner, isFirst }: Props) {
           name={owner.name}
           avatarUrl={owner.avatar_url ?? null}
           size={AVATAR_SIZE}
-          className="rounded-full"
         />
       ) : (
-        <AutopilotAvatar size={AVATAR_SIZE} className="rounded-full" />
+        <AutopilotAvatar size={AVATAR_SIZE} />
       )}
       <div className="flex min-w-0 flex-col items-start">
         {isFirst ? (
-          <span className="mb-1.5 rounded-full bg-accent-surface px-2 py-0.5 text-[10.5px] font-semibold uppercase leading-4 tracking-[0.08em] text-accent-strong">
+          <span className="mb-1.5 rounded-full bg-accent-surface px-2 py-0.5 text-caption-sm font-semibold tracking-eyebrow text-accent-strong uppercase">
             Start here
           </span>
         ) : null}
@@ -58,9 +57,10 @@ export function PlanTaskCard({ task, owner, isFirst }: Props) {
 function OwnerLine({ owner }: { owner: RecommendedExpert | null }) {
   if (!owner)
     return (
-      <Text variant="small" as="span" className="mt-1.5 text-accent-strong">
+      // Text has no accent tone, so the role classes go on the span.
+      <span className="mt-1.5 font-sans text-caption text-accent-strong">
         Otto handles this one
-      </Text>
+      </span>
     );
   return (
     <Text variant="small" as="span" tone="secondary" className="mt-1.5">

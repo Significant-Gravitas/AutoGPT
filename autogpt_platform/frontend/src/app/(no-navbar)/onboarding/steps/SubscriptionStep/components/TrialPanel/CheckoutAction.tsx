@@ -23,14 +23,15 @@ export function CheckoutAction({
   onClick,
 }: Props) {
   return (
-    <div className="sticky bottom-0 z-10 -mx-5 mt-auto flex flex-col gap-2.5 border-t border-border-base bg-surface px-5 pb-4 pt-3 sm:-mx-8 sm:px-8 lg:static lg:mx-0 lg:border-t-0 lg:px-0 lg:pb-0 lg:pt-0">
+    <div className="sticky bottom-0 z-10 -mx-5 mt-auto flex flex-col gap-2.5 border-t border-border-base bg-surface px-5 pt-3 pb-4 sm:-mx-8 sm:px-8 lg:static lg:mx-0 lg:border-t-0 lg:px-0 lg:pt-0 lg:pb-0">
       <Button
         variant="primary"
         size="large"
         onClick={onClick}
         loading={isProcessing}
         disabled={isProcessing || isBlocked}
-        className="h-12 w-full text-base"
+        textSize="body-md"
+        className="h-12 w-full"
       >
         {label}
       </Button>
@@ -39,7 +40,7 @@ export function CheckoutAction({
           {error}
         </Text>
       ) : null}
-      <Text variant="small" tone="muted" className="text-balance text-center">
+      <Text variant="small" tone="muted" className="text-center text-balance">
         <Icon
           icon={SquareLock02Icon}
           size={13}

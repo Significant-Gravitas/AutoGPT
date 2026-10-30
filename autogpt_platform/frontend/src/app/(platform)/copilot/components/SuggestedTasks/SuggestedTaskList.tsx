@@ -117,7 +117,7 @@ export function SuggestedTaskList({
             aria-expanded={isMoreOpen}
             aria-controls={moreID}
             onClick={() => onMoreChoice(!isMoreOpen)}
-            className="flex min-h-[3.25rem] w-full items-center gap-3 px-4 py-3 text-left outline-none transition-colors duration-150 hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus"
+            className="flex min-h-[3.25rem] w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-150 outline-none hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-inset"
           >
             <Text variant="body-medium" as="span" tone="secondary">
               {more.length} more {more.length === 1 ? "task" : "tasks"}

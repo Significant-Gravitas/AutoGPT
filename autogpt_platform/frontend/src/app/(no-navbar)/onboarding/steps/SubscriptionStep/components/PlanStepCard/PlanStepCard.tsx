@@ -24,7 +24,8 @@ export function PlanStepCard({ labelledBy, twoColumns, children }: Props) {
         className={cn(
           // Clipped rather than hidden, so the narrow layout's sticky
           // checkout still sticks to the viewport.
-          "mx-auto grid w-full overflow-clip rounded-[1.75rem] border border-border-base/80 bg-surface shadow-[0_1px_2px_rgba(24,24,27,0.04),0_32px_64px_-32px_rgba(24,24,27,0.18)]",
+          // oxlint-disable-next-line design-system/no-arbitrary-values -- the card's soft lift shadow has no shadow token yet
+          "mx-auto grid w-full overflow-clip rounded-3xl border border-border-base/80 bg-surface shadow-[0_1px_2px_rgba(24,24,27,0.04),0_32px_64px_-32px_rgba(24,24,27,0.18)]",
           twoColumns ? "max-w-[64rem] lg:grid-cols-2" : "max-w-[34rem]",
         )}
       >
