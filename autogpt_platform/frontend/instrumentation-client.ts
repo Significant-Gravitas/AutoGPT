@@ -57,9 +57,10 @@ Sentry.init({
   // A failed API request the request logger reports, titled by its route,
   // would otherwise arrive again from the HttpClient integration (BUILDER-95D).
   // Some browsers inject a script that logs every cross-origin iframe it may
-  // not read (BUILDER-943). A fetch a catch handled after the network dropped
-  // is no bug, and each browser and build filed it as a new issue. URLs are
-  // masked last: the request logger's match needs the URL as it was requested.
+  // not read (BUILDER-943). A fetch that our code caught after the network
+  // dropped is not a bug, and each browser and build filed it as a new issue.
+  // URLs are masked last: the request logger's match needs the URL as it was
+  // requested.
   beforeSend(event, hint) {
     stripSpanPII(stripUserPII(event));
     if (isFromBot(navigator.userAgent)) return null;
