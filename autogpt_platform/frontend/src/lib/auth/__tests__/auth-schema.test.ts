@@ -40,6 +40,9 @@ const PRISMA_SCALARS = [
   "Bytes",
 ];
 
+// Prisma Client fills these in itself, so the column gets no DEFAULT.
+const CLIENT_SIDE_DEFAULT = /@default\((uuid|cuid|nanoid|ulid)\(/;
+
 // Each model's table and the columns its scalar fields create. Relation
 // fields have a model type and no column of their own.
 function prismaTables(schema: string) {
@@ -58,7 +61,9 @@ function prismaTables(schema: string) {
           {
             name: attributes.match(/@map\("([^"]+)"\)/)?.[1] ?? name,
             nullable: optional === "?",
-            hasDefault: attributes.includes("@default("),
+            hasDefault:
+              attributes.includes("@default(") &&
+              !CLIENT_SIDE_DEFAULT.test(attributes),
           },
         ];
       }),
@@ -90,14 +95,23 @@ describe("the Better Auth tables in schema.prisma", () => {
     ]);
   });
 
-  it("are refused with a required column Better Auth never writes", async () => {
-    const withExtra = schemaPrisma.replace(
-      /^(model AuthJwks \{\n)/m,
-      "$1  rotatedBy String\n",
-    );
+  it.each([
+    ["without a default", "rotatedBy String"],
+    [
+      "with a default only Prisma Client fills in",
+      "rotatedBy String @default(uuid())",
+    ],
+  ])(
+    "are refused with a required column Better Auth never writes, %s",
+    async (_, field) => {
+      const withExtra = schemaPrisma.replace(
+        /^(model AuthJwks \{\n)/m,
+        `$1  ${field}\n`,
+      );
 
-    expect(await problemsWith(withExtra)).toEqual([
-      expect.stringContaining('Column "rotatedBy" on table "UserAuthJwks"'),
-    ]);
-  });
+      expect(await problemsWith(withExtra)).toEqual([
+        expect.stringContaining('Column "rotatedBy" on table "UserAuthJwks"'),
+      ]);
+    },
+  );
 });
