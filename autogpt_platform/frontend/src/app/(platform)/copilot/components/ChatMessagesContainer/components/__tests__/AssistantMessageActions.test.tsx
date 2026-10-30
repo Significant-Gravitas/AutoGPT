@@ -203,8 +203,8 @@ describe("AssistantMessageActions feedback", () => {
     fireEvent.click(downvoteButton());
 
     expect(toastTitles()).toEqual([
-      "This reply is still being saved",
-      "This reply is still being saved",
+      "This reply can't be rated yet",
+      "This reply can't be rated yet",
     ]);
     expect(
       screen.queryByPlaceholderText(
@@ -243,7 +243,7 @@ describe("AssistantMessageActions feedback", () => {
     ]);
   });
 
-  test("a joined reply is rated by its latest saved row, as after a reload", async () => {
+  test("a saved id passed in wins over the bubble's own id", async () => {
     const bodies = captureRequests();
     render(
       <AssistantMessageActions
