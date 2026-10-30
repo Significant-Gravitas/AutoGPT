@@ -57,9 +57,9 @@ export function ConfirmDeleteStep({ source, onClose, onBusyChange }: Props) {
           <Text variant="small" tone="muted">
             You&apos;ll be signed out right away. Changed your mind? Sign in
             within 14 days and choose Keep my account. Your plan, apps, API
-            keys, share links, and Marketplace listings and reviews don&apos;t
-            come back, and notification emails stay off until you switch them
-            back on.
+            keys, schedules, share links, Marketplace listings and reviews
+            don&apos;t come back, and notification emails stay off until you
+            switch them back on.
           </Text>
         </div>
       </div>

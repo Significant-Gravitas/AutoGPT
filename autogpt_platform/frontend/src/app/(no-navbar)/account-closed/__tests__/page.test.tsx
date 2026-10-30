@@ -26,7 +26,7 @@ vi.mock("next/navigation", () => ({
 // The real page waits seconds between probes; these tests don't.
 vi.mock("../helpers", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../helpers")>()),
-  OPEN_PROBE: { intervalMS: 5, streak: 2, maxProbes: 20 },
+  OPEN_PROBE: { intervalMS: 5, streak: 2, minWaitMS: 0, maxProbes: 20 },
 }));
 
 const RESTORE_PATH = "/api/proxy/api/account/deletion/restore";
@@ -48,19 +48,28 @@ function scheduled(eraseAfter: Date = ERASE_AFTER) {
   status({ status: "scheduled", erase_after: eraseAfter });
 }
 
-// The ordinary route the page probes answers closed this many times, as a
-// server still caching the closed answer would, then answers normally.
-function probeAnswersClosed(times: number) {
+// The ordinary route the page probes refuses this many times (as a server
+// still caching the closed answer would, by default), then answers normally.
+function probeRefuses(times: number, status = 401, body: object = CLOSED) {
   const calls = { count: 0 };
   server.use(
     http.get(PROBE_PATH, () => {
       calls.count += 1;
       return calls.count <= times
-        ? HttpResponse.json(CLOSED, { status: 401 })
+        ? HttpResponse.json(body, { status })
         : HttpResponse.json({ timezone: "UTC" });
     }),
   );
   return calls;
+}
+
+function keepSucceeds() {
+  server.use(
+    getPostAccountKeepMyAccountMockHandler200({
+      status: "open",
+      erase_after: null,
+    }),
+  );
 }
 
 function renderPage() {
@@ -96,7 +105,7 @@ describe("AccountClosedPage", () => {
     ).toBeDefined();
     expect(screen.getByText("Nov 13, 2099")).toBeDefined();
     expect(
-      screen.getByText(/API keys, schedules, share links, and Marketplace/),
+      screen.getByText(/API keys, schedules and share links stopped/),
     ).toBeDefined();
     expect(
       screen.getByRole("button", { name: "Keep my account" }),
@@ -106,7 +115,7 @@ describe("AccountClosedPage", () => {
 
   test("Keep my account waits until the account answers as open everywhere, then offers to continue", async () => {
     scheduled();
-    const probes = probeAnswersClosed(2);
+    const probes = probeRefuses(2);
     let restored = 0;
     server.use(
       getPostAccountKeepMyAccountMockHandler200(() => {
@@ -120,12 +129,14 @@ describe("AccountClosedPage", () => {
       await screen.findByRole("button", { name: "Keep my account" }),
     );
 
-    expect(
-      await screen.findByRole("heading", {
-        name: "Your account is open again",
-      }),
-    ).toBeDefined();
+    const heading = await screen.findByRole("heading", {
+      name: "Your account is open again",
+    });
     expect(restored).toBe(1);
+    // Focus follows the swapped card instead of falling back to the page.
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    const progress = screen.getByText(/Opening your account everywhere/);
+    expect(progress.getAttribute("aria-live")).toBe("polite");
     expect(screen.getByText(/Wait a minute and sign in again/)).toBeDefined();
     expect(
       screen.getByRole("link", { name: "Contact us" }).getAttribute("href"),
@@ -136,6 +147,9 @@ describe("AccountClosedPage", () => {
     });
     // Two closed answers, then two open ones in a row.
     expect(probes.count).toBe(4);
+    // The same live region, its text changed.
+    expect(progress.textContent).toMatch(/open everywhere/);
+    await waitFor(() => expect(document.activeElement).toBe(proceed));
     // Never on its own: only when the person continues.
     expect(locationReplace).not.toHaveBeenCalled();
 
@@ -144,13 +158,28 @@ describe("AccountClosedPage", () => {
     expect(locationReplace).toHaveBeenCalledWith("/");
   });
 
-  test("too late to keep it: says so and stays", async () => {
+  test("a server error or a lost session is not counted as open", async () => {
     scheduled();
-    const detail =
-      "It's too late to keep this account: its data is being erased. Contact contact@agpt.co if you need help.";
+    keepSucceeds();
+    const probes = probeRefuses(2, 503, { detail: "Service unavailable" });
+    renderPage();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Keep my account" }),
+    );
+
+    await screen.findByRole("button", { name: "Continue to AutoGPT" });
+    expect(probes.count).toBe(4);
+  });
+
+  test("too late to keep it: the page switches to the too-late state", async () => {
+    scheduled();
     server.use(
       http.post(RESTORE_PATH, () =>
-        HttpResponse.json({ detail }, { status: 409 }),
+        HttpResponse.json(
+          { detail: "It's too late to keep this account." },
+          { status: 409 },
+        ),
       ),
     );
     renderPage();
@@ -159,15 +188,18 @@ describe("AccountClosedPage", () => {
       await screen.findByRole("button", { name: "Keep my account" }),
     );
 
-    expect(await screen.findByText(detail)).toBeDefined();
-    expect(locationReplace).not.toHaveBeenCalled();
     expect(
-      screen.getByRole("button", { name: "Keep my account" }),
+      await screen.findByText(/The 14 days to keep your account are over/),
     ).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: "Keep my account" }),
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeDefined();
+    expect(locationReplace).not.toHaveBeenCalled();
   });
 
-  test("past the erasure date it offers only Sign out", async () => {
-    scheduled(new Date("2020-01-01T00:00:00Z"));
+  test("once the erasure has started it offers only Sign out", async () => {
+    status({ status: "too_late", erase_after: ERASE_AFTER });
     renderPage();
 
     expect(
@@ -189,23 +221,17 @@ describe("AccountClosedPage", () => {
     expect(mocks.replace).toHaveBeenCalledWith("/logout");
   });
 
-  test("an open account sees the same open state and is not sent anywhere on its own", async () => {
+  test("an account that wasn't kept on this page goes back to the app", async () => {
+    // Never closed (say /login?next=/account-closed), or kept earlier.
     status({ status: "open", erase_after: null });
-    probeAnswersClosed(0);
     renderPage();
 
+    await waitFor(() => expect(locationReplace).toHaveBeenCalledWith("/"));
     expect(
-      await screen.findByRole("heading", {
-        name: "Your account is open again",
-      }),
-    ).toBeDefined();
-    expect(screen.getByText(/Wait a minute and sign in again/)).toBeDefined();
-    expect(
-      await screen.findByRole("button", { name: "Continue to AutoGPT" }),
-    ).toBeDefined();
+      screen.queryByRole("heading", { name: "Your account is open again" }),
+    ).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Keep my account" }),
     ).toBeNull();
-    await waitFor(() => expect(locationReplace).not.toHaveBeenCalled());
   });
 });

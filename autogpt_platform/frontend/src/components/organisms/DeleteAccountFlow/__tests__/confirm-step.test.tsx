@@ -142,7 +142,7 @@ describe("DeleteAccountFlow confirm step", () => {
       ),
     ).toBeDefined();
     expect(dialog.textContent).toContain(
-      "You'll be signed out right away. Changed your mind? Sign in within 14 days and choose Keep my account. Your plan, apps, API keys, share links, and Marketplace listings and reviews don't come back, and notification emails stay off until you switch them back on.",
+      "You'll be signed out right away. Changed your mind? Sign in within 14 days and choose Keep my account. Your plan, apps, API keys, schedules, share links, Marketplace listings and reviews don't come back, and notification emails stay off until you switch them back on.",
     );
   });
 

@@ -11,12 +11,14 @@ import {
   getEraseDateLabel,
   getKeepErrorMessage,
   getPageView,
+  isTooLateError,
   waitUntilAnsweredAsOpen,
 } from "./helpers";
 
 export function useAccountClosedPage() {
   const router = useRouter();
-  const [isKept, setIsKept] = useState(false);
+  const [keptAt, setKeptAt] = useState<number | null>(null);
+  const [isTooLate, setIsTooLate] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
   const status = useGetAccountGetAccountDeletionStatus({
@@ -27,25 +29,34 @@ export function useAccountClosedPage() {
   });
   const { mutateAsync, isPending } = usePostAccountKeepMyAccount();
   const view = getPageView({
-    isKept,
+    isKept: keptAt !== null,
+    isTooLate,
     isLoading: status.isLoading,
     isError: status.isError,
     status: status.data?.status,
     eraseAfter: status.data?.erase_after,
   });
-  const isOpen = view === "open";
+
+  useEffect(
+    function leaveAnOpenAccount() {
+      // Never closed, or kept before this visit: nothing to say here.
+      if (view === "leaving") window.location.replace("/");
+    },
+    [view],
+  );
 
   useEffect(
     function waitUntilOpenEverywhere() {
-      // Another server may still answer the account as closed for a few
-      // seconds and would send it straight back here, so Continue shows only
-      // once ordinary requests stop being refused.
-      if (!isOpen) return;
+      // Every server caches "closed" for up to 30 s and would send the tab
+      // straight back here, so Continue shows only once that has run out
+      // and ordinary requests answer the account as open.
+      if (keptAt === null) return;
       let cancelled = false;
       waitUntilAnsweredAsOpen({
         probe: () => getV1GetUserTimezone(),
         isCancelled: () => cancelled,
         settings: OPEN_PROBE,
+        keptAt,
       }).then(function showContinue() {
         if (!cancelled) setIsReady(true);
       });
@@ -53,17 +64,21 @@ export function useAccountClosedPage() {
         cancelled = true;
       };
     },
-    [isOpen],
+    [keptAt],
   );
 
   async function keepAccount() {
     try {
       await mutateAsync();
     } catch (error) {
+      if (isTooLateError(error)) {
+        setIsTooLate(true);
+        return;
+      }
       toast({ title: getKeepErrorMessage(error), variant: "destructive" });
       return;
     }
-    setIsKept(true);
+    setKeptAt(Date.now());
   }
 
   // A full load, so every query starts over as the open account.

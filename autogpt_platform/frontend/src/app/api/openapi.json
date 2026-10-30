@@ -19830,7 +19830,7 @@
         "properties": {
           "status": {
             "type": "string",
-            "enum": ["open", "scheduled"],
+            "enum": ["open", "scheduled", "too_late"],
             "title": "Status"
           },
           "erase_after": {
@@ -19844,7 +19844,7 @@
         "type": "object",
         "required": ["status"],
         "title": "AccountDeletionResponse",
-        "description": "Whether the account is closed and waiting to be erased. While it is,\n``erase_after`` says when the erasure may start: until then its owner can\nkeep the account."
+        "description": "Whether the account is closed and waiting to be erased. While it is,\n``erase_after`` says when the erasure may start: until then (``scheduled``)\nits owner can keep the account; from then on, or once the erasure has\nclaimed the request, it is ``too_late``."
       },
       "AccountIP": {
         "properties": {

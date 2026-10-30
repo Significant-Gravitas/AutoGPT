@@ -20,7 +20,7 @@ export default function AccountClosedPage() {
     signOut,
   } = useAccountClosedPage();
 
-  if (view === "loading") {
+  if (view === "loading" || view === "leaving") {
     return (
       <main className="flex min-h-screen items-center justify-center px-4">
         <LoadingSpinner size="large" />
@@ -62,10 +62,11 @@ export default function AccountClosedPage() {
             mind? Keep your account and use AutoGPT again.
           </Text>
           <Text variant="small" tone="muted">
-            Your plan, connected apps, API keys, schedules, share links, and
-            Marketplace listings and reviews stopped when you closed your
-            account, and notification emails are off. If you keep it, subscribe
-            again, set up what you need and switch emails back on in Settings.
+            Your plan, connected apps, API keys, schedules and share links
+            stopped and your Marketplace listings and reviews were removed when
+            you closed your account, and notification emails are off. If you
+            keep it, subscribe again, set up what you need and switch emails
+            back on in Settings.
           </Text>
         </>
       )}
