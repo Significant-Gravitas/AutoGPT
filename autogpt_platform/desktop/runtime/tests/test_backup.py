@@ -1,10 +1,13 @@
 import hashlib
 import json
 import os
+import stat
 import subprocess
 import sys
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -83,6 +86,209 @@ def test_restoring_corrupt_checksums_leaves_current_data_in_place(populated):
     assert (root / "config/secrets.env").read_bytes() == original
     assert not list(root.parent.glob("AutoGPT.before-restore-*"))
     assert not list(root.parent.glob(".AutoGPT.restore-*"))
+
+
+@pytest.mark.parametrize("failure", ["checksum", "validation", "publication"])
+def test_failed_restore_cleans_readonly_cookie_without_masking_error(
+    populated, monkeypatch, failure
+):
+    bundle, root, archive, _ = populated
+    cookie = root / "rabbitmq/home/.erlang.cookie"
+    cookie.parent.mkdir(parents=True)
+    cookie.write_bytes(b"synthetic-cookie")
+    cookie.chmod(0o400)
+    backup.create_backup(bundle, root, archive, "AutoGPT")
+    original = {
+        p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()
+    }
+    expected = backup.BackupError("injected staged validation failure")
+    if failure == "checksum":
+        rewrite(
+            archive,
+            lambda manifest: manifest["files"]["rabbitmq/home/.erlang.cookie"].update(
+                sha256="0" * 64
+            ),
+        )
+    elif failure == "validation":
+
+        def fail_validation(bundle, data):
+            raise expected
+
+        monkeypatch.setattr(backup, "require_stopped", fail_validation)
+    else:
+        rename = Path.rename
+        expected = OSError("injected publication failure")
+
+        def fail_publication(path, target):
+            if path.name.startswith(".AutoGPT.restore-") and target == root:
+                raise expected
+            return rename(path, target)
+
+        monkeypatch.setattr(Path, "rename", fail_publication)
+    archive_bytes = archive.read_bytes()
+    try:
+        with pytest.raises(
+            backup.BackupError if failure != "publication" else OSError,
+            match="checksum" if failure == "checksum" else str(expected),
+        ) as caught:
+            backup.restore_backup(bundle, root, archive, "AutoGPT")
+        if failure != "checksum":
+            assert caught.value is expected
+        assert {
+            p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()
+        } == original
+        assert archive.read_bytes() == archive_bytes
+        assert not list(root.parent.glob("AutoGPT.before-restore-*"))
+        assert not list(root.parent.glob(".AutoGPT.restore-*"))
+        assert not DataLock(root).journal.exists()
+        assert not cookie.stat().st_mode & stat.S_IWUSR
+    finally:
+        if cookie.exists():
+            cookie.chmod(0o600)
+
+
+@pytest.mark.parametrize("interrupt", [False, True])
+def test_restore_preserves_readonly_cookie_in_published_or_recovery_data(
+    populated, monkeypatch, interrupt
+):
+    bundle, root, archive, _ = populated
+    relative = Path("rabbitmq/home/.erlang.cookie")
+    cookie = root / relative
+    cookie.parent.mkdir(parents=True)
+    cookie.write_bytes(b"synthetic-cookie")
+    cookie.chmod(0o400)
+    backup.create_backup(bundle, root, archive, "AutoGPT")
+    rename = Path.rename
+
+    def interrupt_publication(path, target):
+        if path.name.startswith(".AutoGPT.restore-"):
+            raise KeyboardInterrupt("interrupted between renames")
+        return rename(path, target)
+
+    try:
+        if interrupt:
+            monkeypatch.setattr(Path, "rename", interrupt_publication)
+            with pytest.raises(KeyboardInterrupt):
+                backup.restore_backup(bundle, root, archive, "AutoGPT")
+            journal = json.loads(DataLock(root).journal.read_text("utf-8"))
+            retained = [Path(journal["stage"]), Path(journal["previous"])]
+        else:
+            previous = backup.restore_backup(bundle, root, archive, "AutoGPT")
+            retained = [root, previous]
+        for directory in retained:
+            saved = directory / relative
+            assert saved.read_bytes() == b"synthetic-cookie"
+            assert not saved.stat().st_mode & stat.S_IWUSR
+    finally:
+        for directory in root.parent.iterdir():
+            saved = directory / relative
+            if saved.is_file():
+                saved.chmod(0o600)
+
+
+def test_failed_cleanup_preserves_restore_error_and_reports_retained_stage(
+    populated, monkeypatch, capsys
+):
+    bundle, root, archive, _ = populated
+    backup.create_backup(bundle, root, archive, "AutoGPT")
+    original = backup.BackupError("staged validation failed")
+
+    def fail_validation(bundle, data):
+        raise original
+
+    cleanup = Mock(side_effect=PermissionError("injected cleanup failure"))
+    monkeypatch.setattr(backup, "require_stopped", fail_validation)
+    monkeypatch.setattr(backup.shutil, "rmtree", cleanup)
+    with pytest.raises(backup.BackupError) as caught:
+        backup.restore_backup(bundle, root, archive, "AutoGPT")
+    assert caught.value is original
+    stage = cleanup.call_args.args[0]
+    assert stage.is_dir()
+    assert (root / "postgres/PG_VERSION").read_text("ascii") == "16"
+    assert not DataLock(root).journal.exists()
+    assert len(original.__notes__) == 1
+    assert "cleanup also failed" in original.__notes__[0]
+    assert str(stage) in original.__notes__[0]
+    monkeypatch.setattr(backup, "restore_backup", Mock(side_effect=original))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "backup",
+            "restore",
+            "--data-dir",
+            str(root),
+            "--file",
+            str(archive),
+            "--runtime",
+            str(bundle.root),
+            "--confirm-restore",
+        ],
+    )
+    assert backup.main() == 1
+    stderr = capsys.readouterr().err
+    assert "staged validation failed" in stderr
+    assert original.__notes__[0] in stderr
+
+
+@pytest.mark.parametrize(
+    "refusal",
+    ["platform", "error", "operation", "directory", "reparse", "hardlink", "writable"],
+)
+def test_readonly_cleanup_refuses_unrelated_errors_and_unsafe_targets(
+    monkeypatch, refusal
+):
+    error = PermissionError("injected denial")
+    remove = Mock()
+    chmod = Mock()
+    info = SimpleNamespace(
+        st_mode=stat.S_IFREG | 0o400,
+        st_nlink=1,
+        st_file_attributes=stat.FILE_ATTRIBUTE_READONLY,
+    )
+    monkeypatch.setattr(sys, "platform", "linux" if refusal == "platform" else "win32")
+    monkeypatch.setattr(backup.os, "unlink", remove)
+    monkeypatch.setattr(backup.os, "chmod", chmod)
+    monkeypatch.setattr(backup.os, "lstat", Mock(return_value=info))
+    if refusal == "error":
+        error = OSError("unrelated failure")
+    elif refusal == "operation":
+        remove = Mock()
+    elif refusal == "directory":
+        info.st_mode = stat.S_IFDIR | 0o400
+    elif refusal == "reparse":
+        info.st_file_attributes |= stat.FILE_ATTRIBUTE_REPARSE_POINT
+    elif refusal == "hardlink":
+        info.st_nlink = 2
+    elif refusal == "writable":
+        info.st_file_attributes = 0
+    with pytest.raises(OSError) as caught:
+        backup._remove_readonly_file(remove, "staged-file", (type(error), error, None))
+    assert caught.value is error
+    chmod.assert_not_called()
+    remove.assert_not_called()
+
+
+def test_readonly_cleanup_retries_once_and_propagates_retry_failure(monkeypatch):
+    retry_error = PermissionError("still inaccessible")
+    remove = Mock(side_effect=retry_error)
+    chmod = Mock()
+    info = SimpleNamespace(
+        st_mode=stat.S_IFREG | 0o400,
+        st_nlink=1,
+        st_file_attributes=stat.FILE_ATTRIBUTE_READONLY,
+    )
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(backup.os, "unlink", remove)
+    monkeypatch.setattr(backup.os, "chmod", chmod)
+    monkeypatch.setattr(backup.os, "lstat", Mock(return_value=info))
+    with pytest.raises(PermissionError) as caught:
+        backup._remove_readonly_file(
+            remove, "staged-file", (PermissionError, PermissionError(), None)
+        )
+    assert caught.value is retry_error
+    chmod.assert_called_once_with("staged-file", info.st_mode | stat.S_IWUSR)
+    remove.assert_called_once_with("staged-file")
 
 
 @pytest.mark.parametrize("failure", ["rename", "parent-sync"])

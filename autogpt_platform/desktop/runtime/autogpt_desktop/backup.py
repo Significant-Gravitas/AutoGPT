@@ -12,8 +12,10 @@ import sys
 import tempfile
 import uuid
 import zipfile
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
+from types import TracebackType
 
 from autogpt_desktop import install, migrations
 from autogpt_desktop.layout import Bundle, DataDir
@@ -361,6 +363,31 @@ def publish_restore(held: DataLock, stage: Path) -> Path | None:
             sync_directory(root.parent)
 
 
+def _remove_readonly_file(
+    remove: Callable[[str], object],
+    path: str,
+    exc_info: tuple[type[BaseException], BaseException, TracebackType | None],
+) -> None:
+    error = exc_info[1]
+    if (
+        sys.platform != "win32"
+        or not isinstance(error, PermissionError)
+        or remove not in (os.unlink, os.remove)
+    ):
+        raise error
+    info = os.lstat(path)
+    attributes = getattr(info, "st_file_attributes", 0)
+    if (
+        not stat.S_ISREG(info.st_mode)
+        or info.st_nlink != 1
+        or attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT
+        or not attributes & stat.FILE_ATTRIBUTE_READONLY
+    ):
+        raise error
+    os.chmod(path, info.st_mode | stat.S_IWUSR)
+    remove(path)
+
+
 def restore_backup(
     bundle: Bundle, directory: Path, source: Path, identity: str
 ) -> Path | None:
@@ -462,7 +489,15 @@ def restore_backup(
                     and stage.parent == root.parent
                     and stage.name.startswith(f".{root.name}.restore-")
                 ):
-                    shutil.rmtree(stage)
+                    original_error = sys.exception()
+                    try:
+                        shutil.rmtree(stage, onerror=_remove_readonly_file)
+                    except OSError:
+                        if original_error is None:
+                            raise
+                        original_error.add_note(
+                            f"Restore staging cleanup also failed. Temporary data may remain at {stage}."
+                        )
 
 
 def main() -> int:
@@ -494,6 +529,8 @@ def main() -> int:
                 print(f"Previous data retained: {previous}")
     except (OSError, RuntimeError, ValueError, zipfile.BadZipFile) as exc:
         print(f"Backup/restore stopped: {exc}", file=sys.stderr)
+        for note in getattr(exc, "__notes__", ()):
+            print(note, file=sys.stderr)
         return 1
     return 0
 
