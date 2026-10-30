@@ -345,10 +345,7 @@ jobs:
         run: poetry install
 
       - name: Check candidate harness style
-        run: |
-          poetry run black --check backend/copilot/sdk/retry_scenarios_test.py
-          poetry run isort --check-only -p backend backend/copilot/sdk/retry_scenarios_test.py
-          poetry run ruff check backend/copilot/sdk/retry_scenarios_test.py
+        run: poetry run lint --skip-pyright
 
       - name: Generate Prisma Client
         run: poetry run prisma generate && poetry run gen-prisma-stub
