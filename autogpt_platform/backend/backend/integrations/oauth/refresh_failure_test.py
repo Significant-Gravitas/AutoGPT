@@ -132,8 +132,9 @@ async def test_linear_invalid_grant_is_logged_with_status_code_and_ids_but_no_to
     )
     manager, store = manager_with(LinearOAuthHandler(*CLIENT), expiring("linear"))
 
-    with endpoint.patch("backend.blocks.linear._oauth"), caplog.at_level(
-        logging.WARNING
+    with (
+        endpoint.patch("backend.blocks.linear._oauth"),
+        caplog.at_level(logging.WARNING),
     ):
         with pytest.raises(CredentialsNeedReconnectError):
             await manager.refresh_if_needed("user-1", expiring("linear"), lock=False)
@@ -194,10 +195,13 @@ async def test_google_invalid_grant_reports_status_and_code(caplog, sentry):
         GoogleOAuthHandler(*CLIENT), expiring("google", ["openid"])
     )
 
-    with patch(
-        "google.auth.transport.requests.Request.__call__",
-        return_value=google_response,
-    ), caplog.at_level(logging.WARNING):
+    with (
+        patch(
+            "google.auth.transport.requests.Request.__call__",
+            return_value=google_response,
+        ),
+        caplog.at_level(logging.WARNING),
+    ):
         with pytest.raises(CredentialsNeedReconnectError) as raised:
             await manager.refresh_if_needed(
                 "user-1", expiring("google", ["openid"]), lock=False
@@ -240,8 +244,9 @@ async def test_transient_failure_is_reported_but_not_marked(caplog, sentry):
     endpoint = FakeTokenEndpoint(400, {"error": "invalid_request"})
     manager, store = manager_with(LinearOAuthHandler(*CLIENT), expiring("linear"))
 
-    with endpoint.patch("backend.blocks.linear._oauth"), caplog.at_level(
-        logging.WARNING
+    with (
+        endpoint.patch("backend.blocks.linear._oauth"),
+        caplog.at_level(logging.WARNING),
     ):
         with pytest.raises(HTTPClientError) as raised:
             await manager.refresh_if_needed("user-1", expiring("linear"), lock=False)
@@ -294,8 +299,9 @@ async def test_x_refusing_the_token_marks_it_and_it_is_never_replayed(caplog, se
     endpoint = FakeTokenEndpoint(400, X_DEAD_TOKEN)
     manager, store = manager_with(TwitterOAuthHandler(*CLIENT), expiring("twitter"))
 
-    with endpoint.patch("backend.integrations.oauth.twitter"), caplog.at_level(
-        logging.WARNING
+    with (
+        endpoint.patch("backend.integrations.oauth.twitter"),
+        caplog.at_level(logging.WARNING),
     ):
         with pytest.raises(CredentialsNeedReconnectError):
             await manager.refresh_if_needed("user-1", expiring("twitter"), lock=True)
