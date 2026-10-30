@@ -32,7 +32,7 @@ export function CreateAPIKeySuccess({ plainTextKey, onClose }: Props) {
 
       <div className="flex items-center gap-2 rounded-md border border-border-base bg-surface-muted p-3">
         {/* ph-no-capture keeps the one-time key out of PostHog session replays. */}
-        <code className="ph-no-capture flex-1 break-all font-mono text-xs text-foreground-emphasis">
+        <code className="ph-no-capture flex-1 font-mono text-xs break-all text-foreground-emphasis">
           {plainTextKey}
         </code>
         <Button

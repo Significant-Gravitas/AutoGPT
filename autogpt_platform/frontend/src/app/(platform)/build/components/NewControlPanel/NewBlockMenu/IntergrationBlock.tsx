@@ -1,6 +1,7 @@
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { beautifyString, cn } from "@/lib/utils";
-import { Plus } from "lucide-react";
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import Image from "next/image";
 import React, { ButtonHTMLAttributes } from "react";
 import { highlightText } from "./helpers";
@@ -66,7 +67,7 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
       draggable={true}
       variant={"ghost"}
       className={cn(
-        "group flex h-16 w-full min-w-[7.5rem] items-center justify-start gap-3 whitespace-normal rounded-xl bg-surface-muted px-3.5 py-2.5 text-start shadow-none",
+        "group flex h-16 w-full min-w-[7.5rem] items-center justify-start gap-3 rounded-xl bg-surface-muted px-3.5 py-2.5 text-start whitespace-normal shadow-none",
         "hover:cursor-default hover:bg-surface-hover focus:ring-0 active:bg-surface-hover active:ring-1 active:ring-border-strong disabled:cursor-not-allowed",
         className,
       )}
@@ -112,10 +113,10 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
       </div>
       <div
         className={cn(
-          "flex h-7 w-7 items-center justify-center rounded-lg bg-foreground-body group-disabled:bg-foreground-subtle",
+          "flex h-7 w-7 items-center justify-center rounded-lg bg-foreground-body text-action-foreground group-disabled:bg-foreground-subtle",
         )}
       >
-        <Plus className="h-5 w-5 text-action-foreground" strokeWidth={2} />
+        <Icon aria-hidden icon={PlusSignIcon} className="h-5 w-5" />
       </div>
     </Button>
   );

@@ -26,6 +26,8 @@ import { ProviderAvatar } from "./ProviderAvatar";
 import { UnsupportedNotice } from "./UnsupportedNotice";
 import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { MicrosoftConnectionPanel } from "@/components/contextual/MicrosoftConnection/MicrosoftConnectionPanel";
+import { MICROSOFT_PROVIDER } from "@/lib/microsoft-setup";
 
 const MCP_PROVIDER_ID = "mcp";
 
@@ -99,7 +101,14 @@ export function DetailView({
         </div>
       </div>
 
-      {provider.mcpServer && !showNative ? (
+      {provider.id === MICROSOFT_PROVIDER ? (
+        <MicrosoftConnectionPanel
+          browserAvailable={provider.supportedAuthTypes.includes(
+            AuthType.oauth2,
+          )}
+          onDone={onSuccess}
+        />
+      ) : provider.mcpServer && !showNative ? (
         <McpFirstPanel
           server={provider.mcpServer}
           nativeMethods={tabs}

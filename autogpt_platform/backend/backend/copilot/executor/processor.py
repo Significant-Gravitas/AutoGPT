@@ -62,7 +62,6 @@ from backend.copilot.turn_tracing import (
     turn_origin,
     turn_transaction,
 )
-from backend.data.model import OAuth2Credentials
 from backend.data.user import is_user_banned
 from backend.executor.cluster_lock import ClusterLock
 from backend.integrations.codex.transport import CodexCredentialIntegrityError
@@ -70,10 +69,9 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.microsoft_365_copilot.service import (
     stream_chat_completion_microsoft_365,
 )
-from backend.integrations.oauth.microsoft_365_copilot import (
-    Microsoft365CopilotDeviceAuthHandler,
+from backend.integrations.oauth.microsoft_services import (
+    is_microsoft_365_copilot_credential,
 )
-from backend.integrations.providers import ProviderName
 from backend.util.decorator import error_logged
 from backend.util.exceptions import (
     ExpertNotFoundError,
@@ -776,14 +774,7 @@ class CoPilotProcessor:
                         )
                     )
                     credentials = credential_lease.credentials
-                    required_scopes = set(
-                        Microsoft365CopilotDeviceAuthHandler.CHAT_SCOPES
-                    )
-                    if (
-                        not isinstance(credentials, OAuth2Credentials)
-                        or credentials.provider != ProviderName.MICROSOFT_365_COPILOT
-                        or not required_scopes.issubset(credentials.scopes)
-                    ):
+                    if not is_microsoft_365_copilot_credential(credentials):
                         raise ValueError("invalid Microsoft 365 Copilot credential")
                 except asyncio.CancelledError:
                     raise
@@ -914,8 +905,9 @@ class CoPilotProcessor:
                     if scheduled_watch is not None:
                         scheduled_watch.observe(chunk)
                     # Capture StreamError so mark_session_completed receives
-                    # the error message (stream_and_publish yields but does
-                    # not publish StreamError — that's done by mark_session_completed).
+                    # the error message and code (stream_and_publish yields but
+                    # does not publish StreamError — that's done by
+                    # mark_session_completed).
                     if isinstance(chunk, StreamError):
                         error_msg = chunk.errorText
                         error_code = chunk.code
@@ -933,7 +925,9 @@ class CoPilotProcessor:
                 log.info("Stream cancelled by user")
 
         except BaseException as e:
-            # Handle all exceptions (including CancelledError) with appropriate logging
+            # Handle all exceptions (including CancelledError) with appropriate logging.
+            # This failure replaces any StreamError the stream ended on, code too.
+            error_code = None
             if isinstance(e, asyncio.CancelledError):
                 log.info("Turn cancelled")
                 error_msg = stream_registry.CANCELLED_MESSAGE

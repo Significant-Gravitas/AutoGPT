@@ -51,7 +51,7 @@ export function CheckYourInbox({
 
       <Text variant="body" tone="secondary" className="mt-3">
         We sent an email to{" "}
-        <span className="break-all font-medium text-foreground-base">
+        <span className="font-medium break-all text-foreground-base">
           {email}
         </span>
         . Open the link in it to {copy.action}.
