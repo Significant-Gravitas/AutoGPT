@@ -23,6 +23,7 @@ from backend.copilot.trial_reads import (
 )
 from backend.data.pro_activation import UsageActivationState
 from backend.data.subscription_trial import TrialState
+from backend.util import platform_payment
 
 
 def _trial(*, active: bool = True, cost: int = 0) -> MagicMock:
@@ -330,10 +331,7 @@ async def test_the_chat_routes_checks_read_the_usage_state_once():
             "backend.copilot.rate_limit.get_feature_flag_value",
             new=AsyncMock(return_value=None),
         ),
-        patch(
-            "backend.copilot.rate_limit.is_feature_enabled",
-            new=AsyncMock(return_value=True),
-        ),
+        patch.object(platform_payment.settings.config, "enable_platform_payment", True),
         patch(
             "backend.copilot.rate_limit.get_redis_async",
             new=AsyncMock(return_value=redis),

@@ -33,7 +33,7 @@ def trial_db(mocker):
 
 
 @pytest.fixture
-def limits(mocker, state_db, trial_db):
+def limits(mocker, state_db, trial_db, set_platform_payment):
     mocker.patch.object(
         rate_limit, "_fetch_cost_limits_flag", AsyncMock(return_value=None)
     )
@@ -42,7 +42,7 @@ def limits(mocker, state_db, trial_db):
         "get_tier_multipliers",
         AsyncMock(return_value={"NO_TIER": 0.0}),
     )
-    mocker.patch.object(rate_limit, "is_feature_enabled", AsyncMock(return_value=True))
+    set_platform_payment(True)
     redis = MagicMock()
     redis.get = AsyncMock(return_value=None)
     mocker.patch.object(rate_limit, "get_redis_async", AsyncMock(return_value=redis))

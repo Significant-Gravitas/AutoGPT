@@ -14,11 +14,13 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({ isLoggedIn: mockIsLoggedIn }),
 }));
 
-// Mock the LD flag hook — toggle paid-cohort vs beta-cohort per test.
-let mockIsPaymentEnabled: boolean | undefined = false;
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { ENABLE_PLATFORM_PAYMENT: "enable-platform-payment" },
-  useGetFlag: () => mockIsPaymentEnabled,
+// Toggle the deployment's payment setting per test.
+let mockIsPaymentEnabled = false;
+vi.mock("@/hooks/usePlatformPayment", () => ({
+  usePlatformPayment: () => ({
+    isPaymentEnabled: mockIsPaymentEnabled,
+    isResolved: true,
+  }),
 }));
 
 // Mock the generated subscription-status hook — control isLoading + tier per test.
@@ -68,7 +70,7 @@ describe("PaywallGate", () => {
     mockIsLocal = false;
   });
 
-  it("renders children without modal when ENABLE_PLATFORM_PAYMENT flag is off (beta cohort)", () => {
+  it("renders children without modal when payment is off", () => {
     mockIsPaymentEnabled = false;
     mockSubscriptionResult = { data: { tier: "NO_TIER" }, isLoading: false };
     render(
@@ -81,7 +83,7 @@ describe("PaywallGate", () => {
     expect(screen.getByTestId("migration-notice")).toBeDefined();
   });
 
-  it("renders modal over children when paid cohort + tier is NO_TIER", () => {
+  it("renders modal over children when payment is on + tier is NO_TIER", () => {
     mockIsPaymentEnabled = true;
     mockSubscriptionResult = { data: { tier: "NO_TIER" }, isLoading: false };
     render(
@@ -94,7 +96,7 @@ describe("PaywallGate", () => {
     expect(screen.queryByTestId("migration-notice")).toBeNull();
   });
 
-  it("does not render modal once the user is logged out, even when paid cohort + tier is NO_TIER", () => {
+  it("does not render modal once the user is logged out, even when payment is on + tier is NO_TIER", () => {
     mockIsPaymentEnabled = true;
     mockIsLoggedIn = false;
     mockSubscriptionResult = { data: { tier: "NO_TIER" }, isLoading: false };
@@ -108,7 +110,7 @@ describe("PaywallGate", () => {
     expect(subscriptionQueryEnabled).toBe(false);
   });
 
-  it("does not render modal in local dev even when paid cohort + tier is NO_TIER", () => {
+  it("does not render modal in local dev even when payment is on + tier is NO_TIER", () => {
     mockIsPaymentEnabled = true;
     mockIsLocal = true;
     mockSubscriptionResult = { data: { tier: "NO_TIER" }, isLoading: false };
@@ -121,7 +123,7 @@ describe("PaywallGate", () => {
     expect(screen.queryByTestId("paywall-modal")).toBeNull();
   });
 
-  it("does not render modal when paid cohort + tier is PRO/MAX/BUSINESS", () => {
+  it("does not render modal when payment is on + tier is PRO/MAX/BUSINESS", () => {
     mockIsPaymentEnabled = true;
     for (const tier of ["PRO", "MAX", "BUSINESS"]) {
       mockSubscriptionResult = { data: { tier }, isLoading: false };

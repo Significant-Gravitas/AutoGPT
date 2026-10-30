@@ -19,7 +19,6 @@ const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
 
 const defaultFlags = {
   [Flag.MARKETPLACE_SEARCH_TERMS]: DEFAULT_SEARCH_TERMS,
-  [Flag.ENABLE_PLATFORM_PAYMENT]: false,
   [Flag.CHAT_MODE_OPTION]: false,
   [Flag.GENERIC_TRIGGER_AGENTS]: false,
   [Flag.CHAT_WORKSPACE_FILES]: false,
@@ -61,8 +60,6 @@ function readEnvOverride(flag: Flag): string | undefined {
   switch (flag) {
     case Flag.MARKETPLACE_SEARCH_TERMS:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_MARKETPLACE_SEARCH_TERMS;
-    case Flag.ENABLE_PLATFORM_PAYMENT:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_ENABLE_PLATFORM_PAYMENT;
     case Flag.CHAT_MODE_OPTION:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_MODE_OPTION;
     case Flag.GENERIC_TRIGGER_AGENTS:

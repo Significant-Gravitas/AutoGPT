@@ -1,5 +1,5 @@
+import { usePlatformPayment } from "@/hooks/usePlatformPayment";
 import { environment } from "@/services/environment";
-import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { useRef } from "react";
 import { buildStepLayout, type Step } from "./store";
 import { usePaidCheckoutStatus } from "./usePaidCheckoutStatus";
@@ -15,19 +15,19 @@ export function useOnboardingLayout({
   isUserLoading: boolean;
   trialConfirmation: { ready: boolean; active: boolean | undefined };
 }) {
-  const payment = useFlagStatus(Flag.ENABLE_PLATFORM_PAYMENT);
+  const payment = usePlatformPayment();
 
-  const flagsReady = payment.ready;
+  const flagsReady = payment.isResolved;
   const snapshot = useRef<{
     userID: string | null;
     payment: boolean;
   } | null>(null);
   if (snapshot.current?.userID !== userID) snapshot.current = null;
-  // Resolve once per account: flag changes must not reorder an active wizard.
+  // Resolve once per account: a setting change must not reorder an active wizard.
   if (!snapshot.current && flagsReady && !isUserLoading) {
     snapshot.current = {
       userID,
-      payment: payment.enabled,
+      payment: payment.isPaymentEnabled,
     };
   }
   const paidConfirmation = usePaidCheckoutStatus(

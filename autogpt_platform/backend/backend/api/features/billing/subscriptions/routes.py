@@ -86,7 +86,7 @@ from backend.notifications.queue import queue_pass_work
 from backend.notifications.trial import notify_trial, on_trial_invoice
 from backend.util.cache import cached
 from backend.util.clients import get_scheduler_client
-from backend.util.feature_flag import Flag, evaluate_feature_flag
+from backend.util.platform_payment import is_platform_payment_enabled
 from backend.util.product_analytics import track_checkout_started
 from backend.util.settings import Settings
 
@@ -415,10 +415,7 @@ async def preview_tier_upgrade(
     request: SubscriptionUpgradePreviewRequest,
     user_id: Annotated[str, Security(get_user_id)],
 ) -> SubscriptionUpgradePreview:
-    enabled, _ = await evaluate_feature_flag(
-        Flag.ENABLE_PLATFORM_PAYMENT, user_id, default=False
-    )
-    if not enabled:
+    if not is_platform_payment_enabled():
         raise HTTPException(422, "Subscription upgrades are unavailable.")
     try:
         return await preview_subscription_upgrade(user_id, request)
@@ -515,9 +512,7 @@ async def update_subscription_tier(
             )
         return await get_subscription_status(user_id)
 
-    payment_enabled, payment_flag_authoritative = await evaluate_feature_flag(
-        Flag.ENABLE_PLATFORM_PAYMENT, user_id, default=False
-    )
+    payment_enabled = is_platform_payment_enabled()
 
     target_price_id = await get_subscription_price_id(tier, request.billing_cycle)
 
@@ -548,20 +543,6 @@ async def update_subscription_tier(
                 # never-paid).
                 await set_subscription_tier(user_id, tier)
             return await get_subscription_status(user_id)
-        if not payment_flag_authoritative:
-            # An unreadable flag reads False exactly like payment being off, and
-            # the DB flip below would strand a still-billing Stripe subscription.
-            logger.error(
-                f"Refusing to cancel subscription for user {user_id}: "
-                f"{Flag.ENABLE_PLATFORM_PAYMENT} could not be evaluated"
-            )
-            raise HTTPException(
-                status_code=502,
-                detail=(
-                    "Unable to cancel your subscription right now. "
-                    "Please try again or contact support."
-                ),
-            )
         await set_subscription_tier(user_id, tier)
         return await get_subscription_status(user_id)
 

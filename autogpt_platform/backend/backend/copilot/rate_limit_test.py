@@ -12,6 +12,8 @@ from backend.copilot.trial_reads import trial_reads_shared
 from backend.data import pro_activation
 from backend.data.pro_activation import UsageActivationState
 from backend.data.subscription_trial import TrialState
+from backend.util import feature_flag
+from backend.util.settings import FeatureFlagBackend
 
 from .rate_limit import (
     _DEFAULT_TIER_MULTIPLIERS,
@@ -533,7 +535,9 @@ class TestEnforcePaymentPaywall:
     failures to 503 rather than treating unknown entitlement as NO_TIER."""
 
     @pytest.mark.asyncio
-    async def test_blocks_no_tier_user_when_flag_on(self, mocker):
+    async def test_blocks_no_tier_user_when_payment_on(
+        self, mocker, set_platform_payment
+    ):
         """Headline behaviour: NO_TIER + ENABLE_PLATFORM_PAYMENT on raises
         :class:`UserPaywalledError`. The app-level exception handler in
         ``rest_api.py`` (and the external API's ``fastapi_app.py``) maps
@@ -543,10 +547,7 @@ class TestEnforcePaymentPaywall:
             "backend.copilot.rate_limit._fetch_user_tier",
             new=AsyncMock(return_value=SubscriptionTier.NO_TIER),
         )
-        mocker.patch(
-            "backend.copilot.rate_limit.is_feature_enabled",
-            new=AsyncMock(return_value=True),
-        )
+        set_platform_payment(True)
         from .rate_limit import UserPaywalledError, enforce_payment_paywall
 
         with pytest.raises(UserPaywalledError) as exc_info:
@@ -554,15 +555,11 @@ class TestEnforcePaymentPaywall:
         assert "subscription" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
-    async def test_allows_no_tier_user_when_flag_off(self, mocker):
-        """Beta cohort: flag off → NO_TIER user passes through (no exception)."""
+    async def test_allows_no_tier_user_when_payment_off(self, mocker):
+        """Payment off: a NO_TIER user passes through (no exception)."""
         mocker.patch(
             "backend.copilot.rate_limit._fetch_user_tier",
             new=AsyncMock(return_value=SubscriptionTier.NO_TIER),
-        )
-        mocker.patch(
-            "backend.copilot.rate_limit.is_feature_enabled",
-            new=AsyncMock(return_value=False),
         )
         from .rate_limit import enforce_payment_paywall
 
@@ -579,22 +576,18 @@ class TestEnforcePaymentPaywall:
             SubscriptionTier.ENTERPRISE,
         ],
     )
-    async def test_allows_paid_tier_even_when_flag_on(self, mocker, tier):
-        """Even with the flag on, paid tiers must never be blocked."""
+    async def test_allows_paid_tier_even_when_payment_on(
+        self, mocker, set_platform_payment, tier
+    ):
+        """Even with payment on, paid tiers must never be blocked."""
         mocker.patch(
             "backend.copilot.rate_limit._fetch_user_tier",
             new=AsyncMock(return_value=tier),
         )
-        is_feature_enabled_mock = mocker.patch(
-            "backend.copilot.rate_limit.is_feature_enabled",
-            new=AsyncMock(return_value=True),
-        )
+        set_platform_payment(True)
         from .rate_limit import enforce_payment_paywall
 
         await enforce_payment_paywall(_USER)  # must not raise
-        # Short-circuits on tier check; flag lookup never happens for paid
-        # tiers (avoids an unnecessary LD round-trip per paywalled route).
-        is_feature_enabled_mock.assert_not_called()
 
 
 class TestIsUserPaywalled:
@@ -604,32 +597,46 @@ class TestIsUserPaywalled:
     (route → 503; background job → fail or retry without spending)."""
 
     @pytest.mark.asyncio
-    async def test_no_tier_with_flag_on_is_paywalled(self, mocker):
+    async def test_no_tier_with_payment_on_is_paywalled(
+        self, mocker, set_platform_payment
+    ):
         mocker.patch(
             "backend.copilot.rate_limit._fetch_user_tier",
             new=AsyncMock(return_value=SubscriptionTier.NO_TIER),
         )
-        mocker.patch(
-            "backend.copilot.rate_limit.is_feature_enabled",
-            new=AsyncMock(return_value=True),
-        )
+        set_platform_payment(True)
         from .rate_limit import is_user_paywalled
 
         assert await is_user_paywalled(_USER) is True
 
     @pytest.mark.asyncio
-    async def test_no_tier_with_flag_off_is_not_paywalled(self, mocker):
+    async def test_no_tier_with_payment_off_is_not_paywalled(self, mocker):
         mocker.patch(
             "backend.copilot.rate_limit._fetch_user_tier",
             new=AsyncMock(return_value=SubscriptionTier.NO_TIER),
         )
-        mocker.patch(
-            "backend.copilot.rate_limit.is_feature_enabled",
-            new=AsyncMock(return_value=False),
-        )
         from .rate_limit import is_user_paywalled
 
         assert await is_user_paywalled(_USER) is False
+
+    @pytest.mark.asyncio
+    async def test_payment_on_paywalls_no_tier_with_no_flag_client(
+        self, mocker, set_platform_payment
+    ):
+        """Payment is a deployment setting, read without a flag client."""
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=SubscriptionTier.NO_TIER),
+        )
+        mocker.patch.object(
+            feature_flag.settings.config,
+            "feature_flag_backend",
+            FeatureFlagBackend.POSTHOG,
+        )
+        mocker.patch.object(feature_flag.posthog, "get_flag_client", return_value=None)
+        set_platform_payment(True)
+
+        assert await rate_limit.is_user_paywalled(_USER) is True
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -642,19 +649,17 @@ class TestIsUserPaywalled:
             SubscriptionTier.ENTERPRISE,
         ],
     )
-    async def test_paid_tier_short_circuits_without_flag_lookup(self, mocker, tier):
+    async def test_paid_tier_is_not_paywalled_with_payment_on(
+        self, mocker, set_platform_payment, tier
+    ):
         mocker.patch(
             "backend.copilot.rate_limit._fetch_user_tier",
             new=AsyncMock(return_value=tier),
         )
-        flag_mock = mocker.patch(
-            "backend.copilot.rate_limit.is_feature_enabled",
-            new=AsyncMock(return_value=True),
-        )
+        set_platform_payment(True)
         from .rate_limit import is_user_paywalled
 
         assert await is_user_paywalled(_USER) is False
-        flag_mock.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_propagates_lookup_failure(self, mocker):
@@ -672,7 +677,9 @@ class TestIsUserPaywalled:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("payment_enabled", [True, False])
-    async def test_user_not_found_fails_closed(self, mocker, payment_enabled):
+    async def test_user_not_found_fails_closed(
+        self, mocker, set_platform_payment, payment_enabled
+    ):
         """Missing users cannot establish entitlement, regardless of payment flags."""
         accessor = MagicMock()
         accessor.get_usage_activation_state = pro_activation.get_usage_activation_state
@@ -685,15 +692,12 @@ class TestIsUserPaywalled:
         mocker.patch.object(
             rate_limit, "get_ready_usage_state", usage_activation.get_ready_usage_state
         )
-        flag = mocker.patch.object(
-            rate_limit, "is_feature_enabled", AsyncMock(return_value=payment_enabled)
-        )
+        set_platform_payment(payment_enabled)
 
         with pytest.raises(RateLimitUnavailable) as error:
             await rate_limit.is_user_paywalled(_USER)
 
         assert isinstance(error.value.__cause__, ValueError)
-        flag.assert_not_awaited()
 
 
 class TestUserPaywalledError:
@@ -772,15 +776,12 @@ class TestEnforcePaymentPaywallInline:
     transitively by the chat / internal-block route tests via FastAPI."""
 
     @pytest.mark.asyncio
-    async def test_blocks_paywalled_user(self, mocker):
+    async def test_blocks_paywalled_user(self, mocker, set_platform_payment):
         mocker.patch(
             "backend.copilot.rate_limit._fetch_user_tier",
             new=AsyncMock(return_value=SubscriptionTier.NO_TIER),
         )
-        mocker.patch(
-            "backend.copilot.rate_limit.is_feature_enabled",
-            new=AsyncMock(return_value=True),
-        )
+        set_platform_payment(True)
         from .rate_limit import UserPaywalledError, enforce_payment_paywall
 
         with pytest.raises(UserPaywalledError):
@@ -821,7 +822,7 @@ class TestEnforcePaymentPaywallContinued:
     block stays compact above."""
 
     @pytest.mark.asyncio
-    async def test_db_failure_raises_503_not_402(self, mocker):
+    async def test_db_failure_raises_503_not_402(self, mocker, set_platform_payment):
         """Transient DB outage during tier lookup must NOT 402 every paid
         user (the silent-bypass concern raised by sentry/CodeRabbit on
         the previous round). It must surface as 503 with a Retry-After
@@ -831,10 +832,7 @@ class TestEnforcePaymentPaywallContinued:
             "backend.copilot.rate_limit._fetch_user_tier",
             new=AsyncMock(side_effect=RuntimeError("DB down")),
         )
-        is_feature_enabled_mock = mocker.patch(
-            "backend.copilot.rate_limit.is_feature_enabled",
-            new=AsyncMock(return_value=True),
-        )
+        set_platform_payment(True)
         from fastapi import HTTPException
 
         from .rate_limit import enforce_payment_paywall
@@ -843,9 +841,6 @@ class TestEnforcePaymentPaywallContinued:
             await enforce_payment_paywall(_USER)
         assert exc_info.value.status_code == 503
         assert exc_info.value.headers.get("Retry-After") == "30"
-        # Flag lookup never runs when tier is indeterminate — we don't
-        # know which cohort to apply.
-        is_feature_enabled_mock.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -1962,11 +1957,10 @@ class TestGetGlobalRateLimitsWithTiers:
 
     @pytest.mark.asyncio
     async def test_no_tier_with_payment_disabled_upgrades_to_basic(self):
-        """Beta cohort regression test: a NO_TIER user passing through
-        the route-level paywall (because ENABLE_PLATFORM_PAYMENT is off)
-        must NOT then hit (0, 0) at check_rate_limit. The fallback to
-        BASIC's multiplier (1.0) keeps daily/weekly intact so beta
-        testers retain access without bypassing usage caps."""
+        """A NO_TIER user passing through the route-level paywall (because
+        ENABLE_PLATFORM_PAYMENT is off) must NOT then hit (0, 0) at
+        check_rate_limit. The fallback to BASIC's multiplier (1.0) keeps
+        daily/weekly intact without bypassing usage caps."""
 
         async def _ld(flag_key: str, _uid: str, default):
             if "cost-limits" in flag_key.lower():
@@ -1981,10 +1975,6 @@ class TestGetGlobalRateLimitsWithTiers:
             patch(
                 "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=_ld,
-            ),
-            patch(
-                "backend.copilot.rate_limit.is_feature_enabled",
-                new=AsyncMock(return_value=False),  # beta cohort
             ),
         ):
             daily, weekly, tier = await get_global_rate_limits(

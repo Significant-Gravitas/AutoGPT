@@ -14448,6 +14448,24 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/platform-config": {
+      "get": {
+        "tags": ["platform-config"],
+        "summary": "Get Platform Config",
+        "description": "This deployment's settings the browser needs, the same for every caller.",
+        "operationId": "get_platform_config",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PlatformConfig" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/platform-linking/links": {
       "get": {
         "tags": ["platform-linking"],
@@ -26653,7 +26671,6 @@
         "type": "string",
         "enum": [
           "marketplace-search-terms",
-          "enable-platform-payment",
           "chat-mode-option",
           "generic-trigger-agents",
           "chat-workspace-files",
@@ -26673,7 +26690,6 @@
         "description": "Every flag the frontend reads; the frontend's `Flag` is generated from this.\n\nA key the backend reads too comes from the backend's `Flag`, so it is written once.",
         "x-enum-varnames": [
           "MARKETPLACE_SEARCH_TERMS",
-          "ENABLE_PLATFORM_PAYMENT",
           "CHAT_MODE_OPTION",
           "GENERIC_TRIGGER_AGENTS",
           "CHAT_WORKSPACE_FILES",
@@ -31593,6 +31609,18 @@
         ],
         "title": "Platform",
         "description": "Mirror of the Prisma PlatformType enum."
+      },
+      "PlatformConfig": {
+        "properties": {
+          "payment_enabled": {
+            "type": "boolean",
+            "title": "Payment Enabled",
+            "description": "Whether the platform is paid for, so an account without a plan is paywalled (`ENABLE_PLATFORM_PAYMENT`)."
+          }
+        },
+        "type": "object",
+        "required": ["payment_enabled"],
+        "title": "PlatformConfig"
       },
       "PlatformCostDashboard": {
         "properties": {

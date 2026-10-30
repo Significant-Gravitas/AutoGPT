@@ -62,6 +62,7 @@ import backend.api.features.orgs.invitation_routes
 import backend.api.features.orgs.routes as org_routes
 import backend.api.features.orgs.team_routes
 import backend.api.features.otto.routes
+import backend.api.features.platform_config.routes as platform_config_routes
 import backend.api.features.platform_linking.routes
 import backend.api.features.postmark.postmark
 import backend.api.features.push.routes as push_routes
@@ -471,6 +472,7 @@ app.include_router(
 )
 app.include_router(home_routes.router, prefix="/api")
 app.include_router(feature_flags_routes.router, prefix="/api")
+app.include_router(platform_config_routes.router, prefix="/api")
 app.include_router(
     backend.api.features.otto.routes.router, tags=["v2", "otto"], prefix="/api/otto"
 )

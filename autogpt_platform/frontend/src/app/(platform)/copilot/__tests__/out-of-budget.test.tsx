@@ -68,10 +68,17 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     >();
   return {
     ...actual,
-    useGetFlag: (flag: string) => flag === actual.Flag.ENABLE_PLATFORM_PAYMENT,
+    useGetFlag: () => false,
     useFlagStatus: () => ({ enabled: false, ready: true }),
   };
 });
+
+vi.mock("@/hooks/usePlatformPayment", () => ({
+  usePlatformPayment: () => ({
+    isPaymentEnabled: true,
+    isResolved: true,
+  }),
+}));
 
 const toast = vi.hoisted(() => vi.fn());
 

@@ -257,6 +257,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=False,
         description="If user credit system is enabled or not",
     )
+    enable_platform_payment: bool = Field(
+        default=False,
+        description="Whether the platform is paid for: an account without a plan "
+        "is paywalled and the billing pages offer plans. Off for self-hosted "
+        "installs; the hosted platform sets it.",
+    )
     refund_credit_tolerance_threshold: int = Field(
         default=500,
         description="Maximum number of credits above the balance to be auto-approved.",

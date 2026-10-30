@@ -29,6 +29,10 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => ({
   useGetFlag: () => true,
 }));
 
+vi.mock("@/hooks/usePlatformPayment", () => ({
+  usePlatformPayment: () => ({ isPaymentEnabled: true, isResolved: true }),
+}));
+
 describe("legacy credits page top-up", () => {
   test("keeps the top-up and plan buttons disabled while Stripe loads", async () => {
     const checkoutURL = "https://checkout.stripe.com/pay/cs_top_up";

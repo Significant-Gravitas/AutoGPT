@@ -65,7 +65,6 @@ class Flag(str, Enum):
     """
 
     AUTOMOD = "AutoMod"
-    ENABLE_PLATFORM_PAYMENT = "enable-platform-payment"
     CHAT_MODE_OPTION = "chat-mode-option"
     COPILOT_SDK = "copilot-sdk"
     COPILOT_COST_LIMITS = "copilot-cost-limits"

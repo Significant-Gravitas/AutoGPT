@@ -22,11 +22,16 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     >();
   return {
     ...actual,
-    useGetFlag: vi.fn((flag: string) =>
-      flag === actual.Flag.ENABLE_PLATFORM_PAYMENT ? flags.payment : false,
-    ),
+    useGetFlag: vi.fn(() => false),
   };
 });
+
+vi.mock("@/hooks/usePlatformPayment", () => ({
+  usePlatformPayment: () => ({
+    isPaymentEnabled: flags.payment,
+    isResolved: true,
+  }),
+}));
 
 const window = {
   percent_used: 10,
