@@ -50,6 +50,7 @@ const MICROSOFT_MAIL_DOMAINS = new Set([
 // The `error` a refused sign-up returns to /login with (see
 // microsoft-sign-up-policy.ts).
 export const UNCONFIRMED_EMAIL_CODE = "unconfirmed_email";
+export const TEAM_EMAIL_SIGN_UP_CODE = "team_email_requires_google";
 
 interface MicrosoftProfile {
   sub: string;
@@ -130,6 +131,8 @@ export function getMicrosoftLoginProvider() {
 }
 
 const SIGN_IN_ERRORS: Record<string, string> = {
+  [TEAM_EMAIL_SIGN_UP_CODE]:
+    "An AutoGPT team address signs up with Google. Use Continue with Google instead.",
   [UNCONFIRMED_EMAIL_CODE]:
     "Microsoft hasn't confirmed the email address on that account, so it can't be used to sign up here. Sign up with your email address instead. You can still connect Microsoft 365 afterwards.",
   email_not_found:

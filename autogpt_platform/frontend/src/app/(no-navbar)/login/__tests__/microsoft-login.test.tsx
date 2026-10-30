@@ -100,6 +100,20 @@ describe("Continue with Microsoft on the login page", () => {
     expect(screen.queryByText(/didn't finish/)).toBeNull();
   });
 
+  test("tells someone with an AutoGPT address to sign up with Google", () => {
+    mockSearchParams = new URLSearchParams({
+      error: "team_email_requires_google",
+    });
+
+    render(<LoginPage />);
+
+    expect(
+      screen.getByText(
+        "An AutoGPT team address signs up with Google. Use Continue with Google instead.",
+      ),
+    ).toBeDefined();
+  });
+
   test("explains a sign-up Microsoft could not vouch for", () => {
     mockSearchParams = new URLSearchParams({ error: "unconfirmed_email" });
 

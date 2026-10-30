@@ -1,5 +1,9 @@
 import { APIError } from "better-auth/api";
-import { UNCONFIRMED_EMAIL_CODE } from "./microsoft-login";
+import {
+  TEAM_EMAIL_SIGN_UP_CODE,
+  UNCONFIRMED_EMAIL_CODE,
+} from "./microsoft-login";
+import { isTeamEmail } from "./team-email";
 
 /**
  * "Continue with Microsoft" creates an account only for an address Microsoft
@@ -9,6 +13,10 @@ import { UNCONFIRMED_EMAIL_CODE } from "./microsoft-login";
  * account later with a reset link, and the other person's Microsoft login
  * would still sign in to it. So nothing is created, and /login tells the
  * person to sign up with their email address instead.
+ *
+ * An AutoGPT team address gets an account only through Google, as with every
+ * other way to sign up; a team member's existing account still signs in with
+ * Microsoft.
  */
 
 interface SignUpContext {
@@ -20,14 +28,19 @@ interface SignUpContext {
 // Called from the user.create.before hook. `ctx` is the endpoint context that
 // is creating the user: `/callback/:id` names the provider in its params, and
 // `/sign-in/social` (ID tokens, switched off for Microsoft) in its body.
-export function assertMicrosoftSignUpConfirmed(
-  user: { emailVerified?: boolean | null },
+// Better Auth sends a refused OAuth sign-up to its error URL with the thrown
+// message as the `error` code, which /login explains.
+export function assertMicrosoftSignUpAllowed(
+  user: { email: string; emailVerified?: boolean | null },
   ctx: SignUpContext | null | undefined,
 ) {
-  if (!isMicrosoftSignUp(ctx) || user.emailVerified) return;
-  // Better Auth sends a refused OAuth sign-up to its error URL with this
-  // message as the `error` code.
-  throw new APIError("FORBIDDEN", { message: UNCONFIRMED_EMAIL_CODE });
+  if (!isMicrosoftSignUp(ctx)) return;
+  if (!user.emailVerified) {
+    throw new APIError("FORBIDDEN", { message: UNCONFIRMED_EMAIL_CODE });
+  }
+  if (isTeamEmail(user.email)) {
+    throw new APIError("FORBIDDEN", { message: TEAM_EMAIL_SIGN_UP_CODE });
+  }
 }
 
 function isMicrosoftSignUp(ctx: SignUpContext | null | undefined) {

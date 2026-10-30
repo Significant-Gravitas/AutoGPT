@@ -90,6 +90,11 @@ calendar, files, Teams and Work IQ tools follow it.
   ID-token sign-in is switched off for Microsoft. Emailing a confirmation link instead would not be
   safe: the mailbox's owner could confirm it, and the other person's
   Microsoft login would still sign in to the account.
+  An AutoGPT team address (`@agpt.co`) gets an account only through Google,
+  however Microsoft vouches for it (`team_email_requires_google`); a team
+  member's existing account still signs in with Microsoft. The hook runs
+  these Microsoft checks before the rules every provider shares, so a
+  Microsoft sign-up gets these codes, which /login explains.
 
 ## Moving the access step
 

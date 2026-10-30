@@ -44,7 +44,7 @@ import { JWKS_ALG } from "./service-token";
 import { isSignupAllowed, readSignupGateConfig } from "./signup-gate";
 import { supabaseBridge } from "./supabase-bridge";
 import { getMicrosoftLoginProvider } from "./microsoft-login";
-import { assertMicrosoftSignUpConfirmed } from "./microsoft-sign-up-policy";
+import { assertMicrosoftSignUpAllowed } from "./microsoft-sign-up-policy";
 import { assertTeamEmailUsesGoogle } from "./team-email-policy";
 import { sendVerificationLink } from "./verification-link";
 
@@ -198,8 +198,9 @@ export const auth = betterAuth({
           user: { email: string; emailVerified?: boolean | null },
           ctx: HookContext,
         ) => {
+          // Microsoft's first: its refusals carry codes /login explains.
+          assertMicrosoftSignUpAllowed(user, ctx);
           assertTeamEmailUsesGoogle(user.email, ctx);
-          assertMicrosoftSignUpConfirmed(user, ctx);
           const decision = isSignupAllowed(user.email, readSignupGateConfig());
           if (!decision.allowed) {
             throw new APIError("FORBIDDEN", {

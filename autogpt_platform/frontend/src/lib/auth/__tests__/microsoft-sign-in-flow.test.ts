@@ -280,6 +280,44 @@ describe("Continue with Microsoft", () => {
     },
   );
 
+  it("keeps an AutoGPT team address to Google sign-up", async () => {
+    const { handler, db } = await createAuthHandler();
+
+    // Only the team's own tenant can confirm an @agpt.co address.
+    const landing = await continueWithMicrosoft(handler, {
+      sub: "pairwise",
+      oid: "work-id",
+      tid: "agpt-tenant",
+      email: "someone@agpt.co",
+      xms_edov: true,
+    });
+
+    expect(landing).toBe("/login?error=team_email_requires_google");
+    expect(db.UserAuthIdentity).toEqual([]);
+    expect(db.UserAuthSession).toEqual([]);
+  });
+
+  it("still signs a team member's existing account in with Microsoft", async () => {
+    const { handler, db } = await createAuthHandler();
+    existingAccount(db, "pat@agpt.co");
+
+    const landing = await continueWithMicrosoft(handler, {
+      sub: "pairwise",
+      oid: "work-id",
+      tid: "agpt-tenant",
+      email: "pat@agpt.co",
+      xms_edov: true,
+    });
+
+    expect(landing).toBe(callbackURL);
+    expect(db.UserAuthAccount).toEqual([
+      expect.objectContaining({
+        providerId: "microsoft",
+        userId: "existing-user",
+      }),
+    ]);
+  });
+
   it("refuses a sign-in that hands over a Microsoft ID token directly", async () => {
     const { handler, db } = await createAuthHandler();
     // A token signed with the key served as Microsoft's, for an address
