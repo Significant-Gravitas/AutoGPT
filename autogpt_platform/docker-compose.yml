@@ -119,8 +119,9 @@ services:
   clamav:
     <<: *agpt-services
     image: clamav/clamav-debian:latest
+    # clamd has no authentication: reachable from this machine only.
     ports:
-      - "3310:3310"
+      - "127.0.0.1:3310:3310"
     volumes:
       - clamav-data:/var/lib/clamav
     environment:
@@ -154,16 +155,24 @@ services:
     # run; testing on a newer major than production is skew we don't want.
     image: pgvector/pgvector:pg15
     restart: unless-stopped
+    # The image's entrypoint, which first sets the superuser's password to
+    # POSTGRES_PASSWORD on an existing database (see db/entrypoint.sh).
+    entrypoint: ["bash", "/usr/local/bin/autogpt-db-entrypoint.sh"]
+    command: ["postgres"]
+    # The other services reach it over the Compose network; the host port is
+    # for `make run-backend` and tools on this machine only.
     ports:
-      - 5432:5432
+      - "127.0.0.1:5432:5432"
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: your-super-secret-and-long-postgres-password
+      # From autogpt_platform/.env, where `make init-env` generates it.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run make init-env in autogpt_platform/ to generate it}
       POSTGRES_DB: postgres
     volumes:
       # Creates the platform schema + the legacy auth.users shim that
       # historical Prisma migrations reference. Only runs on a fresh volume.
       - ./db/init/00-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+      - ./db/entrypoint.sh:/usr/local/bin/autogpt-db-entrypoint.sh:ro
       - ./data/db/data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]

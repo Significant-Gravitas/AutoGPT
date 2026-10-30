@@ -32,7 +32,8 @@ function CapabilityCard({ item }: { item: CapabilityListing }) {
         {badge && (
           <span
             className={
-              "shrink-0 rounded-full px-2 py-0.5 text-[11px] " + badge.className
+              "shrink-0 rounded-full px-2 py-0.5 text-caption-sm leading-inherit " +
+              badge.className
             }
           >
             {badge.label}
@@ -42,7 +43,9 @@ function CapabilityCard({ item }: { item: CapabilityListing }) {
       <ContentCardDescription className="mt-1 line-clamp-2">
         {item.purpose}
       </ContentCardDescription>
-      <p className="mt-1 text-[11px] text-zinc-500">{kindLabel(item)}</p>
+      <p className="mt-1 text-caption-sm leading-inherit text-foreground-tertiary">
+        {kindLabel(item)}
+      </p>
     </ContentCard>
   );
 }
@@ -68,7 +71,7 @@ export function FindCapabilitiesTool({ part }: Props) {
         <ToolIcon isStreaming={isStreaming} isError={isError} />
         <MorphingTextAnimation
           text={text}
-          className={isError ? "text-red-500" : undefined}
+          className={isError ? "text-error" : undefined}
         />
       </div>
 

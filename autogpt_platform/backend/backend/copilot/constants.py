@@ -1,9 +1,23 @@
 """Shared constants for the CoPilot module."""
 
+import hashlib
+
 # Otto is the account's built-in helper — the identity every session
 # without an expert speaks as, and the fixed author of the morning briefing.
 AUTOPILOT_NAME = "Otto"
 AUTOPILOT_ROLE = "Head of AI"
+
+# The AutoPilot block, and the tool name its turns carry from dispatch to the
+# executor -- which bills them to the credit balance once the plan's AutoPilot
+# allowance is used up (see ``backend.copilot.credit_billing``).
+AUTOPILOT_BLOCK_ID = "c069dc6b-c3ed-4c12-b6e5-d47361e64ce6"
+AUTOPILOT_BLOCK_TOOL_NAME = "autopilot_block"
+
+# The per-turn spend floor, the one the old per-query budget was topped up to.
+# A turn's budget has none, but a paid plan's CLI backstop never sits below
+# it, and a credit balance has to cover it before a turn may bill to credits.
+# The per-turn ceiling is ``ChatConfig.claude_agent_max_budget_usd``.
+PER_TURN_SPEND_FLOOR_USD = 0.5
 
 # Special message prefixes for text-based markers (parsed by frontend).
 # The hex suffix makes accidental LLM generation of these strings virtually
@@ -53,6 +67,9 @@ SPEND_REVIEW_MARKER = "expert-spend:"
 # Format: "{node_id}:{random_hex}" — extract node_id via rsplit(":", 1)[0]
 COPILOT_NODE_EXEC_ID_SEPARATOR = ":"
 
+# The approval gate's card for a workflow step, in the chat that started the run.
+COPILOT_STEP_CARD_PREFIX = f"{COPILOT_NODE_PREFIX}gate-workflow_step"
+
 # Compaction notice messages shown to users.
 COMPACTION_DONE_MSG = "Earlier messages were summarized to fit within context limits."
 COMPACTION_DROPPED_MSG = "Earlier messages were dropped to fit within context limits."
@@ -84,6 +101,13 @@ HUNG_TOOL_CAP_SECONDS = 2 * 60 * 60
 # active SDK stream per session. Released by the SDK turn's finally block
 # and force-released by mark_session_completed on cancel/error.
 STREAM_LOCK_PREFIX = "copilot:stream:lock:"
+
+
+def step_card_id(user_id: str, node_exec_id: str) -> str:
+    """Derived from the step alone, so the run page, Home and a stopped run
+    can find the card the gate opened for it."""
+    digest = hashlib.sha256(f"{user_id}\x00{node_exec_id}".encode()).hexdigest()[:16]
+    return f"{COPILOT_STEP_CARD_PREFIX}{COPILOT_NODE_EXEC_ID_SEPARATOR}{digest}"
 
 
 def is_copilot_synthetic_id(id_value: str) -> bool:

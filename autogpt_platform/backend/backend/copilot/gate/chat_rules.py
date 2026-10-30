@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 ChatRule = Literal["allow", "judge", "ask"]
 _RULES: dict[str, ChatRule] = {rule: rule for rule in get_args(ChatRule)}
 Scope = Literal["chat", "expert", "team"]
+_WIDER: tuple[Literal["expert", "team"], ...] = ("expert", "team")
 
 # Outlives any chat anyone is still in; dead chats expire out of Redis.
 _TTL_SECONDS = 90 * 24 * 60 * 60
@@ -68,7 +69,7 @@ async def set_ask(
     A rejection also revokes every wider rule that would have run the call.
     """
     await set_rule(session_id, rule_key, "ask")
-    for scope in ("expert", "team"):
+    for scope in _WIDER:
         key = _scoped_key(scope, user_id, expert_id, rule_key)
         try:
             redis = await get_redis_async()
@@ -145,12 +146,18 @@ async def rule_for(
     team's. ``unreadable`` asks like ``ask`` but must not claim the user said no."""
     try:
         redis = await get_redis_async()
-        raw = await redis.get(_key(session_id, rule_key))
-        if raw is not None:
+        # The keys sit in different cluster slots, so a plain MGET is refused.
+        chat, *wider = await redis.mget_nonatomic(
+            [
+                _key(session_id, rule_key),
+                _scoped_key("expert", user_id, expert_id, rule_key),
+                _scoped_key("team", user_id, expert_id, rule_key),
+            ]
+        )
+        if chat is not None:
             # Rows written before rules had decisions hold "1", which meant ask.
-            return RuleHit(rule=_RULES.get(_text(raw), "ask"))
-        for scope in ("expert", "team"):
-            raw = await redis.get(_scoped_key(scope, user_id, expert_id, rule_key))
+            return RuleHit(rule=_RULES.get(_text(chat), "ask"))
+        for scope, raw in zip(_WIDER, wider):
             if raw is not None:
                 rule, _, since = _text(raw).partition(" ")
                 return RuleHit(

@@ -16,6 +16,7 @@ from backend.api.features.mcp.routes import router
 from backend.blocks.mcp.block import TEST_CREDENTIALS_INPUT, MCPToolBlock
 from backend.blocks.mcp.client import MCPClient, normalize_mcp_authorization
 from backend.blocks.mcp.helpers import mcp_authorization_header
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.model import OAuth2Credentials
 from backend.executor.utils import _validate_node_input_credentials
 
@@ -116,6 +117,8 @@ async def test_schema_optional_mcp_credentials_do_not_skip_execution(
 app = fastapi.FastAPI()
 app.include_router(router)
 app.dependency_overrides[get_user_id] = lambda: "test-user-id"
+# The paywall has its own tests, in backend/api/paywall_routes_test.py.
+app.dependency_overrides[enforce_payment_paywall] = lambda: None
 
 
 @pytest_asyncio.fixture(scope="module")

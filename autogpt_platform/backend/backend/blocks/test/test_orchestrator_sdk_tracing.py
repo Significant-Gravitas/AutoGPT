@@ -113,6 +113,10 @@ async def test_sdk_mode_replies_get_assistant_turn_runs(
 
     with (
         patch.object(claude_agent_sdk, "ClaudeSDKClient", traced_client),
+        patch(
+            "backend.blocks.orchestrator.require_verbatim_prompts_cli",
+            return_value="claude",
+        ),
         tracing_context(enabled=True),
     ):
         outputs = [

@@ -1,4 +1,5 @@
 import datetime
+import gc
 import threading
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
@@ -161,6 +162,10 @@ class TestSafeJson:
         # by raising an exception, which our fallback should handle
         data = {}
         data["self"] = data  # Create circular reference
+
+        # Anything an earlier test left for the collector goes now: a finalizer
+        # that runs at the recursion limit raises there and fails this test.
+        gc.collect()
 
         # This should either work with fallback or raise a reasonable error
         try:

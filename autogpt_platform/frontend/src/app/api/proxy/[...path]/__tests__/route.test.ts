@@ -9,14 +9,31 @@ vi.mock("@/lib/auth/country-token", () => ({
   getCountryToken: vi.fn(),
 }));
 
+vi.mock("@/lib/auth/client-ip-token", () => ({
+  getClientIPToken: vi.fn(),
+}));
+
 vi.mock("@/services/environment", () => ({
   environment: {
     getAGPTServerBaseUrl: vi.fn(() => "https://backend.test"),
+    isClientSide: vi.fn(() => false),
+    isServerSide: vi.fn(() => true),
   },
 }));
 
+vi.mock("@/lib/auth/server/getServerSession", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/lib/auth/server/getServerSession")
+  >()),
+  readServerSession: vi.fn(),
+}));
+
+import { getClientIPToken } from "@/lib/auth/client-ip-token";
 import { getCountryToken } from "@/lib/auth/country-token";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
+import { readServerSession } from "@/lib/auth/server/getServerSession";
+import { APIError } from "better-auth/api";
+import { encodeImpersonation } from "@/lib/impersonation";
 import { GET, POST } from "../route";
 
 const PRIVATE_IMAGE_HEADER_KEYS = [
@@ -38,6 +55,10 @@ describe("proxy route — handler pass-through", () => {
     vi.mocked(getCountryToken).mockReset();
     vi.mocked(getCountryToken).mockImplementation(
       async (country) => `signed-${country}`,
+    );
+    vi.mocked(getClientIPToken).mockReset();
+    vi.mocked(getClientIPToken).mockImplementation(
+      async (headers) => `signed-ip-${headers.get("x-forwarded-for")}`,
     );
     vi.stubGlobal("fetch", vi.fn());
   });
@@ -212,7 +233,7 @@ describe("proxy route — handler pass-through", () => {
     expect(sentHeaders.get("baggage")).toBe("sentry-trace_id=abc123");
   });
 
-  it("forwards allowlisted DataFast attribution headers", async () => {
+  it("forwards allowlisted DataFast and PostHog session headers", async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response("{}", {
         status: 200,
@@ -224,6 +245,7 @@ describe("proxy route — handler pass-through", () => {
       headers: {
         "x-datafast-visitor-id": "visitor-123",
         "x-datafast-session-id": "session-456",
+        "x-posthog-session-id": "posthog-session-789",
       },
     });
     await GET(req, makeParams(["api", "v1", "items"]));
@@ -231,6 +253,7 @@ describe("proxy route — handler pass-through", () => {
     const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
     expect(sentHeaders.get("x-datafast-visitor-id")).toBe("visitor-123");
     expect(sentHeaders.get("x-datafast-session-id")).toBe("session-456");
+    expect(sentHeaders.get("x-posthog-session-id")).toBe("posthog-session-789");
   });
 
   it("sends the edge-observed country only as a signed token", async () => {
@@ -294,6 +317,69 @@ describe("proxy route — handler pass-through", () => {
     const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
     expect(sentHeaders.get("x-client-country-token")).toBeNull();
   });
+
+  it.each([
+    ["api/store/search", "?query=sheets"],
+    ["api/store/agents", "?search_query=sheets"],
+  ])(
+    "sends the visitor's IP to %s only as the proxy's own signed token",
+    async (route, query) => {
+      vi.mocked(fetch).mockResolvedValue(
+        new Response("{}", {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+
+      const req = new NextRequest(
+        `https://app.test/api/proxy/${route}${query}`,
+        {
+          headers: {
+            "x-forwarded-for": "203.0.113.7",
+            "x-client-ip-token": "forged",
+          },
+        },
+      );
+      await GET(req, makeParams(route.split("/")));
+
+      const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
+      expect(sentHeaders.get("x-client-ip-token")).toBe(
+        "signed-ip-203.0.113.7",
+      );
+      expect(sentHeaders.get("x-forwarded-for")).toBeNull();
+    },
+  );
+
+  it.each([
+    ["api/store/agents", ""],
+    ["api/store/agents", "?search_query=%20"],
+    ["api/v1/items", "?query=sheets"],
+  ])(
+    "sends no client IP token to %s%s, even one the browser sent",
+    async (route, query) => {
+      vi.mocked(fetch).mockResolvedValue(
+        new Response("{}", {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+
+      const req = new NextRequest(
+        `https://app.test/api/proxy/${route}${query}`,
+        {
+          headers: {
+            "x-forwarded-for": "203.0.113.7",
+            "x-client-ip-token": "forged",
+          },
+        },
+      );
+      await GET(req, makeParams(route.split("/")));
+
+      const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
+      expect(sentHeaders.get("x-client-ip-token")).toBeNull();
+      expect(getClientIPToken).not.toHaveBeenCalled();
+    },
+  );
 
   it("omits Authorization header when no token is available", async () => {
     vi.mocked(getServerAuthToken).mockResolvedValueOnce(null);
@@ -381,6 +467,25 @@ describe("proxy route — handler pass-through", () => {
 
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe(
       `${BACKEND}/api/v1/items?page=2&size=20`,
+    );
+  });
+
+  it("keeps an encoded ?, # or / inside its path segment", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response("{}", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const req = new NextRequest(
+      "https://app.test/api/proxy/api/v1/items/a%3Fb%3Dc%23d%2Fe?page=2",
+    );
+    // Next.js hands the route each segment already decoded
+    await GET(req, makeParams(["api", "v1", "items", "a?b=c#d/e"]));
+
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe(
+      `${BACKEND}/api/v1/items/a%3Fb%3Dc%23d%2Fe?page=2`,
     );
   });
 
@@ -585,5 +690,106 @@ describe("proxy route — response-start timeout", () => {
     expect(await res.json()).toMatchObject({
       error: "Proxy request timed out",
     });
+  });
+});
+
+describe("proxy: admin impersonation header", () => {
+  const ACT_AS = "x-act-as-user-id";
+
+  beforeEach(() => {
+    vi.mocked(getServerAuthToken).mockResolvedValue("test-token");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 200 })),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function sessionAs(id: string, role: string) {
+    vi.mocked(readServerSession).mockResolvedValue({
+      user: { id, role },
+    } as never);
+  }
+
+  async function forwardedActAs(
+    cookieRecord: string | null,
+    requested = "target-a",
+  ) {
+    const req = new NextRequest("https://app.test/api/proxy/api/v1/items", {
+      headers: { [ACT_AS]: requested },
+    });
+    // The test Request drops a Cookie header, so set it on the cookie jar.
+    if (cookieRecord)
+      req.cookies.set("admin-impersonate-user-id", cookieRecord);
+    await GET(req, makeParams(["api", "v1", "items"]));
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    return new Headers((init as RequestInit).headers).get(ACT_AS);
+  }
+
+  it("forwards it for the signed-in admin who chose that target", async () => {
+    sessionAs("admin-1", "admin");
+    expect(
+      await forwardedActAs(
+        encodeImpersonation({ target: "target-a", owner: "admin-1" }),
+      ),
+    ).toBe("target-a");
+  });
+
+  it("drops it when the session is a different admin", async () => {
+    sessionAs("admin-2", "admin");
+    expect(
+      await forwardedActAs(
+        encodeImpersonation({ target: "target-a", owner: "admin-1" }),
+      ),
+    ).toBeNull();
+  });
+
+  it("drops a header no impersonation cookie backs", async () => {
+    sessionAs("admin-1", "admin");
+    expect(await forwardedActAs(null)).toBeNull();
+  });
+
+  it("drops the target when the auth backend rejects the session", async () => {
+    vi.mocked(readServerSession).mockRejectedValue(
+      new APIError("UNAUTHORIZED"),
+    );
+    expect(
+      await forwardedActAs(
+        encodeImpersonation({ target: "target-a", owner: "admin-1" }),
+      ),
+    ).toBeNull();
+  });
+
+  it("fails the request rather than send it as the admin when the session can't be read", async () => {
+    vi.mocked(readServerSession).mockRejectedValue(
+      new APIError("INTERNAL_SERVER_ERROR"),
+    );
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const req = new NextRequest("https://app.test/api/proxy/api/v1/items", {
+      method: "POST",
+      headers: { [ACT_AS]: "target-a" },
+    });
+    req.cookies.set(
+      "admin-impersonate-user-id",
+      encodeImpersonation({ target: "target-a", owner: "admin-1" }),
+    );
+
+    const response = await POST(req, makeParams(["api", "v1", "items"]));
+
+    expect(response.status).toBe(502);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("drops a target the owner's cookie doesn't name", async () => {
+    sessionAs("admin-1", "admin");
+    expect(
+      await forwardedActAs(
+        encodeImpersonation({ target: "target-a", owner: "admin-1" }),
+        "target-b",
+      ),
+    ).toBeNull();
   });
 });

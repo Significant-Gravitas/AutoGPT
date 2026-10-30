@@ -102,7 +102,7 @@ class SendSlackMessageBlock(Block):
                 )
             },
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(

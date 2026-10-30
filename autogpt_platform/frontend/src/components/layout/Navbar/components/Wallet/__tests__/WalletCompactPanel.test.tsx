@@ -4,7 +4,16 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { WalletCompactPanel } from "../components/WalletCompactPanel";
-import { getEarnGroups, getTaskGroups, TaskGroup } from "../helpers";
+import {
+  getEarnGroups,
+  getTaskGroups,
+  getTrialPlanLine,
+  TaskGroup,
+} from "../helpers";
+
+// Noon on Sep 17 in the runner's own time zone: the trial date is shown in the
+// viewer's time zone, so a fixed UTC instant lands on Sep 18 east of UTC+9.
+const SEP_17_LOCAL_NOON = new Date(2030, 8, 17, 12);
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
@@ -121,16 +130,16 @@ describe("WalletCompactPanel", () => {
         groups={groups}
         completedSteps={completedSteps}
         formattedCredits="$9.79"
+        trialNoteID="trial-note"
         onAddCredits={() => {}}
+        onOpenExplainer={() => {}}
+        onNavigate={() => {}}
       />,
     );
 
     expect(screen.getByText("Automation credits")).toBeDefined();
     expect(screen.getByText("$9.79")).toBeDefined();
     expect(screen.getByText("Earn credits")).toBeDefined();
-    expect(
-      screen.getByText("Credits used when your automations run."),
-    ).toBeDefined();
     expect(screen.getByText("First Wins · 2 of 2")).toBeDefined();
     expect(screen.getByText("Done")).toBeDefined();
     expect(screen.getByText("Consistency Challenge · 0 of 2")).toBeDefined();
@@ -144,7 +153,10 @@ describe("WalletCompactPanel", () => {
         groups={groups}
         completedSteps={completedSteps}
         formattedCredits="$9.79"
+        trialNoteID="trial-note"
         onAddCredits={() => {}}
+        onOpenExplainer={() => {}}
+        onNavigate={() => {}}
       />,
     );
 
@@ -192,7 +204,10 @@ describe("WalletCompactPanel", () => {
         groups={groups}
         completedSteps={completedSteps}
         formattedCredits="$9.79"
+        trialNoteID="trial-note"
         onAddCredits={() => {}}
+        onOpenExplainer={() => {}}
+        onNavigate={() => {}}
       />,
     );
 
@@ -212,7 +227,10 @@ describe("WalletCompactPanel", () => {
         groups={groups}
         completedSteps={completedSteps}
         formattedCredits="$9.79"
+        trialNoteID="trial-note"
         onAddCredits={() => {}}
+        onOpenExplainer={() => {}}
+        onNavigate={() => {}}
       />,
     );
 
@@ -232,7 +250,10 @@ describe("WalletCompactPanel", () => {
         groups={groups}
         completedSteps={["SCHEDULE_AGENT"]}
         formattedCredits="$9.79"
+        trialNoteID="trial-note"
         onAddCredits={() => {}}
+        onOpenExplainer={() => {}}
+        onNavigate={() => {}}
       />,
     );
 
@@ -243,7 +264,10 @@ describe("WalletCompactPanel", () => {
         groups={groups}
         completedSteps={["SCHEDULE_AGENT", "RUN_3_DAYS"]}
         formattedCredits="$9.79"
+        trialNoteID="trial-note"
         onAddCredits={() => {}}
+        onOpenExplainer={() => {}}
+        onNavigate={() => {}}
       />,
     );
 
@@ -258,12 +282,71 @@ describe("WalletCompactPanel", () => {
         groups={groups}
         completedSteps={completedSteps}
         formattedCredits="$9.79"
+        trialNoteID="trial-note"
         onAddCredits={onAddCredits}
+        onOpenExplainer={() => {}}
+        onNavigate={() => {}}
       />,
     );
 
     await userEvent.click(screen.getByRole("button", { name: "Add credits" }));
 
     expect(onAddCredits).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves the explanations to the dialog and links to billing settings", async () => {
+    const onOpenExplainer = vi.fn();
+    const onNavigate = vi.fn();
+    render(
+      <WalletCompactPanel
+        groups={groups}
+        completedSteps={completedSteps}
+        formattedCredits="$9.79"
+        trialNoteID="trial-note"
+        onAddCredits={() => {}}
+        onOpenExplainer={onOpenExplainer}
+        onNavigate={onNavigate}
+      />,
+    );
+
+    expect(screen.queryByText(/Pays for workflow runs/)).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "How it works" }));
+    expect(onOpenExplainer).toHaveBeenCalledTimes(1);
+
+    const billingLink = screen.getByRole("link", { name: /Billing settings/ });
+    expect(billingLink.getAttribute("href")).toBe("/settings/billing");
+  });
+});
+
+describe("getTrialPlanLine", () => {
+  const trial = {
+    active: true,
+    cancel_at_period_end: false,
+    ends_at: SEP_17_LOCAL_NOON,
+  };
+
+  it("names the day the plan starts during an active trial", () => {
+    expect(getTrialPlanLine(trial)).toBe("Your plan starts Sep 17");
+  });
+
+  it("falls back to the end of the trial when the date is unknown", () => {
+    expect(getTrialPlanLine({ ...trial, ends_at: null })).toBe(
+      "Your plan starts when your trial ends",
+    );
+  });
+
+  it("names the trial's end instead of a plan once the trial is canceled", () => {
+    expect(getTrialPlanLine({ ...trial, cancel_at_period_end: true })).toBe(
+      "Your trial ends Sep 17",
+    );
+    expect(
+      getTrialPlanLine({ ...trial, cancel_at_period_end: true, ends_at: null }),
+    ).toBeNull();
+  });
+
+  it("says nothing without an active trial", () => {
+    expect(getTrialPlanLine({ ...trial, active: false })).toBeNull();
+    expect(getTrialPlanLine({})).toBeNull();
+    expect(getTrialPlanLine(undefined)).toBeNull();
   });
 });

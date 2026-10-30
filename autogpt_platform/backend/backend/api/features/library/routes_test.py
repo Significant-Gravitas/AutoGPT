@@ -7,13 +7,15 @@ import pytest
 import pytest_mock
 from pytest_snapshot.plugin import Snapshot
 
+from backend.api.rest_api import app as rest_app
 from backend.util.exceptions import MissingConfigError
 from backend.util.models import Pagination
 
 from . import model as library_model
 from .routes import router as library_router
 
-app = fastapi.FastAPI()
+# The preset routes leave error mapping to the app-wide handlers.
+app = fastapi.FastAPI(exception_handlers=rest_app.exception_handlers)
 app.include_router(library_router)
 
 client = fastapi.testclient.TestClient(app)
@@ -51,9 +53,35 @@ def test_create_expert_preset_missing_workspace_returns_503(
     )
 
     assert response.status_code == 503
-    assert response.json() == {
-        "detail": "Your expert workspace is still being set up. Try again shortly."
-    }
+    assert (
+        response.json()["detail"]
+        == "Your expert workspace is still being set up. Try again shortly."
+    )
+
+
+def test_create_preset_from_run_without_saved_credentials_returns_400(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.library.db.get_graph_execution",
+        new_callable=AsyncMock,
+        return_value=mocker.MagicMock(credential_inputs=None),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.graph_db.get_graph",
+        new_callable=AsyncMock,
+        return_value=mocker.MagicMock(
+            regular_credentials_inputs={"credentials": mocker.MagicMock()}
+        ),
+    )
+
+    response = client.post(
+        "/presets",
+        json={"graph_execution_id": "exec-1", "name": "Preset", "description": ""},
+    )
+
+    assert response.status_code == 400
+    assert "can't be turned into a preset" in response.json()["detail"]
 
 
 @pytest.fixture(autouse=True)

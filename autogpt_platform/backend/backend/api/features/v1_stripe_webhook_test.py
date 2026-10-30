@@ -1,5 +1,9 @@
 """Unit tests for Stripe webhook handler and subscription checkout helpers."""
 
+import hashlib
+import hmac
+import json
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
@@ -7,14 +11,19 @@ import fastapi.testclient
 import pytest
 import pytest_mock
 import stripe
+from httpx import ASGITransport, AsyncClient
 from prisma.enums import SubscriptionTier
+from prisma.models import CreditTransaction
 
+from backend.api.rest_api import app as rest_app
 from backend.data.credit import (
     _expire_open_subscription_sessions,
     reconcile_stripe_tier_for_user,
     sync_tier_from_checkout_session,
 )
 from backend.data.notifications import NotificationResult, PassWorkEvent, PassWorkKind
+from backend.data.subscription_payment_failure import PaymentFailureOutcome
+from backend.util.test import SpinTestServer
 
 from .billing.subscriptions.routes import (
     _claim_stripe_event,
@@ -25,6 +34,10 @@ from .billing.subscriptions.routes import (
 app = fastapi.FastAPI()
 app.include_router(router)
 client = fastapi.testclient.TestClient(app)
+SIGNING_SECRET = "whsec_refund_test_only"
+# The real app's handlers, so a raised refund answers what Stripe would see.
+handled_app = fastapi.FastAPI(exception_handlers=rest_app.exception_handlers)
+handled_app.include_router(router)
 
 
 @pytest.fixture(autouse=True)
@@ -112,15 +125,15 @@ def test_stripe_webhook_checkout_calls_sync_tier_helper(
     mock_sync.assert_called_once()
 
 
-def test_stripe_webhook_skips_handlers_on_replayed_event(
+def test_stripe_webhook_reconciles_activation_without_repeating_checkout_on_replay(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """A second delivery of the same Stripe event.id must short-circuit.
+    """A claimed event still reconciles activation after a crashed delivery.
 
     Stripe retries the same event on non-2xx responses, and not every
     downstream handler is independently idempotent (e.g. ``fulfill_checkout``
     relies on a checkout-state flag that races on concurrent retries). The
-    webhook dedupes by event.id so retries don't re-run any handler.
+    The webhook skips collection/fulfillment but retries authoritative sync.
     """
     event = _make_checkout_event("subscription", "sub_dedup")
     event["id"] = "evt_already_seen"
@@ -146,6 +159,9 @@ def test_stripe_webhook_skips_handlers_on_replayed_event(
         "backend.api.features.billing.subscriptions.routes.sync_tier_from_checkout_session",
         new_callable=AsyncMock,
     )
+    recover_sync = mocker.patch(
+        "backend.data.credit.sync_tier_from_checkout_session", new_callable=AsyncMock
+    )
 
     response = client.post(
         "/credits/stripe_webhook",
@@ -156,6 +172,59 @@ def test_stripe_webhook_skips_handlers_on_replayed_event(
     assert response.status_code == 200
     mock_fulfill.assert_not_called()
     mock_sync.assert_not_called()
+    recover_sync.assert_awaited_once_with(event["data"]["object"])
+
+
+@pytest.mark.parametrize(
+    "event_type,payload",
+    [
+        ("customer.subscription.updated", {"id": "sub_retry", "customer": "cus"}),
+        ("invoice.paid", {"id": "in_retry", "subscription": "sub_retry"}),
+    ],
+)
+def test_claimed_webhook_recovers_subscription_without_collection(
+    mocker: pytest_mock.MockFixture, event_type: str, payload: dict
+) -> None:
+    mocker.patch(
+        "stripe.Webhook.construct_event",
+        return_value={
+            "id": "evt_retry",
+            "type": event_type,
+            "data": {"object": payload},
+        },
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.settings.secrets.stripe_webhook_secret",
+        new="whsec_test",
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes._claim_stripe_event",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    current = {"id": "sub_retry", "customer": "cus"}
+    mocker.patch(
+        "stripe.Subscription.retrieve_async",
+        new_callable=AsyncMock,
+        return_value=current,
+    )
+    recovered = mocker.patch(
+        "backend.data.credit.sync_subscription_from_stripe", new_callable=AsyncMock
+    )
+    collection = mocker.patch("stripe.Invoice.pay_async", new_callable=AsyncMock)
+    fulfill = mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.UserCredit.fulfill_checkout",
+        new_callable=AsyncMock,
+    )
+    response = client.post(
+        "/credits/stripe_webhook",
+        content=b"{}",
+        headers={"stripe-signature": "t=1,v1=sig"},
+    )
+    assert response.status_code == 200
+    recovered.assert_awaited_once_with(current)
+    collection.assert_not_awaited()
+    fulfill.assert_not_awaited()
 
 
 def test_stripe_webhook_checkout_propagates_sync_failure(
@@ -288,6 +357,117 @@ def test_stripe_webhook_releases_dedup_on_invoice_retrieve_failure(
 
     assert response.status_code >= 500
     mock_release.assert_awaited_once_with("evt_retrieve_fails")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "event_type, data_object",
+    [
+        (
+            "refund.created",
+            {"object": "refund", "id": "re_non_topup", "status": "succeeded"},
+        ),
+        (
+            "charge.dispute.created",
+            {"object": "dispute", "id": "du_non_topup", "status": "needs_response"},
+        ),
+        (
+            "charge.dispute.closed",
+            {"object": "dispute", "id": "du_non_topup", "status": "lost"},
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "invoice, status_code, released",
+    [("in_subscription", 200, False), (None, 500, True)],
+    ids=["subscription-invoice", "maybe-unfulfilled-top-up"],
+)
+async def test_stripe_webhook_refund_or_dispute_matching_no_top_up(
+    mocker: pytest_mock.MockFixture,
+    server: SpinTestServer,
+    event_type: str,
+    data_object: dict,
+    invoice: str | None,
+    status_code: int,
+    released: bool,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A refund or dispute matching no active top-up is acknowledged with its
+    dedup claim kept only when it paid a subscription invoice; otherwise it may
+    be a Checkout top-up not yet fulfilled, so it answers 500 and releases the
+    claim for Stripe's retry. An acknowledged dispute is logged at ERROR, the
+    lowest level Sentry raises an event for."""
+    mocker.patch(
+        "stripe.PaymentIntent.retrieve_async",
+        new_callable=AsyncMock,
+        return_value=stripe.PaymentIntent.construct_from(
+            {
+                "id": "pi_non_topup_payment",
+                "object": "payment_intent",
+                "invoice": invoice,
+            },
+            "sk_test",
+        ),
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.settings.secrets.stripe_webhook_secret",
+        new=SIGNING_SECRET,
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes._claim_stripe_event",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mock_release = mocker.patch(
+        "backend.api.features.billing.subscriptions.routes._release_stripe_event",
+        new_callable=AsyncMock,
+    )
+    payload = json.dumps(
+        {
+            "id": "evt_non_topup",
+            "object": "event",
+            "type": event_type,
+            "data": {
+                "object": {
+                    **data_object,
+                    "payment_intent": "pi_non_topup_payment",
+                    "amount": 6000,
+                }
+            },
+        }
+    )
+    timestamp = int(time.time())
+    signature = hmac.new(
+        SIGNING_SECRET.encode(), f"{timestamp}.{payload}".encode(), hashlib.sha256
+    ).hexdigest()
+
+    async with AsyncClient(
+        transport=ASGITransport(app=handled_app, raise_app_exceptions=False),
+        base_url="http://test",
+    ) as async_client:
+        response = await async_client.post(
+            "/credits/stripe_webhook",
+            content=payload,
+            headers={"stripe-signature": f"t={timestamp},v1={signature}"},
+        )
+
+    assert response.status_code == status_code
+    assert mock_release.await_args_list == (
+        [mocker.call("evt_non_topup")] if released else []
+    )
+    assert (
+        await CreditTransaction.prisma().count(
+            where={"transactionKey": data_object["id"]}
+        )
+        == 0
+    )
+    acknowledgments = [
+        record.levelname
+        for record in caplog.records
+        if record.getMessage().startswith(f"Ignoring {data_object['id']}")
+    ]
+    expected = "ERROR" if data_object["object"] == "dispute" else "WARNING"
+    assert acknowledgments == ([] if released else [expected])
 
 
 # ---------------------------------------------------------------------------
@@ -832,21 +1012,49 @@ def test_subscription_deleted_triggers_the_plan_ended_email(
     stub_lifecycle_emails["deleted"].assert_awaited_once()
 
 
-def test_payment_failure_triggers_the_payment_email(
-    mocker: pytest_mock.MockFixture, stub_lifecycle_emails
+@pytest.mark.parametrize(
+    "event_type", ["invoice.payment_failed", "invoice_payment.payment_failed"]
+)
+@pytest.mark.parametrize("outcome", list(PaymentFailureOutcome))
+def test_payment_failure_only_emails_when_customer_action_is_required(
+    mocker: pytest_mock.MockFixture, stub_lifecycle_emails, event_type, outcome
 ) -> None:
+    invoice = {"id": "in_1", "customer": "cus_1"}
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes.handle_subscription_payment_failure",
         new_callable=AsyncMock,
+        return_value=outcome,
+    )
+    trial_notice = mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.on_trial_invoice",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    mocker.patch(
+        "stripe.Invoice.retrieve_async", new_callable=AsyncMock, return_value=invoice
     )
     _post_event(
         mocker,
         {
-            "type": "invoice.payment_failed",
-            "data": {"object": {"id": "in_1", "customer": "cus_1"}},
+            "type": event_type,
+            "created": 1792800000,
+            "data": {
+                "object": (
+                    invoice
+                    if event_type == "invoice.payment_failed"
+                    else {"invoice": "in_1"}
+                )
+            },
         },
     )
-    stub_lifecycle_emails["payment_failed"].assert_awaited_once()
+    if outcome == PaymentFailureOutcome.NEEDS_ACTION:
+        stub_lifecycle_emails["payment_failed"].assert_awaited_once_with(
+            invoice, attempted_at=1792800000
+        )
+        trial_notice.assert_awaited_once_with(invoice, paid=False)
+    else:
+        stub_lifecycle_emails["payment_failed"].assert_not_awaited()
+        trial_notice.assert_not_awaited()
 
 
 def test_trial_ending_event_reconciles_and_queues_trial_reminder(

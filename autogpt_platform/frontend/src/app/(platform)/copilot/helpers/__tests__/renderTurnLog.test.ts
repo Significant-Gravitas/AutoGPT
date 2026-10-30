@@ -150,6 +150,45 @@ describe("rendering a turn log", () => {
     ]);
   });
 
+  it("draws a pause as the Paused card, exactly as a reload of its marker row does", () => {
+    const pause = {
+      reason: "daily",
+      resets_at: "2026-10-12T06:00:00Z",
+      steps: null,
+      checkpoint_saved: true,
+      started: true,
+    };
+    const log = fold([
+      { type: "text-start", id: "a" },
+      { type: "text-delta", id: "a", delta: "Saved where I got to." },
+      { type: "text-end", id: "a" },
+      { type: "data-turn-paused", data: pause },
+      { type: "finish" },
+      { type: "data-checkpoint", data: { rows: 2, sequence: 4, digest: "x" } },
+    ]);
+    const reloaded = convertChatSessionMessagesToUiMessages(
+      "s",
+      [
+        { role: "assistant", content: "Saved where I got to.", sequence: 4 },
+        {
+          role: "assistant",
+          content:
+            "[__COPILOT_SYSTEM_e3b0__] Paused: this task is out of today's budget.",
+          sequence: 5,
+          metadata: { turn_paused: pause },
+        },
+      ],
+      { isComplete: true },
+    ).messages;
+
+    const [live] = render(log);
+    expect(live.parts).toEqual([
+      { type: "text", text: "Saved where I got to.", state: "done" },
+      { type: "data-turn-paused", id: "seq-5", data: pause },
+    ]);
+    expect(live.parts).toEqual(reloaded[0].parts);
+  });
+
   it("returns an unchanged bubble as the same object, so React skips it", () => {
     const renderer = createTurnLogRenderer((id) => id);
     const before = fold([

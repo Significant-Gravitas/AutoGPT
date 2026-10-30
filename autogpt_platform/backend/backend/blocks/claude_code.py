@@ -20,6 +20,7 @@ from backend.data.model import (
     NodeExecutionStats,
     SchemaField,
 )
+from backend.integrations.credentials_store import is_system_credential
 from backend.integrations.providers import ProviderName
 from backend.util.e2b_network import (
     EgressOwner,
@@ -35,6 +36,14 @@ from backend.util.sandbox_metadata import SandboxMetadata, owned_by_user
 
 if TYPE_CHECKING:
     from backend.executor.utils import ExecutionContext
+
+
+# Claude Code runs on the user's own Anthropic key; platform credits don't
+# apply to this block.
+OWN_ANTHROPIC_KEY_REQUIRED = (
+    "Claude Code needs your own Anthropic API key. Platform credits can't pay "
+    "for it: add an Anthropic API key under Integrations and pick it here."
+)
 
 
 class ClaudeCodeExecutionError(Exception):
@@ -105,7 +114,8 @@ class ClaudeCodeBlock(Block):
             Literal[ProviderName.ANTHROPIC], Literal["api_key"]
         ] = CredentialsField(
             description=(
-                "API key for Anthropic to power Claude Code. "
+                "Your own API key for Anthropic to power Claude Code. Platform "
+                "credits can't be used here. "
                 "Get one at [Anthropic's website](https://console.anthropic.com)"
             ),
         )
@@ -445,6 +455,9 @@ class ClaudeCodeBlock(Block):
 
             result = await sandbox.commands.run(
                 claude_command,
+                # The key picked for this run, also on a resumed box that was
+                # created with another one.
+                envs={"ANTHROPIC_API_KEY": anthropic_api_key},
                 timeout=0,  # No command timeout - let sandbox timeout handle it
             )
 
@@ -548,6 +561,12 @@ class ClaudeCodeBlock(Block):
         execution_context: "ExecutionContext",
         **kwargs,
     ) -> BlockOutput:
+        if (
+            is_system_credential(anthropic_credentials.id)
+            or anthropic_credentials.is_managed
+        ):
+            yield "error", OWN_ANTHROPIC_KEY_REQUIRED
+            return
         try:
             (
                 response,

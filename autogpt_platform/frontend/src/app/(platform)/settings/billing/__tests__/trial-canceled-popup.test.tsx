@@ -44,7 +44,6 @@ vi.mock("next/navigation", () => ({
 const posthog = vi.hoisted(() => ({ capture: vi.fn() }));
 vi.mock("@posthog/react", () => ({
   usePostHog: () => posthog,
-  useFeatureFlagVariantKey: () => undefined,
 }));
 
 const HOUR = 60 * 60 * 1000;

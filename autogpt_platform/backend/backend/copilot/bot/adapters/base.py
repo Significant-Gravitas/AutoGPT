@@ -9,7 +9,7 @@ Telegram, Teams, WhatsApp).
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Awaitable, Callable, Literal, Optional
 
@@ -18,6 +18,7 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from backend.copilot.bot.choices import QUESTION_KIND, ButtonKind
+from backend.copilot.bot.options import TurnOptions
 from backend.platform_linking.models import CardTurn
 
 # Callback signature: (ctx, adapter) -> awaitable None
@@ -107,7 +108,7 @@ class ChannelInfo(BaseModel):
     id: str
     name: str
     server_id: str
-    server_name: Optional[str] = None
+    server_name: str | None = None
 
 
 class EditOutcome(Enum):
@@ -169,6 +170,21 @@ class MessageContext:
     username: str
     text: str  # with bot mentions stripped
     bot_mentioned: bool = False
+    # The message replies to one of the bot's own messages (with or without
+    # pinging it): it is addressed to the bot even when not @mentioned.
+    replied_to_bot: bool = False
+    # Where the message was sent, for the per-turn location header the model
+    # sees. The `public_*` ids are the platform's own ids (never the encoded
+    # target in `channel_id`); `post_channel_id` is exactly what
+    # `post_to_chat_platform` accepts as `channel` to post here, None when
+    # that tool can't post to this channel. On Telegram the channel is the
+    # group and the thread a forum topic.
+    server_name: str | None = None
+    channel_name: str | None = None
+    public_channel_id: str | None = None
+    thread_name: str | None = None
+    public_thread_id: str | None = None
+    post_channel_id: str | None = None
     thread_history: tuple[MessageHistoryEntry, ...] = ()
     # Users the bot may @-mention back in this turn: the author and anyone
     # mentioned in the inbound message (excluding the bot itself), as
@@ -190,6 +206,12 @@ class MessageContext:
     skipped_attachments: tuple[tuple[str, str], ...] = ()
     # Set by a click that answered a card: carry the turn it woke, say nothing.
     follow: Optional[CardTurn] = None
+    # Expert / model tier for this turn, from a slash command's fields or the
+    # message's leading ``expert=`` / ``mode=`` tokens.
+    options: TurnOptions = field(default_factory=TurnOptions)
+
+    def with_changes(self, **changes) -> "MessageContext":
+        return replace(self, **changes)
 
     @property
     def is_dm(self) -> bool:

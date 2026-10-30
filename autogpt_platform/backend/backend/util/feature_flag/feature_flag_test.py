@@ -27,7 +27,17 @@ from backend.util.feature_flag import (
     mock_flag_variation,
     shutdown_launchdarkly,
 )
-from backend.util.settings import AppEnvironment
+from backend.util.settings import AppEnvironment, FeatureFlagBackend
+
+
+@pytest.fixture(autouse=True)
+def launchdarkly_serves(mocker):
+    # This file covers the LaunchDarkly path, which is no longer the default.
+    mocker.patch.object(
+        feature_flag_module.settings.config,
+        "feature_flag_backend",
+        FeatureFlagBackend.LAUNCHDARKLY,
+    )
 
 
 @pytest.fixture
@@ -113,7 +123,6 @@ async def test_is_feature_enabled_exception(mocker):
 def test_flag_enum_values():
     """Test that Flag enum has expected values."""
     assert Flag.AUTOMOD == "AutoMod"
-    assert Flag.AI_ACTIVITY_STATUS == "ai-agent-execution-summary"
 
 
 @pytest.mark.asyncio
@@ -865,8 +874,10 @@ class TestEvaluateFeatureFlag:
     @pytest.fixture(autouse=True)
     def no_env_override(self, monkeypatch: pytest.MonkeyPatch):
         """`.env` may force unrelated flags; pin this one to LaunchDarkly."""
-        monkeypatch.delenv("FORCE_FLAG_HIRE_EXPERTS", raising=False)
-        monkeypatch.delenv("NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS", raising=False)
+        monkeypatch.delenv("FORCE_FLAG_GENERIC_TRIGGER_AGENTS", raising=False)
+        monkeypatch.delenv(
+            "NEXT_PUBLIC_FORCE_FLAG_GENERIC_TRIGGER_AGENTS", raising=False
+        )
 
     @pytest.fixture
     def user_context(self, mocker):
@@ -881,19 +892,28 @@ class TestEvaluateFeatureFlag:
         self, ld_client, user_context
     ):
         ld_client.variation_detail.return_value = served(False)
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, True)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            False,
+            True,
+        )
 
     @pytest.mark.asyncio
     async def test_an_uninitialised_client_is_not(self, ld_client, user_context):
         ld_client.is_initialized.return_value = False
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            False,
+            False,
+        )
 
     @pytest.mark.asyncio
     async def test_an_evaluation_that_raises_is_not(self, ld_client, user_context):
         """The regression this class exists for: a LIVE client can still fail
         to produce a value, and that must not read as a real "off"."""
         ld_client.variation_detail.side_effect = Exception("evaluation exploded")
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            False,
+            False,
+        )
 
     @pytest.mark.asyncio
     async def test_a_degraded_user_context_is_not(self, ld_client, mocker):
@@ -908,7 +928,9 @@ class TestEvaluateFeatureFlag:
         )
         ld_client.variation_detail.return_value = served(False)
 
-        result = await evaluate_feature_flag(Flag.HIRE_EXPERTS, str(uuid.uuid4()))
+        result = await evaluate_feature_flag(
+            Flag.GENERIC_TRIGGER_AGENTS, str(uuid.uuid4())
+        )
 
         assert result == (False, False)
         ld_client.variation_detail.assert_called_once()
@@ -916,7 +938,10 @@ class TestEvaluateFeatureFlag:
     @pytest.mark.asyncio
     async def test_a_non_boolean_flag_value_is_not(self, ld_client, user_context):
         ld_client.variation_detail.return_value = served({"some": "object"})
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            False,
+            False,
+        )
 
     @pytest.mark.asyncio
     async def test_an_env_override_answers_without_launchdarkly(
@@ -927,8 +952,11 @@ class TestEvaluateFeatureFlag:
             "backend.util.feature_flag.get_client",
             side_effect=Exception("set_config was not called"),
         )
-        monkeypatch.setenv("FORCE_FLAG_HIRE_EXPERTS", "false")
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, True)
+        monkeypatch.setenv("FORCE_FLAG_GENERIC_TRIGGER_AGENTS", "false")
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            False,
+            True,
+        )
 
     @pytest.mark.asyncio
     async def test_is_feature_enabled_still_returns_the_bare_value(
@@ -936,9 +964,9 @@ class TestEvaluateFeatureFlag:
     ):
         """The refactor must not change what existing callers see."""
         ld_client.variation_detail.return_value = served(True)
-        assert await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1") is True
+        assert await is_feature_enabled(Flag.GENERIC_TRIGGER_AGENTS, "u-1") is True
         ld_client.variation_detail.side_effect = Exception("boom")
-        assert await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1") is False
+        assert await is_feature_enabled(Flag.GENERIC_TRIGGER_AGENTS, "u-1") is False
 
 
 class TestRequestAttributes:

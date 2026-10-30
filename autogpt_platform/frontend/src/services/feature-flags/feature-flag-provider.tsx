@@ -7,11 +7,11 @@ import { useMemo } from "react";
 import { getAnonymousID } from "../analytics/anonymous-id";
 import { environment } from "../environment";
 import { LD_INIT_TIMEOUT_SECONDS } from "./constants";
-import { usesLaunchDarkly } from "./flag-backend";
+import { FLAG_BACKEND, usesLaunchDarkly } from "./flag-backend";
 import { FlagResolutionContext } from "./flag-resolution";
 import { buildLDContext } from "./helpers";
 
-export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
+export function FeatureFlagProvider({ children }: { children: ReactNode }) {
   const { user, isUserLoading } = useAuth();
   const envEnabled = usesLaunchDarkly() && environment.areFeatureFlagsEnabled();
   const clientId = environment.getLaunchDarklyClientId();
@@ -25,6 +25,15 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
     if (isUserLoading) return;
     return buildLDContext(user, getAnonymousID());
   }, [user, isUserLoading]);
+
+  if (FLAG_BACKEND === "server") {
+    // The server reads flags for the signed-in user, so the wait starts once the session is known.
+    return (
+      <FlagResolutionContext.Provider value={!isUserLoading}>
+        {children}
+      </FlagResolutionContext.Provider>
+    );
+  }
 
   if (!envEnabled) {
     return <>{children}</>;

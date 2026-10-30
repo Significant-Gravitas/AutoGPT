@@ -377,6 +377,10 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
 
     # Mock the graph execution object
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec.is_dry_run = False
+    mock_graph_exec.user_id = "test-user-id"
+    mock_graph_exec.graph_id = "test-graph-id"
+    mock_graph_exec.credential_inputs = None
     mock_graph_exec.organization_id = None
     mock_graph_exec.expert_id = None
     mock_graph_exec.team_id = None
@@ -481,6 +485,10 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
 
     # Create a second mock execution for the sanity check
     mock_graph_exec_2 = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec_2.is_dry_run = False
+    mock_graph_exec_2.user_id = "test-user-id"
+    mock_graph_exec_2.graph_id = "test-graph-id"
+    mock_graph_exec_2.credential_inputs = None
     mock_graph_exec_2.organization_id = None
     mock_graph_exec_2.expert_id = None
     mock_graph_exec_2.team_id = None
@@ -541,6 +549,11 @@ async def test_add_graph_execution_via_rpc_returns_typed_user(
     mock_graph.version = 1
 
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+
+    mock_graph_exec.is_dry_run = False
+    mock_graph_exec.user_id = "test-user-id"
+    mock_graph_exec.graph_id = "test-graph-id"
+    mock_graph_exec.credential_inputs = None
     mock_graph_exec.organization_id = None
     mock_graph_exec.expert_id = None
     mock_graph_exec.team_id = None
@@ -632,6 +645,11 @@ async def test_add_graph_execution_born_tenanted_via_rpc_when_prisma_disconnecte
     mock_graph.version = 1
 
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+
+    mock_graph_exec.is_dry_run = False
+    mock_graph_exec.user_id = "test-user-id"
+    mock_graph_exec.graph_id = "test-graph-id"
+    mock_graph_exec.credential_inputs = None
     mock_graph_exec.organization_id = "org-rpc"
     mock_graph_exec.expert_id = None
     mock_graph_exec.team_id = "team-rpc"
@@ -859,6 +877,10 @@ async def test_add_graph_execution_with_nodes_to_skip(mocker: MockerFixture):
 
     # Mock the graph execution object
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec.is_dry_run = False
+    mock_graph_exec.user_id = "test-user-id"
+    mock_graph_exec.graph_id = "test-graph-id"
+    mock_graph_exec.credential_inputs = None
     mock_graph_exec.organization_id = None
     mock_graph_exec.expert_id = None
     mock_graph_exec.team_id = None
@@ -952,6 +974,10 @@ async def test_add_graph_execution_resume_backfills_org_from_row(mocker: MockerF
 
     # Existing row carries org/team; the resume caller's context does not.
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec.is_dry_run = False
+    mock_graph_exec.user_id = "test-user-id"
+    mock_graph_exec.graph_id = "test-graph-id"
+    mock_graph_exec.credential_inputs = None
     mock_graph_exec.id = "exec-resume-1"
     mock_graph_exec.node_executions = []
     mock_graph_exec.status = ExecutionStatus.QUEUED
@@ -2113,6 +2139,32 @@ async def test_add_graph_execution_bypass_paywall_skips_check(
     paywall_mock.assert_not_called()
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bypass_paywall", [False, True])
+async def test_add_graph_execution_refuses_a_banned_owner(
+    mocker: MockerFixture, bypass_paywall: bool
+):
+    """Every run starts here (schedules, webhooks, the external API, copilot
+    tools), and an admin requeue doesn't revive a banned account's run."""
+    from backend.util.exceptions import UserBannedError
+
+    mocker.patch(
+        "backend.executor.utils.is_user_banned",
+        new=mocker.AsyncMock(return_value=True),
+    )
+    mock_edb = mocker.patch("backend.executor.utils.execution_db")
+    mock_edb.create_graph_execution = mocker.AsyncMock()
+    mock_edb.get_graph_execution = mocker.AsyncMock()
+
+    with pytest.raises(UserBannedError):
+        await add_graph_execution(
+            graph_id="g", user_id="banned-user", bypass_paywall=bypass_paywall
+        )
+
+    mock_edb.create_graph_execution.assert_not_called()
+    mock_edb.get_graph_execution.assert_not_called()
+
+
 # ============================================================================
 # Born-tenanted fallback: a NEW execution created without an explicit org is
 # tenanted at creation with the user's default org/team.
@@ -2138,6 +2190,11 @@ def _mock_add_graph_execution_create_path(
     mock_graph.version = 1
 
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+
+    mock_graph_exec.is_dry_run = False
+    mock_graph_exec.user_id = "test-user-id"
+    mock_graph_exec.graph_id = "test-graph-id"
+    mock_graph_exec.credential_inputs = None
     mock_graph_exec.organization_id = org_id
     mock_graph_exec.expert_id = None
     mock_graph_exec.team_id = team_id
@@ -2229,6 +2286,11 @@ def _mock_add_graph_execution_requeue_path(
     from backend.data.execution import GraphExecutionWithNodes
 
     graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+
+    graph_exec.is_dry_run = False
+    graph_exec.user_id = "test-user-id"
+    graph_exec.graph_id = "test-graph-id"
+    graph_exec.credential_inputs = None
     graph_exec.id = "existing-execution"
     graph_exec.node_executions = []
     graph_exec.status = ExecutionStatus.QUEUED
@@ -2404,6 +2466,193 @@ async def test_autopilot_execution_keeps_explicit_tenancy(mocker: MockerFixture)
     assert create_kwargs["expert_id"] is None
     assert create_kwargs["organization_id"] == "shared-org"
     assert create_kwargs["team_id"] == "shared-team"
+
+
+def _runner_is_not_in_the_given_org(mocker: MockerFixture):
+    return mocker.patch(
+        "backend.executor.utils.resolve_member_tenancy",
+        new=mocker.AsyncMock(return_value=("runner-org", "runner-team")),
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_run_given_an_org_the_user_isnt_in_goes_to_their_own(
+    mocker: MockerFixture,
+):
+    """A run can be handed an org the user isn't in, such as one a preset
+    carries from before presets were checked. The run, and the context billing
+    reads, get the user's own."""
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    membership = _runner_is_not_in_the_given_org(mocker)
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="runner",
+        organization_id="other-org",
+        team_id="other-team",
+    )
+
+    membership.assert_awaited_once_with("runner", "other-org", "other-team")
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert create_kwargs["organization_id"] == "runner-org"
+    assert create_kwargs["team_id"] == "runner-team"
+    context = mock_edb.create_graph_execution.return_value.to_graph_execution_entry.call_args.kwargs[
+        "execution_context"
+    ]
+    assert (context.organization_id, context.team_id) == ("runner-org", "runner-team")
+
+
+@pytest.mark.asyncio
+async def test_a_sub_run_moved_to_the_runners_org_is_billed_there(
+    mocker: MockerFixture,
+):
+    """A sub-graph run is handed its parent's context, and billing reads the
+    context rather than the run: when the run moves, the context moves too."""
+    from backend.data.execution import ExecutionContext
+
+    mock_edb, _ = _mock_add_graph_execution_create_path(
+        mocker, org_id="runner-org", team_id="runner-team"
+    )
+    _runner_is_not_in_the_given_org(mocker)
+    parent_context = ExecutionContext(
+        user_id="runner",
+        parent_execution_id="parent-execution",
+        organization_id="other-org",
+        team_id="other-team",
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="runner",
+        execution_context=parent_context,
+        organization_id="other-org",
+        team_id="other-team",
+    )
+
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert create_kwargs["organization_id"] == "runner-org"
+    context = mock_edb.create_graph_execution.return_value.to_graph_execution_entry.call_args.kwargs[
+        "execution_context"
+    ]
+    assert (context.organization_id, context.team_id) == ("runner-org", "runner-team")
+
+
+@pytest.mark.asyncio
+async def test_the_org_check_runs_over_rpc_where_sub_runs_start(
+    mocker: MockerFixture,
+):
+    """Sub-graph and scheduled runs start in processes without direct DB
+    access, so the membership check has to go through the DB manager there."""
+    import backend.executor.utils as executor_utils
+
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    executor_utils.prisma.is_connected.return_value = False
+    rpc = mocker.MagicMock()
+    rpc.create_graph_execution = mock_edb.create_graph_execution
+    rpc.update_graph_execution_stats = mock_edb.update_graph_execution_stats
+    rpc.update_node_execution_status_batch = mock_edb.update_node_execution_status_batch
+    rpc.get_user_by_id = executor_utils.user_db.get_user_by_id
+    rpc.get_graph_settings = executor_utils.graph_db.get_graph_settings
+    rpc.get_or_create_workspace = executor_utils.workspace_db.get_or_create_workspace
+    rpc.increment_onboarding_runs = (
+        executor_utils.onboarding_db.increment_onboarding_runs
+    )
+    rpc.resolve_member_tenancy = mocker.AsyncMock(
+        return_value=("runner-org", "runner-team")
+    )
+    mocker.patch(
+        "backend.executor.utils.get_database_manager_async_client", return_value=rpc
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="runner",
+        organization_id="other-org",
+        team_id="other-team",
+    )
+
+    rpc.resolve_member_tenancy.assert_awaited_once_with(
+        "runner", "other-org", "other-team"
+    )
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert create_kwargs["organization_id"] == "runner-org"
+    assert create_kwargs["team_id"] == "runner-team"
+
+
+@pytest.mark.asyncio
+async def test_a_new_expert_run_isnt_put_through_the_org_check(
+    mocker: MockerFixture,
+):
+    """An expert run keeps its own tenancy rule, so the check that replaces
+    an org its runner isn't in doesn't apply to it."""
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    _mock_expert_personal_tenancy(mocker)
+    membership = _runner_is_not_in_the_given_org(mocker)
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="expert-owner",
+        expert_id="expert-1",
+        organization_id="shared-org",
+        team_id="shared-team",
+    )
+
+    membership.assert_not_awaited()
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert (create_kwargs["organization_id"], create_kwargs["team_id"]) == (
+        "personal-org",
+        "personal-team",
+    )
+
+
+@pytest.mark.parametrize(
+    "caller",
+    ["no-context", "context-without-an-org", "org-passed-in", "context-in-another-org"],
+)
+@pytest.mark.asyncio
+async def test_a_resumed_run_stays_in_the_org_it_started_in(
+    mocker: MockerFixture, caller: str
+):
+    """A run resumed after a review or an admin requeue has already run in
+    the org and team it's stored in, so it isn't moved out of them, even when
+    its runner has left them since, and whatever the caller passes: the
+    executor stops such a run when it picks it up. Review resume hands in a
+    context that has no org yet."""
+    from backend.data.execution import ExecutionContext
+
+    context = {
+        "context-without-an-org": ExecutionContext(user_id="runner"),
+        "context-in-another-org": ExecutionContext(
+            user_id="runner", organization_id="runner-org", team_id="runner-team"
+        ),
+    }.get(caller)
+    organization_id, team_id = (
+        ("runner-org", "runner-team") if caller == "org-passed-in" else (None, None)
+    )
+    _, execution_store, queue, captured = _mock_add_graph_execution_requeue_path(
+        mocker,
+        expert_id=None,
+        organization_id="other-org",
+        team_id="other-team",
+    )
+    membership = _runner_is_not_in_the_given_org(mocker)
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="runner",
+        graph_exec_id="existing-execution",
+        execution_context=context,
+        organization_id=organization_id,
+        team_id=team_id,
+    )
+
+    membership.assert_not_called()
+    context = captured["execution_context"]
+    assert (context.organization_id, context.team_id) == ("other-org", "other-team")
+    update = execution_store.update_graph_execution_stats.await_args.kwargs
+    assert update["status"] == ExecutionStatus.QUEUED
+    assert update["update_tenancy"] is False
+    queue.publish_message.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -3219,3 +3468,355 @@ async def test_subgraph_inherits_the_pause_through_its_context(
 
     child_context = add.await_args.kwargs["execution_context"]
     assert child_context.sensitive_action_safe_mode is True
+
+
+# ============================================================================
+# Resume path: identity (#15300) and run-time credential masks (#15266).
+# Uses a real GraphExecutionWithNodes and decodes the real published entry,
+# so a mock can't paper over a missing field.
+# ============================================================================
+
+
+def _resumable_graph_exec(**overrides):
+    from backend.data.execution import GraphExecutionWithNodes
+
+    fields: dict = dict(
+        id="exec-resume-real",
+        user_id="row-user",
+        graph_id="row-graph",
+        graph_version=3,
+        inputs={},
+        outputs={},
+        credential_inputs=None,
+        nodes_input_masks=None,
+        preset_id=None,
+        status=ExecutionStatus.REVIEW,
+        stats=None,
+        node_executions=[],
+        organization_id="org-row",
+        team_id="team-row",
+    )
+    fields.update(overrides)
+    return GraphExecutionWithNodes(**fields)
+
+
+async def _resume_and_capture_entry(mocker: MockerFixture, graph_exec, graph=None):
+    """Resume ``graph_exec`` with a review-resume style partial context and
+    return the GraphExecutionEntry that was published to the queue."""
+    from backend.data.execution import ExecutionContext, GraphExecutionEntry
+    from backend.executor.utils import add_graph_execution
+
+    mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
+    mocker.patch(
+        "backend.executor.utils.is_user_paywalled",
+        new=mocker.AsyncMock(return_value=False),
+    )
+    mock_edb = mocker.patch("backend.executor.utils.execution_db")
+    mock_edb.get_graph_execution = mocker.AsyncMock(return_value=graph_exec)
+    mock_edb.update_graph_execution_stats = mocker.AsyncMock(
+        return_value=graph_exec.model_copy(update={"status": ExecutionStatus.QUEUED})
+    )
+    mock_gdb = mocker.patch("backend.executor.utils.graph_db")
+    mock_gdb.get_graph = mocker.AsyncMock(return_value=graph)
+    queue = mocker.AsyncMock()
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_queue",
+        new=mocker.AsyncMock(return_value=queue),
+    )
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_event_bus"
+    ).return_value = mocker.MagicMock(publish=mocker.AsyncMock())
+
+    # What process_review_action passes: safety/user settings, no identity.
+    review_resume_ctx = ExecutionContext(
+        human_in_the_loop_safe_mode=True,
+        sensitive_action_safe_mode=True,
+        user_timezone="UTC",
+        workspace_id="ws-1",
+    )
+    await add_graph_execution(
+        graph_id=graph_exec.graph_id,
+        user_id=graph_exec.user_id,
+        graph_exec_id=graph_exec.id,
+        execution_context=review_resume_ctx,
+    )
+
+    queue.publish_message.assert_awaited_once()
+    return GraphExecutionEntry.model_validate_json(
+        queue.publish_message.call_args.kwargs["message"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_resume_pins_execution_identity_from_the_row(mocker: MockerFixture):
+    """#15300: review-resume passed a context without graph_exec_id, so the
+    executor skipped the review gate for irreversible blocks on resume."""
+    entry = await _resume_and_capture_entry(mocker, _resumable_graph_exec())
+
+    ctx = entry.execution_context
+    assert ctx.graph_exec_id == "exec-resume-real"
+    assert ctx.user_id == "row-user"
+    assert ctx.graph_id == "row-graph"
+    assert ctx.graph_version == 3
+    assert ctx.root_execution_id == "exec-resume-real"
+    # Caller-supplied settings survive the pin.
+    assert ctx.sensitive_action_safe_mode is True
+    assert ctx.workspace_id == "ws-1"
+    assert ctx.organization_id == "org-row"
+
+
+def _github_creds():
+    from backend.data.model import CredentialsMetaInput
+
+    return CredentialsMetaInput(
+        id="cred-1", title="GitHub", provider="github", type="api_key"
+    )
+
+
+def _graph_with_credentials_input(mocker: MockerFixture):
+    graph = mocker.MagicMock()
+    graph.regular_credentials_inputs = {
+        "github_credentials": (None, {("github-node", "credentials")}, True)
+    }
+    return graph
+
+
+@pytest.mark.asyncio
+async def test_resume_rebuilds_credential_masks_from_row(mocker: MockerFixture):
+    """#15266: credentials picked in the run dialog are persisted as
+    credential_inputs, not as masks; resume must recompile them."""
+    graph_exec = _resumable_graph_exec(
+        credential_inputs={"github_credentials": _github_creds()},
+        nodes_input_masks={},
+    )
+
+    entry = await _resume_and_capture_entry(
+        mocker, graph_exec, graph=_graph_with_credentials_input(mocker)
+    )
+
+    assert entry.nodes_input_masks is not None
+    assert entry.nodes_input_masks["github-node"]["credentials"] == {
+        "id": "cred-1",
+        "title": "GitHub",
+        "provider": "github",
+        "type": "api_key",
+    }
+
+
+@pytest.mark.asyncio
+async def test_resume_raw_masks_override_rebuilt_credentials(mocker: MockerFixture):
+    """Same precedence as the create path: explicit masks win."""
+    graph_exec = _resumable_graph_exec(
+        credential_inputs={"github_credentials": _github_creds()},
+        nodes_input_masks={"github-node": {"credentials": {"id": "explicit"}}},
+    )
+
+    entry = await _resume_and_capture_entry(
+        mocker, graph_exec, graph=_graph_with_credentials_input(mocker)
+    )
+
+    assert entry.nodes_input_masks is not None
+    assert entry.nodes_input_masks["github-node"]["credentials"] == {"id": "explicit"}
+
+
+@pytest.mark.asyncio
+async def test_a_subgraph_run_gets_its_own_identity_and_keeps_its_tree(
+    mocker: MockerFixture,
+):
+    """AgentExecutorBlock creates the child with the parent's context.
+
+    The child must run under its own execution, graph and version, so its
+    files and LLM tracking stay its own, while keeping the parent's tree so
+    the executor still skips it once the root is terminated.
+    """
+    from backend.data.execution import ExecutionContext, GraphExecutionEntry
+    from backend.executor.utils import add_graph_execution
+
+    child = _resumable_graph_exec(
+        id="child-exec",
+        graph_id="child-graph",
+        graph_version=2,
+        status=ExecutionStatus.QUEUED,
+    )
+    mocker.patch(
+        "backend.executor.utils.validate_and_construct_node_execution_input",
+        new=mocker.AsyncMock(return_value=(mocker.MagicMock(version=2), [], {}, set())),
+    )
+    mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
+    mocker.patch(
+        "backend.executor.utils.is_user_paywalled",
+        new=mocker.AsyncMock(return_value=False),
+    )
+    mock_edb = mocker.patch("backend.executor.utils.execution_db")
+    mock_edb.create_graph_execution = mocker.AsyncMock(return_value=child)
+    mock_edb.update_graph_execution_stats = mocker.AsyncMock(return_value=child)
+    mocker.patch("backend.executor.utils.onboarding_db")
+    queue = mocker.AsyncMock()
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_queue",
+        new=mocker.AsyncMock(return_value=queue),
+    )
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_event_bus"
+    ).return_value = mocker.MagicMock(publish=mocker.AsyncMock())
+
+    await add_graph_execution(
+        graph_id="child-graph",
+        user_id="row-user",
+        execution_context=ExecutionContext(
+            graph_exec_id="parent-exec",
+            graph_id="parent-graph",
+            graph_version=7,
+            root_execution_id="root-exec",
+            parent_execution_id="parent-exec",
+        ),
+        organization_id="org-row",
+        team_id="team-row",
+    )
+
+    ctx = GraphExecutionEntry.model_validate_json(
+        queue.publish_message.call_args.kwargs["message"]
+    ).execution_context
+    assert (ctx.graph_exec_id, ctx.graph_id, ctx.graph_version) == (
+        "child-exec",
+        "child-graph",
+        2,
+    )
+    assert (ctx.root_execution_id, ctx.parent_execution_id) == (
+        "root-exec",
+        "parent-exec",
+    )
+
+
+# ============================================================================
+# A run carries the chat that started it, whose approval gate answers its
+# steps' review pauses (OPEN-3592).
+# ============================================================================
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "trigger, dry_run, stamped",
+    [
+        (ExecutionTrigger.COPILOT, False, "chat-1"),
+        (ExecutionTrigger.COPILOT, True, None),
+        (ExecutionTrigger.MANUAL, False, None),
+    ],
+)
+async def test_a_new_run_is_stamped_with_the_chat_that_started_it(
+    mocker: MockerFixture, trigger, dry_run: bool, stamped
+):
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    graph_exec = mock_edb.create_graph_execution.return_value
+    graph_exec.is_dry_run = dry_run
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="u",
+        trigger=trigger,
+        trigger_ref="chat-1",
+        dry_run=dry_run,
+        pause_irreversible_actions=True,
+    )
+
+    context = graph_exec.to_graph_execution_entry.call_args.kwargs["execution_context"]
+    assert context.approval_chat_id == stamped
+    # The workflow's own setting is kept apart from the pause the chat forced.
+    assert context.sensitive_action_safe_mode is True
+    assert context.graph_sensitive_action_safe_mode is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "trigger, stamped",
+    [(ExecutionTrigger.SUBGRAPH, "chat-1"), (ExecutionTrigger.MANUAL, None)],
+)
+async def test_only_a_sub_graph_inherits_its_parents_chat(
+    mocker: MockerFixture, trigger, stamped
+):
+    from backend.data.execution import ExecutionContext
+
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    graph_exec = mock_edb.create_graph_execution.return_value
+    graph_exec.is_dry_run = False
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="u",
+        trigger=trigger,
+        trigger_ref="parent-exec",
+        execution_context=ExecutionContext(
+            approval_chat_id="chat-1",
+            parent_execution_id="parent-exec",
+            sensitive_action_safe_mode=True,
+            graph_sensitive_action_safe_mode=False,
+        ),
+    )
+
+    context = graph_exec.to_graph_execution_entry.call_args.kwargs["execution_context"]
+    assert context.approval_chat_id == stamped
+    assert context.graph_sensitive_action_safe_mode is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("nested", [False, True])
+async def test_a_resumed_run_is_stamped_with_the_chat_at_the_end_of_its_chain(
+    mocker: MockerFixture, nested: bool
+):
+    from backend.copilot.model import ChatSessionMetadata
+    from backend.data.execution import ExecutionContext
+
+    graph_exec, execution_store, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org", team_id="team"
+    )
+    graph_exec.is_dry_run = False
+    if nested:
+        graph_exec.trigger_source = ExecutionTrigger.SUBGRAPH.value
+        graph_exec.trigger_ref = "parent-exec"
+        execution_store.get_graph_execution_meta = mocker.AsyncMock(
+            return_value=mocker.MagicMock(
+                trigger_source=ExecutionTrigger.COPILOT.value, trigger_ref="session-1"
+            )
+        )
+    else:
+        graph_exec.trigger_source = ExecutionTrigger.COPILOT.value
+        graph_exec.trigger_ref = "session-1"
+    chat_store = mocker.MagicMock()
+    chat_store.get_chat_session_metadata = mocker.AsyncMock(
+        return_value=mocker.MagicMock(
+            metadata=ChatSessionMetadata(origin="interactive")
+        )
+    )
+    mocker.patch("backend.executor.utils.chat_db", return_value=chat_store)
+
+    # As the review route resumes it: a context rebuilt from the graph settings.
+    await add_graph_execution(
+        graph_id="g",
+        user_id="u",
+        graph_exec_id="existing-execution",
+        execution_context=ExecutionContext(sensitive_action_safe_mode=False),
+    )
+
+    assert captured["execution_context"].approval_chat_id == "session-1"
+    assert captured["execution_context"].graph_sensitive_action_safe_mode is False
+
+
+@pytest.mark.asyncio
+async def test_a_resumed_sub_graph_whose_parent_is_gone_names_no_chat(
+    mocker: MockerFixture,
+):
+    graph_exec, execution_store, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org", team_id="team"
+    )
+    graph_exec.is_dry_run = False
+    graph_exec.trigger_source = ExecutionTrigger.SUBGRAPH.value
+    graph_exec.trigger_ref = "deleted-parent"
+    execution_store.get_graph_execution_meta = mocker.AsyncMock(return_value=None)
+
+    await add_graph_execution(
+        graph_id="g", user_id="u", graph_exec_id="existing-execution"
+    )
+
+    context = captured["execution_context"]
+    assert context.approval_chat_id is None
+    assert context.sensitive_action_safe_mode is True

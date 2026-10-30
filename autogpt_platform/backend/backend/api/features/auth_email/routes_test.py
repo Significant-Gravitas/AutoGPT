@@ -11,8 +11,10 @@ from autogpt_libs.auth.config import Settings as AuthSettings
 from pytest_mock import MockerFixture
 
 from backend.api.features.auth_email import routes as auth_email_routes
+from backend.api.rest_api import app as rest_app
+from backend.util.exceptions import EmailUndeliverableError
 
-app = fastapi.FastAPI()
+app = fastapi.FastAPI(exception_handlers=rest_app.exception_handlers)
 # Mirror the prefix rest_api.py mounts it under, so these tests exercise the
 # same paths the service actually serves.
 app.include_router(auth_email_routes.auth_email_router, prefix="/api/auth/email")
@@ -66,6 +68,59 @@ def test_valid_request_sends_and_returns_204(send_mock):
     assert VALID_BODY["url"] in text
 
 
+def test_an_undeliverable_address_answers_422_and_logs_the_type_not_the_address(
+    send_mock, caplog
+):
+    send_mock.side_effect = EmailUndeliverableError(
+        "Postmark refused the recipient (error 406)"
+    )
+
+    res = _post()
+
+    assert res.status_code == 422
+    assert res.json() == {"detail": "email_undeliverable"}
+    assert "Mail provider won't deliver reset_password auth email" in caplog.text
+    assert VALID_BODY["to"] not in caplog.text
+
+
+def test_suppression_lookup_answers_from_the_mailer(send_mock, monkeypatch):
+    monkeypatch.setattr(
+        auth_email_routes,
+        "get_notification_manager_client",
+        lambda: MagicMock(is_email_suppressed=lambda to: to == "bounced@example.com"),
+    )
+
+    answers = [
+        client.post("/api/auth/email/suppression", json={"to": to}).json()
+        for to in ("bounced@example.com", "user@example.com")
+    ]
+
+    assert answers == [{"suppressed": True}, {"suppressed": False}]
+
+
+def test_suppression_lookup_needs_the_frontend_service_token(
+    mocker: MockerFixture, monkeypatch
+):
+    """Without it the route would tell anyone which addresses bounced."""
+    mocker.patch.dict(
+        os.environ,
+        {"JWT_JWKS_URL": "http://localhost:3000/api/auth/jwks"},
+        clear=False,
+    )
+    mocker.patch.object(auth_config, "_settings", AuthSettings())
+    lookup = MagicMock()
+    monkeypatch.setattr(
+        auth_email_routes,
+        "get_notification_manager_client",
+        lambda: MagicMock(is_email_suppressed=lookup),
+    )
+
+    res = client.post("/api/auth/email/suppression", json={"to": "a@example.com"})
+
+    assert res.status_code == 401
+    lookup.assert_not_called()
+
+
 def test_set_password_email_says_why_it_came_and_when_it_expires(send_mock):
     res = _post({**VALID_BODY, "type": "set_password"})
 
@@ -104,6 +159,18 @@ def test_verify_email_states_its_24_hour_expiry(send_mock):
     _, _, body, text = send_mock.call_args.args
     assert "expires in 24 hours" in body
     assert "expires in 24 hours" in text
+
+
+def test_verify_email_shows_where_the_user_is_in_sign_up(send_mock):
+    _post({**VALID_BODY, "type": "verify_email"})
+
+    _, _, body, text = send_mock.call_args.args
+    for part in (body, text):
+        assert "Confirm your email address" in part
+        assert "Create your account." in part
+        assert "Confirm your email." in part
+        assert "You're here." in part.replace("&#39;", "'")
+        assert "Start working." in part
 
 
 def test_rejects_link_on_untrusted_host(send_mock):
@@ -257,7 +324,7 @@ def test_rejects_malformed_trusted_origin_regex_at_startup():
     "email_type,subject,button",
     [
         ("reset_password", "Reset your AutoGPT Platform password", "Reset password"),
-        ("verify_email", "Verify your AutoGPT Platform email", "Verify email"),
+        ("verify_email", "Verify your AutoGPT Platform email", "Confirm email address"),
         ("change_email", "Confirm your new AutoGPT Platform email", "Confirm email"),
         ("set_password", "Set your AutoGPT Platform password", "Set password"),
     ],
@@ -284,8 +351,15 @@ def test_auth_email_design_and_plain_text(send_mock, email_type, subject, button
     )
     assert "<svg" not in body and "data:image" not in body
     assert "logo-light.png" in body
-    assert "Otto, your personal Head of AI" not in body
-    assert "autogpt-characters/" not in body
+    if email_type == "verify_email":
+        assert body.count('alt="Otto, your personal Head of AI"') == 1
+        assert re.search(
+            r'src="https://[^"]+/autogpt-characters/v1\.1/otto/neutral-transparent/256\.png"',
+            body,
+        )
+    else:
+        assert "Otto, your personal Head of AI" not in body
+        assert "autogpt-characters/" not in body
     assert "<script>" not in body
     assert "&amp;callback=&#34;&lt;script&gt;" in body
     assert url in text

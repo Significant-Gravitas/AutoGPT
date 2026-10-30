@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, sep } from "node:path";
 import { act, cleanup, render } from "@/tests/integrations/test-utils";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -221,7 +221,7 @@ function sourceFiles(dir: string): string[] {
 function filesRendering(tag: string): string[] {
   return sourceFiles(join(SRC, "app"))
     .filter((path) => readFileSync(path, "utf8").includes(`<${tag}`))
-    .map((path) => relative(SRC, path))
+    .map((path) => relative(SRC, path).split(sep).join("/"))
     .sort();
 }
 

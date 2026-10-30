@@ -2,8 +2,10 @@
 
 Runs the same sweep as the daily ``sync_posthog_lifecycles`` scheduler job
 (``backend.data.posthog_lifecycle_sync.sync_all_posthog_lifecycles``): one
-Stripe ``Subscription.list(status="all")`` pass mapped to users by customer
-id, trials from the database, and one ``$set`` per user sent in batches.
+Stripe ``Subscription.list(status="all")`` pass, with discounts expanded,
+mapped to users by customer id, trials from the database, and one ``$set``
+per user sent in batches. The status follows ``compute_lifecycle_snapshot``,
+which MailerLite's ``cli mailerlite-backfill`` uses too.
 
 A dry run (the default) reads Stripe and the database and prints how many
 users land in each status; it sends nothing. ``--send`` sends the ``$set``s.
