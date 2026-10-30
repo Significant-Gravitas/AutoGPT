@@ -52,7 +52,7 @@ export function ThinkingIndicator({
         className="text-sm"
       />
       {showTime && (
-        <span className="font-mono text-xs tabular-nums text-foreground-subtle">
+        <span className="font-mono text-xs text-foreground-subtle tabular-nums">
           {formatElapsed(seconds)}
         </span>
       )}

@@ -87,8 +87,8 @@ function ExpertTab({
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        "relative flex max-w-48 items-center gap-2 rounded-full py-1.5 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-foreground-subtle",
-        hasAvatar ? "pl-1.5 pr-3.5" : "px-4",
+        "relative flex max-w-48 items-center gap-2 rounded-full py-1.5 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle",
+        hasAvatar ? "pr-3.5 pl-1.5" : "px-4",
         active
           ? "text-foreground-strong"
           : "text-foreground-tertiary hover:text-foreground-strong",

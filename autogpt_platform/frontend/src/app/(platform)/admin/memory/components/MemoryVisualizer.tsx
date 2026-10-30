@@ -248,7 +248,7 @@ function OverviewStrip({ loading, error, data }: OverviewStripProps) {
           className="rounded-md border bg-surface p-3 text-center"
         >
           <div className="text-xl font-bold">{stat.value}</div>
-          <div className="text-xs uppercase tracking-wide text-foreground-tertiary">
+          <div className="text-xs tracking-wide text-foreground-tertiary uppercase">
             {stat.label}
           </div>
         </div>
@@ -409,7 +409,7 @@ function Sidebar({
   return (
     <div className="col-span-12 space-y-3 md:col-span-3">
       <div className="rounded-md border bg-surface p-3">
-        <h3 className="mb-2 text-xs font-semibold uppercase text-foreground-tertiary">
+        <h3 className="mb-2 text-xs font-semibold text-foreground-tertiary uppercase">
           Labels
         </h3>
         <div className="flex flex-wrap gap-1.5">
@@ -437,7 +437,7 @@ function Sidebar({
         </div>
       </div>
       <div className="rounded-md border bg-surface p-3">
-        <h3 className="mb-2 text-xs font-semibold uppercase text-foreground-tertiary">
+        <h3 className="mb-2 text-xs font-semibold text-foreground-tertiary uppercase">
           Relationships
         </h3>
         <div className="flex flex-wrap gap-1.5">
@@ -549,11 +549,11 @@ function DetailPanel({ node, neighbors, onClear }: DetailPanelProps) {
               {node.uuid}
             </div>
             {node.summary && (
-              <div className="mt-3 whitespace-pre-wrap text-xs text-foreground-body">
+              <div className="mt-3 text-xs whitespace-pre-wrap text-foreground-body">
                 {node.summary}
               </div>
             )}
-            <h4 className="mt-4 text-xs font-semibold uppercase text-foreground-tertiary">
+            <h4 className="mt-4 text-xs font-semibold text-foreground-tertiary uppercase">
               {neighbors.length} edges
             </h4>
             <ul className="mt-1 max-h-72 space-y-1 overflow-y-auto text-xs">

@@ -35,7 +35,7 @@ export function ConfirmDeleteStep({ source, onClose, onBusyChange }: Props) {
         <ConsequenceList items={consequences} />
         <div className="flex flex-col gap-2">
           <Text variant="body" id={labelID}>
-            Type <span className="break-all font-semibold">{email}</span> to
+            Type <span className="font-semibold break-all">{email}</span> to
             confirm
           </Text>
           <Input

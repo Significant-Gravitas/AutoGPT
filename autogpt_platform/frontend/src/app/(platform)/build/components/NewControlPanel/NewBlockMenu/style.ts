@@ -1,4 +1,4 @@
-// The base the block menu's rows and chips draw on: the legacy-default
+// The base the block menu's rows and chips draw on: the old rounded-md
 // Button they were built from, minus the fill, shadow, height and padding
 // every one of them sets itself. Each keeps its own rounded-rectangle look.
 export const blockMenuButtonBase =

@@ -26,14 +26,14 @@ export function ChatComposerFrame({
       transition={{ duration: 0.3 }}
       className={cn(
         // oxlint-disable-next-line design-system/no-arbitrary-values -- keeps the composer above the iOS home indicator
-        "relative mx-auto w-full max-w-3xl px-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-2",
+        "relative mx-auto w-full max-w-3xl px-3 pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))]",
         className,
       )}
     >
       {notice && (
         <div
           ref={noticeRef}
-          className="pointer-events-none absolute bottom-full left-0 right-0 z-20 mb-2.5 pb-2"
+          className="pointer-events-none absolute right-0 bottom-full left-0 z-20 mb-2.5 pb-2"
         >
           <div className="pointer-events-auto relative px-3">{notice}</div>
         </div>

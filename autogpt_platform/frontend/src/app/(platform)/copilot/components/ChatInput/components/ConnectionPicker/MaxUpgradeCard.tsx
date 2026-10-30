@@ -50,12 +50,12 @@ export function MaxUpgradeCard({ label, name, model, reason, href }: Props) {
             </Text>
           )}
         </span>
-        <span className="inline-flex items-center gap-1 rounded bg-surface px-1.5 py-1 text-tiny font-semibold leading-inherit tracking-wide text-accent-strong">
+        <span className="inline-flex items-center gap-1 rounded bg-surface px-1.5 py-1 text-tiny leading-inherit font-semibold tracking-wide text-accent-strong">
           <Icon icon={LockIcon} size={10} aria-hidden />
           MAX
         </span>
       </div>
-      <p className="mb-2 mt-5 text-lg font-medium leading-snug tracking-tight text-foreground-strong">
+      <p className="mt-5 mb-2 text-lg leading-snug font-medium tracking-tight text-foreground-strong">
         Unlock {name} with Max.
       </p>
       <Text variant="small-relaxed" tone="secondary">

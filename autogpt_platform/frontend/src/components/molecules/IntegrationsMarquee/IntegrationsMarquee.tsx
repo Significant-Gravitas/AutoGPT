@@ -28,7 +28,7 @@ export function IntegrationsMarquee({ variant = "light", className }: Props) {
       aria-hidden
       data-slot="integrations-marquee"
       className={cn(
-        "relative flex h-[200px] w-[340px] flex-col justify-center gap-3 overflow-hidden [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_18%,black_82%,transparent_100%)] [mask-image:linear-gradient(to_right,transparent_0%,black_18%,black_82%,transparent_100%)]",
+        "relative flex h-[200px] w-[340px] flex-col justify-center gap-3 overflow-hidden [mask-image:linear-gradient(to_right,transparent_0%,black_18%,black_82%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_18%,black_82%,transparent_100%)]",
         className,
       )}
     >

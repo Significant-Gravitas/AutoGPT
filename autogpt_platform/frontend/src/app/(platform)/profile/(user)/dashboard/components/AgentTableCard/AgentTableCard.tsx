@@ -57,7 +57,7 @@ export const AgentTableCard = ({
         </div>
         <div className="flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="text-body-md font-medium leading-inherit text-foreground-emphasis">
+            <h3 className="text-body-md leading-inherit font-medium text-foreground-emphasis">
               {agentName}
             </h3>
             <span className="text-body-sm leading-inherit text-foreground-tertiary">

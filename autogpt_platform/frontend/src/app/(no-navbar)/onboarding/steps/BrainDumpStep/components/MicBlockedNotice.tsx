@@ -62,7 +62,7 @@ export function MicBlockedNotice({
         <button
           type="button"
           onClick={onRetry}
-          className="inline whitespace-nowrap rounded-sm border border-transparent align-baseline font-sans text-body font-medium text-foreground-base underline underline-offset-4 transition-colors hover:text-foreground-strong focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus"
+          className="inline rounded-sm border border-transparent align-baseline font-sans text-body font-medium whitespace-nowrap text-foreground-base underline underline-offset-4 transition-colors hover:text-foreground-strong focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none"
         >
           try the microphone again
         </button>

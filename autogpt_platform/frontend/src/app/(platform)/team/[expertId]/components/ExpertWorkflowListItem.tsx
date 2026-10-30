@@ -55,7 +55,7 @@ export function ExpertWorkflowListItem({
   return (
     <div
       data-testid="expert-workflow-row"
-      className="group relative flex flex-col items-stretch gap-3 rounded-2xl bg-surface px-3.5 py-2.5 transition-colors smooth-shadow-ring-sm hover:bg-surface-muted sm:flex-row sm:items-center sm:gap-4"
+      className="group relative flex flex-col items-stretch gap-3 rounded-2xl bg-surface px-3.5 py-2.5 smooth-shadow-ring-sm transition-colors hover:bg-surface-muted sm:flex-row sm:items-center sm:gap-4"
     >
       {libraryHref ? (
         <NextLink
@@ -72,7 +72,7 @@ export function ExpertWorkflowListItem({
           </Text>
           <span
             className={cn(
-              "shrink-0 rounded-md px-2 py-0.5 font-sans text-caption font-medium ring-1 ring-inset ring-border-base/80",
+              "shrink-0 rounded-md px-2 py-0.5 font-sans text-caption font-medium ring-1 ring-border-base/80 ring-inset",
               status.className,
             )}
           >

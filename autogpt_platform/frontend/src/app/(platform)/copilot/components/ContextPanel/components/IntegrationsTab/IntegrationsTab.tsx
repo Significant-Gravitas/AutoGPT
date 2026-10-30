@@ -65,7 +65,7 @@ function IntegrationsTabContent({ expert }: { expert: ContextPanelExpert }) {
   return (
     <div className="flex flex-col gap-6">
       {isGrantableError && !isError ? (
-        <div className="flex items-center justify-between gap-3 rounded-xl bg-warning-surface px-3 py-2 ring-1 ring-inset ring-warning-border">
+        <div className="flex items-center justify-between gap-3 rounded-xl bg-warning-surface px-3 py-2 ring-1 ring-warning-border ring-inset">
           <Text tone="warning" variant="small">
             Couldn&apos;t load your connected services, so &ldquo;Use
             existing&rdquo; is unavailable.
@@ -201,7 +201,7 @@ function ExpertPageLink({ expert, className }: ExpertPageLinkProps) {
     <Link
       href={`/team/${expert.id}`}
       className={cn(
-        "flex items-center gap-1 text-body-sm font-medium leading-inherit text-foreground-body transition-colors hover:text-foreground",
+        "flex items-center gap-1 text-body-sm leading-inherit font-medium text-foreground-body transition-colors hover:text-foreground",
         className,
       )}
     >
@@ -267,7 +267,7 @@ function IntegrationRow({
         disabled={isRemoving}
         aria-busy={isRemoving}
         aria-label={`Remove ${name}`}
-        className="size-7 shrink-0 rounded-lg !p-0 text-foreground-tertiary opacity-0 transition-opacity hover:text-error focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
+        className="size-7 shrink-0 rounded-lg !p-0 text-foreground-tertiary opacity-0 transition-opacity group-hover:opacity-100 hover:text-error focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
       >
         <Icon
           icon={isRemoving ? Loading03Icon : Delete02Icon}

@@ -65,7 +65,7 @@ The full rules are in `docs/engineering/design-system.md`; `pnpm lint` enforces 
 - **No arbitrary values** except layout and transitions; no inline `style` for static values; no classes Tailwind does not generate.
 - **Suppressions say why:** `// oxlint-disable-next-line design-system/<rule> -- <reason>`, one line, one rule.
 - **Pixels:** a change to `src/components/**`, `globals.css` or `tailwind*.ts` comes with before/after screenshots at 1440 and 390 px in the PR, or "no pixel change" and how you checked.
-- After removing violations, or moving, renaming or splitting a file, run `pnpm lint:ds-baseline` and commit the baseline. Lint fails new violations and counts above the baseline; grandfathered counts at or below it pass.
+- After removing violations, or moving, renaming or splitting a file, run `pnpm lint:ds-baseline` and commit the baseline. Lint fails new violations, counts above the baseline and counts below it (`design-system/baseline-outdated`, until the lower count is committed); only a count equal to the baseline passes.
 
 ## Architecture
 

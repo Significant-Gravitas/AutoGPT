@@ -168,6 +168,7 @@ async def _run_turn(session, prompt, tmp_path, env, client, upload, download):
         for name, value in (
             ("inject_user_context", None),
             ("build_session_context", ""),
+            ("first_message_expert_context", ""),
         ):
             stack.enter_context(
                 patch(f"{_SVC}.{name}", new_callable=AsyncMock, return_value=value)

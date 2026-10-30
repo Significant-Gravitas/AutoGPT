@@ -59,7 +59,7 @@ export function GlassOrb({ params, children, showRim = true }: Props) {
             <div
               data-slot="glass-orb-blob"
               // oxlint-disable-next-line design-system/no-arbitrary-values -- organic blob radius, drift keyframes and blue-violet gradient stops with no role
-              className="absolute left-[6%] top-[10%] h-[46%] w-[78%] animate-[glass-orb-drift-1_9s_ease-in-out_infinite_alternate] rounded-[78%_22%_58%_42%/30%_72%_28%_70%] bg-[linear-gradient(120deg,#9c43fe,#5b8cff)] opacity-50 blur motion-reduce:animate-none"
+              className="absolute top-[10%] left-[6%] h-[46%] w-[78%] animate-[glass-orb-drift-1_9s_ease-in-out_infinite_alternate] rounded-[78%_22%_58%_42%/30%_72%_28%_70%] bg-[linear-gradient(120deg,#9c43fe,#5b8cff)] opacity-50 blur motion-reduce:animate-none"
             />
           </div>
           <div
@@ -70,7 +70,7 @@ export function GlassOrb({ params, children, showRim = true }: Props) {
             <div
               data-slot="glass-orb-blob"
               // oxlint-disable-next-line design-system/no-arbitrary-values -- organic blob radius, drift keyframes and blue-violet gradient stops with no role
-              className="absolute left-[34%] top-[18%] h-[70%] w-[55%] animate-[glass-orb-drift-2_11s_ease-in-out_infinite_alternate] rounded-[30%_70%_25%_75%/65%_28%_72%_35%] bg-[linear-gradient(200deg,#7c5bff,#4062ff)] opacity-50 blur motion-reduce:animate-none"
+              className="absolute top-[18%] left-[34%] h-[70%] w-[55%] animate-[glass-orb-drift-2_11s_ease-in-out_infinite_alternate] rounded-[30%_70%_25%_75%/65%_28%_72%_35%] bg-[linear-gradient(200deg,#7c5bff,#4062ff)] opacity-50 blur motion-reduce:animate-none"
             />
           </div>
           <div
@@ -81,7 +81,7 @@ export function GlassOrb({ params, children, showRim = true }: Props) {
             <div
               data-slot="glass-orb-blob"
               // oxlint-disable-next-line design-system/no-arbitrary-values -- organic blob radius, drift keyframes and blue-violet gradient stops with no role
-              className="absolute left-[12%] top-[46%] h-[38%] w-[68%] animate-[glass-orb-drift-3_7.5s_ease-in-out_infinite_alternate] rounded-[85%_15%_70%_30%/20%_80%_25%_75%] bg-[linear-gradient(90deg,#b06bff,#6d7dff)] opacity-50 blur motion-reduce:animate-none"
+              className="absolute top-[46%] left-[12%] h-[38%] w-[68%] animate-[glass-orb-drift-3_7.5s_ease-in-out_infinite_alternate] rounded-[85%_15%_70%_30%/20%_80%_25%_75%] bg-[linear-gradient(90deg,#b06bff,#6d7dff)] opacity-50 blur motion-reduce:animate-none"
             />
           </div>
           <div
@@ -92,7 +92,7 @@ export function GlassOrb({ params, children, showRim = true }: Props) {
             <div
               data-slot="glass-orb-blob"
               // oxlint-disable-next-line design-system/no-arbitrary-values -- organic blob radius, drift keyframes and blue-violet gradient stops with no role
-              className="absolute left-[8%] top-[30%] h-[58%] w-[44%] animate-[glass-orb-drift-4_13s_ease-in-out_infinite_alternate] rounded-[45%_55%_80%_20%/75%_30%_70%_25%] bg-[linear-gradient(160deg,#8a4dff,#4d8bff)] opacity-50 blur motion-reduce:animate-none"
+              className="absolute top-[30%] left-[8%] h-[58%] w-[44%] animate-[glass-orb-drift-4_13s_ease-in-out_infinite_alternate] rounded-[45%_55%_80%_20%/75%_30%_70%_25%] bg-[linear-gradient(160deg,#8a4dff,#4d8bff)] opacity-50 blur motion-reduce:animate-none"
             />
           </div>
           <div
@@ -103,7 +103,7 @@ export function GlassOrb({ params, children, showRim = true }: Props) {
             <div
               data-slot="glass-orb-blob"
               // oxlint-disable-next-line design-system/no-arbitrary-values -- organic blob radius, drift keyframes and blue-violet gradient stops with no role
-              className="absolute left-[26%] top-[58%] h-[34%] w-[60%] animate-[glass-orb-drift-5_8.5s_ease-in-out_infinite_alternate] rounded-[20%_80%_35%_65%/80%_25%_75%_20%] bg-[linear-gradient(45deg,#a35bff,#5470ff)] opacity-50 blur motion-reduce:animate-none"
+              className="absolute top-[58%] left-[26%] h-[34%] w-[60%] animate-[glass-orb-drift-5_8.5s_ease-in-out_infinite_alternate] rounded-[20%_80%_35%_65%/80%_25%_75%_20%] bg-[linear-gradient(45deg,#a35bff,#5470ff)] opacity-50 blur motion-reduce:animate-none"
             />
           </div>
         </div>

@@ -37,7 +37,7 @@ export function AlternativePanel({ panel, isActionPending, onAction }: Props) {
             size="small"
             loading={isActionPending}
             onClick={() => onAction(action.kind)}
-            className="h-auto min-h-11 whitespace-normal text-left lg:min-h-[2.25rem]"
+            className="h-auto min-h-11 text-left whitespace-normal lg:min-h-[2.25rem]"
           >
             {action.label}
           </Button>

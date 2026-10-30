@@ -85,7 +85,7 @@ export function BriefingCard({ briefing, className }: Props) {
             className={cn(
               "h-full divide-y divide-separator",
               isShowingAll
-                ? "overflow-y-auto scrollbar-none"
+                ? "scrollbar-none overflow-y-auto"
                 : "overflow-hidden",
             )}
           >
@@ -175,7 +175,7 @@ function ScrollArrow({
         aria-label={isUp ? "Scroll up" : "Scroll down"}
         data-slot="briefing-card-scroll-arrow-control"
         className={cn(
-          "flex size-8 items-center justify-center rounded-full bg-surface text-foreground-tertiary shadow-foreground-base transition-colors smooth-shadow-ring-sm hover:text-foreground-strong",
+          "flex size-8 items-center justify-center rounded-full bg-surface text-foreground-tertiary smooth-shadow-ring-sm shadow-foreground-base transition-colors hover:text-foreground-strong",
           isVisible && "pointer-events-auto",
         )}
       >
