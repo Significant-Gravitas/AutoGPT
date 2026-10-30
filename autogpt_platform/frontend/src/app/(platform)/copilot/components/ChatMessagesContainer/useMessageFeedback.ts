@@ -90,7 +90,7 @@ export function useMessageFeedback({
     toast({
       title: "Can't rate this reply yet",
       description:
-        "It may still be saving. A reply stopped before it was saved can't be rated.",
+        "It may still be saving. Try again in a moment, or refresh the page.",
       duration: 3000,
     });
   }

@@ -1129,6 +1129,15 @@ describe("the end-of-turn reconcile", () => {
     expect(turn.lastReplySequence).toBe(3);
     const { stats } = renderTail(snapshot());
     expect(stats.get(turn.key)?.savedMessageId).toBe("session-1-seq-3");
+
+    // A later window holds none of the turn's replies: the id stays.
+    runtime.observe({
+      messages: [{ role: "user", content: "Another question", sequence: 4 }],
+      has_more_messages: true,
+      active_stream: null,
+    });
+    await advance(0);
+    expect(turnSegment().lastReplySequence).toBe(3);
   });
 
   it("replaces a row that differs under its own key, and reports it", async () => {
