@@ -152,7 +152,7 @@ export default function SignupPage() {
                 <GoogleOAuthButton
                   onClick={() => handleProviderSignup("google")}
                   isLoading={isGoogleLoading}
-                  disabled={isLoading}
+                  disabled={isLoading || isMicrosoftLoading}
                 />
               ) : null}
               {isMicrosoftEnabled ? (

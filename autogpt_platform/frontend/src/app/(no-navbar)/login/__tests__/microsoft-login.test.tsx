@@ -1,5 +1,12 @@
+import { delay, http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
-import { render, screen } from "@/tests/integrations/test-utils";
+import { server } from "@/mocks/mock-server";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import LoginPage from "../page";
 
@@ -37,6 +44,31 @@ describe("Continue with Microsoft on the login page", () => {
     expect(
       screen.getByRole("button", { name: /continue with microsoft/i }),
     ).toBeDefined();
+  });
+
+  test("keeps Google unavailable while Microsoft sign-in is starting", async () => {
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+    vi.stubEnv("NEXT_PUBLIC_AUTH_MICROSOFT_ENABLED", "true");
+    server.use(
+      http.post("*/api/auth/login/with-provider", async () => {
+        await delay("infinite");
+        return HttpResponse.json({});
+      }),
+    );
+    render(<LoginPage />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /continue with microsoft/i }),
+    );
+
+    // Two sign-ins at once would race their redirects.
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: /continue with google/i })
+          .hasAttribute("disabled"),
+      ).toBe(true),
+    );
   });
 
   test("shows the waitlist answer when the sign-up isn't allowed", async () => {

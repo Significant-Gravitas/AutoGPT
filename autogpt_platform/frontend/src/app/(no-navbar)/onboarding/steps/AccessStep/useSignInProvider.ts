@@ -17,9 +17,22 @@ export function useSignInProvider(enabled: boolean) {
   };
 }
 
+// As long as the feature flags the wizard also waits on.
+const LOOKUP_TIMEOUT_MS = 5000;
+
 async function listSignInProviders(): Promise<string[]> {
-  const response = await fetch("/api/auth/sign-in-providers");
-  if (!response.ok) throw new Error("Could not list sign-in providers");
-  const { providers } = (await response.json()) as { providers: string[] };
-  return providers;
+  // A lookup that hangs has to fail like one that errors, or onboarding
+  // waits on it.
+  const timeout = new AbortController();
+  const timer = setTimeout(() => timeout.abort(), LOOKUP_TIMEOUT_MS);
+  try {
+    const response = await fetch("/api/auth/sign-in-providers", {
+      signal: timeout.signal,
+    });
+    if (!response.ok) throw new Error("Could not list sign-in providers");
+    const { providers } = (await response.json()) as { providers: string[] };
+    return providers;
+  } finally {
+    clearTimeout(timer);
+  }
 }

@@ -151,7 +151,7 @@ export default function LoginPage() {
                 <GoogleOAuthButton
                   onClick={() => handleProviderLogin("google")}
                   isLoading={isGoogleLoading}
-                  disabled={isLoading}
+                  disabled={isLoading || isMicrosoftLoading}
                 />
               ) : null}
               {isMicrosoftEnabled ? (
