@@ -8,7 +8,10 @@ export function useSignInProvider(enabled: boolean) {
     queryFn: listSignInProviders,
     enabled,
     staleTime: Infinity,
-    retry: 1,
+    // One more try after a quick failure. A lookup that timed out would only
+    // wait as long again, so onboarding waits at most the one timeout.
+    retry: (failureCount, error) =>
+      failureCount < 1 && !(error instanceof LookupTimeout),
   });
   return {
     provider: providers.data?.find((id) => id in ACCESS_PROVIDERS) ?? null,
@@ -19,6 +22,8 @@ export function useSignInProvider(enabled: boolean) {
 
 // As long as the feature flags the wizard also waits on.
 const LOOKUP_TIMEOUT_MS = 5000;
+
+class LookupTimeout extends Error {}
 
 async function listSignInProviders(): Promise<string[]> {
   // A lookup that hangs has to fail like one that errors, or onboarding
@@ -32,6 +37,9 @@ async function listSignInProviders(): Promise<string[]> {
     if (!response.ok) throw new Error("Could not list sign-in providers");
     const { providers } = (await response.json()) as { providers: string[] };
     return providers;
+  } catch (error) {
+    if (timeout.signal.aborted) throw new LookupTimeout();
+    throw error;
   } finally {
     clearTimeout(timer);
   }
