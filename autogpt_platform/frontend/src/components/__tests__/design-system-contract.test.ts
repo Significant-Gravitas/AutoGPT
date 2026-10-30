@@ -107,8 +107,9 @@ describe("components.json", () => {
 });
 
 // Primitives mark their root element with data-slot so callers and tests can
-// target their parts. These predate the rule; fix one and delete it here.
-const UNSLOTTED_PRIMITIVES = [
+// target their parts. These two render no element of their own (a text
+// fragment; the Radix Dialog or vaul Drawer root), so there is nothing to mark.
+const ELEMENTLESS_PRIMITIVES = [
   "src/components/atoms/RelativeTime/RelativeTime.tsx",
   "src/components/molecules/Dialog/Dialog.tsx",
 ];
@@ -130,6 +131,6 @@ describe("primitives", () => {
           "data-slot",
         ),
     );
-    expect(unslotted).toEqual(UNSLOTTED_PRIMITIVES);
+    expect(unslotted).toEqual(ELEMENTLESS_PRIMITIVES);
   });
 });

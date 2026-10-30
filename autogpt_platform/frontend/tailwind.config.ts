@@ -1,6 +1,7 @@
 import type { Config } from "tailwindcss";
 import plugin from "tailwindcss/plugin";
 import tailwindcssAnimate from "tailwindcss-animate";
+import { COLOR_ROLES } from "./src/components/styles/color-roles.ts";
 import { colors } from "./src/components/styles/colors.ts";
 import scrollbar from "./tailwind.scrollbar.ts";
 import tailwind3Preset from "./tailwind.v3-preset.ts";
@@ -67,56 +68,6 @@ const textShadow = plugin(function textShadow({ matchUtilities, theme }) {
 function role(name: string) {
   return `rgb(var(--color-${name}) / <alpha-value>)`;
 }
-
-const COLOR_ROLES = [
-  "canvas",
-  "surface",
-  "surface-muted",
-  "surface-hover",
-  "surface-active",
-  "overlay",
-  "foreground-base",
-  "foreground-strong",
-  "foreground-emphasis",
-  "foreground-body",
-  "foreground-secondary",
-  "foreground-tertiary",
-  "foreground-subtle",
-  "foreground-disabled",
-  "placeholder",
-  "separator",
-  "border-base",
-  "border-strong",
-  "focus",
-  "action",
-  "action-hover",
-  "action-foreground",
-  "brand",
-  "brand-hover",
-  "accent-surface",
-  "accent-strong",
-  "error",
-  "error-hover",
-  "error-foreground",
-  "error-surface",
-  "warning",
-  "warning-foreground",
-  "warning-surface",
-  "warning-border",
-  "success",
-  "success-foreground",
-  "success-surface",
-  "info",
-  "info-foreground",
-  "info-surface",
-  "builder-canvas",
-  "builder-grid",
-  "node-surface",
-  "node-border",
-  "node-selected",
-  "edge",
-  "handle",
-] as const;
 
 const roleColors = Object.fromEntries(
   COLOR_ROLES.map((name) => [name, role(name)]),
