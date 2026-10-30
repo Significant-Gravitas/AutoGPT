@@ -1,11 +1,16 @@
 "use client";
 
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/credits/credits";
 import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/subscriptionStatusResponse";
 import type { TrialOfferResponse } from "@/app/api/__generated__/models/trialOfferResponse";
-import { formatPlanPrice } from "@/components/organisms/TrialCard/helpers";
+import {
+  BILLING_PATH,
+  SUBSCRIBE_NOW_PARAM,
+  SUBSCRIBE_NOW_VALUE,
+} from "@/components/organisms/TrialCard/helpers";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import {
   trackPaywallViewed,
@@ -13,6 +18,7 @@ import {
 } from "@/services/analytics/monetization-analytics";
 
 import {
+  findPlanChoice,
   getOwnPlanChoice,
   getUpgradePlanChoice,
   type PlanChoiceDetails,
@@ -29,8 +35,12 @@ export function useTrialPlanChoices(offer: TrialOfferResponse) {
           : undefined,
     },
   });
-  const { requestedTier, requestPlan } = useTrialPlanRequest(offer);
-  const [confirmFor, setConfirmFor] = useState<string | null>(null);
+  const request = useTrialPlanRequest(offer);
+  // Either plan charges the saved card today, so both ask first.
+  const [confirming, setConfirming] = useState<{
+    ownerID: string;
+    tier: PlanChoiceDetails["tier"];
+  } | null>(null);
 
   // A trial status that lags behind a plan change must not offer the choices
   // again, so they wait for the subscription itself to still be the trial.
@@ -39,41 +49,51 @@ export function useTrialPlanChoices(offer: TrialOfferResponse) {
   const upgradePlan = subscription.data
     ? getUpgradePlanChoice(offer, subscription.data)
     : null;
+  const confirmPlan =
+    confirming && confirming.ownerID === userID
+      ? findPlanChoice([ownPlan, upgradePlan], confirming.tier)
+      : null;
 
   useEffect(() => {
     if (isVisible) trackPaywallViewed("billing");
   }, [isVisible]);
 
-  function trackSelection(plan: PlanChoiceDetails) {
+  const router = useRouter();
+  const isSubscribeNow =
+    useSearchParams().get(SUBSCRIBE_NOW_PARAM) === SUBSCRIBE_NOW_VALUE;
+  useEffect(() => {
+    if (!isSubscribeNow || !isVisible || !userID) return;
+    selectPlan(ownPlan);
+    router.replace(BILLING_PATH);
+  }, [isSubscribeNow, isVisible, userID]);
+
+  function selectPlan(plan: PlanChoiceDetails) {
     trackPlanSelected({
       subscription_tier: plan.tier,
       billing_cycle: offer.billing_cycle,
       surface: "billing",
     });
+    if (userID) setConfirming({ ownerID: userID, tier: plan.tier });
   }
 
-  async function confirmOwnPlan() {
-    const isLeaving = await requestPlan(ownPlan);
-    if (!isLeaving) setConfirmFor(null);
+  async function confirmPlanChoice() {
+    if (confirmPlan) await request.requestPlan(confirmPlan);
+    setConfirming(null);
   }
 
   return {
     isVisible,
     ownPlan,
     upgradePlan,
-    ownPrice: formatPlanPrice(offer),
-    requestedTier,
-    isConfirmOpen: confirmFor !== null && confirmFor === userID,
-    onSelectOwnPlan: () => {
-      trackSelection(ownPlan);
-      setConfirmFor(userID ?? null);
-    },
-    onConfirmOwnPlan: () => void confirmOwnPlan(),
-    onCloseConfirm: () => setConfirmFor(null),
+    confirmPlan,
+    requestedTier: request.requestedTier,
+    paymentPage: request.paymentPage,
+    onSelectOwnPlan: () => selectPlan(ownPlan),
     onSelectUpgradePlan: () => {
-      if (!upgradePlan) return;
-      trackSelection(upgradePlan);
-      void requestPlan(upgradePlan);
+      if (upgradePlan) selectPlan(upgradePlan);
     },
+    onConfirmPlan: () => void confirmPlanChoice(),
+    onCloseConfirm: () => setConfirming(null),
+    onClosePaymentPage: request.closePaymentPage,
   };
 }

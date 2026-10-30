@@ -17,7 +17,6 @@ import { MainMarkeplacePage } from "../components/MainMarketplacePage/MainMarket
 configure({ asyncUtilTimeout: 10000 });
 
 const mockUseAuth = vi.hoisted(() => vi.fn());
-const hireExpertsFlag = vi.hoisted(() => ({ enabled: true }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -34,20 +33,6 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({ useAuth: mockUseAuth }));
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useGetFlag: (flag: string) =>
-      flag === "hire-experts"
-        ? hireExpertsFlag.enabled
-        : actual.useGetFlag(flag as never),
-  };
-});
 
 const CATEGORIES = [
   { value: "marketing", label: "Marketing", description: "Campaigns and SEO" },
@@ -84,7 +69,7 @@ const requestedCategories: (string | null)[] = [];
 describe("Marketplace category filter over experts", () => {
   beforeEach(() => {
     requestedCategories.length = 0;
-    hireExpertsFlag.enabled = true;
+
     mockUseAuth.mockReturnValue({ user: { id: "user-1" }, isLoggedIn: true });
     server.use(
       getListExpertsMockHandler([]),

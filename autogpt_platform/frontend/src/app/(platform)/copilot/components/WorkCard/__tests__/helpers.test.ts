@@ -44,7 +44,7 @@ describe("WorkCard helpers", () => {
       output_type: "weird",
     });
     expect(meta?.outputType).toBe("unknown");
-    expect(meta?.graphName).toBe("Agent task");
+    expect(meta?.graphName).toBe("Workflow task");
   });
 
   it("toPreview strips markdown links, quotes and bold", () => {

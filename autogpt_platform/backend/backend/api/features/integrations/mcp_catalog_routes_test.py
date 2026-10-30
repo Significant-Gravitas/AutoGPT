@@ -67,12 +67,21 @@ def test_provider_openapi_exposes_typed_mcp_metadata():
     assert "mcp_server" in schemas["ProviderMetadata"]["properties"]
 
 
-def test_provider_listing_carries_the_service_identity():
+@pytest.mark.parametrize(
+    "provider,display_name,server_url",
+    [
+        ("linear", "Linear", "https://mcp.linear.app/mcp"),
+        ("hubspot", "HubSpot", "https://mcp.hubspot.com"),
+    ],
+)
+def test_provider_listing_carries_the_service_identity(
+    provider: str, display_name: str, server_url: str
+):
     with (
         patch("backend.blocks.load_all_blocks"),
         patch(
             "backend.api.features.integrations.router.get_all_provider_names",
-            return_value=["linear", "google"],
+            return_value=[provider, "google"],
         ),
         patch(
             "backend.api.features.integrations.router.get_provider_description",
@@ -85,8 +94,13 @@ def test_provider_listing_carries_the_service_identity():
     ):
         providers = {p["name"]: p for p in TestClient(app).get("/providers").json()}
 
-    assert providers["linear"]["service"] == "linear"
-    assert providers["linear"]["service_icon"] == "linear"
-    assert providers["mcp_linear"]["service"] == "linear"
-    assert providers["mcp_linear"]["service_name"] == "Linear"
+    assert providers[provider]["service"] == provider
+    assert providers[provider]["service_icon"] == provider
+    mcp = providers[f"mcp_{provider}"]
+    assert mcp["service"] == provider
+    assert mcp["service_name"] == display_name
+    assert mcp["service_icon"] == provider
+    assert mcp["mcp_server"]["server_url"] == server_url
+    assert mcp["mcp_server"]["connection_mode"] == "hosted"
+    assert "oauth" in mcp["mcp_server"]["auth_methods"]
     assert providers["mcp_sentry"]["service"] == "sentry"

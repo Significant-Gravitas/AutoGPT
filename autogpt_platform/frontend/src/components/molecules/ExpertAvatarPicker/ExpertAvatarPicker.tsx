@@ -17,7 +17,10 @@ interface Props {
 export function ExpertAvatarPicker({ name, ...props }: Props) {
   const picker = useExpertAvatarPicker({ name, ...props });
   return (
-    <div className="flex w-full flex-col items-center gap-4 rounded-2xl border border-border bg-background p-5">
+    <div
+      data-slot="expert-avatar-picker"
+      className="flex w-full flex-col items-center gap-4 rounded-2xl border border-border bg-background p-5"
+    >
       <ExpertAvatar
         name={name || "Your expert"}
         avatarUrl={picker.selectedUrl}
@@ -25,13 +28,21 @@ export function ExpertAvatarPicker({ name, ...props }: Props) {
         className={picker.isGenerating ? "animate-pulse" : undefined}
       />
       {picker.isGenerating && (
-        <p role="status" className="text-sm text-muted-foreground">
+        <p
+          role="status"
+          data-slot="expert-avatar-picker-status"
+          className="text-body leading-5 text-muted-foreground"
+        >
           Creating another avatar. You can keep this one or upload a picture
           while you wait.
         </p>
       )}
       {picker.error && (
-        <p role="alert" className="text-sm text-destructive">
+        <p
+          role="alert"
+          data-slot="expert-avatar-picker-error"
+          className="text-body leading-5 text-destructive"
+        >
           {picker.error}
         </p>
       )}
@@ -41,6 +52,7 @@ export function ExpertAvatarPicker({ name, ...props }: Props) {
         disabled={picker.isUploading}
         accept={ACCEPTED_AVATAR_TYPES}
         aria-label="Upload avatar"
+        data-slot="expert-avatar-picker-file-input"
         className="sr-only"
         tabIndex={-1}
         onChange={(event) => {
@@ -49,12 +61,16 @@ export function ExpertAvatarPicker({ name, ...props }: Props) {
           void picker.uploadFile(file);
         }}
       />
-      <div className="flex w-full flex-wrap justify-end gap-2">
+      <div
+        data-slot="expert-avatar-picker-actions"
+        className="flex w-full flex-wrap justify-end gap-2"
+      >
         <Button
           variant="ghost"
           size="small"
           onClick={picker.openFilePicker}
           disabled={picker.isUploading}
+          data-slot="expert-avatar-picker-upload"
         >
           Upload a picture
         </Button>
@@ -65,6 +81,7 @@ export function ExpertAvatarPicker({ name, ...props }: Props) {
           onClick={picker.generate}
           loading={picker.isGenerating}
           disabled={picker.isBusy}
+          data-slot="expert-avatar-picker-regenerate"
         >
           Regenerate
         </Button>
@@ -72,6 +89,7 @@ export function ExpertAvatarPicker({ name, ...props }: Props) {
           size="small"
           onClick={picker.confirm}
           disabled={picker.isUploading}
+          data-slot="expert-avatar-picker-confirm"
         >
           Use this avatar
         </Button>

@@ -28,11 +28,13 @@ import { ReviewSidebar } from "./ReviewSidebar";
 
 interface Props {
   carousel: ReturnType<typeof useReviewCarousel>;
-  held: ReturnType<typeof useHeldReview>;
+  held: Pick<ReturnType<typeof useHeldReview>, "statusOf" | "hasFailed">;
+  // Off inside the chat the calls came from.
+  chatLink?: boolean;
 }
 
 // Every held call on the page, one at a time: the chat's card, a sidebar, and ‹ › to move.
-export function HeldReviewDialog({ carousel, held }: Props) {
+export function HeldReviewDialog({ carousel, held, chatLink = true }: Props) {
   const { current } = carousel;
   const approval = current ? toApprovalItem(current.item.review!) : null;
 
@@ -50,21 +52,21 @@ export function HeldReviewDialog({ carousel, held }: Props) {
         isOpen: carousel.open,
         set: (isOpen) => (isOpen ? undefined : carousel.close()),
       }}
-      className="h-[90vh] p-0 lg:h-[min(720px,85vh)] lg:w-[960px] lg:min-w-0 lg:max-w-[95vw]"
+      className="h-[90vh] p-0 lg:h-[min(720px,85vh)] lg:w-[960px] lg:max-w-[95vw] lg:min-w-0"
     >
       <Dialog.Content>
         <div
           onKeyDown={handleKeyDown}
           className="relative -mx-2 flex h-[calc(90vh-1rem)] min-h-0 lg:h-[min(720px,85vh)]"
         >
-          <div className="hidden w-[272px] shrink-0 border-r border-zinc-100 bg-zinc-50 lg:flex">
+          <div className="hidden w-[272px] shrink-0 border-r border-separator bg-surface-muted lg:flex">
             <ReviewSidebar carousel={carousel} />
           </div>
           <section
             aria-label="Held call"
             className="flex min-w-0 flex-1 flex-col"
           >
-            <header className="flex min-h-16 shrink-0 items-center gap-2 border-b border-zinc-100 py-3 pl-4 pr-16">
+            <header className="flex min-h-16 shrink-0 items-center gap-2 border-b border-separator py-3 pr-16 pl-4">
               <Button
                 variant="secondary"
                 size="icon-sm"
@@ -169,19 +171,21 @@ export function HeldReviewDialog({ carousel, held }: Props) {
                   }
                   onReject={() => carousel.decide(current.item, false)}
                   aside={
-                    <Link
-                      href={current.item.primary_action.href}
-                      className="rounded-sm text-sm font-medium text-zinc-800 underline underline-offset-4 hover:text-zinc-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
-                    >
-                      Open chat
-                    </Link>
+                    chatLink ? (
+                      <Link
+                        href={current.item.primary_action.href}
+                        className="rounded-sm text-sm font-medium text-foreground-emphasis underline underline-offset-4 hover:text-foreground focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:outline-none"
+                      >
+                        Open chat
+                      </Link>
+                    ) : null
                   }
                 />
               </PaneFooter>
             ) : null}
           </section>
           {carousel.sheetOpen ? (
-            <div className="absolute inset-x-0 bottom-0 top-16 z-10 flex rounded-t-2xl border-t border-zinc-200 bg-white shadow-lg lg:hidden">
+            <div className="absolute inset-x-0 top-16 bottom-0 z-10 flex rounded-t-2xl border-t border-border-base bg-surface shadow-lg lg:hidden">
               <ReviewSidebar carousel={carousel} sheet />
             </div>
           ) : null}
@@ -198,12 +202,7 @@ function Finished({
 }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-      <Icon
-        icon={Tick02Icon}
-        size={20}
-        className="text-green-600"
-        aria-hidden
-      />
+      <Icon icon={Tick02Icon} size={20} className="text-success" aria-hidden />
       <Text variant="h4" as="h3" data-pane-focus>
         All {carousel.total} reviewed
       </Text>
@@ -218,7 +217,7 @@ function PaneFooter({ children }: { children: ReactNode }) {
   return (
     <footer
       data-testid="review-pane-footer"
-      className="flex shrink-0 justify-end border-t border-zinc-100 bg-white px-4 py-3 [&>div]:w-full"
+      className="flex shrink-0 justify-end border-t border-separator bg-surface px-4 py-3 [&>div]:w-full"
     >
       {children}
     </footer>

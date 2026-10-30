@@ -10,6 +10,7 @@ import {
 } from "../CompactionCard/helpers";
 import { COMPACTION_PART_TYPE, isExpertChangePart } from "../ToolChain/helpers";
 import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
+import { CHAT_IMAGE_TOKEN_PREFIXES } from "../../helpers/chatImageTokens";
 
 export type MessagePart = UIMessage<
   unknown,
@@ -137,6 +138,8 @@ export function getLastCompactionCallId(parts: MessagePart[]): string | null {
 export const WORKSPACE_FILE_PATTERN =
   /^\/api\/proxy\/api\/workspace\/files\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/download$/;
 const WORKSPACE_URI_PATTERN = /workspace:\/\/([a-f0-9-]+)(?:#([^\s)\]]+))?/g;
+// An image token the renderer draws as the file's own link (`WorkspaceLink`).
+const WORKSPACE_LINK_IMAGE_PREFIX = CHAT_IMAGE_TOKEN_PREFIXES.workspaceLink;
 
 export function getTurnMessages(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
@@ -185,7 +188,7 @@ const FULL_UUID =
 /** Build the default workspace-file URL — used wherever a caller
  *  doesn't supply its own ``fileUrlBuilder``.  Centralising it here
  *  keeps the owner-side default in one place. */
-function defaultWorkspaceFileUrl(fileId: string): string {
+export function defaultWorkspaceFileUrl(fileId: string): string {
   return `/api/proxy${getGetWorkspaceDownloadFileByIdUrl(fileId)}`;
 }
 
@@ -230,6 +233,16 @@ export function extractWorkspaceArtifacts(
   }
 
   return artifacts;
+}
+
+/** The file id a `resolveWorkspaceUrls` link token names, or null. */
+export function workspaceLinkFileID(src: string): string | null {
+  if (!src.startsWith(WORKSPACE_LINK_IMAGE_PREFIX)) return null;
+  try {
+    return decodeURIComponent(src.slice(WORKSPACE_LINK_IMAGE_PREFIX.length));
+  } catch {
+    return null;
+  }
 }
 
 export function getMessageArtifacts(
@@ -349,74 +362,82 @@ export function resolveWorkspaceUrls(
     },
   );
 
-  // Handle regular links: [text](workspace://id) — without the leading "!"
-  // These are blocked by Streamdown's rehype-harden sanitizer because
-  // "workspace://" is not in the allowed URL-scheme whitelist, which causes
-  // "[blocked]" to appear next to the link text.
-  // Use an absolute URL so Streamdown's "Copy link" button copies the full
-  // URL (including host) rather than just the path.
+  // Regular links: [text](workspace://id), without the leading "!". Streamdown
+  // draws a link as a button that keeps no destination, so a click on it can't
+  // say which file it meant; an image token lets the renderer draw the link.
   resolved = resolved.replace(
     /(?<!!)\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#[^)#\s]*)?\)/g,
     (_match, linkText: string, fileId: string) => {
-      const url = fileUrlBuilder(fileId);
-      const origin =
-        typeof window !== "undefined" ? window.location.origin : "";
-      const absoluteUrl = url.startsWith("/") ? `${origin}${url}` : url;
-      return `[${linkText || "Download file"}](${absoluteUrl})`;
+      // The label is markdown already, valid inside `![…]` as it was in `[…]`.
+      return `![${linkText || "Download file"}](${WORKSPACE_LINK_IMAGE_PREFIX}${encodeURIComponent(fileId)})`;
     },
   );
 
   return resolved;
 }
 
-export type ReviewTarget =
-  | { kind: "chat" }
-  /** graphId is set for a run_agent run, so its status can say when to stop polling. */
-  | { kind: "graph"; graphExecId: string; graphId?: string };
+export interface RunReviewTarget {
+  graphExecId: string;
+  /** Set for a run_agent run, so its status can say when to stop polling. */
+  graphId?: string;
+}
+
+export interface ReviewTargets {
+  /** The newest output that can have reviews is the chat's own. */
+  chat: boolean;
+  runs: RunReviewTarget[];
+}
 
 /**
- * The newest tool output that can have pending reviews for the chat to show:
- * a run_block ReviewRequiredResponse, or a run_agent ExecutionStartedResponse
- * that paused or had not finished when the tool returned (a run AutoPilot
- * starts can pause at an irreversible block after it started).
+ * The runs whose pending reviews the chat shows: every run that was paused
+ * when its tool returned (several can each wait on a spend approval), and the
+ * newest output's run while it is in flight, since a run AutoPilot starts can
+ * pause at an irreversible block after it started.
  */
-export function extractReviewTarget(
+export function extractReviewTargets(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
-): ReviewTarget | null {
+): ReviewTargets {
+  const runs = new Map<string, RunReviewTarget>();
+  let newest: "chat" | "run" | null = null;
   for (let i = messages.length - 1; i >= 0; i--) {
     const parts = messages[i].parts;
     for (let j = parts.length - 1; j >= 0; j--) {
-      const part = parts[j];
-      if (!("output" in part) || !part.output) continue;
-      const out =
-        typeof part.output === "string"
-          ? (() => {
-              try {
-                return JSON.parse(part.output);
-              } catch {
-                return null;
-              }
-            })()
-          : part.output;
-      if (!out || typeof out !== "object") continue;
-      if (isChatReview(out)) return { kind: "chat" };
-      if ("execution_id" in out && "status" in out) {
-        const { execution_id, status, graph_id } = out as {
-          execution_id: string;
-          status: string;
-          graph_id?: string;
-        };
-        if (REVIEWABLE_STATUSES.has(status)) {
-          return {
-            kind: "graph",
-            graphExecId: execution_id,
-            graphId: graph_id,
-          };
-        }
+      const out = readToolOutput(parts[j]);
+      if (!out) continue;
+      if (isChatReview(out)) {
+        newest ??= "chat";
+        continue;
       }
+      if (!("execution_id" in out && "status" in out)) continue;
+      const { execution_id, status, graph_id } = out as {
+        execution_id: string;
+        status: string;
+        graph_id?: string;
+      };
+      if (!REVIEWABLE_STATUSES.has(status)) continue;
+      if ((status === "REVIEW" || newest === null) && !runs.has(execution_id)) {
+        runs.set(execution_id, {
+          graphExecId: execution_id,
+          graphId: graph_id,
+        });
+      }
+      newest ??= "run";
     }
   }
-  return null;
+  return { chat: newest === "chat", runs: [...runs.values()] };
+}
+
+function readToolOutput(part: MessagePart): object | null {
+  if (!("output" in part) || !part.output) return null;
+  if (typeof part.output !== "string") {
+    return typeof part.output === "object" ? part.output : null;
+  }
+  try {
+    const parsed: unknown = JSON.parse(part.output);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 // A block review, or an action the auto-mode gate parked for approval.

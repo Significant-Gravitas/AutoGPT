@@ -8,7 +8,6 @@ from backend.data.model import UserOnboarding
 from backend.data.onboarding import (
     UserOnboardingUpdate,
     get_user_onboarding,
-    reset_user_onboarding,
     update_user_onboarding,
 )
 from backend.util.json import SafeJson
@@ -120,7 +119,12 @@ async def test_saving_draft_scopes_user_and_never_completes_or_rewards(
     assert len(calls) == 1
     draft_transaction.useronboarding.update_many.assert_awaited_once_with(
         where={"userId": "authenticated-user", "wizardRevision": 3},
-        data={"wizardProgress": SafeJson(payload), "wizardRevision": {"increment": 1}},
+        data={
+            "wizardProgress": SafeJson(payload),
+            "role": "Other",
+            "roleOther": "Founder",
+            "wizardRevision": {"increment": 1},
+        },
     )
     draft_transaction.useronboarding.find_unique_or_raise.assert_awaited_once_with(
         where={"userId": "authenticated-user"}
@@ -129,6 +133,43 @@ async def test_saving_draft_scopes_user_and_never_completes_or_rewards(
     credit.assert_not_awaited()
     notify.assert_not_awaited()
     completed.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="function")
+@pytest.mark.parametrize(
+    "changes, role",
+    [
+        ({"role": "Marketing"}, {"role": "Marketing", "roleOther": None}),
+        ({"currentStep": "role"}, {}),
+        ({"currentStep": "autopilot"}, {}),
+        ({"role": ""}, {}),
+    ],
+    ids=["answered", "on-role-step", "back-before-it", "unanswered"],
+)
+async def test_the_answered_role_is_kept_in_the_drafts_own_write(
+    mocker, draft_transaction, changes, role
+):
+    """In the revision-checked write, so a stale draft that loses the race
+    never leaves its role over the newer draft's."""
+    prisma = mocker.patch("backend.data.onboarding.UserOnboarding.prisma")
+    prisma.return_value.upsert = AsyncMock(return_value=Mock(notified=[]))
+    payload = wizard_progress(**changes)
+
+    await update_user_onboarding(
+        "user-one",
+        UserOnboardingUpdate.model_validate(
+            {"wizardProgress": payload, "wizardRevision": 3, "wizardUserId": "user-one"}
+        ),
+    )
+
+    draft_transaction.useronboarding.update_many.assert_awaited_once_with(
+        where={"userId": "user-one", "wizardRevision": 3},
+        data={
+            "wizardProgress": SafeJson(payload),
+            **role,
+            "wizardRevision": {"increment": 1},
+        },
+    )
 
 
 @pytest.mark.asyncio(loop_scope="function")
@@ -155,19 +196,6 @@ async def test_reading_draft_scopes_each_authenticated_user(mocker):
 
 
 @pytest.mark.asyncio(loop_scope="function")
-async def test_reset_clears_only_the_authenticated_users_draft(mocker):
-    prisma = mocker.patch("backend.data.onboarding.UserOnboarding.prisma")
-    prisma.return_value.upsert = AsyncMock()
-
-    await reset_user_onboarding("authenticated-user")
-
-    call = prisma.return_value.upsert.call_args
-    assert call.kwargs["where"] == {"userId": "authenticated-user"}
-    assert call.kwargs["data"]["update"]["wizardProgress"] is None
-    assert call.kwargs["data"]["update"]["wizardRevision"] == {"increment": 1}
-
-
-@pytest.mark.asyncio(loop_scope="function")
 async def test_unrelated_update_does_not_overwrite_draft(mocker):
     prisma = mocker.patch("backend.data.onboarding.UserOnboarding.prisma")
     prisma.return_value.upsert = AsyncMock(return_value=Mock(notified=[]))
@@ -176,24 +204,6 @@ async def test_unrelated_update_does_not_overwrite_draft(mocker):
 
     assert prisma.return_value.upsert.call_args.kwargs["data"]["update"] == {
         "walletShown": True
-    }
-
-
-@pytest.mark.asyncio(loop_scope="function")
-async def test_explicit_null_clears_draft(mocker, draft_transaction):
-    prisma = mocker.patch("backend.data.onboarding.UserOnboarding.prisma")
-    prisma.return_value.upsert = AsyncMock(return_value=Mock(notified=[]))
-
-    await update_user_onboarding(
-        "user-one",
-        UserOnboardingUpdate.model_validate(
-            {"wizardProgress": None, "wizardRevision": 0, "wizardUserId": "user-one"}
-        ),
-    )
-
-    assert draft_transaction.useronboarding.update_many.call_args.kwargs["data"] == {
-        "wizardProgress": None,
-        "wizardRevision": {"increment": 1},
     }
 
 

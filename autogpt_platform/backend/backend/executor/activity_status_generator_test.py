@@ -471,10 +471,6 @@ class TestGenerateActivityStatusForExecution:
                 "backend.executor.activity_status_generator.get_openai_client",
                 return_value=client,
             ),
-            patch(
-                "backend.executor.activity_status_generator.is_feature_enabled",
-                return_value=True,
-            ),
         ):
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
 
@@ -535,10 +531,6 @@ class TestGenerateActivityStatusForExecution:
             patch(
                 "backend.executor.activity_status_generator.get_openai_client",
                 return_value=client,
-            ),
-            patch(
-                "backend.executor.activity_status_generator.is_feature_enabled",
-                return_value=True,
             ),
             patch(
                 "backend.executor.activity_status_generator.schedule_platform_cost_log"
@@ -617,10 +609,6 @@ class TestGenerateActivityStatusForExecution:
                 return_value=client,
             ),
             patch(
-                "backend.executor.activity_status_generator.is_feature_enabled",
-                return_value=True,
-            ),
-            patch(
                 "backend.executor.activity_status_generator.schedule_platform_cost_log"
             ) as mock_schedule_log,
         ):
@@ -669,10 +657,6 @@ class TestGenerateActivityStatusForExecution:
             patch(
                 "backend.executor.activity_status_generator.get_openai_client",
                 return_value=client,
-            ),
-            patch(
-                "backend.executor.activity_status_generator.is_feature_enabled",
-                return_value=True,
             ),
             patch(
                 "backend.executor.activity_status_generator.schedule_platform_cost_log"
@@ -731,10 +715,6 @@ class TestGenerateActivityStatusForExecution:
                 "backend.executor.activity_status_generator.get_openai_client",
                 return_value=client,
             ),
-            patch(
-                "backend.executor.activity_status_generator.is_feature_enabled",
-                return_value=True,
-            ),
         ):
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
 
@@ -782,10 +762,6 @@ class TestGenerateActivityStatusForExecution:
             patch(
                 "backend.executor.activity_status_generator.get_openai_client",
                 return_value=client,
-            ),
-            patch(
-                "backend.executor.activity_status_generator.is_feature_enabled",
-                return_value=True,
             ),
             patch(
                 "backend.executor.activity_status_generator.schedule_platform_cost_log"
@@ -853,10 +829,6 @@ class TestGenerateActivityStatusForExecution:
                 "backend.executor.activity_status_generator.get_openai_client",
                 return_value=client,
             ),
-            patch(
-                "backend.executor.activity_status_generator.is_feature_enabled",
-                return_value=True,
-            ),
         ):
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
 
@@ -874,27 +846,6 @@ class TestGenerateActivityStatusForExecution:
             assert create_mock.await_count == 2
 
     @pytest.mark.asyncio
-    async def test_generate_status_feature_disabled(self, mock_execution_stats):
-        """Test activity status generation when feature is disabled."""
-        mock_db_client = AsyncMock()
-
-        with patch(
-            "backend.executor.activity_status_generator.is_feature_enabled",
-            return_value=False,
-        ):
-            result = await generate_activity_status_for_execution(
-                graph_exec_id="test_exec",
-                graph_id="test_graph",
-                graph_version=1,
-                execution_stats=mock_execution_stats,
-                db_client=mock_db_client,
-                user_id="test_user",
-            )
-
-            assert result is None
-            mock_db_client.get_node_executions.assert_not_called()
-
-    @pytest.mark.asyncio
     async def test_generate_status_no_openrouter_key(self, mock_execution_stats):
         """Test activity status generation when no OpenRouter key is configured.
 
@@ -907,10 +858,6 @@ class TestGenerateActivityStatusForExecution:
             patch(
                 "backend.executor.activity_status_generator.get_openai_client",
                 return_value=None,
-            ),
-            patch(
-                "backend.executor.activity_status_generator.is_feature_enabled",
-                return_value=True,
             ),
         ):
             result = await generate_activity_status_for_execution(
@@ -938,10 +885,6 @@ class TestGenerateActivityStatusForExecution:
             patch(
                 "backend.executor.activity_status_generator.get_openai_client",
                 return_value=client,
-            ),
-            patch(
-                "backend.executor.activity_status_generator.is_feature_enabled",
-                return_value=True,
             ),
         ):
             result = await generate_activity_status_for_execution(
@@ -983,10 +926,6 @@ class TestGenerateActivityStatusForExecution:
             patch(
                 "backend.executor.activity_status_generator.get_openai_client",
                 return_value=client,
-            ),
-            patch(
-                "backend.executor.activity_status_generator.is_feature_enabled",
-                return_value=True,
             ),
         ):
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
@@ -1047,10 +986,6 @@ class TestIntegration:
                 "backend.executor.activity_status_generator.get_openai_client",
                 return_value=client,
             ),
-            patch(
-                "backend.executor.activity_status_generator.is_feature_enabled",
-                return_value=True,
-            ),
         ):
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
 
@@ -1067,34 +1002,6 @@ class TestIntegration:
             assert result["activity_status"] == expected_activity
             assert result["correctness_score"] == 0.3
             create_mock.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_manager_integration_with_disabled_feature(
-        self, mock_execution_stats
-    ):
-        """Test that when feature returns None, manager doesn't set activity_status."""
-        mock_db_client = AsyncMock()
-
-        with patch(
-            "backend.executor.activity_status_generator.is_feature_enabled",
-            return_value=False,
-        ):
-            result = await generate_activity_status_for_execution(
-                graph_exec_id="test_exec",
-                graph_id="test_graph",
-                graph_version=1,
-                execution_stats=mock_execution_stats,
-                db_client=mock_db_client,
-                user_id="test_user",
-            )
-
-            # Should return None when disabled
-            assert result is None
-
-            # Verify no database calls were made
-            mock_db_client.get_node_executions.assert_not_called()
-            mock_db_client.get_graph_metadata.assert_not_called()
-            mock_db_client.get_graph.assert_not_called()
 
 
 class TestDeterministicFailureResponse:
@@ -1170,7 +1077,6 @@ class TestDeterministicFailureResponse:
                 db_client=mock_db_client,
                 user_id="test_user",
                 execution_status=ExecutionStatus.FAILED,
-                skip_feature_flag=True,
             )
 
         assert result is None
@@ -1196,7 +1102,6 @@ class TestDeterministicFailureResponse:
                 db_client=mock_db_client,
                 user_id="test_user",
                 execution_status=ExecutionStatus.FAILED,
-                skip_feature_flag=True,
             )
 
         assert result is not None
@@ -1235,7 +1140,6 @@ class TestDeterministicFailureResponse:
                 execution_stats=stats,
                 db_client=mock_db_client,
                 user_id="test_user",
-                skip_feature_flag=True,
                 skip_existing=skip_existing,
             )
 

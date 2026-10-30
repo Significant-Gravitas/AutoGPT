@@ -6,8 +6,12 @@ from collections.abc import Mapping
 from typing import Any
 
 from backend.api.features.library import model as library_model
+from backend.api.features.library.exceptions import (
+    LibraryAgentInAnotherOrganizationError,
+)
 from backend.copilot.context import is_unattended_turn
 from backend.copilot.credential_selection import (
+    host_selection_key,
     selected_credentials,
     turn_credential_pins,
 )
@@ -239,6 +243,8 @@ def _extract_credential_type_from_schema(cred_schema: dict[str, Any]) -> str:
 async def get_or_create_library_agent(
     graph: GraphModel,
     user_id: str,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> library_model.LibraryAgent:
     """
     Get existing library agent or create new one.
@@ -248,6 +254,9 @@ async def get_or_create_library_agent(
     Args:
         graph: The Graph to add to library
         user_id: The user's ID
+        organization_id, team_id: Tenancy for a new entry; None means the
+            user's default team. An existing entry in another organization
+            raises LibraryAgentInAnotherOrganizationError.
 
     Returns:
         LibraryAgent instance
@@ -256,12 +265,23 @@ async def get_or_create_library_agent(
         graph_id=graph.id, user_id=user_id
     )
     if existing:
+        # Unique per user and graph, so another organization's entry can be
+        # neither reused here nor joined by a second one.
+        if organization_id is not None and existing.organization_id not in (
+            None,
+            organization_id,
+        ):
+            raise LibraryAgentInAnotherOrganizationError(
+                "This agent is already in your library in another organization"
+            )
         return existing
 
     library_agents = await library_db().create_library_agent(
         graph=graph,
         user_id=user_id,
         create_library_agents_for_sub_graphs=False,
+        organization_id=organization_id,
+        team_id=team_id,
     )
     assert len(library_agents) == 1, "Expected 1 library agent to be created"
     return library_agents[0]
@@ -272,6 +292,7 @@ async def match_credentials_to_requirements(
     requirements: dict[str, CredentialsFieldInfo],
     expert_id: str | None = None,
     session_id: str | None = None,
+    optional_fields: set[str] | frozenset[str] = frozenset(),
 ) -> tuple[dict[str, CredentialsMetaInput], list[CredentialsMetaInput]]:
     """
     Match user's credentials against a dictionary of credential requirements.
@@ -279,6 +300,9 @@ async def match_credentials_to_requirements(
     This is the core matching logic shared by both graph and block credential matching.
     With a ``session_id`` the match is a chat tool's: the credential the user
     picked in that chat is used, and a choice between several is left to them.
+    A field in ``optional_fields`` that no credential fits is left out rather
+    than reported missing, unless the running turn's schedule pinned its
+    account: running without it is the switch the pin exists to prevent.
     """
     matched: dict[str, CredentialsMetaInput] = {}
     missing: list[CredentialsMetaInput] = []
@@ -315,6 +339,12 @@ async def match_credentials_to_requirements(
                         title=f"{field_name} (validation failed: {e})",
                     )
                 )
+        elif (
+            field_name in optional_fields
+            and not _pinned_for(field_info)
+            and not any(_credential_fits(c, field_info) for c in available_creds)
+        ):
+            continue
         else:
             provider = next(iter(field_info.provider), "unknown")
             cred_type = next(iter(field_info.supported_types), "api_key")
@@ -384,6 +414,20 @@ def keep_to_pins(available: list[Credentials]) -> list[Credentials]:
     ]
 
 
+def _pinned_for(field_info: CredentialsFieldInfo) -> bool:
+    """Whether the schedule chose an account for this field."""
+    pins = turn_credential_pins()
+    if field_info.supported_types == {"host_scoped"}:
+        return any(
+            _selection_key(p.lower(), field_info) in pins for p in field_info.provider
+        )
+    return any(
+        str(getattr(p, "value", p)) in pins
+        for p in field_info.provider
+        if p != ProviderName.MCP
+    )
+
+
 def is_per_target_credential(cred: Credentials) -> bool:
     """One credential per host or MCP server, rather than one per account."""
     return cred.type == "host_scoped" or cred.provider == ProviderName.MCP
@@ -410,7 +454,7 @@ def find_matching_credential(
     """Find a credential that matches the required provider, type, scopes, host,
     and — for MCP OAuth credentials — the server URL.
 
-    ``selected`` maps a provider to the credential the user picked for it; a
+    ``selected`` maps a provider or provider:host to the credential picked; a
     pick that fits always wins. ``ask_when_ambiguous`` is for a caller that can
     ask: when several of the user's own credentials fit and none was picked, it
     gets ``None``, which surfaces as a setup card where the user chooses. Taking
@@ -419,8 +463,16 @@ def find_matching_credential(
     fits = [c for c in available_creds if _credential_fits(c, field_info)]
     if selected:
         for cred in fits:
-            if selected.get(_provider_slug(cred)) == cred.id:
+            provider = _provider_slug(cred)
+            key = (
+                _selection_key(provider, field_info)
+                if cred.type == "host_scoped"
+                else provider
+            )
+            if selected.get(key, selected.get(provider)) == cred.id:
                 return cred
+    if field_info.supported_types == {"host_scoped"} and _pinned_for(field_info):
+        return None
     own = [c for c in fits if not is_system_credential(c.id)]
     if not ask_when_ambiguous:
         if len(own) > 1 and is_unattended_turn():
@@ -441,6 +493,15 @@ def find_matching_credential(
 def _provider_slug(cred: Credentials) -> str:
     # ProviderName is a str-Enum: str() would render "ProviderName.X".
     return str(getattr(cred.provider, "value", cred.provider))
+
+
+def _selection_key(provider: str, field_info: CredentialsFieldInfo) -> str:
+    keys = {
+        host_selection_key(provider, url)
+        for url in field_info.discriminator_values
+        if isinstance(url, str)
+    }
+    return next(iter(keys)) if len(keys) == 1 else provider
 
 
 def _credential_fits(cred: Credentials, field_info: CredentialsFieldInfo) -> bool:

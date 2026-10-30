@@ -12,6 +12,8 @@ import {
 } from "@hugeicons/core-free-icons";
 import { Play, Plus } from "lucide-react";
 import { TooltipProvider } from "../Tooltip/BaseTooltip";
+import { Icon } from "../Icon/Icon";
+import { Text } from "../Text/Text";
 import { Button } from "./Button";
 
 const meta: Meta<typeof Button> = {
@@ -268,7 +270,117 @@ export const AllVariants: Story = {
   render: renderAllVariants,
 };
 
+// Every variant at every size, at rest, disabled and loading.
+export const VariantMatrix: Story = {
+  render: renderVariantMatrix,
+};
+
+// The rounded-md family for dialogs, forms and toggle rows that keep the
+// pre-pill look; what the legacy-* variants became.
+export const CompactVariants: Story = {
+  render: renderCompactVariants,
+};
+
 // Render functions as function declarations
+const COMPACT_VARIANTS = [
+  "compact-primary",
+  "compact-destructive",
+  "compact-outline",
+  "compact-ghost",
+] as const;
+
+const COMPACT_SIZES = [
+  "compact",
+  "compact-sm",
+  "compact-icon",
+  "compact-icon-sm",
+] as const;
+
+function renderCompactVariants() {
+  return (
+    <div className="space-y-6 p-8">
+      {COMPACT_VARIANTS.map((variant) => (
+        <div key={variant} className="space-y-2">
+          <Text variant="small-medium" tone="muted">
+            {variant}
+          </Text>
+          <div className="flex flex-wrap items-center gap-3">
+            {COMPACT_SIZES.map((size) => (
+              <Button key={size} variant={variant} size={size}>
+                {size.startsWith("compact-icon") ? (
+                  <Icon icon={PlusSignIcon} size={16} />
+                ) : (
+                  size
+                )}
+              </Button>
+            ))}
+            <Button variant={variant} size="compact" disabled>
+              Disabled
+            </Button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const MATRIX_VARIANTS = [
+  "primary",
+  "secondary",
+  "destructive",
+  "outline",
+  "ghost",
+  "icon",
+  "toggle",
+  "floating",
+  "link",
+] as const;
+
+const MATRIX_SIZES = [
+  "small",
+  "large",
+  "icon",
+  "xs",
+  "icon-xs",
+  "icon-sm",
+] as const;
+
+function renderVariantMatrix() {
+  return (
+    <div className="space-y-6 p-8">
+      {MATRIX_VARIANTS.map((variant) => (
+        <div key={variant} className="space-y-2">
+          <Text variant="small-medium" tone="muted">
+            {variant}
+          </Text>
+          <div className="flex flex-wrap items-center gap-3">
+            {MATRIX_SIZES.map((size) => (
+              <Button
+                key={size}
+                variant={variant}
+                size={size}
+                leadingIcon={PlusSignIcon}
+                aria-label={`${variant} ${size}`}
+              >
+                {size.startsWith("icon") ? null : size}
+              </Button>
+            ))}
+            <Button variant={variant} disabled>
+              Disabled
+            </Button>
+            <Button variant={variant} loading>
+              Loading
+            </Button>
+            <Button variant={variant} aria-pressed>
+              Pressed
+            </Button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function renderActionButtons() {
   return (
     <div className="space-y-6">
@@ -303,7 +415,7 @@ function renderActionButtons() {
           variant="ghost"
           size="xs"
           leadingIcon={FilterHorizontalIcon}
-          className="text-zinc-600"
+          className="text-foreground-secondary"
         >
           All work
         </Button>
@@ -386,11 +498,11 @@ function renderToggleButtons() {
         variant="toggle"
         size="xs"
         aria-pressed
-        className="border-zinc-200 bg-white aria-pressed:border-amber-200 aria-pressed:bg-amber-100 aria-pressed:text-amber-700"
+        className="border-border-base bg-surface aria-pressed:border-warning-border aria-pressed:bg-warning-surface aria-pressed:text-warning-foreground"
       >
         Needs review (3)
       </Button>
-      <div className="flex h-7 items-center rounded-md border border-zinc-200 p-0.5">
+      <div className="flex h-7 items-center rounded-md border border-border-base p-0.5">
         <Button
           variant="toggle"
           size="icon-xs"
@@ -416,7 +528,7 @@ function renderContextualLoadingExamples() {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="mb-4 text-base font-medium text-neutral-900">
+        <h3 className="mb-4 text-base font-medium text-foreground-strong">
           ✅ Good Examples - Contextual Loading Text
         </h3>
         <div className="flex flex-wrap gap-4">
@@ -448,7 +560,7 @@ function renderContextualLoadingExamples() {
       </div>
 
       <div>
-        <h3 className="mb-4 text-base font-medium text-red-600">
+        <h3 className="mb-4 text-base font-medium text-error-foreground">
           ❌ Avoid - Generic Loading Text
         </h3>
         <div className="flex flex-wrap gap-4">
@@ -462,7 +574,7 @@ function renderContextualLoadingExamples() {
             Working...
           </Button>
         </div>
-        <p className="mt-2 text-sm text-neutral-600">
+        <p className="mt-2 text-sm text-foreground-secondary">
           These examples are disabled to show what NOT to do. Use specific
           action-based text instead.
         </p>
@@ -542,13 +654,13 @@ function renderAllVariants() {
     <div className="space-y-12 p-8">
       {/* Large buttons section */}
       <div className="space-y-8">
-        <h2 className="text-3xl font-semibold text-neutral-900">
+        <h2 className="text-3xl font-semibold text-foreground-strong">
           Large buttons
         </h2>
         <div className="flex flex-wrap gap-20">
           {/* Primary */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+            <div className="font-['Geist'] text-base font-medium text-foreground-strong">
               Primary
             </div>
             <div className="flex flex-col gap-8">
@@ -573,7 +685,7 @@ function renderAllVariants() {
 
           {/* Secondary */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+            <div className="font-['Geist'] text-base font-medium text-foreground-strong">
               Secondary
             </div>
             <div className="flex flex-col gap-8">
@@ -598,7 +710,7 @@ function renderAllVariants() {
 
           {/* Destructive */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+            <div className="font-['Geist'] text-base font-medium text-foreground-strong">
               Destructive
             </div>
             <div className="flex flex-col gap-8">
@@ -623,7 +735,7 @@ function renderAllVariants() {
 
           {/* Outline */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+            <div className="font-['Geist'] text-base font-medium text-foreground-strong">
               Outline
             </div>
             <div className="flex flex-col gap-8">
@@ -648,7 +760,7 @@ function renderAllVariants() {
 
           {/* Ghost */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+            <div className="font-['Geist'] text-base font-medium text-foreground-strong">
               Save
             </div>
             <div className="flex flex-col gap-8">
@@ -675,13 +787,13 @@ function renderAllVariants() {
 
       {/* Small buttons section */}
       <div className="space-y-8">
-        <h2 className="text-3xl font-semibold text-neutral-900">
+        <h2 className="text-3xl font-semibold text-foreground-strong">
           Small buttons
         </h2>
         <div className="flex flex-wrap gap-20">
           {/* Primary Small */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+            <div className="font-['Geist'] text-base font-medium text-foreground-strong">
               Primary
             </div>
             <div className="flex flex-col gap-8">
@@ -706,7 +818,7 @@ function renderAllVariants() {
 
           {/* Secondary Small */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+            <div className="font-['Geist'] text-base font-medium text-foreground-strong">
               Secondary
             </div>
             <div className="flex flex-col gap-8">
@@ -731,7 +843,7 @@ function renderAllVariants() {
 
           {/* Destructive Small */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+            <div className="font-['Geist'] text-base font-medium text-foreground-strong">
               Destructive
             </div>
             <div className="flex flex-col gap-8">
@@ -756,7 +868,7 @@ function renderAllVariants() {
 
           {/* Outline Small */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+            <div className="font-['Geist'] text-base font-medium text-foreground-strong">
               Outline
             </div>
             <div className="flex flex-col gap-8">
@@ -781,7 +893,7 @@ function renderAllVariants() {
 
           {/* Ghost Small */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+            <div className="font-['Geist'] text-base font-medium text-foreground-strong">
               Ghost
             </div>
             <div className="flex flex-col gap-8">
@@ -808,19 +920,19 @@ function renderAllVariants() {
 
       {/* Other button types */}
       <div className="space-y-8">
-        <h2 className="text-3xl font-semibold text-neutral-900">
+        <h2 className="text-3xl font-semibold text-foreground-strong">
           Other button types
         </h2>
         <div className="flex gap-20">
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-zinc-800">
+            <div className="font-['Geist'] text-base font-medium text-foreground-emphasis">
               Icon
             </div>
             <div className="flex flex-col gap-8">
               <Button variant="icon" size="icon">
                 <Plus className="h-4 w-4" />
               </Button>
-              <Button variant="primary" size="icon" className="bg-zinc-700">
+              <Button variant="primary" size="icon" className="bg-action">
                 <Plus className="h-4 w-4" />
               </Button>
               <Button variant="icon" size="icon" disabled>
@@ -829,7 +941,7 @@ function renderAllVariants() {
             </div>
           </div>
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-zinc-800">
+            <div className="font-['Geist'] text-base font-medium text-foreground-emphasis">
               Link
             </div>
             <div className="flex flex-col gap-8">

@@ -7,8 +7,11 @@ resolution, the CLI environment, retries, resume and every cost decision run
 as in production.
 """
 
+import base64
+import json
 import shutil
 import uuid
+from collections.abc import AsyncGenerator
 from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
@@ -19,13 +22,16 @@ from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from openai import AsyncOpenAI
 from pydantic import SecretStr
 
+from backend.copilot.budget_gate import AutoContinueGate
 from backend.copilot.config import ChatConfig
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk import env as sdk_env
 from backend.copilot.sdk import openrouter_cost
 from backend.copilot.sdk import service as sdk_service
+from backend.copilot.sdk.governor import TurnGovernor
 from backend.copilot.transcript import TranscriptDownload
 from backend.copilot.tree import root_envelope
+from backend.copilot.turn_budget import TurnBudget
 from backend.data.llm_registry.llm_models import LLMModel
 from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.auth_bundle import CodexAuthBundleV1, CodexAuthTokensV1
@@ -57,18 +63,27 @@ class SdkTurns:
         self._config = config
         self._transcripts: dict[str, TranscriptDownload] = {}
         self._lease = _codex_lease(provider) if codex else None
-        # The CLI session each launch resumed, None for a fresh one.
-        self.resumed: list[str | None] = []
+        # The turn of each launch, and the CLI session it resumed (None for a
+        # fresh one).
+        self.resumed: list[tuple[int, str | None]] = []
+        self._governors: list[tuple[int, TurnGovernor]] = []
+        self._turn = -1
         # The CLI inherits these, and the platform reads the CLI's session
         # files from the same place.
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(self._config_dir))
-        # Where a direct-Anthropic CLI sends its requests; the key is never
-        # checked. OpenRouter and Codex turns override both.
+        # Where a direct-Anthropic CLI sends its requests, which that route
+        # carries over from this process; the key is never checked.
+        # OpenRouter and Codex turns override both.
         monkeypatch.setenv("ANTHROPIC_BASE_URL", f"{provider.url}/anthropic")
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-billing-e2e")
-        if cli_max_retries is not None:
-            monkeypatch.setenv("CLAUDE_CODE_MAX_RETRIES", str(cli_max_retries))
+        # The CLI keeps nothing else of this process's environment, so a
+        # setting for it goes in the launch's own.
+        self._cli_env = (
+            {"CLAUDE_CODE_MAX_RETRIES": str(cli_max_retries)}
+            if cli_max_retries is not None
+            else {}
+        )
         monkeypatch.setattr(sdk_env, "config", config)
         monkeypatch.setattr(
             openrouter_cost,
@@ -79,6 +94,7 @@ class SdkTurns:
     async def __call__(
         self, session: ChatSession, prompt: str, *, new_pod: bool
     ) -> None:
+        self._turn += 1
         if new_pod:
             # Only what the turn uploaded survives a move to another pod.
             shutil.rmtree(self._config_dir / "projects", ignore_errors=True)
@@ -98,16 +114,26 @@ class SdkTurns:
             ):
                 pass
 
+    @property
+    def metered(self) -> dict[int, float]:
+        """The live spend each turn's governor reached, which it lands on."""
+        totals: dict[int, float] = {}
+        for turn, governor in self._governors:
+            totals[turn] = totals.get(turn, 0.0) + governor.meter.spent_usd
+        return totals
+
     def _stubs(self, session: ChatSession) -> dict[str, Any]:
         return {
             "config": self._config,
             "ClaudeSDKClient": MagicMock(side_effect=self._client),
+            "TurnGovernor": MagicMock(side_effect=self._governor),
             "AsyncClusterLock": MagicMock(side_effect=_lock),
             "_make_sdk_cwd": MagicMock(return_value=str(self._cwd)),
             "get_chat_session": AsyncMock(return_value=session),
             "upsert_chat_session": AsyncMock(return_value=session),
             "download_transcript": AsyncMock(side_effect=self._download),
             "upload_transcript": AsyncMock(side_effect=self._upload),
+            "delete_transcript": AsyncMock(side_effect=self._delete),
             "compact_transcript": AsyncMock(return_value=None),
             "get_redis_async": AsyncMock(),
             "propagate_attributes": MagicMock(),
@@ -123,25 +149,38 @@ class SdkTurns:
             "get_copilot_tool_names": MagicMock(return_value=[]),
             "get_sdk_disallowed_tools": MagicMock(return_value=[]),
             "get_user_tier": AsyncMock(return_value=None),
-            "_resolve_dynamic_max_budget_usd": AsyncMock(return_value=100.0),
+            # Well above any turn here, so the governor never lands one.
+            "resolve_turn_budget": AsyncMock(
+                return_value=TurnBudget(usd=100.0, limiting="task")
+            ),
             "build_turn_budget_block": AsyncMock(return_value=""),
             "drain_pending_safe": AsyncMock(return_value=[]),
             "drain_pending_for_persist": AsyncMock(return_value=[]),
-            "resolve_answered": AsyncMock(return_value=[]),
+            # Nothing is queued mid-turn, so a finished turn simply ends.
+            "gate_auto_continue": AsyncMock(
+                return_value=AutoContinueGate(proceed=True)
+            ),
+            "resolve_answered": _no_answered_cards,
             "clear_pending_question": AsyncMock(),
         }
 
     def _client(
         self, *args: Any, options: ClaudeAgentOptions, **kwargs: Any
     ) -> ClaudeSDKClient:
-        self.resumed.append(options.resume)
+        self.resumed.append((self._turn, options.resume))
         # The copilot's own tools and hooks are not what is under test; the
         # CLI answers the provider's tool call with "no such tool" instead.
         options.mcp_servers = {}
         options.hooks = None
         options.allowed_tools = []
         options.disallowed_tools = []
+        options.env = {**options.env, **self._cli_env}
         return ClaudeSDKClient(*args, options=options, **kwargs)
+
+    def _governor(self, **kwargs: Any) -> TurnGovernor:
+        governor = TurnGovernor(**kwargs)
+        self._governors.append((self._turn, governor))
+        return governor
 
     async def _upload(
         self,
@@ -160,6 +199,9 @@ class SdkTurns:
         self, user_id: str, session_id: str, *_: Any, **__: Any
     ) -> TranscriptDownload | None:
         return self._transcripts.get(session_id)
+
+    async def _delete(self, user_id: str, session_id: str) -> None:
+        self._transcripts.pop(session_id, None)
 
 
 def _lock(*_: Any, owner_id: str = "", **__: Any) -> MagicMock:
@@ -204,7 +246,14 @@ def _codex_lease(provider: FakeProvider) -> CodexCredentialLease:
 
 def _codex_credentials() -> OAuth2Credentials:
     # An unsigned JWT: the platform reads its claims, never its signature.
-    token = "eyJhbGciOiJub25lIn0.eyJleHAiOjk5OTk5OTk5OTksImVtYWlsIjoiYUBiLmMifQ.sig"
+    claims = ({"alg": "none"}, {"exp": 9999999999, "email": "a@b.c"})
+    encoded = [
+        base64.urlsafe_b64encode(json.dumps(part, separators=(",", ":")).encode())
+        .decode()
+        .rstrip("=")
+        for part in claims
+    ]
+    token = ".".join([*encoded, "sig"])
     bundle = CodexAuthBundleV1(
         tokens=CodexAuthTokensV1(
             id_token=SecretStr(token),
@@ -216,3 +265,8 @@ def _codex_credentials() -> OAuth2Credentials:
     return credentials_from_bundle(bundle).model_copy(
         update={"id": CODEX_CREDENTIAL_ID}
     )
+
+
+async def _no_answered_cards(*_: Any, **__: Any) -> AsyncGenerator[Any, None]:
+    return
+    yield

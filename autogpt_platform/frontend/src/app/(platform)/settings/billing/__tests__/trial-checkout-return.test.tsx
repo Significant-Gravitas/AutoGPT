@@ -11,6 +11,12 @@ import {
   trialSubscription,
 } from "./trial-plan-fixtures";
 
+// These cover the hosted billing UI, which self-hosted builds hide.
+vi.mock("@/hooks/useIsBillingEnabled", () => ({
+  useIsBillingEnabled: () => true,
+  useBillingStatus: () => ({ isBillingEnabled: true, isResolved: true }),
+}));
+
 const mockSearchParams = vi.hoisted(() => ({
   current: new URLSearchParams(),
 }));

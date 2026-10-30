@@ -28,6 +28,7 @@ from backend.api.features.experts.models import Expert
 from backend.copilot.active_turns import spawn_limit_message
 from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.context import get_current_permissions
+from backend.copilot.gate import child_autopilot_mode
 from backend.copilot.model import (
     ChatSession,
     child_session_origin,
@@ -182,6 +183,11 @@ class HandoffToExpertTool(BaseTool):
             delegated_by_session_id=session.session_id,
             handed_off_from_expert_id=session.expert_id,
             origin=child_session_origin(session.metadata),
+            # Same cap delegation applies: an Ask-first chat cannot hand its
+            # work to a thread that runs it unsupervised.
+            inherited_autopilot_mode=child_autopilot_mode(
+                session, target.autopilot_mode
+            ),
         )
         outcome, result = await self._queue_task(
             user_id, session, inner.session_id, prompt, context

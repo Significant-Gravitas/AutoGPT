@@ -87,7 +87,6 @@ def _scope_sweep_to(mocker: pytest_mock.MockFixture, user_id: str) -> AsyncMock:
 async def test_admin_grant_survives_opening_billing_and_the_sweep(
     server, mocker: pytest_mock.MockFixture, comped_user_id: str
 ) -> None:
-    mocker.patch("backend.copilot.rate_limit.schedule_posthog_lifecycle_sync")
     mocker.patch(
         "backend.copilot.rate_limit._drift_check_background", new_callable=AsyncMock
     )

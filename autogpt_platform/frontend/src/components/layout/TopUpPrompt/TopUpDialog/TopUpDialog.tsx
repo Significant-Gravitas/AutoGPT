@@ -32,7 +32,10 @@ export function TopUpDialog({
       title={
         isOutOfCredits ? (
           <span className="inline-flex items-center gap-2">
-            <AlertTriangleIcon className="h-[1.125rem] w-[1.125rem] text-orange-600" />
+            <AlertTriangleIcon
+              // oxlint-disable-next-line design-system/no-raw-colors -- orange/yellow hue kept; warning-foreground would be a hue change (deferred visual change)
+              className="h-[1.125rem] w-[1.125rem] text-orange-600"
+            />
             You&apos;re out of automation credits
           </span>
         ) : (
@@ -45,8 +48,8 @@ export function TopUpDialog({
       <Dialog.Content>
         <Text variant="large">
           {isOutOfCredits
-            ? "Top up to keep your agents and experts running. You can also "
-            : "Credits are used to run your agents and experts. You can also "}
+            ? "Top up to keep your workflows and experts running. You can also "
+            : "Credits are used to run your workflows and experts. You can also "}
           <Link href="/settings/billing" className="underline">
             enable auto-refill in billing settings
           </Link>

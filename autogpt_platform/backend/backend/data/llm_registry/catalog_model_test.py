@@ -54,6 +54,10 @@ def test_invalid_model_fields_rejected(field, value):
         CatalogModel(**_model_kwargs(**{field: value}))
 
 
+# A valid base USD pair, so a USD cache price is only refused for its sign.
+_USD_PAIR = {"provider_input_usd_per_1m": 1.0, "provider_output_usd_per_1m": 5.0}
+
+
 @pytest.mark.parametrize(
     "field",
     [
@@ -62,11 +66,34 @@ def test_invalid_model_fields_rejected(field, value):
         "output_credits_per_1m",
         "cache_read_credits_per_1m",
         "cache_creation_credits_per_1m",
+        "provider_input_usd_per_1m",
+        "provider_output_usd_per_1m",
+        "provider_cache_read_usd_per_1m",
+        "provider_cache_creation_usd_per_1m",
     ],
 )
 def test_negative_costs_rejected(field):
     with pytest.raises(pydantic.ValidationError):
-        CatalogModelCost(**{field: -1})
+        CatalogModelCost.model_validate({**_USD_PAIR, field: -1})
+
+
+@pytest.mark.parametrize(
+    "field", ["provider_cache_read_usd_per_1m", "provider_cache_creation_usd_per_1m"]
+)
+def test_usd_cache_price_requires_the_base_usd_pair(field):
+    with pytest.raises(pydantic.ValidationError, match="require"):
+        CatalogModelCost.model_validate({field: 0.1})
+
+
+def test_usd_cache_prices_accepted_alongside_the_base_pair():
+    cost = CatalogModelCost(
+        provider_input_usd_per_1m=1.0,
+        provider_output_usd_per_1m=5.0,
+        provider_cache_read_usd_per_1m=0.1,
+        provider_cache_creation_usd_per_1m=1.25,
+    )
+    assert cost.provider_cache_read_usd_per_1m == 0.1
+    assert cost.provider_cache_creation_usd_per_1m == 1.25
 
 
 def test_routing_shape_accepts_nested_cells():

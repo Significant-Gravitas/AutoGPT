@@ -22,7 +22,7 @@ export function useAddAgentToBuilder() {
     const response = await getV2GetLibraryAgent(agent.id);
 
     if (!response.data) {
-      throw new Error("Failed to get agent details");
+      throw new Error("Failed to get workflow details");
     }
 
     const libraryAgent = response.data as LibraryAgent;

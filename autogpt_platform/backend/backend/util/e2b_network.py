@@ -39,7 +39,7 @@ import hashlib
 import json
 import logging
 import secrets
-from typing import Any, Literal, Optional, TypeVar, cast
+from typing import Any, Awaitable, Callable, Literal, Optional, TypeVar, cast
 
 from e2b import AsyncCommandHandle, AsyncSandbox
 from e2b.sandbox.sandbox_api import (
@@ -53,9 +53,16 @@ from backend.data.redis_client import get_redis_async
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
+# One JSON line per pin: which box, for whom, and which of the user's accounts
+# its requests may be given.  Never a value; the proxy's own audit has the
+# requests themselves.
+audit_logger = logging.getLogger("backend.egress_audit")
 
 _CREDENTIAL_KEY_PREFIX = "e2b:egress:cred:"
 _BOX_KEY_PREFIX = "e2b:egress:box:"
+# The box's provider ceiling, apart from its credential: a pause revokes the
+# credential, and the ceiling must outlive it (see ``recorded_providers``).
+_CEILING_KEY_PREFIX = "e2b:egress:ceiling:"
 # A credential lives as long as a paused box can (E2B's paused-sandbox
 # lifetime); every reconnect replaces it anyway.
 _CREDENTIAL_TTL = 48 * 3600
@@ -78,6 +85,11 @@ class EgressOwner(BaseModel):
     (``swaps``): a block runs a graph someone else may have written, and a
     marketplace agent must not get to act with the GitHub account of whoever
     runs it.
+
+    *providers* is the ceiling on which of the user's providers the box may
+    use (the turn's ``CopilotPermissions``); ``None`` means every one.  It is
+    recorded with the credential, and the backend's swap service refuses a
+    value for any provider outside it.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -85,6 +97,7 @@ class EgressOwner(BaseModel):
     kind: Literal["session", "expert", "block"]
     id: str
     user_id: Optional[str] = None
+    providers: Optional[tuple[str, ...]] = None
 
     @property
     def label(self) -> str:
@@ -146,7 +159,7 @@ async def create_sandbox(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any
         raise
     try:
         await _remember(credential, owner, sandbox_id=sandbox.sandbox_id)
-        await _bind(sandbox.sandbox_id, credential.username)
+        await _bind(sandbox.sandbox_id, credential.username, owner)
     except BaseException:
         # The box is on the meter and its handle is about to be lost: kill
         # it rather than leak it, and take its credential with it.
@@ -160,6 +173,7 @@ async def create_sandbox(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any
         sandbox.sandbox_id,
         owner.label,
     )
+    _audit_pin("created", sandbox.sandbox_id, owner)
     return sandbox
 
 
@@ -169,6 +183,7 @@ async def connect_sandbox(
     owner: EgressOwner,
     *,
     apply_network: bool = True,
+    owner_at_pin: Optional[Callable[[EgressOwner], Awaitable[EgressOwner]]] = None,
     **kwargs: Any,
 ) -> S:
     """Reconnect to a box, re-pinning its egress under a fresh credential.
@@ -191,6 +206,10 @@ async def connect_sandbox(
     if address is None or not apply_network:
         return sandbox
     async with _rotation_lock(sandbox_id):
+        if owner_at_pin is not None:
+            # Decided under the lock, so concurrent pins of one box apply in
+            # the order they were decided: a later one sees every earlier one.
+            owner = await owner_at_pin(owner)
         credential = _mint()
         await _remember(credential, owner, sandbox_id=sandbox_id)
         try:
@@ -209,10 +228,11 @@ async def connect_sandbox(
                         sandbox.pause(), timeout=_KILL_TIMEOUT_SECONDS
                     )
             raise
-        await _bind(sandbox_id, credential.username)
+        await _bind(sandbox_id, credential.username, owner)
     logger.info(
         "[E2B] Reconnected %.12s for %s, egress re-pinned", sandbox_id, owner.label
     )
+    _audit_pin("reconnected", sandbox_id, owner)
     return sandbox
 
 
@@ -237,6 +257,10 @@ async def kill_sandbox(sandbox: AsyncSandbox) -> None:
     since the box may still be running."""
     await sandbox.kill()
     await forget_sandbox(sandbox.sandbox_id)
+    # Nothing will re-pin a killed box; its ceiling would only wait out its TTL.
+    with contextlib.suppress(Exception):
+        redis = await get_redis_async()
+        await redis.delete(_CEILING_KEY_PREFIX + sandbox.sandbox_id)
 
 
 async def forget_sandbox(sandbox_id: str) -> None:
@@ -244,7 +268,8 @@ async def forget_sandbox(sandbox_id: str) -> None:
 
     Nothing will present it again (a resume mints a fresh one), and until its
     TTL it would keep naming this owner to the proxy.  Best effort: a failure
-    here must not fail the pause or kill it follows.
+    here must not fail the pause or kill it follows.  The box's provider
+    ceiling stays: the next re-pin of a paused box keeps it.
     """
     # Not skipped while no proxy is configured: a box pinned before the
     # address was removed still has a credential on record.
@@ -269,6 +294,53 @@ async def credential_record(username: str) -> Optional[dict[str, Any]]:
     if not raw:
         return None
     return json.loads(raw.decode() if isinstance(raw, bytes) else raw)
+
+
+async def recorded_providers(sandbox_id: str) -> Optional[tuple[str, ...]]:
+    """The provider ceiling the box was last pinned with: what a re-pin that
+    has no ceiling of its own to give keeps, so that it never widens one.
+
+    Read from its own key, not the credential record, because a pause revokes
+    the credential and the box's ceiling must survive that.  With the proxy on,
+    every box is pinned when it is created, so a missing record has expired (a
+    box paused longer than its TTL) or cannot be read: either way no provider,
+    the safe side, until the next turn pins the box with its own.
+    """
+    try:
+        redis = await get_redis_async()
+        raw = await redis.get(_CEILING_KEY_PREFIX + sandbox_id)
+    except Exception:
+        logger.warning(
+            "[E2B] Could not read the ceiling of %.12s; keeping none",
+            sandbox_id,
+            exc_info=True,
+        )
+        return ()
+    if not raw:
+        return ()
+    providers = json.loads(raw.decode() if isinstance(raw, bytes) else raw)
+    return None if providers is None else tuple(providers)
+
+
+def _audit_pin(event: str, sandbox_id: str, owner: EgressOwner) -> None:
+    """Record whose credentials a box's requests may be given from now on:
+    the per-box half of the audit trail, the proxy's lines being the
+    per-request half."""
+    audit_logger.info(
+        json.dumps(
+            {
+                "event": event,
+                "sandbox_id": sandbox_id,
+                "owner": owner.label,
+                "user_id": owner.user_id,
+                "swaps": owner.swaps,
+                "providers": (
+                    sorted(owner.providers) if owner.providers is not None else "all"
+                ),
+            },
+            sort_keys=True,
+        )
+    )
 
 
 def _mint() -> ProxyCredential:
@@ -303,6 +375,8 @@ async def _remember(
         "user_id": owner.user_id,
         # Absent or false means the proxy swaps nothing for this box.
         "swaps": owner.swaps,
+        # None: every provider.  Read by the backend, never by the box.
+        "providers": list(owner.providers) if owner.providers is not None else None,
         "sandbox_id": sandbox_id,
         "secret_sha256": secret_digest(credential.secret),
     }
@@ -350,11 +424,16 @@ async def _rotation_lock(sandbox_id: str):
         await lock.release()
 
 
-async def _bind(sandbox_id: str, username: str) -> None:
-    """Make *username* the box's current credential and forget its previous one."""
+async def _bind(sandbox_id: str, username: str, owner: EgressOwner) -> None:
+    """Make *username* the box's current credential and forget its previous
+    one, and record the ceiling it was pinned with."""
     redis = await get_redis_async()
     key = _BOX_KEY_PREFIX + sandbox_id
     previous = await _bound_username(sandbox_id)
     await redis.set(key, username, ex=_CREDENTIAL_TTL)
+    providers = list(owner.providers) if owner.providers is not None else None
+    await redis.set(
+        _CEILING_KEY_PREFIX + sandbox_id, json.dumps(providers), ex=_CREDENTIAL_TTL
+    )
     if previous and previous != username:
         await redis.delete(_CREDENTIAL_KEY_PREFIX + previous)
