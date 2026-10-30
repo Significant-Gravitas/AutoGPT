@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
-import { ExternalLink } from "lucide-react";
+import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Link } from "./Link";
 
 const meta: Meta<typeof Link> = {
@@ -94,7 +95,7 @@ export const WithIcon: Story = {
     href: "https://docs.autogpt.net",
     children: (
       <span className="inline-flex items-center gap-1">
-        Documentation <ExternalLink className="h-3 w-3" />
+        Documentation <Icon icon={LinkSquare01Icon} className="h-3 w-3" />
       </span>
     ),
     isExternal: true,

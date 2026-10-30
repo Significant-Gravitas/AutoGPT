@@ -2,7 +2,8 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { blockMenuButtonBase } from "./style";
 import { cn } from "@/lib/utils";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import React, { ButtonHTMLAttributes } from "react";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -29,10 +30,13 @@ export const SearchHistoryChip: SearchHistoryChipComponent = ({
       )}
       {...rest}
     >
-      <ArrowUpRight
-        className="h-6 w-6 text-foreground-tertiary"
-        strokeWidth={1.25}
-      />
+      <span className="flex text-foreground-tertiary">
+        <Icon
+          icon={ArrowUpRight01Icon}
+          className="h-6 w-6"
+          strokeWidth={1.25}
+        />
+      </span>
       <Text variant="body" as="span" tone="emphasis">
         {content}
       </Text>

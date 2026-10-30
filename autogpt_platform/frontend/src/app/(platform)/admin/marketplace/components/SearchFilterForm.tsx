@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { Button } from "@/components/atoms/Button/Button";
-import { Search } from "lucide-react";
+import { Search01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import {
   Select,
   SelectContent,
@@ -69,7 +70,7 @@ export function SearchAndFilterAdminMarketplace({
         />
         {/* oxlint-disable-next-line design-system/no-legacy-button-variant -- primary/secondary are pills; shape change deferred (plan 5.7 item 2) */}
         <Button variant="legacy-outline" onClick={handleSearch}>
-          <Search className="h-4 w-4" />
+          <Icon icon={Search01Icon} className="h-4 w-4" />
         </Button>
       </div>
 

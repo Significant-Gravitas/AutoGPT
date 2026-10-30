@@ -2,7 +2,11 @@
 
 import { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
-import { CheckCircle, XCircle } from "lucide-react";
+import {
+  CancelCircleIcon,
+  CheckmarkCircle02Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import {
   Dialog,
   DialogContent,
@@ -63,7 +67,7 @@ export function ApproveRejectButtons({
           }}
         >
           <span className="flex items-center gap-1.5 text-success">
-            <CheckCircle className="h-4 w-4" />
+            <Icon icon={CheckmarkCircle02Icon} className="h-4 w-4" />
             Approve
           </span>
         </Button>
@@ -77,7 +81,7 @@ export function ApproveRejectButtons({
         }}
       >
         <span className="flex items-center gap-1.5 text-error-hover">
-          <XCircle className="h-4 w-4" />
+          <Icon icon={CancelCircleIcon} className="h-4 w-4" />
           {isApproved ? "Revoke" : "Reject"}
         </span>
       </Button>

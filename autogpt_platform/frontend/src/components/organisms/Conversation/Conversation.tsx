@@ -3,7 +3,8 @@
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
-import { ArrowDownIcon } from "lucide-react";
+import { ArrowDown02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import type { ButtonHTMLAttributes, ComponentProps } from "react";
 
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
@@ -106,7 +107,7 @@ export const ConversationScrollButton = ({
         variant="compact-outline"
         {...props}
       >
-        <ArrowDownIcon className="size-4" />
+        <Icon icon={ArrowDown02Icon} className="size-4" />
       </Button>
     )
   );

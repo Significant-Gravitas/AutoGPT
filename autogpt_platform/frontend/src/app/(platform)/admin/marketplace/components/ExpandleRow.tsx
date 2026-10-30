@@ -9,7 +9,12 @@ import {
   TableHead,
   TableBody,
 } from "@/components/molecules/Table/components/TablePrimitives";
-import { ChevronDown, ChevronRight, Eye } from "lucide-react";
+import {
+  ArrowDown01Icon,
+  ArrowRight01Icon,
+  EyeIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import type { StoreListingWithVersionsAdminView } from "@/app/api/__generated__/models/storeListingWithVersionsAdminView";
@@ -54,9 +59,9 @@ export function ExpandableRow({
       <TableRow className="cursor-pointer">
         <TableCell onClick={() => setExpanded(!expanded)}>
           {expanded ? (
-            <ChevronDown className="h-4 w-4" />
+            <Icon icon={ArrowDown01Icon} className="h-4 w-4" />
           ) : (
-            <ChevronRight className="h-4 w-4" />
+            <Icon icon={ArrowRight01Icon} className="h-4 w-4" />
           )}
         </TableCell>
         <TableCell onClick={() => setExpanded(!expanded)}>
@@ -88,7 +93,7 @@ export function ExpandableRow({
                   href={`/admin/marketplace/preview/${latestVersion.listing_version_id}`}
                 >
                   <Button size="xs" variant="secondary">
-                    <Eye className="h-4 w-4" />
+                    <Icon icon={EyeIcon} className="h-4 w-4" />
                     Preview
                   </Button>
                 </Link>
@@ -220,7 +225,7 @@ export function ExpandableRow({
                                   href={`/admin/marketplace/preview/${version.listing_version_id}`}
                                 >
                                   <Button size="xs" variant="secondary">
-                                    <Eye className="h-4 w-4" />
+                                    <Icon icon={EyeIcon} className="h-4 w-4" />
                                     Preview
                                   </Button>
                                 </Link>

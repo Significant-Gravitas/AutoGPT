@@ -1,6 +1,7 @@
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { beautifyString, cn } from "@/lib/utils";
-import { Plus } from "lucide-react";
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import Image from "next/image";
 import React, { ButtonHTMLAttributes } from "react";
 import { highlightText } from "./helpers";
@@ -112,10 +113,10 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
       </div>
       <div
         className={cn(
-          "flex h-7 w-7 items-center justify-center rounded-lg bg-foreground-body group-disabled:bg-foreground-subtle",
+          "flex h-7 w-7 items-center justify-center rounded-lg bg-foreground-body text-action-foreground group-disabled:bg-foreground-subtle",
         )}
       >
-        <Plus className="h-5 w-5 text-action-foreground" strokeWidth={2} />
+        <Icon icon={PlusSignIcon} className="h-5 w-5" />
       </div>
     </Button>
   );

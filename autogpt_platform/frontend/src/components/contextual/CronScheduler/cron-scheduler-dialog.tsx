@@ -8,7 +8,8 @@ import { CronScheduler } from "@/components/contextual/CronScheduler/cron-schedu
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { getTimezoneDisplayName } from "@/lib/timezone-utils";
 import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
-import { InfoIcon } from "lucide-react";
+import { InformationCircleIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 // Base type for cron expression only
 type CronOnlyCallback = (cronExpression: string) => void;
@@ -122,7 +123,9 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
           {/* Timezone info */}
           {userTimezone === "not-set" ? (
             <div className="flex items-center gap-2 rounded-md border border-warning-border bg-warning-surface p-3">
-              <InfoIcon className="h-4 w-4 text-warning-foreground" />
+              <span className="flex text-warning-foreground">
+                <Icon icon={InformationCircleIcon} className="h-4 w-4" />
+              </span>
               <Text variant="body-tight" tone="warning-strong">
                 No timezone set. Schedule will run in UTC.
                 <a href="/settings/account" className="ml-1 underline">
@@ -132,7 +135,9 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
             </div>
           ) : (
             <div className="flex items-center gap-2 rounded-md bg-muted/50 p-3">
-              <InfoIcon className="h-4 w-4 text-muted-foreground" />
+              <span className="flex text-muted-foreground">
+                <Icon icon={InformationCircleIcon} className="h-4 w-4" />
+              </span>
               <Text variant="body-tight" tone="muted">
                 Schedule will run in your timezone:{" "}
                 <span className="font-medium">{timezoneDisplay}</span>

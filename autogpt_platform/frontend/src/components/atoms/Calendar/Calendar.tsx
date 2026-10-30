@@ -2,11 +2,12 @@
 
 import * as React from "react";
 import {
-  ChevronDownIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  ChevronUpIcon,
-} from "@radix-ui/react-icons";
+  ArrowDown01Icon,
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
+  ArrowUp01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import {
   CaptionLabel,
   Day,
@@ -126,28 +127,35 @@ function Calendar({
         Chevron: (props) => {
           if (props.orientation === "left") {
             return (
-              <ChevronLeftIcon
+              <Icon
+                icon={ArrowLeft01Icon}
                 data-slot="calendar-chevron"
                 className="h-4 w-4"
               />
             );
           } else if (props.orientation === "right") {
             return (
-              <ChevronRightIcon
+              <Icon
+                icon={ArrowRight01Icon}
                 data-slot="calendar-chevron"
                 className="h-4 w-4"
               />
             );
           } else if (props.orientation === "down") {
             return (
-              <ChevronDownIcon
+              <Icon
+                icon={ArrowDown01Icon}
                 data-slot="calendar-chevron"
                 className="h-4 w-4"
               />
             );
           } else {
             return (
-              <ChevronUpIcon data-slot="calendar-chevron" className="h-4 w-4" />
+              <Icon
+                icon={ArrowUp01Icon}
+                data-slot="calendar-chevron"
+                className="h-4 w-4"
+              />
             );
           }
         },

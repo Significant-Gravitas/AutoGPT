@@ -1,6 +1,5 @@
 import { Text } from "@/components/atoms/Text/Text";
 import type { Meta } from "@storybook/nextjs";
-import { SquareArrowOutUpRight } from "lucide-react";
 import { StoryCode } from "./helpers/StoryCode";
 import {
   Alert01Icon,
@@ -23,6 +22,7 @@ import {
   InstagramIcon,
   Key01Icon,
   LibraryIcon,
+  LinkSquare01Icon,
   Linkedin01Icon,
   Logout03Icon,
   Menu01Icon,
@@ -218,7 +218,10 @@ export function AllVariants() {
                   className="mb-2 inline-flex flex-row items-center gap-1 text-base font-semibold text-blue-600 hover:underline"
                 >
                   Hugeicons Library{" "}
-                  <SquareArrowOutUpRight className="inline-block h-3 w-3" />
+                  <Icon
+                    icon={LinkSquare01Icon}
+                    className="inline-block h-3 w-3"
+                  />
                 </a>
                 <Text variant="body" className="mb-2 text-zinc-600">
                   A comprehensive icon family; we use the stroke-rounded variant

@@ -8,8 +8,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/molecules/Dialog/components/DialogPrimitives";
-// oxlint-disable-next-line design-system/hugeicons-only -- glyph swap is P11's
-import { LuCopy } from "react-icons/lu";
+import { Copy01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Label } from "@/components/atoms/Label/Label";
 import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { Text } from "@/components/atoms/Text/Text";
@@ -143,7 +143,7 @@ export const APIKeysModals = () => {
               variant="compact-outline"
               onClick={handleCopyKey}
             >
-              <LuCopy className="h-4 w-4" />
+              <Icon icon={Copy01Icon} className="h-4 w-4" />
             </Button>
           </div>
           <DialogFooter>

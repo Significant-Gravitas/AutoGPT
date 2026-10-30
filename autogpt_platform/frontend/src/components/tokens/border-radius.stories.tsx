@@ -1,6 +1,7 @@
 import { Text } from "@/components/atoms/Text/Text";
 import type { Meta } from "@storybook/nextjs";
-import { SquareArrowOutUpRight } from "lucide-react";
+import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { StoryCode } from "./helpers/StoryCode";
 
 const meta: Meta = {
@@ -109,7 +110,10 @@ export function AllVariants() {
                   className="mb-2 inline-flex flex-row items-center gap-1 text-base font-semibold text-blue-600 hover:underline"
                 >
                   Border Radius Classes{" "}
-                  <SquareArrowOutUpRight className="inline-block h-3 w-3" />
+                  <Icon
+                    icon={LinkSquare01Icon}
+                    className="inline-block h-3 w-3"
+                  />
                 </a>
                 <Text variant="body" className="mb-2 text-zinc-600">
                   Used to round the corners of elements

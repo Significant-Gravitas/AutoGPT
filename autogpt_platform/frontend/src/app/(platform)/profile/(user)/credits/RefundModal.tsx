@@ -1,6 +1,6 @@
 import { useState } from "react";
-// oxlint-disable-next-line design-system/hugeicons-only -- glyph swap is P11's
-import { AlertCircle } from "lucide-react";
+import { AlertCircleIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 import { CreditTransaction } from "@/lib/autogpt-server-api";
 
@@ -80,7 +80,7 @@ export const RefundModal = ({
           <div className="space-y-4">
             {error && (
               <div className="flex items-center gap-2 rounded-md border border-destructive bg-destructive/10 p-3 text-destructive">
-                <AlertCircle className="h-4 w-4" />
+                <Icon icon={AlertCircleIcon} className="h-4 w-4" />
                 <Text variant="body-tight" tone="inherit">
                   {error}
                 </Text>

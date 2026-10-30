@@ -1,7 +1,4 @@
 {
-  "src/app/(no-navbar)/share/[token]/page.tsx": {
-    "hugeicons-only": 1
-  },
   "src/app/(platform)/PaywallGate/PaywallModal.tsx": {
     "no-restyle": 3
   },
@@ -26,18 +23,6 @@
   "src/app/(platform)/PlatformChrome/components/UsageIndicator/UsageIndicator.tsx": {
     "no-restyle": 1
   },
-  "src/app/(platform)/admin/marketplace/components/ApproveRejectButton.tsx": {
-    "hugeicons-only": 1
-  },
-  "src/app/(platform)/admin/marketplace/components/DownloadAgentButton.tsx": {
-    "hugeicons-only": 1
-  },
-  "src/app/(platform)/admin/marketplace/components/ExpandleRow.tsx": {
-    "hugeicons-only": 1
-  },
-  "src/app/(platform)/admin/marketplace/components/SearchFilterForm.tsx": {
-    "hugeicons-only": 1
-  },
   "src/app/(platform)/auth/auth-code-error/page.tsx": {
     "no-restyle": 1
   },
@@ -49,9 +34,6 @@
   },
   "src/app/(platform)/build/components/BuilderActions/components/AgentOutputs/AgentOutputs.tsx": {
     "no-restyle": 10
-  },
-  "src/app/(platform)/build/components/BuilderActions/components/CronSchedulerDialog/CronSchedulerDialog.tsx": {
-    "hugeicons-only": 1
   },
   "src/app/(platform)/build/components/BuilderActions/components/RunGraph/RunGraph.tsx": {
     "no-restyle": 15
@@ -75,8 +57,7 @@
     "no-restyle": 1
   },
   "src/app/(platform)/build/components/FlowEditor/Flow/components/CustomControl.tsx": {
-    "hugeicons-only": 1,
-    "no-restyle": 6
+    "no-restyle": 1
   },
   "src/app/(platform)/build/components/FlowEditor/Flow/components/TriggerAgentBanner.tsx": {
     "no-restyle": 1
@@ -172,7 +153,6 @@
     "no-restyle": 6
   },
   "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/IntergrationBlock.tsx": {
-    "hugeicons-only": 1,
     "no-restyle": 22
   },
   "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/MarketplaceAgentBlock.tsx": {
@@ -182,7 +162,6 @@
     "no-restyle": 1
   },
   "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/SearchHistoryChip.tsx": {
-    "hugeicons-only": 1,
     "no-restyle": 1
   },
   "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/UGCAgentBlock.tsx": {
@@ -795,31 +774,10 @@
     "no-dark-variant": 9,
     "no-raw-colors": 18
   },
-  "src/components/atoms/Button/Button.stories.tsx": {
-    "hugeicons-only": 1
-  },
   "src/components/atoms/Button/helpers.ts": {
     "no-dark-variant": 13,
     "no-raw-colors": 22,
     "no-unknown-classes": 7
-  },
-  "src/components/atoms/Calendar/Calendar.tsx": {
-    "hugeicons-only": 1
-  },
-  "src/components/atoms/Checkbox/Checkbox.tsx": {
-    "hugeicons-only": 1
-  },
-  "src/components/atoms/DateInput/DateInput.tsx": {
-    "hugeicons-only": 1
-  },
-  "src/components/atoms/DateTimeInput/DateTimeInput.tsx": {
-    "hugeicons-only": 1
-  },
-  "src/components/atoms/Link/Link.stories.tsx": {
-    "hugeicons-only": 1
-  },
-  "src/components/atoms/Select/components/SelectPrimitives.tsx": {
-    "hugeicons-only": 1
   },
   "src/components/atoms/Text/helpers.ts": {
     "no-raw-colors": 1
@@ -828,7 +786,6 @@
     "no-restyle": 1
   },
   "src/components/auth/AuthFeedback.tsx": {
-    "hugeicons-only": 1,
     "no-restyle": 17
   },
   "src/components/auth/AuthSplitLayout/components/FeatureList.tsx": {
@@ -852,9 +809,6 @@
   "src/components/auth/MobileWarningBanner.tsx": {
     "no-restyle": 1
   },
-  "src/components/auth/help-item.tsx": {
-    "hugeicons-only": 1
-  },
   "src/components/contextual/CredentialsInput/components/APIKeyCredentialsModal/APIKeyCredentialsModal.tsx": {
     "no-restyle": 2
   },
@@ -871,7 +825,6 @@
     "no-restyle": 3
   },
   "src/components/contextual/CredentialsInput/components/CredentialsFlatView/CredentialsFlatView.tsx": {
-    "hugeicons-only": 1,
     "no-restyle": 1
   },
   "src/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView.tsx": {
@@ -879,12 +832,6 @@
   },
   "src/components/contextual/CredentialsInput/components/HotScopedCredentialsModal/HotScopedCredentialsModal.tsx": {
     "no-restyle": 3
-  },
-  "src/components/contextual/CredentialsInput/helpers.ts": {
-    "hugeicons-only": 2
-  },
-  "src/components/contextual/CronScheduler/cron-scheduler-dialog.tsx": {
-    "hugeicons-only": 1
   },
   "src/components/contextual/CronScheduler/cron-scheduler.tsx": {
     "no-restyle": 13
@@ -897,9 +844,6 @@
   },
   "src/components/contextual/GoogleDrivePicker/GoogleDrivePicker.tsx": {
     "no-restyle": 1
-  },
-  "src/components/contextual/GoogleDrivePicker/GoogleDrivePickerInput.tsx": {
-    "hugeicons-only": 1
   },
   "src/components/contextual/IntegrationsPanel/IntegrationsPanel.tsx": {
     "no-restyle": 4
@@ -1099,7 +1043,6 @@
     "no-restyle": 1
   },
   "src/components/layout/Navbar/components/Wallet/components/WalletTaskGroups.tsx": {
-    "hugeicons-only": 1,
     "no-inline-styles": 1
   },
   "src/components/layout/Navbar/components/Wallet/components/WalletTrialNote.tsx": {
@@ -1120,51 +1063,12 @@
   "src/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner.tsx": {
     "no-restyle": 2
   },
-  "src/components/layout/TopUpPrompt/TopUpDialog/TopUpDialog.tsx": {
-    "hugeicons-only": 1
-  },
-  "src/components/molecules/Accordion/Accordion.tsx": {
-    "hugeicons-only": 1
-  },
-  "src/components/molecules/Alert/Alert.tsx": {
-    "hugeicons-only": 1
-  },
-  "src/components/molecules/Dialog/components/DialogPrimitives.tsx": {
-    "hugeicons-only": 1
-  },
-  "src/components/molecules/Dialog/components/SheetPrimitives.tsx": {
-    "hugeicons-only": 1
-  },
-  "src/components/molecules/DropdownMenu/DropdownMenu.tsx": {
-    "hugeicons-only": 1
-  },
-  "src/components/molecules/InformationTooltip/InformationTooltip.tsx": {
-    "hugeicons-only": 1
-  },
-  "src/components/molecules/MultiSelect/MultiSelect.tsx": {
-    "hugeicons-only": 1
-  },
-  "src/components/molecules/Sheet/Sheet.tsx": {
-    "hugeicons-only": 1
-  },
-  "src/components/molecules/Table/Table.tsx": {
-    "hugeicons-only": 1
-  },
-  "src/components/organisms/Conversation/Conversation.tsx": {
-    "hugeicons-only": 1
-  },
-  "src/components/organisms/Message/Message.tsx": {
-    "hugeicons-only": 1
-  },
   "src/components/overview.stories.tsx": {
     "no-unknown-classes": 6
   },
   "src/components/renderers/InputRenderer/base/anyof/components/AnyOfFieldTitle.tsx": {
     "no-restyle": 6,
     "require-static-classes": 1
-  },
-  "src/components/renderers/InputRenderer/base/object/OptionalDataControlsTemplate.tsx": {
-    "hugeicons-only": 1
   },
   "src/components/renderers/InputRenderer/base/object/WrapIfAdditionalTemplate.tsx": {
     "no-inline-styles": 2
@@ -1183,7 +1087,6 @@
     "no-restyle": 1
   },
   "src/components/renderers/InputRenderer/base/standard/buttons/IconButton.tsx": {
-    "hugeicons-only": 1,
     "no-restyle": 5,
     "require-static-classes": 1
   },
@@ -1226,17 +1129,8 @@
   "src/components/styles/scrollbars.ts": {
     "no-raw-colors": 1
   },
-  "src/components/tokens/border-radius.stories.tsx": {
-    "hugeicons-only": 1
-  },
   "src/components/tokens/helpers/StoryCode.tsx": {
     "no-raw-colors": 2
-  },
-  "src/components/tokens/icons.stories.tsx": {
-    "hugeicons-only": 1
-  },
-  "src/components/tokens/spacing.stories.tsx": {
-    "hugeicons-only": 1
   },
   "src/components/tokens/typography.stories.tsx": {
     "no-unknown-classes": 1

@@ -2,11 +2,12 @@
 
 import * as React from "react";
 import {
-  CaretSortIcon,
-  CheckIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
-} from "@radix-ui/react-icons";
+  ArrowDown01Icon,
+  ArrowUp01Icon,
+  Tick02Icon,
+  UnfoldMoreIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import * as SelectPrimitive from "@radix-ui/react-select";
 
 import { cn } from "@/lib/utils";
@@ -53,7 +54,11 @@ const SelectTrigger = React.forwardRef<
   >
     {children}
     <SelectPrimitive.Icon asChild>
-      <CaretSortIcon data-slot="select-icon" className="h-4 w-4 opacity-50" />
+      <Icon
+        icon={UnfoldMoreIcon}
+        data-slot="select-icon"
+        className="h-4 w-4 opacity-50"
+      />
     </SelectPrimitive.Icon>
   </SelectPrimitive.Trigger>
 ));
@@ -72,7 +77,7 @@ const SelectScrollUpButton = React.forwardRef<
     )}
     {...props}
   >
-    <ChevronUpIcon data-slot="select-scroll-up-icon" />
+    <Icon icon={ArrowUp01Icon} data-slot="select-scroll-up-icon" size={15} />
   </SelectPrimitive.ScrollUpButton>
 ));
 SelectScrollUpButton.displayName = SelectPrimitive.ScrollUpButton.displayName;
@@ -90,7 +95,11 @@ const SelectScrollDownButton = React.forwardRef<
     )}
     {...props}
   >
-    <ChevronDownIcon data-slot="select-scroll-down-icon" />
+    <Icon
+      icon={ArrowDown01Icon}
+      data-slot="select-scroll-down-icon"
+      size={15}
+    />
   </SelectPrimitive.ScrollDownButton>
 ));
 SelectScrollDownButton.displayName =
@@ -148,7 +157,11 @@ const SelectItem = React.forwardRef<
       className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center"
     >
       <SelectPrimitive.ItemIndicator data-slot="select-item-indicator">
-        <CheckIcon data-slot="select-item-check-icon" className="h-4 w-4" />
+        <Icon
+          icon={Tick02Icon}
+          data-slot="select-item-check-icon"
+          className="h-4 w-4"
+        />
       </SelectPrimitive.ItemIndicator>
     </span>
     <SelectPrimitive.ItemText data-slot="select-item-text">

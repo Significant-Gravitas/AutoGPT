@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import * as SheetPrimitive from "@radix-ui/react-dialog";
-import { Cross2Icon } from "@radix-ui/react-icons";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
@@ -81,7 +82,11 @@ const SheetContent = React.forwardRef<
         data-slot="sheet-close"
         className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-surface transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-focus focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-surface-hover"
       >
-        <Cross2Icon data-slot="sheet-close-icon" className="h-4 w-4" />
+        <Icon
+          icon={Cancel01Icon}
+          data-slot="sheet-close-icon"
+          className="h-4 w-4"
+        />
         <span data-slot="sheet-close-label" className="sr-only">
           Close
         </span>

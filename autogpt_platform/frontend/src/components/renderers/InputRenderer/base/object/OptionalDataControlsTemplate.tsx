@@ -1,6 +1,7 @@
 import { getFieldDomId } from "../../field-accessibility";
 import { OptionalDataControlsTemplateProps } from "@rjsf/utils";
-import { PlusCircle } from "lucide-react";
+import { PlusSignCircleIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 import { IconButton, RemoveButton } from "../standard/buttons";
 
@@ -17,7 +18,7 @@ export default function OptionalDataControlsTemplate(
         className="rjsf-add-optional-data"
         onClick={onAddClick}
         title={label}
-        icon={<PlusCircle />}
+        icon={<Icon icon={PlusSignCircleIcon} size={24} />}
         size="small"
       />
     );

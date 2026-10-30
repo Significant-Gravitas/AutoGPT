@@ -10,7 +10,8 @@ import {
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
-import { Plus, Trash2 } from "lucide-react";
+import { Delete02Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { useTable, RowData } from "./useTable";
 import { formatColumnTitle, formatPlaceholder } from "./helpers";
@@ -119,7 +120,8 @@ export function Table({
                       data-slot="table-delete-row"
                       className="text-foreground-subtle transition-colors hover:text-error"
                     >
-                      <Trash2
+                      <Icon
+                        icon={Delete02Icon}
                         data-slot="table-delete-row-icon"
                         className="h-4 w-4"
                       />
@@ -141,7 +143,8 @@ export function Table({
                     onClick={handleAddRow}
                     data-slot="table-add-row"
                     leftIcon={
-                      <Plus
+                      <Icon
+                        icon={PlusSignIcon}
                         data-slot="table-add-row-icon"
                         className="h-4 w-4"
                       />
