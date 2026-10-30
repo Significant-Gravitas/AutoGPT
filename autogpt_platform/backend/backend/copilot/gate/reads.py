@@ -61,6 +61,8 @@ JUDGED_READS: frozenset[str] = frozenset(
         "browser_navigate",
         "browser_screenshot",
         "delegate_to_expert",
+        # Only the graphs it returns: ``include_graph`` alone reaches the judge.
+        "find_library_agent",
         "get_sub_session_result",
         "read_expert_chat",
         "read_skill",
@@ -97,12 +99,16 @@ _SOURCE_KINDS = {
     "grep": "file",
     "read_file": "file",
     "read_tool_result": "file",
+    "find_library_agent": "workflow",
     "run_agent": "workflow",
     "view_agent_output": "workflow",
     "search_feature_requests": "platform",
     "web_fetch": "web",
     "web_search": "web",
 }
+
+# What a card calls a read no argument names, where the tool's name is not copy.
+_READ_LABELS = {"find_library_agent": "the library search"}
 
 # The SDK engine caps a registry tool's text again after ``BaseTool.execute``
 # returns; it installs that cap here so the judge reads the same text.
@@ -592,8 +598,7 @@ def read_headline(tool_name: str, args: dict[str, Any], actor: str) -> Headline:
     """``actor`` is who reads it: the chat's Expert, or Otto in a plain chat."""
     headline = named(f"Let {actor} read", _SOURCE_KEYS, args)
     if headline.object is None:
-        label = tool_name.replace("_", " ")
-        return Headline(ask=f"Let {actor} read what {label} returned")
+        return Headline(ask=f"Let {actor} read what {_label(tool_name)} returned")
     return headline
 
 
@@ -695,10 +700,10 @@ def _stub(
         reason=reason,
         review_id=review_id,
         # The chain row's words; the card asks from ``read_headline``.
-        ask=(
-            "Read"
-            if named_source
-            else f"Read what {tool_name.replace('_', ' ')} returned"
-        ),
+        ask="Read" if named_source else f"Read what {_label(tool_name)} returned",
         object=named_source or None,
     ).model_dump_json()
+
+
+def _label(tool_name: str) -> str:
+    return _READ_LABELS.get(tool_name, tool_name.replace("_", " "))
