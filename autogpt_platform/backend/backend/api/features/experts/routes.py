@@ -1,4 +1,5 @@
 import logging
+import uuid
 
 import autogpt_libs.auth as autogpt_auth_lib
 import fastapi
@@ -7,7 +8,12 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.api.features.experts import avatar_routes
 from backend.api.features.experts import credentials as expert_credentials
-from backend.api.features.experts import experts_db, onboarding, scheduling
+from backend.api.features.experts import (
+    experts_db,
+    onboarding,
+    raise_routes,
+    scheduling,
+)
 from backend.api.features.experts import setup as expert_setup
 from backend.api.features.experts.errors import ExpertScheduleCleanupError
 from backend.api.features.experts.models import (
@@ -61,6 +67,7 @@ router = APIRouter(
 
 router.include_router(avatar_routes.router)
 router.include_router(onboarding.router)
+router.include_router(raise_routes.router)
 
 # Templates are marketplace content: the expert page shows them to signed-out
 # visitors, so they live on a router without the session requirement. It must
@@ -110,6 +117,9 @@ class AssignPodRequest(BaseModel):
 
 
 class CreateRaisedExpertRequest(BaseModel):
+    # Chosen by the client so it can open the expert's page before the row
+    # exists; a retry with the same id returns the first attempt's expert.
+    id: uuid.UUID | None = None
     name: str = Field(min_length=1, max_length=100)
     role: str | None = Field(default=None, max_length=100)
     job_title: str | None = Field(default=None, max_length=100)
@@ -212,7 +222,7 @@ async def hire_expert(
     operation_id="create_raised_expert",
     responses={
         404: {"description": "Attachment not found or unavailable"},
-        409: {"description": "Active expert limit reached"},
+        409: {"description": "Active expert limit reached, or the id is taken"},
     },
 )
 async def create_raised_expert(
@@ -231,7 +241,12 @@ async def create_raised_expert(
             about=request.about,
             weekly_budget=request.weekly_budget,
             attachments=request.attachments,
+            expert_id=str(request.id) if request.id else None,
         )
+    except experts_db.ExpertIdTakenError as e:
+        raise fastapi.HTTPException(
+            status_code=409, detail={"code": "expert_id_taken"}
+        ) from e
     except experts_db.FirstJobUnavailableError as e:
         raise fastapi.HTTPException(
             status_code=404,

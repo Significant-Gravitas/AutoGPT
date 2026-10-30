@@ -2,6 +2,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { UserGroupIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { RaiseExpertButton } from "./RaiseExpertButton/RaiseExpertButton";
 
 export function EmptyTeamState() {
   return (
@@ -25,9 +26,7 @@ export function EmptyTeamState() {
         >
           Browse the marketplace
         </Button>
-        <Button as="NextLink" href="/raise" variant="secondary" size="small">
-          Create an Expert
-        </Button>
+        <RaiseExpertButton />
       </div>
     </div>
   );

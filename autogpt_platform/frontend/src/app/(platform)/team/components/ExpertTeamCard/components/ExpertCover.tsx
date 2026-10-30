@@ -1,5 +1,5 @@
 import { expertPastel } from "@/components/molecules/ExpertAvatar/colors";
-import { coverClassFor } from "@/app/(platform)/raise/components/ColorStep/helpers";
+import { coverClassFor } from "@/services/experts/expert-colors";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { Activity01Icon, Alert01Icon } from "@hugeicons/core-free-icons";

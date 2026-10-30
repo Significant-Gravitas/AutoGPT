@@ -110,11 +110,10 @@ describe("Marketplace ExpertsSection", () => {
     render(<MainMarkeplacePage />);
 
     expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
+    // Creating opens a dialog in place rather than leaving the page.
     expect(
-      screen
-        .getByRole("link", { name: "Create an Expert" })
-        .getAttribute("href"),
-    ).toBe("/raise");
+      screen.getByRole("button", { name: "Create an Expert" }),
+    ).toBeDefined();
     // The card is the link: a shared URL lands on the same profile the
     // marketplace opens, with no dialog in between.
     const card = await screen.findByRole("link", { name: /Maria/ });
@@ -169,7 +168,7 @@ describe("Marketplace ExpertsSection", () => {
 
     expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
     expect(
-      screen.getByRole("link", { name: "Create an Expert" }),
+      screen.getByRole("button", { name: "Create an Expert" }),
     ).toBeDefined();
     expect(await screen.findByRole("link", { name: /Maria/ })).toBeDefined();
     expect(templatesRequested).toBe(true);
@@ -186,10 +185,9 @@ describe("Marketplace ExpertsSection", () => {
 
     await waitFor(
       () => {
-        const raiseLink = screen.getByRole("link", {
-          name: "Create an Expert",
-        });
-        expect(raiseLink.getAttribute("href")).toBe("/raise");
+        expect(
+          screen.getByRole("button", { name: "Create an Expert" }),
+        ).toBeDefined();
         expect(screen.queryByText("Meet the AI Experts")).toBeNull();
       },
       { timeout: 5_000 },
@@ -206,10 +204,9 @@ describe("Marketplace ExpertsSection", () => {
 
     render(<MainMarkeplacePage />);
 
-    const raiseLink = await screen.findByRole("link", {
-      name: "Create an Expert",
-    });
-    expect(raiseLink.getAttribute("href")).toBe("/raise");
+    expect(
+      await screen.findByRole("button", { name: "Create an Expert" }),
+    ).toBeDefined();
   });
 
   test("lists the Hub skills a hire comes with on the card, and nothing else", async () => {

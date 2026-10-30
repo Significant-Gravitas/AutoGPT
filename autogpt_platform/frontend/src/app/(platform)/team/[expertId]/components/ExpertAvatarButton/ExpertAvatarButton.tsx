@@ -12,9 +12,11 @@ import { useExpertAvatarButton } from "./useExpertAvatarButton";
 
 interface Props {
   expert: Expert;
+  /** The 40px row size used in Settings; the profile header is 96px. */
+  isCompact?: boolean;
 }
 
-export function ExpertAvatarButton({ expert }: Props) {
+export function ExpertAvatarButton({ expert, isCompact = false }: Props) {
   const { isOpen, setIsOpen, saveAvatar, isPending } = useExpertAvatarButton(
     expert.id,
   );
@@ -24,12 +26,16 @@ export function ExpertAvatarButton({ expert }: Props) {
         type="button"
         onClick={() => setIsOpen(true)}
         aria-label={`Change ${expert.name}'s appearance`}
-        className="size-24 shrink-0 rounded-full focus-visible:ring-2 focus-visible:ring-ring"
+        className={
+          isCompact
+            ? "size-10 shrink-0 rounded-full focus-visible:ring-2 focus-visible:ring-ring"
+            : "size-24 shrink-0 rounded-full focus-visible:ring-2 focus-visible:ring-ring"
+        }
       >
         <ExpertAvatar
           name={expert.name}
           avatarUrl={expert.avatar_url}
-          size={96}
+          size={isCompact ? 40 : 96}
           // oxlint-disable-next-line design-system/no-restyle -- ExpertAvatar has no bordered variant (src/components is P9's)
           className="rounded-full border border-border-base ring-4 ring-canvas"
           backgroundColor={getExpertTopicHex({

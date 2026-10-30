@@ -7802,7 +7802,9 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "404": { "description": "Attachment not found or unavailable" },
-          "409": { "description": "Active expert limit reached" },
+          "409": {
+            "description": "Active expert limit reached, or the id is taken"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -7813,6 +7815,62 @@
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/experts/raise/intro": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Get Raise Intro",
+        "description": "What a new expert says first, inferred from its name and role.\n\nStateless and never fails: a slow or missing model answers with a\ntemplate so the expert page always has an opening.",
+        "operationId": "get_raise_intro",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "title": "Name"
+            }
+          },
+          {
+            "name": "job_title",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "maxLength": 100 },
+                { "type": "null" }
+              ],
+              "title": "Job Title"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/RaiseIntro" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "429": { "description": "Too many openings requested" }
+        }
       }
     },
     "/api/experts/setup": {
@@ -8670,6 +8728,54 @@
               }
             }
           }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/soul/draft": {
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Draft Expert Soul",
+        "description": "Write the expert's soul from its opening answers, in the background.\n\nThe write only lands if the soul is unchanged by then, so an edit the\nuser makes meanwhile always wins.",
+        "operationId": "draft_expert_soul",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SoulDraftRequest" }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SoulDraftQueued" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "429": { "description": "Too many drafts requested" }
         }
       }
     },
@@ -23053,6 +23159,13 @@
       },
       "CreateRaisedExpertRequest": {
         "properties": {
+          "id": {
+            "anyOf": [
+              { "type": "string", "format": "uuid" },
+              { "type": "null" }
+            ],
+            "title": "Id"
+          },
           "name": {
             "type": "string",
             "maxLength": 100,
@@ -32833,6 +32946,33 @@
         "required": ["kind", "source", "id", "reason"],
         "title": "RaiseAttachmentFailure"
       },
+      "RaiseIntro": {
+        "properties": {
+          "intro": { "type": "string", "title": "Intro" },
+          "questions": {
+            "items": { "$ref": "#/components/schemas/RaiseIntroQuestion" },
+            "type": "array",
+            "title": "Questions"
+          },
+          "is_generated": { "type": "boolean", "title": "Is Generated" }
+        },
+        "type": "object",
+        "required": ["intro", "questions", "is_generated"],
+        "title": "RaiseIntro"
+      },
+      "RaiseIntroQuestion": {
+        "properties": {
+          "question": { "type": "string", "title": "Question" },
+          "options": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Options"
+          }
+        },
+        "type": "object",
+        "required": ["question", "options"],
+        "title": "RaiseIntroQuestion"
+      },
       "RaiseResult": {
         "properties": {
           "expert": { "$ref": "#/components/schemas/Expert" },
@@ -34937,6 +35077,56 @@
         "required": ["id", "name", "pinned_version"],
         "title": "SkippedWebhookPreset",
         "description": "A webhook preset that was left pinned to its old version because the\nnewly activated version swaps or reconfigures the trigger block. The user\nneeds to reconfigure the trigger on the new version for it to fire."
+      },
+      "SoulAnswer": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Question"
+          },
+          "answer": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Answer"
+          }
+        },
+        "type": "object",
+        "required": ["question", "answer"],
+        "title": "SoulAnswer"
+      },
+      "SoulDraftQueued": {
+        "properties": {
+          "expected_identity": {
+            "type": "string",
+            "title": "Expected Identity"
+          }
+        },
+        "type": "object",
+        "required": ["expected_identity"],
+        "title": "SoulDraftQueued"
+      },
+      "SoulDraftRequest": {
+        "properties": {
+          "intro": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Intro",
+            "default": ""
+          },
+          "answers": {
+            "items": { "$ref": "#/components/schemas/SoulAnswer" },
+            "type": "array",
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Answers"
+          }
+        },
+        "type": "object",
+        "required": ["answers"],
+        "title": "SoulDraftRequest"
       },
       "SoulFieldChange": {
         "properties": {

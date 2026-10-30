@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { EmptyTeamState } from "./components/EmptyTeamState";
 import { ExpertChatDrawer } from "./components/ExpertChatDrawer/ExpertChatDrawer";
 import { ExpertTeamCard } from "./components/ExpertTeamCard/ExpertTeamCard";
+import { RaiseFromLink } from "./components/RaiseExpertDialog/RaiseFromLink";
 import { SetupNeeded } from "./components/SetupNeeded/SetupNeeded";
 import { SoulDrawer } from "./components/SoulDrawer/SoulDrawer";
 import { TeamPageHeader } from "./components/TeamPageHeader/TeamPageHeader";
@@ -91,6 +92,8 @@ export default function TeamPage() {
             <EmptyTeamState />
           ) : null}
         </div>
+
+        <RaiseFromLink />
 
         <InstallWorkflowPicker
           mode="pick-workflow"

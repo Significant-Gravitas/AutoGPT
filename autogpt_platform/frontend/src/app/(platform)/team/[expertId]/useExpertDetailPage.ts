@@ -7,6 +7,7 @@ import {
 } from "@/app/api/__generated__/endpoints/experts/experts";
 import { useGetV1ListExecutionSchedulesForAUser } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { okData } from "@/app/api/helpers";
+import { useRaiseStatus } from "@/services/experts/raise-expert";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -21,14 +22,22 @@ export function useExpertDetailPage({ expertId }: Args) {
   const { toast } = useToast();
   const [isPickerOpen, setIsPickerOpen] = useState(false);
 
+  // An expert raised in this tab is on screen before its row exists; its own
+  // queries wait for the create so they never read a 404 for it.
+  const raiseStatus = useRaiseStatus(expertId);
+  const isCreating = raiseStatus === "pending";
   const expertQuery = useGetExpert(expertId, {
-    query: { select: (res) => okData(res) ?? null },
+    query: { select: (res) => okData(res) ?? null, enabled: !isCreating },
   });
   const schedulesQuery = useGetV1ListExecutionSchedulesForAUser({
     query: { select: (res) => okData(res) ?? [] },
   });
   const activityQuery = useGetExpertActivity(expertId, {
-    query: { select: (res) => okData(res) ?? null },
+    query: {
+      select: (res) => okData(res) ?? null,
+      enabled: !isCreating,
+      placeholderData: raiseStatus ? emptyActivity() : undefined,
+    },
   });
 
   const expert = expertQuery.data ?? null;
@@ -115,7 +124,11 @@ export function useExpertDetailPage({ expertId }: Args) {
 
   return {
     expert,
-    isLoading: expertQuery.isLoading || schedulesQuery.isLoading,
+    // A just-raised expert has no schedules, so its page never waits on the
+    // schedule list to paint.
+    isLoading:
+      expertQuery.isLoading ||
+      (raiseStatus === undefined && schedulesQuery.isLoading),
     isError:
       expertQuery.isError ||
       schedulesQuery.isError ||
@@ -143,5 +156,16 @@ export function useExpertDetailPage({ expertId }: Args) {
     toggleChat,
     openChatWithPrompt,
     closeChat,
+  };
+}
+
+function emptyActivity() {
+  return {
+    status: 200 as const,
+    data: {
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      days: [],
+    },
+    headers: new Headers(),
   };
 }

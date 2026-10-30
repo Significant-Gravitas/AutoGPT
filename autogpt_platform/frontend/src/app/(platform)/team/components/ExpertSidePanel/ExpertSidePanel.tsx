@@ -26,6 +26,9 @@ interface Props {
   headerActions?: ReactNode;
   showIdentity?: boolean;
   defaultWidth?: number;
+  /** False when the panel is part of the page's first paint rather than
+   *  something the user opened, so it is simply there instead of sliding in. */
+  animateEntry?: boolean;
   onClose: () => void;
   children: ReactNode;
 }
@@ -39,6 +42,7 @@ export function ExpertSidePanel({
   headerActions,
   showIdentity = true,
   defaultWidth = DEFAULT_PANEL_WIDTH,
+  animateEntry = true,
   onClose,
   children,
 }: Props) {
@@ -83,7 +87,7 @@ export function ExpertSidePanel({
         <motion.aside
           data-expert-panel={panelId}
           aria-label={ariaLabel}
-          initial={{ width: 0, opacity: 0 }}
+          initial={animateEntry ? { width: 0, opacity: 0 } : false}
           animate={{ width: renderedWidth, opacity: 1 }}
           exit={{ width: 0, opacity: 0 }}
           transition={transition}

@@ -25,6 +25,7 @@ import {
   WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useState } from "react";
 import { BackToTeamLink } from "../components/BackToTeamLink";
 import { ExpertChatDrawer } from "../components/ExpertChatDrawer/ExpertChatDrawer";
 import { expertToChatTarget } from "../components/ExpertChatDrawer/helpers";
@@ -48,8 +49,11 @@ import { ExpertSchedulesSection } from "./components/ExpertSchedulesSection";
 import { ExpertSettingsSection } from "./components/ExpertSettingsSection";
 import { ExpertSkillsSection } from "./components/ExpertSkillsSection";
 import { ExpertSoulSection } from "./components/ExpertSoulSection";
+import { ExpertSetupSection } from "./components/ExpertSetupSection/ExpertSetupSection";
+import { ExpertWelcome } from "./components/ExpertWelcome/ExpertWelcome";
 import { ExpertWorkflowsSection } from "./components/ExpertWorkflowsSection";
 import { useExpertDetailPage } from "./useExpertDetailPage";
+import { useExpertWelcomeState } from "./useExpertWelcomeState";
 
 const MAIN_CLASS =
   "container min-h-screen max-w-[1180px] space-y-5 px-4 pb-16 pt-6 sm:px-8 md:px-12";
@@ -74,6 +78,16 @@ export default function ExpertDetailPage() {
   const initialTab = TABS.some((tab) => tab.value === requestedTab)
     ? (requestedTab as (typeof TABS)[number]["value"])
     : "basics";
+  const [tab, setTab] = useState<string>(initialTab);
+  const { isWelcomeOpen, closeWelcome } = useExpertWelcomeState(expertId);
+
+  // A tab opened from a button may sit past the scrolled edge of the tab bar.
+  function openTab(value: string) {
+    setTab(value);
+    document
+      .querySelector(`[role="tab"][id$="-trigger-${value}"]`)
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
   const requestedSkill = searchParams.get("skill");
   const requestedVersion = searchParams.get("version");
 
@@ -161,7 +175,7 @@ export default function ExpertDetailPage() {
 
         <ExpertNeedsYouSection expert={expert} />
 
-        <TabsLine variant="compact" defaultValue={initialTab}>
+        <TabsLine variant="compact" value={tab} onValueChange={setTab}>
           <TabsLineList
             flush={false}
             // oxlint-disable-next-line design-system/require-static-classes -- the pill tabs share their classes with team/autopilot; TabsLine has no pill variant (src/components is P9's)
@@ -256,6 +270,11 @@ export default function ExpertDetailPage() {
 
           <TabsLineContent value="settings">
             <div className="flex flex-col gap-4">
+              <ExpertSetupSection
+                expert={expert}
+                onOpenTab={openTab}
+                onInstallWorkflow={openPicker}
+              />
               <ExpertModeSection expert={expert} />
               <ExpertSettingsSection expert={expert} onFire={openFire} />
             </div>
@@ -283,6 +302,20 @@ export default function ExpertDetailPage() {
         expert={isSoulOpen ? expert : null}
         onClose={closeSoul}
       />
+      {isWelcomeOpen && !isChatOpen && !isSoulOpen ? (
+        <ExpertWelcome
+          expert={expert}
+          onClose={closeWelcome}
+          onStartChat={() => {
+            closeWelcome();
+            toggleChat();
+          }}
+          onOpenSettings={() => {
+            closeWelcome();
+            openTab("settings");
+          }}
+        />
+      ) : null}
       <ExpertChatDrawer
         target={isChatOpen ? expertToChatTarget(expert) : null}
         threadKey={chatDrawerKey}

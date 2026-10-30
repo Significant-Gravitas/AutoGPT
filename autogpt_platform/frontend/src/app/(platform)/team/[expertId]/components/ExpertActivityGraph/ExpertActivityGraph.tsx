@@ -1,4 +1,4 @@
-import { ditherColorsFor } from "@/app/(platform)/raise/components/ColorStep/helpers";
+import { ditherColorsFor } from "@/services/experts/expert-colors";
 import { ExpertActivityDay } from "@/app/api/__generated__/models/expertActivityDay";
 import { cn } from "@/lib/utils";
 import { getActivityCells, getActivitySummary } from "./helpers";

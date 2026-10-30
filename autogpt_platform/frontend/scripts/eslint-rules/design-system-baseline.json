@@ -719,39 +719,6 @@
   "src/app/(platform)/home/components/RecentWork/components/WorkItemRow.tsx": {
     "no-restyle": 2
   },
-  "src/app/(platform)/raise/components/AboutStep/AboutStep.tsx": {
-    "no-restyle": 4
-  },
-  "src/app/(platform)/raise/components/BudgetStep/BudgetStep.tsx": {
-    "no-restyle": 4
-  },
-  "src/app/(platform)/raise/components/JobTitleStep/JobTitleStep.tsx": {
-    "no-restyle": 5
-  },
-  "src/app/(platform)/raise/components/KitStep/AttachmentStep.tsx": {
-    "no-restyle": 4
-  },
-  "src/app/(platform)/raise/components/KitStep/KitBudget.tsx": {
-    "no-restyle": 1
-  },
-  "src/app/(platform)/raise/components/KitStep/KitResultRow.tsx": {
-    "no-restyle": 9
-  },
-  "src/app/(platform)/raise/components/KitStep/KitSearchField.tsx": {
-    "no-restyle": 7
-  },
-  "src/app/(platform)/raise/components/KitStep/KitSearchResults.tsx": {
-    "no-restyle": 1
-  },
-  "src/app/(platform)/raise/components/KitStep/SelectedAttachments.tsx": {
-    "no-restyle": 5
-  },
-  "src/app/(platform)/raise/components/NameStep/NameStep.tsx": {
-    "no-restyle": 3
-  },
-  "src/app/(platform)/raise/components/RaiseFlow/RaiseFlow.tsx": {
-    "no-restyle": 7
-  },
   "src/components/atoms/Button/helpers.ts": {
     "no-unknown-classes": 7
   },

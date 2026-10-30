@@ -67,9 +67,12 @@ interface TabsLineListProps
 const TabsLineList = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
   TabsLineListProps
->(({ className, flush, indicatorClassName, ...props }, ref) => {
+>(({ className, flush, indicatorClassName, onScroll, ...props }, ref) => {
   const { variant, activeTabElement } = useTabsLine();
   const listRef = React.useRef<HTMLDivElement>(null);
+  // The indicator sits outside the scrolling list, so it follows the list's
+  // scroll offset itself; otherwise it stays where the tab was before scroll.
+  const [scrollLeft, setScrollLeft] = React.useState(0);
   const isCompact = variant === "compact";
   const isFlush = flush ?? isCompact;
 
@@ -88,7 +91,7 @@ const TabsLineList = React.forwardRef<
   }
 
   return (
-    <div data-slot="tabs-list-root" className="relative">
+    <div data-slot="tabs-list-root" className="relative overflow-hidden">
       <TabsPrimitive.List
         ref={(node) => {
           if (typeof ref === "function") ref(node);
@@ -103,6 +106,10 @@ const TabsLineList = React.forwardRef<
           isFlush && "[&>button:first-child]:!pl-0",
           className,
         )}
+        onScroll={(event) => {
+          setScrollLeft(event.currentTarget.scrollLeft);
+          onScroll?.(event);
+        }}
         {...props}
       />
       {activeTabElement && (
@@ -115,7 +122,7 @@ const TabsLineList = React.forwardRef<
           )}
           style={
             {
-              "--tab-left": `${activeTabElement.offsetLeft}px`,
+              "--tab-left": `${activeTabElement.offsetLeft - scrollLeft}px`,
               "--tab-width": `${activeTabElement.offsetWidth}px`,
             } as React.CSSProperties
           }

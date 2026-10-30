@@ -397,6 +397,7 @@ def test_create_raised_expert_returns_expert(
         about=None,
         weekly_budget=None,
         attachments=[],
+        expert_id=None,
     )
     configured_snapshot.assert_match(
         json.dumps(data, indent=2, sort_keys=True), "expert_raise_default"
@@ -459,6 +460,7 @@ def test_create_raised_expert_passes_role_voice_budget_and_attachments(
                 kind="workflow", source="marketplace", id="listing-version-1"
             )
         ],
+        expert_id=None,
     )
     configured_snapshot.assert_match(
         json.dumps(data, indent=2, sort_keys=True), "expert_raise_attachments"
@@ -517,6 +519,7 @@ def test_create_raised_expert_forwards_about(
         about="Always cites a source.",
         weekly_budget=None,
         attachments=[],
+        expert_id=None,
     )
 
 
@@ -573,6 +576,7 @@ def test_create_raised_expert_reports_attachment_installation_failure(
                 kind="workflow", source="marketplace", id="listing-version-1"
             )
         ],
+        expert_id=None,
     )
     configured_snapshot.assert_match(
         json.dumps(data, indent=2, sort_keys=True),
@@ -633,6 +637,7 @@ def test_create_raised_expert_passes_avatar_and_color(
         about=None,
         weekly_budget=None,
         attachments=[],
+        expert_id=None,
     )
 
 
@@ -655,6 +660,58 @@ def test_create_raised_expert_accepts_relative_avatar_path(
 
     assert response.status_code == 200
     assert mock_create.await_args.kwargs["avatar_url"] == "/experts/maria.svg"
+
+
+def test_create_raised_expert_passes_client_chosen_id(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    expert_id = "6f1c2d3e-4b5a-4c7d-8e9f-0a1b2c3d4e5f"
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+        return_value=RaiseResult(
+            expert=_make_raised_expert(id=expert_id, name="Deps merger"),
+            failed_attachments=[],
+        ),
+    )
+
+    response = client.post(
+        "/experts/raise", json={"id": expert_id, "name": "Deps merger"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["expert"]["id"] == expert_id
+    assert mock_create.await_args.kwargs["expert_id"] == expert_id
+
+
+def test_create_raised_expert_rejects_a_malformed_id(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post("/experts/raise", json={"id": "nope", "name": "Otto"})
+
+    assert response.status_code == 422
+    mock_create.assert_not_awaited()
+
+
+def test_create_raised_expert_maps_a_taken_id_to_409(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    expert_id = "6f1c2d3e-4b5a-4c7d-8e9f-0a1b2c3d4e5f"
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertIdTakenError(expert_id),
+    )
+
+    response = client.post("/experts/raise", json={"id": expert_id, "name": "Otto"})
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == {"code": "expert_id_taken"}
 
 
 @pytest.mark.parametrize(
@@ -709,6 +766,7 @@ def test_create_raised_expert_treats_blank_avatar_and_color_as_unset(
         "about": None,
         "weekly_budget": None,
         "attachments": [],
+        "expert_id": None,
     }
 
 

@@ -2,13 +2,11 @@
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Button } from "@/components/atoms/Button/Button";
+import { RaiseExpertButton } from "@/app/(platform)/team/components/RaiseExpertButton/RaiseExpertButton";
 import { useTrackFunnelViewOnce } from "@/services/experts/use-track-funnel-view-once";
 import { SectionHeader } from "../SectionHeader";
 import { ExpertCard } from "./components/ExpertCard";
 import { useExpertsSection } from "./useExpertsSection";
-
-const RAISE_LABEL = "Create an Expert";
-const RAISE_HREF = "/raise";
 
 interface Props {
   category?: string | null;
@@ -35,14 +33,7 @@ export function ExpertsSection({ category }: Props) {
     if (!isLoggedIn) return null;
     return (
       <section id="experts" className="mb-20 scroll-mt-24">
-        <Button
-          as="NextLink"
-          href={RAISE_HREF}
-          variant="secondary"
-          size="small"
-        >
-          {RAISE_LABEL}
-        </Button>
+        <RaiseExpertButton />
       </section>
     );
   }
@@ -63,9 +54,7 @@ export function ExpertsSection({ category }: Props) {
               >
                 View your team
               </Button>
-              <Button as="NextLink" href={RAISE_HREF} size="small">
-                {RAISE_LABEL}
-              </Button>
+              <RaiseExpertButton variant="primary" />
             </div>
           ) : undefined
         }

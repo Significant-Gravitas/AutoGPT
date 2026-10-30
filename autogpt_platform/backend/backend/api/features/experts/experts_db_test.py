@@ -1186,6 +1186,54 @@ async def test_raise_expert_falls_back_to_default_identity_without_about(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_with_client_id_is_idempotent(server: SpinTestServer):
+    owner = await _create_seed_user()
+    expert_id = str(uuid.uuid4())
+    first = await experts_db.create_raised_expert(
+        owner.id,
+        name="Deps merger",
+        role=None,
+        voice_preferences=None,
+        expert_id=expert_id,
+    )
+    retry = await experts_db.create_raised_expert(
+        owner.id,
+        name="Deps merger",
+        role=None,
+        voice_preferences=None,
+        expert_id=expert_id,
+    )
+    assert first.expert.id == expert_id
+    assert retry.expert.id == expert_id
+    assert (
+        await prisma.models.Expert.prisma().count(where={"ownerUserId": owner.id}) == 1
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_refuses_another_owners_id(
+    server: SpinTestServer, other_user
+):
+    owner = await _create_seed_user()
+    expert_id = str(uuid.uuid4())
+    await experts_db.create_raised_expert(
+        other_user.id,
+        name="Theirs",
+        role=None,
+        voice_preferences=None,
+        expert_id=expert_id,
+    )
+    with pytest.raises(experts_db.ExpertIdTakenError):
+        await experts_db.create_raised_expert(
+            owner.id,
+            name="Mine",
+            role=None,
+            voice_preferences=None,
+            expert_id=expert_id,
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_raise_expert_defaults_avatar_and_color_when_omitted(
     server: SpinTestServer,
 ):

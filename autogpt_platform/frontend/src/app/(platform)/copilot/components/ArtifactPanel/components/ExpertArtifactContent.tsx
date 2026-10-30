@@ -2,7 +2,7 @@
 
 import { useGetExpert } from "@/app/api/__generated__/endpoints/experts/experts";
 import { okData } from "@/app/api/helpers";
-import { swatchClassFor } from "@/app/(platform)/raise/components/ColorStep/helpers";
+import { swatchClassFor } from "@/services/experts/expert-colors";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
 import type { ExpertArtifact } from "../../../store";

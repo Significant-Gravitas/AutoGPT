@@ -199,7 +199,9 @@ describe("Marketplace category filter over experts", () => {
     );
     // Not the empty-roster fallback either: a filtered shelf offers no
     // invitation to raise an expert.
-    expect(screen.queryByRole("link", { name: "Create an Expert" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Create an Expert" }),
+    ).toBeNull();
   });
 
   test("a failed roster request under a category still offers the raise link", async () => {
@@ -222,11 +224,10 @@ describe("Marketplace category filter over experts", () => {
     await waitFor(() =>
       expect(screen.queryByText("Meet the AI Experts")).toBeNull(),
     );
+    // Creating opens a dialog in place rather than leaving the page.
     expect(
-      screen
-        .getByRole("link", { name: "Create an Expert" })
-        .getAttribute("href"),
-    ).toBe("/raise");
+      screen.getByRole("button", { name: "Create an Expert" }),
+    ).toBeDefined();
   });
 });
 

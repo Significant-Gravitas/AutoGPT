@@ -11,7 +11,7 @@ import {
   SourceCodeIcon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
-import { findColorOption } from "@/app/(platform)/raise/components/ColorStep/helpers";
+import { findColorOption } from "@/services/experts/expert-colors";
 import { cn } from "@/lib/utils";
 
 export interface ExpertAccent {

@@ -22,6 +22,7 @@ __all__ = [
     "ACTIVE_EXPERT_LIMIT",
     "LIFETIME_RAISED_EXPERT_LIMIT",
     "ExpertHireUnavailableError",
+    "ExpertIdTakenError",
     "ExpertLimitExceededError",
     "ExpertPodLimitReachedError",
     "ExpertPodNameTakenError",
@@ -39,6 +40,14 @@ LIFETIME_RAISED_EXPERT_LIMIT = 100
 
 class ExpertScheduleCleanupError(RuntimeError):
     pass
+
+
+class ExpertIdTakenError(Exception):
+    """A client-chosen expert id already names a row the caller cannot reuse."""
+
+    def __init__(self, expert_id: str):
+        super().__init__(f"Expert id {expert_id} is already in use")
+        self.expert_id = expert_id
 
 
 class ExpertPodNotFoundError(Exception):

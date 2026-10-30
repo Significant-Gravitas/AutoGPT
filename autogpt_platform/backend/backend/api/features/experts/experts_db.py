@@ -37,6 +37,7 @@ from backend.api.features.experts.errors import (
     ACTIVE_EXPERT_LIMIT,
     LIFETIME_RAISED_EXPERT_LIMIT,
     ExpertHireUnavailableError,
+    ExpertIdTakenError,
     ExpertLimitExceededError,
     ExpertPodLimitReachedError,
     ExpertPodNameTakenError,
@@ -1371,6 +1372,7 @@ async def create_raised_expert(
     boundaries: str | None = None,
     weekly_budget: int | None = None,
     attachments: list[RaiseAttachment] | None = None,
+    expert_id: str | None = None,
 ) -> RaiseResult:
     """Raise a blank expert owned by *user_id*.
 
@@ -1378,22 +1380,41 @@ async def create_raised_expert(
     NULL. Capacity checks and creation share a per-user advisory lock.
     Attachments are validated before creation. A workflow or marketplace-skill
     install failure remains non-fatal and is reported in the result.
+
+    ``expert_id`` lets the client pick the id so it can open the expert's page
+    before this returns. A retry with the same id returns the expert the first
+    attempt created instead of raising a second one.
     """
     resolved = await raise_attachments.resolve_attachments(user_id, attachments or [])
-    expert = await _create_raised_expert_row(
-        user_id,
-        name,
-        role,
-        voice_preferences,
-        job_title=job_title,
-        avatar_url=avatar_url,
-        color=color,
-        tagline=tagline,
-        about=about,
-        boundaries=boundaries,
-        weekly_budget=weekly_budget,
-        skills=resolved.skill_names,
-    )
+    try:
+        expert = await _create_raised_expert_row(
+            user_id,
+            name,
+            role,
+            voice_preferences,
+            job_title=job_title,
+            avatar_url=avatar_url,
+            color=color,
+            tagline=tagline,
+            about=about,
+            boundaries=boundaries,
+            weekly_budget=weekly_budget,
+            skills=resolved.skill_names,
+            expert_id=expert_id,
+        )
+    except ExpertIdTakenError:
+        existing = await get_expert(user_id, expert_id) if expert_id else None
+        if existing is None or existing.source_template_id is not None:
+            raise
+        return RaiseResult(expert=existing, failed_attachments=[])
+    return await _finish_raised_expert(user_id, expert, resolved)
+
+
+async def _finish_raised_expert(
+    user_id: str,
+    expert: prisma.models.Expert,
+    resolved: raise_attachments.ResolvedRaiseAttachments,
+) -> RaiseResult:
     _schedule_expert_memory(user_id, expert.id)
     failed_skill_installs = await raise_attachments.install_marketplace_skills(
         user_id, expert.id, resolved.skills
@@ -1479,9 +1500,12 @@ async def _create_raised_expert_row(
     boundaries: str | None = None,
     weekly_budget: int | None = None,
     skills: list[str] | None = None,
+    expert_id: str | None = None,
 ) -> prisma.models.Expert:
     async with transaction() as tx:
         await _lock_expert_creation(tx, user_id)
+        if expert_id and await tx.expert.find_unique(where={"id": expert_id}):
+            raise ExpertIdTakenError(expert_id)
         await _ensure_active_expert_capacity(tx, user_id)
         lifetime_raised_count = await tx.expert.count(
             where={
@@ -1492,23 +1516,28 @@ async def _create_raised_expert_row(
         )
         if lifetime_raised_count >= LIFETIME_RAISED_EXPERT_LIMIT:
             raise RaisedExpertLifetimeLimitExceededError(LIFETIME_RAISED_EXPERT_LIMIT)
-        return await tx.expert.create(
-            data={
-                "ownerUserId": user_id,
-                "name": name,
-                "avatarUrl": avatar_url,
-                "color": color or "",
-                "role": role or "",
-                "jobTitle": job_title,
-                "tagline": tagline,
-                "identity": about or _raised_identity(name),
-                "voicePreferences": voice_preferences or "",
-                "boundaries": boundaries or "",
-                "weeklyBudget": weekly_budget,
-                "skills": skills or [],
-            },
-            include=_WORKFLOW_INCLUDE,
-        )
+        try:
+            return await tx.expert.create(
+                data={
+                    **({"id": expert_id} if expert_id else {}),
+                    "ownerUserId": user_id,
+                    "name": name,
+                    "avatarUrl": avatar_url,
+                    "color": color or "",
+                    "role": role or "",
+                    "jobTitle": job_title,
+                    "tagline": tagline,
+                    "identity": about or _raised_identity(name),
+                    "voicePreferences": voice_preferences or "",
+                    "boundaries": boundaries or "",
+                    "weeklyBudget": weekly_budget,
+                    "skills": skills or [],
+                },
+                include=_WORKFLOW_INCLUDE,
+            )
+        except prisma.errors.UniqueViolationError as e:
+            # Another account raced this id in: it is just as taken.
+            raise ExpertIdTakenError(expert_id or "") from e
 
 
 async def _install_first_job(
