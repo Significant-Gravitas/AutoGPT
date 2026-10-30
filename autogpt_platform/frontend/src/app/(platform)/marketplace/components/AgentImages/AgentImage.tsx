@@ -61,8 +61,7 @@ export function AgentImages({ images }: AgentImagesProps) {
                 className={cn(
                   "relative h-16 w-24 shrink-0 overflow-hidden rounded-lg border transition-all sm:h-20 sm:w-32",
                   selectedIndex === index
-                    ? // TODO(tokens): no exact role: border-violet-500 #8B5CF6
-                      "border-violet-500"
+                    ? "border-brand"
                     : "border-separator opacity-70 hover:opacity-100",
                 )}
               >
@@ -72,11 +71,8 @@ export function AgentImages({ images }: AgentImagesProps) {
                     <Skeleton className="absolute inset-0 rounded-lg" />
                   )}
                 {thumbnailFailed ? (
-                  <div className="flex h-full w-full items-center justify-center bg-surface-hover">
-                    <Icon
-                      icon={ImageNotFound01Icon}
-                      className="h-5 w-5 text-foreground-subtle"
-                    />
+                  <div className="flex h-full w-full items-center justify-center bg-surface-hover text-foreground-subtle">
+                    <Icon icon={ImageNotFound01Icon} className="h-5 w-5" />
                   </div>
                 ) : thumbnail.kind === "image" ? (
                   <img
@@ -90,19 +86,12 @@ export function AgentImages({ images }: AgentImagesProps) {
                     onError={() => markThumbFailed(thumbnail.src)}
                   />
                 ) : thumbnail.kind === "youtube" ? (
-                  <div className="flex h-full w-full items-center justify-center bg-surface-hover">
-                    <Icon
-                      icon={YoutubeIcon}
-                      aria-hidden
-                      className="h-6 w-6 text-foreground-subtle"
-                    />
+                  <div className="flex h-full w-full items-center justify-center bg-surface-hover text-foreground-subtle">
+                    <Icon icon={YoutubeIcon} aria-hidden className="h-6 w-6" />
                     <span className="sr-only">{thumbnail.label}</span>
                   </div>
                 ) : (
-                  <div
-                    // TODO(tokens): no exact role: bg-neutral-200 #E5E5E5, text-neutral-500 #737373
-                    className="flex h-full w-full items-center justify-center bg-neutral-200 text-xs text-neutral-500"
-                  >
+                  <div className="flex h-full w-full items-center justify-center bg-surface-active text-xs text-foreground-tertiary">
                     Video
                   </div>
                 )}

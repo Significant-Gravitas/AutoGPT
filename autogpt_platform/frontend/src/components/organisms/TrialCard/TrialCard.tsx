@@ -47,7 +47,7 @@ export function TrialCardContent({
       <Skeleton
         className={cn(
           "w-full",
-          // TODO(tokens): no radius token for 18px.
+          // oxlint-disable-next-line design-system/no-arbitrary-values -- 18px matches the billing cards this skeleton stands in for
           isBilling ? "h-28 rounded-[18px]" : "h-36 rounded-2xl",
         )}
       />

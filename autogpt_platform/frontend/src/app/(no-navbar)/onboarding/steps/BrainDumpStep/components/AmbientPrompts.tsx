@@ -97,7 +97,7 @@ export function AmbientPrompts({
       data-testid="ambient-prompts"
       data-paused={isPaused}
       className={cn(
-        "pointer-events-none absolute inset-0 z-0 hidden select-none transition-opacity duration-500 xl:block",
+        "pointer-events-none absolute inset-0 z-0 hidden transition-opacity duration-500 select-none xl:block",
         (isTyping || screen === "recording") && "opacity-50",
       )}
     >

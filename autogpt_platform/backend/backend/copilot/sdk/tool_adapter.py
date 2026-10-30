@@ -28,6 +28,7 @@ from backend.copilot.context import (
     _current_session,
     _current_user_id,
     _encode_cwd_for_cli,
+    bash_command_as_written,
     get_execution_context,
     is_sdk_tool_path,
     reset_consult_budget,
@@ -44,6 +45,7 @@ from backend.copilot.sdk.file_ref import (
     FileRefExpansionError,
     expand_file_refs_in_args,
     read_file_bytes,
+    text_outside_file_refs,
 )
 from backend.copilot.tool_image import truncate_mcp_result
 from backend.copilot.tools import (
@@ -854,7 +856,12 @@ def _make_truncating_wrapper(
                     _clear_tool_failures(name)
                 return released
 
-        result = await run(args)
+        command = original_args.get("command") if name == "bash_exec" else None
+        as_written = (
+            text_outside_file_refs(command) if isinstance(command, str) else None
+        )
+        with bash_command_as_written(as_written):
+            result = await run(args)
         truncated = truncate_mcp_result(result, _MCP_MAX_CHARS)
         remember_cut_google_output(
             _text_from_mcp_result(result), _text_from_mcp_result(truncated)
@@ -920,12 +927,12 @@ def create_copilot_mcp_server(
 ):
     """Create an in-process MCP server configuration for CoPilot tools.
 
-    All tools are annotated with ``readOnlyHint=True`` so the SDK CLI
-    dispatches concurrent tool calls in parallel rather than sequentially.
-    This is a deliberate override: even side-effect tools use the hint
-    because the MCP tools are already individually sandboxed and the
-    pre-launch duplicate-execution bug (SECRT-2204) is worse than
-    sequential dispatch.
+    Tools are annotated with ``readOnlyHint=True`` so the SDK CLI runs the
+    calls in one message in parallel, even tools with side effects.  The
+    exception is a tool that ``writes_files``: the CLI runs a call without
+    the hint on its own, after the calls written before it and before the
+    ones after, so a copy of a file never starts while the command that
+    builds it is still running (SECRT-3178).
 
     When *use_e2b* is True, five additional MCP file tools are registered
     that route directly to the E2B sandbox filesystem, and the caller should
@@ -963,15 +970,13 @@ def create_copilot_mcp_server(
         handler = create_tool_handler(base_tool)
         schema = _build_input_schema(base_tool)
         required = list(base_tool.parameters.get("required", []))
-        # All tools annotated readOnlyHint=True to enable parallel dispatch.
-        # The SDK CLI uses this hint to dispatch concurrent tool calls in
-        # parallel rather than sequentially.  Side-effect safety is ensured
-        # by the tool implementations themselves (idempotency, credentials).
         decorated = tool(
             tool_name,
             base_tool.description,
             schema,
-            annotations=_PARALLEL_ANNOTATION,
+            annotations=(
+                _MUTATING_ANNOTATION if base_tool.writes_files else _PARALLEL_ANNOTATION
+            ),
         )(
             _make_truncating_wrapper(
                 handler,

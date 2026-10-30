@@ -25,6 +25,7 @@ import {
   safeHostname,
   str,
 } from "./resultHelpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface SearchResultsProps {
   items: Record<string, unknown>[];
@@ -55,13 +56,13 @@ function ResultFavicon({ domain }: { domain: string | null }) {
     );
   }
   return (
-    // eslint-disable-next-line @next/next/no-img-element
+    // eslint-disable-next-line @next/next/no-img-element -- an arbitrary site favicon next/image is not configured for
     <img
       src={`https://${encodeURIComponent(domain)}/favicon.ico`}
       alt=""
       width={14}
       height={14}
-      className="size-3.5 shrink-0 rounded-[3px]"
+      className="size-3.5 shrink-0 rounded-sm"
       referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
     />
@@ -107,7 +108,7 @@ export function SearchResults({ items, answer }: SearchResultsProps) {
             className="flex items-center gap-2.5 px-3 py-2"
           >
             {citation !== null && (
-              <span className="shrink-0 text-xs tabular-nums text-foreground-secondary">
+              <span className="shrink-0 text-xs text-foreground-secondary tabular-nums">
                 [{citation}]
               </span>
             )}
@@ -127,9 +128,14 @@ export function SearchResults({ items, answer }: SearchResultsProps) {
               </p>
             )}
             {domain && (
-              <span className="ml-auto shrink-0 text-xs text-foreground-subtle">
+              <Text
+                variant="small-tight"
+                as="span"
+                tone="subtle"
+                className="ml-auto shrink-0"
+              >
                 {domain}
-              </span>
+              </Text>
             )}
           </div>
         );
@@ -147,22 +153,19 @@ export function Terminal({ row }: RowProps) {
   return (
     <div className="rounded-xl bg-action-hover p-3 font-mono text-caption-sm leading-4">
       {command && (
-        <p className="whitespace-pre-wrap break-words text-foreground-subtle">
-          <span className="select-none text-foreground-tertiary">$ </span>
+        <p className="break-words whitespace-pre-wrap text-foreground-subtle">
+          <span className="text-foreground-tertiary select-none">$ </span>
           {command}
         </p>
       )}
       {stdout && (
-        <pre
-          // TODO(tokens): no fitting role for text-zinc-100 #EFEFF0; #EFEFF0 is surface-hover (a fill) and separator (a line colour)
-          className="mt-1.5 max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-zinc-100 scrollbar-none"
-        >
+        <pre className="mt-1.5 scrollbar-none max-h-40 overflow-y-auto break-words whitespace-pre-wrap text-action-foreground">
           {stdout}
         </pre>
       )}
       {typeof exitCode === "number" && exitCode !== 0 && (
         <p
-          // TODO(tokens): no exact role for text-red-400
+          // oxlint-disable-next-line design-system/no-raw-colors -- on the dark terminal; error #EF4444 drops the exit code to 3.3:1
           className="mt-1.5 text-red-400"
         >
           exit {exitCode}
@@ -190,8 +193,7 @@ export function TodoList({ row }: RowProps) {
               <Icon
                 icon={CheckmarkCircle02Icon}
                 size={15}
-                // TODO(tokens): no exact role for text-green-500
-                className="shrink-0 text-green-500"
+                className="shrink-0 text-success"
               />
             ) : (
               <Icon
@@ -242,17 +244,27 @@ export function FileCard({ row }: RowProps) {
             className="text-foreground-secondary"
           />
         </div>
-        <p className="min-w-0 flex-1 truncate font-mono text-xs text-foreground-body">
+        <Text
+          variant="small-mono-tight"
+          as="p"
+          tone="body"
+          className="min-w-0 flex-1 truncate"
+        >
           {path}
-        </p>
+        </Text>
         {typeof size === "number" && (
-          <span className="shrink-0 text-xs text-foreground-subtle">
+          <Text
+            variant="small-tight"
+            as="span"
+            tone="subtle"
+            className="shrink-0"
+          >
             {formatBytes(size)}
-          </span>
+          </Text>
         )}
       </div>
       {preview && (
-        <p className="mt-1.5 line-clamp-2 whitespace-pre-wrap pl-9 text-xs text-foreground-subtle">
+        <p className="mt-1.5 line-clamp-2 pl-9 text-xs whitespace-pre-wrap text-foreground-subtle">
           {preview}
         </p>
       )}
@@ -265,10 +277,10 @@ export function OutputList({ items }: ItemsProps) {
     <div className={`${CARD} ${HALF} divide-y divide-separator`}>
       {items.map((item, i) => (
         <div key={resultItemKey(item, i)} className="p-2.5">
-          <p className="text-caption-sm uppercase leading-inherit tracking-wide text-foreground-subtle">
+          <p className="text-caption-sm leading-inherit tracking-wide text-foreground-subtle uppercase">
             {str(item, "name", "key", "label") ?? `Output ${i + 1}`}
           </p>
-          <p className="mt-0.5 whitespace-pre-wrap break-words text-body-sm leading-inherit text-foreground-emphasis">
+          <p className="mt-0.5 text-body-sm leading-inherit break-words whitespace-pre-wrap text-foreground-emphasis">
             {displayValue(item.value ?? item)}
           </p>
         </div>
@@ -286,7 +298,7 @@ export function KeyValueList({ value }: ValueProps) {
     return (
       <div className={`${CARD} w-full rounded-2xl p-3`}>
         <div className="relative">
-          <p className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-body-sm leading-relaxed text-foreground-secondary scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-active">
+          <p className="scrollbar-thin max-h-40 scrollbar-thumb-surface-active scrollbar-track-transparent overflow-y-auto text-body-sm leading-relaxed break-words whitespace-pre-wrap text-foreground-secondary">
             {truncated?.preview ?? value}
           </p>
           {truncated && (
@@ -316,7 +328,7 @@ export function KeyValueList({ value }: ValueProps) {
           <span className="shrink-0 text-foreground-subtle">
             {humanizeKey(key)}
           </span>
-          <span className="ml-auto min-w-0 break-words text-right font-medium text-foreground-body">
+          <span className="ml-auto min-w-0 text-right font-medium break-words text-foreground-body">
             {displayValue(entryValue)}
           </span>
         </div>

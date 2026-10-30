@@ -46,10 +46,7 @@ function CoPilotUsageSection() {
       <Text variant="lg-medium" as="h3" tone="inherit">
         Expert Usage & Storage
       </Text>
-      <div
-        // TODO(tokens): no exact role (border-neutral-200 #E5E5E5)
-        className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-4"
-      >
+      <div className="flex flex-col gap-3 rounded-lg border border-border-base p-4">
         {usage.daily && (
           <UsageBar
             label="Today"
@@ -67,7 +64,8 @@ function CoPilotUsageSection() {
         <StorageBar />
       </div>
       <Button
-        variant="legacy-default"
+        variant="compact-primary"
+        size="compact"
         className="w-full"
         onClick={() => router.push("/copilot")}
       >
@@ -171,10 +169,7 @@ export default function CreditsPage() {
 
   return (
     <div className="w-full px-4 sm:px-8 md:min-w-[800px]">
-      <h1
-        // TODO(tokens): no exact role (text-neutral-900 #171717, dark:text-neutral-100); SECRT-3152 rare size (sm:text-[35px])
-        className="mb-6 text-heading font-normal leading-inherit text-neutral-900 dark:text-neutral-100 sm:mb-8 sm:text-[35px]"
-      >
+      <h1 className="mb-6 text-heading leading-inherit font-normal text-foreground-strong sm:mb-8 sm:text-title sm:leading-inherit">
         Billing
       </h1>
 
@@ -190,15 +185,9 @@ export default function CreditsPage() {
             Top-up Credits
           </Text>
 
-          <p
-            // TODO(tokens): no exact role (text-neutral-600 #525252, dark:text-neutral-400)
-            className="mb-6 text-neutral-600 dark:text-neutral-400"
-          >
+          <p className="mb-6 text-foreground-secondary">
             {topupStatus === "success" && (
-              <span
-                // TODO(tokens): no exact role (text-green-500 #16A34A)
-                className="text-green-500"
-              >
+              <span className="text-success">
                 Your payment was successful. Your credits will be updated
                 shortly. Try refreshing the page in case it is not updated.
               </span>
@@ -214,8 +203,7 @@ export default function CreditsPage() {
             <div>
               <label
                 htmlFor="topUpAmount"
-                // TODO(tokens): no exact role (text-neutral-700 #404040)
-                className="mb-1 block text-neutral-700"
+                className="mb-1 block text-foreground-body"
               >
                 Top-up amount (USD), minimum $5:
               </label>
@@ -227,14 +215,14 @@ export default function CreditsPage() {
                 min="5"
                 step="1"
                 defaultValue={5}
-                // TODO(tokens): no exact role (border-slate-200 #CFD4DB, dark:border-slate-700, dark:bg-slate-800)
-                className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
+                className="w-full rounded-md border border-border-base px-4 py-2"
                 required
               />
             </div>
 
             <Button
-              variant="legacy-default"
+              variant="compact-primary"
+              size="compact"
               type="submit"
               className="w-full"
               disabled={isRequestingTopUp || checkoutRedirect.isRedirecting}
@@ -252,8 +240,7 @@ export default function CreditsPage() {
             <div>
               <label
                 htmlFor="threshold"
-                // TODO(tokens): no exact role (text-neutral-700 #404040)
-                className="mb-1 block text-neutral-700"
+                className="mb-1 block text-foreground-body"
               >
                 When my balance goes below this amount:
               </label>
@@ -269,8 +256,7 @@ export default function CreditsPage() {
                 placeholder="Refill threshold, minimum $5"
                 min="5"
                 step="1"
-                // TODO(tokens): no exact role (border-slate-200 #CFD4DB, dark:border-slate-700, dark:bg-slate-800)
-                className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
+                className="w-full rounded-md border border-border-base px-4 py-2"
                 required
               />
             </div>
@@ -278,8 +264,7 @@ export default function CreditsPage() {
             <div>
               <label
                 htmlFor="autoTopUpAmount"
-                // TODO(tokens): no exact role (text-neutral-700 #404040)
-                className="mb-1 block text-neutral-700"
+                className="mb-1 block text-foreground-body"
               >
                 Automatically refill my balance with this amount:
               </label>
@@ -293,8 +278,7 @@ export default function CreditsPage() {
                 placeholder="Refill amount, minimum $5"
                 min="5"
                 step="1"
-                // TODO(tokens): no exact role (border-slate-200 #CFD4DB, dark:border-slate-700, dark:bg-slate-800)
-                className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
+                className="w-full rounded-md border border-border-base px-4 py-2"
                 required
               />
             </div>
@@ -309,7 +293,8 @@ export default function CreditsPage() {
             {autoTopUpConfig?.amount ? (
               <>
                 <Button
-                  variant="legacy-default"
+                  variant="compact-primary"
+                  size="compact"
                   type="submit"
                   className="w-full"
                 >
@@ -317,7 +302,8 @@ export default function CreditsPage() {
                 </Button>
                 <Button
                   className="w-full"
-                  variant="legacy-destructive"
+                  variant="compact-destructive"
+                  size="compact"
                   onClick={() =>
                     updateAutoTopUpConfig(0, 0).then(() => {
                       toast({ title: "Auto top-up config disabled! 🎉" });
@@ -328,7 +314,12 @@ export default function CreditsPage() {
                 </Button>
               </>
             ) : (
-              <Button variant="legacy-default" type="submit" className="w-full">
+              <Button
+                variant="compact-primary"
+                size="compact"
+                type="submit"
+                className="w-full"
+              >
                 Enable Auto-Refill
               </Button>
             )}
@@ -344,15 +335,13 @@ export default function CreditsPage() {
           <Text variant="lg-medium" as="h3" tone="inherit">
             Manage Your Payment Methods
           </Text>
-          <p
-            // TODO(tokens): no exact role (text-neutral-600 #525252)
-            className="text-neutral-600"
-          >
+          <p className="text-foreground-secondary">
             You can manage your cards and see your payment history in the
             billing portal.
           </p>
           <Button
-            variant="legacy-default"
+            variant="compact-primary"
+            size="compact"
             type="submit"
             className="w-full"
             onClick={() => openBillingPortal()}
@@ -366,12 +355,7 @@ export default function CreditsPage() {
             Transaction History
           </Text>
           {transactionHistory.transactions.length === 0 && (
-            <p
-              // TODO(tokens): no exact role (text-neutral-600 #525252)
-              className="text-neutral-600"
-            >
-              No transactions found.
-            </p>
+            <p className="text-foreground-secondary">No transactions found.</p>
           )}
           <Table
             className={
@@ -402,13 +386,14 @@ export default function CreditsPage() {
                   </TableCell>
                   <TableCell>{transaction.description}</TableCell>
                   {/* Make it green if it's positive, red if it's negative */}
-                  <TableCell
-                    className={
-                      // TODO(tokens): no exact role (text-green-500 #16A34A)
-                      transaction.amount > 0 ? "text-green-500" : "text-error"
-                    }
-                  >
-                    <b>{formatCredits(transaction.amount)}</b>
+                  <TableCell>
+                    <b
+                      className={
+                        transaction.amount > 0 ? "text-success" : "text-error"
+                      }
+                    >
+                      {formatCredits(transaction.amount)}
+                    </b>
                   </TableCell>
                 </TableRow>
               ))}
@@ -416,7 +401,8 @@ export default function CreditsPage() {
           </Table>
           {transactionHistory.next_transaction_time && (
             <Button
-              variant="legacy-default"
+              variant="compact-primary"
+              size="compact"
               type="submit"
               className="w-full"
               onClick={() => fetchTransactionHistory()}
@@ -465,7 +451,8 @@ export default function CreditsPage() {
           )}
 
           <Button
-            variant="legacy-destructive"
+            variant="compact-destructive"
+            size="compact"
             onClick={() => openRefundModal()}
             className="w-full"
           >

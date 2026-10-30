@@ -27,7 +27,7 @@ export function ExpertAccess({ name, providers }: Props) {
             >
               <IntegrationLogo provider={provider} size={22} />
             </span>
-            <span className="min-w-0 break-words text-sm font-medium leading-5 text-foreground-emphasis">
+            <span className="min-w-0 text-sm leading-5 font-medium break-words text-foreground-emphasis">
               {formatProviderName(provider)}
             </span>
           </li>

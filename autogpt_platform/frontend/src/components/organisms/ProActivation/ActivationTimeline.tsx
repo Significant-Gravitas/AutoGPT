@@ -14,7 +14,7 @@ export function ActivationTimeline({ terms }: Props) {
     <ol data-slot="activation-timeline" className="space-y-4 text-sm">
       <li
         data-slot="activation-timeline-item"
-        className="relative grid grid-cols-[0.75rem_4.5rem_1fr] gap-x-3 before:absolute before:bottom-[-1rem] before:left-[5px] before:top-4 before:w-px before:bg-surface-active"
+        className="relative grid grid-cols-[0.75rem_4.5rem_1fr] gap-x-3 before:absolute before:top-4 before:bottom-[-1rem] before:left-[5px] before:w-px before:bg-surface-active"
       >
         <span
           aria-hidden="true"
@@ -42,9 +42,7 @@ export function ActivationTimeline({ terms }: Props) {
         <span
           aria-hidden="true"
           data-slot="activation-timeline-dot"
-          // TODO(tokens): no border role for zinc-400 (border-strong is
-          // zinc-300).
-          className="mt-1.5 h-2.5 w-2.5 rounded-full border border-zinc-400 bg-surface"
+          className="mt-1.5 h-2.5 w-2.5 rounded-full border border-border-strong bg-surface"
         />
         <span
           data-slot="activation-timeline-date"

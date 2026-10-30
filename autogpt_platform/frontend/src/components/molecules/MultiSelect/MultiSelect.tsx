@@ -279,7 +279,7 @@ const MultiSelectorList = forwardRef<
       ref={ref}
       data-slot="multi-select-list"
       className={cn(
-        "absolute top-0 z-10 flex w-full flex-col gap-2 rounded-md border border-muted bg-background p-2 shadow-md transition-colors scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground scrollbar-thumb-rounded-lg dark:scrollbar-thumb-muted",
+        "absolute top-0 z-10 scrollbar-thin flex w-full scrollbar-thumb-muted-foreground scrollbar-track-transparent flex-col gap-2 rounded-md border border-muted bg-background p-2 shadow-md transition-colors scrollbar-thumb-rounded-lg",
         className,
       )}
     >

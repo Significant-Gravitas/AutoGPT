@@ -27,14 +27,13 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
     >
       <Dialog.Content>
         <div className="space-y-4">
-          {/* TODO(tokens): no exact role for amber-900 */}
           <div className="space-y-2 rounded-md border border-warning-border bg-warning-surface p-3">
-            <Text variant="small" className="text-amber-900">
+            <Text tone="warning" variant="small">
               Anyone with the link will see this conversation. Don&apos;t share
               if it contains secrets you pasted, personal details, or
               credentials you wouldn&apos;t want public.
             </Text>
-            <Text variant="small" className="text-amber-900">
+            <Text tone="warning" variant="small">
               Sharing is <strong>live</strong>: new messages, workflow runs, and
               files added after you enable sharing become visible too. Stop
               sharing to revoke access.
