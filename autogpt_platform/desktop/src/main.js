@@ -72,13 +72,14 @@ const install = identity(
   variantOf({ isPackaged: app.isPackaged, manifest: require("../package.json"), env: process.env }),
 );
 const dataDir = defaultDataDir(process.platform, process.env, install);
+let launchRefusal = null;
 try {
   claimLaunch(dataDir);
+  if (process.platform === "win32") launchRefusal = dataOfAnotherInstall();
 } catch (error) {
-  dialog.showErrorBox("AutoGPT cannot open its data folder", error.message);
-  app.exit(1);
+  launchRefusal = error?.message || "AutoGPT could not open its data folder.";
 }
-claim(app, install);
+if (!launchRefusal) claim(app, install);
 const logsDir = path.join(dataDir, "logs");
 const settingsFile = path.join(dataDir, "config", "settings.env");
 
@@ -111,7 +112,10 @@ const history = [];
 let preferences = DEFAULT_PREFERENCES;
 let privacy = null;
 
-if (!app.requestSingleInstanceLock()) {
+if (launchRefusal) {
+  dialog.showErrorBox("AutoGPT cannot open its data folder", launchRefusal);
+  app.exit(1);
+} else if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on("second-instance", () => focusWindow());
@@ -128,7 +132,7 @@ function boot() {
   restrictPermissions(session.defaultSession);
   createTray();
   quitUnaskedWhenToldToEnd();
-  foreignData = dataOfAnotherInstall();
+  if (process.platform !== "win32") foreignData = dataOfAnotherInstall();
   if (!foreignData) {
     fs.mkdirSync(logsDir, { recursive: true });
     preferences = loadPreferences(dataDir);
@@ -151,10 +155,11 @@ function boot() {
 function dataOfAnotherInstall() {
   let owner;
   try {
-    owner = claimDataDir(dataDir, install);
-  } catch {
-    // A directory that cannot be written to: the runtime says so better.
-    return null;
+    owner = claimDataDir(dataDir, install, {
+      runtime: runtimeDir({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath }),
+    });
+  } catch (error) {
+    return `AutoGPT cannot safely open its data folder: ${error?.message || "Data folder preparation failed."}`;
   }
   if (owner === install.dirName) return null;
   return (

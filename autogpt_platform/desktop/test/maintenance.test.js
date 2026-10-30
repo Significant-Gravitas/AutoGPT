@@ -22,7 +22,7 @@ test("a launch publishes its live lease before the data directory exists", (t) =
   const lease = claimLaunch(f.data);
   assert.equal(JSON.parse(fs.readFileSync(lease, "utf8")).pid, process.pid);
   assert.equal(fs.existsSync(f.data), false);
-  assert.equal(claimDataDir(f.data, NORMAL), NORMAL.dirName);
+  assert.equal(claimDataDir(f.data, NORMAL, { platform: "linux" }), NORMAL.dirName);
   assert.equal(fs.existsSync(lease), true);
 });
 

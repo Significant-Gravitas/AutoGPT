@@ -28,7 +28,8 @@ const {
   windowTitle,
   workflowOutputs,
 } = require("../src/identity");
-const { INSTALL_STAMP, claimDataDir, defaultDataDir } = require("../src/paths");
+const { INSTALL_STAMP, claimDataDir: claimDataDirWithRuntime, defaultDataDir } = require("../src/paths");
+const claimDataDir = (directory, install) => claimDataDirWithRuntime(directory, install, { platform: "linux" });
 const {
   createUpdater,
   feedUrl,
@@ -392,7 +393,7 @@ test("the shell starts nothing on a data directory that is another install's", (
   assert.ok(asked < boot.indexOf("fs.mkdirSync(logsDir"));
   assert.match(boot, /if \(!foreignData\) \{\s+fs\.mkdirSync\(logsDir/);
   assert.match(boot, /if \(foreignData\) report\(\{ event: "error", fatal: true, message: foreignData \}\);\s+else startRuntime\(\);/);
-  assert.ok(boot.includes("claimDataDir(dataDir, install)"));
+  assert.ok(boot.includes("claimDataDir(dataDir, install, {"));
   assert.ok(boot.includes("if (owner === install.dirName) return null;"));
   // The one other thing the shell writes there itself.
   assert.match(main, /function resetOwnerPassword\(\) \{\s+if \(foreignData\) return focusWindow\(\);/);

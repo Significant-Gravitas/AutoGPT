@@ -5,8 +5,10 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
+const { EventEmitter } = require("node:events");
+const { PassThrough } = require("node:stream");
+const vm = require("node:vm");
 
-const { spawn } = require("node:child_process");
 const { Runtime, parseEvent, killRecorded } = require("../src/runtime");
 const { defaultDataDir, readRuntimeManifest } = require("../src/paths");
 
@@ -170,6 +172,32 @@ test("a runtime that cannot be started is reported, and stopping it does not han
   await runtime.stop();
 });
 
+test("spawn failure leaves an old registry untouched and never signals its PIDs", async (t) => {
+  const signals = [];
+  t.mock.method(process, "kill", (...args) => signals.push(args));
+  const registry = writeRegistry([{ name: "old service", pid: process.pid, started: 1 }]);
+  const original = fs.readFileSync(registry);
+  const runtime = new Runtime({
+    command: path.join(__dirname, "no-such-runtime"),
+    registryFile: registry,
+  });
+  runtime.start();
+  await runtime.exited;
+  assert.deepEqual(signals, []);
+  assert.deepEqual(fs.readFileSync(registry), original);
+});
+
+test("the shell cannot reap a registry without an identity-checking runtime helper", async (t) => {
+  const signals = [];
+  t.mock.method(process, "kill", (...args) => signals.push(args));
+  const registry = writeRegistry([{ name: "reused PID", pid: process.pid, started: 1 }]);
+  const original = fs.readFileSync(registry);
+  const cleanup = killRecorded(registry);
+  assert.deepEqual(signals, []);
+  await assert.rejects(cleanup, /runtime|helper/i);
+  assert.deepEqual(fs.readFileSync(registry), original);
+});
+
 test("runtime output is appended to the log file", async () => {
   const logFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "agpt-desktop-")), "runtime.log");
   const runtime = new Runtime({ command: process.execPath, args: [FAKE, "crash"], logFile });
@@ -210,82 +238,83 @@ test("manifest commands resolve relative to the runtime directory", () => {
   assert.deepEqual(mac.env, { A: `${dir}/a` });
 });
 
-// The runtime starts each service as the leader of its own process group.
-function spawnService(script) {
-  return spawn(process.execPath, ["-e", script], {
-    stdio: ["ignore", "pipe", "ignore"],
-    detached: true,
-    windowsHide: true,
-  });
-}
-
 function writeRegistry(entries) {
   const registry = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "agpt-registry-")), "children.json");
   fs.writeFileSync(registry, JSON.stringify(entries));
   return registry;
 }
 
-function isRunning(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
+function controlledRuntime(spawn) {
+  const module = { exports: {} };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../src/runtime.js"), "utf8"), {
+    require(name) { return name === "node:child_process" ? { spawn } : require(name); },
+    module, process, setTimeout, clearTimeout,
+  });
+  return module.exports;
 }
 
-async function waitUntil(predicate, timeoutMs = 5_000) {
-  const deadline = Date.now() + timeoutMs;
-  while (!predicate() && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  return predicate();
-}
-
-test("services recorded by a runtime that had to be killed are killed too", async () => {
-  const service = spawnService("setInterval(() => {}, 1000)");
-  const exited = new Promise((resolve) => service.once("exit", (code, signal) => resolve(signal || code)));
-  const registry = writeRegistry([{ name: "service", pid: service.pid }, { name: "gone", pid: 999999 }]);
-
-  killRecorded(registry);
-
-  assert.ok(await exited);
-  assert.doesNotThrow(() => killRecorded(path.join(os.tmpdir(), "no-such-registry.json")));
+test("recorded services are delegated to the bounded Python identity-checking reaper", async () => {
+  const registry = writeRegistry([{ name: "service", pid: 123, started: 456 }]);
+  const env = { SAFE: "value" };
+  const { killRecorded: reap } = controlledRuntime((command, args, options) => {
+    assert.equal(command, "bundled-python");
+    assert.deepEqual(Array.from(args), ["-B", "-m", "autogpt_desktop.reap", "--data-dir", path.dirname(path.dirname(registry))]);
+    assert.equal(options.cwd, "runtime-root");
+    assert.equal(options.env, env);
+    assert.equal(options.timeout, 15_000);
+    assert.equal(options.killSignal, "SIGKILL");
+    assert.equal(options.windowsHide, true);
+    assert.equal(options.stdio, "ignore");
+    const helper = new EventEmitter();
+    queueMicrotask(() => helper.emit("close", 0, null));
+    return helper;
+  });
+  await reap(registry, { command: "bundled-python", cwd: "runtime-root", env });
+  assert.ok(fs.existsSync(registry), "only the verified helper may remove the registry");
+  await reap(path.join(os.tmpdir(), "no-such-registry.json"));
 });
 
-test(
-  "what a recorded service started is killed with it",
-  { skip: process.platform === "win32" && "Windows relies on the runtime's Job Object" },
-  async () => {
-    // Like rabbitmq-server: a launcher that starts the real process and waits.
-    const launcher = spawnService(`
-      const child = require("node:child_process").spawn(
-        process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
-      console.log(child.pid);
-      setInterval(() => {}, 1000);
-    `);
-    const [line] = await require("node:events").once(
-      require("node:readline").createInterface({ input: launcher.stdout }),
-      "line",
-    );
-    const started = Number(line);
-    assert.ok(isRunning(started));
-
-    killRecorded(writeRegistry([{ name: "launcher", pid: launcher.pid }]));
-
-    assert.ok(await waitUntil(() => !isRunning(started)));
-  },
-);
-
-test("a runtime that dies takes its recorded services with it", async () => {
-  const service = spawnService("setInterval(() => {}, 1000)");
-  const exited = new Promise((resolve) => service.once("exit", (code, signal) => resolve(signal || code)));
-  const runtime = new Runtime({
-    command: process.execPath,
-    args: [FAKE, "crash"],
-    registryFile: writeRegistry([{ name: "service", pid: service.pid }]),
+for (const outcome of ["spawn-error", "nonzero", "timeout"]) {
+  test(`cleanup ${outcome} retains the registry without directly killing processes`, async (t) => {
+    t.mock.method(process, "kill", () => assert.fail("unverified PID kill"));
+    const registry = writeRegistry([{ name: "service", pid: 123, started: 456 }]);
+    const original = fs.readFileSync(registry);
+    const { killRecorded: reap } = controlledRuntime(() => {
+      const helper = new EventEmitter();
+      queueMicrotask(() => {
+        if (outcome === "spawn-error") helper.emit("error", new Error("missing helper"));
+        else helper.emit("close", outcome === "nonzero" ? 1 : null, outcome === "timeout" ? "SIGKILL" : null);
+      });
+      return helper;
+    });
+    await assert.rejects(reap(registry, { command: "bundled-python" }));
+    assert.deepEqual(fs.readFileSync(registry), original);
   });
-  runtime.start();
+}
 
-  assert.ok(await exited);
+test("runtime exit and stop wait for verified cleanup, once only", async () => {
+  const registry = writeRegistry([{ name: "service", pid: 123, started: 456 }]);
+  const child = Object.assign(new EventEmitter(), {
+    pid: 1234, stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(),
+  });
+  const helper = new EventEmitter();
+  let spawns = 0;
+  const { Runtime: Controlled } = controlledRuntime(() => ++spawns === 1 ? child : helper);
+  const runtime = new Controlled({ command: "bundled-python", registryFile: registry });
+  let exited = false;
+  runtime.on("exit", () => { exited = true; });
+  runtime.start();
+  child.emit("exit", 3, null);
+  child.emit("exit", 3, null);
+  let stopped = false;
+  const stop = runtime.stop().then(() => { stopped = true; });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(exited, false);
+  assert.equal(stopped, false);
+  assert.equal(spawns, 2);
+  helper.emit("close", 0, null);
+  await stop;
+  assert.equal(exited, true);
+  assert.equal(stopped, true);
+  for (const stream of [child.stdin, child.stdout, child.stderr]) stream.end();
 });

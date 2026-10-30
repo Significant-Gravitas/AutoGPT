@@ -19,6 +19,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import math
 import os
 import signal
 import socket
@@ -424,6 +425,9 @@ class ChildRegistry:
             entries.append(
                 {"name": process.name, "pid": process.pid, "started": started}
             )
+        self._write_entries(entries)
+
+    def _write_entries(self, entries: list) -> None:
         # Whole or not at all: a runtime killed in the middle of this must
         # not leave half a list, which the next start could not read.
         fresh = self.path.with_name(self.path.name + ".new")
@@ -437,26 +441,75 @@ class ChildRegistry:
             entries = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return
+        if not isinstance(entries, list):
+            return
+        retry_entries = list(entries)
         killed = []
+        uncertain = False
         for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            pid, started = entry.get("pid"), entry.get("started")
+            if (
+                type(pid) is not int
+                or not 0 < pid <= 2**31 - 1
+                or type(started) not in (int, float)
+                or (type(started) is float and not math.isfinite(started))
+                or started <= 0
+            ):
+                continue
             try:
-                process = psutil.Process(entry["pid"])
-                if abs(process.create_time() - entry["started"]) > 1:
+                process = psutil.Process(pid)
+                if process.create_time() != started or not process.is_running():
+                    continue
+                if sys.platform != "win32" and os.getpgid(pid) != pid:
                     continue
                 killed.append(process)
                 logger.warning(
-                    f"stopping leftover {entry['name']} (pid {entry['pid']})"
+                    f"stopping leftover {entry.get('name', 'service')} (pid {pid})"
                 )
                 if sys.platform == "win32":
+                    descendants = []
+                    identities = []
                     for child in process.children(recursive=True):
-                        child.kill()
+                        try:
+                            child_started = child.create_time()
+                        except psutil.NoSuchProcess:
+                            continue
+                        descendants.append(child)
+                        identities.append(
+                            {
+                                "name": "service descendant",
+                                "pid": child.pid,
+                                "started": child_started,
+                            }
+                        )
+                    if identities:
+                        # A denied child may outlive its parent. Save its identity
+                        # before signals so a later cleanup can still find it.
+                        retry_entries.extend(identities)
+                        self._write_entries(retry_entries)
+                    for child in descendants:
+                        killed.append(child)
+                        try:
+                            child.kill()
+                        except psutil.NoSuchProcess:
+                            pass
+                        except (psutil.Error, OSError):
+                            uncertain = True
                     process.kill()
                 else:
-                    os.killpg(entry["pid"], signal.SIGKILL)
-            except (psutil.Error, OSError, KeyError, TypeError):
+                    os.killpg(pid, signal.SIGKILL)
+            except (psutil.NoSuchProcess, ProcessLookupError):
                 continue
+            except (psutil.Error, OSError, KeyError, TypeError):
+                uncertain = True
         # Their ports are about to be checked, and reused if they are free.
-        psutil.wait_procs(killed, timeout=10)
+        _, alive = psutil.wait_procs(killed, timeout=10)
+        if uncertain or alive:
+            raise RuntimeError(
+                "Some leftover services could not be verified or stopped; their registry is retained."
+            )
         self.path.unlink(missing_ok=True)
 
 

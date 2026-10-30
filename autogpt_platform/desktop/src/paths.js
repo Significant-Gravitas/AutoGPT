@@ -1,6 +1,7 @@
 "use strict";
 
 const fs = require("node:fs");
+const { spawnSync } = require("node:child_process");
 const os = require("node:os");
 const path = require("node:path");
 
@@ -49,13 +50,44 @@ function movedDataDir(directory, install) {
 //
 // A directory that was used before installs left their name in it is the
 // normal app's: there was nothing else.
-function claimDataDir(dataDir, install) {
+function claimDataDir(dataDir, install, options = {}) {
   const stamp = path.join(dataDir, INSTALL_STAMP);
   const owner = readStamp(stamp);
   if (owner) return owner;
   if (install.variant && USED.some((name) => fs.existsSync(path.join(dataDir, name)))) return NORMAL.dirName;
-  fs.mkdirSync(dataDir, { recursive: true });
+  createDataDir(dataDir, options);
   return writeStamp(stamp, install.dirName);
+}
+
+function createDataDir(dataDir, {
+  platform = process.platform,
+  runtime = runtimeDir({ isPackaged: Boolean(process.resourcesPath), resourcesPath: process.resourcesPath }),
+  run = spawnSync,
+} = {}) {
+  try {
+    if (!fs.statSync(dataDir).isDirectory()) throw new Error("The data folder is not a directory.");
+    return;
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  if (platform !== "win32") {
+    fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+    return;
+  }
+  runtime = path.resolve(runtime);
+  const { command } = readRuntimeManifest(runtime, platform);
+  const code = "import sys; from pathlib import Path; sys.path.insert(0, sys.argv[1]); " +
+    "from autogpt_desktop.shell_data import create; create(Path(sys.argv[2]))";
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) =>
+    ["systemroot", "windir"].includes(name.toLowerCase()),
+  ));
+  const result = run(command, ["-I", "-S", "-B", "-c", code, path.resolve(runtime), path.resolve(dataDir)], {
+    cwd: runtime, env, windowsHide: true, shell: false, timeout: 15_000, maxBuffer: 64 * 1024,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (result.error || result.status !== 0 || result.signal) {
+    throw new Error("AutoGPT could not create a private data folder. Check the folder permissions and bundled runtime, then try again.");
+  }
 }
 
 function readStamp(stamp) {

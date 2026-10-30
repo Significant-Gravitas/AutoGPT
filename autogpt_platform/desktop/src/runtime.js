@@ -38,6 +38,7 @@
 const { spawn } = require("node:child_process");
 const { EventEmitter } = require("node:events");
 const fs = require("node:fs");
+const path = require("node:path");
 const readline = require("node:readline");
 
 // A healthy runtime stops in a few seconds, and at worst takes about 45: the
@@ -83,13 +84,23 @@ class Runtime extends EventEmitter {
       windowsHide: true,
     });
     this.exited = new Promise((resolve) => {
-      const settle = (code, signal) => {
+      const settle = async (code, signal) => {
         if (this.hasExited) return;
         this.hasExited = true;
         clearTimeout(this.killTimer);
         // A runtime that stopped its services also removed the list of them,
         // so this only finds work after a crash or a kill.
-        killRecorded(this.registryFile);
+        if (this.child.pid !== undefined) {
+          try {
+            await killRecorded(this.registryFile, {
+              command: this.command, cwd: this.cwd, env: { ...process.env, ...this.env },
+            });
+          } catch (error) {
+            const message = `Runtime cleanup could not complete: ${error.message}`;
+            log?.write(`${message}\n`);
+            this.emit("log", message);
+          }
+        }
         log?.end();
         this.emit("exit", { code, signal, expected: this.stopping });
         resolve({ code, signal });
@@ -125,7 +136,11 @@ class Runtime extends EventEmitter {
   // again while the runtime is stopping, whichever way, it tells it to wait
   // for nothing more.
   async stop({ stopRuns = false } = {}) {
-    if (!this.child || this.hasExited) return;
+    if (!this.child) return;
+    if (this.hasExited) {
+      await this.exited;
+      return;
+    }
     const again = this.stopping;
     // Before anything is written: a request for more time is honoured only
     // from a runtime that is being stopped.
@@ -150,22 +165,21 @@ class Runtime extends EventEmitter {
 // Outside Windows each service leads its own process group, and the group is
 // what gets killed: RabbitMQ's entry is a shell script, and killing only the
 // script would leave the broker it started running.
-function killRecorded(registryFile) {
-  if (!registryFile) return;
-  let entries;
-  try {
-    entries = JSON.parse(fs.readFileSync(registryFile, "utf8"));
-  } catch {
-    return;
-  }
-  for (const entry of Array.isArray(entries) ? entries : []) {
-    try {
-      process.kill(process.platform === "win32" ? entry.pid : -entry.pid, "SIGKILL");
-    } catch {
-      // already gone
-    }
-  }
-  fs.rmSync(registryFile, { force: true });
+async function killRecorded(registryFile, { command, cwd, env } = {}) {
+  if (!registryFile || !fs.existsSync(registryFile)) return;
+  if (!command) throw new Error("The runtime helper is required for verified cleanup.");
+  await new Promise((resolve, reject) => {
+    const helper = spawn(command, [
+      "-B", "-m", "autogpt_desktop.reap", "--data-dir", path.dirname(path.dirname(registryFile)),
+    ], {
+      cwd, env, stdio: "ignore", windowsHide: true, timeout: 15_000, killSignal: "SIGKILL",
+    });
+    helper.once("error", reject);
+    helper.once("close", (code, signal) => {
+      if (code === 0 && signal === null) resolve();
+      else reject(new Error("Verified runtime cleanup failed; its registry is retained for the next start."));
+    });
+  });
 }
 
 function parseEvent(line) {
