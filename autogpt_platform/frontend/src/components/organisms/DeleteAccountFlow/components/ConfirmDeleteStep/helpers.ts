@@ -23,7 +23,7 @@ interface EmailMatchArgs {
 }
 
 const DATA_LINE =
-  "Your chats, Experts, workflows, files and memory are erased after 14 days. Links you shared stop working now.";
+  "Your chats, Experts, workflows, files and memory are erased after 14 days. Your share links stop working and your Marketplace reviews are removed now.";
 const TRIAL_LABEL = "trial";
 const TRIAL_LINE = "Your trial ends now.";
 const FALLBACK_ERROR = "We couldn't delete your account. Try again.";

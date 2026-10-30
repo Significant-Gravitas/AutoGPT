@@ -134,7 +134,7 @@ describe("DeleteAccountFlow confirm step", () => {
       "This closes your AutoGPT account now and erases it after 14 days.",
     );
     expect(dialog.textContent).toContain(
-      "Your chats, Experts, workflows, files and memory are erased after 14 days. Links you shared stop working now.",
+      "Your chats, Experts, workflows, files and memory are erased after 14 days. Your share links stop working and your Marketplace reviews are removed now.",
     );
     expect(
       await screen.findByText(
@@ -142,7 +142,7 @@ describe("DeleteAccountFlow confirm step", () => {
       ),
     ).toBeDefined();
     expect(dialog.textContent).toContain(
-      "You'll be signed out right away. Changed your mind? Sign in within 14 days and choose Keep my account.",
+      "You'll be signed out right away. Changed your mind? Sign in within 14 days and choose Keep my account. Your plan, apps, API keys, share links, and Marketplace listings and reviews don't come back, and notification emails stay off until you switch them back on.",
     );
   });
 
@@ -161,7 +161,7 @@ describe("DeleteAccountFlow confirm step", () => {
           .getAllByRole("listitem")
           .map((item) => item.textContent),
       ).toEqual([
-        "Your chats, Experts, workflows, files and memory are erased after 14 days. Links you shared stop working now.",
+        "Your chats, Experts, workflows, files and memory are erased after 14 days. Your share links stop working and your Marketplace reviews are removed now.",
         "Connected apps like Gmail, Google Calendar and others are disconnected, and our access to them is revoked.",
         "Your Max plan ends now. The rest of this billing period isn't refunded.",
         "Your published workflows are removed from the Marketplace.",

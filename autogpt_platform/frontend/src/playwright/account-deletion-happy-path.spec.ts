@@ -86,6 +86,10 @@ test("account deletion happy path: user closes their account from Settings, then
     page.getByRole("heading", { name: "Your account is closed" }),
   ).toBeVisible({ timeout: 15000 });
   await page.getByRole("button", { name: "Keep my account" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Your account is open again" }),
+  ).toBeVisible({ timeout: 15000 });
+  await page.getByRole("button", { name: "Continue to AutoGPT" }).click();
 
   await expect(page).not.toHaveURL(/\/account-closed/, { timeout: 20000 });
   await page.goto("/settings/account");

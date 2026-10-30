@@ -2,13 +2,22 @@ import {
   useGetAccountGetAccountDeletionStatus,
   usePostAccountKeepMyAccount,
 } from "@/app/api/__generated__/endpoints/account/account";
+import { getV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { getEraseDateLabel, getKeepErrorMessage } from "./helpers";
+import {
+  OPEN_PROBE,
+  getEraseDateLabel,
+  getKeepErrorMessage,
+  getPageView,
+  waitUntilAnsweredAsOpen,
+} from "./helpers";
 
 export function useAccountClosedPage() {
   const router = useRouter();
+  const [isKept, setIsKept] = useState(false);
+  const [isReady, setIsReady] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
   const status = useGetAccountGetAccountDeletionStatus({
     query: {
@@ -17,12 +26,32 @@ export function useAccountClosedPage() {
     },
   });
   const { mutateAsync, isPending } = usePostAccountKeepMyAccount();
-  const isOpen = status.data?.status === "open";
+  const view = getPageView({
+    isKept,
+    isLoading: status.isLoading,
+    isError: status.isError,
+    status: status.data?.status,
+    eraseAfter: status.data?.erase_after,
+  });
+  const isOpen = view === "open";
 
   useEffect(
-    function leaveAnOpenAccount() {
-      // Nothing to keep: the account was never closed, or was kept already.
-      if (isOpen) window.location.replace("/");
+    function waitUntilOpenEverywhere() {
+      // Another server may still answer the account as closed for a few
+      // seconds and would send it straight back here, so Continue shows only
+      // once ordinary requests stop being refused.
+      if (!isOpen) return;
+      let cancelled = false;
+      waitUntilAnsweredAsOpen({
+        probe: () => getV1GetUserTimezone(),
+        isCancelled: () => cancelled,
+        settings: OPEN_PROBE,
+      }).then(function showContinue() {
+        if (!cancelled) setIsReady(true);
+      });
+      return function stopWaiting() {
+        cancelled = true;
+      };
     },
     [isOpen],
   );
@@ -34,13 +63,12 @@ export function useAccountClosedPage() {
       toast({ title: getKeepErrorMessage(error), variant: "destructive" });
       return;
     }
+    setIsKept(true);
+  }
+
+  // A full load, so every query starts over as the open account.
+  function continueToApp() {
     setIsLeaving(true);
-    toast({
-      title: "Your account is open again.",
-      description:
-        "If AutoGPT still shows it as closed, wait a minute and sign in again. Still closed after a few minutes? Email contact@agpt.co.",
-    });
-    // A full load, so every query starts over as the open account.
     window.location.replace("/");
   }
 
@@ -50,11 +78,13 @@ export function useAccountClosedPage() {
   }
 
   return {
+    view,
     eraseDate: getEraseDateLabel(status.data?.erase_after),
-    isLoading: status.isLoading || isOpen,
-    isError: status.isError || (!status.isLoading && !status.data),
-    isKeeping: isPending || isLeaving,
+    isReady,
+    isKeeping: isPending,
+    isLeaving,
     keepAccount,
+    continueToApp,
     signOut,
   };
 }

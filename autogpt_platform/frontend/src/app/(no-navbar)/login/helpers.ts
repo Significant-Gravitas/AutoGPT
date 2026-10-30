@@ -1,3 +1,4 @@
+import { ACCOUNT_CLOSED_PATH } from "@/lib/auth/closed-account";
 import type { EmailVerificationNotice } from "@/lib/auth/email-verification";
 
 export const ACCOUNT_BANNED_NOTICE_COPY =
@@ -20,4 +21,15 @@ const BANNED_USER_ERROR_CODE = "BANNED_USER";
 // code. The app's own copy, never the error_description from the query.
 export function getSignInErrorNotice(error: string | null) {
   return error === BANNED_USER_ERROR_CODE ? ACCOUNT_BANNED_NOTICE_COPY : null;
+}
+
+// Where a successful sign-in goes. A closed account always goes to the page
+// where it can keep the account: a ?next= page would only send it back there
+// (an optional-auth page, such as the Marketplace, never would).
+export function getPostLoginPath(
+  nextUrl: string | null,
+  resultNext: string | undefined,
+) {
+  if (resultNext === ACCOUNT_CLOSED_PATH) return ACCOUNT_CLOSED_PATH;
+  return nextUrl || resultNext || "/";
 }
