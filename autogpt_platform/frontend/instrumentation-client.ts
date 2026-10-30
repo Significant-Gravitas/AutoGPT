@@ -7,6 +7,7 @@ import { reloadOnUnhandledChunkLoadError } from "@/lib/chunk-load-reload";
 import {
   CLIENT_IGNORE_ERRORS,
   isFromBot,
+  isHandledTransientFailure,
   isInjectedIframeProbe,
   isNextRSCNavigationFallback,
   SENTRY_DATA_COLLECTION,
@@ -56,14 +57,16 @@ Sentry.init({
   // A failed API request the request logger reports, titled by its route,
   // would otherwise arrive again from the HttpClient integration (BUILDER-95D).
   // Some browsers inject a script that logs every cross-origin iframe it may
-  // not read (BUILDER-943). URLs are masked last: the request logger's match
-  // needs the URL as it was requested.
-  beforeSend(event) {
+  // not read (BUILDER-943). A fetch a catch handled after the network dropped
+  // is no bug, and each browser and build filed it as a new issue. URLs are
+  // masked last: the request logger's match needs the URL as it was requested.
+  beforeSend(event, hint) {
     stripSpanPII(stripUserPII(event));
     if (isFromBot(navigator.userAgent)) return null;
     if (isLoggedRequestFailure(event)) return null;
     if (isInjectedIframeProbe(event)) return null;
     if (isNextRSCNavigationFallback(event)) return null;
+    if (isHandledTransientFailure(event, hint)) return null;
     // Mirror last: after our filters (an integration would run before
     // beforeSend) and on the stripped, URL-masked event, so PostHog never
     // gets an email, IP address or credential Sentry doesn't keep either.
