@@ -72,12 +72,13 @@ export function AssistantMessageActions({
           disabled={feedback === "downvote"}
           aria-disabled={!canRate || undefined}
           className={cn(
-            !canRate && "opacity-50",
             feedback === "upvote" && "text-success/60 hover:text-success/60",
             feedback === "downvote" && "!opacity-20",
           )}
         >
-          <Icon icon={ThumbsUpIcon} size={16} />
+          <span className={cn("flex", !canRate && "opacity-50")}>
+            <Icon icon={ThumbsUpIcon} size={16} />
+          </span>
         </MessageAction>
 
         <MessageAction
@@ -88,12 +89,13 @@ export function AssistantMessageActions({
           disabled={feedback === "upvote"}
           aria-disabled={!canRate || undefined}
           className={cn(
-            !canRate && "opacity-50",
             feedback === "downvote" && "text-error/60 hover:text-error/60",
             feedback === "upvote" && "!opacity-20",
           )}
         >
-          <Icon icon={ThumbsDownIcon} size={16} />
+          <span className={cn("flex", !canRate && "opacity-50")}>
+            <Icon icon={ThumbsDownIcon} size={16} />
+          </span>
         </MessageAction>
 
         <TTSButton text={text} sessionID={sessionID} />
