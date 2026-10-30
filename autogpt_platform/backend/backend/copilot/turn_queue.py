@@ -74,7 +74,7 @@ from backend.copilot.trial_cost_context import (
     restore_cost_context,
 )
 from backend.data.db_accessors import chat_db
-from backend.data.user import is_user_banned
+from backend.data.user import is_user_refused
 from backend.integrations.codex.access import has_codex_access
 
 logger = logging.getLogger(__name__)
@@ -830,13 +830,13 @@ async def turn_refusal(
 ) -> TurnRefusal | None:
     """Why a turn billed to this route may not start for this user, if so.
 
-    A ban first, on every route; then access (Codex entitlement, the platform
+    A ban or a closed account first, on every route; then access (Codex entitlement, the platform
     paywall), then the platform route's usage: its daily and weekly windows and
     a trial's total budget. Lookup errors propagate, so each caller decides what
     an unknown means.
     """
-    if await is_user_banned(user_id):
-        return TurnRefusal(reason="is banned", kind="banned")
+    if await is_user_refused(user_id):
+        return TurnRefusal(reason="is banned or closed", kind="banned")
     if llm_auth_provider == "codex":
         if await has_codex_access(user_id):
             return None

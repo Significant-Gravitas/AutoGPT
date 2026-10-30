@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi import FastAPI, HTTPException, Request, Security
+from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 
@@ -23,6 +24,7 @@ from autogpt_libs.auth import (
     remember_account_closed,
 )
 from autogpt_libs.auth.dependencies import (
+    get_optional_user_id,
     get_request_context,
     get_user_id,
     get_user_id_allowing_closed,
@@ -476,6 +478,35 @@ class TestBannedAndClosed:
         assert response.status_code == 200
         assert response.json() == {"user_id": BANNED}
         bans.assert_not_awaited()
+
+
+class TestOptionalAuth:
+    """An optional-auth route answers a closed account as someone signed out,
+    as it answers a banned one."""
+
+    @staticmethod
+    async def _resolve(user_id: str, mocker: MockerFixture) -> str | None:
+        mocker.patch(
+            "autogpt_libs.auth.dependencies.parse_jwt_token_async",
+            new=AsyncMock(return_value=_payload(user_id)),
+        )
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="t")
+        return await get_optional_user_id(credentials)
+
+    @pytest.mark.asyncio
+    async def test_a_closed_account_reads_as_signed_out(
+        self, bans, backend, mocker: MockerFixture
+    ):
+        assert await self._resolve(CLOSED, mocker) is None
+        backend.is_closed.assert_awaited_once_with(CLOSED)
+
+    @pytest.mark.asyncio
+    async def test_a_banned_account_reads_as_signed_out(self, bans, mocker):
+        assert await self._resolve(BANNED, mocker) is None
+
+    @pytest.mark.asyncio
+    async def test_an_open_account_reads_as_itself(self, bans, mocker):
+        assert await self._resolve(OPEN, mocker) == OPEN
 
 
 class TestFailsOpen:

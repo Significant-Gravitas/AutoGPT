@@ -537,25 +537,29 @@ async def test_authenticate_websocket_closed_account_closes_4003(
 
 
 @pytest.mark.asyncio
-async def test_authenticate_websocket_closed_lookup_failure_falls_to_ban_check(
+async def test_authenticate_websocket_closed_lookup_failure_refuses_with_1011(
     mocker, account_db
 ) -> None:
-    """Closing an account also bans it, so the ban check still has the say."""
+    """Closing an account does not ban it, so a closure that can't be read is
+    refused, with the outage code rather than the closed one."""
     from backend.api.ws_api import authenticate_websocket
 
     mocker.patch(
         "backend.api.ws_api.parse_jwt_token_async",
         new=AsyncMock(return_value={"sub": "user-X"}),
     )
-    mocker.patch("backend.api.ws_api.is_user_banned", new=AsyncMock(return_value=True))
+    banned = mocker.patch(
+        "backend.api.ws_api.is_user_banned", new=AsyncMock(return_value=False)
+    )
     account_db.is_account_closed.side_effect = ConnectionError("db manager down")
     ws = AsyncMock(spec=WebSocket)
     ws.query_params = {"token": "abc"}
 
     user_id = await authenticate_websocket(ws)
 
-    ws.close.assert_awaited_once_with(code=4004, reason="Banned")
+    ws.close.assert_awaited_once_with(code=1011, reason="Try again")
     assert user_id == ""
+    banned.assert_not_awaited()
 
 
 @pytest.mark.asyncio

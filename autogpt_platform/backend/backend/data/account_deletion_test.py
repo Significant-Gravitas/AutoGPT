@@ -352,6 +352,26 @@ async def test_reopening_after_the_grace_period_changes_nothing(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_an_account_whose_erasure_started_cannot_be_reopened(
+    accounts: tuple[str, str],
+):
+    """Even before eraseAfter by this server's clock: the erasure routine,
+    on another server, has claimed the request."""
+    user_id, _ = accounts
+    request = await close_account(user_id, AccountDeletionSource.SETTINGS)
+    assert request is not None
+    await AccountDeletionRequest.prisma().update(
+        where={"userId": user_id},
+        data={"startedAt": datetime.now(timezone.utc)},
+    )
+
+    outcome = await reopen_account(user_id, now=request.requestedAt)
+
+    assert outcome is ReopenOutcome.TOO_LATE
+    assert await is_account_closed(user_id) is True
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_an_erased_account_cannot_be_reopened(accounts: tuple[str, str]):
     user_id, _ = accounts
     await close_account(user_id, AccountDeletionSource.SETTINGS)

@@ -2,7 +2,7 @@
 Better Auth link emails and the account-closed confirmation."""
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Literal, assert_never
 
 from prisma.enums import AccountDeletionSource
@@ -99,11 +99,14 @@ async def send_account_deleted_email(
 
 
 def account_closed_preheader(erase_after: datetime) -> str:
-    """How long the owner can still change their mind. The date is the UTC
-    day the erasure may start, so "before" it always leaves time."""
-    day = f"{erase_after.day} {erase_after.strftime('%b %Y')}"
+    """How long the owner can still change their mind. Keeping the account is
+    refused from the exact erasure moment, and the reader's day may start
+    hours before or after UTC's, so the email names the day before it, with
+    no time zone: signing in at any time that day is still in time."""
+    last_day = erase_after - timedelta(days=1)
+    day = f"{last_day.day} {last_day.strftime('%b %Y')}"
     return (
-        f"Changed your mind? Sign in before {day} and choose Keep my account. "
+        f"Changed your mind? Sign in by {day} and choose Keep my account. "
         "After that, everything in your account is erased."
     )
 

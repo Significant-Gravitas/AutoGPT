@@ -502,12 +502,13 @@ async def test_the_confirmation_email_replies_to_the_shared_inbox(
     assert to == account.email
     request = await _deletion_request(account)
     assert request is not None
-    erase_day = f"{request.eraseAfter.day} {request.eraseAfter.strftime('%b %Y')}"
+    last_day = request.eraseAfter - timedelta(days=1)
+    erase_day = f"{last_day.day} {last_day.strftime('%b %Y')}"
     assert subject == "Your AutoGPT account is closed"
     assert "Your account is closed" in html
     assert (
         "We've closed your AutoGPT account, signed you out and disconnected your "
-        f"apps. Changed your mind? Sign in before {erase_day} and choose Keep my "
+        f"apps. Changed your mind? Sign in by {erase_day} and choose Keep my "
         "account. After that, everything in your account is erased. If you have "
         "a minute, reply and tell us what we could have done better."
     ) in text
@@ -724,6 +725,25 @@ async def test_the_account_cannot_be_kept_after_the_grace_period(
     await AccountDeletionRequest.prisma().update(
         where={"userId": account.user_id},
         data={"eraseAfter": datetime.now(timezone.utc) - timedelta(minutes=1)},
+    )
+
+    response = await api.post(RESTORE)
+
+    assert (response.status_code, response.json()) == (
+        409,
+        {"detail": TOO_LATE_DETAIL},
+    )
+    assert await _deletion_request(account) is not None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_account_cannot_be_kept_once_its_erasure_started(
+    account: Account, api: httpx.AsyncClient, edges: Edges
+):
+    await api.post(DELETE, json=account.confirm())
+    await AccountDeletionRequest.prisma().update(
+        where={"userId": account.user_id},
+        data={"startedAt": datetime.now(timezone.utc)},
     )
 
     response = await api.post(RESTORE)

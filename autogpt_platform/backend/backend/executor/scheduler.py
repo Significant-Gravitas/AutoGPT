@@ -105,7 +105,7 @@ from backend.data.memory_schedule import ScopeRunKind
 from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.data.redis_client import get_redis_async
 from backend.data.schedule import normalize_schedule_name
-from backend.data.user import is_user_banned
+from backend.data.user import is_user_refused
 from backend.executor import schedule_events
 from backend.executor import utils as execution_utils
 from backend.executor.jobstore import WRITE_TIMEOUT, ResilientSQLAlchemyJobStore
@@ -1567,18 +1567,23 @@ def _memory_scope_may_fire(scope: MemoryScope) -> bool:
     """The registry gate of a dream-system cron (``memory_scope_may_fire``),
     run on the scheduler loop. The gate bounds itself; if the bridge still
     gives up, the gate's cancellation is requested and the run skipped."""
-    # A banned owner's crons stay registered and resume if the ban is lifted.
+    # A banned or closed owner's crons stay registered, and resume if the ban
+    # is lifted or the owner keeps the account.
     try:
-        banned = run_async(
-            is_user_banned(scope.owner_user_id),
+        refused = run_async(
+            is_user_refused(scope.owner_user_id),
             timeout=bridge_timeout(),
             cancel_on_timeout=True,
         )
     except Exception:
-        logger.warning(f"Memory cron of {scope_label(scope)} skipped: ban unreadable")
+        logger.warning(
+            f"Memory cron of {scope_label(scope)} skipped: ban or closure unreadable"
+        )
         return False
-    if banned:
-        logger.info(f"Memory cron of {scope_label(scope)} skipped: owner is banned")
+    if refused:
+        logger.info(
+            f"Memory cron of {scope_label(scope)} skipped: owner is banned or closed"
+        )
         return False
     try:
         return run_async(

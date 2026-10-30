@@ -33,7 +33,7 @@ class ReopenOutcome(Enum):
     REOPENED = "reopened"
     # Nothing to reopen: the account was never closed, or was reopened already.
     NOT_CLOSED = "not_closed"
-    # The grace period is over: the data is being or has been erased.
+    # The grace period is over, or the erasure has started or finished.
     TOO_LATE = "too_late"
 
 
@@ -82,8 +82,10 @@ async def close_account(
 async def reopen_account(user_id: str, now: datetime | None = None) -> ReopenOutcome:
     """Cancel the deletion request while the grace period lasts.
 
-    The delete is conditional on ``eraseAfter`` still being ahead, so it can
-    never cancel a request the erasure routine may already be working on.
+    The delete is conditional on ``eraseAfter`` still being ahead and on the
+    erasure routine not having claimed the request (``startedAt``), in one
+    statement: the routine runs on another server whose clock may differ, so
+    the date alone can't keep the two apart.
     Everything closing stopped stays stopped: the plan, connected apps, API
     keys, schedules, share links and listings. Product email is limited to
     ``REOPENED_DAILY_EMAIL_LIMIT`` a day again, with every kind still off
@@ -92,7 +94,12 @@ async def reopen_account(user_id: str, now: datetime | None = None) -> ReopenOut
     now = now or datetime.now(timezone.utc)
     async with transaction() as tx:
         reopened = await tx.accountdeletionrequest.delete_many(
-            where={"userId": user_id, "completedAt": None, "eraseAfter": {"gt": now}}
+            where={
+                "userId": user_id,
+                "startedAt": None,
+                "completedAt": None,
+                "eraseAfter": {"gt": now},
+            }
         )
         if reopened:
             await tx.user.update_many(

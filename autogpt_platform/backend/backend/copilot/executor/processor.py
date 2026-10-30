@@ -62,7 +62,7 @@ from backend.copilot.turn_tracing import (
     turn_origin,
     turn_transaction,
 )
-from backend.data.user import is_user_banned
+from backend.data.user import is_user_refused
 from backend.executor.cluster_lock import ClusterLock
 from backend.integrations.codex.transport import CodexCredentialIntegrityError
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -621,8 +621,10 @@ class CoPilotProcessor:
             from backend.copilot.model import get_chat_session
 
             # Every copilot turn starts here, whatever queued it.
-            if entry.user_id and await is_user_banned(entry.user_id):
-                log.info("Turn not started: the account is banned")
+            # A closed account is answered as banned: nobody signed in to it
+            # can see the turn.
+            if entry.user_id and await is_user_refused(entry.user_id):
+                log.info("Turn not started: the account is banned or closed")
                 error_msg = ACCOUNT_BANNED_DETAIL["message"]
                 error_code = ACCOUNT_BANNED_DETAIL["code"]
                 # A refused account is not a failed schedule worth alerting on.

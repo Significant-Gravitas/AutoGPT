@@ -639,7 +639,7 @@ class TestVerificationOrder:
             creds_manager.get = AsyncMock(return_value=MagicMock())
             for p in _stub_registry(_manager(ProviderName.COMPASS)) + [
                 patch(
-                    "backend.api.features.integrations.router.is_user_banned",
+                    "backend.api.features.integrations.router.is_user_refused",
                     AsyncMock(return_value=True),
                 )
             ]:
@@ -891,7 +891,7 @@ def test_a_banned_owners_delivery_is_acknowledged_and_dropped():
                 return_value=_manager(ProviderName.COMPASS),
             ),
             patch.object(
-                ingress_router, "is_user_banned", AsyncMock(return_value=True)
+                ingress_router, "is_user_refused", AsyncMock(return_value=True)
             ),
             patch.object(ingress_router, "publish_webhook_event", publish),
             patch.object(ingress_router, "complete_onboarding_step", onboarding),

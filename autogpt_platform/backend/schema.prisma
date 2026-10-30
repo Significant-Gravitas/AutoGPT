@@ -428,6 +428,10 @@ model AccountDeletionRequest {
   // requestedAt plus 14 days: the account can be restored before this, and
   // its data is erased only after it.
   eraseAfter         DateTime
+  // Set by the erasure routine when it claims the request, before it erases
+  // anything. From then on the account can no longer be kept, whatever the
+  // clock says.
+  startedAt          DateTime?
   source             AccountDeletionSource
   // Set once the confirmation email went out. The erasure routine sends it
   // for a row where this is still null, before it erases the User.

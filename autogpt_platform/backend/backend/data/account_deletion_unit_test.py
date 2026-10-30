@@ -158,7 +158,12 @@ async def test_reopening_deletes_the_request_only_before_its_erasure_date(
     assert await reopen_account(USER_ID, now=now) is ReopenOutcome.REOPENED
 
     tx.accountdeletionrequest.delete_many.assert_awaited_once_with(
-        where={"userId": USER_ID, "completedAt": None, "eraseAfter": {"gt": now}}
+        where={
+            "userId": USER_ID,
+            "startedAt": None,
+            "completedAt": None,
+            "eraseAfter": {"gt": now},
+        }
     )
     tx.user.update_many.assert_awaited_once_with(
         where={"id": USER_ID}, data={"maxEmailsPerDay": 3}

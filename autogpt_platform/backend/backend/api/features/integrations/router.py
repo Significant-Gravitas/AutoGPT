@@ -46,7 +46,7 @@ from backend.data.model import (
     is_sdk_default,
 )
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
-from backend.data.user import is_user_banned
+from backend.data.user import is_user_refused
 from backend.executor.utils import add_graph_execution
 from backend.integrations.codex.access import (
     enforce_codex_access_http,
@@ -1378,9 +1378,12 @@ async def webhook_ingress_generic(
             detail="Invalid webhook signature",
         )
 
-    # Acknowledged so the provider doesn't retry; nothing runs for a banned owner.
-    if await is_user_banned(user_id):
-        logger.info(f"Dropping webhook #{webhook_id} delivery: owner is banned")
+    # Acknowledged so the provider doesn't retry; nothing runs for a banned or
+    # closed owner.
+    if await is_user_refused(user_id):
+        logger.info(
+            f"Dropping webhook #{webhook_id} delivery: owner is banned or closed"
+        )
         return
 
     # Only after the signature: loading can refresh the owner's OAuth token.

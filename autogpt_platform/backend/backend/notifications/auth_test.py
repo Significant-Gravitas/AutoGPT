@@ -20,7 +20,7 @@ from backend.notifications.renderer import build_urls
 
 ERASE_AFTER = datetime(2026, 11, 13, 23, 30, tzinfo=timezone.utc)
 DATED_PREHEADER = (
-    "Changed your mind? Sign in before 13 Nov 2026 and choose Keep my account. "
+    "Changed your mind? Sign in by 12 Nov 2026 and choose Keep my account. "
     "After that, everything in your account is erased."
 )
 UNDATED_PREHEADER = (
@@ -213,3 +213,23 @@ async def test_send_account_deleted_email_names_the_last_day_to_keep_the_account
     assert DATED_PREHEADER in unescape(html)
     assert DATED_PREHEADER in text
     assert "within 14 days" not in text
+
+
+@pytest.mark.parametrize(
+    "erase_after, last_day",
+    [
+        # Early in the UTC day: still the day before in the Americas.
+        (datetime(2026, 11, 13, 2, 0, tzinfo=timezone.utc), "12 Nov 2026"),
+        (datetime(2026, 11, 13, 23, 30, tzinfo=timezone.utc), "12 Nov 2026"),
+        (datetime(2026, 12, 1, 0, 0, tzinfo=timezone.utc), "30 Nov 2026"),
+    ],
+)
+def test_the_email_names_the_day_before_the_erasure_with_no_time_zone(
+    erase_after, last_day
+):
+    """Keeping the account is refused from the erasure moment, so the named
+    day must be over before it everywhere."""
+    preheader = auth_email.account_closed_preheader(erase_after)
+
+    assert f"Sign in by {last_day} and" in preheader
+    assert "UTC" not in preheader

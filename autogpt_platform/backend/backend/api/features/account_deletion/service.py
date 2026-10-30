@@ -88,6 +88,7 @@ from backend.api.features.account_deletion.connected_apps import revoke_connecte
 from backend.api.features.account_deletion.email_opt_out import stop_account_emails
 from backend.api.features.account_deletion.issued_access import revoke_issued_access
 from backend.api.features.account_deletion.scheduled_work import stop_user_work
+from backend.api.features.store.cache import forget_creator_page
 from backend.data.account_deletion import (
     GRACE_PERIOD,
     close_account,
@@ -96,7 +97,7 @@ from backend.data.account_deletion import (
 )
 from backend.data.credit import cancel_all_subscriptions_now, set_auto_top_up
 from backend.data.model import AutoTopUpConfig
-from backend.data.user import get_user_by_id
+from backend.data.user import forget_refusal, get_user_by_id
 from backend.notifications.auth import send_account_deleted_email
 from backend.util.posthog_client import capture_anonymous
 from backend.util.posthog_events import PostHogEvent
@@ -192,8 +193,11 @@ async def _close(
 ) -> AccountDeletionRequest | None:
     """Close the account; None when a concurrent call closed it first."""
     request = await close_account(user_id, source)
-    # Closed either way, so this worker rejects the user from now on.
+    # Closed either way, so this worker rejects the user from now on, no
+    # background work starts for it, and its creator page is hidden at once.
     remember_account_closed(user_id)
+    forget_refusal(user_id)
+    await forget_creator_page(user_id)
     if request is not None:
         logger.info(f"Account deletion closed the account of user {user_id}")
     else:

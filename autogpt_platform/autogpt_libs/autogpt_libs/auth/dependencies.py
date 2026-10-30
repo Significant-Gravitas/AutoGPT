@@ -128,7 +128,7 @@ async def get_optional_user_id(
 
     Returns:
         The user ID (str) extracted from the JWT "sub" claim, or None if no valid token is present
-        or its account is banned.
+        or its account is banned or closed.
     """
     if not credentials:
         return None
@@ -149,7 +149,13 @@ async def get_optional_user_id(
     except Exception:
         logger.warning(f"Ban lookup failed for {user_id}; answering as anonymous")
         return None
-    return None if banned else user_id
+    if banned:
+        return None
+    # A closed account is not banned (its owner signs in to keep it), so it is
+    # checked on its own. A failed check answers as the user, as everywhere.
+    if await get_account_state(user_id) is AccountState.CLOSED:
+        return None
+    return user_id
 
 
 async def get_unbanned_jwt_payload(

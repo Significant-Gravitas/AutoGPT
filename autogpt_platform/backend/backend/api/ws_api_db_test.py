@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 import prisma.models
@@ -14,6 +15,7 @@ from prisma.enums import AccountDeletionSource
 
 from backend.api.conn_manager import graph_exec_channel_key
 from backend.api.model import WSMethod
+from backend.data.account_deletion import GRACE_PERIOD
 from backend.util.clients import get_database_manager_async_client
 from backend.util.test import SpinTestServer
 
@@ -129,7 +131,11 @@ async def _seed_banned_user() -> str:
 async def _seed_closed_account() -> str:
     user_id = str(uuid.uuid4())
     await prisma.models.AccountDeletionRequest.prisma().create(
-        data={"userId": user_id, "source": AccountDeletionSource.SETTINGS}
+        data={
+            "userId": user_id,
+            "source": AccountDeletionSource.SETTINGS,
+            "eraseAfter": datetime.now(timezone.utc) + GRACE_PERIOD,
+        }
     )
     return user_id
 

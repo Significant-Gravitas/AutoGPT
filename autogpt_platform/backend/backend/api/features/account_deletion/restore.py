@@ -14,15 +14,21 @@ in, so they can't keep the account.
 """
 
 import logging
+from datetime import datetime, timezone
 
 from autogpt_libs.auth import forget_account_state
 
+from backend.api.features.account_deletion.analytics import tenure_bucket
 from backend.api.features.account_deletion.models import AccountDeletionResponse
+from backend.api.features.store.cache import forget_creator_page
 from backend.data.account_deletion import (
     ReopenOutcome,
     get_deletion_request,
     reopen_account,
 )
+from backend.data.user import forget_refusal, get_user_by_id
+from backend.util.posthog_client import capture_anonymous
+from backend.util.posthog_events import PostHogEvent
 
 logger = logging.getLogger(__name__)
 
@@ -48,11 +54,37 @@ async def restore_account(user_id: str) -> None:
     Raises TooLateToRestoreError, having changed nothing, once the erasure
     date has passed.
     """
+    request = await get_deletion_request(user_id)
     outcome = await reopen_account(user_id)
     if outcome is ReopenOutcome.TOO_LATE:
         logger.info(f"Account deletion: user {user_id} asked to keep it too late")
         raise TooLateToRestoreError()
-    # Open either way, so this worker lets the owner back in at once.
+    # Open either way, so this worker lets the owner back in at once, and
+    # background work and the creator page come back without waiting out a
+    # cache.
     forget_account_state(user_id)
-    if outcome is ReopenOutcome.REOPENED:
-        logger.info(f"Account deletion cancelled: user {user_id} kept the account")
+    forget_refusal(user_id)
+    if outcome is not ReopenOutcome.REOPENED:
+        return
+    logger.info(f"Account deletion cancelled: user {user_id} kept the account")
+    await forget_creator_page(user_id)
+    if request is not None:
+        await _count_kept(user_id, request.eraseAfter)
+
+
+async def _count_kept(user_id: str, erase_after: datetime) -> None:
+    """One anonymous count, best effort: the account is open already."""
+    try:
+        user = await get_user_by_id(user_id)
+        days_left = (erase_after - datetime.now(timezone.utc)).days
+        capture_anonymous(
+            PostHogEvent.ACCOUNT_DELETION_KEPT,
+            {
+                "tenure_bucket": tenure_bucket(user.created_at),
+                "days_left": max(0, days_left),
+            },
+        )
+    except Exception as e:
+        logger.warning(
+            f"Could not count user {user_id} keeping the account: {type(e).__name__}"
+        )

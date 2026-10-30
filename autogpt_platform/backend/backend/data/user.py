@@ -278,6 +278,35 @@ async def is_user_banned(user_id: str) -> bool:
     return await user_db().is_auth_user_banned(user_id)
 
 
+@cached(maxsize=1000, ttl_seconds=30, shared_cache=True)
+async def is_user_account_closed(user_id: str) -> bool:
+    """Whether the owner asked to delete the account (an AccountDeletionRequest
+    exists), from any process. Lookup errors propagate, as for the ban."""
+    return await user_db().is_account_closed(user_id)
+
+
+async def is_user_refused(user_id: str) -> bool:
+    """No work of any kind may run for this account: an admin banned it, or
+    its owner closed it (account deletion, for the 14 days they can still keep
+    it and after). The gate for background work (schedules, webhooks, runs,
+    AutoPilot turns, memory and skill-learning crons, the Briefing). Closing
+    an account does not ban it, so the ban alone no longer covers it.
+
+    Each answer is cached for 30 s across processes; closing and keeping an
+    account drop it (``forget_refusal``). Lookup errors propagate.
+    """
+    return await is_user_banned(user_id) or await is_user_account_closed(user_id)
+
+
+def forget_refusal(user_id: str) -> None:
+    """Drop the cached closed answer for *user_id*, best effort: work stops
+    (or resumes) at once rather than within 30 s."""
+    try:
+        is_user_account_closed.cache_delete(user_id)
+    except Exception:
+        logger.warning(f"Could not drop the cached closed state of user {user_id}")
+
+
 async def is_auth_user_banned(user_id: str) -> bool:
     """The uncached read behind :func:`is_user_banned`. A lapsed temporary ban
     and a missing auth row are not bans."""

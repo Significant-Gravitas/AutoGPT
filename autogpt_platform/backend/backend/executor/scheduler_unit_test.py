@@ -2911,7 +2911,7 @@ async def test_a_banned_owners_run_is_skipped_and_its_chat_told_nothing(
     when the ban is lifted, a one-shot is dropped as a paywalled one is, and
     nothing is posted into its chats."""
     with (
-        patch(f"{_TURN_QUEUE_PATH}.is_user_banned", AsyncMock(return_value=True)),
+        patch(f"{_TURN_QUEUE_PATH}.is_user_refused", AsyncMock(return_value=True)),
         caplog.at_level(logging.INFO, logger=_SCHEDULER_PATH),
     ):
         mocks = await _fire(_args(**timing))

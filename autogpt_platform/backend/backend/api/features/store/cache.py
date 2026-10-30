@@ -1,5 +1,6 @@
 import logging
 
+import prisma.models
 from redis.exceptions import RedisClusterException, RedisError
 
 from backend.api.features.search.embeddings import refused_public_queries
@@ -131,3 +132,16 @@ async def get_cached_store_creators(
 async def get_cached_creator_details(username: str):
     """Cached helper to get creator details."""
     return await store_db.get_store_creator(username=username.lower())
+
+
+async def forget_creator_page(user_id: str) -> None:
+    """Drop the cached creator page of *user_id*'s profile, best effort, so
+    closing an account hides it at once and keeping it brings it back."""
+    try:
+        profile = await prisma.models.Profile.prisma().find_unique(
+            where={"userId": user_id}
+        )
+        if profile is not None:
+            get_cached_creator_details.cache_delete(username=profile.username.lower())
+    except Exception:
+        logger.warning(f"Could not drop the cached creator page of user {user_id}")

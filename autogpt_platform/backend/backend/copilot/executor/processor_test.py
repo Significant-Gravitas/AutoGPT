@@ -1081,7 +1081,7 @@ async def test_a_banned_owners_turn_ends_before_anything_runs() -> None:
 
     with (
         patch(
-            "backend.copilot.executor.processor.is_user_banned",
+            "backend.copilot.executor.processor.is_user_refused",
             new=AsyncMock(return_value=True),
         ),
         patch("backend.copilot.model.get_chat_session", new=get_session),

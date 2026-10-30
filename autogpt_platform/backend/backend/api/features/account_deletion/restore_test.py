@@ -13,6 +13,7 @@ from backend.api.features.account_deletion.restore import (
     restore_account,
 )
 from backend.data.account_deletion import ReopenOutcome
+from backend.util.posthog_events import PostHogEvent
 
 MODULE = "backend.api.features.account_deletion.restore"
 USER_ID = "user-1"
@@ -41,29 +42,80 @@ async def test_a_closed_account_shows_its_erasure_date(mocker: MockerFixture):
     assert (status.status, status.erase_after) == ("scheduled", ERASE_AFTER)
 
 
+@pytest.fixture
+def edges(mocker: MockerFixture) -> MagicMock:
+    """Every call restore_account makes besides the reopen, on one parent."""
+    parent = MagicMock()
+    for name, kind in (
+        ("forget_account_state", MagicMock),
+        ("forget_refusal", MagicMock),
+        ("forget_creator_page", AsyncMock),
+        ("capture_anonymous", MagicMock),
+    ):
+        parent.attach_mock(mocker.patch(f"{MODULE}.{name}", new_callable=kind), name)
+    mocker.patch(
+        f"{MODULE}.get_deletion_request",
+        AsyncMock(return_value=MagicMock(eraseAfter=ERASE_AFTER)),
+    )
+    mocker.patch(
+        f"{MODULE}.get_user_by_id",
+        AsyncMock(
+            return_value=MagicMock(created_at=datetime(2025, 1, 1, tzinfo=timezone.utc))
+        ),
+    )
+    return parent
+
+
+def _reopen(mocker: MockerFixture, outcome: ReopenOutcome) -> None:
+    mocker.patch(f"{MODULE}.reopen_account", AsyncMock(return_value=outcome))
+
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize("outcome", [ReopenOutcome.REOPENED, ReopenOutcome.NOT_CLOSED])
-async def test_keeping_the_account_lets_the_owner_in_at_once(
-    mocker: MockerFixture, outcome: ReopenOutcome
+async def test_keeping_the_account_lets_the_owner_and_its_work_back_at_once(
+    mocker: MockerFixture, edges: MagicMock
 ):
-    reopen = mocker.patch(f"{MODULE}.reopen_account", AsyncMock(return_value=outcome))
-    forget = mocker.patch(f"{MODULE}.forget_account_state")
+    _reopen(mocker, ReopenOutcome.REOPENED)
 
     await restore_account(USER_ID)
 
-    reopen.assert_awaited_once_with(USER_ID)
-    forget.assert_called_once_with(USER_ID)
+    edges.forget_account_state.assert_called_once_with(USER_ID)
+    edges.forget_refusal.assert_called_once_with(USER_ID)
+    edges.forget_creator_page.assert_awaited_once_with(USER_ID)
+    [(event, properties)] = [c.args for c in edges.capture_anonymous.call_args_list]
+    assert event is PostHogEvent.ACCOUNT_DELETION_KEPT
+    assert properties["tenure_bucket"] == "90d+"
+    assert 0 <= properties["days_left"] <= 14
 
 
 @pytest.mark.asyncio
-async def test_too_late_changes_nothing(mocker: MockerFixture):
-    mocker.patch(
-        f"{MODULE}.reopen_account",
-        AsyncMock(return_value=ReopenOutcome.TOO_LATE),
-    )
-    forget = mocker.patch(f"{MODULE}.forget_account_state")
+async def test_an_open_account_is_let_in_but_not_counted(
+    mocker: MockerFixture, edges: MagicMock
+):
+    _reopen(mocker, ReopenOutcome.NOT_CLOSED)
+
+    await restore_account(USER_ID)
+
+    edges.forget_account_state.assert_called_once_with(USER_ID)
+    edges.capture_anonymous.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_count_still_keeps_the_account(
+    mocker: MockerFixture, edges: MagicMock
+):
+    _reopen(mocker, ReopenOutcome.REOPENED)
+    edges.capture_anonymous.side_effect = RuntimeError("PostHog down")
+
+    await restore_account(USER_ID)
+
+    edges.forget_creator_page.assert_awaited_once_with(USER_ID)
+
+
+@pytest.mark.asyncio
+async def test_too_late_changes_nothing(mocker: MockerFixture, edges: MagicMock):
+    _reopen(mocker, ReopenOutcome.TOO_LATE)
 
     with pytest.raises(TooLateToRestoreError):
         await restore_account(USER_ID)
 
-    forget.assert_not_called()
+    assert not edges.mock_calls

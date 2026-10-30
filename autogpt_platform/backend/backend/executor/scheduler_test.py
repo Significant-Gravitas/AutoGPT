@@ -1111,6 +1111,22 @@ class TestMemoryScopeGateBridge:
             assert _memory_scope_may_fire(scope) is True
         gate.assert_awaited_once_with(scope, scheduler_module._expert_scope_status)
 
+    def test_a_banned_or_closed_owners_cron_is_skipped(self) -> None:
+        """Memory, community and skill-learning crons all ask this gate; the
+        registry is left alone, so they resume if the owner keeps the
+        account."""
+        gate = AsyncMock(return_value=True)
+        with (
+            patch("backend.executor.scheduler.run_async", new=_run_coroutine),
+            patch("backend.executor.scheduler.memory_scope_may_fire", new=gate),
+            patch(
+                "backend.executor.scheduler.is_user_refused",
+                new=AsyncMock(return_value=True),
+            ),
+        ):
+            assert _memory_scope_may_fire(MemoryScope.for_user("abc")) is False
+        gate.assert_not_awaited()
+
     def test_a_gate_the_bridge_gives_up_on_skips_and_is_cancelled(
         self, monkeypatch
     ) -> None:

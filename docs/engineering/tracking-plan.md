@@ -541,7 +541,8 @@ the panel buttons never reach PostHog under the person's id.
 | `account_deletion_started` | backend | live | `plan_state`, `tenure_bucket` (as below), `surface` (`settings`, `paywall`: where the flow was opened) | The Delete account dialog opens: once per open, and reopening counts again. Sent when the button is clicked, so a dialog closed with the X still counts. |
 | `account_deletion_feedback` | backend | live | `plan_state` (`max`, `pro`, `trial`, `none`, `managed` for BASIC, BUSINESS and ENTERPRISE), `tenure_bucket` (account age: `<7d`, `7-30d`, `30-90d`, `90d+`). Optional: `reason` (`privacy`, `cost`, `not_using`, `missing_capability`, `limits`, `other`, `skipped`; absent when only text was typed), `text` (what was typed in the optional field, trimmed, at most 1000 characters; absent when nothing was typed) | Skip or Continue is clicked on the "Why are you leaving?" step, once per pass through it. Skip sends `reason: skipped`, so the skip rate is the share of `skipped`. |
 | `account_deletion_alternative_clicked` | backend | live | `alternative` (`manage_apps`, `disconnect_all`, `billing`, `keep_account`), `plan_state`, `tenure_bucket`. Optional: `reason` (the one the alternative was shown for) | The button of the alternative shown for a reason is clicked: "Manage connected apps", "Disconnect all apps", "Go to Billing" or "Keep my account". |
-| `account_deletion_completed` | backend | live | `plan_state` (as above: the plan the account had), `surface` (`settings`, `paywall`: where the flow was opened) | `POST /api/account/deletion` closes the account. Once per account: a repeat call sends nothing. |
+| `account_deletion_completed` | backend | live | `plan_state` (as above: the plan the account had), `surface` (`settings`, `paywall`: where the flow was opened) | The account is closed: `POST /api/account/deletion` closes it, and its data is erased 14 days later unless its owner keeps it. A repeat call on an account already closed sends nothing; an account kept and deleted again counts again. |
+| `account_deletion_kept` | backend | live | `tenure_bucket` (as above), `days_left` (whole days that were left before the erasure, 0 to 13) | The owner of a closed account signs in and chooses "Keep my account" (`POST /api/account/deletion/restore` reopens it). Once per kept closure. |
 
 `plan_state` and `tenure_bucket` are read from the account on the server; the
 browser cannot set them. An optional property the person left empty is left
@@ -562,8 +563,11 @@ the repeats cannot be removed):
   confirmation card.
 - save rate: `account_deletion_alternative_clicked` with `alternative` of
   `keep_account`, `billing` or `manage_apps`, over `account_deletion_started`.
-- completion: `account_deletion_completed` (the accounts that were deleted)
+- completion: `account_deletion_completed` (the accounts that were closed)
   over `account_deletion_started`.
+- kept: `account_deletion_kept` over `account_deletion_completed`, the closed
+  accounts whose owners changed their mind within the 14 days. Closed minus
+  kept is the accounts erased (give the last 14 days time to run out).
 
 ## LLM analytics
 

@@ -80,8 +80,18 @@ async def authenticate_websocket(websocket: WebSocket) -> str:
     if not user_id:
         await websocket.close(code=4002, reason="Invalid token")
         return ""
-    # A token minted before the account closed still verifies.
-    if await _account_closed(user_id):
+    # A token minted before the account closed still verifies. Refused when
+    # the closure can't be read, as the ban below is: closing an account does
+    # not ban it. 1011, so an outage never reads as a closed account.
+    try:
+        closed = await user_db().is_account_closed(user_id)
+    except Exception:
+        logger.warning(
+            f"Closed-account lookup failed for user #{user_id}; refusing the socket"
+        )
+        await websocket.close(code=1011, reason="Try again")
+        return ""
+    if closed:
         await websocket.close(code=4003, reason=ACCOUNT_CLOSED_DETAIL)
         return ""
 
@@ -350,17 +360,6 @@ async def websocket_router(
         # the loop exited — otherwise non-WebSocketDisconnect failures leak both.
         await manager.disconnect_socket(websocket, user_id=user_id)
         update_websocket_connections(user_id, -1)
-
-
-async def _account_closed(user_id: str) -> bool:
-    """Read through the DatabaseManager, as this server has no Prisma. A lookup
-    that fails refuses nothing: closing an account also bans it, and the ban
-    check runs next."""
-    try:
-        return await user_db().is_account_closed(user_id)
-    except Exception:
-        logger.warning(f"Closed-account lookup failed for user #{user_id}")
-        return False
 
 
 async def _banned_now(user_id: str) -> bool:

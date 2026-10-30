@@ -56,6 +56,7 @@ LIVE_EVENT_NAMES = {
     "account_deletion_feedback",
     "account_deletion_alternative_clicked",
     "account_deletion_completed",
+    "account_deletion_kept",
     "email_delivered",
     "email_opened",
     "email_clicked",
