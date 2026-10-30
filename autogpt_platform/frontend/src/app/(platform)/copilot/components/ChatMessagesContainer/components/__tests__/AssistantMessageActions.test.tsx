@@ -218,6 +218,23 @@ describe("AssistantMessageActions feedback", () => {
     expect(bodies).toEqual([]);
   });
 
+  test("a saved bubble a later unsaved turn joined can't be rated by its own id", () => {
+    const bodies = captureRequests();
+    render(
+      <AssistantMessageActions
+        message={reply(`${SESSION_ID}-seq-5`)}
+        sessionID={SESSION_ID}
+        savedMessageId={null}
+      />,
+    );
+
+    expect(upvoteButton().getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(upvoteButton());
+
+    expect(toastTitles()).toEqual(["Can't rate this reply yet"]);
+    expect(bodies).toEqual([]);
+  });
+
   test("a live reply is rated by the saved id the chat learned for it", async () => {
     const bodies = captureRequests();
     render(
@@ -228,7 +245,7 @@ describe("AssistantMessageActions feedback", () => {
       />,
     );
 
-    expect(upvoteButton().getAttribute("aria-disabled")).toBe("false");
+    expect(upvoteButton().getAttribute("aria-disabled")).toBeNull();
     fireEvent.click(upvoteButton());
 
     await waitFor(() =>

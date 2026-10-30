@@ -19,7 +19,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 interface Props {
   message: UIMessage<unknown, UIDataTypes, UITools>;
   sessionID: string | null;
-  savedMessageId?: string;
+  savedMessageId?: string | null;
   className?: string;
 }
 
@@ -70,7 +70,7 @@ export function AssistantMessageActions({
           variant="ghost"
           size="icon-sm"
           disabled={feedback === "downvote"}
-          aria-disabled={!canRate}
+          aria-disabled={!canRate || undefined}
           className={cn(
             !canRate && "opacity-50",
             feedback === "upvote" && "text-success/60 hover:text-success/60",
@@ -86,7 +86,7 @@ export function AssistantMessageActions({
           variant="ghost"
           size="icon-sm"
           disabled={feedback === "upvote"}
-          aria-disabled={!canRate}
+          aria-disabled={!canRate || undefined}
           className={cn(
             !canRate && "opacity-50",
             feedback === "downvote" && "text-error/60 hover:text-error/60",

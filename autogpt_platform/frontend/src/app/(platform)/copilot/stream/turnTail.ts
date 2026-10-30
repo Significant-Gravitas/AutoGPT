@@ -189,11 +189,16 @@ export function reconcileTurn(
 
 const REPLY_ROLES = new Set(["assistant", "reasoning"]);
 
-/** The last row of a turn's persisted rows a reply rating can name. */
+/**
+ * The last row of a turn's persisted rows a reply rating can name, only if it
+ * answers the turn's latest user row: one before it belongs to an earlier
+ * bubble, not the last one this id is put on.
+ */
 export function lastReplySequence(raw: readonly PersistedRow[]): number | null {
-  const row = raw.findLast(
-    (r) => typeof r.sequence === "number" && REPLY_ROLES.has(r.role),
-  );
+  const lastUser = raw.findLastIndex((r) => r.role === "user");
+  const row = raw
+    .slice(lastUser + 1)
+    .findLast((r) => typeof r.sequence === "number" && REPLY_ROLES.has(r.role));
   return row?.sequence ?? null;
 }
 

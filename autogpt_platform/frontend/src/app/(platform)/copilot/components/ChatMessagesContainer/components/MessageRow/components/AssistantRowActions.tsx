@@ -10,7 +10,7 @@ interface Props {
   readOnly: boolean;
   copyText: string;
   sessionID?: string | null;
-  savedMessageId?: string;
+  savedMessageId?: string | null;
 }
 
 const HOVER_REVEAL =

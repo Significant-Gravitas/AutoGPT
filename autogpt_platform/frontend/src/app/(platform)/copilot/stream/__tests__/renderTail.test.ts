@@ -53,9 +53,30 @@ describe("statsOfAssistantRuns", () => {
     expect(joined.get("a1")).toEqual({
       durationMs: 30_000,
       createdAt: "2026-10-24T10:01:00Z",
+      savedMessageId: null,
     });
     // A user row between them keeps two bubbles apart.
     expect(joined.get("a3")).toEqual({ durationMs: 7_000 });
+  });
+
+  it("keeps a saved history bubble from rating a later turn that joins it", () => {
+    const history = message("sess-1-seq-5", "assistant");
+    const messages = [history, message("turn:turn-2", "assistant")];
+
+    const joined = statsOfAssistantRuns(messages, new Map());
+
+    expect(joined.get("sess-1-seq-5")?.savedMessageId).toBeNull();
+  });
+
+  it("rates two joined history bubbles by the later one's id", () => {
+    const messages = [
+      message("sess-1-seq-5", "assistant"),
+      message("sess-1-seq-9", "assistant"),
+    ];
+
+    const joined = statsOfAssistantRuns(messages, new Map());
+
+    expect(joined.get("sess-1-seq-5")?.savedMessageId).toBe("sess-1-seq-9");
   });
 });
 
@@ -178,7 +199,7 @@ describe("createTailRenderer saved bubble ids", () => {
     expect(
       statsOfAssistantRuns(live.messages, live.stats).get("turn:turn-1")
         ?.savedMessageId,
-    ).toBeUndefined();
+    ).toBeNull();
 
     const saved = reconcileTurn(continuation, {
       raw: [{ role: "assistant", content: "Picked it back up.", sequence: 6 }],

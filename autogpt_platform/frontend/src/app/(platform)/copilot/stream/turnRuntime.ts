@@ -1057,7 +1057,8 @@ export class TurnRuntime {
     const windowStart = rows[0]?.sequence ?? Infinity;
     if (view.has_more_messages !== false && windowStart > persisted.start) {
       const sequence = lastReplySequence(persisted.raw);
-      if (sequence !== seg.lastReplySequence)
+      // A turn whose rows left the window keeps the id it already learned.
+      if (sequence !== null && sequence !== seg.lastReplySequence)
         this.updateTurn(seg.key, (s) => ({
           ...s,
           lastReplySequence: sequence,

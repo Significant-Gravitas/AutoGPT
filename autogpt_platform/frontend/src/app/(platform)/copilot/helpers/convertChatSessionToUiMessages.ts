@@ -24,7 +24,7 @@ export interface TurnStats {
   /** The ``<session>-seq-N`` id a reload gives this bubble, once its rows are
    *  saved. A live turn's bubble is keyed by the turn instead, and a rating
    *  has to name the saved row. */
-  savedMessageId?: string;
+  savedMessageId?: string | null;
 }
 
 export type TurnStatsMap = Map<string, TurnStats>;

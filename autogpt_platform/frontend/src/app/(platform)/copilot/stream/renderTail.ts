@@ -141,11 +141,17 @@ export function statsOfAssistantRuns(
       continue;
     }
     const later = stats.get(message.id);
-    const merged: TurnStats = { ...joined.get(runStart.id), ...later };
     // A joined bubble is rated by its latest turn's reply, so the earlier
-    // turn's saved id must not stand in while the later one has none yet.
-    if (!later?.savedMessageId) delete merged.savedMessageId;
-    joined.set(runStart.id, merged);
+    // turn's saved id (or a history bubble's own id) must not stand in while
+    // the later one has none yet: null says "not rateable yet".
+    const savedMessageId =
+      later?.savedMessageId ??
+      (extractDbSequence(message) !== null ? message.id : null);
+    joined.set(runStart.id, {
+      ...joined.get(runStart.id),
+      ...later,
+      savedMessageId,
+    });
   }
   return joined;
 }

@@ -11,7 +11,7 @@ type Rating = "upvote" | "downvote";
 interface Args {
   sessionID: string | null;
   message: UIMessage<unknown, UIDataTypes, UITools>;
-  savedMessageId?: string;
+  savedMessageId?: string | null;
 }
 
 export function useMessageFeedback({
@@ -26,7 +26,11 @@ export function useMessageFeedback({
   // Only a saved reply can be rated. A reply that just streamed is keyed by
   // the stream until the chat swaps in its saved id or learns it.
   const ratedMessageId =
-    savedMessageId ?? (extractDbSequence(message) !== null ? message.id : null);
+    savedMessageId !== undefined
+      ? savedMessageId
+      : extractDbSequence(message) !== null
+        ? message.id
+        : null;
   const canRate = sessionID !== null && ratedMessageId !== null;
 
   async function sendScore(score: Omit<MessageFeedbackRequest, "message_id">) {
@@ -86,7 +90,7 @@ export function useMessageFeedback({
     toast({
       title: "Can't rate this reply yet",
       description:
-        "It's still being saved. A reply stopped before it was saved can't be rated.",
+        "It may still be saving. A reply stopped before it was saved can't be rated.",
       duration: 3000,
     });
   }
