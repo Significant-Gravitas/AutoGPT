@@ -28,6 +28,7 @@ from mcp.server.fastmcp.tools.base import Tool as MCPTool
 from mcp.server.fastmcp.utilities.func_metadata import ArgModelBase, FuncMetadata
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.shared.auth import ProtectedResourceMetadata
+from mcp.types import CallToolResult, TextContent
 from prisma.enums import APIKeyPermission
 from pydantic import AnyHttpUrl
 from starlette import status
@@ -415,7 +416,7 @@ def _create_tool_handler(
     money to the caller's allowance.
     """
 
-    async def handler(ctx: Context, **kwargs: Any) -> str:
+    async def handler(ctx: Context, **kwargs: Any) -> str | CallToolResult:
         # Raised, not returned: a rejection returned as content is reported to
         # the client as a successful call whose text happens to say "denied".
         access_token = get_access_token()
@@ -467,8 +468,12 @@ def _create_tool_handler(
                 parts.append(block["text"])
         text = "\n".join(parts)
         # A refusal or failure must reach the client as one, not as a result.
+        # Returned, not raised: FastMCP prefixes a raised error's text, and the
+        # docs promise the tool's own JSON object.
         if result.get("isError"):
-            raise ToolError(text)
+            return CallToolResult(
+                content=[TextContent(type="text", text=text)], isError=True
+            )
         return text
 
     return handler

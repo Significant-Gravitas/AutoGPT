@@ -1,10 +1,10 @@
 "use client";
 
 import { Text } from "@/components/atoms/Text/Text";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
 import { ArrowDownIcon } from "lucide-react";
-import type { ComponentProps } from "react";
+import type { ButtonHTMLAttributes, ComponentProps } from "react";
 
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 
@@ -34,9 +34,7 @@ export const ConversationContent = ({
     scrollClassName={cn(
       // Contain the overscroll so a fling past either end bounces the thread
       // instead of dragging the page, composer and all, with it.
-      // TODO(tokens): no fitting role for scrollbar-thumb-zinc-300 #C5C5C9:
-      // border-strong is a border and foreground-disabled a text colour
-      "overscroll-y-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300",
+      "overscroll-y-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border-strong",
       scrollClassName,
     )}
     {...props}
@@ -66,15 +64,13 @@ export const ConversationEmptyState = ({
   >
     {children ?? (
       <>
-        {/* TODO(tokens): no exact role for text-neutral-500 #737373 */}
-        {icon && <div className="text-neutral-500">{icon}</div>}
+        {icon && <div className="text-foreground-tertiary">{icon}</div>}
         <div className="space-y-1">
           <Text variant="body-medium-tight" tone="inherit" as="h3">
             {title}
           </Text>
-          {/* TODO(tokens): no exact role for text-neutral-500 #737373 */}
           {description && (
-            <Text variant="body-tight" as="p" className="text-neutral-500">
+            <Text variant="body-tight" as="p" tone="muted">
               {description}
             </Text>
           )}
@@ -84,7 +80,8 @@ export const ConversationEmptyState = ({
   </div>
 );
 
-export type ConversationScrollButtonProps = ComponentProps<typeof Button>;
+export type ConversationScrollButtonProps =
+  ButtonHTMLAttributes<HTMLButtonElement>;
 
 export const ConversationScrollButton = ({
   className,
@@ -104,9 +101,9 @@ export const ConversationScrollButton = ({
           className,
         )}
         onClick={handleScrollToBottom}
-        size="icon"
+        size="compact-icon"
         type="button"
-        variant="outline"
+        variant="compact-outline"
         {...props}
       >
         <ArrowDownIcon className="size-4" />

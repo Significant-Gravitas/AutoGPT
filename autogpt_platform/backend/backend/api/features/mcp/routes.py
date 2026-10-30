@@ -24,6 +24,7 @@ from backend.api.features.mcp.oauth_registration import (
     check_preregistered_endpoints,
     preregistered_client,
     preregistered_revocation_endpoint,
+    requested_scopes,
     requires_registered_client,
     select_client_auth_method,
 )
@@ -279,19 +280,16 @@ async def mcp_oauth_login(
     server_url = normalize_mcp_url(request.server_url)
     frontend_base_url = settings.config.frontend_base_url
     catalog_entry = get_mcp_catalog_entry_for_url(server_url)
-    catalog_scopes: list[str] | None = None
-    if catalog_entry:
-        if "oauth" not in catalog_entry.mcp_server.auth_methods:
-            raise fastapi.HTTPException(
-                status_code=400,
-                detail={
-                    "code": NO_OAUTH_CODE,
-                    "message": f"{catalog_entry.display_name} uses "
-                    f"{' / '.join(catalog_entry.mcp_server.auth_methods)} "
-                    f"authentication. {catalog_entry.mcp_server.setup_instructions}",
-                },
-            )
-        catalog_scopes = catalog_entry.mcp_server.oauth_scopes
+    if catalog_entry and "oauth" not in catalog_entry.mcp_server.auth_methods:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail={
+                "code": NO_OAUTH_CODE,
+                "message": f"{catalog_entry.display_name} uses "
+                f"{' / '.join(catalog_entry.mcp_server.auth_methods)} "
+                f"authentication. {catalog_entry.mcp_server.setup_instructions}",
+            },
+        )
     client = MCPClient(server_url)
 
     # Step 1: Discover protected-resource metadata (RFC 9728)
@@ -360,11 +358,10 @@ async def mcp_oauth_login(
     scopes = (
         request.scopes
         if request.scopes is not None
-        else (
-            catalog_scopes
-            if catalog_scopes is not None
-            else (protected_resource or {}).get("scopes_supported")
-            or metadata.get("scopes_supported", [])
+        else requested_scopes(
+            catalog_entry.mcp_server if catalog_entry else None,
+            protected_resource,
+            metadata,
         )
     )
     issuer = _validated_issuer(metadata, expected_issuer)

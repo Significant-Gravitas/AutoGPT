@@ -3,6 +3,7 @@ import { server } from "@/mocks/mock-server";
 import { mockNextjsModules } from "./setup-nextjs-mocks";
 import { mockAuthRequest } from "./mock-auth-request";
 import { cleanup, configure } from "@testing-library/react";
+import { toast } from "sonner";
 import { resetCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 import { seedFaker } from "./faker-seed";
 
@@ -76,6 +77,10 @@ afterEach(async () => {
   // The checkout redirect is page-wide state that outlives a render; a
   // redirect left by one test would disable the next test's buttons.
   resetCheckoutRedirect();
+  // Sonner keeps toasts in module state and replays the ones still showing
+  // to every Toaster that mounts, so a toast left by one test would show up
+  // again in the next test's Toaster.
+  toast.dismiss();
 });
 afterAll(() => server.close());
 

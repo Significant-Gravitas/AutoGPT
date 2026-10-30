@@ -1,4 +1,4 @@
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { beautifyString, cn } from "@/lib/utils";
 import { Plus } from "lucide-react";
 import Image from "next/image";
@@ -66,16 +66,15 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
       draggable={true}
       variant={"ghost"}
       className={cn(
-        "group flex h-16 w-full min-w-[7.5rem] items-center justify-start gap-3 whitespace-normal rounded-[0.75rem] bg-surface-muted px-[0.875rem] py-[0.625rem] text-start shadow-none",
-        // TODO(tokens): no fitting role for active:bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this is the pressed state (QUALITY 41); no fitting role for active:ring-zinc-300 #C5C5C9; #C5C5C9 is border-strong (a border colour) and foreground-disabled (a text colour), and this is a ring (QUALITY 41(b))
-        "hover:cursor-default hover:bg-surface-hover focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:cursor-not-allowed",
+        "group flex h-16 w-full min-w-[7.5rem] items-center justify-start gap-3 rounded-xl bg-surface-muted px-3.5 py-2.5 text-start whitespace-normal shadow-none",
+        "hover:cursor-default hover:bg-surface-hover focus:ring-0 active:bg-surface-hover active:ring-1 active:ring-border-strong disabled:cursor-not-allowed",
         className,
       )}
       onDragStart={handleDragStart}
       onClick={handleClick}
       {...rest}
     >
-      <div className="relative h-[2.625rem] w-[2.625rem] rounded-[0.5rem] bg-surface">
+      <div className="relative h-[2.625rem] w-[2.625rem] rounded-lg bg-surface">
         {icon_url && (
           <Image
             src={icon_url}
@@ -113,15 +112,10 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
       </div>
       <div
         className={cn(
-          // TODO(tokens): no fitting role for bg-zinc-700 #505057; #505057 is foreground-body (a text colour); no fitting role for group-disabled:bg-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
-          "flex h-7 w-7 items-center justify-center rounded-[0.5rem] bg-zinc-700 group-disabled:bg-zinc-400",
+          "flex h-7 w-7 items-center justify-center rounded-lg bg-foreground-body group-disabled:bg-foreground-subtle",
         )}
       >
-        <Plus
-          // TODO(tokens): no fitting role for text-zinc-50 #F9F9FA; #F9F9FA is surface-muted (a surface fill)
-          className="h-5 w-5 text-zinc-50"
-          strokeWidth={2}
-        />
+        <Plus className="h-5 w-5 text-action-foreground" strokeWidth={2} />
       </div>
     </Button>
   );
@@ -131,29 +125,16 @@ const IntegrationBlockSkeleton = ({ className }: { className?: string }) => {
   return (
     <Skeleton
       className={cn(
-        // TODO(tokens): no fitting role for bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this fill is not a hover state (QUALITY 41)
-        "flex h-16 w-full min-w-[7.5rem] animate-pulse items-center justify-start gap-3 rounded-[0.75rem] bg-zinc-100 px-[0.875rem] py-[0.625rem]",
+        "flex h-16 w-full min-w-[7.5rem] animate-pulse items-center justify-start gap-3 rounded-xl bg-surface-hover px-3.5 py-2.5",
         className,
       )}
     >
-      <Skeleton
-        // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41)
-        className="h-[2.625rem] w-[2.625rem] rounded-[0.5rem] bg-zinc-200"
-      />
+      <Skeleton className="h-[2.625rem] w-[2.625rem] rounded-lg bg-surface-active" />
       <div className="flex flex-1 flex-col items-start gap-0.5">
-        <Skeleton
-          // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41)
-          className="h-[1.375rem] w-24 rounded bg-zinc-200"
-        />
-        <Skeleton
-          // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41)
-          className="h-5 w-32 rounded bg-zinc-200"
-        />
+        <Skeleton className="h-[1.375rem] w-24 rounded bg-surface-active" />
+        <Skeleton className="h-5 w-32 rounded bg-surface-active" />
       </div>
-      <Skeleton
-        // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41)
-        className="h-7 w-7 rounded-[0.5rem] bg-zinc-200"
-      />
+      <Skeleton className="h-7 w-7 rounded-lg bg-surface-active" />
     </Skeleton>
   );
 };
