@@ -89,6 +89,21 @@
     }
   },
   {
+    "name": "mcp_allo",
+    "display_name": "Allo",
+    "description": "Read call transcripts and texts, send SMS, set up the AI receptionist that answers your business line, and queue callbacks in the Power Dialer.",
+    "mcp_server": {
+      "server_url": "https://mcp.withallo.com/mcp",
+      "documentation_url": "https://help.withallo.com/en/integrations/mcp",
+      "setup_instructions": "In Allo, open Settings > API and create an API key; only admins and owners can. Enable every scope for full access, or only the READ scopes for read-only use. Paste the key as the access token. Allo's AI receptionist speaks on calls; tools can't place a call or join one, and Power Dialer calls are started by a person in Allo. Call-flow changes are saved as drafts that someone publishes in Allo.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "bearer"
+      ],
+      "icon_id": "allo"
+    }
+  },
+  {
     "name": "mcp_amplemarket",
     "display_name": "Amplemarket",
     "description": "Research prospects and companies, and manage sales lists and sequences.",
