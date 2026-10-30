@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import sys
 import tempfile
@@ -36,6 +37,20 @@ def sync_directory(directory: Path) -> None:
         os.close(descriptor)
 
 
+def process_started(pid: int) -> float | None:
+    import psutil
+
+    if type(pid) is not int or not 0 < pid <= 2**31 - 1:
+        raise ValueError("Invalid process identity")
+    try:
+        started = psutil.Process(pid).create_time()
+    except psutil.NoSuchProcess:
+        return None
+    if not math.isfinite(started) or started <= 0:
+        raise ValueError("Invalid process birth time")
+    return started
+
+
 def active_owner(path: Path) -> bool:
     import psutil
 
@@ -44,13 +59,19 @@ def active_owner(path: Path) -> bool:
             return True
         owner = json.loads(path.read_text("utf-8"))
         pid = owner.get("pid") if isinstance(owner, dict) else None
-        return (
-            type(pid) is not int
-            or pid <= 0
-            or pid > 2**31 - 1
-            or psutil.pid_exists(pid)
-        )
-    except (OSError, ValueError, OverflowError):
+        if type(pid) is not int or not 0 < pid <= 2**31 - 1:
+            return True
+        if not psutil.pid_exists(pid):
+            return False
+        started = owner.get("started")
+        if (
+            type(started) not in (int, float)
+            or not math.isfinite(started)
+            or started <= 0
+        ):
+            return True
+        return process_started(pid) == started
+    except (OSError, ValueError, OverflowError, psutil.Error):
         return True
 
 
@@ -117,13 +138,16 @@ class MaintenanceOperation:
             raise DataBusyError(
                 "Another maintenance operation is active or its owner cannot be verified."
             )
+        started = process_started(os.getpid())
+        if started is None:
+            raise DataBusyError("The maintenance process identity cannot be verified.")
         descriptor, name = tempfile.mkstemp(
             prefix=".autogpt-operation-pending-", dir=self.path.parent
         )
         pending = Path(name)
         try:
             with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-                json.dump({"pid": os.getpid()}, stream)
+                json.dump({"pid": os.getpid(), "started": started}, stream)
                 stream.flush()
                 os.fsync(stream.fileno())
             os.replace(pending, self.path)

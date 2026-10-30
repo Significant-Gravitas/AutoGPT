@@ -3,7 +3,6 @@ import os
 from pathlib import Path
 
 import pytest
-
 from autogpt_desktop import bootstrap, maintenance, migrations
 from autogpt_desktop.layout import Bundle, DataDir
 from autogpt_desktop.maintenance import DataBusyError, DataLock, MaintenanceOperation
@@ -101,7 +100,10 @@ def test_operation_publishes_before_checking_live_shell_lease(tmp_path, monkeypa
 
         def owner(path):
             assert path == lease
-            assert json.loads(operation.path.read_text("utf-8")) == {"pid": os.getpid()}
+            assert json.loads(operation.path.read_text("utf-8")) == {
+                "pid": os.getpid(),
+                "started": maintenance.process_started(os.getpid()),
+            }
             return True
 
         monkeypatch.setattr(maintenance, "active_owner", owner)
@@ -167,3 +169,125 @@ def test_incompatible_schema_refuses_before_bootstrap_or_migration(
     with pytest.raises(migrations.IncompatibleSchemaError, match="newer schema"):
         stack.migrate({"postgres": 12345}, {"POSTGRES_PASSWORD": "synthetic"}, False)
     assert not stack.migrating
+
+
+@pytest.mark.parametrize(
+    "started, expected",
+    [
+        (100.0, True),
+        (99.0, False),
+        (None, True),
+        (True, True),
+        ("100", True),
+        (float("nan"), True),
+        (0, True),
+    ],
+)
+def test_marker_matches_process_birth_not_only_reused_pid(
+    tmp_path, monkeypatch, started, expected
+):
+    from types import SimpleNamespace
+
+    import psutil
+
+    monkeypatch.setattr(psutil, "pid_exists", lambda pid: True)
+    monkeypatch.setattr(
+        psutil, "Process", lambda pid: SimpleNamespace(create_time=lambda: 100.0)
+    )
+    marker = tmp_path / "operation.json"
+    marker.write_text(json.dumps({"pid": 234, "started": started}), encoding="utf-8")
+    assert maintenance.active_owner(marker) is expected
+
+
+def test_operation_records_native_birth_time(tmp_path):
+    import psutil
+
+    with DataLock(tmp_path / "data") as held, MaintenanceOperation(held) as operation:
+        owner = json.loads(operation.path.read_text("utf-8"))
+        assert owner == {"pid": os.getpid(), "started": psutil.Process().create_time()}
+
+
+def test_reused_shell_pid_no_longer_blocks_maintenance(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    import psutil
+
+    real_process = psutil.Process
+    monkeypatch.setattr(psutil, "pid_exists", lambda pid: True)
+    monkeypatch.setattr(
+        psutil,
+        "Process",
+        lambda pid=None: (
+            SimpleNamespace(create_time=lambda: 100.0)
+            if pid == 234
+            else real_process(pid)
+        ),
+    )
+    with DataLock(tmp_path / "data") as held:
+        lease = held.root.parent / f".autogpt-shell-{held.key}-old.json"
+        lease.write_text(json.dumps({"pid": 234, "started": 99.0}), encoding="utf-8")
+        with MaintenanceOperation(held):
+            assert lease.exists()
+
+
+def test_uninspectable_birth_remains_active(tmp_path, monkeypatch):
+    import psutil
+
+    monkeypatch.setattr(psutil, "pid_exists", lambda pid: True)
+
+    def denied(pid):
+        raise psutil.AccessDenied(pid)
+
+    monkeypatch.setattr(psutil, "Process", denied)
+    marker = tmp_path / "operation.json"
+    marker.write_text('{"pid":234,"started":99.0}', encoding="utf-8")
+    assert maintenance.active_owner(marker)
+
+
+def test_reused_operation_pid_is_replaced_but_live_identity_is_preserved(tmp_path):
+    import psutil
+
+    with DataLock(tmp_path / "data") as held:
+        operation = MaintenanceOperation(held)
+        operation.path.write_text(
+            json.dumps(
+                {"pid": os.getpid(), "started": psutil.Process().create_time() - 10}
+            ),
+            encoding="utf-8",
+        )
+        with operation:
+            current = operation.path.read_text("utf-8")
+            with pytest.raises(DataBusyError), MaintenanceOperation(held):
+                pytest.fail("replaced live maintenance")
+            assert operation.path.read_text("utf-8") == current
+        assert not operation.path.exists()
+
+
+def test_gone_process_birth_returns_none(monkeypatch):
+    import psutil
+
+    def gone(pid):
+        raise psutil.NoSuchProcess(pid)
+
+    monkeypatch.setattr(psutil, "Process", gone)
+    assert maintenance.process_started(234) is None
+
+
+@pytest.mark.parametrize("pid", [True, "234", 0, -1, 2**31])
+def test_invalid_process_identity_is_refused_before_inspection(monkeypatch, pid):
+    import psutil
+
+    monkeypatch.setattr(
+        psutil, "Process", lambda pid: pytest.fail("inspected invalid PID")
+    )
+    with pytest.raises(ValueError):
+        maintenance.process_started(pid)
+
+
+def test_missing_own_identity_refuses_before_publishing(tmp_path, monkeypatch):
+    monkeypatch.setattr(maintenance, "process_started", lambda pid: None)
+    with DataLock(tmp_path / "data") as held:
+        operation = MaintenanceOperation(held)
+        with pytest.raises(DataBusyError, match="identity"), operation:
+            pytest.fail("unverified owner")
+        assert not operation.path.exists()

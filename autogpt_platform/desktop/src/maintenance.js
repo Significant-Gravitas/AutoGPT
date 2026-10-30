@@ -1,8 +1,10 @@
 "use strict";
 
 const crypto = require("node:crypto");
+const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
+const { readRuntimeManifest, runtimeDir } = require("./paths");
 
 function resolvedDirectory(directory) {
   let current = path.resolve(directory);
@@ -51,7 +53,7 @@ function maintenancePaths(directory) {
 }
 
 function processExists(pid) {
-  if (!Number.isSafeInteger(pid) || pid <= 0) return true;
+  if (!Number.isSafeInteger(pid) || pid <= 0 || pid > 2 ** 31 - 1) return true;
   try {
     process.kill(pid, 0);
     return true;
@@ -60,7 +62,38 @@ function processExists(pid) {
   }
 }
 
-function operationActive(file) {
+function processStartProbe({
+  runtime = runtimeDir({ isPackaged: Boolean(process.resourcesPath), resourcesPath: process.resourcesPath }),
+  platform = process.platform,
+  run = spawnSync,
+} = {}) {
+  const deadline = performance.now() + 15_000;
+  return (pid) => {
+    const timeout = Math.floor(deadline - performance.now());
+    if (timeout <= 0) throw new Error("Process identity inspection timed out.");
+    const { command } = readRuntimeManifest(runtime, platform);
+    const code = "import sys,json; sys.path.insert(0,sys.argv[1]); " +
+      "from autogpt_desktop.maintenance import process_started; " +
+      "print(json.dumps(process_started(int(sys.argv[2]))))";
+    const env = Object.fromEntries(Object.entries(process.env).filter(([name]) =>
+      ["systemroot", "windir"].includes(name.toLowerCase()),
+    ));
+    const result = run(command, ["-I", "-B", "-c", code, path.resolve(runtime), String(pid)], {
+      cwd: path.resolve(runtime), env, windowsHide: true, shell: false, timeout,
+      maxBuffer: 4096, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
+    });
+    if (result.error || result.status !== 0 || result.signal) {
+      throw new Error("Process identity could not be inspected.");
+    }
+    const started = JSON.parse(result.stdout);
+    if (started !== null && (!Number.isFinite(started) || started <= 0)) {
+      throw new Error("Invalid process identity.");
+    }
+    return started;
+  };
+}
+
+function operationActive(file, processStarted = processStartProbe()) {
   let content;
   try {
     if (fs.lstatSync(file).isSymbolicLink()) return true;
@@ -70,7 +103,14 @@ function operationActive(file) {
     throw error;
   }
   try {
-    return processExists(JSON.parse(content).pid);
+    const owner = JSON.parse(content);
+    if (!Number.isSafeInteger(owner.pid) || owner.pid <= 0 || owner.pid > 2 ** 31 - 1) return true;
+    if (!processExists(owner.pid)) return false;
+    if (!Number.isFinite(owner.started) || owner.started <= 0) return true;
+    const started = processStarted(owner.pid);
+    if (started === null) return false;
+    if (!Number.isFinite(started) || started <= 0) return true;
+    return started === owner.started;
   } catch {
     return true;
   }
@@ -89,10 +129,14 @@ function requireNoRestore(journal) {
   );
 }
 
-function claimLaunch(directory) {
+function claimLaunch(directory, { processStarted = processStartProbe() } = {}) {
+  const started = processStarted(process.pid);
+  if (!Number.isFinite(started) || started <= 0) {
+    throw new Error("AutoGPT could not verify its process identity.");
+  }
   const locations = maintenancePaths(directory);
   fs.mkdirSync(path.dirname(locations.root), { recursive: true });
-  removeDeadLeases(locations);
+  removeDeadLeases(locations, processStarted);
   const lease = path.join(
     path.dirname(locations.root),
     `.autogpt-shell-${locations.key}-${process.pid}-${crypto.randomUUID()}.json`,
@@ -102,7 +146,7 @@ function claimLaunch(directory) {
   try {
     const descriptor = fs.openSync(temporary, "wx", 0o600);
     try {
-      fs.writeFileSync(descriptor, JSON.stringify({ pid: process.pid }));
+      fs.writeFileSync(descriptor, JSON.stringify({ pid: process.pid, started }));
       fs.fsyncSync(descriptor);
     } finally {
       fs.closeSync(descriptor);
@@ -110,7 +154,7 @@ function claimLaunch(directory) {
     fs.renameSync(temporary, lease);
     created = true;
     requireNoRestore(locations.journal);
-    if (operationActive(locations.operation)) {
+    if (operationActive(locations.operation, processStarted)) {
       throw new Error("AutoGPT backup or restore is in progress. Wait for it to finish, then open AutoGPT again.");
     }
   } catch (error) {
@@ -119,11 +163,11 @@ function claimLaunch(directory) {
   } finally {
     fs.rmSync(temporary, { force: true });
   }
-  // Keep the lease through Electron's final profile writes. Maintenance ignores it only after this PID exits.
+  // Keep exclusion through Electron's final writes; later checks compare PID and native birth time.
   return lease;
 }
 
-function removeDeadLeases(locations) {
+function removeDeadLeases(locations, processStarted) {
   const parent = path.dirname(locations.root);
   const prefix = `.autogpt-shell-${locations.key}-`;
   let names;
@@ -135,11 +179,11 @@ function removeDeadLeases(locations) {
     try {
       const info = fs.lstatSync(file);
       if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1) continue;
-      if (!operationActive(file)) fs.unlinkSync(file);
+      if (!operationActive(file, processStarted)) fs.unlinkSync(file);
     } catch {
       // Unreadable or uncertain leases remain for maintenance to reject.
     }
   }
 }
 
-module.exports = { canonicalDirectory, claimLaunch, maintenancePaths, operationActive, processExists };
+module.exports = { canonicalDirectory, claimLaunch, maintenancePaths, operationActive, processExists, processStartProbe };
