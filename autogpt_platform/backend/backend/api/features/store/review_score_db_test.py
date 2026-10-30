@@ -17,11 +17,11 @@ async def test_db_rejects_out_of_range_review_score(server, score: int):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_db_in_range_score_passes_the_score_check(server):
-    # In range, the same insert gets past the CHECK and only trips the FK.
-    with pytest.raises(Exception) as exc:
-        await _insert_review(3)
-    assert "StoreListingReview_score_range" not in str(exc.value)
+@pytest.mark.parametrize("score", [1, 3, 5])
+async def test_db_in_range_score_passes_the_score_check(server, score: int):
+    # In range, the same insert gets past the CHECK and stops at a foreign key.
+    with pytest.raises(Exception, match=r"StoreListingReview_\w+_fkey"):
+        await _insert_review(score)
 
 
 async def _insert_review(score: int) -> None:
