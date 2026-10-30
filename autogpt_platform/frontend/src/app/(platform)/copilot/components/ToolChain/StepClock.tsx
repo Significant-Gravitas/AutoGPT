@@ -10,9 +10,14 @@ const stepStarts = new Map<string, string>();
 
 // When this tab first saw each running step, kept outside the row so a
 // remount (switching chats, expanding the chain) resumes the same count.
+// A step seen again moves to the back, so eviction drops the stalest one.
 function stepStartedAt(stepKey: string) {
   const known = stepStarts.get(stepKey);
-  if (known) return known;
+  if (known) {
+    stepStarts.delete(stepKey);
+    stepStarts.set(stepKey, known);
+    return known;
+  }
   const startedAt = new Date().toISOString();
   stepStarts.set(stepKey, startedAt);
   if (stepStarts.size > MAX_REMEMBERED_STEPS) {
@@ -31,7 +36,10 @@ export function StepClock({ stepKey }: Props) {
   const { elapsedSeconds } = useElapsedTimer(true, anchorIso);
   if (elapsedSeconds < SHOW_TIME_AFTER_SECONDS) return null;
   return (
-    <span className="shrink-0 font-mono text-xs text-foreground-subtle tabular-nums">
+    <span
+      aria-hidden
+      className="shrink-0 font-mono text-xs text-foreground-subtle tabular-nums"
+    >
       {formatElapsed(elapsedSeconds)}
     </span>
   );

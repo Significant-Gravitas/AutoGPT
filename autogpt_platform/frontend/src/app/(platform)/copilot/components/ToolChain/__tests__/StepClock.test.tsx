@@ -94,4 +94,43 @@ describe("ChainRowView - step clock", () => {
     advanceSeconds(30);
     expect(screen.queryByText("30s")).toBeNull();
   });
+
+  it("leaves a call waiting for approval without a clock", () => {
+    render(
+      <ChainRowView
+        row={row({ held: { state: "waiting", reviewId: "review-1" } })}
+        isLast
+      />,
+    );
+    advanceSeconds(30);
+    expect(screen.queryByText("30s")).toBeNull();
+  });
+
+  it("keeps each running step's own count across a remount", () => {
+    const first = row();
+    const { unmount } = render(<ChainRowView row={first} isLast={false} />);
+    advanceSeconds(60);
+    const second = row();
+    const { unmount: unmountSecond } = render(
+      <ChainRowView row={second} isLast />,
+    );
+    advanceSeconds(25);
+    unmount();
+    unmountSecond();
+
+    render(
+      <>
+        <ChainRowView row={first} isLast={false} />
+        <ChainRowView row={second} isLast />
+      </>,
+    );
+    expect(screen.getByText("1m 25s")).toBeDefined();
+    expect(screen.getByText("25s")).toBeDefined();
+  });
+
+  it("keeps the ticking time out of the row's accessible name", () => {
+    render(<ChainRowView row={row()} isLast />);
+    advanceSeconds(20);
+    expect(screen.getByText("20s").getAttribute("aria-hidden")).toBe("true");
+  });
 });
