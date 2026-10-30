@@ -70,18 +70,24 @@ def parent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     for name in ("ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
-    monkeypatch.setattr("backend.copilot.sdk.env.validate_subscription", lambda: None)
+    monkeypatch.setattr(
+        "backend.copilot.sdk.env.validate_subscription", lambda cli_path=None: None
+    )
 
 
 async def _spawned_env(
-    monkeypatch: pytest.MonkeyPatch, options: ClaudeAgentOptions
+    monkeypatch: pytest.MonkeyPatch,
+    options: ClaudeAgentOptions,
+    commands: list[list[str]] | None = None,
 ) -> dict[str, str]:
     """The environment the SDK hands the CLI it starts with *options*, which
     is the only process it starts: one started without an environment of its
     own, like the SDK's own version check, gets the backend's whole one."""
     envs: list[dict[str, str] | None] = []
 
-    async def open_process(*_args, **kwargs):
+    async def open_process(command, **kwargs):
+        if commands is not None:
+            commands.append(command)
         envs.append(kwargs.get("env"))
         raise _Spawned
 
@@ -271,16 +277,91 @@ def test_the_subscription_check_starts_the_cli_from_the_allowlist(
     parent: None, monkeypatch: pytest.MonkeyPatch
 ):
     envs = _record_runs(monkeypatch, "2.1.284", auth='{"loggedIn": true}')
-    monkeypatch.setattr(subscription, "find_bundled_cli", lambda: _CLI)
     monkeypatch.setattr(subscription, "provision_credentials_file", lambda: None)
 
-    subscription.validate_subscription.__wrapped__()
+    subscription._validate_subscription.__wrapped__(_CLI)
 
     version_env, auth_env = envs
     secrets = set(_PARENT_SECRETS.values())
     assert not secrets & set(version_env.values())
     assert set(auth_env.values()) & secrets == {_HOST_LOGIN}
     assert all(inherited(name) for name in version_env)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "source",
+    [
+        "explicit",
+        "CHAT_CLAUDE_AGENT_CLI_PATH",
+        "CLAUDE_AGENT_CLI_PATH",
+        "bundled",
+        "path",
+    ],
+)
+async def test_subscription_probes_and_sdk_launch_use_the_selected_executable(
+    source: str, parent: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    cli = tmp_path / "selected-claude.exe"
+    cli.write_bytes(b"stand-in executable, never run")
+    cli.chmod(0o755)
+    for name in ("CHAT_CLAUDE_AGENT_CLI_PATH", "CLAUDE_AGENT_CLI_PATH"):
+        monkeypatch.delenv(name, raising=False)
+    settings = {"use_claude_code_subscription": True, "_env_file": None}
+    if source == "explicit":
+        settings["claude_agent_cli_path"] = str(cli)
+        monkeypatch.setenv("CHAT_CLAUDE_AGENT_CLI_PATH", "missing-prefixed-cli")
+        monkeypatch.setenv("CLAUDE_AGENT_CLI_PATH", "missing-alias-cli")
+    elif source not in {"bundled", "path"}:
+        monkeypatch.setenv(source, str(cli))
+    cfg = _config(**settings)
+    monkeypatch.setattr("backend.copilot.sdk.env.config", cfg)
+    monkeypatch.setattr(
+        "backend.copilot.sdk.env.validate_subscription",
+        subscription.validate_subscription,
+    )
+    probes: list[list[str]] = []
+
+    def run(argv, **kwargs):
+        probes.append(argv)
+        output = '{"loggedIn": true}' if argv[1:] == ["auth", "status"] else "2.1.284"
+        return subprocess.CompletedProcess(argv, 0, output, "")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    with (
+        patch.object(subscription, "provision_credentials_file") as provision,
+        patch.object(
+            subprocess_cli.SubprocessCLITransport,
+            "_find_bundled_cli",
+            return_value=None if source == "path" else str(cli),
+        ) as bundled,
+        patch.object(subscription.shutil, "which", return_value=str(cli)) as which,
+    ):
+        subscription._validate_subscription.cache_clear()
+        try:
+            env = build_sdk_env()
+            options = launch_options(
+                ClaudeAgentOptions(
+                    env=env,
+                    cli_path=cli_version.require_verbatim_prompts_cli(
+                        cfg.claude_agent_cli_path
+                    ),
+                )
+            )
+            commands: list[list[str]] = []
+            spawned = await _spawned_env(monkeypatch, options, commands)
+        finally:
+            subscription._validate_subscription.cache_clear()
+    assert probes == [
+        [str(cli), "--version"],
+        [str(cli), "auth", "status"],
+        [str(cli), "-v"],
+    ]
+    assert [command[0] for command in commands] == [str(cli)]
+    assert bundled.call_count == (2 if source in {"bundled", "path"} else 0)
+    assert which.call_count == (2 if source == "path" else 0)
+    provision.assert_called_once_with()
+    _assert_keeps_only(spawned, env, _HOST_LOGIN)
 
 
 def _assert_keeps_only(
