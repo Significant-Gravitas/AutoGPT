@@ -149,51 +149,7 @@ def load_runtime_config_module(bundle: Bundle) -> ModuleType:
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    if sys.platform == "win32":
-        vars(module)["os"] = WindowsOs(os)
     return module
-
-
-class WindowsOs:
-    """`os` as the appliance's runtime_config.py needs it on Windows.
-
-    That file is upstream's and is loaded as it is. Writing runtime.env, it
-    calls os.fchmod, which Windows has only since Python 3.13, and it opens
-    the config directory to fsync the rename, which Windows refuses: a
-    directory is not a file there, and NTFS journals the rename anyway. The
-    module reaches all of it through its global `os`, so it is handed this
-    in its place. upstream/runtime-config-windows.patch is the same fix
-    offered upstream; when the appliance has it, delete this class.
-    """
-
-    def __init__(self, real: Any) -> None:
-        self._real = real
-        self._directories: set[int] = set()
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._real, name)
-
-    def fchmod(self, descriptor: int, mode: int) -> None:
-        change = getattr(self._real, "fchmod", None)
-        if change:
-            change(descriptor, mode)
-
-    def open(self, path: str | os.PathLike[str], flags: int, mode: int = 0o777) -> int:
-        if not self._real.path.isdir(path):
-            return self._real.open(path, flags, mode)
-        # A real descriptor stands in for the directory's, so that closing
-        # it is an ordinary close; fsync is what must not reach it.
-        descriptor = self._real.open(self._real.devnull, self._real.O_RDONLY)
-        self._directories.add(descriptor)
-        return descriptor
-
-    def fsync(self, descriptor: int) -> None:
-        if descriptor not in self._directories:
-            self._real.fsync(descriptor)
-
-    def close(self, descriptor: int) -> None:
-        self._directories.discard(descriptor)
-        self._real.close(descriptor)
 
 
 def ensure_secrets(bundle: Bundle, data: DataDir) -> dict[str, str]:
