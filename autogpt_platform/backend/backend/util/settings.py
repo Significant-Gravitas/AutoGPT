@@ -1525,6 +1525,13 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     hubspot_mcp_client_secret: str = Field(
         default="", description="Client secret of the HubSpot MCP auth app"
     )
+    allo_mcp_client_id: str = Field(
+        default="",
+        description="Client ID Allo issued for signing in to its MCP server "
+        "(mcp.withallo.com). It is a public app with no secret. Allo does not "
+        "support dynamic client registration, so MCP sign-in to Allo is "
+        "unavailable until this is set.",
+    )
 
     todoist_client_id: str = Field(default="", description="Todoist client ID")
     todoist_client_secret: str = Field(default="", description="Todoist client secret")

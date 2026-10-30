@@ -95,10 +95,10 @@
     "mcp_server": {
       "server_url": "https://mcp.withallo.com/mcp",
       "documentation_url": "https://help.withallo.com/en/integrations/mcp",
-      "setup_instructions": "In Allo, open Settings > API and create an API key; only admins and owners can. Enable every scope for full access, or only the READ scopes for read-only use. Paste the key as the access token. Allo's AI receptionist speaks on calls; tools can't place a call or join one, and Power Dialer calls are started by a person in Allo. Call-flow changes are saved as drafts that someone publishes in Allo.",
+      "setup_instructions": "Sign in to Allo and review the permissions requested; your Allo role decides what the connection can see and change. Allo's AI receptionist speaks on calls; tools can't place a call or join one, and Power Dialer calls are started by a person in Allo. Call-flow changes are saved as drafts that someone publishes in Allo.",
       "connection_mode": "hosted",
       "auth_methods": [
-        "bearer"
+        "oauth"
       ],
       "icon_id": "allo"
     }
