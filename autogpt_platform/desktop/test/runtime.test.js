@@ -175,7 +175,7 @@ test("a runtime that cannot be started is reported, and stopping it does not han
 test("spawn failure leaves an old registry untouched and never signals its PIDs", async (t) => {
   const signals = [];
   t.mock.method(process, "kill", (...args) => signals.push(args));
-  const registry = writeRegistry([{ name: "old service", pid: process.pid, started: 1 }]);
+  const registry = writeRegistry(t, [{ name: "old service", pid: process.pid, started: 1 }]);
   const original = fs.readFileSync(registry);
   const runtime = new Runtime({
     command: path.join(__dirname, "no-such-runtime"),
@@ -190,7 +190,7 @@ test("spawn failure leaves an old registry untouched and never signals its PIDs"
 test("the shell cannot reap a registry without an identity-checking runtime helper", async (t) => {
   const signals = [];
   t.mock.method(process, "kill", (...args) => signals.push(args));
-  const registry = writeRegistry([{ name: "reused PID", pid: process.pid, started: 1 }]);
+  const registry = writeRegistry(t, [{ name: "reused PID", pid: process.pid, started: 1 }]);
   const original = fs.readFileSync(registry);
   const cleanup = killRecorded(registry);
   assert.deepEqual(signals, []);
@@ -238,8 +238,9 @@ test("manifest commands resolve relative to the runtime directory", () => {
   assert.deepEqual(mac.env, { A: `${dir}/a` });
 });
 
-function writeRegistry(entries) {
+function writeRegistry(t, entries) {
   const registry = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "agpt-registry-")), "children.json");
+  t.after(() => fs.rmSync(path.dirname(registry), { recursive: true, force: true }));
   fs.writeFileSync(registry, JSON.stringify(entries));
   return registry;
 }
@@ -257,8 +258,8 @@ function controlledRuntime(spawn, log) {
   return module.exports;
 }
 
-test("recorded services are delegated to the bounded Python identity-checking reaper", async () => {
-  const registry = writeRegistry([{ name: "service", pid: 123, started: 456 }]);
+test("recorded services are delegated to the bounded Python identity-checking reaper", async (t) => {
+  const registry = writeRegistry(t, [{ name: "service", pid: 123, started: 456 }]);
   const env = { SAFE: "value" };
   const { killRecorded: reap } = controlledRuntime((command, args, options) => {
     assert.equal(command, "bundled-python");
@@ -281,7 +282,7 @@ test("recorded services are delegated to the bounded Python identity-checking re
 for (const outcome of ["spawn-error", "nonzero", "timeout"]) {
   test(`cleanup ${outcome} retains the registry without directly killing processes`, async (t) => {
     t.mock.method(process, "kill", () => assert.fail("unverified PID kill"));
-    const registry = writeRegistry([{ name: "service", pid: 123, started: 456 }]);
+    const registry = writeRegistry(t, [{ name: "service", pid: 123, started: 456 }]);
     const original = fs.readFileSync(registry);
     const { killRecorded: reap } = controlledRuntime(() => {
       const helper = new EventEmitter();
@@ -296,8 +297,8 @@ for (const outcome of ["spawn-error", "nonzero", "timeout"]) {
   });
 }
 
-test("runtime exit and stop wait for verified cleanup, once only", async () => {
-  const registry = writeRegistry([{ name: "service", pid: 123, started: 456 }]);
+test("runtime exit and stop wait for verified cleanup, once only", async (t) => {
+  const registry = writeRegistry(t, [{ name: "service", pid: 123, started: 456 }]);
   const child = Object.assign(new EventEmitter(), {
     pid: 1234, stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(),
   });
@@ -363,7 +364,7 @@ test("buffered child output after exit is logged before stdio closes", async (t)
 });
 
 test("stdio close waits for reaper diagnostics before ending the log", async (t) => {
-  const f = logFixture(t, { registry: writeRegistry([]) });
+  const f = logFixture(t, { registry: writeRegistry(t, []) });
   f.child.emit("exit", 3, null);
   f.child.emit("close", 3, null);
   assert.equal(f.sink.writableEnded, false);

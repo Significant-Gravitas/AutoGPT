@@ -74,7 +74,9 @@ const install = identity(
 const dataDir = defaultDataDir(process.platform, process.env, install);
 let launchRefusal = null;
 try {
-  claimLaunch(dataDir);
+  claimLaunch(dataDir, {
+    runtime: runtimeDir({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath }),
+  });
   if (process.platform === "win32") launchRefusal = dataOfAnotherInstall();
 } catch (error) {
   launchRefusal = error?.message || "AutoGPT could not open its data folder.";

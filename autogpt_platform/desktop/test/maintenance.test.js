@@ -6,6 +6,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const vm = require("node:vm");
 const { canonicalDirectory, claimLaunch: claimLaunchWithProbe, maintenancePaths, operationActive, processStartProbe } = require("../src/maintenance");
 const { claimDataDir } = require("../src/paths");
 const { NORMAL } = require("../src/identity");
@@ -93,7 +94,7 @@ test("Darwin identity agrees across case and Unicode normalization", (t) => {
 
 test("shell claims maintenance exclusion before profile and single-instance writes", () => {
   const source = fs.readFileSync(path.join(__dirname, "../src/main.js"), "utf8");
-  const lease = source.indexOf("claimLaunch(dataDir)");
+  const lease = source.indexOf("claimLaunch(dataDir,");
   assert.ok(lease > 0);
   assert.ok(lease < source.indexOf("claim(app, install)"));
   assert.ok(lease < source.indexOf("app.requestSingleInstanceLock()"));
@@ -170,13 +171,17 @@ test("unknown current identity refuses launch before publishing its lease", (t) 
 
 test("invalid marker identities never invoke native inspection", (t) => {
   const f = fixture(t);
+  const inspected = [];
+  const probe = (pid) => { inspected.push(pid); return 100; };
   for (const pid of [0, -1, true, "123", 2 ** 31]) {
     fs.writeFileSync(f.operation, JSON.stringify({ pid, started: 100 }));
-    assert.equal(operationActive(f.operation, () => assert.fail("invalid PID inspected")), true);
+    assert.equal(operationActive(f.operation, probe), true);
+    assert.deepEqual(inspected, []);
   }
   for (const started of [null, true, "100", -1, 0]) {
     fs.writeFileSync(f.operation, JSON.stringify({ pid: process.pid, started }));
-    assert.equal(operationActive(f.operation, () => assert.fail("legacy identity inspected")), true);
+    assert.equal(operationActive(f.operation, probe), true);
+    assert.deepEqual(inspected, []);
   }
 });
 
@@ -225,13 +230,42 @@ test("an active maintenance marker is checked after lease publication", (t) => {
   const f = fixture(t);
   fs.writeFileSync(f.operation, JSON.stringify({ pid: process.pid, started: 100 }));
   let calls = 0;
+  const leaseCounts = [];
   assert.throws(() => claimLaunch(f.data, { processStarted() {
     calls += 1;
     if (calls === 2) {
-      assert.equal(fs.readdirSync(f.temporary).filter((name) => name.startsWith(".autogpt-shell-")).length, 1);
+      leaseCounts.push(fs.readdirSync(f.temporary).filter((name) => name.startsWith(".autogpt-shell-") && name.endsWith(".json")).length);
     }
     return 100;
   } }), /backup or restore/);
   assert.equal(calls, 2);
+  assert.deepEqual(leaseCounts, [1]);
   assert.equal(fs.readdirSync(f.temporary).filter((name) => name.startsWith(".autogpt-shell-")).length, 0);
+});
+
+test("launch inspects identity using the explicitly selected runtime", (t) => {
+  const f = fixture(t);
+  const runtime = path.join(f.temporary, "selected-runtime");
+  fs.mkdirSync(runtime);
+  fs.writeFileSync(path.join(runtime, "manifest.json"), JSON.stringify({
+    default: { command: "python/bin/python3" },
+  }));
+  const module = { exports: {} };
+  const inspected = [];
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../src/maintenance.js"), "utf8"), {
+    module, process, performance,
+    require(name) {
+      if (name === "node:child_process") return { spawnSync(command, args) {
+        inspected.push({ command, runtime: args.at(-2), pid: args.at(-1) });
+        return { status: 0, signal: null, stdout: "100.25" };
+      } };
+      if (name === "./paths") return require("../src/paths");
+      return require(name);
+    },
+  });
+  const lease = module.exports.claimLaunch(f.data, { runtime });
+  assert.deepEqual(inspected, [{
+    command: path.join(runtime, "python/bin/python3"), runtime, pid: String(process.pid),
+  }]);
+  assert.deepEqual(JSON.parse(fs.readFileSync(lease, "utf8")), { pid: process.pid, started: 100.25 });
 });

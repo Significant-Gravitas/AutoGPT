@@ -94,12 +94,13 @@ test("main turns ownership/preparation errors into a startup refusal", () => {
   assert.match(message, /private creation refusal/);
 });
 
-function loadMain({ failure = null, owner = NORMAL.dirName, maintenanceFailure = false } = {}) {
+function loadMain({ failure = null, owner = NORMAL.dirName, maintenanceFailure = false, isPackaged = false, runtimeOverride } = {}) {
   const source = fs.readFileSync(path.join(__dirname, "../src/main.js"), "utf8");
   const calls = [];
+  const maintenanceRuntimes = [];
   let boot;
   const app = {
-    isPackaged: false,
+    isPackaged,
     commandLine: { hasSwitch: () => false },
     setName: () => calls.push("claim-profile"),
     getPath: () => "/app-data",
@@ -115,17 +116,20 @@ function loadMain({ failure = null, owner = NORMAL.dirName, maintenanceFailure =
   };
   const context = {
     __dirname: path.join(__dirname, "../src"),
-    process: { platform: "win32", env: {}, resourcesPath: "/bundle" },
+    process: { platform: "win32", env: { AUTOGPT_DESKTOP_RUNTIME: runtimeOverride }, resourcesPath: "/bundle" },
     require: (name) => {
       if (name === "electron") return electron;
       if (["./reset-password-window", "./doctor-window"].includes(name)) return {};
-      if (name === "./maintenance") return { claimLaunch: () => {
+      if (name === "./maintenance") return { claimLaunch: (directory, options) => {
         calls.push("lease");
+        maintenanceRuntimes.push(options?.runtime);
         if (maintenanceFailure) throw new Error("injected maintenance refusal");
       } };
       if (name === "./paths") return {
         defaultDataDir: () => "/app-data/AutoGPT",
-        runtimeDir: () => "/bundle/runtime",
+        runtimeDir: (options) => require("../src/paths").runtimeDir({
+          ...options, env: { AUTOGPT_DESKTOP_RUNTIME: runtimeOverride },
+        }),
         claimDataDir: () => {
           calls.push("private-root-and-stamp");
           if (failure) throw failure;
@@ -136,7 +140,20 @@ function loadMain({ failure = null, owner = NORMAL.dirName, maintenanceFailure =
     },
   };
   vm.runInNewContext(source, context);
-  return { calls, boot };
+  return { calls, boot, maintenanceRuntimes };
+}
+
+for (const [isPackaged, runtimeOverride, expected] of [
+  [false, undefined, path.join(__dirname, "../build/runtime")],
+  [true, undefined, path.join("/bundle", "runtime")],
+  [false, "/custom-runtime", "/custom-runtime"],
+  [true, "/custom-runtime", "/custom-runtime"],
+]) {
+  test(`maintenance uses the shell runtime (packaged: ${isPackaged}, override: ${runtimeOverride})`, () => {
+    const { maintenanceRuntimes, boot } = loadMain({ isPackaged, runtimeOverride });
+    assert.deepEqual(maintenanceRuntimes, [expected]);
+    assert.equal(typeof boot, "function");
+  });
 }
 
 test("Windows claims a private root before Electron may create a coincident profile", () => {

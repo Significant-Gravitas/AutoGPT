@@ -4,7 +4,7 @@ const crypto = require("node:crypto");
 const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
-const { readRuntimeManifest, runtimeDir } = require("./paths");
+const { readRuntimeManifest } = require("./paths");
 
 function resolvedDirectory(directory) {
   let current = path.resolve(directory);
@@ -63,7 +63,7 @@ function processExists(pid) {
 }
 
 function processStartProbe({
-  runtime = runtimeDir({ isPackaged: Boolean(process.resourcesPath), resourcesPath: process.resourcesPath }),
+  runtime,
   platform = process.platform,
   run = spawnSync,
 } = {}) {
@@ -93,7 +93,7 @@ function processStartProbe({
   };
 }
 
-function operationActive(file, processStarted = processStartProbe()) {
+function operationActive(file, processStarted) {
   let content;
   try {
     if (fs.lstatSync(file).isSymbolicLink()) return true;
@@ -129,7 +129,7 @@ function requireNoRestore(journal) {
   );
 }
 
-function claimLaunch(directory, { processStarted = processStartProbe() } = {}) {
+function claimLaunch(directory, { runtime, processStarted = processStartProbe({ runtime }) } = {}) {
   const started = processStarted(process.pid);
   if (!Number.isFinite(started) || started <= 0) {
     throw new Error("AutoGPT could not verify its process identity.");

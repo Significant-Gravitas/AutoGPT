@@ -328,7 +328,7 @@ def test_nsis_destination_is_last_and_unquoted_even_with_spaces(driver):
 
 
 @pytest.fixture
-def installed(driver, tmp_path):
+def installed(driver, tmp_path, monkeypatch):
     install = tmp_path / "install"
     runtime = install / "resources/runtime"
     (runtime / "python").mkdir(parents=True)
@@ -345,7 +345,137 @@ def installed(driver, tmp_path):
         },
     }
     (runtime / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    source = tmp_path / "source-migrations"
+    monkeypatch.setattr(driver, "SOURCE_MIGRATIONS", source)
+    for root in (source, runtime / "backend/migrations"):
+        for name, sql in (
+            ("20260101000000_schema", b"CREATE TABLE example (id INTEGER);\n"),
+            ("20260102000000_data", b"UPDATE example SET id = id + 1;\n"),
+        ):
+            directory = root / name
+            directory.mkdir(parents=True)
+            (directory / "migration.sql").write_bytes(sql)
     return install, runtime, manifest
+
+
+@pytest.mark.parametrize("change", ["missing", "changed", "extra", "renamed"])
+def test_installed_migrations_match_exact_source(driver, installed, change):
+    install, runtime, _ = installed
+    migrations = runtime / "backend/migrations"
+    data = migrations / "20260102000000_data/migration.sql"
+    if change == "missing":
+        data.unlink()
+    elif change == "changed":
+        data.write_bytes(b"UPDATE example SET id = id + 2;\n")
+    elif change == "extra":
+        extra = migrations / "20260103000000_extra"
+        extra.mkdir()
+        (extra / "migration.sql").write_bytes(b"SELECT 1;\n")
+    else:
+        data.parent.rename(migrations / "20260102000001_data")
+    with pytest.raises(driver.SmokeError, match="installed_migrations_mismatch"):
+        driver.installed_runtime(install)
+
+
+@pytest.mark.parametrize("tree", ["source", "installed"])
+@pytest.mark.parametrize("missing", [False, True])
+def test_empty_or_missing_migration_tree_is_refused(driver, installed, tree, missing):
+    install, runtime, _ = installed
+    root = (
+        driver.SOURCE_MIGRATIONS if tree == "source" else runtime / "backend/migrations"
+    )
+    for sql in root.glob("*/migration.sql"):
+        sql.unlink()
+        sql.parent.rmdir()
+    if missing:
+        root.rmdir()
+    with pytest.raises(driver.SmokeError, match="migration"):
+        driver.installed_runtime(install)
+
+
+def test_nonregular_migration_sql_is_refused(driver, installed):
+    install, runtime, _ = installed
+    sql = runtime / "backend/migrations/20260102000000_data/migration.sql"
+    sql.unlink()
+    sql.mkdir()
+    with pytest.raises(driver.SmokeError, match="migration_sql_missing"):
+        driver.installed_runtime(install)
+
+
+def test_reparse_migration_ancestor_is_refused_before_read(
+    driver, installed, monkeypatch
+):
+    install, runtime, _ = installed
+    directory = runtime / "backend/migrations/20260102000000_data"
+    original = Path.lstat
+
+    def lstat(path):
+        info = original(path)
+        if path == directory:
+            return SimpleNamespace(st_mode=info.st_mode, st_file_attributes=0x400)
+        return info
+
+    read = driver.sha256
+    hashed = []
+
+    def digest(path):
+        hashed.append(path)
+        return read(path)
+
+    monkeypatch.setattr(Path, "lstat", lstat)
+    monkeypatch.setattr(driver, "sha256", digest)
+    with pytest.raises(driver.SmokeError, match="reparse_path_refused"):
+        driver.installed_runtime(install)
+    assert directory / "migration.sql" not in hashed
+
+
+def test_migration_mismatch_stops_before_imports_and_cleans_up(
+    driver, installed, processes, artifact, tmp_path, monkeypatch
+):
+    install, runtime, _ = installed
+    (runtime / "backend/migrations/20260102000000_data/migration.sql").unlink()
+    directory, desktop, _, _ = artifact
+    work = tmp_path / "migration-work"
+    monkeypatch.setattr(driver, "require_clean_host", lambda: None)
+    monkeypatch.setenv("GITHUB_SHA", COMMIT)
+    select = driver.select_artifact
+    monkeypatch.setattr(
+        driver, "select_artifact", lambda folder, sha: select(folder, sha, desktop)
+    )
+    monkeypatch.setattr(driver, "private_environment", lambda *args: {})
+    monkeypatch.setattr(driver, "OwnedProcesses", lambda *args: processes.tracker)
+    inspect = driver.installed_runtime
+    monkeypatch.setattr(driver, "installed_runtime", lambda _: inspect(install))
+    stages = []
+    monkeypatch.setattr(driver, "run_stage", lambda name, *args: stages.append(name))
+    cleanup = processes.tracker.cleanup
+    cleaned = []
+
+    def clean():
+        cleaned.append(True)
+        return cleanup()
+
+    monkeypatch.setattr(processes.tracker, "cleanup", clean)
+    assert (
+        driver.main(
+            [
+                "--artifact-dir",
+                str(directory),
+                "--work-dir",
+                str(work),
+                "--expected-commit",
+                COMMIT,
+            ]
+        )
+        == 1
+    )
+    result = json.loads((work / "result.json").read_text("utf-8"))
+    assert result["error"] == "installed_migrations_mismatch"
+    assert stages == ["install"]
+    assert cleaned == [True]
+    assert result["ok"] is False
+    assert "installed" not in result
+    assert "lifecycle" not in result
 
 
 @pytest.mark.parametrize(

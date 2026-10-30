@@ -26,6 +26,7 @@ from pathlib import Path, PureWindowsPath
 WINDOWS = sys.platform == "win32"
 BUILD = Path(__file__).resolve().parent
 DESKTOP = BUILD.parent
+SOURCE_MIGRATIONS = DESKTOP.parent / "backend/migrations"
 INPUTS = (
     "../backend/poetry.lock",
     "../backend/pyproject.toml",
@@ -533,6 +534,16 @@ def installer_command(installer: Path, destination: Path) -> str:
     )
 
 
+def migration_inventory(root: Path) -> dict[str, str]:
+    require(plain_path(root).is_dir(), "migration_directory_missing")
+    inventory = {}
+    for sql in sorted(root.glob("*/migration.sql")):
+        require(plain_path(sql).is_file(), "migration_sql_missing")
+        inventory[sql.parent.name] = sha256(sql)
+    require(bool(inventory), "migration_inventory_empty")
+    return inventory
+
+
 def installed_runtime(install: Path) -> tuple[Path, Path, dict]:
     require(plain_path(install / "autogpt-experimental.exe").is_file(), "shell_missing")
     runtime = plain_path(install / "resources/runtime")
@@ -553,6 +564,11 @@ def installed_runtime(install: Path) -> tuple[Path, Path, dict]:
     )
     python = plain_path(runtime / "python/python.exe")
     require(python.is_file(), "installed_python_missing")
+    require(
+        migration_inventory(runtime / "backend/migrations")
+        == migration_inventory(SOURCE_MIGRATIONS),
+        "installed_migrations_mismatch",
+    )
     return (
         runtime,
         python,
