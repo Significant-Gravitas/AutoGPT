@@ -71,6 +71,9 @@ interface Props {
   error: Error | undefined;
   isLoading: boolean;
   isRestoringActiveSession?: boolean;
+  /** The stream ended but the turn may not have: a reconnect is scheduled
+   *  or the follow-up turn check is still running. */
+  isTurnSettling?: boolean;
   restoreStatusMessage?: string | null;
   /** ISO start time of the active backend turn. Seeds the elapsed-time
    *  counter so restored turns show honest age instead of counting from
@@ -272,6 +275,7 @@ export function ChatMessagesContainer({
   error,
   isLoading,
   isRestoringActiveSession,
+  isTurnSettling,
   restoreStatusMessage,
   activeStreamStartedAt,
   sessionID,
@@ -403,6 +407,9 @@ export function ChatMessagesContainer({
   })();
 
   const isActivelyStreaming = status === "streaming" || status === "submitted";
+  const isTurnBusy =
+    isActivelyStreaming || !!isRestoringActiveSession || !!isTurnSettling;
+  const isTurnSettled = !isTurnBusy && status !== "error" && !error;
   useCostReplyMoment({
     messages,
     isStreaming: isActivelyStreaming,
@@ -486,6 +493,7 @@ export function ChatMessagesContainer({
         isCurrentlyStreaming={isCurrentlyStreaming}
         isLastInTurn={isLastInTurn}
         isLatestTurn={isLastRow}
+        isTurnSettled={!isLastRow || isTurnSettled}
         turnStat={turnStats?.get(message.id)}
         turnMessages={
           showsTurnStats
@@ -655,7 +663,8 @@ export function ChatMessagesContainer({
           )}
           {!readOnly && (
             <TurnEndAnnouncer
-              isStreaming={isActivelyStreaming}
+              isBusy={isTurnBusy}
+              isSettled={isTurnSettled}
               messages={messages}
             />
           )}

@@ -186,18 +186,22 @@ async function renderReloaded(rows: Row[]) {
 }
 
 /**
- * One entry per rendered message, in order. The turn's time ("Done in 5s") is
- * left out: the client counts it live and the server stamps its own figure.
+ * One entry per rendered message, in order. The turn-end line is left out:
+ * the client counts its time live and the server stamps its own figure, and
+ * it only says "Done" once the client has seen the stream settle.
  */
 function readTranscript(): TranscriptEntry[] {
   return Array.from(document.querySelectorAll("[data-message-id]")).map(
-    (el) => ({
-      role: el.classList.contains("is-user") ? "user" : "assistant",
-      text: (el.textContent ?? "")
-        .replace(/(Done in|Stopped after|Thought for) (\d+m )?\d+s/g, "")
-        .replace(/\s+/g, " ")
-        .trim(),
-    }),
+    (el) => {
+      const copy = el.cloneNode(true) as Element;
+      copy
+        .querySelectorAll("[data-testid='turn-end-line']")
+        .forEach((line) => line.remove());
+      return {
+        role: el.classList.contains("is-user") ? "user" : "assistant",
+        text: (copy.textContent ?? "").replace(/\s+/g, " ").trim(),
+      };
+    },
   );
 }
 

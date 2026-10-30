@@ -245,22 +245,40 @@ describe("TurnStatsBar — how the turn ended", () => {
       "a call with no result",
       [reply, { ...ranWorkflow, state: "input-available", output: undefined }],
     ],
+    ...["review_required", "setup_requirements", "need_login"].map((type) => [
+      `a result waiting on the user (${type})`,
+      [reply, { ...ranWorkflow, output: { type } }],
+    ]),
+    [
+      "a result waiting on the user, then a note about it",
+      [
+        { ...ranWorkflow, output: { type: "trigger_config_required" } },
+        { type: "text", text: "Set up the trigger to continue." },
+      ],
+    ],
+    [
+      "a step that failed with nothing after it",
+      [reply, { ...ranWorkflow, state: "output-error", errorText: "boom" }],
+    ],
     [
       "a pause",
       [reply, { type: "data-turn-paused", data: { reason: "daily" } }],
     ],
-  ])("never says done for a turn that ended in %s", (_, parts) => {
-    render(
-      <TurnStatsBar
-        turnMessages={[assistant(parts)]}
-        stats={{ durationMs: 12_000 }}
-      />,
-    );
-    const line = screen.getByTestId("turn-end-line");
-    expect(line.textContent).not.toMatch(/Done/);
-    expect(line.textContent).toMatch(/^Thought for 12s/);
-    expect(line.querySelector("svg")).toBeNull();
-  });
+  ] as [string, unknown[]][])(
+    "never says done for a turn that ended in %s",
+    (_, parts) => {
+      render(
+        <TurnStatsBar
+          turnMessages={[assistant(parts)]}
+          stats={{ durationMs: 12_000 }}
+        />,
+      );
+      const line = screen.getByTestId("turn-end-line");
+      expect(line.textContent).not.toMatch(/Done/);
+      expect(line.textContent).toMatch(/^Thought for 12s/);
+      expect(line.querySelector("svg")).toBeNull();
+    },
+  );
 });
 
 describe("TurnStatsBar — live elapsed timer", () => {
@@ -340,5 +358,66 @@ describe("TurnStatsBar — live elapsed timer", () => {
     );
     // Clock is at 10:00:02, anchor is 60s earlier, so elapsed jumps to 62s.
     expect(screen.getByText(/Thought for 1m 2s/)).toBeDefined();
+  });
+
+  it.each([
+    [
+      "a step that failed but was handled",
+      [{ ...ranWorkflow, state: "output-error", errorText: "boom" }, reply],
+    ],
+    [
+      "a pause it was resumed from",
+      [
+        { type: "data-turn-paused", data: { reason: "steps" } },
+        ranWorkflow,
+        reply,
+      ],
+    ],
+    [
+      "an approval it went on to run",
+      [
+        { ...ranWorkflow, output: { type: "approval_required" } },
+        { ...ranWorkflow, toolCallId: "t2" },
+        reply,
+      ],
+    ],
+  ] as [string, unknown[]][])(
+    "says done for a turn that finished after %s",
+    (_, parts) => {
+      render(
+        <TurnStatsBar
+          turnMessages={[assistant(parts)]}
+          stats={{ durationMs: 12_000 }}
+        />,
+      );
+      expect(screen.getByTestId("turn-end-line").textContent).toMatch(
+        /^Done in 12s/,
+      );
+    },
+  );
+
+  it("says done on the latest turn even with no time or work to show", () => {
+    render(<TurnStatsBar turnMessages={[assistant([reply])]} />);
+    expect(screen.getByTestId("turn-end-line").textContent).toBe("Done");
+  });
+
+  it("does not say done while the latest turn's stream has not settled", () => {
+    render(
+      <TurnStatsBar
+        turnMessages={[assistant([reply])]}
+        stats={{ durationMs: 12_000 }}
+        isSettled={false}
+      />,
+    );
+    const line = screen.getByTestId("turn-end-line");
+    expect(line.textContent).toBe("Thought for 12s");
+    expect(line.querySelector("svg")).toBeNull();
+  });
+
+  it("keeps an earlier turn with no time or work to show empty", () => {
+    const { container } = render(
+      <TurnStatsBar turnMessages={[assistant([reply])]} isLatest={false} />,
+    );
+    expect(container.firstChild).toBeNull();
   });
 });

@@ -243,4 +243,80 @@ describe("ChatMessagesContainer — end of a turn", () => {
     expect(earlier.textContent).toMatch(/^Thought for 42s/);
     expect(latest.textContent).toBe("Done in 9s");
   });
+
+  it("claims nothing while the stream reconnects, then says done once it settles", () => {
+    const { container, rerender } = render(
+      <ChatMessagesContainer {...baseProps} />,
+    );
+    advanceSeconds(30);
+
+    rerender(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[userMessage, ranWorkflow]}
+        status="ready"
+        isTurnSettling
+      />,
+    );
+    expect(screen.getByTestId("turn-end-line").textContent).not.toMatch(/Done/);
+    expect(announcement(container)).toBe("");
+
+    rerender(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[userMessage, ranWorkflow]}
+        status="ready"
+      />,
+    );
+    expect(screen.getByTestId("turn-end-line").textContent).toMatch(/^Done/);
+    expect(announcement(container)).toBe("Reply finished");
+  });
+
+  it("claims nothing for a turn whose stream failed", () => {
+    const { container, rerender } = render(
+      <ChatMessagesContainer {...baseProps} />,
+    );
+    advanceSeconds(12);
+
+    rerender(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[userMessage, ranWorkflow]}
+        status="error"
+        error={new Error("Connection lost")}
+      />,
+    );
+    expect(screen.getByTestId("turn-end-line").textContent).not.toMatch(/Done/);
+    expect(announcement(container)).toBe("");
+  });
+
+  it("announces nothing when a send is refused before the turn starts", () => {
+    const settled = {
+      ...baseProps,
+      messages: [userMessage, ranWorkflow],
+      status: "ready",
+      turnStats: new Map([["assistant-1", { durationMs: 42_000 }]]),
+    };
+    const { container, rerender } = render(
+      <ChatMessagesContainer {...settled} />,
+    );
+    rerender(
+      <ChatMessagesContainer
+        {...settled}
+        messages={[
+          userMessage,
+          ranWorkflow,
+          {
+            id: "user-2",
+            role: "user",
+            parts: [{ type: "text", text: "One more" }],
+          },
+        ]}
+        status="submitted"
+      />,
+    );
+    rerender(<ChatMessagesContainer {...settled} />);
+
+    expect(announcement(container)).toBe("");
+  });
 });

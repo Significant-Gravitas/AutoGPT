@@ -96,10 +96,6 @@ function sentOn(outcome: AnswerKind, several: boolean): string {
   }
 }
 
-export function isHeldCallOutput(output: unknown): boolean {
-  return heldCardOutput(output) !== null;
-}
-
 function heldReviewId(output: unknown): string | null {
   const reviewId = heldCardOutput(output)?.review_id;
   return typeof reviewId === "string" ? reviewId : null;

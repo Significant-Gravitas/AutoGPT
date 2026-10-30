@@ -4,7 +4,7 @@ import { Tick02Icon } from "@hugeicons/core-free-icons";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { useState } from "react";
 import type { TurnStats } from "../../helpers/convertChatSessionToUiMessages";
-import { getTurnEndLabel, getTurnOutcome } from "./helpers";
+import { getDisplayedOutcome, getTurnEndLabel } from "./helpers";
 import { getWorkDoneCounters } from "./useWorkDoneCounters";
 import { Text } from "@/components/atoms/Text/Text";
 
@@ -13,6 +13,9 @@ interface Props {
   elapsedSeconds?: number;
   stats?: TurnStats;
   isLatest?: boolean;
+  /** The latest turn's stream has really ended: no error, no reconnect,
+   *  restore or follow-up check still running. */
+  isSettled?: boolean;
 }
 
 function formatLocalDate(iso: string): string {
@@ -75,32 +78,30 @@ export function TurnStatsBar({
   elapsedSeconds,
   stats,
   isLatest = true,
+  isSettled = true,
 }: Props) {
   const { counters } = getWorkDoneCounters(turnMessages);
   const displaySeconds = resolveDisplaySeconds(elapsedSeconds, stats);
   const localDate = stats?.createdAt ? formatLocalDate(stats.createdAt) : null;
-  const outcome = isLatest ? getTurnOutcome(turnMessages) : "unsettled";
+  const outcome = getDisplayedOutcome(turnMessages, isLatest, isSettled);
 
   const seconds =
     displaySeconds !== undefined && displaySeconds > 0 ? displaySeconds : null;
-  if (counters.length === 0 && seconds === null) return null;
   const label = getTurnEndLabel(outcome, seconds);
+  if (counters.length === 0 && label === null) return null;
 
   return (
     <div
       data-testid="turn-end-line"
       className={cn(
-        "mt-2 flex items-center gap-1.5 text-caption-sm tabular-nums leading-inherit text-foreground-secondary",
+        "mt-2 flex items-center gap-1.5 text-caption-sm leading-inherit text-foreground-secondary tabular-nums",
         !isLatest && "opacity-50 transition-opacity group-hover:opacity-100",
       )}
     >
       {outcome === "done" && (
-        <Icon
-          icon={Tick02Icon}
-          size={14}
-          className="shrink-0 text-success"
-          aria-hidden
-        />
+        <span aria-hidden className="flex shrink-0 text-success">
+          <Icon icon={Tick02Icon} size={14} />
+        </span>
       )}
       {label !== null && <TimeLabel label={label} localDate={localDate} />}
       {counters.map(function renderCounter(counter, index) {
