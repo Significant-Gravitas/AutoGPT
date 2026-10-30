@@ -95,6 +95,7 @@
     "flatbush": "4.6.2",
     "framer-motion": "13.3.0",
     "geist": "1.8.1",
+    "hast-util-sanitize": "5.0.2",
     "highlight.js": "11.12.0",
     "jaro-winkler": "0.2.8",
     "jose": "6.2.13",
