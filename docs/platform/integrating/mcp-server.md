@@ -197,7 +197,7 @@ Any other client that supports Streamable HTTP works the same way: point it at t
 | `fix_agent_graph` | Repair common graph JSON mistakes without saving. | none |
 | `list_folders`, `create_folder`, `update_folder`, `move_folder`, `delete_folder`, `move_agents_to_folder` | Organize your library. | Read Library or Write Library |
 | `list_schedules`, `delete_schedule` | See and remove scheduled runs. | Read Schedule, Write Schedule |
-| `list_presets`, `update_preset`, `delete_preset` | See, change, pause and remove saved run settings and webhook triggers. Turning one back on also needs Run Agent. | Read Library or Write Library |
+| `list_presets`, `update_preset`, `delete_preset` | See, change, pause and remove saved run settings and webhook triggers. Turning one back on, or supplying new inputs without also pausing it, also requires the Run Agent permission. | Read Library or Write Library |
 | `list_agent_triggers` | List an agent's webhook and scheduled triggers. | Read Library |
 | `setup_agent_webhook_trigger` | Set up a webhook trigger that runs an agent on each event. | Write Library, Run Agent |
 | `list_workspace_files`, `read_workspace_file`, `write_workspace_file`, `delete_workspace_file` | Work with files in your workspace. | Read Files or Write Files |

@@ -88,13 +88,13 @@ export function SubmissionsList({
       className="flex w-full flex-col gap-3"
       data-testid="submissions-list"
     >
-      <div className="flex items-center justify-between pl-4 pr-1">
+      <div className="flex items-center justify-between pr-1 pl-4">
         <div className="flex items-center gap-2">
-          <Text variant="body-medium" as="span" className="text-textBlack">
+          <Text variant="body-medium" as="span">
             Submissions
           </Text>
         </div>
-        <Text variant="small" className="text-foreground-tertiary">
+        <Text variant="small" tone="muted">
           {submissions.length} of {totalCount}
         </Text>
       </div>
@@ -111,7 +111,7 @@ export function SubmissionsList({
         />
       </div>
 
-      <div className="overflow-hidden rounded-[18px] border border-border-base bg-surface shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+      <div className="overflow-hidden rounded-large border border-border-base bg-surface shadow-message-table">
         <div>
           <table className="w-full border-collapse text-left">
             <thead>
@@ -180,7 +180,7 @@ export function SubmissionsList({
                 <tr>
                   <td colSpan={COLUMN_COUNT} className="px-4 py-12">
                     <div className="flex flex-col items-center justify-center gap-3 text-center">
-                      <Text variant="body-medium" className="text-textBlack">
+                      <Text variant="body-medium">
                         {debouncedSearch
                           ? `No submissions match "${debouncedSearch}"`
                           : "No submissions match these filters"}

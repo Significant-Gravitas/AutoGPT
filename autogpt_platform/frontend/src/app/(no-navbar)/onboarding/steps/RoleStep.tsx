@@ -137,7 +137,7 @@ export function RoleStep() {
           size="small"
           onClick={handleNext}
           disabled={!canContinue}
-          className="h-10 w-56 rounded-xl"
+          className="h-10 w-56"
         >
           Next
         </Button>

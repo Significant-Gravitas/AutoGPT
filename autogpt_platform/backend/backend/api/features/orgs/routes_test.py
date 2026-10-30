@@ -904,7 +904,13 @@ class TestWorkspaceDbJoinLeave:
     @pytest.fixture(autouse=True)
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
+        self.prisma.execute_raw = AsyncMock()
+        self.prisma.teammember.find_unique = AsyncMock(return_value=None)
         mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
+        mocker.patch(
+            "backend.api.features.orgs.team_db.transaction",
+            _fake_transaction(self.prisma),
+        )
 
     @pytest.mark.asyncio
     async def test_join_open_workspace_success(self):
@@ -1095,6 +1101,7 @@ class TestWorkspaceDbMembers:
         )
         org_mem = _make_member(userId=OTHER_USER_ID)
         self.prisma.orgmember.find_unique = AsyncMock(return_value=org_mem)
+        self.prisma.teammember.find_unique = AsyncMock(return_value=None)
         ws_mem = _make_ws_member(
             userId=OTHER_USER_ID,
             isAdmin=True,
@@ -2486,7 +2493,12 @@ class TestLastAdminGuard:
     @pytest.fixture(autouse=True)
     def setup(self, mocker):
         self.prisma = MagicMock()
+        self.prisma.execute_raw = AsyncMock()
         mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
+        mocker.patch(
+            "backend.api.features.orgs.team_db.transaction",
+            _fake_transaction(self.prisma),
+        )
 
     @pytest.mark.asyncio
     async def test_remove_last_workspace_admin_blocked(self):
@@ -3244,7 +3256,27 @@ class TestTeamManagementByTeamId:
     @pytest.fixture(autouse=True)
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
+        self.prisma.execute_raw = AsyncMock()
         mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
+        mocker.patch(
+            "backend.api.features.orgs.team_db.transaction",
+            _fake_transaction(self.prisma),
+        )
+
+    def _team_rows(self, **rows_by_user):
+        """Answer TeamMember lookups per user: the caller's admin check and
+        team_db's target-member lookup share one mocked ``find_unique``."""
+
+        async def find_unique(where, include=None):
+            return rows_by_user.get(where["teamId_userId"]["userId"])
+
+        self.prisma.teammember.find_unique = AsyncMock(side_effect=find_unique)
+
+    def _looked_up_users(self) -> set[str]:
+        return {
+            c.kwargs["where"]["teamId_userId"]["userId"]
+            for c in self.prisma.teammember.find_unique.await_args_list
+        }
 
     @pytest.fixture
     def _app_and_client(self):
@@ -3365,9 +3397,10 @@ class TestTeamManagementByTeamId:
         self.prisma.team.find_unique = AsyncMock(
             return_value=_make_workspace(id=WS_ID, isDefault=False)
         )
-        self.prisma.teammember.update = AsyncMock()
-        self.prisma.teammember.find_many = AsyncMock(
-            return_value=[_make_ws_member(workspaceId=WS_ID, userId=OTHER_USER_ID)]
+        self.prisma.teammember.update = AsyncMock(
+            return_value=_make_ws_member(
+                workspaceId=WS_ID, userId=OTHER_USER_ID, isAdmin=True
+            )
         )
 
     def test_team_admin_updates_member_without_active_team_context(
@@ -3375,10 +3408,13 @@ class TestTeamManagementByTeamId:
     ):
         _, client = _app_and_client
         self._stub_member_update()
-        self.prisma.teammember.find_unique = AsyncMock(
-            return_value=_make_ws_member(
-                workspaceId=WS_ID, userId=USER_ID, isAdmin=True
-            )
+        self._team_rows(
+            **{
+                USER_ID: _make_ws_member(
+                    workspaceId=WS_ID, userId=USER_ID, isAdmin=True
+                ),
+                OTHER_USER_ID: _make_ws_member(workspaceId=WS_ID, userId=OTHER_USER_ID),
+            }
         )
         self._use_ctx(_mgmt_ctx(user_id=USER_ID, team_id=None))
 
@@ -3395,7 +3431,9 @@ class TestTeamManagementByTeamId:
     ):
         _, client = _app_and_client
         self._stub_member_update()
-        self.prisma.teammember.find_unique = AsyncMock(return_value=None)
+        self._team_rows(
+            **{OTHER_USER_ID: _make_ws_member(workspaceId=WS_ID, userId=OTHER_USER_ID)}
+        )
         self._use_ctx(_mgmt_ctx(user_id=USER_ID, org_admin=True))
 
         resp = client.patch(
@@ -3405,7 +3443,9 @@ class TestTeamManagementByTeamId:
 
         assert resp.status_code == 200
         self.prisma.teammember.update.assert_awaited_once()
-        self.prisma.teammember.find_unique.assert_not_awaited()
+        # Org permission short-circuits the caller's team-admin lookup; only
+        # the target member is read.
+        assert self._looked_up_users() == {OTHER_USER_ID}
 
     def test_plain_org_member_cannot_update_member(self, _app_and_client):
         _, client = _app_and_client
@@ -3445,10 +3485,13 @@ class TestTeamManagementByTeamId:
             return_value=_make_workspace(id=WS_ID, isDefault=False)
         )
         # Caller is an active admin of the target team; no X-Team-Id header.
-        self.prisma.teammember.find_unique = AsyncMock(
-            return_value=_make_ws_member(
-                workspaceId=WS_ID, userId=USER_ID, isAdmin=True
-            )
+        # The new member has no row yet.
+        self._team_rows(
+            **{
+                USER_ID: _make_ws_member(
+                    workspaceId=WS_ID, userId=USER_ID, isAdmin=True
+                )
+            }
         )
         self.prisma.orgmember.find_unique = AsyncMock(return_value=MagicMock())
         self.prisma.teammember.create = AsyncMock(

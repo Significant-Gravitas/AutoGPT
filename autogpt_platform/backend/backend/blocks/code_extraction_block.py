@@ -101,7 +101,11 @@ class CodeExtractionBlock(Block):
             + r")[ \t]*\n[\s\S]*?```"
         )
 
-        remaining_text = re.sub(pattern, "", input_data.text).strip()
+        # Case-insensitive like extract_code, so ```Python fences that were
+        # extracted are also removed from the remaining text.
+        remaining_text = re.sub(
+            pattern, "", input_data.text, flags=re.IGNORECASE
+        ).strip()
         remaining_text = re.sub(r"\n\s*\n", "\n", remaining_text)
 
         if remaining_text:  # Only yield if there's remaining text

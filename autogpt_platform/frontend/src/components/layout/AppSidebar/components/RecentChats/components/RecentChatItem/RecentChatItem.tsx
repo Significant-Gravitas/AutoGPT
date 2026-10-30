@@ -150,8 +150,7 @@ export const RecentChatItem = memo(function RecentChatItem({
           {session.is_processing ? (
             <LoadingSpinner
               size="small"
-              // TODO(tokens): no fitting role for text-purple-600 #6C2EDF; #6C2EDF is brand-hover (a hover fill), not a text colour
-              className="size-4 shrink-0 text-purple-600"
+              className="size-4 shrink-0 text-brand-hover"
             />
           ) : hasPlatformLogo ? (
             <ChatOriginIcon sourcePlatform={session.source_platform} />
@@ -221,8 +220,7 @@ export const RecentChatItem = memo(function RecentChatItem({
           <DropdownMenuItem
             onClick={() => onDelete(session.id, session.title)}
             disabled={isDeleting}
-            // TODO(tokens): no fitting role for text-red-600, focus:text-red-600 #D93636; #D93636 is error-hover (a hover fill), not a text colour
-            className="text-red-600 focus:bg-error-surface focus:text-red-600"
+            className="text-error-foreground focus:bg-error-surface focus:text-error-foreground"
           >
             <Icon icon={Delete02Icon} className="mr-2 h-4 w-4" />
             Delete chat

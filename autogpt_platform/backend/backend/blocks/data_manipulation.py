@@ -433,7 +433,10 @@ class CreateListBlock(Block):
             if (max_tokens and (cur_tokens + tokens > max_tokens)) or (
                 max_size and (cur_size + 1 > max_size)
             ):
-                yield "list", chunk
+                # A first value that alone exceeds the limit leaves nothing to
+                # flush; don't emit an empty list ahead of it.
+                if chunk:
+                    yield "list", chunk
                 chunk = [value]
                 cur_size, cur_tokens = 1, tokens
             else:
@@ -827,18 +830,27 @@ def _make_hashable(item: Any):
     """
     Create a hashable representation of any item for deduplication.
     Converts unhashable types (dicts, lists) into deterministic tuple structures.
+    Dicts, lists and bools are tagged with their kind, so values of different
+    kinds never share a key, whatever they contain (e.g. ``{}`` vs ``[]``,
+    ``True`` vs ``1``, ``{}`` vs ``["dict", []]``). Numbers aren't tagged, so
+    ``1`` and ``1.0`` still match.
     """
     if isinstance(item, dict):
-        return tuple(
-            sorted(
-                ((_make_hashable(k), _make_hashable(v)) for k, v in item.items()),
-                key=lambda x: (str(type(x[0])), str(x[0])),
-            )
+        return (
+            "dict",
+            tuple(
+                sorted(
+                    ((_make_hashable(k), _make_hashable(v)) for k, v in item.items()),
+                    key=lambda x: (str(type(x[0])), str(x[0])),
+                )
+            ),
         )
     if isinstance(item, (list, tuple)):
-        return tuple(_make_hashable(i) for i in item)
+        return ("list", tuple(_make_hashable(i) for i in item))
     if isinstance(item, set):
         return frozenset(_make_hashable(i) for i in item)
+    if isinstance(item, bool):
+        return ("bool", item)
     return item
 
 

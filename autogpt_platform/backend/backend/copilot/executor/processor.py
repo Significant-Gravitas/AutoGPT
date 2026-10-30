@@ -35,7 +35,11 @@ from backend.copilot.expert_context import (
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
 )
-from backend.copilot.llm_attribution import set_turn_impersonated, set_turn_trace_id
+from backend.copilot.llm_attribution import (
+    set_turn_impersonated,
+    set_turn_origin,
+    set_turn_trace_id,
+)
 from backend.copilot.model import maybe_append_user_message
 from backend.copilot.rate_limit import RateLimitUnavailable
 from backend.copilot.response_model import (
@@ -55,9 +59,9 @@ from backend.copilot.turn_pause import TurnPause
 from backend.copilot.turn_tracing import (
     MODEL_OUTPUT_CHUNKS,
     TurnTrace,
+    turn_origin,
     turn_transaction,
 )
-from backend.data.model import OAuth2Credentials
 from backend.data.user import is_user_banned
 from backend.executor.cluster_lock import ClusterLock
 from backend.integrations.codex.transport import CodexCredentialIntegrityError
@@ -65,10 +69,9 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.microsoft_365_copilot.service import (
     stream_chat_completion_microsoft_365,
 )
-from backend.integrations.oauth.microsoft_365_copilot import (
-    Microsoft365CopilotDeviceAuthHandler,
+from backend.integrations.oauth.microsoft_services import (
+    is_microsoft_365_copilot_credential,
 )
-from backend.integrations.providers import ProviderName
 from backend.util.decorator import error_logged
 from backend.util.exceptions import (
     ExpertNotFoundError,
@@ -641,6 +644,10 @@ class CoPilotProcessor:
             session = await get_chat_session(entry.session_id, entry.user_id)
             if session is None:
                 raise RuntimeError("copilot_session_not_found")
+            # Known once the session is: a workflow's AutoPilot block opens an
+            # automation chat, and a turn there was not typed by anyone.
+            origin = turn_origin(entry, session.metadata.origin)
+            turn.set_origin(origin)
             if (
                 session.metadata.llm_auth_provider != entry.llm_auth_provider
                 or session.metadata.llm_credential_id != entry.llm_credential_id
@@ -767,14 +774,7 @@ class CoPilotProcessor:
                         )
                     )
                     credentials = credential_lease.credentials
-                    required_scopes = set(
-                        Microsoft365CopilotDeviceAuthHandler.CHAT_SCOPES
-                    )
-                    if (
-                        not isinstance(credentials, OAuth2Credentials)
-                        or credentials.provider != ProviderName.MICROSOFT_365_COPILOT
-                        or not required_scopes.issubset(credentials.scopes)
-                    ):
+                    if not is_microsoft_365_copilot_credential(credentials):
                         raise ValueError("invalid Microsoft 365 Copilot credential")
                 except asyncio.CancelledError:
                     raise
@@ -851,6 +851,7 @@ class CoPilotProcessor:
             set_turn_impersonated(entry.impersonated)
             # A subtask's calls join the trace of the reply it works for.
             set_turn_trace_id(trace_id_for(entry))
+            set_turn_origin(origin)
             set_turn_span(entry.turn_id)
             set_turn_credential_pins(entry.credential_pins)
             turn.engine_started(engine)
