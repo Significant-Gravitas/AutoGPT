@@ -91,7 +91,7 @@ function canRenderCode(value: unknown, metadata?: OutputMetadata): boolean {
 
 function EditorLineNumber({ index }: { index: number }) {
   return (
-    <span className="select-none pr-2 text-right font-mono text-xs text-foreground-secondary">
+    <span className="pr-2 text-right font-mono text-xs text-foreground-secondary select-none">
       {index + 1}
     </span>
   );
@@ -101,7 +101,7 @@ function PlainCodeLines({ code }: { code: string }) {
   return code.split("\n").map((line, index) => (
     <div key={`${index}-${line}`} className="grid grid-cols-[3rem_1fr] gap-4">
       <EditorLineNumber index={index} />
-      <span className="whitespace-pre font-mono text-sm text-separator">
+      <span className="font-mono text-sm whitespace-pre text-separator">
         {line || " "}
       </span>
     </div>
@@ -175,7 +175,7 @@ function HighlightedCodeBlock({
         <span className="truncate font-mono text-xs text-foreground-subtle">
           {filename || "code"}
         </span>
-        <span className="rounded bg-action px-2 py-0.5 font-mono text-caption-sm uppercase leading-inherit tracking-wide text-foreground-disabled">
+        <span className="rounded bg-action px-2 py-0.5 font-mono text-caption-sm leading-inherit tracking-wide text-foreground-disabled uppercase">
           {supportedLanguage}
         </span>
       </div>
@@ -194,7 +194,7 @@ function HighlightedCodeBlock({
                 className="grid grid-cols-[3rem_1fr] gap-4"
               >
                 <EditorLineNumber index={index} />
-                <span className="whitespace-pre font-mono text-sm leading-6">
+                <span className="font-mono text-sm leading-6 whitespace-pre">
                   {line.length > 0
                     ? line.map((token, tokenIndex) => (
                         <span

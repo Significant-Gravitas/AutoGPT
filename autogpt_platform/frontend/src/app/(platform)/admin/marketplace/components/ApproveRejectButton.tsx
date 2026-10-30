@@ -2,7 +2,11 @@
 
 import { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
-import { CheckCircle, XCircle } from "lucide-react";
+import {
+  CancelCircleIcon,
+  CheckmarkCircle02Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import {
   Dialog,
   DialogContent,
@@ -63,7 +67,11 @@ export function ApproveRejectButtons({
           }}
         >
           <span className="flex items-center gap-1.5 text-success">
-            <CheckCircle className="h-4 w-4" />
+            <Icon
+              aria-hidden
+              icon={CheckmarkCircle02Icon}
+              className="h-4 w-4"
+            />
             Approve
           </span>
         </Button>
@@ -77,7 +85,7 @@ export function ApproveRejectButtons({
         }}
       >
         <span className="flex items-center gap-1.5 text-error-hover">
-          <XCircle className="h-4 w-4" />
+          <Icon aria-hidden icon={CancelCircleIcon} className="h-4 w-4" />
           {isApproved ? "Revoke" : "Reject"}
         </span>
       </Button>
@@ -115,17 +123,13 @@ export function ApproveRejectButtons({
             <DialogFooter>
               <Button
                 type="button"
-                // oxlint-disable-next-line design-system/no-legacy-button-variant -- primary/secondary are pills; shape change deferred (plan 5.7 item 2)
-                variant="legacy-outline"
+                variant="compact-outline"
+                size="compact"
                 onClick={() => setIsApproveDialogOpen(false)}
               >
                 Cancel
               </Button>
-              <Button
-                // oxlint-disable-next-line design-system/no-legacy-button-variant -- primary/secondary are pills; shape change deferred (plan 5.7 item 2)
-                variant="legacy-default"
-                type="submit"
-              >
+              <Button variant="compact-primary" size="compact" type="submit">
                 Approve
               </Button>
             </DialogFooter>
@@ -178,16 +182,16 @@ export function ApproveRejectButtons({
             <DialogFooter>
               <Button
                 type="button"
-                // oxlint-disable-next-line design-system/no-legacy-button-variant -- primary/secondary are pills; shape change deferred (plan 5.7 item 2)
-                variant="legacy-outline"
+                variant="compact-outline"
+                size="compact"
                 onClick={() => setIsRejectDialogOpen(false)}
               >
                 Cancel
               </Button>
               <Button
                 type="submit"
-                // oxlint-disable-next-line design-system/no-legacy-button-variant -- primary/secondary are pills; shape change deferred (plan 5.7 item 2)
-                variant="legacy-destructive"
+                variant="compact-destructive"
+                size="compact"
               >
                 {isApproved ? "Revoke" : "Reject"}
               </Button>

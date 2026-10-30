@@ -1,7 +1,11 @@
 import { Text } from "@/components/atoms/Text/Text";
 import { HelpItem } from "@/components/auth/help-item";
 import { Card, CardContent } from "@/components/atoms/Card/Card";
-import { AlertCircle, CheckCircle } from "lucide-react";
+import {
+  AlertCircleIcon,
+  CheckmarkCircle02Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { BehaveAs } from "@/services/environment";
 
 interface Props {
@@ -37,15 +41,19 @@ export default function AuthFeedback({
     <div className="mt-4 w-full space-y-4">
       {/* Message feedback */}
       {displayMessage && (
-        <div className="text-center text-sm font-medium leading-normal">
+        <div className="text-center text-sm leading-normal font-medium">
           {isError ? (
             <div className="flex items-center justify-center space-x-2 text-error">
-              <AlertCircle className="h-4 w-4" />
+              <Icon aria-hidden icon={AlertCircleIcon} className="h-4 w-4" />
               <span>{displayMessage}</span>
             </div>
           ) : (
             <div className="flex items-center justify-center space-x-2 text-success">
-              <CheckCircle className="h-4 w-4" />
+              <Icon
+                aria-hidden
+                icon={CheckmarkCircle02Icon}
+                className="h-4 w-4"
+              />
               <span>{displayMessage}</span>
             </div>
           )}

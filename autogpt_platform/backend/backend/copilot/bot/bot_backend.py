@@ -24,7 +24,9 @@ from backend.copilot.response_model import (
     StreamFinish,
     StreamTextDelta,
     StreamToolOutputAvailable,
+    StreamTurnPaused,
 )
+from backend.copilot.turn_pause import TurnPause
 from backend.data.redis_client import get_redis_async
 from backend.platform_linking.models import (
     MAX_BOT_MESSAGE_CHARS,
@@ -53,6 +55,7 @@ from backend.util.exceptions import (
 )
 
 from .adapters.base import InboundAttachment
+from .pauses import pause_note
 from .prompt import clamp_prompt
 
 # How long to wait for a single chunk from the copilot stream before giving
@@ -75,12 +78,15 @@ class BotStreamError(Exception):
     """A copilot stream couldn't produce a successful reply.
 
     Carries a bounded ``error_kind`` so the handler can attribute analytics
-    accurately instead of guessing from the inline text.
+    accurately instead of guessing from the inline text, and the backend's
+    ``code`` (when the stream sent one) so the user can be told what kind of
+    failure it was.
     """
 
-    def __init__(self, error_kind: str, message: str):
+    def __init__(self, error_kind: str, message: str, code: str | None = None):
         super().__init__(message)
         self.error_kind = error_kind
+        self.code = code
 
 
 class ChatTurnDeniedError(Exception):
@@ -685,13 +691,26 @@ class BotBackend:
                     ):
                         cards_posted.add(review_id)
                         await on_approval_needed(handle.session_id, review_id)
+                elif isinstance(chunk, StreamTurnPaused):
+                    # The turn stopped at a limit on purpose; StreamFinish
+                    # follows. Say how to pick it up, after its checkpoint.
+                    if last_text_block_id is not None:
+                        yield "\n\n"
+                    yield pause_note(TurnPause.model_validate(chunk.pause))
                 elif isinstance(chunk, StreamFinish):
                     return
                 elif isinstance(chunk, StreamError):
-                    logger.error("Stream error from backend: %s", chunk.errorText)
+                    # Reported once, with its chat reference, by the turn
+                    # streamer; logging it at error here too would double it.
+                    logger.warning(
+                        "Stream error from backend: %s (code=%s)",
+                        chunk.errorText,
+                        chunk.code,
+                    )
                     raise BotStreamError(
                         "backend_stream_error",
                         chunk.errorText,
+                        code=chunk.code,
                     )
                 # Other StreamX types (StreamStart, StreamTextStart, tool events,
                 # etc.) are emitted by the executor for the frontend UI and

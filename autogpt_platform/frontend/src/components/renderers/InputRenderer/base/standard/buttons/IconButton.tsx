@@ -6,12 +6,16 @@ import {
   StrictRJSFSchema,
   TranslatableString,
 } from "@rjsf/utils";
-import { ChevronDown, ChevronUp, Copy } from "lucide-react";
 
 import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
 import { Text } from "@/components/atoms/Text/Text";
-import { Delete02Icon } from "@hugeicons/core-free-icons";
+import {
+  ArrowDown01Icon,
+  ArrowUp01Icon,
+  Copy01Icon,
+  Delete02Icon,
+} from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 export type AutogptIconButtonProps<
@@ -60,7 +64,7 @@ export function CopyButton(props: AutogptIconButtonProps) {
     <IconButton
       title={translateString(TranslatableString.CopyButton)}
       {...props}
-      icon={<Copy className="h-4 w-4" />}
+      icon={<Icon aria-hidden icon={Copy01Icon} className="h-4 w-4" />}
     />
   );
 }
@@ -73,7 +77,7 @@ export function MoveDownButton(props: AutogptIconButtonProps) {
     <IconButton
       title={translateString(TranslatableString.MoveDownButton)}
       {...props}
-      icon={<ChevronDown className="h-4 w-4" />}
+      icon={<Icon aria-hidden icon={ArrowDown01Icon} className="h-4 w-4" />}
     />
   );
 }
@@ -86,7 +90,7 @@ export function MoveUpButton(props: AutogptIconButtonProps) {
     <IconButton
       title={translateString(TranslatableString.MoveUpButton)}
       {...props}
-      icon={<ChevronUp className="h-4 w-4" />}
+      icon={<Icon aria-hidden icon={ArrowUp01Icon} className="h-4 w-4" />}
     />
   );
 }
