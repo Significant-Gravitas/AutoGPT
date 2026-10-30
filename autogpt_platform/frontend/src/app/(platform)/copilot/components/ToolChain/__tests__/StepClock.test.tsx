@@ -143,9 +143,12 @@ describe("ChainRowView - step clock", () => {
 
   it("starts a reused call id from zero once its earlier step finished", () => {
     const step = row();
-    const { rerender, unmount } = render(<ChainRowView row={step} isLast />);
+    const { rerender, unmount } = renderHook(
+      ({ rows }) => useNoteRunningSteps(rows),
+      { initialProps: { rows: [step] } },
+    );
     advanceSeconds(120);
-    rerender(<ChainRowView row={{ ...step, state: "done" }} isLast />);
+    rerender({ rows: [{ ...step, state: "done" }] });
     unmount();
 
     render(<ChainRowView row={step} isLast />);

@@ -10,7 +10,7 @@ import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
 import type { ChainRow } from "./helpers";
 import { ProviderIcon, RowIcon } from "./RowIcon";
 import { useSubSessionEffectiveStatus } from "./SubSessionLive";
-import { StepClock, useForgetSettledStep } from "./StepClock";
+import { StepClock } from "./StepClock";
 import { SwapText } from "./SwapText";
 import { HeldTag } from "./HeldCallRowParts";
 import { heldShowsOwnCall } from "./heldRow";
@@ -156,7 +156,6 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
   const heldTag = row.held ? (
     <HeldTag state={row.held.state} read={row.held.read} />
   ) : null;
-  useForgetSettledStep(row.key, row.state === "running");
   const stepClock =
     row.state === "running" &&
     !isReasoning &&

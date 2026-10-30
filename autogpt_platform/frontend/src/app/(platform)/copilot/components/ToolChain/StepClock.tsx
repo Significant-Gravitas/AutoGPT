@@ -29,21 +29,16 @@ function stepStartedAt(stepKey: string) {
 }
 
 // Every running step's start is noted as soon as the chain has its row, so a
-// step outside the streaming window still counts from then once expanded.
+// step outside the streaming window still counts from then once expanded. A
+// finished step's start is dropped, shown or not: some providers reuse call
+// ids across chats, and a stale start would make a new step look old.
 export function useNoteRunningSteps(rows: readonly ChainRow[]) {
   useEffect(() => {
     for (const row of rows) {
       if (row.state === "running") stepStartedAt(row.key);
+      else stepStarts.delete(row.key);
     }
   }, [rows]);
-}
-
-// Some providers reuse call ids across chats, so a finished step's start must
-// not outlive it.
-export function useForgetSettledStep(stepKey: string, isRunning: boolean) {
-  useEffect(() => {
-    if (!isRunning) stepStarts.delete(stepKey);
-  }, [stepKey, isRunning]);
 }
 
 interface Props {
