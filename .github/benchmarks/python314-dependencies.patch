@@ -1,0 +1,170 @@
+diff --git a/autogpt_platform/backend/poetry.lock b/autogpt_platform/backend/poetry.lock
+index 35688cbbce..fdeb2c97b8 100644
+--- a/autogpt_platform/backend/poetry.lock
++++ b/autogpt_platform/backend/poetry.lock
+@@ -432,7 +432,7 @@ description = "LTS Port of Python audioop"
+ optional = false
+ python-versions = ">=3.13"
+ groups = ["main"]
+-markers = "python_version == \"3.13\""
++markers = "python_version >= \"3.13\""
+ files = [
+     {file = "audioop_lts-0.2.2-cp313-abi3-macosx_10_13_universal2.whl", hash = "sha256:fd3d4602dc64914d462924a08c1a9816435a2155d74f325853c1f1ac3b2d9800"},
+     {file = "audioop_lts-0.2.2-cp313-abi3-macosx_10_13_x86_64.whl", hash = "sha256:550c114a8df0aafe9a05442a1162dfc8fec37e9af1d625ae6060fed6e756f303"},
+@@ -2070,8 +2070,14 @@ files = [
+ [package.dependencies]
+ google-auth = ">=2.14.1,<3.0.0"
+ googleapis-common-protos = ">=1.56.2,<2.0.0"
+-grpcio = {version = ">=1.49.1,<2.0.0", optional = true, markers = "python_version >= \"3.11\" and extra == \"grpc\""}
+-grpcio-status = {version = ">=1.49.1,<2.0.0", optional = true, markers = "python_version >= \"3.11\" and extra == \"grpc\""}
++grpcio = [
++    {version = ">=1.49.1,<2.0.0", optional = true, markers = "python_version >= \"3.11\" and extra == \"grpc\" and python_version < \"3.14\""},
++    {version = ">=1.75.1,<2.0.0", optional = true, markers = "python_version >= \"3.14\" and extra == \"grpc\""},
++]
++grpcio-status = [
++    {version = ">=1.49.1,<2.0.0", optional = true, markers = "python_version >= \"3.11\" and extra == \"grpc\""},
++    {version = ">=1.75.1,<2.0.0", optional = true, markers = "python_version >= \"3.14\" and extra == \"grpc\""},
++]
+ proto-plus = [
+     {version = ">=1.22.3,<2.0.0"},
+     {version = ">=1.25.0,<2.0.0", markers = "python_version >= \"3.13\""},
+@@ -2182,7 +2188,10 @@ files = [
+ [package.dependencies]
+ google-api-core = {version = ">=1.34.1,<2.0 || >=2.11.dev0,<3.0.0", extras = ["grpc"]}
+ google-auth = ">=2.14.1,!=2.24.0,!=2.25.0,<3.0.0"
+-grpcio = ">=1.33.2,<2.0.0"
++grpcio = [
++    {version = ">=1.33.2,<2.0.0"},
++    {version = ">=1.75.1,<2.0.0", markers = "python_version >= \"3.14\""},
++]
+ proto-plus = [
+     {version = ">=1.22.3,<2.0.0"},
+     {version = ">=1.25.0,<2.0.0", markers = "python_version >= \"3.13\""},
+@@ -2632,6 +2641,7 @@ description = "Status proto mapping for gRPC"
+ optional = false
+ python-versions = ">=3.9"
+ groups = ["main"]
++markers = "python_version <= \"3.13\""
+ files = [
+     {file = "grpcio_status-1.71.2-py3-none-any.whl", hash = "sha256:803c98cb6a8b7dc6dbb785b1111aed739f241ab5e9da0bba96888aa74704cfd3"},
+     {file = "grpcio_status-1.71.2.tar.gz", hash = "sha256:c7a97e176df71cdc2c179cd1847d7fc86cca5832ad12e9798d7fed6b7a1aab50"},
+@@ -2642,6 +2652,24 @@ googleapis-common-protos = ">=1.5.5"
+ grpcio = ">=1.71.2"
+ protobuf = ">=5.26.1,<6.0"
+ 
++[[package]]
++name = "grpcio-status"
++version = "1.78.0"
++description = "Status proto mapping for gRPC"
++optional = false
++python-versions = ">=3.9"
++groups = ["main"]
++markers = "python_version == \"3.14\""
++files = [
++    {file = "grpcio_status-1.78.0-py3-none-any.whl", hash = "sha256:b492b693d4bf27b47a6c32590701724f1d3b9444b36491878fb71f6208857f34"},
++    {file = "grpcio_status-1.78.0.tar.gz", hash = "sha256:a34cfd28101bfea84b5aa0f936b4b423019e9213882907166af6b3bddc59e189"},
++]
++
++[package.dependencies]
++googleapis-common-protos = ">=1.5.5"
++grpcio = ">=1.78.0"
++protobuf = ">=6.31.1,<7.0.0"
++
+ [[package]]
+ name = "h11"
+ version = "0.16.0"
+@@ -5234,6 +5262,7 @@ description = ""
+ optional = false
+ python-versions = ">=3.8"
+ groups = ["main"]
++markers = "python_version <= \"3.13\""
+ files = [
+     {file = "protobuf-5.29.6-cp310-abi3-win32.whl", hash = "sha256:62e8a3114992c7c647bce37dcc93647575fc52d50e48de30c6fcb28a6a291eb1"},
+     {file = "protobuf-5.29.6-cp310-abi3-win_amd64.whl", hash = "sha256:7e6ad413275be172f67fdee0f43484b6de5a904cc1c3ea9804cb6fe2ff366eda"},
+@@ -5248,6 +5277,27 @@ files = [
+     {file = "protobuf-5.29.6.tar.gz", hash = "sha256:da9ee6a5424b6b30fd5e45c5ea663aef540ca95f9ad99d1e887e819cdf9b8723"},
+ ]
+ 
++[[package]]
++name = "protobuf"
++version = "6.33.6"
++description = ""
++optional = false
++python-versions = ">=3.9"
++groups = ["main"]
++markers = "python_version == \"3.14\""
++files = [
++    {file = "protobuf-6.33.6-cp310-abi3-win32.whl", hash = "sha256:7d29d9b65f8afef196f8334e80d6bc1d5d4adedb449971fefd3723824e6e77d3"},
++    {file = "protobuf-6.33.6-cp310-abi3-win_amd64.whl", hash = "sha256:0cd27b587afca21b7cfa59a74dcbd48a50f0a6400cfb59391340ad729d91d326"},
++    {file = "protobuf-6.33.6-cp39-abi3-macosx_10_9_universal2.whl", hash = "sha256:9720e6961b251bde64edfdab7d500725a2af5280f3f4c87e57c0208376aa8c3a"},
++    {file = "protobuf-6.33.6-cp39-abi3-manylinux2014_aarch64.whl", hash = "sha256:e2afbae9b8e1825e3529f88d514754e094278bb95eadc0e199751cdd9a2e82a2"},
++    {file = "protobuf-6.33.6-cp39-abi3-manylinux2014_s390x.whl", hash = "sha256:c96c37eec15086b79762ed265d59ab204dabc53056e3443e702d2681f4b39ce3"},
++    {file = "protobuf-6.33.6-cp39-abi3-manylinux2014_x86_64.whl", hash = "sha256:e9db7e292e0ab79dd108d7f1a94fe31601ce1ee3f7b79e0692043423020b0593"},
++    {file = "protobuf-6.33.6-cp39-cp39-win32.whl", hash = "sha256:bd56799fb262994b2c2faa1799693c95cc2e22c62f56fb43af311cae45d26f0e"},
++    {file = "protobuf-6.33.6-cp39-cp39-win_amd64.whl", hash = "sha256:f443a394af5ed23672bc6c486be138628fbe5c651ccbc536873d7da23d1868cf"},
++    {file = "protobuf-6.33.6-py3-none-any.whl", hash = "sha256:77179e006c476e69bf8e8ce866640091ec42e1beb80b213c3900006ecfba6901"},
++    {file = "protobuf-6.33.6.tar.gz", hash = "sha256:a6768d25248312c297558af96a9f9c929e8c4cee0659cb07e780731095f38135"},
++]
++
+ [[package]]
+ name = "protobuf-py"
+ version = "0.1.1"
+@@ -5270,7 +5320,7 @@ description = "Native extension for protobuf-py"
+ optional = false
+ python-versions = ">=3.10"
+ groups = ["main"]
+-markers = "(platform_machine == \"AMD64\" or platform_machine == \"ARM64\") and platform_python_implementation == \"CPython\" and sys_platform == \"win32\" or (platform_machine == \"aarch64\" or platform_machine == \"x86_64\") and platform_python_implementation == \"CPython\" and sys_platform == \"linux\" or platform_machine == \"arm64\" and platform_python_implementation == \"CPython\" and sys_platform == \"darwin\""
++markers = "platform_python_implementation == \"CPython\" and (platform_machine == \"AMD64\" or platform_machine == \"ARM64\") and sys_platform == \"win32\" or platform_python_implementation == \"CPython\" and (platform_machine == \"aarch64\" or platform_machine == \"x86_64\") and sys_platform == \"linux\" or platform_python_implementation == \"CPython\" and sys_platform == \"darwin\" and platform_machine == \"arm64\""
+ files = [
+     {file = "protobuf_py_ext-0.1.1-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:310039e03cb15181781a0b78017419f6d4ee302e988c3c70b87f1facdf05532d"},
+     {file = "protobuf_py_ext-0.1.1-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:89ec8348d1ba045f79b2fedd14e40cca36f2a41b52f2c4fdf55a60c58add2353"},
+@@ -5631,7 +5681,10 @@ files = [
+ ]
+ 
+ [package.dependencies]
+-cffi = {version = ">=1.5.0", markers = "python_version < \"3.14\""}
++cffi = [
++    {version = ">=1.5.0", markers = "python_version < \"3.14\""},
++    {version = ">=2.0.0b1", markers = "python_version >= \"3.14\""},
++]
+ 
+ [package.extras]
+ idna = ["idna (>=2.1)"]
+@@ -6471,6 +6524,7 @@ numpy = [
+     {version = ">=1.21", markers = "python_version == \"3.11\""},
+     {version = ">=1.26", markers = "python_version == \"3.12\""},
+     {version = ">=2.1.0", markers = "python_version == \"3.13\""},
++    {version = ">=2.3.0", markers = "python_version >= \"3.14\""},
+ ]
+ portalocker = ">=2.7.0,<4.0"
+ protobuf = ">=3.20.0"
+@@ -7844,7 +7898,7 @@ description = "Fast implementation of asyncio event loop on top of libuv"
+ optional = false
+ python-versions = ">=3.8.1"
+ groups = ["main"]
+-markers = "sys_platform != \"win32\" and sys_platform != \"cygwin\" and platform_python_implementation != \"PyPy\""
++markers = "platform_python_implementation != \"PyPy\" and sys_platform != \"win32\" and sys_platform != \"cygwin\""
+ files = [
+     {file = "uvloop-0.22.1-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:ef6f0d4cc8a9fa1f6a910230cd53545d9a14479311e87e3cb225495952eb672c"},
+     {file = "uvloop-0.22.1-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:7cd375a12b71d33d46af85a3343b35d98e8116134ba404bd657b3b1d15988792"},
+@@ -8856,5 +8910,5 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
+ 
+ [metadata]
+ lock-version = "2.1"
+-python-versions = ">=3.11,<3.14"
+-content-hash = "5b837b484da72a24217fcff3a905b9c6276adb9064c027674283e178cb030d97"
++python-versions = ">=3.11,<3.15"
++content-hash = "aaebb2db23c90aecbc495b7bb14858f546d70226af223abdc053edb0b4cc7cba"
+diff --git a/autogpt_platform/backend/pyproject.toml b/autogpt_platform/backend/pyproject.toml
+index 233be291c1..b1e42041cd 100644
+--- a/autogpt_platform/backend/pyproject.toml
++++ b/autogpt_platform/backend/pyproject.toml
+@@ -8,7 +8,7 @@ packages = [{ include = "backend", format = "sdist" }]
+ 
+ 
+ [tool.poetry.dependencies]
+-python = ">=3.11,<3.14"
++python = ">=3.11,<3.15"
+ async-timeout = {version = "^5.0.1", python = "<3.11"}
+ aio-pika = "^9.5.5"
+ aiohttp = "^3.10.0"

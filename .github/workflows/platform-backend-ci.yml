@@ -1,4 +1,4 @@
-name: AutoGPT Platform - Backend CI
+name: AutoGPT Backend Python Benchmark
 
 on:
   push:
@@ -59,6 +59,7 @@ defaults:
 
 jobs:
   lint:
+    if: github.event_name != 'workflow_dispatch'
     permissions:
       contents: read
     timeout-minutes: 10
@@ -121,6 +122,7 @@ jobs:
   # job (scoped to autogpt_platform/backend) never collects its tests, so run
   # them here. Pure unit tests — no database or external services needed.
   autogpt-libs-test:
+    if: github.event_name != 'workflow_dispatch'
     permissions:
       contents: read
     timeout-minutes: 10
@@ -177,13 +179,14 @@ jobs:
       PLAIN_OUTPUT: True
 
   type-check:
+    if: github.event_name != 'workflow_dispatch'
     permissions:
       contents: read
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     runs-on: ubuntu-latest
 
     steps:
@@ -236,7 +239,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
         test-shard:
           - data
           - copilot
@@ -246,6 +249,15 @@ jobs:
           - util-executor
           - api
           - remainder
+        include:
+          - python-version: "3.11"
+            python-patch: "3.11.18"
+          - python-version: "3.12"
+            python-patch: "3.12.16"
+          - python-version: "3.13"
+            python-patch: "3.13.18"
+          - python-version: "3.14"
+            python-patch: "3.14.10"
     runs-on: ubuntu-latest
 
     services:
@@ -341,7 +353,11 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           repository: Significant-Gravitas/skills-catalog
+          ref: 26cf2253b2ffb1a4d97c8a50b1faf7b15352c32e
           path: skills-catalog
+
+      - name: Apply benchmark dependency range
+        run: git apply ../../.github/benchmarks/python314-dependencies.patch
 
       - name: Configure test shard
         shell: bash
@@ -517,7 +533,7 @@ jobs:
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: ${{ matrix.python-patch }}
 
       - name: Set up Python dependency cache
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
@@ -556,7 +572,15 @@ jobs:
           BASE_REF: ${{ github.base_ref || github.event.merge_group.base_ref }}
 
       - name: Install Python dependencies
-        run: poetry install
+        run: |
+          poetry env use "$(command -v python)"
+          poetry install
+
+      - name: Record benchmark environment
+        env:
+          EXPECTED_PYTHON: ${{ matrix.python-patch }}
+        run: |
+          poetry run python ../../.github/scripts/record_python_benchmark.py
 
       - name: Generate Prisma Client
         run: poetry run prisma generate && poetry run gen-prisma-stub
@@ -641,16 +665,8 @@ jobs:
           path: |
             autogpt_platform/backend/junit-${{ matrix.test-shard }}.xml
             autogpt_platform/backend/coverage-${{ matrix.test-shard }}.xml
+            autogpt_platform/backend/benchmark-environment.json
           if-no-files-found: error
-
-      - name: Upload coverage reports to Codecov
-        if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          flags: platform-backend
-          override_pr: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || '' }}
-          files: ./autogpt_platform/backend/coverage-${{ matrix.test-shard }}.xml
 
     env:
       CI: true
@@ -704,3 +720,28 @@ jobs:
           python3 .github/scripts/validate_backend_skips.py \
             --allow-skips-from .github/scripts/backend-allowed-skips.json \
             --reports-dir backend-shard-reports
+
+  python-315-compatibility:
+    name: Python 3.15 dependency compatibility
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.15.2"
+      - name: Resolve dependencies for Python 3.15
+        run: |
+          python --version
+          python -m pip install poetry==2.5.1
+          git apply ../../.github/benchmarks/python314-dependencies.patch
+          sed -i 's/python = ">=3.11,<3.15"/python = ">=3.11,<3.16"/' pyproject.toml
+          poetry lock 2>&1 | tee python315-resolution.log
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: python315-compatibility
+          path: autogpt_platform/backend/python315-resolution.log
+          if-no-files-found: error
