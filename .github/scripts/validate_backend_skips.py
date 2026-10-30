@@ -73,8 +73,7 @@ def main(argv: list[str] | None = None) -> int:
                 problems.append(str(exc))
                 continue
             print(
-                f"Python {version}: all {len(SHARDS) + 1} shard reports "
-                f"match {len(allowed)} skip IDs"
+                f"Python {version}: all four shard reports match {len(allowed)} skip IDs"
             )
         if problems:
             raise ValueError("\n".join(problems))

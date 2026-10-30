@@ -231,7 +231,7 @@ jobs:
     name: test (${{ matrix.python-version }}, ${{ matrix.test-shard }})
     permissions:
       contents: read
-    # Each Python leg preserves the complete suite while its eight disjoint path
+    # Each Python leg preserves the complete suite while its four disjoint path
     # groups run on separate standard runners. The cap is a hang guard, not a
     # performance budget: on merge_group a cancelled job reads as a failed
     # check and ejects the PR from the queue, so keep it well above p99.
@@ -240,15 +240,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
-        test-shard:
-          - data
-          - copilot
-          - copilot-memory
-          - copilot-billing
-          - billing-threads
-          - util-executor
-          - api
-          - remainder
+        test-shard: [data, copilot, util-executor, remainder]
         include:
           - python-version: "3.11"
             python-patch: "3.11.18"
@@ -371,8 +363,11 @@ jobs:
             data)
               database_name="postgres"
               ;;
-            copilot|copilot-memory|copilot-billing|billing-threads|util-executor|api|remainder)
-              database_name="ci_${MATRIX_TEST_SHARD//-/_}"
+            copilot|remainder)
+              database_name="ci_${MATRIX_TEST_SHARD}"
+              ;;
+            util-executor)
+              database_name="ci_util_executor"
               ;;
             *)
               echo "Unknown backend test shard: $MATRIX_TEST_SHARD" >&2
@@ -579,8 +574,7 @@ jobs:
       - name: Record benchmark environment
         env:
           EXPECTED_PYTHON: ${{ matrix.python-patch }}
-        run: |
-          poetry run python ../../.github/scripts/record_python_benchmark.py
+        run: poetry run python ../../.github/scripts/record_python_benchmark.py
 
       - name: Generate Prisma Client
         run: poetry run prisma generate && poetry run gen-prisma-stub
