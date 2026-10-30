@@ -383,6 +383,7 @@ jobs:
           export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${DATABASE_NAME}"
           export DIRECT_URL="$DATABASE_URL"
           export PYTHONPATH="$RUNNER_TEMP${PYTHONPATH:+:$PYTHONPATH}"
+          poetry run pytest -q -p no:cacheprovider backend/util/architecture_test.py::test_no_global_clock_or_sleep_patches
           pytest_args=(
             -p ci_async_diagnostic
             -s -vv -x

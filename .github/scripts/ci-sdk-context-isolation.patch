@@ -1,8 +1,22 @@
+diff --git a/autogpt_platform/backend/backend/copilot/sdk/provider_out_of_credits_test.py b/autogpt_platform/backend/backend/copilot/sdk/provider_out_of_credits_test.py
+index 0b63cea050..de861a7274 100644
+--- a/autogpt_platform/backend/backend/copilot/sdk/provider_out_of_credits_test.py
++++ b/autogpt_platform/backend/backend/copilot/sdk/provider_out_of_credits_test.py
+@@ -92,9 +92,6 @@ async def _run_turn(messages: list):
+     )
+     events = []
+     with contextlib.ExitStack() as stack:
+-        stack.enter_context(
+-            patch("backend.copilot.sdk.service.asyncio.sleep", new_callable=AsyncMock)
+-        )
+         for target, kwargs in patches:
+             stack.enter_context(patch(target, **kwargs))
+         async for event in stream_chat_completion_sdk(
 diff --git a/autogpt_platform/backend/backend/copilot/sdk/retry_scenarios_test.py b/autogpt_platform/backend/backend/copilot/sdk/retry_scenarios_test.py
-index b82ea37ef9..0204562ef0 100644
+index b82ea37ef9..3bd6c41a7d 100644
 --- a/autogpt_platform/backend/backend/copilot/sdk/retry_scenarios_test.py
 +++ b/autogpt_platform/backend/backend/copilot/sdk/retry_scenarios_test.py
-@@ -1047,8 +1047,8 @@ def _make_sdk_patches(
+@@ -1047,9 +1047,11 @@ def _make_sdk_patches(
              dict(new_callable=AsyncMock, return_value=""),
          ),
          (
@@ -11,5 +25,20 @@ index b82ea37ef9..0204562ef0 100644
 +            "backend.copilot.service.build_expert_context",
 +            {"new_callable": AsyncMock, "return_value": ""},
          ),
++        (f"{_SVC}._update_title_async", {"new_callable": AsyncMock}),
++        ("backend.copilot.token_tracking._schedule_cost_log", {"return_value": None}),
          # Same for the per-turn skills drift notice: it lists the user's
          # skills from the workspace, which without a Prisma connection goes
+         # over RPC to a database manager that isn't running here, retried
+diff --git a/autogpt_platform/backend/backend/util/architecture_test.py b/autogpt_platform/backend/backend/util/architecture_test.py
+index e13cf0e2b8..2fc1d68b8f 100644
+--- a/autogpt_platform/backend/backend/util/architecture_test.py
++++ b/autogpt_platform/backend/backend/util/architecture_test.py
+@@ -224,7 +224,6 @@ _GLOBAL_CLOCK_PATCH_OFFENDERS = {
+     "copilot/optimize_blocks_test.py asyncio.sleep": 3,
+     "copilot/sdk/openrouter_cost_test.py asyncio.sleep": 1,
+     "copilot/sdk/p0_guardrails_test.py asyncio.sleep": 7,
+-    "copilot/sdk/provider_out_of_credits_test.py asyncio.sleep": 1,
+     "copilot/sdk/retry_scenarios_test.py asyncio.sleep": 3,
+     "copilot/tools/e2b_sandbox_test.py asyncio.sleep": 11,
+     "copilot/tools/e2b_sandbox_test.py time.time": 1,
