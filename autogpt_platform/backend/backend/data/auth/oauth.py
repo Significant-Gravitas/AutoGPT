@@ -52,6 +52,16 @@ ACCESS_TOKEN_PREFIX = "agpt_xt_"
 REFRESH_TOKEN_PREFIX = "agpt_rt_"
 
 
+def is_access_token(credential: str) -> bool:
+    """Whether a credential is in the OAuth access-token format.
+
+    Such a value is only ever looked up as a token, never tried as an API key:
+    a key issued before `APIKeySmith` reserved the prefix can start the same
+    way, and trying every forged token as a key would cost a Scrypt hash each.
+    """
+    return credential.startswith(ACCESS_TOKEN_PREFIX)
+
+
 # ============================================================================
 # Exception Classes
 # ============================================================================
@@ -161,10 +171,6 @@ class OAuthAuthorizationCodeInfo(BaseModel):
     code_challenge_method: Optional[str] = None
     used_at: Optional[datetime] = None
 
-    @property
-    def is_used(self) -> bool:
-        return self.used_at is not None
-
     @staticmethod
     def from_db(code: PrismaOAuthAuthorizationCode):
         return OAuthAuthorizationCodeInfo(
@@ -228,10 +234,6 @@ class OAuthRefreshTokenInfo(BaseModel):
     expires_at: datetime
     application_id: str
     revoked_at: Optional[datetime] = None
-
-    @property
-    def is_revoked(self) -> bool:
-        return self.revoked_at is not None
 
     @staticmethod
     def from_db(token: PrismaOAuthRefreshToken):
@@ -515,6 +517,11 @@ async def validate_access_token(
         InvalidTokenError: If token is invalid, expired, or revoked
         InvalidClientError: If the client application is not marked as active
     """
+    if not is_access_token(token):
+        # Every access token carries the prefix, so this can't match one, and
+        # an API's rate limits count only the bearers that cost a lookup.
+        raise InvalidTokenError("access token not found")
+
     token_hash = _hash_token(token)
 
     # Direct lookup by hash
@@ -658,11 +665,15 @@ async def refresh_tokens(
     if await is_user_banned(rt.userId):
         raise InvalidGrantError("the account this token belongs to is banned")
 
-    # Revoke old refresh token
-    await PrismaOAuthRefreshToken.prisma().update(
-        where={"token": token_hash},
+    # Revoke the old token atomically: the checks above read a snapshot, so two
+    # concurrent refreshes can both pass them. Only the request whose
+    # conditional write flips revokedAt from NULL may mint new tokens.
+    revoked = await PrismaOAuthRefreshToken.prisma().update_many(
+        where={"token": token_hash, "revokedAt": None},
         data={"revokedAt": now},
     )
+    if revoked != 1:
+        raise InvalidGrantError("refresh token has been revoked")
 
     # Create new access and refresh tokens with same scopes
     scopes = [APIPermission(s) for s in rt.scopes]

@@ -2,11 +2,12 @@ import { createElement } from "react";
 import {
   MessageResponse,
   type MessageResponseProps,
-} from "@/components/ai-elements/message";
+} from "@/components/organisms/Message/Message";
 import {
   createComponentsMerger,
   type StreamdownComponents,
-} from "@/components/ai-elements/streamdown-components";
+} from "@/components/organisms/Message/streamdown-components";
+import { useReadEveryRender } from "@/hooks/useReadEveryRender";
 import { CredentialMentionBadge } from "./CredentialMentionBadge";
 import {
   credentialMentionImageProvider,
@@ -48,11 +49,13 @@ export function CredentialMentionMarkdown({
   components,
   ...props
 }: Props) {
+  // Merged on every render, as a plain call would be: the merger keeps the
+  // result stable and spots an `img` the caller replaced in place.
+  const mergedComponents = useReadEveryRender(() =>
+    withCredentialBadges(components ?? NO_COMPONENTS),
+  );
   return (
-    <MessageResponse
-      {...props}
-      components={withCredentialBadges(components ?? NO_COMPONENTS)}
-    >
+    <MessageResponse {...props} components={mergedComponents}>
       {credentialMentionsToMarkdown(children)}
     </MessageResponse>
   );

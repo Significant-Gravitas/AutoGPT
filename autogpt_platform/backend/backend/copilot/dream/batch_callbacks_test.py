@@ -228,10 +228,7 @@ class TestPhaseChaining:
             )
 
         apply.assert_not_awaited()
-        assert (
-            mark_errored.await_args.kwargs["error"]
-            == "batch DreamInput missing; memory scope unavailable"
-        )
+        assert mark_errored.await_args.kwargs["error"] == "batch: input_missing"
         # No token anywhere (no bundle, no row): the pass's ownership of the
         # lock is unknown, so nothing is released; its TTL, or the reaper,
         # settles it.
@@ -282,10 +279,7 @@ class TestPhaseChaining:
             )
 
         apply.assert_not_awaited()
-        assert (
-            mark_errored.await_args.kwargs["error"]
-            == "batch payload memory scope mismatch"
-        )
+        assert mark_errored.await_args.kwargs["error"] == "batch: scope_mismatch"
         release_lock.assert_awaited_once_with(
             MemoryScope.for_expert("u1", "expert-1"), "tok-expert"
         )
@@ -342,10 +336,7 @@ class TestPhaseChaining:
             )
 
         submit_phase.assert_not_awaited()
-        assert (
-            mark_errored.await_args.kwargs["error"]
-            == "batch payload memory scope mismatch"
-        )
+        assert mark_errored.await_args.kwargs["error"] == "batch: scope_mismatch"
         release_lock.assert_awaited_once_with(
             MemoryScope.for_expert("u1", "expert-1"), "tok-expert"
         )
@@ -454,7 +445,7 @@ class TestPhaseChaining:
         flips to complete."""
         from backend.copilot.dream.batch_state import write_phase_to_state
         from backend.copilot.dream.batch_submit import persist_input_bundle
-        from backend.copilot.dream.fetch import DreamInput
+        from backend.copilot.dream.fetch import DreamInput, FactRow
 
         _, _, string_store = fake_redis
         # The orchestrator holds the dream lock while persisting the bundle;
@@ -468,6 +459,19 @@ class TestPhaseChaining:
                 group_id="user_u1",
                 window_start=now,
                 window_end=now,
+                facts=[
+                    FactRow(
+                        uuid="fact-1",
+                        source="A",
+                        target="B",
+                        name="likes",
+                        fact="A likes B",
+                        scope="project:bread",
+                        confidence=0.7,
+                        status="active",
+                        created_at=None,
+                    )
+                ],
                 known_fact_uuids={"fact-1"},
                 known_episode_uuids={"episode-1"},
             ),
@@ -510,6 +514,8 @@ class TestPhaseChaining:
         # for the clamp — apply must not re-read the bundle from Redis.
         assert apply.call_args.kwargs["known_fact_uuids"] == {"fact-1"}
         assert apply.call_args.kwargs["known_episode_uuids"] == {"episode-1"}
+        # ...and each fact's scope, which a write's fact citations must share.
+        assert apply.call_args.kwargs["fact_scopes"] == {"fact-1": "project:bread"}
         # The batch path must NOT run the 300s in-line ingestion drain: apply
         # executes inside this handler, which BatchExecutor.walk_once awaits
         # serially — a long drain would stall every other user's batch poll.
@@ -799,7 +805,7 @@ class TestPhaseChaining:
         apply.assert_not_awaited()
         mark_complete.assert_not_awaited()
         mark_errored.assert_awaited_once()
-        assert "gate unavailable" in mark_errored.call_args.kwargs["error"]
+        assert mark_errored.call_args.kwargs["error"] == "apply: gate_unavailable"
 
 
 class TestErrorPaths:
@@ -820,7 +826,7 @@ class TestErrorPaths:
         final = await read_status(kind="dream_pass", job_id="j-dead")
         assert final is not None
         assert final.state == "errored"
-        assert "missing" in (final.error or "")
+        assert final.error == "batch: payload_incomplete"
 
     @pytest.mark.asyncio
     async def test_unknown_phase_marks_job_errored_not_stuck(self, fake_redis):
@@ -841,7 +847,7 @@ class TestErrorPaths:
         final = await read_status(kind="dream_pass", job_id="j-odd")
         assert final is not None
         assert final.state == "errored"
-        assert "unknown batch phase" in (final.error or "")
+        assert final.error == "batch: unknown_phase"
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("error", ["content moderation", "max_tokens"])
@@ -864,7 +870,7 @@ class TestErrorPaths:
                 ],
             )
         mark_errored.assert_awaited_once()
-        assert error in mark_errored.call_args.kwargs["error"]
+        assert mark_errored.call_args.kwargs["error"] == "consolidate: provider_error"
         record_cost.assert_not_awaited()
         redis, _, _ = fake_redis
         stored = json.loads(redis.hset.await_args.args[2])
@@ -895,7 +901,7 @@ class TestErrorPaths:
             )
         submit_phase.assert_not_awaited()
         mark_errored.assert_awaited_once()
-        assert "invalid output shape" in mark_errored.call_args.kwargs["error"]
+        assert mark_errored.call_args.kwargs["error"] == "consolidate: schema_mismatch"
         record_cost.assert_not_awaited()
         redis, _, _ = fake_redis
         stored = json.loads(redis.hset.await_args.args[2])
@@ -1051,7 +1057,7 @@ class TestErrorPaths:
             )
 
         mark_errored.assert_awaited_once()
-        assert "handler crashed" in mark_errored.call_args.kwargs["error"]
+        assert mark_errored.call_args.kwargs["error"] == "consolidate: crashed"
         # Released with the ownership token the input bundle carried.
         release_lock.assert_awaited_once_with(MemoryScope.for_user("u1"), "tok-u1")
 
@@ -1454,7 +1460,7 @@ class TestDreamPassRecord:
 
         assert fake_dream_db.statuses("p1") == [DreamPassStatus.ERRORED]
         row = fake_dream_db.rows["p1"]
-        assert row["error"] == "recombine: provider down"
+        assert row["error"] == "recombine: provider_error"
         # The errored phase used nothing billable; consolidate did.
         assert [p.phase for p in row["usage"].phases] == ["consolidate"]
         assert row["completed_at"] is not None
@@ -1485,15 +1491,15 @@ class TestDreamPassRecord:
             DreamPassStatus.ERRORED,
         ]
         row = fake_dream_db.rows["p1"]
-        assert row["error"] == "apply: RuntimeError: FalkorDB unreachable"
+        assert row["error"] == "apply: crashed", "no exception text is recorded"
         assert row["operations"]["planned"] == DreamOperations(summary_for_user="ok")
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "payload_fix, error",
         [
-            ({"phase": "daydream"}, "unknown batch phase 'daydream'"),
-            ({"phase": None}, "batch payload missing user_id/pass_id/phase"),
+            ({"phase": "daydream"}, "batch: unknown_phase"),
+            ({"phase": None}, "batch: payload_incomplete"),
         ],
         ids=["unknown_phase", "missing_phase"],
     )
@@ -1697,7 +1703,7 @@ class TestDreamPassRecord:
         submit_phase.assert_not_awaited()
         row = fake_dream_db.rows["p1"]
         assert row["status"] is DreamPassStatus.ERRORED
-        assert row["error"] == "consolidate: handler crashed"
+        assert row["error"] == "consolidate: crashed"
         assert row.get("usage") is None
         status = await job_status.read_status(kind="dream_pass", job_id="j1")
         assert status is not None and status.state == "errored"
@@ -1863,12 +1869,14 @@ class TestDreamPassRecord:
 
 async def _cancel_p1() -> str:
     assert (await cancel_dream_pass("p1", user_id="u1", reason="testing")).cancelled
-    return "cancelled: testing"
+    return "cancelled: by_admin"
 
 
 async def _expire_p1() -> str:
-    assert await write_stop("p1", expired("lease lapsed", not_updated_since=None))
-    return "expired: lease lapsed"
+    assert await write_stop(
+        "p1", expired("expired: lease_lapsed", not_updated_since=None)
+    )
+    return "expired: lease_lapsed"
 
 
 class TestAStoppedPass:
@@ -2039,7 +2047,7 @@ class TestAStoppedPass:
             fake_dream_db,
             fake_dream_redis,
             lock_key,
-            "batch usage attribution unavailable",
+            "batch: usage_attribution_unavailable",
         )
         assert fake_dream_db.rows["p1"]["status"] is DreamPassStatus.CANCELLED
 
@@ -2137,7 +2145,7 @@ class TestAStoppedPass:
             DreamPassStatus.CANCELLED,
         ]
         await self._assert_ended(
-            fake_dream_db, fake_dream_redis, lock_key, "cancelled: testing"
+            fake_dream_db, fake_dream_redis, lock_key, "cancelled: by_admin"
         )
 
     @pytest.mark.asyncio
@@ -2258,7 +2266,7 @@ async def test_dispatch_invalid_attribution_closes_job_without_billing(
     assert string_store["dream:inflight:u1"] == "unrelated-token"
     row = fake_dream_db.rows["p1"]
     assert row["status"] is DreamPassStatus.ERRORED
-    assert row["error"] == "batch usage attribution unavailable"
+    assert row["error"] == "batch: usage_attribution_unavailable"
     assert input_bundle_key("p1") not in string_store
     assert "dream:batch:state:p1" not in state_store
     bill.assert_not_called()
@@ -2321,7 +2329,7 @@ async def test_a_result_its_row_does_not_attribute_ends_the_pass(
 
     row = fake_dream_db.rows["p1"]
     assert row["status"] is DreamPassStatus.ERRORED
-    assert row["error"] == "batch usage attribution unavailable"
+    assert row["error"] == "batch: usage_attribution_unavailable"
     assert [c.trial_id if c else None for c in seen] == (
         [] if row_attribution is None else ["trial-other"]
     )

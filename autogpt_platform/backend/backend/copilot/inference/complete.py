@@ -4,9 +4,9 @@
 platform's key for the route's provider and parses the answer into a Pydantic
 model. It asks for JSON mode on every provider but the native Anthropic API,
 which ignores it and gets one tool built from the model instead
-(``dream/structured_output.py``): forced where the model accepts that, left
+(``inference/structured_output.py``): forced where the model accepts that, left
 to the model (``auto``) where it doesn't. The parsing, and its recovery from
-fences and prose around the JSON, lives in ``dream/llm.py``.
+fences and prose around the JSON, lives in ``inference/parse_output.py``.
 
 The dream's Anthropic batch path does not come through here: it submits via
 ``call_provider(execution_mode="batch")`` from ``dream/batch_submit.py``.
@@ -20,12 +20,6 @@ from urllib.parse import urlparse, urlunparse
 import anthropic
 from pydantic import BaseModel
 
-from backend.copilot.dream.llm import parse_structured_output
-from backend.copilot.dream.structured_output import (
-    StructuredRequest,
-    structured_payload,
-    structured_request,
-)
 from backend.copilot.transport_routing import ProviderRoutingKwargs
 from backend.util.llm.providers import (
     BatchSubmissionRef,
@@ -36,7 +30,9 @@ from backend.util.llm.providers import (
 )
 
 from .context import CostSource, InferenceContext, InferenceError, InferenceUsage
+from .parse_output import parse_structured_output
 from .routing import platform_credentials
+from .structured_output import StructuredRequest, structured_payload, structured_request
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +126,9 @@ async def _call_provider_sync(
     try:
         response = await _with_forced_tool_fallback(send, request)
     except Exception as exc:
-        raise InferenceError(f"LLM call failed: {type(exc).__name__}: {exc}") from exc
+        raise InferenceError(
+            f"LLM call failed: {type(exc).__name__}: {exc}", code="call_failed"
+        ) from exc
 
     if not isinstance(response, ProviderResponse):
         # ``call_provider`` returns a ``BatchSubmissionRef`` only for

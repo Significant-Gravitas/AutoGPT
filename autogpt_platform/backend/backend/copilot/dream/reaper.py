@@ -88,6 +88,12 @@ a pass's landed phases are still there to charge behind about seventy runs'
 worth of cleanups that keep failing. One whose state lapsed all the same is
 reported as lost usage, an error (``cleanup.py``).
 
+With ``SWEEP_RESERVE_SECONDS`` of the budget left after the rows, a run also
+sweeps the memory graphs where a dream write's derivation record failed
+(``graphiti/provenance_pending.py``): it completes their citation markers
+under each graph's write lock, so a dream fact's provenance is complete even
+before the next forget there, which reconciles on its own anyway.
+
 One line per row (INFO when it expired, was cleaned or moved; WARNING when it
 failed, is to be retried, or the budget left it), then one with the counts
 per outcome.
@@ -101,10 +107,11 @@ from collections.abc import Awaitable
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal, cast
 
-from prisma.enums import DreamPassRoute, DreamPassStatus
+from prisma.enums import DreamPassPhase, DreamPassRoute
 from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.graphiti.provenance_pending import sweep_pending
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.data import redis_client
 from backend.data.dream_pass_models import OPEN_STATUSES, DreamPassRecord
@@ -116,6 +123,7 @@ from .locks import (
     LOCK_CHECK_TIMEOUT_SECONDS,
     release_dream_lock,
 )
+from .pass_errors import PassErrorStage, pass_error
 from .pass_record import reaped
 from .provider_batch import PROVIDER_BATCH_WINDOW_SECONDS
 from .schemas import DreamPhase
@@ -151,6 +159,8 @@ _SCAN_KEYS: dict[ScanKind, str] = {
 SCAN_TTL_SECONDS = 24 * 60 * 60
 # Giving back the reaper's hold on a scope, carved out of the budget.
 RELEASE_TIMEOUT_SECONDS = 2.0
+# The budget a run needs left after its rows to sweep pending dream records.
+SWEEP_RESERVE_SECONDS = 20.0
 
 ReapOutcome = Literal["expired", "cleaned", "moved", "retry", "failed", "out_of_budget"]
 # The outcomes of a row whose cleanup finished, its mark still to clear.
@@ -158,10 +168,12 @@ _FINISHED: frozenset[ReapOutcome] = frozenset({"expired", "cleaned"})
 
 
 class ReaperRun(BaseModel):
-    """What one run did: how many rows it listed, and each one's outcome."""
+    """What one run did: how many rows it listed, and each one's outcome;
+    and how many dream records it completed in the graphs it swept."""
 
     listed: int
     outcomes: dict[ReapOutcome, int]
+    reconciled: int = 0
 
 
 async def reap_expired_passes(*, now: datetime | None = None) -> ReaperRun:
@@ -171,13 +183,16 @@ async def reap_expired_passes(*, now: datetime | None = None) -> ReaperRun:
     lapsed: list[DreamPassRecord] = []
     pending: list[DreamPassRecord] = []
     done: dict[str, ReapOutcome] = {}
+    reconciled = 0
     try:
         async with asyncio.timeout_at(deadline):
             lapsed, pending = await _list(now or datetime.now(timezone.utc))
             await _reap_both(lapsed, pending, done, deadline)
+            if loop.time() < deadline - SWEEP_RESERVE_SECONDS:
+                reconciled = (await sweep_pending()).completed
     except Exception:
         logger.warning("Dream pass reaper: the run stopped short", exc_info=True)
-    return _summary([*lapsed, *pending], done)
+    return _summary([*lapsed, *pending], done, reconciled)
 
 
 async def _list(now: datetime) -> tuple[list[DreamPassRecord], list[DreamPassRecord]]:
@@ -360,7 +375,9 @@ async def _attempt(
         done.setdefault(row.id, "out_of_budget")
 
 
-def _summary(rows: list[DreamPassRecord], done: dict[str, ReapOutcome]) -> ReaperRun:
+def _summary(
+    rows: list[DreamPassRecord], done: dict[str, ReapOutcome], reconciled: int
+) -> ReaperRun:
     """Log each row the budget left and the counts per outcome."""
     for row in rows:
         if row.id not in done:
@@ -370,8 +387,11 @@ def _summary(rows: list[DreamPassRecord], done: dict[str, ReapOutcome]) -> Reape
             )
     outcomes: Counter[ReapOutcome] = Counter(done.values())
     outcomes["out_of_budget"] += len(rows) - len(done)
-    run = ReaperRun(listed=len(rows), outcomes=dict(+outcomes))
-    logger.info(f"Dream pass reaper: {run.listed} listed; {_counts(run)}")
+    run = ReaperRun(listed=len(rows), outcomes=dict(+outcomes), reconciled=reconciled)
+    logger.info(
+        f"Dream pass reaper: {run.listed} listed; {_counts(run)}; "
+        f"{run.reconciled} dream record(s) reconciled"
+    )
     return run
 
 
@@ -408,16 +428,18 @@ async def _close(
     """Expire *row*, marked for cleanup, then clean up after its pass;
     ``moved`` when the row was written since it was read, and nothing is
     touched."""
-    closing = reaped(_error(row), not_updated_since=row.updated_at)
-    if not await write_stop(row.id, closing):
+    error = _error(row)
+    if not await write_stop(row.id, reaped(error, not_updated_since=row.updated_at)):
         logger.info(f"Dream pass reaper: pass {row.id} moved since it was read; left")
         return "moved"
     # A held scope may still be the dead pass's: released only if it is.
     cleanup = await _clean_up(row, scope, release=not took_scope)
     lock = "held by the reaper" if took_scope else "released if the dead pass's"
-    return _logged(
-        row, cleanup, "expired", f"expired ({_error(row)})", f"; scope lock {lock}"
+    what = (
+        f"expired as {error} ({row.status.value.lower()}, lease until "
+        f"{row.lease_expires_at}, last written {row.updated_at})"
     )
+    return _logged(row, cleanup, "expired", what, f"; scope lock {lock}")
 
 
 async def _finish_cleanup(row: DreamPassRecord, scope: MemoryScope) -> ReapOutcome:
@@ -571,16 +593,20 @@ def _batch_to_stop(row: DreamPassRecord) -> str | None:
     return row.provider_batch_id
 
 
+# The step a row's phase names, as its error records it.
+_PHASE_STAGES: dict[DreamPassPhase, PassErrorStage] = {
+    DreamPassPhase.GATHER: "gather",
+    DreamPassPhase.CONSOLIDATE: "consolidate",
+    DreamPassPhase.RECOMBINE: "recombine",
+    DreamPassPhase.SANITIZE: "sanitize",
+    DreamPassPhase.APPLY: "apply",
+    DreamPassPhase.DONE: "done",
+}
+
+
 def _error(row: DreamPassRecord) -> str:
-    """The closed row's error, naming the phase its pass died at."""
-    phase = row.phase.value.lower()
-    lapsed = row.lease_expires_at.isoformat() if row.lease_expires_at else "unknown"
-    if row.status == DreamPassStatus.APPLYING:
-        return (
-            f"{phase}: the lease lapsed at {lapsed} while applying; closed by the "
-            "reaper without applying again, and what it wrote may have landed"
-        )
-    return f"{phase}: the lease lapsed at {lapsed}; closed by the reaper"
+    """The closed row's error, naming the step its pass died at."""
+    return pass_error(_PHASE_STAGES[row.phase], "reaped")
 
 
 def _counts(run: ReaperRun) -> str:

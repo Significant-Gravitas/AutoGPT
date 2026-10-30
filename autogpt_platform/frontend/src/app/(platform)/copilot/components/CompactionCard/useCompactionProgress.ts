@@ -1,5 +1,5 @@
 import { useMountEffect } from "@/hooks/useMountEffect";
-import { useRef, useState } from "react";
+import { useInsertionEffect, useRef, useState } from "react";
 import {
   INITIAL_PROGRESS,
   PARKED_POLL_MS,
@@ -17,8 +17,8 @@ export function useCompactionProgress(
   const [progress, setProgress] = useState(INITIAL_PROGRESS);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
-  // Read during render so the rAF loop always sees the current phase without
-  // a dependency-keyed effect restarting the animation mid-flight.
+  // Synced on every commit so the rAF loop always sees the current phase
+  // without a dependency-keyed effect restarting the animation mid-flight.
   const phaseRef = useRef(phase);
   const tokensRef = useRef(tokensBefore);
   const baseRef = useRef(INITIAL_PROGRESS);
@@ -27,8 +27,10 @@ export function useCompactionProgress(
   const progressRef = useRef(INITIAL_PROGRESS);
   const percentRef = useRef(Math.round(INITIAL_PROGRESS * 100));
   const secondsRef = useRef(0);
-  phaseRef.current = phase;
-  tokensRef.current = tokensBefore;
+  useInsertionEffect(() => {
+    phaseRef.current = phase;
+    tokensRef.current = tokensBefore;
+  });
 
   useMountEffect(() => {
     let frame = 0;

@@ -236,7 +236,7 @@ export const CustomStyling: Story = {
     variant: "body-medium",
     previewLimit: 80,
     className: "max-w-md",
-    toggleClassName: "text-blue-600 hover:text-blue-800",
+    toggleClassName: "text-info-foreground hover:text-info-foreground",
   },
 };
 
@@ -247,7 +247,9 @@ export const LongContent: Story = {
   render: () => (
     <div className="max-w-2xl space-y-6">
       <div>
-        <h3 className="mb-2 text-sm font-medium text-gray-500">Lead Text</h3>
+        <h3 className="mb-2 text-sm font-medium text-foreground-tertiary">
+          Lead Text
+        </h3>
         <ShowMoreText variant="lead" previewLimit={120}>
           Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do
           eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad
@@ -259,7 +261,9 @@ export const LongContent: Story = {
       </div>
 
       <div>
-        <h3 className="mb-2 text-sm font-medium text-gray-500">Body Text</h3>
+        <h3 className="mb-2 text-sm font-medium text-foreground-tertiary">
+          Body Text
+        </h3>
         <ShowMoreText variant="body" previewLimit={120}>
           Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do
           eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad
@@ -271,7 +275,9 @@ export const LongContent: Story = {
       </div>
 
       <div>
-        <h3 className="mb-2 text-sm font-medium text-gray-500">Small Text</h3>
+        <h3 className="mb-2 text-sm font-medium text-foreground-tertiary">
+          Small Text
+        </h3>
         <ShowMoreText variant="small" previewLimit={120}>
           Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do
           eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad

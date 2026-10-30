@@ -14,12 +14,17 @@ from backend.util.test import SpinTestServer
 
 @pytest.fixture
 async def account(server: SpinTestServer):
-    """An account with an email sign-in, a browser timezone and a Stripe
-    customer."""
+    """An admin account with an email sign-in, a browser timezone and a
+    Stripe customer."""
     user_id = str(uuid4())
     email = f"{user_id}@example.com"
     await AuthUser.prisma().create(
-        data={"id": user_id, "name": "PostHog backfill", "email": email}
+        data={
+            "id": user_id,
+            "name": "PostHog backfill",
+            "email": email,
+            "role": "admin",
+        }
     )
     await AuthAccount.prisma().create(
         data={
@@ -51,6 +56,7 @@ async def test_every_account_is_read_with_what_its_plan_needs(account: str):
     assert row.timezone == "Europe/Vienna"
     assert row.stripe_customer_id == f"cus_{account}"
     assert row.created_at is not None
+    assert row.role == "admin"
 
 
 @pytest.mark.asyncio(loop_scope="session")

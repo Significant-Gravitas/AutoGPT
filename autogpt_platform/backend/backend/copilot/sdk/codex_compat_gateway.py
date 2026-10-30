@@ -18,6 +18,7 @@ from backend.copilot.pending_messages import FOLLOW_UP_CLOSE_TAG, FOLLOW_UP_OPEN
 from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.provider_failure import classify as classify_provider_failure
 from backend.copilot.provider_failure import status_for
+from backend.copilot.sdk.codex_images import image_urls_from_content, normalize_content
 from backend.integrations.codex.models import (
     CodexDynamicToolCall,
     CodexDynamicToolResult,
@@ -36,13 +37,18 @@ from backend.integrations.codex.transport import (
 )
 from backend.integrations.credential_lease import CredentialLease
 
-_MAX_REQUEST_BYTES = 16 * 1024 * 1024
+# Ten queued 3 MiB images expand to 40 MiB, plus conversation and JSON overhead.
+_MAX_REQUEST_BYTES = 64 * 1024 * 1024
+_REQUEST_TOO_LARGE_MESSAGE = (
+    "Request too large. Use fewer or smaller images, "
+    "or shorten the conversation context."
+)
 # Bounds on the per-conversation replay cache. A retry arrives seconds to
 # minutes after the original, so no entry has to outlive its own turn: over 30
 # days of Dev logs the longest Codex turn ran 1,406 s and resolved 67 tool calls
 # (2026-09-18), one boundary each. An entry holds only the response body -- a
 # tool_use boundary or the final text -- never the 0.97M-5.8M token request that
-# provoked the retry, and the byte cap is half the request limit above.
+# provoked the retry. Its byte cap is independent of the image request limit.
 _MAX_REPLAY_ENTRIES = 128
 _MAX_REPLAY_BYTES = 8 * 1024 * 1024
 _REPLAY_TTL_SECONDS = 1800.0
@@ -146,6 +152,7 @@ class _Conversation(_GatewayState):
     response_lock: asyncio.Lock = Field(default_factory=asyncio.Lock)
     task: asyncio.Task[None] | None = None
     result: CodexInvocationResult | None = None
+    usage: CodexTokenUsage | None = None
     replays: dict[str, _Replay] = Field(default_factory=dict)
 
 
@@ -238,7 +245,6 @@ class CodexAnthropicGateway:
         if not self._results:
             return None
         latest = self._results[-1]
-        usage = _sum_usage(result.usage for result in self._results)
         durations = [
             result.duration_ms
             for result in self._results
@@ -247,13 +253,21 @@ class CodexAnthropicGateway:
         return latest.model_copy(
             update={
                 "duration_ms": sum(durations) if durations else None,
-                "usage": usage,
+                "usage": self.usage,
             }
         )
 
     @property
     def results(self) -> tuple[CodexInvocationResult, ...]:
         return tuple(self._results)
+
+    @property
+    def usage(self) -> CodexTokenUsage | None:
+        """Reported usage across completed and interrupted conversations.
+
+        Conversations remain retained for this gateway's lifetime (one SDK turn).
+        """
+        return _sum_usage(c.usage for c in self._conversations.values())
 
     async def start(self) -> None:
         await self.__aenter__()
@@ -355,6 +369,10 @@ class CodexAnthropicGateway:
             return _anthropic_error(401, "authentication_error", "Unauthorized")
         try:
             payload = await request.json()
+        except web.HTTPRequestEntityTooLarge:
+            return _anthropic_error(
+                413, "request_too_large", _REQUEST_TOO_LARGE_MESSAGE
+            )
         except (json.JSONDecodeError, ValueError):
             return _anthropic_error(
                 400,
@@ -368,6 +386,10 @@ class CodexAnthropicGateway:
             return _anthropic_error(401, "authentication_error", "Unauthorized")
         try:
             payload = await request.json()
+        except web.HTTPRequestEntityTooLarge:
+            return _anthropic_error(
+                413, "request_too_large", _REQUEST_TOO_LARGE_MESSAGE
+            )
         except (json.JSONDecodeError, ValueError):
             return _anthropic_error(
                 400,
@@ -400,7 +422,10 @@ class CodexAnthropicGateway:
         if isinstance(continuation, _DuplicateSubmission):
             return await self._duplicate_response(request, continuation, streamed)
         if continuation is None:
-            conversation, replay_key = self._start_conversation(payload), None
+            try:
+                conversation, replay_key = self._start_conversation(payload), None
+            except (TypeError, ValueError) as exc:
+                return _anthropic_error(400, "invalid_request_error", str(exc))
         else:
             conversation = continuation.conversation
             replay_key = continuation.replay_key
@@ -507,14 +532,16 @@ class CodexAnthropicGateway:
         if agent_session is None:
             raise RuntimeError("Codex Anthropic gateway is not running")
         tools, original_names = _parse_tools(payload.get("tools"))
-        conversation = _Conversation(id=uuid4().hex)
-        self._conversations[conversation.id] = conversation
+        image_urls: list[str] = []
         invocation = CodexInvocationRequest(
-            prompt=_serialize_messages(payload.get("messages")),
+            prompt=_serialize_messages(payload.get("messages"), image_urls),
+            image_urls=image_urls,
             instructions=_serialize_system(payload.get("system")),
             model=self.model,
             effort=self.effort,
         )
+        conversation = _Conversation(id=uuid4().hex)
+        self._conversations[conversation.id] = conversation
         conversation.task = asyncio.create_task(
             self._run_conversation(
                 conversation,
@@ -537,6 +564,9 @@ class CodexAnthropicGateway:
         async def handle_event(event: CodexStreamEvent) -> None:
             if event.type == "text_delta" and event.delta:
                 await conversation.queue.put(_TextDelta(text=event.delta))
+            elif event.type == "usage":
+                # Do not suspend here: usage must survive cancellation during cleanup.
+                conversation.usage = _sum_usage((conversation.usage, event.usage))
 
         async def handle_tool(call: CodexDynamicToolCall) -> CodexDynamicToolResult:
             future: asyncio.Future[CodexDynamicToolResult] = (
@@ -572,6 +602,8 @@ class CodexAnthropicGateway:
                 handle_event,
             )
             conversation.result = result
+            if conversation.usage is None:
+                conversation.usage = result.usage
             self._results.append(result)
             await conversation.queue.put(_Completed(result=result))
         except asyncio.CancelledError:
@@ -646,8 +678,8 @@ class CodexAnthropicGateway:
             "Connection": "keep-alive",
         }
         response = web.StreamResponse(status=200, headers=headers)
-        await response.prepare(request)
         sink = _RecordingSink(response)
+        await sink.prepare(request)
         message_id = f"msg_codex_{uuid4().hex}"
         try:
             await _write_sse(
@@ -670,8 +702,8 @@ class CodexAnthropicGateway:
                 },
             )
             await self._write_boundary(sink, conversation, first)
-            await response.write_eof()
-        except (ConnectionError, ConnectionResetError, asyncio.CancelledError):
+            await sink.write_eof()
+        except asyncio.CancelledError:
             if conversation.task is not None:
                 conversation.task.cancel()
             raise
@@ -949,13 +981,26 @@ def gateway_for_lease(
 
 
 class _RecordingSink:
-    """Mirrors the stream into a buffer so a retry can be answered verbatim."""
+    """Mirrors the stream into a buffer so a retry can be answered verbatim.
+
+    The client going away does not end the recording. That is the very case a
+    retry exists for: the CLI times out on a slow tool-result request and
+    re-sends it, so the original's answer has to be kept whole for the resend
+    even though nobody is left to read it on the first socket.
+    """
 
     def __init__(self, response: web.StreamResponse) -> None:
         self._response = response
         self._chunks: list[bytes] = []
         self._buffered = 0
         self._recording = True
+        self._delivering = True
+
+    async def prepare(self, request: web.Request) -> None:
+        try:
+            await self._response.prepare(request)
+        except ConnectionError:
+            self._client_gone()
 
     async def write(self, data: bytes) -> None:
         if self._recording:
@@ -967,7 +1012,27 @@ class _RecordingSink:
                 self._recording = False
             else:
                 self._chunks.append(data)
-        await self._response.write(data)
+        if not self._delivering:
+            return
+        try:
+            await self._response.write(data)
+        except ConnectionError:
+            self._client_gone()
+
+    async def write_eof(self) -> None:
+        if not self._delivering:
+            return
+        try:
+            await self._response.write_eof()
+        except ConnectionError:
+            self._client_gone()
+
+    def _client_gone(self) -> None:
+        self._delivering = False
+        logger.info(
+            "Codex gateway client disconnected mid-response; "
+            "keeping the response for a retry"
+        )
 
     @property
     def body(self) -> bytes | None:
@@ -1038,10 +1103,11 @@ def _serialize_system(value: object) -> str | None:
     return text or None
 
 
-def _serialize_messages(value: object) -> str:
+def _serialize_messages(value: object, image_urls: list[str] | None = None) -> str:
     if not isinstance(value, list):
         raise TypeError("messages must be an array")
     normalized: list[dict[str, object]] = []
+    image_urls = [] if image_urls is None else image_urls
     for message in value:
         if not isinstance(message, dict):
             raise TypeError("Each message must be an object")
@@ -1054,7 +1120,7 @@ def _serialize_messages(value: object) -> str:
         normalized.append(
             {
                 "role": role,
-                "content": _normalize_content(message.get("content")),
+                "content": normalize_content(message.get("content"), image_urls),
             }
         )
     return (
@@ -1062,31 +1128,6 @@ def _serialize_messages(value: object) -> str:
         "tools when needed. The transcript is JSON:\n"
         + json.dumps(normalized, ensure_ascii=False, separators=(",", ":"))
     )
-
-
-def _normalize_content(value: object) -> object:
-    if isinstance(value, str):
-        return value
-    if not isinstance(value, list):
-        return ""
-    normalized: list[object] = []
-    for block in value:
-        if not isinstance(block, dict):
-            continue
-        block_type = block.get("type")
-        if block_type == "thinking":
-            continue
-        if block_type == "image":
-            normalized.append({"type": "text", "text": "[image input omitted]"})
-            continue
-        normalized.append(
-            {
-                key: item
-                for key, item in block.items()
-                if key not in {"cache_control", "signature"}
-            }
-        )
-    return normalized
 
 
 def _content_text(value: object) -> str:
@@ -1117,9 +1158,16 @@ def _extract_tool_results(value: object) -> dict[str, CodexDynamicToolResult]:
             call_id = block.get("tool_use_id")
             if not isinstance(call_id, str):
                 continue
+            content = block.get("content")
+            image_urls = image_urls_from_content(content)
             results[call_id] = CodexDynamicToolResult(
-                content=_content_text(block.get("content"))
-                or json.dumps(block.get("content"), ensure_ascii=False, default=str),
+                content=_content_text(content)
+                or (
+                    "Image returned"
+                    if image_urls
+                    else json.dumps(content, ensure_ascii=False, default=str)
+                ),
+                image_urls=image_urls,
                 success=not bool(block.get("is_error")),
             )
     return results
@@ -1208,14 +1256,28 @@ def _tool_result_request_fingerprint(payload: dict[str, object]) -> str:
 
 
 def _estimate_input_tokens(payload: object) -> int:
+    images = 0
+
+    def without_image_data(value: object) -> object:
+        nonlocal images
+        if isinstance(value, dict):
+            if value.get("type") == "image":
+                images += 1
+                return {"type": "image"}
+            return {key: without_image_data(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [without_image_data(item) for item in value]
+        return value
+
     serialized = json.dumps(
-        payload,
+        without_image_data(payload),
         ensure_ascii=False,
         separators=(",", ":"),
         sort_keys=True,
         default=str,
     )
-    return max(1, (len(serialized) + 3) // 4)
+    # A conservative image estimate; billing uses the provider's actual usage.
+    return max(1, (len(serialized) + 3) // 4 + images * 4096)
 
 
 def _safe_exception_message(

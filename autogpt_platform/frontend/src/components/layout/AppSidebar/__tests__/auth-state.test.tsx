@@ -1,5 +1,5 @@
 import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import {
   getCurrentUser,
   serverLogout,
@@ -151,7 +151,7 @@ describe("AppSidebar auth state", () => {
     expect(sessionsRequest).toHaveBeenCalledOnce();
   });
 
-  it("removes chats before the server finishes logging out", async () => {
+  it("keeps chats until the server confirms the sign-out, then removes them", async () => {
     vi.mocked(getCurrentUser).mockResolvedValue({ user });
     const logout = deferred<Awaited<ReturnType<typeof serverLogout>>>();
     vi.mocked(serverLogout).mockReturnValue(logout.promise);
@@ -162,12 +162,15 @@ describe("AppSidebar auth state", () => {
     act(() => {
       loggingOut = useAuthStore.getState().logOut();
     });
-    await waitFor(() => expect(useAuthStore.getState().user).toBeNull());
-    expectNoRecentChats();
+    // Until the server has the request, the session may still be live.
+    await waitFor(() => expect(serverLogout).toHaveBeenCalled());
+    expect(useAuthStore.getState().user).toBe(user);
+
     await act(async () => {
       logout.resolve({ success: true });
       await loggingOut;
     });
+    expect(useAuthStore.getState().user).toBeNull();
     expectNoRecentChats();
     expect(sessionsRequest).toHaveBeenCalledOnce();
   });

@@ -98,6 +98,7 @@ from backend.data.workspace_scope import (
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import ConflictError
 from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.settings import Config
 from backend.util.workspace import SkillPackageFile, WorkspaceManager
 from backend.util.workspace_storage import compute_file_checksum
 
@@ -1155,7 +1156,8 @@ async def store_user_skills(
 ) -> list[StoredSkill | Exception]:
     """:func:`store_user_skill` for several skills under one write lock and
     one listing of the owner's folder; returns each write's outcome in order,
-    so one bad skill fails alone."""
+    so one bad skill fails alone. File/storage configuration is read once
+    per batch; each package still checks the current storage quota."""
     outcomes: list[StoredSkill | Exception | None] = []
     prepared: list[tuple[int, _PreparedSkill]] = []
     for write in writes:
@@ -1178,6 +1180,7 @@ async def store_user_skills(
         owners = {s.name for s in existing if s.origin == SKILL_ORIGIN_USER}
         copies = {s.name: s for s in existing if _keeps_install(s.origin, s.baseline)}
         stored: list[tuple[int, str]] = []
+        config: Config | None = None
         for index, skill in prepared:
             # A batch outlasts one lease, so renew it before each skill. Once
             # it is lost another writer may hold the key: finish best-effort,
@@ -1211,8 +1214,17 @@ async def store_user_skills(
                         )
                     )
                 is_new = skill.parsed.name not in same_origin
+                if config is None:
+                    config = Config()
                 checksums = await _write_skill(
-                    manager, skill, expert_id, origin, same_origin, owners, copies
+                    manager,
+                    skill,
+                    expert_id,
+                    origin,
+                    same_origin,
+                    owners,
+                    copies,
+                    config,
                 )
             except Exception as e:
                 outcomes[index] = e
@@ -1519,6 +1531,7 @@ async def _write_skill(
     same_origin: set[str],
     owners: set[str],
     copies: Mapping[str, ParsedSkill],
+    config: Config,
 ) -> frozenset[str]:
     """Write one prepared package; return the SHA-256 of every file written.
 
@@ -1592,6 +1605,7 @@ async def _write_skill(
         files=changed,
         removed_paths=sorted(f.path for f in stale if f.path not in written),
         scanned_checksums=skill.scanned_checksums,
+        config=config,
     )
     checksums.add(compute_file_checksum(skill_md))
     return frozenset(checksums)
@@ -2031,8 +2045,10 @@ async def _reconcile_marketplace_copies(
             "[skills] could not read active marketplace versions", exc_info=True
         )
         return skills
-    manager = await _get_user_skill_manager(user_id, scope)
     backoff = await _read_update_backoff(user_id, expert_id)
+    # Looked up for the first copy that is actually updated: on most cold
+    # turns every copy is current, and the lookup is a database round trip.
+    manager: WorkspaceManager | None = None
     flags: dict[str, str] = {}
     rewritten: list[str] = []
     failed: dict[str, str] = {}
@@ -2059,6 +2075,8 @@ async def _reconcile_marketplace_copies(
         # An attempt spends budget whether or not it lands, so copies that
         # cannot be updated bound the turn like the ones that can.
         budget -= 1
+        if manager is None:
+            manager = await _get_user_skill_manager(user_id, scope)
         try:
             outcome = await _update_copy(
                 manager, user_id, expert_id, scope, skill, current
@@ -3080,6 +3098,10 @@ class StoreSkillTool(BaseTool):
     (name, description, optional triggers) plus a markdown body.
     """
 
+    # Updates the skill index, which ``list_skills`` reads back.  Run on its own
+    # so a ``list_skills`` call in the same message sees the update.
+    writes_files = True
+
     @property
     def name(self) -> str:
         return "store_skill"
@@ -3267,6 +3289,8 @@ async def resolve_loaded_skill_version(
 class ReadSkillTool(BaseTool):
     """Load a skill by name: its body, its package listing, and a copy of
     that package in the working directory the model's shell runs in."""
+
+    writes_files = True
 
     @property
     def name(self) -> str:
@@ -3505,6 +3529,10 @@ class ReadSkillTool(BaseTool):
 
 class DeleteSkillTool(BaseTool):
     """Remove a user-created skill (cannot delete built-in defaults)."""
+
+    # Removes from the skill index, which ``list_skills`` reads back.  Run on its
+    # own so a ``list_skills`` call in the same message sees the removal.
+    writes_files = True
 
     @property
     def name(self) -> str:

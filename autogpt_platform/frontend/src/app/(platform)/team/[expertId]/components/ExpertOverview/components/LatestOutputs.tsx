@@ -41,25 +41,18 @@ export function LatestOutputs({
         <CardError message="Couldn't load outputs." onRetry={onRetry} />
       ) : outputs.length === 0 ? (
         <PanelEmptyState
+          textSize="body-md"
           tiles={[
-            <Icon
-              key="image"
-              icon={Image01Icon}
-              size={22}
-              className="text-sky-500"
-            />,
-            <Icon
-              key="table"
-              icon={Table01Icon}
-              size={22}
-              className="text-emerald-500"
-            />,
-            <Icon
-              key="doc"
-              icon={File02Icon}
-              size={22}
-              className="text-violet-500"
-            />,
+            // oxlint-disable-next-line design-system/no-raw-colors -- sky has no role; info blue would change the hue (deferred)
+            <span key="image" className="inline-flex text-sky-500">
+              <Icon icon={Image01Icon} size={22} />
+            </span>,
+            <span key="table" className="inline-flex text-success">
+              <Icon icon={Table01Icon} size={22} />
+            </span>,
+            <span key="doc" className="inline-flex text-brand">
+              <Icon icon={File02Icon} size={22} />
+            </span>,
           ]}
           title="No outputs yet"
           description={`Documents and files ${expertName} creates show up here.`}

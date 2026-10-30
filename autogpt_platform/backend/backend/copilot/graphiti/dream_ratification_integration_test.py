@@ -51,6 +51,7 @@ from . import ingest as ingest_mod
 from .client import derive_group_id
 from .config import graphiti_config
 from .falkordb_driver import AutoGPTFalkorDriver
+from .recall_citations import Citations
 from .recall_stamp import stamp_recalls, stamp_time
 from .scope import MemoryScope
 
@@ -261,6 +262,9 @@ async def _ingest_dream_proposal(user_id: str) -> None:
         PROPOSAL,
         session_id=SESSION_ID,
         completion=completion,
+        # What it cites is beside the point here; the citation checks and the
+        # cascade are ``recall_cascade_integration_test.py``.
+        citations=Citations(),
     )
     assert queued, "proposal was dropped before reaching the ingestion queue"
     completion.register()

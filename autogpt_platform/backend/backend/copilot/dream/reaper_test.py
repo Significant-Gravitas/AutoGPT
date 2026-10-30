@@ -77,8 +77,7 @@ class TestAPassThatOutlivedItsLease:
             DreamPassStatus.EXPIRED,
             1,
         )
-        assert row["error"].startswith("recombine: the lease lapsed at ")
-        assert row["error"].endswith("; closed by the reaper")
+        assert row["error"] == "recombine: reaped"
         assert (row["lease_token"], row["lease_expires_at"]) == (None, None)
         assert (row["input_bundle"], row["cleanup_pending_at"]) == (None, None)
         provider_cancel.assert_awaited_once()
@@ -87,7 +86,10 @@ class TestAPassThatOutlivedItsLease:
         assert state_key("p1") not in fake_dream_redis.hashes
         assert input_bundle_key("p1") not in fake_dream_redis.store
         assert _LOCK_KEY not in fake_dream_redis.store
-        assert "Dream pass reaper: pass p1 expired (recombine:" in caplog.text
+        assert "Dream pass reaper: pass p1 expired as recombine: reaped (" in (
+            caplog.text
+        )
+        assert ", lease until " in caplog.text
         assert "Dream pass reaper: 1 listed; expired=1" in caplog.text
 
     async def test_within_its_grace_is_left_open(self, fake_dream_db, provider_cancel):
@@ -227,10 +229,7 @@ class TestAPassThatOutlivedItsLease:
         assert run.outcomes == {"expired": 1}
         row = fake_dream_db.rows["p1"]
         assert row["status"] is DreamPassStatus.EXPIRED
-        assert row["error"].startswith("apply: the lease lapsed at ")
-        assert "while applying; closed by the reaper without applying again" in (
-            row["error"]
-        )
+        assert row["error"] == "apply: reaped"
         apply.assert_not_awaited()
         assert _charged(charges) == ["consolidate"]
 

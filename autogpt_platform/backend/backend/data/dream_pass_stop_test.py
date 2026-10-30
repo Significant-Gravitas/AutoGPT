@@ -17,6 +17,7 @@ from prisma.enums import (
 )
 from prisma.models import User
 
+from backend.copilot.dream.pass_errors import pass_error
 from backend.copilot.dream.pass_record import cancelled, expired, failed
 from backend.copilot.dream.schemas import ConsolidationOutput
 from backend.data.db import execute_raw_with_schema
@@ -36,6 +37,12 @@ from .dream_pass_models import (
 )
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
+
+# The stops' errors, as the cancel and the guard write them.
+_BY_ADMIN = pass_error("cancelled", "by_admin")
+_BY_WIPE = pass_error("cancelled", "by_wipe")
+_STALLED = pass_error("expired", "stalled")
+_FORCED = pass_error("expired", "forced")
 
 
 @pytest.fixture
@@ -78,12 +85,12 @@ async def _row(pass_id: str) -> DreamPassRecord:
 async def test_a_cancel_closes_an_open_row_and_bumps_its_generation(owner):
     pass_id = await _new_pass(owner)
 
-    assert await update_dream_pass(pass_id, cancelled("testing", owner_user_id=owner))
+    assert await update_dream_pass(pass_id, cancelled(_BY_ADMIN, owner_user_id=owner))
 
     row = await _row(pass_id)
     assert (row.status, row.error, row.cancel_generation) == (
         DreamPassStatus.CANCELLED,
-        "testing",
+        _BY_ADMIN,
         1,
     )
     assert row.completed_at is not None
@@ -101,7 +108,7 @@ async def test_a_cancel_reaches_only_an_open_row(owner):
     )
 
     assert not await update_dream_pass(
-        pass_id, cancelled("testing", owner_user_id=owner)
+        pass_id, cancelled(_BY_ADMIN, owner_user_id=owner)
     )
 
     row = await _row(pass_id)
@@ -116,7 +123,7 @@ async def test_a_cancel_reaches_only_the_owners_row(owner):
     pass_id = await _new_pass(owner)
 
     assert not await update_dream_pass(
-        pass_id, cancelled("testing", owner_user_id=str(uuid.uuid4()))
+        pass_id, cancelled(_BY_ADMIN, owner_user_id=str(uuid.uuid4()))
     )
 
     row = await _row(pass_id)
@@ -125,13 +132,13 @@ async def test_a_cancel_reaches_only_the_owners_row(owner):
 
 async def test_nothing_moves_a_cancelled_row(owner):
     pass_id = await _new_pass(owner)
-    await update_dream_pass(pass_id, cancelled("testing", owner_user_id=owner))
+    await update_dream_pass(pass_id, cancelled(_BY_ADMIN, owner_user_id=owner))
     later = datetime.now(timezone.utc)
 
     for update in (
-        failed("cancelled: testing", None, later),
-        cancelled("again", owner_user_id=owner),
-        expired("stale", not_updated_since=None),
+        failed(pass_error("apply", "crashed"), None, later),
+        cancelled(_BY_WIPE, owner_user_id=owner),
+        expired(_STALLED, not_updated_since=None),
         DreamPassUpdate(
             phase_outputs=DreamPhaseOutputs(consolidate=ConsolidationOutput())
         ),
@@ -141,29 +148,34 @@ async def test_nothing_moves_a_cancelled_row(owner):
     row = await _row(pass_id)
     assert (row.status, row.error, row.cancel_generation) == (
         DreamPassStatus.CANCELLED,
-        "testing",
+        _BY_ADMIN,
         1,
     )
     assert row.phase_outputs == DreamPhaseOutputs()
 
 
 async def test_racing_cancels_bump_the_generation_exactly_once(owner):
+    """Eight cancels race; each names its own completion time, so the row
+    shows which one landed: exactly one, the row holding its write."""
+    base = datetime.now(timezone.utc).replace(microsecond=0)
     for _ in range(5):
         pass_id = await _new_pass(owner)
+        cancels = [
+            cancelled(_BY_WIPE if n % 2 else _BY_ADMIN, owner_user_id=owner).model_copy(
+                update={"completed_at": base + timedelta(seconds=n)}
+            )
+            for n in range(8)
+        ]
 
         landed = await asyncio.gather(
-            *(
-                update_dream_pass(
-                    pass_id, cancelled(f"cancel {n}", owner_user_id=owner)
-                )
-                for n in range(8)
-            )
+            *(update_dream_pass(pass_id, cancel) for cancel in cancels)
         )
 
         assert landed.count(True) == 1
+        winner = cancels[landed.index(True)]
         row = await _row(pass_id)
         assert (row.status, row.cancel_generation) == (DreamPassStatus.CANCELLED, 1)
-        assert row.error == f"cancel {landed.index(True)}"
+        assert (row.error, row.completed_at) == (winner.error, winner.completed_at)
 
 
 async def test_a_cancel_and_an_expiry_racing_close_the_row_once(owner):
@@ -171,8 +183,8 @@ async def test_a_cancel_and_an_expiry_racing_close_the_row_once(owner):
         pass_id = await _new_pass(owner)
 
         landed = await asyncio.gather(
-            update_dream_pass(pass_id, cancelled("testing", owner_user_id=owner)),
-            update_dream_pass(pass_id, expired("stale", not_updated_since=None)),
+            update_dream_pass(pass_id, cancelled(_BY_ADMIN, owner_user_id=owner)),
+            update_dream_pass(pass_id, expired(_STALLED, not_updated_since=None)),
         )
 
         assert landed.count(True) == 1
@@ -189,18 +201,18 @@ async def test_an_expiry_lands_only_if_nothing_wrote_the_row_since(owner):
     await update_dream_pass(pass_id, DreamPassUpdate(phase=DreamPassPhase.RECOMBINE))
 
     assert not await update_dream_pass(
-        pass_id, expired("stale", not_updated_since=seen.updated_at)
+        pass_id, expired(_STALLED, not_updated_since=seen.updated_at)
     )
     assert (await _row(pass_id)).status is DreamPassStatus.RUNNING
 
     latest = await _row(pass_id)
     assert await update_dream_pass(
-        pass_id, expired("stale", not_updated_since=latest.updated_at)
+        pass_id, expired(_STALLED, not_updated_since=latest.updated_at)
     )
     row = await _row(pass_id)
     assert (row.status, row.error, row.cancel_generation) == (
         DreamPassStatus.EXPIRED,
-        "stale",
+        _STALLED,
         1,
     )
     assert row.completed_at is not None
@@ -212,7 +224,7 @@ async def test_an_expiry_with_a_stale_cutoff_lands_only_on_an_old_row(owner):
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=30)
 
     assert not await update_dream_pass(
-        pass_id, expired("stale", not_updated_since=cutoff)
+        pass_id, expired(_STALLED, not_updated_since=cutoff)
     )
 
     await execute_raw_with_schema(
@@ -220,7 +232,7 @@ async def test_an_expiry_with_a_stale_cutoff_lands_only_on_an_old_row(owner):
         """SET "updatedAt" = "updatedAt" - interval '1 hour' WHERE "id" = $1""",
         pass_id,
     )
-    assert await update_dream_pass(pass_id, expired("stale", not_updated_since=cutoff))
+    assert await update_dream_pass(pass_id, expired(_STALLED, not_updated_since=cutoff))
     assert (await _row(pass_id)).status is DreamPassStatus.EXPIRED
 
 
@@ -228,10 +240,14 @@ async def test_a_forced_expiry_lands_on_a_fresh_row(owner):
     pass_id = await _new_pass(owner)
     await update_dream_pass(pass_id, DreamPassUpdate(phase=DreamPassPhase.CONSOLIDATE))
 
-    assert await update_dream_pass(pass_id, expired("forced", not_updated_since=None))
+    assert await update_dream_pass(pass_id, expired(_FORCED, not_updated_since=None))
 
     row = await _row(pass_id)
-    assert (row.status, row.cancel_generation) == (DreamPassStatus.EXPIRED, 1)
+    assert (row.status, row.error, row.cancel_generation) == (
+        DreamPassStatus.EXPIRED,
+        _FORCED,
+        1,
+    )
 
 
 async def test_open_passes_list_newest_first_and_capped(owner):

@@ -1012,18 +1012,28 @@ class CommunityRebuildJobStatus(JobStatus[RebuildResult]):
     """JobStatus envelope for ``kind="rebuild"``."""
 
 
+class PublicDreamPassRecord(DreamPassRecord):
+    """Admin-visible pass record without the live lock credential."""
+
+    lease_token: str | None = Field(default=None, exclude=True)
+
+
+def _public_pass_record(record: DreamPassRecord) -> PublicDreamPassRecord:
+    return PublicDreamPassRecord.model_validate(record.model_dump())
+
+
 class DreamPassRecordResponse(BaseModel):
     """One dream pass's durable record, and the ``DreamPassResult`` read off
     it: what the eval driver scores, with usage for batch passes too."""
 
-    record: DreamPassRecord
+    record: PublicDreamPassRecord
     result: DreamPassResult
 
 
 class DreamPassListResponse(BaseModel):
     """A user's dream passes, every scope, newest first."""
 
-    passes: list[DreamPassRecord]
+    passes: list[PublicDreamPassRecord]
 
 
 # What a cancelled pass's record says when the admin gave no reason.
@@ -1031,7 +1041,8 @@ ADMIN_CANCEL_REASON = "cancelled by an admin"
 
 
 class DreamPassCancelRequest(BaseModel):
-    """Why an admin cancels a dream pass, kept as the pass's error."""
+    """Why an admin cancels a dream pass, for the log; the pass records
+    ``cancelled: by_admin``."""
 
     # Stripped before the length check, so a blank reason is refused.
     model_config = ConfigDict(str_strip_whitespace=True)
@@ -1141,7 +1152,7 @@ async def list_dream_pass_records(
         jwt_payload=jwt_payload,
     )
     passes = await read_user_passes(target, open_only=status == "open", limit=limit)
-    return DreamPassListResponse(passes=passes)
+    return DreamPassListResponse(passes=[_public_pass_record(row) for row in passes])
 
 
 @router.get(
@@ -1201,7 +1212,7 @@ async def get_dream_pass_record(
     if record is None:
         raise HTTPException(status_code=404, detail="dream pass not found")
     return DreamPassRecordResponse(
-        record=record, result=dream_pass_result_from_row(record)
+        record=_public_pass_record(record), result=dream_pass_result_from_row(record)
     )
 
 
@@ -1243,7 +1254,8 @@ async def cancel_dream_pass_run(
         ended = cancel.record.status.value.lower()
         raise HTTPException(status_code=409, detail=f"dream pass already {ended}")
     return DreamPassRecordResponse(
-        record=cancel.record, result=dream_pass_result_from_row(cancel.record)
+        record=_public_pass_record(cancel.record),
+        result=dream_pass_result_from_row(cancel.record),
     )
 
 

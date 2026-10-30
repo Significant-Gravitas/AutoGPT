@@ -25,7 +25,10 @@ from datetime import datetime, timezone
 import stripe
 from prisma.enums import NotificationType
 
-from backend.data.credit import PAYMENT_FAILURE_CANCELLATION_COMMENT
+from backend.data.credit import (
+    REPLACED_PLAN_CANCELLATION_COMMENT,
+    _invoice_subscription_id,
+)
 from backend.data.notifications import (
     AudienceAction,
     NotificationEventModel,
@@ -51,10 +54,10 @@ from backend.notifications.lifecycle_plan import (
     tier_and_cycle_from_subscription,
 )
 from backend.notifications.queue import queue_audience_change, queue_notification_async
+from backend.notifications.recipient import first_name
 from backend.notifications.subscriber_fields import audience_event
 from backend.notifications.trial import notify_trial, on_trial_subscription_updated
 from backend.util.clients import get_database_manager_async_client
-from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.logging import TruncatedLogger
 from backend.util.product_analytics import track_subscription_ended
 from backend.util.settings import Settings
@@ -139,11 +142,6 @@ async def on_checkout_completed(session: dict, subscription: dict) -> None:
         return
 
     plan = await plan_from_subscription(subscription)
-    experts_enabled = False
-    try:
-        experts_enabled = await is_feature_enabled(Flag.HIRE_EXPERTS, user.id)
-    except Exception:
-        logger.warning("Could not check Expert access; using the workflow welcome")
     try:
         await _publish(
             NotificationEventModel[SubscriptionWelcomeData](
@@ -153,7 +151,7 @@ async def on_checkout_completed(session: dict, subscription: dict) -> None:
                     user_name=_greeting_name(user),
                     plan=plan,
                     renews_label=format_date(subscription.get("current_period_end")),
-                    experts_enabled=experts_enabled,
+                    experts_enabled=True,
                 ),
             )
         )
@@ -182,10 +180,22 @@ async def on_checkout_completed(session: dict, subscription: dict) -> None:
     await resync_after_group_change(user.id)
 
 
-async def on_payment_failed(invoice: dict) -> None:
+async def on_payment_failed(invoice: dict, *, attempted_at: int | None = None) -> None:
     """First failed charge → a calm heads-up. Retries exhausted → the final
     notice. Nothing at all during Stripe's automatic retries, which re-fire
     this same event."""
+    final = False
+    if not invoice.get("next_payment_attempt"):
+        sub_id = _invoice_subscription_id(invoice)
+        if not sub_id:
+            return
+        subscription = await stripe_call(stripe.Subscription.retrieve_async, sub_id)
+        status = subscription.get("status")
+        if status not in ("past_due", "unpaid"):
+            return
+        # A missing retry date can also mean a hard decline or a retry automation.
+        # Only `unpaid` confirms collection stopped. A canceled plan has its own mail.
+        final = status == "unpaid"
     user = await _user_for(invoice.get("customer"))
     if user is None:
         return
@@ -194,7 +204,7 @@ async def on_payment_failed(invoice: dict) -> None:
     plan = await plan_from_invoice(invoice)
     amount = format_amount(invoice.get("amount_due"), invoice.get("currency", "usd"))
 
-    if invoice.get("next_payment_attempt"):
+    if not final:
         if int(invoice.get("attempt_count") or 0) != 1:
             # Automatic retries stay silent: four "payment failed" emails in
             # two weeks reads as a billing crisis.
@@ -211,7 +221,11 @@ async def on_payment_failed(invoice: dict) -> None:
                     plan=plan,
                     amount_display=amount,
                     card=card_from_invoice(invoice),
-                    next_retry_label=format_date(invoice.get("next_payment_attempt")),
+                    next_retry_label=(
+                        format_date(invoice["next_payment_attempt"])
+                        if invoice.get("next_payment_attempt")
+                        else None
+                    ),
                 ),
             ),
             claim_key,
@@ -229,9 +243,12 @@ async def on_payment_failed(invoice: dict) -> None:
                 user_name=_greeting_name(user),
                 plan=plan,
                 amount_display=amount,
-                # Matches Stripe's automatic-collection configuration; see the
-                # deployment notes for the setting this must agree with.
-                pauses_label=format_date(invoice.get("period_end")),
+                payment_url=invoice.get("hosted_invoice_url"),
+                last_attempt_label=format_date(
+                    attempted_at
+                    if attempted_at is not None
+                    else int(_now().timestamp())
+                ),
             ),
         ),
         claim_key,
@@ -305,6 +322,10 @@ async def on_subscription_updated(subscription: dict, previous: dict) -> None:
 async def on_subscription_deleted(subscription: dict) -> None:
     """Two roads lead here — a cancellation reaching period end, and dunning
     exhaustion — so the copy branches on which one the customer took."""
+    details = subscription.get("cancellation_details") or {}
+    if details.get("comment") == REPLACED_PLAN_CANCELLATION_COMMENT:
+        # Ended because the customer has another plan; they did not leave.
+        return
     if await notify_trial(subscription, "ended"):
         return
     user = await _user_for(subscription.get("customer"))
@@ -346,11 +367,9 @@ async def on_subscription_deleted(subscription: dict) -> None:
 
 
 def _churn_reason(subscription: dict) -> str | None:
-    """Stripe's ``cancellation_details.reason``, except that our own cancel
-    after a failed renewal is involuntary churn, not a requested one."""
+    """Stripe's ``cancellation_details.reason``: ``payment_failed`` when
+    Stripe ended the subscription after its retries failed."""
     details = subscription.get("cancellation_details") or {}
-    if details.get("comment") == PAYMENT_FAILURE_CANCELLATION_COMMENT:
-        return "payment_failed"
     return details.get("reason")
 
 
@@ -376,9 +395,7 @@ async def _release_welcome(user: BillingEmailRecipient) -> None:
 
 
 def _greeting_name(user: BillingEmailRecipient) -> str:
-    if user.name and user.name.strip():
-        return user.name.strip().split()[0]
-    return user.email.split("@")[0]
+    return first_name(user.name, user.email) or "there"
 
 
 def _now() -> datetime:

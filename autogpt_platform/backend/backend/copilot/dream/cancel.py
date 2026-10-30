@@ -45,8 +45,10 @@ must not end work that nobody cancelled. The lock checks fail closed: a pass
 that cannot confirm its lock does not apply.
 """
 
+import json
 import logging
 from collections.abc import Awaitable
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -55,6 +57,7 @@ from backend.data.dream_pass_models import OPEN_STATUSES, DreamPassRecord
 
 from .batch_outcome import BatchPass, fail_pass
 from .locks import DreamLockHandle
+from .pass_errors import pass_error
 from .pass_record import cancelled, stop_error
 from .pass_run import DreamPassRun, PassEnded
 from .provider_batch import cancel_provider_batch
@@ -63,7 +66,10 @@ from .store import read_dream_pass, read_open_passes, read_pass, write_stop
 logger = logging.getLogger(__name__)
 
 # How a pass that lost its scope's lock before apply ends.
-LOCK_LOST_ERROR = "apply: dream lock lost before apply"
+LOCK_LOST_ERROR = pass_error("apply", "lock_lost")
+
+# Who cancels a pass, as its row records it.
+CancelCode = Literal["by_admin", "by_wipe"]
 
 
 class DreamPassCancel(BaseModel):
@@ -76,26 +82,38 @@ class DreamPassCancel(BaseModel):
 
 
 async def cancel_dream_pass(
-    pass_id: str, *, user_id: str, reason: str
+    pass_id: str,
+    *,
+    user_id: str,
+    reason: str,
+    by: CancelCode = "by_admin",
 ) -> DreamPassCancel:
     """Cancel *user_id*'s pass *pass_id* while it is open, then read its row
-    back; a batch it closed has its provider batch in flight cancelled too,
+    back. The row records ``cancelled: <by>``; *reason* goes to the log only
+    (a pass records only fixed codes, ``pass_errors.py``). A batch it closed
+    has its provider batch in flight cancelled too,
     best-effort (the executor drops that batch at its next poll whatever the
     provider says, see ``batch_deliveries.should_dispatch``). Unlike a pass's
     own writes, a store call that fails or runs out of time raises: the caller
     is answering a request, or about to erase the memory the pass would
     write."""
-    closed = await write_stop(pass_id, cancelled(reason, owner_user_id=user_id))
+    closed = await write_stop(
+        pass_id, cancelled(pass_error("cancelled", by), owner_user_id=user_id)
+    )
     record = await read_dream_pass(pass_id, user_id=user_id)
     if closed:
-        logger.info(f"Dream pass {pass_id} cancelled: {reason}")
+        logger.info(
+            "Dream pass %s cancelled: %s",
+            pass_id,
+            json.dumps(reason, ensure_ascii=False),
+        )
     if closed and record is not None and record.provider_batch_id:
         await cancel_provider_batch(record.provider_batch_id)
     return DreamPassCancel(cancelled=closed, record=record)
 
 
 async def cancel_open_passes(
-    scope: MemoryScope, *, user_id: str, reason: str
+    scope: MemoryScope, *, user_id: str, reason: str, by: CancelCode = "by_wipe"
 ) -> list[DreamPassCancel]:
     """Cancel every open pass of *scope*, one ``cancel_dream_pass`` each, for
     the wipe to call before it erases the scope's memory. Raises when the
@@ -106,7 +124,8 @@ async def cancel_open_passes(
     also wait for the scope's lock before it erases."""
     rows = await read_open_passes(scope)
     return [
-        await cancel_dream_pass(row.id, user_id=user_id, reason=reason) for row in rows
+        await cancel_dream_pass(row.id, user_id=user_id, reason=reason, by=by)
+        for row in rows
     ]
 
 

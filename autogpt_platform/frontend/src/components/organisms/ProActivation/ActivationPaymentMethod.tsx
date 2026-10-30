@@ -14,8 +14,14 @@ export function ActivationPaymentMethod() {
       ? portal
       : null;
   return (
-    <div className="flex items-center justify-between gap-3 rounded-large border border-zinc-200 px-4 py-3">
-      <div className="flex items-center gap-2 text-sm text-zinc-600">
+    <div
+      data-slot="activation-payment-method"
+      className="flex items-center justify-between gap-3 rounded-large border border-border-base px-4 py-3"
+    >
+      <div
+        data-slot="activation-payment-method-label"
+        className="flex items-center gap-2 text-sm text-foreground-secondary"
+      >
         <Icon icon={CreditCardIcon} size={18} />
         Payment method
       </div>

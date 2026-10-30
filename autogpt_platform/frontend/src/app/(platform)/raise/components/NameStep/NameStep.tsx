@@ -54,7 +54,7 @@ export function NameStep({
       {selectedName ? null : (
         <span
           aria-hidden
-          className="mr-4 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground"
+          className="mr-4 text-xs font-medium tracking-caps text-muted-foreground uppercase"
         >
           or
         </span>

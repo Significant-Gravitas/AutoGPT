@@ -44,8 +44,6 @@ async def test_baseline_follow_up_marks_only_the_injected_block() -> None:
         ),
         "get_or_create_sandbox": None,
         "_build_system_prompt": ("system prompt", None),
-        "is_enabled_for_user": True,
-        "is_feature_enabled": False,
         "build_builder_system_prompt_suffix": "",
         "build_budget_ctx": "",
         "build_session_context": "",

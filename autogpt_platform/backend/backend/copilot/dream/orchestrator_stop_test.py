@@ -194,9 +194,7 @@ class TestTheGuard:
         row = fake_dream_db.rows[other]
         assert row["status"] is DreamPassStatus.EXPIRED
         assert row["cancel_generation"] == 1
-        assert row["error"] == (
-            f"forced by an admin-triggered dream pass {result.pass_id}"
-        )
+        assert row["error"] == "expired: forced"
         assert fake_dream_db.rows[result.pass_id]["status"] is (
             DreamPassStatus.COMPLETE
         )
@@ -266,7 +264,7 @@ class TestTheStopChecks:
 
         result = await orchestrator_mod.execute_dream_pass("u")
 
-        assert result.error == "cancelled: testing"
+        assert result.error == "cancelled: by_admin"
         assert result.usage is not None
         assert [p.phase for p in result.usage.phases] == billed
         assert phases.await_count == len(billed)
@@ -276,7 +274,7 @@ class TestTheStopChecks:
         row = fake_dream_db.rows[result.pass_id]
         assert (row["status"], row["error"], row["cancel_generation"]) == (
             DreamPassStatus.CANCELLED,
-            "testing",
+            "cancelled: by_admin",
             1,
         )
         assert DreamPassStatus.ERRORED not in fake_dream_db.statuses(result.pass_id)
@@ -286,7 +284,9 @@ class TestTheStopChecks:
     ):
         async def expire() -> None:
             [pass_id] = list(fake_dream_db.rows)
-            await write_stop(pass_id, expired("forced", not_updated_since=None))
+            await write_stop(
+                pass_id, expired("expired: forced", not_updated_since=None)
+            )
 
         _phases(mocker, 1, expire)
 

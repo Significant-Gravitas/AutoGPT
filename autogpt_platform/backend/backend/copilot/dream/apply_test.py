@@ -3,7 +3,7 @@ calls are produced for each operation type.
 
 These tests do NOT touch FalkorDB or Prisma. apply.py is a pure
 fan-out: it builds MemoryEnvelopes for writes/proposals and delegates
-to ``enqueue_episode`` / ``create_chat_session`` / ``add_chat_message``
+to ``enqueue_episode`` / ``create_chat_session`` / ``add_dream_narrative``
 and, through its destructive stage (``demotions.py``), to
 ``supersede_unless_recalled`` / ``invalidate_entity_direct_neighbors``.
 Each of those is mocked here.
@@ -20,6 +20,7 @@ import pytest
 
 from backend.copilot.graphiti.guarded_writes import NeighbourWrites, WriteOutcome
 from backend.copilot.graphiti.ingest import IngestionCompletion
+from backend.copilot.graphiti.recall_citations import Citations
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.data.db_accessors import orgs_db as real_orgs_db
 
@@ -36,6 +37,15 @@ from .schemas import (
     EntityInvalidation,
     IngestionDrainStatus,
     ProposedFinding,
+)
+
+# What these passes read. Every write and proposal below cites some of it:
+# one citing nothing the pass read is dropped (``citations.py``).
+_READ_FACT = "f1"
+_READ_EPISODE = "ep-1"
+_READ = {"known_fact_uuids": {_READ_FACT}, "known_episode_uuids": {_READ_EPISODE}}
+_WRITE = ConsolidatedFact(
+    content="A likes B", confidence=0.8, source_episode_uuids=[_READ_EPISODE]
 )
 
 
@@ -104,14 +114,14 @@ def _stub_boundaries(mocker):
         return_value=mocker.MagicMock(session_id="s1")
     )
     database.update_chat_session_title = AsyncMock(return_value=True)
-    database.add_chat_message = AsyncMock(return_value=None)
+    database.add_dream_narrative = AsyncMock(return_value=None)
     mocker.patch("backend.data.db_accessors.chat_db", return_value=database)
     mocker.patch("backend.copilot.db.create_chat_session", database.create_chat_session)
     mocker.patch(
         "backend.copilot.db.update_chat_session_title",
         database.update_chat_session_title,
     )
-    mocker.patch("backend.copilot.db.add_chat_message", database.add_chat_message)
+    mocker.patch("backend.copilot.db.add_dream_narrative", database.add_dream_narrative)
     # _create_dream_session's tenant lookup. Unmocked it runs REAL Prisma
     # queries on this test's function-scoped event loop whenever an earlier
     # test already connected Prisma (its except swallows the failure when
@@ -144,12 +154,17 @@ def _stub_boundaries(mocker):
 async def test_writes_become_active_envelopes():
     ops = DreamOperations(
         writes=[
-            ConsolidatedFact(content="A likes B", confidence=0.8, scope="real:global")
+            ConsolidatedFact(
+                content="A likes B",
+                confidence=0.8,
+                scope="real:global",
+                source_episode_uuids=[_READ_EPISODE],
+            )
         ],
         summary_for_user="ok",
     )
     stats = await apply_mod.apply_operations(
-        scope=MemoryScope.for_user("u-1234567890ab"), pass_id="p-abc", ops=ops
+        scope=MemoryScope.for_user("u-1234567890ab"), pass_id="p-abc", ops=ops, **_READ
     )
 
     assert stats["consolidated_count"] == 1
@@ -184,7 +199,7 @@ async def test_proposals_become_tentative_envelopes():
         summary_for_user="ok",
     )
     await apply_mod.apply_operations(
-        scope=MemoryScope.for_user("u-x"), pass_id="p-2", ops=ops
+        scope=MemoryScope.for_user("u-x"), pass_id="p-2", ops=ops, **_READ
     )
     # First call was the consolidate write (there were no writes, so first call IS the proposal)
     call_kwargs = apply_mod.enqueue_episode.await_args.kwargs
@@ -431,7 +446,7 @@ async def test_empty_pass_creates_no_session_and_no_message():
     )
 
     copilot_db.create_chat_session.assert_not_awaited()
-    copilot_db.add_chat_message.assert_not_awaited()
+    copilot_db.add_dream_narrative.assert_not_awaited()
     apply_mod.enqueue_episode.assert_not_awaited()
     assert stats.get("session_id") is None
     assert stats["consolidated_count"] == 0
@@ -450,18 +465,21 @@ async def test_ops_with_empty_summary_still_create_session_with_placeholder():
     from backend.copilot import db as copilot_db
 
     ops = DreamOperations(
-        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        writes=[_WRITE],
         summary_for_user="",
     )
     stats = await apply_mod.apply_operations(
-        scope=MemoryScope.for_user("u-ph"), pass_id="p-ph", ops=ops
+        scope=MemoryScope.for_user("u-ph"), pass_id="p-ph", ops=ops, **_READ
     )
 
     copilot_db.create_chat_session.assert_awaited_once()
-    copilot_db.add_chat_message.assert_awaited_once()
-    msg_kwargs = copilot_db.add_chat_message.await_args.kwargs
-    assert msg_kwargs["role"] == "assistant"
-    assert msg_kwargs["content"] == "Dream pass completed with no narrative output."
+    copilot_db.add_dream_narrative.assert_awaited_once()
+    session_id, pass_id, content, erased = (
+        copilot_db.add_dream_narrative.await_args.args
+    )
+    assert (session_id, pass_id) == (stats["session_id"], "p-ph")
+    assert content == "Dream pass completed with no narrative output."
+    assert erased == "[forgotten]"
     assert isinstance(stats["session_id"], str) and stats["session_id"]
 
 
@@ -473,11 +491,11 @@ async def test_dream_session_titled_with_utc_date():
     from backend.copilot import db as copilot_db
 
     ops = DreamOperations(
-        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        writes=[_WRITE],
         summary_for_user="ok",
     )
     stats = await apply_mod.apply_operations(
-        scope=MemoryScope.for_user("u-title"), pass_id="p-title", ops=ops
+        scope=MemoryScope.for_user("u-title"), pass_id="p-title", ops=ops, **_READ
     )
 
     copilot_db.update_chat_session_title.assert_awaited_once()
@@ -501,15 +519,15 @@ async def test_title_failure_does_not_abort_apply(mocker):
         AsyncMock(side_effect=ConnectionError("db blip")),
     )
     ops = DreamOperations(
-        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        writes=[_WRITE],
         summary_for_user="ok",
     )
     stats = await apply_mod.apply_operations(
-        scope=MemoryScope.for_user("u-tf"), pass_id="p-tf", ops=ops
+        scope=MemoryScope.for_user("u-tf"), pass_id="p-tf", ops=ops, **_READ
     )
 
     assert stats["consolidated_count"] == 1
-    copilot_db.add_chat_message.assert_awaited_once()
+    copilot_db.add_dream_narrative.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -527,9 +545,10 @@ async def test_expert_dream_session_and_write_keep_expert_scope(mocker):
         expert_scope,
         "p1",
         0,
-        ConsolidatedFact(content="A likes B", confidence=0.8),
+        _WRITE,
         "session-1",
         IngestionCompletion(),
+        citations=Citations(episode_uuids=[_READ_EPISODE]),
     )
     assert apply_mod.enqueue_episode.call_args.args[0] == expert_scope
 
@@ -592,9 +611,10 @@ async def test_summary_written_after_memory_ops(mocker):
         scope=MemoryScope.for_user("u-1"),
         pass_id="p-1",
         ops=DreamOperations(
-            writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+            writes=[_WRITE],
             summary_for_user="done",
         ),
+        **_READ,
     )
 
     assert calls == ["write", "summary"], calls
@@ -619,11 +639,11 @@ async def test_apply_waits_for_ingestion_drain_before_reporting_counts(mocker):
         apply_mod, "wait_for_ingestion", AsyncMock(return_value=True)
     )
     ops = DreamOperations(
-        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        writes=[_WRITE],
         summary_for_user="ok",
     )
     stats = await apply_mod.apply_operations(
-        scope=MemoryScope.for_user("u-drain"), pass_id="p-drain", ops=ops
+        scope=MemoryScope.for_user("u-drain"), pass_id="p-drain", ops=ops, **_READ
     )
 
     drain.assert_awaited_once()
@@ -650,15 +670,12 @@ async def test_drain_timeout_reports_partial_visibility_not_failure(mocker, capl
 
     mocker.patch.object(apply_mod, "wait_for_ingestion", wrote_one_of_two)
     ops = DreamOperations(
-        writes=[
-            ConsolidatedFact(content="A likes B", confidence=0.8),
-            ConsolidatedFact(content="B likes C", confidence=0.8),
-        ],
+        writes=[_WRITE, _WRITE.model_copy(update={"content": "B likes C"})],
         summary_for_user="ok",
     )
     with caplog.at_level(logging.WARNING, logger=apply_mod.logger.name):
         stats = await apply_mod.apply_operations(
-            scope=MemoryScope.for_user("u-slow"), pass_id="p-slow", ops=ops
+            scope=MemoryScope.for_user("u-slow"), pass_id="p-slow", ops=ops, **_READ
         )
 
     assert stats["ingestion_drain_status"] is IngestionDrainStatus.timed_out
@@ -686,18 +703,20 @@ async def test_counts_only_what_the_worker_wrote_of_each_kind(mocker):
 
     mocker.patch.object(apply_mod, "wait_for_ingestion", worker)
     ops = DreamOperations(
-        writes=[
-            ConsolidatedFact(content="A likes B", confidence=0.8),
-            ConsolidatedFact(content="B likes C", confidence=0.8),
-        ],
+        writes=[_WRITE, _WRITE.model_copy(update={"content": "B likes C"})],
         proposals=[
-            ProposedFinding(content="A may like C", confidence=0.5, rationale="r")
+            ProposedFinding(
+                content="A may like C",
+                confidence=0.5,
+                rationale="r",
+                source_episode_uuids=[_READ_EPISODE],
+            )
         ],
         summary_for_user="ok",
     )
 
     stats = await apply_mod.apply_operations(
-        scope=MemoryScope.for_user("u-kinds"), pass_id="p-kinds", ops=ops
+        scope=MemoryScope.for_user("u-kinds"), pass_id="p-kinds", ops=ops, **_READ
     )
 
     assert stats["ingestion_drain_status"] is IngestionDrainStatus.timed_out
@@ -715,7 +734,7 @@ async def test_zero_drain_timeout_skips_wait_and_reports_skipped(mocker, caplog)
         apply_mod, "wait_for_ingestion", AsyncMock(return_value=True)
     )
     ops = DreamOperations(
-        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        writes=[_WRITE],
         summary_for_user="ok",
     )
     with caplog.at_level(logging.INFO, logger=apply_mod.logger.name):
@@ -723,6 +742,7 @@ async def test_zero_drain_timeout_skips_wait_and_reports_skipped(mocker, caplog)
             scope=MemoryScope.for_user("u-batch"),
             pass_id="p-batch",
             ops=ops,
+            **_READ,
             ingestion_drain_timeout=apply_mod.BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS,
         )
 
@@ -759,13 +779,14 @@ async def test_sync_path_renews_lock_before_drain(mocker):
     lock_handle = mocker.MagicMock()
     lock_handle.extend = AsyncMock(return_value=True)
     ops = DreamOperations(
-        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        writes=[_WRITE],
         summary_for_user="ok",
     )
     await apply_mod.apply_operations(
         scope=MemoryScope.for_user("u-lock"),
         pass_id="p-lock",
         ops=ops,
+        **_READ,
         lock_handle=lock_handle,
     )
 
@@ -784,7 +805,7 @@ async def test_failed_lock_renewal_aborts_before_drain_and_demotions(mocker):
     lock_handle = mocker.MagicMock()
     lock_handle.extend = AsyncMock(return_value=False)
     ops = DreamOperations(
-        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        writes=[_WRITE],
         summary_for_user="ok",
     )
 
@@ -793,6 +814,7 @@ async def test_failed_lock_renewal_aborts_before_drain_and_demotions(mocker):
             scope=MemoryScope.for_user("u-lost"),
             pass_id="p-lost",
             ops=ops,
+            **_READ,
             lock_handle=lock_handle,
         )
 
@@ -815,10 +837,7 @@ async def test_a_lock_renewal_redis_does_not_answer_aborts_before_drain(mocker):
 
     lock_handle = mocker.MagicMock()
     lock_handle.extend = never_answers
-    ops = DreamOperations(
-        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
-        summary_for_user="ok",
-    )
+    ops = DreamOperations(writes=[_WRITE], summary_for_user="ok")
 
     with pytest.raises(DreamLockLostError):
         await asyncio.wait_for(
@@ -827,6 +846,7 @@ async def test_a_lock_renewal_redis_does_not_answer_aborts_before_drain(mocker):
                 pass_id="p-slow",
                 ops=ops,
                 lock_handle=lock_handle,
+                **_READ,
             ),
             5,
         )
@@ -1013,7 +1033,11 @@ async def test_apply_operations_returns_snapshot_with_per_op_detail(mocker):
         summary_for_user="ok",
     )
     stats = await apply_mod.apply_operations(
-        scope=MemoryScope.for_user("u-snap"), pass_id="p-snap", ops=ops
+        scope=MemoryScope.for_user("u-snap"),
+        pass_id="p-snap",
+        ops=ops,
+        known_fact_uuids={"f1", "d1"},
+        known_episode_uuids={"ep-1", "ep-2"},
     )
 
     snap = stats["snapshot"]

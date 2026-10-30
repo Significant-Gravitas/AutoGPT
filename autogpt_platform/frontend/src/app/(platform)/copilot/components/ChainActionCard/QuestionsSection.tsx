@@ -17,6 +17,7 @@ import {
 import type { QuestionRequest } from "./helpers";
 import { QuestionAnswerField } from "./QuestionAnswerField";
 import { QuestionMultiAnswerField } from "./QuestionMultiAnswerField";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   requests: QuestionRequest[];
@@ -60,17 +61,21 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
 
   return (
     <>
-      <div className="flex items-center justify-between gap-2.5 border-b border-zinc-100 px-4 py-3">
+      <div className="flex items-center justify-between gap-2.5 border-b border-separator px-4 py-3">
         <span className="flex items-center gap-2.5">
-          <Icon icon={Message01Icon} size={18} className="text-zinc-400" />
-          <span className="text-sm font-medium text-zinc-900">
+          <Icon
+            icon={Message01Icon}
+            size={18}
+            className="text-foreground-subtle"
+          />
+          <Text variant="body-medium-tight" as="span" tone="primary">
             Answer a few questions
-          </span>
+          </Text>
         </span>
         <button
           type="button"
           onClick={() => requests.forEach((req) => req.onSkip())}
-          className="rounded-full px-2 py-0.5 text-xs text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600"
+          className="rounded-full px-2 py-0.5 text-xs text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-secondary"
         >
           Skip
         </button>
@@ -81,11 +86,11 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
-        className="flex flex-col gap-4 px-5 pb-4 pt-5"
+        className="flex flex-col gap-4 px-5 pt-5 pb-4"
       >
         <span
           id={labelId}
-          className="text-lg font-medium leading-snug text-zinc-900"
+          className="text-lg leading-snug font-medium text-foreground-strong"
         >
           {question.question}
         </span>
@@ -115,14 +120,14 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
         )}
       </m.div>
 
-      <div className="flex items-center justify-between px-5 pb-4 pt-1">
+      <div className="flex items-center justify-between px-5 pt-1 pb-4">
         <span className="flex items-center gap-2">
           <button
             type="button"
             aria-label="Previous question"
             disabled={current === 0}
             onClick={() => setStep(current - 1)}
-            className="flex size-6 items-center justify-center rounded-lg text-zinc-400 transition-colors enabled:hover:bg-zinc-100 enabled:hover:text-zinc-600 disabled:opacity-35"
+            className="flex size-6 items-center justify-center rounded-lg text-foreground-subtle transition-colors enabled:hover:bg-surface-hover enabled:hover:text-foreground-secondary disabled:opacity-35"
           >
             <Icon icon={ArrowLeft01Icon} size={14} />
           </button>
@@ -137,10 +142,10 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
                 className={
                   "rounded-full transition-all duration-300 " +
                   (i === current
-                    ? "size-2.5 border-2 border-zinc-800"
+                    ? "size-2.5 border-2 border-action"
                     : i < current
-                      ? "size-2 bg-zinc-400"
-                      : "size-2 border border-zinc-300")
+                      ? "size-2 bg-foreground-subtle"
+                      : "size-2 border border-border-strong")
                 }
               />
             ))}
@@ -150,7 +155,7 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
             aria-label="Next question"
             disabled={isLast}
             onClick={() => setStep(current + 1)}
-            className="flex size-6 items-center justify-center rounded-lg text-zinc-400 transition-colors enabled:hover:bg-zinc-100 enabled:hover:text-zinc-600 disabled:opacity-35"
+            className="flex size-6 items-center justify-center rounded-lg text-foreground-subtle transition-colors enabled:hover:bg-surface-hover enabled:hover:text-foreground-secondary disabled:opacity-35"
           >
             <Icon icon={ArrowRight01Icon} size={14} />
           </button>
@@ -164,8 +169,8 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
           className={
             "flex size-8 items-center justify-center rounded-full transition-all duration-200 enabled:active:scale-95 " +
             (actionEnabled
-              ? "bg-zinc-800 text-white hover:bg-zinc-900"
-              : "bg-zinc-100 text-zinc-400")
+              ? "bg-action text-action-foreground hover:bg-action-hover"
+              : "bg-surface-hover text-foreground-subtle")
           }
         >
           <Icon icon={isLast ? SentIcon : ArrowRight01Icon} size={15} />

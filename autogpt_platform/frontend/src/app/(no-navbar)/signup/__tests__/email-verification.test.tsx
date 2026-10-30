@@ -10,6 +10,7 @@ import {
 } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { Toaster } from "@/components/molecules/Toast/toaster";
+import { UNDELIVERABLE_EMAIL_CODE } from "@/lib/auth/undeliverable-email";
 import SignupPage from "../page";
 
 const mockSignupAction = vi.hoisted(() => vi.fn());
@@ -209,6 +210,41 @@ describe("SignupPage with email verification required", () => {
       await screen.findByRole("button", { name: "Resend email in 60s" }),
     ).toHaveProperty("disabled", true);
     expect(await screen.findByText(`Email sent to ${email}`)).toBeDefined();
+  });
+
+  test("says the address can't receive mail, not that it sent, when Resend is refused", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    server.use(
+      http.post("*/api/auth/send-verification-email", () =>
+        HttpResponse.json(
+          {
+            code: UNDELIVERABLE_EMAIL_CODE,
+            message:
+              "We can't deliver email to this address. Check it, or use a different one.",
+          },
+          { status: 400 },
+        ),
+      ),
+    );
+    verificationRequired();
+    render(
+      <>
+        <SignupPage />
+        <Toaster />
+      </>,
+    );
+
+    submitSignupForm();
+    await screen.findByRole("heading", { name: "Check your inbox" });
+    await waitOutCooldown();
+    fireEvent.click(screen.getByRole("button", { name: "Resend email" }));
+
+    expect(
+      await screen.findByText("We can't deliver email to this address"),
+    ).toBeDefined();
+    expect(screen.getByText("Check it, or use a different one.")).toBeDefined();
+    expect(screen.queryByText(`Email sent to ${email}`)).toBeNull();
+    expect(screen.queryByText("We couldn't send the email")).toBeNull();
   });
 
   test("start again returns to the form with the address cleared", async () => {

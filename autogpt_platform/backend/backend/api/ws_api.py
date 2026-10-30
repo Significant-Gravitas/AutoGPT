@@ -8,7 +8,7 @@ from autogpt_libs.auth.jwt_utils import parse_jwt_token_async
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
 
-from backend.api.conn_manager import ConnectionManager
+from backend.api.conn_manager import ConnectionManager, _is_ws_close_race
 from backend.api.model import (
     WSMessage,
     WSMethod,
@@ -16,10 +16,11 @@ from backend.api.model import (
     WSSubscribeGraphExecutionsRequest,
 )
 from backend.api.utils.cors import build_cors_params
-from backend.data import db, redis_client
-from backend.data.user import DEFAULT_USER_ID, is_user_banned
+from backend.data import redis_client
+from backend.data.user import is_user_banned
 from backend.monitoring.instrumentation import (
     instrument_fastapi,
+    start_metrics_server,
     update_websocket_connections,
 )
 from backend.util.service import AppProcess
@@ -33,38 +34,26 @@ ACCOUNT_BANNED_CLOSE_CODE = 4004
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Prisma is needed to resolve graph_id from graph_exec_id on subscribe.
-    await db.connect()
-    # Eager connect to fail-fast if Redis is unreachable.
+    # No Prisma: reads go through the DatabaseManager (db_accessors), so this
+    # server needs no database URL. Eager Redis connect to fail fast.
     await redis_client.get_redis_async()
     try:
         yield
     finally:
-        # Each cleanup is wrapped so one failure doesn't block the rest. The
-        # Redis close silences asyncio's "Unclosed ClusterNode" GC warning at
-        # interpreter shutdown.
+        # Silences asyncio's "Unclosed ClusterNode" GC warning at shutdown.
         try:
             await redis_client.disconnect_async()
         except Exception:
             logger.warning("redis_client.disconnect_async failed", exc_info=True)
-        try:
-            await db.disconnect()
-        except Exception:
-            logger.warning("db.disconnect failed", exc_info=True)
 
 
 docs_url = "/docs" if settings.config.app_env == AppEnvironment.LOCAL else None
 app = FastAPI(lifespan=lifespan, docs_url=docs_url)
 _connection_manager = None
 
-# Add Prometheus instrumentation
-instrument_fastapi(
-    app,
-    service_name="websocket-server",
-    expose_endpoint=True,
-    endpoint="/metrics",
-    include_in_schema=settings.config.app_env == AppEnvironment.LOCAL,
-)
+# Add Prometheus instrumentation. The metrics are served by WebsocketServer.run
+# on their own port, never on this public app.
+instrument_fastapi(app, service_name="websocket-server", expose_endpoint=False)
 
 
 def get_connection_manager():
@@ -75,9 +64,6 @@ def get_connection_manager():
 
 
 async def authenticate_websocket(websocket: WebSocket) -> str:
-    if not settings.config.enable_auth:
-        return DEFAULT_USER_ID
-
     token = websocket.query_params.get("token")
     if not token:
         await websocket.close(code=4001, reason="Missing authentication token")
@@ -317,9 +303,19 @@ async def websocket_router(
                 )
                 continue
             except Exception as e:
+                # The client left mid-handler: there is no one to reply to.
+                if _is_ws_close_race(e, websocket):
+                    break
                 logger.error(
                     f"Error while handling '{message.method.value}' message "
                     f"for user #{user_id}: {e}"
+                )
+                await websocket.send_text(
+                    WSMessage(
+                        method=WSMethod.ERROR,
+                        success=False,
+                        error=f"Could not handle '{message.method.value}'; retry",
+                    ).model_dump_json()
                 )
                 continue
 
@@ -382,6 +378,7 @@ class WebsocketServer(AppProcess):
             allow_headers=["*"],
         )
 
+        start_metrics_server(Config().websocket_server_metrics_port)
         uvicorn.run(
             server_app,
             host=Config().websocket_server_host,

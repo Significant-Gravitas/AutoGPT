@@ -1,6 +1,6 @@
 import { SESSION_LIST_REFETCH_INTERVAL_MS } from "@/app/(platform)/copilot/useSessionList";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import { server } from "@/mocks/mock-server";
 import {
   act,
@@ -74,6 +74,9 @@ async function settle() {
 
 async function loadOlderChats() {
   fireEvent.click(await screen.findByRole("button", { name: /load more/i }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Load all Otto chats" }),
+  );
   await screen.findByText("Chat 74");
   await settle();
 }
