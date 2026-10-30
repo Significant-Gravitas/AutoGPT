@@ -39,12 +39,15 @@ export function getPostHogSessionHeader(): Record<string, string> {
 }
 
 // A link to the replay of this session, from a few seconds before now, for a
-// bug report to show what the person did. Empty unless the session is being
-// recorded, under the same rules as the session header.
+// bug report to show what the person did. Empty unless the session's
+// recording is uploaded, under the same rules as the session header: a
+// sampled-out or still-buffering session runs the recorder but sends nothing,
+// so its link would lead nowhere.
 export function getPostHogReplayUrl(): string {
   if (!isOwnSessionShareable()) return "";
   try {
-    if (!posthog.sessionRecordingStarted()) return "";
+    const status = posthog.sessionRecording?.status;
+    if (status !== "active" && status !== "sampled") return "";
     return posthog.get_session_replay_url({
       withTimestamp: true,
       timestampLookBack: REPLAY_LOOK_BACK_SECONDS,

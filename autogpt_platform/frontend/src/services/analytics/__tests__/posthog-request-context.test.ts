@@ -11,7 +11,7 @@ const { posthog } = vi.hoisted(() => ({
   posthog: {
     __loaded: true,
     get_session_id: vi.fn(() => "0192f0c4-5f4e-7b4c-9d6e-1a2b3c4d5e6f"),
-    sessionRecordingStarted: vi.fn(() => true),
+    sessionRecording: { status: "active" } as { status: string } | undefined,
     get_session_replay_url: vi.fn(
       () => "https://eu.posthog.com/project/1/replay/session-1?t=10",
     ),
@@ -39,7 +39,7 @@ function event(): CaptureResult {
 beforeEach(() => {
   configureCookiebot();
   posthog.__loaded = true;
-  posthog.sessionRecordingStarted.mockReturnValue(true);
+  posthog.sessionRecording = { status: "active" };
   ImpersonationState.clear();
 });
 
@@ -122,9 +122,26 @@ describe("getPostHogReplayUrl", () => {
     expect(getPostHogReplayUrl()).toBe("");
   });
 
-  it("gives nothing when the session isn't being recorded", () => {
+  it("links a sampled-in session too", () => {
     installCookiebot({ statistics: true });
-    posthog.sessionRecordingStarted.mockReturnValue(false);
+    posthog.sessionRecording = { status: "sampled" };
+
+    expect(getPostHogReplayUrl()).toBe(REPLAY);
+  });
+
+  it.each(["disabled", "buffering", "paused", "lazy_loading"])(
+    "gives nothing while the recording is %s, since nothing is uploaded",
+    (status) => {
+      installCookiebot({ statistics: true });
+      posthog.sessionRecording = { status };
+
+      expect(getPostHogReplayUrl()).toBe("");
+    },
+  );
+
+  it("gives nothing before session recording has loaded", () => {
+    installCookiebot({ statistics: true });
+    posthog.sessionRecording = undefined;
 
     expect(getPostHogReplayUrl()).toBe("");
   });
