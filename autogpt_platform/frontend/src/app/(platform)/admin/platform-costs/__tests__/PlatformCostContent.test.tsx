@@ -132,10 +132,6 @@ const logsWithData: PlatformCostLogsResponse = {
   },
 };
 
-function renderComponent(searchParams = {}) {
-  return render(<PlatformCostContent searchParams={searchParams} />);
-}
-
 describe("PlatformCostContent", () => {
   it("shows loading state initially", () => {
     mockUseGetDashboard.mockReturnValue({ data: undefined, isLoading: true });
@@ -148,18 +144,7 @@ describe("PlatformCostContent", () => {
   });
 
   it("renders empty dashboard", async () => {
-    mockUseGetDashboard.mockReturnValue({
-      data: emptyDashboard,
-      isLoading: false,
-    });
-    mockUseGetLogs.mockReturnValue({
-      data: emptyLogs,
-      isLoading: false,
-    });
-    renderComponent();
-    await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
-    );
+    await renderLoaded(emptyDashboard, emptyLogs);
     // Known Cost and Estimated Total cards render $0.0000
     // "Known Cost" appears in both the SummaryCard and the ProviderTable header
     expect(screen.getAllByText("Known Cost").length).toBeGreaterThanOrEqual(1);
@@ -172,18 +157,7 @@ describe("PlatformCostContent", () => {
   });
 
   it("renders dashboard with provider data", async () => {
-    mockUseGetDashboard.mockReturnValue({
-      data: dashboardWithData,
-      isLoading: false,
-    });
-    mockUseGetLogs.mockReturnValue({
-      data: logsWithData,
-      isLoading: false,
-    });
-    renderComponent();
-    await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
-    );
+    await renderLoaded(dashboardWithData, logsWithData);
     expect(screen.getByText("$5.0000")).toBeDefined();
     expect(screen.getByText("100")).toBeDefined();
     // "5" appears in multiple places (Active Users card + bucket count),
@@ -194,18 +168,7 @@ describe("PlatformCostContent", () => {
   });
 
   it("renders tracking type badges", async () => {
-    mockUseGetDashboard.mockReturnValue({
-      data: dashboardWithData,
-      isLoading: false,
-    });
-    mockUseGetLogs.mockReturnValue({
-      data: logsWithData,
-      isLoading: false,
-    });
-    renderComponent();
-    await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
-    );
+    await renderLoaded(dashboardWithData, logsWithData);
     expect(screen.getByText("tokens")).toBeDefined();
     expect(screen.getByText("per_run")).toBeDefined();
   });
@@ -229,33 +192,14 @@ describe("PlatformCostContent", () => {
   });
 
   it("renders tab buttons", async () => {
-    mockUseGetDashboard.mockReturnValue({
-      data: emptyDashboard,
-      isLoading: false,
-    });
-    mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
-    renderComponent();
-    await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
-    );
+    await renderLoaded(emptyDashboard, emptyLogs);
     expect(screen.getByText("By Provider")).toBeDefined();
     expect(screen.getByText("By User")).toBeDefined();
     expect(screen.getByText("Raw Logs")).toBeDefined();
   });
 
   it("renders summary cards with correct labels", async () => {
-    mockUseGetDashboard.mockReturnValue({
-      data: dashboardWithData,
-      isLoading: false,
-    });
-    mockUseGetLogs.mockReturnValue({
-      data: logsWithData,
-      isLoading: false,
-    });
-    renderComponent();
-    await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
-    );
+    await renderLoaded(dashboardWithData, logsWithData);
     // Original 4 cards
     expect(screen.getAllByText("Known Cost").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Estimated Total")).toBeDefined();
@@ -274,18 +218,7 @@ describe("PlatformCostContent", () => {
   });
 
   it("renders cost distribution buckets", async () => {
-    mockUseGetDashboard.mockReturnValue({
-      data: dashboardWithData,
-      isLoading: false,
-    });
-    mockUseGetLogs.mockReturnValue({
-      data: logsWithData,
-      isLoading: false,
-    });
-    renderComponent();
-    await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
-    );
+    await renderLoaded(dashboardWithData, logsWithData);
     expect(screen.getByText("Cost Distribution by Bucket")).toBeDefined();
     expect(screen.getByText("$0-0.50")).toBeDefined();
     expect(screen.getByText("$0.50-1")).toBeDefined();
@@ -295,18 +228,7 @@ describe("PlatformCostContent", () => {
   });
 
   it("renders new summary card values from fixture data", async () => {
-    mockUseGetDashboard.mockReturnValue({
-      data: dashboardWithData,
-      isLoading: false,
-    });
-    mockUseGetLogs.mockReturnValue({
-      data: logsWithData,
-      isLoading: false,
-    });
-    renderComponent();
-    await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
-    );
+    await renderLoaded(dashboardWithData, logsWithData);
     // Avg Input Tokens: 2500 formatted
     expect(screen.getByText("2,500")).toBeDefined();
     // Avg Output Tokens: 1000 formatted
@@ -316,18 +238,7 @@ describe("PlatformCostContent", () => {
   });
 
   it("renders user table avg cost column with fixture data", async () => {
-    mockUseGetDashboard.mockReturnValue({
-      data: dashboardWithData,
-      isLoading: false,
-    });
-    mockUseGetLogs.mockReturnValue({
-      data: logsWithData,
-      isLoading: false,
-    });
-    renderComponent({ tab: "by-user" });
-    await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
-    );
+    await renderLoaded(dashboardWithData, logsWithData, { tab: "by-user" });
     // User table should show Avg Cost / Req header
     expect(screen.getByText("Avg Cost / Req")).toBeDefined();
     // Input/Output token columns
@@ -336,15 +247,7 @@ describe("PlatformCostContent", () => {
   });
 
   it("renders filter inputs", async () => {
-    mockUseGetDashboard.mockReturnValue({
-      data: emptyDashboard,
-      isLoading: false,
-    });
-    mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
-    renderComponent();
-    await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
-    );
+    await renderLoaded(emptyDashboard, emptyLogs);
     expect(screen.getByText("Start Date")).toBeDefined();
     expect(screen.getByText("End Date")).toBeDefined();
     expect(screen.getAllByText(/Provider/i).length).toBeGreaterThanOrEqual(1);
@@ -353,29 +256,15 @@ describe("PlatformCostContent", () => {
   });
 
   it("renders execution ID filter input", async () => {
-    mockUseGetDashboard.mockReturnValue({
-      data: emptyDashboard,
-      isLoading: false,
-    });
-    mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
-    renderComponent();
-    await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
-    );
+    await renderLoaded(emptyDashboard, emptyLogs);
     expect(screen.getByText("Execution ID")).toBeDefined();
     expect(screen.getByPlaceholderText("Filter by execution")).toBeDefined();
   });
 
   it("pre-fills execution ID filter from searchParams", async () => {
-    mockUseGetDashboard.mockReturnValue({
-      data: emptyDashboard,
-      isLoading: false,
+    await renderLoaded(emptyDashboard, emptyLogs, {
+      graph_exec_id: "exec-123",
     });
-    mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
-    renderComponent({ graph_exec_id: "exec-123" });
-    await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
-    );
     const input = screen.getByPlaceholderText(
       "Filter by execution",
     ) as HTMLInputElement;
@@ -383,15 +272,9 @@ describe("PlatformCostContent", () => {
   });
 
   it("clears execution ID input on Clear click", async () => {
-    mockUseGetDashboard.mockReturnValue({
-      data: emptyDashboard,
-      isLoading: false,
+    await renderLoaded(emptyDashboard, emptyLogs, {
+      graph_exec_id: "exec-123",
     });
-    mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
-    renderComponent({ graph_exec_id: "exec-123" });
-    await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
-    );
     fireEvent.click(screen.getByText("Clear"));
     const input = screen.getByPlaceholderText(
       "Filter by execution",
@@ -400,15 +283,7 @@ describe("PlatformCostContent", () => {
   });
 
   it("passes execution ID to filter on Apply click", async () => {
-    mockUseGetDashboard.mockReturnValue({
-      data: emptyDashboard,
-      isLoading: false,
-    });
-    mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
-    renderComponent();
-    await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
-    );
+    await renderLoaded(emptyDashboard, emptyLogs);
     const input = screen.getByPlaceholderText(
       "Filter by execution",
     ) as HTMLInputElement;
@@ -422,18 +297,7 @@ describe("PlatformCostContent", () => {
   it("copies execution ID to clipboard on cell click in logs tab", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
-    mockUseGetDashboard.mockReturnValue({
-      data: dashboardWithData,
-      isLoading: false,
-    });
-    mockUseGetLogs.mockReturnValue({
-      data: logsWithData,
-      isLoading: false,
-    });
-    renderComponent({ tab: "logs" });
-    await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
-    );
+    await renderLoaded(dashboardWithData, logsWithData, { tab: "logs" });
     // The exec ID cell shows first 8 chars of "gx-123"
     const execIdCell = screen.getByText("gx-123".slice(0, 8));
     fireEvent.click(execIdCell);
@@ -441,57 +305,12 @@ describe("PlatformCostContent", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders by-user tab when specified", async () => {
-    mockUseGetDashboard.mockReturnValue({
-      data: dashboardWithData,
-      isLoading: false,
-    });
-    mockUseGetLogs.mockReturnValue({
-      data: logsWithData,
-      isLoading: false,
-    });
-    renderComponent({ tab: "by-user" });
-    await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
-    );
-    expect(screen.getByText("alice@example.com")).toBeDefined();
-  });
-
-  it("renders logs tab when specified", async () => {
-    mockUseGetDashboard.mockReturnValue({
-      data: dashboardWithData,
-      isLoading: false,
-    });
-    mockUseGetLogs.mockReturnValue({
-      data: logsWithData,
-      isLoading: false,
-    });
-    renderComponent({ tab: "logs" });
-    await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
-    );
-    expect(screen.getByText("LLMBlock")).toBeDefined();
-    expect(screen.getByText("gpt-4")).toBeDefined();
-  });
-
   it("renders no logs message when empty", async () => {
-    mockUseGetDashboard.mockReturnValue({
-      data: emptyDashboard,
-      isLoading: false,
-    });
-    mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
-    renderComponent({ tab: "logs" });
-    await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
-    );
+    await renderLoaded(emptyDashboard, emptyLogs, { tab: "logs" });
     expect(screen.getByText("No logs found")).toBeDefined();
   });
 
   it("shows pagination when multiple pages", async () => {
-    mockUseGetDashboard.mockReturnValue({
-      data: dashboardWithData,
-      isLoading: false,
-    });
     const multiPageLogs: PlatformCostLogsResponse = {
       logs: logsWithData.logs,
       pagination: {
@@ -501,14 +320,7 @@ describe("PlatformCostContent", () => {
         total_pages: 4,
       },
     };
-    mockUseGetLogs.mockReturnValue({
-      data: multiPageLogs,
-      isLoading: false,
-    });
-    renderComponent({ tab: "logs" });
-    await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
-    );
+    await renderLoaded(dashboardWithData, multiPageLogs, { tab: "logs" });
     expect(screen.getByText("Previous")).toBeDefined();
     expect(screen.getByText("Next")).toBeDefined();
     expect(screen.getByText(/Page 1 of 4/)).toBeDefined();
@@ -528,55 +340,26 @@ describe("PlatformCostContent", () => {
         },
       ],
     };
-    mockUseGetDashboard.mockReturnValue({
-      data: dashWithNullEmail,
-      isLoading: false,
-    });
-    mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
-    renderComponent({ tab: "by-user" });
-    await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
-    );
+    await renderLoaded(dashWithNullEmail, emptyLogs, { tab: "by-user" });
     expect(screen.getByText("Unknown")).toBeDefined();
   });
 
   it("by-user tab content visible when tab=by-user param set", async () => {
-    mockUseGetDashboard.mockReturnValue({
-      data: dashboardWithData,
-      isLoading: false,
-    });
-    mockUseGetLogs.mockReturnValue({
-      data: logsWithData,
-      isLoading: false,
-    });
-    renderComponent({ tab: "by-user" });
-    await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
-    );
+    await renderLoaded(dashboardWithData, logsWithData, { tab: "by-user" });
     expect(screen.getByText("alice@example.com")).toBeDefined();
     // overview tab content should not be visible
     expect(screen.queryByText("openai")).toBeNull();
   });
 
   it("logs tab content visible when tab=logs param set", async () => {
-    mockUseGetDashboard.mockReturnValue({
-      data: dashboardWithData,
-      isLoading: false,
-    });
-    mockUseGetLogs.mockReturnValue({
-      data: logsWithData,
-      isLoading: false,
-    });
-    renderComponent({ tab: "logs" });
-    await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
-    );
+    await renderLoaded(dashboardWithData, logsWithData, { tab: "logs" });
     expect(screen.getByText("LLMBlock")).toBeDefined();
     expect(screen.getByText("gpt-4")).toBeDefined();
   });
 
   it("renders log with null user as dash", async () => {
     const logWithNullUser: PlatformCostLogsResponse = {
+      ...logsWithData,
       logs: [
         {
           id: "log-2",
@@ -595,25 +378,8 @@ describe("PlatformCostContent", () => {
           model: "claude-opus-4-20250514",
         },
       ],
-      pagination: {
-        current_page: 1,
-        page_size: 50,
-        total_items: 1,
-        total_pages: 1,
-      },
     };
-    mockUseGetDashboard.mockReturnValue({
-      data: emptyDashboard,
-      isLoading: false,
-    });
-    mockUseGetLogs.mockReturnValue({
-      data: logWithNullUser,
-      isLoading: false,
-    });
-    renderComponent({ tab: "logs" });
-    await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
-    );
+    await renderLoaded(emptyDashboard, logWithNullUser, { tab: "logs" });
     expect(screen.getByText("copilot:SDK")).toBeDefined();
     expect(screen.getByText("anthropic")).toBeDefined();
     // null email + null user_id renders as "-" in the User column; multiple
@@ -623,31 +389,38 @@ describe("PlatformCostContent", () => {
   });
 
   it("labels a chat's cost row as a chat, and a graph run's by its id", async () => {
-    mockUseGetDashboard.mockReturnValue({
-      data: emptyDashboard,
-      isLoading: false,
-    });
-    mockUseGetLogs.mockReturnValue({
-      data: {
-        ...logsWithData,
-        logs: [
-          logsWithData.logs[0],
-          {
-            ...logsWithData.logs[0],
-            id: "log-chat",
-            graph_exec_id: null,
-            chat_session_id: "5e551011-aaaa-bbbb-cccc-000000000000",
-            block_name: "copilot:SDK",
-          },
-        ],
-      },
-      isLoading: false,
-    });
-    renderComponent({ tab: "logs" });
-    await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
-    );
+    const chatAndGraphLogs: PlatformCostLogsResponse = {
+      ...logsWithData,
+      logs: [
+        logsWithData.logs[0],
+        {
+          ...logsWithData.logs[0],
+          id: "log-chat",
+          graph_exec_id: null,
+          chat_session_id: "5e551011-aaaa-bbbb-cccc-000000000000",
+          block_name: "copilot:SDK",
+        },
+      ],
+    };
+    await renderLoaded(emptyDashboard, chatAndGraphLogs, { tab: "logs" });
     expect(screen.getByText("Chat 5e551011")).toBeDefined();
     expect(screen.getByText("gx-123")).toBeDefined();
   });
 });
+
+async function renderLoaded(
+  dashboard: PlatformCostDashboard,
+  logs: PlatformCostLogsResponse,
+  searchParams = {},
+) {
+  mockUseGetDashboard.mockReturnValue({ data: dashboard, isLoading: false });
+  mockUseGetLogs.mockReturnValue({ data: logs, isLoading: false });
+  renderComponent(searchParams);
+  await waitFor(() =>
+    expect(document.querySelector(".animate-pulse")).toBeNull(),
+  );
+}
+
+function renderComponent(searchParams = {}) {
+  return render(<PlatformCostContent searchParams={searchParams} />);
+}
