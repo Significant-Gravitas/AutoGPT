@@ -74,18 +74,28 @@ SKILLS_ONLY_ROSTER = ("Devon", "Riley", "Jordan")
 OPERATIONS_EXPERTS = ("Harper", "Vera", "Ellis")
 FINANCE_AND_ANALYTICS_EXPERTS = ("Mina", "Theo", "Quinn")
 
-# A preload cadence fires unattended from the day of hire, so it may only go on
-# a workflow that acts on nothing outside the platform (PreloadSeed.cron). The
-# marketplace reviewer is the real gate; this is the list of workflows we have
-# checked, so scheduling a new one is a deliberate edit here.
-UNATTENDED_SAFE_PRELOADS = {"personalized-morning-coffee-newsletter"}
+# A preload cadence fires unattended on every new hire, so it may only go on a
+# workflow that acts on nothing outside the platform (PreloadSeed.cron), at a
+# cadence we have reviewed: a typo such as "* * * * *" burns users' credits, and
+# the catalog's own check only requires a string. Scheduling a new workflow, or
+# a new cron on one listed here, is a deliberate edit to this map.
+UNATTENDED_SAFE_PRELOADS = {
+    "personalized-morning-coffee-newsletter": {"40 7 * * *", "0 8 * * 1"},
+}
 _WEEKDAYS = "monday|tuesday|wednesday|thursday|friday|saturday|sunday"
 # A day-one title or timing that reads as a recurring cadence or a time of
-# day ("weekly", "every Monday", "9am", "at 09:00"): "day 1", "on request",
-# "after CRM export" and "with every ad" pass.
+# day ("weekly", "every Monday", "twice a week", "9am", "at 09:00"): "day 1",
+# "on request", "after CRM export", "once your numbers are connected" and
+# "with every ad" pass.
+_CLOCK_PERIODS = (
+    "days?|weeks?|months?|quarters?|years?|hours?|mornings?|evenings?|nights?"
+    rf"|weekdays?|business days?|{_WEEKDAYS}"
+)
 _CLOCK_COPY = re.compile(
-    r"\b(?:daily|weekly|fortnightly|monthly|quarterly|nightly|hourly"
-    rf"|(?:every|each) (?:day|week|month|morning|evening|night|weekday|{_WEEKDAYS})"
+    r"\b(?:daily|weekly|bi-?weekly|fortnightly|monthly|quarterly|nightly|hourly"
+    r"|annually|yearly|weekdays|business days?"
+    rf"|(?:every|each) (?:\w+ )?(?:{_CLOCK_PERIODS})"
+    r"|(?:once|twice|\w+ times) a (?:day|week|month|quarter|year)"
     rf"|(?:{_WEEKDAYS})s)\b"
     r"|\b\d{1,2}(?::\d{2})?\s*[ap]\.?m\b"
     r"|\b(?:[01]?\d|2[0-3]):[0-5]\d\b",
@@ -3675,7 +3685,8 @@ async def test_roster_preload_counts_and_scheduled_cadences(
         for preload in preloads:
             assert preload["slug"] in available, (name, preload["slug"])
             if preload["cron"] is not None:
-                assert preload["slug"] in UNATTENDED_SAFE_PRELOADS, (name, preload)
+                reviewed = UNATTENDED_SAFE_PRELOADS.get(preload["slug"], set())
+                assert preload["cron"] in reviewed, (name, preload)
 
 
 def _catalog_package_slugs(root: Path) -> set[str]:
@@ -3840,7 +3851,24 @@ def test_roster_day_one_promises_match_work_the_expert_can_do_on_request(
 
 @pytest.mark.parametrize(
     "copy",
-    ["weekly", "Every Monday", "Fridays", "9am", "8:30 pm", "at 09:00", "17:45"],
+    [
+        "weekly",
+        "Every Monday",
+        "Fridays",
+        "9am",
+        "8:30 pm",
+        "at 09:00",
+        "17:45",
+        "once a week",
+        "twice a week",
+        "every two weeks",
+        "biweekly",
+        "weekdays",
+        "each business day",
+        "every hour",
+        "every quarter",
+        "annually",
+    ],
 )
 def test_clock_copy_catches_cadences_and_times_of_day(copy: str):
     assert _CLOCK_COPY.search(copy)
@@ -3857,6 +3885,7 @@ def test_clock_copy_catches_cadences_and_times_of_day(copy: str):
         "with every ad",
         "Your week, protected",
         "Pricing from £3.50",
+        "once a deal closes",
     ],
 )
 def test_clock_copy_passes_draft_work_timings(copy: str):
