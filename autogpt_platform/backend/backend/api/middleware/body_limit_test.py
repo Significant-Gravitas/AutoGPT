@@ -27,7 +27,7 @@ JSON = "application/json"
 CHUNKED = {"transfer-encoding": "chunked"}
 VALID_TOKEN = {"authorization": "Bearer good"}
 
-# Every server the backend starts, and why its request bodies are bounded.
+# Every uvicorn server the backend starts, and why its request bodies are bounded.
 SERVERS = {
     "backend/api/rest_api.py": "RequestBodyLimitMiddleware on the app",
     "backend/api/ws_api.py": "websockets only; no route takes a body",
@@ -64,6 +64,24 @@ async def test_a_declared_length_over_the_limit_is_refused_before_any_byte_is_re
 async def test_an_upload_route_takes_a_multipart_body_above_the_default_limit():
     """Refused for its missing token, not its size: the whole body was let through."""
     body = [b"--x\r\n", b"A" * (_default_limit() + MiB)]
+
+    sent = await _post("/api/files/upload", body, {"content-type": MULTIPART})
+
+    assert sent.status == 401
+    assert sent.received == sum(map(len, body))
+
+
+async def test_a_file_of_exactly_the_largest_allowed_size_fits_with_its_framing(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The allowance covers the multipart headers around the file, not only the file."""
+    monkeypatch.setattr(settings.config, "upload_file_size_limit_mb", 2)
+    monkeypatch.setattr(settings.config, "max_file_size_mb", 1)
+    body = [
+        b'--x\r\nContent-Disposition: form-data; name="file"; filename="f.bin"\r\n\r\n',
+        b"A" * (2 * MiB),
+        b"\r\n--x--\r\n",
+    ]
 
     sent = await _post("/api/files/upload", body, {"content-type": MULTIPART})
 
@@ -123,8 +141,8 @@ def test_webhook_ingress_takes_the_largest_provider_payload():
     assert route_body_limit(_matched(route, JSON)) == WEBHOOK_PAYLOAD_LIMIT
 
 
-def test_every_server_the_backend_starts_is_accounted_for():
-    """A new server would take bodies without the platform API's limit."""
+def test_every_uvicorn_server_the_backend_starts_is_accounted_for():
+    """A new uvicorn server would take bodies without the platform API's limit."""
     backend = Path(__file__).parents[2]
     starts = {
         path.relative_to(backend.parent).as_posix()
