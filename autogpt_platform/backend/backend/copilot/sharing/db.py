@@ -15,7 +15,11 @@ from typing import Any
 import sentry_sdk
 from prisma.enums import SharedVia
 from prisma.errors import ForeignKeyViolationError, UniqueViolationError
-from prisma.models import AgentGraph, AgentGraphExecution, ChatLinkedShare
+from prisma.models import (
+    AgentGraph,
+    AgentGraphExecution,
+    ChatLinkedShare,
+)
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from prisma.models import (

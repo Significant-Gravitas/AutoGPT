@@ -4,7 +4,9 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel
 
-from backend.data.subscription_activation_models import ActivationUnavailable
+from backend.data.subscription_activation_models import (
+    ActivationUnavailable,
+)
 from backend.data.subscription_activation_models import (
     InvoicePreview as BaseInvoicePreview,
 )
