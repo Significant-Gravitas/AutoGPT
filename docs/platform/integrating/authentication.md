@@ -74,6 +74,28 @@ Use the base URL exactly as given, with `https` for AutoGPT Cloud, so no redirec
 An API key is a password to your account. Keep it on servers and in secret stores. Never put it in browser code, a mobile app, a public repository or a log line. If a key leaks, revoke it on the API keys page and create a new one.
 {% endhint %}
 
+## API-key validation limits on v1
+
+The deprecated `/external-api/v1` API limits failed and in-flight cryptographic
+key checks to 60 per client address and key prefix in a 60-second window.
+IPv6 addresses in the same `/64` share a budget; IPv4 addresses are counted
+individually. This applies to both `X-API-Key` and API keys sent as Bearer tokens.
+Successful authentication refunds its reservation; concurrent requests still
+occupy reservations until validation completes. A burst of valid requests can
+therefore receive `429` while earlier requests are still being verified.
+Callers sharing an address and key prefix share this budget; other prefixes
+have independent budgets. Excess attempts receive `429` with `Retry-After`.
+v2 has its own [pre-verification limits](api-conventions.md#rate-limits).
+
+For self-hosting, this limit applies automatically when Redis is available and
+the server has a valid client address. Set Uvicorn's `FORWARDED_ALLOW_IPS` to your
+own reverse proxies' addresses, never `*`, and restrict direct backend access.
+Bundled Nginx passes its connection's remote address to Uvicorn over loopback.
+If another proxy sits in front of Nginx, configure trusted client-address
+restoration there; otherwise its callers share a budget for each key prefix.
+Verify separate caller budgets and resistance to forged forwarding headers
+through the complete deployed chain.
+
 ## Check what a key can do
 
 `GET /me` needs the **Identity** permission and answers who the key acts as, in which organization and team, and with which permissions:
@@ -198,6 +220,7 @@ OAuth access tokens act in your personal organization. There is no way yet to ch
 | `403 forbidden` | `Missing required permission(s): ...` | Keys can't be edited: create a key with the named permissions and delete the old one. |
 | `403 forbidden` | `These credentials belong to an organization you are not an active member of` | You left the organization the key was created in. Create a new key. |
 | `404 not_found` | `... not found` | The resource doesn't exist, or belongs to an organization or team this key can't see. |
+| `429` (v1) | `Too many API key authentication attempts. Try again shortly.` | Wait the number of seconds in `Retry-After` before retrying. See [v1 API-key validation limits](#api-key-validation-limits-on-v1). |
 
 ## OAuth access tokens
 
