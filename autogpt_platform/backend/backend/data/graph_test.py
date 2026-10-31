@@ -890,6 +890,7 @@ def test_only_known_block_fields_are_marked_secret():
     assert secret_fields == {
         ("AllQuietIncidentTriggerBlock", "signing_secret"),
         ("AutoPilotBlock", "codex_credentials"),
+        ("ExaSearchMonitorTriggerBlock", "webhook_secret"),
         ("GenericWebhookTriggerBlock", "secret_token"),
         ("PublishToMediumBlock", "author_id"),
         ("SQLQueryBlock", "host"),

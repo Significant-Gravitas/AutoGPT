@@ -5,7 +5,9 @@ This module provides blocks for managing items within Exa websets, including
 retrieving, listing, deleting, and bulk operations on webset items.
 """
 
-from typing import Any, Dict, List, Optional
+import time
+from asyncio import sleep
+from typing import Any
 
 from exa_py import AsyncExa
 from exa_py.websets.types import WebsetItem as SdkWebsetItem
@@ -32,6 +34,10 @@ from backend.sdk import (
 
 from ._config import exa
 from .helpers import merge_exa_cost
+from .websets_api import ExaWebsetsBlockBase
+
+# GET /v0/websets/{id}/items returns at most this many items per page.
+ITEMS_PAGE_MAX = 100
 
 
 # Mirrored model for enrichment results
@@ -40,9 +46,9 @@ class EnrichmentResultModel(BaseModel):
 
     enrichment_id: str
     format: str
-    result: Optional[List[str]]
-    reasoning: Optional[str]
-    references: List[Dict[str, Any]]
+    result: list[str] | None
+    reasoning: str | None
+    references: list[dict[str, Any]]
 
     @classmethod
     def from_sdk(cls, sdk_enrich) -> "EnrichmentResultModel":
@@ -73,13 +79,15 @@ class WebsetItemModel(BaseModel):
     """Stable output model mirroring SDK WebsetItem."""
 
     id: str
-    url: Optional[AnyUrl]
+    url: AnyUrl | None
     title: str
     content: str
-    entity_data: Dict[str, Any]
-    enrichments: Dict[str, EnrichmentResultModel]
+    entity_data: dict[str, Any]
+    enrichments: dict[str, EnrichmentResultModel]
     created_at: str
     updated_at: str
+    source: str | None = None
+    source_id: str | None = None
 
     @classmethod
     def from_sdk(cls, item: SdkWebsetItem) -> "WebsetItemModel":
@@ -105,13 +113,14 @@ class WebsetItemModel(BaseModel):
             elif isinstance(item.properties, WebsetItemCompanyProperties):
                 title = item.properties.company.name
                 content = item.properties.content or ""
-            elif isinstance(item.properties, WebsetItemArticleProperties):
-                title = item.properties.description
-                content = item.properties.content or ""
-            elif isinstance(item.properties, WebsetItemResearchPaperProperties):
-                title = item.properties.description
-                content = item.properties.content or ""
-            elif isinstance(item.properties, WebsetItemCustomProperties):
+            elif isinstance(
+                item.properties,
+                (
+                    WebsetItemArticleProperties,
+                    WebsetItemResearchPaperProperties,
+                    WebsetItemCustomProperties,
+                ),
+            ):
                 title = item.properties.description
                 content = item.properties.content or ""
             else:
@@ -120,7 +129,7 @@ class WebsetItemModel(BaseModel):
                 content = getattr(item.properties, "content", "")
 
         # Convert enrichments from list to dict keyed by enrichment_id using Pydantic models
-        enrichments_dict: Dict[str, EnrichmentResultModel] = {}
+        enrichments_dict: dict[str, EnrichmentResultModel] = {}
         if hasattr(item, "enrichments") and item.enrichments:
             for sdk_enrich in item.enrichments:
                 enrich_model = EnrichmentResultModel.from_sdk(sdk_enrich)
@@ -135,6 +144,8 @@ class WebsetItemModel(BaseModel):
             enrichments=enrichments_dict,
             created_at=item.created_at.isoformat() if item.created_at else "",
             updated_at=item.updated_at.isoformat() if item.updated_at else "",
+            source=str(item.source) if item.source else None,
+            source_id=item.source_id,
         )
 
 
@@ -215,9 +226,15 @@ class ExaListWebsetItemsBlock(Block):
             ge=1,
             le=100,
         )
-        cursor: Optional[str] = SchemaField(
+        cursor: str | None = SchemaField(
             default=None,
             description="Cursor for pagination through results",
+            advanced=True,
+        )
+        source_id: str | None = SchemaField(
+            default=None,
+            description="Only return items that came from this search or import ID",
+            placeholder="search-or-import-id",
             advanced=True,
         )
         wait_for_items: bool = SchemaField(
@@ -246,7 +263,7 @@ class ExaListWebsetItemsBlock(Block):
         has_more: bool = SchemaField(
             description="Whether there are more items to paginate through",
         )
-        next_cursor: Optional[str] = SchemaField(
+        next_cursor: str | None = SchemaField(
             description="Cursor for the next page of results",
         )
 
@@ -266,9 +283,6 @@ class ExaListWebsetItemsBlock(Block):
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         if input_data.wait_for_items:
-            import asyncio
-            import time
-
             start_time = time.time()
             interval = 2
             response = None
@@ -278,12 +292,13 @@ class ExaListWebsetItemsBlock(Block):
                     webset_id=input_data.webset_id,
                     cursor=input_data.cursor,
                     limit=input_data.limit,
+                    source_id=input_data.source_id,
                 )
 
                 if response.data:
                     break
 
-                await asyncio.sleep(interval)
+                await sleep(interval)
                 interval = min(interval * 1.2, 10)
 
             if not response:
@@ -291,12 +306,14 @@ class ExaListWebsetItemsBlock(Block):
                     webset_id=input_data.webset_id,
                     cursor=input_data.cursor,
                     limit=input_data.limit,
+                    source_id=input_data.source_id,
                 )
         else:
             response = await aexa.websets.items.list(
                 webset_id=input_data.webset_id,
                 cursor=input_data.cursor,
                 limit=input_data.limit,
+                source_id=input_data.source_id,
             )
         merge_exa_cost(self, response)
 
@@ -413,10 +430,11 @@ class ExaBulkWebsetItemsBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        all_items: List[WebsetItemModel] = []
+        all_items: list[WebsetItemModel] = []
         # list_all paginates internally; cost_dollars is not surfaced per-page
         item_iterator = aexa.websets.items.list_all(
-            webset_id=input_data.webset_id, limit=input_data.max_items
+            webset_id=input_data.webset_id,
+            limit=min(input_data.max_items, ITEMS_PAGE_MAX),
         )
 
         async for sdk_item in item_iterator:
@@ -441,7 +459,7 @@ class ExaBulkWebsetItemsBlock(Block):
         yield "truncated", len(all_items) >= input_data.max_items
 
 
-class ExaWebsetItemsSummaryBlock(Block):
+class ExaWebsetItemsSummaryBlock(ExaWebsetsBlockBase):
     """Get a summary of items in a webset without retrieving all data."""
 
     class Input(BlockSchemaInput):
@@ -487,26 +505,12 @@ class ExaWebsetItemsSummaryBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        webset = await aexa.websets.get(id=input_data.webset_id)
-        merge_exa_cost(self, webset)
-
-        entity_type = "unknown"
-        if webset.searches:
-            first_search = webset.searches[0]
-            if first_search.entity:
-                # The entity is a union type, extract type field
-                entity_dict = first_search.entity.model_dump(by_alias=True)
-                entity_type = entity_dict.get("type", "unknown")
-
-        # Get enrichment columns
-        enrichment_columns = []
-        if webset.enrichments:
-            enrichment_columns = [
-                e.title if e.title else e.description for e in webset.enrichments
-            ]
+        webset = await self._get_webset(credentials, input_data.webset_id)
+        entity_type = webset.first_entity_type or "unknown"
+        enrichment_columns = [e.title or e.description for e in webset.enrichments]
 
         # Get sample items if requested
-        sample_items: List[WebsetItemModel] = []
+        sample_items: list[WebsetItemModel] = []
         if input_data.sample_size > 0:
             items_response = await aexa.websets.items.list(
                 webset_id=input_data.webset_id, limit=input_data.sample_size
@@ -517,13 +521,7 @@ class ExaWebsetItemsSummaryBlock(Block):
                 WebsetItemModel.from_sdk(item) for item in items_response.data
             ]
 
-        total_items = 0
-        if webset.searches:
-            for search in webset.searches:
-                if search.progress:
-                    total_items += search.progress.found
-
-        yield "total_items", total_items
+        yield "total_items", webset.items_found
         yield "entity_type", entity_type
         yield "sample_items", sample_items
         yield "enrichment_columns", enrichment_columns
@@ -540,7 +538,7 @@ class ExaGetNewItemsBlock(Block):
             description="The ID or external ID of the Webset",
             placeholder="webset-id-or-external-id",
         )
-        since_cursor: Optional[str] = SchemaField(
+        since_cursor: str | None = SchemaField(
             default=None,
             description="Cursor from previous run - only items after this will be returned. Leave empty on first run.",
             placeholder="cursor-from-previous-run",
@@ -560,7 +558,7 @@ class ExaGetNewItemsBlock(Block):
             description="Individual item (yielded for each new item)"
         )
         count: int = SchemaField(description="Number of new items found")
-        next_cursor: Optional[str] = SchemaField(
+        next_cursor: str | None = SchemaField(
             description="Save this cursor for the next run to get only newer items"
         )
         has_more: bool = SchemaField(
@@ -583,16 +581,20 @@ class ExaGetNewItemsBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # Get items starting from cursor
-        response = await aexa.websets.items.list(
-            webset_id=input_data.webset_id,
-            cursor=input_data.since_cursor,
-            limit=input_data.max_items,
-        )
-        merge_exa_cost(self, response)
-
-        # Convert SDK items to our stable models
-        new_items = [WebsetItemModel.from_sdk(item) for item in response.data]
+        # Page through items after the cursor; Exa caps each page at 100.
+        new_items: list[WebsetItemModel] = []
+        cursor = input_data.since_cursor
+        while True:
+            response = await aexa.websets.items.list(
+                webset_id=input_data.webset_id,
+                cursor=cursor,
+                limit=min(input_data.max_items - len(new_items), ITEMS_PAGE_MAX),
+            )
+            merge_exa_cost(self, response)
+            new_items.extend(WebsetItemModel.from_sdk(item) for item in response.data)
+            cursor = response.next_cursor
+            if not response.has_more or len(new_items) >= input_data.max_items:
+                break
 
         # Yield the full list
         yield "new_items", new_items

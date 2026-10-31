@@ -12,7 +12,7 @@ Cancel a running enrichment operation
 <!-- MANUAL: how_it_works -->
 This block stops a running enrichment operation on a webset. Items already enriched before cancellation retain their enrichment data, but remaining items will not be processed.
 
-Use this when an enrichment is taking too long, producing unexpected results, or is no longer needed. The block returns the approximate number of items enriched before cancellation.
+After cancelling, the block counts how many of the webset's first 100 items have a result for this enrichment, so `items_enriched_before_cancel` undercounts on larger websets. It charges only if Exa's response reports a cost (100 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -50,9 +50,9 @@ Create enrichments to extract additional structured data from webset items
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block creates an enrichment task that extracts specific data from each webset item using AI. You define what to extract via a description, and the enrichment runs against all current and future items in the webset.
+This block creates an enrichment that has Exa's AI extract one value per webset item from your description, in the chosen format (text, date, number, options, email, phone or url). Exa runs it on all existing items and on items added later. Options (1-150 labels) are only sent when the format is 'options', and more than 150 fails before calling Exa. The `title` input is not part of Exa's current API; Exa generates the title from the description and format.
 
-Enrichments support various output formats including text, dates, numbers, and predefined options. You can apply enrichments to existing items immediately or configure them to run only on new items.
+With `wait_for_completion` and `apply_to_existing` both on, the block polls the enrichment (every 5 seconds, backing off to 30) until it is completed, canceled or failed, for up to `polling_timeout` seconds (default 300, max 600). `items_enriched` is then an estimate taken from the number of items the webset's searches found. On timeout the block returns the status from creation and `items_enriched` 0 instead of failing. `apply_to_existing` only controls this waiting and cannot stop Exa enriching existing items. It charges only if Exa's response reports a cost (100 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -60,11 +60,11 @@ Enrichments support various output formats including text, dates, numbers, and p
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset | str | Yes |
-| description | What data to extract from each item | str | Yes |
-| title | Short title for this enrichment (auto-generated if not provided) | str | No |
-| format | Expected format of the extracted data | "text" \| "date" \| "number" \| "options" \| "email" \| "phone" | No |
-| options | Available options when format is 'options' | List[str] | No |
-| apply_to_existing | Apply this enrichment to existing items in the webset | bool | No |
+| description | What data to extract from each item (up to 5,000 characters) | str | Yes |
+| title | Not part of Exa's current API: Exa generates the title from the description and format. Sent as-is if set. | str | No |
+| format | Expected format of the extracted data: text, date, number, options (pick from a list), email, phone or url | "text" \| "date" \| "number" \| "options" \| "email" \| "phone" \| "url" | No |
+| options | Labels to choose from when format is 'options' (1-150) | List[str] | No |
+| apply_to_existing | Exa always enriches existing and future items; this only controls whether 'wait for completion' waits for them | bool | No |
 | metadata | Metadata to attach to the enrichment | Dict[str, Any] | No |
 | wait_for_completion | Wait for the enrichment to complete on existing items | bool | No |
 | polling_timeout | Maximum time to wait for completion in seconds | int | No |
@@ -102,9 +102,9 @@ Delete an enrichment from a webset
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block removes an enrichment configuration from a webset. The enrichment will no longer be applied to new items, but existing enrichment data on items is not deleted.
+This block permanently removes an enrichment from a webset, so it is no longer applied to items. The deletion cannot be undone.
 
-Use this to clean up enrichments that are no longer needed or to remove misconfigured enrichments before creating corrected ones.
+Use this to clean up enrichments that are no longer needed or to remove misconfigured enrichments before creating corrected ones. It charges only if Exa's response reports a cost (100 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -140,9 +140,9 @@ Get the status and details of a webset enrichment
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block retrieves detailed information about a specific enrichment including its configuration, current status, and processing progress.
+This block retrieves one enrichment and returns its status, title, description, format, options, the instructions Exa generated for it, metadata and timestamps. It reports status only; it has no per-item progress.
 
-Use this to monitor enrichment progress, verify configuration, or troubleshoot issues with enrichment results. Returns the full enrichment specification along with timestamps.
+Use this to check whether an enrichment has finished, verify its configuration, or troubleshoot unexpected results. It charges only if Exa's response reports a cost (100 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -186,9 +186,9 @@ Update an existing enrichment configuration
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block modifies an existing enrichment's configuration. You can update the description, output format, available options, or metadata without recreating the enrichment.
+This block sends a PATCH to the enrichment with only the inputs you set: description, format, options (1-150 labels, checked before calling Exa) or metadata. The title cannot be changed here.
 
-Changes apply to future items; existing enrichment data is not reprocessed unless you explicitly re-run the enrichment on existing items.
+It returns the enrichment's status, title, description and format as Exa reports them after the change. It charges only if Exa's response reports a cost (100 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -197,9 +197,9 @@ Changes apply to future items; existing enrichment data is not reprocessed unles
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset | str | Yes |
 | enrichment_id | The ID of the enrichment to update | str | Yes |
-| description | New description for what data to extract | str | No |
-| format | New format for the extracted data | "text" \| "date" \| "number" \| "options" \| "email" \| "phone" | No |
-| options | New options when format is 'options' | List[str] | No |
+| description | New description for what data to extract (up to 5,000 characters) | str | No |
+| format | New format: text, date, number, options, email, phone or url | "text" \| "date" \| "number" \| "options" \| "email" \| "phone" \| "url" | No |
+| options | New labels to choose from when format is 'options' (1-150) | List[str] | No |
 | metadata | New metadata to attach to the enrichment | Dict[str, Any] | No |
 
 ### Outputs

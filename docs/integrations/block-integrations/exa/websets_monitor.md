@@ -10,26 +10,27 @@ Create automated monitors to keep websets updated with fresh data on a schedule
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block creates a scheduled monitor that automatically updates a webset on a cron schedule. Monitors can either search for new items matching criteria or refresh existing item content and enrichments.
+This block creates a monitor (`POST /v0/monitors`) that runs a search on the webset on a schedule: a 5-field cron expression read in an IANA timezone (default Etc/UTC), at most one run per day. Each run looks for up to `search_count` (1-100) new items; a query, criteria or entity left empty reuses the webset's last search. 'append' adds the new items, while 'override' re-evaluates existing items against the run's criteria.
 
-Configure the cron expression for your desired frequency (daily, weekly, etc.) and choose between search behavior to find new items or refresh behavior to update existing data.
+Exa removed refresh monitors, so the legacy 'refresh' behavior fails before calling Exa and the refresh content and enrichment inputs are ignored. The usual search checks apply: at most 5 criteria, and a 2-200 character description for a 'custom' entity. It charges only if Exa's response reports a cost (100 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| webset_id | The ID or external ID of the Webset to monitor | str | Yes |
-| cron_expression | Cron expression for scheduling (5 fields, max once per day) | str | Yes |
-| timezone | IANA timezone for the schedule | str | No |
-| behavior_type | Type of monitor behavior (search for new items or refresh existing) | "search" \| "refresh" | No |
-| search_query | Search query for finding new items (required for search behavior) | str | No |
-| search_count | Number of items to find in each search | int | No |
-| search_criteria | Criteria that items must meet | List[str] | No |
-| search_behavior | How new results interact with existing items | "append" \| "override" | No |
-| entity_type | Type of entity to search for (company, person, etc.) | str | No |
-| refresh_content | Refresh content from source URLs (for refresh behavior) | bool | No |
-| refresh_enrichments | Re-run enrichments on items (for refresh behavior) | bool | No |
+| webset_id | The ID of the Webset to monitor | str | Yes |
+| cron_expression | When to run, as a 5-field Unix cron expression. Exa allows at most one run per day. | str | Yes |
+| timezone | IANA timezone the cron expression is read in | str | No |
+| behavior_type | What each run does. 'search' finds new items; 'refresh' is legacy (Exa removed it) and fails with an error. | "search" \| "refresh" | No |
+| search_query | Query each run searches for (2-10,000 characters). Leave empty to reuse the webset's last search query. | str | No |
+| search_count | Maximum number of new items to find per run | int | No |
+| search_criteria | Up to 5 criteria new items must meet. Leave empty to reuse the last search's criteria. | List[str] | No |
+| search_behavior | 'append' adds new items to the webset; 'override' re-evaluates existing items against the run's criteria | "append" \| "override" | No |
+| entity_type | Kind of item to find: company, person, article, research_paper or custom. Leave empty to reuse the last search's entity. | str | No |
+| entity_description | What each item is, when entity type is 'custom' (2-200 characters) | str | No |
+| refresh_content | Legacy: only used by refresh monitors, which Exa removed | bool | No |
+| refresh_enrichments | Legacy: only used by refresh monitors, which Exa removed | bool | No |
 | metadata | Metadata to attach to the monitor | Dict[str, Any] | No |
 
 ### Outputs
@@ -52,7 +53,7 @@ Configure the cron expression for your desired frequency (daily, weekly, etc.) a
 
 **News Monitoring**: Set up monitors to discover fresh articles on topics of interest.
 
-**Data Freshness**: Schedule periodic refreshes to keep enrichment data current.
+**Growing Datasets**: Schedule weekly searches that keep adding new matches to a research webset.
 <!-- END MANUAL -->
 
 ---
@@ -66,7 +67,7 @@ Delete a monitor from a webset
 <!-- MANUAL: how_it_works -->
 This block permanently deletes a monitor, stopping all future scheduled runs. Any data already collected by the monitor remains in the webset.
 
-Use this to clean up monitors that are no longer needed or to stop scheduled operations before deleting a webset.
+Use this to clean up monitors that are no longer needed or to stop scheduled operations before deleting a webset. It charges only if Exa's response reports a cost (100 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -101,9 +102,9 @@ Get the details and status of a webset monitor
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block retrieves detailed information about a monitor including its configuration, schedule, current status, and information about the last run.
+This block retrieves a monitor and returns its status (enabled or disabled), behavior type and search config, cron schedule and timezone, next run time, details of the last run, metadata and timestamps.
 
-Use this to verify monitor settings, check when the next run is scheduled, or review results from recent executions.
+Use this to verify monitor settings, check when the next run is scheduled, or review the most recent run. It charges only if Exa's response reports a cost (100 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -119,7 +120,7 @@ Use this to verify monitor settings, check when the next run is scheduled, or re
 | error | Error message if the operation failed | str |
 | monitor_id | The unique identifier for the monitor | str |
 | webset_id | The webset this monitor belongs to | str |
-| status | Current status of the monitor | str |
+| status | Current status: enabled or disabled | str |
 | behavior_type | Type of monitor behavior | str |
 | behavior_config | Configuration for the monitor behavior | Dict[str, Any] |
 | cron_expression | The schedule cron expression | str |
@@ -148,9 +149,9 @@ List all monitors with optional webset filtering
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block retrieves a paginated list of all monitors, optionally filtered by webset. Results include basic monitor information such as status, schedule, and next run time.
+This block returns one page of monitors (`limit` 1-200, default 25), optionally only those for one webset, both as a list and one at a time. Each entry includes the monitor's status, schedule, search config and next run time; pass `next_cursor` back in as `cursor` while `has_more` is true.
 
-Use this to get an overview of all active monitors or find monitors associated with a specific webset.
+Use this to get an overview of all monitors or find the ones attached to a specific webset. It charges only if Exa's response reports a cost (100 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -158,7 +159,7 @@ Use this to get an overview of all active monitors or find monitors associated w
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | Filter monitors by webset ID | str | No |
-| limit | Number of monitors to return | int | No |
+| limit | Number of monitors to return (1-200) | int | No |
 | cursor | Cursor for pagination | str | No |
 
 ### Outputs
@@ -185,13 +186,13 @@ Use this to get an overview of all active monitors or find monitors associated w
 ## Exa Update Monitor
 
 ### What it is
-Update a monitor's status, schedule, or metadata
+Update a monitor's status, schedule, search settings or metadata
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block modifies an existing monitor's configuration. You can enable, disable, or pause monitors, change their schedule, update the timezone, or modify metadata.
+This block sends a PATCH with only the inputs you set. Status 'enabled' or 'disabled' turns scheduled runs on or off; the legacy 'paused' is sent as 'disabled'. A new timezone must come with the cron expression, and changing any search setting (query, criteria, behavior or entity) needs `search_count` too, because Exa requires it whenever the search is updated; otherwise the block fails before calling Exa.
 
-Changes take effect immediately. Disabling a monitor stops future scheduled runs until re-enabled.
+Search settings left empty reuse the webset's last search. It charges only if Exa's response reports a cost (100 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -199,9 +200,15 @@ Changes take effect immediately. Disabling a monitor stops future scheduled runs
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | monitor_id | The ID of the monitor to update | str | Yes |
-| status | New status for the monitor | "enabled" \| "disabled" \| "paused" | No |
-| cron_expression | New cron expression for scheduling | str | No |
-| timezone | New timezone for the schedule | str | No |
+| status | Turn the monitor on ('enabled') or off ('disabled'). 'paused' is legacy and is sent as 'disabled'. | "enabled" \| "disabled" \| "paused" | No |
+| cron_expression | New 5-field cron schedule (at most once per day). Required when changing the timezone. | str | No |
+| timezone | New IANA timezone for the schedule (set together with the cron expression) | str | No |
+| search_query | New query for each run (2-10,000 characters). Changing any search setting requires 'search count'. | str | No |
+| search_count | New maximum number of items per run. Required to change the monitor's search settings. | int | No |
+| search_criteria | New criteria for each run (up to 5). Leave empty to keep reusing the last search's criteria. | List[str] | No |
+| search_behavior | 'append' adds new items; 'override' re-evaluates existing items | "append" \| "override" | No |
+| entity_type | New kind of item to find: company, person, article, research_paper or custom | str | No |
+| entity_description | What each item is, when entity type is 'custom' (2-200 characters) | str | No |
 | metadata | New metadata for the monitor | Dict[str, Any] | No |
 
 ### Outputs
@@ -219,9 +226,9 @@ Changes take effect immediately. Disabling a monitor stops future scheduled runs
 <!-- MANUAL: use_case -->
 **Schedule Changes**: Adjust monitor frequency based on data velocity or business needs.
 
-**Pause/Resume**: Temporarily pause monitors during maintenance or when not needed.
+**Pause/Resume**: Disable monitors during maintenance or quiet periods and enable them again later.
 
-**Status Management**: Enable or disable monitors programmatically based on conditions.
+**Search Tuning**: Change the query or criteria a monitor uses as your needs evolve.
 <!-- END MANUAL -->
 
 ---

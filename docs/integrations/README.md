@@ -120,6 +120,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Exa Get Import](block-integrations/exa/websets_import_export.md#exa-get-import) | Get the status and details of an import |
 | [Exa Get New Items](block-integrations/exa/websets_items.md#exa-get-new-items) | Get items added since a cursor - enables incremental processing without reprocessing |
 | [Exa List Imports](block-integrations/exa/websets_import_export.md#exa-list-imports) | List all imports with pagination support |
+| [Exa Update Import](block-integrations/exa/websets_import_update.md#exa-update-import) | Update the title or metadata of an Exa Websets import |
 | [File Read](block-integrations/data.md#file-read) | Reads a file and returns its content as a string, with optional chunking by delimiter and size limits |
 | [Google Calendar Read Events](block-integrations/google/calendar.md#google-calendar-read-events) | Retrieves upcoming events from a Google Calendar with filtering options |
 | [Google Docs Append Markdown](block-integrations/google/docs.md#google-docs-append-markdown) | Append Markdown content to the end of a Google Doc with full formatting - ideal for LLM/AI output |
@@ -257,9 +258,10 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Claude Code](block-integrations/llm.md#claude-code) | Execute tasks using Claude Code in an E2B sandbox |
 | [Code Generation](block-integrations/llm.md#code-generation) | Generate or refactor code using an OpenAI API key or a connected ChatGPT plan through Codex App Server |
 | [Create Talking Avatar Video](block-integrations/llm.md#create-talking-avatar-video) | This block integrates with D-ID to create video clips and retrieve their URLs |
-| [Exa Answer](block-integrations/exa/answers.md#exa-answer) | Get an LLM answer to a question informed by Exa search results |
+| [Exa Agent Run](block-integrations/exa/agent.md#exa-agent-run) | Run Exa Agent, Exa's research agent, for deep research, list building and enrichment |
+| [Exa Answer](block-integrations/exa/answers.md#exa-answer) | Get an LLM answer to a question informed by Exa search results, with citations; optionally as structured JSON |
 | [Exa Create Enrichment](block-integrations/exa/websets_enrichment.md#exa-create-enrichment) | Create enrichments to extract additional structured data from webset items |
-| [Exa Create Research](block-integrations/exa/research.md#exa-create-research) | Create research task with optional waiting - explores web and synthesizes findings with citations |
+| [Exa Create Research](block-integrations/exa/research.md#exa-create-research) | Create a research task with optional waiting |
 | [Ideogram Model](block-integrations/llm.md#ideogram-model) | This block runs Ideogram models with both simple and advanced settings |
 | [Jev Ask Many](block-integrations/typesafe/ask_many.md#jev-ask-many) | Ask multiple Choice, Score, or Noul questions of one shared state with Jev in a single call |
 | [Jev Choice](block-integrations/typesafe/choice.md#jev-choice) | Make a typed choice with Jev |
@@ -289,38 +291,65 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [AnySearch Extract](block-integrations/anysearch/extract.md#anysearch-extract) | Extracts readable content from a single URL using AnySearch, optimized for LLM consumption |
 | [AnySearch Parallel Search](block-integrations/anysearch/parallel_search.md#anysearch-parallel-search) | Runs several AnySearch queries in parallel (client-side concurrency via asyncio) |
 | [Ask Wolfram](block-integrations/wolfram/llm_api.md#ask-wolfram) | Ask Wolfram Alpha a question |
+| [Exa Batch Search Monitors](block-integrations/exa/search_monitors_batch.md#exa-batch-search-monitors) | Delete, pause or unpause every Exa Search Monitor matching a name, status or metadata filter (previews by default) |
 | [Exa Bulk Webset Items](block-integrations/exa/websets_items.md#exa-bulk-webset-items) | Get all items from a webset in bulk (with configurable limits) |
+| [Exa Cancel Agent Run](block-integrations/exa/agent_manage.md#exa-cancel-agent-run) | Cancel an Exa Agent run immediately |
 | [Exa Cancel Enrichment](block-integrations/exa/websets_enrichment.md#exa-cancel-enrichment) | Cancel a running enrichment operation |
 | [Exa Cancel Webset](block-integrations/exa/websets.md#exa-cancel-webset) | Cancel all operations being performed on a Webset |
 | [Exa Cancel Webset Search](block-integrations/exa/websets_search.md#exa-cancel-webset-search) | Cancel a running webset search |
-| [Exa Contents](block-integrations/exa/contents.md#exa-contents) | Retrieves document contents using Exa's contents API |
+| [Exa Contents](block-integrations/exa/contents.md#exa-contents) | Fetches clean text, highlights or summaries for known URLs with Exa Contents, using cached copies or fresh fetches |
 | [Exa Create Monitor](block-integrations/exa/websets_monitor.md#exa-create-monitor) | Create automated monitors to keep websets updated with fresh data on a schedule |
 | [Exa Create Or Find Webset](block-integrations/exa/websets.md#exa-create-or-find-webset) | Create a new webset or return existing one by external_id (idempotent operation) |
+| [Exa Create Search Monitor](block-integrations/exa/search_monitors.md#exa-create-search-monitor) | Create an Exa Search Monitor that re-runs a search on a schedule and posts only new results to a webhook (pair it with the Exa Search Monitor Trigger block) |
 | [Exa Create Webset](block-integrations/exa/websets.md#exa-create-webset) | Create a new Exa Webset for persistent web search collections with optional waiting for initial results |
 | [Exa Create Webset Search](block-integrations/exa/websets_search.md#exa-create-webset-search) | Add a new search to an existing webset to find more items |
+| [Exa Create Webset Webhook](block-integrations/exa/websets_webhooks.md#exa-create-webset-webhook) | Create an Exa Websets webhook that sends the chosen events to a URL, and get its one-time signing secret |
+| [Exa Delete Agent Run](block-integrations/exa/agent_manage.md#exa-delete-agent-run) | Permanently delete a stored Exa Agent run and its output |
 | [Exa Delete Enrichment](block-integrations/exa/websets_enrichment.md#exa-delete-enrichment) | Delete an enrichment from a webset |
 | [Exa Delete Monitor](block-integrations/exa/websets_monitor.md#exa-delete-monitor) | Delete a monitor from a webset |
+| [Exa Delete Search Monitor](block-integrations/exa/search_monitors_manage.md#exa-delete-search-monitor) | Permanently delete an Exa Search Monitor, stopping its runs |
 | [Exa Delete Webset](block-integrations/exa/websets.md#exa-delete-webset) | Delete a Webset and all its items |
 | [Exa Delete Webset Item](block-integrations/exa/websets_items.md#exa-delete-webset-item) | Delete a specific item from a webset |
+| [Exa Delete Webset Webhook](block-integrations/exa/websets_webhooks.md#exa-delete-webset-webhook) | Delete an Exa Websets webhook so Exa stops delivering to it |
 | [Exa Find Or Create Search](block-integrations/exa/websets_search.md#exa-find-or-create-search) | Find existing search by query or create new - prevents duplicate searches in workflows |
-| [Exa Find Similar](block-integrations/exa/similar.md#exa-find-similar) | Finds similar links using Exa's findSimilar API |
+| [Exa Find Similar](block-integrations/exa/similar.md#exa-find-similar) | Deprecated by Exa: prefer the Exa Search block with a query describing the source page |
+| [Exa Get Agent Run](block-integrations/exa/agent_lookup.md#exa-get-agent-run) | Get an Exa Agent run's status and, once it has finished, its answer, structured output, citations and cost |
 | [Exa Get Enrichment](block-integrations/exa/websets_enrichment.md#exa-get-enrichment) | Get the status and details of a webset enrichment |
 | [Exa Get Monitor](block-integrations/exa/websets_monitor.md#exa-get-monitor) | Get the details and status of a webset monitor |
-| [Exa Get Research](block-integrations/exa/research.md#exa-get-research) | Get status and results of a research task |
+| [Exa Get Research](block-integrations/exa/research_queries.md#exa-get-research) | Get status and results of a research task |
+| [Exa Get Search Monitor](block-integrations/exa/search_monitors_manage.md#exa-get-search-monitor) | Get an Exa Search Monitor's query, schedule, webhook and status |
+| [Exa Get Search Monitor Run](block-integrations/exa/search_monitor_runs.md#exa-get-search-monitor-run) | Get an Exa Search Monitor run's status, new results and synthesized findings |
 | [Exa Get Webset](block-integrations/exa/websets.md#exa-get-webset) | Retrieve a Webset by ID or external ID |
+| [Exa Get Webset Event](block-integrations/exa/websets_events.md#exa-get-webset-event) | Get one Exa Websets event and the resource it is about |
 | [Exa Get Webset Item](block-integrations/exa/websets_items.md#exa-get-webset-item) | Get a specific item from a webset by its ID |
+| [Exa Get Webset Monitor Run](block-integrations/exa/websets_monitor_runs.md#exa-get-webset-monitor-run) | Get the status and outcome of one scheduled run of a Websets monitor |
 | [Exa Get Webset Search](block-integrations/exa/websets_search.md#exa-get-webset-search) | Get the status and details of a webset search |
+| [Exa Get Webset Webhook](block-integrations/exa/websets_webhooks.md#exa-get-webset-webhook) | Get an Exa Websets webhook's URL, events, status and metadata |
+| [Exa Get Websets Team Info](block-integrations/exa/websets_team.md#exa-get-websets-team-info) | Get your team's Websets concurrency usage and limits, to check capacity before launching large websets |
+| [Exa List Agent Run Events](block-integrations/exa/agent_manage.md#exa-list-agent-run-events) | List an Exa Agent run's stored events (created, started, completed, failed, cancelled, plus progress) |
+| [Exa List Agent Runs](block-integrations/exa/agent_manage.md#exa-list-agent-runs) | List your Exa Agent runs, newest first, with paging |
 | [Exa List Monitors](block-integrations/exa/websets_monitor.md#exa-list-monitors) | List all monitors with optional webset filtering |
-| [Exa List Research](block-integrations/exa/research.md#exa-list-research) | List all research tasks with pagination support |
+| [Exa List Research](block-integrations/exa/research.md#exa-list-research) | List research tasks with pagination support |
+| [Exa List Search Monitor Runs](block-integrations/exa/search_monitor_runs.md#exa-list-search-monitor-runs) | List an Exa Search Monitor's runs, newest first, with status and output |
+| [Exa List Search Monitors](block-integrations/exa/search_monitors_manage.md#exa-list-search-monitors) | List Exa Search Monitors, filtered by status, name or metadata |
+| [Exa List Webset Events](block-integrations/exa/websets_events.md#exa-list-webset-events) | List Exa Websets events (new items, finished searches, monitor runs and more) from the last 60 days |
 | [Exa List Webset Items](block-integrations/exa/websets_items.md#exa-list-webset-items) | List items in a webset with pagination support |
-| [Exa List Websets](block-integrations/exa/websets.md#exa-list-websets) | List all Websets with pagination support |
+| [Exa List Webset Monitor Runs](block-integrations/exa/websets_monitor_runs.md#exa-list-webset-monitor-runs) | List the scheduled runs of a Websets monitor, to check whether its updates succeeded |
+| [Exa List Webset Webhook Attempts](block-integrations/exa/websets_webhook_attempts.md#exa-list-webset-webhook-attempts) | List an Exa Websets webhook's delivery attempts, with status codes and responses, to debug failed deliveries |
+| [Exa List Webset Webhooks](block-integrations/exa/websets_webhook_attempts.md#exa-list-webset-webhooks) | List your team's active Exa Websets webhooks |
+| [Exa List Websets](block-integrations/exa/websets.md#exa-list-websets) | List all Websets with pagination support, optionally filtered by ID, external ID or title |
 | [Exa Preview Webset](block-integrations/exa/websets.md#exa-preview-webset) | Preview how a search query will be interpreted before creating a webset |
-| [Exa Search](block-integrations/exa/search.md#exa-search) | Searches the web using Exa's advanced search API |
+| [Exa Search](block-integrations/exa/search.md#exa-search) | Searches the web with Exa and returns ranked pages with their text or highlights |
+| [Exa Stop Agent Run](block-integrations/exa/agent_manage.md#exa-stop-agent-run) | Stop an Exa Agent run early and return the results gathered so far (stop reason 'stopped') |
+| [Exa Trigger Search Monitor](block-integrations/exa/search_monitor_runs.md#exa-trigger-search-monitor) | Run an Exa Search Monitor now; results go to its webhook and can also be read with List/Get Search Monitor Runs |
 | [Exa Update Enrichment](block-integrations/exa/websets_enrichment.md#exa-update-enrichment) | Update an existing enrichment configuration |
-| [Exa Update Monitor](block-integrations/exa/websets_monitor.md#exa-update-monitor) | Update a monitor's status, schedule, or metadata |
-| [Exa Update Webset](block-integrations/exa/websets.md#exa-update-webset) | Update metadata for an existing Webset |
+| [Exa Update Monitor](block-integrations/exa/websets_monitor.md#exa-update-monitor) | Update a monitor's status, schedule, search settings or metadata |
+| [Exa Update Search Monitor](block-integrations/exa/search_monitors_update.md#exa-update-search-monitor) | Update an Exa Search Monitor: pause or resume it, or change its query, schedule, output format or webhook |
+| [Exa Update Webset](block-integrations/exa/websets.md#exa-update-webset) | Update the title or metadata of an existing Webset |
+| [Exa Update Webset Webhook](block-integrations/exa/websets_webhooks.md#exa-update-webset-webhook) | Update an Exa Websets webhook's URL, events or metadata |
+| [Exa Wait For Agent Run](block-integrations/exa/agent_lookup.md#exa-wait-for-agent-run) | Wait for an Exa Agent run to finish, then return its answer, structured output, citations and cost |
 | [Exa Wait For Enrichment](block-integrations/exa/websets_polling.md#exa-wait-for-enrichment) | Wait for a webset enrichment to complete with progress tracking |
-| [Exa Wait For Research](block-integrations/exa/research.md#exa-wait-for-research) | Wait for a research task to complete with configurable timeout |
+| [Exa Wait For Research](block-integrations/exa/research_queries.md#exa-wait-for-research) | Wait for a research task to complete with configurable timeout |
 | [Exa Wait For Search](block-integrations/exa/websets_polling.md#exa-wait-for-search) | Wait for a specific webset search to complete with progress tracking |
 | [Exa Wait For Webset](block-integrations/exa/websets_polling.md#exa-wait-for-webset) | Wait for a webset to reach a specific status with progress tracking |
 | [Exa Webset Items Summary](block-integrations/exa/websets_items.md#exa-webset-items-summary) | Get a summary of webset items without retrieving all data |
@@ -556,7 +585,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Conductor Manage Session](block-integrations/conductor/manage_session.md#conductor-manage-session) | Rename, cancel or archive a Conductor agent session |
 | [Conductor Manage Workspace](block-integrations/conductor/manage_workspace.md#conductor-manage-workspace) | Change a Conductor workspace: rename it, archive, unarchive or sleep it, share or stop sharing a port at its public preview URL, or move it into a section |
 | [Conductor Send Message](block-integrations/conductor/send_message.md#conductor-send-message) | Send a prompt to a Conductor agent session and, by default, wait for the agent to finish and return its reply |
-| [Exa Code Context](block-integrations/exa/code_context.md#exa-code-context) | Search billions of GitHub repos, docs, and Stack Overflow for relevant code examples |
+| [Exa Code Context](block-integrations/exa/code_context.md#exa-code-context) | Legacy: Exa no longer documents its code context API; for new workflows use the Exa Search block, which Exa's Code & Docs guide recommends (e |
 | [Execute Code](block-integrations/misc.md#execute-code) | Executes code in a sandbox environment with internet access |
 | [Execute Code Step](block-integrations/misc.md#execute-code-step) | Execute code in a previously instantiated sandbox |
 | [Github Add Label](block-integrations/github/issues.md#github-add-label) | A block that adds a label to a GitHub issue or pull request for categorization and organization |
@@ -698,7 +727,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 
 | Block Name | Description |
 |------------|-------------|
-| [Exa Webset Webhook](block-integrations/exa/webhook_blocks.md#exa-webset-webhook) | Receive webhook notifications for Exa webset events |
+| [Exa Search Monitor Trigger](block-integrations/exa/search_monitor_trigger.md#exa-search-monitor-trigger) | Triggers when an Exa Search Monitor reports new results |
+| [Exa Webset Webhook](block-integrations/exa/webhook_blocks.md#exa-webset-webhook) | Triggers when Exa reports a Websets event, such as a new item, a finished search, a completed export or a monitor run |
 | [Generic Webhook Trigger](block-integrations/generic_webhook/triggers.md#generic-webhook-trigger) | This block will output the contents of the generic input for the webhook |
 | [Read RSS Feed](block-integrations/misc.md#read-rss-feed) | Reads RSS feed entries from a given URL |
 | [Send Authenticated Web Request](block-integrations/misc.md#send-authenticated-web-request) | Make an authenticated HTTP request with host-scoped credentials (JSON / form / multipart) |

@@ -10,9 +10,9 @@ Import CSV data to use with websets for targeted searches
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block creates an import from CSV data that can be used as a source for webset searches. Imports allow you to bring your own data (like company lists or contact lists) and use them for scoped or exclusion searches.
+This block uploads CSV text to Exa as an import that webset searches can use as a scope (search within it) or exclude source, or that a new webset can copy items from. It treats the first row as a header, so it reports the number of rows minus one as the item count, along with the data size, the entity type and the 0-based column holding each item's identifier.
 
-You specify the entity type and which columns contain identifiers and URLs. The import becomes available as a source that can be referenced when creating webset searches.
+`url_column` is not part of Exa's current import API (Exa infers columns from the file) and is only sent if you set it. For a 'custom' entity type the description is sent only when you provide one. The block returns the import's initial status; use Get Import to check when it has finished processing. It charges only if Exa's response reports a cost (100 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -24,7 +24,7 @@ You specify the entity type and which columns contain identifiers and URLs. The 
 | entity_type | Type of entities being imported | "company" \| "person" \| "article" \| "research_paper" \| "custom" | No |
 | entity_description | Description for custom entity type | str | No |
 | identifier_column | Column index containing the identifier (0-based) | int | No |
-| url_column | Column index containing URLs (optional) | int | No |
+| url_column | Column index containing URLs. Not part of Exa's current import API (Exa infers columns from the file); sent as-is if set. | int | No |
 | metadata | Metadata to attach to the import | Dict[str, Any] | No |
 
 ### Outputs
@@ -61,7 +61,7 @@ Delete an import
 <!-- MANUAL: how_it_works -->
 This block permanently deletes an import and its data. Any websets that reference this import for scoped or exclusion searches will no longer have access to it.
 
-Use this to clean up imports that are no longer needed or contain outdated data. The deletion cannot be undone.
+Use this to clean up imports that are no longer needed or contain outdated data. The deletion cannot be undone. It charges only if Exa's response reports a cost (100 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -96,9 +96,9 @@ Export webset data in JSON, CSV, or JSON Lines format
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block exports all items from a webset in your chosen format. You can include full content and enrichment data in the export, and limit the number of items exported.
+This block pages through the webset's items and returns up to `max_items` (1-100, default 100) as one string in JSON (an indented array), JSON Lines or CSV. CSV flattens nested fields into underscore-joined columns and writes lists as JSON text. Turning off `include_enrichments` removes each item's enrichments; `include_content` only removes a top-level `content` field, and item content sits inside `properties`, so it is still exported.
 
-Supported formats include JSON for structured data, CSV for spreadsheet compatibility, and JSON Lines for streaming or large dataset processing.
+`total_items` is the number of items exported, not the size of the webset, and `truncated` is true whenever the export reached `max_items`, even if no items were left over. This block never charges, because the item listing it uses reports no cost.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -140,9 +140,9 @@ Get the status and details of an import
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block retrieves detailed information about an import including its status, item count, and configuration. Use this to check if an import is ready to use or to troubleshoot failed imports.
+This block sends `GET /v0/imports/{id}` and returns the import's status (pending, processing, completed, failed or canceled), title, format, entity type, item count, metadata and timestamps. Use this to check if an import is ready to use or to troubleshoot failed imports.
 
-The block returns upload status information if the import is pending data upload, or failure details if the import encountered errors.
+The upload URL and its expiry are filled in while the import is waiting for its data, and the failure reason and message when it failed. It charges only if Exa's response reports a cost (100 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -157,7 +157,7 @@ The block returns upload status information if the import is pending data upload
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | import_id | The unique identifier for the import | str |
-| status | Current status of the import | str |
+| status | Current status: pending, processing, completed, failed or canceled | str |
 | title | Title of the import | str |
 | format | Format of the imported data | str |
 | entity_type | Type of entities imported | str |
@@ -188,16 +188,16 @@ List all imports with pagination support
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block retrieves a paginated list of all your imports. Results include basic information about each import such as title, status, and item count.
+This block sends `GET /v0/imports` and returns one page of imports (`limit` 1-200, default 25), both as a list and one at a time, with each import's title, status, entity type and item count. While `has_more` is true, pass `next_cursor` back in as `cursor` to get the next page.
 
-Use this to discover existing imports that can be referenced in webset searches or to manage your import library.
+Use this to discover existing imports that can be referenced in webset searches or to manage your import library. It charges only if Exa's response reports a cost (100 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| limit | Number of imports to return | int | No |
+| limit | Number of imports to return (1-200) | int | No |
 | cursor | Cursor for pagination | str | No |
 
 ### Outputs

@@ -6,13 +6,13 @@ Blocks for searching code repositories and documentation using Exa's code contex
 ## Exa Code Context
 
 ### What it is
-Search billions of GitHub repos, docs, and Stack Overflow for relevant code examples
+Legacy: Exa no longer documents its code context API; for new workflows use the Exa Search block, which Exa's Code & Docs guide recommends (e.g. type 'lite' with highlights). Searches GitHub repos, docs and Stack Overflow for relevant code examples.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block uses Exa's specialized code search API to find relevant code examples from GitHub repositories, official documentation, and Stack Overflow. The search is optimized for code context, returning formatted snippets with source references.
+This block sends your query to Exa's `/context` endpoint, which Exa no longer documents: it is missing from Exa's API spec and its reference page redirects to the Code & Docs search guide. The block is kept so saved workflows keep running; for new workflows, use the Exa Search block (for example type 'lite' with highlights), as that guide recommends.
 
-The block returns code snippets along with metadata including the source URL, search time, and token counts. You can control response size with the tokens_num parameter to balance comprehensiveness with cost.
+The endpoint returns one formatted string of code snippets and examples with their sources from GitHub repositories, documentation and Stack Overflow, plus the result count, search time, output token count and cost. Tokens Num sets the response size: 'dynamic' (default) or a token count such as 5000 or 10000. The run is billed from the dollar cost Exa reports, at 100 credits per US dollar.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -20,7 +20,7 @@ The block returns code snippets along with metadata including the source URL, se
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | query | Search query to find relevant code snippets. Describe what you're trying to do or what code you're looking for. | str | Yes |
-| tokens_num | Token limit for response. Use 'dynamic' for automatic sizing, 5000 for standard queries, or 10000 for comprehensive examples. | str \| int | No |
+| tokens_num | Token limit for response. Use 'dynamic' for automatic sizing, 5000 for standard queries, or 10000 for comprehensive examples. (In Exa Search the equivalent is text max characters.) | str \| int | No |
 
 ### Outputs
 

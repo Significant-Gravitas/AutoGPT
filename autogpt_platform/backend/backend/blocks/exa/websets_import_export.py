@@ -9,7 +9,7 @@ import csv
 import json
 from enum import Enum
 from io import StringIO
-from typing import Optional, Union
+from typing import Any
 
 from exa_py import AsyncExa
 from exa_py.websets.types import CreateImportResponse
@@ -31,6 +31,7 @@ from backend.sdk import (
 from ._config import exa
 from ._test import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from .helpers import merge_exa_cost
+from .websets_api import ExaWebsetsBlockBase, segment
 
 
 # Mirrored model for stability - don't use SDK types directly in block outputs
@@ -43,8 +44,8 @@ class ImportModel(BaseModel):
     format: str
     entity_type: str
     count: int
-    upload_url: Optional[str]  # Only in CreateImportResponse
-    upload_valid_until: Optional[str]  # Only in CreateImportResponse
+    upload_url: str | None  # Only in CreateImportResponse
+    upload_valid_until: str | None  # Only in CreateImportResponse
     failed_reason: str
     failed_message: str
     metadata: dict
@@ -52,9 +53,7 @@ class ImportModel(BaseModel):
     updated_at: str
 
     @classmethod
-    def from_sdk(
-        cls, import_obj: Union[SdkImport, CreateImportResponse]
-    ) -> "ImportModel":
+    def from_sdk(cls, import_obj: SdkImport | CreateImportResponse) -> "ImportModel":
         """Convert SDK Import or CreateImportResponse to our stable model."""
         # Extract entity type from union (may be None)
         entity_type = "unknown"
@@ -109,6 +108,26 @@ class ImportModel(BaseModel):
             ),
         )
 
+    @classmethod
+    def from_api(cls, data: dict[str, Any]) -> "ImportModel":
+        """Build the stable model from a raw Websets API import object."""
+        entity = data.get("entity") or {}
+        return cls(
+            id=data.get("id", ""),
+            status=data.get("status", ""),
+            title=data.get("title") or "",
+            format=data.get("format", ""),
+            entity_type=entity.get("type", "unknown"),
+            count=int(data.get("count") or 0),
+            upload_url=data.get("uploadUrl"),
+            upload_valid_until=data.get("uploadValidUntil"),
+            failed_reason=data.get("failedReason") or "",
+            failed_message=data.get("failedMessage") or "",
+            metadata=data.get("metadata") or {},
+            created_at=data.get("createdAt") or "",
+            updated_at=data.get("updatedAt") or "",
+        )
+
 
 class ImportFormat(str, Enum):
     """Supported import formats."""
@@ -154,7 +173,7 @@ class ExaCreateImportBlock(Block):
             default=ImportEntityType.COMPANY,
             description="Type of entities being imported",
         )
-        entity_description: Optional[str] = SchemaField(
+        entity_description: str | None = SchemaField(
             default=None,
             description="Description for custom entity type",
             advanced=True,
@@ -164,13 +183,13 @@ class ExaCreateImportBlock(Block):
             description="Column index containing the identifier (0-based)",
             ge=0,
         )
-        url_column: Optional[int] = SchemaField(
+        url_column: int | None = SchemaField(
             default=None,
-            description="Column index containing URLs (optional)",
+            description="Column index containing URLs. Not part of Exa's current import API (Exa infers columns from the file); sent as-is if set.",
             ge=0,
             advanced=True,
         )
-        metadata: Optional[dict] = SchemaField(
+        metadata: dict | None = SchemaField(
             default=None,
             description="Metadata to attach to the import",
             advanced=True,
@@ -184,10 +203,10 @@ class ExaCreateImportBlock(Block):
         title: str = SchemaField(description="Title of the import")
         count: int = SchemaField(description="Number of items in the import")
         entity_type: str = SchemaField(description="Type of entities imported")
-        upload_url: Optional[str] = SchemaField(
+        upload_url: str | None = SchemaField(
             description="Upload URL for CSV data (only if csv_data not provided in request)"
         )
-        upload_valid_until: Optional[str] = SchemaField(
+        upload_valid_until: str | None = SchemaField(
             description="Expiration time for upload URL (only if upload_url is provided)"
         )
         created_at: str = SchemaField(description="When the import was created")
@@ -314,7 +333,7 @@ class ExaCreateImportBlock(Block):
         yield "created_at", import_obj.created_at
 
 
-class ExaGetImportBlock(Block):
+class ExaGetImportBlock(ExaWebsetsBlockBase):
     """Get the status and details of an import."""
 
     class Input(BlockSchemaInput):
@@ -328,21 +347,23 @@ class ExaGetImportBlock(Block):
 
     class Output(BlockSchemaOutput):
         import_id: str = SchemaField(description="The unique identifier for the import")
-        status: str = SchemaField(description="Current status of the import")
+        status: str = SchemaField(
+            description="Current status: pending, processing, completed, failed or canceled"
+        )
         title: str = SchemaField(description="Title of the import")
         format: str = SchemaField(description="Format of the imported data")
         entity_type: str = SchemaField(description="Type of entities imported")
         count: int = SchemaField(description="Number of items imported")
-        upload_url: Optional[str] = SchemaField(
+        upload_url: str | None = SchemaField(
             description="Upload URL for CSV data (if import not yet uploaded)"
         )
-        upload_valid_until: Optional[str] = SchemaField(
+        upload_valid_until: str | None = SchemaField(
             description="Expiration time for upload URL (if applicable)"
         )
-        failed_reason: Optional[str] = SchemaField(
+        failed_reason: str | None = SchemaField(
             description="Reason for failure (if applicable)"
         )
-        failed_message: Optional[str] = SchemaField(
+        failed_message: str | None = SchemaField(
             description="Detailed failure message (if applicable)"
         )
         created_at: str = SchemaField(description="When the import was created")
@@ -362,13 +383,11 @@ class ExaGetImportBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # Use AsyncExa SDK
-        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
-
-        sdk_import = await aexa.websets.imports.get(import_id=input_data.import_id)
-        merge_exa_cost(self, sdk_import)
-
-        import_obj = ImportModel.from_sdk(sdk_import)
+        import_obj = ImportModel.from_api(
+            await self._api(
+                credentials, "GET", f"/imports/{segment(input_data.import_id)}"
+            )
+        )
 
         # Yield all fields
         yield "import_id", import_obj.id
@@ -386,7 +405,7 @@ class ExaGetImportBlock(Block):
         yield "metadata", import_obj.metadata
 
 
-class ExaListImportsBlock(Block):
+class ExaListImportsBlock(ExaWebsetsBlockBase):
     """List all imports with pagination."""
 
     class Input(BlockSchemaInput):
@@ -395,11 +414,11 @@ class ExaListImportsBlock(Block):
         )
         limit: int = SchemaField(
             default=25,
-            description="Number of imports to return",
+            description="Number of imports to return (1-200)",
             ge=1,
-            le=100,
+            le=200,
         )
-        cursor: Optional[str] = SchemaField(
+        cursor: str | None = SchemaField(
             default=None,
             description="Cursor for pagination",
             advanced=True,
@@ -413,7 +432,7 @@ class ExaListImportsBlock(Block):
         has_more: bool = SchemaField(
             description="Whether there are more imports to paginate through"
         )
-        next_cursor: Optional[str] = SchemaField(
+        next_cursor: str | None = SchemaField(
             description="Cursor for the next page of results"
         )
 
@@ -430,28 +449,24 @@ class ExaListImportsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # Use AsyncExa SDK
-        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
-
-        response = await aexa.websets.imports.list(
-            cursor=input_data.cursor,
-            limit=input_data.limit,
+        response = await self._api(
+            credentials,
+            "GET",
+            "/imports",
+            params={"cursor": input_data.cursor, "limit": input_data.limit},
         )
-        merge_exa_cost(self, response)
-
-        # Convert SDK imports to our stable models
-        imports = [ImportModel.from_sdk(i) for i in response.data]
+        imports = [ImportModel.from_api(i) for i in response.get("data", [])]
 
         yield "imports", [i.model_dump() for i in imports]
 
         for import_obj in imports:
             yield "import_item", import_obj.model_dump()
 
-        yield "has_more", response.has_more
-        yield "next_cursor", response.next_cursor
+        yield "has_more", bool(response.get("hasMore"))
+        yield "next_cursor", response.get("nextCursor")
 
 
-class ExaDeleteImportBlock(Block):
+class ExaDeleteImportBlock(ExaWebsetsBlockBase):
     """Delete an import."""
 
     class Input(BlockSchemaInput):
@@ -481,15 +496,11 @@ class ExaDeleteImportBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # Use AsyncExa SDK
-        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
-
-        deleted_import = await aexa.websets.imports.delete(
-            import_id=input_data.import_id
+        deleted = await self._api(
+            credentials, "DELETE", f"/imports/{segment(input_data.import_id)}"
         )
-        merge_exa_cost(self, deleted_import)
 
-        yield "import_id", deleted_import.id
+        yield "import_id", deleted.get("id", input_data.import_id)
         yield "success", "true"
 
 
