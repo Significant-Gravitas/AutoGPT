@@ -231,6 +231,7 @@ export const MessageRow = memo(function MessageRow({
           readOnly={readOnly}
           copyText={copyText}
           sessionID={sessionID}
+          savedMessageId={turnStat?.savedMessageId}
         />
       )}
     </Message>
