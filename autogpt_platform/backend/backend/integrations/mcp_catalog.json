@@ -465,7 +465,8 @@
       "connection_mode": "hosted",
       "auth_methods": [
         "bearer"
-      ]
+      ],
+      "icon_id": "companyenrich"
     }
   },
   {

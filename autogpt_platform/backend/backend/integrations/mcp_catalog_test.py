@@ -1,7 +1,9 @@
 import json
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from PIL import Image
 from pydantic import ValidationError
 
 from backend.integrations.mcp_catalog import (
@@ -21,6 +23,7 @@ def test_catalog_loads_validated_entries():
 
 
 def test_companyenrich_uses_bearer_auth_and_paid_tools_require_approval():
+    """CompanyEnrich needs an API key and approval for credit-consuming tools."""
     url = "https://mcp.companyenrich.com/mcp"
     entry = get_mcp_catalog_entry_for_url(url)
 
@@ -43,6 +46,23 @@ def test_companyenrich_uses_bearer_auth_and_paid_tools_require_approval():
     ):
         assert mcp_tool_effect(url, tool) == "external"
     assert mcp_tool_effect(url, "unlisted_tool") is None
+
+
+def test_companyenrich_has_a_loadable_provider_logo():
+    """The integration picker must resolve CompanyEnrich to a real logo asset."""
+    entry = get_mcp_catalog_entry_for_url("https://mcp.companyenrich.com/mcp")
+    assert entry is not None
+    assert entry.mcp_server.icon_id == "companyenrich"
+    logo = (
+        Path(__file__).resolve().parents[3]
+        / "frontend"
+        / "public"
+        / "integrations"
+        / f"{entry.mcp_server.icon_id}.png"
+    )
+    with Image.open(logo) as image:
+        image.load()
+        assert image.width > 0 and image.height > 0
 
 
 def test_posthog_catalog_entry_uses_hosted_authentication():
