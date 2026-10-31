@@ -61,6 +61,18 @@ describe("Continue with Microsoft on the login page", () => {
     ).toBeDefined();
   });
 
+  test("names each sign-in button once, its logo being decorative", () => {
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+    vi.stubEnv("NEXT_PUBLIC_AUTH_MICROSOFT_ENABLED", "true");
+
+    render(<LoginPage />);
+
+    // A logo with the provider's name as alt text would be read out twice.
+    for (const name of ["Continue with Microsoft", "Continue with Google"]) {
+      expect(screen.getByRole("button", { name })).toBeDefined();
+    }
+  });
+
   test("keeps Google unavailable while Microsoft sign-in is starting", async () => {
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
     vi.stubEnv("NEXT_PUBLIC_AUTH_MICROSOFT_ENABLED", "true");

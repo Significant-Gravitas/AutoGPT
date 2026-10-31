@@ -17,13 +17,8 @@ export function MicrosoftOAuthButton({ onClick, isLoading, disabled }: Props) {
       disabled={disabled}
       loading={isLoading}
     >
-      <Image
-        src="/integrations/microsoft.webp"
-        alt="Microsoft"
-        width={20}
-        height={20}
-      />
-      {isLoading ? "Connecting..." : "Continue with Microsoft"}
+      <Image src="/integrations/microsoft.webp" alt="" width={20} height={20} />
+      {isLoading ? "Connecting…" : "Continue with Microsoft"}
     </Button>
   );
 }
