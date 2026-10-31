@@ -112,13 +112,15 @@ class CodeExtractionBlock(Block):
             yield "remaining_text", remaining_text
 
     def extract_code(self, text: str, language: str) -> str:
-        # Escape special regex characters in the language string
-        language = re.escape(language)
-        # Extract all code blocks enclosed in ```language``` blocks
-        pattern = re.compile(
-            rf"```{language}[ \t]*\n(.*?)\n```", re.DOTALL | re.IGNORECASE
-        )
-        matches = pattern.finditer(text)
-        # Combine all code blocks for this language with newlines between them
-        code_blocks = [match.group(1).strip() for match in matches]
-        return "\n\n".join(code_blocks) if code_blocks else ""
+        opener = re.compile(rf"```{re.escape(language)}[ \t]*\n", re.IGNORECASE)
+        code_blocks = []
+        position = 0
+        # Each closer is found with str.find, so the text is read once per alias;
+        # a fence with no closer ends the search, as no later fence can have one.
+        while opening := opener.search(text, position):
+            closing = text.find("\n```", opening.end())
+            if closing == -1:
+                break
+            code_blocks.append(text[opening.end() : closing].strip())
+            position = closing + len("\n```")
+        return "\n\n".join(code_blocks)

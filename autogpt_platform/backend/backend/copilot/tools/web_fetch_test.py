@@ -25,6 +25,25 @@ def test_extract_title_returns_none_when_missing():
     assert _extract_title("<html><body>No title</body></html>") is None
 
 
+def test_extract_title_reads_the_first_title_whatever_its_case_and_attributes():
+    html = '<HEAD><Title lang="en">Docs</TITLE><title>Second</title></HEAD>'
+    assert _extract_title(html) == "Docs"
+
+
+@pytest.mark.parametrize(
+    "html",
+    [
+        "<title>Untitled",
+        "<title",
+        "a</title><title",
+        "<p>Hi</p><title>a</titl",
+        "<title></title>",
+    ],
+)
+def test_extract_title_returns_none_without_a_complete_title(html: str):
+    assert _extract_title(html) is None
+
+
 def test_is_client_rendered_shell_detects_root_div():
     html = '<html><head><script src="/app.js"></script></head><body><div id="root"></div></body></html>'
     assert _is_client_rendered_shell(html, "Home Menu Contact") is True

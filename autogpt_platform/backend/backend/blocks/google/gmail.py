@@ -54,6 +54,8 @@ def serialize_email_recipients(recipients: list[str]) -> str:
 
 # RFC 5322 simplified pattern: local@domain where domain has at least one dot
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# RFC 5321's limit on an address; checked before the pattern runs.
+_MAX_EMAIL_LENGTH = 254
 
 
 def validate_email_recipients(recipients: list[str], field_name: str = "to") -> None:
@@ -62,13 +64,17 @@ def validate_email_recipients(recipients: list[str], field_name: str = "to") -> 
     Raises ``ValueError`` with a user-friendly message listing every
     invalid entry so the caller (or LLM) can correct them in one pass.
     """
-    invalid = [addr for addr in recipients if not _EMAIL_RE.match(addr.strip())]
+    invalid = [addr for addr in recipients if not _is_valid_email(addr.strip())]
     if invalid:
         formatted = ", ".join(f"'{a}'" for a in invalid)
         raise ValueError(
             f"Invalid email address(es) in '{field_name}': {formatted}. "
             f"Each entry must be a valid email address (e.g. user@example.com)."
         )
+
+
+def _is_valid_email(address: str) -> bool:
+    return len(address) <= _MAX_EMAIL_LENGTH and bool(_EMAIL_RE.match(address))
 
 
 @runtime_checkable
