@@ -168,7 +168,7 @@ describe("handleStreamError", () => {
 
     expect(mockToast).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: "Too many sandboxes are running",
+        title: "Couldn't start a sandbox",
         description:
           "Too many sandboxes are running on your account: 10 at once is the most. Wait for one of your tasks to finish, then try again.",
       }),

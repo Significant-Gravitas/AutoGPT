@@ -73,7 +73,7 @@ const TOAST_BY_BACKEND_CODE: Record<
       "The AI model provider is temporarily unavailable. We've been alerted and are working on it. Please try again shortly.",
   },
   sandbox_limit_reached: {
-    title: "Too many sandboxes are running",
+    title: "Couldn't start a sandbox",
     fallbackDescription:
       "Wait for one of your tasks to finish, then try again.",
   },
