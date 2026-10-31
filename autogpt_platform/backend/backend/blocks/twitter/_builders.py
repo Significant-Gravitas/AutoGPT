@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict
+from typing import Any, Callable, Dict
+
+from pydantic import BaseModel
 
 from backend.blocks.twitter._mappers import (
     get_backend_expansion,
@@ -39,71 +41,31 @@ class TweetExpansionsBuilder:
         self.params: Dict[str, Any] = param
 
     def add_expansions(self, expansions: ExpansionFilter | None):
-        if expansions:
-            filtered_expansions = [
-                name for name, value in expansions.dict().items() if value is True
-            ]
-
-            if filtered_expansions:
-                self.params["expansions"] = ",".join(
-                    [get_backend_expansion(exp) for exp in filtered_expansions]
-                )
-
+        _add_selected(self.params, "expansions", expansions, get_backend_expansion)
         return self
 
     def add_media_fields(self, media_fields: TweetMediaFieldsFilter | None):
-        if media_fields:
-            filtered_fields = [
-                name for name, value in media_fields.dict().items() if value is True
-            ]
-            if filtered_fields:
-                self.params["media.fields"] = ",".join(
-                    [get_backend_media_field(field) for field in filtered_fields]
-                )
+        _add_selected(
+            self.params, "media.fields", media_fields, get_backend_media_field
+        )
         return self
 
     def add_place_fields(self, place_fields: TweetPlaceFieldsFilter | None):
-        if place_fields:
-            filtered_fields = [
-                name for name, value in place_fields.dict().items() if value is True
-            ]
-            if filtered_fields:
-                self.params["place.fields"] = ",".join(
-                    [get_backend_place_field(field) for field in filtered_fields]
-                )
+        _add_selected(
+            self.params, "place.fields", place_fields, get_backend_place_field
+        )
         return self
 
     def add_poll_fields(self, poll_fields: TweetPollFieldsFilter | None):
-        if poll_fields:
-            filtered_fields = [
-                name for name, value in poll_fields.dict().items() if value is True
-            ]
-            if filtered_fields:
-                self.params["poll.fields"] = ",".join(
-                    [get_backend_poll_field(field) for field in filtered_fields]
-                )
+        _add_selected(self.params, "poll.fields", poll_fields, get_backend_poll_field)
         return self
 
     def add_tweet_fields(self, tweet_fields: TweetFieldsFilter | None):
-        if tweet_fields:
-            filtered_fields = [
-                name for name, value in tweet_fields.dict().items() if value is True
-            ]
-            if filtered_fields:
-                self.params["tweet.fields"] = ",".join(
-                    [get_backend_field(field) for field in filtered_fields]
-                )
+        _add_selected(self.params, "tweet.fields", tweet_fields, get_backend_field)
         return self
 
     def add_user_fields(self, user_fields: TweetUserFieldsFilter | None):
-        if user_fields:
-            filtered_fields = [
-                name for name, value in user_fields.dict().items() if value is True
-            ]
-            if filtered_fields:
-                self.params["user.fields"] = ",".join(
-                    [get_backend_user_field(field) for field in filtered_fields]
-                )
+        _add_selected(self.params, "user.fields", user_fields, get_backend_user_field)
         return self
 
     def build(self):
@@ -115,34 +77,15 @@ class UserExpansionsBuilder:
         self.params: Dict[str, Any] = param
 
     def add_expansions(self, expansions: UserExpansionsFilter | None):
-        if expansions:
-            filtered_expansions = [
-                name for name, value in expansions.dict().items() if value is True
-            ]
-            if filtered_expansions:
-                self.params["expansions"] = ",".join(filtered_expansions)
+        _add_selected(self.params, "expansions", expansions)
         return self
 
     def add_tweet_fields(self, tweet_fields: TweetFieldsFilter | None):
-        if tweet_fields:
-            filtered_fields = [
-                name for name, value in tweet_fields.dict().items() if value is True
-            ]
-            if filtered_fields:
-                self.params["tweet.fields"] = ",".join(
-                    [get_backend_field(field) for field in filtered_fields]
-                )
+        _add_selected(self.params, "tweet.fields", tweet_fields, get_backend_field)
         return self
 
     def add_user_fields(self, user_fields: TweetUserFieldsFilter | None):
-        if user_fields:
-            filtered_fields = [
-                name for name, value in user_fields.dict().items() if value is True
-            ]
-            if filtered_fields:
-                self.params["user.fields"] = ",".join(
-                    [get_backend_user_field(field) for field in filtered_fields]
-                )
+        _add_selected(self.params, "user.fields", user_fields, get_backend_user_field)
         return self
 
     def build(self):
@@ -154,36 +97,15 @@ class ListExpansionsBuilder:
         self.params: Dict[str, Any] = param
 
     def add_expansions(self, expansions: ListExpansionsFilter | None):
-        if expansions:
-            filtered_expansions = [
-                name for name, value in expansions.dict().items() if value is True
-            ]
-            if filtered_expansions:
-                self.params["expansions"] = ",".join(
-                    [get_backend_list_expansion(exp) for exp in filtered_expansions]
-                )
+        _add_selected(self.params, "expansions", expansions, get_backend_list_expansion)
         return self
 
     def add_list_fields(self, list_fields: ListFieldsFilter | None):
-        if list_fields:
-            filtered_fields = [
-                name for name, value in list_fields.dict().items() if value is True
-            ]
-            if filtered_fields:
-                self.params["list.fields"] = ",".join(
-                    [get_backend_list_field(field) for field in filtered_fields]
-                )
+        _add_selected(self.params, "list.fields", list_fields, get_backend_list_field)
         return self
 
     def add_user_fields(self, user_fields: TweetUserFieldsFilter | None):
-        if user_fields:
-            filtered_fields = [
-                name for name, value in user_fields.dict().items() if value is True
-            ]
-            if filtered_fields:
-                self.params["user.fields"] = ",".join(
-                    [get_backend_user_field(field) for field in filtered_fields]
-                )
+        _add_selected(self.params, "user.fields", user_fields, get_backend_user_field)
         return self
 
     def build(self):
@@ -195,36 +117,19 @@ class SpaceExpansionsBuilder:
         self.params: Dict[str, Any] = param
 
     def add_expansions(self, expansions: SpaceExpansionsFilter | None):
-        if expansions:
-            filtered_expansions = [
-                name for name, value in expansions.dict().items() if value is True
-            ]
-            if filtered_expansions:
-                self.params["expansions"] = ",".join(
-                    [get_backend_space_expansion(exp) for exp in filtered_expansions]
-                )
+        _add_selected(
+            self.params, "expansions", expansions, get_backend_space_expansion
+        )
         return self
 
     def add_space_fields(self, space_fields: SpaceFieldsFilter | None):
-        if space_fields:
-            filtered_fields = [
-                name for name, value in space_fields.dict().items() if value is True
-            ]
-            if filtered_fields:
-                self.params["space.fields"] = ",".join(
-                    [get_backend_space_field(field) for field in filtered_fields]
-                )
+        _add_selected(
+            self.params, "space.fields", space_fields, get_backend_space_field
+        )
         return self
 
     def add_user_fields(self, user_fields: TweetUserFieldsFilter | None):
-        if user_fields:
-            filtered_fields = [
-                name for name, value in user_fields.dict().items() if value is True
-            ]
-            if filtered_fields:
-                self.params["user.fields"] = ",".join(
-                    [get_backend_user_field(field) for field in filtered_fields]
-                )
+        _add_selected(self.params, "user.fields", user_fields, get_backend_user_field)
         return self
 
     def build(self):
@@ -275,48 +180,23 @@ class DMExpansionsBuilder:
         self.params: Dict[str, Any] = param
 
     def add_expansions(self, expansions: DMEventExpansionFilter):
-        if expansions:
-            filtered_expansions = [
-                name for name, value in expansions.dict().items() if value is True
-            ]
-            if filtered_expansions:
-                self.params["expansions"] = ",".join(filtered_expansions)
+        _add_selected(self.params, "expansions", expansions)
         return self
 
     def add_event_types(self, event_types: DMEventTypeFilter):
-        if event_types:
-            filtered_types = [
-                name for name, value in event_types.dict().items() if value is True
-            ]
-            if filtered_types:
-                self.params["event_types"] = ",".join(filtered_types)
+        _add_selected(self.params, "event_types", event_types)
         return self
 
     def add_media_fields(self, media_fields: DMMediaFieldFilter):
-        if media_fields:
-            filtered_fields = [
-                name for name, value in media_fields.dict().items() if value is True
-            ]
-            if filtered_fields:
-                self.params["media.fields"] = ",".join(filtered_fields)
+        _add_selected(self.params, "media.fields", media_fields)
         return self
 
     def add_tweet_fields(self, tweet_fields: DMTweetFieldFilter):
-        if tweet_fields:
-            filtered_fields = [
-                name for name, value in tweet_fields.dict().items() if value is True
-            ]
-            if filtered_fields:
-                self.params["tweet.fields"] = ",".join(filtered_fields)
+        _add_selected(self.params, "tweet.fields", tweet_fields)
         return self
 
     def add_user_fields(self, user_fields: TweetUserFieldsFilter):
-        if user_fields:
-            filtered_fields = [
-                name for name, value in user_fields.dict().items() if value is True
-            ]
-            if filtered_fields:
-                self.params["user.fields"] = ",".join(filtered_fields)
+        _add_selected(self.params, "user.fields", user_fields)
         return self
 
     def build(self):
@@ -410,3 +290,17 @@ class TweetPostBuilder:
 
     def build(self):
         return self.params
+
+
+def _add_selected(
+    params: Dict[str, Any],
+    key: str,
+    flags: BaseModel | None,
+    to_backend: Callable[[str], str] = str,
+) -> None:
+    """Set ``key`` to the comma-joined backend names of the flags set to True."""
+    if not flags:
+        return
+    selected = [name for name, value in flags.model_dump().items() if value is True]
+    if selected:
+        params[key] = ",".join(to_backend(name) for name in selected)
