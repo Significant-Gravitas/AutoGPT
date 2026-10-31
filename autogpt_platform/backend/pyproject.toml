@@ -53,7 +53,7 @@ mem0ai = "1.0.8"
 # then: https://github.com/Zulko/moviepy/pull/2562, SECRT-3057.
 moviepy = { git = "https://github.com/Zulko/moviepy.git", rev = "4cf7f84ed1f840e4f0c3ed92b8cdec12a87b56ec" }
 ollama = "^0.6.1"
-openai = "^1.97.1"
+openai = ">=1.97.1,<4.0.0"
 orjson = "^3.10.0"
 pika = "^1.3.2"
 pinecone = "^7.3.0"
