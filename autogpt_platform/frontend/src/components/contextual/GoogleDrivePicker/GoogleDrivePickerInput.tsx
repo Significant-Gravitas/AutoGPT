@@ -1,7 +1,9 @@
+import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import type { GoogleDrivePickerConfig } from "@/lib/autogpt-server-api/types";
 import { cn } from "@/lib/utils";
-import { Cross2Icon } from "@radix-ui/react-icons";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import React, { useCallback } from "react";
 import { GoogleDrivePicker } from "./GoogleDrivePicker";
 import { isValidFile } from "./helpers";
@@ -114,15 +116,14 @@ export function GoogleDrivePickerInput({
               key={file.id || idx}
               className={cn(
                 "flex items-center gap-2",
-                // TODO(tokens): no exact role for border-gray-300 #d1d5db, bg-gray-50 #f9fafb, text-gray-600 #4b5563
                 showRemoveButton
-                  ? "justify-between rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm"
-                  : "text-sm text-gray-600",
+                  ? "justify-between rounded-md border border-border-strong bg-surface-muted px-3 py-2 text-sm"
+                  : "text-sm text-foreground-secondary",
               )}
             >
               <div className="flex items-center gap-2 overflow-hidden">
                 {file.iconUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element
+                  // eslint-disable-next-line @next/next/no-img-element -- remote URL from any host, which next/image would need configured
                   <img
                     src={file.iconUrl}
                     alt=""
@@ -141,7 +142,7 @@ export function GoogleDrivePickerInput({
                   className="h-6 w-6 flex-shrink-0"
                   onClick={() => handleRemoveFile(idx)}
                 >
-                  <Cross2Icon className="h-3 w-3" />
+                  <Icon aria-hidden icon={Cancel01Icon} className="h-3 w-3" />
                 </Button>
               )}
             </div>
@@ -150,8 +151,16 @@ export function GoogleDrivePickerInput({
       )}
 
       {/* Error Messages */}
-      {error && <span className="text-sm text-error">{error}</span>}
-      {pickerError && <span className="text-sm text-error">{pickerError}</span>}
+      {error && (
+        <Text variant="body-tight" as="span" tone="error">
+          {error}
+        </Text>
+      )}
+      {pickerError && (
+        <Text variant="body-tight" as="span" tone="error">
+          {pickerError}
+        </Text>
+      )}
     </div>
   );
 }

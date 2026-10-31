@@ -2023,6 +2023,10 @@ async def get_shared_execution_file(
     share is still live (see :func:`live_execution_share`), None otherwise.
     Uses a single query and returns a uniform None for all failure modes
     to prevent timing-based enumeration attacks.
+
+    The run must still be shared under this same token and not deleted: an
+    allowlist row that outlived an unshare, a re-share or a delete (a write
+    that failed halfway, or two that raced) authorises nothing.
     """
     record = await SharedExecutionFile.prisma().find_first(
         where={

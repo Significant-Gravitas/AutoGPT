@@ -93,8 +93,7 @@ export const AnyOfField = (props: FieldProps) => {
       className={cn(
         "-ml-1 h-[22px] w-fit gap-1 px-1 pl-2 text-xs font-medium",
         isAnyOfInputBroken &&
-          // TODO(tokens): no exact role for bg-red-100 #FDECEC, text-red-600 #D93636; #D93636 is error-hover, a hover fill
-          "border-error bg-red-100 text-red-600 line-through",
+          "border-error bg-error-surface text-error-foreground line-through",
       )}
       autofocus={props.autofocus}
       label={schema.title ? `${schema.title} — variant` : "Variant selector"}

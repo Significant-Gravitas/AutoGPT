@@ -29,23 +29,21 @@ export function ExpertFileRow({ file }: Props) {
       <FileThumbnail file={file} />
       <span className="flex min-w-0 flex-1 flex-col">
         <Text
-          variant="body-medium"
+          variant="body-md-medium"
+          tone="primary"
           as="span"
-          className="truncate !text-foreground-strong"
+          className="truncate"
         >
           {file.name}
         </Text>
-        <Text variant="small" as="span" className="!text-foreground-tertiary">
+        <Text variant="small" tone="muted" as="span">
           {formatRelativeDate(file.created_at)} ·{" "}
           {formatFileSize(file.size_bytes)}
         </Text>
       </span>
-      <Icon
-        icon={Download01Icon}
-        size={16}
-        aria-hidden
-        className="shrink-0 text-foreground-subtle opacity-0 transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100"
-      />
+      <span className="inline-flex shrink-0 text-foreground-subtle opacity-0 transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+        <Icon icon={Download01Icon} size={16} aria-hidden />
+      </span>
     </a>
   );
 }

@@ -231,13 +231,14 @@ def _build_graphiti(
     # Runs concurrent boolean-classifier prompts (one per candidate
     # edge) and uses log-probabilities to rank. Costs one small call per
     # candidate (up to 2 * context_max_facts) on the reranker model
-    # (gpt-6-luna by default) per session-start search. The Compat subclass
-    # fixes the stock client's max_tokens=1, which OpenAI-compatible
+    # (gpt-6-luna by default) per session-start search; through OpenRouter
+    # the model is sent as a variant (``resolve_reranker_model``). The Compat
+    # subclass fixes the stock client's max_tokens=1, which OpenAI-compatible
     # upstreams now reject with a 400 (minimum is 16).
     if cross_encoder is None:
         reranker_config = LLMConfig(
             api_key=graphiti_config.resolve_llm_api_key(),
-            model=graphiti_config.reranker_model,
+            model=graphiti_config.resolve_reranker_model(),
             base_url=graphiti_config.resolve_llm_base_url(),
         )
         cross_encoder = CompatOpenAIRerankerClient(config=reranker_config)

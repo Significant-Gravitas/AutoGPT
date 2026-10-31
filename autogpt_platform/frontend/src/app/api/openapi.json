@@ -3889,13 +3889,24 @@
             "name": "page",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 1, "title": "Page" }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
           },
           {
             "name": "page_size",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 50, "title": "Page Size" }
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
           }
         ],
         "responses": {
@@ -4049,13 +4060,24 @@
             "name": "page",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 1, "title": "Page" }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
           },
           {
             "name": "page_size",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 50, "title": "Page Size" }
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
           }
         ],
         "responses": {
@@ -4132,13 +4154,24 @@
             "name": "page",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 1, "title": "Page" }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
           },
           {
             "name": "page_size",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 50, "title": "Page Size" }
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
           }
         ],
         "responses": {
@@ -9647,6 +9680,48 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/integrations/airtable/credentials/{cred_id}/bases": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "List the Airtable bases a connection can reach",
+        "operationId": "getV1ListAirtableBases",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "cred_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "The Airtable credential to list with"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AirtableBasesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/integrations/ayrshare/sso_url": {
       "get": {
         "tags": ["v1", "integrations"],
@@ -9777,6 +9852,47 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/integrations/microsoft/check": {
+      "post": {
+        "tags": ["v1", "integrations"],
+        "summary": "Verify Microsoft connection capabilities",
+        "operationId": "postV1Verify microsoft connection capabilities",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postV1Verify_microsoft_connection_capabilities"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MicrosoftAccessCheck"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -10280,6 +10396,15 @@
               "type": "string",
               "title": "Comma-separated list of authorization scopes",
               "default": ""
+            }
+          },
+          {
+            "name": "credential_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "ID of existing credential to upgrade scopes for"
             }
           }
         ],
@@ -10814,6 +10939,17 @@
         "operationId": "getV2List favorite library agents",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
+          {
+            "name": "search_term",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Search term to filter favorite agents",
+              "title": "Search Term"
+            },
+            "description": "Search term to filter favorite agents"
+          },
           {
             "name": "page",
             "in": "query",
@@ -13182,6 +13318,10 @@
                 "ONBOARDING_COMPLETE",
                 "BUILDER_OPEN",
                 "CAPABILITY_CARDS",
+                "FIRST_RUN_TOUR",
+                "CHATS_TIP",
+                "COST_TIP",
+                "EXPERT_TIP",
                 "AGENTS_TAB_INTRO",
                 "MARKETPLACE_TAB_INTRO",
                 "BUILD_TAB_INTRO",
@@ -17598,7 +17738,7 @@
         "requestBody": {
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/Profile" }
+              "schema": { "$ref": "#/components/schemas/ProfileUpdateRequest" }
             }
           },
           "required": true
@@ -19460,12 +19600,25 @@
           "WRITE_GRAPH",
           "EXECUTE_BLOCK",
           "READ_BLOCK",
-          "READ_STORE",
           "WRITE_LIBRARY",
           "USE_TOOLS",
           "MANAGE_INTEGRATIONS",
           "READ_INTEGRATIONS",
-          "DELETE_INTEGRATIONS"
+          "DELETE_INTEGRATIONS",
+          "READ_SCHEDULE",
+          "WRITE_SCHEDULE",
+          "READ_STORE",
+          "WRITE_STORE",
+          "READ_LIBRARY",
+          "RUN_AGENT",
+          "READ_RUN",
+          "WRITE_RUN",
+          "SHARE_RUN",
+          "READ_RUN_REVIEW",
+          "WRITE_RUN_REVIEW",
+          "READ_CREDITS",
+          "READ_FILES",
+          "WRITE_FILES"
         ],
         "title": "APIKeyPermission"
       },
@@ -20286,6 +20439,37 @@
         "title": "AgentsFoundResponse",
         "description": "Response for find_agent tool."
       },
+      "AirtableBase": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "access": {
+            "type": "string",
+            "enum": ["read", "edit", "create"],
+            "title": "Access"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "access"],
+        "title": "AirtableBase"
+      },
+      "AirtableBasesResponse": {
+        "properties": {
+          "bases": {
+            "items": { "$ref": "#/components/schemas/AirtableBase" },
+            "type": "array",
+            "title": "Bases"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["bases"],
+        "title": "AirtableBasesResponse"
+      },
       "ApiResponse": {
         "properties": {
           "answer": { "type": "string", "title": "Answer" },
@@ -21101,6 +21285,14 @@
         "type": "object",
         "required": ["file"],
         "title": "Body_postV1Upload file to cloud storage"
+      },
+      "Body_postV1Verify_microsoft_connection_capabilities": {
+        "properties": {
+          "credential_id": { "type": "string", "title": "Credential Id" }
+        },
+        "type": "object",
+        "required": ["credential_id"],
+        "title": "Body_postV1Verify microsoft connection capabilities"
       },
       "Body_postV2Add_credits_to_user": {
         "properties": {
@@ -22735,6 +22927,10 @@
           "description": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Description"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           }
         },
         "type": "object",
@@ -23290,6 +23486,12 @@
           "service_icon": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Service Icon"
+          },
+          "microsoft_identity": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/MicrosoftIdentity" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -23350,7 +23552,6 @@
       },
       "CreditTransactionItem": {
         "properties": {
-          "id": { "type": "string", "title": "Id", "default": "" },
           "transaction_key": {
             "type": "string",
             "title": "Transaction Key",
@@ -23379,11 +23580,6 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Usage Execution Id"
           },
-          "usage_chat_session_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Usage Chat Session Id",
-            "description": "The AutoPilot chat the usage came from"
-          },
           "usage_node_count": {
             "type": "integer",
             "title": "Usage Node Count",
@@ -23396,6 +23592,12 @@
             "default": "9999-12-31T23:59:59.999999Z"
           },
           "user_id": { "type": "string", "title": "User Id" },
+          "id": { "type": "string", "title": "Id", "default": "" },
+          "usage_chat_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Usage Chat Session Id",
+            "description": "The AutoPilot chat the usage came from"
+          },
           "activity_type": {
             "type": "string",
             "enum": ["agent_run", "copilot_tools", "block_usage", "other"],
@@ -23512,7 +23714,9 @@
       "CreditTransactionsExportResponse": {
         "properties": {
           "transactions": {
-            "items": { "$ref": "#/components/schemas/UserTransaction" },
+            "items": {
+              "$ref": "#/components/schemas/UserCreditTransactionAdminView"
+            },
             "type": "array",
             "title": "Transactions"
           },
@@ -28773,6 +28977,14 @@
             "description": "ISO 8601 timestamp of the next scheduled run, if any"
           },
           "settings": { "$ref": "#/components/schemas/GraphSettings" },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
+          },
           "marketplace_listing": {
             "anyOf": [
               { "$ref": "#/components/schemas/MarketplaceListing" },
@@ -29094,6 +29306,14 @@
             "type": "integer",
             "title": "Subfolder Count",
             "default": 0
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           }
         },
         "type": "object",
@@ -29137,6 +29357,14 @@
             "type": "integer",
             "title": "Subfolder Count",
             "default": 0
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           },
           "children": {
             "items": { "$ref": "#/components/schemas/LibraryFolderTree" },
@@ -30030,6 +30258,83 @@
         "title": "MessageFeedbackResponse",
         "description": "A saved rating of an AutoPilot reply."
       },
+      "MicrosoftAccessCheck": {
+        "properties": {
+          "verified": { "type": "boolean", "title": "Verified" },
+          "account_type": {
+            "anyOf": [
+              { "type": "string", "enum": ["personal", "work"] },
+              { "type": "null" }
+            ],
+            "title": "Account Type"
+          },
+          "capabilities": {
+            "items": { "$ref": "#/components/schemas/MicrosoftCapability" },
+            "type": "array",
+            "title": "Capabilities"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "admin_consent_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Admin Consent Url"
+          }
+        },
+        "type": "object",
+        "required": ["verified", "account_type", "capabilities", "message"],
+        "title": "MicrosoftAccessCheck"
+      },
+      "MicrosoftCapability": {
+        "properties": {
+          "service": {
+            "type": "string",
+            "enum": [
+              "mail",
+              "calendar",
+              "files",
+              "teams",
+              "copilot",
+              "work_iq"
+            ],
+            "title": "Service"
+          },
+          "name": { "type": "string", "title": "Name" },
+          "status": {
+            "type": "string",
+            "enum": [
+              "available",
+              "permission_needed",
+              "admin_required",
+              "setup_required",
+              "work_account_only",
+              "unavailable"
+            ],
+            "title": "Status"
+          },
+          "scopes": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Scopes",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["service", "name", "status"],
+        "title": "MicrosoftCapability"
+      },
+      "MicrosoftIdentity": {
+        "properties": {
+          "tenant_id": { "type": "string", "title": "Tenant Id" },
+          "account_id": { "type": "string", "title": "Account Id" },
+          "account_type": {
+            "type": "string",
+            "enum": ["personal", "work"],
+            "title": "Account Type"
+          }
+        },
+        "type": "object",
+        "required": ["tenant_id", "account_id", "account_type"],
+        "title": "MicrosoftIdentity"
+      },
       "ModelInfo": {
         "properties": {
           "value": { "type": "string", "title": "Value" },
@@ -30684,6 +30989,10 @@
           "BUILDER_OPEN",
           "BUILDER_RUN_AGENT",
           "CAPABILITY_CARDS",
+          "FIRST_RUN_TOUR",
+          "CHATS_TIP",
+          "COST_TIP",
+          "EXPERT_TIP",
           "AGENTS_TAB_INTRO",
           "MARKETPLACE_TAB_INTRO",
           "BUILD_TAB_INTRO",
@@ -31872,26 +32181,6 @@
         "title": "PresetUpdatedResponse",
         "description": "Response confirming a preset was updated."
       },
-      "Profile": {
-        "properties": {
-          "username": { "type": "string", "title": "Username" },
-          "name": { "type": "string", "title": "Name" },
-          "description": { "type": "string", "title": "Description" },
-          "avatar_url": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Avatar Url"
-          },
-          "links": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Links"
-          }
-        },
-        "type": "object",
-        "required": ["username", "name", "description", "avatar_url", "links"],
-        "title": "Profile",
-        "description": "Marketplace user profile (only attributes that the user can update)"
-      },
       "ProfileDetails": {
         "properties": {
           "username": { "type": "string", "title": "Username" },
@@ -31919,6 +32208,36 @@
         ],
         "title": "ProfileDetails",
         "description": "Marketplace user profile (including read-only fields)"
+      },
+      "ProfileUpdateRequest": {
+        "properties": {
+          "username": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Username"
+          },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "links": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Links"
+          }
+        },
+        "type": "object",
+        "title": "ProfileUpdateRequest",
+        "description": "Marketplace user profile (only attributes that the user can update)"
       },
       "ProposedFinding": {
         "properties": {
@@ -35037,7 +35356,13 @@
             "type": "string",
             "title": "Store Listing Version Id"
           },
-          "score": { "type": "integer", "title": "Score" },
+          "score": {
+            "type": "integer",
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Score",
+            "description": "Star rating, 1 to 5"
+          },
           "comments": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Comments"
@@ -38256,6 +38581,79 @@
         ],
         "title": "UserCostSummary"
       },
+      "UserCreditTransactionAdminView": {
+        "properties": {
+          "transaction_key": {
+            "type": "string",
+            "title": "Transaction Key",
+            "default": ""
+          },
+          "transaction_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Transaction Time",
+            "default": "0001-01-01T00:00:00Z"
+          },
+          "transaction_type": {
+            "$ref": "#/components/schemas/CreditTransactionType",
+            "default": "USAGE"
+          },
+          "amount": { "type": "integer", "title": "Amount", "default": 0 },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "usage_graph_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Usage Graph Id"
+          },
+          "usage_execution_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Usage Execution Id"
+          },
+          "usage_node_count": {
+            "type": "integer",
+            "title": "Usage Node Count",
+            "default": 0
+          },
+          "usage_start_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Usage Start Time",
+            "default": "9999-12-31T23:59:59.999999Z"
+          },
+          "user_id": { "type": "string", "title": "User Id" },
+          "running_balance": {
+            "type": "integer",
+            "title": "Running Balance",
+            "default": 0
+          },
+          "current_balance": {
+            "type": "integer",
+            "title": "Current Balance",
+            "default": 0
+          },
+          "user_email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Email"
+          },
+          "reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reason"
+          },
+          "admin_email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Admin Email"
+          },
+          "extra_data": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Extra Data"
+          }
+        },
+        "type": "object",
+        "required": ["user_id"],
+        "title": "UserCreditTransactionAdminView"
+      },
       "UserDailyCost": {
         "properties": {
           "date": { "type": "string", "format": "date", "title": "Date" },
@@ -38365,7 +38763,9 @@
       "UserHistoryResponse": {
         "properties": {
           "history": {
-            "items": { "$ref": "#/components/schemas/UserTransaction" },
+            "items": {
+              "$ref": "#/components/schemas/UserCreditTransactionAdminView"
+            },
             "type": "array",
             "title": "History"
           },
@@ -38692,79 +39092,6 @@
           "node_error_count"
         ],
         "title": "UserTopRun"
-      },
-      "UserTransaction": {
-        "properties": {
-          "transaction_key": {
-            "type": "string",
-            "title": "Transaction Key",
-            "default": ""
-          },
-          "transaction_time": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Transaction Time",
-            "default": "0001-01-01T00:00:00Z"
-          },
-          "transaction_type": {
-            "$ref": "#/components/schemas/CreditTransactionType",
-            "default": "USAGE"
-          },
-          "amount": { "type": "integer", "title": "Amount", "default": 0 },
-          "running_balance": {
-            "type": "integer",
-            "title": "Running Balance",
-            "default": 0
-          },
-          "current_balance": {
-            "type": "integer",
-            "title": "Current Balance",
-            "default": 0
-          },
-          "description": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Description"
-          },
-          "usage_graph_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Usage Graph Id"
-          },
-          "usage_execution_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Usage Execution Id"
-          },
-          "usage_node_count": {
-            "type": "integer",
-            "title": "Usage Node Count",
-            "default": 0
-          },
-          "usage_start_time": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Usage Start Time",
-            "default": "9999-12-31T23:59:59.999999Z"
-          },
-          "user_id": { "type": "string", "title": "User Id" },
-          "user_email": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "User Email"
-          },
-          "reason": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Reason"
-          },
-          "admin_email": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Admin Email"
-          },
-          "extra_data": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Extra Data"
-          }
-        },
-        "type": "object",
-        "required": ["user_id"],
-        "title": "UserTransaction"
       },
       "ValidationError": {
         "properties": {

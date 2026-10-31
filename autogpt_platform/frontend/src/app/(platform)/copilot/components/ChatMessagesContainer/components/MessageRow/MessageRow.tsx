@@ -38,6 +38,12 @@ interface Props {
   isCurrentlyStreaming: boolean;
   /** Assistant row that closes its turn: shows the stats bar and actions. */
   isLastInTurn: boolean;
+  /** Last rendered row: only the latest turn's stats bar says how it ended. */
+  isLatestTurn: boolean;
+  /** The latest turn's stream has really ended (see TurnStatsBar). */
+  isTurnSettled: boolean;
+  /** The latest turn's stream is still settling (probe, reconnect, restore). */
+  isTurnSettling?: boolean;
   /** This row's entry from the turn stats map. */
   turnStat?: TurnStats;
   /** The turn this row closes, for the stats bar. Only set when the bar
@@ -68,6 +74,9 @@ export const MessageRow = memo(function MessageRow({
   isLastAssistant,
   isCurrentlyStreaming,
   isLastInTurn,
+  isLatestTurn,
+  isTurnSettled,
+  isTurnSettling,
   turnStat,
   turnMessages,
   elapsedSeconds,
@@ -110,7 +119,7 @@ export const MessageRow = memo(function MessageRow({
       <Message
         from={message.role}
         data-message-id={message.id}
-        className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+        className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
       >
         <MessageContent className="group-[.is-assistant]:bg-transparent">
           <WorkCard metadata={runMetadata} preview={runPreview} />
@@ -128,7 +137,7 @@ export const MessageRow = memo(function MessageRow({
       <Message
         from={message.role}
         data-message-id={message.id}
-        className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+        className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
       >
         <MessageContent className="group-[.is-assistant]:bg-transparent">
           <ScheduledChatNoticeCard notice={notice} sessionID={sessionID} />
@@ -148,7 +157,7 @@ export const MessageRow = memo(function MessageRow({
     <Message
       from={message.role}
       data-message-id={message.id}
-      className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+      className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
     >
       <MessageContent className={getMessageContentClassName(compact)}>
         {isAssistant ? (
@@ -188,6 +197,9 @@ export const MessageRow = memo(function MessageRow({
             turnMessages={turnMessages ?? [message]}
             elapsedSeconds={elapsedSeconds}
             stats={turnStat}
+            isLatest={isLatestTurn}
+            isSettled={isTurnSettled}
+            isSettling={isTurnSettling}
           />
         )}
         {indicator}
@@ -219,6 +231,7 @@ export const MessageRow = memo(function MessageRow({
           readOnly={readOnly}
           copyText={copyText}
           sessionID={sessionID}
+          savedMessageId={turnStat?.savedMessageId}
         />
       )}
     </Message>

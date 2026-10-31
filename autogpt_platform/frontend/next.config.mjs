@@ -1,5 +1,5 @@
 import { withPostHogConfig } from "@posthog/nextjs-config";
-import { withSentryConfig } from "@sentry/nextjs";
+import { withSentryConfig } from "@sentry/nextjs/config";
 
 // Allow Docker builds to skip source-map generation (halves memory usage).
 // Defaults to true so Vercel/local builds are unaffected.
@@ -240,7 +240,7 @@ const configWithSentry = skipSentryPlugin
       // Upload a larger set of source maps for prettier stack traces (increases build time)
       widenClientFileUpload: true,
 
-      // Automatically annotate React components to show their full name in breadcrumbs and session replay
+      // Automatically annotate React components to show their full name in breadcrumbs
       reactComponentAnnotation: {
         enabled: true,
       },
@@ -259,14 +259,16 @@ const configWithSentry = skipSentryPlugin
         deleteSourcemapsAfterUpload: false, // Source is public anyway :)
       },
 
-      // Automatically tree-shake Sentry logger statements to reduce bundle size
-      disableLogger: true,
+      webpack: {
+        // Automatically tree-shake Sentry logger statements to reduce bundle size
+        treeshake: { removeDebugLogging: true },
 
-      // Enables automatic instrumentation of Vercel Cron Monitors. (Does not yet work with App Router route handlers.)
-      // See the following for more information:
-      // https://docs.sentry.io/product/crons/
-      // https://vercel.com/docs/cron-jobs
-      automaticVercelMonitors: true,
+        // Enables automatic instrumentation of Vercel Cron Monitors. (Does not yet work with App Router route handlers.)
+        // See the following for more information:
+        // https://docs.sentry.io/product/crons/
+        // https://vercel.com/docs/cron-jobs
+        automaticVercelMonitors: true,
+      },
     });
 
 // Build-only credentials, never NEXT_PUBLIC_ and never in `env` above, so they

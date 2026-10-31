@@ -48,7 +48,29 @@
 
 ## API & Integrations
 
-* [API Introduction](integrating/api-guide.md)
+* [AutoGPT Platform API](integrating/api-guide.md)
+  * [Quickstart](integrating/quickstart.md)
+  * [Build with AI coding agents](integrating/ai-coding-agents.md)
+  * [Cloud and self-hosted](integrating/environments.md)
+  * [Authentication and permissions](integrating/authentication.md)
+  * [Run agents](integrating/running-agents.md)
+  * [Build agents](integrating/building-agents.md)
+  * [Errors, rate limits, and pagination](integrating/api-conventions.md)
+  * [MCP server](integrating/mcp-server.md)
+  * [Migrate from v1](integrating/migrate-from-v1.md)
+* [API reference](integrating/api-reference.md)
+  * ```yaml
+    props:
+      models: true
+      downloadLink: true
+      grouping: by-operation
+    type: builtin:openapi
+    dependencies:
+      spec:
+        ref:
+          kind: openapi
+          spec: autogpt-api-v2
+    ```
 * [OAuth & SSO](integrating/oauth-guide.md)
 
 ## Contributing
@@ -59,6 +81,7 @@
 ## Changelog
 
 * [What's New](changelog/README.md)
+  * [Expert pages with an Overview, an app that fits your phone, and a lighter login](changelog/october-23-2026.md)
   * [A clearer wallet, a kinder trial, and shorter replies from Otto](changelog/october-8-october-14-2026.md)
   * [A bigger roster, Clay & Rock avatars, folders in your workspace](changelog/september-24-september-30-2026.md)
   * [Meet your Experts: hire a specialist and put it to work](changelog/september-19-2026.md)

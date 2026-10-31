@@ -11,23 +11,34 @@ type Rating = "upvote" | "downvote";
 interface Args {
   sessionID: string | null;
   message: UIMessage<unknown, UIDataTypes, UITools>;
+  savedMessageId?: string | null;
 }
 
-export function useMessageFeedback({ sessionID, message }: Args) {
+export function useMessageFeedback({
+  sessionID,
+  message,
+  savedMessageId,
+}: Args) {
   const [feedback, setFeedback] = useState<Rating | null>(null);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const { mutateAsync: submitFeedback } = usePostV2SubmitMessageFeedback();
 
-  // A reply that just streamed still carries the stream's id until the chat
-  // reloads it with its saved one, and only the saved one can be rated.
-  const canRate = sessionID !== null && extractDbSequence(message) !== null;
+  // Only a saved reply can be rated. A reply that just streamed is keyed by
+  // the stream until the chat swaps in its saved id or learns it.
+  const ratedMessageId =
+    savedMessageId !== undefined
+      ? savedMessageId
+      : extractDbSequence(message) !== null
+        ? message.id
+        : null;
+  const canRate = sessionID !== null && ratedMessageId !== null;
 
   async function sendScore(score: Omit<MessageFeedbackRequest, "message_id">) {
-    if (!sessionID) return false;
+    if (!sessionID || !ratedMessageId) return false;
     try {
       await submitFeedback({
         sessionId: sessionID,
-        data: { message_id: message.id, ...score },
+        data: { message_id: ratedMessageId, ...score },
       });
       return true;
     } catch (error) {
@@ -75,14 +86,25 @@ export function useMessageFeedback({ sessionID, message }: Args) {
     if (canRate) void sendScore({ score_name: "copy", score_value: 1 });
   }
 
+  function explainNotRateableYet() {
+    toast({
+      title: "Can't rate this reply yet",
+      description:
+        "It may still be saving. Try again in a moment, or refresh the page.",
+      duration: 3000,
+    });
+  }
+
   function handleUpvote() {
-    if (feedback || !canRate) return;
+    if (feedback) return;
+    if (!canRate) return explainNotRateableYet();
     setFeedback("upvote");
     void saveRating("upvote");
   }
 
   function handleDownvoteClick() {
-    if (feedback || !canRate) return;
+    if (feedback) return;
+    if (!canRate) return explainNotRateableYet();
     setFeedback("downvote");
     setShowFeedbackModal(true);
   }

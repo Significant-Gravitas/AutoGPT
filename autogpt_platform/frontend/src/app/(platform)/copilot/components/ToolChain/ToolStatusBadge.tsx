@@ -38,10 +38,8 @@ export function ToolStatusBadge({ state, label, children }: Props) {
         <m.span
           aria-hidden="true"
           className={cn(
-            // TODO(tokens): no fitting role for border-t-zinc-500 #83838C; #83838C is foreground-tertiary (a text colour) and placeholder (a text colour)
-            "absolute -inset-[3px] rounded-full border border-transparent border-t-zinc-500",
-            running &&
-              "animate-[spin_0.9s_linear_infinite] motion-reduce:animate-none",
+            "absolute -inset-[3px] rounded-full border border-transparent border-t-foreground-tertiary",
+            running && "animate-spin motion-reduce:animate-none",
           )}
           initial={{ opacity: 0 }}
           animate={{ opacity: running ? 1 : 0 }}

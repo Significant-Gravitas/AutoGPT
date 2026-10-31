@@ -60,9 +60,7 @@ export function PlanOffer({
     <section
       aria-label={`${name} plan`}
       data-slot="plan-offer"
-      // TODO(tokens): no role for the purple-200 border or the purple-50 to
-      // blue-50 gradient.
-      className="rounded-2xl border border-purple-200 bg-gradient-to-br from-purple-50 via-white to-blue-50 p-5 sm:p-6"
+      className="rounded-2xl border border-brand/30 bg-gradient-to-br from-accent-surface via-surface to-info-surface p-5 sm:p-6"
     >
       <div
         data-slot="plan-offer-header"
@@ -74,9 +72,7 @@ export function PlanOffer({
         >
           <span
             data-slot="plan-offer-icon"
-            // TODO(tokens): no role for the purple-200 border or purple-600
-            // icon.
-            className="hidden size-10 shrink-0 items-center justify-center rounded-xl border border-purple-200 bg-surface text-purple-600 min-[360px]:flex"
+            className="hidden size-10 shrink-0 items-center justify-center rounded-xl border border-brand/30 bg-surface text-brand min-[360px]:flex"
           >
             <Icon icon={SparklesIcon} size={20} />
           </span>
@@ -110,9 +106,7 @@ export function PlanOffer({
             <Icon
               icon={Tick02Icon}
               size={16}
-              // TODO(tokens): no role for the purple-600 icon; brand-hover is a
-              // hover fill.
-              className="mt-0.5 shrink-0 text-purple-600"
+              className="mt-0.5 shrink-0 text-brand"
             />
             {feature}
           </li>

@@ -18,11 +18,6 @@ type CustomProps = {
   className?: string;
   /** With `as="label"`: the id of the control the label names. */
   htmlFor?: string;
-  /**
-   * Shows the text in session replays, which mask all text by default.
-   * Only for static copy that is the same for every user.
-   */
-  unmask?: boolean;
 };
 
 export type TextProps = React.PropsWithChildren<
@@ -36,17 +31,11 @@ export function Text({
   size,
   tone,
   className = "",
-  unmask = false,
   ...rest
 }: TextProps) {
   const variantClasses = variants[size || variant] || variants.body;
   const Element = outerAs || variantElementMap[variant];
-  const combinedClassName = cn(
-    variantClasses,
-    tone && tones[tone],
-    unmask && "sentry-unmask",
-    className,
-  );
+  const combinedClassName = cn(variantClasses, tone && tones[tone], className);
 
   return React.createElement(
     Element,
