@@ -6,7 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { remarkAppLinks } from "../app-links";
+import { remarkAppLinks, toAppPath } from "../app-links";
 import { MessageResponse } from "../Message";
 
 const AGENT_ID = "144760ff-de7d-4cc2-94ee-4bccaa741cf7";
@@ -107,5 +107,26 @@ describe("remarkAppLinks", () => {
     remarkAppLinks()({ type: "root", children: [definition] });
 
     expect(definition.url).toBe("/library/agents/1");
+  });
+});
+
+describe("toAppPath", () => {
+  it.each([
+    ["library/agents/1", "/library/agents/1"],
+    ["library", "/library"],
+    ["library?tab=1", "/library?tab=1"],
+    ["marketplace#top", "/marketplace#top"],
+    ["/library/agents/1", "/library/agents/1"],
+    ["//evil.com/library", "//evil.com/library"],
+    ["\\\\evil.com", "\\\\evil.com"],
+    ["./library", "./library"],
+    ["#library", "#library"],
+    ["library:x", "library:x"],
+    ["streamdown:incomplete-link", "streamdown:incomplete-link"],
+    ["libraryx/y", "libraryx/y"],
+    ["Library/x", "Library/x"],
+    ["example.com/library", "example.com/library"],
+  ])("maps %s to %s", (url, expected) => {
+    expect(toAppPath(url)).toBe(expected);
   });
 });

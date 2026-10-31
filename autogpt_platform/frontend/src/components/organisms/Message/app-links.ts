@@ -38,8 +38,6 @@ function rewriteLinks(node: MarkdownNode) {
   node.children?.forEach(rewriteLinks);
 }
 
-// Streamdown keys its parse cache on plugin function names, so this one keeps
-// a distinct name.
 export function remarkAppLinks() {
   return function transformAppLinks(tree: MarkdownNode) {
     rewriteLinks(tree);

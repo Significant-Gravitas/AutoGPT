@@ -416,6 +416,8 @@ function renderExternalLinkModal(modalProps: LinkSafetyModalProps) {
 
 const STREAMDOWN_PLUGINS = { code, mermaid, math, cjk };
 
+// Streamdown memoises every block on the identity of this list, so it is built
+// once here.
 const REMARK_PLUGINS = [...Object.values(defaultRemarkPlugins), remarkAppLinks];
 
 const LINK_SAFETY = {
