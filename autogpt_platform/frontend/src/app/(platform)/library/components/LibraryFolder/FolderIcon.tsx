@@ -90,42 +90,6 @@ const colorMap: Record<
   },
 };
 
-export const folderCardStyles: Record<
-  FolderColorName,
-  { bg: string; border: string; buttonBase: string; buttonHover: string }
-> = {
-  blue: {
-    bg: "bg-info-surface",
-    border: "border-blue-200",
-    buttonBase: "border-zinc-600 text-foreground-base",
-    buttonHover: "hover:bg-blue-200",
-  },
-  purple: {
-    bg: "bg-purple-50",
-    border: "border-purple-200",
-    buttonBase: "border-zinc-600 text-foreground-base ",
-    buttonHover: "hover:bg-purple-200",
-  },
-  emerald: {
-    bg: "bg-emerald-50",
-    border: "border-emerald-200",
-    buttonBase: "border-zinc-600 text-foreground-base",
-    buttonHover: "hover:bg-emerald-200",
-  },
-  orange: {
-    bg: "bg-orange-50",
-    border: "border-orange-200",
-    buttonBase: "border-zinc-600 text-foreground-base",
-    buttonHover: "hover:bg-orange-200",
-  },
-  pink: {
-    bg: "bg-pink-50",
-    border: "border-pink-200",
-    buttonBase: "border-zinc-600 text-foreground-base",
-    buttonHover: "hover:bg-pink-200",
-  },
-};
-
 export function FolderIcon({
   className = "",
   size = "xs",

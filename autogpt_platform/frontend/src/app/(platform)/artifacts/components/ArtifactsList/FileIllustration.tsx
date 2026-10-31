@@ -313,18 +313,6 @@ export const FILE_TYPE_CONFIGS: Record<FileTypeKey, FileTypeConfig> = {
   },
 };
 
-export const FILE_TYPE_KEYS: FileTypeKey[] = [
-  "pdf",
-  "xls",
-  "json",
-  "img",
-  "html",
-  "video",
-  "react",
-  "code",
-  "generic",
-];
-
 export function pickFileTypeKey(
   mimeType: string | undefined,
   fileName?: string,

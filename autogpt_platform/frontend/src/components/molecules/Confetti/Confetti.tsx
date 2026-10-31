@@ -143,4 +143,4 @@ const ConfettiComponent = forwardRef<ConfettiRef, Props>(
 ConfettiComponent.displayName = "Confetti";
 
 export { ConfettiComponent as Confetti, AGPT_CONFETTI_COLORS };
-export type { Props as ConfettiProps, ConfettiOptions };
+export type { ConfettiOptions };

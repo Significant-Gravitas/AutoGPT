@@ -46,7 +46,6 @@ export function buildStepLayout({
 
 export const PAYWALL_LAST_STEPS = buildStepLayout({ hasPaywall: true });
 export const NO_PAYWALL_STEPS = buildStepLayout({});
-export const SELF_HOST_STEPS = buildStepLayout({ hasConnect: true });
 
 interface OnboardingWizardState {
   currentStep: Step;
