@@ -92,17 +92,22 @@ def provision_credentials_file() -> None:
     logger.info("Provisioned Claude credentials file at %s", creds_path)
 
 
-@functools.cache
-def validate_subscription() -> None:
-    """Validate the bundled Claude CLI is reachable and authenticated.
+def validate_subscription(cli_path: str | None = None) -> None:
+    """Validate the configured Claude CLI, or the bundled/PATH fallback.
 
-    Cached so the blocking subprocess check runs at most once per process
-    lifetime.  On first call, also provisions ``~/.claude/.credentials.json``
-    from the ``CLAUDE_CODE_OAUTH_TOKEN`` env var when available.
+    Resolve before checking the cache so a changed environment or retargeted
+    launcher selects a fresh validation. Invalid overrides cannot provision
+    credentials or silently fall back to another executable.
     """
+    cli = _configured_cli(cli_path) or find_bundled_cli()
+    _validate_subscription(os.path.realpath(cli))
+
+
+@functools.cache
+def _validate_subscription(cli: str) -> None:
+    """Provision and probe once per resolved executable, caching only success."""
     provision_credentials_file()
 
-    cli = find_bundled_cli()
     result = subprocess.run(
         [cli, "--version"],
         capture_output=True,
@@ -150,3 +155,19 @@ def validate_subscription() -> None:
         )
     except json.JSONDecodeError:
         logger.warning("Could not parse `claude auth status` output")
+
+
+def _configured_cli(cli_path: str | None) -> str | None:
+    configured = (
+        cli_path
+        or os.getenv("CHAT_CLAUDE_AGENT_CLI_PATH")
+        or os.getenv("CLAUDE_AGENT_CLI_PATH")
+    )
+    if not configured:
+        return None
+    path = os.path.realpath(configured)
+    if not os.path.isfile(path) or not os.access(path, os.X_OK):
+        raise RuntimeError(
+            f"Configured Claude CLI ({os.path.basename(path)}) is not an executable file"
+        )
+    return path
