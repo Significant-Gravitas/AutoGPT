@@ -1,0 +1,297 @@
+name: AutoGPT Platform - Flake Gate
+
+# Re-runs the test files a PR adds or changes: once without load, then up to
+# ten times under CPU load, each in a new random order. A test that passes in
+# some runs and fails in others is reported as flaky, with the seed and the
+# command that reproduce it. That is the test that passes PR CI and then
+# fails in the merge queue or on dev. See .github/scripts/flake_gate.py.
+#
+# Advisory: Check PR Status ignores every job here (ADVISORY_CHECK_RUNS in
+# .github/workflows/scripts/check_actions_status.py), so it never waits for
+# them or fails on them. No secrets, so fork PRs run it too.
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - "autogpt_platform/backend/**/*_test.py"
+      - "autogpt_platform/backend/**/test_*.py"
+      - "autogpt_platform/frontend/src/**/*.test.ts"
+      - "autogpt_platform/frontend/src/**/*.test.tsx"
+      - "autogpt_platform/frontend/scripts/**/*.test.ts"
+      - ".github/workflows/platform-flake-gate.yml"
+      - ".github/scripts/flake_gate.py"
+      - ".github/scripts/flake_gate_pytest.py"
+      - ".github/scripts/test_flake_gate.py"
+
+concurrency:
+  group: flake-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: flake gate (changed tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      backend: ${{ steps.detect.outputs.backend }}
+      frontend: ${{ steps.detect.outputs.frontend }}
+      self_test: ${{ steps.detect.outputs.self_test }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          # The PR's merge commit and its parents; HEAD^1 is the base branch.
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Find the changed test files
+        id: detect
+        run: python3 .github/scripts/flake_gate.py detect --base HEAD^1 --head HEAD
+
+  self-test:
+    name: flake gate (self-test)
+    needs: changes
+    if: needs.changes.outputs.self_test == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Test the gate
+        run: |
+          python -m pip install --quiet pytest
+          python -m unittest discover -s .github/scripts -p "test_flake_gate.py" -v
+
+  backend:
+    name: flake gate (backend)
+    needs: changes
+    if: needs.changes.outputs.backend != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+        working-directory: autogpt_platform/backend
+    # The backend test job's environment (platform-backend-ci.yml) without its
+    # secrets. A test that needs a secret, or a service not started here
+    # (ClamAV, FalkorDB), fails without load too, and the gate doesn't count
+    # a test that fails every run.
+    env:
+      CI: true
+      PLAIN_OUTPUT: True
+      RUN_ENV: local
+      PORT: 8080
+      LOG_LEVEL: INFO
+      SKILLS_CATALOG_PATH: ${{ github.workspace }}/skills-catalog
+      SKILLS_CATALOG_TOKEN: ${{ github.token }}
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      REDIS_HOST: localhost
+      REDIS_PORT: "17000"
+      EXECUTION_MANAGER_PORT: "18002"
+      DATABASE_API_PORT: "18005"
+      AGENT_API_PORT: "18006"
+      EXECUTION_SCHEDULER_PORT: "18003"
+      NOTIFICATION_SERVICE_PORT: "18007"
+      TRIAL_TEST_DATABASE: "1"
+      # The same published local default the backend test job uses; see the
+      # note on it there.
+      RABBITMQ_DEFAULT_USER: "rabbitmq_user_default"
+      RABBITMQ_DEFAULT_PASS: "k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Checkout skills catalog
+        uses: actions/checkout@v6
+        with:
+          repository: Significant-Gravitas/skills-catalog
+          path: skills-catalog
+          persist-credentials: false
+
+      - name: Start Postgres, Redis and RabbitMQ
+        id: services
+        working-directory: autogpt_platform
+        background: true
+        run: |
+          set -euo pipefail
+          pull() { bash "$GITHUB_WORKSPACE/.github/scripts/docker-pull-with-retry.sh" "$1"; }
+          wait_for() {
+            local what="$1"; shift
+            for _ in $(seq 1 60); do
+              if "$@" >/dev/null 2>&1; then
+                echo "$what is ready"
+                return 0
+              fi
+              sleep 2
+            done
+            echo "$what did not start" >&2
+            return 1
+          }
+
+          pull pgvector/pgvector:pg15
+          docker run --pull=never -d --name postgres-test \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_DB=postgres \
+            -p 5432:5432 \
+            -v "$(pwd)/db/init/00-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro" \
+            pgvector/pgvector:pg15
+
+          pull rabbitmq:4.1.4
+          docker run --pull=never -d --name rabbitmq -p 5672:5672 \
+            -e RABBITMQ_DEFAULT_USER -e RABBITMQ_DEFAULT_PASS \
+            rabbitmq:4.1.4
+
+          # A 3-shard cluster, as in the backend test job. Shards announce
+          # their container names; the backend's client keeps the announced
+          # port and connects through REDIS_HOST.
+          pull redis:7
+          docker network create redis-cluster
+          for offset in 0 1 2; do
+            port=$((REDIS_PORT + offset))
+            docker run --pull=never -d --name "redis-$offset" \
+              --network redis-cluster --network-alias "redis-$offset" \
+              -p "$port:$port" redis:7 \
+              redis-server --port "$port" \
+                --cluster-enabled yes \
+                --cluster-config-file nodes.conf \
+                --cluster-node-timeout 5000 \
+                --cluster-require-full-coverage no \
+                --cluster-announce-hostname "redis-$offset" \
+                --cluster-announce-port "$port" \
+                --cluster-announce-bus-port "$((port + 10000))" \
+                --cluster-preferred-endpoint-type hostname
+          done
+          for offset in 0 1 2; do
+            wait_for "redis-$offset" docker exec "redis-$offset" \
+              redis-cli -p "$((REDIS_PORT + offset))" ping
+          done
+          docker run --pull=never --rm --network redis-cluster redis:7 \
+            redis-cli --cluster create \
+              "redis-0:$REDIS_PORT" \
+              "redis-1:$((REDIS_PORT + 1))" \
+              "redis-2:$((REDIS_PORT + 2))" \
+              --cluster-replicas 0 --cluster-yes
+          wait_for "the Redis cluster" bash -c \
+            "docker exec redis-0 redis-cli -p $REDIS_PORT cluster info | grep -q '^cluster_state:ok'"
+
+          wait_for Postgres docker exec postgres-test pg_isready -h 127.0.0.1 -U postgres
+          wait_for RabbitMQ docker exec rabbitmq rabbitmq-diagnostics -q check_running
+
+      # The slowest Python the backend tests run on, so a test with too
+      # little time to spare fails here first: #15427's failed only on 3.11.
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-py3.11-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
+
+      - name: Install Poetry
+        run: |
+          POETRY_VERSION=$(python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)
+          curl -sSL https://install.python-poetry.org | POETRY_VERSION=$POETRY_VERSION python3 -
+
+      - name: Install Python dependencies
+        run: poetry install
+
+      - name: Generate Prisma Client
+        run: poetry run prisma generate && poetry run gen-prisma-stub
+
+      - name: Wait for the services
+        wait: services
+
+      - name: Migrate the database
+        run: poetry run prisma migrate deploy
+
+      - name: Generate ephemeral secrets
+        run: |
+          echo "ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
+          echo "UNSUBSCRIBE_SECRET_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
+
+      - name: Re-run the changed tests under load
+        env:
+          FILES: ${{ needs.changes.outputs.backend }}
+        run: python ../../.github/scripts/flake_gate.py run --suite backend --files-from-env FILES
+
+      - name: Upload the runs' logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: flake-gate-backend
+          path: |
+            autogpt_platform/backend/flake-gate-results/*.log
+            autogpt_platform/backend/flake-gate-results/*.jsonl
+            autogpt_platform/backend/flake-gate-results/summary.md
+          if-no-files-found: ignore
+          retention-days: 7
+
+  frontend:
+    name: flake gate (frontend)
+    needs: changes
+    if: needs.changes.outputs.frontend != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+        working-directory: autogpt_platform/frontend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: autogpt_platform/frontend/package.json
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.18.0"
+          cache: "pnpm"
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Generate API client
+        run: pnpm generate:api
+
+      - name: Re-run the changed tests under load
+        env:
+          FILES: ${{ needs.changes.outputs.frontend }}
+        run: python3 ../../.github/scripts/flake_gate.py run --suite frontend --files-from-env FILES
+
+      - name: Upload the runs' logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: flake-gate-frontend
+          path: |
+            autogpt_platform/frontend/flake-gate-results/*.log
+            autogpt_platform/frontend/flake-gate-results/*.json
+            autogpt_platform/frontend/flake-gate-results/summary.md
+          if-no-files-found: ignore
+          retention-days: 7

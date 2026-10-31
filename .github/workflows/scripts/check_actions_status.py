@@ -16,9 +16,15 @@ PASSING_CONCLUSIONS = {"success", "skipped", "neutral"}
 # that does not.
 # The journeys e2e leg is advisory while it beds in: its failures show on the
 # PR but don't block merging. Drop it from here once it has proven stable.
+# So is every job of the flake gate (platform-flake-gate.yml), which re-runs a
+# PR's changed tests under load to warn about flaky ones.
 ADVISORY_CHECK_RUNS = {
     "copilot-pull-request-reviewer",
     "end-to-end tests (journeys)",
+    "flake gate (changed tests)",
+    "flake gate (self-test)",
+    "flake gate (backend)",
+    "flake gate (frontend)",
 }
 
 
