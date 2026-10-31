@@ -165,6 +165,34 @@ async def test_expert_run_post_skips_a_duplicate_id_without_retrying():
     add_message.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_append_and_save_message_skips_a_duplicate_id_from_the_rpc():
+    """Outside the database manager the batch insert's error arrives through
+    the RPC with only its message."""
+    from backend.copilot import model as copilot_model
+
+    db = AsyncMock()
+    db.get_next_sequence = AsyncMock(return_value=1)
+    db.add_chat_messages_batch = AsyncMock(side_effect=_rpc_error(_ID_MESSAGE))
+    session = copilot_model.ChatSession.new(user_id="u1", dry_run=False)
+    with (
+        patch.object(copilot_model, "chat_db", return_value=db),
+        patch.object(copilot_model, "_get_session_lock", new=_held_lock),
+        patch.object(
+            copilot_model, "get_chat_session", new=AsyncMock(return_value=session)
+        ),
+        patch.object(copilot_model, "cache_chat_session", new=AsyncMock()),
+    ):
+        result = await append_and_save_message(
+            session.session_id,
+            ChatMessage(id="m1", role="user", content="hi"),
+            dedupe_content=False,
+        )
+
+    assert result is None
+    db.add_chat_messages_batch.assert_awaited_once()
+
+
 # ---------- real inserts ----------
 
 
@@ -180,16 +208,13 @@ async def database(server: SpinTestServer):
 
 
 async def _create_user(user_id: str) -> None:
-    try:
-        await User.prisma().create(
-            data={
-                "id": user_id,
-                "email": f"duplicate-id-{user_id}@example.com",
-                "name": "Duplicate Id Test",
-            }
-        )
-    except UniqueViolationError:
-        pass
+    await User.prisma().create(
+        data={
+            "id": user_id,
+            "email": f"duplicate-id-{user_id}@example.com",
+            "name": "Duplicate Id Test",
+        }
+    )
 
 
 async def _cleanup(user_id: str) -> None:
@@ -255,13 +280,15 @@ async def test_a_real_duplicate_id_in_a_batch_is_not_retried(database: None):
         await _insert(session_id, message_id, sequence=0)
 
         next_sequence = AsyncMock(wraps=copilot_db.get_next_sequence)
-        with patch("backend.copilot.db.get_next_sequence", new=next_sequence):
-            with pytest.raises(UniqueViolationError):
-                await copilot_db.add_chat_messages_batch(
-                    session_id=session_id,
-                    messages=[{"id": message_id, "role": "user", "content": "hi"}],
-                    start_sequence=1,
-                )
+        with (
+            patch("backend.copilot.db.get_next_sequence", new=next_sequence),
+            pytest.raises(UniqueViolationError),
+        ):
+            await copilot_db.add_chat_messages_batch(
+                session_id=session_id,
+                messages=[{"id": message_id, "role": "user", "content": "hi"}],
+                start_sequence=1,
+            )
         next_sequence.assert_not_awaited()
     finally:
         await _cleanup(user_id)
