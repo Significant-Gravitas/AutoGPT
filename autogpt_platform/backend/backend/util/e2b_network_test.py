@@ -22,6 +22,7 @@ from backend.util.e2b_network import (
     reattach_command,
     secret_digest,
 )
+from backend.util.sandbox_limits import tagged
 
 _M = "backend.util.e2b_network"
 _OWNER = EgressOwner(kind="expert", id="exp-1", user_id="user-1")
@@ -106,7 +107,10 @@ class TestOff:
                 await connect_sandbox(cls, "sb-1", _OWNER, api_key="k", timeout=9)
                 is box
             )
-        cls.create.assert_awaited_once_with(template="t", api_key="k")
+        # Untouched but for the stamps the running-box limits count by.
+        cls.create.assert_awaited_once_with(
+            template="t", api_key="k", metadata=tagged(None, _OWNER.user_id)
+        )
         cls.connect.assert_awaited_once_with("sb-1", api_key="k", timeout=9)
         box.update_network.assert_not_awaited()
         assert redis.store == {}

@@ -5,9 +5,11 @@ import {
   getPostV2StartExpertDesktopMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import type { ComputerInfo } from "@/app/api/__generated__/models/computerInfo";
+import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { ExpertComputerSection } from "../ExpertComputerSection";
 
@@ -72,6 +74,29 @@ describe("ExpertComputerSection", () => {
         screen.getByTitle("Interactive desktop (sbx-desktop)"),
       ).toBeDefined(),
     );
+  });
+
+  it("says why when the server refuses the desktop under a sandbox limit", async () => {
+    const refusal =
+      "Too many sandboxes are running on your account: 10 at once is the most.";
+    server.use(
+      getGetV2GetExpertComputerMockHandler(computer),
+      http.post("/api/proxy/api/experts/:expertId/computer/desktop", () =>
+        HttpResponse.json({ detail: refusal }, { status: 429 }),
+      ),
+    );
+
+    render(
+      <>
+        <ExpertComputerSection expertId="expert-1" expertName="Maria" />
+        <Toaster />
+      </>,
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Turn on screen" }),
+    );
+
+    expect(await screen.findByText(refusal)).toBeDefined();
   });
 
   it("does not show one expert's desktop under another expert", async () => {

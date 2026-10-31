@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
+from e2b import SandboxState
 from e2b_code_interpreter import AsyncSandbox
 from e2b_code_interpreter import Result as E2BExecutionResult
 from e2b_code_interpreter.charts import Chart as E2BExecutionResultChart
@@ -172,7 +173,11 @@ class BaseE2BExecutorMixin:
                         f"Sandbox {sandbox_id} does not belong to this user"
                     )
                 sandbox = await connect_sandbox(
-                    AsyncSandbox, sandbox_id, egress_owner, api_key=api_key
+                    AsyncSandbox,
+                    sandbox_id,
+                    egress_owner,
+                    resumes=info.state != SandboxState.RUNNING,
+                    api_key=api_key,
                 )
             else:
                 # Create new sandbox (ExecuteCodeBlock/InstantiateCodeSandboxBlock case)

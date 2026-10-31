@@ -39,6 +39,7 @@ from backend.integrations.oauth.microsoft_365_copilot import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import DatabaseError, NotFoundError
+from backend.util.sandbox_limits import SandboxLimitError
 from backend.util.settings import BehaveAs
 
 app = fastapi.FastAPI()
@@ -5138,6 +5139,26 @@ def test_start_session_desktop_returns_the_stream(
     response = client.post("/sessions/sess-1/desktop")
     assert response.status_code == 200
     assert response.json()["sandbox_id"] == "sbx"
+
+
+def test_start_session_desktop_refused_under_a_sandbox_limit_is_a_429_saying_so(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new_callable=AsyncMock,
+        return_value=_session_like(None),
+    )
+    config = mocker.patch("backend.api.features.chat.routes.ChatConfig")
+    config.return_value.active_e2b_api_key = "e2b-key"
+    mocker.patch(
+        "backend.api.features.chat.routes.open_desktop",
+        new_callable=AsyncMock,
+        side_effect=SandboxLimitError("Too many sandboxes are running right now."),
+    )
+    response = client.post("/sessions/sess-1/desktop")
+    assert response.status_code == 429
+    assert response.json()["detail"] == "Too many sandboxes are running right now."
 
 
 def test_start_session_desktop_without_e2b_is_503(

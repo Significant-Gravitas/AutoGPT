@@ -50,7 +50,8 @@ from e2b.sandbox.sandbox_api import (
 from pydantic import BaseModel, ConfigDict
 
 from backend.data.redis_client import get_redis_async
-from backend.util.settings import Settings
+from backend.util.sandbox_limits import USER_KEY, start_slot, tagged
+from backend.util.settings import Secrets, Settings
 
 logger = logging.getLogger(__name__)
 # One JSON line per pin: which box, for whom, and which of the user's accounts
@@ -137,11 +138,71 @@ async def create_sandbox(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any
 
     *sandbox_cls* is the SDK class the caller uses (``e2b.AsyncSandbox`` or
     ``e2b_code_interpreter``'s); every other keyword goes to its ``create``.
-    The credential is recorded before the box exists so that its very first
-    connection already resolves at the proxy.
+    The box is stamped with its deployment and account, and on the platform's
+    key the create waits for a place under ``backend.util.sandbox_limits``,
+    raising ``SandboxLimitError`` when there is none.
     """
     if "network" in kwargs:
         raise ValueError("A box's network is decided here, not by the caller")
+    kwargs["metadata"] = tagged(kwargs.get("metadata"), owner.user_id)
+    if not _on_platform_key(owner, kwargs.get("api_key")):
+        return await _create_pinned(sandbox_cls, owner, **kwargs)
+    async with start_slot(
+        kwargs.get("api_key"), kwargs["metadata"].get(USER_KEY)
+    ) as slot:
+        sandbox = await _create_pinned(sandbox_cls, owner, **kwargs)
+        await slot.started(sandbox.sandbox_id)
+    return sandbox
+
+
+async def connect_sandbox(
+    sandbox_cls: type[S],
+    sandbox_id: str,
+    owner: EgressOwner,
+    *,
+    apply_network: bool = True,
+    resumes: bool = True,
+    owner_at_pin: Optional[Callable[[EgressOwner], Awaitable[EgressOwner]]] = None,
+    **kwargs: Any,
+) -> S:
+    """Reconnect to a box, re-pinning its egress under a fresh credential.
+
+    *apply_network* is ``False`` for a connect that only pauses or kills the
+    box: nothing will egress before it is gone, so there is nothing to pin,
+    and it takes no place under the running-box limits.  *resumes* is
+    ``False`` when the caller has just seen the box running; any other
+    connect may wake it, so it waits for a place like a create does.
+    """
+    if not (
+        apply_network and resumes and _on_platform_key(owner, kwargs.get("api_key"))
+    ):
+        return await _connect_pinned(
+            sandbox_cls,
+            sandbox_id,
+            owner,
+            apply_network=apply_network,
+            owner_at_pin=owner_at_pin,
+            **kwargs,
+        )
+    async with start_slot(
+        kwargs.get("api_key"), owner.user_id, sandbox_id=sandbox_id
+    ) as slot:
+        sandbox = await _connect_pinned(
+            sandbox_cls, sandbox_id, owner, owner_at_pin=owner_at_pin, **kwargs
+        )
+        await slot.started(sandbox_id)
+    return sandbox
+
+
+def _on_platform_key(owner: EgressOwner, api_key: Optional[str]) -> bool:
+    """CoPilot boxes always run on the platform's key; a block's box only when
+    it runs on the platform's E2B credential, not one the user brought."""
+    return owner.kind != "block" or not api_key or api_key == Secrets().e2b_api_key
+
+
+async def _create_pinned(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any) -> S:
+    """The credential is recorded before the box exists so that its very first
+    connection already resolves at the proxy."""
     address = proxy_address()
     if address is None:
         return await sandbox_cls.create(**kwargs)
@@ -177,7 +238,7 @@ async def create_sandbox(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any
     return sandbox
 
 
-async def connect_sandbox(
+async def _connect_pinned(
     sandbox_cls: type[S],
     sandbox_id: str,
     owner: EgressOwner,
@@ -186,11 +247,7 @@ async def connect_sandbox(
     owner_at_pin: Optional[Callable[[EgressOwner], Awaitable[EgressOwner]]] = None,
     **kwargs: Any,
 ) -> S:
-    """Reconnect to a box, re-pinning its egress under a fresh credential.
-
-    *apply_network* is ``False`` for a connect that only pauses or kills the
-    box: nothing will egress before it is gone, so there is nothing to pin.
-    The new credential is recorded before the update and the old one is
+    """The new credential is recorded before the update and the old one is
     forgotten after it, so a failed update leaves the box on a credential
     that still resolves.
 

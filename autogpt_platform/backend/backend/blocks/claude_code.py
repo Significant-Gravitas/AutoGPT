@@ -4,6 +4,7 @@ import uuid
 from typing import TYPE_CHECKING, Literal, Optional
 
 from e2b import AsyncSandbox as BaseAsyncSandbox
+from e2b import SandboxState
 from pydantic import SecretStr
 
 from backend.blocks._base import (
@@ -363,6 +364,7 @@ class ClaudeCodeBlock(Block):
                     BaseAsyncSandbox,
                     existing_sandbox_id,
                     egress_owner,
+                    resumes=info.state != SandboxState.RUNNING,
                     api_key=e2b_api_key,
                 )
             else:
