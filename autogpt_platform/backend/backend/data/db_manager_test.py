@@ -23,6 +23,7 @@ from backend.copilot.dream.schemas import (
     DreamPassUsage,
     PhaseUsage,
 )
+from backend.copilot.model import ChatSessionSaveFields
 from backend.util.json import to_dict
 from backend.util.service import EXPOSED_FLAG
 
@@ -41,6 +42,31 @@ def test_async_client_exposes_chat_methods() -> None:
     assert hasattr(DatabaseManagerAsyncClient, "set_turn_duration")
     assert hasattr(DatabaseManager, "update_chat_session_llm_route")
     assert hasattr(DatabaseManagerAsyncClient, "update_chat_session_llm_route")
+
+
+def test_a_turns_session_fields_ride_the_rpc_with_its_rows() -> None:
+    """The copilot executor saves a turn's rows over this RPC, and the
+    session's fields go in the same call: they must arrive as they left. A
+    caller that sends none (one from before this argument) gets none."""
+    fields = ChatSessionSaveFields(
+        credentials={"github": {"id": "cred-1"}},
+        successful_agent_runs={"graph-1": 2},
+        successful_agent_schedules={},
+        total_prompt_tokens=120,
+        total_completion_tokens=30,
+    )
+    rows = {
+        "session_id": "s1",
+        "messages": [{"role": "assistant", "content": "hi"}],
+        "start_sequence": 3,
+    }
+    manager = DatabaseManager()
+    endpoint = manager._create_fastapi_endpoint(manager.add_chat_messages_batch)
+    body = inspect.signature(endpoint).parameters["body"].annotation
+
+    sent = body.model_validate(to_dict({**rows, "session_fields": fields}))
+    assert sent.session_fields == fields
+    assert body.model_validate(to_dict(rows)).session_fields is None
 
 
 def test_bot_analytics_methods_registered() -> None:

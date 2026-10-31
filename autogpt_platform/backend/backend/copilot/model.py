@@ -25,7 +25,7 @@ from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from pydantic import BaseModel, Field, PrivateAttr
 
-from backend.data.db_accessors import chat_db, experts_db, library_db
+from backend.data.db_accessors import chat_db, chat_db_is_local, experts_db, library_db
 from backend.data.graph import GraphSettings
 from backend.data.redis_client import get_redis_async
 from backend.util import json
@@ -1101,6 +1101,16 @@ async def upsert_chat_session(
         return session
 
 
+class ChatSessionSaveFields(BaseModel):
+    """The session columns every save rewrites from its copy of the session."""
+
+    credentials: dict[str, Any]
+    successful_agent_runs: dict[str, Any]
+    successful_agent_schedules: dict[str, Any]
+    total_prompt_tokens: int
+    total_completion_tokens: int
+
+
 async def _save_session_to_db(
     session: ChatSession,
     existing_message_count: int,
@@ -1134,25 +1144,13 @@ async def _save_session_to_db(
             )
             existing_message_count = 0
 
-    # Calculate total tokens from usage
-    total_prompt = sum(u.prompt_tokens for u in session.usage)
-    total_completion = sum(u.completion_tokens for u in session.usage)
-
-    update_kwargs: dict[str, Any] = {
-        "session_id": session.session_id,
-        "credentials": session.credentials,
-        "successful_agent_runs": session.successful_agent_runs,
-        "successful_agent_schedules": session.successful_agent_schedules,
-        "total_prompt_tokens": total_prompt,
-        "total_completion_tokens": total_completion,
-    }
-    if persist_tenancy:
-        update_kwargs.update(
-            organization_id=session.organization_id,
-            team_id=session.team_id,
-            update_tenancy=True,
-        )
-    await db.update_chat_session(**update_kwargs)
+    fields = ChatSessionSaveFields(
+        credentials=session.credentials,
+        successful_agent_runs=session.successful_agent_runs,
+        successful_agent_schedules=session.successful_agent_schedules,
+        total_prompt_tokens=sum(u.prompt_tokens for u in session.usage),
+        total_completion_tokens=sum(u.completion_tokens for u in session.usage),
+    )
 
     # Identify unsaved messages.  Two cases:
     #
@@ -1170,6 +1168,29 @@ async def _save_session_to_db(
         new_messages = list(session.messages)
     else:
         new_messages = [m for m in session.messages if m.sequence is None]
+
+    # The rows carry the session's fields into their own transaction only where
+    # this process writes the database itself. The database manager's RPC drops
+    # request fields it doesn't know, so a manager older than ``session_fields``
+    # would lose them, and with them any increments a cache dropped before the
+    # next save could not restore. A scope change keeps its own update too: the
+    # fields the rows carry don't include it.
+    rows_carry_fields = (
+        bool(new_messages) and not persist_tenancy and chat_db_is_local()
+    )
+    if not rows_carry_fields:
+        update_kwargs: dict[str, Any] = {
+            "session_id": session.session_id,
+            **fields.model_dump(),
+        }
+        if persist_tenancy:
+            update_kwargs.update(
+                organization_id=session.organization_id,
+                team_id=session.team_id,
+                update_tenancy=True,
+            )
+        await db.update_chat_session(**update_kwargs)
+
     if new_messages:
         messages_data = []
         for msg in new_messages:
@@ -1213,6 +1234,7 @@ async def _save_session_to_db(
             session_id=session.session_id,
             messages=messages_data,
             start_sequence=existing_message_count,
+            session_fields=fields if rows_carry_fields else None,
         )
         for i, msg in enumerate(new_messages):
             msg.sequence = actual_start + i
