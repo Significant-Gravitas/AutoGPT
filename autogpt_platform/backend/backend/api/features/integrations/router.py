@@ -22,6 +22,7 @@ from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWA
 
 from backend.api.features.library.db import set_preset_webhook, update_preset
 from backend.api.features.library.model import LibraryAgentPreset
+from backend.api.middleware.body_limit import MiB, request_body_limit
 from backend.copilot.rate_limit import enforce_payment_paywall, is_user_paywalled
 from backend.copilot.scheduled_chats.reconnect import (
     resume_after_reconnect_in_background,
@@ -1312,11 +1313,15 @@ async def delete_credentials_and_dependents(
 
 # ------------------------- WEBHOOK STUFF -------------------------- #
 
+# GitHub caps its payloads at 25 MB, the largest of the providers.
+WEBHOOK_PAYLOAD_LIMIT = 25 * MiB
+
 
 # ⚠️ Note
 # No user auth check because this endpoint is for webhook ingress and relies on
 # validation by the provider-specific `WebhooksManager`.
 @router.post("/{provider}/webhooks/{webhook_id}/ingress")
+@request_body_limit(WEBHOOK_PAYLOAD_LIMIT)
 async def webhook_ingress_generic(
     request: Request,
     provider: Annotated[

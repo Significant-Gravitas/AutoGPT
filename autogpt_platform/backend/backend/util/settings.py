@@ -1009,6 +1009,16 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum file size in MB for workspace files (1-1024 MB)",
     )
 
+    max_request_body_mb: int = Field(
+        default=10,
+        ge=1,
+        le=1024,
+        description=(
+            "Maximum request body in MiB the platform API accepts, file uploads"
+            " and routes with their own limit excepted"
+        ),
+    )
+
     # AutoMod configuration
     automod_enabled: bool = Field(
         default=False,
