@@ -5,9 +5,11 @@ and correct data mapping. Uses mocks for Prisma DB calls since the
 test infrastructure does not provide a live database connection.
 """
 
+import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from prisma.errors import DataError, UniqueViolationError
 
 from backend.data.org_migration import (
     _release_migration_lock,
@@ -93,6 +95,17 @@ class TestSanitizeSlug:
 
     def test_whitespace_only(self):
         assert _sanitize_slug("   ") == "user"
+
+    @pytest.mark.parametrize(
+        "raw, expected",
+        [
+            ("a" * 300, "a" * 100),
+            # The cut lands on a hyphen, which must not end the slug.
+            ("a" * 99 + "-bcd", "a" * 99),
+        ],
+    )
+    def test_caps_length_like_a_requested_slug(self, raw, expected):
+        assert _sanitize_slug(raw) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -618,19 +631,30 @@ class TestBackfillHardening:
         assert mock_prisma.organization.create.await_count == 2
 
     @pytest.mark.asyncio
-    async def test_persistent_failure_raises_loud(self, mock_prisma):
-        """If creation keeps violating and the user still owns no org, fail loud
-        rather than silently leaving the account without an organization."""
-        from prisma.errors import UniqueViolationError
-
-        mock_prisma.query_raw = AsyncMock(return_value=[_backfill_row("user-stuck")])
-        mock_prisma.orgmember.find_first = AsyncMock(return_value=None)
-        mock_prisma.organization.create = AsyncMock(
-            side_effect=UniqueViolationError({})
+    @pytest.mark.parametrize("error", [UniqueViolationError, DataError])
+    async def test_a_user_whose_org_cannot_be_created_is_logged_and_skipped(
+        self, mock_prisma, caplog, error
+    ):
+        """A slug that keeps clashing, or a row the database refuses, costs that
+        user their org until next time, not every later user theirs."""
+        mock_prisma.query_raw = AsyncMock(
+            return_value=[_backfill_row(f"user-{i}") for i in (1, 2, 3)]
         )
 
-        with pytest.raises(RuntimeError, match="after retries"):
-            await create_orgs_for_existing_users()
+        async def create(data):
+            if data["bootstrapUserId"] == "user-2":
+                raise error({})
+            return MagicMock(id=f"org-{data['bootstrapUserId']}")
+
+        mock_prisma.organization.create = AsyncMock(side_effect=create)
+
+        with caplog.at_level(logging.ERROR, logger="backend.data.org_migration"):
+            created = await create_orgs_for_existing_users()
+
+        assert created == 2
+        assert [r.levelno for r in caplog.records if "user-2" in r.getMessage()] == [
+            logging.ERROR
+        ]
 
     @pytest.mark.asyncio
     async def test_find_owned_personal_org_is_ordered_oldest_first(self, mock_prisma):

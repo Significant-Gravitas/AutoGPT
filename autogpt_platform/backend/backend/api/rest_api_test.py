@@ -1,4 +1,9 @@
+import ast
+import inspect
+import logging
 import re
+import textwrap
+from unittest.mock import AsyncMock
 
 import pytest
 from starlette.routing import BaseRoute, Match, Mount, Route, WebSocketRoute
@@ -75,3 +80,61 @@ def _concrete_paths(routes: list[BaseRoute]):
         elif isinstance(route, Route):
             for method in route.methods or []:
                 yield method, re.sub(r"{[^}]+}", "x", route.path)
+
+
+# Every step the lifespan awaits before it serves. A failure in any of these
+# stops the boot, so a data migration goes in `_run_data_migrations` instead.
+_LIFESPAN_STARTUP_AWAITS = {
+    "backend.data.db.connect",
+    "backend.data.redis_client.get_redis_async",
+    "backend.data.block.initialize_blocks",
+    "_run_data_migrations",
+}
+
+_DATA_MIGRATIONS = {
+    "user integrations": "backend.data.user.migrate_and_encrypt_user_integrations",
+    "LLM models": "backend.data.graph.migrate_llm_models",
+    "legacy triggered graphs": (
+        "backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs"
+    ),
+    "org bootstrap": "backend.data.org_migration.run_migration",
+    "Otto transport": "backend.data.autopilot_migrate.migrate_autopilot_transport",
+}
+
+
+def test_lifespan_awaits_only_the_start_up_steps_allowed_to_stop_the_boot() -> None:
+    tree = ast.parse(
+        textwrap.dedent(inspect.getsource(rest_api.lifespan_context.__wrapped__))
+    )
+    serving_from = min(n.lineno for n in ast.walk(tree) if isinstance(n, ast.Yield))
+    awaited = {
+        ast.unparse(n.value.func)
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Await)
+        and isinstance(n.value, ast.Call)
+        and n.lineno < serving_from
+    }
+
+    assert awaited == _LIFESPAN_STARTUP_AWAITS, (
+        "A data migration awaited in the lifespan stops the boot when it fails; "
+        "add it to `_run_data_migrations`, or to this list if it must."
+    )
+
+
+async def test_a_failed_data_migration_is_logged_and_the_rest_still_run(
+    mocker, caplog
+) -> None:
+    migrations = {
+        name: mocker.patch(target, new_callable=AsyncMock)
+        for name, target in _DATA_MIGRATIONS.items()
+    }
+    migrations["org bootstrap"].side_effect = RuntimeError("boom")
+
+    with caplog.at_level(logging.ERROR, logger=rest_api.logger.name):
+        await rest_api._run_data_migrations()
+
+    for migrate in migrations.values():
+        migrate.assert_awaited_once()
+    assert [
+        r.getMessage() for r in caplog.records if r.name == rest_api.logger.name
+    ] == ["Start-up data migration 'org bootstrap' failed"]

@@ -54,11 +54,15 @@ _RenewLock = Callable[[], Awaitable[None]]
 # spam Redis. If the lock has been lost the renewal raises and the loop aborts.
 _LOCK_RENEW_EVERY = 50
 
+# The same limit as CreateOrgRequest.slug.
+_MAX_SLUG_LENGTH = 100
+
 
 def _sanitize_slug(raw: str) -> str:
     """Convert a string to a URL-safe slug: lowercase, alphanumeric + hyphens."""
     slug = re.sub(r"[^a-z0-9-]", "-", raw.lower().strip())
     slug = re.sub(r"-+", "-", slug).strip("-")
+    slug = slug[:_MAX_SLUG_LENGTH].rstrip("-")
     return slug or "user"
 
 
@@ -367,8 +371,17 @@ async def create_orgs_for_existing_users(
         if await _find_owned_personal_org(user_id) is not None:
             continue
 
-        if await _get_or_create_backfill_org(row):
-            created += 1
+        # One account's failure must not hold back everyone after it; the
+        # account gets its org on its next request, or on the next start.
+        try:
+            if await _get_or_create_backfill_org(row):
+                created += 1
+        except Exception:
+            logger.error(
+                f"Org migration: could not bootstrap a personal org for user "
+                f"{user_id}; skipping",
+                exc_info=True,
+            )
 
     logger.info(f"Org migration: created {created} personal orgs")
     return created
