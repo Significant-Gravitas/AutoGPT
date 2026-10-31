@@ -1395,6 +1395,61 @@ async def update_node_execution_status(
     raise ValueError(f"Execution {node_exec_id} not found.")
 
 
+async def mark_node_executions_moderated(
+    graph_exec_id: str,
+    stats_patches: dict[str, dict[str, Any]],
+    from_statuses: list[ExecutionStatus],
+) -> list[NodeExecutionResult]:
+    """Moderation only: set node executions to FAILED and merge each entry of
+    `stats_patches` (node_exec_id -> error / cleared_inputs / cleared_outputs)
+    into that row's existing stats.
+
+    Output moderation fails nodes that already COMPLETED, which
+    VALID_STATUS_TRANSITIONS rejects on purpose, so this skips that map and
+    only writes rows still in `from_statuses`. Don't use it for anything else.
+
+    Returns the updated rows, re-read so they carry the masked data. Rows that
+    weren't updated are logged at error level: their content stays visible.
+    """
+    statuses = [s.value for s in from_statuses]
+    rows = await AgentNodeExecution.prisma().find_many(
+        where={
+            "id": {"in": list(stats_patches)},
+            "agentGraphExecutionId": graph_exec_id,
+            "executionStatus": {"in": statuses},
+        }
+    )
+    now = datetime.now(tz=timezone.utc)
+    updated_ids: list[str] = []
+    for row in rows:
+        stats = row.stats if isinstance(row.stats, dict) else {}
+        if await AgentNodeExecution.prisma().update_many(
+            where={"id": row.id, "executionStatus": {"in": statuses}},
+            data={
+                "executionStatus": ExecutionStatus.FAILED,
+                "endedTime": now,
+                "stats": SafeJson({**stats, **stats_patches[row.id]}),
+            },
+        ):
+            updated_ids.append(row.id)
+
+    if missed := set(stats_patches) - set(updated_ids):
+        logger.error(
+            f"Graph execution #{graph_exec_id}: moderation could not clear "
+            f"{len(missed)} of {len(stats_patches)} node executions "
+            f"(not in {statuses}): {sorted(missed)}"
+        )
+    if not updated_ids:
+        return []
+
+    updated = await AgentNodeExecution.prisma().find_many(
+        where={"id": {"in": updated_ids}},
+        include=EXECUTION_RESULT_INCLUDE,
+        order=EXECUTION_RESULT_ORDER,
+    )
+    return [NodeExecutionResult.from_db(row) for row in updated]
+
+
 def _get_update_status_data(
     status: ExecutionStatus,
     execution_data: BlockInput | None = None,

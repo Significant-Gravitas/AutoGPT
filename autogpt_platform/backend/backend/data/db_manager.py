@@ -137,6 +137,7 @@ from backend.data.execution import (
     get_latest_node_execution,
     get_node_execution,
     get_node_executions,
+    mark_node_executions_moderated,
     set_execution_kv_data,
     update_graph_execution_start_time,
     update_graph_execution_stats,
@@ -394,6 +395,7 @@ class DatabaseManager(AppService):
     get_latest_node_execution = _(get_latest_node_execution)
     update_node_execution_status = _(update_node_execution_status)
     update_node_execution_status_batch = _(update_node_execution_status_batch)
+    mark_node_executions_moderated = _(mark_node_executions_moderated)
     update_graph_execution_start_time = _(update_graph_execution_start_time)
     update_graph_execution_stats = _(update_graph_execution_stats)
     upsert_execution_input = _(upsert_execution_input)
@@ -966,6 +968,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_graph_execution_stats = d.update_graph_execution_stats
     update_node_execution_status = d.update_node_execution_status
     update_node_execution_status_batch = d.update_node_execution_status_batch
+    mark_node_executions_moderated = d.mark_node_executions_moderated
     upsert_execution_input = d.upsert_execution_input
     upsert_execution_output = d.upsert_execution_output
     get_execution_outputs_by_node_exec_id = d.get_execution_outputs_by_node_exec_id
