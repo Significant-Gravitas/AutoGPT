@@ -9,6 +9,10 @@ from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
 
 from backend.api.conn_manager import ConnectionManager, _is_ws_close_race
+from backend.api.middleware.fastapi_guard_wiring import (
+    attach_guard,
+    guard_websocket_connection,
+)
 from backend.api.model import (
     WSMessage,
     WSMethod,
@@ -49,6 +53,9 @@ async def lifespan(app: FastAPI):
 
 docs_url = "/docs" if settings.config.app_env == AppEnvironment.LOCAL else None
 app = FastAPI(lifespan=lifespan, docs_url=docs_url)
+
+# Optional fastapi-guard security middleware (off unless AUTOGPT_GUARD_ENABLED)
+attach_guard(app)
 _connection_manager = None
 
 # Add Prometheus instrumentation. The metrics are served by WebsocketServer.run
@@ -227,7 +234,7 @@ _MSG_HANDLERS: dict[WSMethod, WSMessageHandler] = {
 # ===================== WebSocket Server ===================== #
 
 
-@app.websocket("/ws")
+@app.websocket("/ws", dependencies=[Depends(guard_websocket_connection)])
 async def websocket_router(
     websocket: WebSocket, manager: ConnectionManager = Depends(get_connection_manager)
 ):
