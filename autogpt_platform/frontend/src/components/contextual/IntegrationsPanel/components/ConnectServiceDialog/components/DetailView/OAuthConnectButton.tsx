@@ -2,6 +2,8 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
+
 import { useOAuthConnect } from "./useOAuthConnect";
 import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -10,20 +12,26 @@ interface Props {
   provider: string;
   providerName: string;
   buttonLabel?: string;
-  onSuccess: () => void;
+  /** Whose terms a linked run falls under, where that is not AutoGPT's. The
+   *  sign-in window is a product ("ChatGPT") and the terms are a company's
+   *  ("OpenAI"), so this is named separately rather than reusing the label
+   *  on the button. */
+  termsNotice?: string;
+  onSuccess: (credential?: CredentialsMetaResponse) => void;
 }
 
 export function OAuthConnectButton({
   provider,
   providerName,
   buttonLabel,
+  termsNotice,
   onSuccess,
 }: Props) {
   const { connect, isPending } = useOAuthConnect({ provider, onSuccess });
 
   return (
     <div className="flex flex-col gap-3">
-      <Text variant="body" className="text-[#505057]">
+      <Text variant="body" tone="body">
         We&apos;ll open a {providerName} sign-in window. Approve access there to
         finish connecting.
       </Text>
@@ -37,6 +45,12 @@ export function OAuthConnectButton({
       >
         {buttonLabel ?? `Continue with ${providerName}`}
       </Button>
+      {termsNotice && (
+        <Text variant="small" tone="muted">
+          Linked runs are sent to {termsNotice} under your own account and
+          follow {termsNotice}&apos;s terms.
+        </Text>
+      )}
     </div>
   );
 }

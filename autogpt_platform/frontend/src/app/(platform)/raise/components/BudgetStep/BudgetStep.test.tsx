@@ -29,11 +29,11 @@ describe("BudgetStep", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: /500 credits/ }));
+    await userEvent.click(screen.getByRole("button", { name: "$5 / week" }));
     expect(onSubmit).toHaveBeenCalledWith(500);
   });
 
-  test("submits a custom credit amount", async () => {
+  test("submits a custom dollar amount as credits", async () => {
     const onSubmit = vi.fn();
     render(
       <BudgetStep
@@ -45,8 +45,8 @@ describe("BudgetStep", () => {
     );
 
     await userEvent.type(
-      screen.getByRole("textbox", { name: "Custom weekly budget in credits" }),
-      "750",
+      screen.getByRole("textbox", { name: "Custom weekly budget in dollars" }),
+      "7.50",
     );
     await userEvent.click(screen.getByRole("button", { name: "That's it" }));
     expect(onSubmit).toHaveBeenCalledWith(750);

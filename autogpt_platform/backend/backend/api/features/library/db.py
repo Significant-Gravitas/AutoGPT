@@ -4,9 +4,11 @@ import logging
 from typing import Literal, LiteralString, Optional, cast
 
 import fastapi
+import prisma.enums
 import prisma.errors
 import prisma.models
 import prisma.types
+from starlette.datastructures import Headers
 
 import backend.api.features.store.image_gen as store_image_gen
 import backend.api.features.store.media as store_media
@@ -15,7 +17,9 @@ import backend.data.integrations as integrations_db
 from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
+    LibraryAgentInAnotherOrganizationError,
 )
+from backend.api.features.orgs.db import resolve_member_tenancy
 from backend.api.features.store.store_listing_versions import (
     installable_store_version_where,
 )
@@ -29,15 +33,23 @@ from backend.data.includes import (
     library_agent_include,
 )
 from backend.data.model import CredentialsMetaInput, GraphInput
+from backend.data.tenancy import organization_filter, writable_organization_ids
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     before_graph_activate,
+    clear_unowned_auto_credentials,
     on_graph_deactivate,
 )
 from backend.util.clients import get_scheduler_client
-from backend.util.exceptions import InvalidInputError, MissingConfigError, NotFoundError
+from backend.util.exceptions import (
+    InvalidInputError,
+    MissingConfigError,
+    NotAuthorizedError,
+    NotFoundError,
+)
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
+from backend.util.product_analytics import track_listing_added_to_library
 from backend.util.settings import Config
 
 from . import model as library_model
@@ -74,73 +86,11 @@ async def _fetch_execution_counts(user_id: str, graph_ids: list[str]) -> dict[st
     }
 
 
-async def _fetch_matching_store_version_ids(
-    agents: list[prisma.models.LibraryAgent],
-) -> dict[tuple[str, int], str]:
-    """Map (graph_id, graph_version) → approved StoreListingVersion id.
-
-    Only approved, non-deleted versions are returned so the ids are always
-    valid install targets. Matching on the exact graph version keeps installs
-    version-stable: the id refers to the snapshot the library agent holds,
-    not the listing's current active version.
-    """
-    pairs = {(a.agentGraphId, a.agentGraphVersion) for a in agents}
-    if not pairs:
-        return {}
-    pair_filters = [
-        {"agentGraphId": graph_id, "agentGraphVersion": graph_version}
-        for graph_id, graph_version in sorted(pairs)
-    ]
-    try:
-        versions = await prisma.models.StoreListingVersion.prisma().find_many(
-            where={
-                "OR": pair_filters,
-                **installable_store_version_where(),
-            },
-            distinct=["agentGraphId", "agentGraphVersion"],
-            order=[
-                {"agentGraphId": "asc"},
-                {"agentGraphVersion": "asc"},
-                {"createdAt": "desc"},
-                {"id": "desc"},
-            ],
-        )
-    except Exception:
-        logger.warning(
-            "Failed to fetch store listing versions for library agents",
-            exc_info=True,
-        )
-        return {}
-    matches: dict[tuple[str, int], str] = {}
-    for version in versions:
-        pair = (version.agentGraphId, version.agentGraphVersion)
-        if pair in pairs and pair not in matches:
-            matches[pair] = version.id
-    return matches
-
-
-async def _fetch_marketplace_details(
-    graph_id: str,
-) -> tuple[prisma.models.StoreListing | None, prisma.models.Profile | None]:
-    store_listing = await prisma.models.StoreListing.prisma().find_first(
-        where={
-            "agentGraphId": graph_id,
-            "isDeleted": False,
-            "hasApprovedVersion": True,
-        },
-        include={"ActiveVersion": True},
-    )
-    profile = None
-    if store_listing and store_listing.ActiveVersion and store_listing.owningUserId:
-        profile = await prisma.models.Profile.prisma().find_first(
-            where={"userId": store_listing.owningUserId}
-        )
-    return store_listing, profile
-
-
 async def list_library_agents(
     user_id: str,
     search_term: Optional[str] = None,
+    published: Optional[bool] = None,
+    favorite: Optional[bool] = None,
     sort_by: library_model.LibraryAgentSort = library_model.LibraryAgentSort.UPDATED_AT,
     page: int = 1,
     page_size: int = 50,
@@ -157,6 +107,8 @@ async def list_library_agents(
     Args:
         user_id: The ID of the user whose LibraryAgents we want to retrieve.
         search_term: Optional string to filter agents by name/description.
+        published: Allows filtering by marketplace publish status;
+            `True` -> only published agents, `False` -> only unpublished agents.
         sort_by: Sorting field (createdAt, updatedAt, isFavorite, isCreatedByUser).
         page: Current page (1-indexed).
         page_size: Number of items per page.
@@ -243,6 +195,18 @@ async def list_library_agents(
             },
         ]
 
+    # Filter by favorite status
+    if favorite is not None:
+        where_clause["isFavorite"] = favorite
+
+    # By graph, as a single read reports it: the entry follows every save of a
+    # listed graph, so its own version may never have been submitted.
+    if published is not None:
+        listed = await _listed_graph_ids(where_clause)
+        where_clause["agentGraphId"] = (
+            {"in": listed} if published else {"not_in": listed}
+        )
+
     order_by: (
         prisma.types.LibraryAgentOrderByInput
         | list[prisma.types.LibraryAgentOrderByInput]
@@ -250,7 +214,8 @@ async def list_library_agents(
     ) = None
 
     if sort_by == library_model.LibraryAgentSort.CREATED_AT:
-        order_by = {"createdAt": "asc"}
+        # The id breaks ties, so paging by offset neither skips nor repeats.
+        order_by = [{"createdAt": "asc"}, {"id": "asc"}]
     elif sort_by == library_model.LibraryAgentSort.UPDATED_AT:
         order_by = {"updatedAt": "desc"}
     elif sort_by == library_model.LibraryAgentSort.LAST_RUN:
@@ -281,10 +246,9 @@ async def list_library_agents(
     logger.debug(f"Retrieved {len(library_agents)} library agents for user #{user_id}")
 
     graph_ids = [a.agentGraphId for a in library_agents if a.agentGraphId]
-    execution_counts, schedule_info, store_version_ids = await asyncio.gather(
+    execution_counts, schedule_info = await asyncio.gather(
         _fetch_execution_counts(user_id, graph_ids),
         _fetch_schedule_info(user_id),
-        _fetch_matching_store_version_ids(library_agents),
     )
 
     # Only pass valid agents to the response
@@ -296,9 +260,6 @@ async def list_library_agents(
                 agent,
                 execution_count_override=execution_counts.get(agent.agentGraphId),
                 schedule_info=schedule_info,
-                store_listing_version_id=store_version_ids.get(
-                    (agent.agentGraphId, agent.agentGraphVersion)
-                ),
             )
             valid_library_agents.append(library_agent)
         except Exception as e:
@@ -318,16 +279,36 @@ async def list_library_agents(
     )
 
 
+async def _listed_graph_ids(where: prisma.types.LibraryAgentWhereInput) -> list[str]:
+    """The graphs among these library entries with a live, approved listing."""
+    entries = await prisma.models.LibraryAgent.prisma().find_many(
+        where=where, distinct=["agentGraphId"]
+    )
+    listings = await prisma.models.StoreListing.prisma().find_many(
+        where={
+            "agentGraphId": {"in": [entry.agentGraphId for entry in entries]},
+            "isDeleted": False,
+            "hasApprovedVersion": True,
+        }
+    )
+    return [listing.agentGraphId for listing in listings]
+
+
 async def list_favorite_library_agents(
     user_id: str,
+    search_term: Optional[str] = None,
     page: int = 1,
     page_size: int = 50,
 ) -> library_model.LibraryAgentResponse:
     """
     Retrieves a paginated list of favorite LibraryAgent records for a given user.
 
+    Searching uses the same matching as `list_library_agents`, so the Favorites
+    tab finds favorites that have not been paged in yet.
+
     Args:
         user_id: The ID of the user whose favorite LibraryAgents we want to retrieve.
+        search_term: Optional string to filter favorites by name/description.
         page: Current page (1-indexed).
         page_size: Number of items per page.
 
@@ -337,75 +318,13 @@ async def list_favorite_library_agents(
     Raises:
         DatabaseError: If there is an issue fetching from Prisma.
     """
-    logger.debug(
-        f"Fetching favorite library agents for user_id={user_id}, "
-        f"page={page}, page_size={page_size}"
-    )
-
-    if page < 1 or page_size < 1:
-        logger.warning(f"Invalid pagination: page={page}, page_size={page_size}")
-        raise InvalidInputError("Invalid pagination input")
-
-    where_clause: prisma.types.LibraryAgentWhereInput = {
-        "userId": user_id,
-        "isDeleted": False,
-        "isArchived": False,
-        "isFavorite": True,  # Only fetch favorites
-    }
-
-    # Sort favorites by updated date descending
-    order_by: prisma.types.LibraryAgentOrderByInput = {"updatedAt": "desc"}
-
-    library_agents = await prisma.models.LibraryAgent.prisma().find_many(
-        where=where_clause,
-        include=library_agent_include(
-            user_id, include_nodes=False, include_executions=False
-        ),
-        order=order_by,
-        skip=(page - 1) * page_size,
-        take=page_size,
-    )
-    agent_count = await prisma.models.LibraryAgent.prisma().count(where=where_clause)
-
-    logger.debug(
-        f"Retrieved {len(library_agents)} favorite library agents for user #{user_id}"
-    )
-
-    graph_ids = [a.agentGraphId for a in library_agents if a.agentGraphId]
-    execution_counts, schedule_info, store_version_ids = await asyncio.gather(
-        _fetch_execution_counts(user_id, graph_ids),
-        _fetch_schedule_info(user_id),
-        _fetch_matching_store_version_ids(library_agents),
-    )
-
-    # Only pass valid agents to the response
-    valid_library_agents: list[library_model.LibraryAgent] = []
-
-    for agent in library_agents:
-        try:
-            library_agent = library_model.LibraryAgent.from_db(
-                agent,
-                execution_count_override=execution_counts.get(agent.agentGraphId),
-                schedule_info=schedule_info,
-                store_listing_version_id=store_version_ids.get(
-                    (agent.agentGraphId, agent.agentGraphVersion)
-                ),
-            )
-            valid_library_agents.append(library_agent)
-        except Exception as e:
-            # Skip this agent if there was an error
-            logger.error(f"Error parsing LibraryAgent #{agent.id} from DB item: {e}")
-            continue
-
-    # Return the response with only valid agents
-    return library_model.LibraryAgentResponse(
-        agents=valid_library_agents,
-        pagination=Pagination(
-            total_items=agent_count,
-            total_pages=(agent_count + page_size - 1) // page_size,
-            current_page=page,
-            page_size=page_size,
-        ),
+    return await list_library_agents(
+        user_id=user_id,
+        search_term=search_term,
+        favorite=True,
+        sort_by=library_model.LibraryAgentSort.UPDATED_AT,
+        page=page,
+        page_size=page_size,
     )
 
 
@@ -439,28 +358,30 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
     if not library_agent.AgentGraph:
         raise NotFoundError(f"Agent graph for library agent #{id} not found")
 
-    (
-        marketplace_details,
-        schedule_info,
-        store_version_ids,
-        sub_graphs,
-    ) = await asyncio.gather(
-        _fetch_marketplace_details(library_agent.AgentGraph.id),
+    store_listing, schedule_info, sub_graphs = await asyncio.gather(
+        _fetch_store_listing(library_agent.AgentGraph.id),
         _fetch_schedule_info(user_id, graph_id=library_agent.AgentGraph.id),
-        _fetch_matching_store_version_ids([library_agent]),
         graph_db.get_sub_graphs(library_agent.AgentGraph),
     )
-    store_listing, profile = marketplace_details
 
     return library_model.LibraryAgent.from_db(
         library_agent,
         sub_graphs=sub_graphs,
         store_listing=store_listing,
-        profile=profile,
         schedule_info=schedule_info,
-        store_listing_version_id=store_version_ids.get(
-            (library_agent.agentGraphId, library_agent.agentGraphVersion)
-        ),
+    )
+
+
+async def _fetch_store_listing(graph_id: str) -> prisma.models.StoreListing | None:
+    # Keyed on the graph, not its version: the owner's library agent follows
+    # every save, and a later version is still the listed agent.
+    return await prisma.models.StoreListing.prisma().find_first(
+        where={
+            "agentGraphId": graph_id,
+            "isDeleted": False,
+            "hasApprovedVersion": True,
+        },
+        include={"ActiveVersion": True, "CreatorProfile": True},
     )
 
 
@@ -502,6 +423,21 @@ async def get_library_agent_by_store_version_id(
     return library_model.LibraryAgent.from_db(agent, schedule_info=schedule_info)
 
 
+async def get_library_agent_organizations(
+    user_id: str, library_agent_ids: list[str]
+) -> dict[str, str | None]:
+    """The organization of each of the user's live library agents among these ids.
+
+    Deleted entries and ids that aren't the user's are left out.
+    """
+    if not library_agent_ids:
+        return {}
+    rows = await prisma.models.LibraryAgent.prisma().find_many(
+        where={"id": {"in": library_agent_ids}, "userId": user_id, "isDeleted": False}
+    )
+    return {row.id: row.organizationId for row in rows}
+
+
 async def get_library_agent_id_by_graph_id(user_id: str, graph_id: str) -> str | None:
     """Id-only lookup for building deep links (e.g. the expert run post) —
     no relation includes, no schedule info, unlike the full getter below."""
@@ -512,7 +448,7 @@ async def get_library_agent_id_by_graph_id(user_id: str, graph_id: str) -> str |
 
 
 async def get_library_agent_refs_by_graph_ids(
-    user_id: str, graph_ids: list[str]
+    user_id: str, graph_ids: list[str], *, include_deleted: bool = False
 ) -> list[library_model.LibraryAgentRef]:
     """Resolve display name + id for the given graphs in one query.
 
@@ -523,20 +459,30 @@ async def get_library_agent_refs_by_graph_ids(
     ``@@unique([userId, agentGraphId, agentGraphVersion])`` allows several
     rows per graph, so exactly one ref per graph is returned — the newest
     version — instead of whichever row the DB happened to return last.
+
+    With ``include_deleted`` a graph whose every library row was removed
+    still resolves to its last name, marked ``is_deleted``; a live row
+    always wins over a removed one.
     """
     if not graph_ids:
         return []
+    where: prisma.types.LibraryAgentWhereInput = {
+        "userId": user_id,
+        "agentGraphId": {"in": graph_ids},
+    }
+    if not include_deleted:
+        where["isDeleted"] = False
     agents = await prisma.models.LibraryAgent.prisma().find_many(
-        where={
-            "userId": user_id,
-            "agentGraphId": {"in": graph_ids},
-            "isDeleted": False,
-        },
-        order=[{"agentGraphVersion": "asc"}],
+        where=where,
+        order=[{"isDeleted": "desc"}, {"agentGraphVersion": "asc"}],
     )
     newest_by_graph = {
         agent.agentGraphId: library_model.LibraryAgentRef(
-            id=agent.id, graph_id=agent.agentGraphId, name=agent.name or ""
+            id=agent.id,
+            graph_id=agent.agentGraphId,
+            name=agent.name or "",
+            image_url=agent.imageUrl,
+            is_deleted=agent.isDeleted,
         )
         for agent in agents
     }
@@ -593,7 +539,11 @@ async def add_generated_agent_image(
             image = await store_image_gen.generate_agent_image(graph)
 
             # Create UploadFile with the correct filename and content_type
-            image_file = fastapi.UploadFile(file=image, filename=filename)
+            image_file = fastapi.UploadFile(
+                file=image,
+                filename=filename,
+                headers=Headers({"content-type": "image/jpeg"}),
+            )
 
             image_url = await store_media.upload_media(
                 user_id=user_id, file=image_file, use_file_name=True
@@ -696,9 +646,8 @@ async def create_library_agent(
                                 }
                             },
                             settings=SafeJson(
-                                GraphSettings.from_graph(
-                                    graph_entry,
-                                    hitl_safe_mode=hitl_safe_mode,
+                                GraphSettings(
+                                    human_in_the_loop_safe_mode=hitl_safe_mode,
                                     sensitive_action_safe_mode=sensitive_action_safe_mode,
                                 ).model_dump()
                             ),
@@ -730,9 +679,8 @@ async def create_library_agent(
                                 else {}
                             ),
                             "settings": SafeJson(
-                                GraphSettings.from_graph(
-                                    graph_entry,
-                                    hitl_safe_mode=hitl_safe_mode,
+                                GraphSettings(
+                                    human_in_the_loop_safe_mode=hitl_safe_mode,
                                     sensitive_action_safe_mode=sensitive_action_safe_mode,
                                 ).model_dump()
                             ),
@@ -769,6 +717,9 @@ async def update_agent_version_in_library(
     user_id: str,
     agent_graph_id: str,
     agent_graph_version: int,
+    *,
+    library_agent_id: Optional[str] = None,
+    organization_ids: Optional[frozenset[str | None]] = None,
 ) -> library_model.LibraryAgent:
     """
     Updates the agent version in the library for any agent owned by the user.
@@ -777,25 +728,52 @@ async def update_agent_version_in_library(
         user_id: Owner of the LibraryAgent.
         agent_graph_id: The agent graph's ID to update.
         agent_graph_version: The new version of the agent graph.
+        library_agent_id: The entry to move; without it, the user's first
+            entry for the graph.
+        organization_ids: Confine the change to entries tagged with these
+            organizations (None for untagged ones), so that a call acting in
+            one organization moves only its own entry and removes none of
+            another's, and onto none of the user's own versions outside them.
 
     Raises:
         DatabaseError: If there's an error with the update.
-        NotFoundError: If no library agent is found for this user and agent.
+        NotFoundError: If no library agent is found for this user and agent,
+            or the target version doesn't exist or is another user's that
+            isn't approved in the marketplace.
+        LibraryAgentInAnotherOrganizationError: If the target version is in
+            the user's library in an organization outside ``organization_ids``.
+        NotAuthorizedError: If the target version is one of the user's own,
+            outside ``organization_ids``.
     """
     logger.debug(
         f"Updating agent version in library for user #{user_id}, "
         f"agent #{agent_graph_id} v{agent_graph_version}"
     )
+    entry: prisma.types.LibraryAgentWhereInput = {
+        "userId": user_id,
+        "agentGraphId": agent_graph_id,
+    }
+    if library_agent_id is not None:
+        entry["id"] = library_agent_id
+    if organization_ids is not None:
+        entry["AND"] = [
+            cast(
+                prisma.types.LibraryAgentWhereInput,
+                organization_filter(organization_ids),
+            )
+        ]
     async with transaction() as tx:
+        await _assert_target_version(
+            tx, user_id, agent_graph_id, agent_graph_version, organization_ids
+        )
         library_agent = await prisma.models.LibraryAgent.prisma(tx).find_first_or_raise(
-            where={
-                "userId": user_id,
-                "agentGraphId": agent_graph_id,
-            },
+            where=entry
         )
 
-        # Delete any conflicting LibraryAgent for the target version
-        await prisma.models.LibraryAgent.prisma(tx).delete_many(
+        # An entry is unique per user, graph and version, so one already on
+        # the target version gives way; another organization's isn't this
+        # call's to remove.
+        conflicts = await prisma.models.LibraryAgent.prisma(tx).find_many(
             where={
                 "userId": user_id,
                 "agentGraphId": agent_graph_id,
@@ -803,6 +781,17 @@ async def update_agent_version_in_library(
                 "id": {"not": library_agent.id},
             }
         )
+        if organization_ids is not None and any(
+            conflict.organizationId not in organization_ids for conflict in conflicts
+        ):
+            raise LibraryAgentInAnotherOrganizationError(
+                f"Version {agent_graph_version} of this agent is already in your "
+                "library in another organization"
+            )
+        if conflicts:
+            await prisma.models.LibraryAgent.prisma(tx).delete_many(
+                where={"id": {"in": [conflict.id for conflict in conflicts]}}
+            )
 
         lib = await prisma.models.LibraryAgent.prisma(tx).update(
             where={"id": library_agent.id},
@@ -816,7 +805,7 @@ async def update_agent_version_in_library(
                     },
                 },
             },
-            include={"AgentGraph": True},
+            include=library_agent_include(user_id),
         )
 
     if lib is None:
@@ -824,8 +813,20 @@ async def update_agent_version_in_library(
             f"Failed to update library agent for {agent_graph_id} v{agent_graph_version}"
         )
 
+    sub_graphs = (
+        await graph_db.get_sub_graphs(lib.AgentGraph) if lib.AgentGraph else None
+    )
     schedule_info = await _fetch_schedule_info(user_id, graph_id=agent_graph_id)
-    return library_model.LibraryAgent.from_db(lib, schedule_info=schedule_info)
+    library_agent = library_model.LibraryAgent.from_db(
+        lib, sub_graphs=sub_graphs, schedule_info=schedule_info
+    )
+
+    # Re-embed so name/description/instructions changes are reflected in
+    # similarity search results before the next create-time gate runs.
+    assert lib.AgentGraph is not None  # for type checker
+    schedule_library_agent_embedding(library_agent.id, user_id, lib.AgentGraph)
+
+    return library_agent
 
 
 async def create_graph_in_library(
@@ -833,8 +834,14 @@ async def create_graph_in_library(
     user_id: str,
     folder_id: str | None = None,
     is_hidden: bool = False,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> tuple[graph_db.GraphModel, library_model.LibraryAgent]:
-    """Create a new graph and add it to the user's library."""
+    """Create a new graph and add it to the user's library.
+
+    Without ``organization_id`` the graph is untagged and the library entry
+    goes to the user's default team.
+    """
     graph.version = 1
     graph_model = graph_db.make_graph_model(graph, user_id)
     graph_model.reassign_ids(user_id=user_id, reassign_graph_id=True)
@@ -845,8 +852,12 @@ async def create_graph_in_library(
     # to a user-friendly response.
     if graph_model.is_active:
         graph_model = await before_graph_activate(graph_model, user_id=user_id)
+    else:
+        await clear_unowned_auto_credentials(graph_model, user_id)
 
-    created_graph = await graph_db.create_graph(graph_model, user_id)
+    created_graph = await graph_db.create_graph(
+        graph_model, user_id, organization_id=organization_id, team_id=team_id
+    )
 
     library_agents = await create_library_agent(
         graph=created_graph,
@@ -855,6 +866,8 @@ async def create_graph_in_library(
         create_library_agents_for_sub_graphs=False,
         folder_id=folder_id,
         is_hidden=is_hidden,
+        organization_id=organization_id,
+        team_id=team_id,
     )
 
     return created_graph, library_agents[0]
@@ -863,8 +876,28 @@ async def create_graph_in_library(
 async def update_graph_in_library(
     graph: graph_db.Graph,
     user_id: str,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    move_webhook_presets: bool = True,
 ) -> tuple[graph_db.GraphModel, library_model.LibraryAgent]:
-    """Create a new version of an existing graph and update the library entry."""
+    """Create a new version of an existing graph and update the library entry.
+
+    ``organization_id``/``team_id`` tag the new version; None leaves it untagged.
+    A call acting in ``organization_id`` may only version a graph whose
+    versions are all the user's, within the organizations it may change
+    (``writable_organization_ids``), and moves only their library entries and
+    webhook presets.
+    ``move_webhook_presets`` False leaves the user's webhook presets on the
+    versions they run now.
+    """
+    organization_ids = (
+        await writable_organization_ids(user_id, organization_id)
+        if organization_id is not None
+        else None
+    )
+    if organization_ids is not None:
+        await graph_db.assert_graph_within(graph.id, user_id, organization_ids)
+
     existing_versions = await graph_db.get_graph_all_versions(graph.id, user_id)
     current_active_version = (
         next((v for v in existing_versions if v.is_active), None)
@@ -882,8 +915,12 @@ async def update_graph_in_library(
     # version half-saved. Raises GraphActivationError for the caller.
     if graph_model.is_active:
         graph_model = await before_graph_activate(graph_model, user_id=user_id)
+    else:
+        await clear_unowned_auto_credentials(graph_model, user_id)
 
-    created_graph = await graph_db.create_graph(graph_model, user_id)
+    created_graph = await graph_db.create_graph(
+        graph_model, user_id, organization_id=organization_id, team_id=team_id
+    )
 
     library_agent = await get_library_agent_by_graph_id(
         user_id, created_graph.id, include_archived=True
@@ -891,8 +928,11 @@ async def update_graph_in_library(
     if not library_agent:
         raise NotFoundError(f"Library agent not found for graph {created_graph.id}")
 
-    library_agent = await update_library_agent_version_and_settings(
-        user_id, created_graph
+    library_agent = await update_agent_version_in_library(
+        user_id,
+        created_graph.id,
+        created_graph.version,
+        organization_ids=organization_ids,
     )
 
     if created_graph.is_active:
@@ -906,43 +946,60 @@ async def update_graph_in_library(
 
         # Migrate webhook-attached presets to the new version so that
         # existing webhook URLs continue to trigger the latest agent version.
-        # This path is only reached from the CoPilot/AutoPilot agent-update
+        # This path is only reached from the CoPilot/Otto agent-update
         # flow, which has no user-facing channel for skipped-preset warnings,
         # so the migration result is intentionally discarded here. Skipped
         # presets are surfaced on the interactive graph-activation endpoints
         # (update_graph / set_graph_active_version) instead.
-        if created_graph.webhook_input_node:
+        if move_webhook_presets and created_graph.webhook_input_node:
             await migrate_webhook_presets_to_new_version(
                 user_id=user_id,
                 new_graph=created_graph,
+                organization_ids=organization_ids,
             )
 
     return created_graph, library_agent
 
 
-async def update_library_agent_version_and_settings(
-    user_id: str, agent_graph: graph_db.GraphModel
-) -> library_model.LibraryAgent:
-    """Update library agent to point to new graph version and sync settings."""
-    library = await update_agent_version_in_library(
-        user_id, agent_graph.id, agent_graph.version
+async def _assert_target_version(
+    tx: prisma.Prisma,
+    user_id: str,
+    graph_id: str,
+    version: int,
+    organization_ids: Optional[frozenset[str | None]],
+) -> None:
+    """Refuse a graph version the user may not point a library entry at.
+
+    Any of their own, within *organization_ids* when given: running the entry
+    runs that version, billed where the entry is. Of another user's, a
+    marketplace agent's, only one that adding it to the library would install
+    (the same predicate): a version in the library that was ever submitted can
+    be read, run and forked, so pointing at a pending or rejected one would
+    unlock it. A refused version of another user's answers as a missing one
+    does, so neither shows which versions exist.
+    """
+    not_found = NotFoundError(f"Graph #{graph_id} v{version} not found")
+    target = await prisma.models.AgentGraph.prisma(tx).find_unique(
+        where={"graphVersionId": {"id": graph_id, "version": version}}
     )
-    updated_settings = GraphSettings.from_graph(
-        graph=agent_graph,
-        hitl_safe_mode=library.settings.human_in_the_loop_safe_mode,
-        sensitive_action_safe_mode=library.settings.sensitive_action_safe_mode,
-        builder_chat_session_id=library.settings.builder_chat_session_id,
-    )
-    if updated_settings != library.settings:
-        library = await update_library_agent(
-            library_agent_id=library.id,
-            user_id=user_id,
-            settings=updated_settings,
+    if target is None:
+        raise not_found
+    if target.userId != user_id:
+        installable = await prisma.models.StoreListingVersion.prisma(tx).find_first(
+            where={
+                "agentGraphId": graph_id,
+                "agentGraphVersion": version,
+                **installable_store_version_where(),
+            }
         )
-    # Re-embed so name/description/instructions changes are reflected in
-    # similarity search results before the next create-time gate runs.
-    schedule_library_agent_embedding(library.id, user_id, agent_graph)
-    return library
+        if installable is None:
+            raise not_found
+        return
+    if organization_ids is not None and target.organizationId not in organization_ids:
+        raise NotAuthorizedError(
+            f"Version {version} of this agent is in another organization; "
+            "choose it with a credential for that organization"
+        )
 
 
 async def update_library_agent(
@@ -956,6 +1013,7 @@ async def update_library_agent(
     is_deleted: Optional[Literal[False]] = None,
     settings: Optional[GraphSettings] = None,
     folder_id: Optional[str] = None,
+    organization_ids: Optional[frozenset[str | None]] = None,
 ) -> library_model.LibraryAgent:
     """
     Updates the specified LibraryAgent record.
@@ -969,6 +1027,8 @@ async def update_library_agent(
         is_archived: Whether this agent is archived.
         settings: User-specific settings for this library agent.
         folder_id: Folder ID to move agent to (None to skip).
+        organization_ids: With ``graph_version``, the organizations whose
+            entries the change may touch; see ``update_agent_version_in_library``.
 
     Returns:
         The updated LibraryAgent.
@@ -1026,6 +1086,8 @@ async def update_library_agent(
             user_id=user_id,
             agent_graph_id=agent.graph_id,
             agent_graph_version=graph_version,
+            library_agent_id=library_agent_id,
+            organization_ids=organization_ids,
         )
 
     # Otherwise, just update the simple fields
@@ -1262,13 +1324,33 @@ async def is_store_listing_version_available_for_install(
 async def add_store_agent_to_library(
     store_listing_version_id: str,
     user_id: str,
+    *,
+    track_listing_added: bool = True,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> library_model.LibraryAgent:
-    """Adds a marketplace agent to the user’s library.
+    """Adds a marketplace agent to the user's library.
+
+    ``track_listing_added`` sends ``listing_added_to_library`` on a first-time
+    add. Pass ``False`` when the system installs the agent on the user's
+    behalf (an expert's preloads or workflows), which is not the user adding
+    a listing.
+
+    With ``organization_id`` a new entry is tagged with it (and ``team_id``),
+    and an existing entry in another organization raises
+    ``LibraryAgentInAnotherOrganizationError`` rather than being restored.
 
     See also: `add_store_agent_to_library_as_admin()` which uses
     `get_graph_as_admin` to bypass marketplace status checks for admin review.
     """
-    return await _add_store_agent_to_library(store_listing_version_id, user_id, tx=None)
+    return await _add_store_agent_to_library(
+        store_listing_version_id,
+        user_id,
+        tx=None,
+        track_listing_added=track_listing_added,
+        organization_id=organization_id,
+        team_id=team_id,
+    )
 
 
 async def add_store_agent_to_library_in_transaction(
@@ -1276,8 +1358,14 @@ async def add_store_agent_to_library_in_transaction(
     user_id: str,
     tx: prisma.Prisma,
 ) -> library_model.LibraryAgent:
-    """Add a marketplace agent using the caller's transaction."""
-    return await _add_store_agent_to_library(store_listing_version_id, user_id, tx=tx)
+    """Add a marketplace agent using the caller's transaction.
+
+    Sends no ``listing_added_to_library``: the caller may still roll back, and
+    the upsert cannot tell a first-time add from a restore.
+    """
+    return await _add_store_agent_to_library(
+        store_listing_version_id, user_id, tx=tx, track_listing_added=False
+    )
 
 
 async def _add_store_agent_to_library(
@@ -1285,6 +1373,9 @@ async def _add_store_agent_to_library(
     user_id: str,
     *,
     tx: prisma.Prisma | None,
+    track_listing_added: bool,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> library_model.LibraryAgent:
     logger.debug(
         "Adding agent from store listing version #%s to library for user #%s",
@@ -1297,15 +1388,30 @@ async def _add_store_agent_to_library(
     if tx is None:
         # The transactional path upserts instead, so an existing entry is
         # restored atomically with the caller's other writes.
-        existing = await restore_existing_library_agent(store_listing_version, user_id)
+        existing = await restore_existing_library_agent(
+            store_listing_version, user_id, organization_id=organization_id
+        )
         if existing is not None:
             return existing
     graph_model = await resolve_graph_model_for_library(
         store_listing_version, user_id, admin=False
     )
-    return await add_graph_to_library(
-        graph_model, user_id, store_listing_version, tx=tx
+    library_agent = await add_graph_to_library(
+        graph_model,
+        user_id,
+        store_listing_version,
+        tx=tx,
+        organization_id=organization_id,
+        team_id=team_id,
     )
+    if track_listing_added:
+        track_listing_added_to_library(
+            user_id=user_id,
+            store_listing_version_id=store_listing_version.id,
+            graph_id=graph_model.id,
+            library_agent_id=library_agent.id,
+        )
+    return library_agent
 
 
 async def add_store_agent_to_library_as_admin(
@@ -1334,41 +1440,11 @@ async def add_store_agent_to_library_as_admin(
 ##############################################
 
 
-async def _fetch_user_folders(
-    user_id: str,
-    extra_where: Optional[prisma.types.LibraryFolderWhereInput] = None,
-    include_relations: bool = True,
-) -> list[prisma.models.LibraryFolder]:
-    """
-    Shared helper to fetch folders for a user with consistent query params.
-
-    Args:
-        user_id: The ID of the user.
-        extra_where: Additional where-clause filters to merge in.
-        include_relations: Whether to include LibraryAgents and Children relations
-            (used to derive counts via len(); Prisma Python has no _count include).
-
-    Returns:
-        A list of raw Prisma LibraryFolder records.
-    """
-    where_clause: prisma.types.LibraryFolderWhereInput = {
-        "userId": user_id,
-        "isDeleted": False,
-    }
-    if extra_where:
-        where_clause.update(extra_where)
-
-    return await prisma.models.LibraryFolder.prisma().find_many(
-        where=where_clause,
-        order={"createdAt": "asc"},
-        include=LIBRARY_FOLDER_INCLUDE if include_relations else None,
-    )
-
-
 async def list_folders(
     user_id: str,
     parent_id: Optional[str] = None,
     include_relations: bool = True,
+    organization_id: Optional[str] = None,
 ) -> list[library_model.LibraryFolder]:
     """
     Lists folders for a user, optionally filtered by parent.
@@ -1388,6 +1464,7 @@ async def list_folders(
         user_id,
         extra_where={"parentId": parent_id},
         include_relations=include_relations,
+        organization_id=organization_id,
     )
 
     return [
@@ -1402,6 +1479,7 @@ async def list_folders(
 
 async def get_folder_tree(
     user_id: str,
+    organization_id: Optional[str] = None,
 ) -> list[library_model.LibraryFolderTree]:
     """
     Gets the full folder tree for a user.
@@ -1415,7 +1493,7 @@ async def get_folder_tree(
     logger.debug(f"Getting folder tree for user #{user_id}")
 
     # Fetch all folders for the user
-    all_folders = await _fetch_user_folders(user_id)
+    all_folders = await _fetch_user_folders(user_id, organization_id=organization_id)
 
     # Build a map of folder ID to folder data
     folder_map: dict[str, library_model.LibraryFolderTree] = {
@@ -1440,6 +1518,44 @@ async def get_folder_tree(
             root_folders.append(tree_folder)
 
     return root_folders
+
+
+async def _fetch_user_folders(
+    user_id: str,
+    extra_where: Optional[prisma.types.LibraryFolderWhereInput] = None,
+    include_relations: bool = True,
+    organization_id: Optional[str] = None,
+) -> list[prisma.models.LibraryFolder]:
+    """
+    Shared helper to fetch folders for a user with consistent query params.
+
+    Args:
+        user_id: The ID of the user.
+        extra_where: Additional where-clause filters to merge in.
+        include_relations: Whether to include LibraryAgents and Children relations
+            (used to derive counts via len(); Prisma Python has no _count include).
+
+    Returns:
+        A list of raw Prisma LibraryFolder records.
+    """
+    where_clause: prisma.types.LibraryFolderWhereInput = {
+        "userId": user_id,
+        "isDeleted": False,
+    }
+    if extra_where:
+        where_clause.update(extra_where)
+    if organization_id is not None:
+        # Orgless rows show under every org of their owner only (userId is always
+        # in the where); create_folder still writes them, so they are not just legacy.
+        where_clause["AND"] = [
+            {"OR": [{"organizationId": organization_id}, {"organizationId": None}]}
+        ]
+
+    return await prisma.models.LibraryFolder.prisma().find_many(
+        where=where_clause,
+        order={"createdAt": "asc"},
+        include=LIBRARY_FOLDER_INCLUDE if include_relations else None,
+    )
 
 
 async def get_folder(
@@ -1478,49 +1594,14 @@ async def get_folder(
     )
 
 
-async def _is_descendant_of(
-    folder_id: str,
-    potential_ancestor_id: str,
-    user_id: str,
-) -> bool:
-    """
-    Check if folder_id is a descendant of (or equal to) potential_ancestor_id.
-
-    Fetches all user folders in a single query and walks the parent chain
-    in memory to avoid N database round-trips.
-
-    Args:
-        folder_id: The ID of the folder to check.
-        potential_ancestor_id: The ID of the potential ancestor.
-        user_id: The ID of the user.
-
-    Returns:
-        True if folder_id is a descendant of (or equal to) potential_ancestor_id.
-    """
-    all_folders = await prisma.models.LibraryFolder.prisma().find_many(
-        where={"userId": user_id, "isDeleted": False},
-    )
-    parent_map = {f.id: f.parentId for f in all_folders}
-
-    visited: set[str] = set()
-    current_id: str | None = folder_id
-    while current_id:
-        if current_id == potential_ancestor_id:
-            return True
-        if current_id in visited:
-            break  # cycle detected
-        visited.add(current_id)
-        current_id = parent_map.get(current_id)
-
-    return False
-
-
 async def create_folder(
     user_id: str,
     name: str,
     parent_id: Optional[str] = None,
     icon: Optional[str] = None,
     color: Optional[str] = None,
+    organization_id: Optional[str] = None,
+    team_id: Optional[str] = None,
 ) -> library_model.LibraryFolder:
     """
     Creates a new folder for the user.
@@ -1531,6 +1612,8 @@ async def create_folder(
         parent_id: Optional parent folder ID.
         icon: Optional icon identifier.
         color: Optional hex color code.
+        organization_id, team_id: Tenancy to tag the folder with; without
+            them it is untagged, which every organization of the user sees.
 
     Returns:
         The created LibraryFolder.
@@ -1557,6 +1640,10 @@ async def create_folder(
         create_data["color"] = color
     if parent_id:
         create_data["Parent"] = {"connect": {"id": parent_id}}
+    if organization_id is not None:
+        create_data["organizationId"] = organization_id
+    if team_id is not None:
+        create_data["Team"] = {"connect": {"id": team_id}}
 
     try:
         folder = await prisma.models.LibraryFolder.prisma().create(data=create_data)
@@ -1724,6 +1811,43 @@ async def move_folder(
         agent_count=len(folder.LibraryAgents) if folder.LibraryAgents else 0,
         subfolder_count=len(folder.Children) if folder.Children else 0,
     )
+
+
+async def _is_descendant_of(
+    folder_id: str,
+    potential_ancestor_id: str,
+    user_id: str,
+) -> bool:
+    """
+    Check if folder_id is a descendant of (or equal to) potential_ancestor_id.
+
+    Fetches all user folders in a single query and walks the parent chain
+    in memory to avoid N database round-trips.
+
+    Args:
+        folder_id: The ID of the folder to check.
+        potential_ancestor_id: The ID of the potential ancestor.
+        user_id: The ID of the user.
+
+    Returns:
+        True if folder_id is a descendant of (or equal to) potential_ancestor_id.
+    """
+    all_folders = await prisma.models.LibraryFolder.prisma().find_many(
+        where={"userId": user_id, "isDeleted": False},
+    )
+    parent_map = {f.id: f.parentId for f in all_folders}
+
+    visited: set[str] = set()
+    current_id: str | None = folder_id
+    while current_id:
+        if current_id == potential_ancestor_id:
+            return True
+        if current_id in visited:
+            break  # cycle detected
+        visited.add(current_id)
+        current_id = parent_map.get(current_id)
+
+    return False
 
 
 async def delete_folder(
@@ -1938,13 +2062,16 @@ def collect_tree_ids(
 
 
 async def get_folder_agent_summaries(
-    user_id: str, folder_id: str
+    user_id: str, folder_id: str, organization_id: Optional[str] = None
 ) -> list[dict[str, str | None]]:
     """Get a lightweight list of agents in a folder (id, name, description)."""
     all_agents: list[library_model.LibraryAgent] = []
     for page in itertools.count(1):
         resp = await list_library_agents(
-            user_id=user_id, folder_id=folder_id, page=page
+            user_id=user_id,
+            folder_id=folder_id,
+            page=page,
+            organization_id=organization_id,
         )
         all_agents.extend(resp.agents)
         if page >= resp.pagination.total_pages:
@@ -1956,12 +2083,16 @@ async def get_folder_agent_summaries(
 
 async def get_root_agent_summaries(
     user_id: str,
+    organization_id: Optional[str] = None,
 ) -> list[dict[str, str | None]]:
     """Get a lightweight list of root-level agents (folderId IS NULL)."""
     all_agents: list[library_model.LibraryAgent] = []
     for page in itertools.count(1):
         resp = await list_library_agents(
-            user_id=user_id, include_root_only=True, page=page
+            user_id=user_id,
+            include_root_only=True,
+            page=page,
+            organization_id=organization_id,
         )
         all_agents.extend(resp.agents)
         if page >= resp.pagination.total_pages:
@@ -1972,11 +2103,14 @@ async def get_root_agent_summaries(
 
 
 async def get_folder_agents_map(
-    user_id: str, folder_ids: list[str]
+    user_id: str, folder_ids: list[str], organization_id: Optional[str] = None
 ) -> dict[str, list[dict[str, str | None]]]:
     """Get agent summaries for multiple folders concurrently."""
     results = await asyncio.gather(
-        *(get_folder_agent_summaries(user_id, fid) for fid in folder_ids)
+        *(
+            get_folder_agent_summaries(user_id, fid, organization_id)
+            for fid in folder_ids
+        )
     )
     return dict(zip(folder_ids, results))
 
@@ -1993,6 +2127,7 @@ async def list_presets(
     graph_id: Optional[str] = None,
     expert_id: str | None = None,
     filter_by_expert: bool = False,
+    organization_id: Optional[str] = None,
 ) -> library_model.LibraryAgentPresetResponse:
     """
     Retrieves a paginated list of AgentPresets for the specified user.
@@ -2004,7 +2139,7 @@ async def list_presets(
         graph_id: Agent Graph ID to filter by.
         expert_id: Expert ID to match when expert filtering is enabled.
         filter_by_expert: Whether to filter by the exact expert scope. This allows
-            ``None`` to select AutoPilot presets instead of disabling the filter.
+            ``None`` to select Otto presets instead of disabling the filter.
 
     Returns:
         A LibraryAgentPresetResponse containing a list of presets and pagination info.
@@ -2030,6 +2165,11 @@ async def list_presets(
         query_filter["agentGraphId"] = graph_id
     if filter_by_expert:
         query_filter["expertId"] = expert_id
+    if organization_id is not None:
+        # Own rows in this org, plus rows created before org tagging.
+        query_filter["AND"] = [
+            {"OR": [{"organizationId": organization_id}, {"organizationId": None}]}
+        ]
 
     presets_records = await prisma.models.AgentPreset.prisma().find_many(
         where=query_filter,
@@ -2129,10 +2269,11 @@ async def create_preset(
     logger.debug(
         f"Creating preset ({repr(preset.name)}) for user #{user_id}",
     )
-    # A preset may only reference a graph the caller can access (own / store /
-    # library); get_graph() enforces that and a foreign/unknown graph is None.
-    # The preset then inherits the graph's org/team (resource-follows-parent),
-    # resolved here so callers can't forget it.
+    # A preset may only reference a graph the caller can access (owned, or in
+    # their library and submitted); get_graph() enforces that, None if not.
+    # The preset then inherits the graph's org/team (resource-follows-parent)
+    # where the caller belongs to it, and their own otherwise, resolved here
+    # so callers can't forget it.
     graph = await graph_db.get_graph(
         preset.graph_id, preset.graph_version, user_id=user_id
     )
@@ -2161,7 +2302,9 @@ async def create_preset(
         ) != (organization_id, team_id):
             raise NotFoundError(f"Webhook #{webhook_id} not found")
     else:
-        organization_id, team_id = graph.organization_id, graph.team_id
+        organization_id, team_id = await resolve_member_tenancy(
+            user_id, graph.organization_id, graph.team_id
+        )
 
     create_input = prisma.types.AgentPresetCreateInput(
         userId=user_id,
@@ -2329,8 +2472,9 @@ async def update_preset(
             update_data["description"] = description
         if is_active is not None:
             update_data["isActive"] = is_active
-        if inputs or credentials:
-            if not (inputs and credentials):
+        if inputs is not None or credentials is not None:
+            # Either may be empty: no credentials needed, or every input cleared.
+            if inputs is None or credentials is None:
                 raise ValueError(
                     "Preset inputs and credentials must be provided together"
                 )
@@ -2412,6 +2556,8 @@ async def set_preset_webhook(
 async def migrate_webhook_presets_to_new_version(
     user_id: str,
     new_graph: graph_db.GraphModel,
+    *,
+    organization_ids: Optional[frozenset[str | None]] = None,
 ) -> library_model.WebhookPresetMigrationResult:
     """
     Migrates webhook-attached presets for a graph to a newly activated version.
@@ -2445,6 +2591,8 @@ async def migrate_webhook_presets_to_new_version(
     Args:
         user_id: The owner of the presets.
         new_graph: The newly activated graph version to migrate presets to.
+        organization_ids: Confine the migration to presets tagged with these
+            organizations (None for untagged ones).
 
     Returns:
         The migration outcome: the number of presets migrated and the presets
@@ -2455,14 +2603,27 @@ async def migrate_webhook_presets_to_new_version(
         # New version has no webhook trigger to migrate presets onto.
         return library_model.WebhookPresetMigrationResult()
 
+    in_organizations = (
+        [
+            cast(
+                prisma.types.AgentPresetWhereInput,
+                organization_filter(organization_ids),
+            )
+        ]
+        if organization_ids is not None
+        else None
+    )
+    candidates_where: prisma.types.AgentPresetWhereInput = {
+        "userId": user_id,
+        "agentGraphId": new_graph.id,
+        "agentGraphVersion": {"lt": new_graph.version},
+        "webhookId": {"not": None},
+        "isDeleted": False,
+    }
+    if in_organizations:
+        candidates_where["AND"] = in_organizations
     candidates = await prisma.models.AgentPreset.prisma().find_many(
-        where={
-            "userId": user_id,
-            "agentGraphId": new_graph.id,
-            "agentGraphVersion": {"lt": new_graph.version},
-            "webhookId": {"not": None},
-            "isDeleted": False,
-        },
+        where=candidates_where
     )
     if not candidates:
         return library_model.WebhookPresetMigrationResult()
@@ -2510,18 +2671,21 @@ async def migrate_webhook_presets_to_new_version(
             skipped_presets=skipped_presets
         )
 
-    # Preserve candidate order for a deterministic query. Re-assert userId and
-    # the version guard so a concurrent activation that already bumped a preset
-    # past new_graph.version can't be downgraded between the find_many above
-    # and this update.
+    # Preserve candidate order for a deterministic query. Re-assert userId,
+    # the organizations and the version guard so a concurrent activation that
+    # already bumped a preset past new_graph.version can't be downgraded
+    # between the find_many above and this update.
     ids_to_migrate = [preset.id for preset in candidates if preset.id in compatible_ids]
+    migrate_where: prisma.types.AgentPresetWhereInput = {
+        "id": {"in": ids_to_migrate},
+        "userId": user_id,
+        "agentGraphVersion": {"lt": new_graph.version},
+        "isDeleted": False,
+    }
+    if in_organizations:
+        migrate_where["AND"] = in_organizations
     count = await prisma.models.AgentPreset.prisma().update_many(
-        where={
-            "id": {"in": ids_to_migrate},
-            "userId": user_id,
-            "agentGraphVersion": {"lt": new_graph.version},
-            "isDeleted": False,
-        },
+        where=migrate_where,
         data={"agentGraphVersion": new_graph.version},
     )
     if count > 0:
@@ -2554,7 +2718,10 @@ async def delete_preset(user_id: str, preset_id: str) -> None:
 
 
 async def fork_library_agent(
-    library_agent_id: str, user_id: str
+    library_agent_id: str,
+    user_id: str,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> library_model.LibraryAgent:
     """
     Clones a library agent and its underyling graph and nodes (with new ids) for the given user.
@@ -2562,6 +2729,8 @@ async def fork_library_agent(
     Args:
         library_agent_id: The ID of the library agent to fork.
         user_id: The ID of the user who owns the library agent.
+        organization_id, team_id: Tenancy for the copy; without them the graph
+            is untagged and the library entry goes to the user's default team.
 
     Returns:
         The forked parent (if it has sub-graphs) LibraryAgent.
@@ -2588,7 +2757,11 @@ async def fork_library_agent(
     # GraphActivationError, but the forked graph row exists; callers should
     # surface that as a 400 to the user.
     new_graph = await graph_db.fork_graph(
-        original_agent.graph_id, original_agent.graph_version, user_id
+        original_agent.graph_id,
+        original_agent.graph_version,
+        user_id,
+        organization_id=organization_id,
+        team_id=team_id,
     )
     new_graph = await before_graph_activate(new_graph, user_id=user_id)
 
@@ -2599,6 +2772,8 @@ async def fork_library_agent(
             user_id,
             hitl_safe_mode=original_agent.settings.human_in_the_loop_safe_mode,
             sensitive_action_safe_mode=original_agent.settings.sensitive_action_safe_mode,
+            organization_id=organization_id,
+            team_id=team_id,
         )
     )[0]
 

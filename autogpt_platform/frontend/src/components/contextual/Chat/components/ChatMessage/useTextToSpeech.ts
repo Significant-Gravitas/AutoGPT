@@ -89,35 +89,28 @@ function pickBestVoice(
 
 export function useTextToSpeech(text: string) {
   const [status, setStatus] = useState<TTSStatus>("idle");
-  const [isSupported, setIsSupported] = useState(false);
+  // The API exists with zero voices (Linux without a running speech-dispatcher),
+  // where `speak` is a silent no-op — so the voice list, not the API, is the
+  // test for whether this can speak. State, not a ref: voices load async.
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const cachedVoicesRef = useRef<SpeechSynthesisVoice[]>([]);
 
   useEffect(() => {
-    const supported = "speechSynthesis" in window;
-    setIsSupported(supported);
+    if (!("speechSynthesis" in window)) return;
 
-    if (supported) {
-      // Populate cache immediately (may already be available)
-      cachedVoicesRef.current = window.speechSynthesis.getVoices();
+    setVoices(window.speechSynthesis.getVoices());
 
-      // Listen for voiceschanged to populate cache when voices load async
-      function onVoicesChanged() {
-        cachedVoicesRef.current = window.speechSynthesis.getVoices();
-      }
-      window.speechSynthesis.addEventListener("voiceschanged", onVoicesChanged);
-
-      return () => {
-        window.speechSynthesis.removeEventListener(
-          "voiceschanged",
-          onVoicesChanged,
-        );
-        window.speechSynthesis.cancel();
-      };
+    function onVoicesChanged() {
+      setVoices(window.speechSynthesis.getVoices());
     }
+    window.speechSynthesis.addEventListener("voiceschanged", onVoicesChanged);
 
     return () => {
-      window.speechSynthesis?.cancel();
+      window.speechSynthesis.removeEventListener(
+        "voiceschanged",
+        onVoicesChanged,
+      );
+      window.speechSynthesis.cancel();
     };
   }, []);
 
@@ -142,7 +135,7 @@ export function useTextToSpeech(text: string) {
 
     const utterance = new SpeechSynthesisUtterance(text);
 
-    const voice = pickBestVoice(cachedVoicesRef.current);
+    const voice = pickBestVoice(voices);
     if (voice) utterance.voice = voice;
 
     utteranceRef.current = utterance;
@@ -184,7 +177,7 @@ export function useTextToSpeech(text: string) {
 
   return {
     status,
-    isSupported,
+    hasVoices: voices.length > 0,
     play,
     pause,
     stop,

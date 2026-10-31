@@ -114,7 +114,9 @@ export function RecordingControls({
           {pendingStatus && (
             <div className="flex h-8 items-start justify-center pt-2">
               <SwapFade swapKey={pendingAction ?? "idle"}>
-                <p className="text-sm text-zinc-500">{pendingStatus}</p>
+                <p className="text-sm text-foreground-tertiary">
+                  {pendingStatus}
+                </p>
               </SwapFade>
             </div>
           )}
@@ -175,11 +177,13 @@ function RecordingControlButton({
       aria-label={isLoading ? pendingLabel : label}
       aria-busy={isLoading}
       className={cn(
-        "border shadow-sm transition-[transform,opacity,background-color] duration-150 ease-out active:scale-[0.97]",
+        /* oxlint-disable design-system/no-restyle -- the recording controls' press scale and dark send fill; the icon variant keeps the tooltip, primary has none */
+        "border transition-[transform,opacity,background-color] duration-150 ease-out active:scale-[0.97]",
         primary
-          ? "border-black/10 bg-zinc-950 text-white hover:bg-zinc-800"
-          : "border-black/5 bg-white hover:bg-zinc-50",
+          ? "border-action-hover bg-action-hover text-action-foreground hover:bg-action"
+          : "border-border-base bg-surface hover:bg-surface-muted",
         isInactive && "opacity-40",
+        /* oxlint-enable design-system/no-restyle */
       )}
     >
       <span className="grid size-[22px] place-items-center [&>*]:[grid-area:1/1]">
@@ -189,12 +193,13 @@ function RecordingControlButton({
           className="flex size-[22px] items-center justify-center"
         >
           {isLoading ? (
-            <Icon
-              icon={Loading03Icon}
-              size={22}
-              className="motion-safe:animate-spin"
-              data-testid="recording-control-loader"
-            />
+            <span className="flex motion-safe:animate-spin">
+              <Icon
+                icon={Loading03Icon}
+                size={22}
+                data-testid="recording-control-loader"
+              />
+            </span>
           ) : (
             <Icon icon={icon} size={22} />
           )}

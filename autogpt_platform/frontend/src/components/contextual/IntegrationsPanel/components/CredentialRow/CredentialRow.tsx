@@ -37,7 +37,7 @@ export function CredentialRow({
   return (
     <div
       data-selected={selected}
-      className="flex w-full items-center justify-between py-3 pl-3 pr-5 transition-colors data-[selected=true]:bg-zinc-100"
+      className="flex w-full items-center justify-between py-3 pr-5 pl-3 transition-colors data-[selected=true]:bg-surface-hover"
     >
       <div className="flex items-center gap-3">
         {credential.isManaged ? (
@@ -49,10 +49,10 @@ export function CredentialRow({
             aria-checked={selected}
             aria-label={`Select ${credential.title}`}
             onClick={onToggleSelected}
-            className={`shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800 ${
+            className={`shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-action ${
               selected
-                ? "text-zinc-800 hover:text-zinc-900"
-                : "text-zinc-500 hover:text-zinc-700"
+                ? "text-foreground-emphasis hover:text-foreground-strong"
+                : "text-foreground-tertiary hover:text-foreground-body"
             }`}
           >
             {selected ? (
@@ -65,16 +65,18 @@ export function CredentialRow({
 
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-3">
-            <span className="text-[14px] font-medium leading-[22px] text-[#1F1F20]">
+            <span className="text-body leading-5.5 font-medium text-foreground-base">
               {credential.title}
             </span>
-            <span className="inline-flex items-center justify-center rounded-[10px] bg-[#EFF1F4] px-2 py-[2px] text-[12px] font-medium leading-[20px] text-[#505057]">
-              {typeBadgeLabel(credential.type)}
+            <span className="inline-flex items-center justify-center rounded-lg bg-surface-hover px-2 py-0.5 text-caption leading-5 font-medium text-foreground-body">
+              {credential.isSignIn
+                ? "For chats"
+                : typeBadgeLabel(credential.type)}
             </span>
           </div>
-          <div className="flex items-center gap-3 leading-[20px]">
-            <span className="text-[11px] font-medium uppercase tracking-[1.1px] text-[#505057]">
-              {formatMaskedValue(credential)}
+          <div className="flex items-center gap-3 leading-5">
+            <span className="text-caption-sm leading-inherit font-medium tracking-eyebrow text-foreground-body uppercase">
+              {credential.blocksNote ?? formatMaskedValue(credential)}
             </span>
           </div>
         </div>
@@ -86,7 +88,7 @@ export function CredentialRow({
             <TooltipTrigger asChild>
               <span
                 tabIndex={0}
-                className="text-[11px] font-medium uppercase tracking-[1.1px] text-[#505057] focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800"
+                className="text-caption-sm leading-inherit font-medium tracking-eyebrow text-foreground-body uppercase focus:outline-none focus-visible:ring-2 focus-visible:ring-action"
               >
                 Managed
               </span>
@@ -103,7 +105,7 @@ export function CredentialRow({
           disabled={isDeleting}
           aria-busy={isDeleting}
           aria-label={`Delete ${credential.title}`}
-          className="inline-flex size-5 items-center justify-center text-[#1F1F20] transition-colors hover:text-red-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-400 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-[#1F1F20]"
+          className="inline-flex size-5 items-center justify-center text-foreground-base transition-colors hover:text-error focus-visible:ring-1 focus-visible:ring-brand focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-foreground-base"
         >
           {isDeleting ? (
             <Icon icon={Loading03Icon} size={20} className="animate-spin" />

@@ -59,18 +59,14 @@ export function AccountCard({ user, index = 0 }: Props) {
       }
       className="flex w-full flex-col gap-2"
     >
-      <div className="flex flex-col divide-y divide-zinc-200 rounded-[18px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+      <div className="flex flex-col divide-y divide-border-base rounded-large border border-border-base bg-surface shadow-message-table">
         <div className="flex items-center justify-between gap-4 px-4 py-4">
-          <Text variant="body-medium" as="span" className="text-textBlack">
+          <Text variant="body-medium" as="span">
             Email
           </Text>
 
           <div className="flex min-w-0 items-center gap-3">
-            <Text
-              variant="body"
-              as="span"
-              className="min-w-0 truncate text-textBlack"
-            >
+            <Text variant="body" as="span" className="min-w-0 truncate">
               {currentEmail}
             </Text>
 
@@ -90,6 +86,7 @@ export function AccountCard({ user, index = 0 }: Props) {
                   variant="secondary"
                   size="small"
                   aria-label="Edit email"
+                  // oxlint-disable-next-line design-system/no-restyle -- a 28px pill edit button; Button has no pill size at 28px
                   className="h-7 min-w-0 px-1.5 py-0.5"
                 >
                   <Icon icon={PencilIcon} size={14} />
@@ -98,7 +95,7 @@ export function AccountCard({ user, index = 0 }: Props) {
               <Dialog.Content>
                 <Form form={emailForm} onSubmit={handleEmailSubmit}>
                   <div className="flex flex-col gap-4">
-                    <Text variant="small" as="span" className="text-zinc-500">
+                    <Text variant="small" as="span" tone="muted">
                       We&apos;ll send a confirmation link to verify your new
                       address.
                     </Text>
@@ -106,6 +103,7 @@ export function AccountCard({ user, index = 0 }: Props) {
                       control={emailForm.control}
                       name="email"
                       render={({ field, fieldState }) => (
+                        // oxlint-disable-next-line design-system/no-restyle -- the email field sits flush under its hint
                         <FormItem className="space-y-0">
                           <FormControl>
                             <Input
@@ -149,7 +147,7 @@ export function AccountCard({ user, index = 0 }: Props) {
         </div>
 
         <div className="flex items-center justify-between gap-4 px-4 py-4">
-          <Text variant="body-medium" as="span" className="text-textBlack">
+          <Text variant="body-medium" as="span">
             Password
           </Text>
 

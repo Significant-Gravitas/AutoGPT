@@ -8,13 +8,15 @@ import {
 import Image from "next/image";
 import { useState } from "react";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { CARD, HALF } from "./ResultCards";
+import { getBlockDisplayName } from "../../helpers/toolDisplay";
+import { CARD, HALF, RESULT_GRID } from "./ResultCards";
 import {
   inline,
   integrationIconSrc,
   resultItemKey,
   str,
 } from "./resultHelpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface CardProviderIconProps {
   provider: string | null;
@@ -52,12 +54,12 @@ export function CardProviderIcon({
 }
 
 const BLOCK_ICON = (
-  <Icon icon={PuzzleIcon} size={15} className="text-zinc-600" />
+  <Icon icon={PuzzleIcon} size={15} className="text-foreground-secondary" />
 );
 
 export function BlockListCard({ blocks }: BlockListCardProps) {
   return (
-    <div className="grid gap-1.5 sm:grid-cols-2">
+    <div className={RESULT_GRID}>
       {blocks.map((block, i) => {
         const categories = Array.isArray(block.categories)
           ? (block.categories as unknown[]).filter(
@@ -69,24 +71,28 @@ export function BlockListCard({ blocks }: BlockListCardProps) {
             key={resultItemKey(block, i)}
             className={CARD + " flex items-start gap-2.5 p-2.5"}
           >
-            <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
               <CardProviderIcon
                 provider={str(block, "provider")}
                 fallback={BLOCK_ICON}
               />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-medium text-zinc-800">
-                {str(block, "name", "block_name") ?? inline(block)}
-              </p>
+              <Text
+                variant="body-sm-medium-inherit"
+                tone="emphasis"
+                className="truncate"
+              >
+                {getBlockDisplayName(block.name, block) ?? "Block"}
+              </Text>
               {str(block, "description") && (
-                <p className="truncate text-xs text-zinc-500">
+                <Text variant="small-tight" tone="muted" className="truncate">
                   {str(block, "description")}
-                </p>
+                </Text>
               )}
             </div>
             {categories[0] && (
-              <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500">
+              <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
                 {categories[0].toLowerCase()}
               </span>
             )}
@@ -98,7 +104,7 @@ export function BlockListCard({ blocks }: BlockListCardProps) {
 }
 
 export function BlockOutputCard({ output }: BlockOutputCardProps) {
-  const name = str(output, "block_name", "block_id") ?? "Block";
+  const name = getBlockDisplayName(undefined, output) ?? "Block";
   const ok = output.success !== false;
   const entries = Object.entries(
     output.outputs && typeof output.outputs === "object"
@@ -108,40 +114,44 @@ export function BlockOutputCard({ output }: BlockOutputCardProps) {
   return (
     <div className={`${CARD} ${HALF} overflow-hidden`}>
       <div className="flex items-center gap-2.5 p-2.5">
-        <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
+        <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
           <CardProviderIcon
             provider={str(output, "provider")}
             fallback={BLOCK_ICON}
           />
         </div>
-        <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-zinc-800">
+        <Text
+          variant="body-sm-medium-inherit"
+          tone="emphasis"
+          className="min-w-0 flex-1 truncate"
+        >
           {name}
-        </p>
+        </Text>
         {ok ? (
           <Icon
             icon={CheckmarkCircle02Icon}
             size={16}
-            className="shrink-0 text-green-500"
+            className="shrink-0 text-success"
           />
         ) : (
           <Icon
             icon={CancelCircleIcon}
             size={16}
-            className="shrink-0 text-red-400"
+            className="shrink-0 text-error"
           />
         )}
       </div>
       {entries.length > 0 && (
-        <div className="divide-y divide-zinc-100 border-t border-zinc-100">
+        <div className="divide-y divide-separator border-t border-separator">
           {entries.map(([key, value]) => {
             const flat =
               Array.isArray(value) && value.length === 1 ? value[0] : value;
             return (
               <div key={key} className="px-2.5 py-1.5">
-                <p className="text-[11px] uppercase tracking-wide text-zinc-400">
+                <p className="text-caption-sm leading-inherit tracking-wide text-foreground-subtle uppercase">
                   {key.replace(/_/g, " ")}
                 </p>
-                <p className="mt-0.5 line-clamp-3 whitespace-pre-wrap break-words text-[13px] text-zinc-700">
+                <p className="mt-0.5 line-clamp-3 text-body-sm leading-inherit break-words whitespace-pre-wrap text-foreground-body">
                   {inline(flat)}
                 </p>
               </div>

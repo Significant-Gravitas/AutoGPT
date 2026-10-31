@@ -1,15 +1,27 @@
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@/tests/integrations/test-utils";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  render as baseRender,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import type { MessagePart } from "../../ChatMessagesContainer/helpers";
+import { AnsweredQuestionsContext } from "../../QuestionDock/AnsweredQuestionsContext";
 import type { PendingQuestions } from "../../QuestionDock/helpers";
 import { PendingQuestionsContext } from "../../QuestionDock/PendingQuestionsContext";
 import { ToolChain } from "../ToolChain";
+import { expectTypingKept } from "@/tests/integrations/typing";
+
+vi.mock("@/components/molecules/Toast/use-toast", () => ({
+  toast: vi.fn(),
+  useToast: () => ({ toast: vi.fn(), dismiss: vi.fn() }),
+}));
 
 vi.mock("../../SetupRequirementsCard/SetupRequirementsCard", async () => {
-  const { useContext, useEffect } = await import("react");
+  const { useContext, useEffect, useId } = await import("react");
   const { ChainActionsContext } = await import("../chainActions");
 
   interface MockProps {
@@ -18,17 +30,18 @@ vi.mock("../../SetupRequirementsCard/SetupRequirementsCard", async () => {
 
   function SetupRequirementsCard({ output }: MockProps) {
     const chainActions = useContext(ChainActionsContext);
+    const owner = useId();
     const name = output.setup_info?.agent_name ?? "Integration";
     useEffect(() => {
       if (!chainActions) return;
-      chainActions.register({
+      chainActions.register(owner, {
         id: name,
         ready: name !== "NotReady",
         buildMessage: () =>
           name === "Silent" ? null : `Connected ${name}. Please continue.`,
       });
-      return () => chainActions.unregister(name);
-    }, [chainActions, name]);
+      return () => chainActions.unregister(owner);
+    }, [chainActions, name, owner]);
     return <div>{`setup-card-${name}`}</div>;
   }
 
@@ -59,10 +72,36 @@ function getPanel(header: HTMLElement): HTMLElement | null {
   return panelId ? document.getElementById(panelId) : null;
 }
 
+// An action row shares its label with the chain heading, and both are
+// collapse toggles now — only the chain header owns the panel.
+function getChainHeader(name: RegExp): HTMLElement {
+  const header = screen
+    .getAllByRole("button", { name })
+    .find((button) => button.hasAttribute("aria-controls"));
+  if (!header) throw new Error(`No chain header matching ${name}`);
+  return header;
+}
+
+// The row's own toggle is the one without a panel — its `aria-expanded` says
+// whether the row's card is showing.
+function getRowToggle(name: RegExp): HTMLElement {
+  const toggle = screen
+    .getAllByRole("button", { name })
+    .find((button) => !button.hasAttribute("aria-controls"));
+  if (!toggle) throw new Error(`No row toggle matching ${name}`);
+  return toggle;
+}
+
 describe("ToolChain", () => {
+  beforeEach(() => {
+    onSend.mockClear();
+    vi.mocked(toast).mockClear();
+  });
+
   afterEach(() => {
-    cleanup();
-    useCopilotUIStore.setState({ initialPrompt: null, sentMessageCount: 0 });
+    useCopilotUIStore.setState((state) => ({
+      artifactPanel: { ...state.artifactPanel, isOpen: false },
+    }));
   });
 
   it("renders nothing when no parts map to chain rows", () => {
@@ -176,6 +215,26 @@ describe("ToolChain", () => {
     expect(screen.getByText("Weighing the trade-offs")).toBeDefined();
   });
 
+  it("renders the canonical agent name in both the live heading and its row", () => {
+    const { container } = render(
+      <ToolChain
+        parts={[
+          toolPart("run_agent", "input-available", {
+            title: "Daily briefing",
+            input: { library_agent_id: "b71fd24c-7623-4a73-a000-000000000000" },
+          }),
+        ]}
+        isStreaming
+      />,
+    );
+
+    expect(getChainHeader(/running workflow "Daily briefing"/i)).toBeDefined();
+    expect(
+      screen.getAllByText('Running workflow "Daily briefing"…'),
+    ).toHaveLength(2);
+    expect(container.textContent).not.toContain("b71fd24c");
+  });
+
   it("renders the provider icon when the tool output names a provider", async () => {
     const user = userEvent.setup();
     const { container } = render(
@@ -198,10 +257,9 @@ describe("ToolChain", () => {
 
   it("auto-expands browser rows while the artifact panel is open", async () => {
     const user = userEvent.setup();
-    const { artifactPanel } = useCopilotUIStore.getState();
-    useCopilotUIStore.setState({
-      artifactPanel: { ...artifactPanel, isOpen: true },
-    });
+    useCopilotUIStore.setState((state) => ({
+      artifactPanel: { ...state.artifactPanel, isOpen: true },
+    }));
 
     render(
       <ToolChain
@@ -221,10 +279,6 @@ describe("ToolChain", () => {
       name: /opened "https:\/\/agpt.co"/i,
     });
     expect(row.getAttribute("aria-expanded")).toBe("true");
-
-    useCopilotUIStore.setState({
-      artifactPanel: { ...artifactPanel, isOpen: false },
-    });
   });
 
   it("surfaces the latest error in the heading and drops the Done step", async () => {
@@ -267,9 +321,7 @@ describe("ToolChain", () => {
       />,
     );
 
-    const header = screen.getByRole("button", {
-      name: /review send email/i,
-    });
+    const header = getChainHeader(/review send email/i);
     expect(getPanel(header)?.getAttribute("aria-hidden")).toBe("false");
 
     expect(screen.getAllByText("Review Send Email").length).toBeGreaterThan(1);
@@ -277,7 +329,31 @@ describe("ToolChain", () => {
     expect(screen.getByText("Send Email")).toBeDefined();
   });
 
-  it("drafts answered questions into the chat input and dismisses on send", async () => {
+  // A live row mounts before its output exists, so "needs you" is only known
+  // on a later render — the reveal has to react to it, not read it once.
+  it("reveals an action row when its output arrives mid-stream", () => {
+    const pending = toolPart("run_block", "input-available");
+    const { rerender } = render(
+      <ToolChain parts={[pending]} isStreaming={true} />,
+    );
+
+    rerender(
+      <ToolChain
+        parts={[
+          toolPart("run_block", "output-available", {
+            output: { type: "review_required", block_name: "Send Email" },
+          }),
+        ]}
+        isStreaming={true}
+      />,
+    );
+
+    expect(
+      getRowToggle(/review send email/i).getAttribute("aria-expanded"),
+    ).toBe("true");
+  });
+
+  it("sends answered questions and dismisses the card", async () => {
     const user = userEvent.setup();
     const pending: PendingQuestions = {
       dockId: "m1:call-ask_question",
@@ -288,7 +364,7 @@ describe("ToolChain", () => {
     };
 
     render(
-      <CopilotChatActionsProvider onSend={vi.fn()}>
+      <CopilotChatActionsProvider onSend={onSend}>
         <PendingQuestionsContext.Provider value={pending}>
           <ToolChain
             parts={[
@@ -308,9 +384,7 @@ describe("ToolChain", () => {
     expect(screen.getByText("Answer a few questions")).toBeDefined();
     expect(screen.getByText("Which region?")).toBeDefined();
 
-    const submit = screen.getByRole("button", {
-      name: "Add answers to message",
-    });
+    const submit = screen.getByRole("button", { name: "Send answers" });
     expect(submit.hasAttribute("disabled")).toBe(true);
 
     await user.type(
@@ -321,12 +395,181 @@ describe("ToolChain", () => {
 
     await user.click(submit);
 
-    expect(useCopilotUIStore.getState().initialPrompt).toBe(
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(onSend).toHaveBeenCalledWith(
       "**Here are my answers:**\n\n> Which region?\n\nWestern Europe\n\nPlease proceed.",
     );
+    await waitFor(() => {
+      expect(screen.queryByText("Answer a few questions")).toBeNull();
+    });
+  });
 
-    act(() => useCopilotUIStore.getState().notifyMessageSent());
+  // Two ask_question calls in one message are one card. Each lifted row used
+  // to host its own form, so Skip dismissed one copy and the other brought the
+  // card straight back.
+  it("skips the questions of every ask_question call in the message", async () => {
+    const user = userEvent.setup();
+    const questions = [
+      { question: "Which region?", keyword: "region" },
+      { question: "Which plan?", keyword: "plan" },
+    ];
+    const askPart = (callId: string, index: number) =>
+      toolPart("ask_question", "output-available", {
+        toolCallId: callId,
+        output: {
+          type: "agent_builder_clarification_needed",
+          questions: [questions[index]],
+        },
+      });
+    const pending: PendingQuestions = {
+      dockId: "m1:ask-a+ask-b",
+      callIds: ["ask-a", "ask-b"],
+      questions,
+    };
 
+    render(
+      <PendingQuestionsContext.Provider value={pending}>
+        <ToolChain
+          parts={[askPart("ask-a", 0), askPart("ask-b", 1)]}
+          isStreaming={false}
+        />
+      </PendingQuestionsContext.Provider>,
+    );
+
+    expect(screen.getAllByText("Answer a few questions")).toHaveLength(1);
+
+    await user.click(screen.getByRole("button", { name: "Skip" }));
+
+    await waitFor(() =>
+      expect(screen.queryByText("Answer a few questions")).toBeNull(),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(screen.queryByText("Answer a few questions")).toBeNull();
+  });
+
+  it("keeps the caret where the user is editing an answer", async () => {
+    // The answer used to reach the field one render late, and React writing
+    // the old value back in between threw the caret to the end and broke
+    // IME input (Japanese "nihongo" came out as "nいhおnngお").
+    const user = userEvent.setup();
+    const pending: PendingQuestions = {
+      dockId: "m1:call-ask_question",
+      callIds: ["call-ask_question"],
+      questions: [
+        { question: "Which region?", keyword: "region", example: "Europe" },
+      ],
+    };
+
+    render(
+      <CopilotChatActionsProvider onSend={onSend}>
+        <PendingQuestionsContext.Provider value={pending}>
+          <ToolChain
+            parts={[
+              toolPart("ask_question", "output-available", {
+                output: {
+                  type: "agent_builder_clarification_needed",
+                  questions: pending.questions,
+                },
+              }),
+            ]}
+            isStreaming={false}
+          />
+        </PendingQuestionsContext.Provider>
+      </CopilotChatActionsProvider>,
+    );
+
+    const field = screen.getByPlaceholderText(
+      "e.g. Europe",
+    ) as HTMLTextAreaElement;
+    await user.type(field, "Wstern");
+    await expectTypingKept(field, "e", 1);
+    await expectTypingKept(field, " 日本語");
+  });
+
+  it("keeps an answered question and its answer on screen once the chain settles", () => {
+    render(
+      <AnsweredQuestionsContext.Provider
+        value={
+          new Map([["call-ask_question", new Map([["region", "Europe"]])]])
+        }
+      >
+        <ToolChain
+          parts={[
+            toolPart("web_search", "output-available", {
+              input: { query: "regions" },
+              output: { results: [] },
+            }),
+            toolPart("ask_question", "output-available", {
+              output: {
+                type: "agent_builder_clarification_needed",
+                questions: [
+                  {
+                    question: "Which region?",
+                    keyword: "region",
+                    options: ["Europe", "Asia"],
+                  },
+                ],
+              },
+            }),
+          ]}
+          isStreaming={false}
+        />
+      </AnsweredQuestionsContext.Provider>,
+    );
+
+    // The chain is collapsed, yet the question and the answer stay visible.
+    expect(
+      getChainHeader(/searched the web/i).getAttribute("aria-expanded"),
+    ).toBe("false");
+    expect(screen.getByText("Which region?")).toBeDefined();
+    expect(screen.getByText("Europe")).toBeDefined();
+  });
+
+  it("reports a rejected send without bringing the card back", async () => {
+    const user = userEvent.setup();
+    onSend.mockRejectedValueOnce(new Error("boom"));
+    const pending: PendingQuestions = {
+      dockId: "m1:call-ask_question",
+      callIds: ["call-ask_question"],
+      questions: [
+        { question: "Which region?", keyword: "region", example: "Europe" },
+      ],
+    };
+
+    render(
+      <CopilotChatActionsProvider onSend={onSend}>
+        <PendingQuestionsContext.Provider value={pending}>
+          <ToolChain
+            parts={[
+              toolPart("ask_question", "output-available", {
+                output: {
+                  type: "agent_builder_clarification_needed",
+                  questions: pending.questions,
+                },
+              }),
+            ]}
+            isStreaming={false}
+          />
+        </PendingQuestionsContext.Provider>
+      </CopilotChatActionsProvider>,
+    );
+
+    await user.type(
+      screen.getByPlaceholderText("e.g. Europe"),
+      "Western Europe",
+    );
+    await user.click(screen.getByRole("button", { name: "Send answers" }));
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Couldn't send message",
+          description:
+            "boom — it is still in the thread, use Retry to send it again.",
+          variant: "destructive",
+        }),
+      ),
+    );
     expect(screen.queryByText("Answer a few questions")).toBeNull();
   });
 
@@ -347,18 +590,43 @@ describe("ToolChain", () => {
     );
 
     expect(screen.getByText("setup-card-GitHub")).toBeDefined();
-    expect(
-      screen.getByText("Everything's filled in — send it to continue"),
-    ).toBeDefined();
+    expect(screen.getByText("Everything's filled in")).toBeDefined();
 
     const proceed = screen.getByRole("button", { name: "Proceed" });
     expect(proceed.hasAttribute("disabled")).toBe(false);
 
     await user.click(proceed);
 
-    expect(useCopilotUIStore.getState().initialPrompt).toBe(
-      "Connected GitHub. Please continue.",
+    expect(onSend).toHaveBeenCalledWith("Connected GitHub. Please continue.");
+  });
+
+  // SECRT-3135: two copies of one card were mounted at once (a row animating
+  // out beside its lifted copy) and the leaving copy's cleanup deleted the
+  // entry by its card id, taking the staying copy's card with it.
+  it("keeps a card while another copy of it unmounts", async () => {
+    const setupPart = (callId: string) =>
+      toolPart("connect_integration", "output-available", {
+        toolCallId: callId,
+        output: {
+          type: "setup_requirements",
+          setup_info: { agent_name: "GitHub" },
+        },
+      });
+    const { rerender } = render(
+      <ToolChain
+        parts={[setupPart("call-a"), setupPart("call-b")]}
+        isStreaming={false}
+      />,
     );
+    expect(screen.getAllByText("setup-card-GitHub")).toHaveLength(2);
+
+    rerender(<ToolChain parts={[setupPart("call-b")]} isStreaming={false} />);
+
+    await waitFor(() =>
+      expect(screen.getAllByText("setup-card-GitHub")).toHaveLength(1),
+    );
+    expect(screen.getByText("Everything's filled in")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Proceed" })).toBeDefined();
   });
 
   it("disables Proceed until every registered card is ready", () => {
@@ -377,15 +645,15 @@ describe("ToolChain", () => {
     );
 
     expect(
-      screen.getByText("Complete the steps above, then send to continue"),
+      screen.getByText("Complete the steps above to continue"),
     ).toBeDefined();
     expect(
       screen.getByRole("button", { name: "Proceed" }).hasAttribute("disabled"),
     ).toBe(true);
-    expect(useCopilotUIStore.getState().initialPrompt).toBeNull();
+    expect(onSend).not.toHaveBeenCalled();
   });
 
-  it("does not draft anything when ready cards produce no message", async () => {
+  it("sends nothing when ready cards produce no message", async () => {
     const user = userEvent.setup();
     render(
       <ToolChain
@@ -403,6 +671,27 @@ describe("ToolChain", () => {
 
     await user.click(screen.getByRole("button", { name: "Proceed" }));
 
-    expect(useCopilotUIStore.getState().initialPrompt).toBeNull();
+    expect(onSend).not.toHaveBeenCalled();
   });
 });
+
+// ToolChain sends the chain's follow-up turn itself, so it needs the actions
+// provider its production parents always supply.
+const onSend = vi.fn();
+
+function render(ui: React.ReactElement) {
+  const { rerender, ...rest } = baseRender(
+    <CopilotChatActionsProvider onSend={onSend}>
+      {ui}
+    </CopilotChatActionsProvider>,
+  );
+  return {
+    ...rest,
+    rerender: (next: React.ReactElement) =>
+      rerender(
+        <CopilotChatActionsProvider onSend={onSend}>
+          {next}
+        </CopilotChatActionsProvider>,
+      ),
+  };
+}

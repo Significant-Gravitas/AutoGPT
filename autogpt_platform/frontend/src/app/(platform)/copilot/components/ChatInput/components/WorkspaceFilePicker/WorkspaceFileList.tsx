@@ -11,33 +11,46 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { isKey } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
-import { useEffect, useRef, useState } from "react";
+import type { SelectionModifiers } from "./helpers";
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   files: WorkspaceFileItem[];
   selectedIds: ReadonlyMap<string, WorkspaceFileItem>;
-  onToggle: (item: WorkspaceFileItem) => void;
+  onSelect: (index: number, modifiers: SelectionModifiers) => void;
   isLoading: boolean;
   isError: boolean;
   error: unknown;
   hasMore: boolean;
   isLoadingMore: boolean;
   onLoadMore: () => void;
+  emptyMessage: string;
+  /** Offered under the empty message, e.g. widening an expert-only listing. */
+  emptyAction?: ReactNode;
 }
 
 export function WorkspaceFileList({
   files,
   selectedIds,
-  onToggle,
+  onSelect,
   isLoading,
   isError,
   error,
   hasMore,
   isLoadingMore,
   onLoadMore,
+  emptyMessage,
+  emptyAction,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // Show the top/bottom scroll-fade only when there's content hidden in that
@@ -80,9 +93,12 @@ export function WorkspaceFileList({
 
   if (files.length === 0) {
     return (
-      <p className="py-8 text-center text-sm text-zinc-500">
-        No files in your workspace yet.
-      </p>
+      <div className="flex flex-col items-center gap-2 py-8">
+        <Text variant="body-tight" tone="muted" className="text-center">
+          {emptyMessage}
+        </Text>
+        {emptyAction}
+      </div>
     );
   }
 
@@ -91,10 +107,10 @@ export function WorkspaceFileList({
       {/* White scroll-fade so rows dissolve into the dialog — only on the
           side that still has hidden content. */}
       {edges.top && (
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-gradient-to-b from-white to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-gradient-to-b from-surface to-transparent" />
       )}
       {edges.bottom && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-t from-white to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-t from-surface to-transparent" />
       )}
       <div
         ref={scrollRef}
@@ -102,36 +118,43 @@ export function WorkspaceFileList({
         className="max-h-[24rem] overflow-y-auto py-1"
       >
         <div className="grid grid-cols-2 gap-2">
-          {files.map((file) => {
+          {files.map((file, index) => {
             const isSelected = selectedIds.has(file.id);
             const fileIcon = getFileTypeIcon(file.mime_type);
             return (
               <button
                 key={file.id}
                 type="button"
-                onClick={() => onToggle(file)}
+                onClick={(e) =>
+                  onSelect(index, {
+                    shift: e.shiftKey,
+                    meta: e.metaKey || e.ctrlKey,
+                  })
+                }
+                onKeyDown={(e) => handleRangeKey(e, index, onSelect)}
                 aria-pressed={isSelected}
                 className={cn(
-                  "flex w-full items-center gap-3 rounded-2xl border bg-white p-3 text-left transition-colors",
+                  "flex w-full items-center gap-3 rounded-2xl border bg-surface p-3 text-left transition-colors",
                   isSelected
-                    ? "border-violet-300 ring-1 ring-violet-200"
-                    : "border-zinc-200 hover:border-zinc-300",
+                    ? "border-brand/40 ring-1 ring-brand/20"
+                    : "border-border-base hover:border-border-strong",
                 )}
               >
                 <Icon
                   icon={fileIcon}
                   size={20}
-                  className="shrink-0 text-zinc-500"
+                  className="shrink-0 text-foreground-tertiary"
                 />
                 <div className="flex min-w-0 flex-1 flex-col">
                   <Text
+                    tone="primary"
                     variant="body-medium"
-                    className="truncate text-zinc-900"
+                    className="truncate"
                     title={file.name}
                   >
                     {file.name}
                   </Text>
-                  <Text variant="small" className="truncate text-zinc-500">
+                  <Text tone="muted" variant="small" className="truncate">
                     {getFileTypeLabel(file.mime_type)} ·{" "}
                     {formatFileSize(file.size_bytes)} ·{" "}
                     {formatRelativeDate(file.created_at)}
@@ -140,7 +163,7 @@ export function WorkspaceFileList({
                 {isSelected && (
                   <Icon
                     icon={CheckmarkCircle02Icon}
-                    className="h-5 w-5 shrink-0 text-violet-600"
+                    className="h-5 w-5 shrink-0 text-brand"
                   />
                 )}
               </button>
@@ -163,4 +186,20 @@ export function WorkspaceFileList({
       </div>
     </div>
   );
+}
+
+/**
+ * Firefox reports shiftKey as false on the click it synthesises from
+ * Shift+Enter/Space (Chromium reports true), so the keyboard range cannot ride
+ * that click. Handle the chord here and preventDefault, which also stops
+ * Chromium firing a second, plain selection.
+ */
+function handleRangeKey(
+  e: KeyboardEvent<HTMLButtonElement>,
+  index: number,
+  onSelect: (index: number, modifiers: SelectionModifiers) => void,
+) {
+  if (!e.shiftKey || !isKey(e, "Enter", " ")) return;
+  e.preventDefault();
+  onSelect(index, { shift: true });
 }

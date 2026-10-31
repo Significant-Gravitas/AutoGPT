@@ -14,7 +14,7 @@ from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.firecrawl.scrape import FirecrawlScrapeBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import AITextGeneratorBlock
-from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.model import ChatMessage, ChatSession, ChatSessionMetadata
 from backend.data import db as db_module
 from backend.data.db import prisma
 from backend.data.graph import Graph, GraphModel, Link, Node, create_graph
@@ -83,6 +83,11 @@ def make_session(
         successful_agent_runs={},
         successful_agent_schedules={},
         expert_id=expert_id,
+        # Direct construction bypasses ``ChatSession.new``, which is what
+        # stamps the origin in production. Left unset this would model a
+        # session persisted before the field existed, which is a different
+        # (and separately tested) case from an ordinary user chat.
+        metadata=ChatSessionMetadata(origin="interactive"),
     )
     if library_check:
         session.announce_inflight_tool_call(

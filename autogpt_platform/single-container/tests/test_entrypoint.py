@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import os
 import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -14,10 +15,36 @@ HEALTHCHECK_PATH = ASSET_DIR / "healthcheck.sh"
 RUN_SERVICE_PATH = ASSET_DIR / "run-service.sh"
 DOCKERFILE_PATH = ASSET_DIR / "Dockerfile"
 SUPERVISOR_PATH = ASSET_DIR / "supervisor" / "supervisord.conf"
+NGINX_CONF_PATH = ASSET_DIR / "nginx" / "nginx.conf"
 BACKEND_SERVICE_PATH = ASSET_DIR.parent / "backend" / "backend" / "util" / "service.py"
 
 
 class InternalServiceTopologyTest(unittest.TestCase):
+    def test_prepares_marketplace_media_for_unprivileged_backend(self) -> None:
+        result = subprocess.run(
+            [
+                "bash",
+                "-Eeuo",
+                "pipefail",
+                "-c",
+                'source "$1"; install() { printf "%s\\n" "$*"; }; prepare_directories',
+                "bash",
+                str(ENTRYPOINT_PATH),
+            ],
+            check=False,
+            capture_output=True,
+            encoding="utf-8",
+            env={
+                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                "AUTOGPT_ASSET_DIR": str(ASSET_DIR),
+            },
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(
+            "-d -m 0750 -o autogpt -g autogpt /data/store-media",
+            result.stdout.splitlines(),
+        )
+
     def test_rpc_health_path_matches_backend(self) -> None:
         module = ast.parse(BACKEND_SERVICE_PATH.read_text(encoding="utf-8"))
         route_paths = {
@@ -114,6 +141,100 @@ class AccountRegistrationTest(unittest.TestCase):
         )
 
 
+class EnvironmentPolicyTest(unittest.TestCase):
+    def test_image_preserves_background_embedding_backfill_at_startup(
+        self,
+    ) -> None:
+        dockerfile = DOCKERFILE_PATH.read_text(encoding="utf-8")
+
+        self.assertNotIn("SCHEDULER_STARTUP_EMBEDDING_BACKFILL=false", dockerfile)
+
+    def test_rejects_required_email_verification(self) -> None:
+        result = self._configure(AUTH_REQUIRE_EMAIL_VERIFICATION="true")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            "email verification is not supported by the single-container distribution",
+            result.stderr,
+        )
+
+    def test_defaults_to_local_behavior(self) -> None:
+        result = self._configure()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines()[-1], "local")
+
+    def test_preserves_cloud_behavior_override(self) -> None:
+        result = self._configure(BEHAVE_AS="cloud")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines()[-1], "cloud")
+
+    def test_disables_copilot_spend_caps_by_default(self) -> None:
+        # Self-hosted operators pay the provider directly, so the cloud
+        # daily/weekly USD caps must not apply unless explicitly configured.
+        result = self._configure(output=_COPILOT_SPEND_CAPS)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines()[-1], "-1 -1")
+
+    def test_preserves_operator_copilot_spend_caps(self) -> None:
+        # A blank template field arrives as an empty string and must fall
+        # back to the sentinel rather than reach Pydantic as a non-integer.
+        result = self._configure(
+            output=_COPILOT_SPEND_CAPS,
+            CHAT_DAILY_COST_LIMIT_MICRODOLLARS="2500000",
+            CHAT_WEEKLY_COST_LIMIT_MICRODOLLARS="",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines()[-1], "2500000 -1")
+
+    def _configure(
+        self, *, output: str = "$BEHAVE_AS", **overrides: str
+    ) -> subprocess.CompletedProcess[str]:
+        environment = {
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "AUTOGPT_ASSET_DIR": str(ASSET_DIR),
+            "AUTOGPT_BACKEND_DIR": str(ASSET_DIR.parent / "backend"),
+            "AUTOGPT_PYTHON": sys.executable,
+            "AUTOGPT_PUBLIC_URL": "http://localhost:3000",
+            "AUTH_ALLOW_NEW_ACCOUNTS": "false",
+            "POSTGRES_PASSWORD": "test-postgres",
+            "RABBITMQ_DEFAULT_USER": "test-rabbitmq",
+            "RABBITMQ_DEFAULT_PASS": "test-rabbitmq",
+            "REDIS_PASSWORD": "test-redis",
+            "BETTER_AUTH_SECRET": "test-better-auth",
+            "ENCRYPTION_KEY": "test-encryption",
+            "UNSUBSCRIBE_SECRET_KEY": "test-unsubscribe",
+            "GRAPHITI_FALKORDB_PASSWORD": "test-falkordb",
+            "VAPID_PRIVATE_KEY": "test-vapid-private",
+            "VAPID_PUBLIC_KEY": "test-vapid-public",
+        }
+        environment.update(overrides)
+        return subprocess.run(
+            [
+                "bash",
+                "-Eeuo",
+                "pipefail",
+                "-c",
+                'source "$1"; write_nginx_public_url_config() { :; }; '
+                f'configure_environment; printf "%s\\n" "{output}"',
+                "bash",
+                str(ENTRYPOINT_PATH),
+            ],
+            check=False,
+            capture_output=True,
+            encoding="utf-8",
+            env=environment,
+        )
+
+
+_COPILOT_SPEND_CAPS = (
+    "$CHAT_DAILY_COST_LIMIT_MICRODOLLARS $CHAT_WEEKLY_COST_LIMIT_MICRODOLLARS"
+)
+
+
 class PublicOriginConfigurationTest(unittest.TestCase):
     def test_backend_cors_uses_the_validated_public_origin(self) -> None:
         result = subprocess.run(
@@ -123,7 +244,7 @@ class PublicOriginConfigurationTest(unittest.TestCase):
                 "pipefail",
                 "-c",
                 'source "$1"; AUTOGPT_PUBLIC_URL="$2"; '
-                'configure_backend_cors_origin; '
+                "configure_backend_cors_origin; "
                 'printf "%s\\n" "$BACKEND_CORS_ALLOW_ORIGINS"',
                 "bash",
                 str(ENTRYPOINT_PATH),
@@ -253,6 +374,19 @@ class ProxyIsolationTest(unittest.TestCase):
         self.assertIn("user=autogpt_proxy", nginx_program)
         self.assertIn("AUTOGPT_HOME=/run/autogpt/nginx/home", nginx_program)
         self.assertNotIn("user=autogpt\n", nginx_program)
+
+    def test_the_backend_reads_the_client_from_the_one_entry_nginx_sends(
+        self,
+    ) -> None:
+        # The backend's default of 3 is the hosted platform's proxy chain; here
+        # it falls back to nginx's own address, putting every client in one
+        # rate-limit bucket that one caller's failed keys can exhaust for all.
+        nginx = NGINX_CONF_PATH.read_text(encoding="utf-8")
+        rest_location = nginx.split("location /_agpt/ {", 1)[1].split("}", 1)[0]
+        entrypoint = ENTRYPOINT_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("proxy_set_header X-Forwarded-For $remote_addr;", rest_location)
+        self.assertIn("export TRUSTED_PROXY_COUNT=1\n", entrypoint)
 
 
 class ThirdPartyTelemetryTest(unittest.TestCase):

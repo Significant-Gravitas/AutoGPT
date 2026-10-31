@@ -12,9 +12,10 @@ interface Props {
   disabled: boolean;
   onClick: () => void;
   // One-time highlight for the user who skipped the onboarding brain
-  // dump: AutoPilot's intro invites them to record, so the button it
+  // dump: Otto's intro invites them to record, so the button it
   // points at has to be findable.
   highlight?: boolean;
+  className?: string;
 }
 
 export function RecordingButton({
@@ -24,6 +25,7 @@ export function RecordingButton({
   disabled,
   onClick,
   highlight = false,
+  className,
 }: Props) {
   return (
     <Button
@@ -34,14 +36,16 @@ export function RecordingButton({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "border-neutral-200 bg-white text-zinc-500 shadow-sm hover:border-neutral-200 hover:bg-neutral-50 hover:text-zinc-700",
+        "border-transparent bg-transparent text-foreground-base shadow-none hover:border-transparent hover:bg-surface-hover hover:text-foreground-base",
+        className,
         disabled && "opacity-40",
-        isRecording && "animate-pulse bg-red-500 text-white hover:bg-red-600",
-        isTranscribing && "bg-zinc-100 text-zinc-400",
+        isRecording &&
+          "animate-pulse bg-error text-action-foreground hover:bg-error-hover",
+        isTranscribing && "bg-surface-hover text-foreground-subtle",
         isStreaming && "opacity-40",
         highlight &&
           !isRecording &&
-          "border-purple-300 text-purple-600 ring-4 ring-purple-100",
+          "border-brand/70 text-brand-hover ring-4 ring-brand/10",
       )}
     >
       {isTranscribing ? (

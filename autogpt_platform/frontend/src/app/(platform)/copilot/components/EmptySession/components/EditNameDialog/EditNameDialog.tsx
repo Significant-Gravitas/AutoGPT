@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useState } from "react";
 import { PencilIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { isKey } from "@/lib/keyboard";
 
 interface Props {
   currentName: string;
@@ -30,7 +31,7 @@ export function EditNameDialog({ currentName }: Props) {
     if (!trimmed) return;
 
     setIsSaving(true);
-    try {
+    async function save() {
       // preferred_name is also written by onboarding's "What should I call you?"
       const res = await fetch("/api/auth/user", {
         method: "PUT",
@@ -60,9 +61,10 @@ export function EditNameDialog({ currentName }: Props) {
       }
       setIsOpen(false);
       toast({ title: "Name updated" });
-    } finally {
-      setIsSaving(false);
     }
+    await save().finally(() => {
+      setIsSaving(false);
+    });
   }
 
   return (
@@ -74,7 +76,7 @@ export function EditNameDialog({ currentName }: Props) {
       <Dialog.Trigger>
         <button
           type="button"
-          className="ml-1 inline-flex items-center text-violet-500 transition-colors hover:text-violet-700"
+          className="ml-1 inline-flex items-center text-brand transition-colors hover:text-accent-strong"
         >
           <Icon icon={PencilIcon} size={16} />
         </button>
@@ -88,7 +90,7 @@ export function EditNameDialog({ currentName }: Props) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (isKey(e, "Enter")) {
                 e.preventDefault();
                 handleSave();
               }

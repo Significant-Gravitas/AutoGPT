@@ -8,11 +8,13 @@ from typing import (
     Callable,
     ClassVar,
     Generic,
+    Literal,
     Optional,
     Type,
     TypeAlias,
     TypeVar,
     cast,
+    get_args,
     get_origin,
 )
 
@@ -41,6 +43,9 @@ from backend.util.exceptions import (
     InsufficientBalanceError,
 )
 from backend.util.settings import Config
+from backend.util.text import split_camelcase
+
+from ._preview import ChangePreview
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +59,31 @@ app_config = Config()
 
 
 BlockTestOutput = BlockOutputEntry | tuple[str, Callable[[Any], bool]]
+
+
+# How the copilot ranks a block when it is offered as a capability.  A
+# ``service`` block acts on one named integration (Gmail, Linear, ...); a
+# ``primitive`` is a generic building block (HTTP, SQL, code, LLM calls) that
+# can reach many services and so ranks below a matching service capability.
+CapabilityKind = Literal["service", "primitive"]
+
+
+class BlockEffect(Enum):
+    """What running the block does, ranked; declared per block, never derived.
+
+    Undeclared (``None``) means unreadable, which every consumer treats as EXTERNAL.
+    """
+
+    NONE = "none"  # pure computation: no network, no disk, no database
+    READ = "read"  # fetches or computes; changes nothing
+    WORKSPACE = "workspace"  # writes only to the user's workspace or key-value store
+    PLATFORM = "platform"  # changes only the user's own objects on the platform
+    # Changes something outside the platform where a mistake is cheap and the
+    # norms casual: a chat-channel post, a label, a draft, a new record.
+    EXTERNAL_JUDGED = "external_judged"
+    # Changes something outside the platform that is hard to take back, or reaches
+    # people or money in the user's name: an email, a payment, a delete, a public post.
+    EXTERNAL = "external"
 
 
 class BlockType(Enum):
@@ -177,6 +207,12 @@ class BlockCost(BaseModel):
             cost_divisor=max(1, cost_divisor),
             **data,
         )
+
+    @property
+    def is_free(self) -> bool:
+        """Whether this entry can never charge. Every cost type scales
+        ``cost_amount`` except TOKENS, which prices from the token rate table."""
+        return self.cost_amount == 0 and self.cost_type != BlockCostType.TOKENS
 
 
 class BlockInfo(BaseModel):
@@ -370,17 +406,29 @@ class BlockSchema(BaseModel):
 
     @classmethod
     def get_credentials_fields(cls) -> dict[str, type[CredentialsMetaInput]]:
-        return {
-            field_name: info.annotation
-            for field_name, info in cls.model_fields.items()
-            if (
-                inspect.isclass(info.annotation)
-                and issubclass(
-                    get_origin(info.annotation) or info.annotation,
-                    CredentialsMetaInput,
-                )
+        result = {}
+        for field_name, info in cls.model_fields.items():
+            annotation = info.annotation
+            # Conditional credentials can be nullable at runtime while their
+            # JSON schema remains the credential object shape. Inspect union
+            # members so those fields are still discovered and validated.
+            candidates = [annotation, *get_args(annotation)]
+
+            credentials_model = next(
+                (
+                    candidate
+                    for candidate in candidates
+                    if inspect.isclass(candidate)
+                    and issubclass(
+                        get_origin(candidate) or candidate,
+                        CredentialsMetaInput,
+                    )
+                ),
+                None,
             )
-        }
+            if credentials_model is not None:
+                result[field_name] = credentials_model
+        return result
 
     @classmethod
     def get_auto_credentials_fields(cls) -> dict[str, dict[str, Any]]:
@@ -541,7 +589,7 @@ class BlockWebhookConfig(BlockManualWebhookConfig):
 
 
 # Default wall-clock cap on a single block-run invocation. Leaf compute blocks
-# inherit this; coordination blocks (AgentExecutor, AutoPilot) override their
+# inherit this; coordination blocks (AgentExecutor, Otto) override their
 # instance attribute to None to opt out. The executor consults
 # `block.execution_timeout_seconds` and only wraps `run` in `wait_for` when
 # the value is not None.
@@ -568,7 +616,10 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         static_output: bool = False,
         block_type: BlockType = BlockType.STANDARD,
         webhook_config: Optional[BlockWebhookConfig | BlockManualWebhookConfig] = None,
-        is_sensitive_action: bool = False,
+        is_irreversible_action: bool = False,
+        capability_kind: CapabilityKind | None = None,
+        effect: BlockEffect | None = None,
+        display_name: str | None = None,
     ):
         """
         Initialize the block with the given schema.
@@ -586,6 +637,18 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             test_mock: function names on the block implementation to mock on test run.
             disabled: If the block is disabled, it will not be available for execution.
             static_output: Whether the output links of the block are static by default.
+            is_irreversible_action: The effect has reached someone outside the platform
+                by the time the block returns (a send, public post, payment or order,
+                external permanent delete, access grant, on-call page); an external
+                write the user can edit back is not one.
+            capability_kind: How the copilot ranks this block as a capability.
+                Defaults to ``service`` when the block's credentials name exactly
+                one provider and ``primitive`` otherwise; set it explicitly on
+                provider-backed generic blocks (code sandboxes, SQL, HTTP).
+            effect: What running the block does; see BlockEffect. Irreversible
+                implies EXTERNAL or EXTERNAL_JUDGED.
+            display_name: The block's name as people read it, e.g. "Create
+                Airtable table". Undeclared, it is read off the class name.
         """
         self.id = id
         self.input_schema = input_schema
@@ -601,7 +664,10 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.static_output = static_output
         self.block_type = block_type
         self.webhook_config = webhook_config
-        self.is_sensitive_action = is_sensitive_action
+        self.is_irreversible_action = is_irreversible_action
+        self._capability_kind: CapabilityKind | None = capability_kind
+        self.effect = effect
+        self._display_name = display_name
         # Read from ClassVar set by initialize_blocks()
         self.optimized_description: str | None = type(self)._optimized_description
         self.execution_stats: NodeExecutionStats = NodeExecutionStats()
@@ -692,6 +758,49 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
     def name(self):
         return self.__class__.__name__
 
+    @property
+    def display_name(self) -> str:
+        """The block's name as people read it: the one it declares, else its
+        class name in words with " Block" dropped, which is how the builder
+        titles an undeclared block (``NewBlockMenu/Block.tsx``,
+        ``CustomNode/helpers.ts``): ``AirtableCreateTableBlock`` reads
+        "Airtable Create Table"."""
+        if self._display_name:
+            return self._display_name
+        return split_camelcase(self.name).removesuffix(" Block")
+
+    @property
+    def capability_kind(self) -> CapabilityKind:
+        """``service`` for a block bound to one integration, else ``primitive``.
+
+        Explicit ``capability_kind`` wins.  Otherwise a block whose credential
+        inputs name exactly one provider is a service; blocks with no
+        credentials, or with a choice of providers (the LLM blocks), are
+        primitives.
+        """
+        if self._capability_kind is not None:
+            return self._capability_kind
+        try:
+            providers = {
+                provider
+                for info in self.input_schema.get_credentials_fields_info().values()
+                for provider in info.provider
+            }
+        except Exception:
+            # This runs while the block registry is being built, so one block
+            # with a malformed credentials schema would otherwise take the
+            # whole platform down at startup. "primitive" is the safe read:
+            # it only costs this block some ranking weight.
+            logger.warning(
+                "Could not read credentials for %s; treating it as a primitive",
+                self.name,
+                exc_info=True,
+            )
+            return "primitive"
+        if len(providers) == 1:
+            return "service"
+        return "primitive"
+
     def to_dict(self):
         return {
             "id": self.id,
@@ -751,6 +860,13 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                     block_id=self.id,
                 ) from ex
 
+    def change_preview(self, input_data: BlockInput) -> ChangePreview | None:
+        """What these inputs would create or change in the user's connected
+        account, for an approval card to show before the block runs. None
+        where the inputs already say it plainly. Reads the model's raw call,
+        before validation, so it must not assume any input is well formed."""
+        return None
+
     async def is_block_exec_need_review(
         self,
         input_data: BlockInput,
@@ -758,9 +874,9 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         user_id: str,
         node_id: str,
         node_exec_id: str,
-        graph_exec_id: str,
-        graph_id: str,
-        graph_version: int,
+        graph_exec_id: str | None,
+        graph_id: str | None,
+        graph_version: int | None,
         execution_context: "ExecutionContext",
         is_graph_execution: bool = True,
         **kwargs,
@@ -774,7 +890,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             - input_data_to_use: The input data to use (may be modified by reviewer)
         """
         if not (
-            self.is_sensitive_action and execution_context.sensitive_action_safe_mode
+            self.is_irreversible_action and execution_context.sensitive_action_safe_mode
         ):
             return False, input_data
 
@@ -794,6 +910,11 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             is_graph_execution=is_graph_execution,
             organization_id=execution_context.organization_id,
             team_id=execution_context.team_id,
+            chat_session_id=(
+                None if is_graph_execution else execution_context.session_id
+            ),
+            block=self,
+            execution_context=execution_context,
         )
 
         if decision is None:

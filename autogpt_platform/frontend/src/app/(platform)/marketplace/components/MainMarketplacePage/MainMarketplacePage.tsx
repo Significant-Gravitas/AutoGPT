@@ -1,22 +1,45 @@
 "use client";
+import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
+import type { PublishState } from "@/components/contextual/PublishAgentModal/usePublishAgentModal";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { AICatalogIcon } from "../AICatalogIcon";
-import { AgentsSection } from "../AgentsSection/AgentsSection";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { useState } from "react";
 import { BecomeACreator } from "../BecomeACreator/BecomeACreator";
-import { FeaturedCreators } from "../FeaturedCreators/FeaturedCreators";
-import { FeaturedSection } from "../FeaturedSection/FeaturedSection";
+import { CategoryFilter } from "../CategoryFilter/CategoryFilter";
 import { ExpertsSection } from "../ExpertsSection/ExpertsSection";
 import { HeroSection } from "../HeroSection/HeroSection";
 import { MainMarketplacePageLoading } from "../MainMarketplacePageLoading";
 import { MarketplaceTabIntro } from "../MarketplaceTabIntro/MarketplaceTabIntro";
 import { AGENTS_SECTION_ID } from "../MarketplaceTabIntro/helpers";
+import { SkillsList } from "../SkillsList/SkillsList";
+import { WorkflowsShelf } from "../WorkflowsShelf/WorkflowsShelf";
 import { useMainMarketplacePage } from "./useMainMarketplacePage";
 
-export const MainMarkeplacePage = () => {
-  const { featuredAgents, topAgents, featuredCreators, isLoading, hasError } =
-    useMainMarketplacePage();
-  const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
+export function MainMarkeplacePage() {
+  const [publishState, setPublishState] = useState<PublishState>({
+    isOpen: false,
+    step: "select",
+    submissionData: null,
+  });
+  function openPublishing() {
+    setPublishState({ isOpen: true, step: "select", submissionData: null });
+  }
+  const {
+    featuredAgents,
+    topAgents,
+    category,
+    setCategory,
+    isLoading,
+    hasError,
+  } = useMainMarketplacePage();
+  const { isUserLoading } = useAuth();
+
+  const showExperts = !isUserLoading;
+  const hasWorkflowShelf = Boolean(
+    topAgents &&
+      (topAgents.agents.length > 0 ||
+        (!category && (featuredAgents?.agents.length ?? 0) > 0)),
+  );
 
   if (isLoading) {
     return <MainMarketplacePageLoading />;
@@ -45,37 +68,38 @@ export const MainMarkeplacePage = () => {
     <div className="mx-auto w-full max-w-[1360px]">
       <main className="px-6 pb-16 md:px-10 lg:px-14">
         <HeroSection />
-        {isHireExpertsEnabled ? <ExpertsSection /> : null}
+        {/* Above all three shelves because it narrows all three: a filter
+            below its content changes what the reader has scrolled past. */}
+        <CategoryFilter selected={category} onSelect={setCategory} />
+        {showExperts ? <ExpertsSection category={category} /> : null}
+
+        <SkillsList key={category ?? "all"} category={category} />
         {topAgents && (
-          <div className="mb-20" id={AGENTS_SECTION_ID}>
-            <AgentsSection
-              sectionTitle="All AI Workflows"
-              titleIcon={<AICatalogIcon size={30} />}
-              subtitle={
-                isHireExpertsEnabled
-                  ? "Install one on an Expert, or run it standalone."
-                  : "Ready-made automations from the community."
-              }
-              agents={topAgents.agents}
-            >
-              {featuredAgents && featuredAgents.agents.length > 0 && (
-                <FeaturedSection featuredAgents={featuredAgents.agents} />
-              )}
-            </AgentsSection>
-          </div>
+          <WorkflowsShelf
+            id={AGENTS_SECTION_ID}
+            agents={topAgents.agents}
+            featuredAgents={category ? [] : (featuredAgents?.agents ?? [])}
+            total={topAgents.pagination.total_items}
+            onPublish={openPublishing}
+          />
         )}
-        {featuredCreators && (
-          <div className="mb-4">
-            <FeaturedCreators featuredCreators={featuredCreators.creators} />
-          </div>
-        )}
-        <BecomeACreator
-          title="Become a Creator"
-          description="Join our ever-growing community of hackers and tinkerers"
-          buttonText="Become a Creator"
-        />
+
+        {/* The expert layout invites publishing from under the workflows
+            shelf instead, where it cannot outshout the shelf itself. */}
+        {!hasWorkflowShelf ? (
+          <BecomeACreator
+            description="Join our ever-growing community of hackers and tinkerers"
+            buttonText="Publish your workflows"
+            onPublish={openPublishing}
+          />
+        ) : null}
       </main>
-      <MarketplaceTabIntro />
+      <PublishAgentModal
+        showTrigger={false}
+        targetState={publishState}
+        onStateChange={setPublishState}
+      />
+      <MarketplaceTabIntro canShow={!publishState.isOpen} />
     </div>
   );
-};
+}

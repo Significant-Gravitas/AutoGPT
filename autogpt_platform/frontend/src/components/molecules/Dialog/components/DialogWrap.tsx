@@ -1,5 +1,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
+import { isComposingEvent } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 import * as RXDialog from "@radix-ui/react-dialog";
 import {
@@ -10,8 +11,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { DialogCtx } from "../useDialogCtx";
-import { modalStyles } from "./styles";
+import { DialogCtx, DialogVariant } from "../useDialogCtx";
+import { compactStyles, modalStyles } from "./styles";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -19,6 +20,7 @@ type BaseProps = DialogCtx & PropsWithChildren;
 
 interface Props extends BaseProps {
   title: React.ReactNode;
+  variant: DialogVariant;
   styling: CSSProperties | undefined;
   withGradient?: boolean;
 }
@@ -34,12 +36,15 @@ function isExternalPickerOpen(): boolean {
 export function DialogWrap({
   children,
   title,
+  variant,
   styling = {},
+  className,
   isForceOpen,
   handleClose,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [hasVerticalScrollbar, setHasVerticalScrollbar] = useState(false);
+  const isCompact = variant === "compact";
 
   // Prevent dialog from closing when external picker is open or when forceOpen is true
   const handleInteractOutside = useCallback(
@@ -71,6 +76,14 @@ export function DialogWrap({
     [isForceOpen],
   );
 
+  // Radix closes the dialog on Escape by default, through onOpenChange. Veto it
+  // while an IME is composing, so Escape dismisses the candidate window without
+  // losing the dialog, and when the dialog is force-open — matching the sibling
+  // handlers above and skipping a dismiss path that Dialog.tsx would undo.
+  function handleEscapeKeyDown(event: KeyboardEvent) {
+    if (isForceOpen || isComposingEvent(event)) event.preventDefault();
+  }
+
   useEffect(() => {
     function update() {
       const el = scrollRef.current;
@@ -89,56 +102,84 @@ export function DialogWrap({
 
   return (
     <RXDialog.Portal>
-      <RXDialog.Overlay data-dialog-overlay className={modalStyles.overlay} />
+      <RXDialog.Overlay
+        data-dialog-overlay
+        data-slot="dialog-overlay"
+        className={modalStyles.overlay}
+      />
       <RXDialog.Content
         data-dialog-content
         onInteractOutside={handleInteractOutside}
         onPointerDownOutside={handlePointerDownOutside}
         onFocusOutside={handleFocusOutside}
-        onEscapeKeyDown={isForceOpen ? undefined : handleClose}
-        aria-describedby={undefined}
-        className={modalStyles.content}
-        style={{
-          ...styling,
-        }}
+        onEscapeKeyDown={handleEscapeKeyDown}
+        data-slot="dialog-popup"
+        className={cn(
+          modalStyles.content,
+          isCompact && compactStyles.content,
+          className,
+        )}
+        // oxlint-disable-next-line design-system/no-inline-styles -- the public `styling` prop, passed through from callers
+        style={styling}
       >
         <div
-          className={`flex items-center justify-between px-2 ${
-            title ? "pb-6" : "pb-0"
-          }`}
+          data-slot="dialog-header"
+          className={cn(
+            "flex items-center justify-between px-2",
+            title ? (isCompact ? compactStyles.header : "pb-6") : "pb-0",
+          )}
         >
           {title ? (
-            <RXDialog.Title className={modalStyles.title}>
+            <RXDialog.Title
+              data-slot="dialog-title"
+              className={isCompact ? compactStyles.title : modalStyles.title}
+            >
               {title}
             </RXDialog.Title>
           ) : (
-            <RXDialog.Title className="sr-only">Dialog</RXDialog.Title>
+            <RXDialog.Title data-slot="dialog-title" className="sr-only">
+              Dialog
+            </RXDialog.Title>
           )}
 
           {isForceOpen ? null : (
             <Button
               variant="icon"
-              size="icon"
+              size={isCompact ? "icon-sm" : "icon"}
               onClick={handleClose}
               aria-label="Close"
-              className="absolute right-4 top-4 z-50 size-[2.5rem] bg-white"
+              data-slot="dialog-close"
+              className={cn(
+                "absolute top-4 right-4 z-50 bg-surface",
+                isCompact ? "top-3 right-3" : "size-[2.5rem]",
+              )}
               withTooltip={false}
             >
-              <Icon icon={Cancel01Icon} width="1rem" />
+              <Icon
+                data-slot="dialog-close-icon"
+                icon={Cancel01Icon}
+                width="1rem"
+              />
             </Button>
           )}
         </div>
-        <div className="flex min-h-0 flex-1 flex-col">
+        <RXDialog.Description
+          data-slot="dialog-description"
+          className="sr-only"
+        >
+          Dialog
+        </RXDialog.Description>
+        <div data-slot="dialog-body" className="flex min-h-0 flex-1 flex-col">
           <div
             ref={scrollRef}
+            data-slot="dialog-viewport"
             className={cn(
-              "flex-1 overflow-y-auto overflow-x-hidden px-2",
+              "flex-1 overflow-x-hidden overflow-y-auto px-2",
               scrollbarStyles,
+              hasVerticalScrollbar
+                ? "-mr-6 [scrollbar-gutter:stable]"
+                : "mr-0 [scrollbar-gutter:auto]",
             )}
-            style={{
-              scrollbarGutter: "stable",
-              marginRight: hasVerticalScrollbar ? "-24px" : "0px",
-            }}
           >
             {children}
           </div>

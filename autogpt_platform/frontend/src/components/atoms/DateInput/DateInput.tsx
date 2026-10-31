@@ -1,15 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { Calendar as CalendarIcon } from "lucide-react";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Calendar03Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/__legacy__/ui/popover";
-import { Calendar } from "@/components/__legacy__/ui/calendar";
+} from "@/components/molecules/Popover/Popover";
+import { Calendar } from "@/components/atoms/Calendar/Calendar";
 
 function toLocalISODateString(d: Date) {
   const year = d.getFullYear();
@@ -41,6 +41,9 @@ export interface DateInputProps {
   error?: string;
   id?: string;
   size?: "default" | "small";
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
+  "aria-describedby"?: string;
 }
 
 export const DateInput = ({
@@ -56,6 +59,9 @@ export const DateInput = ({
   error,
   id,
   size = "default",
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
+  "aria-describedby": ariaDescribedBy,
 }: DateInputProps) => {
   const selected = React.useMemo(() => parseISODateString(value), [value]);
   const [open, setOpen] = React.useState(false);
@@ -77,55 +83,69 @@ export const DateInput = ({
   const isDisabled = disabled || readonly;
 
   const triggerStyles = cn(
+    "inline-flex h-9 items-center whitespace-nowrap py-2 transition-colors hover:bg-surface-hover hover:text-foreground-strong focus-visible:outline-none focus-visible:ring-0 disabled:pointer-events-none disabled:opacity-50",
     // Base styles matching other form components
-    "rounded-3xl border border-zinc-200 bg-white px-4 shadow-none",
-    "font-normal text-black w-full text-sm",
-    "placeholder:font-normal !placeholder:text-zinc-500",
+    "rounded-3xl border border-border-base bg-surface px-4 shadow-none",
+    "font-normal text-foreground-base w-full text-body leading-5",
+    "placeholder:font-normal",
     // Focus and hover states
-    "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
+    "focus:border-foreground-subtle focus:shadow-none focus:outline-none focus:ring-1 focus:ring-foreground-subtle focus:ring-offset-0",
     // Error state
-    error &&
-      "border-1.5 border-red-500 focus:border-red-500 focus:ring-red-500",
+    error && "border-error focus:border-error focus:ring-error",
     // Placeholder styling
-    !selected && "text-zinc-400",
+    !selected && "text-foreground-subtle",
     "justify-start text-left",
     // Size variants
     size === "default" && "h-[2.875rem] py-2.5",
     className,
     size === "small" && [
-      "min-h-[2.25rem]", // 36px minimum
+      "min-h-9", // 36px minimum
       "py-2",
-      "text-sm leading-[22px]",
-      "placeholder:text-sm placeholder:leading-[22px]",
+      "text-body",
+      "placeholder:text-body",
     ],
   );
 
   return (
-    <div className="flex flex-col gap-1">
+    <div data-slot="date-input" className="flex flex-col gap-1">
       {label && !hideLabel && (
-        <label htmlFor={id} className="text-sm font-medium text-gray-700">
+        <label
+          data-slot="date-input-label"
+          htmlFor={id}
+          className="text-body leading-5 font-medium text-foreground-body"
+        >
           {label}
         </label>
       )}
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <Button
+          <button
+            data-slot="date-input-trigger"
             type="button"
-            variant="ghost"
             className={triggerStyles}
             disabled={isDisabled}
             autoFocus={autoFocus}
             id={id}
-            {...(hideLabel && label ? { "aria-label": label } : {})}
+            aria-label={ariaLabel ?? (hideLabel && label ? label : undefined)}
+            aria-labelledby={ariaLabelledBy}
+            aria-describedby={ariaDescribedBy}
           >
-            <CalendarIcon
+            <Icon
+              aria-hidden
+              icon={Calendar03Icon}
+              data-slot="date-input-icon"
               className={cn("mr-2", size === "default" ? "h-4 w-4" : "h-3 w-3")}
             />
             {buttonText}
-          </Button>
+          </button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" sideOffset={6}>
+        <PopoverContent
+          data-slot="date-input-popup"
+          className="w-auto rounded-medium border-border-base p-0 text-foreground-base"
+          sideOffset={6}
+        >
           <Calendar
+            data-slot="date-input-calendar"
             mode="single"
             selected={selected}
             onSelect={setDate}
@@ -137,7 +157,14 @@ export const DateInput = ({
           />
         </PopoverContent>
       </Popover>
-      {error && <span className="text-sm text-red-500">{error}</span>}
+      {error && (
+        <span
+          data-slot="date-input-error"
+          className="text-body leading-5 text-error"
+        >
+          {error}
+        </span>
+      )}
     </div>
   );
 };

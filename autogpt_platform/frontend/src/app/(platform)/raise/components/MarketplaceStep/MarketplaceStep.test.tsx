@@ -34,8 +34,11 @@ function renderMarketplace(
   render(
     <>
       <MarketplaceStep
+        name="Otto"
         color="rose-300"
         submitted={null}
+        isFinal={false}
+        isSubmitting={false}
         onSubmit={onSubmit}
         onSkip={onSkip}
         {...overrides}
@@ -64,6 +67,14 @@ describe("MarketplaceStep", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Skip" }));
     expect(onSkip).toHaveBeenCalled();
+  });
+
+  test("raises the expert itself when it is the flow's last beat", async () => {
+    const { onSubmit } = renderMarketplace({ isFinal: true });
+    await userEvent.click(
+      screen.getByRole("button", { name: "Bring Otto to life" }),
+    );
+    expect(onSubmit).toHaveBeenCalledWith([]);
   });
 
   test("shows only three default marketplace workflows", async () => {
@@ -105,25 +116,29 @@ describe("MarketplaceStep", () => {
   });
 
   test("searches marketplace and library workflows, then attaches both", async () => {
+    // Rows only for the typed query: the debounced search replaces the empty
+    // query's list, and a click on a row it replaced is lost.
     server.use(
-      getGetV2ListStoreAgentsMockHandler({
-        agents: [storeAgent],
+      getGetV2ListStoreAgentsMockHandler(({ request }) => ({
+        agents: searchesFor(request, "search_query", "seo") ? [storeAgent] : [],
         pagination: {
           total_items: 1,
           total_pages: 1,
           current_page: 1,
           page_size: 3,
         },
-      }),
-      getGetV2ListLibraryAgentsMockHandler({
-        agents: [{ id: "lib-agent-1", name: "Local SEO" } as LibraryAgent],
+      })),
+      getGetV2ListLibraryAgentsMockHandler(({ request }) => ({
+        agents: searchesFor(request, "search_term", "seo")
+          ? [{ id: "lib-agent-1", name: "Local SEO" } as LibraryAgent]
+          : [],
         pagination: {
           total_items: 1,
           total_pages: 1,
           current_page: 1,
           page_size: 3,
         },
-      }),
+      })),
       getGetV2GetSpecificAgentMockHandler({
         store_listing_version_id: "listing-version-42",
         slug: "seo-writer",
@@ -143,13 +158,15 @@ describe("MarketplaceStep", () => {
     expect(await screen.findByText("SEO Blog Writer")).toBeDefined();
     expect(await screen.findByText("Local SEO")).toBeDefined();
     expect(screen.queryByText("Marketplace skill")).toBeNull();
-    await userEvent.click(screen.getAllByRole("button", { name: "Add" })[0]);
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "Add" }))[0],
+    );
     await waitFor(() =>
       expect(
         screen.getByRole("button", { name: /Remove SEO Blog Writer/ }),
       ).toBeDefined(),
     );
-    await userEvent.click(screen.getByRole("button", { name: "Add" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Add" }));
     await waitFor(() =>
       expect(
         screen.getByRole("button", { name: /Remove Local SEO/ }),
@@ -173,3 +190,7 @@ describe("MarketplaceStep", () => {
     ]);
   });
 });
+
+function searchesFor(request: Request, param: string, query: string) {
+  return new URL(request.url).searchParams.get(param) === query;
+}

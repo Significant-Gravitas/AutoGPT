@@ -1,7 +1,9 @@
 import type { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSkillInfo";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import type { MarketplaceSkill } from "@/app/api/__generated__/models/marketplaceSkill";
 import type { RaiseAttachment } from "@/app/api/__generated__/models/raiseAttachment";
 import type { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
+import { parseUsdToCredits } from "@/lib/credits";
 import type { RaiseAttachmentDraft } from "../../helpers";
 
 export const MAX_ATTACHMENTS = 20;
@@ -11,8 +13,8 @@ export const MAX_BUDGET_CREDITS = 1_000_000;
 export const MAX_SEARCH_RESULTS = 3;
 
 export const BUDGET_PRESETS = [
-  { credits: 500, label: "500 credits" },
-  { credits: 1000, label: "1,000 credits" },
+  { credits: 500, label: "$5 / week" },
+  { credits: 1000, label: "$10 / week" },
   { credits: 0, label: "No weekly limit" },
 ] as const;
 
@@ -51,14 +53,8 @@ export function limitSearchHits(hits: SearchHit[], query: string) {
   return ranked.slice(0, MAX_SEARCH_RESULTS);
 }
 
-export function parseCredits(value: string): number | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  if (!/^\d+$/.test(trimmed)) return null;
-  const credits = Number(trimmed);
-  if (!Number.isInteger(credits)) return null;
-  if (credits < 0 || credits > MAX_BUDGET_CREDITS) return null;
-  return credits;
+export function parseBudget(value: string): number | null {
+  return parseUsdToCredits(value, MAX_BUDGET_CREDITS);
 }
 
 export function marketplaceKey(creator: string, slug: string) {
@@ -72,20 +68,21 @@ export function combineSearchHits({
   storeAgents,
   libraryAgents,
   skills,
+  marketplaceSkills,
   scope,
 }: {
   query: string;
   storeAgents: StoreAgent[];
   libraryAgents: LibraryAgent[];
   skills: CopilotSkillInfo[];
+  marketplaceSkills: MarketplaceSkill[];
   scope: KitSearchScope;
 }): SearchHit[] {
   const hits: SearchHit[] = [];
-  const kind = scope === "marketplace" ? "workflow" : "skill";
-  for (const agent of storeAgents) {
-    hits.push(marketplaceHit(agent, kind));
-  }
   if (scope === "marketplace") {
+    for (const agent of storeAgents) {
+      hits.push(marketplaceWorkflowHit(agent));
+    }
     for (const agent of libraryAgents) {
       hits.push({
         key: `library:workflow:${agent.id}`,
@@ -99,19 +96,36 @@ export function combineSearchHits({
     return limitSearchHits(hits, query);
   }
   const needle = query.trim().toLowerCase();
-  for (const skill of skills) {
-    if (!skillMatches(skill, needle)) continue;
-    hits.push({
-      key: `library:skill:${skill.name.toLowerCase()}`,
-      name: skill.name,
-      subtitle: "Library skill",
-      kind: "skill",
-      source: "library",
-      id: skill.name,
-      description: skill.description,
-    });
+  const libraryHits = skills
+    .filter((skill) => skillMatches(skill, needle))
+    .map(
+      (skill): SearchHit => ({
+        key: `library:skill:${skill.name.toLowerCase()}`,
+        name: skill.name,
+        subtitle: "Library skill",
+        kind: "skill",
+        source: "library",
+        id: skill.name,
+        description: skill.description,
+      }),
+    );
+  // Browsing with nothing typed, the Hub asks for exactly as many listings as
+  // there are slots, so pushing it first would bury the user's own skills —
+  // the half they are likeliest to be after. Interleaving keeps both visible.
+  // A typed query is ranked instead, so order in equals order out there.
+  return limitSearchHits(
+    interleave(libraryHits, marketplaceSkills.map(marketplaceSkillHit)),
+    query,
+  );
+}
+
+function interleave(left: SearchHit[], right: SearchHit[]): SearchHit[] {
+  const merged: SearchHit[] = [];
+  for (let i = 0; i < Math.max(left.length, right.length); i++) {
+    if (i < left.length) merged.push(left[i]);
+    if (i < right.length) merged.push(right[i]);
   }
-  return limitSearchHits(hits, query);
+  return merged;
 }
 
 export function skillMatches(skill: CopilotSkillInfo, needle: string) {
@@ -179,19 +193,29 @@ export function failedAttachmentMessage(
     .join(". ");
 }
 
-function marketplaceHit(
-  agent: StoreAgent,
-  kind: "workflow" | "skill",
-): SearchHit {
+function marketplaceWorkflowHit(agent: StoreAgent): SearchHit {
   return {
-    key: `marketplace:${kind}:${agent.creator.toLowerCase()}/${agent.slug}`,
+    key: `marketplace:workflow:${agent.creator.toLowerCase()}/${agent.slug}`,
     name: agent.agent_name,
-    subtitle:
-      kind === "workflow" ? "Marketplace workflow" : "Marketplace skill",
-    kind,
+    subtitle: "Marketplace workflow",
+    kind: "workflow",
     source: "marketplace",
+    // Resolved to a store listing version id when the row is added.
     id: "",
     creator: agent.creator,
     slug: agent.slug,
+  };
+}
+
+// A Hub skill listing is addressed by its slug, so nothing needs resolving.
+function marketplaceSkillHit(skill: MarketplaceSkill): SearchHit {
+  return {
+    key: `marketplace:skill:${skill.slug}`,
+    name: skill.title,
+    subtitle: "Marketplace skill",
+    kind: "skill",
+    source: "marketplace",
+    id: skill.slug,
+    description: skill.description,
   };
 }

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.platform_linking.models import (
+    ChatTurnHandle,
     EnsureSessionResult,
     TurnDenial,
     WorkspaceArtifact,
@@ -23,7 +24,7 @@ from .adapters.base import (
 )
 from .bot_backend import ChatTurnDeniedError, LinkTokenResult, ResolveResult
 from .handler import MAX_TURN_FILE_IDS, MessageHandler, TargetState
-from .prompt import build_thread_name, clamp_thread_name
+from .prompt import PendingMessage, build_thread_name, clamp_thread_name
 
 
 def _ctx(
@@ -72,6 +73,8 @@ def _adapter() -> MagicMock:
     adapter.stop_typing = AsyncMock()
     adapter.supports_stream_drafts = False
     adapter.send_stream_draft = AsyncMock(return_value=False)
+    adapter.supports_choice_buttons = False
+    adapter.send_choice_buttons = AsyncMock(return_value=False)
     adapter.create_thread = AsyncMock(return_value="thread-new")
     adapter.rename_thread = AsyncMock(return_value=True)
     return adapter
@@ -134,6 +137,88 @@ class TestEmptyMessage:
         adapter.send_message.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_skipped_attachments_only_dm_gets_problem_report(self):
+        # A DM whose only content was a too-large file must not be silently
+        # dropped — the user gets the problem note instead.
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        await handler.handle(
+            _ctx(
+                channel_type="dm",
+                server_id=None,
+                channel_id="dm-1",
+                text="",
+                skipped_attachments=(("huge.zip", "is too large"),),
+            ),
+            adapter,
+        )
+        target, note = adapter.send_message.await_args.args
+        assert target == "dm-1" and "huge.zip" in note
+
+    @pytest.mark.asyncio
+    async def test_skipped_only_channel_mention_replies_in_place(self):
+        # The note replaces the misleading "didn't say anything" nudge and is
+        # sent as an in-channel reply: opening a thread (real and visible on
+        # Discord) just to hold it would leave an orphan behind.
+        api = _api()
+        handler = MessageHandler(api)
+        adapter = _adapter()
+        await handler.handle(
+            _ctx(
+                text="",
+                bot_mentioned=True,
+                skipped_attachments=(("huge.zip", "is too large"),),
+            ),
+            adapter,
+        )
+        adapter.create_thread.assert_not_awaited()
+        adapter.send_message.assert_not_awaited()
+        _channel, note, reply_to = adapter.send_reply.await_args.args
+        assert "huge.zip" in note and reply_to == "msg-1"
+        # These messages still count as received in analytics.
+        assert api.track_event.called
+        assert api.track_event.call_args.kwargs["event_type"] == "message_received"
+
+    @pytest.mark.asyncio
+    async def test_skipped_only_dm_from_unlinked_user_still_gets_the_link_prompt(self):
+        # The note sits behind the link gate like every other message: an
+        # unlinked user gets the Link Account button, not a file complaint.
+        handler = MessageHandler(_api(user_linked=False))
+        adapter = _adapter()
+        await handler.handle(
+            _ctx(
+                channel_type="dm",
+                server_id=None,
+                channel_id="dm-1",
+                text="",
+                skipped_attachments=(("huge.zip", "is too large"),),
+            ),
+            adapter,
+        )
+        adapter.send_link.assert_awaited_once()
+        adapter.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_skipped_only_reply_in_unowned_thread_still_needs_a_mention(self):
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        with patch(
+            "backend.copilot.bot.handler.threads.is_subscribed",
+            new=AsyncMock(return_value=False),
+        ):
+            await handler.handle(
+                _ctx(
+                    channel_type="thread",
+                    channel_id="thread-9",
+                    text="",
+                    skipped_attachments=(("huge.zip", "is too large"),),
+                ),
+                adapter,
+            )
+        adapter.send_message.assert_not_awaited()
+        adapter.send_reply.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_empty_dm_is_silently_dropped(self):
         handler = MessageHandler(_api())
         adapter = _adapter()
@@ -165,6 +250,27 @@ class TestEnsureLinked:
 
         api.resolve_server.assert_not_awaited()
         adapter.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_reply_to_the_bot_in_an_unsubscribed_thread_is_answered(self):
+        api = _api(server_linked=False)
+        handler = MessageHandler(api)
+        adapter = _adapter()
+        ctx = _ctx(channel_type="thread")
+        ctx.replied_to_bot = True
+        with (
+            patch(
+                "backend.copilot.bot.handler.threads.is_subscribed",
+                new=AsyncMock(return_value=False),
+            ),
+            patch(
+                "backend.copilot.bot.handler.threads.subscribe", new=AsyncMock()
+            ) as subscribe,
+        ):
+            await handler.handle(ctx, adapter)
+
+        subscribe.assert_not_awaited()
+        api.resolve_server.assert_awaited()
 
     @pytest.mark.asyncio
     async def test_unlinked_mentioned_thread_tells_user_to_setup(self):
@@ -215,7 +321,10 @@ class TestEnsureLinked:
         adapter = _adapter()
         await handler.handle(_ctx(), adapter)
         adapter.send_message.assert_awaited_once()
-        assert "went wrong" in adapter.send_message.await_args.args[1].lower()
+        reply = adapter.send_message.await_args.args[1]
+        assert "the account link couldn't be checked" in reply
+        assert "(ref " in reply
+        assert "boom" not in reply
 
 
 class TestResolveTarget:
@@ -259,8 +368,32 @@ class TestResolveTarget:
         handler = MessageHandler(_api())
         adapter = _adapter()
         adapter.create_thread = AsyncMock(return_value=None)
-        result = await handler._resolve_target(_ctx(channel_id="parent-chan"), adapter)
+        ctx = _ctx(channel_id="parent-chan")
+        ctx.post_channel_id = "parent-chan"
+        result = await handler._resolve_target(ctx, adapter)
         assert result == "parent-chan"
+        assert ctx.post_channel_id == "parent-chan"
+
+    @pytest.mark.asyncio
+    async def test_a_new_thread_becomes_the_post_target(self):
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        adapter.create_thread = AsyncMock(return_value="thread-created")
+        ctx = _ctx(channel_id="parent-chan")
+        ctx.post_channel_id = "parent-chan"
+        with patch("backend.copilot.bot.handler.threads.subscribe", new=AsyncMock()):
+            await handler._resolve_target(ctx, adapter)
+        assert ctx.post_channel_id == "thread-created"
+
+    @pytest.mark.asyncio
+    async def test_a_platform_that_cannot_post_keeps_no_post_target(self):
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        adapter.create_thread = AsyncMock(return_value="thread-created")
+        ctx = _ctx()
+        with patch("backend.copilot.bot.handler.threads.subscribe", new=AsyncMock()):
+            await handler._resolve_target(ctx, adapter)
+        assert ctx.post_channel_id is None
 
 
 class TestThreadAdoption:
@@ -355,12 +488,37 @@ class TestThreadAdoption:
         assert "what should we do?" in text
 
     @pytest.mark.asyncio
+    async def test_channel_mention_enqueues_the_recent_channel_messages(self):
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        enqueue = AsyncMock()
+
+        with (
+            patch.object(handler, "_enqueue_and_process", new=enqueue),
+            patch("backend.copilot.bot.handler.threads.subscribe", new=AsyncMock()),
+        ):
+            await handler.handle(
+                _ctx(
+                    channel_type="channel",
+                    bot_mentioned=True,
+                    text="update the automation to take that into account",
+                    thread_history=(
+                        MessageHistoryEntry("Nick", "u-2", "post one link, not two"),
+                    ),
+                ),
+                adapter,
+            )
+
+        message_text = enqueue.await_args.args[3]
+        assert "[Recent channel messages before this message]" in message_text
+        assert "post one link, not two" in message_text
+
+    @pytest.mark.asyncio
     async def test_channel_mention_enqueues_referenced_conversation(self):
-        # A plain channel @mention (include_thread_history is False here) that
-        # references another conversation must still carry that fetched content
-        # into the enqueued prompt. Regression guard: the handler previously
-        # only rendered referenced conversations when pulling thread history,
-        # so channel mentions silently dropped them.
+        # A channel @mention that references another conversation must carry
+        # that fetched content into the enqueued prompt. Regression guard: the
+        # handler once rendered referenced conversations only alongside thread
+        # history, so channel mentions silently dropped them.
         handler = MessageHandler(_api())
         adapter = _adapter()
         enqueue = AsyncMock()
@@ -401,12 +559,26 @@ class TestBatching:
         handler = MessageHandler(_api())
         adapter = _adapter()
         state = TargetState(processing=True)
-        handler._targets["target-1"] = state
+        handler._targets[("discord", "target-1")] = state
 
         await handler._enqueue_and_process(_ctx(text="second"), adapter, "target-1")
 
         assert state.processing is True
-        assert state.pending == [("Bently", "user-1", "second")]
+        assert state.pending == [
+            PendingMessage(username="Bently", user_id="user-1", text="second")
+        ]
+
+    @pytest.mark.asyncio
+    async def test_queued_message_keeps_whether_it_mentioned_the_bot(self):
+        handler = MessageHandler(_api())
+        state = TargetState(processing=True)
+        handler._targets[("discord", "target-1")] = state
+
+        await handler._enqueue_and_process(
+            _ctx(text="@bot hi", bot_mentioned=True), _adapter(), "target-1"
+        )
+
+        assert state.pending[0].bot_mentioned is True
 
     @pytest.mark.asyncio
     async def test_target_state_cleared_after_drain(self):
@@ -416,16 +588,18 @@ class TestBatching:
         stream_calls: list[list] = []
 
         async def fake_stream_batch(
-            batch, ctx, ad, tid, file_ids=None, session_id=None
+            batch, ctx, ad, tid, file_ids=None, session_id=None, options=None
         ):
             stream_calls.append(list(batch))
 
         handler._stream_batch = fake_stream_batch  # type: ignore[method-assign]
 
         await handler._enqueue_and_process(_ctx(text="hello"), adapter, "target-1")
-        assert stream_calls == [[("Bently", "user-1", "hello")]]
+        assert stream_calls == [
+            [PendingMessage(username="Bently", user_id="user-1", text="hello")]
+        ]
         # Dict entry should be gone once processing finishes with empty pending.
-        assert "target-1" not in handler._targets
+        assert ("discord", "target-1") not in handler._targets
 
     @pytest.mark.asyncio
     async def test_drain_loop_picks_up_appended_messages(self):
@@ -434,26 +608,68 @@ class TestBatching:
         adapter = _adapter()
 
         state = TargetState()
-        handler._targets["target-1"] = state
+        handler._targets[("discord", "target-1")] = state
 
         seen: list[list] = []
 
         async def fake_stream_batch(
-            batch, ctx, ad, tid, file_ids=None, session_id=None
+            batch, ctx, ad, tid, file_ids=None, session_id=None, options=None
         ):
             seen.append(list(batch))
             if len(seen) == 1:
                 # Simulate another caller appending during the first stream.
-                state.pending.append(("Later", "u2", "follow-up"))
+                state.pending.append(
+                    PendingMessage(username="Later", user_id="u2", text="follow-up")
+                )
 
         handler._stream_batch = fake_stream_batch  # type: ignore[method-assign]
         await handler._enqueue_and_process(_ctx(text="first"), adapter, "target-1")
 
         assert seen == [
-            [("Bently", "user-1", "first")],
-            [("Later", "u2", "follow-up")],
+            [PendingMessage(username="Bently", user_id="user-1", text="first")],
+            [PendingMessage(username="Later", user_id="u2", text="follow-up")],
         ]
-        assert "target-1" not in handler._targets
+        assert ("discord", "target-1") not in handler._targets
+
+    @pytest.mark.asyncio
+    async def test_a_drained_batch_uses_the_queued_messages_context(self):
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        thread_ctx = _ctx(channel_type="thread", channel_id="thread-333", text="more")
+        contexts: list[MessageContext] = []
+
+        async def fake_stream_batch(batch, ctx, ad, tid, **_):
+            contexts.append(ctx)
+            if len(contexts) == 1:
+                await handler._enqueue_and_process(thread_ctx, adapter, "target-1")
+
+        first_ctx = _ctx(text="first")
+        with patch.object(handler, "_stream_batch", new=fake_stream_batch):
+            await handler._enqueue_and_process(first_ctx, adapter, "target-1")
+
+        assert contexts == [first_ctx, thread_ctx]
+
+    @pytest.mark.asyncio
+    async def test_a_turn_a_card_woke_mid_reply_streams_after_that_reply(self):
+        handler = MessageHandler(_api())
+        state = TargetState()
+        handler._targets[("discord", "target-1")] = state
+        woken = ChatTurnHandle(session_id="s", turn_id="woken", user_id="u")
+        streamed: list[tuple[list, ChatTurnHandle | None]] = []
+
+        async def fake_stream_batch(batch, ctx, ad, tid, turn=None, **_):
+            streamed.append((list(batch), turn))
+            if len(streamed) == 1:
+                state.follows.append(woken)
+
+        handler._stream_batch = fake_stream_batch  # type: ignore[method-assign]
+        await handler._enqueue_and_process(_ctx(text="first"), _adapter(), "target-1")
+
+        assert streamed == [
+            ([PendingMessage(username="Bently", user_id="user-1", text="first")], None),
+            ([], woken),
+        ]
+        assert ("discord", "target-1") not in handler._targets
 
     @pytest.mark.asyncio
     async def test_duplicate_message_is_silently_dropped(self):
@@ -472,7 +688,10 @@ class TestBatching:
             new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
         ):
             await handler._stream_batch(
-                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
+                _ctx(),
+                adapter,
+                "target-1",
             )
 
         adapter.send_message.assert_not_awaited()
@@ -510,7 +729,10 @@ class TestBatching:
             ),
         ):
             await handler._stream_batch(
-                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
+                _ctx(),
+                adapter,
+                "target-1",
             )
 
         adapter.send_link.assert_awaited_once()
@@ -558,11 +780,159 @@ class TestBatching:
             ),
         ):
             await handler._stream_batch(
-                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
+                _ctx(),
+                adapter,
+                "target-1",
             )
 
         adapter.send_link.assert_awaited_once()
         adapter.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_clarification_needed_sends_question_with_options(self):
+        api = _api()
+
+        async def clarification_stream(*args, **kwargs):
+            await kwargs["on_clarification_needed"](
+                "session-1",
+                {
+                    "type": "agent_builder_clarification_needed",
+                    "message": "Which region?",
+                    "questions": [
+                        {
+                            "question": "Which region?",
+                            "keyword": "region",
+                            "options": ["US", "EU"],
+                        }
+                    ],
+                },
+                "ask_question",
+            )
+            yield "Once you pick, I'll continue."
+
+        api.stream_chat = clarification_stream
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        with (
+            patch(
+                "backend.copilot.bot.turn_stream.get_redis_async",
+                new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
+            ),
+        ):
+            await handler._stream_batch(
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
+                _ctx(),
+                adapter,
+                "target-1",
+            )
+
+        # The question is sent as a normal text message (every adapter
+        # already implements send_message, unlike the setup-required flow's
+        # link button) — so both the question and the trailing text arrive
+        # via send_message.
+        assert adapter.send_message.await_count == 2
+        question_text = adapter.send_message.await_args_list[0].args[1]
+        assert "Which region?" in question_text
+        assert "1. US" in question_text
+        assert "2. EU" in question_text
+        assert "Reply with a number" in question_text
+        assert (
+            "Once you pick, I'll continue."
+            in adapter.send_message.await_args_list[1].args[1]
+        )
+
+    @pytest.mark.asyncio
+    async def test_clarification_needed_fires_once_per_turn(self):
+        api = _api()
+
+        async def clarification_stream(*args, **kwargs):
+            payload = {
+                "type": "agent_builder_clarification_needed",
+                "message": "Which region?",
+                "questions": [{"question": "Which region?", "keyword": "region"}],
+            }
+            await kwargs["on_clarification_needed"](
+                "session-1", payload, "ask_question"
+            )
+            await kwargs["on_clarification_needed"](
+                "session-1", payload, "ask_question"
+            )
+            if False:
+                yield ""
+
+        api.stream_chat = clarification_stream
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        with (
+            patch(
+                "backend.copilot.bot.turn_stream.get_redis_async",
+                new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
+            ),
+        ):
+            await handler._stream_batch(
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
+                _ctx(),
+                adapter,
+                "target-1",
+            )
+
+        adapter.send_message.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_clarification_needed_splits_oversized_message(self):
+        """Regression: ask_question allows up to 10 questions of 25 options
+        each, which can render past a platform's message cap (Discord 2000
+        chars) — the clarification send must chunk like any other long
+        message rather than risk send_message raising on an oversized post.
+        """
+        api = _api()
+
+        async def clarification_stream(*args, **kwargs):
+            await kwargs["on_clarification_needed"](
+                "session-1",
+                {
+                    "type": "agent_builder_clarification_needed",
+                    "message": "Which region?",
+                    "questions": [
+                        {
+                            "question": "Which region?",
+                            "keyword": "region",
+                            "options": [f"Option {i}" for i in range(25)],
+                        }
+                    ],
+                },
+                "ask_question",
+            )
+            if False:
+                yield ""
+
+        api.stream_chat = clarification_stream
+        handler = MessageHandler(api)
+        adapter = _adapter()
+        adapter.chunk_flush_at = 50
+
+        with (
+            patch(
+                "backend.copilot.bot.turn_stream.get_redis_async",
+                new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
+            ),
+        ):
+            await handler._stream_batch(
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
+                _ctx(),
+                adapter,
+                "target-1",
+            )
+
+        msgs = [c.args[1] for c in adapter.send_message.await_args_list]
+        assert len(msgs) > 1
+        assert all(len(m) <= 50 for m in msgs)
+        assert "Option 0" in "".join(msgs)
+        assert "Option 24" in "".join(msgs)
+        assert "Reply with a number" in "".join(msgs)
 
     @pytest.mark.asyncio
     async def test_channel_thread_renames_from_generated_chat_title(self):
@@ -590,7 +960,7 @@ class TestBatching:
             _capture_handler_tasks() as captured,
         ):
             await handler._stream_batch(
-                [("Bently", "u1", "hi")],
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
                 _ctx(channel_type="channel", channel_id="parent-1"),
                 adapter,
                 "thread-1",
@@ -630,7 +1000,7 @@ class TestBatching:
             _capture_handler_tasks() as captured,
         ):
             await handler._stream_batch(
-                [("Bently", "u1", "hi")],
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
                 _ctx(channel_type="channel", channel_id="parent-1"),
                 adapter,
                 "thread-2",
@@ -670,7 +1040,7 @@ class TestBatching:
             _capture_handler_tasks() as captured,
         ):
             await handler._stream_batch(
-                [("Bently", "u1", "hi")],
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
                 _ctx(channel_type="channel", channel_id="parent-1"),
                 adapter,
                 "thread-3",
@@ -708,7 +1078,10 @@ class TestStreamFallback:
 
         with TestStreamFallback._redis_patch():
             await handler._stream_batch(
-                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
+                _ctx(),
+                adapter,
+                "target-1",
             )
 
         msgs = [c.args[1] for c in adapter.send_message.await_args_list]
@@ -728,7 +1101,10 @@ class TestStreamFallback:
 
         with TestStreamFallback._redis_patch():
             await handler._stream_batch(
-                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
+                _ctx(),
+                adapter,
+                "target-1",
             )
 
         msgs = [c.args[1] for c in adapter.send_message.await_args_list]
@@ -756,7 +1132,10 @@ class TestStreamFallback:
 
         with TestStreamFallback._redis_patch():
             await handler._stream_batch(
-                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
+                _ctx(),
+                adapter,
+                "target-1",
             )
 
         msgs = [c.args[1] for c in adapter.send_message.await_args_list]
@@ -947,6 +1326,7 @@ class TestMessageTextReferencedConversations:
     def test_referenced_and_thread_history_both_rendered(self):
         handler = MessageHandler(_api())
         ctx = _ctx(
+            channel_type="thread",
             text="now",
             thread_history=(MessageHistoryEntry("Alice", "u-1", "earlier point"),),
             referenced_conversations=(
@@ -1099,9 +1479,35 @@ class TestAttachments:
         # Concurrent attachment messages on the same target serialise on one
         # lock (so they converge on one session); different targets don't block.
         handler = MessageHandler(_api())
-        lock = handler._session_lock("t-1")
-        assert handler._session_lock("t-1") is lock
-        assert handler._session_lock("t-2") is not lock
+        ctx = _ctx()
+        lock = handler._session_lock(ctx, "t-1")
+        assert handler._session_lock(ctx, "t-1") is lock
+        assert handler._session_lock(ctx, "t-2") is not lock
+
+    def test_session_locks_do_not_collide_across_platforms(self):
+        handler = MessageHandler(_api())
+        telegram = _ctx()
+        telegram.platform = "telegram"
+        assert handler._session_lock(_ctx(), "42") is not handler._session_lock(
+            telegram, "42"
+        )
+
+    @pytest.mark.asyncio
+    async def test_the_same_target_id_on_two_platforms_queues_separately(self):
+        handler = MessageHandler(_api())
+        handler._targets[("discord", "42")] = TargetState(processing=True)
+        telegram = _ctx(text="from telegram")
+        telegram.platform = "telegram"
+        streamed: list[str] = []
+
+        async def fake_stream_batch(batch, ctx, ad, tid, **_):
+            streamed.append(ctx.platform)
+
+        with patch.object(handler, "_stream_batch", new=fake_stream_batch):
+            await handler._enqueue_and_process(telegram, _adapter(), "42")
+
+        assert streamed == ["telegram"]
+        assert handler._targets[("discord", "42")].pending == []
 
     @pytest.mark.asyncio
     async def test_failed_upload_is_reported_and_good_files_still_sent(self):
@@ -1208,7 +1614,7 @@ class TestAttachments:
         captured: list[list[str] | None] = []
 
         async def fake_stream_batch(
-            batch, ctx, ad, tid, file_ids=None, session_id=None
+            batch, ctx, ad, tid, file_ids=None, session_id=None, options=None
         ):
             captured.append(file_ids)
 
@@ -1347,7 +1753,10 @@ class TestTurnDenied:
             new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
         ):
             await handler._stream_batch(
-                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
+                _ctx(),
+                adapter,
+                "target-1",
             )
 
         adapter.send_link.assert_awaited_once()
@@ -1374,7 +1783,10 @@ class TestTurnDenied:
             new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
         ):
             await handler._stream_batch(
-                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+                [PendingMessage(username="Bently", user_id="u1", text="hi")],
+                _ctx(),
+                adapter,
+                "target-1",
             )
 
         adapter.send_message.assert_awaited_once()

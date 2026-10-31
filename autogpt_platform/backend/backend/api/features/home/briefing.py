@@ -17,10 +17,15 @@ from backend.copilot.briefing.outcome import (
     compose_run_outcome,
     outcome_fallbacks,
 )
-from backend.data.execution import ExecutionStatus, GraphExecutionMeta
+from backend.data.execution import ExecutionStatus, ExecutionTrigger, GraphExecutionMeta
 
 from .helpers import UNKNOWN_AGENT, AgentRef, to_home_expert
-from .models import HomeBriefing, HomeBriefingOutcome, HomeExpert
+from .models import (
+    AUTOPILOT_BRIEFING_AUTHOR,
+    HomeBriefing,
+    HomeBriefingOutcome,
+    HomeExpert,
+)
 
 _MAX_OUTCOMES = 4
 _BRIEFING_WINDOW = timedelta(hours=24)
@@ -46,7 +51,7 @@ def compose_briefing(
         )
 
     generated_at = as_utc(persisted.generated_at)
-    anchored = [_outcome(item, expert_by_id) for item in persisted.run_items]
+    anchored = [to_outcome(item, expert_by_id) for item in persisted.run_items]
     anchored_ids = {outcome.id for outcome in anchored}
     fresh = [
         outcome
@@ -76,38 +81,6 @@ def compose_briefing(
     )
 
 
-def without_summaries(content: BriefingContent) -> BriefingContent:
-    """Strip the AI-written text out of a stored briefing.
-
-    Summaries are persisted regardless of `AI_ACTIVITY_STATUS`, and the live
-    path scrubs them per-execution when the flag is off — so the persisted path
-    has to scrub them too, or the card would leak what the gate hides.
-
-    An item without a summary carries no AI text at all: its `title`/`detail`
-    already came from the non-AI fallback, and for a failure that detail is the
-    run's own error — which the live gate keeps (it drops only
-    `activity_status` and `correctness_score`). Clearing those too would
-    downgrade a real error to the generic retry line the moment home switched
-    to the persisted row.
-    """
-    return content.model_copy(
-        update={
-            # The narrative is written *from* those summaries, so it is the
-            # same AI text one paragraph up — dropping the items but keeping
-            # the lede would leak exactly what the gate hides.
-            "narrative": None,
-            "run_items": [
-                (
-                    item.model_copy(update={"summary": None, "title": "", "detail": ""})
-                    if item.summary
-                    else item
-                )
-                for item in content.run_items
-            ],
-        }
-    )
-
-
 def _briefing(
     *,
     generated_at: datetime,
@@ -125,6 +98,7 @@ def _briefing(
     shown = outcomes[:_MAX_OUTCOMES]
     shown_completed = sum(outcome.status == "completed" for outcome in shown)
     return HomeBriefing(
+        author=AUTOPILOT_BRIEFING_AUTHOR,
         generated_at=generated_at,
         window_started_at=window_started_at,
         completed_count=completed,
@@ -143,6 +117,21 @@ def _live_outcomes(
     expert_by_id: dict[str, Expert],
     agent_by_graph: dict[str, AgentRef],
 ) -> list[HomeBriefingOutcome]:
+    return [
+        to_outcome(item, expert_by_id)
+        for item in live_run_items(executions, since, now, expert_by_id, agent_by_graph)
+    ]
+
+
+def live_run_items(
+    executions: list[GraphExecutionMeta],
+    since: datetime,
+    now: datetime,
+    expert_by_id: dict[str, Expert],
+    agent_by_graph: dict[str, AgentRef],
+) -> list[BriefingRunItem]:
+    """Every run that reached a terminal state inside the window, failures
+    first and most recent first within each status."""
     terminal = [
         execution
         for execution in executions
@@ -157,8 +146,7 @@ def _live_outcomes(
         )
     )
     return [
-        _outcome(_run_item(execution, expert_by_id, agent_by_graph), expert_by_id)
-        for execution in terminal
+        _run_item(execution, expert_by_id, agent_by_graph) for execution in terminal
     ]
 
 
@@ -176,7 +164,7 @@ def _run_item(
     )
 
 
-def _outcome(
+def to_outcome(
     item: BriefingRunItem, expert_by_id: dict[str, Expert]
 ) -> HomeBriefingOutcome:
     failed = item.status == "FAILED"
@@ -198,7 +186,16 @@ def _outcome(
         duration_seconds=item.duration_seconds,
         cost_cents=item.cost_cents,
         link=item.link,
+        trigger=_trigger(item),
     )
+
+
+def _trigger(item: BriefingRunItem) -> Literal["schedule", "webhook", "manual"]:
+    if item.schedule_id or item.trigger_source == ExecutionTrigger.SCHEDULE:
+        return "schedule"
+    if item.webhook_id or item.trigger_source == ExecutionTrigger.WEBHOOK:
+        return "webhook"
+    return "manual"
 
 
 def _expert(

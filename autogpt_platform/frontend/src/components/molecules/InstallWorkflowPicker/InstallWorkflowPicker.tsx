@@ -9,6 +9,8 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { WorkflowTile } from "./components/WorkflowTile";
+import { INSTALL_WORKFLOW_SOURCES, workflowSubtitle } from "./helpers";
 import { useInstallWorkflowPicker } from "./useInstallWorkflowPicker";
 
 interface Props {
@@ -29,12 +31,19 @@ export function InstallWorkflowPicker({
   const {
     title,
     hiredExperts,
+    source,
+    setSource,
     searchQuery,
     setSearchQuery,
-    searchResults,
+    libraryResults,
+    hasMoreLibraryResults,
+    loadMoreLibraryResults,
+    isLoadingMore,
+    marketplaceResults,
     isSearching,
     pendingKey,
     installOnExpert,
+    installLibraryAgent,
     installFromListing,
   } = useInstallWorkflowPicker({
     mode,
@@ -44,10 +53,16 @@ export function InstallWorkflowPicker({
     onClose,
   });
 
+  const isEmpty =
+    source === "library"
+      ? libraryResults.length === 0
+      : marketplaceResults.length === 0;
+
   return (
     <Dialog
       title={title}
-      styling={{ width: "480px" }}
+      variant="compact"
+      styling={{ width: "480px", maxHeight: "70vh" }}
       controlled={{
         isOpen: open,
         set: (nextOpen) => {
@@ -58,33 +73,62 @@ export function InstallWorkflowPicker({
       <Dialog.Content>
         {mode === "pick-expert" ? (
           hiredExperts.length === 0 ? (
-            <Text variant="body" className="text-zinc-500">
+            <Text
+              variant="body"
+              data-slot="install-workflow-picker-empty"
+              className="text-foreground-tertiary"
+            >
               No hired experts yet.
             </Text>
           ) : (
-            <div className="divide-y divide-zinc-100 overflow-hidden rounded-xl border border-zinc-200/80">
+            <div
+              data-slot="install-workflow-picker-list"
+              className="divide-y divide-separator overflow-hidden rounded-lg border border-border-base/80"
+            >
               {hiredExperts.map((expert) => (
                 <div
                   key={expert.id}
-                  className="flex items-center gap-3 px-3.5 py-2.5 transition-colors hover:bg-zinc-50"
+                  data-slot="install-workflow-picker-option"
+                  className="flex items-center gap-3 px-3.5 py-2.5 transition-colors hover:bg-surface-muted"
                 >
-                  <Avatar className="h-9 w-9">
+                  <Avatar
+                    data-slot="install-workflow-picker-option-avatar"
+                    className="h-9 w-9"
+                  >
                     {expert.avatar_url ? (
-                      <AvatarImage src={expert.avatar_url} alt={expert.name} />
+                      <AvatarImage
+                        data-slot="install-workflow-picker-option-avatar-image"
+                        src={expert.avatar_url}
+                        alt={expert.name}
+                      />
                     ) : null}
-                    <AvatarFallback>{expert.name}</AvatarFallback>
+                    <AvatarFallback data-slot="install-workflow-picker-option-avatar-fallback">
+                      {expert.name}
+                    </AvatarFallback>
                   </Avatar>
-                  <div className="min-w-0 flex-1">
-                    <Text variant="body-medium" className="truncate">
+                  <div
+                    data-slot="install-workflow-picker-option-text"
+                    className="min-w-0 flex-1"
+                  >
+                    <Text
+                      variant="body-medium"
+                      data-slot="install-workflow-picker-option-title"
+                      className="truncate"
+                    >
                       {expert.name}
                     </Text>
-                    <Text variant="small" className="!text-zinc-500">
+                    <Text
+                      variant="small"
+                      data-slot="install-workflow-picker-option-subtitle"
+                      className="!text-foreground-tertiary"
+                    >
                       {expert.role}
                     </Text>
                   </div>
                   <Button
                     variant="secondary"
                     size="small"
+                    data-slot="install-workflow-picker-option-install"
                     loading={pendingKey === expert.id}
                     onClick={() => installOnExpert(expert)}
                   >
@@ -95,64 +139,158 @@ export function InstallWorkflowPicker({
             </div>
           )
         ) : (
-          <div className="flex flex-col gap-3">
+          <div
+            data-slot="install-workflow-picker"
+            className="flex flex-col gap-3"
+          >
+            <div
+              data-slot="install-workflow-picker-sources"
+              className="flex gap-2"
+              role="group"
+              aria-label="Workflow source"
+            >
+              {INSTALL_WORKFLOW_SOURCES.map((option) => (
+                <Button
+                  key={option.id}
+                  type="button"
+                  variant="toggle"
+                  size="xs"
+                  data-slot="install-workflow-picker-source"
+                  aria-pressed={source === option.id}
+                  onClick={() => setSource(option.id)}
+                >
+                  {option.label}
+                </Button>
+              ))}
+            </div>
             <Input
               id="install-workflow-search"
+              size="small"
               label="Search workflows"
               hideLabel
-              placeholder="Search the marketplace"
+              placeholder={
+                source === "library"
+                  ? "Search your workflows"
+                  : "Search the marketplace"
+              }
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
+              wrapperClassName="!mb-0"
+              data-slot="install-workflow-picker-search"
             />
             {isSearching ? (
-              <Text variant="small" className="py-2 text-center !text-zinc-500">
+              <Text
+                variant="small"
+                data-slot="install-workflow-picker-status"
+                className="py-2 text-center !text-foreground-tertiary"
+              >
                 Searching…
               </Text>
-            ) : searchResults.length === 0 ? (
-              searchQuery ? (
-                <Text
-                  variant="small"
-                  className="py-2 text-center !text-zinc-500"
-                >
-                  No workflows found.
-                </Text>
-              ) : null
+            ) : isEmpty ? (
+              <Text
+                variant="small"
+                data-slot="install-workflow-picker-empty"
+                className="py-2 text-center !text-foreground-tertiary"
+              >
+                {source === "library"
+                  ? "No workflows in your library."
+                  : "No workflows found."}
+              </Text>
             ) : (
-              <div className="divide-y divide-zinc-100 overflow-hidden rounded-xl border border-zinc-200/80">
-                {searchResults.map((agent) => (
-                  <div
-                    key={agent.agent_graph_id}
-                    className="flex items-center gap-3 px-3.5 py-2.5 transition-colors hover:bg-zinc-50"
-                  >
-                    <Avatar className="h-9 w-9">
-                      {agent.agent_image ? (
-                        <AvatarImage
-                          src={agent.agent_image}
-                          alt={agent.agent_name}
-                        />
-                      ) : null}
-                      <AvatarFallback>{agent.agent_name}</AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0 flex-1">
-                      <Text variant="body-medium" className="truncate">
-                        {agent.agent_name}
-                      </Text>
-                      <Text variant="small" className="!text-zinc-500">
-                        by {agent.creator}
-                      </Text>
-                    </div>
-                    <Button
-                      variant="secondary"
-                      size="small"
-                      loading={pendingKey === agent.agent_graph_id}
-                      onClick={() => installFromListing(agent)}
-                    >
-                      Install
-                    </Button>
-                  </div>
-                ))}
+              <div
+                data-slot="install-workflow-picker-list"
+                className="divide-y divide-separator overflow-hidden rounded-lg border border-border-base/80"
+              >
+                {source === "library"
+                  ? libraryResults.map((agent) => (
+                      <div
+                        key={agent.id}
+                        data-testid="install-workflow-option"
+                        data-slot="install-workflow-picker-option"
+                        className="flex items-center gap-3 px-3.5 py-2.5 transition-colors hover:bg-surface-muted"
+                      >
+                        <WorkflowTile imageUrl={agent.image_url} />
+                        <div
+                          data-slot="install-workflow-picker-option-text"
+                          className="min-w-0 flex-1"
+                        >
+                          <Text
+                            variant="body-medium"
+                            data-slot="install-workflow-picker-option-title"
+                            className="truncate"
+                          >
+                            {agent.name}
+                          </Text>
+                          <Text
+                            variant="small"
+                            data-slot="install-workflow-picker-option-subtitle"
+                            className="truncate !text-foreground-tertiary"
+                          >
+                            {workflowSubtitle(agent.description)}
+                          </Text>
+                        </div>
+                        <Button
+                          variant="secondary"
+                          size="small"
+                          data-slot="install-workflow-picker-option-install"
+                          loading={pendingKey === agent.id}
+                          onClick={() => installLibraryAgent(agent)}
+                        >
+                          Install
+                        </Button>
+                      </div>
+                    ))
+                  : marketplaceResults.map((agent) => (
+                      <div
+                        key={agent.agent_graph_id}
+                        data-testid="install-workflow-option"
+                        data-slot="install-workflow-picker-option"
+                        className="flex items-center gap-3 px-3.5 py-2.5 transition-colors hover:bg-surface-muted"
+                      >
+                        <WorkflowTile imageUrl={agent.agent_image} />
+                        <div
+                          data-slot="install-workflow-picker-option-text"
+                          className="min-w-0 flex-1"
+                        >
+                          <Text
+                            variant="body-medium"
+                            data-slot="install-workflow-picker-option-title"
+                            className="truncate"
+                          >
+                            {agent.agent_name}
+                          </Text>
+                          <Text
+                            variant="small"
+                            data-slot="install-workflow-picker-option-subtitle"
+                            className="!text-foreground-tertiary"
+                          >
+                            by {agent.creator}
+                          </Text>
+                        </div>
+                        <Button
+                          variant="secondary"
+                          size="small"
+                          data-slot="install-workflow-picker-option-install"
+                          loading={pendingKey === agent.agent_graph_id}
+                          onClick={() => installFromListing(agent)}
+                        >
+                          Install
+                        </Button>
+                      </div>
+                    ))}
               </div>
             )}
+            {source === "library" && hasMoreLibraryResults ? (
+              <Button
+                variant="secondary"
+                size="small"
+                loading={isLoadingMore}
+                data-slot="install-workflow-picker-load-more"
+                onClick={() => loadMoreLibraryResults()}
+              >
+                Load more workflows
+              </Button>
+            ) : null}
           </div>
         )}
       </Dialog.Content>

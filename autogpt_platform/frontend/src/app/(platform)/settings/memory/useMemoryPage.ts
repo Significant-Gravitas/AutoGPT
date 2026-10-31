@@ -1,4 +1,6 @@
+import { useListExperts } from "@/app/api/__generated__/endpoints/experts/experts";
 import {
+  getGetMyBusinessUnderstandingQueryKey,
   getGetMyExpertMemoryOverviewQueryKey,
   getGetMyMemoryOverviewQueryKey,
   getListMyExpertMemoryFactsQueryKey,
@@ -12,18 +14,24 @@ import {
   useListMyExpertMemoryFacts,
   useListMyMemoryFacts,
 } from "@/app/api/__generated__/endpoints/memory/memory";
-import { useListExperts } from "@/app/api/__generated__/endpoints/experts/experts";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { getActiveExperts, getScopeName, RECENT_FACTS_LIMIT } from "./helpers";
+import {
+  getActiveExperts,
+  getScopeName,
+  readExpertScopeFromUrl,
+  RECENT_FACTS_LIMIT,
+} from "./helpers";
 
 export function useMemoryPage() {
-  const [scopeExpertID, setScopeExpertID] = useState<string | null>(null);
+  // The Soul drawer's learned-notes panel links here with ?expert=<id>, so
+  // the link opens on that expert. Read once — the dropdown owns it after.
+  const [scopeExpertID, setScopeExpertID] = useState<string | null>(
+    readExpertScopeFromUrl,
+  );
   const queryClient = useQueryClient();
 
-  // Deliberately not gated on HIRE_EXPERTS: expert memory scopes must stay
-  // manageable here even if the hiring UI is dark.
   const expertsQuery = useListExperts();
   const expertsSettled = expertsQuery.data?.status === 200;
   const experts = getActiveExperts(
@@ -31,7 +39,7 @@ export function useMemoryPage() {
   );
 
   // A selected expert can disappear (fired in another tab, roster changed) —
-  // fall back to AutoPilot instead of driving queries with a dead scope id.
+  // fall back to Otto instead of driving queries with a dead scope id.
   useEffect(() => {
     if (!scopeExpertID || !expertsSettled) return;
     if (!experts.some((expert) => expert.id === scopeExpertID)) {
@@ -70,6 +78,9 @@ export function useMemoryPage() {
       });
       queryClient.invalidateQueries({
         queryKey: getGetMyMemoryOverviewQueryKey(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: getGetMyBusinessUnderstandingQueryKey(),
       });
       return;
     }

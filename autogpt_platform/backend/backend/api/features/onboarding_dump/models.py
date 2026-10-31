@@ -1,6 +1,7 @@
 """Request / response models for the onboarding brain dump."""
 
-from typing import Annotated
+from datetime import datetime
+from typing import Annotated, Literal
 
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from pydantic import BaseModel, Field, StringConstraints
@@ -44,6 +45,19 @@ ALLOWED_AUDIO_MIME_TYPES = frozenset(
     }
 )
 
+# Stored recordings are named ``brain-dump-{recording_id}.{ext}``. The
+# retention sweep finds them in the bucket by this name, so the two must
+# stay in step.
+RECORDING_FILENAME_PREFIX = "brain-dump-"
+AUDIO_FILE_EXTENSIONS = {
+    "audio/webm": "webm",
+    "audio/mp4": "m4a",
+    "audio/mpeg": "mp3",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/ogg": "ogg",
+}
+
 
 class UploadPartResponse(BaseModel):
     recording_id: str
@@ -72,6 +86,10 @@ class FinalizeResponse(BaseModel):
     input_mode: BrainDumpInputMode
     transcript_preview: str | None = None
     error_code: str | None = None
+    error_reason: str | None = None
+    """What decided a quality-gate rejection (``quality.QualityRejection``)."""
+    transcript_words: int | None = None
+    """A rejected transcript's length as the gate counts words; the text is not sent."""
 
 
 class DumpStatusResponse(BaseModel):
@@ -99,6 +117,99 @@ class SuggestedPrompt(BaseModel):
     icon: str = "sparkle"
 
 
+SuggestedTaskState = Literal["open", "sent", "dismissed"]
+
+
+class SuggestedTask(SuggestedPrompt):
+    """One row of the Home checklist: a suggested prompt and what became of it.
+
+    Stored inside ``OnboardingBrainDump.suggestedPrompts``; a row written
+    before states existed reads as ``open``, with its list index as ``id``.
+    """
+
+    id: str
+    state: SuggestedTaskState = "open"
+    session_id: str | None = None
+    """The chat a ``sent`` row started."""
+    updated_at: datetime | None = None
+
+
+class SuggestedTasksResponse(BaseModel):
+    """The user's suggested first tasks, every state included.
+
+    ``stored`` is false when the user has no list of their own and these
+    are the generic starters: the greeting shows them, the regular Home
+    page does not, until a state change stores them.
+    """
+
+    tasks: list[SuggestedTask] = []
+    stored: bool = False
+
+
+class SuggestedTasksUpdate(BaseModel):
+    task_ids: list[str] = Field(min_length=1, max_length=20)
+    state: SuggestedTaskState
+    """``open`` is Undo: a hidden row goes back to where it was, which is
+    ``sent`` for one that had started a chat."""
+    session_id: str | None = Field(default=None, max_length=64)
+
+
+class RecommendedExpert(BaseModel):
+    """One roster template Otto suggests hiring first.
+
+    ``template_id`` is always a live template — the model only ever picks
+    ids off the roster it was shown, and anything else is dropped before
+    storage. ``name``/``role``/``avatar_url`` are copied from that
+    template server-side rather than trusted from the model, so a card
+    can never introduce an expert who does not exist.
+    """
+
+    template_id: str
+    name: str
+    role: str
+    avatar_url: str | None = None
+    reason: str = ""
+    workflow_names: list[str] = []
+
+
+class RaiseSuggestion(BaseModel):
+    """The "raise your own" door, prefilled for a gap the roster can't fill.
+
+    ``role`` is one of the ``/raise`` wizard's role ids so the link can
+    seed the draft; a suggestion naming anything else is dropped.
+    """
+
+    role: str
+    reason: str = ""
+
+
+class ExpertRecommendations(BaseModel):
+    """The team Otto proposes after the dump.
+
+    ``source`` says where it came from: "llm" for a real read of the
+    transcript, "fallback" for the deterministic role/pain-point mapping,
+    and "disabled" for a run where the feature flag was off (recorded so
+    the reader can tell it apart from a job that never finished).
+    """
+
+    diagnosis: str = ""
+    experts: list[RecommendedExpert] = []
+    raise_suggestion: RaiseSuggestion | None = None
+    source: Literal["llm", "fallback", "disabled"] = "fallback"
+
+
+class RecommendedExpertsResponse(BaseModel):
+    """The team section's content, polled by the onboarding loading screen.
+
+    ``ready`` is false only while the background job is still running.
+    ``team`` is null when the feature is off — a team with no experts is
+    a real answer, so the client cannot use emptiness to tell them apart.
+    """
+
+    ready: bool
+    team: ExpertRecommendations | None = None
+
+
 class IntroCardResponse(BaseModel):
     """Content for the copilot home's onboarding greeting.
 
@@ -120,6 +231,13 @@ class IntroCardResponse(BaseModel):
     """The full transcript of the recorded dump, so the greeting page can
     offer a copy button. Only present on Path A while the greeting is
     still showing."""
+    team: ExpertRecommendations | None = None
+    """The experts to hire first, with the "raise your own" door beside
+    them. Null when the feature is off, and while ``team_pending``."""
+    team_pending: bool = False
+    """True while the team is still being assembled — the client keeps
+    polling ``/recommended-experts`` rather than rendering an empty
+    section over a team that is seconds away."""
 
 
 class RecommendedProvider(BaseModel):

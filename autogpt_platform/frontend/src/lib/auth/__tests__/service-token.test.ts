@@ -58,4 +58,22 @@ describe("mintServiceToken", () => {
     const [, config] = signJWTMock.mock.calls[0] as [unknown, CapturedSignArgs];
     expect(config.options.jwks.keyPairConfig.alg).toBe("ES256");
   });
+
+  it("adds vouched claims without letting them override the token's identity", async () => {
+    await mintServiceToken("client-country", {
+      country: "DE",
+      sub: "user-1",
+      aud: "authenticated",
+      scope: "admin",
+    });
+
+    const [, config] = signJWTMock.mock.calls[0] as [
+      unknown,
+      CapturedSignArgs & { payload: { country: string } },
+    ];
+    expect(config.payload.country).toBe("DE");
+    expect(config.payload.sub).toBe(FRONTEND_SERVICE_SUBJECT);
+    expect(config.payload.aud).toBe(SERVICE_TOKEN_AUDIENCE);
+    expect(config.payload.scope).toBe("client-country");
+  });
 });

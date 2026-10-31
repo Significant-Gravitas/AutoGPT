@@ -1,7 +1,7 @@
 """
 External API endpoints for integrations and credentials.
 
-This module provides endpoints for external applications (like Autopilot) to:
+This module provides endpoints for external applications (like Otto) to:
 - Initiate OAuth flows with custom callback URLs
 - Complete OAuth flows by exchanging authorization codes
 - Create API key, user/password, and host-scoped credentials
@@ -38,6 +38,7 @@ from backend.integrations.credentials_store import (
 )
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
+from backend.integrations.oauth.microsoft_identity import MICROSOFT_PROVIDERS
 from backend.integrations.providers import ProviderName
 from backend.util.settings import Settings
 
@@ -205,6 +206,14 @@ def _get_oauth_handler_for_external(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Provider '{provider_name}' does not support OAuth",
+        )
+
+    if provider_name in MICROSOFT_PROVIDERS:
+        # Microsoft only redirects to AutoGPT's own callback, and its
+        # connections are matched to their Microsoft account when stored there.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Connect Microsoft in AutoGPT's Settings, under Integrations.",
         )
 
     # Check if this provider has custom OAuth credentials

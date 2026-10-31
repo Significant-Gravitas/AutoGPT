@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Calendar as CalendarIcon, Clock } from "lucide-react";
+import { Calendar03Icon, Clock01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
 
@@ -10,8 +11,8 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/__legacy__/ui/popover";
-import { Calendar } from "@/components/__legacy__/ui/calendar";
+} from "@/components/molecules/Popover/Popover";
+import { Calendar } from "@/components/atoms/Calendar/Calendar";
 
 function toLocalISODateTimeString(d: Date) {
   const year = d.getFullYear();
@@ -45,6 +46,9 @@ export interface DateTimeInputProps {
   id?: string;
   size?: "default" | "small";
   wrapperClassName?: string;
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
+  "aria-describedby"?: string;
 }
 
 export const DateTimeInput = ({
@@ -62,10 +66,14 @@ export const DateTimeInput = ({
   id,
   size = "default",
   wrapperClassName,
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
+  "aria-describedby": ariaDescribedBy,
 }: DateTimeInputProps) => {
   const selected = React.useMemo(() => parseISODateTimeString(value), [value]);
   const [open, setOpen] = React.useState(false);
   const [timeValue, setTimeValue] = React.useState("");
+  const timeInputId = React.useId();
 
   // Update time value when selected date changes
   React.useEffect(() => {
@@ -127,41 +135,40 @@ export const DateTimeInput = ({
 
   const triggerStyles = cn(
     // Base styles matching other form components
-    "rounded-3xl border border-zinc-200 bg-white px-4 shadow-none",
-    "font-normal text-black w-full text-sm",
-    "placeholder:font-normal !placeholder:text-zinc-500",
+    "rounded-3xl border border-border-base bg-surface px-4 shadow-none",
+    "font-normal text-foreground-base w-full text-body leading-5",
+    "placeholder:font-normal",
     // Focus and hover states
-    "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
+    "focus:border-foreground-subtle focus:shadow-none focus:outline-none focus:ring-1 focus:ring-foreground-subtle focus:ring-offset-0",
     // Error state
-    error &&
-      "border-1.5 border-red-500 focus:border-red-500 focus:ring-red-500",
+    error && "border-error focus:border-error focus:ring-error",
     // Placeholder styling
-    !selected && "text-zinc-400",
+    !selected && "text-foreground-subtle",
     "justify-start text-left",
     // Size variants
     size === "default" && "h-[2.875rem] py-2.5",
     size === "small" && [
-      "min-h-[2.25rem]", // 36px minimum
+      "min-h-9", // 36px minimum
       "py-2",
-      "text-sm leading-[22px]",
-      "placeholder:text-sm placeholder:leading-[22px]",
+      "text-body",
+      "placeholder:text-body",
     ],
     className,
   );
 
   const timeInputStyles = cn(
     // Base styles
-    "rounded-3xl border border-zinc-200 bg-white px-4 shadow-none",
-    "font-normal text-black w-full",
-    "placeholder:font-normal placeholder:text-zinc-500",
+    "rounded-3xl border border-border-base bg-surface px-4 shadow-none",
+    "font-normal text-foreground-base w-full",
+    "placeholder:font-normal placeholder:text-placeholder",
     // Focus and hover states
-    "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
+    "focus:border-foreground-subtle focus:shadow-none focus:outline-none focus:ring-1 focus:ring-foreground-subtle focus:ring-offset-0",
     // Size variants
     size === "small" && [
-      "h-[2.25rem]", // 36px
+      "h-9", // 36px
       "py-2",
-      "text-sm leading-[22px]", // 14px font, 22px line height
-      "placeholder:text-sm placeholder:leading-[22px]",
+      "text-body", // 14px font, 22px line height
+      "placeholder:text-body",
     ],
     size === "default" && [
       "h-[2.875rem]", // 46px
@@ -170,30 +177,47 @@ export const DateTimeInput = ({
   );
 
   const inputWithError = (
-    <div className={cn("relative", error ? "mb-6" : "", wrapperClassName)}>
+    <div
+      data-slot="date-time-input-field"
+      className={cn("relative", error ? "mb-6" : "", wrapperClassName)}
+    >
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
+            data-slot="date-time-input-trigger"
             type="button"
             variant="ghost"
             className={triggerStyles}
             disabled={isDisabled}
             autoFocus={autoFocus}
             id={id}
-            {...(hideLabel && label ? { "aria-label": label } : {})}
+            aria-label={ariaLabel ?? (hideLabel && label ? label : undefined)}
+            aria-labelledby={ariaLabelledBy}
+            aria-describedby={ariaDescribedBy}
           >
-            <CalendarIcon
+            <Icon
+              aria-hidden
+              icon={Calendar03Icon}
+              data-slot="date-time-input-date-icon"
               className={cn("mr-2", size === "default" ? "h-4 w-4" : "h-3 w-3")}
             />
-            <Clock
+            <Icon
+              aria-hidden
+              icon={Clock01Icon}
+              data-slot="date-time-input-time-icon"
               className={cn("mr-2", size === "default" ? "h-4 w-4" : "h-3 w-3")}
             />
             {buttonText}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" sideOffset={6}>
-          <div className="p-3">
+        <PopoverContent
+          data-slot="date-time-input-popup"
+          className="w-auto rounded-medium border-border-base p-0 text-foreground-base"
+          sideOffset={6}
+        >
+          <div data-slot="date-time-input-popup-body" className="p-3">
             <Calendar
+              data-slot="date-time-input-calendar"
               mode="single"
               selected={selected}
               onSelect={setDate}
@@ -202,11 +226,20 @@ export const DateTimeInput = ({
                 disabled: "pointer-events-none opacity-50",
               }}
             />
-            <div className="mt-3 border-t pt-3">
-              <label className="mb-2 block text-sm font-medium text-gray-700">
+            <div
+              data-slot="date-time-input-time"
+              className="mt-3 border-t pt-3"
+            >
+              <label
+                data-slot="date-time-input-time-label"
+                htmlFor={timeInputId}
+                className="mb-2 block text-body leading-5 font-medium text-foreground-body"
+              >
                 Time
               </label>
               <input
+                data-slot="date-time-input-time-control"
+                id={timeInputId}
                 type="time"
                 value={timeValue}
                 onChange={(e) => handleTimeChange(e.target.value)}
@@ -220,10 +253,12 @@ export const DateTimeInput = ({
       </Popover>
       {error && (
         <Text
+          data-slot="date-time-input-error"
           variant="small-medium"
           as="span"
+          tone="error"
           className={cn(
-            "absolute left-0 top-full mt-1 !text-red-500 transition-opacity duration-200",
+            "absolute top-full left-0 mt-1 transition-opacity duration-200",
             error ? "opacity-100" : "opacity-0",
           )}
         >
@@ -236,13 +271,25 @@ export const DateTimeInput = ({
   return hideLabel || !label ? (
     inputWithError
   ) : (
-    <label htmlFor={id} className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <Text variant="body-medium" as="span" className="text-black">
+    <label
+      data-slot="date-time-input"
+      htmlFor={id}
+      className="flex flex-col gap-2"
+    >
+      <div
+        data-slot="date-time-input-header"
+        className="flex items-center justify-between"
+      >
+        <Text data-slot="date-time-input-label" variant="body-medium" as="span">
           {label}
         </Text>
         {hint ? (
-          <Text variant="small" as="span" className="!text-zinc-400">
+          <Text
+            data-slot="date-time-input-hint"
+            variant="small"
+            as="span"
+            tone="subtle"
+          >
             {hint}
           </Text>
         ) : null}

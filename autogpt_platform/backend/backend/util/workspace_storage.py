@@ -8,105 +8,29 @@ for Google Cloud Storage (cloud deployments) and local filesystem (self-hosted d
 import asyncio
 import hashlib
 import logging
-from abc import ABC, abstractmethod
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Optional
 
-import aiofiles
 import aiohttp
 from gcloud.aio import storage as async_gcs_storage
 from google.cloud import storage as gcs_storage
 
-from backend.util.data import get_data_path
 from backend.util.gcs_utils import (
     download_range,
     download_with_fresh_session,
     generate_signed_url,
+    is_not_found_error,
     parse_gcs_path,
 )
 from backend.util.settings import Config
+from backend.util.workspace_storage_base import (
+    WorkspaceStorageBackend as WorkspaceStorageBackend,
+)
+from backend.util.workspace_storage_local import (
+    LocalWorkspaceStorage as LocalWorkspaceStorage,
+)
 
 logger = logging.getLogger(__name__)
-
-
-class WorkspaceStorageBackend(ABC):
-    """Abstract interface for workspace file storage."""
-
-    @abstractmethod
-    async def store(
-        self,
-        workspace_id: str,
-        file_id: str,
-        filename: str,
-        content: bytes,
-    ) -> str:
-        """
-        Store file content, return storage path.
-
-        Args:
-            workspace_id: The workspace ID
-            file_id: Unique file ID for storage
-            filename: Original filename
-            content: File content as bytes
-
-        Returns:
-            Storage path string (cloud path or local path)
-        """
-        pass
-
-    @abstractmethod
-    async def retrieve(self, storage_path: str) -> bytes:
-        """
-        Retrieve file content from storage.
-
-        Args:
-            storage_path: The storage path returned from store()
-
-        Returns:
-            File content as bytes
-        """
-        pass
-
-    @abstractmethod
-    async def retrieve_partial(self, storage_path: str, max_bytes: int) -> bytes:
-        """
-        Retrieve up to ``max_bytes`` from the start of the file.
-
-        Used for cheap text previews so large files are not loaded in full.
-
-        Args:
-            storage_path: The storage path returned from store()
-            max_bytes: Maximum number of leading bytes to return
-
-        Returns:
-            At most ``max_bytes`` of file content as bytes
-        """
-        pass
-
-    @abstractmethod
-    async def delete(self, storage_path: str) -> None:
-        """
-        Delete file from storage.
-
-        Args:
-            storage_path: The storage path to delete
-        """
-        pass
-
-    @abstractmethod
-    async def get_download_url(self, storage_path: str, expires_in: int = 3600) -> str:
-        """
-        Get URL for downloading the file.
-
-        Args:
-            storage_path: The storage path
-            expires_in: URL expiration time in seconds (default 1 hour)
-
-        Returns:
-            Download URL (signed URL for GCS, direct API path for local)
-        """
-        pass
 
 
 class GCSWorkspaceStorage(WorkspaceStorageBackend):
@@ -178,9 +102,11 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
             blob_name,
             content,
             metadata={
-                "uploaded_at": upload_time.isoformat(),
-                "workspace_id": workspace_id,
-                "file_id": file_id,
+                "metadata": {
+                    "uploaded_at": upload_time.isoformat(),
+                    "workspace_id": workspace_id,
+                    "file_id": file_id,
+                }
             },
         )
 
@@ -188,23 +114,23 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
 
     async def retrieve(self, storage_path: str) -> bytes:
         """Retrieve file from GCS."""
-        bucket_name, blob_name = parse_gcs_path(storage_path)
-        return await download_with_fresh_session(bucket_name, blob_name)
+        blob_name = self._parse_storage_path(storage_path)
+        return await download_with_fresh_session(self.bucket_name, blob_name)
 
     async def retrieve_partial(self, storage_path: str, max_bytes: int) -> bytes:
         """Retrieve the first ``max_bytes`` of a GCS file via a Range request."""
-        bucket_name, blob_name = parse_gcs_path(storage_path)
-        return await download_range(bucket_name, blob_name, max_bytes)
+        blob_name = self._parse_storage_path(storage_path)
+        return await download_range(self.bucket_name, blob_name, max_bytes)
 
     async def delete(self, storage_path: str) -> None:
         """Delete file from GCS."""
-        bucket_name, blob_name = parse_gcs_path(storage_path)
+        blob_name = self._parse_storage_path(storage_path)
         client = await self._get_async_client()
 
         try:
-            await client.delete(bucket_name, blob_name)
+            await client.delete(self.bucket_name, blob_name)
         except Exception as e:
-            if "404" not in str(e) and "Not Found" not in str(e):
+            if not is_not_found_error(e):
                 raise
             # File already deleted, that's fine
 
@@ -216,7 +142,7 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
         Falls back to an API proxy endpoint if signed URL generation fails
         (e.g., when running locally with user OAuth credentials).
         """
-        bucket_name, blob_name = parse_gcs_path(storage_path)
+        blob_name = self._parse_storage_path(storage_path)
 
         # Extract file_id from blob_name for fallback: workspaces/{workspace_id}/{file_id}/{filename}
         blob_parts = blob_name.split("/")
@@ -226,7 +152,7 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
         try:
             sync_client = self._get_sync_client()
             return await generate_signed_url(
-                sync_client, bucket_name, blob_name, expires_in
+                sync_client, self.bucket_name, blob_name, expires_in
             )
         except AttributeError as e:
             # Signed URL generation requires service account with private key.
@@ -239,141 +165,11 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
                 return f"/api/workspace/files/{file_id}/download"
             raise
 
-
-class LocalWorkspaceStorage(WorkspaceStorageBackend):
-    """Local filesystem implementation for workspace storage (self-hosted deployments)."""
-
-    def __init__(self, base_dir: Optional[str] = None):
-        """
-        Initialize local storage backend.
-
-        Args:
-            base_dir: Base directory for workspace storage.
-                     If None, defaults to {app_data}/workspaces
-        """
-        if base_dir:
-            self.base_dir = Path(base_dir)
-        else:
-            self.base_dir = Path(get_data_path()) / "workspaces"
-
-        # Ensure base directory exists
-        self.base_dir.mkdir(parents=True, exist_ok=True)
-
-    def _build_file_path(self, workspace_id: str, file_id: str, filename: str) -> Path:
-        """Build the local file path with path traversal protection."""
-        # Import here to avoid circular import
-        # (file.py imports workspace.py which imports workspace_storage.py)
-        from backend.util.file import sanitize_filename
-
-        # Sanitize filename to prevent path traversal (removes / and \ among others)
-        safe_filename = sanitize_filename(filename)
-        file_path = (self.base_dir / workspace_id / file_id / safe_filename).resolve()
-
-        # Verify the resolved path is still under base_dir
-        if not file_path.is_relative_to(self.base_dir.resolve()):
-            raise ValueError("Invalid filename: path traversal detected")
-
-        return file_path
-
-    def _parse_storage_path(self, storage_path: str) -> Path:
-        """Parse local storage path to filesystem path."""
-        if storage_path.startswith("local://"):
-            relative_path = storage_path[8:]  # Remove "local://"
-        else:
-            relative_path = storage_path
-
-        full_path = (self.base_dir / relative_path).resolve()
-
-        # Security check: ensure path is under base_dir
-        # Use is_relative_to() for robust path containment check
-        # (handles case-insensitive filesystems and edge cases)
-        if not full_path.is_relative_to(self.base_dir.resolve()):
-            raise ValueError("Invalid storage path: path traversal detected")
-
-        return full_path
-
-    async def store(
-        self,
-        workspace_id: str,
-        file_id: str,
-        filename: str,
-        content: bytes,
-    ) -> str:
-        """Store file locally."""
-        file_path = self._build_file_path(workspace_id, file_id, filename)
-
-        # Create parent directories
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Write file asynchronously
-        async with aiofiles.open(file_path, "wb") as f:
-            await f.write(content)
-
-        # Return relative path as storage path
-        relative_path = file_path.relative_to(self.base_dir)
-        return f"local://{relative_path}"
-
-    async def retrieve(self, storage_path: str) -> bytes:
-        """Retrieve file from local storage."""
-        file_path = self._parse_storage_path(storage_path)
-
-        if not file_path.exists():
-            raise FileNotFoundError(f"File not found: {storage_path}")
-
-        async with aiofiles.open(file_path, "rb") as f:
-            return await f.read()
-
-    async def retrieve_partial(self, storage_path: str, max_bytes: int) -> bytes:
-        """Retrieve the first ``max_bytes`` of a local file."""
-        file_path = self._parse_storage_path(storage_path)
-
-        try:
-            async with aiofiles.open(file_path, "rb") as f:
-                return await f.read(max_bytes)
-        except FileNotFoundError as e:
-            raise FileNotFoundError(f"File not found: {storage_path}") from e
-
-    async def delete(self, storage_path: str) -> None:
-        """Delete file from local storage."""
-        file_path = self._parse_storage_path(storage_path)
-
-        if file_path.exists():
-            # Remove file
-            file_path.unlink()
-
-            # Clean up empty parent directories
-            parent = file_path.parent
-            while parent != self.base_dir:
-                try:
-                    if parent.exists() and not any(parent.iterdir()):
-                        parent.rmdir()
-                    else:
-                        break
-                except OSError:
-                    break
-                parent = parent.parent
-
-    async def get_download_url(self, storage_path: str, expires_in: int = 3600) -> str:
-        """
-        Get download URL for local file.
-
-        For local storage, this returns an API endpoint path.
-        The actual serving is handled by the API layer.
-        """
-        # Parse the storage path to get the components
-        if storage_path.startswith("local://"):
-            relative_path = storage_path[8:]
-        else:
-            relative_path = storage_path
-
-        # Return the API endpoint for downloading
-        # The file_id is extracted from the path: {workspace_id}/{file_id}/{filename}
-        parts = relative_path.split("/")
-        if len(parts) >= 2:
-            file_id = parts[1]  # Second component is file_id
-            return f"/api/workspace/files/{file_id}/download"
-        else:
-            raise ValueError(f"Invalid storage path format: {storage_path}")
+    def _parse_storage_path(self, storage_path: str) -> str:
+        bucket_name, blob_name = parse_gcs_path(storage_path)
+        if bucket_name != self.bucket_name:
+            raise PermissionError("Access denied: not the configured private bucket")
+        return blob_name
 
 
 # ---------------------------------------------------------------------------
@@ -393,7 +189,9 @@ _gcs_storages: dict[int, GCSWorkspaceStorage] = {}
 _storage_lock = asyncio.Lock()
 
 
-async def get_workspace_storage() -> WorkspaceStorageBackend:
+async def get_workspace_storage(
+    *, config: Config | None = None
+) -> WorkspaceStorageBackend:
     """Return a workspace storage backend for the **current** event loop.
 
     * Local storage → single shared instance (no event-loop affinity).
@@ -402,10 +200,12 @@ async def get_workspace_storage() -> WorkspaceStorageBackend:
     """
     global _local_storage
 
-    config = Config()
+    config = config if config is not None else Config()
 
     # --- Local storage (shared) ---
-    if not config.media_gcs_bucket_name:
+    bucket_name = config.resolved_private_user_data_bucket
+
+    if not bucket_name:
         if _local_storage is None:
             storage_dir = (
                 config.workspace_storage_dir if config.workspace_storage_dir else None
@@ -417,11 +217,8 @@ async def get_workspace_storage() -> WorkspaceStorageBackend:
     # --- GCS storage (per event loop) ---
     loop_id = id(asyncio.get_running_loop())
     if loop_id not in _gcs_storages:
-        logger.info(
-            f"Creating GCS workspace storage for loop {loop_id}: "
-            f"{config.media_gcs_bucket_name}"
-        )
-        _gcs_storages[loop_id] = GCSWorkspaceStorage(config.media_gcs_bucket_name)
+        logger.info(f"Creating GCS workspace storage for loop {loop_id}: {bucket_name}")
+        _gcs_storages[loop_id] = GCSWorkspaceStorage(bucket_name)
     return _gcs_storages[loop_id]
 
 

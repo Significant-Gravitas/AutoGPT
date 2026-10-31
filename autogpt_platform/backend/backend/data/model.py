@@ -21,7 +21,7 @@ from typing import (
 )
 from uuid import uuid4
 
-from prisma.enums import CreditTransactionType, SubscriptionTier
+from prisma.enums import BriefingFrequency, CreditTransactionType, SubscriptionTier
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -42,6 +42,7 @@ from pydantic_core import (
 from typing_extensions import TypedDict
 
 from backend.data.onboarding_steps import OnboardingStep
+from backend.data.onboarding_wizard import OnboardingWizardProgress
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import ExecutionFailureReason
 from backend.util.json import loads as json_loads
@@ -78,35 +79,48 @@ class User(BaseModel):
         default=SubscriptionTier.NO_TIER, description="User subscription tier"
     )
 
-    # Notification preferences
+    # Notification preferences: the volume knob, not a checkbox list.
     max_emails_per_day: int = Field(default=3, description="Maximum emails per day")
-    notify_on_agent_run: bool = Field(default=True, description="Notify on agent run")
-    notify_on_zero_balance: bool = Field(
-        default=True, description="Notify on zero balance"
+    briefing_frequency: BriefingFrequency = Field(
+        default=BriefingFrequency.WEEKLY,
+        description="How often the Briefing digest is delivered (OFF = alerts only)",
     )
-    notify_on_low_balance: bool = Field(
-        default=True, description="Notify on low balance"
+    alerts_enabled: bool = Field(
+        default=True, description="Send Alerts when something is blocked on the user"
     )
-    notify_on_block_execution_failed: bool = Field(
-        default=True, description="Notify on block execution failure"
-    )
-    notify_on_continuous_agent_error: bool = Field(
-        default=True, description="Notify on continuous agent error"
-    )
-    notify_on_daily_summary: bool = Field(
-        default=True, description="Notify on daily summary"
-    )
-    notify_on_weekly_summary: bool = Field(
-        default=True, description="Notify on weekly summary"
-    )
-    notify_on_monthly_summary: bool = Field(
-        default=True, description="Notify on monthly summary"
+    notify_on_store_verdict: bool = Field(
+        default=True, description="Notify when a store submission is reviewed"
     )
 
     # User timezone for scheduling and time display
     timezone: str = Field(
         default=USER_TIMEZONE_NOT_SET,
         description="User timezone (IANA timezone identifier or 'not-set')",
+    )
+
+    # Consent captured at signup (see record_signup_consent).
+    terms_accepted_at: Optional[datetime] = Field(
+        None, description="When the user accepted the terms and privacy policy"
+    )
+    terms_version: Optional[str] = Field(
+        None, description="Version of the terms and privacy policy accepted"
+    )
+    marketing_opt_out_at: Optional[datetime] = Field(
+        None, description="When the user opted out of marketing email"
+    )
+    marketing_opt_out_source: Optional[str] = Field(
+        None, description="Where the marketing opt-out came from"
+    )
+
+    # Default Otto connection for chats nobody routed explicitly. Kept as
+    # plain strings here: the data layer stores the choice, the copilot layer
+    # decides what a given value means (and treats one it doesn't recognise as
+    # "automatic", so a value written by a newer server can't break an older one).
+    default_chat_auth_provider: Optional[str] = Field(
+        None, description="Saved default chat transport, or None for automatic"
+    )
+    default_chat_credential_id: Optional[str] = Field(
+        None, description="Credential backing the saved default chat transport"
     )
 
     @classmethod
@@ -152,18 +166,17 @@ class User(BaseModel):
             stripe_customer_id=prisma_user.stripeCustomerId,
             top_up_config=top_up_config,
             subscription_tier=prisma_user.subscriptionTier or SubscriptionTier.NO_TIER,
-            max_emails_per_day=prisma_user.maxEmailsPerDay or 3,
-            notify_on_agent_run=prisma_user.notifyOnAgentRun or True,
-            notify_on_zero_balance=prisma_user.notifyOnZeroBalance or True,
-            notify_on_low_balance=prisma_user.notifyOnLowBalance or True,
-            notify_on_block_execution_failed=prisma_user.notifyOnBlockExecutionFailed
-            or True,
-            notify_on_continuous_agent_error=prisma_user.notifyOnContinuousAgentError
-            or True,
-            notify_on_daily_summary=prisma_user.notifyOnDailySummary or True,
-            notify_on_weekly_summary=prisma_user.notifyOnWeeklySummary or True,
-            notify_on_monthly_summary=prisma_user.notifyOnMonthlySummary or True,
+            max_emails_per_day=prisma_user.maxEmailsPerDay,
+            briefing_frequency=BriefingFrequency(prisma_user.briefingFrequency),
+            alerts_enabled=prisma_user.alertsEnabled,
+            notify_on_store_verdict=prisma_user.notifyOnStoreVerdict,
             timezone=prisma_user.timezone or USER_TIMEZONE_NOT_SET,
+            terms_accepted_at=prisma_user.termsAcceptedAt,
+            terms_version=prisma_user.termsVersion,
+            marketing_opt_out_at=prisma_user.marketingOptOutAt,
+            marketing_opt_out_source=prisma_user.marketingOptOutSource,
+            default_chat_auth_provider=prisma_user.defaultChatAuthProvider,
+            default_chat_credential_id=prisma_user.defaultChatCredentialId,
         )
 
 
@@ -459,7 +472,9 @@ Credentials = Annotated[
 CREDENTIALS_ADAPTER: TypeAdapter[Credentials] = TypeAdapter(Credentials)
 
 
-CredentialsType = Literal["api_key", "oauth2", "user_password", "host_scoped"]
+CredentialsType = Literal[
+    "api_key", "oauth2", "user_password", "host_scoped", "device_code"
+]
 
 
 class OAuthState(BaseModel):
@@ -478,11 +493,6 @@ class OAuthState(BaseModel):
     """Metadata to echo back to external app on completion"""
     initiated_by_api_key_id: Optional[str] = None
     """ID of the API key that initiated this OAuth flow"""
-
-    @property
-    def is_external(self) -> bool:
-        """Whether this OAuth flow was initiated via external API."""
-        return self.callback_url is not None
 
 
 class UserMetadata(BaseModel):
@@ -622,6 +632,7 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
     discriminator_mapping: Optional[dict[str, CP]] = None
     discriminator_type_mapping: Optional[dict[str, frozenset[CT]]] = None
     discriminator_values: set[Any] = Field(default_factory=set)
+    credential_free_discriminator_values: set[Any] = Field(default_factory=set)
     is_auto_credential: bool = False
     credential_reference_only: bool = False
     input_field_name: Optional[str] = None
@@ -703,6 +714,12 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
                     if value not in all_discriminator_values:
                         all_discriminator_values.append(value)
 
+            all_credential_free_values = set()
+            for _, field in group:
+                all_credential_free_values.update(
+                    field.credential_free_discriminator_values
+                )
+
             # Generate the key for the combined result
             providers_key, supported_types_key = key
             group_key = (
@@ -724,6 +741,7 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
                     discriminator_mapping=combined.discriminator_mapping,
                     discriminator_type_mapping=combined.discriminator_type_mapping,
                     discriminator_values=set(all_discriminator_values),
+                    credential_free_discriminator_values=all_credential_free_values,
                     is_auto_credential=combined.is_auto_credential,
                     credential_reference_only=all(
                         field.credential_reference_only for _, field in group
@@ -735,6 +753,23 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
 
         return result
 
+    def requires_credentials(self, discriminator_value: Any) -> bool:
+        """Whether this selection needs a credential at all.
+
+        Credential-free choices are explicit so an unknown or retired
+        discriminator value is not silently treated as unauthenticated.
+
+        Callers must consult this before resolving, discriminating, or
+        enforcing entitlement on a field: `discriminate()` raises on an
+        unsupported value, and resolving a credential for an explicitly free
+        selection can fail a run that was not going to touch that provider.
+        """
+        if not (self.discriminator and self.discriminator_mapping):
+            return True
+        if discriminator_value is None:
+            return True
+        return discriminator_value not in self.credential_free_discriminator_values
+
     def discriminate(self, discriminator_value: Any) -> CredentialsFieldInfo:
         if not (self.discriminator and self.discriminator_mapping):
             return self
@@ -744,7 +779,7 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
         except KeyError:
             raise ValueError(
                 f"Model '{discriminator_value}' is not supported. "
-                "It may have been deprecated. Please update your agent configuration."
+                "It may have been deprecated. Please update your workflow configuration."
             )
 
         supported_types = self.supported_types
@@ -764,6 +799,9 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
             discriminator_mapping=self.discriminator_mapping,
             discriminator_type_mapping=self.discriminator_type_mapping,
             discriminator_values=set(self.discriminator_values),
+            credential_free_discriminator_values=set(
+                self.credential_free_discriminator_values
+            ),
             is_auto_credential=self.is_auto_credential,
             credential_reference_only=self.credential_reference_only,
             input_field_name=self.input_field_name,
@@ -777,6 +815,7 @@ def CredentialsField(
     discriminator_mapping: Optional[dict[str, Any]] = None,
     discriminator_type_mapping: Optional[dict[str, Any]] = None,
     discriminator_values: Optional[set[Any]] = None,
+    credential_free_discriminator_values: Optional[set[Any]] = None,
     title: Optional[str] = None,
     description: Optional[str] = None,
     **kwargs,
@@ -794,6 +833,7 @@ def CredentialsField(
             "discriminator_mapping": discriminator_mapping,
             "discriminator_type_mapping": discriminator_type_mapping,
             "discriminator_values": discriminator_values,
+            "credential_free_discriminator_values": credential_free_discriminator_values,
             "credential_reference_only": kwargs.pop("credential_reference_only", None),
         }.items()
         if v is not None
@@ -829,41 +869,81 @@ class AutoTopUpConfig(BaseModel):
     """Threshold to trigger auto top up."""
 
 
-class UserTransaction(BaseModel):
+class UserCreditTransaction(BaseModel):
     transaction_key: str = ""
     transaction_time: datetime = datetime.min.replace(tzinfo=timezone.utc)
     transaction_type: CreditTransactionType = CreditTransactionType.USAGE
     amount: int = 0
-    running_balance: int = 0
-    current_balance: int = 0
     description: str | None = None
     usage_graph_id: str | None = None
     usage_execution_id: str | None = None
     usage_node_count: int = 0
     usage_start_time: datetime = datetime.max.replace(tzinfo=timezone.utc)
     user_id: str
+
+
+class UserCreditTransactionAdminView(UserCreditTransaction):
+    running_balance: int = 0
+    current_balance: int = 0
     user_email: str | None = None
     reason: str | None = None
     admin_email: str | None = None
     extra_data: str | None = None
 
 
-class CreditTransactionItem(BaseModel):
-    transaction_key: str = ""
-    transaction_time: datetime = datetime.min.replace(tzinfo=timezone.utc)
-    transaction_type: CreditTransactionType = CreditTransactionType.USAGE
-    amount: int = 0
-    description: str | None = None
-    usage_graph_id: str | None = None
-    usage_execution_id: str | None = None
-    usage_node_count: int = 0
-    usage_start_time: datetime = datetime.max.replace(tzinfo=timezone.utc)
-    user_id: str
+class CreditHistoryCharge(BaseModel):
+    id: str
+    posted_at: datetime
+    amount: int
+    charge_type: Literal["usage", "execution_fee", "adjustment", "transaction"]
+    block_name: str | None = None
+    node_execution_id: str | None = None
+
+
+class CreditHistoryRelatedExecution(BaseModel):
+    execution_id: str
+    agent_name: str | None = None
+    library_agent_id: str | None = None
+    execution_available: bool = False
+    amount: int | None = None
+
+
+class CreditTransactionItem(UserCreditTransaction):
+    id: str = ""
+    usage_chat_session_id: str | None = Field(
+        default=None, description="The AutoPilot chat the usage came from"
+    )
+    activity_type: Literal["agent_run", "copilot_tools", "block_usage", "other"] = (
+        "other"
+    )
+    library_agent_id: str | None = None
+    agent_name: str | None = None
+    execution_started_at: datetime | None = None
+    execution_status: str | None = None
+    execution_graph_version: int | None = None
+    execution_available: bool = False
+    conversation_id: str | None = None
+    conversation_title: str | None = None
+    parent_execution_id: str | None = None
+    parent_agent_name: str | None = None
+    parent_library_agent_id: str | None = None
+    related_executions: list[CreditHistoryRelatedExecution] = Field(
+        default_factory=list
+    )
+    related_executions_has_more: bool = False
+    usage_charge_amount: int = 0
+    usage_fee_amount: int = 0
+    usage_adjustment_amount: int = 0
+    charges: list[CreditHistoryCharge] = Field(default_factory=list)
+    charges_total_count: int = 0
+    charges_truncated: bool = False
 
 
 class TransactionHistory(BaseModel):
     transactions: list[CreditTransactionItem]
     next_transaction_time: datetime | None
+    next_cursor: str | None = None
+    snapshot_at: datetime | None = None
 
 
 class RefundRequest(BaseModel):
@@ -1021,6 +1101,8 @@ class UserExecutionSummaryStats(BaseModel):
 
 class UserOnboarding(BaseModel):
     userId: str
+    wizardProgress: OnboardingWizardProgress | None = None
+    wizardRevision: int = 0
     # Steps are typed as ``OnboardingStep`` so the API exposes a typed enum to
     # the frontend (the DB stores plain strings). The rename migration keeps
     # existing rows within the enum, and writes are validated on the completion

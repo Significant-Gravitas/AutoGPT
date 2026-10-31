@@ -9,6 +9,7 @@ import type { BotPlatformInfo } from "@/app/api/__generated__/models/botPlatform
 
 import { BotCardDmTile } from "./BotCardDmTile";
 import { BotCardServerList } from "./BotCardServerList";
+import { getAddBotLabel } from "./helpers";
 import { useBotCard } from "./useBotCard";
 import { ArrowUpRight01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -23,8 +24,11 @@ export function BotCard({ platform }: Props) {
   const pendingInstall = platform.pending_install ?? null;
   // Optional in the generated client (it has a server-side default).
   const serverNoun = platform.server_noun ?? "server";
+  const dmUrl = platform.dm_url ?? null;
+  const addBotLabel = getAddBotLabel(platform, serverNoun);
 
   return (
+    // oxlint-disable-next-line design-system/no-restyle -- bot cards are tighter than the Card default
     <Card className="flex flex-col gap-5 p-5">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -35,7 +39,7 @@ export function BotCard({ platform }: Props) {
             height={32}
             className="rounded-md"
           />
-          <Text variant="large-medium" as="h2" className="text-textBlack">
+          <Text variant="large-medium" as="h2">
             {platform.display_name}
           </Text>
           {pendingInstall ? (
@@ -58,6 +62,19 @@ export function BotCard({ platform }: Props) {
               Open AutoGPT in {platform.display_name}
             </Button>
           ) : null}
+          {dmUrl ? (
+            <Button
+              as="NextLink"
+              href={dmUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              variant="primary"
+              size="small"
+              rightIcon={<Icon icon={ArrowUpRight01Icon} size={16} />}
+            >
+              Message bot on {platform.display_name}
+            </Button>
+          ) : null}
           {/* Kept alongside the pending action, not replaced by it: adding the
               bot to a second {serverNoun} is a normal thing to want while the
               first install is still waiting on its DM. */}
@@ -67,11 +84,11 @@ export function BotCard({ platform }: Props) {
             <Button
               as="NextLink"
               href={platform.add_bot_url}
-              variant={pendingInstall ? "outline" : "primary"}
+              variant={pendingInstall || dmUrl ? "outline" : "primary"}
               size="small"
               leftIcon={<Icon icon={PlusSignIcon} size={16} />}
             >
-              Add bot to {platform.display_name}
+              {addBotLabel}
             </Button>
           ) : null}
         </div>
@@ -81,7 +98,9 @@ export function BotCard({ platform }: Props) {
         <Text
           variant="small-medium"
           as="span"
-          className="uppercase tracking-wide text-zinc-500"
+          tone="muted"
+          // oxlint-disable-next-line design-system/no-restyle -- section labels track at 0.025em; the eyebrow variant's 0.06em is wider than the visual limit
+          className="tracking-wide uppercase"
         >
           Direct messages
         </Text>
@@ -99,13 +118,16 @@ export function BotCard({ platform }: Props) {
         <Text
           variant="small-medium"
           as="span"
-          className="uppercase tracking-wide text-zinc-500"
+          tone="muted"
+          // oxlint-disable-next-line design-system/no-restyle -- section labels track at 0.025em; the eyebrow variant's 0.06em is wider than the visual limit
+          className="tracking-wide uppercase"
         >
           Linked {serverNoun}s
         </Text>
         <BotCardServerList
           platformName={platform.display_name}
           serverNoun={serverNoun}
+          addBotLabel={addBotLabel}
           serverLinks={serverLinks}
           isPending={isPending}
           onUnlink={unlinkServerLink}

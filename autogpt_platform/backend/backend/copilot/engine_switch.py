@@ -24,7 +24,7 @@ import threading
 from pydantic import BaseModel, ConfigDict
 
 # Dispatched as the continuation turn's message with is_user_message=False,
-# so it persists as an assistant row and renders as AutoPilot narration —
+# so it persists as an assistant row and renders as Otto narration —
 # phrase it in assistant voice (it doubles as the model's continuation
 # prompt; the guide itself arrives via the system prompt). Sibling of the
 # SDK in-turn restart prompt (_BUILDING_MODE_CONTINUATION in sdk/service.py)

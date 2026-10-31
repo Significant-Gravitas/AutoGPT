@@ -24,7 +24,7 @@ if TYPE_CHECKING:
         AsyncRedisExecutionEventBus,
         RedisExecutionEventBus,
     )
-    from backend.data.rabbitmq import AsyncRabbitMQ, SyncRabbitMQ
+    from backend.data.rabbitmq import AsyncRabbitMQ
     from backend.executor.scheduler import SchedulerClient
     from backend.integrations.credentials_store import IntegrationCredentialsStore
     from backend.notifications.notifications import NotificationManagerClient
@@ -52,12 +52,16 @@ def get_database_manager_async_client(
 
 
 @thread_cached
-def get_scheduler_client() -> "SchedulerClient":
-    """Get a thread-cached SchedulerClient."""
+def get_scheduler_client(should_retry: bool = False) -> "SchedulerClient":
+    """Get a thread-cached SchedulerClient.
+
+    ``should_retry`` repeats a call that failed in transit, such as on a pooled
+    connection the scheduler had just closed; only for calls safe to repeat.
+    """
     from backend.executor.scheduler import SchedulerClient
     from backend.util.service import get_service_client
 
-    return get_service_client(SchedulerClient)
+    return get_service_client(SchedulerClient, request_retry=should_retry)
 
 
 @thread_cached
@@ -107,17 +111,6 @@ def get_async_execution_event_bus() -> "AsyncRedisExecutionEventBus":
 
 
 # ============ Execution Queue Helpers ============ #
-
-
-@thread_cached
-def get_execution_queue() -> "SyncRabbitMQ":
-    """Get a thread-cached SyncRabbitMQ execution queue client."""
-    from backend.data.rabbitmq import SyncRabbitMQ
-    from backend.executor.utils import create_execution_queue_config
-
-    client = SyncRabbitMQ(create_execution_queue_config())
-    client.connect()
-    return client
 
 
 @thread_cached
@@ -199,7 +192,7 @@ def get_openai_client(*, prefer_openrouter: bool = False) -> "AsyncOpenAI | None
        (dry-run simulator, prompt compression, marketplace embeddings, …)
        silently route to the cloud just because legacy cloud-key fallbacks
        happen to be present. Returns a client pointed at the same
-       OpenAI-compatible endpoint AutoPilot uses, with the same generous
+       OpenAI-compatible endpoint Otto uses, with the same generous
        request timeout — those helpers fire under the same hardware
        constraints (CPU-only Ollama is slow). ``prefer_openrouter`` is
        intentionally ignored here: the local client is the only sane
@@ -290,21 +283,10 @@ def openrouter_helper_cost_provider() -> str:
 
 
 @thread_cached
-def get_notification_queue() -> "SyncRabbitMQ":
-    """Get a thread-cached SyncRabbitMQ notification queue client."""
-    from backend.data.rabbitmq import SyncRabbitMQ
-    from backend.notifications.notifications import create_notification_config
-
-    client = SyncRabbitMQ(create_notification_config())
-    client.connect()
-    return client
-
-
-@thread_cached
 async def get_async_notification_queue() -> "AsyncRabbitMQ":
     """Get a thread-cached AsyncRabbitMQ notification queue client."""
     from backend.data.rabbitmq import AsyncRabbitMQ
-    from backend.notifications.notifications import create_notification_config
+    from backend.notifications.queue import create_notification_config
 
     client = AsyncRabbitMQ(create_notification_config())
     await client.connect()

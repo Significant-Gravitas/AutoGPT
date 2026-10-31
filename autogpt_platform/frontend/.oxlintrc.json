@@ -1,0 +1,194 @@
+{
+  "categories": {
+    "correctness": "off"
+  },
+  "jsPlugins": [
+    "./scripts/eslint-rules/plugin.mts",
+    "./scripts/eslint-rules/design-system.mts"
+  ],
+  "rules": {
+    "autogpt/no-hookless-use-function": "warn"
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/__tests__/**",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.stories.tsx"
+      ],
+      "rules": {
+        "autogpt/no-hookless-use-function": "off"
+      }
+    },
+    {
+      "files": [
+        "src/app/(platform)/copilot/**",
+        "src/components/organisms/Conversation/**",
+        "src/components/organisms/Message/**",
+        "src/components/organisms/PromptInput/**"
+      ],
+      "excludeFiles": [
+        "**/__tests__/**",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.stories.tsx"
+      ],
+      "rules": {
+        "autogpt/no-hookless-use-function": "error",
+        "autogpt/no-manual-memo": "error"
+      }
+    },
+    {
+      "files": ["src/app/(platform)/copilot/useCopilotStop.ts"],
+      "rules": {
+        "autogpt/no-hookless-use-function": "warn"
+      }
+    },
+    {
+      "files": ["src/**"],
+      "rules": {
+        "design-system/no-raw-colors": [
+          "error",
+          {
+            "scanAllStrings": true
+          }
+        ],
+        "design-system/no-arbitrary-values": [
+          "error",
+          {
+            "allow": ["layout", "transition"],
+            "scanAllStrings": true
+          }
+        ],
+        "design-system/no-restyle": [
+          "error",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              {
+                "pattern": "^Icon$",
+                "allow": ["layout"]
+              },
+              {
+                "pattern": "^Skeleton$",
+                "allow": ["layout", "shape"]
+              }
+            ]
+          }
+        ],
+        "design-system/no-inline-styles": "error",
+        "design-system/require-static-classes": "error",
+        "design-system/no-unknown-classes": [
+          "error",
+          {
+            "allow": [
+              "ph-no-capture",
+              "nodrag",
+              "nowheel",
+              "nopan",
+              "agpt-border-input",
+              "agpt-shadow-input",
+              "agpt-rounded-card",
+              "agpt-card",
+              "markdown-output"
+            ]
+          }
+        ],
+        "design-system/no-dark-variant": "error",
+        "design-system/no-legacy-import": "error",
+        "design-system/no-legacy-button-variant": "error",
+        "design-system/hugeicons-only": "error",
+        "design-system/require-suppression-reason": "error",
+        "design-system/baseline-outdated": "error"
+      }
+    },
+    {
+      "files": [
+        "src/components/atoms/**",
+        "src/components/molecules/**",
+        "src/components/organisms/**"
+      ],
+      "rules": {
+        "design-system/no-restyle": "off"
+      }
+    },
+    {
+      "files": ["src/components/atoms/Icon/**"],
+      "rules": {
+        "design-system/hugeicons-only": "off"
+      }
+    },
+    {
+      "files": ["**/*.stories.tsx"],
+      "rules": {
+        "design-system/no-raw-colors": "off",
+        "design-system/no-arbitrary-values": "off",
+        "design-system/no-restyle": "off",
+        "design-system/no-inline-styles": "off"
+      }
+    },
+    {
+      "files": [
+        "**/__tests__/**",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "src/tests/**",
+        "src/playwright/**",
+        "src/mocks/**"
+      ],
+      "rules": {
+        "design-system/no-raw-colors": "off",
+        "design-system/no-arbitrary-values": "off",
+        "design-system/no-restyle": "off",
+        "design-system/no-inline-styles": "off",
+        "design-system/require-static-classes": "off",
+        "design-system/no-unknown-classes": "off",
+        "design-system/no-dark-variant": "off",
+        "design-system/no-legacy-import": "off",
+        "design-system/no-legacy-button-variant": "off",
+        "design-system/hugeicons-only": "off"
+      }
+    },
+    {
+      "files": ["src/app/api/__generated__/**"],
+      "rules": {
+        "design-system/no-raw-colors": "off",
+        "design-system/no-arbitrary-values": "off",
+        "design-system/no-restyle": "off",
+        "design-system/no-inline-styles": "off",
+        "design-system/require-static-classes": "off",
+        "design-system/no-unknown-classes": "off",
+        "design-system/no-dark-variant": "off",
+        "design-system/no-legacy-import": "off",
+        "design-system/no-legacy-button-variant": "off",
+        "design-system/hugeicons-only": "off",
+        "design-system/require-suppression-reason": "off",
+        "design-system/baseline-outdated": "off"
+      }
+    }
+  ],
+  "settings": {
+    "shadcn": {
+      "ui": "@/components/atoms",
+      "componentImports": ["^@/components/(molecules|organisms)(/|$)"]
+    }
+  }
+}

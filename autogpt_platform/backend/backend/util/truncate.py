@@ -12,10 +12,29 @@ def _truncate_string_middle(value: str, limit: int) -> str:
     if len(value) <= limit:
         return value
 
-    head_len = max(1, limit // 2)
-    tail_len = limit - head_len  # ensures total == limit
-    omitted = len(value) - (head_len + tail_len)
-    return f"{value[:head_len]}… (omitted {omitted} chars)…{value[-tail_len:]}"
+    if limit == 0:
+        return ""
+
+    omitted = len(value)
+    marker = f"… (omitted {omitted} chars)…"
+    while len(marker) <= limit:
+        retained = limit - len(marker)
+        if retained < 2:
+            break
+        actual_omitted = len(value) - retained
+        if actual_omitted == omitted:
+            head_len = (retained + 1) // 2
+            tail_len = retained - head_len
+            tail = value[-tail_len:] if tail_len else ""
+            return f"{value[:head_len]}{marker}{tail}"
+        omitted = actual_omitted
+        marker = f"… (omitted {omitted} chars)…"
+
+    retained = limit - 1
+    head_len = (retained + 1) // 2
+    tail_len = retained - head_len
+    tail = value[-tail_len:] if tail_len else ""
+    return f"{value[:head_len]}…{tail}"
 
 
 # ---------------------------------------------------------------------------
@@ -77,11 +96,10 @@ def truncate(value: Any, size_limit: int) -> Any:
     Truncate the given value (recursively) so that its string representation
     does not exceed size_limit characters. Uses binary search to find the
     largest str_limit and list_limit that fit.
-
-    A `str` passed directly is the exception: it keeps size_limit characters
-    and then gains the "… (omitted N chars)…" marker, so it overshoots the
-    limit by the marker's length.
     """
+
+    if size_limit < 0:
+        raise ValueError("size_limit must be non-negative")
 
     # Fast path: plain strings don't need the binary search machinery.
     if isinstance(value, str):
@@ -101,11 +119,7 @@ def truncate(value: Any, size_limit: int) -> Any:
     # the search below explores, so whenever that result already fits it is the
     # answer the search is after. Probe it once instead of running the full
     # ~299-probe grid, each probe of which re-serialises the payload.
-    # The search cannot always find it on its own: measure() is not monotonic
-    # in str_limit, because the "… (omitted N chars)…" marker can be longer
-    # than the text it replaces, so the search can settle below the maximum and
-    # truncate a payload that already fitted. Note this still applies LIST_MAX,
-    # so long lists stay capped as before.
+    # Note this still applies LIST_MAX, so long lists stay capped as before.
     maximal = _truncate_value(value, STR_MAX, LIST_MAX)
     if measure(maximal) <= size_limit:
         return maximal

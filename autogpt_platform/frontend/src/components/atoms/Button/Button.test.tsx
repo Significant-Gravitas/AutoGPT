@@ -1,5 +1,6 @@
 import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
 import { render, screen, cleanup } from "@testing-library/react";
+import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { afterEach, describe, expect, it } from "vitest";
 import { Button } from "./Button";
 import { ButtonProps } from "./helpers";
@@ -19,86 +20,190 @@ afterEach(() => {
   cleanup();
 });
 
-describe("Button unmask prop", () => {
-  it("applies sentry-unmask class by default", () => {
+describe("Button compact sizes", () => {
+  it("renders xs as a 28px rounded-rectangle chip", () => {
+    renderButton({ variant: "secondary", size: "xs", children: "Chat" });
+    const el = screen.getByRole("button", { name: "Chat" });
+    expect(el.className).toContain("h-7");
+    expect(el.className).toContain("rounded-md");
+    expect(el.className).not.toContain("rounded-full");
+  });
+
+  it("softens the outline border at xs", () => {
+    renderButton({ variant: "outline", size: "xs", children: "New Pod" });
+    const el = screen.getByRole("button", { name: "New Pod" });
+    expect(el.className).toContain("border-border-base");
+    expect(el.className).not.toContain("border-zinc-700");
+  });
+
+  it("renders a leadingIcon before the label", () => {
+    renderButton({
+      size: "xs",
+      leadingIcon: PencilEdit02Icon,
+      children: "Edit Soul",
+    });
+    const el = screen.getByRole("button", { name: "Edit Soul" });
+    expect(el.querySelector("svg")).not.toBeNull();
+    expect(el.querySelector("svg")?.getAttribute("width")).toBe("14");
+  });
+
+  it("names icon-only buttons by aria-label", () => {
+    renderButton({
+      variant: "floating",
+      size: "icon-xs",
+      leadingIcon: PencilEdit02Icon,
+      "aria-label": "Edit workflow",
+      children: undefined,
+    });
+    const el = screen.getByRole("button", { name: "Edit workflow" });
+    expect(el.className).toContain("size-7");
+    expect(el.className).toContain("bg-surface/90");
+  });
+
+  it("styles toggle by aria-pressed", () => {
+    renderButton({
+      variant: "toggle",
+      size: "xs",
+      "aria-pressed": true,
+      children: "Needs review",
+    });
+    const el = screen.getByRole("button", {
+      name: "Needs review",
+      pressed: true,
+    });
+    expect(el.className).toContain("aria-pressed:bg-surface-hover");
+  });
+});
+
+describe("Button compact variants", () => {
+  it("renders a rounded-md button with the children as they are", () => {
+    render(
+      <Button variant="compact-outline" size="compact" className="space-x-3">
+        <span>One</span>
+        <span>Two</span>
+      </Button>,
+    );
+    const el = screen.getByRole("button", { name: "One Two" });
+    expect(el.children).toHaveLength(2);
+    expect(el.querySelector(".contents")).toBeNull();
+    expect(el.className).toContain("rounded-md");
+    expect(el.className).not.toContain("rounded-full");
+    expect(el.className).toContain("border-border-base");
+    expect(el.className).toContain("h-9 px-4 py-2");
+    expect(el.className).toContain("space-x-3");
+  });
+
+  it("applies the size, and lets the caller's classes win", () => {
+    render(
+      <Button variant="compact-primary" size="compact-sm" className="h-10">
+        Save
+      </Button>,
+    );
+    const el = screen.getByRole("button", { name: "Save" });
+    expect(el.className).toContain("bg-action");
+    expect(el.className).toContain("h-10");
+    expect(el.className).not.toContain("h-8");
+    expect(el.className).toContain("text-caption");
+  });
+
+  it("forwards the ref and the caller's props", () => {
+    let node: HTMLButtonElement | null = null;
+    render(
+      <Button
+        variant="compact-ghost"
+        size="compact"
+        ref={(el) => {
+          node = el;
+        }}
+        disabled
+        data-testid="ghost"
+      >
+        Ghost
+      </Button>,
+    );
+    const el = screen.getByTestId("ghost");
+    expect(node).toBe(el);
+    expect(el).toHaveProperty("disabled", true);
+    expect(el.getAttribute("data-slot")).toBe("button");
+  });
+});
+
+describe("Button slots", () => {
+  it("names the button and its label", () => {
     renderButton({ children: "Save" });
     const el = screen.getByRole("button", { name: "Save" });
-    expect(el.className).toContain("sentry-unmask");
+    expect(el.getAttribute("data-slot")).toBe("button");
+    expect(el.querySelector("[data-slot=button-label]")?.textContent).toBe(
+      "Save",
+    );
   });
 
-  it("omits sentry-unmask class when unmask is false", () => {
-    renderButton({ unmask: false, children: "Dynamic label" });
-    const el = screen.getByRole("button", { name: "Dynamic label" });
-    expect(el.className).not.toContain("sentry-unmask");
+  it("keeps a slot the caller passes", () => {
+    render(
+      <TooltipProvider>
+        <Button data-slot="date-input-trigger">Pick</Button>
+      </TooltipProvider>,
+    );
+    expect(
+      screen.getByRole("button", { name: "Pick" }).getAttribute("data-slot"),
+    ).toBe("date-input-trigger");
   });
 
-  it("applies sentry-unmask when unmask is explicitly true", () => {
-    renderButton({ unmask: true, children: "Explicit" });
-    const el = screen.getByRole("button", { name: "Explicit" });
-    expect(el.className).toContain("sentry-unmask");
-  });
-
-  it("applies sentry-unmask to link variant button", () => {
-    renderButton({ variant: "link", children: "Link button" });
-    const el = screen.getByRole("button", { name: "Link button" });
-    expect(el.className).toContain("sentry-unmask");
-  });
-
-  it("omits sentry-unmask from link variant when unmask is false", () => {
+  it("keeps its own slot inside the tooltip trigger of an icon button", () => {
     renderButton({
-      variant: "link",
-      unmask: false,
-      children: "Dynamic link",
+      variant: "icon",
+      "aria-label": "Edit",
+      leadingIcon: PencilEdit02Icon,
+      children: null,
     });
-    const el = screen.getByRole("button", { name: "Dynamic link" });
-    expect(el.className).not.toContain("sentry-unmask");
+    const el = screen.getByRole("button", { name: "Edit" });
+    expect(el.getAttribute("data-slot")).toBe("button");
+    expect(el.querySelector("[data-slot=button-icon]")).not.toBeNull();
+  });
+});
+
+describe("Button textSize", () => {
+  it("keeps the size's text-body by default", () => {
+    renderButton({ size: "small", children: "Save" });
+    const el = screen.getByRole("button", { name: "Save" });
+    expect(el.className).toContain("text-body");
+    expect(el.className).not.toContain("text-body-md");
   });
 
-  it("applies sentry-unmask to ghost variant", () => {
-    renderButton({ variant: "ghost", children: "Ghost" });
-    const el = screen.getByRole("button", { name: "Ghost" });
-    expect(el.className).toContain("sentry-unmask");
-  });
+  it.each([
+    ["small", "button"],
+    ["large", "button"],
+    ["small", "loading"],
+    ["large", "loading"],
+    ["small", "NextLink"],
+    ["large", "NextLink"],
+  ] as const)(
+    "replaces the %s size's text-body and leading with text-body-md (%s)",
+    (size, kind) => {
+      renderButton({
+        size,
+        textSize: "body-md",
+        children: "Save",
+        ...(kind === "loading" ? { loading: true } : {}),
+        ...(kind === "NextLink" ? { as: "NextLink", href: "/x" } : {}),
+      } as Partial<ButtonProps>);
+      const el =
+        kind === "NextLink"
+          ? screen.getByRole("link", { name: "Save" })
+          : screen.getByRole("button", { name: "Save" });
+      const classes = el.className.split(" ");
+      expect(classes).toContain("text-body-md");
+      for (const stale of ["text-body", "leading-5", "leading-snug"])
+        expect(classes).not.toContain(stale);
+    },
+  );
 
-  it("applies sentry-unmask to secondary variant", () => {
-    renderButton({ variant: "secondary", children: "Secondary" });
-    const el = screen.getByRole("button", { name: "Secondary" });
-    expect(el.className).toContain("sentry-unmask");
-  });
-
-  it("preserves custom className alongside sentry-unmask", () => {
-    renderButton({ className: "my-class", children: "Styled" });
-    const el = screen.getByRole("button", { name: "Styled" });
-    expect(el.className).toContain("sentry-unmask");
-    expect(el.className).toContain("my-class");
-  });
-
-  it("applies sentry-unmask in the loading state", () => {
-    renderButton({ loading: true, children: "Saving" });
-    const el = screen.getByRole("button");
-    expect(el.className).toContain("sentry-unmask");
-  });
-
-  it("omits sentry-unmask in the loading state when unmask is false", () => {
-    renderButton({ loading: true, unmask: false, children: "Saving" });
-    const el = screen.getByRole("button");
-    expect(el.className).not.toContain("sentry-unmask");
-  });
-
-  it("applies sentry-unmask to NextLink buttons", () => {
-    renderButton({ as: "NextLink", href: "/save", children: "Go" });
-    const el = screen.getByRole("link", { name: "Go" });
-    expect(el.className).toContain("sentry-unmask");
-  });
-
-  it("omits sentry-unmask from NextLink buttons when unmask is false", () => {
-    renderButton({
-      as: "NextLink",
-      href: "/save",
-      unmask: false,
-      children: "Dynamic NextLink",
-    });
-    const el = screen.getByRole("link", { name: "Dynamic NextLink" });
-    expect(el.className).not.toContain("sentry-unmask");
+  it("replaces text-body with text-body-md on the link variant", () => {
+    renderButton({ variant: "link", textSize: "body-md", children: "Save" });
+    const classes = screen
+      .getByRole("button", { name: "Save" })
+      .className.split(" ");
+    expect(classes).toContain("text-body-md");
+    expect(classes).not.toContain("text-body");
   });
 });

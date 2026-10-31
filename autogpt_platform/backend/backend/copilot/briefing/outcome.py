@@ -15,7 +15,7 @@ from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from .models import BriefingRunItem
 
 # Shared fallback for a run whose agent couldn't be resolved in the library.
-DEFAULT_AGENT_NAME = "Agent task"
+DEFAULT_AGENT_NAME = "Workflow task"
 _FAILED_DETAIL = "Open the run to inspect the failure and choose the next step."
 _COMPLETED_DETAIL = "Completed successfully."
 # Longest a summary's first sentence may run before it is clipped into a title.
@@ -63,6 +63,9 @@ def compose_run_outcome(
         duration_seconds=stats.duration if stats else 0,
         cost_cents=stats.cost if stats else 0,
         link=run_link(library_agent_id, execution.id),
+        schedule_id=execution.schedule_id,
+        webhook_id=execution.webhook_id,
+        trigger_source=execution.trigger_source,
     )
 
 

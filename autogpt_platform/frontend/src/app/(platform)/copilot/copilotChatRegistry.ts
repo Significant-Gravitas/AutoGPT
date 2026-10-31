@@ -7,11 +7,10 @@ import {
   createCopilotTransport,
   type MutableValue,
 } from "./copilotStreamTransport";
-import type { CopilotLlmModel, CopilotMode } from "./store";
+import type { CopilotLlmModel } from "./store";
 
 interface CopilotChatRuntime {
   chat: Chat<UIMessage>;
-  copilotModeRef: MutableValue<CopilotMode | undefined>;
   copilotModelRef: MutableValue<CopilotLlmModel | undefined>;
   onFinish?: (args: {
     isDisconnect?: boolean;
@@ -73,9 +72,6 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
   const existing = copilotChatRuntimes.get(sessionId);
   if (existing) return existing;
 
-  const copilotModeRef: MutableValue<CopilotMode | undefined> = {
-    current: undefined,
-  };
   const copilotModelRef: MutableValue<CopilotLlmModel | undefined> = {
     current: undefined,
   };
@@ -85,7 +81,6 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
     id: sessionId,
     transport: createCopilotTransport({
       sessionId,
-      copilotModeRef,
       copilotModelRef,
     }),
     onFinish: (args) => {
@@ -106,7 +101,6 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
   });
   const runtime = {
     chat,
-    copilotModeRef,
     copilotModelRef,
     get onData() {
       return callbacks.onData;
@@ -132,12 +126,57 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
   return runtime;
 }
 
+type CopilotChatRuntimeCallbacks = Required<
+  Pick<CopilotChatRuntime, "onFinish" | "onError" | "onData">
+>;
+
+export function setCopilotChatRuntimeModel(
+  runtime: CopilotChatRuntime,
+  model: CopilotLlmModel | undefined,
+) {
+  runtime.copilotModelRef.current = model;
+}
+
+export function attachCopilotChatRuntimeCallbacks(
+  runtime: CopilotChatRuntime,
+  callbacks: CopilotChatRuntimeCallbacks,
+) {
+  runtime.onFinish = callbacks.onFinish;
+  runtime.onError = callbacks.onError;
+  runtime.onData = callbacks.onData;
+}
+
+/** Leaves callbacks a newer mount attached in the meantime in place. */
+export function detachCopilotChatRuntimeCallbacks(
+  runtime: CopilotChatRuntime,
+  callbacks: CopilotChatRuntimeCallbacks,
+) {
+  if (runtime.onFinish === callbacks.onFinish) {
+    runtime.onFinish = undefined;
+  }
+  if (runtime.onData === callbacks.onData) {
+    runtime.onData = undefined;
+  }
+  if (runtime.onError === callbacks.onError) {
+    runtime.onError = undefined;
+  }
+}
+
 export function markCopilotChatRuntimeHealthy(sessionId: string) {
   useCopilotChatRuntimeStore.getState().clearNeedsReload(sessionId);
 }
 
 export function shouldReloadCopilotChatRuntime(sessionId: string) {
   return !!useCopilotChatRuntimeStore.getState().sessionNeedsReload[sessionId];
+}
+
+/** The session's runtime, rebuilt first if a dropped stream flagged it. One
+ *  call with a result, so a memo around it caches the reset with it. */
+export function takeCopilotChatRuntime(sessionId: string) {
+  if (shouldReloadCopilotChatRuntime(sessionId)) {
+    resetCopilotChatRuntime(sessionId);
+  }
+  return getOrCreateCopilotChatRuntime(sessionId);
 }
 
 export function resetCopilotChatRuntime(sessionId: string) {

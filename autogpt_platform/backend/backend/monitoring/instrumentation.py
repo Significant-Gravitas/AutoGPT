@@ -6,11 +6,14 @@ for all FastAPI services in the AutoGPT platform.
 """
 
 import logging
+import os
 from typing import Optional
 
 from fastapi import FastAPI
-from prometheus_client import Counter, Gauge, Histogram, Info
+from prometheus_client import Counter, Gauge, Histogram, Info, start_http_server
 from prometheus_fastapi_instrumentator import Instrumentator, metrics
+
+from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +30,16 @@ GRAPH_EXECUTIONS_BY_USER = Counter(
     "autogpt_graph_executions_by_user_total",
     "Total number of graph executions by user (sampled)",
     labelnames=["status"],  # Only status, user_id tracked separately when needed
+)
+
+# Terminal outcome of a graph RUN, recorded by the executor when the run's
+# final status is persisted. Distinct from GRAPH_EXECUTIONS above, which counts
+# execute *requests* at the API and cannot see a run that starts fine and then
+# fails ten nodes in. This is the series an "agents are failing" alert reads.
+GRAPH_RUN_COMPLETIONS = Counter(
+    "autogpt_graph_run_completions_total",
+    "Graph runs reaching a terminal status, by status",
+    labelnames=["status"],  # COMPLETED / FAILED / TERMINATED — bounded
 )
 
 BLOCK_EXECUTIONS = Counter(
@@ -52,6 +65,30 @@ SCHEDULER_JOBS = Gauge(
     "autogpt_scheduler_jobs",
     "Current number of scheduled jobs",
     labelnames=["job_type", "status"],
+)
+
+# Scheduled copilot turns that were dispatched but then failed while running:
+# the turn itself errored, or a tool it called returned an error. Counted in
+# the copilot executor, because the scheduler only sees the dispatch.
+COPILOT_SCHEDULED_TURN_FAILURES = Counter(
+    "autogpt_copilot_scheduled_turn_failures_total",
+    "Scheduled copilot turns that failed after dispatch",
+    labelnames=["reason", "tool"],
+)
+
+# Every Stripe SDK call, by resource/method and how it ended. Stripe applies
+# its rate limit per account rather than per endpoint, so the rate_limited
+# outcome is worth alerting on regardless of which call path produced it.
+STRIPE_REQUESTS = Counter(
+    "autogpt_stripe_requests_total",
+    "Stripe API requests by resource, method and outcome",
+    labelnames=["resource", "method", "outcome"],
+)
+
+STRIPE_REQUEST_DURATION = Histogram(
+    "autogpt_stripe_request_duration_seconds",
+    "Stripe API request duration in seconds",
+    labelnames=["resource", "method"],
 )
 
 DATABASE_QUERIES = Histogram(
@@ -103,6 +140,24 @@ SERVICE_INFO = Info(
     "Service information",
 )
 
+METRICS_ENV_VAR = "ENABLE_METRICS"
+
+
+def metrics_enabled() -> bool:
+    """The switch the HTTP instrumentation obeys, read the way it reads it."""
+    return os.getenv(METRICS_ENV_VAR, "False").lower() in ("true", "1")
+
+
+def start_metrics_server(port: int) -> None:
+    """Serve this process's metrics on a listener of their own, when they are on.
+
+    The public servers call this instead of routing /metrics on their app, so
+    no client of theirs can read the metrics. Bound like the executors'
+    metrics: pyro_host is every service's internal listener address.
+    """
+    if metrics_enabled():
+        start_http_server(port, addr=Config().pyro_host)
+
 
 def instrument_fastapi(
     app: FastAPI,
@@ -152,7 +207,7 @@ def instrument_fastapi(
         should_respect_env_var=True,
         should_instrument_requests_inprogress=True,
         excluded_handlers=excluded_handlers or ["/health", "/readiness"],
-        env_var_name="ENABLE_METRICS",
+        env_var_name=METRICS_ENV_VAR,
         inprogress_name=f"autogpt_{service_subsystem}_http_requests_inprogress",
         inprogress_labels=True,
     )
@@ -230,6 +285,11 @@ def record_graph_execution(graph_id: str, status: str, user_id: str):
     GRAPH_EXECUTIONS_BY_USER.labels(status=status).inc()
 
 
+def record_graph_run_completion(status: str):
+    """Record a graph run reaching a terminal status (COMPLETED/FAILED/TERMINATED)."""
+    GRAPH_RUN_COMPLETIONS.labels(status=status).inc()
+
+
 def record_block_execution(block_type: str, status: str, duration: float):
     """Record a block execution event with duration."""
     BLOCK_EXECUTIONS.labels(block_type=block_type, status=status).inc()
@@ -248,6 +308,13 @@ def update_websocket_connections(user_id: str, delta: int):
         WEBSOCKET_CONNECTIONS.inc(delta)
     else:
         WEBSOCKET_CONNECTIONS.dec(abs(delta))
+
+
+def record_stripe_request(resource: str, method: str, outcome: str, duration: float):
+    """Record one Stripe API call. ``outcome`` is one of ok / rate_limited /
+    connection_error / timeout / api_error (see backend.data.stripe_client)."""
+    STRIPE_REQUESTS.labels(resource=resource, method=method, outcome=outcome).inc()
+    STRIPE_REQUEST_DURATION.labels(resource=resource, method=method).observe(duration)
 
 
 def record_database_query(operation: str, table: str, duration: float):

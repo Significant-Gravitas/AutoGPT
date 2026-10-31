@@ -1,7 +1,9 @@
-import type { FileUIPart, UIMessage } from "ai";
+import type { UIMessage } from "ai";
+import type { StoredAttachmentPart } from "./helpers/workspaceAttachments";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import type { ExpertKickoffMetadata } from "./expertKickoff";
+import { getMessageSnapshotDigest } from "./helpers/messageSnapshotDigest";
 
 /**
  * Per-session state. Zustand (not React refs) so it can survive events we
@@ -57,45 +59,111 @@ export interface PendingFirstSend {
   metadata?: ExpertKickoffMetadata;
 }
 
+export interface PendingUploadAttachment {
+  name: string;
+  mediaType: string;
+  sizeBytes?: number;
+  /** Local files upload before the send; workspace references are already stored. */
+  isUploading: boolean;
+  /** The picked file, so an image can show before it uploads. */
+  file?: File;
+  /** Where a stored file already lives. */
+  url?: string;
+}
+
+/**
+ * The message the user just sent, shown as a placeholder bubble while its
+ * local attachments upload. The real user message only enters `messages`
+ * once `sendMessage` runs after the uploads, which can take seconds for
+ * large files — without this the transcript stays blank for that window.
+ *
+ * Kept per session in `pendingUploadSends` so an upload started in one chat
+ * neither hides nor clears the placeholder of another chat the user switches
+ * to mid-upload. The first send of a new chat has no session yet and sits
+ * under `UNBOUND_UPLOAD_KEY` until `bindPendingFirstSendToSession` moves it
+ * onto the created session. Lives here (not in React state) for the same
+ * remount reason as `PendingFirstSend`. Never persisted: a reload mid-upload
+ * loses the `File` objects, so there is nothing left to wait for.
+ */
+export interface PendingUploadSend {
+  text: string;
+  attachments: PendingUploadAttachment[];
+}
+
+/** Key for the first send of a chat whose session does not exist yet. */
+const UNBOUND_UPLOAD_KEY = "new";
+
+export function pendingUploadKey(sessionId: string | null): string {
+  return sessionId ?? UNBOUND_UPLOAD_KEY;
+}
+
 interface PersistedCopilotStreamState {
   sessions: Record<string, SessionCoord>;
   pendingFirstSend: Pick<PendingFirstSend, "text" | "metadata"> | null;
   pendingFirstSendSessionId: string | null;
-  pendingFileParts: FileUIPart[];
+  pendingFileParts: StoredAttachmentPart[];
 }
 
 interface CopilotStreamStore {
   sessions: Record<string, SessionCoord>;
+  /** Per-session messages for the subscribers that derive files, runs and
+   *  schedules from them. Only replaced when one of those changes, so a
+   *  streamed text token does not wake them; `getMessageSnapshot` returns
+   *  the newest messages. */
   messageSnapshots: Record<string, UIMessage[]>;
   pendingFirstSend: PendingFirstSend | null;
   pendingFirstSendSessionId: string | null;
-  pendingFileParts: FileUIPart[];
-  /**
-   * True while the current chat is in `streaming` or `submitted` state.
-   * Shared so views outside the chat tree (e.g. the workspace sidebar's
-   * Progress tab) can decide whether to render an "active" task list view
-   * or fall back to an "idle/done" view without prop drilling.
-   */
-  isStreaming: boolean;
+  pendingFileParts: StoredAttachmentPart[];
+  pendingUploadSends: Record<string, PendingUploadSend>;
 
   getCoord: (sessionId: string) => SessionCoord;
   updateCoord: (sessionId: string, patch: Partial<SessionCoord>) => void;
   clearSession: (sessionId: string) => void;
   getMessageSnapshot: (sessionId: string) => UIMessage[];
   setMessageSnapshot: (sessionId: string, messages: UIMessage[]) => void;
-  setStreaming: (streaming: boolean) => void;
 
   setPendingFirstSend: (send: PendingFirstSend | null) => void;
   bindPendingFirstSendToSession: (sessionId: string) => void;
-  setPendingFileParts: (parts: FileUIPart[]) => void;
+  setPendingFileParts: (parts: StoredAttachmentPart[]) => void;
+  setPendingUploadSend: (
+    sessionId: string | null,
+    send: PendingUploadSend,
+  ) => void;
+  /** Clears the session's placeholder; with `send`, only if it is still the
+   *  one shown, so a finished upload cannot clear a newer one. */
+  clearPendingUploadSend: (
+    sessionId: string | null,
+    send?: PendingUploadSend,
+  ) => void;
   /** Read-and-clear; used by the post-session-creation flush effect. */
   takePendingFirstSend: (sessionId: string) => {
     send: PendingFirstSend | null;
-    parts: FileUIPart[];
+    parts: StoredAttachmentPart[];
   };
 
   /** Test-only: wipe all per-session state. */
   resetAll: () => void;
+}
+
+/**
+ * `published` is the session's array in `messageSnapshots` and `digest` what
+ * its subscribers derive from it; `latest` is the newest array written, which
+ * differs from `published` only in what no subscriber reads. Kept outside the
+ * state on purpose: recording a text-only write here notifies no subscriber
+ * and writes nothing to sessionStorage.
+ */
+const snapshotEntries = new Map<
+  string,
+  { published: UIMessage[]; latest: UIMessage[]; digest: string | null }
+>();
+
+/** `null` when the messages cannot be digested, which publishes every write. */
+function digestSnapshot(messages: UIMessage[]): string | null {
+  try {
+    return getMessageSnapshotDigest(messages);
+  } catch {
+    return null;
+  }
 }
 
 export const useCopilotStreamStore = create<CopilotStreamStore>()(
@@ -106,7 +174,7 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
       pendingFirstSend: null,
       pendingFirstSendSessionId: null,
       pendingFileParts: [],
-      isStreaming: false,
+      pendingUploadSends: {},
 
       getCoord(sessionId) {
         return { ...defaultCoord, ...get().sessions[sessionId] };
@@ -123,6 +191,7 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
         }));
       },
       clearSession(sessionId) {
+        snapshotEntries.delete(sessionId);
         set((state) => {
           const sessions = { ...state.sessions };
           delete sessions[sessionId];
@@ -137,9 +206,31 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
         });
       },
       getMessageSnapshot(sessionId) {
-        return get().messageSnapshots[sessionId] ?? [];
+        const published = get().messageSnapshots[sessionId];
+        const entry = snapshotEntries.get(sessionId);
+        // A snapshot replaced through `setState` outranks the recorded one.
+        if (entry && entry.published === published) return entry.latest;
+        return published ?? [];
       },
       setMessageSnapshot(sessionId, messages) {
+        const published = get().messageSnapshots[sessionId];
+        const entry = snapshotEntries.get(sessionId);
+        const current =
+          published && entry?.published === published ? entry : undefined;
+        if (current && messages === published) {
+          current.latest = messages;
+          return;
+        }
+        const digest = digestSnapshot(messages);
+        if (current && digest !== null && current.digest === digest) {
+          current.latest = messages;
+          return;
+        }
+        snapshotEntries.set(sessionId, {
+          published: messages,
+          latest: messages,
+          digest,
+        });
         set((state) => ({
           messageSnapshots: {
             ...state.messageSnapshots,
@@ -147,20 +238,40 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
           },
         }));
       },
-      setStreaming(streaming) {
-        if (get().isStreaming === streaming) return;
-        set({ isStreaming: streaming });
-      },
-
       setPendingFirstSend(send) {
         set({ pendingFirstSend: send, pendingFirstSendSessionId: null });
       },
       bindPendingFirstSendToSession(sessionId) {
         if (!get().pendingFirstSend) return;
-        set({ pendingFirstSendSessionId: sessionId });
+        set((state) => {
+          const unbound = state.pendingUploadSends[UNBOUND_UPLOAD_KEY];
+          if (!unbound) return { pendingFirstSendSessionId: sessionId };
+          const pendingUploadSends = { ...state.pendingUploadSends };
+          delete pendingUploadSends[UNBOUND_UPLOAD_KEY];
+          pendingUploadSends[sessionId] = unbound;
+          return { pendingFirstSendSessionId: sessionId, pendingUploadSends };
+        });
       },
       setPendingFileParts(parts) {
         set({ pendingFileParts: parts });
+      },
+      setPendingUploadSend(sessionId, send) {
+        set((state) => ({
+          pendingUploadSends: {
+            ...state.pendingUploadSends,
+            [pendingUploadKey(sessionId)]: send,
+          },
+        }));
+      },
+      clearPendingUploadSend(sessionId, send) {
+        set((state) => {
+          const key = pendingUploadKey(sessionId);
+          const current = state.pendingUploadSends[key];
+          if (!current || (send && current !== send)) return {};
+          const pendingUploadSends = { ...state.pendingUploadSends };
+          delete pendingUploadSends[key];
+          return { pendingUploadSends };
+        });
       },
       takePendingFirstSend(sessionId) {
         const {
@@ -180,13 +291,14 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
       },
 
       resetAll() {
+        snapshotEntries.clear();
         set({
           sessions: {},
           messageSnapshots: {},
           pendingFirstSend: null,
           pendingFirstSendSessionId: null,
           pendingFileParts: [],
-          isStreaming: false,
+          pendingUploadSends: {},
         });
       },
     }),

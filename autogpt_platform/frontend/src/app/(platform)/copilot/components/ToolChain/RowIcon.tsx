@@ -32,6 +32,7 @@ import {
   Settings01Icon,
   SlidersHorizontalIcon,
   TerminalIcon,
+  UserGroupIcon,
   WrenchIcon,
 } from "@hugeicons/core-free-icons";
 import Image from "next/image";
@@ -48,9 +49,9 @@ interface ProviderIconProps extends RowIconProps {
 
 export function RowIcon({ row }: RowIconProps) {
   if (row.state === "error") {
-    return <Icon icon={AlertDiamondIcon} size={16} className="text-red-500" />;
+    return <Icon icon={AlertDiamondIcon} size={16} className="text-error" />;
   }
-  const cls = "text-zinc-600";
+  const cls = "text-foreground-secondary";
   switch (row.category) {
     case "narration":
       return <Icon icon={AiEditingIcon} size={16} className={cls} />;
@@ -107,6 +108,8 @@ export function RowIcon({ row }: RowIconProps) {
       return <Icon icon={ConnectIcon} size={16} className={cls} />;
     case "feature":
       return <Icon icon={MegaphoneIcon} size={16} className={cls} />;
+    case "team":
+      return <Icon icon={UserGroupIcon} size={16} className={cls} />;
     case "question":
       return <Icon icon={MessageQuestionIcon} size={16} className={cls} />;
     case "info":

@@ -14,7 +14,7 @@ const GENERIC_CHECKLIST = [
 // opens on an empty "Recommended" section.
 const BRAIN_DUMP_CHECKLIST = [
   "Reading your brain dump",
-  "Briefing AutoPilot on your work",
+  "Briefing Otto on your work",
   "Building your space",
   "Finding tools for your work",
 ] as const;
@@ -35,13 +35,7 @@ const RECOMMENDATIONS_MAX_WAIT_MS = 15_000;
 // reads as "almost there", not "stuck at done".
 const WAITING_PROGRESS_CAP = 95;
 
-export function usePreparingStep({
-  onComplete,
-  isBrainDumpEnabled,
-}: {
-  onComplete: () => void;
-  isBrainDumpEnabled: boolean;
-}) {
+export function usePreparingStep({ onComplete }: { onComplete: () => void }) {
   const [started, setStarted] = useState(false);
   const [completedItems, setCompletedItems] = useState(0);
   const [progress, setProgress] = useState(0);
@@ -50,8 +44,10 @@ export function usePreparingStep({
 
   // Only a user who actually dumped gets the honest copy; a skip would
   // make "Reading your brain dump" a lie.
-  const isDumpPath = isBrainDumpEnabled && peekIntroPath() === "A";
-  const checklist = isDumpPath ? BRAIN_DUMP_CHECKLIST : GENERIC_CHECKLIST;
+  const isDumpPath = peekIntroPath() === "A";
+  const checklist: readonly string[] = isDumpPath
+    ? BRAIN_DUMP_CHECKLIST
+    : GENERIC_CHECKLIST;
   const duration = isDumpPath ? BRAIN_DUMP_DURATION_MS : GENERIC_DURATION_MS;
   const stepInterval = duration / checklist.length;
 
@@ -105,19 +101,15 @@ export function usePreparingStep({
 
       const pct = Math.min(100, (elapsed / duration) * 100);
       const items = Math.min(
-        checklist.length,
-        Math.floor(elapsed / stepInterval) + 1,
+        checklist.length - 1,
+        Math.floor(elapsed / stepInterval),
       );
       // The last step stays unchecked while its work is genuinely still
       // running server-side.
       setProgress(
         isWaitingOnRecommendations ? Math.min(pct, WAITING_PROGRESS_CAP) : pct,
       );
-      setCompletedItems(
-        isWaitingOnRecommendations
-          ? Math.min(items, checklist.length - 1)
-          : items,
-      );
+      setCompletedItems(items);
     }, 50);
 
     return () => clearInterval(progressInterval);

@@ -60,6 +60,23 @@ class ExpertNotFoundError(NotFoundError):
         return f"Expert {self.expert_id} not found"
 
 
+class ExpertWriteNotReadableError(Exception):
+    """A write landed, but the expert could not be read back afterwards.
+
+    Deliberately not an ``ExpertNotFoundError``: the row vanishing *after* a
+    committed update is the opposite of the update being refused, and callers
+    must never fold the two together and report a landed change as "nothing
+    was changed".
+    """
+
+    def __init__(self, expert_id: str):
+        super().__init__(expert_id)
+        self.expert_id = expert_id
+
+    def __str__(self) -> str:
+        return f"Expert {self.expert_id} was updated but could not be read back"
+
+
 class ExpertPrivateTenancyNotFoundError(MissingConfigError):
     def __init__(self, expert_id: str):
         super().__init__(expert_id)
@@ -69,7 +86,66 @@ class ExpertPrivateTenancyNotFoundError(MissingConfigError):
         return f"Private tenancy for expert {self.expert_id} not found"
 
 
-class GraphNotFoundError(ValueError):
+class ExpertTemplateNotFoundError(Exception):
+    """The roster template a hire referred to no longer exists."""
+
+    def __init__(self, template_id: str):
+        # args mirrors __init__ so the RPC layer can reconstruct the
+        # exception; __str__ keeps the user-facing rendering.
+        super().__init__(template_id)
+        self.template_id = template_id
+
+    def __str__(self) -> str:
+        return f"Expert template {self.template_id} not found"
+
+
+class ExpertHireUnavailableError(Exception):
+    """The expert workspace could not be provisioned for a hire."""
+
+    def __init__(self, expert_id: str):
+        super().__init__(expert_id)
+        self.expert_id = expert_id
+
+    def __str__(self) -> str:
+        return f"Expert {self.expert_id} could not be made available"
+
+
+class ExpertLimitExceededError(Exception):
+    """The account is already at its active-expert cap."""
+
+    def __init__(self, limit: int):
+        super().__init__(limit)
+        self.limit = limit
+
+    def __str__(self) -> str:
+        return f"Active expert limit of {self.limit} reached"
+
+
+class RaisedExpertLifetimeLimitExceededError(Exception):
+    """The account has raised its lifetime maximum of experts."""
+
+    def __init__(self, limit: int):
+        super().__init__(limit)
+        self.limit = limit
+
+    def __str__(self) -> str:
+        return f"Raised expert lifetime limit of {self.limit} reached"
+
+
+class RoutineNotFoundError(NotFoundError):
+    """No such routine on this owner."""
+
+
+class RoutineUnansweredAsksError(ValueError):
+    """The routine still has questions nobody answered.
+
+    A seeded proposal names what it needs to know — which repo, which inbox,
+    what hour. Scheduling it before those are answered would run it against
+    guesses on somebody's account, every day, unattended.
+    """
+
+
+class GraphNotFoundError(NotFoundError):
     """The requested Agent Graph was not found, resulting in an error condition"""
 
 
@@ -79,6 +155,11 @@ class NeedConfirmation(Exception):
 
 class NotAuthorizedError(ValueError):
     """The user is not authorized to perform the requested operation"""
+
+
+class UserBannedError(NotAuthorizedError):
+    """The owner's account is banned. Raised where new work would start for it;
+    background callers skip the run."""
 
 
 class GraphNotAccessibleError(NotAuthorizedError):
@@ -112,10 +193,30 @@ class InsufficientBalanceError(ValueError):
         return self.message
 
 
+class UserPaywalledError(Exception):
+    """User has no entitlement to run a paywalled feature (NO_TIER tier
+    + ``ENABLE_PLATFORM_PAYMENT`` on).
+
+    Raised by ``add_graph_execution`` and other deep enqueue paths so
+    that *every* execution entry point (HTTP route, scheduled cron,
+    webhook trigger, external API, internal copilot tool) gets the same
+    gate without each one having to remember a route-level dependency.
+    Routes wrap this into HTTP 402; background tasks log and abandon
+    the run.
+    """
+
+    def __init__(
+        self,
+        message: str = "A subscription is required to run this feature.",
+    ) -> None:
+        super().__init__(message)
+
+
 class ExecutionFailureReason(str, Enum):
     """Structured reasons for terminal graph execution failures."""
 
     INSUFFICIENT_BALANCE = "insufficient_balance"
+    ENTITLEMENT_REQUIRED = "entitlement_required"
 
 
 # Keep this legacy-only fallback synchronized with the equivalent predicates in
@@ -143,6 +244,8 @@ def get_execution_failure_reason(
     """Classify trusted exceptions, with an opt-in fallback for persisted text."""
     if isinstance(error, InsufficientBalanceError):
         return ExecutionFailureReason.INSUFFICIENT_BALANCE
+    if isinstance(error, UserPaywalledError):
+        return ExecutionFailureReason.ENTITLEMENT_REQUIRED
     if (
         allow_legacy_text
         and isinstance(error, str)
@@ -252,9 +355,9 @@ class WebhookSetupUnavailableError(Exception):
 
 
 class ExpertRunPausedError(ValueError):
-    """An expert-attributed scheduled/triggered run was refused because the
-    expert's schedules are paused (weekly credit budget reached or archive).
-    Chat-initiated runs are never gated by this."""
+    """An expert-attributed run (schedule, trigger, or ``run_agent`` from her
+    chat) was refused because the expert's schedules are paused (weekly credit
+    budget reached or archive)."""
 
     def __init__(self, message: str, expert_id: str):
         super().__init__(message)
@@ -266,3 +369,13 @@ class ExpertRunPausedError(ValueError):
 
     def __str__(self):
         return self.message
+
+
+class ConflictError(Exception):
+    """The request conflicts with the resource's current state (HTTP 409): a name
+    already taken, or a lost race with a concurrent change, which a retry may win."""
+
+
+class EmailUndeliverableError(ValueError):
+    """The mail provider won't deliver to this address (an earlier hard bounce,
+    spam complaint or suppression), so retrying the send can't succeed."""

@@ -10,12 +10,14 @@ import {
   FormMessage,
 } from "@/components/molecules/Form/Form";
 
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
+
 import { useApiKeyConnectForm } from "./useApiKeyConnectForm";
 
 interface Props {
   provider: string;
   providerName: string;
-  onSuccess: () => void;
+  onSuccess: (credential?: CredentialsMetaResponse) => void;
 }
 
 export function ApiKeyConnectForm({

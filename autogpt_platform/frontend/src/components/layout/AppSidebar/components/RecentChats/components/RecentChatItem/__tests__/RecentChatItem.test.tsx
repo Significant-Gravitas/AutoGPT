@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RecentChatItem } from "../RecentChatItem";
@@ -32,12 +32,13 @@ function makeProps(
     onCancelRename: vi.fn(),
     isExporting: false,
     isDeleting: false,
-    chatSharingEnabled: false,
     chatPinningEnabled: false,
     onPin: vi.fn(),
     onRename: vi.fn(),
     onExport: vi.fn(),
     onShare: vi.fn(),
+    isLearningEnabled: false,
+    onExcludeFromLearning: vi.fn(),
     onDelete: vi.fn(),
     ...overrides,
   };
@@ -61,7 +62,7 @@ describe("RecentChatItem — display", () => {
   it("links to the session and shows its title", () => {
     renderItem(makeProps());
     const link = screen.getByRole("link", { name: /my chat/i });
-    expect(link.getAttribute("href")).toBe("/copilot?sessionId=s1");
+    expect(link.getAttribute("href")).toBe("/home?sessionId=s1");
   });
 
   it("falls back to 'Untitled chat' when the title is empty", () => {
@@ -89,6 +90,20 @@ describe("RecentChatItem — editing mode", () => {
     const input = screen.getByLabelText("Rename chat");
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onSubmitRename).toHaveBeenCalledWith("s1");
+  });
+
+  it("ignores Enter while an IME is still composing", () => {
+    const onSubmitRename = vi.fn();
+    renderItem(
+      makeProps({ isEditing: true, editingTitle: "新しい", onSubmitRename }),
+    );
+
+    fireEvent.keyDown(screen.getByLabelText("Rename chat"), {
+      key: "Enter",
+      isComposing: true,
+    });
+
+    expect(onSubmitRename).not.toHaveBeenCalled();
   });
 
   it("cancels on Escape", () => {
@@ -154,23 +169,36 @@ describe("RecentChatItem — actions menu", () => {
     expect(onDelete).toHaveBeenCalledWith("s1", "My chat");
   });
 
-  it("hides the Share action when sharing is disabled", async () => {
-    renderItem(makeProps({ chatSharingEnabled: false }));
-
-    openActions();
-    await screen.findByRole("menuitem", { name: /rename/i });
-    expect(screen.queryByRole("menuitem", { name: /share chat/i })).toBeNull();
-  });
-
-  it("shows and triggers the Share action when sharing is enabled", async () => {
+  it("offers chat sharing without a feature flag", async () => {
     const onShare = vi.fn();
-    renderItem(makeProps({ chatSharingEnabled: true, onShare }));
+    renderItem(makeProps({ onShare }));
 
     openActions();
     fireEvent.click(
       await screen.findByRole("menuitem", { name: /share chat/i }),
     );
     expect(onShare).toHaveBeenCalledWith("s1");
+  });
+
+  it("offers Exclude from learning only while skill learning is on", async () => {
+    const onExcludeFromLearning = vi.fn();
+    renderItem(makeProps({ isLearningEnabled: true, onExcludeFromLearning }));
+
+    openActions();
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /exclude from learning/i }),
+    );
+    expect(onExcludeFromLearning).toHaveBeenCalledWith("s1");
+  });
+
+  it("hides Exclude from learning while skill learning is off", async () => {
+    renderItem(makeProps());
+
+    openActions();
+    await screen.findByRole("menuitem", { name: /rename/i });
+    expect(
+      screen.queryByRole("menuitem", { name: /exclude from learning/i }),
+    ).toBeNull();
   });
 
   it("shows an exporting label while an export is in flight", async () => {

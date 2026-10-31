@@ -61,6 +61,29 @@ async def test_release_stops_heartbeat_before_unlocking():
 
 
 @pytest.mark.asyncio
+async def test_oauth_handler_lease_heartbeats_during_long_runtime_use():
+    credentials = _provider_runtime_credentials().model_copy(
+        update={"refresh_strategy": "oauth_handler"}
+    )
+    lock = AsyncMock()
+    lock.locked.return_value = True
+    lock.owned.return_value = True
+    lock.timeout = 0.03
+    lock.extend.return_value = True
+    lease = CredentialLease(credentials, lock, AsyncMock())
+
+    lease.start_heartbeat()
+    for _ in range(100):
+        if lock.extend.await_count:
+            break
+        await asyncio.sleep(0.001)
+    await lease.release()
+
+    lock.extend.assert_awaited()
+    lock.release.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_wait_for_failure_reports_heartbeat_loss_immediately():
     credentials = _provider_runtime_credentials()
     lock = AsyncMock()

@@ -1,57 +1,91 @@
 "use client";
 
 import { getRaisedExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/atoms/Avatar/Avatar";
 import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { InstallWorkflowPicker } from "@/components/molecules/InstallWorkflowPicker/InstallWorkflowPicker";
+import {
+  TabsLine,
+  TabsLineContent,
+  TabsLineList,
+  TabsLineTrigger,
+} from "@/components/molecules/TabsLine/TabsLine";
 import { cn } from "@/lib/utils";
-import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
-import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
-import { Icon } from "@/components/atoms/Icon/Icon";
-import Link from "next/link";
-import { notFound, useParams, useRouter } from "next/navigation";
-import { getLastRunLabel } from "../helpers";
+import {
+  AiBrain01Icon,
+  Calendar03Icon,
+  ComputerIcon,
+  DashboardSquare01Icon,
+  Folder01Icon,
+  PlugSocketIcon,
+  Settings01Icon,
+  SparklesIcon,
+  WorkflowSquare01Icon,
+} from "@hugeicons/core-free-icons";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { BackToTeamLink } from "../components/BackToTeamLink";
+import { ExpertChatDrawer } from "../components/ExpertChatDrawer/ExpertChatDrawer";
+import { expertToChatTarget } from "../components/ExpertChatDrawer/helpers";
 import { FireExpertDialog } from "../components/FireExpertDialog/FireExpertDialog";
-import { FireExpertMenu } from "../components/FireExpertMenu/FireExpertMenu";
-import { ExpertAboutSection } from "./components/ExpertAboutSection";
+import { SoulDrawer } from "../components/SoulDrawer/SoulDrawer";
+import {
+  getExpertCover,
+  getLastRunLabel,
+  PROFILE_TABS_INDICATOR_CLASS,
+  PROFILE_TABS_LIST_CLASS,
+  PROFILE_TABS_TRIGGER_CLASS,
+} from "../helpers";
+import { ExpertComputerSection } from "./components/ExpertComputerSection/ExpertComputerSection";
+import { ExpertDetailHeader } from "./components/ExpertDetailHeader";
+import { ExpertFilesSection } from "./components/ExpertFilesSection/ExpertFilesSection";
+import { ExpertIntegrationsSection } from "./components/ExpertIntegrationsSection/ExpertIntegrationsSection";
+import { ExpertModeSection } from "./components/ExpertModeSection/ExpertModeSection";
+import { ExpertNeedsYouSection } from "./components/ExpertNeedsYouSection/ExpertNeedsYouSection";
+import { ExpertOverview } from "./components/ExpertOverview/ExpertOverview";
 import { ExpertSchedulesSection } from "./components/ExpertSchedulesSection";
-import { ExpertWorkSection } from "./components/ExpertWorkSection/ExpertWorkSection";
+import { ExpertSettingsSection } from "./components/ExpertSettingsSection";
+import { ExpertSkillsSection } from "./components/ExpertSkillsSection";
+import { ExpertSoulSection } from "./components/ExpertSoulSection";
 import { ExpertWorkflowsSection } from "./components/ExpertWorkflowsSection";
 import { useExpertDetailPage } from "./useExpertDetailPage";
 
 const MAIN_CLASS =
-  "container min-h-screen space-y-8 pb-20 pt-8 sm:px-8 md:px-12";
+  "container min-h-screen max-w-[1180px] space-y-5 px-4 pb-16 pt-6 sm:px-8 md:px-12";
 
-function BackToTeamLink() {
-  return (
-    <Link
-      href="/team"
-      className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-800"
-      data-testid="expert-back-to-team"
-    >
-      <Icon icon={ArrowLeft02Icon} size={14} />
-      Back to Team
-    </Link>
-  );
-}
+const TABS = [
+  { value: "basics", label: "Overview", icon: DashboardSquare01Icon },
+  { value: "soul", label: "Soul", icon: AiBrain01Icon },
+  { value: "schedules", label: "Schedules", icon: Calendar03Icon },
+  { value: "workflows", label: "Workflows", icon: WorkflowSquare01Icon },
+  { value: "files", label: "Files", icon: Folder01Icon },
+  { value: "computer", label: "Computer", icon: ComputerIcon },
+  { value: "integrations", label: "Integrations", icon: PlugSocketIcon },
+  { value: "skills", label: "Skills", icon: SparklesIcon },
+  { value: "settings", label: "Settings", icon: Settings01Icon },
+] as const;
 
 export default function ExpertDetailPage() {
   const { expertId } = useParams<{ expertId: string }>();
   const router = useRouter();
-  const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const initialTab = TABS.some((tab) => tab.value === requestedTab)
+    ? (requestedTab as (typeof TABS)[number]["value"])
+    : "basics";
+  const requestedSkill = searchParams.get("skill");
+  const requestedVersion = searchParams.get("version");
+
   const {
     expert,
     isLoading,
     isError,
     refetch,
     schedules,
+    activity,
+    isActivityLoading,
+    isActivityError,
     isPickerOpen,
     openPicker,
     closePicker,
@@ -60,23 +94,28 @@ export default function ExpertDetailPage() {
     isFireOpen,
     openFire,
     closeFire,
+    isSoulOpen,
+    soulDrawerKey,
+    toggleSoul,
+    closeSoul,
+    isChatOpen,
+    chatDrawerKey,
+    chatSeed,
+    toggleChat,
+    openChatWithPrompt,
+    closeChat,
   } = useExpertDetailPage({
     expertId,
-    enabled: Boolean(enabled) && ready,
   });
 
-  if (!ready || isLoading) {
+  if (isLoading) {
     return (
       <main className={MAIN_CLASS}>
-        <Skeleton className="h-32 w-full rounded-2xl" />
-        <Skeleton className="h-48 w-full rounded-2xl" />
-        <Skeleton className="h-48 w-full rounded-2xl" />
+        <Skeleton className="h-20 w-full rounded-xl" />
+        <Skeleton className="h-10 w-full rounded-xl" />
+        <Skeleton className="h-48 w-full rounded-xl" />
       </main>
     );
-  }
-
-  if (!enabled) {
-    notFound();
   }
 
   if (isError || !expert) {
@@ -92,129 +131,165 @@ export default function ExpertDetailPage() {
     );
   }
 
-  const accent = getRaisedExpertAccent(expert.role, expert.color);
   const isPaused = Boolean(expert.schedules_paused_at);
 
   return (
-    <main className={MAIN_CLASS}>
-      <BackToTeamLink />
+    <div className="flex w-full">
+      <main className={cn(MAIN_CLASS, "min-w-0 flex-1")}>
+        <BackToTeamLink />
+        <ExpertDetailHeader
+          expert={expert}
+          onEditSoul={toggleSoul}
+          onChat={toggleChat}
+        />
 
-      <header
-        className={cn(
-          "relative flex flex-col gap-5 overflow-hidden rounded-2xl border border-zinc-200/60 p-6 sm:flex-row sm:items-center",
-          accent.washWide,
-        )}
-      >
-        <Avatar className="h-20 w-20 bg-white shadow-sm ring-1 ring-black/5">
-          {expert.avatar_url ? (
-            <AvatarImage src={expert.avatar_url} alt={expert.name} />
-          ) : null}
-          <AvatarFallback>{expert.name}</AvatarFallback>
-        </Avatar>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-3xl font-semibold tracking-[-0.02em] text-zinc-900">
-              {expert.name}
-            </h1>
-            <span
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium",
-                accent.pill,
-              )}
+        {isPaused ? (
+          <div className="flex items-center justify-between gap-2 rounded-lg bg-warning-surface px-4 py-2.5 ring-1 ring-warning-border ring-inset">
+            <Text variant="small" tone="warning">
+              Schedules paused
+            </Text>
+            <Button
+              variant="secondary"
+              size="small"
+              loading={isResuming}
+              onClick={resumeSchedules}
             >
-              <Icon icon={accent.roleIcon} size={14} />
-              {expert.role}
-            </span>
+              Resume schedules
+            </Button>
           </div>
-          {expert.tagline ? (
-            <p className="mt-1.5 text-base text-zinc-500">{expert.tagline}</p>
-          ) : null}
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Button
-            as="NextLink"
-            href={`/copilot?expertId=${expert.id}`}
-            variant="primary"
-            size="small"
+        ) : null}
+
+        <ExpertNeedsYouSection expert={expert} />
+
+        <TabsLine variant="compact" defaultValue={initialTab}>
+          <TabsLineList
+            flush={false}
+            // oxlint-disable-next-line design-system/require-static-classes -- the pill tabs share their classes with team/autopilot; TabsLine has no pill variant (src/components is P9's)
+            className={PROFILE_TABS_LIST_CLASS}
+            // oxlint-disable-next-line design-system/require-static-classes -- the pill tabs share their classes with team/autopilot; TabsLine has no pill variant (src/components is P9's)
+            indicatorClassName={PROFILE_TABS_INDICATOR_CLASS}
           >
-            Chat
-          </Button>
-          <FireExpertMenu
-            expertName={expert.name}
-            onFire={openFire}
-            testId="expert-detail-actions"
-            triggerClassName="bg-white/70 text-zinc-500 ring-1 ring-inset ring-black/5 hover:bg-white hover:text-zinc-800"
-          />
-        </div>
-      </header>
-
-      {isPaused ? (
-        <div className="flex items-center justify-between gap-2 rounded-xl bg-amber-50 px-4 py-3 ring-1 ring-inset ring-amber-200">
-          <Text variant="small" className="text-amber-700">
-            Schedules paused
-          </Text>
-          <Button
-            variant="secondary"
-            size="small"
-            loading={isResuming}
-            onClick={resumeSchedules}
-          >
-            Resume schedules
-          </Button>
-        </div>
-      ) : null}
-
-      <ExpertAboutSection text={expert.bio || expert.identity} />
-
-      {expert.skills && expert.skills.length > 0 ? (
-        <section>
-          <div className="mb-2.5 text-xs font-medium uppercase tracking-[0.14em] text-zinc-400">
-            Skills
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {expert.skills.map((skill) => (
-              <span
-                key={skill}
-                className="rounded-full bg-zinc-50 px-3 py-1.5 text-sm text-zinc-600 ring-1 ring-inset ring-zinc-200/80"
+            {TABS.map((tab) => (
+              <TabsLineTrigger
+                // oxlint-disable-next-line design-system/require-static-classes -- the pill tabs share their classes with team/autopilot; TabsLine has no pill variant (src/components is P9's)
+                className={PROFILE_TABS_TRIGGER_CLASS}
+                key={tab.value}
+                value={tab.value}
+                icon={tab.icon}
               >
-                {skill}
-              </span>
+                <span className="max-sm:sr-only">{tab.label}</span>
+              </TabsLineTrigger>
             ))}
-          </div>
-        </section>
-      ) : null}
+          </TabsLineList>
 
-      <ExpertWorkSection
-        expertId={expert.id}
-        enabled={Boolean(enabled) && ready}
-      />
+          <TabsLineContent value="basics">
+            <ExpertOverview
+              expert={expert}
+              activity={activity}
+              isActivityLoading={isActivityLoading}
+              isActivityError={isActivityError}
+              onChat={toggleChat}
+            />
+          </TabsLineContent>
 
-      <ExpertSchedulesSection
-        expertName={expert.name}
-        schedules={schedules}
-        lastRunLabel={getLastRunLabel(expert)}
-      />
+          <TabsLineContent value="soul">
+            <ExpertSoulSection
+              identity={expert.identity}
+              voicePreferences={expert.voice_preferences}
+              boundaries={expert.boundaries}
+            />
+          </TabsLineContent>
 
-      <ExpertWorkflowsSection
-        expert={expert}
-        accentIconClass={accent.icon}
-        onInstallWorkflow={openPicker}
-      />
+          <TabsLineContent value="schedules">
+            <ExpertSchedulesSection
+              title={`${expert.name}'s Schedules`}
+              accentClassName={
+                getRaisedExpertAccent(expert.role, expert.color).pill
+              }
+              expertName={expert.name}
+              expertId={expert.id}
+              workflows={expert.workflows}
+              schedules={schedules}
+              lastRunLabel={getLastRunLabel(expert)}
+            />
+          </TabsLineContent>
 
-      <InstallWorkflowPicker
-        mode="pick-workflow"
-        expertId={expert.id}
-        open={isPickerOpen}
-        onClose={closePicker}
-      />
+          <TabsLineContent value="workflows">
+            <ExpertWorkflowsSection
+              expertName={expert.name}
+              expertId={expert.id}
+              workflows={expert.workflows}
+              coverColor={getExpertCover(expert).color}
+              onInstallWorkflow={openPicker}
+              onAskWorkflow={openChatWithPrompt}
+            />
+          </TabsLineContent>
 
-      <FireExpertDialog
-        expertId={expert.id}
-        expertName={expert.name}
-        open={isFireOpen}
-        onClose={closeFire}
-        onFired={() => router.push("/team")}
+          <TabsLineContent value="files">
+            <ExpertFilesSection expertId={expert.id} expertName={expert.name} />
+          </TabsLineContent>
+
+          <TabsLineContent value="computer">
+            <ExpertComputerSection
+              expertId={expert.id}
+              expertName={expert.name}
+            />
+          </TabsLineContent>
+
+          <TabsLineContent value="integrations">
+            <ExpertIntegrationsSection
+              expertId={expert.id}
+              expertName={expert.name}
+            />
+          </TabsLineContent>
+
+          <TabsLineContent value="skills">
+            <ExpertSkillsSection
+              expert={expert}
+              accentClassName={
+                getRaisedExpertAccent(expert.role, expert.color).pill
+              }
+              initialSkill={requestedSkill}
+              initialVersionId={requestedVersion}
+            />
+          </TabsLineContent>
+
+          <TabsLineContent value="settings">
+            <div className="flex flex-col gap-4">
+              <ExpertModeSection expert={expert} />
+              <ExpertSettingsSection expert={expert} onFire={openFire} />
+            </div>
+          </TabsLineContent>
+        </TabsLine>
+
+        <InstallWorkflowPicker
+          mode="pick-workflow"
+          expertId={expert.id}
+          open={isPickerOpen}
+          onClose={closePicker}
+        />
+
+        <FireExpertDialog
+          expertId={expert.id}
+          expertName={expert.name}
+          open={isFireOpen}
+          onClose={closeFire}
+          onFired={() => router.push("/team")}
+        />
+      </main>
+
+      <SoulDrawer
+        key={soulDrawerKey}
+        expert={isSoulOpen ? expert : null}
+        onClose={closeSoul}
       />
-    </main>
+      <ExpertChatDrawer
+        target={isChatOpen ? expertToChatTarget(expert) : null}
+        threadKey={chatDrawerKey}
+        seedPrompt={chatSeed}
+        onClose={closeChat}
+        resumeLatest={false}
+      />
+    </div>
   );
 }

@@ -5,6 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { Variants } from "framer-motion";
 
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { cn } from "@/lib/utils";
 
 import { DeleteConfirmDialog } from "../DeleteConfirmDialog/DeleteConfirmDialog";
 import { IntegrationsListEmpty } from "../IntegrationsListEmpty/IntegrationsListEmpty";
@@ -35,10 +36,19 @@ const REDUCED_MOTION_ITEM_VARIANTS: Variants = {
   show: { opacity: 1 },
 };
 
-export function IntegrationsList() {
+interface Props {
+  query: string;
+  onQueryChange: (query: string) => void;
+  /** Background for the sticky rows; it must match the surface below. */
+  stickyClassName: string;
+}
+
+export function IntegrationsList({
+  query,
+  onQueryChange: setQuery,
+  stickyClassName,
+}: Props) {
   const {
-    query,
-    setQuery,
     providers,
     isLoading,
     isError,
@@ -50,7 +60,7 @@ export function IntegrationsList() {
     isDeleting,
     isDeletingId,
     buildTargets,
-  } = useIntegrationsList();
+  } = useIntegrationsList(query);
   const reduceMotion = useReducedMotion();
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
   const [pendingForceIds, setPendingForceIds] = useState<string[]>([]);
@@ -75,12 +85,17 @@ export function IntegrationsList() {
     await requestDelete(ids, true);
   }
 
-  const pendingNames = buildTargets(pendingDeleteIds).map(
-    (t) => t.name ?? t.provider,
-  );
+  const pendingTargets = buildTargets(pendingDeleteIds);
+  const pendingNames = pendingTargets.map((t) => t.name ?? t.provider);
   const pendingForceNames = buildTargets(pendingForceIds).map(
     (t) => t.name ?? t.provider,
   );
+  // The generic warning talks about agents losing access, which is not what
+  // removing a ChatGPT connection does: it stops new ChatGPT-backed chats and
+  // leaves everything already said in them alone.
+  const pendingNotice = pendingTargets.some((t) => t.provider === "codex")
+    ? "New chats can no longer run on your ChatGPT plan — they fall back to the connection AutoGPT picks. Your chat history is kept, and your other integrations are unaffected."
+    : undefined;
 
   if (isLoading) {
     return (
@@ -108,7 +123,12 @@ export function IntegrationsList() {
 
   return (
     <div className="flex w-full flex-col gap-3">
-      <div className="sticky top-0 z-10 -mx-1 bg-[#F9F9FA] px-1 pb-1 pt-1">
+      <div
+        className={cn(
+          "sticky top-0 z-10 -mx-1 px-1 pt-1 pb-1",
+          stickyClassName,
+        )}
+      >
         <IntegrationsSearch value={query} onChange={setQuery} />
       </div>
 
@@ -132,8 +152,10 @@ export function IntegrationsList() {
                 : { opacity: 0, height: 0, marginBottom: -12 }
             }
             transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
-            className="sticky top-2 z-20 bg-[#F9F9FA] sm:top-0"
-            style={{ overflow: "hidden" }}
+            className={cn(
+              "sticky top-2 z-20 overflow-hidden sm:top-0",
+              stickyClassName,
+            )}
           >
             <IntegrationsSelectionBar
               selectedCount={selection.selectedCount}
@@ -181,6 +203,7 @@ export function IntegrationsList() {
           if (!open) setPendingDeleteIds([]);
         }}
         itemNames={pendingNames}
+        notice={pendingNotice}
         isPending={isDeleting}
         onConfirm={confirmDelete}
       />

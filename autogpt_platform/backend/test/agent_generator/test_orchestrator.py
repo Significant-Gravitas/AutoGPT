@@ -9,6 +9,8 @@ Covers:
 
 import uuid
 
+import pytest
+
 from backend.copilot.tools.agent_generator.fixer import AgentFixer
 from backend.copilot.tools.agent_generator.helpers import (
     AGENT_EXECUTOR_BLOCK_ID,
@@ -141,7 +143,7 @@ class TestFixOrchestratorBlocks:
         assert defaults["retry"] == 3
         assert defaults["multiple_tool_calls"] is False
         assert defaults["execution_mode"] == "extended_thinking"
-        assert defaults["model"] == "claude-opus-4-6"
+        assert defaults["model"] == "claude-opus-5-5"
         assert len(fixer.fixes_applied) == 6
 
     def test_preserves_existing_values(self):
@@ -196,7 +198,7 @@ class TestFixOrchestratorBlocks:
         assert defaults["retry"] == 3  # filled
         assert defaults["multiple_tool_calls"] is False  # filled
         assert defaults["execution_mode"] == "extended_thinking"  # filled
-        assert defaults["model"] == "claude-opus-4-6"  # filled
+        assert defaults["model"] == "claude-opus-5-5"  # filled
         assert len(fixer.fixes_applied) == 5
 
     def test_skips_non_sdm_nodes(self):
@@ -271,7 +273,7 @@ class TestFixOrchestratorBlocks:
         assert defaults["retry"] == 3  # kept
         assert defaults["multiple_tool_calls"] is False  # kept
         assert defaults["execution_mode"] == "extended_thinking"  # filled
-        assert defaults["model"] == "claude-opus-4-6"  # filled
+        assert defaults["model"] == "claude-opus-5-5"  # filled
         assert len(fixer.fixes_applied) == 4
 
     def test_multiple_sdm_nodes(self):
@@ -408,10 +410,17 @@ class TestValidateOrchestratorBlocks:
         assert len(validator.errors) == 1
         assert sdm_invalid["id"] in validator.errors[0]
 
-    def test_sdm_with_traditional_mode_fails(self):
-        """agent_mode_max_iterations=0 (traditional mode) is rejected."""
+    @pytest.mark.parametrize(
+        "iterations, error",
+        [
+            pytest.param(0, "agent_mode_max_iterations=0", id="traditional_mode"),
+            pytest.param(999999, "unusually high", id="above_100"),
+            pytest.param("10", "non-integer", id="string"),
+        ],
+    )
+    def test_sdm_with_invalid_iterations_fails(self, iterations, error):
         validator = AgentValidator()
-        sdm = _make_sdm_node(input_default={"agent_mode_max_iterations": 0})
+        sdm = _make_sdm_node(input_default={"agent_mode_max_iterations": iterations})
         tool = _make_agent_executor_node()
         agent = {
             "nodes": [sdm, tool],
@@ -421,7 +430,7 @@ class TestValidateOrchestratorBlocks:
         result = validator.validate_orchestrator_blocks(agent)
 
         assert result is False
-        assert any("agent_mode_max_iterations=0" in e for e in validator.errors)
+        assert any(error in e for e in validator.errors)
 
     def test_sdm_with_infinite_iterations_passes(self):
         """agent_mode_max_iterations=-1 (infinite mode) is valid."""
@@ -437,36 +446,6 @@ class TestValidateOrchestratorBlocks:
 
         assert result is True
         assert len(validator.errors) == 0
-
-    def test_sdm_with_high_iterations_fails(self):
-        """agent_mode_max_iterations > 100 is rejected as unusually high."""
-        validator = AgentValidator()
-        sdm = _make_sdm_node(input_default={"agent_mode_max_iterations": 999999})
-        tool = _make_agent_executor_node()
-        agent = {
-            "nodes": [sdm, tool],
-            "links": [_link(sdm["id"], "tools", tool["id"], "query")],
-        }
-
-        result = validator.validate_orchestrator_blocks(agent)
-
-        assert result is False
-        assert any("unusually high" in e for e in validator.errors)
-
-    def test_sdm_with_string_iterations_fails(self):
-        """Non-integer agent_mode_max_iterations (e.g. string) is rejected."""
-        validator = AgentValidator()
-        sdm = _make_sdm_node(input_default={"agent_mode_max_iterations": "10"})
-        tool = _make_agent_executor_node()
-        agent = {
-            "nodes": [sdm, tool],
-            "links": [_link(sdm["id"], "tools", tool["id"], "query")],
-        }
-
-        result = validator.validate_orchestrator_blocks(agent)
-
-        assert result is False
-        assert any("non-integer" in e for e in validator.errors)
 
     def test_sdm_with_negative_iterations_below_minus_one_fails(self):
         """agent_mode_max_iterations < -1 is rejected."""

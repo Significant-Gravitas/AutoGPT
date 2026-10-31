@@ -207,7 +207,7 @@ def _is_codex_lease(lease: CredentialLease) -> bool:
     return (
         credentials.type == "oauth2"
         and credentials.provider == "codex"
-        and credentials.refresh_strategy == "provider_runtime"
+        and credentials.refresh_strategy in ("oauth_handler", "provider_runtime")
     )
 
 

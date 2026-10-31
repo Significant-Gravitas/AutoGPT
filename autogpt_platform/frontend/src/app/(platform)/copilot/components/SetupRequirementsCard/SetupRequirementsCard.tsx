@@ -1,13 +1,17 @@
 "use client";
 
+import { useStableCallback } from "@/hooks/useStableCallback";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
 import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
-import { useContext, useEffect, useId, useMemo, useState } from "react";
-import { ChainActionsContext } from "../ToolChain/chainActions";
+import { useContext, useEffect, useId, useState } from "react";
+import {
+  ChainActionsContext,
+  type ChainActions,
+} from "../ToolChain/chainActions";
 import {
   useAreAllConnected,
   useConnectedProvidersStore,
@@ -23,8 +27,8 @@ import {
   buildExpectedInputsSchema,
   buildPreviewRunMessage,
   buildRunMessage,
-  buildTriggerSetupMessage,
   buildSiblingInputsFromCredentials,
+  buildTriggerSetupMessage,
   checkAllCredentialsComplete,
   checkAllInputsComplete,
   checkCanRun,
@@ -32,8 +36,11 @@ import {
   coerceExpectedInputs,
   extractInitialValues,
   getRequestedProviders,
+  isRejectedCredentialSelected,
   mergeInputValues,
+  reportCredentialPicks,
 } from "./helpers";
+import { CredentialRejectionNotice } from "../CredentialRejectionNotice/CredentialRejectionNotice";
 
 /**
  * Single credential/setup card rendered inline in copilot chats.
@@ -74,32 +81,44 @@ export function SetupRequirementsCard({
     Record<string, CredentialsMetaInput | undefined>
   >({});
   const [hasSent, setHasSent] = useState(false);
+  const [justConnected, setJustConnected] = useState(false);
+  // Credentials a sign-in on the chain's row reported. A renewal keeps the
+  // credential's id, so this is how a renewed refused credential is told
+  // apart from the refused one still being selected.
+  const [renewedIds, setRenewedIds] = useState<string[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const { credentialFields, requiredCredentials } = coerceCredentialFields(
     output.setup_info.user_readiness?.missing_credentials,
   );
 
+  const rejection = output.rejection ?? null;
+
+  const requirements = output.setup_info.requirements;
   const expectedInputs = coerceExpectedInputs(
-    (output.setup_info.requirements as Record<string, unknown>)?.inputs,
+    (requirements as Record<string, unknown>)?.inputs,
   );
 
-  const initialValues = useMemo(
-    () => extractInitialValues(expectedInputs),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- stabilise on the raw prop
-    [output.setup_info.requirements],
+  // Derived from the raw prop, so the compiler caches it on `requirements`:
+  // `expectedInputs` is rebuilt every render.
+  const initialValues = extractInitialValues(
+    coerceExpectedInputs((requirements as Record<string, unknown>)?.inputs),
   );
 
   const [inputValues, setInputValues] =
     useState<Record<string, unknown>>(initialValues);
 
   const initialValuesKey = JSON.stringify(initialValues);
-  useEffect(() => {
+  const mergeInitialValues = useStableCallback(() => {
     setInputValues((prev) => mergeInputValues(initialValues, prev));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync when serialised values change
+  });
+  // Sync only when the serialised values change.
+  useEffect(() => {
+    mergeInitialValues();
   }, [initialValuesKey]);
 
   const isEditMode = inputsMode === "edit";
+  const isTriggerMode = inputsMode === "trigger";
 
   const hasAdvancedFields =
     isEditMode && expectedInputs.some((i) => i.advanced);
@@ -110,16 +129,12 @@ export function SetupRequirementsCard({
   // Build siblingInputs for credential modal host prefill. In edit mode we also
   // include the live form values; in preview mode there is no form so only
   // discriminator-derived values contribute.
-  const siblingInputs = useMemo(() => {
-    const fromCreds = buildSiblingInputsFromCredentials(
-      output.setup_info.user_readiness?.missing_credentials,
-    );
-    return isEditMode ? { ...inputValues, ...fromCreds } : fromCreds;
-  }, [
+  const fromCreds = buildSiblingInputsFromCredentials(
     output.setup_info.user_readiness?.missing_credentials,
-    inputValues,
-    isEditMode,
-  ]);
+  );
+  const siblingInputs = isEditMode
+    ? { ...inputValues, ...fromCreds }
+    : fromCreds;
 
   function handleCredentialChange(key: string, value?: CredentialsMetaInput) {
     setInputCredentials((prev) => ({ ...prev, [key]: value }));
@@ -146,97 +161,24 @@ export function SetupRequirementsCard({
   const requestedProviders = getRequestedProviders(credentialFields);
   const alreadyConnected = useAreAllConnected(sessionID, requestedProviders);
   const hasUserActionableInputs = isEditMode && needsInputs;
+  // Neither auto path may send these; the chain gives them a Proceed instead.
+  // A trigger card's message carries the account its webhook registers under,
+  // which the backend requires the user to have picked. A card with editable
+  // inputs reports ready on the first typed character, so sending on readiness
+  // would fire mid-word with a half-typed value.
+  const needsManualPick = isTriggerMode;
+  // A rejection must never self-dismiss: the provider refused a credential the
+  // session store still counts as connected, so dismissing would re-send the
+  // "I've configured the credentials" turn into the same failure, forever.
   const canAutoDismiss =
-    needsCredentials && alreadyConnected && !hasUserActionableInputs;
-
-  // Auto-send when dismissing so the AI receives the run message and the
-  // chat doesn't hang waiting for a confirmation that the user can no longer
-  // provide (the Proceed button is hidden behind the early return below).
-  //
-  // `tryClaimAutoDismiss` provides the atomicity guarantee: only the first
-  // card per `(sessionID, providers)` slot wins the claim and runs
-  // `handleRun`; later cards (whether parallel siblings or StrictMode's
-  // dev-mode re-mount of the same card) see `claimed === false`, set their
-  // local `hasSent`, and dismiss silently — no chat spam, no double-send.
-  // We deliberately call `handleRun` synchronously: a microtask + cleanup
-  // pattern would leak the claim across StrictMode's double-invoke
-  // (cleanup cancels the first microtask, but the claim is still held, so
-  // the second effect run can't re-claim and the send never fires).
-  useEffect(() => {
-    if (!canAutoDismiss || hasSent) return;
-    if (!sessionID || requestedProviders.length === 0) return;
-    const claimed = useConnectedProvidersStore
-      .getState()
-      .tryClaimAutoDismiss({ sessionID, providers: requestedProviders });
-    if (!claimed) {
-      setHasSent(true);
-      return;
-    }
-    handleRun();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleRun captures latest state; claim guards re-entry
-  }, [canAutoDismiss, hasSent]);
-
-  const canRun = checkCanRun(
-    needsCredentials,
-    isAllCredsComplete,
-    isAllInputsDone,
-  );
-
-  // Inside a tool chain the card's own Proceed is replaced by the chain's
-  // single Proceed step — register readiness + message with the chain.
-  useEffect(() => {
-    if (!chainActions || hasSent || canAutoDismiss) return;
-    if (!needsCredentials && !needsInputs) return;
-    chainActions.register({
-      id: actionId,
-      ready: canRun,
-      buildMessage: () => buildProceedMessage(),
-      onSent: markSent,
-      connectors: needsCredentials
-        ? {
-            id: actionId,
-            fields: credentialFields,
-            selected: inputCredentials,
-            onChange: handleCredentialChange,
-          }
-        : undefined,
-      inputs:
-        isEditMode && needsInputs
-          ? {
-              id: actionId,
-              title: output.setup_info.agent_name,
-              schema: inputSchema,
-              values: inputValues,
-              onChange: (values) =>
-                setInputValues((prev) => ({ ...prev, ...values })),
-              hasAdvanced: hasAdvancedFields,
-              showAdvanced,
-              onToggleAdvanced: () => setShowAdvanced((v) => !v),
-            }
-          : undefined,
-    });
-    return () => chainActions.unregister(actionId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- buildProceedMessage/markSent capture latest state each registration
-  }, [
-    chainActions,
-    hasSent,
-    canAutoDismiss,
-    canRun,
-    actionId,
-    needsCredentials,
-    needsInputs,
-    inputCredentials,
-    inputValues,
-    inputsMode,
-    showAdvanced,
-  ]);
-
-  if (hasSent || canAutoDismiss) {
-    return <ContentMessage>Connected. Continuing…</ContentMessage>;
-  }
+    needsCredentials &&
+    alreadyConnected &&
+    !hasUserActionableInputs &&
+    !needsManualPick &&
+    !rejection;
 
   function buildProceedMessage() {
-    return inputsMode === "trigger"
+    return isTriggerMode
       ? buildTriggerSetupMessage(inputCredentials)
       : isEditMode
         ? buildRunMessage(
@@ -262,20 +204,143 @@ export function SetupRequirementsCard({
   function handleRun() {
     const message = buildProceedMessage();
     markSent();
-    onSend(message);
+    void reportCredentialPicks(
+      sessionID,
+      inputCredentials,
+      credentialFields,
+    ).then(() => onSend(message));
+  }
+
+  // Inside a chain this card renders no Proceed of its own — the chain only
+  // renders one for inputs/questions — so a completed sign-in is the sole "go"
+  // signal; without this the chain stalls after the user connects. It must be
+  // the sign-in and not merely a satisfied credential: every card in the chat
+  // history re-mounts on load with its credential already in place.
+  // Standalone only: inside a chain the chain owns sending, so it can wait for
+  // every card's rows before the single follow-up turn goes out.
+  //
+  // Auto-send when dismissing so the AI receives the run message and the
+  // chat doesn't hang waiting for a confirmation that the user can no longer
+  // provide (the Proceed button is hidden behind the early return below).
+  //
+  // `tryClaimAutoDismiss` provides the atomicity guarantee: only the first
+  // card per `(sessionID, providers)` slot wins the claim and runs
+  // `handleRun`; later cards (whether parallel siblings or StrictMode's
+  // dev-mode re-mount of the same card) see `claimed === false`, set their
+  // local `hasSent`, and dismiss silently — no chat spam, no double-send.
+  // We deliberately call `handleRun` synchronously: a microtask + cleanup
+  // pattern would leak the claim across StrictMode's double-invoke
+  // (cleanup cancels the first microtask, but the claim is still held, so
+  // the second effect run can't re-claim and the send never fires).
+  const autoDismiss = useStableCallback(() => {
+    if (chainActions || !canAutoDismiss || hasSent) return;
+    if (!sessionID || requestedProviders.length === 0) return;
+    const claimed = useConnectedProvidersStore
+      .getState()
+      .tryClaimAutoDismiss({ sessionID, providers: requestedProviders });
+    if (!claimed) {
+      setHasSent(true);
+      return;
+    }
+    handleRun();
+  });
+  // handleRun captures latest state; the claim guards re-entry.
+  useEffect(() => {
+    autoDismiss();
+  }, [chainActions, canAutoDismiss, hasSent]);
+
+  // Only a sign-in that renewed the refused credential itself lifts the
+  // rejection; any other sign-in leaves it refused.
+  const isRejectionRenewed = renewedIds.includes(
+    rejection?.credential_id ?? "",
+  );
+  const canRun =
+    checkCanRun(needsCredentials, isAllCredsComplete, isAllInputsDone) &&
+    (isRejectionRenewed ||
+      !isRejectedCredentialSelected(rejection, inputCredentials));
+
+  // Inside a tool chain the card's own Proceed is replaced by the chain's
+  // single Proceed step — register readiness + message with the chain.
+  const registerWithChain = useStableCallback((actions: ChainActions) => {
+    actions.register(actionId, {
+      id: actionId,
+      ready: canRun,
+      manualProceed: needsManualPick || hasUserActionableInputs,
+      justConnected,
+      credentialsReady: !needsCredentials || isAllCredsComplete,
+      buildMessage: () => buildProceedMessage(),
+      // A trigger's line carries the chosen credential ids, and an edit-mode
+      // card's may carry run inputs; only a bare confirmation is shareable.
+      credentialsOnly: needsCredentials && !needsInputs && !isTriggerMode,
+      beforeSend: () =>
+        reportCredentialPicks(sessionID, inputCredentials, credentialFields),
+      onSent: markSent,
+      connectors: needsCredentials
+        ? {
+            id: actionId,
+            fields: credentialFields,
+            selected: inputCredentials,
+            onChange: handleCredentialChange,
+            onConnected: (credentialId) => {
+              setJustConnected(true);
+              if (credentialId) setRenewedIds((ids) => [...ids, credentialId]);
+            },
+            rejectedCredentialId: rejection?.credential_id ?? undefined,
+          }
+        : undefined,
+      inputs:
+        isEditMode && needsInputs
+          ? {
+              id: actionId,
+              title: output.setup_info.agent_name,
+              schema: inputSchema,
+              values: inputValues,
+              onChange: (values) =>
+                setInputValues((prev) => ({ ...prev, ...values })),
+              hasAdvanced: hasAdvancedFields,
+              showAdvanced,
+              onToggleAdvanced: () => setShowAdvanced((v) => !v),
+            }
+          : undefined,
+    });
+  });
+  // buildProceedMessage/markSent capture latest state each registration.
+  useEffect(() => {
+    if (!chainActions || hasSent) return;
+    if (!needsCredentials && !needsInputs) return;
+    registerWithChain(chainActions);
+    return () => chainActions.unregister(actionId);
+  }, [
+    chainActions,
+    hasSent,
+    justConnected,
+    canRun,
+    actionId,
+    needsCredentials,
+    needsInputs,
+    inputCredentials,
+    inputValues,
+    inputsMode,
+    showAdvanced,
+  ]);
+
+  if (hasSent || (!chainActions && canAutoDismiss)) {
+    return <ContentMessage>Connected. Continuing…</ContentMessage>;
   }
 
   return (
     <div className="grid gap-2">
       <ContentMessage>{output.message}</ContentMessage>
 
+      {rejection && <CredentialRejectionNotice rejection={rejection} />}
+
       {/* Inside a chain the connectors are lifted out and rendered as a card
           below it; standalone the card keeps the full credentials picker. */}
       {needsCredentials && !chainActions && (
         <div className="rounded-2xl border bg-background p-3">
-          <Text variant="small" className="w-fit border-b text-zinc-500">
+          <Text tone="muted" variant="small" className="w-fit border-b">
             {credentialsLabel ??
-              (isEditMode ? "Credentials" : "Agent credentials")}
+              (isEditMode ? "Credentials" : "Workflow credentials")}
           </Text>
           <div className="mt-6">
             <CredentialsGroupedView
@@ -293,13 +358,13 @@ export function SetupRequirementsCard({
           renders in the card below it, not inside the accordion. */}
       {isEditMode && !chainActions && (inputSchema || hasAdvancedFields) && (
         <div className="rounded-2xl border bg-background p-3 pt-4">
-          <Text variant="small" className="w-fit border-b text-zinc-500">
+          <Text tone="muted" variant="small" className="w-fit border-b">
             Inputs
           </Text>
           {inputSchema && (
             <FormRenderer
               jsonSchema={inputSchema}
-              className="mb-3 mt-3"
+              className="mt-3 mb-3"
               handleChange={(v) =>
                 setInputValues((prev) => ({ ...prev, ...(v.formData ?? {}) }))
               }

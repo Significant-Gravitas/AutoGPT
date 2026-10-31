@@ -4,7 +4,7 @@ import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 import sentry_sdk
 from prisma.errors import UniqueViolationError
@@ -12,6 +12,8 @@ from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from prisma.types import (
     ChatMessageCreateInput,
+    ChatMessageCreateWithoutRelationsInput,
+    ChatMessageUpdateInput,
     ChatMessageWhereInput,
     ChatSessionCreateInput,
     ChatSessionUpdateInput,
@@ -23,9 +25,11 @@ from pydantic import BaseModel
 from backend.data import db
 from backend.data.expert_attribution import resolve_attributable_expert
 from backend.util.exceptions import ExpertNotFoundError
-from backend.util.json import SafeJson, sanitize_string
+from backend.util.json import SafeJson, dumps, sanitize_string
 
+from .duplicate_message_id import is_duplicate_chat_message_id_error
 from .model import (
+    CHAT_STATUS_RUNNING,
     ChatMessage,
     ChatSessionInfo,
     ChatSessionMetadata,
@@ -33,6 +37,8 @@ from .model import (
     cache_chat_session,
 )
 from .model import get_chat_session as get_chat_session_cached
+from .model import invalidate_session_cache
+from .transports import resolve_default_chat_route
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +71,20 @@ MAX_LOADED_CHAT_MESSAGES = 1000
 # successful_agent_runs, usage, metadata) plus ``messages``.  Going through the
 # paginated path means tool-pair boundary expansion and the visibility
 # guarantee already apply, and the cap-hit signal lives in ``has_more``.
+
+
+async def get_chat_session_expert_ids(
+    user_id: str, session_ids: list[str]
+) -> dict[str, str | None]:
+    """Map each of *user_id*'s sessions in *session_ids* to the expert it is
+    scoped to (``None`` for a personal Otto session). Sessions that do
+    not belong to the user are left out."""
+    if not session_ids:
+        return {}
+    rows = await PrismaChatSession.prisma().find_many(
+        where={"id": {"in": session_ids}, "userId": user_id}
+    )
+    return {row.id: row.expertId for row in rows}
 
 
 async def get_chat_session_metadata(session_id: str) -> ChatSessionInfo | None:
@@ -138,6 +158,7 @@ async def get_chat_messages_paginated(
     organization_id: str | None = None,
     *,
     after_sequence: int | None = None,
+    message_sequences: list[int] | None = None,
 ) -> PaginatedMessages | None:
     """Get a window of messages for a session in ascending sequence order.
 
@@ -160,6 +181,9 @@ async def get_chat_messages_paginated(
     ``has_more`` is ``True`` iff the underlying query found more rows than
     ``limit`` (i.e. the cap engaged); irrelevant for range fetches but
     harmlessly populated.
+
+    ``message_sequences`` selects exact message numbers within any bounds;
+    tool-pair and visibility expansion are disabled for this selection.
     """
     session_where: ChatSessionWhereInput = {"id": session_id}
     if user_id is not None:
@@ -172,6 +196,8 @@ async def get_chat_messages_paginated(
         msg_filter["lt"] = before_sequence
     if after_sequence is not None:
         msg_filter["gte"] = after_sequence
+    if message_sequences is not None:
+        msg_filter["in"] = message_sequences
 
     msg_include: FindManyChatMessageArgsFromChatSession = {
         "order_by": {"sequence": "desc"},
@@ -197,7 +223,7 @@ async def get_chat_messages_paginated(
     # Range fetches (after_sequence set) ask for an exact window — never expand
     # outside it. Cursor / tail loads get the boundary + visibility fixes so
     # the UI render and LLM-context build are well-formed.
-    is_range_fetch = after_sequence is not None
+    is_range_fetch = after_sequence is not None or message_sequences is not None
     if not is_range_fetch:
         if results and results[0].role == "tool":
             results, has_more = await _expand_tool_boundary(
@@ -332,7 +358,7 @@ async def create_chat_session(
                 # Fail closed: the expert vanished (archived/deleted/shared)
                 # between the caller's tenancy pre-check and this locked
                 # re-check. Creating an unattributed session would silently
-                # land the chat in AutoPilot memory scope — the opposite of
+                # land the chat in Otto memory scope — the opposite of
                 # what the caller asked for.
                 raise ExpertNotFoundError(requested_expert_id)
             prisma_session = await PrismaChatSession.prisma(tx).create(
@@ -379,9 +405,26 @@ def _chat_session_create_input(
         **({"organizationId": organization_id} if organization_id else {}),
         **({"teamId": team_id} if team_id else {}),
         **({"expertId": expert_id} if expert_id else {}),
-        metadata=SafeJson((metadata or ChatSessionMetadata()).model_dump()),
+        metadata=SafeJson(_persisted_metadata(metadata).model_dump()),
     )
     return data
+
+
+def _persisted_metadata(metadata: ChatSessionMetadata | None) -> ChatSessionMetadata:
+    """Stamp a concrete origin on every row written here.
+
+    ``origin=None`` means "persisted before the field existed", and readers
+    treat it as legacy — so a row created now must never claim it, or a real
+    pre-deploy session stops being distinguishable from a fresh one. An unset
+    origin resolves to ``automation``: the only caller that reaches here
+    without metadata is the expert kickoff thread, which a run opens. A thread
+    the user is meant to type into must pass ``origin="interactive"`` itself
+    rather than inherit this default — see ``append_plain_session_message``.
+    """
+    resolved = metadata or ChatSessionMetadata()
+    if resolved.origin is None:
+        return resolved.model_copy(update={"origin": "automation"})
+    return resolved
 
 
 async def update_chat_session(
@@ -482,6 +525,57 @@ async def update_chat_session_pinned(
     return result > 0
 
 
+async def update_chat_session_llm_route(
+    session_id: str,
+    user_id: str,
+    llm_auth_provider: str,
+    llm_credential_id: str | None,
+) -> bool:
+    """Point an existing session at a different connection, from now on.
+
+    Atomically merges only the two route keys into stored metadata: everything
+    else in there -- including a pending question written concurrently --
+    belongs to other features and must survive a connection change.
+
+    Always filters by (session_id, user_id) so callers cannot re-route another
+    user's chat even knowing the id. Past turns keep the stamps they were
+    written with; this only decides where the next one runs.
+
+    Returns True if a row was updated, False otherwise (not found, wrong user).
+    """
+    result = await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSession" SET "metadata" = '
+        "COALESCE(\"metadata\", '{{}}'::jsonb) || "
+        "jsonb_build_object("
+        "'llm_auth_provider', $3::text, "
+        "'llm_credential_id', $4::text"
+        '), "updatedAt" = NOW() '
+        'WHERE "id" = $1 AND "userId" = $2',
+        session_id,
+        user_id,
+        llm_auth_provider,
+        llm_credential_id,
+    )
+    return result > 0
+
+
+async def update_chat_session_autopilot_mode(
+    session_id: str, user_id: str, mode: str
+) -> bool:
+    """Merge only the mode key into stored metadata, scoped to the owner."""
+    result = await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSession" SET "metadata" = '
+        "COALESCE(\"metadata\", '{{}}'::jsonb) || "
+        "jsonb_build_object('autopilot_mode', $3::text), "
+        '"updatedAt" = NOW() '
+        'WHERE "id" = $1 AND "userId" = $2',
+        session_id,
+        user_id,
+        mode,
+    )
+    return result > 0
+
+
 async def add_chat_message(
     session_id: str,
     role: str,
@@ -543,21 +637,6 @@ async def add_chat_message(
         PrismaChatMessage.prisma().create(data=data),
     )
     return ChatMessage.from_db(message)
-
-
-_CHAT_MESSAGE_PKEY_CONSTRAINT = "ChatMessage_pkey"
-
-
-def is_duplicate_chat_message_id_error(exc: BaseException) -> bool:
-    """True iff *exc* is a ``UniqueViolationError`` on the ``ChatMessage``
-    primary key — i.e. the caller supplied a duplicate ``id``.
-
-    Used by ``append_and_save_message`` to distinguish the dedup signal
-    from the unrelated ``(sessionId, sequence)`` collision that the
-    streaming-callback race retries silently."""
-    return isinstance(
-        exc, UniqueViolationError
-    ) and _CHAT_MESSAGE_PKEY_CONSTRAINT in str(exc)
 
 
 async def add_chat_messages_batch(
@@ -636,6 +715,21 @@ async def add_chat_messages_batch(
                     if msg.get("routing_source") is not None:
                         data["routingSource"] = msg["routing_source"]
 
+                    if msg.get("llm_auth_provider") is not None:
+                        data["llmAuthProvider"] = msg["llm_auth_provider"]
+                    if msg.get("llm_credential_id") is not None:
+                        data["llmCredentialId"] = msg["llm_credential_id"]
+                    if msg.get("langfuse_trace_id") is not None:
+                        data["langfuseTraceId"] = msg["langfuse_trace_id"]
+                    if msg.get("trace_id") is not None:
+                        data["traceId"] = msg["trace_id"]
+
+                    # Per-row bag. The single-message path already persisted
+                    # this; the batch path silently dropped it, so anything
+                    # written here by a turn never survived the insert.
+                    if msg.get("metadata") is not None:
+                        data["metadata"] = SafeJson(msg["metadata"])
+
                     messages_data.append(data)
 
                 # Run create_many and session update in parallel within transaction
@@ -654,10 +748,10 @@ async def add_chat_messages_batch(
 
         except UniqueViolationError as e:
             # Two distinct unique constraints on ``ChatMessage`` can fire here:
-            #   - ``ChatMessage_pkey`` (the row ``id``): caller supplied a
-            #     duplicate PK — this is the idempotency signal, propagate
-            #     so the route layer can short-circuit.
-            #   - ``ChatMessage_sessionId_sequence_key``: the streaming loop
+            #   - the row ``id``: caller supplied a duplicate PK — this is
+            #     the idempotency signal, propagate so the route layer can
+            #     short-circuit.
+            #   - ``(sessionId, sequence)``: the streaming loop
             #     and a long-running callback raced on ``sequence`` — retry
             #     with a freshly queried offset (existing behaviour).
             if is_duplicate_chat_message_id_error(e):
@@ -717,6 +811,7 @@ async def get_user_chat_sessions(
     title_contains: str | None = None,
     expert_id: str | None = None,
     autopilot_only: bool = False,
+    experts_only: bool = False,
     pinned_first: bool = True,
 ) -> list[ChatSessionInfo]:
     """Get chat sessions for a user, ordered by most recent.
@@ -732,17 +827,20 @@ async def get_user_chat_sessions(
     without waiting on async embedding.
 
     ``expert_id`` restricts the listing to sessions scoped to that expert.
-    ``autopilot_only`` restricts it to sessions whose ``expertId`` is NULL.
-    The explicit flag is necessary because ``expert_id=None`` retains the
-    existing meaning of "all expert scopes" for user-facing session lists.
+    ``autopilot_only`` restricts it to sessions whose ``expertId`` is NULL,
+    ``experts_only`` to those whose ``expertId`` is set. The explicit flags
+    are necessary because ``expert_id=None`` retains the existing meaning of
+    "all expert scopes" for user-facing session lists.
 
     ``pinned_first=False`` provides strict recency ordering for internal
     adoption flows; the user-facing sidebar keeps pinned sessions first.
     """
     if expert_id == "":
         raise ValueError("expert_id must be non-empty")
-    if expert_id is not None and autopilot_only:
-        raise ValueError("expert_id and autopilot_only are mutually exclusive")
+    if sum((expert_id is not None, autopilot_only, experts_only)) > 1:
+        raise ValueError(
+            "expert_id, autopilot_only and experts_only are mutually exclusive"
+        )
 
     params: list[Any] = [user_id]
     conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
@@ -762,9 +860,15 @@ async def get_user_chat_sessions(
         conditions.append(f'"expertId" = ${len(params)}')
     elif autopilot_only:
         conditions.append('"expertId" IS NULL')
+    elif experts_only:
+        conditions.append('"expertId" IS NOT NULL')
     params.extend((limit, offset))
+    # "id" breaks ties: without a total order, LIMIT/OFFSET paging can skip or
+    # repeat a row when two sessions share an updatedAt.
     ordering = (
-        '"isPinned" DESC, "updatedAt" DESC' if pinned_first else '"updatedAt" DESC'
+        '"isPinned" DESC, "updatedAt" DESC, "id" DESC'
+        if pinned_first
+        else '"updatedAt" DESC, "id" DESC'
     )
     query = (
         'SELECT * FROM {schema_prefix}"ChatSession" WHERE '
@@ -830,6 +934,134 @@ async def user_has_any_session(user_id: str) -> bool:
         user_id,
     )
     return bool(rows)
+
+
+# Bounds the Home "Needs You" question source. Questions are one-per-session
+# and resolve as soon as the user replies, so a long tail is stale by
+# definition — showing the newest few is the whole product surface.
+PENDING_QUESTION_LIMIT = 10
+
+
+async def set_session_pending_question(
+    session_id: str, user_id: str, text: str, asked_at: datetime
+) -> None:
+    """Record the question this session is waiting on the user to answer.
+
+    Writes the one key rather than the whole ``metadata`` blob: session
+    metadata is otherwise immutable after creation, and a concurrent turn
+    must not be able to clobber unrelated flags by round-tripping a stale
+    copy of it. Scoped to *user_id* so a caller can never mark another
+    user's session.
+    """
+    await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSession" SET "metadata" = '
+        "COALESCE(\"metadata\", '{{}}'::jsonb) || "
+        "jsonb_build_object('pending_question', $3::jsonb) "
+        'WHERE "id" = $1 AND "userId" = $2',
+        session_id,
+        user_id,
+        dumps({"text": text, "asked_at": asked_at.isoformat()}),
+    )
+
+
+async def clear_session_pending_question(session_id: str, user_id: str) -> None:
+    """Drop the pending question — the user answered, so it needs nobody."""
+    await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSession" SET "metadata" = '
+        "\"metadata\" - 'pending_question' "
+        'WHERE "id" = $1 AND "userId" = $2',
+        session_id,
+        user_id,
+    )
+
+
+#  Columns selected below = every field ``ChatSessionInfo.from_db`` reads
+#  ("id", "userId", "title", "credentials", "createdAt", "updatedAt",
+#  "successfulAgentRuns", "successfulAgentSchedules", "metadata",
+#  "totalPromptTokens", "totalCompletionTokens", "chatStatus",
+#  "organizationId", "teamId", "isPinned", "expertId") plus "visibility",
+#  "isShared", "autoShareExecutions" — those three are unused by ``from_db``
+#  but have no default on the generated ``PrismaChatSession`` model, so
+#  ``query_raw_with_schema(..., model=PrismaChatSession)`` raises a pydantic
+#  validation error if they're left out of the row. "shareToken" and
+#  "sharedAt" are the only columns safely dropped (both default to None).
+_PENDING_QUESTION_SESSION_COLUMNS = (
+    '"id", "userId", "title", "credentials", "createdAt", "updatedAt", '
+    '"successfulAgentRuns", "successfulAgentSchedules", "metadata", '
+    '"totalPromptTokens", "totalCompletionTokens", "chatStatus", '
+    '"organizationId", "teamId", "isPinned", "expertId", "visibility", '
+    '"isShared", "autoShareExecutions"'
+)
+
+
+async def get_sessions_with_pending_question(
+    user_id: str,
+    limit: int = PENDING_QUESTION_LIMIT,
+) -> list[ChatSessionInfo]:
+    """Sessions of *user_id* still waiting on an answer, newest question first.
+
+    Excludes *delegated* sub-threads (``delegated_by_session_id``): the caller
+    that delegated is still waiting on that answer and owns reporting back, so
+    the sub's question is an implementation detail of someone else's task —
+    surfacing it on Home asks the user to unblock a thread whose result they
+    will never see directly.
+
+    *Handed-off* threads (``handed_off_from_expert_id``) are deliberately NOT
+    excluded. A handoff transfers ownership outright: nobody is waiting behind
+    it, and the receiving expert is told to ask the user directly when
+    something only they can provide is missing. That question is the only path
+    back to the user, so hiding it is how a handed-off request dies in silence.
+    """
+    sessions = await db.query_raw_with_schema(
+        f"SELECT {_PENDING_QUESTION_SESSION_COLUMNS} "
+        'FROM {schema_prefix}"ChatSession" WHERE "userId" = $1 AND '
+        + _EXCLUDE_DREAM_SESSIONS_SQL
+        # jsonb_typeof, not IS NOT NULL: a session created after this field
+        # existed persists an explicit ``"pending_question": null``, which is a
+        # JSON null — present as far as ``->`` is concerned.
+        + " AND jsonb_typeof(\"metadata\" -> 'pending_question') = 'object' "
+        # ``->>`` (text extraction), not ``->``: every session persists this
+        # key with an explicit JSON null by default, and ``->`` returns that
+        # as a "present" jsonb value rather than SQL NULL — an ``IS NULL``
+        # check on ``->`` would silently exclude every normal session (same
+        # class of bug as the dream-session filter above). ``->>`` collapses
+        # "key absent" and "explicit JSON null" to the same SQL NULL, so only
+        # a real delegating session id excludes the row.
+        #
+        # The second arm is load-bearing, not defensive: a handoff records the
+        # delegation fields too (``handoff_to_expert._transfer`` sets
+        # ``delegated_by_session_id`` for attribution and because
+        # ``get_sub_session_result._in_caller_scope`` reads it to refuse the
+        # poll), so "delegated" alone matches every handed-off thread as well.
+        # Without this arm the receiving expert's question — the only path
+        # back to the user — never reaches Home. See the docstring.
+        "AND (\"metadata\" ->> 'delegated_by_session_id' IS NULL "
+        "OR \"metadata\" ->> 'handed_off_from_expert_id' IS NOT NULL) "
+        # Lexicographic text sort — only correct because every writer emits
+        # a UTC ``datetime.isoformat()`` timestamp (fixed-width, zero-padded
+        # fields, so ISO-8601 string order matches chronological order).
+        "ORDER BY \"metadata\" -> 'pending_question' ->> 'asked_at' DESC " "LIMIT $2",
+        user_id,
+        limit,
+        model=PrismaChatSession,
+    )
+    return [ChatSessionInfo.from_db(s) for s in sessions]
+
+
+async def get_session_titles(
+    user_id: str, session_ids: list[str]
+) -> dict[str, str | None]:
+    """Titles for the given sessions of *user_id*, keyed by session id.
+
+    Sessions that no longer exist (or belong to someone else) are simply
+    absent — callers render a fallback label instead.
+    """
+    if not session_ids:
+        return {}
+    rows = await PrismaChatSession.prisma().find_many(
+        where={"id": {"in": session_ids}, "userId": user_id}
+    )
+    return {row.id: row.title for row in rows}
 
 
 def _escape_like(value: str) -> str:
@@ -1021,22 +1253,185 @@ async def update_message_content_by_sequence(
         return False
 
 
+# A dream's narrative, the message its session opens with, or *erased* when
+# a hard forget has marked the pass (``DreamPass.erasedAt``), in one statement
+# that holds the pass's row FOR SHARE: a forget's mark that lands first is
+# read here, and one that comes after waits for the insert, which its blank
+# of the pass's narratives (``blank_dream_narratives``) then finds. It goes
+# only into the pass's own dream session (the pass's owner's, of kind dream,
+# naming the pass), which takes a copy of the pass's read set
+# (``DREAM_READ_UUIDS``), so a forget finds the narrative once the pass's row
+# has aged out; the read set of a pass from before read sets were recorded
+# holds ``*``, which the copy keeps. With no row for the pass, or a session
+# that is not its own, nothing is written.
+_DREAM_NARRATIVE_SQL = """
+WITH pass AS (
+    SELECT "id", "userId", "erasedAt", "readUuids"
+    FROM {schema_prefix}"DreamPass" WHERE "id" = $3 FOR SHARE
+),
+session AS (
+    UPDATE {schema_prefix}"ChatSession" AS s SET
+        "metadata" = COALESCE(s."metadata", '{{}}'::jsonb) || jsonb_build_object(
+            $7::text, to_jsonb(COALESCE(pass."readUuids", ARRAY[]::text[]))),
+        "updatedAt" = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
+    FROM pass
+    WHERE s."id" = $2 AND s."userId" = pass."userId"
+        AND s."metadata"->>'kind' = 'dream'
+        AND s."metadata"->>'dream_pass_id' = pass."id"
+    RETURNING s."id", pass."erasedAt"
+)
+INSERT INTO {schema_prefix}"ChatMessage"
+    ("id", "sessionId", "role", "sequence", "content", "metadata")
+SELECT $1, session."id", 'assistant', 0,
+    CASE WHEN session."erasedAt" IS NOT NULL THEN $5 ELSE $4 END,
+    $6::jsonb
+FROM session
+"""
+
+# The key of a dream session's metadata holding its pass's read set, which
+# ``ChatSessionMetadata`` leaves out: only the forget's SQL reads it, and
+# every write to session metadata after its creation merges keys in SQL.
+DREAM_READ_UUIDS = "dream_read_uuids"
+
+# The narratives' blank's own deadline in the database, just under the
+# forget's for it (``dream/forget_copies.NARRATIVE_TIMEOUT_SECONDS``).
+NARRATIVE_BLANK_STATEMENT_TIMEOUT_MS = 9_000
+
+# The narrative of each of the user's dream sessions a hard forget reached
+# ($1): the session of a pass it marked or named ($2), one whose pass read
+# what it reached ($3, matched against the session's copy of the read set by
+# a hash join, which outlives the pass's row), or one of the forget's scope
+# (the account's when $6 is null, else that expert's) that may have read
+# anything: its session holds no read set (written before sessions kept
+# one) or one holding ``*`` (its pass's, from before read sets were
+# recorded: ``data/dream_pass_models.UNKNOWN_READS``). A narrative already
+# blank is not written again.
+_BLANK_NARRATIVES_SQL = """
+WITH reached AS (
+    SELECT DISTINCT uuid FROM unnest($3::text[]) AS reached(uuid)
+),
+dream AS (
+    SELECT s."id", s."metadata", s."expertId"
+    FROM {schema_prefix}"ChatSession" AS s
+    WHERE s."userId" = $1 AND s."metadata"->>'kind' = 'dream'
+),
+hit AS (
+    SELECT "id" FROM dream
+    WHERE "metadata"->>'dream_pass_id' IN (SELECT unnest($2::text[]))
+    UNION
+    SELECT dream."id"
+    FROM dream,
+        jsonb_array_elements_text(CASE
+            WHEN jsonb_typeof(dream."metadata"->$5::text) = 'array'
+            THEN dream."metadata"->$5::text ELSE '[]'::jsonb END) AS read(uuid)
+    WHERE read.uuid IN (SELECT uuid FROM reached)
+    UNION
+    SELECT "id" FROM dream
+    WHERE "expertId" IS NOT DISTINCT FROM $6::text
+        AND (jsonb_typeof("metadata"->$5::text) IS DISTINCT FROM 'array'
+            OR "metadata"->$5::text @> '["*"]'::jsonb)
+)
+UPDATE {schema_prefix}"ChatMessage" AS m SET "content" = $4
+WHERE m."sessionId" IN (SELECT "id" FROM hit)
+    AND m."sequence" = 0 AND m."role" = 'assistant'
+    AND m."content" IS DISTINCT FROM $4
+"""
+
+
+async def add_dream_narrative(
+    session_id: str, pass_id: str, content: str, erased: str
+) -> bool:
+    """Open pass *pass_id*'s dream session *session_id* with its narrative
+    *content*, or *erased* once a hard forget has marked the pass
+    (``_DREAM_NARRATIVE_SQL``, ``dream/apply._write_dream_summary_message``).
+    ``False``, logged, when nothing was written: the pass has no row, or the
+    session is not its own."""
+    written = await db.execute_raw_with_schema(
+        _DREAM_NARRATIVE_SQL,
+        str(uuid.uuid4()),
+        session_id,
+        pass_id,
+        sanitize_string(content),
+        sanitize_string(erased),
+        dumps({"dream_pass_id": pass_id}),
+        DREAM_READ_UUIDS,
+    )
+    if not written:
+        logger.warning(
+            f"Dream pass {pass_id}: no record of it, or session {session_id} is "
+            "not its dream session; its narrative is not written"
+        )
+    return written > 0
+
+
+async def blank_dream_narratives(
+    user_id: str,
+    expert_id: str | None,
+    pass_ids: list[str],
+    reached: list[str],
+    placeholder: str,
+) -> int:
+    """Replace with *placeholder*, for a hard forget in *user_id*'s scope of
+    *expert_id* (the account's when ``None``) (``dream/forget_copies.py``),
+    the narrative of each of the user's dream sessions for *pass_ids*, whose
+    pass read one of the *reached* uuids, or of the scope with no record of
+    what its pass read (the assistant message a dream opens its session
+    with, ``dream/apply._write_dream_summary_message``); how many changed.
+    The rest of the session is the user's chat with it, which no forget
+    reaches. Raises when the statement runs past
+    ``NARRATIVE_BLANK_STATEMENT_TIMEOUT_MS``."""
+    if not pass_ids and not reached:
+        return 0
+    async with db.bounded_transaction(NARRATIVE_BLANK_STATEMENT_TIMEOUT_MS) as tx:
+        return await db.execute_raw_with_schema(
+            _BLANK_NARRATIVES_SQL,
+            user_id,
+            pass_ids,
+            reached,
+            sanitize_string(placeholder),
+            DREAM_READ_UUIDS,
+            expert_id,
+            client=tx,
+        )
+
+
 async def update_chat_message_stamps(
     session_id: str,
     sequence: int,
     model: str | None,
     routing_source: str | None,
+    llm_auth_provider: str | None = None,
+    llm_credential_id: str | None = None,
+    langfuse_trace_id: str | None = None,
+    trace_id: str | None = None,
 ) -> bool:
-    """Back-fill model/routingSource on an already-persisted message row.
+    """Back-fill the execution stamps on an already-persisted message row.
 
     Mid-turn flushes persist assistant rows (assigning sequences) BEFORE
     the end-of-turn stamping runs; this repairs those rows so the
     analytics columns survive in the DB. Same mechanism and authorization
     reasoning as ``update_chat_message_tool_calls``.
+
+    The route and the trace are written only when known. Passing None for
+    the route would blank a row that a previous stamp already got right,
+    which is precisely the rewriting of history per-turn segments exist to
+    prevent.
     """
+    data: ChatMessageUpdateInput = {
+        "model": model,
+        "routingSource": routing_source,
+    }
+    if llm_auth_provider is not None:
+        data["llmAuthProvider"] = llm_auth_provider
+    if llm_credential_id is not None:
+        data["llmCredentialId"] = llm_credential_id
+    if langfuse_trace_id is not None:
+        data["langfuseTraceId"] = langfuse_trace_id
+    if trace_id is not None:
+        data["traceId"] = trace_id
     result = await PrismaChatMessage.prisma().update(
         where={"sessionId_sequence": {"sessionId": session_id, "sequence": sequence}},
-        data={"model": model, "routingSource": routing_source},
+        data=data,
     )
     if not result:
         logger.warning(
@@ -1140,6 +1535,38 @@ async def list_chat_sessions_by_status(
     return [ChatSessionInfo.from_db(r) for r in rows]
 
 
+async def list_recent_chat_sessions(
+    *,
+    user_id: str,
+    expert_id: str | None = None,
+    status: str | None = None,
+    limit: int = 50,
+    skip: int = 0,
+) -> list[ChatSessionInfo]:
+    """The user's most recently active sessions, newest first.
+
+    Backs ``find_session``. Scoped to ``user_id`` in the query itself, so
+    another user's session is invisible rather than merely unlisted. The
+    expert and status filters are applied in the query too, so ``limit``
+    bounds the matches rather than the rows scanned — filtering them in
+    Python would silently drop matches older than the window. ``skip`` pages
+    the caller past rows it has already looked at, for the one filter that
+    cannot move into the query (``task`` reads the metadata JSON).
+    """
+    where: ChatSessionWhereInput = {"userId": user_id}
+    if expert_id:
+        where["expertId"] = expert_id
+    if status:
+        where["chatStatus"] = status
+    rows = await PrismaChatSession.prisma().find_many(
+        where=where,
+        order={"updatedAt": "desc"},
+        take=limit,
+        skip=skip,
+    )
+    return [ChatSessionInfo.from_db(r) for r in rows]
+
+
 async def get_latest_user_message_in_session(
     session_id: str,
 ) -> ChatMessage | None:
@@ -1161,6 +1588,44 @@ async def get_chat_session_status(session_id: str) -> str | None:
     tell them apart on its own)."""
     row = await PrismaChatSession.prisma().find_unique(where={"id": session_id})
     return row.chatStatus if row else None
+
+
+async def admit_chat_session_turn(
+    *, session_id: str, user_id: str, expect_status: str, capacity: int
+) -> Literal["admitted", "full", "busy"]:
+    """Flip the session ``expect_status`` → running while the user has fewer
+    than ``capacity`` running: ``"full"`` at the cap, ``"busy"`` when the
+    session is not in ``expect_status``.
+
+    The count precedes the flip inside one per-user lock, and relies on READ
+    COMMITTED (Postgres's default) to see every flip committed before the lock.
+    """
+    async with db.transaction() as tx:
+        # execute_raw, not query_raw: pg_advisory_xact_lock returns void.
+        await tx.execute_raw(
+            "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+            f"copilot-turns:{user_id}",
+        )
+        sessions = PrismaChatSession.prisma(tx)
+        current = await sessions.find_unique(where={"id": session_id})
+        if (
+            current is None
+            or current.userId != user_id
+            or current.chatStatus != expect_status
+        ):
+            return "busy"
+        running = await sessions.count(
+            where={"userId": user_id, "chatStatus": CHAT_STATUS_RUNNING}
+        )
+        if running >= capacity:
+            return "full"
+        # Conditional: a transition outside this lock (a cancel) may have
+        # moved the row since it was read.
+        updated = await sessions.update_many(
+            where={"id": session_id, "userId": user_id, "chatStatus": expect_status},
+            data={"chatStatus": CHAT_STATUS_RUNNING},
+        )
+    return "admitted" if updated else "busy"
 
 
 async def update_chat_session_status(
@@ -1187,6 +1652,28 @@ async def update_chat_session_status(
         where=where, data={"chatStatus": status}
     )
     return updated > 0
+
+
+async def _default_route_metadata(
+    user_id: str, *, origin: str | None = None
+) -> ChatSessionMetadata:
+    """Session metadata carrying the user's default connection.
+
+    These sessions exist to hold an outbound message, but the user replies in
+    them — so they start on the same connection a chat the user opened
+    themselves would, instead of silently falling back to the platform route.
+
+    ``origin`` is passed through for the sessions a user is meant to type into,
+    which have to declare themselves interactive.
+    """
+    llm_auth_provider, llm_credential_id = await resolve_default_chat_route(user_id)
+    fields: dict[str, object] = {
+        "llm_auth_provider": llm_auth_provider,
+        "llm_credential_id": llm_credential_id,
+    }
+    if origin is not None:
+        fields["origin"] = origin
+    return ChatSessionMetadata(**fields)
 
 
 async def append_expert_run_message(
@@ -1217,7 +1704,10 @@ async def append_expert_run_message(
         session_id = session.id
     else:
         created = await create_chat_session(
-            session_id=str(uuid.uuid4()), user_id=user_id, expert_id=expert_id
+            session_id=str(uuid.uuid4()),
+            user_id=user_id,
+            expert_id=expert_id,
+            metadata=await _default_route_metadata(user_id),
         )
         session_id = created.session_id
 
@@ -1249,45 +1739,34 @@ async def append_expert_run_message(
                 message_id=message_id,
                 metadata=metadata,
             )
+    # The chat page reads the session through the Redis cache: drop a copy
+    # from before this post, or the post shows only once the copy expires.
+    await invalidate_session_cache(session_id)
     return session_id
 
 
-async def append_plain_session_message(
+async def append_session_message(
+    session_id: str,
     user_id: str,
     content: str,
     message_id: str,
     metadata: dict[str, Any] | None = None,
-) -> str | None:
-    """Post an assistant message into the user's latest non-expert (plain
-    Autopilot) session, creating one when none exists — this is the user's
-    "primary thread", e.g. where a morning briefing lands.
+) -> bool:
+    """Post an assistant message into one chat the user owns, between turns.
 
-    Deduplicates on *message_id* (deterministic per event at the caller), so
-    retries and double-fires never produce duplicate posts.
-    Returns the session id the message landed in, or None when deduped.
+    For a note about that chat, such as why its scheduled run was skipped.
+    Unlike ``append_expert_run_message`` this never creates or re-targets a
+    session: a note about a chat belongs in that chat or nowhere. Returns False
+    when the chat is gone or not the user's, or when *message_id* was already
+    written (deterministic at the caller, so a double fire posts once).
     """
-    existing = await PrismaChatMessage.prisma().find_unique(where={"id": message_id})
-    if existing is not None:
-        return None
-
-    # Dream-pass sessions are also ``expertId IS NULL`` but are hidden from
-    # every listing surface (see :data:`_EXCLUDE_DREAM_SESSIONS_SQL`), so
-    # posting into one would drop the message somewhere the user can never
-    # open. Same exclusion as the listing queries.
-    sessions = await db.query_raw_with_schema(
-        'SELECT * FROM {schema_prefix}"ChatSession" WHERE "userId" = $1 '
-        f'AND "expertId" IS NULL AND {_EXCLUDE_DREAM_SESSIONS_SQL} '
-        'ORDER BY "updatedAt" DESC LIMIT 1',
-        user_id,
-        model=PrismaChatSession,
+    if await PrismaChatMessage.prisma().find_unique(where={"id": message_id}):
+        return False
+    session = await PrismaChatSession.prisma().find_first(
+        where={"id": session_id, "userId": user_id}
     )
-    if sessions:
-        session_id = sessions[0].id
-    else:
-        created = await create_chat_session(
-            session_id=str(uuid.uuid4()), user_id=user_id
-        )
-        session_id = created.session_id
+    if session is None:
+        return False
 
     async def write_with_fresh_sequence() -> None:
         await add_chat_message(
@@ -1299,17 +1778,68 @@ async def append_plain_session_message(
             metadata=metadata,
         )
 
-    # Same Redis NX lock as append_expert_run_message: the sequence read +
-    # insert must not interleave with a concurrent turn writer picking the
-    # same sequence and PK-colliding on (sessionId, sequence).
+    # Same Redis NX lock as append_expert_run_message: the sequence read and
+    # the insert must not interleave with a turn writing the same sequence.
     async with _get_session_lock(session_id):
         try:
             await write_with_fresh_sequence()
         except UniqueViolationError as e:
             if is_duplicate_chat_message_id_error(e):
-                return None
+                return False
             # Reachable only in lock-degraded mode (Redis down yields the
             # lock without acquiring); one retry with a fresh sequence is
             # enough at this write volume.
             await write_with_fresh_sequence()
+    # The next turn and the chat page load the session through the Redis cache
+    # first; a stale copy would hide the row just written.
+    await invalidate_session_cache(session_id)
+    return True
+
+
+async def append_plain_session_message(
+    user_id: str,
+    content: str,
+    message_id: str,
+    metadata: dict[str, Any] | None = None,
+    title: str | None = None,
+) -> str | None:
+    """Deliver an assistant message in a new, non-expert Otto chat.
+
+    Each distinct message gets its own chat. Deduplicates on *message_id*
+    so retries and double-fires create neither duplicate posts nor empty chats.
+    Returns the new session id, or None when deduped.
+    """
+    existing = await PrismaChatMessage.prisma().find_unique(where={"id": message_id})
+    if existing is not None:
+        return None
+
+    session_id = str(uuid.uuid4())
+    data = _chat_session_create_input(
+        session_id=session_id,
+        user_id=user_id,
+        organization_id=None,
+        team_id=None,
+        expert_id=None,
+        metadata=await _default_route_metadata(user_id, origin="interactive"),
+    )
+    message: ChatMessageCreateWithoutRelationsInput = {
+        "id": message_id,
+        "role": "assistant",
+        "sequence": 0,
+        "content": sanitize_string(content),
+    }
+    if metadata is not None:
+        message["metadata"] = SafeJson(metadata)
+    if title is not None:
+        data["title"] = sanitize_string(title)
+    data["Messages"] = {"create": message}
+
+    # The nested write is atomic: a duplicate message rolls back its new chat too.
+    try:
+        await PrismaChatSession.prisma().create(data=data)
+    except UniqueViolationError:
+        # Nested writes report only "id", without naming the conflicting model.
+        if await PrismaChatMessage.prisma().find_unique(where={"id": message_id}):
+            return None
+        raise
     return session_id

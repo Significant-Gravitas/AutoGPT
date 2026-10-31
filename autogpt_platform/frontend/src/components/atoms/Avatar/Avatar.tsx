@@ -10,6 +10,7 @@ import React, {
 import BoringAvatar from "boring-avatars";
 
 import Image, { ImageProps } from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { cn } from "@/lib/utils";
 
 type AvatarContextValue = {
@@ -33,7 +34,7 @@ export function Avatar({
   className,
   children,
   ...props
-}: AvatarProps): JSX.Element {
+}: AvatarProps): React.JSX.Element {
   const [isLoaded, setIsLoaded] = useState<boolean>(false);
   const [hasImage, setHasImage] = useState<boolean>(false);
 
@@ -45,6 +46,7 @@ export function Avatar({
   return (
     <AvatarContext.Provider value={value}>
       <div
+        data-slot="avatar"
         className={cn(
           "relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full",
           className,
@@ -58,8 +60,12 @@ export function Avatar({
 }
 
 export interface AvatarImageProps
-  extends Omit<React.ImgHTMLAttributes<HTMLImageElement>, "width" | "height"> {
+  extends Omit<
+    React.ImgHTMLAttributes<HTMLImageElement>,
+    "src" | "width" | "height"
+  > {
   as?: "NextImage" | "img";
+  src?: string;
   width?: number;
   height?: number;
   fill?: boolean;
@@ -93,7 +99,7 @@ export function AvatarImage({
   priority,
   unoptimized,
   ...rest
-}: AvatarImageProps): JSX.Element | null {
+}: AvatarImageProps): React.JSX.Element | null {
   const { setIsLoaded, setHasImage, hasImage } = useAvatarContext();
 
   const normalizedSrc = typeof src === "string" ? src.trim() : src;
@@ -123,8 +129,9 @@ export function AvatarImage({
     }
 
     return (
-      // eslint-disable-next-line @next/next/no-img-element
+      // eslint-disable-next-line @next/next/no-img-element -- avatar URLs come from any host, so next/image does not fit
       <img
+        data-slot="avatar-image"
         src={normalizedSrc}
         alt={alt ?? "Avatar image"}
         className={cn("h-full w-full object-cover", className)}
@@ -147,6 +154,7 @@ export function AvatarImage({
 
   return (
     <Image
+      data-slot="avatar-image"
       {...rest}
       src={normalizedSrc}
       alt={alt ?? "Avatar image"}
@@ -156,7 +164,7 @@ export function AvatarImage({
       fill={Boolean(fill)}
       sizes={sizes}
       priority={priority}
-      unoptimized={unoptimized}
+      unoptimized={unoptimized || isLocalStoreMediaUrl(normalizedSrc)}
       onLoad={handleLoadingComplete}
       onError={handleErrorNext as ImageProps["onError"]}
     />
@@ -165,41 +173,81 @@ export function AvatarImage({
 
 export type AvatarFallbackProps = React.HTMLAttributes<HTMLSpanElement> & {
   size?: number;
+  /**
+   * Fills the whole box instead of drawing a circle inside it, so a wrapper
+   * with a smaller radius can clip the marble to a rounded square.
+   */
+  square?: boolean;
+  /**
+   * Names the fallback for assistive tech once the image is gone for good.
+   * Without it an avatar whose image fails to load has no accessible name at
+   * all. Pass it alongside your own `children`: the default marble is already
+   * an `img`, and two of those on one avatar help nobody.
+   */
+  accessibleLabel?: string;
 };
 
 export function AvatarFallback({
   className,
   children,
   size: _size, // accepted for API compatibility; currently not used
+  square = false,
+  accessibleLabel,
   ...props
-}: AvatarFallbackProps): JSX.Element | null {
+}: AvatarFallbackProps): React.JSX.Element | null {
   const { isLoaded, hasImage } = useAvatarContext();
   const show = !isLoaded || !hasImage;
   if (!show) return null;
+  // An image on its way: a quiet grey placeholder, not a stand-in identity
+  // that gets swapped out a moment later.
+  if (hasImage) {
+    return (
+      <span
+        data-slot="avatar-fallback"
+        aria-hidden="true"
+        className={cn(
+          "absolute inset-0 rounded-full bg-surface-hover",
+          square && "rounded-none",
+          className,
+        )}
+        {...props}
+      />
+    );
+  }
   const computedSize = _size || getAvatarSizeFromClassName(className) || 40;
+  const hasCustomFallback = typeof children !== "string" && children != null;
   // Trim the seed so call sites with padded names render the same gradient
   const name =
     typeof children === "string" && children.trim() ? children.trim() : "User";
   return (
     <span
+      data-slot="avatar-fallback"
       // decorative gradient — hide from AT so the marble's unnamed role="img"
-      // svg doesn't surface as an axe violation
-      aria-hidden="true"
+      // svg doesn't surface as an axe violation, unless the caller named it
+      role={accessibleLabel ? "img" : undefined}
+      aria-label={accessibleLabel}
+      aria-hidden={accessibleLabel ? undefined : "true"}
       className={cn(
         // absolute so the fallback overlays (not flows beside) the image while it loads;
-        // svg stretched to fill so the marble always matches the avatar size
-        "absolute inset-0 flex items-center justify-center rounded-full bg-transparent text-lg text-neutral-600 [&>svg]:h-full [&>svg]:w-full",
+        // svg stretched to fill so the marble always matches the avatar size.
+        // TODO(tokens): no text role is 18px/28px (text-lg).
+        "absolute inset-0 flex items-center justify-center rounded-full bg-transparent text-lg text-foreground-secondary",
+        !hasCustomFallback && "[&>svg]:h-full [&>svg]:w-full",
         className,
       )}
       {...props}
     >
-      <BoringAvatar
-        size={computedSize}
-        name={name}
-        variant="marble"
-        colors={["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"]}
-        square={false}
-      />
+      {hasCustomFallback ? (
+        children
+      ) : (
+        <BoringAvatar
+          size={computedSize}
+          name={name}
+          variant="marble"
+          colors={["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"]}
+          square={square}
+        />
+      )}
     </span>
   );
 }

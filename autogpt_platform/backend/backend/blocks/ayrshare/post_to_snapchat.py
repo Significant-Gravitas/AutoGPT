@@ -3,6 +3,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaOutput,
     BlockType,
@@ -68,6 +69,8 @@ class PostToSnapchatBlock(Block):
             block_type=BlockType.AYRSHARE,
             input_schema=PostToSnapchatBlock.Input,
             output_schema=PostToSnapchatBlock.Output,
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

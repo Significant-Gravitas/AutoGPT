@@ -11,7 +11,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { CARD, HALF } from "./ResultCards";
+import { CARD, HALF, RESULT_GRID } from "./ResultCards";
 import {
   formatBytes,
   formatWhen,
@@ -19,6 +19,7 @@ import {
   resultItemKey,
   str,
 } from "./resultHelpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface SchedulesProps {
   schedules: Record<string, unknown>[];
@@ -42,24 +43,28 @@ interface ResultsProps {
 
 export function FeatureRequestList({ results }: ResultsProps) {
   return (
-    <div className="grid gap-1.5 sm:grid-cols-2">
+    <div className={RESULT_GRID}>
       {results.map((request, i) => (
         <div
           key={resultItemKey(request, i)}
           className={CARD + " flex items-start gap-2.5 p-2.5"}
         >
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] font-medium text-zinc-800">
+            <Text
+              variant="body-sm-medium-inherit"
+              tone="emphasis"
+              className="truncate"
+            >
               {str(request, "title") ?? inline(request)}
-            </p>
+            </Text>
             {str(request, "description") && (
-              <p className="truncate text-xs text-zinc-500">
+              <Text variant="small-tight" tone="muted" className="truncate">
                 {str(request, "description")}
-              </p>
+              </Text>
             )}
           </div>
           {str(request, "identifier") && (
-            <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500">
+            <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
               {str(request, "identifier")}
             </span>
           )}
@@ -71,7 +76,7 @@ export function FeatureRequestList({ results }: ResultsProps) {
 
 export function ScheduleList({ schedules }: SchedulesProps) {
   return (
-    <div className="grid gap-1.5 sm:grid-cols-2">
+    <div className={RESULT_GRID}>
       {schedules.map((schedule, i) => {
         const next = str(schedule, "next_run_time");
         const recurring = !!str(schedule, "cron");
@@ -80,23 +85,31 @@ export function ScheduleList({ schedules }: SchedulesProps) {
             key={resultItemKey(schedule, i)}
             className={CARD + " flex items-center gap-2.5 p-2.5"}
           >
-            <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-              <Icon icon={ClockIcon} size={15} className="text-zinc-600" />
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
+              <Icon
+                icon={ClockIcon}
+                size={15}
+                className="text-foreground-secondary"
+              />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-medium text-zinc-800">
+              <Text
+                variant="body-sm-medium-inherit"
+                tone="emphasis"
+                className="truncate"
+              >
                 {str(schedule, "name", "message") ?? inline(schedule)}
-              </p>
+              </Text>
               {next && (
-                <p className="flex items-center gap-1 text-xs text-zinc-500">
+                <p className="flex items-center gap-1 text-xs text-foreground-tertiary">
                   {recurring && <Icon icon={RepeatIcon} size={11} />}
                   {formatWhen(next)}
                 </p>
               )}
             </div>
             {str(schedule, "kind") && (
-              <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500">
-                {str(schedule, "kind") === "copilot_turn" ? "chat" : "agent"}
+              <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
+                {str(schedule, "kind") === "copilot_turn" ? "chat" : "workflow"}
               </span>
             )}
           </div>
@@ -110,15 +123,23 @@ export function ScheduleCreatedCard({ output }: OutputProps) {
   const next = str(output, "next_run_time");
   return (
     <div className={`${CARD} ${HALF} flex items-center gap-2.5 p-2.5`}>
-      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-        <Icon icon={ClockIcon} size={15} className="text-zinc-600" />
+      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
+        <Icon
+          icon={ClockIcon}
+          size={15}
+          className="text-foreground-secondary"
+        />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-medium text-zinc-800">
+        <Text
+          variant="body-sm-medium-inherit"
+          tone="emphasis"
+          className="truncate"
+        >
           Follow-up scheduled
-        </p>
+        </Text>
         {next && (
-          <p className="flex items-center gap-1 text-xs text-zinc-500">
+          <p className="flex items-center gap-1 text-xs text-foreground-tertiary">
             {output.is_recurring === true && (
               <Icon icon={RepeatIcon} size={11} />
             )}
@@ -132,7 +153,7 @@ export function ScheduleCreatedCard({ output }: OutputProps) {
 
 export function FolderList({ folders }: FoldersProps) {
   return (
-    <div className="grid gap-1.5 sm:grid-cols-2">
+    <div className={RESULT_GRID}>
       {folders.map((folder, i) => {
         const count =
           typeof folder.agent_count === "number" ? folder.agent_count : null;
@@ -141,16 +162,29 @@ export function FolderList({ folders }: FoldersProps) {
             key={resultItemKey(folder, i)}
             className={CARD + " flex items-center gap-2.5 p-2.5"}
           >
-            <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-              <Icon icon={FolderIcon} size={15} className="text-zinc-600" />
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
+              <Icon
+                icon={FolderIcon}
+                size={15}
+                className="text-foreground-secondary"
+              />
             </div>
-            <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-zinc-800">
+            <Text
+              variant="body-sm-medium-inherit"
+              tone="emphasis"
+              className="min-w-0 flex-1 truncate"
+            >
               {str(folder, "name") ?? inline(folder)}
-            </p>
+            </Text>
             {count !== null && (
-              <span className="shrink-0 text-xs text-zinc-400">
-                {count} agent{count === 1 ? "" : "s"}
-              </span>
+              <Text
+                variant="small-tight"
+                as="span"
+                tone="subtle"
+                className="shrink-0"
+              >
+                {count} workflow{count === 1 ? "" : "s"}
+              </Text>
             )}
           </div>
         );
@@ -161,7 +195,7 @@ export function FolderList({ folders }: FoldersProps) {
 
 export function FileList({ files }: FilesProps) {
   return (
-    <div className={`${CARD} ${HALF} divide-y divide-zinc-100`}>
+    <div className={`${CARD} ${HALF} divide-y divide-separator`}>
       {files.map((file, i) => {
         const mime = str(file, "mime_type") ?? "";
         const size =
@@ -175,15 +209,25 @@ export function FileList({ files }: FilesProps) {
             <Icon
               icon={fileIcon}
               size={14}
-              className="shrink-0 text-zinc-400"
+              className="shrink-0 text-foreground-subtle"
             />
-            <p className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-700">
+            <Text
+              variant="small-mono-tight"
+              as="p"
+              tone="body"
+              className="min-w-0 flex-1 truncate"
+            >
               {str(file, "path", "name") ?? inline(file)}
-            </p>
+            </Text>
             {size !== null && (
-              <span className="shrink-0 text-xs text-zinc-400">
+              <Text
+                variant="small-tight"
+                as="span"
+                tone="subtle"
+                className="shrink-0"
+              >
                 {formatBytes(size)}
-              </span>
+              </Text>
             )}
           </div>
         );
@@ -194,7 +238,7 @@ export function FileList({ files }: FilesProps) {
 
 export function DocsList({ results }: ResultsProps) {
   return (
-    <div className="grid gap-1.5 sm:grid-cols-2">
+    <div className={RESULT_GRID}>
       {results.map((doc, i) => {
         const docUrl = str(doc, "doc_url");
         const section = str(doc, "section");
@@ -203,24 +247,32 @@ export function DocsList({ results }: ResultsProps) {
             key={resultItemKey(doc, i)}
             className={CARD + " flex items-start gap-2.5 p-2.5"}
           >
-            <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-              <Icon icon={BookOpenIcon} size={15} className="text-zinc-600" />
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
+              <Icon
+                icon={BookOpenIcon}
+                size={15}
+                className="text-foreground-secondary"
+              />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
-                <p className="min-w-0 truncate text-[13px] font-medium text-zinc-800">
+                <Text
+                  variant="body-sm-medium-inherit"
+                  tone="emphasis"
+                  className="min-w-0 truncate"
+                >
                   {str(doc, "title", "path") ?? inline(doc)}
-                </p>
+                </Text>
                 {section && (
-                  <span className="shrink-0 truncate text-[11px] text-zinc-400">
+                  <span className="shrink-0 truncate text-caption-sm leading-inherit text-foreground-subtle">
                     {section}
                   </span>
                 )}
               </div>
               {str(doc, "snippet") && (
-                <p className="truncate text-xs text-zinc-500">
+                <Text variant="small-tight" tone="muted" className="truncate">
                   {str(doc, "snippet")}
-                </p>
+                </Text>
               )}
             </div>
             {docUrl && (
@@ -229,7 +281,7 @@ export function DocsList({ results }: ResultsProps) {
                 target="_blank"
                 rel="noreferrer"
                 aria-label="Open doc"
-                className="shrink-0 rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+                className="shrink-0 rounded-full p-1 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
               >
                 <Icon icon={LinkSquare01Icon} size={14} />
               </Link>

@@ -1,5 +1,7 @@
+import { getFieldDomId } from "../../field-accessibility";
 import { OptionalDataControlsTemplateProps } from "@rjsf/utils";
-import { PlusCircle } from "lucide-react";
+import { PlusSignCircleIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 import { IconButton, RemoveButton } from "../standard/buttons";
 
@@ -12,10 +14,11 @@ export default function OptionalDataControlsTemplate(
       <IconButton
         id={id}
         registry={registry}
+        // oxlint-disable-next-line design-system/no-unknown-classes -- RJSF marker class, kept for the upstream template hook
         className="rjsf-add-optional-data"
         onClick={onAddClick}
         title={label}
-        icon={<PlusCircle />}
+        icon={<Icon aria-hidden icon={PlusSignCircleIcon} size={24} />}
         size="small"
       />
     );
@@ -24,6 +27,7 @@ export default function OptionalDataControlsTemplate(
       <RemoveButton
         id={id}
         registry={registry}
+        // oxlint-disable-next-line design-system/no-unknown-classes -- RJSF marker class, kept for the upstream template hook
         className="rjsf-remove-optional-data"
         onClick={onRemoveClick}
         title={label}
@@ -31,5 +35,5 @@ export default function OptionalDataControlsTemplate(
       />
     );
   }
-  return <em id={id}>{label}</em>;
+  return <em id={getFieldDomId(id, registry.formContext)}>{label}</em>;
 }

@@ -9,10 +9,12 @@ Tests mock at the Prisma model boundary (``ModelName.prisma()``) so the
 real Python logic is exercised while no database connection is needed.
 """
 
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from autogpt_libs.auth.models import RequestContext
 from fastapi import HTTPException
 
 # ---------------------------------------------------------------------------
@@ -92,6 +94,10 @@ def _make_execution_row(
     m.organizationId = None
     m.teamId = None
     m.expertId = None
+    m.triggerSource = None
+    m.triggerRef = None
+    m.scheduleId = None
+    m.webhookId = None
     return m
 
 
@@ -153,6 +159,8 @@ def _make_chat_session_row(
     m.organizationId = None
     m.teamId = None
     m.expertId = None
+    m.scheduleId = None
+    m.webhookId = None
     return m
 
 
@@ -820,10 +828,25 @@ class TestExecutionUserIdIsolationExtended:
         mock_actions = AsyncMock()
         mock_actions.update_many = AsyncMock(return_value=1)
 
-        with patch(
-            "backend.data.execution.AgentGraphExecution.prisma",
-            return_value=mock_actions,
+        with (
+            patch(
+                "backend.data.execution.AgentGraphExecution.prisma",
+                return_value=mock_actions,
+            ),
+            patch(
+                "backend.data.sharing.execution_shares.SharedExecutionFile.prisma",
+                return_value=AsyncMock(),
+            ),
+            patch(
+                "backend.data.sharing.execution_shares.ChatLinkedShare.prisma",
+                return_value=AsyncMock(),
+            ),
+            patch(
+                "backend.data.sharing.execution_shares.transaction"
+            ) as mock_transaction,
         ):
+            mock_transaction.return_value.__aenter__ = AsyncMock(return_value=None)
+            mock_transaction.return_value.__aexit__ = AsyncMock(return_value=False)
             from backend.data.execution import delete_graph_execution
 
             await delete_graph_execution(EXEC_ID, USER_ID, soft_delete=True)
@@ -1062,7 +1085,9 @@ class TestRegressionLibraryAgents:
             result = await fork_library_agent(LIBRARY_AGENT_ID, USER_ID)
 
         # fork_graph must be called with the caller's user_id
-        mock_fork.assert_called_once_with(GRAPH_ID, GRAPH_VERSION, USER_ID)
+        mock_fork.assert_called_once_with(
+            GRAPH_ID, GRAPH_VERSION, USER_ID, organization_id=None, team_id=None
+        )
         # create_library_agent must use the caller's user_id
         assert mock_create_lib.call_args.args[1] == USER_ID
         assert result.id == "lib-forked"
@@ -1268,6 +1293,7 @@ class TestRegressionStore:
                     graph_version=GRAPH_VERSION,
                     slug=SLUG,
                     name="Test Agent",
+                    sub_heading="Find test agents fast",
                 )
 
         # The initial graph lookup must include userId
@@ -1297,6 +1323,7 @@ class TestRegressionStore:
                 user_id=USER_ID,
                 store_listing_version_id=STORE_LISTING_VERSION_ID,
                 name="Updated",
+                sub_heading="Find test agents fast",
             )
 
     @pytest.mark.asyncio
@@ -1367,6 +1394,13 @@ class TestRegressionSchedules:
         other_job.name = "other-job"
 
         scheduler.scheduler.get_jobs = MagicMock(return_value=[owned_job, other_job])
+        # get_graph_execution_schedules (include_paused=False) reads the
+        # active-jobs path, which queries the jobstore directly rather than
+        # going through scheduler.get_jobs — see Scheduler._get_active_jobs_cached.
+        scheduler._execution_jobstore = MagicMock()
+        scheduler._execution_jobstore._get_jobs = MagicMock(
+            return_value=[owned_job, other_job]
+        )
 
         results = scheduler.get_graph_execution_schedules(user_id=USER_ID)
 
@@ -1526,16 +1560,9 @@ class TestRegressionUserSettings:
         mock_user = MagicMock()
         mock_user.id = USER_ID
         mock_user.email = "test@example.com"
-        mock_user.notifyOnAgentRun = True
-        mock_user.notifyOnZeroBalance = False
-        mock_user.notifyOnLowBalance = False
-        mock_user.notifyOnBlockExecutionFailed = False
-        mock_user.notifyOnContinuousAgentError = False
-        mock_user.notifyOnDailySummary = False
-        mock_user.notifyOnWeeklySummary = False
-        mock_user.notifyOnMonthlySummary = False
-        mock_user.notifyOnAgentApproved = False
-        mock_user.notifyOnAgentRejected = False
+        mock_user.briefingFrequency = "WEEKLY"
+        mock_user.alertsEnabled = True
+        mock_user.notifyOnStoreVerdict = True
         mock_user.maxEmailsPerDay = 3
         self.mock_user_actions.find_unique_or_raise = AsyncMock(return_value=mock_user)
 
@@ -1571,18 +1598,17 @@ class TestRegressionUserSettings:
         mock_user.stripeCustomerId = None
         mock_user.topUpConfig = None
         mock_user.onboardingCompletedAt = None
-        mock_user.notifyOnAgentRun = True
-        mock_user.notifyOnZeroBalance = False
-        mock_user.notifyOnLowBalance = False
-        mock_user.notifyOnBlockExecutionFailed = False
-        mock_user.notifyOnContinuousAgentError = False
-        mock_user.notifyOnDailySummary = False
-        mock_user.notifyOnWeeklySummary = False
-        mock_user.notifyOnMonthlySummary = False
-        mock_user.notifyOnAgentApproved = False
-        mock_user.notifyOnAgentRejected = False
+        mock_user.briefingFrequency = "WEEKLY"
+        mock_user.alertsEnabled = True
+        mock_user.notifyOnStoreVerdict = True
         mock_user.maxEmailsPerDay = 3
         mock_user.subscriptionTier = "NO_TIER"
+        mock_user.defaultChatAuthProvider = None
+        mock_user.defaultChatCredentialId = None
+        mock_user.termsAcceptedAt = None
+        mock_user.termsVersion = None
+        mock_user.marketingOptOutAt = None
+        mock_user.marketingOptOutSource = None
         self.mock_user_actions.update = AsyncMock(return_value=mock_user)
 
         from backend.data.user import update_user_timezone
@@ -1642,7 +1668,6 @@ class TestPR10WebhookTenancy:
             "backend.copilot.tools.run_agent._safe_link_to_chat_share",
             AsyncMock(),
         )
-        mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
 
     @pytest.mark.asyncio
     async def test_copilot_agent_run_passes_org_team_to_execution(self, mocker):
@@ -1673,7 +1698,6 @@ class TestPR10WebhookTenancy:
             new_callable=AsyncMock,
             return_value=mock_lib_agent,
         )
-        mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
 
         await tool._run_agent(
             user_id=USER_ID,
@@ -2189,6 +2213,7 @@ class TestPR15MarketplaceOrg:
                     graph_version=GRAPH_VERSION,
                     slug=SLUG,
                     name="Test Agent",
+                    sub_heading="Find test agents fast",
                     organization_id="org-1",
                 )
 
@@ -2511,6 +2536,12 @@ class TestPR16Transfers:
         self.mock_prisma = MagicMock()
         mocker.patch("backend.api.features.transfers.db.prisma", self.mock_prisma)
 
+        @asynccontextmanager
+        async def _tx():
+            yield self.mock_prisma
+
+        mocker.patch("backend.api.features.transfers.db.transaction", _tx)
+
     def _make_transfer_row(
         self,
         *,
@@ -2600,7 +2631,10 @@ class TestPR16Transfers:
             status="SOURCE_APPROVED",
             source_approved_by=USER_ID,
         )
-        self.mock_prisma.transferrequest.update = AsyncMock(return_value=updated)
+        self.mock_prisma.transferrequest.update_many = AsyncMock(return_value=1)
+        self.mock_prisma.transferrequest.find_unique_or_raise = AsyncMock(
+            return_value=updated
+        )
 
         from backend.api.features.transfers.db import approve_transfer
 
@@ -2611,7 +2645,9 @@ class TestPR16Transfers:
         )
 
         assert result.status == "SOURCE_APPROVED"
-        update_data = self.mock_prisma.transferrequest.update.call_args.kwargs["data"]
+        update_data = self.mock_prisma.transferrequest.update_many.call_args.kwargs[
+            "data"
+        ]
         assert update_data["sourceApprovedByUserId"] == USER_ID
         assert update_data["status"] == "SOURCE_APPROVED"
 
@@ -2626,7 +2662,10 @@ class TestPR16Transfers:
             status="TARGET_APPROVED",
             target_approved_by="user-target",
         )
-        self.mock_prisma.transferrequest.update = AsyncMock(return_value=updated)
+        self.mock_prisma.transferrequest.update_many = AsyncMock(return_value=1)
+        self.mock_prisma.transferrequest.find_unique_or_raise = AsyncMock(
+            return_value=updated
+        )
 
         from backend.api.features.transfers.db import approve_transfer
 
@@ -2637,7 +2676,9 @@ class TestPR16Transfers:
         )
 
         assert result.status == "TARGET_APPROVED"
-        update_data = self.mock_prisma.transferrequest.update.call_args.kwargs["data"]
+        update_data = self.mock_prisma.transferrequest.update_many.call_args.kwargs[
+            "data"
+        ]
         assert update_data["targetApprovedByUserId"] == "user-target"
         assert update_data["status"] == "TARGET_APPROVED"
 
@@ -2658,7 +2699,13 @@ class TestPR16Transfers:
             target_approved_by="user-target",
             completed_at=datetime(2025, 7, 1, tzinfo=timezone.utc),
         )
-        self.mock_prisma.transferrequest.update = AsyncMock(return_value=completed)
+        self.mock_prisma.transferrequest.find_unique_or_raise = AsyncMock(
+            return_value=completed
+        )
+        self.mock_prisma.transferrequest.update_many = AsyncMock(return_value=1)
+        graph_row = MagicMock()
+        graph_row.organizationId = "org-1"
+        self.mock_prisma.agentgraph.find_first = AsyncMock(return_value=graph_row)
         self.mock_prisma.agentgraph.update_many = AsyncMock(return_value=1)
         self.mock_prisma.auditlog.create = AsyncMock(return_value=MagicMock())
 
@@ -2672,12 +2719,51 @@ class TestPR16Transfers:
 
         assert result.status == "COMPLETED"
         # Verify the resource was moved to target org, ALL versions, landing
-        # at org-home (teamId=None) so it's visible in the target org.
+        # at org-home (teamId=None) so it's visible in the target org, and
+        # only while the source org still owns it (#15271).
         self.mock_prisma.agentgraph.update_many.assert_called_once()
         move_call = self.mock_prisma.agentgraph.update_many.call_args.kwargs
         assert move_call["data"]["organizationId"] == "org-2"
         assert move_call["data"]["teamId"] is None
-        assert move_call["where"] == {"id": GRAPH_ID}
+        assert move_call["where"] == {"id": GRAPH_ID, "organizationId": "org-1"}
+        # Json columns must get SafeJson, not bare dicts (#15267).
+        from prisma import Json
+
+        assert self.mock_prisma.auditlog.create.call_count == 2
+        for call in self.mock_prisma.auditlog.create.call_args_list:
+            assert isinstance(call.kwargs["data"]["afterJson"], Json)
+            assert isinstance(call.kwargs["data"]["beforeJson"], Json)
+
+    @pytest.mark.asyncio
+    async def test_execute_store_listing_move_is_scoped_to_source_org(self):
+        """A StoreListing move only matches while the source org owns it;
+        a zero-row move aborts and rejects the transfer (#15271)."""
+        approved = self._make_transfer_row(
+            status="SOURCE_APPROVED",
+            resource_type="StoreListing",
+            resource_id="listing-1",
+            source_approved_by=USER_ID,
+            target_approved_by="user-target",
+        )
+        self.mock_prisma.transferrequest.find_unique = AsyncMock(return_value=approved)
+        self.mock_prisma.transferrequest.update_many = AsyncMock(return_value=1)
+        listing = MagicMock()
+        listing.isDeleted = False
+        listing.owningOrgId = "org-1"
+        self.mock_prisma.storelisting.find_unique = AsyncMock(return_value=listing)
+        self.mock_prisma.storelisting.update_many = AsyncMock(return_value=0)
+        self.mock_prisma.auditlog.create = AsyncMock(return_value=MagicMock())
+
+        from backend.api.features.transfers.db import execute_transfer
+
+        with pytest.raises(ValueError, match="no longer belongs"):
+            await execute_transfer(transfer_id="tr-1", user_id=USER_ID, org_id="org-1")
+
+        move_call = self.mock_prisma.storelisting.update_many.call_args.kwargs
+        assert move_call["where"] == {"id": "listing-1", "owningOrgId": "org-1"}
+        self.mock_prisma.auditlog.create.assert_not_called()
+        reject_call = self.mock_prisma.transferrequest.update_many.call_args.kwargs
+        assert reject_call["data"] == {"status": "REJECTED"}
 
     @pytest.mark.asyncio
     async def test_execute_rejects_non_party_org(self):
@@ -2730,7 +2816,10 @@ class TestPR16Transfers:
         self.mock_prisma.transferrequest.find_unique = AsyncMock(return_value=pending)
 
         rejected = self._make_transfer_row(status="REJECTED")
-        self.mock_prisma.transferrequest.update = AsyncMock(return_value=rejected)
+        self.mock_prisma.transferrequest.update_many = AsyncMock(return_value=1)
+        self.mock_prisma.transferrequest.find_unique_or_raise = AsyncMock(
+            return_value=rejected
+        )
 
         from backend.api.features.transfers.db import reject_transfer
 
@@ -2741,8 +2830,12 @@ class TestPR16Transfers:
         )
 
         assert result.status == "REJECTED"
-        update_data = self.mock_prisma.transferrequest.update.call_args.kwargs["data"]
-        assert update_data["status"] == "REJECTED"
+        call = self.mock_prisma.transferrequest.update_many.call_args.kwargs
+        assert call["data"] == {"status": "REJECTED"}
+        # Conditional, so it can't overwrite a transfer that just completed.
+        assert call["where"]["status"] == {
+            "not_in": ["COMPLETED", "REJECTED", "CANCELLED"]
+        }
 
     @pytest.mark.asyncio
     async def test_list_transfers_returns_both_directions(self):
@@ -3054,9 +3147,9 @@ class TestPR18Cutover:
         # After cutover, the route should ALWAYS set org (not conditionally)
         import inspect
 
-        from backend.api.features import v1 as api_v1
+        from backend.api.features.api_keys import routes as api_key_routes
 
-        route_src = inspect.getsource(api_v1.create_api_key)
+        route_src = inspect.getsource(api_key_routes.create_api_key)
         assert (
             "if ctx.org_id" not in route_src
         ), "Route should always set organizationId, not conditionally"
@@ -3226,11 +3319,19 @@ class TestReviewFindings:
         return m
 
     def _owner_ctx(self, org_id="org-review-1", team_id="team-review-1"):
-        ctx = MagicMock()
-        ctx.user_id = USER_ID
-        ctx.org_id = org_id
-        ctx.team_id = team_id
-        return ctx
+        # A MagicMock grants every permission: check_org_permission reads
+        # ctx.is_org_owner etc., and an auto-created attribute is truthy.
+        return RequestContext(
+            user_id=USER_ID,
+            org_id=org_id,
+            team_id=team_id,
+            is_org_owner=True,
+            is_org_admin=False,
+            is_org_billing_manager=False,
+            is_team_admin=False,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
 
     def _make_invitation(self, **overrides):
         m = MagicMock()
@@ -3377,30 +3478,41 @@ class TestReviewFindings:
         assert exc_info.value.status_code == 403
 
     # ------------------------------------------------------------------
-    # 6. update_team ctx.team_id / ws_id mismatch
+    # 6. update_team authorizes by target team, not active team (SECRT-2453)
     # ------------------------------------------------------------------
 
     @pytest.mark.asyncio
-    async def test_update_team_rejects_mismatched_team_id(self):
-        """PATCH /teams/{ws_id} should reject when ctx.team_id != ws_id."""
+    async def test_update_team_authorizes_by_target_not_active_team(self):
+        """PATCH /teams/{ws_id} authorizes against the target team from the
+        URL, independent of the caller's active team. An org admin
+        (MANAGE_WORKSPACES) may update a team even when ctx.team_id differs."""
         from backend.api.features.orgs.team_model import UpdateTeamRequest
         from backend.api.features.orgs.team_routes import update_team
 
+        # Active team is team-1; the target is a different team in the same org.
         ctx = self._owner_ctx(org_id="org-review-1", team_id="team-1")
 
-        # Mock the team_db.get_team call that validates org ownership
-        with patch(
-            "backend.api.features.orgs.team_routes.team_db.get_team",
-            new_callable=AsyncMock,
+        updated = MagicMock()
+        with (
+            patch(
+                "backend.api.features.orgs.team_routes.team_db.get_team",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "backend.api.features.orgs.team_routes.team_db.update_team",
+                new_callable=AsyncMock,
+                return_value=updated,
+            ) as mock_update,
         ):
-            with pytest.raises(HTTPException) as exc_info:
-                await update_team(
-                    org_id="org-review-1",
-                    ws_id="team-2",  # different from ctx.team_id
-                    request=UpdateTeamRequest(name="Hacked"),
-                    ctx=ctx,
-                )
-            assert exc_info.value.status_code == 403
+            result = await update_team(
+                org_id="org-review-1",
+                ws_id="team-2",  # different from ctx.team_id
+                request=UpdateTeamRequest(name="Renamed"),
+                ctx=ctx,
+            )
+
+        assert result is updated
+        mock_update.assert_awaited_once()
 
     # ------------------------------------------------------------------
     # 7. reject_transfer has no org membership check
@@ -3489,18 +3601,22 @@ class TestReviewFindings:
 
         async def capture_update(*, where, data):
             update_capture.update(data)
-            result = self._make_transfer(
-                status=data.get("status", "SOURCE_APPROVED"),
-                sourceApprovedByUserId=USER_ID,
-                targetApprovedByUserId="user-target",
-            )
-            return result
+            return 1
 
         with patch("backend.api.features.transfers.db.prisma") as mock_prisma:
             mock_prisma.transferrequest.find_unique = AsyncMock(
                 return_value=source_approved
             )
-            mock_prisma.transferrequest.update = AsyncMock(side_effect=capture_update)
+            mock_prisma.transferrequest.update_many = AsyncMock(
+                side_effect=capture_update
+            )
+            mock_prisma.transferrequest.find_unique_or_raise = AsyncMock(
+                side_effect=lambda **kwargs: self._make_transfer(
+                    status=update_capture.get("status", "SOURCE_APPROVED"),
+                    sourceApprovedByUserId=USER_ID,
+                    targetApprovedByUserId="user-target",
+                )
+            )
 
             from backend.api.features.transfers.db import approve_transfer
 

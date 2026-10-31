@@ -8,23 +8,78 @@ circular import through ``executor`` → ``credit`` → ``block_cost_config``).
 
 from __future__ import annotations
 
+import json
 import os
 import re
-from urllib.parse import urlparse
+from typing import Any
+from urllib.parse import urlparse, urlsplit, urlunsplit
 
 from backend.copilot.config import ChatConfig
-from backend.copilot.moonshot import is_moonshot_model
-from backend.copilot.sdk.subscription import validate_subscription
+from backend.copilot.llm_attribution import openrouter_attribution
+from backend.copilot.moonshot import is_moonshot_model, moonshot_context_window
+from backend.copilot.sdk.subscription import host_login_env, validate_subscription
 
 # ChatConfig is stateless (reads env vars) — a separate instance is fine.
 # A singleton would require importing service.py which causes the circular dep
 # this module was created to avoid.
 config = ChatConfig()
 
+# Both launch paths check the CLI binary themselves (``cli_version``), from the
+# allowlisted environment. The SDK's own check takes no environment, so before
+# each launch it would start the CLI with the backend's whole one; an empty
+# value would leave it on.
+os.environ["CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK"] = "1"
+
 # RFC 7230 §3.2.6 — keep only printable ASCII; strip control chars and non-ASCII.
 _HEADER_SAFE_RE = re.compile(r"[^\x20-\x7e]")
 _MAX_HEADER_VALUE_LEN = 128
 _LOOPBACK_NO_PROXY_HOSTS = ("127.0.0.1", "localhost", "::1")
+
+# A direct-Anthropic launch's credential and where it goes, carried over from
+# the backend's environment: what the CLI used to inherit along with the rest.
+_DIRECT_ANTHROPIC_NAMES = (
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BASE_URL",
+)
+
+# CLI flag for ``ClaudeAgentOptions.extra_args``. Every prompt we send is user
+# or graph text, never a CLI slash command.
+DISABLE_SLASH_COMMANDS_FLAG = "disable-slash-commands"
+
+
+def without_url_credentials(url: str) -> str:
+    """*url* without a user name and password some deployments embed in it."""
+    parts = urlsplit(url)
+    if "@" not in parts.netloc:
+        return url
+    return urlunsplit(parts._replace(netloc=parts.netloc.rpartition("@")[2]))
+
+
+def cli_prompt_text(text: str) -> str:
+    """*text* as the CLI must receive it to send it on to the model.
+
+    Even with the flag above, the CLI answers a prompt that starts with "/"
+    itself when it names a built-in command. It only looks at the first
+    character, so a leading space keeps the text whole.
+    """
+    return f" {text}" if text.startswith("/") else text
+
+
+def cli_user_message(content: list[dict[str, Any]], session_id: str) -> dict[str, Any]:
+    """A stream-json user message the CLI hands to the model as written.
+
+    ``ClaudeAgentOptions.verbatim_prompts`` marks every message the SDK writes
+    ``client_composed``; a message written straight to the transport must
+    carry the mark itself.
+    """
+    return {
+        "type": "user",
+        "message": {"role": "user", "content": content},
+        "parent_tool_use_id": None,
+        "session_id": session_id,
+        "client_composed": True,
+    }
 
 
 def _loopback_no_proxy_value() -> str:
@@ -50,13 +105,22 @@ def build_sdk_env(
 ) -> dict[str, str]:
     """Build env vars for the SDK CLI subprocess.
 
+    A launch keeps nothing else of the backend's environment but what the OS
+    and the network need, proxy settings as configured, credentials included
+    (``launch_env.py``), so each mode states every credential it uses.
+
     Four modes (checked in order):
     1. **Codex gateway** — request-scoped loopback Anthropic compatibility.
-    2. **Subscription** — clears all keys; CLI uses ``claude login`` auth.
-    3. **Direct Anthropic** — subprocess inherits ``ANTHROPIC_API_KEY``
-       from the parent environment (no overrides needed).
+    2. **Subscription** — clears all keys; CLI uses ``claude login`` auth,
+       or the login the host holds in ``CLAUDE_CODE_OAUTH_TOKEN``.
+    3. **Direct Anthropic** — carries the deployment's ``ANTHROPIC_API_KEY``,
+       and any auth token or base URL set beside it, over from the backend's
+       environment.
     4. **OpenRouter** (default) — overrides base URL and auth token to
-       route through the proxy, with Langfuse trace headers.
+       route through the proxy, with the headers and body fields OpenRouter
+       Broadcast attributes generations by (user, chat session,
+       environment). Only this mode reaches Broadcast, so only its
+       generations show in PostHog LLM analytics and Langfuse broadcast.
 
     All modes receive workspace isolation (``CLAUDE_CODE_TMPDIR``) and
     security hardening env vars to prevent .claude.md loading, prompt
@@ -108,7 +172,7 @@ def build_sdk_env(
             f"build_sdk_env() called under transport "
             f"{config.transport.name!r}, which doesn't support the SDK. "
             "The request should have been downgraded to the baseline "
-            "path — see executor.processor.resolve_use_sdk_for_mode."
+            "path — see executor.processor.resolve_use_sdk."
         )
 
     # --- Mode 1: Claude Code subscription auth ---
@@ -118,13 +182,19 @@ def build_sdk_env(
             "ANTHROPIC_API_KEY": "",
             "ANTHROPIC_AUTH_TOKEN": "",
             "ANTHROPIC_BASE_URL": "",
+            **host_login_env(),
         }
 
     # --- Mode 2: Direct Anthropic (no proxy hop) ---
     elif not config.openrouter_active:
-        # Clear OAuth tokens so CLI uses ANTHROPIC_API_KEY from parent env
+        # Clear OAuth tokens so CLI uses the deployment's ANTHROPIC_API_KEY
         # rather than subscription auth if the container has those tokens set.
         env = {
+            **{
+                name: value
+                for name in _DIRECT_ANTHROPIC_NAMES
+                if (value := os.environ.get(name))
+            },
             "CLAUDE_CODE_OAUTH_TOKEN": "",
             "CLAUDE_CODE_REFRESH_TOKEN": "",
         }
@@ -142,7 +212,9 @@ def build_sdk_env(
             "CLAUDE_CODE_REFRESH_TOKEN": "",  # prevent token refresh via subscription
         }
 
-        # Inject broadcast headers so OpenRouter forwards traces to Langfuse.
+        # Inject broadcast headers: OpenRouter Broadcast skips the
+        # Anthropic-native ``/messages`` endpoint unless ``x-session-id``
+        # is present.
         def _safe(v: str) -> str:
             return _HEADER_SAFE_RE.sub("", v).strip()[:_MAX_HEADER_VALUE_LEN]
 
@@ -153,6 +225,7 @@ def build_sdk_env(
             parts.append(f"x-user-id: {_safe(user_id)}")
         if parts:
             env["ANTHROPIC_CUSTOM_HEADERS"] = "\n".join(parts)
+        env["CLAUDE_CODE_EXTRA_BODY"] = _broadcast_extra_body(session_id, user_id)
 
     # --- Common: workspace isolation + security hardening (all modes) ---
     # Route subagent temp files into the per-session workspace so output
@@ -166,6 +239,16 @@ def build_sdk_env(
     env["CLAUDE_CODE_DISABLE_CLAUDE_MDS"] = "1"
     env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
     env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+    # Run sub-agents in the foreground.  Since Claude Code 2.1.198 the
+    # Agent/Task tool launches them in the background by default and returns
+    # ``async_launched`` at once; their report only arrives as a new CLI turn
+    # after the ``ResultMessage``, by which point the turn has ended and the
+    # CLI has been closed, killing the sub-agent and losing its work.  This
+    # also stops the CLI from moving long tool calls to the background.
+    env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] = "1"
+    # Keep TodoWrite, the checklist the UI renders; the CLI otherwise swaps in
+    # its TaskCreate/TaskUpdate tools.
+    env["CLAUDE_CODE_ENABLE_TASKS"] = "0"
     # Strip Anthropic-specific beta headers that OpenRouter rejects.
     # NOTE: this disables ALL experimental betas including
     # context-management-2025-06-27.  This is intentional: OpenRouter
@@ -173,20 +256,26 @@ def build_sdk_env(
     # flag harmlessly (those betas are not enabled there either by default).
     env["CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"] = "1"
 
-    # Pin the CLI's perceived context window at the 200K default.  1M context
-    # is GA (no beta header) on Sonnet 4.6+/5 and newer CLIs enable it by
-    # default via their model capability table (native_1m) or server-side
-    # flags; this kill-switch gates every 1M branch in the CLI's window
-    # resolution, so the autocompact trigger below stays anchored to 200K
-    # across SDK upgrades.  (The experimental-betas flag above no longer
-    # covers 1M — it stopped being a beta.)
-    env["CLAUDE_CODE_DISABLE_1M_CONTEXT"] = "1"
+    # Pin the CLI's perceived context window explicitly.  This env var is the
+    # highest-precedence input to the CLI's window resolution, so it preempts
+    # the model table, the 1M capability flags and the server-side experiment
+    # branches that newer CLIs consult — without it the compaction trigger is
+    # an emergent property of whichever bundled CLI we happen to ship.
+    window = _pinned_context_window(model)
+    env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = str(window)
 
-    # Auto-compaction trigger threshold (CLI default: ~93% of perceived window).
-    # The override caps Anthropic cache-creation cost; Moonshot routes skip it
-    # because their OpenRouter endpoint returns ``cache_create=0`` (no cache
-    # writes happen, so there's no cost to cap) and an aggressive trigger
-    # against Kimi's larger window cascades into 3+ compactions per turn.
+    # The window above is clamped by the model's own window, which this
+    # kill-switch holds at 200K; keeping it set past that point would swallow
+    # the raise silently.  1M is GA (no beta header) on Sonnet 4.6+/5, so the
+    # experimental-betas flag above does not cover it.
+    if window <= _CLI_DEFAULT_CONTEXT_WINDOW:
+        env["CLAUDE_CODE_DISABLE_1M_CONTEXT"] = "1"
+
+    # Trigger threshold, as a percentage of the window pinned above (CLI
+    # default: ~93%).  The override caps Anthropic cache-creation cost;
+    # Moonshot routes skip it because their OpenRouter endpoint returns
+    # ``cache_create=0`` (no cache writes happen, so there's no cost to cap)
+    # and an aggressive trigger cascades into 3+ compactions per turn.
     # Operators can also set the config to 0 to disable globally.
     if (
         not is_moonshot_model(model)
@@ -205,6 +294,25 @@ def build_sdk_env(
     )
 
     return env
+
+
+# What the CLI assumes any Claude model's window to be once 1M is gated off.
+_CLI_DEFAULT_CONTEXT_WINDOW = 200_000
+
+
+def _pinned_context_window(model: str | None) -> int:
+    """Configured window pin, capped at a Moonshot route's real window.
+
+    A pin above what the provider serves puts the compaction trigger past the
+    point the provider rejects the turn, so compaction never fires.  Anthropic
+    is deliberately not capped: the catalog holds every Anthropic entry at 200K
+    pending the Claude-5 tokenizer soak, which would cancel a legitimate raise.
+    An unlisted Kimi SKU falls back to the window the CLI assumes anyway.
+    """
+    window = config.claude_agent_context_window
+    if not is_moonshot_model(model):
+        return window
+    return min(window, moonshot_context_window(model) or _CLI_DEFAULT_CONTEXT_WINDOW)
 
 
 # Sonnet 5's tokenizer counts ~30% more tokens than 4.x for the same text,
@@ -226,3 +334,20 @@ def _autocompact_pct_for_model(model: str | None) -> int:
     if model and "claude-sonnet-5" in model:
         pct = min(round(pct * _SONNET_5_TOKENIZER_INFLATION), 90)
     return pct
+
+
+def _broadcast_extra_body(session_id: str | None, user_id: str | None) -> str:
+    """``CLAUDE_CODE_EXTRA_BODY``: JSON the CLI merges into every request body
+    (main turn, sub-agents, compaction), carrying the fields OpenRouter
+    Broadcast attributes a generation by.
+
+    ``metadata.user_id`` replaces the CLI's own (a JSON blob of its device and
+    session ids) so that every user field on the request names the same
+    platform user.
+    """
+    body = openrouter_attribution(
+        user_id=user_id, session_id=session_id, generation_name="copilot-sdk"
+    )
+    if user_id:
+        body["metadata"] = {"user_id": body["user"]}
+    return json.dumps(body)

@@ -1,10 +1,17 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import {
+  Briefcase01Icon,
+  Calendar03Icon,
+  SparklesIcon,
+  UserIcon,
+} from "@hugeicons/core-free-icons";
+import {
   TabsLine,
   TabsLineContent,
   TabsLineList,
   TabsLineTrigger,
 } from "./TabsLine";
+import { Text } from "@/components/atoms/Text/Text";
 
 const meta = {
   title: "Molecules/TabsLine",
@@ -255,4 +262,84 @@ export const FullWidth: Story = {
       </TabsLine>
     </div>
   ),
+};
+
+function CompactDemo() {
+  return (
+    <div className="p-8">
+      <TabsLine variant="compact" defaultValue="basics" className="w-full">
+        <TabsLineList className="overflow-x-auto">
+          <TabsLineTrigger value="basics" icon={UserIcon}>
+            Basics
+          </TabsLineTrigger>
+          <TabsLineTrigger value="work" icon={Briefcase01Icon}>
+            Work
+          </TabsLineTrigger>
+          <TabsLineTrigger value="schedules" icon={Calendar03Icon}>
+            Schedules
+          </TabsLineTrigger>
+          <TabsLineTrigger value="skills" icon={SparklesIcon}>
+            Skills
+          </TabsLineTrigger>
+        </TabsLineList>
+        <TabsLineContent value="basics">
+          <div className="text-sm text-foreground-secondary">Basics panel</div>
+        </TabsLineContent>
+        <TabsLineContent value="work">
+          <div className="text-sm text-foreground-secondary">Work panel</div>
+        </TabsLineContent>
+        <TabsLineContent value="schedules">
+          <div className="text-sm text-foreground-secondary">
+            Schedules panel
+          </div>
+        </TabsLineContent>
+        <TabsLineContent value="skills">
+          <div className="text-sm text-foreground-secondary">Skills panel</div>
+        </TabsLineContent>
+      </TabsLine>
+    </div>
+  );
+}
+
+export const Compact: Story = {
+  render: () => <CompactDemo />,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          '`variant="compact"` is the dense neutral style used on Team pages: flush, zinc underline, 14px triggers. Pass `icon` on a trigger for a 14px Hugeicon.',
+      },
+    },
+  },
+};
+
+export const Pill: Story = {
+  render: () => (
+    <div className="p-8">
+      <TabsLine
+        variant="pill"
+        defaultValue="top-up"
+        className="flex w-[400px] flex-col items-center"
+      >
+        <TabsLineList className="mx-auto">
+          <TabsLineTrigger value="top-up">One-time top up</TabsLineTrigger>
+          <TabsLineTrigger value="auto-refill">Auto-refill</TabsLineTrigger>
+        </TabsLineList>
+        <TabsLineContent value="top-up">
+          <Text variant="body">Add credits once.</Text>
+        </TabsLineContent>
+        <TabsLineContent value="auto-refill">
+          <Text variant="body">Top up whenever the balance runs low.</Text>
+        </TabsLineContent>
+      </TabsLine>
+    </div>
+  ),
+  parameters: {
+    docs: {
+      description: {
+        story:
+          '`variant="pill"` is a segmented control: the triggers sit in a rounded grey track and the active one is raised on a light chip, with no underline. Used by the wallet\'s top-up panel.',
+      },
+    },
+  },
 };

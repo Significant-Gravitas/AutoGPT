@@ -3,6 +3,7 @@ import re
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -53,6 +54,7 @@ class CodeExtractionBlock(Block):
                 ("python", "print('Hello World')"),
                 ("remaining_text", "Here's a Python example:\nAnd some HTML:"),
             ],
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -99,7 +101,11 @@ class CodeExtractionBlock(Block):
             + r")[ \t]*\n[\s\S]*?```"
         )
 
-        remaining_text = re.sub(pattern, "", input_data.text).strip()
+        # Case-insensitive like extract_code, so ```Python fences that were
+        # extracted are also removed from the remaining text.
+        remaining_text = re.sub(
+            pattern, "", input_data.text, flags=re.IGNORECASE
+        ).strip()
         remaining_text = re.sub(r"\n\s*\n", "\n", remaining_text)
 
         if remaining_text:  # Only yield if there's remaining text

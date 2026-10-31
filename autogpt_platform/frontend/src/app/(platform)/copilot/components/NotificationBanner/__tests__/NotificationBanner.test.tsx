@@ -1,16 +1,19 @@
-import {
-  cleanup,
-  render,
-  screen,
-  fireEvent,
-  waitFor,
-} from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useCopilotUIStore } from "../../../store";
+import {
+  getPersistedNotificationBannerDismissed,
+  useCopilotUIStore,
+} from "../../../store";
 import { NotificationBanner } from "../NotificationBanner";
 
 vi.mock("@sentry/nextjs", () => ({
   captureException: vi.fn(),
+}));
+
+const mockToast = vi.hoisted(() => vi.fn());
+vi.mock("@/components/molecules/Toast/use-toast", () => ({
+  toast: mockToast,
 }));
 
 vi.mock("@/services/environment", () => ({
@@ -21,46 +24,135 @@ vi.mock("@/services/environment", () => ({
   },
 }));
 
-function resetStore() {
-  useCopilotUIStore.setState({
-    isNotificationsEnabled: false,
-    isSoundEnabled: true,
+const BANNER_TEXT = /get a notification when otto or your experts finish/i;
+const DISMISSED_KEY = "copilot-notification-banner-dismissed";
+const ENABLED_KEY = "copilot-notifications-enabled";
+
+// A real browser updates `Notification.permission` before the request resolves.
+function stubNotification(
+  permission: NotificationPermission,
+  answer: NotificationPermission = permission,
+) {
+  const value = {
+    permission,
+    requestPermission: vi.fn(async () => {
+      value.permission = answer;
+      return answer;
+    }),
+  };
+  Object.defineProperty(globalThis, "Notification", {
+    value,
+    configurable: true,
+    writable: true,
   });
+  return value.requestPermission;
+}
+
+function removeNotification() {
+  Object.defineProperty(globalThis, "Notification", {
+    value: undefined,
+    configurable: true,
+    writable: true,
+  });
+}
+
+function turnOnButton() {
+  return screen.getByRole("button", { name: /turn on notifications/i });
 }
 
 describe("NotificationBanner", () => {
   beforeEach(() => {
+    mockToast.mockClear();
     window.localStorage.clear();
-    resetStore();
+    useCopilotUIStore.setState({
+      isNotificationsEnabled: false,
+      isNotificationBannerDismissed: false,
+      isSoundEnabled: true,
+    });
   });
 
   afterEach(() => {
     cleanup();
   });
 
-  it("renders when permission is default and not dismissed", () => {
-    Object.defineProperty(globalThis, "Notification", {
-      value: { permission: "default", requestPermission: vi.fn() },
-      configurable: true,
-      writable: true,
-    });
+  it("offers to turn notifications on when permission is default", () => {
+    stubNotification("default");
 
     render(<NotificationBanner />);
 
-    expect(screen.getByText(/enable browser notifications/i)).toBeDefined();
-    expect(screen.getByRole("button", { name: /^enable$/i })).toBeDefined();
+    expect(screen.getByText(BANNER_TEXT)).toBeDefined();
+    expect(turnOnButton()).toBeDefined();
+  });
+
+  it("turns notifications on in one click once the browser allows it", async () => {
+    const requestPermission = stubNotification("default", "granted");
+    render(<NotificationBanner />);
+
+    await userEvent.click(turnOnButton());
+
+    expect(requestPermission).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(useCopilotUIStore.getState().isNotificationsEnabled).toBe(true),
+    );
+    expect(window.localStorage.getItem(ENABLED_KEY)).toBe("true");
+    expect(screen.queryByText(BANNER_TEXT)).toBeNull();
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Notifications are on" }),
+    );
+  });
+
+  it("hides and explains when the browser blocks notifications", async () => {
+    stubNotification("default", "denied");
+    render(<NotificationBanner />);
+
+    await userEvent.click(turnOnButton());
+
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Notifications blocked" }),
+      ),
+    );
+    expect(useCopilotUIStore.getState().isNotificationsEnabled).toBe(false);
+    expect(screen.queryByText(BANNER_TEXT)).toBeNull();
+  });
+
+  it("stays up when the permission prompt is dismissed", async () => {
+    stubNotification("default", "default");
+    render(<NotificationBanner />);
+
+    await userEvent.click(turnOnButton());
+
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Notifications not turned on" }),
+      ),
+    );
+    expect(screen.getByText(BANNER_TEXT)).toBeDefined();
+  });
+
+  it("offers one click to turn back on when the browser already allows notifications", async () => {
+    stubNotification("granted");
+    render(<NotificationBanner />);
+
+    await userEvent.click(turnOnButton());
+
+    await waitFor(() =>
+      expect(useCopilotUIStore.getState().isNotificationsEnabled).toBe(true),
+    );
+    expect(screen.queryByText(BANNER_TEXT)).toBeNull();
+  });
+
+  it("does not render when notifications are unsupported", () => {
+    removeNotification();
+
+    const { container } = render(<NotificationBanner />);
+
+    expect(container.innerHTML).toBe("");
   });
 
   it("does not render when already dismissed", () => {
-    Object.defineProperty(globalThis, "Notification", {
-      value: { permission: "default", requestPermission: vi.fn() },
-      configurable: true,
-      writable: true,
-    });
-    window.localStorage.setItem(
-      "copilot-notification-banner-dismissed",
-      "true",
-    );
+    stubNotification("default");
+    useCopilotUIStore.setState({ isNotificationBannerDismissed: true });
 
     const { container } = render(<NotificationBanner />);
 
@@ -68,11 +160,7 @@ describe("NotificationBanner", () => {
   });
 
   it("does not render when notifications are already enabled", () => {
-    Object.defineProperty(globalThis, "Notification", {
-      value: { permission: "granted", requestPermission: vi.fn() },
-      configurable: true,
-      writable: true,
-    });
+    stubNotification("granted");
     useCopilotUIStore.setState({ isNotificationsEnabled: true });
 
     const { container } = render(<NotificationBanner />);
@@ -81,66 +169,66 @@ describe("NotificationBanner", () => {
   });
 
   it("does not render when permission is denied", () => {
-    Object.defineProperty(globalThis, "Notification", {
-      value: { permission: "denied", requestPermission: vi.fn() },
-      configurable: true,
-      writable: true,
-    });
+    stubNotification("denied");
 
     const { container } = render(<NotificationBanner />);
 
     expect(container.innerHTML).toBe("");
   });
 
-  it("requests permission and enables notifications on Enable click", async () => {
-    const requestPermission = vi.fn().mockResolvedValue("granted");
-    Object.defineProperty(globalThis, "Notification", {
-      value: { permission: "default", requestPermission },
-      configurable: true,
-      writable: true,
-    });
+  it("hides for good once dismissed", async () => {
+    stubNotification("default");
+    const { rerender } = render(<NotificationBanner />);
 
-    render(<NotificationBanner />);
+    await userEvent.click(screen.getByLabelText("Dismiss"));
 
-    fireEvent.click(screen.getByRole("button", { name: /^enable$/i }));
-
-    await waitFor(() => {
-      expect(requestPermission).toHaveBeenCalled();
-      expect(useCopilotUIStore.getState().isNotificationsEnabled).toBe(true);
-    });
+    expect(window.localStorage.getItem(DISMISSED_KEY)).toBe("true");
+    expect(screen.queryByText(BANNER_TEXT)).toBeNull();
+    rerender(<NotificationBanner />);
+    expect(screen.queryByText(BANNER_TEXT)).toBeNull();
   });
 
-  it("dismisses banner and sets localStorage on dismiss click", () => {
-    Object.defineProperty(globalThis, "Notification", {
-      value: { permission: "default", requestPermission: vi.fn() },
-      configurable: true,
-      writable: true,
+  it("hides once notifications are switched on elsewhere", () => {
+    stubNotification("granted");
+    render(<NotificationBanner />);
+    expect(screen.getByText(BANNER_TEXT)).toBeDefined();
+
+    // What the cross-tab sync does when another tab switches them on.
+    act(() => {
+      useCopilotUIStore.setState({ isNotificationsEnabled: true });
     });
 
-    render(<NotificationBanner />);
+    expect(screen.queryByText(BANNER_TEXT)).toBeNull();
+  });
+});
 
-    fireEvent.click(screen.getByLabelText("Dismiss"));
-
-    expect(
-      window.localStorage.getItem("copilot-notification-banner-dismissed"),
-    ).toBe("true");
+describe("getPersistedNotificationBannerDismissed", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
   });
 
-  it("does not enable notifications when permission is denied", async () => {
-    const requestPermission = vi.fn().mockResolvedValue("denied");
-    Object.defineProperty(globalThis, "Notification", {
-      value: { permission: "default", requestPermission },
-      configurable: true,
-      writable: true,
-    });
+  it("is false for a browser that never chose", () => {
+    expect(getPersistedNotificationBannerDismissed()).toBe(false);
+  });
 
-    render(<NotificationBanner />);
+  it("is true once the banner was dismissed", () => {
+    window.localStorage.setItem(DISMISSED_KEY, "true");
+    expect(getPersistedNotificationBannerDismissed()).toBe(true);
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: /^enable$/i }));
+  it("treats notifications switched off before as dismissed", () => {
+    window.localStorage.setItem(ENABLED_KEY, "false");
+    expect(getPersistedNotificationBannerDismissed()).toBe(true);
+  });
 
-    await waitFor(() => {
-      expect(requestPermission).toHaveBeenCalled();
-      expect(useCopilotUIStore.getState().isNotificationsEnabled).toBe(false);
-    });
+  it("asks again once copilot data is cleared, which removes the stored switch", () => {
+    window.localStorage.setItem(ENABLED_KEY, "false");
+    window.localStorage.setItem(DISMISSED_KEY, "true");
+    useCopilotUIStore.getState().clearCopilotLocalData();
+
+    expect(getPersistedNotificationBannerDismissed()).toBe(false);
+    expect(useCopilotUIStore.getState().isNotificationBannerDismissed).toBe(
+      false,
+    );
   });
 });

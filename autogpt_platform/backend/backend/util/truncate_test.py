@@ -1,9 +1,10 @@
 """Tests for the size-bounded truncation helper.
 
-These cover the maximal-limits fast path in :func:`truncate`, including the
-cases where it diverges from the previous grid search, so the divergence is
-pinned rather than incidental.
+These cover the maximal-limits fast path in :func:`truncate` and the plain
+string path.
 """
+
+import pytest
 
 from backend.util.truncate import _truncate_value, truncate
 
@@ -36,10 +37,6 @@ class TestAlreadyFittingPayloads:
         assert result == value
 
     def test_result_never_exceeds_the_limit_it_was_given(self):
-        # `measure` is not monotonic in str_limit: the omission marker can be
-        # longer than the text it replaces, so a mid-range str_limit inflates
-        # a payload that already fitted. At these limits the grid search
-        # inflated ["x" * 13] from 17 chars to 32, overshooting size_limit.
         for length, size_limit in ((13, 17), (14, 18), (16, 21)):
             value = [("x" * length)]
             assert measured(value) <= size_limit
@@ -67,7 +64,7 @@ class TestOversizedPayloads:
         assert measured(result) <= 200
 
     def test_search_path_is_used_when_maximal_candidate_overshoots(self):
-        # Multi-byte payload whose maximal-limits candidate measures 76 > 40,
+        # Multi-byte payload whose maximal-limits candidate measures 56 > 40,
         # so the fast path must decline and leave the search result in place.
         size_limit = 40
         value = {"a": {"b": "…" * (size_limit + 1)}}
@@ -94,8 +91,7 @@ class TestOversizedPayloads:
 
         result = truncate(value, 1)
 
-        assert result != value
-        assert OMISSION_MARKER in str(result)
+        assert result == {"k": "…"}
 
 
 class TestPlainStrings:
@@ -104,21 +100,11 @@ class TestPlainStrings:
     def test_short_string_is_unchanged(self):
         assert truncate("hello", 100) == "hello"
 
-    def test_long_string_keeps_limit_chars_plus_the_omission_marker(self):
-        # A `str` passed directly does not go through the search, so it is the
-        # one input that overshoots `size_limit`: `_truncate_string_middle`
-        # keeps exactly `limit` characters and then appends the marker. This
-        # is long-standing behaviour, identical before and after the fast path
-        # above, and it is why the size_limit bound asserted elsewhere in this
-        # module is about the searched (dict/list) path rather than about
-        # every input.
-        marker = "… (omitted 400 chars)…"
-
+    def test_long_string_is_truncated_to_the_limit(self):
         result = truncate("x" * 500, 100)
 
-        assert result == ("x" * 50) + marker + ("x" * 50)
-        assert len(result) == 100 + len(marker)
-        assert len(result) < len("x" * 500)
+        assert len(result) <= 100
+        assert OMISSION_MARKER in result
 
 
 class TestRepeatedCalls:
@@ -148,3 +134,43 @@ class TestRepeatedCalls:
         twice = truncate(once, 100)
 
         assert twice == once
+
+
+def test_truncate_string_respects_size_limit():
+    value = "0123456789" * 10
+
+    result = truncate(value, 30)
+
+    assert len(result) <= 30
+    assert result.startswith(value[0])
+    assert result.endswith(value[-1])
+    assert "omitted 91 chars" in result
+
+
+@pytest.mark.parametrize("size_limit", [0, 1, 5, 20])
+def test_truncate_string_respects_short_size_limits(size_limit: int):
+    result = truncate("0123456789" * 10, size_limit)
+
+    assert len(result) <= size_limit
+
+
+def test_truncate_string_returns_value_within_limit_unchanged():
+    value = "short value"
+
+    assert truncate(value, len(value)) == value
+
+
+def test_truncate_string_preserves_ends_when_full_marker_has_no_context():
+    value = "0123456789" * 10
+
+    result = truncate(value, 22)
+
+    assert len(result) == 22
+    assert result.startswith(value[0])
+    assert result.endswith(value[-1])
+
+
+@pytest.mark.parametrize("value", ["value", {"key": "value"}, 42])
+def test_truncate_rejects_negative_size_limit(value: object):
+    with pytest.raises(ValueError, match="size_limit must be non-negative"):
+        truncate(value, -1)

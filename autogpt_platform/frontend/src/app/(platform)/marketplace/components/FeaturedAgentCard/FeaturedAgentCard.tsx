@@ -14,6 +14,7 @@ import {
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { useRef, useState } from "react";
 import { AddToLibraryButton } from "../AddToLibraryButton/AddToLibraryButton";
 
@@ -24,13 +25,15 @@ interface Props {
 
 // Soft top wash per featured slot — same treatment as the expert cards so
 // the two families read as one system. Body stays white.
+/* oxlint-disable design-system/no-arbitrary-values -- the card washes are radial gradients with no token */
 const WASHES: Record<string, string> = {
   violet:
     "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(139,92,246,0.10),transparent_70%)]",
-  blue: "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(59,130,246,0.10),transparent_70%)]",
+  blue: "bg-[radial-gradient(120%_100%_at_50%_0%,rgb(var(--color-info)/0.10),transparent_70%)]",
   green:
     "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(34,197,94,0.10),transparent_70%)]",
 };
+/* oxlint-enable design-system/no-arbitrary-values */
 
 function getWash(bg: string) {
   if (bg.includes("violet")) return WASHES.violet;
@@ -52,7 +55,8 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
 
   return (
     <div
-      className="group relative flex h-full w-full max-w-md cursor-pointer flex-col items-start overflow-hidden rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]"
+      // oxlint-disable-next-line design-system/no-arbitrary-values -- the card's hover lift shadow has no shadow token
+      className="group relative flex h-full w-full max-w-md cursor-pointer flex-col items-start overflow-hidden rounded-2xl border border-border-base/80 bg-surface p-5 shadow-message-table transition-all duration-200 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]"
       data-testid="featured-store-card"
     >
       <div
@@ -61,7 +65,7 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
           getWash(backgroundColor),
         )}
       />
-      <div className="relative aspect-[2/1.2] w-full overflow-hidden rounded-xl ring-1 ring-black/5 md:aspect-[2.17/1]">
+      <div className="relative aspect-[2/1.2] w-full overflow-hidden rounded-xl ring-1 ring-foreground-base/5 md:aspect-[2.17/1]">
         {agent.agent_image && !imageError ? (
           <>
             {!imageLoaded && (
@@ -69,6 +73,7 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
             )}
             <Image
               src={agent.agent_image}
+              unoptimized={isLocalStoreMediaUrl(agent.agent_image)}
               alt={`${agent.agent_name} preview image`}
               fill
               className="object-cover"
@@ -77,7 +82,7 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
             />
           </>
         ) : (
-          <div className="absolute inset-0 rounded-xl bg-violet-100" />
+          <div className="absolute inset-0 rounded-xl bg-brand/10" />
         )}
       </div>
 
@@ -88,7 +93,7 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
               <span
                 ref={titleRef}
                 onPointerEnter={checkTitleOverflow}
-                className="line-clamp-1 block min-w-0 font-sans text-lg font-semibold tracking-[-0.01em] text-zinc-900"
+                className="line-clamp-1 block min-w-0 font-sans text-lg font-semibold tracking-title text-foreground-strong"
               >
                 {agent.agent_name}
               </span>
@@ -111,25 +116,25 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
               )}
               <AvatarFallback size={20}>{agent.creator}</AvatarFallback>
             </Avatar>
-            <span className="truncate text-[13px] text-zinc-500">
+            <span className="truncate text-body-sm leading-inherit text-foreground-tertiary">
               by {agent.creator}
             </span>
           </div>
         )}
-        <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-zinc-600">
+        <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-foreground-secondary">
           {agent.description}
         </p>
       </div>
 
       <div className="relative mt-auto flex w-full items-center pt-3">
-        <span className="text-xs text-zinc-500">
+        <span className="text-xs text-foreground-tertiary">
           {agent.runs === 0
             ? "No runs"
             : `${(agent.runs ?? 0).toLocaleString()} runs`}
         </span>
       </div>
       {agent.creator && agent.slug && agent.agent_graph_id && (
-        <div className="absolute bottom-4 right-4">
+        <div className="absolute right-4 bottom-4">
           <AddToLibraryButton
             creatorSlug={agent.creator}
             agentSlug={agent.slug}

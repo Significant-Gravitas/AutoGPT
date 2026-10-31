@@ -1,27 +1,47 @@
 import {
-  getHireExpertMockHandler,
   getListExpertsMockHandler,
   getListExpertTemplatesMockHandler,
-  getUpdateExpertSoulMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import {
+  getGetV1CheckIfOnboardingIsCompletedMockHandler200,
+  getGetV1OnboardingStateMockHandler200,
+  getGetV1OnboardingStateResponseMock200,
+} from "@/app/api/__generated__/endpoints/onboarding/onboarding.msw";
 import { Expert } from "@/app/api/__generated__/models/expert";
-import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
-import userEvent from "@testing-library/user-event";
+import {
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@/tests/integrations/test-utils";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { MainMarkeplacePage } from "../components/MainMarketplacePage/MainMarketplacePage";
 
+const { capture } = vi.hoisted(() => ({ capture: vi.fn() }));
+vi.mock("posthog-js", () => ({ default: { capture } }));
+
+/** Funnel events as PostHog received them, in order. */
+function funnelCalls() {
+  return capture.mock.calls.map(([event, data]) => ({
+    type: event as string,
+    data: (data ?? {}) as Record<string, unknown>,
+  }));
+}
+
+beforeEach(() => {
+  capture.mockReset();
+});
+
 const mockUseAuth = vi.hoisted(() => vi.fn());
-const mockRouterPush = vi.hoisted(() => vi.fn());
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     back: vi.fn(),
     forward: vi.fn(),
     prefetch: vi.fn(),
-    push: mockRouterPush,
+    push: vi.fn(),
     refresh: vi.fn(),
     replace: vi.fn(),
   }),
@@ -33,18 +53,6 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: mockUseAuth,
 }));
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useGetFlag: (flag: string) =>
-      flag === "hire-experts" ? true : actual.useGetFlag(flag as never),
-  };
-});
 
 const mariaTemplate: Expert = {
   id: "template-maria",
@@ -59,7 +67,7 @@ const mariaTemplate: Expert = {
   boundaries: "Never invent customer evidence.",
   protected_soul_rules: [
     "The expert discloses that it is AI when acting externally.",
-    "External actions require approval.",
+    "The expert asks for approval before acting externally.",
   ],
   is_template: true,
   source_template_id: null,
@@ -74,80 +82,98 @@ const hiredMaria: Expert = {
   source_template_id: "template-maria",
 };
 
-const mariaWithSamples: Expert = {
-  ...mariaTemplate,
-  voice_samples: [
-    { label: "Punchy and bold", text: "Stop guessing what your buyers want." },
-    {
-      label: "Warm and story-led",
-      text: "Every campaign starts with a person, not a product.",
-    },
-  ],
-};
-
-function renderMarketplace() {
-  return render(
-    <>
-      <MainMarkeplacePage />
-      <Toaster />
-    </>,
-  );
-}
-
 describe("Marketplace ExpertsSection", () => {
   beforeEach(() => {
-    mockRouterPush.mockReset();
     mockUseAuth.mockReturnValue({
       user: { id: "user-1" },
       isLoggedIn: true,
     });
+    server.use(
+      getGetV1CheckIfOnboardingIsCompletedMockHandler200({
+        is_completed: true,
+      }),
+      getGetV1OnboardingStateMockHandler200(
+        getGetV1OnboardingStateResponseMock200({
+          userId: "user-1",
+          completedSteps: ["ONBOARDING_COMPLETE", "MARKETPLACE_TAB_INTRO"],
+        }),
+      ),
+    );
   });
 
-  test("renders experts section and hires from the profile sheet", async () => {
+  test("links each expert card to its own page", async () => {
     server.use(
       getListExpertTemplatesMockHandler([mariaTemplate]),
       getListExpertsMockHandler([]),
-      getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
     );
 
-    renderMarketplace();
+    render(<MainMarkeplacePage />);
 
     expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
     expect(
       screen
-        .getByRole("link", { name: /raise your own expert from scratch/i })
+        .getByRole("link", { name: "Create an Expert" })
         .getAttribute("href"),
     ).toBe("/raise");
-    await userEvent.click(await screen.findByText("Maria"));
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Hire Maria" }),
+    // The card is the link: a shared URL lands on the same profile the
+    // marketplace opens, with no dialog in between.
+    const card = await screen.findByRole("link", { name: /Maria/ });
+    expect(card.getAttribute("href")).toBe(
+      "/marketplace/experts/template-maria",
     );
-
-    expect(await screen.findByText("Maria joined your team")).toBeDefined();
-    expect(await screen.findByText("View team")).toBeDefined();
-    expect(screen.queryByText("Chat with Maria")).toBeNull();
-    expect(mockRouterPush).toHaveBeenCalledWith(
-      `/copilot?expertId=${hiredMaria.id}&kickoff=1`,
-    );
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  test("stays hidden and fetches nothing for signed-out visitors", async () => {
+  test("shows the expert cards to signed-out visitors without account links", async () => {
     mockUseAuth.mockReturnValue({ user: null, isLoggedIn: false });
+
+    let rosterRequested = false;
+    server.use(
+      getListExpertTemplatesMockHandler([mariaTemplate]),
+      getListExpertsMockHandler(() => {
+        rosterRequested = true;
+        return [];
+      }),
+    );
+
+    render(<MainMarkeplacePage />);
+
+    expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
+    const card = await screen.findByRole("link", { name: /Maria/ });
+    expect(card.getAttribute("href")).toBe(
+      "/marketplace/experts/template-maria",
+    );
+    expect(screen.queryByText("Create an Expert")).toBeNull();
+    expect(screen.queryByRole("link", { name: "View your team" })).toBeNull();
+    expect(
+      screen.getByRole("link", { name: "Hire" }).getAttribute("href"),
+    ).toBe("/signup?next=%2Fmarketplace%2Fexperts%2Ftemplate-maria");
+    expect(rosterRequested).toBe(false);
+  });
+
+  test("shows experts to signed-in users without a rollout flag", async () => {
     let templatesRequested = false;
+    let expertsRequested = false;
     server.use(
       getListExpertTemplatesMockHandler(() => {
         templatesRequested = true;
         return [mariaTemplate];
       }),
-      getListExpertsMockHandler([]),
+      getListExpertsMockHandler(() => {
+        expertsRequested = true;
+        return [];
+      }),
     );
 
-    renderMarketplace();
+    render(<MainMarkeplacePage />);
 
-    expect(await screen.findByText("All AI Workflows")).toBeDefined();
-    expect(screen.queryByText("Meet the AI Experts")).toBeNull();
-    expect(screen.queryByText(/raise your own expert/)).toBeNull();
-    expect(templatesRequested).toBe(false);
+    expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
+    expect(
+      screen.getByRole("link", { name: "Create an Expert" }),
+    ).toBeDefined();
+    expect(await screen.findByRole("link", { name: /Maria/ })).toBeDefined();
+    expect(templatesRequested).toBe(true);
+    await waitFor(() => expect(expertsRequested).toBe(true));
   });
 
   test("keeps the raise-your-own door open when no templates exist", async () => {
@@ -156,22 +182,21 @@ describe("Marketplace ExpertsSection", () => {
       getListExpertsMockHandler([]),
     );
 
-    renderMarketplace();
+    render(<MainMarkeplacePage />);
 
     await waitFor(
       () => {
         const raiseLink = screen.getByRole("link", {
-          name: "Raise your own expert from scratch",
+          name: "Create an Expert",
         });
         expect(raiseLink.getAttribute("href")).toBe("/raise");
-        expect(raiseLink.textContent).not.toContain("…or");
         expect(screen.queryByText("Meet the AI Experts")).toBeNull();
       },
       { timeout: 5_000 },
     );
   });
 
-  test("uses standalone raise copy when templates fail to load", async () => {
+  test("keeps the raise button when templates fail to load", async () => {
     server.use(
       http.get("/api/proxy/api/experts/templates", () =>
         HttpResponse.json({ detail: "Unavailable" }, { status: 500 }),
@@ -179,182 +204,85 @@ describe("Marketplace ExpertsSection", () => {
       getListExpertsMockHandler([]),
     );
 
-    renderMarketplace();
+    render(<MainMarkeplacePage />);
 
     const raiseLink = await screen.findByRole("link", {
-      name: "Raise your own expert from scratch",
+      name: "Create an Expert",
     });
     expect(raiseLink.getAttribute("href")).toBe("/raise");
-    expect(raiseLink.textContent).not.toContain("…or");
   });
 
-  test("captures a voice pick as a plain-text soul PATCH after hire", async () => {
-    let savedVoice = "";
+  test("lists the Hub skills a hire comes with on the card, and nothing else", async () => {
     server.use(
-      getListExpertTemplatesMockHandler([mariaWithSamples]),
+      getListExpertTemplatesMockHandler([
+        {
+          ...mariaTemplate,
+          skills: ["Content strategy", "brand-voice-guide"],
+          bundled_skills: [
+            {
+              id: "listing-1",
+              slug: "brand-voice-guide",
+              title: "Brand voice guide",
+              description: "Keeps every draft on-brand.",
+            },
+          ],
+        },
+      ]),
       getListExpertsMockHandler([]),
-      getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
-      getUpdateExpertSoulMockHandler(async (info) => {
-        const body = (await info.request.json()) as {
-          voice_preferences: string;
-        };
-        savedVoice = body.voice_preferences;
-        return { ...hiredMaria, voice_preferences: body.voice_preferences };
-      }),
     );
 
-    renderMarketplace();
+    render(<MainMarkeplacePage />);
 
-    await userEvent.click(await screen.findByText("Maria"));
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Hire Maria" }),
+    const card = await screen.findByRole(
+      "link",
+      { name: /Maria/ },
+      { timeout: 5_000 },
     );
-
-    // The voice pick replaces the profile before the join is celebrated.
-    expect(await screen.findByText("How should Maria write?")).toBeDefined();
-    await userEvent.click(await screen.findByText("Punchy and bold"));
-    await userEvent.click(
-      screen.getByRole("button", { name: "Use this voice" }),
-    );
-
-    expect(await screen.findByText("Maria joined your team")).toBeDefined();
-    expect(savedVoice).toContain("Preferred writing style: Punchy and bold.");
-    expect(savedVoice).toContain("Stop guessing what your buyers want.");
-    expect(savedVoice.startsWith("{")).toBe(false);
+    expect(within(card).getByText("Brand voice guide")).toBeDefined();
+    expect(within(card).queryByText("brand-voice-guide")).toBeNull();
+    expect(within(card).queryByText("Content strategy")).toBeNull();
   });
 
-  test("skips the voice pick without patching the soul", async () => {
-    let soulPatched = false;
+  test("shows the job title on the name line, and the role when there is none", async () => {
     server.use(
-      getListExpertTemplatesMockHandler([mariaWithSamples]),
+      getListExpertTemplatesMockHandler([
+        { ...mariaTemplate, job_title: "SEO Content Manager" },
+        { ...mariaTemplate, id: "template-max", name: "Max", role: "Sales" },
+      ]),
       getListExpertsMockHandler([]),
-      getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
-      getUpdateExpertSoulMockHandler(() => {
-        soulPatched = true;
-        return hiredMaria;
-      }),
     );
 
-    renderMarketplace();
+    render(<MainMarkeplacePage />);
 
-    await userEvent.click(await screen.findByText("Maria"));
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Hire Maria" }),
+    const maria = await screen.findByRole(
+      "link",
+      { name: /Maria/ },
+      { timeout: 5_000 },
     );
-    // Wait for the picker to mount (hire awaits a list refetch first) before
-    // reaching for its skip control.
-    expect(await screen.findByText("How should Maria write?")).toBeDefined();
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Skip for now" }),
-    );
-
-    expect(await screen.findByText("Maria joined your team")).toBeDefined();
-    expect(soulPatched).toBe(false);
+    expect(within(maria).getByText(/SEO Content Manager/)).toBeDefined();
+    expect(within(maria).queryByText("Marketing Strategist")).toBeNull();
+    expect(within(maria).queryByText("AI Expert")).toBeNull();
+    const max = screen.getByRole("link", { name: /^Max\b/ });
+    expect(within(max).getByText(/Sales Development Rep/)).toBeDefined();
   });
 
-  test("refetches expert queries after the voice save so later Soul edits see it", async () => {
-    let listRequests = 0;
-    let voicePatched = false;
+  test("shows no skills row on a card without Hub skills", async () => {
     server.use(
-      getListExpertTemplatesMockHandler([mariaWithSamples]),
-      getListExpertsMockHandler(() => {
-        listRequests += 1;
-        return voicePatched ? [hiredMaria] : [];
-      }),
-      getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
-      getUpdateExpertSoulMockHandler(() => {
-        voicePatched = true;
-        return hiredMaria;
-      }),
-    );
-
-    renderMarketplace();
-
-    await userEvent.click(await screen.findByText("Maria"));
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Hire Maria" }),
-    );
-    expect(await screen.findByText("How should Maria write?")).toBeDefined();
-    const requestsBeforePick = listRequests;
-    await userEvent.click(await screen.findByText("Punchy and bold"));
-    await userEvent.click(
-      screen.getByRole("button", { name: "Use this voice" }),
-    );
-
-    // The hire-time refetch cached the pre-voice expert as fresh for 60s; a
-    // post-PATCH refetch is what keeps a follow-up Soul edit from writing the
-    // stale description back over the chosen voice.
-    expect(await screen.findByText("Maria joined your team")).toBeDefined();
-    await waitFor(() =>
-      expect(listRequests).toBeGreaterThan(requestsBeforePick),
-    );
-    expect(voicePatched).toBe(true);
-  });
-
-  test("retries a failed voice PATCH, then celebrates and closes", async () => {
-    let patchAttempts = 0;
-    server.use(
-      getListExpertTemplatesMockHandler([mariaWithSamples]),
+      getListExpertTemplatesMockHandler([
+        { ...mariaTemplate, skills: ["Content strategy"], bundled_skills: [] },
+      ]),
       getListExpertsMockHandler([]),
-      getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
-      http.patch("/api/proxy/api/experts/:expertId/soul", () => {
-        patchAttempts += 1;
-        return patchAttempts === 1
-          ? HttpResponse.json({ detail: [] }, { status: 422 })
-          : HttpResponse.json(hiredMaria);
-      }),
     );
 
-    renderMarketplace();
+    render(<MainMarkeplacePage />);
 
-    await userEvent.click(await screen.findByText("Maria"));
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Hire Maria" }),
+    const card = await screen.findByRole(
+      "link",
+      { name: /Maria/ },
+      { timeout: 5_000 },
     );
-    expect(await screen.findByText("How should Maria write?")).toBeDefined();
-    await userEvent.click(await screen.findByText("Punchy and bold"));
-    await userEvent.click(
-      screen.getByRole("button", { name: "Use this voice" }),
-    );
-
-    // The hire already succeeded, so the picker stays open to retry rather
-    // than losing the choice.
-    expect(await screen.findByText("Couldn't save the voice")).toBeDefined();
-    expect(screen.getByText("How should Maria write?")).toBeDefined();
-
-    await userEvent.click(
-      screen.getByRole("button", { name: "Use this voice" }),
-    );
-
-    expect(await screen.findByText("Maria joined your team")).toBeDefined();
-    await waitFor(() =>
-      expect(screen.queryByText("How should Maria write?")).toBeNull(),
-    );
-    expect(patchAttempts).toBe(2);
-  });
-
-  test("celebrates exactly once when the completed hire is dismissed", async () => {
-    server.use(
-      getListExpertTemplatesMockHandler([mariaWithSamples]),
-      getListExpertsMockHandler([]),
-      getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
-    );
-
-    renderMarketplace();
-
-    await userEvent.click(await screen.findByText("Maria"));
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Hire Maria" }),
-    );
-    expect(await screen.findByText("How should Maria write?")).toBeDefined();
-
-    await userEvent.keyboard("{Escape}");
-
-    expect(await screen.findByText("Maria joined your team")).toBeDefined();
-    await waitFor(() =>
-      expect(screen.queryByText("How should Maria write?")).toBeNull(),
-    );
-    expect(screen.getAllByText("Maria joined your team")).toHaveLength(1);
+    expect(within(card).queryByText("Skills")).toBeNull();
+    expect(within(card).queryByText("Content strategy")).toBeNull();
   });
 
   test("hired template shows hired state", async () => {
@@ -363,23 +291,39 @@ describe("Marketplace ExpertsSection", () => {
       getListExpertsMockHandler([hiredMaria]),
     );
 
-    renderMarketplace();
+    render(<MainMarkeplacePage />);
 
     expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
-    expect(await screen.findByText("Hired")).toBeDefined();
+    expect(await screen.findByText("On your team")).toBeDefined();
   });
 
-  test("template becomes hireable again once the expert is fired", async () => {
+  test("emits the section view event once the shelf has rendered", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([mariaTemplate]),
+      getListExpertsMockHandler([]),
+    );
+
+    render(<MainMarkeplacePage />);
+
+    await screen.findByText("Maria");
+    await waitFor(() =>
+      expect(funnelCalls().map((body) => body.type)).toContain(
+        "experts_section_viewed",
+      ),
+    );
+  });
+
+  test("template becomes viewable again once the expert is fired", async () => {
     server.use(
       getListExpertTemplatesMockHandler([mariaTemplate]),
       getListExpertsMockHandler([{ ...hiredMaria, is_archived: true }]),
     );
 
-    renderMarketplace();
+    render(<MainMarkeplacePage />);
 
     expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
     await screen.findByText("Maria");
-    expect(screen.getByText("Hire")).toBeDefined();
-    expect(screen.queryByText("Hired")).toBeNull();
+    expect(screen.getByText("View")).toBeDefined();
+    expect(screen.queryByText("On your team")).toBeNull();
   });
 });

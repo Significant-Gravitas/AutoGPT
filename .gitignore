@@ -6,6 +6,9 @@ auto_gpt_workspace/*
 .autogpt/
 *.mpeg
 .env
+# Left beside an env file only if scripts/env_sync.py is killed mid-write
+.env-sync-*
+*.sync-lock
 # Root .env files
 /.env
 azure.yaml
@@ -175,6 +178,19 @@ package-lock.json
 pri*
 # ignore
 ig*
+# ...but roster content is source, not local scratch. `pri*`/`ig*` above are
+# broad enough to swallow a whole file (priya.json did not show up in
+# `git status` at all until this was added), so re-include that tree.
+!autogpt_platform/backend/backend/copilot/eval/style/fixtures/*.json
+# Same trap: `pri*` hid Priya's clay avatars, so the catalog shipped pointing
+# at files git never tracked. Expert artwork is named after the expert, so
+# re-include the whole tree rather than one name at a time.
+!autogpt_platform/frontend/public/experts/**
+!autogpt_platform/frontend/public/autogpt-characters/**
+!autogpt_platform/backend/backend/api/features/experts/avatar_references/**
+# And the copilot price card: an ignored module is untracked, and ruff
+# (force-exclude) and black skip it too, so it would ship unlinted.
+!autogpt_platform/backend/backend/copilot/price_card*.py
 .github_access_token
 LICENSE.rtf
 autogpt_platform/backend/settings.py
@@ -215,3 +231,9 @@ test-screenshots/
 
 # Supabase CLI machine-local state (linked project ref, etc.)
 supabase/.temp/
+
+# Copied from node_modules by frontend/scripts/copy-vad-assets.mjs
+autogpt_platform/frontend/public/vad/
+
+# Dependency and tool caches; vitest wrote one to the repo root once.
+node_modules/

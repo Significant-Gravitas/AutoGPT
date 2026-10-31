@@ -1,11 +1,15 @@
 "use client";
 
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
+import { HeldCallDetail } from "./HeldCallRowParts";
+import { heldShowsOwnCall } from "./heldRow";
 import { useContext } from "react";
 import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
 import { QuestionsForm } from "../QuestionDock/QuestionDock";
 import { SetupRequirementsCard } from "../SetupRequirementsCard/SetupRequirementsCard";
 import { MCPSetupCard } from "../../tools/RunMCPTool/components/MCPSetupCard/MCPSetupCard";
+import { desktopStreamRenderer } from "@/components/contextual/OutputRenderers/renderers/DesktopStreamRenderer";
+import { DesktopStreamCard } from "./DesktopStreamCard";
 import {
   AgentListCard,
   AgentPreviewCard,
@@ -13,8 +17,11 @@ import {
   SubSessionCard,
 } from "./AgentCards";
 import { BlockListCard, BlockOutputCard } from "./BlockCards";
+import { capabilityTargetRow } from "./capabilityRow";
+import { ConsultVerdictCard } from "./ConsultCard";
 import { ExecutionCard } from "./ExecutionCard";
 import { FileDiff } from "./FileDiff";
+import { SkillLoadedCard } from "./SkillLoadedCard";
 import { isDiffText } from "./fileDiffHelpers";
 import type { ChainRow } from "./helpers";
 import {
@@ -49,9 +56,14 @@ import {
   asObject,
   dictToOutputItems,
   humanizeKey,
+  isBlankOutput,
+  isEmptyResult,
+  isWebhookIngressUrl,
+  NOTHING_FOUND,
   str,
   stripBaseFields,
 } from "./resultHelpers";
+import { SubSessionPendingCard } from "./SubSessionLive";
 import {
   FileCard,
   KeyValueList,
@@ -60,6 +72,7 @@ import {
   Terminal,
   TodoList,
 } from "./ToolResultViews";
+import { Text } from "@/components/atoms/Text/Text";
 
 const BOOLEAN_LABELS: Record<string, string> = {
   ok: "Done",
@@ -89,7 +102,9 @@ function shapeCard(obj: Record<string, unknown>) {
   if (key === "status" && typeof value === "string")
     return (
       <div className={`${CARD} ${HALF} flex items-center gap-2 p-2.5`}>
-        <span className="text-xs text-zinc-400">Status</span>
+        <Text variant="small-tight" as="span" tone="subtle">
+          Status
+        </Text>
         <span className="ml-auto">
           <StatusPill status={value} />
         </span>
@@ -133,6 +148,10 @@ function linkCard(
       url={url}
       title={str(output, "title", "issue_title") ?? undefined}
       meta={meta}
+      secret={
+        isWebhookIngressUrl(url) ||
+        url === str(output, "webhook_url", "ingress_url")
+      }
     />
   );
 }
@@ -146,16 +165,60 @@ function chipStrings(value: unknown, key: string): string[] | null {
   return labels.length > 0 ? labels : null;
 }
 
+/** The live desktop is the whole point of start_desktop: embed the stream
+ *  instead of letting the payload fall through to a truncated key/value
+ *  dump. The same renderer serves block outputs and attachments, and the
+ *  card is what tells the side panel a desktop exists. */
+function desktopCard(output: Record<string, unknown>, readOnly: boolean) {
+  const stream = output.desktop_stream;
+  if (!stream || !desktopStreamRenderer.canRender(stream)) return null;
+  return <DesktopStreamCard stream={stream} readOnly={readOnly} />;
+}
+
+const CAPABILITY_RUN_TOOLS = new Set([
+  "run_capability",
+  "resume_capability",
+  "describe_capability",
+]);
+
+function isMcpCapabilityRow(
+  row: ChainRow,
+  output: Record<string, unknown>,
+): boolean {
+  if (!row.tool || !CAPABILITY_RUN_TOOLS.has(row.tool)) return false;
+  const input = asObject(row.input);
+  const id = (input && str(input, "id")) ?? "";
+  return (
+    id.startsWith("mcp:") || id.startsWith("https://") || "server_url" in output
+  );
+}
+
+function capabilityAsBlockItem(
+  item: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    ...item,
+    description: item.purpose,
+    categories: [
+      item.kind === "mcp_server"
+        ? "integration"
+        : item.class === "primitive"
+          ? "building block"
+          : String(item.kind ?? ""),
+    ],
+  };
+}
+
 function setupRequirementsCard(row: ChainRow, output: Record<string, unknown>) {
   const setupInfo = asObject(output.setup_info);
   if (!setupInfo) return null;
   const setupOutput = output as unknown as SetupRequirementsResponse;
 
-  if (row.tool === "run_mcp_tool") {
+  if (row.tool === "run_mcp_tool" || isMcpCapabilityRow(row, output)) {
     return (
       <MCPSetupCard
         output={setupOutput}
-        retryInstruction="I've connected the MCP server credentials. Please retry run_mcp_tool with the same server URL and arguments."
+        retryInstruction="I've connected the integration. Please retry the same call."
       />
     );
   }
@@ -191,7 +254,76 @@ function setupRequirementsCard(row: ChainRow, output: Record<string, unknown>) {
   );
 }
 
-function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
+/** Every tool with a card of its own. toolCard's switch is typed against
+ *  this list, so a new case cannot land without joining it — and the
+ *  chat-surface parity test renders each entry on every chat, not just the
+ *  main one. */
+export const TOOL_CARD_TOOLS = [
+  "run_agent",
+  "schedule_agent",
+  "view_agent_output",
+  "create_agent",
+  "customize_agent",
+  "edit_agent",
+  "run_sub_session",
+  "get_sub_session_result",
+  "delegate_to_expert",
+  "handoff_to_expert",
+  "consult_teammate",
+  "find_agent",
+  "find_library_agent",
+  "find_block",
+  "find_capability",
+  "run_block",
+  "continue_run_block",
+  "describe_capability",
+  "run_capability",
+  "resume_capability",
+  "connect_integration",
+  "decompose_goal",
+  "validate_agent_graph",
+  "fix_agent_graph",
+  "ask_question",
+  "list_schedules",
+  "schedule_followup",
+  "list_folders",
+  "create_folder",
+  "update_folder",
+  "move_folder",
+  "list_workspace_files",
+  "search_docs",
+  "get_doc_page",
+  "setup_agent_webhook_trigger",
+  "search_feature_requests",
+  "create_feature_request",
+  "run_mcp_tool",
+  "store_skill",
+  "read_skill",
+  "delete_skill",
+  "list_skills",
+  "list_chat_platform_channels",
+  "web_search",
+  "bash_exec",
+  "start_desktop",
+  "TodoWrite",
+  "read_workspace_file",
+  "write_workspace_file",
+  "delete_workspace_file",
+  "Read",
+  "Write",
+] as const;
+
+type ToolCardTool = (typeof TOOL_CARD_TOOLS)[number];
+
+function cardTool(tool: string | undefined): ToolCardTool | undefined {
+  return TOOL_CARD_TOOLS.find((name) => name === tool);
+}
+
+function toolCard(
+  row: ChainRow,
+  output: Record<string, unknown> | null,
+  readOnly: boolean,
+) {
   const input = asObject(row.input);
 
   if (output) {
@@ -201,7 +333,7 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
     if (questions) return <QuestionsCard questions={questions} />;
   }
 
-  switch (row.tool) {
+  switch (cardTool(row.tool)) {
     case "run_agent":
     case "schedule_agent": {
       const name =
@@ -252,9 +384,31 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
     }
     case "run_sub_session":
     case "get_sub_session_result":
-      return output && str(output, "status") ? (
-        <SubSessionCard output={output} />
+    case "delegate_to_expert":
+    case "handoff_to_expert": {
+      // A teammate's thread is their own workspace: delegated cards stay
+      // minimal (who, status, elapsed, link) — no response preview, no live
+      // step feed. Only the model's own run_sub_session shows its work here,
+      // and it always will: `expert` is written solely by the backend's
+      // apply_delegated_expert, which run_sub_session never calls (its subs
+      // are same-scope by construction, so the identity is None anyway).
+      const delegated =
+        row.tool === "delegate_to_expert" ||
+        row.tool === "handoff_to_expert" ||
+        !!(output && asObject(output.expert));
+      if (output && str(output, "status"))
+        return <SubSessionCard output={output} minimal={delegated} />;
+      // A blocking delegate has no output while the teammate works — show
+      // who's on it and what they were asked from the tool input instead.
+      // Not for result polls: the delegation card above is already showing
+      // this sub-session live, a second identical card would stack under it.
+      return row.state === "running" &&
+        row.tool !== "get_sub_session_result" ? (
+        <SubSessionPendingCard input={row.input} minimal={delegated} />
       ) : null;
+    }
+    case "consult_teammate":
+      return output ? <ConsultVerdictCard output={output} /> : null;
     case "find_agent":
     case "find_library_agent": {
       const agents = output && asItems(output.agents);
@@ -264,13 +418,28 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
       const blocks = output && asItems(output.blocks);
       return blocks ? <BlockListCard blocks={blocks} /> : null;
     }
+    case "find_capability": {
+      const items = output && asItems(output.capabilities);
+      return items ? (
+        <BlockListCard blocks={items.map(capabilityAsBlockItem)} />
+      ) : null;
+    }
     case "run_block":
-    case "continue_run_block": {
+    case "continue_run_block":
+    case "describe_capability":
+    case "run_capability":
+    case "resume_capability": {
       if (!output) return null;
+      // Transcripts recorded while start_desktop was deferred (#14569 until
+      // it went eager again) carry its result on a run_capability row: same
+      // payload, same card.
+      const desktop = desktopCard(output, readOnly);
+      if (desktop) return desktop;
       const block = asObject(output.block);
       if (block) return <BlockListCard blocks={[block]} />;
       if (str(output, "block_name", "block_id"))
         return <BlockOutputCard output={output} />;
+      if ("result" in output) return <KeyValueList value={output.result} />;
       return null;
     }
     case "connect_integration":
@@ -341,8 +510,12 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
       return output && "result" in output ? (
         <KeyValueList value={output.result} />
       ) : null;
-    case "store_skill":
     case "read_skill":
+      if (output && typeof output.version === "number") {
+        return <SkillLoadedCard output={output} />;
+      }
+      return output ? <SkillCard output={output} /> : null;
+    case "store_skill":
     case "delete_skill":
       return output ? <SkillCard output={output} /> : null;
     case "list_skills": {
@@ -364,6 +537,8 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
     }
     case "bash_exec":
       return <Terminal row={row} />;
+    case "start_desktop":
+      return output ? desktopCard(output, readOnly) : null;
     case "TodoWrite":
       return <TodoList row={row} />;
     case "read_workspace_file":
@@ -378,16 +553,19 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
 
 interface Props {
   row: ChainRow;
+  readOnly?: boolean;
 }
 
-export function ToolResult({ row }: Props) {
+export function ToolResult({ row, readOnly = false }: Props) {
   const output = asObject(row.output);
   const pendingQuestions = useContext(PendingQuestionsContext);
 
-  // The latest unanswered clarifying questions render as an interactive
-  // answer form right on their chain row (older ones keep the read-only
-  // card from toolCard).
-  if (pendingQuestions?.callIds.includes(row.key)) {
+  // The latest unanswered clarifying questions are one card, so one form
+  // hosts them: on the lifted copy of the first asking row, the one the chain
+  // keeps mounted for its action card. Any other copy (a running row animating
+  // out as its output lands, or a later ask_question in the same message)
+  // keeps the read-only card from toolCard.
+  if (row.lifted && pendingQuestions?.callIds[0] === row.key) {
     return (
       <QuestionsForm
         key={pendingQuestions.dockId}
@@ -409,9 +587,36 @@ export function ToolResult({ row }: Props) {
     );
   }
 
-  const card = toolCard(row, output);
+  if (row.held) {
+    const approved = row.held.state === "approved";
+    const ownCall = heldShowsOwnCall(row);
+    const ran = row.output !== undefined && row.output !== "";
+    return (
+      <div className="flex flex-col gap-2">
+        <HeldCallDetail held={row.held} showArgs={!ownCall} />
+        {approved && (ran || ownCall) && (
+          <ToolOutput row={row} readOnly={readOnly} />
+        )}
+      </div>
+    );
+  }
+
+  return <ToolOutput row={row} readOnly={readOnly} />;
+}
+
+function ToolOutput({ row, readOnly }: Required<Props>) {
+  const output = asObject(row.output);
+  const target = capabilityTargetRow(row);
+  const card =
+    toolCard(target, output, readOnly) ??
+    (target === row ? null : toolCard(row, output, readOnly));
   if (card) return card;
 
+  if (isBlankOutput(row.output)) return <KeyValueList value={NOTHING_FOUND} />;
+  // An empty list can be the point of a change (the last grant revoked), so
+  // what the tool said comes first.
+  if (output && isEmptyResult(output))
+    return <KeyValueList value={str(output, "message") ?? NOTHING_FOUND} />;
   if (!output) return <KeyValueList value={row.output} />;
 
   const data = stripBaseFields(output);
@@ -423,7 +628,7 @@ export function ToolResult({ row }: Props) {
     return <KeyValueList value={str(output, "message") ?? ""} />;
 
   return (
-    linkCard(data, asObject(row.input)) ??
+    linkCard(data, asObject(target.input)) ??
     shapeCard(data) ?? <KeyValueList value={data} />
   );
 }

@@ -6,7 +6,6 @@ import {
   useGetV2GetSession,
   usePostV2CreateSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
-import { toast } from "@/components/molecules/Toast/use-toast";
 import * as Sentry from "@sentry/nextjs";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -58,15 +57,22 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
     ).messages as UiMessages;
   }, [sessionQuery.data, sessionId, hasActiveStream]);
 
-  const { messages, setMessages, sendMessage, stop, status, error } =
-    useCopilotStream({
-      sessionId,
-      hydratedMessages,
-      hasActiveStream,
-      refetchSession: sessionQuery.refetch,
-      copilotMode: undefined,
-      copilotModel: undefined,
-    });
+  const {
+    messages,
+    setMessages,
+    sendMessage,
+    stop,
+    status,
+    error,
+    isReconnecting,
+    isFinishProbing,
+  } = useCopilotStream({
+    sessionId,
+    hydratedMessages,
+    hasActiveStream,
+    refetchSession: sessionQuery.refetch,
+    copilotModel: undefined,
+  });
 
   const { queuedMessages, queueMessage } = useCopilotPendingChips({
     sessionId,
@@ -156,11 +162,8 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
           return;
         }
         Sentry.captureException(err);
-        toast({
-          variant: "destructive",
-          title: "Could not queue message",
-          description: "Please wait for the current response to finish.",
-        });
+        // The composer restores the draft and shows the one toast for it.
+        throw err;
       }
       return;
     }
@@ -181,5 +184,6 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
     stop,
     onSend,
     queuedMessages,
+    isTurnSettling: isReconnecting || isFinishProbing || hasActiveStream,
   };
 }

@@ -21,9 +21,13 @@ from backend.sdk import ProviderBuilder
 
 _STATIC_PROVIDER_CONFIGS: dict[str, tuple[str, tuple[CredentialsType, ...]]] = {
     # LLM providers that share blocks/llm.py
-    "aiml_api": ("Unified access to 100+ AI models", ("api_key",)),
+    "aiml_api": ("Unified access to 1,000+ AI models", ("api_key",)),
     "anthropic": ("Claude language models", ("api_key",)),
     "codex": ("Use your ChatGPT plan with Codex App Server", ("oauth2",)),
+    "microsoft": (
+        "Mail, calendar, files, Teams chats, Microsoft 365 Copilot and Work IQ",
+        ("oauth2", "device_code"),
+    ),
     "groq": ("Fast LLM inference", ("api_key",)),
     "llama_api": ("Llama model hosting", ("api_key",)),
     "ollama": ("Run open-source LLMs locally", ("api_key",)),
@@ -44,6 +48,7 @@ _STATIC_PROVIDER_CONFIGS: dict[str, tuple[str, tuple[CredentialsType, ...]]] = {
     "revid": ("AI-generated short-form video", ("api_key",)),
     "screenshotone": ("Automated website screenshots", ("api_key",)),
     "smtp": ("Send email via SMTP", ("user_password",)),
+    "stripe_link": ("Stripe Link wallet for agent payments", ("device_code",)),
     "unreal_speech": ("Low-cost text-to-speech", ("api_key",)),
     "webshare_proxy": ("Rotating proxies for scraping", ("api_key",)),
 }

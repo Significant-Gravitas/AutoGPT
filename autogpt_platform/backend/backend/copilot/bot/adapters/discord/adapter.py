@@ -5,6 +5,7 @@ thread creation, typing, button rendering. All platform-agnostic logic lives
 in the core handler. Slash commands live in commands.py.
 """
 
+import asyncio
 import io
 import logging
 import re
@@ -21,12 +22,15 @@ from backend.copilot.bot.adapters.shared import (
     should_ignore,
 )
 from backend.copilot.bot.bot_backend import BotBackend
+from backend.copilot.bot.choices import QUESTION_KIND, ButtonKind
 from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
+from backend.copilot.bot.options import TurnOptions, parse_turn_options
 from backend.copilot.bot.text import iter_chunks, resolve_mentions
 
 from ..base import (
     ChannelInfo,
     ChannelType,
+    EditOutcome,
     FileAttachment,
     InboundAttachment,
     MessageCallback,
@@ -36,7 +40,8 @@ from ..base import (
     ReferencedConversation,
     SocketAdapter,
 )
-from . import commands, config, intro
+from . import ask_command, choice_ui, commands, config, intro
+from .location import location_of
 from .references import (
     ReferenceTarget,
     extract_referenced_targets,
@@ -54,6 +59,12 @@ logger = logging.getLogger(__name__)
 THREAD_HISTORY_LIMIT = 1000
 THREAD_HISTORY_CHAR_BUDGET = 24000
 
+# An @mention in a channel threads off that one message, so without the
+# messages just before it the bot can't tell what "that" refers to. Channels
+# run long and mix topics, so only the recent stretch is read.
+CHANNEL_HISTORY_LIMIT = 30
+CHANNEL_HISTORY_CHAR_BUDGET = 8000
+
 # When a message links or @-mentions other threads/channels, the bot fetches
 # their recent content up-front (same guild only) so the model can read it
 # instead of trying to web-fetch a JS-rendered Discord page. Bounded so a
@@ -70,12 +81,32 @@ REFERENCED_MESSAGE_CONTEXT = 15
 # channel name in the proactive-post resolver (see ``looks_like_channel_id``).
 _SNOWFLAKE = re.compile(r"^\d{15,21}$")
 
+# Marks a role in the shared ``(name, id)`` mention allowlist; users carry a
+# bare snowflake. Kept on the id so the platform-neutral resolver needs no
+# knowledge of Discord's two mention markups.
+ROLE_ID_PREFIX = "role:"
+
+# Send-time member lookup: at most this many distinct @names are queried per
+# message, each returning up to this many prefix matches.
+MENTION_QUERY_CAP = 8
+MENTION_QUERY_LIMIT = 20
+# Who owns a name when several things share it, best first. See
+# ``DiscordAdapter._mentionables_for``.
+_RANK_CONVERSATION = 0
+_RANK_MEMBER = 1
+_RANK_ROLE = 2
+_RANK_PREFIX = 3
+# A raw Discord mention token: user ``<@id>`` / ``<@!id>`` or role ``<@&id>``.
+_RAW_MENTION = re.compile(r"<@([!&]?)(\d{15,21})>")
+# First word after an @ that is not inside an email, URL or existing token.
+_MENTION_CANDIDATE = re.compile(r"(?<![\w@<])@([A-Za-z0-9_][\w'\-]{0,31})")
+
 
 class DiscordAdapter(SocketAdapter):
     def __init__(self, api: BotBackend):
         intents = discord.Intents.default()
         intents.message_content = True
-        # AutoPilot output is untrusted w.r.t. mentions — suppress @everyone,
+        # Otto output is untrusted w.r.t. mentions — suppress @everyone,
         # role, and user pings the LLM might produce. Client-level default
         # applies to every send() + reply() below.
         self._client = discord.Client(
@@ -89,6 +120,7 @@ class DiscordAdapter(SocketAdapter):
 
         self._register_events()
         commands.register(self._tree, self._api)
+        ask_command.register(self._tree, self._api, self._dispatch_command)
 
     @property
     def platform_name(self) -> str:
@@ -119,6 +151,9 @@ class DiscordAdapter(SocketAdapter):
 
     def on_message(self, callback: MessageCallback) -> None:
         self._on_message_callback = callback
+        # Choice buttons are stateless and outlive this process, so their
+        # click handler is registered once here rather than per sent message.
+        choice_ui.register_choice_handler(self._client, self, callback, self._api)
 
     async def start(self) -> None:
         await self._client.start(config.get_bot_token())
@@ -133,12 +168,22 @@ class DiscordAdapter(SocketAdapter):
         ``Client.get_channel`` only reads the in-memory cache, so it misses
         threads the bot hasn't seen since its last restart. Fall back to
         ``fetch_channel`` (REST) so long-lived threads keep working.
+
+        ``channel_id`` reaches here as a caller-supplied string (a model-chosen
+        edit target, a raw proactive-post ID) that was never guaranteed to look
+        like a snowflake, so the ``int()`` conversion is inside the guarded
+        block rather than raising ``ValueError`` straight out to the RPC layer.
         """
-        channel = self._client.get_channel(int(channel_id))
+        try:
+            numeric_id = int(channel_id)
+        except ValueError:
+            logger.warning("Channel id %r is not a valid snowflake", channel_id)
+            return None
+        channel = self._client.get_channel(numeric_id)
         if channel is not None:
             return channel
         try:
-            return await self._client.fetch_channel(int(channel_id))
+            return await self._client.fetch_channel(numeric_id)
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             logger.warning("Channel %s not found or inaccessible", channel_id)
             return None
@@ -151,8 +196,10 @@ class DiscordAdapter(SocketAdapter):
     ) -> None:
         channel = await self._resolve_channel(channel_id)
         if channel and isinstance(channel, discord.abc.Messageable):
-            rendered, allowed = _resolve_mentions(text, mentionable_users)
-            # tts=False is the default but we pin it explicitly — AutoPilot
+            rendered, allowed = _resolve_mentions(
+                text, await self._mentionables_for(channel, text, mentionable_users)
+            )
+            # tts=False is the default but we pin it explicitly — Otto
             # output is untrusted and should never blast through voice.
             await channel.send(rendered, tts=False, allowed_mentions=allowed)
 
@@ -172,11 +219,33 @@ class DiscordAdapter(SocketAdapter):
         )
         await channel.send(text, view=view, tts=False)
 
+    @property
+    def supports_choice_buttons(self) -> bool:
+        return True
+
+    async def send_choice_buttons(
+        self,
+        channel_id: str,
+        text: str,
+        options: list[str],
+        token: str,
+        mentionable_users: tuple[tuple[str, str], ...] = (),
+        kind: ButtonKind = QUESTION_KIND,
+    ) -> bool:
+        channel = await self._resolve_channel(channel_id)
+        if channel is None or not isinstance(channel, discord.abc.Messageable):
+            return False
+        if self._on_message_callback is None:
+            return False
+        view = choice_ui.build_choice_view(token, options, kind)
+        await channel.send(text, view=view, tts=False)
+        return True
+
     async def send_file(self, channel_id: str, text: str, file: FileAttachment) -> None:
         channel = await self._resolve_channel(channel_id)
         if channel is None or not isinstance(channel, discord.abc.Messageable):
             return
-        # spoiler=False — AutoPilot output is untrusted but spoilering every
+        # spoiler=False — Otto output is untrusted but spoilering every
         # generated file would be noisy; the workspace fetcher already
         # validated user ownership before we got bytes.
         attachment = discord.File(
@@ -196,12 +265,19 @@ class DiscordAdapter(SocketAdapter):
         channel = await self._resolve_channel(channel_id)
         if not channel or not isinstance(channel, discord.abc.Messageable):
             return
-        rendered, allowed = _resolve_mentions(text, mentionable_users)
+        rendered, allowed = _resolve_mentions(
+            text, await self._mentionables_for(channel, text, mentionable_users)
+        )
         try:
             msg = await channel.fetch_message(int(reply_to_message_id))
-            await msg.reply(rendered, tts=False, allowed_mentions=allowed)
-        except discord.NotFound:
+        except discord.HTTPException:  # any fetch failure: NotFound, Forbidden, 5xx
+            # fetch_message needs Read Message History, which gateway delivery
+            # doesn't — a plain send needs neither, so don't lose the reply.
+            # Only fetch failures fall back: a failed reply() must not retry as
+            # a plain send, which could double-post if Discord accepted it.
             await channel.send(rendered, tts=False, allowed_mentions=allowed)
+            return
+        await msg.reply(rendered, tts=False, allowed_mentions=allowed)
 
     async def send_ephemeral(self, channel_id: str, user_id: str, text: str) -> None:
         # Ephemeral messages are only possible via interaction responses.
@@ -299,13 +375,13 @@ class DiscordAdapter(SocketAdapter):
             logger.warning("Cannot post to non-messageable channel %s", channel_id)
             return None
         try:
-            first = await self._send_chunked(channel, text)
+            first, sent = await self._send_chunked(channel, text)
         except discord.HTTPException:
             logger.exception("Failed to post message to channel %s", channel_id)
             return None
         if first is None:
             return None
-        return PostedRef(id=str(first.id), url=first.jump_url)
+        return PostedRef(id=str(first.id), url=first.jump_url, chunk_count=sent)
 
     async def create_channel_thread(
         self, channel_id: str, name: str, text: str
@@ -325,37 +401,89 @@ class DiscordAdapter(SocketAdapter):
         # The thread now exists on Discord. Surface its ref even if posting the
         # body fails, so the caller reports partial success and doesn't retry
         # into a duplicate thread.
+        first: Optional[discord.Message] = None
+        sent = 0
         try:
-            await self._send_chunked(thread, text)
+            first, sent = await self._send_chunked(thread, text)
         except discord.HTTPException:
             logger.exception(
                 "Thread %s created but posting its content failed", thread.id
             )
-        return PostedRef(id=str(thread.id), url=thread.jump_url)
+        if first is None:
+            # A thread with no body: there is no message to edit, but the
+            # thread id still has to reach the caller.
+            return PostedRef(
+                id=str(thread.id),
+                url=thread.jump_url,
+                channel_id=str(thread.id),
+                editable=False,
+            )
+        # `id` is the body message so it can be edited; `channel_id` is the
+        # thread, both because that is where the message lives and because
+        # follow-up posts belong in the thread rather than its parent.
+        return PostedRef(
+            id=str(first.id),
+            url=first.jump_url,
+            channel_id=str(thread.id),
+            chunk_count=sent,
+        )
+
+    async def edit_channel_message(
+        self, channel_id: str, ref_id: str, text: str
+    ) -> EditOutcome:
+        channel = await self._resolve_channel(channel_id)
+        if channel is None or not isinstance(channel, discord.abc.Messageable):
+            return EditOutcome.NOT_FOUND
+        try:
+            message = await channel.fetch_message(int(ref_id))
+        except ValueError:
+            return EditOutcome.NOT_FOUND
+        except discord.NotFound:
+            return EditOutcome.NOT_FOUND
+        except discord.HTTPException:
+            logger.exception("Failed to fetch message %s for edit", ref_id)
+            return EditOutcome.FAILED
+        rendered, allowed = _resolve_mentions(
+            text, await self._mentionables_for(channel, text, ())
+        )
+        try:
+            await message.edit(content=rendered, allowed_mentions=allowed)
+        except discord.HTTPException:
+            # Covers both a rejected edit (message too old/foreign author) and
+            # a body over Discord's cap — either way the edit did not land.
+            logger.exception("Failed to edit message %s", ref_id)
+            return EditOutcome.FAILED
+        return EditOutcome.OK
 
     async def _send_chunked(
         self, channel: discord.abc.Messageable, text: str
-    ) -> Optional[discord.Message]:
+    ) -> tuple[Optional[discord.Message], int]:
         """Send ``text`` to ``channel``, splitting at natural boundaries to stay
         under Discord's per-message cap. Returns the first message sent (the one
-        callers permalink to), or ``None`` if there was nothing to send.
+        callers permalink to) and how many chunks actually landed, or
+        ``(None, 0)`` if there was nothing to send.
 
         Raises only if the *first* chunk fails — once anything is delivered, a
         later-chunk failure stops the send and keeps the partial result rather
         than discarding what already posted (a retry would duplicate it).
         """
+        rendered, allowed = _resolve_mentions(
+            text, await self._mentionables_for(channel, text, ())
+        )
         first: Optional[discord.Message] = None
-        for chunk in iter_chunks(text, config.CHUNK_FLUSH_AT):
+        sent = 0
+        for chunk in iter_chunks(rendered, config.CHUNK_FLUSH_AT):
             try:
-                msg = await channel.send(chunk, tts=False)
+                msg = await channel.send(chunk, tts=False, allowed_mentions=allowed)
             except discord.HTTPException:
                 if first is None:
                     raise
                 logger.exception("Dropping trailing chunk after partial send")
                 break
+            sent += 1
             if first is None:
                 first = msg
-        return first
+        return first, sent
 
     # -- Internal --
 
@@ -447,17 +575,24 @@ class DiscordAdapter(SocketAdapter):
 
             channel_type = self._channel_type(message)
             bot_mentioned = self._is_mentioned(message)
+            replied_to_bot = await self._replied_to_bot(message)
 
-            # Channels require an explicit @mention; DMs and threads always forward
-            # (handler checks thread subscription).
-            if channel_type == "channel" and not bot_mentioned:
+            # Channels require an @mention or a reply to the bot; DMs and
+            # threads always forward (handler checks thread subscription).
+            if channel_type == "channel" and not bot_mentioned and not replied_to_bot:
                 return
 
             thread_history = ()
-            if channel_type == "thread" and bot_mentioned:
+            if channel_type == "thread" and (bot_mentioned or replied_to_bot):
                 thread_history = await self._thread_history(message)
+            elif channel_type == "channel":
+                thread_history = await self._channel_history(
+                    message, self._requester_of(message)
+                )
 
-            own_text = self._strip_mentions(message)
+            # Options lead the user's own text; read them before the reply
+            # context is put in front of it.
+            options, own_text = parse_turn_options(self._strip_mentions(message))
             # Scan ONLY the user's own typed message for references. Links inside
             # a forwarded or replied-to message are quoted context, not the
             # user's request, so they must not be auto-fetched or rewritten.
@@ -475,6 +610,7 @@ class DiscordAdapter(SocketAdapter):
             message_text = self._compose_with_forward(message, own_text)
             message_text = await self._with_reply_context(message, message_text)
             attachments, skipped = await self._extract_attachments(message)
+            location = location_of(message.guild, message.channel)
             ctx = MessageContext(
                 platform="discord",
                 channel_type=channel_type,
@@ -485,13 +621,69 @@ class DiscordAdapter(SocketAdapter):
                 username=message.author.display_name,
                 text=message_text,
                 bot_mentioned=bot_mentioned,
+                server_name=location.server_name,
+                channel_name=location.channel_name,
+                public_channel_id=location.public_channel_id,
+                thread_name=location.thread_name,
+                public_thread_id=location.public_thread_id,
+                post_channel_id=location.post_channel_id,
+                replied_to_bot=replied_to_bot,
                 thread_history=thread_history,
                 mentionable_users=self._collect_mentionable_users(message),
                 referenced_conversations=referenced,
                 attachments=attachments,
                 skipped_attachments=skipped,
+                options=options,
             )
             await self._on_message_callback(ctx, self)
+
+    async def _dispatch_command(
+        self,
+        interaction: discord.Interaction,
+        starter: discord.Message,
+        prompt: str,
+        options: TurnOptions,
+    ) -> None:
+        """Run a ``/autogpt`` turn as if ``starter`` were the user's message:
+        a channel threads off it, a DM or thread answers in place."""
+        if self._on_message_callback is None:
+            return
+        user = interaction.user
+        location = location_of(interaction.guild, starter.channel)
+        channel_type = _interaction_channel_type(interaction)
+        # The starter is the bot's own post, so history before it is what the
+        # thread said before the command, as an @mention would see it.
+        thread_history = ()
+        if channel_type == "thread":
+            thread_history = await self._thread_history(starter)
+        elif channel_type == "channel":
+            # The starter is the bot's post, so read as the member who ran
+            # the command, not as its author.
+            thread_history = await self._channel_history(
+                starter, user if isinstance(user, discord.Member) else None
+            )
+        ctx = MessageContext(
+            platform="discord",
+            channel_type=channel_type,
+            server_id=str(interaction.guild.id) if interaction.guild else None,
+            channel_id=str(starter.channel.id),
+            message_id=str(starter.id),
+            user_id=str(user.id),
+            username=user.display_name,
+            text=prompt,
+            # Invoking the command is an explicit call, like an @mention.
+            bot_mentioned=True,
+            server_name=location.server_name,
+            channel_name=location.channel_name,
+            public_channel_id=location.public_channel_id,
+            thread_name=location.thread_name,
+            public_thread_id=location.public_thread_id,
+            post_channel_id=location.post_channel_id,
+            thread_history=thread_history,
+            mentionable_users=((user.display_name, str(user.id)),),
+            options=options,
+        )
+        await self._on_message_callback(ctx, self)
 
     async def _extract_attachments(
         self, message: discord.Message
@@ -550,6 +742,15 @@ class DiscordAdapter(SocketAdapter):
         if bot_user is None:
             return False
         return any(user.id == bot_user.id for user in message.mentions)
+
+    async def _replied_to_bot(self, message: discord.Message) -> bool:
+        """The message is a reply to one of the bot's own messages, fetching
+        the replied-to message when Discord didn't include it."""
+        bot_user = self._client.user
+        if bot_user is None:
+            return False
+        replied = await self._resolve_reply(message)
+        return replied is not None and replied.author.id == bot_user.id
 
     @staticmethod
     def _channel_type(message: discord.Message) -> ChannelType:
@@ -615,14 +816,20 @@ class DiscordAdapter(SocketAdapter):
             return None
         if isinstance(ref.resolved, discord.Message):
             return ref.resolved
+        # A deleted target can only 404, and every such reply runs this check.
+        if isinstance(ref.resolved, discord.DeletedReferencedMessage):
+            return None
         if ref.message_id is None or not isinstance(
             message.channel, discord.abc.Messageable
         ):
             return None
         try:
-            return await message.channel.fetch_message(ref.message_id)
+            fetched = await message.channel.fetch_message(ref.message_id)
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             return None
+        # Keep it so the reply context doesn't fetch the same message again.
+        ref.resolved = fetched
+        return fetched
 
     @staticmethod
     def _forwarded_text(message: discord.Message) -> str:
@@ -654,18 +861,120 @@ class DiscordAdapter(SocketAdapter):
             replacement = "" if user.id == bot_id else f"@{user.display_name}"
             for token in raw_tokens:
                 text = text.replace(token, replacement)
+        for role in getattr(message, "role_mentions", None) or ():
+            text = text.replace(f"<@&{role.id}>", f"@{role.name}")
         return text.strip()
 
     def _collect_mentionable_users(
         self, message: discord.Message
     ) -> tuple[tuple[str, str], ...]:
-        """Users from the inbound message the bot may ping back this turn."""
+        """The author and anyone mentioned in the inbound message. Server
+        members and roles are looked up at send time from the names the bot
+        actually uses (see ``_mentionables_for``)."""
         bot_id = self._client.user.id if self._client.user else None
-        return tuple(
-            (user.display_name, str(user.id))
-            for user in message.mentions
-            if user.id != bot_id
-        )
+        pairs: list[tuple[str, str]] = []
+        for user in (message.author, *message.mentions):
+            if user.id == bot_id:
+                continue
+            pair = (user.display_name, str(user.id))
+            if pair not in pairs:
+                pairs.append(pair)
+        return tuple(pairs)
+
+    async def _mentionables_for(
+        self,
+        channel: discord.abc.Messageable,
+        text: str,
+        known: tuple[tuple[str, str], ...],
+    ) -> tuple[tuple[str, str], ...]:
+        """Everyone ``text`` may ping in ``channel``, as ``(name, id)`` pairs.
+
+        ``known`` (the author and anyone the inbound message mentioned) always
+        applies. A server channel adds, from the text itself: members named
+        with ``@Name``, members written as a raw ``<@id>``, and roles.
+
+        One name can point at several of these, and the shared resolver pings
+        nobody for a name that belongs to two different ids. So each name is
+        claimed only by its best source, and only a tie at that level is a
+        real clash. Best first:
+
+        1. someone already in this conversation
+        2. a server member whose display name or username is exactly the name
+        3. a role of that name (no member lookup is run for a role's name)
+        4. a member the typed ``@Name`` only prefixes (``@Bently`` for
+           ``Bently [SOMN]``)
+
+        So a "Bently" role never hides the Bently who just wrote to the bot,
+        and a member called "PlatformBot" never steals ``@Platform`` from the
+        Platform role. Members are found with a gateway query per name, which
+        needs no privileged intent. ``@everyone`` and ``@here`` are never
+        listed. A DM has no server, so only ``known`` applies.
+        """
+        guild = getattr(channel, "guild", None)
+        if not isinstance(guild, discord.Guild):
+            return known
+        bot_id = self._client.user.id if self._client.user else None
+        candidates: list[tuple[int, str, str]] = [
+            (_RANK_CONVERSATION, name, token_id) for name, token_id in known
+        ]
+        role_names: set[str] = set()
+        for role in guild.roles:
+            if role.id == guild.id or role.is_default():
+                continue
+            candidates.append((_RANK_ROLE, role.name, f"{ROLE_ID_PREFIX}{role.id}"))
+            role_names.add(role.name.casefold())
+        for query in _mention_queries(text):
+            # A name that is a role means the role, unless someone in this
+            # conversation holds it, and they are already in ``known``.
+            if query.casefold() in role_names:
+                continue
+            for member in await self._query_members(guild, query):
+                if member.id == bot_id or member.bot:
+                    continue
+                member_id = str(member.id)
+                for name in (member.display_name, member.name):
+                    exact = name.casefold() == query.casefold()
+                    candidates.append(
+                        (_RANK_MEMBER if exact else _RANK_PREFIX, name, member_id)
+                    )
+                candidates.append((_RANK_PREFIX, query, member_id))
+        listed_ids = {token_id for _, _, token_id in candidates}
+        for user_id in _raw_user_mention_ids(text):
+            if user_id in listed_ids or user_id == str(bot_id):
+                continue
+            member = await self._guild_member(guild, int(user_id))
+            if member is not None and not member.bot:
+                candidates.append((_RANK_MEMBER, member.display_name, user_id))
+        return _best_claims(candidates)
+
+    async def _query_members(
+        self, guild: discord.Guild, query: str
+    ) -> list[discord.Member]:
+        try:
+            return await guild.query_members(
+                query=query, limit=MENTION_QUERY_LIMIT, cache=False
+            )
+        except (
+            asyncio.TimeoutError,
+            ValueError,
+            discord.ClientException,
+            discord.HTTPException,
+        ):
+            logger.warning("Member lookup for @%s failed", query, exc_info=True)
+            return []
+
+    async def _guild_member(
+        self, guild: discord.Guild, user_id: int
+    ) -> Optional[discord.Member]:
+        """The server member behind a raw ``<@id>``, or None when that id is not
+        a member here. Cache first, then one REST lookup."""
+        member = guild.get_member(user_id)
+        if member is not None:
+            return member
+        try:
+            return await guild.fetch_member(user_id)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            return None
 
     async def _thread_history(
         self, message: discord.Message
@@ -673,7 +982,7 @@ class DiscordAdapter(SocketAdapter):
         if not isinstance(message.channel, discord.Thread):
             return ()
         try:
-            return await self._budgeted_history(
+            history = await self._budgeted_history(
                 message.channel.history(
                     limit=THREAD_HISTORY_LIMIT,
                     before=message,
@@ -683,7 +992,68 @@ class DiscordAdapter(SocketAdapter):
             )
         except (discord.Forbidden, discord.HTTPException):
             logger.warning("Could not fetch Discord thread history", exc_info=True)
+            history = ()
+        starter = await self._thread_starter_entry(message.channel)
+        return (starter, *history) if starter else history
+
+    async def _channel_history(
+        self, message: discord.Message, requester: Optional[discord.Member]
+    ) -> tuple[MessageHistoryEntry, ...]:
+        """The channel messages before ``message``, as ``requester`` could
+        read them. The bot can see history a member who may post here can't
+        (no ``read_message_history``), so nothing is read for such a member."""
+        channel = message.channel
+        if (
+            requester is None
+            or not isinstance(channel, discord.abc.GuildChannel)
+            or not await self._can_requester_read(channel, requester)
+        ):
             return ()
+        try:
+            return await self._budgeted_history(
+                channel.history(
+                    limit=CHANNEL_HISTORY_LIMIT,
+                    before=message,
+                    oldest_first=False,
+                ),
+                CHANNEL_HISTORY_CHAR_BUDGET,
+            )
+        except (discord.Forbidden, discord.HTTPException):
+            logger.warning("Could not fetch Discord channel history", exc_info=True)
+            return ()
+
+    async def _thread_starter_entry(
+        self, thread: discord.Thread
+    ) -> Optional[MessageHistoryEntry]:
+        """The message a thread was opened from, as its oldest history entry.
+
+        A thread created from a channel post shares that post's id, but the
+        post itself lives in the parent channel and never appears in
+        ``thread.history()``. Without it the bot sees a thread whose first
+        line is "make this happen" and has no idea what "this" is. Threads
+        opened without an origin message have no starter and return None.
+        Kept outside the character budget so it is never truncated away.
+        """
+        starter = thread.starter_message
+        if not isinstance(starter, discord.Message):
+            parent = thread.parent
+            if not isinstance(parent, discord.abc.Messageable):
+                return None
+            try:
+                starter = await parent.fetch_message(thread.id)
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                return None
+        bot_user_id = self._client.user.id if self._client.user else None
+        if bot_user_id is not None and starter.author.id == bot_user_id:
+            return None
+        text = self._strip_mentions(starter)
+        if not text:
+            return None
+        return MessageHistoryEntry(
+            username=starter.author.display_name,
+            user_id=str(starter.author.id),
+            text=text,
+        )
 
     async def _budgeted_history(
         self, history, char_budget: int
@@ -724,15 +1094,7 @@ class DiscordAdapter(SocketAdapter):
         """
         if message.guild is None:
             return ()
-        # ``message.author`` IS the guild Member (the gateway attaches it to the
-        # event); ``get_member`` only reads the cache, which is empty without the
-        # privileged members intent — so prefer the author and fall back to the
-        # cache only if it somehow isn't a Member (e.g. a webhook).
-        requester = (
-            message.author
-            if isinstance(message.author, discord.Member)
-            else message.guild.get_member(message.author.id)
-        )
+        requester = self._requester_of(message)
         if requester is None:
             return ()
         targets = extract_referenced_targets(
@@ -746,6 +1108,18 @@ class DiscordAdapter(SocketAdapter):
             if convo is not None:
                 conversations.append(convo)
         return tuple(conversations)
+
+    @staticmethod
+    def _requester_of(message: discord.Message) -> Optional[discord.Member]:
+        if message.guild is None:
+            return None
+        # ``message.author`` IS the guild Member (the gateway attaches it to the
+        # event); ``get_member`` only reads the cache, which is empty without the
+        # privileged members intent — so prefer the author and fall back to the
+        # cache only if it somehow isn't a Member (e.g. a webhook).
+        if isinstance(message.author, discord.Member):
+            return message.author
+        return message.guild.get_member(message.author.id)
 
     async def _fetch_one_referenced(
         self, guild: discord.Guild, requester: discord.Member, target: ReferenceTarget
@@ -788,7 +1162,9 @@ class DiscordAdapter(SocketAdapter):
         )
 
     async def _can_requester_read(
-        self, channel: "discord.TextChannel | discord.Thread", requester: discord.Member
+        self,
+        channel: "discord.abc.GuildChannel | discord.Thread",
+        requester: discord.Member,
     ) -> bool:
         """Whether ``requester`` may read ``channel`` themselves.
 
@@ -811,6 +1187,14 @@ class DiscordAdapter(SocketAdapter):
         return True
 
 
+def _interaction_channel_type(interaction: discord.Interaction) -> ChannelType:
+    if interaction.guild is None:
+        return "dm"
+    if isinstance(interaction.channel, discord.Thread):
+        return "thread"
+    return "channel"
+
+
 def _resolve_mentions(
     text: str,
     mentionable_users: tuple[tuple[str, str], ...],
@@ -822,20 +1206,78 @@ def _resolve_mentions(
     shared in ``text.resolve_mentions``; here we only supply Discord's mention
     token and turn the pinged IDs into Discord's ping-safety object.
     """
-    rendered, pinged = resolve_mentions(
-        text, mentionable_users, lambda _name, uid: f"<@{uid}>"
-    )
-    pinged_ids: list[int] = []
-    for uid in pinged:
+    rendered, pinged = resolve_mentions(text, mentionable_users, _mention_token)
+    # The shared resolver reads user ids; a raw role token is Discord's own.
+    allowlisted = {token_id for _, token_id in mentionable_users}
+    for match in _RAW_MENTION.finditer(rendered):
+        if match.group(1) != "&":
+            continue
+        token_id = f"{ROLE_ID_PREFIX}{match.group(2)}"
+        if token_id in allowlisted and token_id not in pinged:
+            pinged.append(token_id)
+    user_ids: list[int] = []
+    role_ids: list[int] = []
+    for token_id in pinged:
+        is_role = token_id.startswith(ROLE_ID_PREFIX)
         try:
-            pinged_ids.append(int(uid))
+            numeric = int(token_id.removeprefix(ROLE_ID_PREFIX))
         except ValueError:
             continue
-    if not pinged_ids:
+        (role_ids if is_role else user_ids).append(numeric)
+    if not user_ids and not role_ids:
         return rendered, discord.AllowedMentions.none()
     return rendered, discord.AllowedMentions(
         everyone=False,
-        users=[discord.Object(id=uid) for uid in pinged_ids],
-        roles=False,
+        users=[discord.Object(id=uid) for uid in user_ids] or False,
+        roles=[discord.Object(id=rid) for rid in role_ids] or False,
         replied_user=False,
     )
+
+
+def _mention_token(_name: str, token_id: str) -> str:
+    if token_id.startswith(ROLE_ID_PREFIX):
+        return f"<@&{token_id.removeprefix(ROLE_ID_PREFIX)}>"
+    return f"<@{token_id}>"
+
+
+def _best_claims(
+    candidates: list[tuple[int, str, str]],
+) -> tuple[tuple[str, str], ...]:
+    """Keep, for each name, only the ``(name, id)`` pairs from its best rank,
+    in first-seen order. A lower-ranked source never makes a name ambiguous."""
+    best: dict[str, int] = {}
+    for rank, name, _ in candidates:
+        key = name.casefold()
+        best[key] = min(rank, best.get(key, rank))
+    pairs: list[tuple[str, str]] = []
+    for rank, name, token_id in candidates:
+        pair = (name, token_id)
+        if name and rank == best[name.casefold()] and pair not in pairs:
+            pairs.append(pair)
+    return tuple(pairs)
+
+
+def _raw_user_mention_ids(text: str) -> list[str]:
+    """Distinct user ids written as raw ``<@id>`` / ``<@!id>`` tokens, capped."""
+    ids: list[str] = []
+    for match in _RAW_MENTION.finditer(text):
+        if match.group(1) == "&" or match.group(2) in ids:
+            continue
+        ids.append(match.group(2))
+        if len(ids) >= MENTION_QUERY_CAP:
+            break
+    return ids
+
+
+def _mention_queries(text: str) -> list[str]:
+    """The distinct first words following an ``@`` in ``text``, capped, used as
+    member-query prefixes. ``everyone`` and ``here`` are skipped outright."""
+    queries: list[str] = []
+    for match in _MENTION_CANDIDATE.finditer(text):
+        word = match.group(1).rstrip("'-")
+        if word.casefold() in ("everyone", "here") or word in queries:
+            continue
+        queries.append(word)
+        if len(queries) >= MENTION_QUERY_CAP:
+            break
+    return queries

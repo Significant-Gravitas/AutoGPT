@@ -17,9 +17,10 @@ from backend.copilot.rate_limit import UserPaywalledError, enforce_payment_paywa
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data import user as user_db
+from backend.data.auth.api_key import APIKeyInfo
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.block import BlockInput, CompletedBlockOutput
-from backend.data.execution import ExecutionContext
+from backend.data.execution import ExecutionContext, ExecutionTrigger
 from backend.executor.utils import (
     add_graph_execution,
     charge_for_direct_block_execution,
@@ -233,6 +234,8 @@ async def execute_graph(
             graph_version=graph_version,
             organization_id=org_id,
             team_id=team_id,
+            trigger=ExecutionTrigger.API,
+            trigger_ref=auth.id if isinstance(auth, APIKeyInfo) else auth.type,
         )
         return {"id": graph_exec.id}
     except UserPaywalledError:
@@ -351,7 +354,7 @@ async def get_store_agents(
     if page_size < 1:
         raise HTTPException(status_code=422, detail="Page size must be greater than 0")
 
-    agents = await store_cache._get_cached_store_agents(
+    agents = await store_cache.get_cached_store_agents(
         featured=featured,
         creator=creator,
         sorted_by=sorted_by,
@@ -385,7 +388,7 @@ async def get_store_agent(
     """
     username = urllib.parse.unquote(username).lower()
     agent_name = urllib.parse.unquote(agent_name).lower()
-    agent = await store_cache._get_cached_agent_details(
+    agent = await store_cache.get_cached_agent_details(
         username=username, agent_name=agent_name
     )
     return agent
@@ -423,7 +426,7 @@ async def get_store_creators(
     if page_size < 1:
         raise HTTPException(status_code=422, detail="Page size must be greater than 0")
 
-    creators = await store_cache._get_cached_store_creators(
+    creators = await store_cache.get_cached_store_creators(
         featured=featured,
         search_query=search_query,
         sorted_by=sorted_by,
@@ -452,5 +455,5 @@ async def get_store_creator(
         CreatorDetails: Detailed information about the creator
     """
     username = urllib.parse.unquote(username).lower()
-    creator = await store_cache._get_cached_creator_details(username=username)
+    creator = await store_cache.get_cached_creator_details(username=username)
     return creator

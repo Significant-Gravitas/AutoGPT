@@ -2,13 +2,12 @@
 
 import { Input } from "@/components/atoms/Input/Input";
 import { cn } from "@/lib/utils";
-import { creditsToUsdLabel } from "../../helpers";
 import { bubbleClassFor } from "../ColorStep/helpers";
 import { BUDGET_PRESETS } from "./helpers";
 
 interface Props {
   weeklyBudget: number | null;
-  customCredits: string;
+  customAmount: string;
   color: string | null;
   onSelect: (credits: number) => void;
   onCustomChange: (value: string) => void;
@@ -16,7 +15,7 @@ interface Props {
 
 export function KitBudget({
   weeklyBudget,
-  customCredits,
+  customAmount,
   color,
   onSelect,
   onCustomChange,
@@ -29,7 +28,7 @@ export function KitBudget({
         className="flex flex-wrap justify-end gap-2.5"
       >
         {BUDGET_PRESETS.map((preset) => {
-          const selected = !customCredits && weeklyBudget === preset.credits;
+          const selected = !customAmount && weeklyBudget === preset.credits;
           return (
             <button
               key={preset.credits}
@@ -44,22 +43,19 @@ export function KitBudget({
               )}
             >
               {preset.label}
-              {preset.credits > 0
-                ? ` · ${creditsToUsdLabel(preset.credits)}`
-                : ""}
             </button>
           );
         })}
       </div>
       <Input
         id="raise-kit-custom-budget"
-        label="Custom weekly budget in credits"
+        label="Custom weekly budget in dollars"
         hideLabel
         size="small"
-        inputMode="numeric"
-        value={customCredits}
+        inputMode="decimal"
+        value={customAmount}
         onChange={(event) => onCustomChange(event.target.value)}
-        placeholder="Custom credits…"
+        placeholder="Custom amount, e.g. $7.50…"
         wrapperClassName="mb-0 w-full max-w-[16rem] [&_input]:h-[2.625rem] [&_input]:py-3"
       />
     </div>

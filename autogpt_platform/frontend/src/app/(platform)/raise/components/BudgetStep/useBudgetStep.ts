@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { parseCredits } from "../KitStep/helpers";
+import { parseBudget } from "../KitStep/helpers";
 
 interface Args {
   onSubmit: (credits: number) => void;
@@ -7,18 +7,18 @@ interface Args {
 
 export function useBudgetStep({ onSubmit }: Args) {
   const [weeklyBudget, setWeeklyBudget] = useState<number | null>(null);
-  const [customCredits, setCustomCredits] = useState("");
-  const parsedCustom = parseCredits(customCredits);
+  const [customAmount, setCustomAmount] = useState("");
+  const parsedCustom = parseBudget(customAmount);
 
   function selectPreset(credits: number) {
     setWeeklyBudget(credits);
-    setCustomCredits("");
+    setCustomAmount("");
     onSubmit(credits);
   }
 
-  function changeCustomCredits(value: string) {
-    setCustomCredits(value);
-    const parsed = parseCredits(value);
+  function changeCustomAmount(value: string) {
+    setCustomAmount(value);
+    const parsed = parseBudget(value);
     if (parsed !== null) setWeeklyBudget(parsed);
   }
 
@@ -29,10 +29,10 @@ export function useBudgetStep({ onSubmit }: Args) {
 
   return {
     weeklyBudget,
-    customCredits,
+    customAmount,
     canSubmitCustom: parsedCustom !== null,
     selectPreset,
-    changeCustomCredits,
+    changeCustomAmount,
     submitCustom,
   };
 }

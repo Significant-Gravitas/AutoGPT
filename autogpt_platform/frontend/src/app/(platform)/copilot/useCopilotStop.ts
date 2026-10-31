@@ -1,6 +1,5 @@
 import { postV2CancelSessionTask } from "@/app/api/__generated__/endpoints/chat/chat";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import type { UseChatHelpers } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import { resolveInProgressTools } from "./helpers";
 
@@ -11,12 +10,13 @@ import { resolveInProgressTools } from "./helpers";
  * reload shows the same state. Must match `COPILOT_ERROR_PREFIX` in
  * `ChatMessagesContainer/helpers.ts`.
  */
-const CANCELLED_MARKER = "[__COPILOT_ERROR_f7a1__] Operation cancelled";
+export const CANCELLED_MARKER = "[__COPILOT_ERROR_f7a1__] Operation cancelled";
 
 interface UseCopilotStopArgs {
   sessionId: string | null;
-  sdkStop: () => void;
-  setMessages: UseChatHelpers<UIMessage>["setMessages"];
+  /** Aborts the stream and marks the turn stopped on screen, synchronously,
+   *  so the UI reflects the click before the cancel POST returns. */
+  stopStream: () => void;
   /** Flipped to `true` so the stream's onError/onFinish callbacks don't
    *  misinterpret the resulting AbortError as a disconnect + reconnect. */
   isUserStoppingRef: React.MutableRefObject<boolean>;
@@ -27,49 +27,23 @@ interface UseCopilotStopArgs {
 }
 
 /**
- * Build the `stop` handler for `useCopilotStream`.
- *
- * Wraps AI-SDK's `stop()` to:
+ * Build the `stop` handler for the chat stream:
  *   1. flag the stop as user-initiated (so onError/onFinish don't reconnect)
- *   2. abort the SSE fetch synchronously for instant UI feedback
- *   3. inject a cancellation marker into the visible assistant message
- *   4. asynchronously tell the backend executor to actually stop the task,
+ *   2. abort the stream and mark the turn stopped, for instant UI feedback
+ *   3. asynchronously tell the backend executor to actually stop the task,
  *      surfacing a toast when the cancel was published but not yet
  *      confirmed (the task should stop shortly) or failed outright.
  */
 export function useCopilotStop({
   sessionId,
-  sdkStop,
-  setMessages,
+  stopStream,
   isUserStoppingRef,
   setIsUserStopping,
 }: UseCopilotStopArgs) {
   async function stop() {
     isUserStoppingRef.current = true;
     setIsUserStopping(true);
-    try {
-      sdkStop();
-    } catch {
-      // sdkStop throws if no fetch is in flight — the user-stop flag
-      // already flipped, so the UI reflects the intent either way.
-    }
-    setMessages((prev) => {
-      const resolved = resolveInProgressTools(prev, "cancelled");
-      const last = resolved[resolved.length - 1];
-      if (last?.role === "assistant") {
-        return [
-          ...resolved.slice(0, -1),
-          {
-            ...last,
-            parts: [
-              ...last.parts,
-              { type: "text" as const, text: CANCELLED_MARKER },
-            ],
-          },
-        ];
-      }
-      return resolved;
-    });
+    stopStream();
 
     if (!sessionId) return;
     try {
@@ -95,4 +69,36 @@ export function useCopilotStop({
   }
 
   return stop;
+}
+
+/**
+ * The AI SDK path's `stopStream`: abort the SDK's fetch, cancel open tools
+ * and append the marker to the last assistant message.
+ */
+export function sdkStopStream(
+  sdkStop: () => void,
+  setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void,
+) {
+  return () => {
+    try {
+      sdkStop();
+    } catch {
+      // sdkStop throws if no fetch is in flight — the user-stop flag
+      // already flipped, so the UI reflects the intent either way.
+    }
+    setMessages(markMessagesStopped);
+  };
+}
+
+function markMessagesStopped(prev: UIMessage[]): UIMessage[] {
+  const resolved = resolveInProgressTools(prev, "cancelled");
+  const last = resolved[resolved.length - 1];
+  if (last?.role !== "assistant") return resolved;
+  return [
+    ...resolved.slice(0, -1),
+    {
+      ...last,
+      parts: [...last.parts, { type: "text" as const, text: CANCELLED_MARKER }],
+    },
+  ];
 }

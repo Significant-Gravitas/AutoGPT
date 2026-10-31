@@ -5,6 +5,7 @@ import {
   _resetInterruptedToastLedgerForTests,
   useHydrateOnStreamEnd,
 } from "../useHydrateOnStreamEnd";
+import { CANCELLED_MARKER } from "../useCopilotStop";
 
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   toast: vi.fn(),
@@ -44,10 +45,13 @@ function runForceHydrate({
   prev,
   staleWindow,
   freshWindow,
+  statuses = ["ready"],
 }: {
   prev: Messages;
   staleWindow: Messages;
   freshWindow: Messages;
+  /** What the chat passes through after streaming, before the refetch lands. */
+  statuses?: Parameters<typeof useHydrateOnStreamEnd>[0]["status"][];
 }): Messages | null {
   let captured: Messages | null = null;
   const setMessages = vi.fn(
@@ -77,16 +81,18 @@ function runForceHydrate({
   );
 
   // Stream ends → arms force-hydrate, snapshots the stale (pre-turn) window.
-  rerender({
-    ...baseProps,
-    status: "ready",
-    hydratedMessages: staleWindow,
-  } satisfies Props);
+  for (const status of statuses) {
+    rerender({
+      ...baseProps,
+      status,
+      hydratedMessages: staleWindow,
+    } satisfies Props);
+  }
 
   // React Query swaps in the fresh post-turn window → force-hydrate applies.
   rerender({
     ...baseProps,
-    status: "ready",
+    status: statuses[statuses.length - 1],
     hydratedMessages: freshWindow,
   } satisfies Props);
 
@@ -94,6 +100,35 @@ function runForceHydrate({
 }
 
 describe("useHydrateOnStreamEnd — sliding-window history retention (SECRT-2424)", () => {
+  it.each(["Hello [1] world", "Goodbye", ""])(
+    "reconciles the streamed preview with rewritten provider text: %j",
+    (finalText) => {
+      const preview: Messages = [
+        seqMessage(1),
+        {
+          id: "live-assistant",
+          role: "assistant",
+          parts: [{ type: "text", text: "Hello world", state: "done" }],
+        },
+      ];
+      const canonical: Messages = [
+        seqMessage(1),
+        {
+          id: `${SESSION_ID}-seq-2`,
+          role: "assistant",
+          parts: [{ type: "text", text: finalText, state: "done" }],
+        },
+      ];
+      expect(
+        runForceHydrate({
+          prev: preview,
+          staleWindow: [seqMessage(1)],
+          freshWindow: canonical,
+        }),
+      ).toEqual(canonical);
+    },
+  );
+
   afterEach(() => {
     _resetInterruptedToastLedgerForTests();
     cleanup();
@@ -340,5 +375,204 @@ describe("useHydrateOnStreamEnd — continuation-turn flash guard", () => {
     );
     expect(setMessages).toHaveBeenCalledTimes(1);
     expect(captured.current!.map(seqOf)).toEqual(range(1, 10).map(seqOf));
+  });
+});
+
+describe("useHydrateOnStreamEnd — a turn the user stopped", () => {
+  afterEach(() => {
+    _resetInterruptedToastLedgerForTests();
+    cleanup();
+  });
+
+  function stoppedAssistant(): UIMessage<unknown, UIDataTypes, UITools> {
+    return {
+      id: "live-assistant",
+      role: "assistant",
+      parts: [
+        { type: "text", text: "Half an answer", state: "done" },
+        { type: "text", text: CANCELLED_MARKER, state: "done" },
+      ],
+    };
+  }
+
+  it("keeps the partial and its marker when the refetch has no reply for the turn", () => {
+    const result = runForceHydrate({
+      prev: [seqMessage(1), stoppedAssistant()],
+      staleWindow: [],
+      freshWindow: [seqMessage(1)],
+    });
+
+    expect(result).toEqual([seqMessage(1), stoppedAssistant()]);
+  });
+
+  it("defers to the database once it carries the stopped turn", () => {
+    const persisted: Messages = [
+      seqMessage(1),
+      {
+        id: `${SESSION_ID}-seq-2`,
+        role: "assistant",
+        parts: [
+          {
+            type: "text",
+            text: `Half an answer ${CANCELLED_MARKER}`,
+            state: "done",
+          },
+        ],
+      },
+    ];
+
+    expect(
+      runForceHydrate({
+        prev: [seqMessage(1), stoppedAssistant()],
+        staleWindow: [],
+        freshWindow: persisted,
+      }),
+    ).toEqual(persisted);
+  });
+});
+
+describe("useHydrateOnStreamEnd — a send the backend has not written yet", () => {
+  afterEach(() => {
+    _resetInterruptedToastLedgerForTests();
+    cleanup();
+  });
+
+  function row(
+    seq: number,
+    role: "user" | "assistant",
+    text: string,
+  ): UIMessage<unknown, UIDataTypes, UITools> {
+    return {
+      id: `${SESSION_ID}-seq-${seq}`,
+      role,
+      parts: [{ type: "text", text, state: "done" }],
+    };
+  }
+
+  it('keeps a second "yes" that the earlier "yes" row does not account for', () => {
+    const answered = [row(1, "user", "yes"), row(2, "assistant", "Booked.")];
+    const queued: UIMessage<unknown, UIDataTypes, UITools> = {
+      id: "local-send",
+      role: "user",
+      parts: [{ type: "text", text: "yes" }],
+    };
+
+    const result = runForceHydrate({
+      prev: [...answered, queued],
+      staleWindow: [row(1, "user", "yes")],
+      freshWindow: answered,
+    });
+
+    expect(result).toEqual([...answered, queued]);
+  });
+
+  function local(
+    id: string,
+    role: "user" | "assistant",
+    text: string,
+  ): UIMessage<unknown, UIDataTypes, UITools> {
+    return { id, role, parts: [{ type: "text", text }] };
+  }
+
+  it.each([
+    {
+      // A long turn pushed the prompt's row out of the latest-rows window.
+      name: "a prompt whose row lies before the refetched window",
+      prev: [
+        row(1, "user", "Plan it"),
+        row(2, "assistant", "Planned."),
+        local("local-prompt", "user", "Build it"),
+        local("live-answer", "assistant", "Built."),
+      ],
+      fresh: range(60, 70),
+      expected: [
+        row(1, "user", "Plan it"),
+        row(2, "assistant", "Planned."),
+        ...range(60, 70),
+      ],
+    },
+    {
+      name: "a first send refused before it was saved, then retried",
+      prev: [
+        local("refused", "user", "yes"),
+        local("retried", "user", "yes"),
+        local("live-answer", "assistant", "Booked."),
+      ],
+      // A session's first row is sequence 0.
+      fresh: [row(0, "user", "yes"), row(1, "assistant", "Booked.")],
+      expected: [row(0, "user", "yes"), row(1, "assistant", "Booked.")],
+    },
+    {
+      name: "a send whose stream failed",
+      prev: [row(0, "user", "Plan it"), local("refused", "user", "Build it")],
+      fresh: [row(0, "user", "Plan it")],
+      expected: [row(0, "user", "Plan it")],
+      statuses: ["error" as const],
+    },
+    {
+      name: "a refused send once its retry has ended cleanly",
+      prev: [
+        row(0, "user", "Plan it"),
+        row(1, "assistant", "Planned."),
+        local("refused", "user", "yes"),
+        local("retried", "user", "yes"),
+        local("live-answer", "assistant", "Booked."),
+      ],
+      fresh: [
+        row(0, "user", "Plan it"),
+        row(1, "assistant", "Planned."),
+        row(2, "user", "yes"),
+        row(3, "assistant", "Booked."),
+      ],
+      expected: [
+        row(0, "user", "Plan it"),
+        row(1, "assistant", "Planned."),
+        row(2, "user", "yes"),
+        row(3, "assistant", "Booked."),
+      ],
+      statuses: [
+        "error" as const,
+        "submitted" as const,
+        "streaming" as const,
+        "ready" as const,
+      ],
+    },
+  ])("does not keep $name", ({ prev, fresh, expected, statuses }) => {
+    expect(
+      runForceHydrate({ prev, staleWindow: [], freshWindow: fresh, statuses }),
+    ).toEqual(expected);
+  });
+
+  it("leaves a promoted bubble's row to it, not to a later bubble with the same text", () => {
+    const promoted = local("promoted-midturn-1", "user", "yes");
+    const queued = local("local-send", "user", "yes");
+    const stored = [
+      row(1, "user", "Book both"),
+      row(2, "user", "yes"),
+      row(3, "assistant", "Booked."),
+    ];
+
+    const result = runForceHydrate({
+      prev: [row(1, "user", "Book both"), promoted, queued],
+      staleWindow: [],
+      freshWindow: stored,
+    });
+
+    expect(result).toEqual([...stored, queued]);
+  });
+
+  it("gives a promoted bubble its own later row, not an earlier one with the same text", () => {
+    const answered = [row(0, "user", "yes"), row(1, "assistant", "Booked.")];
+    const promoted = local("promoted-midturn-1", "user", "yes");
+    const queued = local("local-send", "user", "yes");
+    const stored = [...answered, row(2, "user", "yes")];
+
+    const result = runForceHydrate({
+      prev: [...answered, promoted, queued],
+      staleWindow: [],
+      freshWindow: stored,
+    });
+
+    expect(result).toEqual([...stored, queued]);
   });
 });

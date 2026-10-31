@@ -11,7 +11,7 @@ import { http, HttpResponse } from "msw";
 import { parseAsString, useQueryState } from "nuqs";
 import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
 import { useState } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useCopilotStreamStore } from "../copilotStreamStore";
 import {
   buildKickoffMessage,
@@ -27,10 +27,6 @@ import { useChatSession } from "../useChatSession";
 import { useExpertKickoff } from "../useExpertKickoff";
 import { useSendMessage } from "../useSendMessage";
 
-const flagState = vi.hoisted(() => ({
-  values: { "hire-experts": true } as Record<string, boolean>,
-}));
-
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -38,7 +34,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     >();
   return {
     ...actual,
-    useGetFlag: (flag: string) => flagState.values[flag] ?? false,
+    useGetFlag: () => false,
   };
 });
 
@@ -58,10 +54,12 @@ function latestKickoffAttemptToken(messages: UIMessage[]) {
   return null;
 }
 
-afterEach(() => {
+// Reset before the test, not after it: this file's `afterEach` runs BEFORE
+// testing-library's `cleanup`, so the previous test's tree is still mounted
+// when the kickoff latch is cleared and can write it straight back.
+beforeEach(() => {
   server.resetHandlers();
   sendSpy.mockReset();
-  flagState.values = { "hire-experts": true };
   window.localStorage.clear();
   useCopilotUIStore.setState({ adoptedExpertThreads: new Set<string>() });
   useCopilotStreamStore.getState().resetAll();
@@ -233,10 +231,11 @@ describe("useExpertKickoff", () => {
     renderKickoff(`?expertId=${EXPERT_ID}&kickoff=1`);
 
     await waitFor(() => expect(createCount).toBe(1));
+    // The route is omitted, not defaulted client-side: an unmade choice
+    // stays unmade so the server applies the account's own default.
     expect(createBody).toEqual({
       expert_id: EXPERT_ID,
       expert_kickoff: true,
-      llm_auth_provider: "platform",
     });
 
     await waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(1));

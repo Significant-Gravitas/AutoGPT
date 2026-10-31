@@ -23,7 +23,7 @@ export function UploadSkillButton({ onUploaded }: Props) {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".md,.markdown,text/markdown"
+        accept=".md,.markdown,text/markdown,.zip,application/zip"
         className="hidden"
         onChange={handleFileChange}
         data-testid="skill-upload-input"
@@ -42,7 +42,7 @@ export function UploadSkillButton({ onUploaded }: Props) {
           </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
-          Import a skill file you&apos;ve exported
+          Import a SKILL.md, or a zipped skill package
         </TooltipContent>
       </Tooltip>
     </>

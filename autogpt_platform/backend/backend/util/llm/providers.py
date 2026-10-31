@@ -31,6 +31,8 @@ What this module is NOT responsible for (caller wraps):
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import functools
 import json as json_module
 import logging
@@ -38,6 +40,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal, cast
 
 import anthropic
+import httpx
 import ollama
 import openai
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
@@ -47,9 +50,11 @@ from pydantic.dataclasses import dataclass
 
 from backend.data.llm_registry.llm_models import (
     CLAUDE_5_FAMILY_PREFIXES,
+    MODEL_DATE_SUFFIX_RE,
     strip_anthropic_vendor_prefix,
 )
 from backend.util.clients import OPENROUTER_BASE_URL
+from backend.util.egress_proxy import egress_proxy_url
 from backend.util.llm.conversions import (
     ToolCall,
     ToolContentBlock,
@@ -66,20 +71,37 @@ from backend.util.openai_responses import (
     extract_responses_tool_calls,
     extract_responses_usage,
 )
-from backend.util.request import validate_url_host
+from backend.util.request import parse_url, validate_url_host
 from backend.util.settings import Settings
 
 settings = Settings()
 logger = logging.getLogger(__name__)
 
 
-# Hard cap on a single provider HTTP request. Mirrors
-# ``backend/blocks/llm.py::LLM_REQUEST_TIMEOUT_SECONDS``. Healthy
-# non-streaming Messages / Responses calls finish in seconds; anything
-# past 120s is almost certainly a stalled socket and retries-on-timeout
-# would compound into multi-hour worst cases. Batch and flex paths
-# override this where appropriate.
-DEFAULT_REQUEST_TIMEOUT_SECONDS = 120
+# Non-streaming calls emit no bytes until the completion is done, so this
+# budget has to span the entire generation, not time-to-first-byte.
+DEFAULT_REQUEST_TIMEOUT_SECONDS: int = settings.config.llm_request_timeout_seconds
+
+# The phases where no generation happens: waiting on a SYN, or queueing for a
+# free connection. Only read/write carry the generation budget. 5.0 matches the
+# OpenAI/Anthropic SDK connect default.
+FAST_FAIL_TIMEOUT_SECONDS = 5.0
+
+
+def request_timeout(timeout_seconds: float) -> httpx.Timeout:
+    """Bound one request: generation budget on read/write, fast-fail elsewhere.
+
+    A scalar would set every phase, so a blackholed SYN — or, on the one shared
+    client (the copilot aux singleton), a saturated pool — would park a worker
+    for the whole deadline. Per-call clients are uncontended on the pool phase;
+    the pin costs them nothing.
+    """
+    return httpx.Timeout(
+        timeout_seconds,
+        connect=FAST_FAIL_TIMEOUT_SECONDS,
+        pool=FAST_FAIL_TIMEOUT_SECONDS,
+    )
+
 
 # Provider names accepted by ``call_provider``. Kept as a string Literal
 # (not an enum) so the helper stays provider-name-agnostic — callers
@@ -104,6 +126,11 @@ ExecutionMode = Literal["sync", "batch", "flex"]
 # have no flex equivalent — callers asking for flex on them get a
 # sync fallback with a log line.
 _FLEX_SUPPORTED_PROVIDERS: set[str] = {"openai", "open_router"}
+
+# Claude 5 thinks adaptively on OpenRouter, and the thinking counts against
+# max_tokens: a call capped this low for a short answer can think its whole cap
+# away and answer nothing (1 in 5 store categories, 7 in 9 consult verdicts).
+NO_REASONING_MAX_TOKENS = 512
 
 # Anthropic deprecated ``temperature`` on its newest model generation —
 # the API rejects it outright with "`temperature` is deprecated for
@@ -143,6 +170,51 @@ def _is_temperature_deprecation_error(exc: anthropic.BadRequestError) -> bool:
     )
 
 
+# Anthropic's newest models reject a forced ``tool_choice`` (``{"type":
+# "tool", ...}`` or ``{"type": "any"}``) with a 400 — ``tool_choice: type
+# "tool" and "any" are not supported for this model.`` — on the Messages API
+# and on the Message Batches API, where it only comes back hours later in the
+# result rows. ``tool_use.structured_tool_choice`` sends ``auto`` to these
+# models instead. The dream pass's sync call also retries once with ``auto``
+# on that exact error (``is_forced_tool_choice_rejection``), so an unlisted
+# model self-heals there; batch submissions rely on this list alone.
+#
+# Maintained apart from the temperature list above because the two
+# restrictions cover different models: every Claude 5 model and Opus 4.7/4.8
+# reject ``temperature``, but only these reject a forced tool — Sonnet 5 and
+# Opus 5 still honour one. Hence exact native slugs rather than family
+# prefixes (``claude-opus-5`` is a prefix of ``claude-opus-5-5``), compared
+# after the vendor prefix and any ``-YYYYMMDD`` snapshot suffix are stripped.
+# Anthropic documents the restriction for Opus/Sonnet 5.5 and the Fable 5.1 /
+# Mythos 5.1 line; add a model here when it documents the same for another.
+_ANTHROPIC_FORCED_TOOL_CHOICE_UNSUPPORTED: frozenset[str] = frozenset(
+    {"claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-mythos-5-1"}
+)
+
+
+def anthropic_accepts_forced_tool_choice(model: str) -> bool:
+    """False for a model that answers a forced ``tool_choice`` with a 400,
+    in any spelling: ``anthropic/claude-opus-5.5``, ``claude-opus-5-5`` or a
+    dated snapshot of either."""
+    native = strip_anthropic_vendor_prefix(model).replace(".", "-")
+    return (
+        MODEL_DATE_SUFFIX_RE.sub("", native)
+        not in _ANTHROPIC_FORCED_TOOL_CHOICE_UNSUPPORTED
+    )
+
+
+def is_forced_tool_choice_rejection(exc: BaseException) -> bool:
+    """Whether *exc* is Anthropic's 400 for a forced ``tool_choice`` on a
+    model that takes none: an ``anthropic.BadRequestError`` reading
+    ``tool_choice: type "tool" and "any" are not supported for this
+    model.`` Nothing else counts, not even another error quoting that text:
+    a 5xx or a failure of our own is not a reason to drop the forced tool."""
+    if not isinstance(exc, anthropic.BadRequestError):
+        return False
+    error_text = str(exc).lower()
+    return "tool_choice" in error_text and "not supported" in error_text
+
+
 # ---------------------------------------------------------------------------
 # Result + submission carriers
 # ---------------------------------------------------------------------------
@@ -165,6 +237,7 @@ class ProviderResponse:
     tool_calls: list[ToolContentBlock] | None = None
     reasoning: str | None = None
     cost_usd: float | None = None
+    stop_reason: str | None = None
     # Provider-native response object for callers that need raw access.
     # Kept out of repr + pydantic serialization (it's an opaque SDK object).
     raw_response: Any = Field(default=None, repr=False, exclude=True)
@@ -206,7 +279,7 @@ async def call_provider(
     parallel_tool_calls: bool | openai.Omit = openai.omit,
     ollama_host: str = "localhost:11434",
     custom_id: str | None = None,
-    timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    timeout_seconds: float | None = None,
 ) -> ProviderResponse | BatchSubmissionRef:
     """Dispatch a single LLM call to the correct provider SDK.
 
@@ -218,8 +291,13 @@ async def call_provider(
 
     Raises ``TimeoutError`` if the call exceeds ``timeout_seconds``
     (sync mode only; batch submissions are bounded by the provider's
-    own SLA and the poller's own timeout policy).
+    own SLA and the poller's own timeout policy). ``timeout_seconds=None``
+    reads ``DEFAULT_REQUEST_TIMEOUT_SECONDS`` when the call is made, so a
+    test can monkeypatch it; the value itself is still read from settings
+    once, at import.
     """
+    if timeout_seconds is None:
+        timeout_seconds = DEFAULT_REQUEST_TIMEOUT_SECONDS
     if execution_mode == "batch":
         if not custom_id:
             raise ValueError(
@@ -278,10 +356,7 @@ async def call_provider(
             timeout=timeout_seconds,
         )
     except asyncio.TimeoutError as exc:
-        raise TimeoutError(
-            f"LLM request to {provider}/{model} exceeded "
-            f"{timeout_seconds}s and was cancelled."
-        ) from exc
+        raise timeout_error(f"{provider}/{model}", timeout_seconds) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -383,7 +458,7 @@ async def _dispatch_sync(
         )
     if provider == "aiml_api":
         return await _call_openai_compat(
-            base_url="https://api.aimlapi.com/v2",
+            base_url="https://api.aimlapi.com/v1",
             model=model,
             api_key=api_key,
             messages=messages,
@@ -398,6 +473,8 @@ async def _dispatch_sync(
                 "X-Project": "AutoGPT",
                 "X-Title": "AutoGPT",
                 "HTTP-Referer": "https://github.com/Significant-Gravitas/AutoGPT",
+                "X-AIMLAPI-Source": "agent/autogpt",
+                "X-AIMLAPI-Partner-ID": "part_T70zDIEvQLKSMzMQ7asjdtKR",
             },
         )
     if provider == "v0":
@@ -474,7 +551,7 @@ async def _call_openai_responses(
         # See OPEN-3187.
         store=False,
         include=["reasoning.encrypted_content"],
-        timeout=timeout_seconds,
+        timeout=request_timeout(timeout_seconds),
         # ``omit`` is only valid for TYPED params — the SDK strips it
         # there. ``extra_body`` flows raw into ``options.extra_json``
         # (``make_request_options`` checks ``is not None``), and
@@ -528,7 +605,9 @@ async def _call_anthropic_messages(
     an_tools = convert_openai_tool_fmt_to_anthropic(tools)
     # Cache tool definitions alongside the system prompt — placing
     # cache_control on the last tool caches all tool schemas as a
-    # single prefix; reads cost 10% of normal input tokens.
+    # single prefix. Cache reads bill at a fraction of the input rate:
+    # 10% on most Claude models, 5% on Opus 5.5, 2.5% on Fable 5.1 (the
+    # catalog's provider cache-read prices carry each model's figure).
     if isinstance(an_tools, list) and an_tools:
         an_tools[-1] = {**an_tools[-1], "cache_control": {"type": "ephemeral"}}
 
@@ -556,7 +635,7 @@ async def _call_anthropic_messages(
         messages=anth_messages,
         max_tokens=max_tokens,
         tools=an_tools,
-        timeout=timeout_seconds,
+        timeout=request_timeout(timeout_seconds),
     )
     if temperature is not None and _anthropic_accepts_temperature(model):
         create_kwargs["temperature"] = temperature
@@ -619,7 +698,7 @@ async def _call_anthropic_messages(
             reasoning = content_block.thinking
             break
 
-    first_block = resp.content[0]
+    first_block = next(iter(_anthropic_answer_blocks(resp)), None)
     content_text = (
         first_block.name
         if isinstance(first_block, anthropic.types.ToolUseBlock)
@@ -635,6 +714,7 @@ async def _call_anthropic_messages(
         or 0,
         tool_calls=tool_calls,
         reasoning=reasoning,
+        stop_reason=resp.stop_reason,
         raw_response=resp,
     )
 
@@ -667,7 +747,7 @@ async def _call_groq(
         messages=messages,
         response_format=response_format,
         max_tokens=max_tokens,
-        timeout=timeout_seconds,
+        timeout=request_timeout(timeout_seconds),
     )
     # Same guard as the Anthropic path — only send ``temperature`` when
     # the caller set one, so models that reject it never see the field.
@@ -688,6 +768,46 @@ async def _call_groq(
 # Ollama (local-runner chat API)
 # ---------------------------------------------------------------------------
 
+_OLLAMA_DEFAULT_PORT = 11434
+_SCHEME_PORTS = {"http": 80, "https": 443}
+
+
+def _ollama_url(host: str) -> str:
+    """*host* as a URL naming the port Ollama's client would connect to: 11434
+    for a host given with neither scheme nor port, otherwise its scheme's."""
+    url = parse_url(host)
+    # parse_url adds "http://" itself to a host that names no scheme.
+    scheme_given = "://" in host.replace("\\", "/")
+    port = _SCHEME_PORTS.get(url.scheme) if scheme_given else _OLLAMA_DEFAULT_PORT
+    if url.port is None and port is not None:
+        url = url._replace(netloc=f"{url.netloc}:{port}")
+    return url.geturl()
+
+
+def _configured_ollama_url() -> httpx.URL | None:
+    try:
+        return httpx.URL(_ollama_url(settings.config.ollama_host))
+    except (ValueError, httpx.InvalidURL):
+        return None
+
+
+async def _scope_ollama_key(request: httpx.Request) -> None:
+    """Drop the process's OLLAMA_API_KEY, which ollama.AsyncClient sends with
+    every request, redirects included, unless this request goes to the
+    configured Ollama endpoint itself, in scheme, host and port alike.
+
+    Being trusted is not enough: trust ignores the scheme, lets any port
+    through for an entry configured without one, and covers the copilot's chat
+    endpoint. httpx also keeps the header on an http-to-https redirect."""
+    url, configured = request.url, _configured_ollama_url()
+    # Both read by httpx: IDNA-encoded host, a scheme's default port as None.
+    if configured is None or (url.scheme, url.raw_host, url.port) != (
+        configured.scheme,
+        configured.raw_host,
+        configured.port,
+    ):
+        request.headers.pop("authorization", None)
+
 
 async def _call_ollama(
     *,
@@ -703,9 +823,20 @@ async def _call_ollama(
     if tools:
         raise ValueError("Ollama does not support tools.")
 
+    messages = _prepare_ollama_messages(messages)
+
     # SSRF guard — the host can be user-supplied (block-layer input
     # field), so it must match an operator-configured trust list.
-    await validate_url_host(ollama_host, trusted_hostnames=_trusted_ollama_hostnames())
+    checked, is_trusted, _ = await validate_url_host(
+        _ollama_url(ollama_host), trusted_hostnames=_trusted_ollama_hostnames()
+    )
+    if checked.port == 0:
+        # Ollama's client reads port 0 as no port and connects to its default.
+        raise ValueError(f"Ollama host {ollama_host!r} has an invalid port")
+    # Connect to the URL that was checked, never the raw input: Ollama's own
+    # parser reads some spellings (a backslash before "@", a leading "//") as a
+    # different host.
+    host = checked.geturl()
 
     # ``num_predict`` is Ollama's OUTPUT token cap. ``num_ctx`` (the
     # input context window) is deliberately left at the model default —
@@ -715,12 +846,13 @@ async def _call_ollama(
     if temperature is not None:
         options["temperature"] = temperature
 
-    client = ollama.AsyncClient(host=ollama_host, timeout=timeout_seconds)
-    response = await client.chat(
+    response = await _send_ollama_chat(
+        host,
+        is_trusted=is_trusted,
+        timeout_seconds=timeout_seconds,
         model=model,
         messages=messages,
-        stream=False,
-        format="json" if force_json_output else None,
+        json_format=force_json_output,
         options=options,
     )
     return ProviderResponse(
@@ -729,6 +861,83 @@ async def _call_ollama(
         completion_tokens=response.eval_count or 0,
         raw_response=response,
     )
+
+
+def _prepare_ollama_messages(messages: list[dict]) -> list[dict]:
+    prepared: list[dict] = []
+    for message in messages:
+        images = message.get("images")
+        if images is None:
+            prepared.append(message)
+            continue
+        if not isinstance(images, (list, tuple)):
+            raise ValueError(
+                "Ollama images must be a list of base64-encoded image data"
+            )
+        prepared.append(
+            {**message, "images": [_decode_ollama_image(image) for image in images]}
+        )
+    return prepared
+
+
+def _decode_ollama_image(image: object) -> bytes:
+    if isinstance(image, bytes):
+        return image
+    if not isinstance(image, str):
+        raise ValueError("Ollama images must contain base64-encoded image data")
+    try:
+        return base64.b64decode(
+            image.replace("\r", "").replace("\n", ""), validate=True
+        )
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError(
+            "Ollama images must contain base64-encoded image data"
+        ) from exc
+
+
+async def _send_ollama_chat(
+    host: str,
+    *,
+    is_trusted: bool,
+    timeout_seconds: float,
+    model: str,
+    messages: list[dict],
+    json_format: bool,
+    options: dict[str, Any],
+) -> ollama.ChatResponse:
+    """Send one chat to the checked *host*, connecting the way its trust
+    allows."""
+    client_kwargs: dict[str, Any] = {
+        "host": host,
+        "timeout": request_timeout(timeout_seconds),
+        "event_hooks": {"request": [_scope_ollama_key]},
+    }
+    if not is_trusted:
+        # The host passed the address check, but ollama.AsyncClient hands the
+        # name to httpx, which resolves it again to connect and follows
+        # redirects on its own: a changed DNS answer or a redirect could still
+        # reach an internal address. The egress proxy checks every address it
+        # dials, on every hop. Trusted operator hosts connect without it: they
+        # are usually loopback, which the public-only proxy refuses.
+        client_kwargs["proxy"] = egress_proxy_url()
+
+    client = ollama.AsyncClient(**client_kwargs)
+    try:
+        return await client.chat(
+            model=model,
+            messages=messages,
+            stream=False,
+            format="json" if json_format else None,
+            options=options,
+        )
+    except httpx.ProxyError as e:
+        if is_trusted:
+            raise
+        # httpx's wording names a proxy the user never configured.
+        raise ConnectionError(
+            f"Could not connect to Ollama at {host}: it is unreachable or "
+            "not on a public address."
+        ) from e
 
 
 def _trusted_ollama_hostnames() -> list[str]:
@@ -830,7 +1039,7 @@ async def _call_openai_compat(
             if force_json_output
             else openai.omit
         ),
-        timeout=timeout_seconds,
+        timeout=request_timeout(timeout_seconds),
     )
     # Same guard as the Anthropic path — only send ``temperature`` when
     # the caller set one, so upstreams that reject it (some reasoning
@@ -842,6 +1051,7 @@ async def _call_openai_compat(
         # Ask OpenRouter to surface per-request USD cost on `usage.cost`.
         # Same shape used by backend/executor/simulator.py — keep aligned.
         extra_body["usage"] = {"include": True}
+        extra_body.update(small_call_reasoning(model, max_tokens))
         call_kwargs["extra_headers"] = {
             "HTTP-Referer": "https://agpt.co",
             "X-Title": "AutoGPT",
@@ -861,9 +1071,12 @@ async def _call_openai_compat(
         raise ValueError(f"{base_url} returned empty choices in response")
 
     cache_read, cache_creation = _extract_openai_compat_cache_tokens(response)
+    finish_reason = response.choices[0].finish_reason
 
     return ProviderResponse(
         content=response.choices[0].message.content or "",
+        # Callers check Anthropic's "max_tokens"; OpenAI calls it "length".
+        stop_reason="max_tokens" if finish_reason == "length" else finish_reason,
         prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
         completion_tokens=(response.usage.completion_tokens if response.usage else 0),
         cache_read_tokens=cache_read,
@@ -1021,7 +1234,8 @@ async def call_provider_openai_compat_sync(
     api_key: str | None = None,
     extra_body: dict[str, Any] | None = None,
     extra_headers: dict[str, str] | None = None,
-    timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    timeout_seconds: float | None = None,
+    temperature: float | None = None,
     client_factory: type[openai.AsyncOpenAI] = openai.AsyncOpenAI,
 ) -> Any:
     """Non-streaming OpenAI-compat chat call, returns the raw SDK
@@ -1037,6 +1251,8 @@ async def call_provider_openai_compat_sync(
     + (optionally) ``client_factory``. See ``call_provider_stream``
     for rationale.
     """
+    if timeout_seconds is None:
+        timeout_seconds = DEFAULT_REQUEST_TIMEOUT_SECONDS
     sanitize_messages_for_utf8(messages)
     if client is None:
         if base_url is None or api_key is None:
@@ -1049,13 +1265,47 @@ async def call_provider_openai_compat_sync(
         "model": model,
         "messages": cast(list[ChatCompletionMessageParam], messages),
         "max_tokens": max_tokens,
-        "timeout": timeout_seconds,
+        "timeout": request_timeout(timeout_seconds),
     }
+    if temperature is not None:
+        create_kwargs["temperature"] = temperature
+    if client.base_url.host == httpx.URL(OPENROUTER_BASE_URL).host:
+        extra_body = {**(extra_body or {}), **small_call_reasoning(model, max_tokens)}
     if extra_body:
         create_kwargs["extra_body"] = extra_body
     if extra_headers:
         create_kwargs["extra_headers"] = extra_headers
-    return await client.chat.completions.create(**create_kwargs)
+    # Same total-duration guarantee as ``call_provider``: the per-request httpx
+    # timeout alone is per ATTEMPT, and the SDK's own max_retries multiplies it.
+    try:
+        return await asyncio.wait_for(
+            client.chat.completions.create(**create_kwargs),
+            timeout=timeout_seconds,
+        )
+    except asyncio.TimeoutError as exc:
+        raise timeout_error(model, timeout_seconds) from exc
+
+
+def small_call_reasoning(model: str, max_tokens: int) -> dict[str, Any]:
+    """OpenRouter ``extra_body`` turning reasoning off for a small Claude 5 call.
+
+    Empty for a bigger cap or any other model, whose thinking the caller keeps.
+    """
+    if max_tokens > NO_REASONING_MAX_TOKENS:
+        return {}
+    if not strip_anthropic_vendor_prefix(model).startswith(CLAUDE_5_FAMILY_PREFIXES):
+        return {}
+    return {"reasoning": {"enabled": False}}
+
+
+def timeout_error(target: str, timeout_seconds: float) -> TimeoutError:
+    """Provider-agnostic timeout text. The block layer adds its own UI-specific
+    remedy, which does not belong in a module dream/briefing/copilot also use."""
+    return TimeoutError(
+        f"LLM request to {target} exceeded {timeout_seconds}s and was cancelled. "
+        "If the model was still generating, shorten the prompt or pick a faster "
+        "model."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1255,6 +1505,21 @@ class BatchResultRow:
     # Kept out of repr + pydantic serialization (it's an opaque SDK object).
     raw_result: Any = Field(default=None, repr=False, exclude=True)
 
+    def with_content(self, content: str) -> BatchResultRow:
+        """This row with *content* in place of the provider's text, every
+        other field kept: the dream callback stores the JSON it parsed out
+        of a text answer."""
+        return BatchResultRow(
+            custom_id=self.custom_id,
+            content=content,
+            input_tokens=self.input_tokens,
+            output_tokens=self.output_tokens,
+            cache_read_tokens=self.cache_read_tokens,
+            cache_creation_tokens=self.cache_creation_tokens,
+            error=self.error,
+            raw_result=self.raw_result,
+        )
+
 
 async def poll_batch(
     *, provider: ProviderLiteral, provider_batch_id: str, api_key: str
@@ -1333,6 +1598,11 @@ async def download_batch_results(
                     output_tokens=output_tokens,
                     cache_read_tokens=cache_read,
                     cache_creation_tokens=cache_creation,
+                    error=(
+                        "max_tokens"
+                        if message is not None and message.stop_reason == "max_tokens"
+                        else None
+                    ),
                     raw_result=entry,
                 )
             )
@@ -1357,33 +1627,39 @@ async def download_batch_results(
     return rows
 
 
-def _anthropic_content_to_text(message: Any) -> str:
+def _anthropic_answer_blocks(
+    message: anthropic.types.Message | None,
+) -> list[anthropic.types.ContentBlock]:
+    if message is None:
+        return []
+    return [
+        block
+        for block in message.content
+        if block.type not in ("thinking", "redacted_thinking")
+    ]
+
+
+def _anthropic_content_to_text(message: anthropic.types.Message | None) -> str:
     """Flatten an Anthropic ``message.content`` blob into a string.
 
-    Three shapes the BatchExecutor's downstream parser handles:
-      * Single ``text`` block → return its ``text``.
-      * Single ``tool_use`` block → return ``json.dumps(input)``. This
-        is the "structured output" path (forced ``tool_choice`` makes
-        Claude emit exactly one tool_use block; the dream pass parses
-        the JSON straight into a Pydantic model).
-      * Multi-block / unknown → join all ``text`` blocks with newlines.
+    Two shapes the BatchExecutor's downstream parser handles:
+      * A ``tool_use`` block → ``json.dumps(input)`` of the first one. This
+        is the "structured output" path: the dream pass offers one output
+        tool, forced where the model accepts that (exactly one tool_use
+        block) and left to the model's choice (``auto``) where it doesn't,
+        in which case a short text block can come before the call. The
+        dream pass parses the JSON straight into a Pydantic model.
+      * No ``tool_use`` block → the ``text`` blocks joined with newlines
+        (a single text block comes back as is).
 
     Returns ``""`` when the message is missing or empty.
     """
-    if message is None:
-        return ""
-    content = getattr(message, "content", None) or []
-    if not content:
-        return ""
-    first = content[0]
-    first_type = getattr(first, "type", None)
-    if first_type == "tool_use" and len(content) == 1:
-        return json_module.dumps(getattr(first, "input", {}) or {})
-    if first_type == "text" and len(content) == 1:
-        return getattr(first, "text", "") or ""
-    # Multi-block fallback — concatenate text blocks.
-    parts: list[str] = []
-    for block in content:
-        if getattr(block, "type", None) == "text":
-            parts.append(getattr(block, "text", "") or "")
-    return "\n".join(parts)
+    content = _anthropic_answer_blocks(message)
+    tool_use = next((block for block in content if block.type == "tool_use"), None)
+    if tool_use is not None:
+        return json_module.dumps(getattr(tool_use, "input", {}) or {})
+    return "\n".join(
+        getattr(block, "text", "") or ""
+        for block in content
+        if getattr(block, "type", None) == "text"
+    )

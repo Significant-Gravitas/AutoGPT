@@ -18,19 +18,24 @@ from backend.data.graph import (
     get_sub_graphs,
 )
 from backend.data.includes import AGENT_GRAPH_INCLUDE
-from backend.data.notifications import (
-    AgentApprovalData,
-    AgentRejectionData,
-    NotificationEventModel,
+from backend.data.notifications import NotificationEventModel, VerdictData
+from backend.data.profile import ensure_user_profile
+from backend.notifications.queue import queue_notification_async
+from backend.util.exceptions import (
+    ConflictError,
+    DatabaseError,
+    NotFoundError,
+    PreconditionFailed,
 )
-from backend.notifications.notifications import queue_notification_async
-from backend.util.exceptions import DatabaseError, NotFoundError, PreconditionFailed
 from backend.util.settings import Settings
 
 from . import exceptions as store_exceptions
 from . import model as store_model
+from . import public_media
+from .categories import category_filter_values
 from .embeddings import ensure_embedding
 from .hybrid_search import hybrid_search
+from .store_listing_versions import installable_store_version_where
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -39,6 +44,9 @@ settings = Settings()
 # Constants for default admin values
 DEFAULT_ADMIN_NAME = "AutoGPT Admin"
 DEFAULT_ADMIN_EMAIL = "admin@autogpt.co"
+
+# Creator search reads only this much of a query, which bounds its ILIKE pattern.
+MAX_CREATOR_SEARCH_QUERY_LENGTH = 100
 
 
 class StoreAgentsSortOptions(Enum):
@@ -56,6 +64,7 @@ async def get_store_agents(
     category: str | None = None,
     page: int = 1,
     page_size: int = 20,
+    public_search: bool = False,
 ) -> store_model.StoreAgentsResponse:
     """
     Get PUBLIC store agents from the StoreAgent view.
@@ -64,6 +73,8 @@ async def get_store_agents(
     - With search_query: Uses hybrid search (semantic + lexical)
     - Fallback: If embeddings unavailable, gracefully degrades to lexical-only
     - Rationale: User-facing endpoint prioritizes availability over accuracy
+    - public_search: a new query embedding takes a slot from store search's
+      per-minute budget, and the search ranks by text alone once it is spent
 
     Note: Admin operations (approval) use fail-fast to prevent inconsistent state.
     """
@@ -93,6 +104,7 @@ async def get_store_agents(
                     sorted_by="relevance",  # Use hybrid scoring for relevance
                     page=page,
                     page_size=page_size,
+                    public_search=public_search,
                 )
                 search_used_hybrid = True
             except Exception as e:
@@ -157,7 +169,7 @@ async def get_store_agents(
         )
     except Exception as e:
         logger.error(f"Error getting store agents: {e}")
-        raise DatabaseError("Failed to fetch store agents") from e
+        raise DatabaseError("Failed to fetch store workflows") from e
     # TODO: commenting this out as we concerned about potential db load issues
     # finally:
     #     if search_term:
@@ -187,8 +199,8 @@ async def _fallback_store_agent_search(
             where_clause["featured"] = featured
         if creators:
             where_clause["creator_username"] = {"in": creators}
-        if category:
-            where_clause["categories"] = {"has": category}
+        if category_values := category_filter_values(category):
+            where_clause["categories"] = {"has_some": category_values}
 
         order_by = []
         if sorted_by == StoreAgentsSortOptions.RATING:
@@ -220,9 +232,9 @@ async def _fallback_store_agent_search(
         params.append(creators)
         filters.append(f"sa.creator_username = ANY(${param_idx})")
         param_idx += 1
-    if category:
-        params.append(category)
-        filters.append(f"${param_idx} = ANY(sa.categories)")
+    if category_values := category_filter_values(category):
+        params.append(category_values)
+        filters.append(f"sa.categories && ${param_idx}")
         param_idx += 1
 
     where_sql = " AND ".join(filters)
@@ -311,7 +323,7 @@ async def get_store_agent_details(
 
         if not agent:
             logger.warning(f"Agent not found: {username}/{agent_name}")
-            raise NotFoundError(f"Agent {username}/{agent_name} not found")
+            raise NotFoundError(f"Workflow {username}/{agent_name} not found")
 
         # Fetch changelog data if requested
         changelog_data = None
@@ -342,7 +354,7 @@ async def get_store_agent_details(
         raise
     except Exception as e:
         logger.error(f"Error getting store agent details: {e}")
-        raise DatabaseError("Failed to fetch agent details") from e
+        raise DatabaseError("Failed to fetch workflow details") from e
 
 
 @overload
@@ -386,7 +398,7 @@ async def get_available_graph(
                 f"Store listing version {store_listing_version_id} not found",
             )
 
-        return (GraphModelWithoutNodes if hide_nodes else GraphModel).from_db(
+        graph = (GraphModelWithoutNodes if hide_nodes else GraphModel).from_db(
             store_listing_version.AgentGraph,
             sub_graphs=(
                 await get_sub_graphs(store_listing_version.AgentGraph)
@@ -394,10 +406,14 @@ async def get_available_graph(
                 else None
             ),
         )
+        # A marketplace listing is public: the publisher's picked files, and
+        # the credentials embedded in them, aren't part of it.
+        graph.clear_auto_credentials()
+        return graph
 
     except Exception as e:
         logger.error(f"Error getting agent: {e}")
-        raise DatabaseError("Failed to fetch agent") from e
+        raise DatabaseError("Failed to fetch workflow") from e
 
 
 async def get_store_agent_by_version_id(
@@ -417,9 +433,25 @@ async def get_store_agent_by_version_id(
 
         if not agent:
             logger.warning(f"Agent not found: {store_listing_version_id}")
-            raise NotFoundError(f"Agent {store_listing_version_id} not found")
+            raise NotFoundError(f"Workflow {store_listing_version_id} not found")
 
         logger.debug(f"Found agent details for {store_listing_version_id}")
+        return store_model.StoreAgentDetails.from_db(agent)
+    except NotFoundError:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting store agent details: {e}")
+        raise DatabaseError("Failed to fetch workflow details") from e
+
+
+async def get_store_agent_by_graph_id(graph_id: str) -> store_model.StoreAgentDetails:
+    """Get the marketplace listing for a graph (APPROVED agents only)."""
+    try:
+        agent = await prisma.models.StoreAgent.prisma().find_first(
+            where={"graph_id": graph_id}
+        )
+        if not agent:
+            raise NotFoundError(f"No marketplace listing for graph {graph_id}")
         return store_model.StoreAgentDetails.from_db(agent)
     except NotFoundError:
         raise
@@ -509,12 +541,8 @@ async def get_store_creators(
         where["is_featured"] = featured
 
     # Add search filter if provided, using parameterized queries
-    if search_query:
-        # Sanitize and validate search query by escaping special characters
-        sanitized_query = search_query.strip()
-        if not sanitized_query or len(sanitized_query) > 100:  # Reasonable length limit
-            raise DatabaseError("Invalid search query")
-
+    sanitized_query = (search_query or "").strip()[:MAX_CREATOR_SEARCH_QUERY_LENGTH]
+    if sanitized_query:
         # Escape special SQL characters
         sanitized_query = (
             sanitized_query.replace("\\", "\\\\")
@@ -737,7 +765,10 @@ async def get_store_submissions(
             order=order,
         )
         stats_task = _get_submission_stats(user_id)
-        if normalized_query or statuses:
+        # The stats count every submission of the user's; a listing scoped to
+        # an organization, or filtered, has to be counted on its own terms or
+        # its pages run out early or late.
+        if normalized_query or statuses or organization_id is not None:
             count_task = prisma.models.StoreSubmission.prisma().count(where=where)
             submissions, stats, total = await asyncio.gather(
                 submissions_task, stats_task, count_task
@@ -771,66 +802,74 @@ async def get_store_submissions(
 
 async def delete_store_submission(
     user_id: str,
-    submission_id: str,
+    store_listing_version_id: str,
     organization_id: str | None = None,
 ) -> bool:
+    """`delete_store_submission_or_raise`, answering False for any failure."""
+    try:
+        await delete_store_submission_or_raise(
+            user_id, store_listing_version_id, organization_id
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Error deleting store submission: {e}")
+        return False
+
+
+async def delete_store_submission_or_raise(
+    user_id: str,
+    store_listing_version_id: str,
+    organization_id: str | None = None,
+) -> None:
     """
     Delete a store submission version as the submitting user.
 
     Args:
         user_id: ID of the authenticated user
-        submission_id: StoreListingVersion ID to delete
+        store_listing_version_id: StoreListingVersion ID to delete
         organization_id: Caller's active org. When set, the listing must
             belong to that org (or be tenant-less and personally owned) —
             mirrors ``edit_store_submission``.
 
-    Returns:
-        bool: True if successfully deleted
+    Raises:
+        SubmissionNotFoundError: no such submission, or not the caller's
+        InvalidOperationError: the submission is approved
     """
-    try:
-        # Find the submission version with ownership check
-        version = await prisma.models.StoreListingVersion.prisma().find_first(
-            where={"id": submission_id}, include={"StoreListing": True}
+    # Find the submission version with ownership check
+    version = await prisma.models.StoreListingVersion.prisma().find_unique(
+        where={"id": store_listing_version_id}, include={"StoreListing": True}
+    )
+
+    if not version or not version.StoreListing:
+        raise store_exceptions.SubmissionNotFoundError("Submission not found")
+
+    listing = version.StoreListing
+    if organization_id is not None:
+        allowed = listing.owningOrgId == organization_id or (
+            listing.owningOrgId is None and listing.owningUserId == user_id
+        )
+    else:
+        allowed = listing.owningUserId == user_id
+    if not allowed:
+        raise store_exceptions.SubmissionNotFoundError("Submission not found")
+
+    # Prevent deletion of approved submissions
+    if version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED:
+        raise store_exceptions.InvalidOperationError(
+            "Cannot delete approved store listings"
         )
 
-        if not version or not version.StoreListing:
-            raise store_exceptions.SubmissionNotFoundError("Submission not found")
+    # Delete the version
+    await prisma.models.StoreListingVersion.prisma().delete(where={"id": version.id})
 
-        listing = version.StoreListing
-        if organization_id is not None:
-            allowed = listing.owningOrgId == organization_id or (
-                listing.owningOrgId is None and listing.owningUserId == user_id
-            )
-        else:
-            allowed = listing.owningUserId == user_id
-        if not allowed:
-            raise store_exceptions.SubmissionNotFoundError("Submission not found")
-
-        # Prevent deletion of approved submissions
-        if version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED:
-            raise store_exceptions.InvalidOperationError(
-                "Cannot delete approved submissions"
-            )
-
-        # Delete the version
-        await prisma.models.StoreListingVersion.prisma().delete(
-            where={"id": version.id}
+    # Clean up empty listing if this was the last version
+    remaining = await prisma.models.StoreListingVersion.prisma().count(
+        where={"storeListingId": version.storeListingId}
+    )
+    if remaining == 0:
+        await prisma.models.StoreListing.prisma().delete(
+            where={"id": version.storeListingId}
         )
-
-        # Clean up empty listing if this was the last version
-        remaining = await prisma.models.StoreListingVersion.prisma().count(
-            where={"storeListingId": version.storeListingId}
-        )
-        if remaining == 0:
-            await prisma.models.StoreListing.prisma().delete(
-                where={"id": version.storeListingId}
-            )
-
-        return True
-
-    except Exception as e:
-        logger.error(f"Error deleting store submission: {e}")
-        return False
 
 
 async def create_store_submission(
@@ -839,12 +878,12 @@ async def create_store_submission(
     graph_version: int,
     slug: str,
     name: str,
+    sub_heading: str,
     video_url: str | None = None,
     agent_output_demo_url: str | None = None,
     image_urls: list[str] = [],
     description: str = "",
     instructions: str | None = None,
-    sub_heading: str = "",
     categories: list[str] = [],
     changes_summary: str | None = "Initial Submission",
     recommended_schedule_cron: str | None = None,
@@ -862,7 +901,7 @@ async def create_store_submission(
         video_url: Optional URL to video demo
         image_urls: List of image URLs for the listing
         description: Description of the agent
-        sub_heading: Optional sub-heading for the agent
+        sub_heading: Short CTA line shown under the agent name
         categories: List of categories for the agent
         changes_summary: Summary of changes made in this submission
 
@@ -894,9 +933,20 @@ async def create_store_submission(
             c if c.isalpha() or c == "-" or c.isnumeric() else "" for c in slug
         ).lower()
 
-        # First verify the agent graph belongs to this user
+        # First verify the agent graph belongs to this user, and to the
+        # organization the submission is made in (or to none).
+        graph_where: prisma.types.AgentGraphWhereInput = {
+            "id": graph_id,
+            "version": graph_version,
+            "userId": user_id,
+        }
+        if organization_id:
+            graph_where["OR"] = [
+                {"organizationId": organization_id},
+                {"organizationId": None},
+            ]
         graph = await prisma.models.AgentGraph.prisma().find_first(
-            where={"id": graph_id, "version": graph_version, "userId": user_id},
+            where=graph_where,
             include={"User": {"include": {"Profile": True}}},
         )
 
@@ -907,19 +957,19 @@ async def create_store_submission(
             # Provide more user-friendly error message when graph_id is empty
             if not graph_id or graph_id.strip() == "":
                 raise ValueError(
-                    "No agent selected. "
-                    "Please select an agent before submitting to the store."
+                    "No workflow selected. "
+                    "Please select a workflow before submitting to the store."
                 )
             else:
                 raise NotFoundError(
-                    f"Agent #{graph_id} v{graph_version} not found "
+                    f"Workflow #{graph_id} v{graph_version} not found "
                     f"for this user (#{user_id})"
                 )
 
         if not graph.User or not graph.User.Profile:
             logger.warning(f"User #{user_id} does not have a Profile")
             raise PreconditionFailed(
-                "User must create a Marketplace Profile before submitting an agent"
+                "User must create a Marketplace Profile before submitting a workflow"
             )
 
         async with transaction() as tx:
@@ -1020,7 +1070,7 @@ async def create_store_submission(
         if "slug" in error_str.lower():
             logger.debug(f"Slug '{slug}' is already in use by graph #{graph_id}")
             raise store_exceptions.SlugAlreadyInUseError(
-                f"The slug '{slug}' is already in use by another one of your agents. "
+                f"The slug '{slug}' is already in use by another one of your workflows. "
                 "Please choose a different slug."
             ) from exc
         else:
@@ -1042,11 +1092,11 @@ async def edit_store_submission(
     user_id: str,
     store_listing_version_id: str,
     name: str,
+    sub_heading: str,
     video_url: str | None = None,
     agent_output_demo_url: str | None = None,
     image_urls: list[str] = [],
     description: str = "",
-    sub_heading: str = "",
     categories: list[str] = [],
     changes_summary: str | None = "Update submission",
     recommended_schedule_cron: str | None = None,
@@ -1063,7 +1113,7 @@ async def edit_store_submission(
         video_url: Optional URL to video demo
         image_urls: List of image URLs for the listing
         description: Description of the agent
-        sub_heading: Optional sub-heading for the agent
+        sub_heading: Short CTA line shown under the agent name
         categories: List of categories for the agent
         changes_summary: Summary of changes made in this submission
 
@@ -1215,27 +1265,41 @@ async def get_user_profile(
         raise DatabaseError("Failed to get user profile") from e
 
 
+async def get_or_create_user_profile(
+    user_id: str,
+) -> store_model.ProfileDetails | None:
+    """The user's profile, creating their default one if they have none yet.
+
+    A brand-new user's first page asks for it as soon as the session exists,
+    which can be before account setup (``POST /auth/user``) has created it.
+    None only for an id with no platform user, or if no free handle was found.
+    """
+    profile = await get_user_profile(user_id)
+    if profile is not None:
+        return profile
+    await ensure_user_profile(user_id)
+    return await get_user_profile(user_id)
+
+
 async def update_profile(
-    user_id: str, profile: store_model.Profile
+    user_id: str, profile: store_model.ProfileUpdateRequest
 ) -> store_model.ProfileDetails:
     """
-    Update the store profile for a user or create a new one if it doesn't exist.
-    Args:
-        user_id: ID of the authenticated user
-        profile: Updated profile details
-    Returns:
-        ProfileDetails: The updated or created profile details
+    Apply a partial update to the user's store profile, creating it if missing.
+
+    Only the fields explicitly set on ``profile`` are written; omitted fields
+    are left untouched. ``avatar_url=None`` clears the avatar, ``None`` for any
+    other field is rejected because the column is required. Creating a profile
+    needs at least ``username``, ``name`` and ``description``.
+
     Raises:
-        DatabaseError: If there's an issue updating or creating the profile
+        ValueError: If a field value is invalid or too few are given to create.
+        ConflictError: If the username belongs to another user.
+        DatabaseError: If there's an issue updating or creating the profile.
     """
     logger.info(f"Updating profile for user {user_id} with data: {profile}")
+    update_data = _normalize_profile_fields(profile)
     try:
-        # Sanitize username to allow only letters, numbers, and hyphens
-        username = "".join(
-            c if c.isalpha() or c == "-" or c.isnumeric() else ""
-            for c in profile.username
-        ).lower()
-        # Check if profile exists for the given user_id
         existing_profile = await prisma.models.Profile.prisma().find_first(
             where={"userId": user_id}
         )
@@ -1244,6 +1308,15 @@ async def update_profile(
             # endpoint is the user's self-service path to a marketplace
             # profile, so create one from the submitted data instead of
             # failing — otherwise the user is left with no way to publish.
+            missing = [
+                field
+                for field in ("username", "name", "description")
+                if field not in update_data
+            ]
+            if missing:
+                raise ValueError(
+                    "Can't create a profile without: " + ", ".join(missing)
+                )
             logger.info(
                 f"No profile for user {user_id}; creating one from submitted data"
             )
@@ -1251,15 +1324,15 @@ async def update_profile(
                 created_profile = await prisma.models.Profile.prisma().create(
                     data=prisma.types.ProfileCreateInput(
                         userId=user_id,
-                        name=profile.name,
-                        username=username,
-                        description=profile.description,
-                        links=profile.links,
-                        avatarUrl=profile.avatar_url,
+                        name=update_data["name"],
+                        username=update_data["username"],
+                        description=update_data["description"],
+                        links=update_data.get("links", []),
+                        avatarUrl=update_data.get("avatarUrl"),
                     )
                 )
                 return store_model.ProfileDetails.from_db(created_profile)
-            except prisma.errors.UniqueViolationError:
+            except prisma.errors.UniqueViolationError as e:
                 # A concurrent request (or get_or_create_user) created the
                 # Profile first. Re-fetch and fall through to update it with the
                 # submitted data rather than failing the save.
@@ -1267,47 +1340,74 @@ async def update_profile(
                     where={"userId": user_id}
                 )
                 if not existing_profile:
-                    raise
+                    # Not a userId race, so it's the other unique column.
+                    raise ConflictError(
+                        f"Username '{update_data['username']}' is already taken"
+                    ) from e
 
-        # Verify that the user is authorized to update this profile
-        if existing_profile.userId != user_id:
-            logger.error(
-                f"Unauthorized update attempt for profile {existing_profile.id} "
-                f"by user {user_id}"
-            )
-            raise DatabaseError(
-                f"Unauthorized update attempt for profile {existing_profile.id} "
-                f"by user {user_id}"
-            )
+        if not update_data:
+            return store_model.ProfileDetails.from_db(existing_profile)
 
         logger.debug(f"Updating existing profile for user {user_id}")
-        # Prepare update data, only including non-None values
-        update_data = {}
-        if profile.name is not None:
-            update_data["name"] = profile.name
-        if profile.username is not None:
-            update_data["username"] = username
-        if profile.description is not None:
-            update_data["description"] = profile.description
-        if profile.links is not None:
-            update_data["links"] = profile.links
-        if profile.avatar_url is not None:
-            update_data["avatarUrl"] = profile.avatar_url
-
-        # Update the existing profile
-        updated_profile = await prisma.models.Profile.prisma().update(
-            where={"id": existing_profile.id},
-            data=prisma.types.ProfileUpdateInput(**update_data),
-        )
+        try:
+            updated_profile = await prisma.models.Profile.prisma().update(
+                where={"id": existing_profile.id},
+                data=update_data,
+            )
+        except prisma.errors.UniqueViolationError as e:
+            raise ConflictError(
+                f"Username '{update_data.get('username')}' is already taken"
+            ) from e
         if updated_profile is None:
             logger.error(f"Failed to update profile for user {user_id}")
             raise DatabaseError("Failed to update profile")
+
+        if profile.avatar_url is not None:
+            updated_profile = await _publish_live_creator_avatar(
+                user_id, updated_profile
+            )
 
         return store_model.ProfileDetails.from_db(updated_profile)
 
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error updating profile: {e}")
         raise DatabaseError("Failed to update profile") from e
+
+
+def _normalize_profile_fields(
+    profile: store_model.ProfileUpdateRequest,
+) -> prisma.types.ProfileUpdateInput:
+    """Trim and sanitize the fields the client set; omitted fields are left out.
+
+    ``avatar_url`` is the only nullable column, so ``None`` clears it. For every
+    other field ``None`` is rejected rather than silently ignored.
+    """
+    provided = profile.model_fields_set
+    data: prisma.types.ProfileUpdateInput = {}
+    if "name" in provided:
+        if not profile.name or not profile.name.strip():
+            raise ValueError("name can't be empty")
+        data["name"] = profile.name.strip()
+    if "username" in provided:
+        # Only letters, numbers and hyphens are allowed in a username
+        username = "".join(
+            c if c.isalpha() or c == "-" or c.isnumeric() else ""
+            for c in profile.username or ""
+        ).lower()
+        if not username.strip("-"):
+            raise ValueError("username must contain at least one letter or digit")
+        data["username"] = username
+    if "description" in provided:
+        if profile.description is None:
+            raise ValueError('description can\'t be null; send "" to clear it')
+        data["description"] = profile.description.strip()
+    if "links" in provided:
+        if profile.links is None:
+            raise ValueError("links can't be null; send [] to clear them")
+        data["links"] = [link for _link in profile.links if (link := _link.strip())]
+    if "avatar_url" in provided:
+        data["avatarUrl"] = (profile.avatar_url or "").strip() or None
+    return data
 
 
 async def get_my_agents(
@@ -1332,6 +1432,7 @@ async def get_my_agents(
             "StoreListingVersions": {
                 "none": {
                     "isAvailable": True,
+                    "isDeleted": False,
                     "StoreListing": {"is": {"isDeleted": False}},
                 }
             }
@@ -1401,13 +1502,20 @@ async def get_my_agents(
         )
     except Exception as e:
         logger.error(f"Error getting my agents: {e}")
-        raise DatabaseError("Failed to fetch my agents") from e
+        raise DatabaseError("Failed to fetch my workflows") from e
 
 
 async def get_agent(store_listing_version_id: str) -> GraphModel:
-    """Get agent using the version ID and store listing version ID."""
-    slv = await prisma.models.StoreListingVersion.prisma().find_unique(
-        where={"id": store_listing_version_id}
+    """Get the graph behind a store listing version, for public download.
+
+    Unauthenticated endpoint: the installable-listing check below *is* the
+    authorization, so `get_graph()` is told to skip its own (it would deny).
+    """
+    slv = await prisma.models.StoreListingVersion.prisma().find_first(
+        where={
+            "id": store_listing_version_id,
+            **installable_store_version_where(),
+        }
     )
 
     if not slv:
@@ -1420,6 +1528,7 @@ async def get_agent(store_listing_version_id: str) -> GraphModel:
         version=slv.agentGraphVersion,
         user_id=None,
         for_export=True,
+        skip_access_check=True,
     )
     if not graph:
         raise NotFoundError(
@@ -1547,6 +1656,8 @@ async def review_store_submission(
                         "ActiveVersion": {"connect": {"id": other_approved.id}},
                     },
                 )
+                if public_media.publishing_enabled():
+                    await _publish_reactivated_media(other_approved.id)
 
         submission_status = (
             prisma.enums.SubmissionStatus.APPROVED
@@ -1578,6 +1689,9 @@ async def review_store_submission(
                 f"Failed to update store listing version {store_listing_version_id}"
             )
 
+        if is_approved:
+            reviewed_submission = await _publish_approved_media(reviewed_submission)
+
         try:
             await _send_submission_review_notification(
                 creator_user_id,
@@ -1598,6 +1712,162 @@ async def review_store_submission(
     except Exception as e:
         logger.error(f"Could not create store submission review: {e}")
         raise DatabaseError("Failed to create store submission review") from e
+
+
+async def _publish_approved_media(
+    version: prisma.models.StoreListingVersion,
+) -> prisma.models.StoreListingVersion:
+    """
+    Copy an approved version's media and its creator's avatar to the public site
+    media bucket, and point the rows at the copies. Never fails the review. The
+    profile and the version are written separately on purpose: each copy is
+    valid on its own, so a failed version write keeps the published avatar.
+    """
+    if not public_media.publishing_enabled():
+        return version
+    try:
+        assert version.StoreListing is not None
+        owner_id = version.StoreListing.owningUserId
+        await publish_creator_avatar(owner_id)
+        published = await public_media.publish_urls(
+            [*version.imageUrls, version.videoUrl, version.agentOutputDemoUrl],
+            await _listing_media_owner_ids(version.StoreListing),
+        )
+
+        media_update = _published_media_update(version, published)
+        if not media_update:
+            return version
+
+        updated = await prisma.models.StoreListingVersion.prisma().update(
+            where={"id": version.id},
+            data=media_update,
+            include={"StoreListing": True, "Reviewer": True},
+        )
+        return updated or version
+    except Exception:
+        logger.exception(
+            f"Failed to publish media of store listing version {version.id}"
+        )
+        return version
+
+
+async def _publish_reactivated_media(version_id: str) -> None:
+    """Publish the media of a version that became active again. Never raises."""
+    try:
+        version = await prisma.models.StoreListingVersion.prisma().find_unique(
+            where={"id": version_id}, include={"StoreListing": True}
+        )
+    except Exception:
+        logger.exception(f"Failed to load store listing version {version_id}")
+        return
+    if version:
+        await _publish_approved_media(version)
+
+
+def _published_media_update(
+    version: prisma.models.StoreListingVersion, published: dict[str, str]
+) -> prisma.types.StoreListingVersionUpdateInput:
+    """The version's media columns rewritten to their published URLs."""
+    media_update: prisma.types.StoreListingVersionUpdateInput = {}
+    if any(url in published for url in version.imageUrls):
+        media_update["imageUrls"] = [
+            published.get(url, url) for url in version.imageUrls
+        ]
+    if version.videoUrl in published:
+        media_update["videoUrl"] = published[version.videoUrl]
+    if version.agentOutputDemoUrl in published:
+        media_update["agentOutputDemoUrl"] = published[version.agentOutputDemoUrl]
+    return media_update
+
+
+async def _listing_media_owner_ids(listing: prisma.models.StoreListing) -> set[str]:
+    """
+    Users whose uploads a listing may publish: its owner and, for an org listing,
+    the org's active members, who can edit it and upload under their own path.
+    """
+    owner_ids = {listing.owningUserId}
+    if listing.owningOrgId:
+        members = await prisma.models.OrgMember.prisma().find_many(
+            where={
+                "orgId": listing.owningOrgId,
+                "status": prisma.enums.OrgMemberStatus.ACTIVE,
+            }
+        )
+        owner_ids.update(member.userId for member in members)
+    return owner_ids
+
+
+async def publish_creator_avatar(user_id: str) -> None:
+    """Publish the avatar of a creator who has just gained a public listing."""
+    if not public_media.publishing_enabled():
+        return
+    try:
+        profile = await prisma.models.Profile.prisma().find_unique(
+            where={"userId": user_id}
+        )
+    except Exception:
+        logger.exception(f"Failed to load the profile of user {user_id}")
+        return
+    if profile:
+        await _publish_live_creator_avatar(user_id, profile)
+
+
+async def _has_public_listing(user_id: str) -> bool:
+    """Whether the marketplace shows this user as a creator to anyone."""
+    store_listing = await prisma.models.StoreListing.prisma().find_first(
+        where={
+            "owningUserId": user_id,
+            "isDeleted": False,
+            "hasApprovedVersion": True,
+        }
+    )
+    if store_listing:
+        return True
+    skill_listing = await prisma.models.SkillListing.prisma().find_first(
+        where={
+            "owningUserId": user_id,
+            "isDeleted": False,
+            "hasApprovedVersion": True,
+            "ActiveVersion": {
+                "is": {
+                    "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+                    "isDeleted": False,
+                    "isAvailable": True,
+                }
+            },
+        }
+    )
+    return skill_listing is not None
+
+
+async def _publish_live_creator_avatar(
+    user_id: str, profile: prisma.models.Profile
+) -> prisma.models.Profile:
+    """
+    Copy the avatar of a creator with a public listing to the public site media
+    bucket and point the profile at the copy. Only writes while the profile
+    still holds the avatar it copied. Never fails the caller.
+    """
+    if not profile.avatarUrl or not public_media.publishing_enabled():
+        return profile
+    try:
+        if not await _has_public_listing(user_id):
+            return profile
+
+        published = await public_media.publish_urls([profile.avatarUrl], [user_id])
+        if profile.avatarUrl not in published:
+            return profile
+        await prisma.models.Profile.prisma().update_many(
+            where={"id": profile.id, "avatarUrl": profile.avatarUrl},
+            data={"avatarUrl": published[profile.avatarUrl]},
+        )
+        updated = await prisma.models.Profile.prisma().find_unique(
+            where={"id": profile.id}
+        )
+        return updated or profile
+    except Exception:
+        logger.exception(f"Failed to publish avatar of user {user_id}")
+        return profile
 
 
 async def _approve_sub_agent(
@@ -1711,62 +1981,52 @@ async def _send_submission_review_notification(
 
     base_url = settings.config.frontend_base_url or settings.config.platform_base_url
 
+    reviewer_name = reviewer.name if reviewer and reviewer.name else DEFAULT_ADMIN_NAME
+    reviewed_at = reviewed_listing_version.reviewedAt or datetime.now(tz=timezone.utc)
+    reviewed_at_label = f"{reviewed_at.day} {reviewed_at.strftime('%b %Y')}"
+
     if is_approved:
         store_agent = await prisma.models.StoreAgent.prisma().find_first_or_raise(
             where={"listing_version_id": reviewed_listing_version.id}
         )
-
-        # Send approval notification
-        creator_username = store_agent.creator_username
-        notification_data = AgentApprovalData(
-            agent_name=reviewed_listing_version.name,
-            graph_id=reviewed_listing_version.agentGraphId,
-            graph_version=reviewed_listing_version.agentGraphVersion,
-            reviewer_name=(
-                reviewer.name if reviewer and reviewer.name else DEFAULT_ADMIN_NAME
-            ),
-            reviewer_email=(reviewer.email if reviewer else DEFAULT_ADMIN_EMAIL),
-            comments=external_comments,
-            reviewed_at=(
-                reviewed_listing_version.reviewedAt or datetime.now(tz=timezone.utc)
-            ),
-            store_url=(
-                f"{base_url}/marketplace/agent/{creator_username}/{store_agent.slug}"
-            ),
+        store_url = (
+            f"{base_url}/marketplace/agent/{store_agent.creator_username}/"
+            f"{store_agent.slug}"
         )
-
-        notification_event = NotificationEventModel[AgentApprovalData](
-            user_id=creator_user_id,
-            type=prisma.enums.NotificationType.AGENT_APPROVED,
-            data=notification_data,
+        notification_data = VerdictData(
+            outcome="approved",
+            agent_name=reviewed_listing_version.name,
+            version=reviewed_listing_version.version,
+            reviewer_name=reviewer_name,
+            reviewed_at_label=reviewed_at_label,
+            comments=external_comments or "",
+            store_url=store_url,
+            share_url=store_url,
         )
     else:
-        # Send rejection notification
+        # "Changes requested", not "rejected": the old framing told creators to
+        # leave, this one tells them how to get in.
         graph_id = reviewed_listing_version.agentGraphId
-        notification_data = AgentRejectionData(
+        notification_data = VerdictData(
+            outcome="changes",
             agent_name=reviewed_listing_version.name,
-            graph_id=reviewed_listing_version.agentGraphId,
-            graph_version=reviewed_listing_version.agentGraphVersion,
-            reviewer_name=(
-                reviewer.name if reviewer and reviewer.name else DEFAULT_ADMIN_NAME
-            ),
-            reviewer_email=(reviewer.email if reviewer else DEFAULT_ADMIN_EMAIL),
-            comments=external_comments,
-            reviewed_at=reviewed_listing_version.reviewedAt
-            or datetime.now(tz=timezone.utc),
+            version=reviewed_listing_version.version,
+            reviewer_name=reviewer_name,
+            reviewed_at_label=reviewed_at_label,
+            comments=external_comments or "",
             resubmit_url=f"{base_url}/build?flowID={graph_id}",
         )
 
-        notification_event = NotificationEventModel[AgentRejectionData](
-            user_id=creator_user_id,
-            type=prisma.enums.NotificationType.AGENT_REJECTED,
-            data=notification_data,
-        )
+    notification_event = NotificationEventModel[VerdictData](
+        user_id=creator_user_id,
+        type=prisma.enums.NotificationType.VERDICT,
+        data=notification_data,
+    )
 
     # Queue the notification for immediate sending
     await queue_notification_async(notification_event)
     logger.info(
-        f"Queued {'approval' if is_approved else 'rejection'} notification "
+        f"Queued {'approved' if is_approved else 'changes-requested'} verdict "
         f"for agent '{reviewed_listing_version.name}' of user #{creator_user_id}"
     )
 

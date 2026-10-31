@@ -18,7 +18,10 @@ import {
   retryUnlessClientError,
 } from "../../../helpers";
 import { useAgentPresetsQuery } from "../../../hooks/useAgentPresetsQuery";
-import { useExecutionEvents } from "@/hooks/useExecutionEvents";
+import {
+  EXECUTION_REFETCH_THROTTLE_MS,
+  useExecutionEvents,
+} from "@/hooks/useExecutionEvents";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryStates } from "nuqs";
@@ -49,6 +52,7 @@ type Args = {
     templatesCount: number;
     triggersCount: number;
     loading?: boolean;
+    hasError?: boolean;
   }) => void;
 };
 
@@ -130,16 +134,28 @@ export function useSidebarRunsList({
     !schedulesQuery.isSuccess ||
     !presetsQuery.presetsSettled ||
     (triggerAgentsEnabled && !triggerAgentsQuery.isSuccess);
-  const stale =
-    runsQuery.isStale ||
-    schedulesQuery.isStale ||
-    presetsQuery.isStale ||
-    (triggerAgentsEnabled && triggerAgentsQuery.isStale);
+  const error =
+    schedulesQuery.error ||
+    runsQuery.error ||
+    presetsQuery.error ||
+    (triggerAgentsEnabled ? triggerAgentsQuery.error : null);
+
+  function retryFailedQueries() {
+    if (runsQuery.isError) void runsQuery.refetch();
+    if (schedulesQuery.isError) void schedulesQuery.refetch();
+    if (presetsQuery.isError) void presetsQuery.refetch();
+    if (triggerAgentsEnabled && triggerAgentsQuery.isError) {
+      void triggerAgentsQuery.refetch();
+    }
+  }
 
   // Update query cache when execution events arrive via websocket
   useExecutionEvents({
     graphId: graphId || undefined,
     enabled: !!graphId && tabValue === "runs",
+    // Refetching the infinite query reloads every loaded page in turn, so a
+    // burst of events is folded into one refetch now and one at the end.
+    throttleMs: EXECUTION_REFETCH_THROTTLE_MS,
     onExecutionUpdate: (_execution) => {
       // Invalidate and refetch the query to ensure we have the latest data
       // This is simpler and more reliable than manually updating the cache
@@ -151,13 +167,14 @@ export function useSidebarRunsList({
 
   // Notify parent about counts and loading state
   useEffect(() => {
-    if (onCountsChange && !stale) {
+    if (onCountsChange) {
       onCountsChange({
         runsCount,
         schedulesCount,
         templatesCount,
         triggersCount,
         loading,
+        hasError: !!error,
       });
     }
   }, [
@@ -167,7 +184,7 @@ export function useSidebarRunsList({
     templatesCount,
     triggersCount,
     loading,
-    stale,
+    error,
   ]);
 
   useEffect(() => {
@@ -210,13 +227,10 @@ export function useSidebarRunsList({
     templates,
     triggers,
     triggerAgents,
-    error:
-      schedulesQuery.error ||
-      runsQuery.error ||
-      presetsQuery.error ||
-      (triggerAgentsEnabled ? triggerAgentsQuery.error : null),
+    error,
     loading,
     runsQuery,
+    retryFailedQueries,
     tabValue,
     runsCount,
     schedulesCount,

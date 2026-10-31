@@ -10,45 +10,61 @@ import {
   NEW_SKILL_PROMPT,
 } from "@/components/contextual/guidedPrompts";
 import type { UIMessage } from "ai";
-import type { CredentialsMetaResponse } from "@/lib/autogpt-server-api";
-import {
-  CredentialsProvidersContext,
-  type CredentialsProviderData,
-} from "@/providers/agent-credentials/credentials-provider";
 import { useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatInput } from "../ChatInput";
-import { useCopilotStop } from "../../../useCopilotStop";
+import { sdkStopStream, useCopilotStop } from "../../../useCopilotStop";
+import { toast } from "@/components/molecules/Toast/use-toast";
+import { ReportedSendError } from "@/app/(platform)/copilot/helpers/reportedSendError";
 
 const mockCancel =
   vi.fn<(sessionId: string) => Promise<{ status: number; data: unknown }>>();
+let mockTransports: unknown = undefined;
 vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
+  useGetV2ListChatTransports: () => ({ data: mockTransports }),
   postV2CancelSessionTask: (sessionId: string) => mockCancel(sessionId),
-  useGetV2ListChatTransports: () => ({
+  // A lone platform connection whose tiers resolve to one model: the picker
+  // presents nothing, which keeps these tests about the composer itself.
+  useGetV2ListChatConnections: () => ({
     data: {
       status: 200,
       data: {
-        transports: [
+        offers: [
           {
-            auth_provider: "platform",
+            offer_id: "platform:deployment",
+            provider_family: "autogpt",
+            display_name: "AutoGPT Platform",
+            auth_method: "deployment",
             credential_id: null,
-            label: "AutoGPT Platform",
-            available: true,
-            default: true,
+            backed_by_label: "Your AutoGPT plan",
+            description: "New chats are backed by your AutoGPT plan.",
+            state: "ready",
+            selectable: true,
+            is_default: true,
+            tiers: [
+              {
+                tier: "standard",
+                label: "Balanced",
+                selectable: true,
+                display_model: "one-model",
+              },
+              {
+                tier: "advanced",
+                label: "Advanced",
+                selectable: true,
+                display_model: "one-model",
+              },
+            ],
+            limitations: [],
           },
         ],
       },
     },
+    isLoading: false,
     isPending: false,
     isError: false,
   }),
 }));
-
-let mockCopilotMode = "extended_thinking";
-let mockCopilotModePinned = false;
-const mockSetCopilotChatMode = vi.fn((mode: string) => {
-  mockCopilotMode = mode;
-});
 
 let mockCopilotLlmModel = "standard";
 const mockSetCopilotLlmModel = vi.fn((model: string) => {
@@ -63,26 +79,22 @@ const mockSetInitialPrompt = vi.fn((value: string | null) => {
 });
 
 vi.mock("@/app/(platform)/copilot/store", () => ({
-  useCopilotUIStore: () => ({
-    copilotMode: mockCopilotMode,
-    setCopilotMode: mockSetCopilotChatMode,
-    copilotChatMode: mockCopilotMode,
-    setCopilotChatMode: mockSetCopilotChatMode,
-    copilotModePinned: mockCopilotModePinned,
-    copilotLlmModel: mockCopilotLlmModel,
-    setCopilotLlmModel: mockSetCopilotLlmModel,
-    copilotLlmAuth: {
-      authProvider: mockCopilotLlmAuthProvider,
-      credentialId: null,
-    },
-    setCopilotLlmAuth: vi.fn(),
-    isDryRun: false,
-    setIsDryRun: vi.fn(),
-    initialPrompt: mockInitialPrompt,
-    setInitialPrompt: mockSetInitialPrompt,
-    sentMessageCount: 0,
-    notifyMessageSent: vi.fn(),
-  }),
+  useCopilotUIStore: (selector: (state: Record<string, unknown>) => unknown) =>
+    selector({
+      copilotLlmModel: mockCopilotLlmModel,
+      setCopilotLlmModel: mockSetCopilotLlmModel,
+      copilotLlmAuth: {
+        authProvider: mockCopilotLlmAuthProvider,
+        credentialId: null,
+      },
+      setCopilotLlmAuth: vi.fn(),
+      isDryRun: false,
+      setIsDryRun: vi.fn(),
+      initialPrompt: mockInitialPrompt,
+      setInitialPrompt: mockSetInitialPrompt,
+      sentMessageCount: 0,
+      notifyMessageSent: vi.fn(),
+    }),
 }));
 
 let mockFlagValue = false;
@@ -91,31 +103,50 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
   useGetFlag: () => mockFlagValue,
 }));
 
+// Off by default so the rest of the suite sees the production-build behaviour.
+let mockTokenDevtoolEnabled = false;
+vi.mock("../../../tokenDevtool/gate", () => ({
+  isTokenDevtoolEnabled: () => mockTokenDevtoolEnabled,
+}));
+
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   toast: vi.fn(),
   useToast: () => ({ toast: vi.fn(), dismiss: vi.fn() }),
 }));
 
-vi.mock("../useVoiceRecording", () => ({
-  useVoiceRecording: () => ({
+const voiceRetry = vi.fn();
+const voiceDownload = vi.fn();
+const voiceDismiss = vi.fn();
+let mockTranscriptionError: string | null = null;
+let mockHasFailedRecording = false;
+let mockIsTranscribing = false;
+// Real for the focus tests: the hook focuses the composer too.
+let mockRealVoiceRecording = false;
+
+vi.mock("../useVoiceRecording", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../useVoiceRecording")>();
+  const stub = () => ({
     isRecording: false,
-    isTranscribing: false,
+    isTranscribing: mockIsTranscribing,
+    transcriptionError: mockTranscriptionError,
+    hasFailedRecording: mockHasFailedRecording,
+    retryTranscription: voiceRetry,
+    downloadFailedRecording: voiceDownload,
+    dismissTranscriptionError: voiceDismiss,
     elapsedTime: 0,
     toggleRecording: vi.fn(),
     handleKeyDown: vi.fn(),
     showMicButton: false,
     isInputDisabled: false,
     audioStream: null,
-  }),
-}));
+  });
+  return {
+    useVoiceRecording: (args: Parameters<typeof real.useVoiceRecording>[0]) =>
+      (mockRealVoiceRecording ? real.useVoiceRecording : stub)(args),
+  };
+});
 
-vi.mock("@/components/ai-elements/prompt-input", () => ({
-  PromptInputBody: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
-  PromptInputFooter: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
+vi.mock("@/components/organisms/PromptInput/PromptInput", () => ({
   PromptInputSubmit: ({
     disabled,
     status,
@@ -159,9 +190,6 @@ vi.mock("@/components/ai-elements/prompt-input", () => ({
       />
     );
   },
-  PromptInputTools: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="tools">{children}</div>
-  ),
   PromptInputButton: ({
     children,
     onClick,
@@ -177,27 +205,41 @@ vi.mock("@/components/ai-elements/prompt-input", () => ({
   ),
 }));
 
-vi.mock("@/components/ui/input-group", () => ({
-  InputGroup: ({
-    children,
-    className,
-  }: {
-    children: React.ReactNode;
-    className?: string;
-  }) => <div className={className}>{children}</div>,
-}));
+// InputGroup/InputGroupAddon render as-is: they are plain presentational
+// wrappers, and stubbing them hid the addon contract (role, data-align,
+// click-to-focus) that the composer relies on.
 
 vi.mock("../components/ComposerPlusMenu", () => ({
   ComposerPlusMenu: ({
     onClearGuidedPrompt,
+    extraItems = [],
   }: {
     onClearGuidedPrompt?: () => void;
+    extraItems?: {
+      key: string;
+      label: string;
+      onSelect: () => void;
+      disabled?: boolean;
+    }[];
   }) => (
-    <button
-      type="button"
-      data-testid="attachment-menu"
-      onClick={() => onClearGuidedPrompt?.()}
-    />
+    <>
+      <button
+        type="button"
+        data-testid="attachment-menu"
+        onClick={() => onClearGuidedPrompt?.()}
+      />
+      {extraItems.map((item) => (
+        <button
+          key={item.key}
+          type="button"
+          role="menuitem"
+          disabled={item.disabled}
+          onClick={item.onSelect}
+        >
+          {item.label}
+        </button>
+      ))}
+    </>
   ),
 }));
 vi.mock("../components/FileChips", () => ({
@@ -226,59 +268,290 @@ vi.mock("../components/DryRunToggleButton", () => ({
 
 const mockOnSend = vi.fn();
 
-const codexCredential: CredentialsMetaResponse = {
-  id: "codex-credential-1",
-  provider: "codex",
-  type: "oauth2",
-  title: "Personal ChatGPT",
-  scopes: [],
-};
-
-const codexProvider: CredentialsProviderData = {
-  provider: "codex",
-  providerName: "Codex",
-  savedCredentials: [codexCredential],
-  isSystemProvider: false,
-  oAuthCallback: async () => codexCredential,
-  mcpOAuthCallback: async () => codexCredential,
-  createAPIKeyCredentials: async () => codexCredential,
-  createUserPasswordCredentials: async () => codexCredential,
-  createHostScopedCredentials: async () => codexCredential,
-  deleteCredentials: async () => ({ deleted: true, revoked: null }),
-};
-
 afterEach(() => {
   vi.clearAllMocks();
   mockCancel.mockReset();
-  mockCopilotMode = "extended_thinking";
   mockCopilotLlmModel = "standard";
   mockCopilotLlmAuthProvider = "platform";
   mockFlagValue = false;
+  mockTokenDevtoolEnabled = false;
   mockInitialPrompt = null;
+  mockTranscriptionError = null;
+  mockHasFailedRecording = false;
+  mockIsTranscribing = false;
+  mockRealVoiceRecording = false;
 });
 
-describe("ChatInput mode toggle", () => {
-  it("does not render mode toggle when flag is disabled", () => {
+describe("ChatInput composer row", () => {
+  it("keeps the leading and trailing addons on their declared sides", () => {
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    const aligns = Array.from(
+      document.querySelectorAll("[data-slot=input-group-addon]"),
+    ).map((addon) => addon.getAttribute("data-align"));
+
+    expect(aligns).toEqual(["inline-start", "inline-end"]);
+  });
+
+  it("leaves focus in a menu the user opened while it was still loading", () => {
+    // Home re-enables the composer once it has loaded; a profile menu opened
+    // before then lost focus to it, and Radix closes a popover on focus-out.
+    const { rerender } = render(
+      <>
+        <div role="dialog" aria-label="Profile menu">
+          <button type="button">Show me around</button>
+        </div>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" disabled />
+      </>,
+    );
+    const menuItem = screen.getByRole("button", { name: "Show me around" });
+    menuItem.focus();
+
+    rerender(
+      <>
+        <div role="dialog" aria-label="Profile menu">
+          <button type="button">Show me around</button>
+        </div>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" />
+      </>,
+    );
+
+    expect(document.activeElement).toBe(menuItem);
+  });
+
+  it.each([
+    { draft: "no draft", initialPrompt: null },
+    { draft: "a prompt from the link", initialPrompt: "Teach me a new skill" },
+  ])(
+    "leaves focus in a menu that was already open when it mounted, with $draft",
+    ({ initialPrompt }) => {
+      // Home mounts its composer only once the greeting has loaded.
+      mockRealVoiceRecording = true;
+      mockInitialPrompt = initialPrompt;
+      const { rerender } = render(
+        <>
+          <div role="dialog" aria-label="Profile menu">
+            <button type="button">Show me around</button>
+          </div>
+          {/* Holds the composer's slot, so the rerender keeps the menu mounted. */}
+          {null}
+        </>,
+      );
+      const menuItem = screen.getByRole("button", { name: "Show me around" });
+      menuItem.focus();
+
+      rerender(
+        <>
+          <div role="dialog" aria-label="Profile menu">
+            <button type="button">Show me around</button>
+          </div>
+          <ChatInput onSend={mockOnSend} sessionId="session-1" />
+        </>,
+      );
+
+      expect(document.activeElement).toBe(menuItem);
+    },
+  );
+
+  it("takes focus from a dialog that is on its way out", () => {
+    // A sheet closing (picking a chat in the phone's sidebar) stays mounted
+    // through its exit animation, with focus still inside it.
+    const { rerender } = render(
+      <>
+        <div role="dialog" aria-label="Sidebar" data-state="closed">
+          <button type="button">A chat</button>
+        </div>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" disabled />
+      </>,
+    );
+    screen.getByRole("button", { name: "A chat", hidden: true }).focus();
+
+    rerender(
+      <>
+        <div role="dialog" aria-label="Sidebar" data-state="closed">
+          <button type="button">A chat</button>
+        </div>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" />
+      </>,
+    );
+
+    expect(document.activeElement).toBe(screen.getByTestId("textarea"));
+  });
+
+  it("still takes focus inside the dialog it lives in", () => {
+    const { rerender } = render(
+      <div role="dialog" aria-label="Expert chat">
+        <button type="button">Close</button>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" disabled />
+      </div>,
+    );
+    screen.getByRole("button", { name: "Close" }).focus();
+
+    rerender(
+      <div role="dialog" aria-label="Expert chat">
+        <button type="button">Close</button>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" />
+      </div>,
+    );
+
+    expect(document.activeElement).toBe(screen.getByTestId("textarea"));
+  });
+
+  it("focuses the message box when the addon gutter is clicked", () => {
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    // The composer autofocuses on mount, so blur first — otherwise the
+    // assertion below would pass without the addon doing anything.
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    textarea.blur();
+    expect(document.activeElement).not.toBe(textarea);
+
+    fireEvent.click(
+      document.querySelector("[data-slot=input-group-addon]") as Element,
+    );
+
+    expect(document.activeElement).toBe(textarea);
+  });
+});
+
+// Secondary composer controls live behind the "..." overflow menu.
+function openOverflow() {
+  fireEvent.click(screen.getByTestId("composer-overflow-button"));
+}
+
+// Negative assertions are only meaningful with the panel open when the
+// menu exists at all (it is absent when no control qualifies).
+function openOverflowIfPresent() {
+  const trigger = screen.queryByTestId("composer-overflow-button");
+  if (trigger) fireEvent.click(trigger);
+}
+
+describe("ChatInput token devtool entry", () => {
+  it("lists Token usage in the + menu while the brain-dump tray is disabled", () => {
+    // The tray is brain-dump-only; the entry must not depend on that flag.
     mockFlagValue = false;
-    render(<ChatInput onSend={mockOnSend} />);
-    expect(screen.queryByLabelText(/switch to/i)).toBeNull();
+    mockTokenDevtoolEnabled = true;
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    expect(screen.getByRole("menuitem", { name: "Token usage" })).toBeDefined();
   });
 
-  it("renders mode toggle when flag is enabled", () => {
+  it("lists Token usage in the + menu when brain dump is enabled", () => {
     mockFlagValue = true;
-    render(<ChatInput onSend={mockOnSend} />);
-    expect(screen.getByLabelText(/switch to fast mode/i)).toBeDefined();
+    mockTokenDevtoolEnabled = true;
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    expect(screen.getByRole("menuitem", { name: "Token usage" })).toBeDefined();
   });
 
-  it("shows Codex mode and model controls backed by the model catalog", () => {
-    mockFlagValue = true;
-    mockCopilotLlmAuthProvider = "codex";
-    render(<ChatInput onSend={mockOnSend} />);
+  it("stays out of the menu when the devtool gate is off", () => {
+    mockTokenDevtoolEnabled = false;
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
 
-    expect(screen.getByLabelText(/switch to fast mode/i)).toBeTruthy();
-    expect(screen.getByLabelText(/switch to advanced model/i)).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Token usage" })).toBeNull();
   });
 
+  it("stays out of the menu before a session exists", () => {
+    mockTokenDevtoolEnabled = true;
+    render(<ChatInput onSend={mockOnSend} sessionId={null} />);
+
+    expect(screen.queryByRole("menuitem", { name: "Token usage" })).toBeNull();
+  });
+});
+
+describe("ChatInput + menu entries", () => {
+  it("starts voice mode from the + menu, not the overflow panel", () => {
+    const onStart = vi.fn();
+    render(
+      <ChatInput
+        onSend={mockOnSend}
+        sessionId="session-1"
+        voiceMode={{ onStart }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Voice mode" }));
+
+    expect(onStart).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("composer-overflow-button")).toBeNull();
+  });
+
+  it("keeps Voice mode out of the menu when the flag is off", () => {
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    expect(screen.queryByRole("menuitem", { name: "Voice mode" })).toBeNull();
+  });
+
+  it("disables Voice mode while it cannot start", () => {
+    render(
+      <ChatInput
+        onSend={mockOnSend}
+        sessionId="session-1"
+        voiceMode={{ onStart: vi.fn(), disabled: true }}
+      />,
+    );
+
+    const item = screen.getByRole("menuitem", {
+      name: "Voice mode",
+    }) as HTMLButtonElement;
+    expect(item.disabled).toBe(true);
+  });
+
+  it("opens Model and connection in a dialog, even with nothing to choose", async () => {
+    // The mocked lone connection has one model behind both tiers, which is
+    // the case where the old anchored sheet rendered nothing at all.
+    render(<ChatInput onSend={mockOnSend} />);
+
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Model and connection" }),
+    );
+
+    expect(await screen.findByText("AutoGPT Platform")).toBeDefined();
+  });
+
+  it.each([
+    { isStreaming: true },
+    { stacked: true },
+    { variant: "compact" as const },
+  ])(
+    "keeps the model dialog closed after hiding its control: %o",
+    async (props) => {
+      const { rerender } = render(<ChatInput onSend={mockOnSend} hasSession />);
+
+      fireEvent.click(
+        screen.getByRole("menuitem", { name: "Model and connection" }),
+      );
+      expect(
+        await screen.findByRole("dialog", { name: "Model and connection" }),
+      ).toBeDefined();
+
+      rerender(<ChatInput onSend={mockOnSend} hasSession {...props} />);
+      expect(screen.queryByRole("dialog")).toBeNull();
+
+      rerender(<ChatInput onSend={mockOnSend} hasSession />);
+      expect(screen.queryByRole("dialog")).toBeNull();
+
+      fireEvent.click(
+        screen.getByRole("menuitem", { name: "Model and connection" }),
+      );
+      expect(
+        await screen.findByRole("dialog", { name: "Model and connection" }),
+      ).toBeDefined();
+    },
+  );
+
+  it("opens Token usage in a dialog", async () => {
+    mockTokenDevtoolEnabled = true;
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    expect(screen.queryByText("Context window")).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Token usage" }));
+
+    expect(await screen.findByText("Context window")).toBeDefined();
+  });
+});
+
+describe("ChatInput Codex route", () => {
   it("keeps Claude SDK file attachments available for the Codex route", () => {
     mockCopilotLlmAuthProvider = "codex";
     render(<ChatInput onSend={mockOnSend} />);
@@ -302,110 +575,11 @@ describe("ChatInput mode toggle", () => {
 
   it("hides the route selector when only one subsidized transport is connected", () => {
     mockFlagValue = true;
-    const { rerender } = render(
-      <CredentialsProvidersContext.Provider value={{ codex: codexProvider }}>
-        <ChatInput onSend={mockOnSend} />
-      </CredentialsProvidersContext.Provider>,
-    );
+    const { rerender } = render(<ChatInput onSend={mockOnSend} />);
     expect(screen.queryByLabelText(/AI connection:/i)).toBeNull();
 
-    rerender(
-      <CredentialsProvidersContext.Provider value={{ codex: codexProvider }}>
-        <ChatInput onSend={mockOnSend} hasSession />
-      </CredentialsProvidersContext.Provider>,
-    );
+    rerender(<ChatInput onSend={mockOnSend} hasSession />);
     expect(screen.queryByLabelText(/AI connection:/i)).toBeNull();
-  });
-
-  it("shows Thinking label in extended_thinking mode", () => {
-    mockFlagValue = true;
-    mockCopilotMode = "extended_thinking";
-    render(<ChatInput onSend={mockOnSend} />);
-    expect(screen.getByText("Thinking")).toBeDefined();
-  });
-
-  it("shows Fast label in fast mode", () => {
-    mockFlagValue = true;
-    mockCopilotMode = "fast";
-    render(<ChatInput onSend={mockOnSend} />);
-    expect(screen.getByText("Fast")).toBeDefined();
-  });
-
-  it("keeps the mode locked while pinned (building mode)", () => {
-    mockFlagValue = true;
-    mockCopilotMode = "extended_thinking";
-    mockCopilotModePinned = true;
-    render(<ChatInput onSend={mockOnSend} />);
-    const button = screen.getByLabelText(/mode locked to extended thinking/i);
-    expect(button.getAttribute("aria-disabled")).toBe("true");
-    fireEvent.click(button);
-    expect(mockSetCopilotChatMode).not.toHaveBeenCalled();
-    mockCopilotModePinned = false;
-  });
-
-  it("toggles from extended_thinking to fast on click", () => {
-    mockFlagValue = true;
-    mockCopilotMode = "extended_thinking";
-    render(<ChatInput onSend={mockOnSend} />);
-    fireEvent.click(screen.getByLabelText(/switch to fast mode/i));
-    expect(mockSetCopilotChatMode).toHaveBeenCalledWith("fast");
-  });
-
-  it("toggles from fast to extended_thinking on click", () => {
-    mockFlagValue = true;
-    mockCopilotMode = "fast";
-    render(<ChatInput onSend={mockOnSend} />);
-    fireEvent.click(screen.getByLabelText(/switch to extended thinking/i));
-    expect(mockSetCopilotChatMode).toHaveBeenCalledWith("extended_thinking");
-  });
-
-  it("hides toggle buttons when streaming", () => {
-    mockFlagValue = true;
-    render(<ChatInput onSend={mockOnSend} isStreaming />);
-    expect(
-      screen.queryByLabelText(/switch to (fast|extended thinking) mode/i),
-    ).toBeNull();
-    expect(
-      screen.queryByLabelText(/switch to (advanced|balanced|standard) model/i),
-    ).toBeNull();
-  });
-
-  it("shows mode toggle when hasSession is true and not streaming", () => {
-    // Mode is per-message — can be changed between turns even in an existing session.
-    mockFlagValue = true;
-    render(<ChatInput onSend={mockOnSend} hasSession />);
-    expect(
-      screen.queryByLabelText(/switch to (fast|extended thinking) mode/i),
-    ).not.toBeNull();
-  });
-
-  it("exposes aria-pressed=true in extended_thinking mode", () => {
-    mockFlagValue = true;
-    mockCopilotMode = "extended_thinking";
-    render(<ChatInput onSend={mockOnSend} />);
-    const button = screen.getByLabelText(/switch to fast mode/i);
-    expect(button.getAttribute("aria-pressed")).toBe("true");
-  });
-
-  it("sets aria-pressed=false in fast mode", () => {
-    mockFlagValue = true;
-    mockCopilotMode = "fast";
-    render(<ChatInput onSend={mockOnSend} />);
-    const button = screen.getByLabelText(/switch to extended thinking/i);
-    expect(button.getAttribute("aria-pressed")).toBe("false");
-  });
-
-  it("shows a toast when the user toggles mode", async () => {
-    const { toast } = await import("@/components/molecules/Toast/use-toast");
-    mockFlagValue = true;
-    mockCopilotMode = "extended_thinking";
-    render(<ChatInput onSend={mockOnSend} />);
-    fireEvent.click(screen.getByLabelText(/switch to fast mode/i));
-    expect(toast).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: expect.stringMatching(/switched to fast mode/i),
-      }),
-    );
   });
 });
 
@@ -468,16 +642,183 @@ describe("ChatInput queue button", () => {
   });
 });
 
+describe("ChatInput Enter while streaming", () => {
+  // Enter submits the form (CredentialMentionEditor calls requestSubmit), so
+  // these drive the submit event directly.
+  it("queues the text instead of sending it, and clears the box", async () => {
+    const onEnqueue = vi.fn().mockResolvedValue(undefined);
+    render(<ChatInput onSend={mockOnSend} onEnqueue={onEnqueue} isStreaming />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "  and then?  " } });
+    await act(async () => {
+      fireEvent.submit(textarea.closest("form")!);
+    });
+    expect(onEnqueue).toHaveBeenCalledWith("and then?");
+    expect(mockOnSend).not.toHaveBeenCalled();
+    expect(textarea.value).toBe("");
+  });
+
+  it("queues while an earlier send from this composer is still streaming", async () => {
+    // The composer's own send guard holds until the whole answer has
+    // streamed; Enter must not be stuck behind it.
+    const onSend = vi.fn(() => new Promise<void>(() => {}));
+    const onEnqueue = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(
+      <ChatInput onSend={onSend} onEnqueue={onEnqueue} />,
+    );
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "write an essay" } });
+    await act(async () => {
+      fireEvent.submit(textarea.closest("form")!);
+    });
+    expect(onSend).toHaveBeenCalledTimes(1);
+
+    rerender(<ChatInput onSend={onSend} onEnqueue={onEnqueue} isStreaming />);
+    fireEvent.change(textarea, { target: { value: "then say PINEAPPLE" } });
+    await act(async () => {
+      fireEvent.submit(textarea.closest("form")!);
+    });
+    expect(onEnqueue).toHaveBeenCalledWith("then say PINEAPPLE");
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(textarea.value).toBe("");
+  });
+
+  it("puts the text back and toasts when queueing fails", async () => {
+    const onEnqueue = vi
+      .fn()
+      .mockRejectedValue(new Error("Session has no active turn"));
+    render(<ChatInput onSend={mockOnSend} onEnqueue={onEnqueue} isStreaming />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "and then?" } });
+    await act(async () => {
+      fireEvent.submit(textarea.closest("form")!);
+    });
+    expect(textarea.value).toBe("and then?");
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Couldn't send message",
+        variant: "destructive",
+      }),
+    );
+  });
+
+  it("ignores a second Enter while the first queue request is pending", async () => {
+    let settle: (() => void) | undefined;
+    const onEnqueue = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          settle = resolve;
+        }),
+    );
+    render(<ChatInput onSend={mockOnSend} onEnqueue={onEnqueue} isStreaming />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "first" } });
+    const form = textarea.closest("form")!;
+    fireEvent.submit(form);
+    fireEvent.change(textarea, { target: { value: "second" } });
+    fireEvent.submit(form);
+    expect(onEnqueue).toHaveBeenCalledTimes(1);
+    expect(textarea.value).toBe("second");
+    await act(async () => {
+      settle?.();
+    });
+  });
+
+  it("keeps attachments on the send path, which the queue cannot carry", async () => {
+    // Attachments are added between turns (paste is ignored mid-stream);
+    // the turn then starts from elsewhere, e.g. a question card answer.
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    const onEnqueue = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(
+      <ChatInput onSend={onSend} onEnqueue={onEnqueue} />,
+    );
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        files: [new File(["png"], "shot.png", { type: "image/png" })],
+      },
+    });
+    rerender(<ChatInput onSend={onSend} onEnqueue={onEnqueue} isStreaming />);
+    fireEvent.change(textarea, { target: { value: "see attached" } });
+    await act(async () => {
+      fireEvent.submit(textarea.closest("form")!);
+    });
+    expect(onEnqueue).not.toHaveBeenCalled();
+    expect(onSend).toHaveBeenCalledWith(
+      "see attached",
+      [expect.any(File)],
+      undefined,
+    );
+  });
+
+  it("hides the queue button while attachments are present", async () => {
+    const { rerender } = render(
+      <ChatInput onSend={mockOnSend} onEnqueue={vi.fn()} />,
+    );
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        files: [new File(["png"], "shot.png", { type: "image/png" })],
+      },
+    });
+    rerender(<ChatInput onSend={mockOnSend} onEnqueue={vi.fn()} isStreaming />);
+    fireEvent.change(textarea, { target: { value: "see attached" } });
+    expect(screen.queryByLabelText(/queue message/i)).toBeNull();
+  });
+
+  it("queues files attached during a reply through onSend when the host can hold them", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    const onEnqueue = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ChatInput
+        onSend={onSend}
+        onEnqueue={onEnqueue}
+        isStreaming
+        canAttachWhileStreaming
+      />,
+    );
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        files: [new File(["png"], "shot.png", { type: "image/png" })],
+      },
+    });
+    fireEvent.change(textarea, { target: { value: "see attached" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /queue message/i }));
+    });
+    expect(onEnqueue).not.toHaveBeenCalled();
+    expect(onSend).toHaveBeenCalledWith(
+      "see attached",
+      [expect.any(File)],
+      undefined,
+    );
+  });
+
+  it("falls back to a normal send when nothing can queue", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    render(<ChatInput onSend={onSend} isStreaming />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "hello" } });
+    await act(async () => {
+      fireEvent.submit(textarea.closest("form")!);
+    });
+    expect(onSend).toHaveBeenCalledWith("hello", undefined, undefined);
+  });
+});
+
 describe("ChatInput dry-run toggle", () => {
   it("does not render dry-run toggle when flag is disabled", () => {
     mockFlagValue = false;
     render(<ChatInput onSend={mockOnSend} />);
+    openOverflowIfPresent();
     expect(screen.queryByTestId("dry-run-toggle")).toBeNull();
   });
 
   it("renders dry-run toggle when flag is enabled and no session", () => {
     mockFlagValue = true;
     render(<ChatInput onSend={mockOnSend} hasSession={false} />);
+    openOverflow();
     expect(screen.getByTestId("dry-run-toggle")).toBeDefined();
   });
 
@@ -485,6 +826,7 @@ describe("ChatInput dry-run toggle", () => {
     mockFlagValue = true;
     render(<ChatInput onSend={mockOnSend} hasSession />);
     // isDryRun is false in mock, hasSession is true → toggle hidden
+    openOverflowIfPresent();
     expect(screen.queryByTestId("dry-run-toggle")).toBeNull();
   });
 
@@ -492,6 +834,7 @@ describe("ChatInput dry-run toggle", () => {
     const { toast } = await import("@/components/molecules/Toast/use-toast");
     mockFlagValue = true;
     render(<ChatInput onSend={mockOnSend} />);
+    openOverflow();
     fireEvent.click(screen.getByTestId("dry-run-toggle"));
     // isDryRun was false → next is true
     expect(toast).toHaveBeenCalledWith(
@@ -502,96 +845,24 @@ describe("ChatInput dry-run toggle", () => {
   });
 });
 
-describe("ChatInput model toggle", () => {
-  it("renders model toggle button when flag is enabled", () => {
-    mockFlagValue = true;
-    render(<ChatInput onSend={mockOnSend} />);
-    expect(screen.getByLabelText(/switch to advanced model/i)).toBeDefined();
-  });
-
-  it("does not render model toggle when flag is disabled", () => {
-    mockFlagValue = false;
-    render(<ChatInput onSend={mockOnSend} />);
-    expect(
-      screen.queryByLabelText(/switch to (advanced|standard) model/i),
-    ).toBeNull();
-  });
-
-  it("toggles from standard to advanced on click", () => {
-    mockFlagValue = true;
-    mockCopilotLlmModel = "standard";
-    render(<ChatInput onSend={mockOnSend} />);
-    fireEvent.click(screen.getByLabelText(/switch to advanced model/i));
-    expect(mockSetCopilotLlmModel).toHaveBeenCalledWith("advanced");
-  });
-
-  it("toggles from advanced to standard on click", () => {
-    mockFlagValue = true;
-    mockCopilotLlmModel = "advanced";
-    render(<ChatInput onSend={mockOnSend} />);
-    fireEvent.click(screen.getByLabelText(/switch to balanced model/i));
-    expect(mockSetCopilotLlmModel).toHaveBeenCalledWith("standard");
-  });
-
-  it("hides model toggle when streaming", () => {
-    mockFlagValue = true;
-    render(<ChatInput onSend={mockOnSend} isStreaming />);
-    expect(
-      screen.queryByLabelText(/switch to (advanced|standard) model/i),
-    ).toBeNull();
-  });
-
-  it("shows model toggle when hasSession is true and not streaming", () => {
-    // Model is per-message — can be changed between turns even in an existing session.
-    mockFlagValue = true;
-    render(<ChatInput onSend={mockOnSend} hasSession />);
-    expect(
-      screen.queryByLabelText(/switch to (advanced|standard) model/i),
-    ).not.toBeNull();
-  });
-
-  it("hides dry-run toggle when hasSession is true", () => {
-    // DryRun button is only for new chats — once a session exists its dry_run
-    // flag is immutable and shown via the CopilotPage banner, not this button.
-    mockFlagValue = true;
-    render(<ChatInput onSend={mockOnSend} hasSession />);
-    expect(screen.queryByTestId("dry-run-toggle")).toBeNull();
-  });
-
-  it("shows dry-run toggle when no session", () => {
-    mockFlagValue = true;
-    render(<ChatInput onSend={mockOnSend} />);
-    expect(screen.getByTestId("dry-run-toggle")).toBeTruthy();
-  });
-
-  it("shows a toast when switching to advanced", async () => {
-    const { toast } = await import("@/components/molecules/Toast/use-toast");
-    mockFlagValue = true;
-    mockCopilotLlmModel = "standard";
-    render(<ChatInput onSend={mockOnSend} />);
-    fireEvent.click(screen.getByLabelText(/switch to advanced model/i));
-    expect(toast).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: expect.stringMatching(/switched to advanced model/i),
-      }),
-    );
-  });
-
-  it("shows a toast when switching to standard", async () => {
-    const { toast } = await import("@/components/molecules/Toast/use-toast");
-    mockFlagValue = true;
-    mockCopilotLlmModel = "advanced";
-    render(<ChatInput onSend={mockOnSend} />);
-    fireEvent.click(screen.getByLabelText(/switch to balanced model/i));
-    expect(toast).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: expect.stringMatching(/switched to balanced model/i),
-      }),
-    );
-  });
-});
-
 describe("ChatInput guided prompt prefill", () => {
+  it("prefills a guided prompt without opening the keyboard on touch devices", async () => {
+    const matchMedia = vi.spyOn(window, "matchMedia").mockReturnValue({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as unknown as MediaQueryList);
+    try {
+      mockInitialPrompt = NEW_SKILL_PROMPT;
+      render(<ChatInput onSend={mockOnSend} />);
+      const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+      await waitFor(() => expect(textarea.value).toBe(NEW_SKILL_PROMPT));
+      expect(document.activeElement).not.toBe(textarea);
+    } finally {
+      matchMedia.mockRestore();
+    }
+  });
+
   it("prefills the composer and focuses it when an initial prompt arrives after mount", async () => {
     const { rerender } = render(<ChatInput onSend={mockOnSend} />);
     const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
@@ -663,6 +934,22 @@ describe("ChatInput guided prompt prefill", () => {
 });
 
 describe("ChatInput submit behavior", () => {
+  it("preserves an editable draft while a usage cap blocks submission", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(<ChatInput onSend={onSend} sendDisabled />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    expect(textarea.disabled).toBe(false);
+    fireEvent.change(textarea, { target: { value: "My next idea" } });
+    fireEvent.submit(textarea.closest("form")!);
+    expect(onSend).not.toHaveBeenCalled();
+    expect(textarea.value).toBe("My next idea");
+    rerender(<ChatInput onSend={onSend} sendDisabled={false} />);
+    fireEvent.submit(textarea.closest("form")!);
+    await waitFor(() =>
+      expect(onSend).toHaveBeenCalledWith("My next idea", undefined, undefined),
+    );
+  });
+
   it("does not call onSend when textarea is empty", () => {
     const onSend = vi.fn().mockResolvedValue(undefined);
     render(<ChatInput onSend={onSend} />);
@@ -683,6 +970,66 @@ describe("ChatInput submit behavior", () => {
     });
     await waitFor(() => {
       expect(textarea.value).toBe("");
+    });
+  });
+
+  it("clears the textarea on submit, without waiting for the stream to end", async () => {
+    // onSend resolves only when the whole assistant turn finishes, so a
+    // clear-after-await left the sent message sitting in the composer for
+    // the entire stream.
+    let finishStream: (() => void) | undefined;
+    const onSend = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishStream = resolve;
+        }),
+    );
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "hello" } });
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("");
+    });
+    expect(onSend).toHaveBeenCalledWith("hello", undefined, undefined);
+    await act(async () => {
+      finishStream?.();
+    });
+  });
+
+  it("clears attachment chips on submit, without waiting for the stream to end", async () => {
+    let finishStream: (() => void) | undefined;
+    const onSend = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishStream = resolve;
+        }),
+    );
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        files: [new File(["png"], "shot.png", { type: "image/png" })],
+      },
+    });
+    // An attachment alone makes the message sendable, so the submit button
+    // going back to disabled is proof the chips were dropped.
+    await waitFor(() => {
+      expect((screen.getByTestId("submit") as HTMLButtonElement).disabled).toBe(
+        false,
+      );
+    });
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() => {
+      expect((screen.getByTestId("submit") as HTMLButtonElement).disabled).toBe(
+        true,
+      );
+    });
+    expect(onSend).toHaveBeenCalledWith("", [expect.any(File)], undefined);
+    await act(async () => {
+      finishStream?.();
     });
   });
 
@@ -717,36 +1064,87 @@ describe("ChatInput submit behavior", () => {
   });
 
   it("allows sending again after a failed send", async () => {
-    const swallowWindow = (e: PromiseRejectionEvent) => e.preventDefault();
-    const swallowProcess = () => undefined;
-    window.addEventListener("unhandledrejection", swallowWindow);
-    process.on("unhandledRejection", swallowProcess);
-    try {
-      let failNext = true;
-      const onSend = vi.fn(async () => {
-        if (failNext) {
-          failNext = false;
-          throw new Error("fail");
-        }
-      });
-      render(<ChatInput onSend={onSend} />);
-      const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
-      fireEvent.change(textarea, { target: { value: "hello" } });
-      const form = textarea.closest("form")!;
-      fireEvent.submit(form);
-      await waitFor(() => {
-        expect(onSend).toHaveBeenCalledTimes(1);
-      });
-      fireEvent.change(textarea, { target: { value: "retry" } });
-      fireEvent.submit(form);
-      await waitFor(() => {
-        expect(onSend).toHaveBeenCalledTimes(2);
-      });
-      expect(onSend).toHaveBeenLastCalledWith("retry", undefined, undefined);
-    } finally {
-      window.removeEventListener("unhandledrejection", swallowWindow);
-      process.off("unhandledRejection", swallowProcess);
-    }
+    let failNext = true;
+    const onSend = vi.fn(async () => {
+      if (failNext) {
+        failNext = false;
+        throw new Error("fail");
+      }
+    });
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "hello" } });
+    const form = textarea.closest("form")!;
+    fireEvent.submit(form);
+    await waitFor(() => {
+      expect(toast).toHaveBeenCalled();
+    });
+    fireEvent.change(textarea, { target: { value: "retry" } });
+    fireEvent.submit(form);
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledTimes(2);
+    });
+    expect(onSend).toHaveBeenLastCalledWith("retry", undefined, undefined);
+  });
+});
+
+describe("ChatInput send failure", () => {
+  it("toasts and puts the failed message back in the composer", async () => {
+    const onSend = vi.fn().mockRejectedValue(new Error("Backend exploded"));
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "hello" } });
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("hello");
+    });
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Couldn't send message",
+        description: expect.stringContaining("Backend exploded"),
+        variant: "destructive",
+      }),
+    );
+  });
+
+  it("keeps a draft typed during the stream alongside the failed message", async () => {
+    let rejectSend: ((error: Error) => void) | undefined;
+    const onSend = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectSend = reject;
+        }),
+    );
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "first message" } });
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("");
+    });
+    fireEvent.change(textarea, { target: { value: "second thought" } });
+    await act(async () => {
+      rejectSend?.(new Error("nope"));
+    });
+
+    expect(textarea.value).toContain("first message");
+    expect(textarea.value).toContain("second thought");
+  });
+
+  it("does not toast when the send succeeds", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "hello" } });
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledTimes(1);
+    });
+    expect(textarea.value).toBe("");
+    expect(toast).not.toHaveBeenCalled();
   });
 });
 
@@ -792,6 +1190,25 @@ describe("ChatInput clipboard paste", () => {
     const [message, files] = onSend.mock.calls[0];
     expect(message).toBe("");
     expect(files).toHaveLength(1);
+  });
+
+  it("says why Send at reset is off for files attached before it", async () => {
+    const onSchedule = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(<ChatInput onSend={vi.fn()} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    const image = new File(["png-bytes"], "image.png", { type: "image/png" });
+    pasteFiles(textarea, [image]);
+    expect(screen.queryByText(/Only text can wait for the reset/)).toBeNull();
+
+    // The budget runs out with the file still attached.
+    rerender(<ChatInput onSend={vi.fn()} atReset={{ onSchedule }} />);
+    fireEvent.change(textarea, { target: { value: "see screenshot" } });
+    fireEvent.submit(textarea.closest("form")!);
+
+    expect(
+      await screen.findByText(/Only text can wait for the reset/),
+    ).toBeDefined();
+    expect(onSchedule).not.toHaveBeenCalled();
   });
 
   it("keeps the original name of pasted non-generic files", async () => {
@@ -922,10 +1339,7 @@ function StopHarness({
   const isUserStoppingRef = useRef(false);
   const stop = useCopilotStop({
     sessionId,
-    sdkStop,
-    setMessages: setMessages as Parameters<
-      typeof useCopilotStop
-    >[0]["setMessages"],
+    stopStream: sdkStopStream(sdkStop, setMessages),
     isUserStoppingRef,
     setIsUserStopping,
   });
@@ -1136,5 +1550,185 @@ describe("ChatInput stop button", () => {
       expect(mockCancel).toHaveBeenCalled();
     });
     expect(toast).not.toHaveBeenCalled();
+  });
+});
+
+describe("ChatInput voice mode", () => {
+  it("hands the composer over to the voice bar", () => {
+    const { rerender } = render(
+      <ChatInput onSend={mockOnSend} sessionId="session-1" />,
+    );
+    const textarea = screen.getByTestId("textarea");
+    expect(isShown(textarea)).toBe(true);
+
+    rerender(
+      <ChatInput
+        onSend={mockOnSend}
+        sessionId="session-1"
+        voiceBar={<div data-testid="voice-bar" />}
+      />,
+    );
+
+    // Typing, attaching and sending do nothing hands-free, so the whole
+    // control row goes rather than each button being disabled in place.
+    expect(screen.getByTestId("voice-bar")).toBeDefined();
+    expect(isShown(textarea)).toBe(false);
+  });
+
+  it("gives the composer back, with the draft intact", () => {
+    const { rerender } = render(
+      <ChatInput
+        onSend={mockOnSend}
+        sessionId="session-1"
+        voiceBar={<div data-testid="voice-bar" />}
+      />,
+    );
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "half a thought" } });
+
+    rerender(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    expect(screen.queryByTestId("voice-bar")).toBeNull();
+    expect(isShown(textarea)).toBe(true);
+    expect(textarea.value).toBe("half a thought");
+  });
+});
+
+describe("ChatInput transcription failure", () => {
+  const mockOnSend = vi.fn();
+
+  it("offers a retry and the recording itself when transcription fails", () => {
+    mockTranscriptionError = "Transcription service unavailable";
+    mockHasFailedRecording = true;
+    render(<ChatInput onSend={mockOnSend} />);
+
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Transcription service unavailable",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^Retry$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Download recording/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+    expect(voiceRetry).toHaveBeenCalledTimes(1);
+    expect(voiceDownload).toHaveBeenCalledTimes(1);
+    expect(voiceDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the row up while the retry is in flight", () => {
+    // It must not blink away and back: that takes the Retry button with it
+    // and makes a slow retry look like it did nothing.
+    mockTranscriptionError = "Transcription failed";
+    mockHasFailedRecording = true;
+    mockIsTranscribing = true;
+    render(<ChatInput onSend={mockOnSend} />);
+
+    expect(screen.getByRole("alert")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /^Retry$/ }).hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
+  it("renders in the card composer too", () => {
+    // The empty-state composer stacks its rows and supplies its own spacing.
+    mockTranscriptionError = "Transcription failed";
+    mockHasFailedRecording = true;
+    render(<ChatInput onSend={mockOnSend} stacked />);
+
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Transcription failed",
+    );
+  });
+
+  it("says nothing when there is no failed recording to act on", () => {
+    render(<ChatInput onSend={mockOnSend} />);
+
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("stays out of voice mode's way", () => {
+    // Voice mode replaces the composer's controls; a dictation error from
+    // before it was entered must not squat on top of the voice bar.
+    mockTranscriptionError = "Transcription failed";
+    mockHasFailedRecording = true;
+    render(
+      <ChatInput onSend={mockOnSend} voiceBar={<div data-testid="bar" />} />,
+    );
+
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+/** `display: none` on an ancestor, which `toBeVisible` cannot see in jsdom. */
+function isShown(element: HTMLElement): boolean {
+  return !element.closest(".hidden");
+}
+
+describe("ChatInput with no AI connection", () => {
+  afterEach(() => {
+    mockTransports = undefined;
+  });
+
+  function serverWithNoModel() {
+    mockTransports = {
+      status: 200,
+      data: {
+        transports: [
+          {
+            auth_provider: "platform",
+            available: false,
+            credential_id: null,
+          },
+        ],
+      },
+    };
+  }
+
+  it("says how to connect a model, with the server setup guide", () => {
+    serverWithNoModel();
+    render(<ChatInput onSend={vi.fn()} />);
+
+    const notice = screen.getByRole("status", { name: "No AI connection" });
+    expect(notice.textContent).toContain("No AI model is connected");
+    expect(
+      screen.getByRole("link", { name: /setup guide/i }).getAttribute("href"),
+    ).toContain("single-container.md#models-and-memory");
+  });
+
+  it("stays out of the way once a model can answer", () => {
+    mockTransports = {
+      status: 200,
+      data: {
+        transports: [
+          { auth_provider: "platform", available: true, credential_id: null },
+        ],
+      },
+    };
+    render(<ChatInput onSend={vi.fn()} />);
+
+    expect(screen.queryByRole("status", { name: "No AI connection" })).toBe(
+      null,
+    );
+  });
+
+  it("keeps the draft and adds no second toast for a failure already shown", async () => {
+    serverWithNoModel();
+    const onSend = vi
+      .fn()
+      .mockRejectedValue(new ReportedSendError("No AI connection is set up"));
+    render(<ChatInput onSend={onSend} />);
+
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "Hi there" } });
+    await act(async () => {
+      fireEvent.submit(textarea.closest("form")!);
+    });
+
+    expect(onSend).toHaveBeenCalledWith("Hi there", undefined, undefined);
+    await waitFor(() => expect(textarea.value).toBe("Hi there"));
+    expect(toast).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("status", { name: "No AI connection" }),
+    ).toBeDefined();
   });
 });

@@ -20,6 +20,7 @@ import {
 } from "../../helpers/toolOutput";
 import { PlugSocketIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 export interface RunMCPToolPart {
   type: string;
@@ -72,23 +73,23 @@ export function RunMCPToolComponent({ part }: Props) {
         <ToolIcon isStreaming={isStreaming} isError={isError} />
         <MorphingTextAnimation
           text={isCorrupted ? "Tool result could not be displayed" : text}
-          className={isError ? "text-red-500" : undefined}
+          className={isError ? "text-error" : undefined}
         />
       </div>
 
       {isCorrupted && (
-        <p className="mt-1 text-sm text-red-500">
+        <Text variant="body-tight" tone="error" className="mt-1">
           The result data arrived corrupted, so any sign-in or setup card it
-          contained can&apos;t be shown. Ask AutoPilot to retry this step.
-        </p>
+          contained can&apos;t be shown. Ask your expert to retry this step.
+        </Text>
       )}
 
       {/* Error detail card */}
       {errorOutput && (
-        <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="mt-2 rounded-lg border border-error/30 bg-error-surface px-3 py-2 text-sm text-error-foreground">
           {errorOutput.message}
           {errorOutput.error && (
-            <pre className="mt-1 whitespace-pre-wrap break-words text-xs opacity-80">
+            <pre className="mt-1 text-xs break-words whitespace-pre-wrap opacity-80">
               {errorOutput.error}
             </pre>
           )}
@@ -99,7 +100,7 @@ export function RunMCPToolComponent({ part }: Props) {
       {setupRequirementsOutput && (
         <MCPSetupCard
           output={setupRequirementsOutput}
-          retryInstruction="I've connected the MCP server credentials. Please retry run_mcp_tool with the same server_url and arguments."
+          retryInstruction="I've connected the integration. Please retry the same call."
         />
       )}
 

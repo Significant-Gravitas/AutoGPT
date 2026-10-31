@@ -26,24 +26,31 @@ settings = Settings()
 logger = logging.getLogger(__name__)
 
 
+def canonical_provider(stored: str) -> str:
+    """The canonical provider value for a possibly-legacy stored string.
+
+    On Python 3.13, ``str(ProviderName.MCP)`` returns ``"ProviderName.MCP"``
+    instead of ``"mcp"``, and credentials persisted then still carry it.
+    Anything already canonical, or naming a member we no longer have, comes
+    back unchanged.
+    """
+    if not stored.startswith("ProviderName."):
+        return stored
+    from backend.integrations.providers import ProviderName
+
+    try:
+        return ProviderName[stored.removeprefix("ProviderName.")].value
+    except KeyError:
+        return stored
+
+
 def provider_matches(stored: str, expected: str) -> bool:
     """Compare provider strings, handling Python 3.13 ``str(StrEnum)`` bug.
 
-    On Python 3.13, ``str(ProviderName.MCP)`` returns ``"ProviderName.MCP"``
-    instead of ``"mcp"``.  OAuth states persisted with the buggy format need
-    to match when ``expected`` is the canonical value (e.g. ``"mcp"``).
+    OAuth states persisted with the buggy format need to match when
+    ``expected`` is the canonical value (e.g. ``"mcp"``).
     """
-    if stored == expected:
-        return True
-    if stored.startswith("ProviderName."):
-        member = stored.removeprefix("ProviderName.")
-        from backend.integrations.providers import ProviderName
-
-        try:
-            return ProviderName[member].value == expected
-        except KeyError:
-            pass
-    return False
+    return stored == expected or canonical_provider(stored) == expected
 
 
 # This is an overrride since ollama doesn't actually require an API key, but the creddential system enforces one be attached
@@ -326,7 +333,9 @@ class IntegrationCredentialsStore:
         blob→table migration; the UserIntegrations blob is retained only
         as a rollback artifact).
 
-        **Caller must already hold ``locked_user_integrations(user_id)``.**
+        Reads may call this without the lock. A writer must call it under
+        ``locked_user_integrations(user_id)``, so the list it writes back
+        can't drop a concurrent write.
         """
         return list(await self.db_manager.get_user_credentials(user_id=user_id))
 
@@ -347,14 +356,12 @@ class IntegrationCredentialsStore:
             await self._set_user_integration_creds(user_id, [*persisted, credentials])
 
     async def get_all_creds(self, user_id: str) -> list[Credentials]:
-        """Public entry point — acquires lock, then delegates."""
-        async with await self.locked_user_integrations(user_id):
-            return await self._get_all_creds_unlocked(user_id)
+        """Return all credentials for *user_id*, without taking the lock.
 
-    async def _get_all_creds_unlocked(self, user_id: str) -> list[Credentials]:
-        """Return all credentials for *user_id*.
-
-        **Caller must already hold ``locked_user_integrations(user_id)``.**
+        A full-list replace commits in one transaction, so a read sees the
+        list from before it or after it, never a mix of the two. Taking
+        the lock here would queue a page load's concurrent reads behind each
+        other and behind every write or token refresh for the user.
         """
         all_credentials = await self._get_persisted_user_creds_unlocked(user_id)
 
@@ -631,6 +638,70 @@ class IntegrationCredentialsStore:
 
             if valid_state:
                 # Remove the used state
+                oauth_states.remove(valid_state)
+                user_integrations.oauth_states = oauth_states
+                await self.db_manager.update_user_integrations(
+                    user_id, user_integrations
+                )
+                return valid_state
+
+        return None
+
+    async def peek_state_token(
+        self, user_id: str, token: str, provider: str
+    ) -> Optional[OAuthState]:
+        """Validate a state token WITHOUT consuming it.
+
+        Used by the device-auth polling loop: the state must survive many
+        poll attempts and is only consumed once auth reaches a terminal
+        state (approved / denied / expired).
+
+        Deliberately lock-free. A poll loop calls this every ~5s for up to ten
+        minutes, and taking the per-user write lock on a pure read serialized
+        the user's other credential operations behind ~120 acquisitions per
+        flow. Racing a concurrent `consume` can only mean seeing the state or
+        not seeing it, which are both valid poll outcomes; single-use
+        consumption is still enforced under the lock in `consume_state_token`.
+        """
+        user_integrations = await self._get_user_integrations(user_id)
+
+        now = datetime.now(timezone.utc)
+        return next(
+            (
+                state
+                for state in user_integrations.oauth_states
+                if secrets.compare_digest(state.token, token)
+                and provider_matches(state.provider, provider)
+                and state.expires_at > now.timestamp()
+            ),
+            None,
+        )
+
+    async def consume_state_token(
+        self, user_id: str, token: str, provider: str
+    ) -> Optional[OAuthState]:
+        """Validate and remove a state token (one-time consumption).
+
+        Used when the device-auth flow reaches a terminal state so the
+        token cannot be reused.
+        """
+        async with await self.locked_user_integrations(user_id):
+            user_integrations = await self._get_user_integrations(user_id)
+            oauth_states = user_integrations.oauth_states
+
+            now = datetime.now(timezone.utc)
+            valid_state = next(
+                (
+                    state
+                    for state in oauth_states
+                    if secrets.compare_digest(state.token, token)
+                    and provider_matches(state.provider, provider)
+                    and state.expires_at > now.timestamp()
+                ),
+                None,
+            )
+
+            if valid_state:
                 oauth_states.remove(valid_state)
                 user_integrations.oauth_states = oauth_states
                 await self.db_manager.update_user_integrations(

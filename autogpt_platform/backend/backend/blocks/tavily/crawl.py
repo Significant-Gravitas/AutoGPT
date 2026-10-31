@@ -8,6 +8,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -103,6 +104,7 @@ class TavilyCrawlBlock(Block):
                     "usage": {"credits": 2},
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     async def _crawl(self, credentials: APIKeyCredentials, **kwargs) -> dict[str, Any]:

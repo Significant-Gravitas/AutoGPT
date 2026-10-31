@@ -1,3 +1,4 @@
+import { http, HttpResponse } from "msw";
 import { describe, expect, test, vi } from "vitest";
 
 import {
@@ -15,7 +16,9 @@ import {
   getGetV1ListCredentialsMockHandler401,
   getGetV1ListProvidersMockHandler,
   getPostV1CreateCredentialsMockHandler,
+  getPostV1InitiateDeviceCodeOauthFlowMockHandler200,
 } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
+import { getGetV2ListChatConnectionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import type { ProviderMetadata } from "@/app/api/__generated__/models/providerMetadata";
 
@@ -48,6 +51,12 @@ function makeProvider(
   };
 }
 
+function noMicrosoftAccounts() {
+  return http.get("*/api/integrations/:provider/credentials", () =>
+    HttpResponse.json([]),
+  );
+}
+
 describe("SettingsIntegrationsPage — list", () => {
   test("renders the header and Connect Service control", async () => {
     server.use(getGetV1ListCredentialsMockHandler([]));
@@ -55,7 +64,7 @@ describe("SettingsIntegrationsPage — list", () => {
     render(<SettingsIntegrationsPage />);
 
     expect(
-      await screen.findByRole("heading", { name: /integrations/i }),
+      await screen.findByRole("heading", { name: /^integrations$/i }),
     ).toBeDefined();
     const connectButtons = screen.getAllByRole("button", {
       name: /connect.*service/i,
@@ -105,6 +114,57 @@ describe("SettingsIntegrationsPage — list", () => {
     // Provider headers (formatted via formatProviderName).
     expect(screen.getByText("GitHub")).toBeDefined();
     expect(screen.getByText("OpenAI")).toBeDefined();
+  });
+
+  test("marks a vendor sign-in as for chats and says it does not connect that vendor's blocks", async () => {
+    server.use(
+      getGetV1ListCredentialsMockHandler([
+        makeCred({
+          id: "key",
+          provider: "linear",
+          title: "Linear key",
+          service: "linear",
+          service_icon: "linear",
+        }),
+        makeCred({
+          id: "linear-sign-in",
+          provider: "mcp",
+          type: "oauth2",
+          title: "MCP: mcp.linear.app",
+          service: "linear",
+          service_name: "Linear",
+          service_icon: "linear",
+        }),
+        makeCred({
+          id: "sentry-sign-in",
+          provider: "mcp",
+          type: "oauth2",
+          title: "MCP: mcp.sentry.dev",
+          service: "sentry",
+          service_name: "Sentry",
+          service_icon: "sentry",
+        }),
+      ]),
+      getGetV1ListProvidersMockHandler([
+        makeProvider({
+          name: "linear",
+          supported_auth_types: ["api_key"],
+          service: "linear",
+        }),
+      ]),
+    );
+
+    render(<SettingsIntegrationsPage />);
+
+    expect(
+      await screen.findByText(
+        "Linear blocks in workflows need their own connection.",
+      ),
+    ).toBeDefined();
+    expect(screen.getAllByText("For chats")).toHaveLength(2);
+    expect(screen.getByText("API Key")).toBeDefined();
+    // Sentry ships no blocks, so its sign-in has nothing to warn about.
+    expect(screen.queryByText(/Sentry blocks/)).toBeNull();
   });
 
   test("renders an error card on 401 instead of the empty state", async () => {
@@ -285,6 +345,86 @@ describe("SettingsIntegrationsPage — search", () => {
 });
 
 describe("SettingsIntegrationsPage — connect dialog", () => {
+  test("connects Microsoft with a sign-in code from the AI subscriptions logo card", async () => {
+    server.use(
+      getGetV2ListChatConnectionsMockHandler200({ offers: [] }),
+      getGetV1ListCredentialsMockHandler([]),
+      // No app secret on the server, so Microsoft offers no browser sign-in.
+      getGetV1ListProvidersMockHandler([]),
+      noMicrosoftAccounts(),
+      getPostV1InitiateDeviceCodeOauthFlowMockHandler200({
+        state_token: "test-state",
+        user_code: "TEST-CODE",
+        verification_url: "https://microsoft.com/devicelogin",
+        verification_url_complete: null,
+        expires_in: 900,
+        interval: 5,
+      }),
+    );
+    render(<SettingsIntegrationsPage />);
+
+    const card = await screen.findByRole("button", {
+      name: "Microsoft 365 Copilot",
+    });
+    expect(card.querySelector("img")?.getAttribute("src")).toContain(
+      "/integrations/microsoft.webp",
+    );
+    fireEvent.click(card);
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText(
+        /included Microsoft 365 Copilot Chat does not qualify/i,
+      ),
+    ).toBeDefined();
+    fireEvent.click(
+      await within(dialog).findByRole("button", { name: "Connect Microsoft" }),
+    );
+    expect(await within(dialog).findByText("TEST-CODE")).toBeDefined();
+    expect(
+      within(dialog)
+        .getByRole("link", { name: "Open Microsoft" })
+        .getAttribute("href"),
+    ).toBe("https://microsoft.com/devicelogin");
+  });
+
+  test("uses the Microsoft logo in the service catalog and sign-in details", async () => {
+    server.use(
+      getGetV2ListChatConnectionsMockHandler200({ offers: [] }),
+      getGetV1ListCredentialsMockHandler([]),
+      getGetV1ListProvidersMockHandler([
+        makeProvider({
+          name: "microsoft",
+          description:
+            "Mail, calendar, files, Teams chats, Microsoft 365 Copilot and Work IQ",
+          supported_auth_types: ["oauth2", "device_code"],
+        }),
+      ]),
+      noMicrosoftAccounts(),
+    );
+    render(<SettingsIntegrationsPage />);
+    fireEvent.click(
+      (await screen.findAllByRole("button", { name: /connect.*service/i }))[0],
+    );
+    const dialog = await screen.findByRole("dialog");
+    const provider = await within(dialog).findByRole("button", {
+      name: /Microsoft/,
+    });
+    expect(provider.querySelector("img")?.getAttribute("src")).toContain(
+      "/integrations/microsoft.webp",
+    );
+    fireEvent.click(provider);
+    expect(
+      (await within(dialog).findByAltText("Microsoft logo")).getAttribute(
+        "src",
+      ),
+    ).toContain("/integrations/microsoft.webp");
+    expect(
+      await within(dialog).findByRole("button", {
+        name: "Sign in with Microsoft",
+      }),
+    ).toBeDefined();
+  });
+
   test("Connect Service opens a dialog with the provider list", async () => {
     server.use(
       getGetV1ListCredentialsMockHandler([]),

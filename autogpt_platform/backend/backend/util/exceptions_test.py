@@ -11,6 +11,7 @@ from backend.util.exceptions import (
     BlockUnknownError,
     ExecutionFailureReason,
     InsufficientBalanceError,
+    UserPaywalledError,
     get_execution_failure_reason,
 )
 
@@ -105,6 +106,37 @@ def test_typed_insufficient_balance_error_is_classified_by_type():
     )
 
 
+def test_paywall_error_is_classified_by_type():
+    """A paywalled node failure is a trusted, terminal, user-actionable
+    failure — the same class as an exhausted wallet. Without a typed reason it
+    never reached graph stats, so a denied run reported COMPLETED with a null
+    error while the node inside carried the real denial."""
+    error = UserPaywalledError("A Max plan or higher is required to use ChatGPT.")
+
+    assert (
+        get_execution_failure_reason(error)
+        == ExecutionFailureReason.ENTITLEMENT_REQUIRED
+    )
+
+
+def test_paywall_error_is_still_importable_from_rate_limit():
+    """It moved to break an import cycle; every existing call site imports it
+    from its old home."""
+    from backend.copilot.rate_limit import UserPaywalledError as ReExported
+
+    assert ReExported is UserPaywalledError
+
+
+def test_untyped_entitlement_wording_is_not_classified():
+    """Classification is by type, never by message text."""
+    assert (
+        get_execution_failure_reason(
+            RuntimeError("A Max plan or higher is required to use ChatGPT.")
+        )
+        is None
+    )
+
+
 def test_analytics_sql_gates_structured_credit_failures_on_failed_status():
     sql = _read_graph_execution_sql()
 
@@ -164,26 +196,20 @@ class TestBlockError:
 class TestBlockExecutionErrorNoneHandling:
     """Tests for BlockExecutionError handling of None messages."""
 
-    def test_execution_error_with_none_message(self):
-        """Test that None message is replaced with descriptive text."""
+    @pytest.mark.parametrize(
+        "message, expected",
+        [
+            pytest.param(None, "Output error was None", id="none_message"),
+            pytest.param("Actual error", "Actual error", id="valid_message"),
+            # Only None is replaced; an empty string is kept as it is.
+            pytest.param("", "", id="empty_string"),
+        ],
+    )
+    def test_execution_error_message(self, message, expected):
         error = BlockExecutionError(
-            message=None, block_name="TestBlock", block_id="test-123"
+            message=message, block_name="TestBlock", block_id="test-123"
         )
-        assert str(error) == "Output error was None"
-
-    def test_execution_error_with_valid_message(self):
-        """Test that valid messages are preserved."""
-        error = BlockExecutionError(
-            message="Actual error", block_name="TestBlock", block_id="test-123"
-        )
-        assert str(error) == "Actual error"
-
-    def test_execution_error_with_empty_string(self):
-        """Test that empty string message is NOT replaced (only None is)."""
-        error = BlockExecutionError(
-            message="", block_name="TestBlock", block_id="test-123"
-        )
-        assert str(error) == ""
+        assert str(error) == expected
 
 
 class TestBlockUnknownErrorNoneHandling:
