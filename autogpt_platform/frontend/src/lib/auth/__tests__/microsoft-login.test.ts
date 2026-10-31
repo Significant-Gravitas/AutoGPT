@@ -109,7 +109,7 @@ describe("Continue with Microsoft", () => {
     ).toBe(true);
   });
 
-  it.each(["pat@outlook.co.uk", "pat@hotmail.nl"])(
+  it.each(["pat@outlook.co.uk", "pat@hotmail.nl", "pat@outlook.cz"])(
     "doesn't trust %s, a Microsoft-sounding domain whose mail goes elsewhere",
     (email) => {
       expect(

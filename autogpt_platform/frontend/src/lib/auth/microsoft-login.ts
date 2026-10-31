@@ -8,10 +8,11 @@ import { UNDELIVERABLE_EMAIL_CODE } from "./undeliverable-email";
 const PERSONAL_TENANT_ID = "9188040d-6c67-4c5b-b112-36a304b66dad";
 
 // Outlook.com's own mail domains, where a personal account's address is that
-// account's mailbox. Each one's mail went to Outlook.com's consumer servers
-// (MX *.olc.protection.outlook.com) on 2026-10-31. A Microsoft-sounding
-// domain whose mail goes anywhere else is left out (outlook.co.uk is someone
-// else's; hotmail.nl and hotmail.cz route to a Microsoft 365 organization):
+// account's mailbox. Each one's primary MX was Outlook.com's consumer servers
+// (*.olc.protection.outlook.com) on 2026-10-31. A Microsoft-sounding domain
+// whose mail goes anywhere else first is left out (outlook.co.uk is someone
+// else's; hotmail.nl, hotmail.cz and outlook.cz route to a Microsoft 365
+// organization, outlook.cz with Outlook.com only as its backup):
 // an address there can be an alias the account keeps after the mailbox is
 // gone.
 const MICROSOFT_MAIL_DOMAINS = new Set([
@@ -109,7 +110,6 @@ const MICROSOFT_MAIL_DOMAINS = new Set([
   "outlook.com.pe",
   "outlook.com.tr",
   "outlook.com.vn",
-  "outlook.cz",
   "outlook.de",
   "outlook.dk",
   "outlook.es",
