@@ -17,6 +17,9 @@ def test_type_conversion():
 
     assert convert("True", bool) is True
     assert convert("False", bool) is False
+    assert convert("true", bool) is True
+    assert convert("1", bool) is True
+    assert convert("true\n", bool) is True
     assert convert(" true ", bool) is True
     assert convert("1 ", bool) is True
     assert convert(" false ", bool) is False
