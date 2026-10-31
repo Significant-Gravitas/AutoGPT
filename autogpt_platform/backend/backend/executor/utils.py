@@ -5,7 +5,7 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future
-from typing import Any, Literal, Mapping, Optional, cast, get_args
+from typing import Any, Iterator, Literal, Mapping, Optional, cast, get_args
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field, JsonValue, ValidationError
@@ -64,15 +64,23 @@ from backend.util.exceptions import (
     ExpertPrivateTenancyNotFoundError,
     GraphNotFoundError,
     GraphValidationError,
+    InvalidInputError,
     NotFoundError,
     UserBannedError,
 )
+from backend.util.json import dumps as json_dumps
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
 from backend.util.type import coerce_inputs_to_schema
 
 config = Config()
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[GraphExecutorUtil]")
+
+# The most a run may hand to its blocks: each graph input once per input block
+# it is copied to, plus the node input overrides and credentials.
+MAX_RUN_INPUT_BYTES = 8 * 1024 * 1024
+# A credentials title is only a label; this is what a node gets of it.
+MAX_CREDENTIALS_TITLE_LENGTH = 256
 
 # ============ Resource Helpers ============ #
 
@@ -758,15 +766,21 @@ def make_node_credentials_input_map(
         if graph_input_name not in graph_credentials_input:
             continue
 
+        credentials = _node_credentials_input(graph_credentials_input[graph_input_name])
         # Use passed-in credentials for all compatible node input fields
         for node_id, node_field_name in compatible_node_fields:
             if node_id not in result:
                 result[node_id] = {}
-            result[node_id][node_field_name] = graph_credentials_input[
-                graph_input_name
-            ].model_dump(exclude_none=True)
+            result[node_id][node_field_name] = dict(credentials)
 
     return result
+
+
+def _node_credentials_input(credentials: CredentialsMetaInput) -> dict[str, JsonValue]:
+    node_input = credentials.model_dump(exclude_none=True)
+    if title := node_input.get("title"):
+        node_input["title"] = title[:MAX_CREDENTIALS_TITLE_LENGTH]
+    return node_input
 
 
 async def validate_graph_with_credentials(
@@ -974,6 +988,7 @@ async def validate_and_construct_node_execution_input(
         ),
         nodes_input_masks or {},
     )
+    _check_run_input_size(graph, graph_inputs, nodes_input_masks)
 
     (
         starting_nodes_input,
@@ -987,6 +1002,45 @@ async def validate_and_construct_node_execution_input(
     )
 
     return graph, starting_nodes_input, nodes_input_masks, nodes_to_skip
+
+
+def _check_run_input_size(
+    graph: GraphModel, graph_inputs: GraphInput, nodes_input_masks: NodesInputMasks
+) -> None:
+    """Refuses a run that would hand its blocks more than `MAX_RUN_INPUT_BYTES`,
+    before any of it is built. Counting stops as soon as the total is over."""
+    total = 0
+    for size in _run_input_sizes(graph, graph_inputs, nodes_input_masks):
+        total += size
+        if total > MAX_RUN_INPUT_BYTES:
+            raise InvalidInputError(
+                "The inputs for this run are too large: together, as handed to "
+                f"each block, they must stay under {MAX_RUN_INPUT_BYTES // 2**20} MB."
+            )
+
+
+def _run_input_sizes(
+    graph: GraphModel, graph_inputs: GraphInput, nodes_input_masks: NodesInputMasks
+) -> Iterator[int]:
+    """The size of each graph input as `_construct_starting_node_execution_input`
+    copies it, once for every input block with its name, then of each node's
+    input overrides. Each graph input is measured only once."""
+    input_sizes: dict[str, int] = {}
+    for node in graph.starting_nodes:
+        input_name = cast(str | None, node.input_default.get("name"))
+        if node.block.block_type != BlockType.INPUT:
+            continue
+        if not input_name or input_name not in graph_inputs:
+            continue
+        if input_name not in input_sizes:
+            input_sizes[input_name] = _json_size(graph_inputs[input_name])
+        yield input_sizes[input_name]
+    for node_input_mask in nodes_input_masks.values():
+        yield _json_size(node_input_mask)
+
+
+def _json_size(value: Any) -> int:
+    return len(json_dumps(value).encode("utf-8"))
 
 
 def _merge_nodes_input_masks(

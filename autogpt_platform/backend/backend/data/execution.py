@@ -430,7 +430,7 @@ class GraphExecution(GraphExecutionMeta):
 
         complete_node_executions = sorted(
             [
-                NodeExecutionResult.from_db(ne, _graph_exec.userId)
+                NodeExecutionResult.from_db(ne, graph_execution=_graph_exec)
                 for ne in _graph_exec.NodeExecutions
                 if ne.executionStatus != ExecutionStatus.INCOMPLETE
             ],
@@ -493,7 +493,7 @@ class GraphExecutionWithNodes(GraphExecution):
 
         node_executions = sorted(
             [
-                NodeExecutionResult.from_db(ne, _graph_exec.userId)
+                NodeExecutionResult.from_db(ne, graph_execution=_graph_exec)
                 for ne in _graph_exec.NodeExecutions
             ],
             key=lambda ne: (ne.queue_time is None, ne.queue_time or ne.add_time),
@@ -541,7 +541,13 @@ class NodeExecutionResult(BaseModel):
     end_time: datetime | None
 
     @staticmethod
-    def from_db(_node_exec: AgentNodeExecution, user_id: Optional[str] = None):
+    def from_db(
+        _node_exec: AgentNodeExecution,
+        user_id: Optional[str] = None,
+        graph_execution: AgentGraphExecution | None = None,
+    ):
+        """`graph_execution` is the parent run, for a node execution read
+        without it (`NESTED_EXECUTION_RESULT_INCLUDE`)."""
         try:
             stats = NodeExecutionStats.model_validate(_node_exec.stats or {})
         except (ValueError, ValidationError):
@@ -581,7 +587,7 @@ class NodeExecutionResult(BaseModel):
             for data in outputs:
                 output_data[data.name].append(type_utils.convert(data.data, JsonValue))
 
-        graph_execution: AgentGraphExecution | None = _node_exec.GraphExecution
+        graph_execution = _node_exec.GraphExecution or graph_execution
         if graph_execution:
             user_id = graph_execution.userId
         elif not user_id:
