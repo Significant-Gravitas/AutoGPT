@@ -64,6 +64,7 @@ from .ayrshare_managed import not_linked_response as ayrshare_not_linked_respons
 from .ayrshare_managed import provision_for_block as provision_ayrshare_for_block
 from .chat_platform_hint import bot_link_hint
 from .expert_scope import (
+    CredentialScopeSnapshot,
     annotate_expert_grants,
     provider_slug,
     ungranted_credential_hint,
@@ -933,6 +934,8 @@ async def unattended_missing_credentials_error(
     session_id: str,
     user_id: str,
     expert_id: str | None,
+    *,
+    credential_scope: CredentialScopeSnapshot | None = None,
 ) -> ErrorResponse:
     """The answer when a turn nobody watches has no credential to run with.
 
@@ -957,7 +960,11 @@ async def unattended_missing_credentials_error(
     if pinned is not None:
         return pinned
     grant_hint = await ungranted_credential_hint(
-        user_id, expert_id, providers, missing.values()
+        user_id,
+        expert_id,
+        providers,
+        missing.values(),
+        credential_scope=credential_scope,
     )
     logger.warning(
         "Unattended copilot turn in session %s: %s has no %s credential to use",
