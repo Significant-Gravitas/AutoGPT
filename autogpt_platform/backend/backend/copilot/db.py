@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import re
 import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -638,19 +639,36 @@ async def add_chat_message(
     return ChatMessage.from_db(message)
 
 
-_CHAT_MESSAGE_PKEY_CONSTRAINT = "ChatMessage_pkey"
+_UNIQUE_FIELDS_IN_MESSAGE = re.compile(r"fields: \(([^)]*)\)")
+
+
+def _unique_violation_fields(exc: UniqueViolationError) -> list[str] | None:
+    """The fields a unique violation failed on, or None when unknown.
+
+    Prisma reports them as ``meta["target"]`` (e.g. ``["id"]``) and in the
+    message as ``Unique constraint failed on the fields: (`id`)``. Only the
+    message survives the database manager's RPC, which rebuilds the error
+    from it with ``code`` and ``meta`` empty, so read both."""
+    target = exc.meta.get("target") if isinstance(exc.meta, dict) else None
+    if isinstance(target, list):
+        return [str(field) for field in target]
+    match = _UNIQUE_FIELDS_IN_MESSAGE.search(str(exc))
+    if match is None:
+        return None
+    return re.findall(r"`([^`]+)`", match.group(1))
 
 
 def is_duplicate_chat_message_id_error(exc: BaseException) -> bool:
     """True iff *exc* is a ``UniqueViolationError`` on the ``ChatMessage``
-    primary key — i.e. the caller supplied a duplicate ``id``.
+    row ``id``, i.e. the caller supplied an id that is already saved.
 
-    Used by ``append_and_save_message`` to distinguish the dedup signal
-    from the unrelated ``(sessionId, sequence)`` collision that the
-    streaming-callback race retries silently."""
-    return isinstance(
-        exc, UniqueViolationError
-    ) and _CHAT_MESSAGE_PKEY_CONSTRAINT in str(exc)
+    ``ChatMessage`` has two unique constraints: ``id`` (the idempotency
+    signal, which callers drop quietly) and ``(sessionId, sequence)`` (a
+    sequence race, which callers retry). Only call this on errors from a
+    ``ChatMessage`` insert."""
+    if not isinstance(exc, UniqueViolationError):
+        return False
+    return _unique_violation_fields(exc) == ["id"]
 
 
 async def add_chat_messages_batch(
@@ -762,10 +780,10 @@ async def add_chat_messages_batch(
 
         except UniqueViolationError as e:
             # Two distinct unique constraints on ``ChatMessage`` can fire here:
-            #   - ``ChatMessage_pkey`` (the row ``id``): caller supplied a
-            #     duplicate PK — this is the idempotency signal, propagate
-            #     so the route layer can short-circuit.
-            #   - ``ChatMessage_sessionId_sequence_key``: the streaming loop
+            #   - the row ``id``: caller supplied a duplicate PK — this is
+            #     the idempotency signal, propagate so the route layer can
+            #     short-circuit.
+            #   - ``(sessionId, sequence)``: the streaming loop
             #     and a long-running callback raced on ``sequence`` — retry
             #     with a freshly queried offset (existing behaviour).
             if is_duplicate_chat_message_id_error(e):

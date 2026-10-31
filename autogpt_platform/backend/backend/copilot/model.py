@@ -20,7 +20,6 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
     Function,
 )
 from prisma.enums import APIKeyPermission
-from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from pydantic import BaseModel, Field, PrivateAttr
@@ -1374,7 +1373,9 @@ async def append_and_save_message(
             # ``(sessionId, sequence)`` race that exhausted the retry
             # loop in ``add_chat_messages_batch``) and unrelated
             # exceptions surface as ``DatabaseError``.
-            if isinstance(e, UniqueViolationError) and "ChatMessage_pkey" in str(e):
+            from .db import is_duplicate_chat_message_id_error
+
+            if is_duplicate_chat_message_id_error(e):
                 return None
             raise DatabaseError(
                 f"Failed to persist message to session {session_id}"
