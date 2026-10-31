@@ -18,6 +18,7 @@ import { UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useInsertionEffect, useLayoutEffect, useRef } from "react";
 import { useStickToBottomContext } from "use-stick-to-bottom";
 import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
+import { TurnEndAnnouncer } from "../JobStatsBar/TurnEndAnnouncer";
 import { useElapsedAnchor } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
@@ -70,6 +71,9 @@ interface Props {
   error: Error | undefined;
   isLoading: boolean;
   isRestoringActiveSession?: boolean;
+  /** The stream ended but the turn may not have: a reconnect is scheduled
+   *  or the follow-up turn check is still running. */
+  isTurnSettling?: boolean;
   restoreStatusMessage?: string | null;
   /** ISO start time of the active backend turn. Seeds the elapsed-time
    *  counter so restored turns show honest age instead of counting from
@@ -271,6 +275,7 @@ export function ChatMessagesContainer({
   error,
   isLoading,
   isRestoringActiveSession,
+  isTurnSettling,
   restoreStatusMessage,
   activeStreamStartedAt,
   sessionID,
@@ -402,6 +407,12 @@ export function ChatMessagesContainer({
   })();
 
   const isActivelyStreaming = status === "streaming" || status === "submitted";
+  const isTurnBusy =
+    isActivelyStreaming || !!isRestoringActiveSession || !!isTurnSettling;
+  // A host that doesn't report reconnects and finish probes can't tell a
+  // settled turn from a pause between them, so it never claims "Done".
+  const isTurnSettled =
+    isTurnSettling !== undefined && !isTurnBusy && status !== "error" && !error;
   useCostReplyMoment({
     messages,
     isStreaming: isActivelyStreaming,
@@ -484,6 +495,9 @@ export function ChatMessagesContainer({
         isLastAssistant={isLastAssistant}
         isCurrentlyStreaming={isCurrentlyStreaming}
         isLastInTurn={isLastInTurn}
+        isLatestTurn={isLastRow}
+        isTurnSettled={!isLastRow || isTurnSettled}
+        isTurnSettling={isLastRow && isTurnBusy}
         turnStat={turnStats?.get(message.id)}
         turnMessages={
           showsTurnStats
@@ -650,6 +664,13 @@ export function ChatMessagesContainer({
             ))}
           {!readOnly && error && !lastAssistantHasErrorMarker && (
             <ChatErrorBanner error={error} />
+          )}
+          {!readOnly && (
+            <TurnEndAnnouncer
+              isBusy={isTurnBusy}
+              isSettled={isTurnSettled}
+              messages={messages}
+            />
           )}
           <TailSpacer
             messageID={lastUserMessageID}

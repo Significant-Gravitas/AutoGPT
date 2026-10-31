@@ -2,17 +2,17 @@
 
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ReloadIcon } from "@hugeicons/core-free-icons";
+import { SHOW_TIME_AFTER_SECONDS } from "../JobStatsBar/constants";
 import { formatElapsed } from "../JobStatsBar/formatElapsed";
 import {
   barPercent,
+  compactionDetail,
   compactionLabel,
   type CompactionPhase,
   type CompactionStats,
 } from "./helpers";
 import { useCompactionProgress } from "./useCompactionProgress";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
-
-export const SHOW_TIME_AFTER_SECONDS = 20;
 
 interface Props {
   phase: CompactionPhase | null;
@@ -25,7 +25,10 @@ export function CompactionCard({ phase, stats, isSettled }: Props) {
     return (
       <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
         <Icon icon={ReloadIcon} size={14} />
-        <span className="min-w-0 truncate">
+        <span
+          className="min-w-0 truncate"
+          title={compactionDetail(stats) ?? undefined}
+        >
           {compactionLabel(phase, stats)}
         </span>
       </div>
