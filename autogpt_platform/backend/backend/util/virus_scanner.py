@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import io
 import logging
 import struct
@@ -201,8 +202,14 @@ class _DrainingClamdClient(aioclamd.ClamdAsyncClient):
             writer.write(struct.pack("!L", 0))
             await writer.drain()
             reply = (await reader.read()).decode().strip()
+        except BaseException:
+            # Unsent frames would hold the socket, and wait_closed(), until ClamAV reads them.
+            writer.transport.abort()
+            raise
         finally:
             writer.close()
+            with contextlib.suppress(Exception):
+                await writer.wait_closed()
         if reply == "INSTREAM size limit exceeded. ERROR":
             raise aioclamd.BufferTooLongError(reply)
         match = aioclamd.scan_response.match(reply)

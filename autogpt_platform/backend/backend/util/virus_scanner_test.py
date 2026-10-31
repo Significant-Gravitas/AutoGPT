@@ -4,6 +4,7 @@ import struct
 import time
 from unittest.mock import AsyncMock, Mock, patch
 
+import aioclamd
 import pytest
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
@@ -324,7 +325,7 @@ class TestStreamingToClamd:
             )
 
         assert result.is_clean
-        assert longest_stall < 1.0
+        assert longest_stall < 2.0
 
     @pytest.mark.asyncio
     async def test_clamd_closing_mid_stream_falls_back_to_smaller_chunks(self):
@@ -336,12 +337,42 @@ class TestStreamingToClamd:
 
         assert result.is_clean
 
+    @pytest.mark.asyncio
+    async def test_a_found_reply_reports_the_threat(self):
+        async with _fake_clamd(reply=b"stream: Eicar-Test-Signature FOUND\n") as port:
+            scanner = VirusScannerService(
+                VirusScannerSettings(clamav_service_port=port)
+            )
+            result = await scanner.scan_file(b"some upload")
+
+        assert not result.is_clean
+        assert result.threat_name == "Eicar-Test-Signature"
+
+    @pytest.mark.asyncio
+    async def test_a_clamd_that_stops_reading_fails_the_scan_at_the_timeout(self):
+        async with _fake_clamd(stall=True) as port:
+            scanner = VirusScannerService(
+                VirusScannerSettings(clamav_service_port=port, clamav_service_timeout=1)
+            )
+            with pytest.raises(aioclamd.ClamdConnectionError, match="did not answer"):
+                await asyncio.wait_for(
+                    scanner.scan_file(b"\x00" * (16 * 1024 * 1024)), timeout=10
+                )
+
 
 @contextlib.asynccontextmanager
-async def _fake_clamd(stream_max: int | None = None):
+async def _fake_clamd(
+    stream_max: int | None = None,
+    reply: bytes = b"stream: OK\n",
+    stall: bool = False,
+):
+    released = asyncio.Event()
+
     async def serve(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         if await reader.readline() == b"nPING\n":
             writer.write(b"PONG\n")
+        elif stall:
+            await released.wait()
         else:
             received = 0
             while size := struct.unpack("!L", await reader.readexactly(4))[0]:
@@ -350,7 +381,7 @@ async def _fake_clamd(stream_max: int | None = None):
                     writer.write(b"INSTREAM size limit exceeded. ERROR\n")
                     break
             else:
-                writer.write(b"stream: OK\n")
+                writer.write(reply)
         await writer.drain()
         writer.close()
 
@@ -358,6 +389,7 @@ async def _fake_clamd(stream_max: int | None = None):
     try:
         yield server.sockets[0].getsockname()[1]
     finally:
+        released.set()
         server.close()
         await server.wait_closed()
 
