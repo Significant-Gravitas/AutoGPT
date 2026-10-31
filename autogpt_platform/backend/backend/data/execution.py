@@ -464,7 +464,7 @@ class GraphExecution(GraphExecutionMeta):
         }
 
         outputs: CompletedBlockOutput = reconstruct_run_outputs(
-            (exec.queue_time, exec.add_time, exec.input_data)
+            (exec.queue_time, exec.add_time, exec.input_data, exec.output_data)
             for exec in complete_node_executions
             if (block := get_block(exec.block_id))
             and block.block_type == BlockType.OUTPUT
