@@ -7,7 +7,10 @@ import pytest
 
 from backend.copilot.context import get_workspace_manager, set_execution_context
 from backend.copilot.model import ChatSession
+from backend.copilot.tools.models import ErrorResponse
+from backend.copilot.tools.workspace_files import ReadWorkspaceFileTool
 from backend.data.workspace_scope import WorkspaceAccessDeniedError, WorkspaceScope
+from backend.util.workspace_test import _make_workspace_file
 
 
 @pytest.fixture
@@ -37,6 +40,36 @@ async def test_scope_follows_the_executing_session_not_the_requested_one(db):
     manager = await get_workspace_manager("user-1", "some-other-session")
     assert manager.scope is not None
     assert manager.scope.expert_id == "expert-a"
+
+
+@pytest.mark.parametrize(
+    "path, refused",
+    [("/sessions/expert-b-chat/output.mp4", True), ("/output.mp4", False)],
+)
+async def test_an_expert_turn_reads_the_owners_files_but_not_another_experts(
+    db, path: str, refused: bool
+):
+    db.resolve_expert_workspace_scope.return_value = WorkspaceScope(
+        expert_id="expert-a",
+        session_ids=["older"],
+        owns_skills_folder=True,
+        reads_user_files=True,
+    )
+    files = MagicMock()
+    files.get_workspace_file = AsyncMock(
+        return_value=_make_workspace_file(path=path, mime_type="video/mp4")
+    )
+    session = ChatSession.new("user-1", dry_run=False, expert_id="expert-a")
+    set_execution_context("user-1", session)
+
+    with patch("backend.util.workspace.workspace_db", return_value=files):
+        result = await ReadWorkspaceFileTool()._execute(
+            "user-1", session, file_id="file-1"
+        )
+
+    assert (
+        isinstance(result, ErrorResponse) and result.error == "access_denied"
+    ) is refused
 
 
 async def test_personal_autopilot_turn_is_unrestricted(db):
