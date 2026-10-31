@@ -33026,6 +33026,10 @@
           "template_id": { "type": "string", "title": "Template Id" },
           "name": { "type": "string", "title": "Name" },
           "role": { "type": "string", "title": "Role" },
+          "job_title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Job Title"
+          },
           "avatar_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Avatar Url"
@@ -33041,7 +33045,7 @@
         "type": "object",
         "required": ["template_id", "name", "role"],
         "title": "RecommendedExpert",
-        "description": "One roster template Otto suggests hiring first.\n\n``template_id`` is always a live template — the model only ever picks\nids off the roster it was shown, and anything else is dropped before\nstorage. ``name``/``role``/``avatar_url`` are copied from that\ntemplate server-side rather than trusted from the model, so a card\ncan never introduce an expert who does not exist."
+        "description": "One roster template Otto suggests hiring first.\n\n``template_id`` is always a live template — the model only ever picks\nids off the roster it was shown, and anything else is dropped before\nstorage. ``name``/``role``/``job_title``/``avatar_url`` are copied from that\ntemplate server-side rather than trusted from the model, so a card\ncan never introduce an expert who does not exist."
       },
       "RecommendedExpertsResponse": {
         "properties": {

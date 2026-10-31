@@ -159,7 +159,7 @@ class RecommendedExpert(BaseModel):
 
     ``template_id`` is always a live template — the model only ever picks
     ids off the roster it was shown, and anything else is dropped before
-    storage. ``name``/``role``/``avatar_url`` are copied from that
+    storage. ``name``/``role``/``job_title``/``avatar_url`` are copied from that
     template server-side rather than trusted from the model, so a card
     can never introduce an expert who does not exist.
     """
@@ -167,6 +167,7 @@ class RecommendedExpert(BaseModel):
     template_id: str
     name: str
     role: str
+    job_title: str | None = None
     avatar_url: str | None = None
     reason: str = ""
     workflow_names: list[str] = []
