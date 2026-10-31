@@ -10,7 +10,13 @@ from fastapi import APIRouter, Form, Security, UploadFile
 from fastapi.responses import RedirectResponse
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 
-from backend.api.features.onboarding_dump import db, service, storage, suggested_tasks
+from backend.api.features.onboarding_dump import (
+    db,
+    plan_service,
+    service,
+    storage,
+    suggested_tasks,
+)
 from backend.api.features.onboarding_dump.models import (
     ALLOWED_AUDIO_MIME_TYPES,
     MAX_PART_BYTES,
@@ -27,7 +33,12 @@ from backend.api.features.onboarding_dump.models import (
     SuggestedTasksUpdate,
     UploadPartResponse,
 )
+from backend.api.features.onboarding_dump.plan_models import (
+    PlanHireResponse,
+    PlanResponse,
+)
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
+from backend.copilot.rate_limit import enforce_payment_paywall
 
 logger = logging.getLogger(__name__)
 
@@ -232,6 +243,53 @@ async def get_brain_dump_recommended_experts(
     return await service.get_recommended_experts(user_id)
 
 
+@router.get("/plan", operation_id="get_brain_dump_plan")
+async def get_brain_dump_plan(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> PlanResponse:
+    """The onboarding plan step: what Otto heard, the team, the ranked tasks.
+
+    ``ready=false`` means the background jobs are still running; keep
+    polling. Every other state resolves, a skipped or failed dump to the
+    role plan, which is stored on this first read.
+    """
+    return await plan_service.get_plan(user_id)
+
+
+@router.post("/plan/settle", operation_id="settle_brain_dump_plan")
+async def settle_brain_dump_plan(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> PlanResponse:
+    """The plan step stops waiting: the plan it shows becomes the plan.
+
+    While the background jobs are still running, the role plan the last
+    ``/plan`` answer carried is stored as the take's tasks and team, so the
+    trial hires, and Home lists, what the step showed; the jobs leave both
+    alone. Once a plan is ready this changes nothing and returns it.
+    """
+    return await plan_service.settle_plan(user_id)
+
+
+@router.post(
+    "/plan/hire",
+    operation_id="hire_brain_dump_plan",
+    dependencies=[fastapi.Depends(enforce_payment_paywall)],
+)
+async def hire_brain_dump_plan(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> PlanHireResponse:
+    """Hire the plan's team, after the trial is confirmed.
+
+    Behind the paywall, so a user who left Stripe without paying hires
+    nobody, whatever the client does; with no paywall it is open.
+
+    Idempotent: anyone already on the team is reported, not hired again.
+    A hire that fails is reported in ``failed`` rather than failing the
+    request, and the active expert limit stops the hiring where it is hit.
+    """
+    return await plan_service.hire_plan(user_id)
+
+
 @router.get("/suggested-tasks", operation_id="get_brain_dump_suggested_tasks")
 async def get_brain_dump_suggested_tasks(
     user_id: Annotated[str, Security(get_user_id)],
@@ -240,7 +298,7 @@ async def get_brain_dump_suggested_tasks(
 
     Unlike ``/intro``, this keeps answering after the first message: the
     list stays on Home, a sent row marked in progress, until every row is
-    dismissed.
+    dismissed. Each task names its owner's hired expert, if any.
     """
     return await suggested_tasks.get_suggested_tasks(user_id)
 
@@ -252,7 +310,7 @@ async def update_brain_dump_suggested_tasks(
 ) -> SuggestedTasksResponse:
     """Mark suggested tasks sent, dismissed, or open again (Undo).
 
-    Takes several ids so "Hide all" and its Undo are one write each.
+    Takes several ids so a change and its Undo are one write each.
     """
     return await suggested_tasks.update_suggested_tasks(user_id, request)
 

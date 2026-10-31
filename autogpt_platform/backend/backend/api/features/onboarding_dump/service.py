@@ -22,6 +22,7 @@ from backend.api.features.experts.models import Expert
 from backend.api.features.onboarding_dump import (
     db,
     intro,
+    plan_job,
     prompts,
     quality,
     recommend,
@@ -59,6 +60,9 @@ from backend.data.understanding import (
 from backend.util.virus_scanner import scan_content_safe
 
 logger = logging.getLogger(__name__)
+
+# Each attempt is one read and one conditional write, as for the plan job.
+_TEAM_WRITE_ATTEMPTS = 3
 
 TRANSCRIPT_PREVIEW_CHARS = 280
 
@@ -394,62 +398,146 @@ async def _run_background_jobs(
     transcript: str,
     input_mode: BrainDumpInputMode,
 ) -> None:
-    """Run the greeting pipeline and the recommendation jobs side by side.
+    """Run the plan's jobs, the understanding and the provider picks side by side.
 
     Snapshot the signup context before extraction updates it; recommendations
-    read the current transcript directly. Keep the dump pending until all
-    jobs settle so readers do not replace an in-flight team with a fallback.
+    read the current transcript directly.
 
     One background task, not three: ``BackgroundTasks`` awaits what it is
     given strictly in order, so a second entry would not start until the
-    greeting's LLM calls had finished — and would never start at all if
-    something escaped the first one. Gathered here they are genuinely
-    concurrent, and none can take the others down.
+    first had finished — and would never start at all if something escaped
+    it. Gathered here they are genuinely concurrent, and none can take the
+    others down.
+
+    Only the plan's jobs end the plan step's wait (``_run_plan_jobs``). The
+    understanding and the provider picks each write their own column, read
+    after the trial, so the step does not wait on either.
     """
-    wizard_context = await _safe_understanding(user_id)
-    results = await asyncio.gather(
-        _run_completion(user_id, recording_id, transcript, input_mode),
+    try:
+        claimed = await db.update_dump(
+            user_id, recording_id, status=BrainDumpStatus.extracting
+        )
+    except Exception as e:  # background task, nowhere to raise
+        logger.error("Brain dump completion failed for user %s: %s", user_id, e)
+        await db.mark_failed(user_id, recording_id, "understanding_failed")
+        return
+    if not claimed:
+        # A newer take owns the row. Its row writes would all no-op, but the
+        # business understanding is shared user context with no recording
+        # id on it: carrying on would fold an abandoned take's transcript
+        # into the context the live take is about to write.
+        logger.info("Brain dump take for user %s superseded; stopping", user_id)
+        return
+    wizard_context = await wizard_answers(user_id)
+    await asyncio.gather(
+        _run_plan_jobs(user_id, recording_id, transcript, wizard_context),
+        _run_understanding(user_id, recording_id, transcript, input_mode),
         _run_provider_recommendations(user_id, recording_id, transcript),
-        _run_expert_recommendations(user_id, recording_id, transcript, wizard_context),
         return_exceptions=True,
     )
-    if results[0] is True:
-        try:
-            await db.update_dump(
-                user_id, recording_id, status=BrainDumpStatus.completed
-            )
-        except Exception as e:
-            logger.error("Brain dump completion failed for user %s: %s", user_id, e)
-            await db.mark_failed(user_id, recording_id, "understanding_failed")
 
 
-async def _run_completion(
+async def _run_plan_jobs(
     user_id: str,
     recording_id: str,
     transcript: str,
-    input_mode: BrainDumpInputMode,
-) -> bool:
-    """Background half of the pipeline, run after the response is sent.
+    wizard_context: tuple[str | None, list[str]],
+) -> None:
+    """The greeting and team jobs, the plan job built from both, then completion.
+
+    The plan job reads what the greeting and team jobs stored, so it runs
+    after them, only when both stored something, and before the dump is
+    marked completed: the plan step waits on that status, so it never shows
+    the unranked list. The dump stays pending until the team job settles
+    too, so readers do not replace an in-flight team with a fallback.
+    """
+    started = time.monotonic()
+    greeting, team = await asyncio.gather(
+        _run_greeting(user_id, recording_id, transcript),
+        _run_expert_recommendations(user_id, recording_id, transcript, wizard_context),
+        return_exceptions=True,
+    )
+    if greeting is True and team is True:
+        user_role, pain_points = wizard_context
+        await plan_job.store_ranked_plan(
+            user_id, recording_id, transcript, user_role, pain_points
+        )
+    if greeting is not True:
+        return
+    try:
+        await db.update_dump(user_id, recording_id, status=BrainDumpStatus.completed)
+    except Exception as e:  # background task, nowhere to raise
+        logger.error("Brain dump completion failed for user %s: %s", user_id, e)
+        await db.mark_failed(user_id, recording_id, "understanding_failed")
+        return
+    logger.info(
+        f"Brain dump plan ready for user {user_id} "
+        f"{time.monotonic() - started:.1f}s after the pipeline started"
+    )
+
+
+async def _run_greeting(user_id: str, recording_id: str, transcript: str) -> bool:
+    """The greeting job: what Otto heard, and the tasks under it.
 
     Anything that escapes here has no request to report to, so it marks
-    the dump failed — that releases the preparing screen (it polls
-    /status) instead of leaving it to hang until its ceiling.
+    the dump failed — that releases the screens polling it instead of
+    leaving them to hang until their ceiling. Returns whether the greeting
+    was stored, which the plan job and the completion need.
     """
+    started = time.monotonic()
     try:
-        result = await _extract_and_complete(
-            user_id, recording_id, transcript, input_mode
+        greeting, prompts = await intro.generate_intro(transcript)
+        stored = await db.store_greeting(
+            user_id, recording_id, greeting, [p.model_dump() for p in prompts]
         )
-        return result.status == BrainDumpStatus.completed
     except Exception as e:  # background task, nowhere to raise
         logger.error("Brain dump completion failed for user %s: %s", user_id, e)
         await db.mark_failed(user_id, recording_id, "understanding_failed")
         return False
+    logger.info(
+        f"Brain dump greeting for user {user_id} took "
+        f"{time.monotonic() - started:.1f}s"
+    )
+    return stored
+
+
+async def _run_understanding(
+    user_id: str,
+    recording_id: str,
+    transcript: str,
+    input_mode: BrainDumpInputMode,
+) -> None:
+    """The memory extraction: the transcript folded into the user's business
+    understanding, which Otto's chats read as context.
+
+    Its own job, so the greeting and the plan never wait on it. Never raises
+    and never touches the dump: a failed extraction still stores the
+    transcript (``_extract_understanding``), and a failed write costs the
+    context, not the take.
+    """
+    try:
+        extracted = await _extract_understanding(user_id, transcript)
+        extracted.additional_notes = _append_note(
+            extracted.additional_notes, transcript, input_mode
+        )
+        # Re-checked rather than inferred from the claim: extraction is an
+        # LLM call, so the row has had seconds — minutes, for a long
+        # transcript — to change hands since.
+        if not await db.owns_dump(user_id, recording_id):
+            logger.info(
+                "Brain dump take for user %s superseded; understanding not stored",
+                user_id,
+            )
+            return
+        await upsert_business_understanding(user_id, extracted)
+    except Exception as e:  # background task, nowhere to raise
+        logger.error("Brain dump understanding not stored for user %s: %s", user_id, e)
 
 
 async def _run_provider_recommendations(
     user_id: str, recording_id: str, transcript: str
 ) -> None:
-    """The recommendation job, deliberately separate from ``_run_completion``.
+    """The recommendation job, deliberately separate from the plan's jobs.
 
     It writes only ``recommendedProviders`` — never the dump status — so a
     failure here can't strand the loading screen or mask a good greeting.
@@ -506,65 +594,97 @@ async def _run_expert_recommendations(
     recording_id: str,
     transcript: str,
     wizard_context: tuple[str | None, list[str]],
-) -> None:
-    """The team job, third leg of the background gather.
+) -> bool:
+    """The team job, run beside the greeting in ``_run_plan_jobs``.
 
     Like the provider job it writes one column and never the dump status,
     so it cannot strand the loading screen. It always writes *something*:
     a row left with a null column is "still running" to the reader, and
-    the client would poll it until its own ceiling.
+    the client would poll it until its own ceiling. Returns whether the
+    take has a team, which the plan job needs.
     """
+    started = time.monotonic()
     user_role, pain_points = wizard_context
     team = await recommend_experts.generate_expert_recommendations(
         transcript,
         user_role=user_role,
         pain_points=pain_points,
-        templates=await _safe_templates(),
+        templates=await safe_templates(),
     )
-    await _store_team(user_id, recording_id, team)
+    logger.info(
+        f"Brain dump team for user {user_id} took {time.monotonic() - started:.1f}s"
+    )
+    return await _store_team(user_id, recording_id, team)
 
 
 async def _store_team(
     user_id: str, recording_id: str, team: ExpertRecommendations
-) -> None:
+) -> bool:
+    """Store the team job's team, unless the take already has one.
+
+    A running take can already have the role team the plan step settled on
+    (``plan_service.settle_plan``), which the trial hires, or the one an
+    earlier attempt at this take stored; either stands. Returns whether the
+    take has a team now, which the plan job needs.
+    """
     try:
-        await db.update_dump(
-            user_id, recording_id, recommendedExperts=Json(team.model_dump())
-        )
+        for _ in range(_TEAM_WRITE_ATTEMPTS):
+            dump = await db.get_dump(user_id)
+            if dump is None or dump.recordingId != recording_id:
+                return False
+            if dump.recommendedExperts is not None:
+                return True
+            if await db.replace_team(
+                user_id, recording_id, dump.updatedAt, team.model_dump()
+            ):
+                return True
     except Exception as e:  # background task, nowhere to raise
         logger.warning(
             "Brain dump expert recommendations not stored for user %s: %s", user_id, e
         )
+        return False
+    logger.warning(
+        f"Brain dump team for user {user_id}: gave up after "
+        f"{_TEAM_WRITE_ATTEMPTS} lost writes"
+    )
+    return False
 
 
-async def _safe_understanding(user_id: str) -> tuple[str | None, list[str]]:
+async def wizard_answers(user_id: str) -> tuple[str | None, list[str]]:
     """``(user_role, pain_points)`` from the signup wizard's answers.
 
-    The wizard's saved progress holds them from the role step on. The
-    understanding gets its copy only at the wizard's last step, after the
-    hire step, so it answers only for an account with no saved answers.
     A read that fails costs the recommendation its wizard context, not
-    the recommendation.
+    the recommendation. Paths that store what they build from the answers
+    use ``read_wizard_answers``, which raises instead.
     """
-    saved = await _saved_wizard_answers(user_id)
+    try:
+        return await read_wizard_answers(user_id)
+    except Exception as e:
+        logger.warning(f"Brain dump team: wizard answers read failed: {e}")
+        return None, []
+
+
+async def read_wizard_answers(user_id: str) -> tuple[str | None, list[str]]:
+    """``(user_role, pain_points)``, raising when a read fails.
+
+    The wizard's saved progress holds them from the role step on. The
+    understanding gets its copy only at the wizard's last step, so it
+    answers only for an account with no saved answers.
+    """
+    saved = _saved_wizard_answers((await get_user_onboarding(user_id)).wizardProgress)
     if saved is not None:
         return saved
-    try:
-        understanding = await get_business_understanding(user_id)
-    except Exception as e:
-        logger.warning("Brain dump team: understanding read failed: %s", e)
-        return None, []
+    understanding = await get_business_understanding(user_id)
     if understanding is None:
         return None, []
     return understanding.user_role, understanding.pain_points
 
 
-async def _saved_wizard_answers(user_id: str) -> tuple[str, list[str]] | None:
+def _saved_wizard_answers(stored: object) -> tuple[str, list[str]] | None:
     try:
-        stored = (await get_user_onboarding(user_id)).wizardProgress
         progress = OnboardingWizardProgress.model_validate(stored) if stored else None
-    except Exception as e:
-        logger.warning(f"Brain dump team: wizard progress read failed: {e}")
+    except ValidationError as e:
+        logger.warning(f"Brain dump team: wizard progress unreadable: {e}")
         return None
     if progress is None:
         return None
@@ -575,7 +695,7 @@ async def _saved_wizard_answers(user_id: str) -> tuple[str, list[str]] | None:
     return role, list(progress.painPoints)
 
 
-async def _safe_templates() -> list[Expert]:
+async def safe_templates() -> list[Expert]:
     try:
         return await list_templates()
     except Exception as e:
@@ -591,11 +711,11 @@ async def get_recommended_experts(user_id: str) -> RecommendedExpertsResponse:
     a final answer here rather than leaving the client polling.
     """
     dump = await db.get_dump(user_id)
-    team, pending = await _team_for_intro(user_id, dump)
+    team, pending = await team_for_dump(user_id, dump)
     return RecommendedExpertsResponse(ready=not pending, team=team)
 
 
-async def _team_for_intro(
+async def team_for_dump(
     user_id: str, dump: OnboardingBrainDump | None
 ) -> tuple[ExpertRecommendations | None, bool]:
     """``(team, pending)`` for one user, shared by /intro and this reader.
@@ -604,7 +724,7 @@ async def _team_for_intro(
     not pending is always an object — possibly with no experts — so the
     "raise your own" door is always there to render.
     """
-    if dump is None or _nothing_to_reflect(dump):
+    if dump is None or nothing_to_reflect(dump):
         # Path B and every other take with nothing to read: the job never
         # ran, and the wizard's answers are the whole basis for a team.
         return await _fallback_team(user_id), False
@@ -628,55 +748,10 @@ async def _team_for_intro(
 
 
 async def _fallback_team(user_id: str) -> ExpertRecommendations:
-    user_role, pain_points = await _safe_understanding(user_id)
+    user_role, pain_points = await wizard_answers(user_id)
     return recommend_experts.fallback_expert_recommendations(
-        user_role, pain_points, await _safe_templates()
+        user_role, pain_points, await safe_templates()
     )
-
-
-async def _extract_and_complete(
-    user_id: str,
-    recording_id: str,
-    transcript: str,
-    input_mode: BrainDumpInputMode,
-) -> FinalizeResponse:
-    # Losing this write means a newer take owns the row. The row writes
-    # below would all no-op on their own, but the business understanding
-    # is shared user context with no recording id on it — carrying on
-    # would fold an abandoned take's transcript into the context the live
-    # take is about to write. So the whole job stops here.
-    if not await db.update_dump(
-        user_id, recording_id, status=BrainDumpStatus.extracting
-    ):
-        return _superseded_response(user_id, input_mode)
-
-    # The greeting reads the transcript, not the extraction, so the two
-    # run together rather than the loading screen paying for both in
-    # series. Each returns its own fallback instead of raising (see their
-    # docstrings), which is what keeps a gather from losing one result to
-    # the other's failure — the tests below hold both to that.
-    extracted, (greeting, suggested_prompts) = await asyncio.gather(
-        _extract_understanding(user_id, transcript),
-        intro.generate_intro(transcript),
-    )
-    extracted.additional_notes = _append_note(
-        extracted.additional_notes, transcript, input_mode
-    )
-    # Re-checked rather than inferred from the claim above: extraction is
-    # an LLM call, so the row has had seconds — minutes, for a long
-    # transcript — to change hands since.
-    if not await db.owns_dump(user_id, recording_id):
-        return _superseded_response(user_id, input_mode)
-    await upsert_business_understanding(user_id, extracted)
-
-    await db.update_dump(
-        user_id,
-        recording_id,
-        errorCode=None,
-        greeting=greeting,
-        suggestedPrompts=Json([p.model_dump() for p in suggested_prompts]),
-    )
-    return _completed_response(transcript, input_mode)
 
 
 async def _extract_understanding(
@@ -687,8 +762,7 @@ async def _extract_understanding(
     Never raises. A failed extraction must not cost the user their
     transcript — the raw text still lands in the understanding, so the
     copilot's <user_context> is personalised even without structured
-    fields — and it runs gathered with the greeting, which a raise here
-    would take down with it.
+    fields.
     """
     try:
         understanding = await get_business_understanding(user_id)
@@ -703,15 +777,6 @@ async def _extract_understanding(
         return BusinessUnderstandingInput.model_construct()
 
 
-def _superseded_response(
-    user_id: str, input_mode: BrainDumpInputMode
-) -> FinalizeResponse:
-    logger.info("Brain dump take for user %s superseded; stopping", user_id)
-    return FinalizeResponse(
-        status=BrainDumpStatus.failed, input_mode=input_mode, error_code="superseded"
-    )
-
-
 def _append_note(
     existing: str | None, transcript: str, input_mode: BrainDumpInputMode
 ) -> str:
@@ -722,12 +787,6 @@ def _append_note(
     )
     note = f"{label}: {transcript}"
     return f"{existing}\n\n{note}" if existing else note
-
-
-def _completed_response(
-    transcript: str | None, input_mode: BrainDumpInputMode
-) -> FinalizeResponse:
-    return _pipeline_response(BrainDumpStatus.completed, transcript, input_mode)
 
 
 def _pipeline_response(
@@ -778,8 +837,8 @@ async def get_intro_card(user_id: str) -> IntroCardResponse:
     if await _retire_greeting_if_chatted(user_id):
         return IntroCardResponse(path="A", greeting="", greeting_done=True)
 
-    team, team_pending = await _team_for_intro(user_id, dump)
-    if dump is None or _nothing_to_reflect(dump):
+    team, team_pending = await team_for_dump(user_id, dump)
+    if dump is None or nothing_to_reflect(dump):
         return IntroCardResponse(
             path="B",
             greeting=prompts.PATH_B_GREETING,
@@ -803,7 +862,7 @@ async def get_intro_card(user_id: str) -> IntroCardResponse:
     )
 
 
-def _nothing_to_reflect(dump: OnboardingBrainDump) -> bool:
+def nothing_to_reflect(dump: OnboardingBrainDump) -> bool:
     """Whether ``dump`` holds anything worth greeting the user about."""
     return (
         dump.inputMode == BrainDumpInputMode.skipped
@@ -821,7 +880,7 @@ def _greeting_still_writing(dump: OnboardingBrainDump) -> bool:
 
     A terminal status means no more is coming, whatever the column holds.
     """
-    if _nothing_to_reflect(dump):
+    if nothing_to_reflect(dump):
         return False
     return not (dump.greeting or "").strip() and dump.status not in (
         BrainDumpStatus.completed,
@@ -876,6 +935,9 @@ def _stored_prompts(raw: object) -> list[SuggestedPrompt]:
                 if item.get("icon") in intro.PROMPT_ICONS
                 else intro.DEFAULT_PROMPT_ICON
             ),
+            expert_template_id=_optional_text(item.get("expert_template_id")),
+            why=intro.parse_why(item.get("why")),
+            expert_name=_optional_text(item.get("expert_name")),
         )
         for item in raw
         if isinstance(item, dict)
@@ -883,6 +945,10 @@ def _stored_prompts(raw: object) -> list[SuggestedPrompt]:
         and isinstance(item.get("prompt"), str)
     ]
     return parsed or intro.fallback_prompts()
+
+
+def _optional_text(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None
 
 
 async def mark_greeting_done(user_id: str) -> None:

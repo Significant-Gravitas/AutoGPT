@@ -41,23 +41,25 @@ vi.mock("../steps/BrainDumpStep/BrainDumpStep", () => ({
 vi.mock("../steps/ConnectStep/ConnectStep", () => ({
   ConnectStep: () => <div data-testid="step-connect" />,
 }));
-vi.mock("../steps/SubscriptionStep/SubscriptionStep", () => ({
-  SubscriptionStep: () => <div data-testid="step-subscription" />,
-}));
-vi.mock("../steps/IntroStep/IntroStep", () => ({
-  IntroStep: ({ slide }: { slide: string }) => (
+// Stands in for the plan step: Continue moves on only when there is no
+// paywall, as the real step does; with one, Stripe moves the wizard.
+vi.mock("../steps/SubscriptionStep/PlanTrialStep", () => ({
+  PlanTrialStep: ({ hasPaywall }: { hasPaywall: boolean }) => (
     <button
-      data-testid={`step-${slide}`}
-      onClick={() => useOnboardingWizardStore.getState().nextStep()}
+      data-testid="step-subscription"
+      data-paywall={String(hasPaywall)}
+      onClick={() => {
+        if (!hasPaywall) useOnboardingWizardStore.getState().nextStep();
+      }}
     >
       Continue
     </button>
   ),
 }));
-vi.mock("../steps/HireStep/HireStep", () => ({
-  HireStep: () => (
+vi.mock("../steps/IntroStep/IntroStep", () => ({
+  IntroStep: ({ slide }: { slide: string }) => (
     <button
-      data-testid="step-hire"
+      data-testid={`step-${slide}`}
       onClick={() => useOnboardingWizardStore.getState().nextStep()}
     >
       Continue
@@ -226,7 +228,7 @@ function makeProgress(overrides: Partial<OnboardingWizardProgress> = {}) {
   } as OnboardingWizardProgress;
 }
 async function completePersonalization() {
-  for (const key of ["team", "autopilot", "role", "braindump", "hire"]) {
+  for (const key of ["team", "autopilot", "role", "braindump"]) {
     fireEvent.click(await screen.findByTestId(`step-${key}`));
   }
 }
@@ -245,19 +247,34 @@ describe("onboarding before payment", () => {
     expect(completeStep).not.toHaveBeenCalled();
     expect(submitProfile).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
-    expect(await screen.findByTestId("step-hire")).toBeDefined();
+    expect(await screen.findByTestId("step-braindump")).toBeDefined();
   });
 
-  it("keeps the brain dump and real hire step before the paywall", async () => {
+  it("goes from the brain dump straight to the plan and trial, with no hire step", async () => {
     flags = { payment: true };
     render(<OnboardingPage />);
-    for (const key of ["team", "autopilot", "role", "braindump", "hire"]) {
+    for (const key of ["team", "autopilot", "role", "braindump"]) {
       fireEvent.click(await screen.findByTestId(`step-${key}`));
     }
-    expect(await screen.findByTestId("step-subscription")).toBeDefined();
-    expect(useOnboardingWizardStore.getState().completedSteps).toContain(
+    const step = await screen.findByTestId("step-subscription");
+    expect(step.dataset.paywall).toBe("true");
+    expect(screen.queryByTestId("step-hire")).toBeNull();
+    expect(useOnboardingWizardStore.getState().completedSteps).not.toContain(
       "hire",
     );
+  });
+
+  it("resumes a draft saved on the retired hire step at the plan step", async () => {
+    serverDraft = makeBaseProgress({
+      currentStep: "hire",
+      completedSteps: ["team", "autopilot", "role", "painPoints", "hire"],
+      hiredTemplateIds: ["maria"],
+    });
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-subscription")).toBeDefined();
+    expect(useOnboardingWizardStore.getState().hiredTemplateIds).toEqual([
+      "maria",
+    ]);
   });
 
   it("restores answers, hires and semantic progress in a fresh session", async () => {
@@ -381,7 +398,18 @@ describe("onboarding before payment", () => {
     },
   );
 
-  it("keeps self-host connection after personalization", async () => {
+  it("keeps self-host connection after the plan", async () => {
+    flags.payment = false;
+    local = true;
+    serverDraft = makeProgress({
+      currentStep: "connect",
+      completedSteps: ["role", "painPoints", "subscription"],
+    });
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-connect")).toBeDefined();
+  });
+
+  it("shows a self-hosted user the plan before the connection", async () => {
     flags.payment = false;
     local = true;
     serverDraft = makeProgress({
@@ -389,6 +417,9 @@ describe("onboarding before payment", () => {
       completedSteps: ["role", "painPoints"],
     });
     render(<OnboardingPage />);
+    const plan = await screen.findByTestId("step-subscription");
+    expect(plan.dataset.paywall).toBe("false");
+    fireEvent.click(plan);
     expect(await screen.findByTestId("step-connect")).toBeDefined();
   });
 
@@ -444,12 +475,11 @@ describe("draft recovery", () => {
       }),
     );
     fireEvent.click(screen.getByTestId("step-braindump"));
-    fireEvent.click(await screen.findByTestId("step-hire"));
     expect(await screen.findByTestId("step-subscription")).toBeDefined();
     await waitFor(() =>
       expect(serverDraft).toMatchObject({
         currentStep: "subscription",
-        completedSteps: expect.arrayContaining(["role", "painPoints", "hire"]),
+        completedSteps: expect.arrayContaining(["role", "painPoints"]),
         role: "Other",
         otherRole: "Dentist",
       }),
@@ -514,7 +544,6 @@ describe("draft recovery", () => {
       await screen.findByText(/couldn't save your progress/),
     ).toBeDefined();
     fireEvent.click(screen.getByTestId("step-braindump"));
-    fireEvent.click(await screen.findByTestId("step-hire"));
     expect(await screen.findByTestId("step-subscription")).toBeDefined();
   });
 
@@ -702,7 +731,6 @@ it.each(["", "Other"])(
     act(() => useOnboardingWizardStore.getState().setRole("Design"));
     fireEvent.click(screen.getByTestId("step-role"));
     fireEvent.click(await screen.findByTestId("step-braindump"));
-    fireEvent.click(await screen.findByTestId("step-hire"));
     fireEvent.click(await screen.findByTestId("step-preparing"));
     await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/home"));
     expect(submitProfile).toHaveBeenCalledWith(

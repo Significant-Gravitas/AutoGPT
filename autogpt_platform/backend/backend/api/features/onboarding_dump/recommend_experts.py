@@ -18,6 +18,7 @@ import os
 
 from backend.api.features.experts.copy_policy import EXPERT_COPY_POLICY
 from backend.api.features.experts.models import Expert
+from backend.api.features.onboarding_dump import plan
 from backend.api.features.onboarding_dump.models import (
     ExpertRecommendations,
     RaiseSuggestion,
@@ -33,7 +34,9 @@ logger = logging.getLogger(__name__)
 _MODEL = os.environ.get("BRAIN_DUMP_RECOMMEND_MODEL", "anthropic/claude-haiku-5.5")
 _TIMEOUT_SECONDS = 30
 
-MAX_EXPERTS = 16
+# The plan offers Jev this many owners to choose from and keeps three, so a
+# longer answer is only a longer wait on the plan step.
+MAX_EXPERTS = plan.MAX_OWNER_CANDIDATES
 # The hire step lays a team out three across; the fallback has read nothing,
 # so it proposes one row rather than the roster.
 MAX_FALLBACK_EXPERTS = 3

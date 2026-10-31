@@ -7,8 +7,8 @@ export type OnboardingStepKey =
   | "autopilot"
   | "role"
   | "pain_points"
+  | "subscription"
   | "connect"
-  | "hire"
   | "preparing";
 
 const POSTHOG_SENT_KEY_PREFIX = "posthog_onboarding_step_viewed_";
@@ -17,9 +17,9 @@ const POSTHOG_SENT_KEY_PREFIX = "posthog_onboarding_step_viewed_";
  * Maps a wizard step number to a stable key.
  *
  * Step numbers differ between layouts, so the number alone is meaningless
- * across cohorts — Preparing is 4 without a paywall and 5 with one. Keying by
- * name keeps a single funnel readable for all. The subscription step returns
- * null: it is reported as `paywall_viewed` instead.
+ * across cohorts — Preparing is 6 with a paywall and 7 self-hosted. Keying by
+ * name keeps a single funnel readable for all. The plan step is `subscription`
+ * with or without a paywall; with one it also sends `paywall_viewed`.
  */
 export function onboardingStepKey(
   steps: StepLayout,
@@ -29,8 +29,8 @@ export function onboardingStepKey(
   if (step === steps.autopilot) return "autopilot";
   if (step === steps.role) return "role";
   if (step === steps.painPoints) return "pain_points";
+  if (step === steps.subscription) return "subscription";
   if (step === steps.connect) return "connect";
-  if (step === steps.hire) return "hire";
   if (step === steps.preparing) return "preparing";
   return null;
 }

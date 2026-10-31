@@ -417,6 +417,9 @@ class HireResult(BaseModel):
 
 # Where a hire was made, for the ``expert_hired`` analytics event.
 HireSurface = Literal["onboarding", "expert_page", "copilot"]
+# What made it, when that is more than a person picking one expert: "plan" is
+# the onboarding plan's team hired once the trial starts.
+HireVia = Literal["plan"]
 
 
 RaiseAttachmentKind = Literal["workflow", "skill"]

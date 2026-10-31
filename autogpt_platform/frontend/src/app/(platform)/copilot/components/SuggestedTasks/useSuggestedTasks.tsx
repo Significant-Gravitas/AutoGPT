@@ -1,24 +1,24 @@
-import {
-  getGetBrainDumpSuggestedTasksQueryKey,
-  type getBrainDumpSuggestedTasksResponse,
-  useGetBrainDumpSuggestedTasks,
-  useUpdateBrainDumpSuggestedTasks,
-} from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
 import type { SuggestedTask } from "@/app/api/__generated__/models/suggestedTask";
 import { Button } from "@/components/atoms/Button/Button";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { useStableCallback } from "@/hooks/useStableCallback";
+import { markExpertThreadSource } from "@/services/experts/expert-thread-source";
 import { trackFunnel } from "@/services/experts/experts-analytics";
-import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast as sonnerToast } from "sonner";
 import { toastSendFailure } from "../../helpers/sendFailureToast";
+import type { ExpertIdentity, ExpertIdentityMap } from "../../useExpertMap";
 import {
   countOpenTasks,
+  focusTaskRow,
   getShownTasks,
+  getTaskOwner,
   getTaskState,
-  mergeUpdatedTasks,
+  type TaskOwner,
   withState,
 } from "./helpers";
+import { useSuggestedTaskList } from "./useSuggestedTaskList";
+import { useTaskRecipient } from "./useTaskRecipient";
 
 export type SuggestionSurface = "intro" | "home";
 
@@ -29,93 +29,79 @@ interface Args {
   /** False while the greeting is being written: the personalised list lands
    *  with it, and a read before then caches the generic set. */
   enabled: boolean;
+  /** The user's active experts: who can take a task. */
+  experts: ExpertIdentity[];
+  /** Every expert, fired ones included: who a started task is with. */
+  expertsById: ExpertIdentityMap;
+  /** False until the roster has answered: before then a hired owner would
+   *  read as gone and the task would go to Otto. */
+  isRosterLoaded: boolean;
+  /** The roster could not be read: owners are unknown, not gone. */
+  hasRosterFailed: boolean;
+  /** The composer's recipient, and how to change it: a task goes to its
+   *  owner the way the recipient picker sends to an expert. */
+  recipientID: string | null;
+  selectRecipient: (id: string | null) => void;
+  /** The page can start a task now (not resolving a recipient, not locked). */
+  canSend: boolean;
 }
 
-const UNDO_TOAST_MS = 6000;
-const QUERY_KEY = getGetBrainDumpSuggestedTasksQueryKey();
+const UNDO_TOAST_MS = 5000;
 
-export function useSuggestedTasks({ surface, onSend, enabled }: Args) {
-  const queryClient = useQueryClient();
+export function useSuggestedTasks({
+  surface,
+  onSend,
+  enabled,
+  experts,
+  expertsById,
+  isRosterLoaded,
+  hasRosterFailed,
+  recipientID,
+  selectRecipient,
+  canSend,
+}: Args) {
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const recipient = useTaskRecipient({ recipientID, selectRecipient, canSend });
 
-  const { data: response } = useGetBrainDumpSuggestedTasks({
-    query: { enabled },
+  const { list, tasks, mutate, updateCache } = useSuggestedTaskList({
+    enabled,
   });
-  const list = response?.status === 200 ? response.data : null;
-  const tasks = list?.tasks ?? [];
   const shownTasks = getShownTasks(tasks);
 
-  // One scope, so writes reach the server in the order they were made even
-  // when the block that made them has already collapsed.
-  const { mutate } = useUpdateBrainDumpSuggestedTasks({
-    mutation: {
-      scope: { id: "brain-dump-suggested-tasks" },
-      // Each write sets a state, so a retry is safe; giving up on a sent row
-      // would reopen it and let the next click start a second chat.
-      retry: 3,
-      onSuccess: (result, { data }) => {
-        if (result.status !== 200) return;
-        updateCache(
-          (current) =>
-            mergeUpdatedTasks({
-              tasks: current,
-              updated: result.data.tasks ?? [],
-              ids: data.task_ids,
-            }),
-          result.data.stored,
-        );
-      },
-      onError: () => {
-        void queryClient.invalidateQueries({ queryKey: QUERY_KEY });
-        toast({
-          title: "Couldn't update your suggestions",
-          description: "Please try again.",
-          variant: "destructive",
-        });
-      },
-    },
-  });
-
-  function updateCache(
-    next: (tasks: SuggestedTask[]) => SuggestedTask[],
-    stored?: boolean,
-  ) {
-    queryClient.setQueryData<getBrainDumpSuggestedTasksResponse>(
-      QUERY_KEY,
-      (current) => {
-        if (!current || current.status !== 200) return current;
-        return {
-          ...current,
-          data: {
-            tasks: next(current.data.tasks ?? []),
-            stored: stored ?? current.data.stored,
-          },
-        };
-      },
-    );
+  // A task that did not start: the composer goes back to whoever it was
+  // addressed to, and focus to the row, which is enabled again.
+  function giveBack(task: SuggestedTask) {
+    recipient.restore();
+    focusTaskRow(task.id);
   }
 
-  async function sendTask(task: SuggestedTask) {
-    if (sendingId) return;
+  function sendTask(task: SuggestedTask) {
+    if (sendingId || !isRosterLoaded) return;
     setSendingId(task.id);
+    const owner = getTaskOwner(task, experts);
     trackFunnel("home_suggestion_clicked", {
       position: shownTasks.indexOf(task),
       surface,
       remaining: countOpenTasks(tasks) - 1,
+      owner: owner.kind,
+      expert_template_id: task.expert_template_id ?? null,
+      rank: tasks.findIndex((candidate) => candidate.id === task.id),
     });
-    async function startChat() {
-      const sessionId = await onSend(task.prompt);
-      // No chat came of it (a locked composer, say): the row stays open.
-      if (!sessionId) return;
-      updateCache((current) =>
-        withState({ tasks: current, ids: [task.id], state: "sent" }),
-      );
-      mutate({
-        data: { task_ids: [task.id], state: "sent", session_id: sessionId },
-      });
-    }
-    await startChat()
-      .catch((error) => {
+    recipient.sendTo(
+      owner.kind === "expert" ? owner.expert.id : null,
+      () => dispatch(task, owner),
+      () => giveUp(task),
+    );
+  }
+
+  function startChat(task: SuggestedTask, owner: TaskOwner) {
+    markExpertThreadSource(owner.kind === "expert" ? "suggested_task" : null);
+    return sendAndMark(task, owner)
+      .then((isStarted) => {
+        if (!isStarted) giveBack(task);
+      })
+      .catch((error: unknown) => {
+        giveBack(task);
         toastSendFailure({
           title: "Could not start that task",
           error,
@@ -123,30 +109,56 @@ export function useSuggestedTasks({ surface, onSend, enabled }: Args) {
         });
       })
       .finally(() => {
+        markExpertThreadSource(null);
         setSendingId(null);
       });
   }
 
-  function hideTasks(hidden: SuggestedTask[], scope: "one" | "all") {
-    const ids = hidden.map((task) => task.id);
+  async function sendAndMark(task: SuggestedTask, owner: TaskOwner) {
+    const sessionId = await onSend(task.prompt);
+    // No chat came of it (a locked composer, say): the row stays open.
+    if (!sessionId) return false;
+    updateCache((current) =>
+      withState({
+        tasks: current,
+        ids: [task.id],
+        state: "sent",
+        sent: {
+          sessionID: sessionId,
+          expertID: owner.kind === "expert" ? owner.expert.id : null,
+        },
+      }),
+    );
+    mutate({
+      data: { task_ids: [task.id], state: "sent", session_id: sessionId },
+    });
+    // Only an owner the roster says is gone; a roster that failed to load
+    // says nothing about the team.
+    if (owner.kind === "otto" && task.expert_template_id && !hasRosterFailed) {
+      toast({
+        title: `${task.expert_name ?? "That expert"} isn't on your team, so Otto has this one.`,
+      });
+    }
+    return true;
+  }
+
+  function removeTask(task: SuggestedTask) {
     const before = tasks;
-    const hiddenOpen = hidden.filter(
-      (task) => getTaskState(task) === "open",
-    ).length;
     trackFunnel("home_suggestion_dismissed", {
-      position: scope === "one" ? shownTasks.indexOf(hidden[0]) : null,
+      position: shownTasks.indexOf(task),
       surface,
-      remaining: countOpenTasks(tasks) - hiddenOpen,
-      scope,
+      remaining:
+        countOpenTasks(tasks) - (getTaskState(task) === "open" ? 1 : 0),
+      scope: "one",
     });
     updateCache((current) =>
-      withState({ tasks: current, ids, state: "dismissed" }),
+      withState({ tasks: current, ids: [task.id], state: "dismissed" }),
     );
-    mutate({ data: { task_ids: ids, state: "dismissed" } });
+    mutate({ data: { task_ids: [task.id], state: "dismissed" } });
 
-    const toastId = `suggestion-hidden-${ids.join("-")}`;
+    const toastId = `suggestion-removed-${task.id}`;
     toast({
-      title: scope === "all" ? "Suggestions hidden" : "Suggestion hidden",
+      title: "Task removed",
       duration: UNDO_TOAST_MS,
       replaceKey: toastId,
       action: (
@@ -155,7 +167,7 @@ export function useSuggestedTasks({ surface, onSend, enabled }: Args) {
           size="xs"
           onClick={() => {
             sonnerToast.dismiss(toastId);
-            undoHide(before, ids);
+            undoRemove(before, [task.id]);
           }}
         >
           Undo
@@ -165,7 +177,7 @@ export function useSuggestedTasks({ surface, onSend, enabled }: Args) {
   }
 
   // An Undo sends no event: the dismissal stands as a fact.
-  function undoHide(before: SuggestedTask[], ids: string[]) {
+  function undoRemove(before: SuggestedTask[], ids: string[]) {
     const previous = new Map(before.map((task) => [task.id, task]));
     updateCache((current) =>
       current.map((task) =>
@@ -175,12 +187,34 @@ export function useSuggestedTasks({ surface, onSend, enabled }: Args) {
     mutate({ data: { task_ids: ids, state: "open" } });
   }
 
+  // Runs the latest startChat (and so the latest onSend) whenever the
+  // recipient switch it waited for lands.
+  const dispatch = useStableCallback(
+    (task: SuggestedTask, owner: TaskOwner) => void startChat(task, owner),
+  );
+
+  // The latest render's too: its restore sees the recipient the switch
+  // landed on, which the click's render has not seen yet.
+  const giveUp = useStableCallback((task: SuggestedTask) => {
+    setSendingId(null);
+    giveBack(task);
+    toastSendFailure({
+      title: "Could not start that task",
+      error: new Error("The task's expert could not be selected"),
+      recovery: "it is still in your suggestions",
+    });
+  });
+
   return {
     isStored: Boolean(list?.stored),
+    /** Every task in stored (ranked) order, removed ones included. */
+    allTasks: tasks,
     tasks: shownTasks,
+    experts,
+    expertsById,
+    isRosterLoaded,
     sendingId,
     sendTask,
-    hideTask: (task: SuggestedTask) => hideTasks([task], "one"),
-    hideAll: () => hideTasks(shownTasks, "all"),
+    removeTask,
   };
 }

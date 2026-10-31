@@ -15,6 +15,7 @@ import { OnboardingIntroCard } from "../OnboardingIntroCard/OnboardingIntroCard"
 import { useOnboardingIntroCard } from "../OnboardingIntroCard/useOnboardingIntroCard";
 import { SEND_AT_RESET_PLACEHOLDER } from "../SendAtReset/helpers";
 import { SuggestedTasksBlock } from "../SuggestedTasks/SuggestedTasksBlock";
+import { useCollapsedSuggestions } from "../SuggestedTasks/useCollapsedSuggestions";
 import { useSuggestedTasks } from "../SuggestedTasks/useSuggestedTasks";
 import { EmptyHero } from "./components/EmptyHero";
 import { ExpertKickoffLoader } from "./components/ExpertKickoffLoader/ExpertKickoffLoader";
@@ -85,6 +86,10 @@ export function EmptySession({
 
   const {
     options,
+    experts,
+    expertsById,
+    isRosterLoaded,
+    hasRosterFailed,
     recipient,
     selectedExpert,
     isLoadingRecipient,
@@ -95,7 +100,17 @@ export function EmptySession({
     surface: intro.isVisible ? "intro" : "home",
     onSend: onStartTask ?? onSend,
     enabled: !intro.isAwaitingGreeting,
+    experts,
+    expertsById,
+    isRosterLoaded,
+    hasRosterFailed,
+    recipientID: recipient.id,
+    selectRecipient,
+    // A task starts its own chat only through onStartTask, which the page
+    // withholds while it resolves the recipient or the turn is locked.
+    canSend: Boolean(onStartTask) && !isComposerDisabled,
   });
+  const collapse = useCollapsedSuggestions();
   const introLine = isLoadingRecipient ? null : getIntroLine(selectedExpert);
   const recipientPicker = (
     <RecipientChip
@@ -135,6 +150,7 @@ export function EmptySession({
               name={greetingName}
               greeting={intro.greeting}
               suggestions={suggestions}
+              collapse={collapse}
               transcript={intro.transcript}
               disabled={isComposerDisabled || !!atReset}
             />
@@ -210,14 +226,18 @@ export function EmptySession({
             </div>
           )}
 
-          {/* These prompts are Otto's, so they go while an expert is the
-              recipient. */}
-          {!intro.isVisible && !intro.isAwaitingGreeting && !selectedExpert && (
-            <SuggestedTasksBlock
-              suggestions={suggestions}
-              disabled={isComposerDisabled || !!atReset}
-            />
-          )}
+          {/* The greeting's list once the greeting has retired. Each task
+              goes to its own owner, whoever the composer is addressed to. */}
+          {!intro.isVisible &&
+            !intro.isAwaitingGreeting &&
+            suggestions.isStored && (
+              <SuggestedTasksBlock
+                suggestions={suggestions}
+                collapse={collapse}
+                disabled={isComposerDisabled || !!atReset}
+                className="mx-auto mb-6 max-w-[42rem]"
+              />
+            )}
         </div>
 
         {!intro.isVisible && !intro.isAwaitingGreeting && <HomeRecap />}

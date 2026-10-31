@@ -440,14 +440,11 @@
   "src/app/(platform)/copilot/components/SetupRequirementsCard/SetupRequirementsCard.tsx": {
     "no-restyle": 4
   },
-  "src/app/(platform)/copilot/components/SuggestedTasks/SuggestedTaskCard.tsx": {
-    "no-restyle": 13
-  },
   "src/app/(platform)/copilot/components/SuggestedTasks/SuggestedTaskList.tsx": {
-    "no-restyle": 13
+    "no-restyle": 1
   },
   "src/app/(platform)/copilot/components/SuggestedTasks/SuggestedTasksBlock.tsx": {
-    "no-restyle": 9
+    "no-restyle": 3
   },
   "src/app/(platform)/copilot/components/TaskProgressBar/TaskProgressBar.tsx": {
     "no-restyle": 6

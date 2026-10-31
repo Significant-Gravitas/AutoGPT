@@ -52,6 +52,11 @@ export const ExpertsFunnelEvent = {
   // or under the Home composer (`surface: home`).
   HOME_SUGGESTION_CLICKED: "home_suggestion_clicked",
   HOME_SUGGESTION_DISMISSED: "home_suggestion_dismissed",
+  // Hide / Show on the suggested tasks under the Home composer: the list
+  // folded away or brought back, with how many rows were still open. Nothing
+  // is written to the tasks.
+  HOME_SUGGESTIONS_COLLAPSED: "home_suggestions_collapsed",
+  HOME_SUGGESTIONS_EXPANDED: "home_suggestions_expanded",
 } as const;
 
 export const HireFlowEvent = {
@@ -99,18 +104,20 @@ export const BrainDumpEvent = {
   // this covers both a suggestion click and a typed reply.
   INTRO_FOLLOWUP_SENT: "intro_followup_sent",
   LATER_DUMP_COMPLETED: "later_dump_completed",
-  // The team Otto proposed on the greeting page: one event per card
-  // shown, then the doors out of it — hire, create your own, talk it
-  // through, or skip straight to the builder.
-  EXPERT_RECOMMENDED: "expert_recommended",
-  EXPERT_RECOMMENDATION_CLICKED: "expert_recommendation_clicked",
-  // The hire step's primary was clicked to hire every expert still unhired
-  // (or, with `retry`, the ones a batch failed to hire).
-  HIRE_ALL_CLICKED: "hire_all_clicked",
-  // The wizard's hire step was left, with how many of the proposed experts
-  // were hired, so the funnel can tell "hired a team" from "skipped past it".
-  // `via` says how. The hires themselves are the backend's `expert_hired`.
-  HIRE_STEP_CONTINUED: "hire_step_continued",
+} as const;
+
+// The onboarding plan (SECRT-3201): the plan + trial step, where the team
+// and the first tasks are proposed, and the hire of that team once the trial
+// is confirmed. The hires themselves are the backend's `expert_hired`
+// (`via: plan`).
+export const PlanEvent = {
+  // Once per mount of the plan step, when the plan first renders. `gave_up`
+  // is true when the 30 s wait ran out before a plan was shown (the step then
+  // settles the plan); `plan_source` says whose plan that was.
+  PLAN_VIEWED: "plan_viewed",
+  // The preparing screen hired the plan's team: how many joined and how
+  // many could not.
+  PLAN_EXPERTS_HIRED: "plan_experts_hired",
 } as const;
 
 // The guided first run over the real UI (SECRT-3149), opened by itself after
@@ -219,6 +226,7 @@ export const PostHogEvent = {
   ...ExpertsFunnelEvent,
   ...HireFlowEvent,
   ...BrainDumpEvent,
+  ...PlanEvent,
   ...FirstRunEvent,
   ...TabIntroEvent,
   ...VoiceModeEvent,

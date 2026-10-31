@@ -13055,6 +13055,72 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/onboarding/brain-dump/plan": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Get Brain Dump Plan",
+        "description": "The onboarding plan step: what Otto heard, the team, the ranked tasks.\n\n``ready=false`` means the background jobs are still running; keep\npolling. Every other state resolves, a skipped or failed dump to the\nrole plan, which is stored on this first read.",
+        "operationId": "get_brain_dump_plan",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PlanResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/plan/hire": {
+      "post": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Hire Brain Dump Plan",
+        "description": "Hire the plan's team, after the trial is confirmed.\n\nBehind the paywall, so a user who left Stripe without paying hires\nnobody, whatever the client does; with no paywall it is open.\n\nIdempotent: anyone already on the team is reported, not hired again.\nA hire that fails is reported in ``failed`` rather than failing the\nrequest, and the active expert limit stops the hiring where it is hit.",
+        "operationId": "hire_brain_dump_plan",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PlanHireResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/plan/settle": {
+      "post": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Settle Brain Dump Plan",
+        "description": "The plan step stops waiting: the plan it shows becomes the plan.\n\nWhile the background jobs are still running, the role plan the last\n``/plan`` answer carried is stored as the take's tasks and team, so the\ntrial hires, and Home lists, what the step showed; the jobs leave both\nalone. Once a plan is ready this changes nothing and returns it.",
+        "operationId": "settle_brain_dump_plan",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PlanResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/onboarding/brain-dump/recommended-experts": {
       "get": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
@@ -13147,7 +13213,7 @@
       "get": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Get Brain Dump Suggested Tasks",
-        "description": "The greeting's suggested first tasks, each with its own state.\n\nUnlike ``/intro``, this keeps answering after the first message: the\nlist stays on Home, a sent row marked in progress, until every row is\ndismissed.",
+        "description": "The greeting's suggested first tasks, each with its own state.\n\nUnlike ``/intro``, this keeps answering after the first message: the\nlist stays on Home, a sent row marked in progress, until every row is\ndismissed. Each task names its owner's hired expert, if any.",
         "operationId": "get_brain_dump_suggested_tasks",
         "responses": {
           "200": {
@@ -13169,7 +13235,7 @@
       "post": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Update Brain Dump Suggested Tasks",
-        "description": "Mark suggested tasks sent, dismissed, or open again (Undo).\n\nTakes several ids so \"Hide all\" and its Undo are one write each.",
+        "description": "Mark suggested tasks sent, dismissed, or open again (Undo).\n\nTakes several ids so a change and its Undo are one write each.",
         "operationId": "update_brain_dump_suggested_tasks",
         "requestBody": {
           "content": {
@@ -31580,6 +31646,98 @@
         "title": "PickerTokenResponse",
         "description": "Short-lived OAuth access token shipped to the browser for rendering a\nprovider-hosted picker UI (e.g. Google Drive Picker). Deliberately narrow:\nonly the fields the client needs to initialize the picker widget. Issued\nfrom the user's own stored credential so ownership and scope gating are\nenforced by the credential lookup."
       },
+      "PlanHireFailure": {
+        "properties": {
+          "template_id": { "type": "string", "title": "Template Id" },
+          "name": { "type": "string", "title": "Name" }
+        },
+        "type": "object",
+        "required": ["template_id", "name"],
+        "title": "PlanHireFailure"
+      },
+      "PlanHireResponse": {
+        "properties": {
+          "hired": {
+            "items": { "$ref": "#/components/schemas/PlanHiredExpert" },
+            "type": "array",
+            "title": "Hired",
+            "default": []
+          },
+          "failed": {
+            "items": { "$ref": "#/components/schemas/PlanHireFailure" },
+            "type": "array",
+            "title": "Failed",
+            "default": []
+          }
+        },
+        "type": "object",
+        "title": "PlanHireResponse",
+        "description": "The plan's team after a hire: everyone now on the user's team, and\nwhoever could not join (a failed hire, or the active expert limit)."
+      },
+      "PlanHiredExpert": {
+        "properties": {
+          "template_id": { "type": "string", "title": "Template Id" },
+          "expert_id": { "type": "string", "title": "Expert Id" },
+          "name": { "type": "string", "title": "Name" }
+        },
+        "type": "object",
+        "required": ["template_id", "expert_id", "name"],
+        "title": "PlanHiredExpert"
+      },
+      "PlanProgress": {
+        "properties": {
+          "tasks_written": {
+            "type": "boolean",
+            "title": "Tasks Written",
+            "default": false
+          },
+          "team_chosen": {
+            "type": "boolean",
+            "title": "Team Chosen",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "PlanProgress",
+        "description": "How far the background jobs have got, for the plan step's checklist.\n\nThe greeting job writes the tasks and the team job picks the experts,\nside by side; the plan job, which orders the tasks and gives each its\nowner, runs once both are done and is what ``ready`` waits on."
+      },
+      "PlanResponse": {
+        "properties": {
+          "ready": { "type": "boolean", "title": "Ready" },
+          "source": {
+            "type": "string",
+            "enum": ["llm", "fallback"],
+            "title": "Source"
+          },
+          "skipped_dump": { "type": "boolean", "title": "Skipped Dump" },
+          "heard": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Heard"
+          },
+          "team": {
+            "items": { "$ref": "#/components/schemas/RecommendedExpert" },
+            "type": "array",
+            "title": "Team",
+            "default": []
+          },
+          "tasks": {
+            "items": { "$ref": "#/components/schemas/SuggestedTask" },
+            "type": "array",
+            "title": "Tasks",
+            "default": []
+          },
+          "progress": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/PlanProgress" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["ready", "source", "skipped_dump"],
+        "title": "PlanResponse",
+        "description": "The plan step's content: what Otto heard, the team, and the tasks.\n\n``ready`` is false only while the background jobs are still running;\nthe tasks and team it carries then are the role plan, so a client that\nstops waiting has something true to show, and ``progress`` says how far\nthe jobs have got. ``source`` is \"llm\" for a plan built from the tasks\nthe greeting wrote (ranked by Jev or by the deterministic fallback) and\n\"fallback\" for a default set: the role sets, or the generic starters."
+      },
       "Platform": {
         "type": "string",
         "enum": [
@@ -36122,7 +36280,19 @@
         "properties": {
           "title": { "type": "string", "title": "Title" },
           "prompt": { "type": "string", "title": "Prompt" },
-          "icon": { "type": "string", "title": "Icon", "default": "sparkle" }
+          "icon": { "type": "string", "title": "Icon", "default": "sparkle" },
+          "expert_template_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Template Id"
+          },
+          "why": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Why"
+          },
+          "expert_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Name"
+          }
         },
         "type": "object",
         "required": ["title", "prompt"],
@@ -36147,6 +36317,18 @@
           "title": { "type": "string", "title": "Title" },
           "prompt": { "type": "string", "title": "Prompt" },
           "icon": { "type": "string", "title": "Icon", "default": "sparkle" },
+          "expert_template_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Template Id"
+          },
+          "why": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Why"
+          },
+          "expert_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Name"
+          },
           "id": { "type": "string", "title": "Id" },
           "state": {
             "type": "string",
@@ -36164,12 +36346,16 @@
               { "type": "null" }
             ],
             "title": "Updated At"
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
           }
         },
         "type": "object",
         "required": ["title", "prompt", "id"],
         "title": "SuggestedTask",
-        "description": "One row of the Home checklist: a suggested prompt and what became of it.\n\nStored inside ``OnboardingBrainDump.suggestedPrompts``; a row written\nbefore states existed reads as ``open``, with its list index as ``id``."
+        "description": "One row of the Home checklist: a suggested prompt and what became of it.\n\nStored inside ``OnboardingBrainDump.suggestedPrompts``; a row written\nbefore states existed reads as ``open``, with its list index as ``id``,\nand one written before owners existed reads as Otto's."
       },
       "SuggestedTasksResponse": {
         "properties": {

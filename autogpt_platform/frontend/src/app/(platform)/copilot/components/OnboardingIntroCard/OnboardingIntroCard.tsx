@@ -18,13 +18,15 @@ import {
 import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
-import { SuggestedTaskCards } from "../SuggestedTasks/SuggestedTaskCards";
+import { SuggestedTasksBlock } from "../SuggestedTasks/SuggestedTasksBlock";
+import type { useCollapsedSuggestions } from "../SuggestedTasks/useCollapsedSuggestions";
 import type { useSuggestedTasks } from "../SuggestedTasks/useSuggestedTasks";
 
 interface Props {
   name: string | null;
   greeting: string;
   suggestions: ReturnType<typeof useSuggestedTasks>;
+  collapse: ReturnType<typeof useCollapsedSuggestions>;
   transcript?: string;
   disabled?: boolean;
 }
@@ -55,6 +57,7 @@ export function OnboardingIntroCard({
   name,
   greeting,
   suggestions,
+  collapse,
   transcript = "",
   disabled = false,
 }: Props) {
@@ -165,23 +168,25 @@ export function OnboardingIntroCard({
 
       {suggestions.tasks.length > 0 && (
         <motion.div {...reveal(promptsStart)} className="mt-5">
-          <SuggestedTaskCards
-            tasks={suggestions.tasks}
-            sendingId={suggestions.sendingId}
+          <SuggestedTasksBlock
+            suggestions={suggestions}
+            collapse={collapse}
             disabled={disabled}
-            onSend={suggestions.sendTask}
-            onHide={suggestions.hideTask}
+            showTeam
           />
         </motion.div>
       )}
 
-      <motion.div {...reveal(footerStart)}>
-        <Text variant="body" tone="muted" className="mt-5">
-          {suggestions.tasks.length > 0
-            ? "Want to do something else? Just write it in the textbox below."
-            : "Tell me what you'd like to start with in the textbox below."}
-        </Text>
-      </motion.div>
+      {/* Folded away with the list: the composer below says the same. */}
+      {suggestions.tasks.length > 0 && collapse.isCollapsed ? null : (
+        <motion.div {...reveal(footerStart)}>
+          <Text variant="body" tone="muted" className="mt-5">
+            {suggestions.tasks.length > 0
+              ? "Want to do something else? Just write it in the textbox below."
+              : "Tell me what you'd like to start with in the textbox below."}
+          </Text>
+        </motion.div>
+      )}
     </div>
   );
 }

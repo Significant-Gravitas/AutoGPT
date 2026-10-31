@@ -34,8 +34,6 @@ const LIVE_EVENT_NAMES = [
   "credential_proceed_stuck_after_connect",
   "credential_scope_shortfall_blocked_selection",
   "expert_profile_opened",
-  "expert_recommendation_clicked",
-  "expert_recommended",
   "expert_thread_created",
   "experts_section_viewed",
   "feature_flag_mismatched",
@@ -43,13 +41,13 @@ const LIVE_EVENT_NAMES = [
   "first_run_tour_shown",
   "first_run_tour_skipped",
   "first_run_tour_step_viewed",
-  "hire_all_clicked",
   "hire_flow_abandoned",
   "hire_started",
-  "hire_step_continued",
   "home_attention_actioned",
   "home_suggestion_clicked",
   "home_suggestion_dismissed",
+  "home_suggestions_collapsed",
+  "home_suggestions_expanded",
   "home_team_member_clicked",
   "home_viewed",
   "intro_followup_sent",
@@ -58,7 +56,9 @@ const LIVE_EVENT_NAMES = [
   "marketing_opted_out",
   "onboarding_step_viewed",
   "paywall_viewed",
+  "plan_experts_hired",
   "plan_selected",
+  "plan_viewed",
   "tab_intro_cta_clicked",
   "tab_intro_dismissed",
   "tab_intro_shown",
@@ -108,6 +108,12 @@ const RETIRED_EVENT_NAMES = [
   "subscription_trial_offer_viewed",
   "voice_first_sound_latency_ms",
   "voice_transcribe_latency_ms",
+  // The onboarding hire step, replaced by the plan step and the hire on the
+  // preparing screen (SECRT-3201).
+  "expert_recommendation_clicked",
+  "expert_recommended",
+  "hire_all_clicked",
+  "hire_step_continued",
 ];
 
 describe("PostHog event names", () => {

@@ -1,145 +1,146 @@
 "use client";
 
 import type { SuggestedTask } from "@/app/api/__generated__/models/suggestedTask";
-import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { tourTarget } from "@/lib/tour-targets";
 import { cn } from "@/lib/utils";
+import { ArrowDown01Icon, ArrowUp01Icon } from "@hugeicons/core-free-icons";
+import { AnimatePresence } from "framer-motion";
+import { useId } from "react";
+import type { ExpertIdentity, ExpertIdentityMap } from "../../useExpertMap";
+import { TaskRow } from "./components/TaskRow";
 import {
-  ArrowRight01Icon,
-  Cancel01Icon,
-  Loading03Icon,
-} from "@hugeicons/core-free-icons";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import NextLink from "next/link";
-import { tourStartingPoint, tourTarget } from "@/lib/tour-targets";
-import { getChatHref, getPromptIcon, getTaskState } from "./helpers";
+  focusTaskRow,
+  getNeighbourID,
+  getStartHereID,
+  getTaskOwner,
+  splitTasks,
+} from "./helpers";
 
 interface Props {
+  /** Every task in stored (ranked) order, removed ones included. */
   tasks: SuggestedTask[];
+  experts: ExpertIdentity[];
+  /** Fired experts too, for the rows already started. */
+  expertsById: ExpertIdentityMap;
   sendingId: string | null;
   disabled?: boolean;
+  /** Whether the user opened or closed "more tasks"; null until they do.
+   *  Kept above the collapse, so Hide and Show do not reset it. */
+  moreChoice: boolean | null;
+  onMoreChoice: (isOpen: boolean) => void;
+  /** Where focus goes when a removed row has no neighbour left. */
+  fallbackFocusID: string;
   onSend: (task: SuggestedTask) => void;
-  onHide: (task: SuggestedTask) => void;
+  onRemove: (task: SuggestedTask) => void;
   className?: string;
 }
 
-const ROW_CLASSES =
-  "flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left";
-
+// The ranked tasks, each with who takes it. The first three are the plan;
+// the walkthrough's spotlight sits on their list, and the rest wait under
+// "{n} more tasks" until one of the three is started or removed.
 export function SuggestedTaskList({
   tasks,
+  experts,
+  expertsById,
   sendingId,
   disabled = false,
+  moreChoice,
+  onMoreChoice,
+  fallbackFocusID,
   onSend,
-  onHide,
+  onRemove,
   className,
 }: Props) {
-  const prefersReducedMotion = useReducedMotion();
-  const isBusy = disabled || sendingId !== null;
+  const { top, more, hasActedOnTop } = splitTasks(tasks);
+  const isMoreOpen = moreChoice ?? hasActedOnTop;
+  const moreID = useId();
+  const startHereID = getStartHereID([...top, ...(isMoreOpen ? more : [])]);
+  const sendingTask = tasks.find((task) => task.id === sendingId);
+
+  function handleRemove(task: SuggestedTask) {
+    const isTop = top.some((row) => row.id === task.id);
+    // Acting on one of the three brings up the rest, and keeps them up
+    // through an Undo.
+    const willMoreOpen = isMoreOpen || (isTop && moreChoice === null);
+    if (isTop && moreChoice === null) onMoreChoice(true);
+    const rows = [...top, ...(willMoreOpen ? more : [])];
+    // The last task takes the block, and its toggle, with it.
+    const isLast = top.length + more.length === 1;
+    onRemove(task);
+    focusTaskRow(
+      getNeighbourID(rows, task),
+      isLast ? undefined : fallbackFocusID,
+    );
+  }
+
+  function renderRows(rows: SuggestedTask[], showWhy: boolean) {
+    return (
+      <AnimatePresence initial={false}>
+        {rows.map((task) => (
+          <TaskRow
+            key={task.id}
+            task={task}
+            owner={getTaskOwner(task, experts, expertsById)}
+            isStartHere={task.id === startHereID}
+            showWhy={showWhy}
+            isBusy={disabled || sendingId !== null}
+            isSending={sendingId === task.id}
+            isRemoveDisabled={sendingId !== null}
+            onSend={onSend}
+            onRemove={handleRemove}
+          />
+        ))}
+      </AnimatePresence>
+    );
+  }
 
   return (
-    <ol
-      {...tourTarget("first-tasks")}
+    <div
       className={cn(
-        "divide-y divide-separator overflow-hidden rounded-lg border border-border-base bg-surface",
+        "overflow-hidden rounded-lg border border-border-base bg-surface",
         className,
       )}
     >
-      <AnimatePresence initial={false}>
-        {tasks.map((task) => {
-          const promptIcon = getPromptIcon(task.icon);
-          const isSent = getTaskState(task) === "sent";
-          return (
-            <motion.li
-              key={task.id}
-              exit={
-                prefersReducedMotion ? undefined : { height: 0, opacity: 0 }
-              }
-              transition={{ duration: 0.15 }}
-              className="group/row flex items-center transition-colors duration-150 hover:bg-surface-muted"
-              data-testid="suggested-task"
-            >
-              {isSent && task.session_id ? (
-                <NextLink
-                  href={getChatHref(task.session_id)}
-                  className={ROW_CLASSES}
-                >
-                  <Icon
-                    icon={promptIcon}
-                    size={15}
-                    className="shrink-0 text-foreground-disabled"
-                  />
-                  <Text
-                    variant="body-medium"
-                    tone="muted"
-                    className="text-pretty"
-                  >
-                    {task.title}
-                  </Text>
-                  <Text
-                    variant="small"
-                    tone="muted"
-                    className="ml-auto shrink-0 whitespace-nowrap"
-                  >
-                    In progress
-                  </Text>
-                </NextLink>
-              ) : (
-                <button
-                  type="button"
-                  {...tourStartingPoint()}
-                  disabled={isBusy}
-                  onClick={() => onSend(task)}
-                  className={cn(
-                    ROW_CLASSES,
-                    "cursor-pointer disabled:cursor-default disabled:opacity-60",
-                  )}
-                >
-                  <Icon
-                    icon={promptIcon}
-                    size={15}
-                    className="shrink-0 text-foreground-subtle"
-                  />
-                  <Text
-                    variant="body-medium"
-                    tone="primary"
-                    className="text-pretty"
-                  >
-                    {task.title}
-                  </Text>
-                  {sendingId === task.id ? (
-                    <Icon
-                      icon={Loading03Icon}
-                      size={15}
-                      className="ml-auto shrink-0 animate-spin text-foreground-subtle"
-                      aria-label="Starting"
-                    />
-                  ) : (
-                    <Icon
-                      icon={ArrowRight01Icon}
-                      size={15}
-                      className="ml-auto shrink-0 text-foreground-subtle"
-                    />
-                  )}
-                </button>
-              )}
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                withTooltip={false}
-                aria-label={`Hide: ${task.title}`}
-                disabled={sendingId !== null}
-                onClick={() => onHide(task)}
-                className="mr-2 shrink-0 text-foreground-subtle opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 hover:text-foreground-body focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
-              >
-                <Icon icon={Cancel01Icon} size={14} />
-              </Button>
-            </motion.li>
-          );
-        })}
-      </AnimatePresence>
-    </ol>
+      <ol
+        {...tourTarget("first-tasks")}
+        aria-label="Your first tasks"
+        className="divide-y divide-separator"
+      >
+        {renderRows(top, true)}
+      </ol>
+      {more.length > 0 ? (
+        <div className={cn(top.length > 0 && "border-t border-separator")}>
+          <button
+            type="button"
+            aria-expanded={isMoreOpen}
+            aria-controls={moreID}
+            onClick={() => onMoreChoice(!isMoreOpen)}
+            className="flex min-h-[3.25rem] w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-150 outline-none hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-inset"
+          >
+            <Text variant="body-medium" as="span" tone="secondary">
+              {more.length} more {more.length === 1 ? "task" : "tasks"}
+            </Text>
+            <Icon
+              icon={isMoreOpen ? ArrowUp01Icon : ArrowDown01Icon}
+              size={15}
+              className="ml-auto shrink-0 text-foreground-tertiary"
+            />
+          </button>
+          <ol
+            id={moreID}
+            hidden={!isMoreOpen}
+            aria-label="More tasks"
+            className="divide-y divide-separator border-t border-separator"
+          >
+            {isMoreOpen ? renderRows(more, false) : null}
+          </ol>
+        </div>
+      ) : null}
+      <p role="status" className="sr-only">
+        {sendingTask ? `Starting: ${sendingTask.title}` : ""}
+      </p>
+    </div>
   );
 }

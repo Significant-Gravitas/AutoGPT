@@ -128,30 +128,23 @@ export async function completeOnboardingWizard(
   await skipBrainDump.click();
   await expect(skipBrainDump).toBeHidden({ timeout: 10000 });
 
-  const skipHiring = page.getByRole("button", {
-    name: "I'll add members later",
-    exact: true,
-  });
   const connect = page.getByRole("heading", {
     name: "Already paying for an AI subscription?",
   });
   const preparing = page.getByText("Preparing your workspace...", {
     exact: false,
   });
-  // A role no seeded template covers gets no cards, so the step's only way
-  // on is "Continue"; wait for the team so the label has stopped changing.
-  const leaveHiring = skipHiring.or(
-    page.getByRole("button", { name: "Continue", exact: true }),
-  );
-  await expect(page.getByTestId("hire-step-grid")).toBeAttached({
-    timeout: 10000,
-  });
-  await expect(page.getByTestId("hire-step-pending").first()).toBeHidden({
+  // The plan step: Otto's plan, then Continue (e2e runs with no paywall).
+  // Wait for the plan itself so the click lands on a settled step.
+  const planPanel = page.getByTestId("plan-panel");
+  await expect(planPanel).toBeVisible({ timeout: 10000 });
+  await expect(planPanel.getByTestId("plan-panel-pending")).toHaveCount(0, {
     timeout: 30000,
   });
-  await expect(leaveHiring).toBeVisible({ timeout: 10000 });
-  await leaveHiring.click();
-  await expect(leaveHiring).toBeHidden();
+  const leavePlan = page.getByRole("button", { name: "Continue", exact: true });
+  await expect(leavePlan).toBeVisible({ timeout: 10000 });
+  await leavePlan.click();
+  await expect(planPanel).toBeHidden({ timeout: 10000 });
   await expect(connect.or(preparing).first()).toBeVisible({ timeout: 10000 });
   if (await connect.isVisible()) {
     await page.getByRole("button", { name: "Next", exact: true }).click();

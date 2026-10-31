@@ -1,10 +1,16 @@
 import { useGetBrainDumpRecommendedProviders } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
 import { peekIntroPath } from "@/services/onboarding/brain-dump-handoff";
 import { useEffect, useRef, useState } from "react";
+import { HIRE_MAX_WAIT_MS, usePlanHire } from "./usePlanHire";
+
+// The second item is the plan's team being hired (HIRE_ITEM), named once
+// the plan is known.
+const HIRE_ITEM = 1;
+const TEAM_FALLBACK = "Setting up your team";
 
 const GENERIC_CHECKLIST = [
   "Personalizing your experience",
-  "Connecting automation engines",
+  TEAM_FALLBACK,
   "Building your space",
 ] as const;
 
@@ -14,7 +20,7 @@ const GENERIC_CHECKLIST = [
 // opens on an empty "Recommended" section.
 const BRAIN_DUMP_CHECKLIST = [
   "Reading your brain dump",
-  "Briefing Otto on your work",
+  TEAM_FALLBACK,
   "Building your space",
   "Finding tools for your work",
 ] as const;
@@ -35,19 +41,33 @@ const RECOMMENDATIONS_MAX_WAIT_MS = 15_000;
 // reads as "almost there", not "stuck at done".
 const WAITING_PROGRESS_CAP = 95;
 
-export function usePreparingStep({ onComplete }: { onComplete: () => void }) {
+interface Args {
+  onComplete: () => void;
+  /** True once the trial or plan is confirmed, or with no paywall at all:
+   *  the only moment the plan's team may be hired. */
+  canHire?: boolean;
+}
+
+export function usePreparingStep({ onComplete, canHire = false }: Args) {
   const [started, setStarted] = useState(false);
   const [completedItems, setCompletedItems] = useState(0);
   const [progress, setProgress] = useState(0);
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
+  const teamHire = usePlanHire({ enabled: canHire });
+  const isHireSettledRef = useRef(teamHire.isSettled);
+  useEffect(() => {
+    isHireSettledRef.current = teamHire.isSettled;
+  }, [teamHire.isSettled]);
 
   // Only a user who actually dumped gets the honest copy; a skip would
   // make "Reading your brain dump" a lie.
   const isDumpPath = peekIntroPath() === "A";
-  const checklist: readonly string[] = isDumpPath
-    ? BRAIN_DUMP_CHECKLIST
-    : GENERIC_CHECKLIST;
+  const checklist: readonly string[] = (
+    isDumpPath ? BRAIN_DUMP_CHECKLIST : GENERIC_CHECKLIST
+  ).map((item, index) =>
+    index === HIRE_ITEM ? (teamHire.label ?? TEAM_FALLBACK) : item,
+  );
   const duration = isDumpPath ? BRAIN_DUMP_DURATION_MS : GENERIC_DURATION_MS;
   const stepInterval = duration / checklist.length;
 
@@ -89,8 +109,11 @@ export function usePreparingStep({ onComplete }: { onComplete: () => void }) {
       const isWaitingOnRecommendations =
         !isRecommendationsReadyRef.current &&
         elapsed < RECOMMENDATIONS_MAX_WAIT_MS;
+      const isWaitingOnHire =
+        !isHireSettledRef.current && elapsed < HIRE_MAX_WAIT_MS;
+      const isWaiting = isWaitingOnRecommendations || isWaitingOnHire;
 
-      if (elapsed >= duration && !isWaitingOnRecommendations && !finished) {
+      if (elapsed >= duration && !isWaiting && !finished) {
         finished = true;
         clearInterval(progressInterval);
         setProgress(100);
@@ -103,12 +126,12 @@ export function usePreparingStep({ onComplete }: { onComplete: () => void }) {
       const items = Math.min(
         checklist.length - 1,
         Math.floor(elapsed / stepInterval),
+        // The hire item keeps its spinner until the hire answers.
+        isWaitingOnHire ? HIRE_ITEM : checklist.length,
       );
       // The last step stays unchecked while its work is genuinely still
       // running server-side.
-      setProgress(
-        isWaitingOnRecommendations ? Math.min(pct, WAITING_PROGRESS_CAP) : pct,
-      );
+      setProgress(isWaiting ? Math.min(pct, WAITING_PROGRESS_CAP) : pct);
       setCompletedItems(items);
     }, 50);
 

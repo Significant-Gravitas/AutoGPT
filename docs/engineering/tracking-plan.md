@@ -88,7 +88,8 @@ preview, reports `environment: dev`.
 `source` is reserved for the emitter. The events that used it for
 something else now use `hire_started.surface`,
 `expert_recommended.team_source`, `workflow_installed_on_expert.workflow_source`
-and, for the four `first_run_tour_*` events, `opened_from`.
+and, for the four `first_run_tour_*` events, `opened_from`; `plan_viewed`
+and `expert_thread_created` use `plan_source` and `thread_source`.
 
 ### Identity
 
@@ -331,7 +332,7 @@ merges the website pageviews into the new user:
 
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
-| `onboarding_step_viewed` | browser | live | `step` (`team`, `autopilot`, `role`, `pain_points`, `connect`, `hire`, `preparing`) | A wizard step is shown (once per tab). The paywall step reports `paywall_viewed` instead. |
+| `onboarding_step_viewed` | browser | live | `step` (`team`, `autopilot`, `role`, `pain_points`, `subscription`, `connect`, `preparing`) | A wizard step is shown (once per tab). `subscription` is the plan step (Otto's plan beside the trial), with or without a paywall; with one it also sends `paywall_viewed`. |
 | `onboarding_completed` | backend | live | — | `ONBOARDING_COMPLETE` is first recorded for the user (`complete_onboarding_step`). |
 | `brain_dump_started` | browser | live | `prompt_set` (the role's "Otto might ask" set) | Recording starts. |
 | `brain_dump_completed` | browser | live | `input_mode`, `duration_secs` and `finalize_latency_ms` (voice) or `chars` (typed), `prompt_set`, `prompts_seen` (distinct live prompts shown) | A dump was accepted and the wizard advances. `finalize_latency_ms` is the `finalizeBrainDump()` round trip, timed after the upload flush. |
@@ -358,10 +359,8 @@ merges the website pageviews into the new user:
 | `intro_path` | browser | live | `path` | The intro path (A/B) is chosen. |
 | `intro_followup_sent` | browser | live | `chars` | First message after the intro card. |
 | `later_dump_completed` | browser | live | — | A brain dump sent later from the composer. |
-| `expert_recommended` | browser | live | `template_id`, `position`, `team_source` | A recommended expert card is shown. |
-| `expert_recommendation_clicked` | browser | live | `template_id`, `position` | A recommended expert card is clicked. |
-| `hire_all_clicked` | browser | live | `count` (experts this click hires), `already_hired`, `recommended`, `retry` | The hire step's primary button is clicked to hire every expert still unhired, or with `retry` the ones a batch failed to hire. |
-| `hire_step_continued` | browser | live | `hired`, `recommended`, `via` (`auto` after a full batch, `continue`, `later` for "I'll add members later") | The hire step is left. |
+| `plan_viewed` | browser | live | `plan_source` (`llm`, `fallback`), `skipped_dump`, `tasks` (shown, at most 3), `experts` (the plan's team), `wait_ms` (from the step's mount), `gave_up` (the 30 s wait ran out before a plan was shown, so the step settled the plan; `plan_source` tells the pipeline's plan, if it landed just in time, from the role plan) | The plan step first shows a plan, once per mount. A plan restored on a Stripe cancel return is not reported again. |
+| `plan_experts_hired` | browser | live | `hired`, `failed`, `via` (`preparing`) | The preparing screen hired the plan's team, after the trial (or plan) is confirmed, or with no paywall. The hires themselves are `expert_hired` with `via: plan`. |
 | `tab_intro_shown` | browser | live | `tab` | A tab intro card is shown. |
 | `tab_intro_cta_clicked` | browser | live | `tab`, `cta` | Its primary CTA is used. |
 | `tab_intro_dismissed` | browser | live | `tab` | It is dismissed any other way. |
@@ -398,18 +397,20 @@ merges the website pageviews into the new user:
 | `voice_mode_error` | browser | live | `stage` | The VAD, synthesis or send failed. |
 | `experts_section_viewed` | browser | live | — | The marketplace experts shelf renders with results. |
 | `expert_profile_opened` | browser | live | `template_id` | An expert profile page opens. |
-| `hire_started` | browser | live | `template_id`, `surface` (`onboarding`, `expert_page`) | A hire button is clicked, or once per expert of the hire step's batch. |
+| `hire_started` | browser | live | `template_id`, `surface` (`expert_page`; `onboarding` was the hire step's, gone with SECRT-3201) | A hire button is clicked. The onboarding plan's hires have no click: they are `plan_experts_hired` and `expert_hired` with `via: plan`. |
 | `hire_flow_abandoned` | browser | live | `template_id`, `stage` | The hire dialog is closed before hiring. |
-| `expert_hired` | backend | live | `expert_id`, `template_id`, `name`, `failed_preloads_count`, `surface` (`onboarding`, `expert_page`, `copilot`; unset for other API callers) | An expert is hired or an archived one revived, from any surface (`experts_db.hire_expert`). Sent once the hire's background setup settles (`_run_hire_setup`), so `failed_preloads_count` is known; a revival with nothing to set up sends it at once. An idempotent re-hire of an active expert does not fire. |
+| `expert_hired` | backend | live | `expert_id`, `template_id`, `name`, `failed_preloads_count`, `surface` (`onboarding`, `expert_page`, `copilot`; unset for other API callers), `via` (`plan` for the onboarding plan's team; unset otherwise) | An expert is hired or an archived one revived, from any surface (`experts_db.hire_expert`). Sent once the hire's background setup settles (`_run_hire_setup`), so `failed_preloads_count` is known; a revival with nothing to set up sends it at once. An idempotent re-hire of an active expert does not fire. |
 | `hire_failed` | backend | live | `template_id`, `failed_preloads_count` | Hiring raised. |
-| `expert_thread_created` | browser | live | `expert_id` | A new expert chat is created. |
+| `expert_thread_created` | browser | live | `expert_id`, `thread_source` (`suggested_task` when a suggested task started it; unset otherwise) | A new expert chat is created. |
 | `writing_style_added` | backend | live | `expert_id` | A writing style is saved on an expert. |
 | `workflow_installed_on_expert` | backend | live | `expert_id`, `workflow_source` (`library`, `marketplace`), `library_agent_id` or `store_listing_version_id` | A workflow is attached to an expert. |
 | `home_viewed` | browser | live | — | The home dashboard renders with data. |
 | `home_attention_actioned` | browser | live | `kind`, `action` | A "needs you" item is approved or declined. |
 | `home_team_member_clicked` | browser | live | `expert_id` | A team member row is clicked. |
-| `home_suggestion_clicked` | browser | live | `position` (0-based among the rows shown), `surface` (`intro`, `home`), `remaining` (open rows after this one) | A suggested first task is clicked, on the greeting or under the Home composer. |
-| `home_suggestion_dismissed` | browser | live | `position` (null for `all`), `surface`, `remaining`, `scope` (`one`, `all`) | A suggested first task is hidden, or "Hide all" is used. An Undo sends nothing. |
+| `home_suggestion_clicked` | browser | live | `position` (0-based among the rows shown), `surface` (`intro`, `home`), `remaining` (open rows after this one), `owner` (`expert`, `otto`: who it was sent to), `expert_template_id` (the planned owner, or null), `rank` (0-based in the stored, ranked order) | A suggested first task is clicked, on the greeting or under the Home composer. |
+| `home_suggestion_dismissed` | browser | live | `position`, `surface`, `remaining`, `scope` (`one`; `all` was "Hide all", gone with SECRT-3201) | A suggested first task is removed with its x. An Undo sends nothing. |
+| `home_suggestions_collapsed` | browser | live | `open` (open rows) | Hide folds the suggested tasks away. Nothing is written to the tasks. |
+| `home_suggestions_expanded` | browser | live | `open` | Show brings them back. |
 | `listing_added_to_library` | backend | live | `store_listing_version_id`, `graph_id`, `library_agent_id` | A marketplace agent is added to the library for the first time. Only a user adding a listing counts (the library route and the add-to-library block). Restoring an entry the user already had does not, and neither does a system install: an add inside another write's transaction, an expert's hire preloads, or attaching a marketplace workflow to an expert (that is `workflow_installed_on_expert`). |
 | `listing_downloaded` | backend | live | `store_listing_version_id`, `graph_id` | A signed-in user downloads a marketplace agent file. Signed-out downloads have no user and are not sent. |
 
@@ -713,7 +714,11 @@ history PostHog already holds.
 | `subscription_trial_checkout_started` | browser | `checkout_started` with `checkout_kind: trial`, sent by the backend once the trial's Checkout session exists; `surface` is the same `onboarding` / `billing`. `trial_offer_version` is dropped; `trial_started` carries it. |
 | `hire_completed` | backend | `expert_hired` (same hire; it now also skips idempotent re-hires). |
 | `hire_flow_completed` | browser | `expert_hired` with `surface: expert_page`. `elapsed_ms` is PostHog's time to convert from `hire_started`; `voice_picked` is dropped. |
-| `onboarding_expert_hired` | browser | `expert_hired` with `surface: onboarding`. The card `position` is on `expert_recommendation_clicked`. |
+| `onboarding_expert_hired` | browser | `expert_hired` with `surface: onboarding`. |
+| `expert_recommended` | browser | Gone with the onboarding hire step (SECRT-3201): the plan's team is on `plan_viewed` (`experts`). |
+| `expert_recommendation_clicked` | browser | Gone with the hire step: nobody picks experts one by one any more. |
+| `hire_all_clicked` | browser | `plan_experts_hired`, sent when the preparing screen hires the plan's team. |
+| `hire_step_continued` | browser | `onboarding_step_viewed` with `step: subscription` (the plan step) and `plan_experts_hired`. |
 | `copilot_message_sent` | backend | `chat_message_sent`, which carries `message_length`. |
 | `expert_run_completed` | backend | `agent_run_finished` with `expert_id` set and `is_subgraph_run: false`. |
 | `finalize_latency_ms` | browser | The `finalize_latency_ms` property on `brain_dump_completed` and `transcription_failed`. |
@@ -778,8 +783,8 @@ line:
 
 - **Events the plan folds into others keep their names until that change.**
   The brain-dump events (`brain_dump_*`, `transcription_failed`,
-  `later_dump_completed`) and the wizard's `intro_path` and
-  `hire_step_continued` become properties of `onboarding_step_viewed` /
+  `later_dump_completed`) and the wizard's `intro_path` become properties
+  of `onboarding_step_viewed` /
   `_completed` / `_skipped` / `_back`. Spoken turns (`voice_turn_sent`)
   become `chat_message_sent` with `input_mode: voice`.
 - **`subscription_changed` covers upgrades only.** The plan also counts

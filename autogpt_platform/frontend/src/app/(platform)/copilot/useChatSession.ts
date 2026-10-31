@@ -11,7 +11,10 @@ import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
 import { type CopilotLlmAuthSelection, useCopilotUIStore } from "./store";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
-import { trackFunnel } from "@/services/experts/experts-analytics";
+import {
+  takeExpertThreadSource,
+  trackExpertThreadCreated,
+} from "@/services/experts/expert-thread-source";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
@@ -409,9 +412,9 @@ export function useChatSession({
         .bindPendingFirstSendToSession(newSessionId);
       useAutopilotModeStore.getState().bindNewChatToSession(newSessionId);
       setSessionId(newSessionId);
-      if (expertId) {
-        trackFunnel("expert_thread_created", { expert_id: expertId });
-      }
+      // Taken on every new chat, so a source never outlives its send.
+      const source = takeExpertThreadSource();
+      if (expertId) trackExpertThreadCreated(expertId, source);
       queryClient.invalidateQueries({
         queryKey: SESSION_LIST_QUERY_KEY,
       });
