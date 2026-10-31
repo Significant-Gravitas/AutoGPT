@@ -172,7 +172,7 @@
     "eslint-plugin-react-hooks": "7.0.1",
     "eslint-plugin-storybook": "9.1.5",
     "happy-dom": "20.8.9",
-    "import-in-the-middle": "2.0.2",
+    "import-in-the-middle": "3.5.2",
     "knip": "6.32.2",
     "monocart-reporter": "2.10.0",
     "msw": "2.11.6",
