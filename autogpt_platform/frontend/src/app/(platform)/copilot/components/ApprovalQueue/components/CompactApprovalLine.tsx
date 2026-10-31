@@ -27,7 +27,7 @@ export function CompactApprovalLine({
       <button
         type="button"
         onClick={onOpen}
-        className="min-w-0 flex-1 rounded-md text-left hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong"
+        className="min-w-0 flex-1 rounded-md text-left hover:opacity-80 focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:outline-none"
       >
         <ApprovalHeadline item={item} compact />
       </button>

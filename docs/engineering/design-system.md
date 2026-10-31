@@ -15,7 +15,7 @@ The rules were turned on with about 9,000 existing violations, so each rule is a
 - `scripts/eslint-rules/design-system-baseline.json` holds, per file and rule, how many violations the file had when the rule was turned on.
 - A file at or under its count passes. A file over its count fails, and the error lists every violation of that rule in the file, since lint can't tell which one is new.
 - A file the baseline doesn't list must have none. That covers every new file.
-- A file with fewer violations than its count gets a warning (`design-system/baseline-outdated`), which doesn't fail lint.
+- A file with fewer violations than its count fails too (`design-system/baseline-outdated`), so a removed violation is locked in: run `pnpm lint:ds-baseline` and commit the lower count.
 - A violation suppressed with an `oxlint-disable` or `eslint-disable` comment doesn't count, the same as when the baseline is written.
 
 To update the baseline, run this from `autogpt_platform/frontend`:
@@ -33,7 +33,7 @@ Never raise a count to make new code pass. Fix the code, or suppress the one lin
 
 ## Tokens
 
-Colour comes from the role tokens in `src/app/globals.css` (`--color-<role>`, registered in `tailwind.config.ts`). Use them with any colour utility, opacity modifiers included: `bg-surface`, `text-foreground-secondary`, `border-border-base`, `ring-focus`, `bg-overlay/20`.
+Colour comes from the role tokens in `src/app/globals.css` (`--color-<role>` on `:root`, registered in its `@theme`). Use them with any colour utility, opacity modifiers included: `bg-surface`, `text-foreground-secondary`, `border-border-base`, `ring-focus`, `bg-overlay/20`.
 
 - Surfaces: `canvas`, `surface`, `surface-muted`, `surface-hover`, `surface-active`, `overlay`
 - Text: `foreground-base`, `foreground-strong`, `foreground-emphasis`, `foreground-body`, `foreground-secondary`, `foreground-tertiary`, `foreground-subtle`, `foreground-disabled`, `placeholder`
@@ -42,7 +42,7 @@ Colour comes from the role tokens in `src/app/globals.css` (`--color-<role>`, re
 - Status: `error`, `error-hover`, `error-foreground`, `error-surface`, `warning`, `warning-foreground`, `warning-surface`, `warning-border`, `success`, `success-foreground`, `success-surface`, `info`, `info-foreground`, `info-surface`
 - Builder: `builder-canvas`, `builder-grid`, `node-surface`, `node-border`, `node-selected`, `edge`, `handle`
 
-The raw palette (`zinc-*`, `neutral-*`, `purple-*`, …) and hex values belong in `globals.css` only.
+The raw palette (`zinc-*`, `neutral-*`, `purple-*`, …) lives in `tailwind.v3-preset.ts`, and hex values belong in `globals.css` only. The palette stays out of `globals.css`'s `@theme` because `@shadcn/lint` reads every colour there as a token.
 
 - **Rule `design-system/no-raw-colors`:** palette classes such as `bg-zinc-200`, in `className`, `cn()`/`cva()` and any other string.
 - **Rule `design-system/no-arbitrary-values`:** arbitrary colours such as `bg-[#fff]` and `text-[rgb(…)]`.
@@ -54,13 +54,13 @@ The error names the token with the same colour when one exists: `"text-zinc-500"
 When you migrate a class, keep the value: same value, new name. If no role has the exact value, leave the class and add `// TODO(tokens)`. Never pick the nearest role.
 
 `src/components/__tests__/design-system-contract.test.ts` checks that:
-- every role in `globals.css` is registered in `tailwind.config.ts`, and the other way round;
+- every role on `globals.css`'s `:root` is registered in its `@theme`, and the other way round, and `color-roles.ts` lists them all;
 - `.dark` only redefines names that `:root` declares;
-- the raw palette in `src/components/styles/colors.ts` gets no new colours.
+- the app's palette values (`APP_COLORS` in `tailwind.v3-preset.ts`) get no new colours, and `globals.css` declares none.
 
 ## Dark mode
 
-No `dark:` or `light:` classes. A theme is a set of token values, not a second set of classes. `tailwind.config.ts` ties `dark:` to a `.dark-mode` class the app never sets, so these classes never render. Delete them and keep the light value; the role tokens carry the theme. Rule: `design-system/no-dark-variant`.
+No `dark:` or `light:` classes. A theme is a set of token values, not a second set of classes. `globals.css` ties `dark:` to a `.dark` ancestor (`@custom-variant dark`), which the app never sets, so these classes never render. Delete them and keep the light value; the role tokens carry the theme. Rule: `design-system/no-dark-variant`.
 
 ## Primitives
 
@@ -76,7 +76,7 @@ Each primitive marks its root element with `data-slot`. The contract test lists 
 
 Every class must be one this project's Tailwind generates: a typo such as `text-md` or `flex-end` silently renders nothing. Rule: `design-system/no-unknown-classes`.
 
-`components.json` keeps `tailwind.css` at `src/app/globals.css`, the stylesheet the app loads. That is where the shadcn CLI writes, and where `@shadcn/lint` reads the colour tokens from. `globals.css` has no `@import "tailwindcss"` (Tailwind 3 compat), so for the grammar `@shadcn/lint` falls back to the one stylesheet that does: `src/app/tailwind-grammar.css`, which imports Tailwind and `tailwind.config.ts`. Nothing imports that file, so it never ships. `design-system.mts` drops the notice `@shadcn/lint` prints about this fallback. A few class names that aren't Tailwind are allowed in `.oxlintrc.json`: the PostHog and xyflow markers (`ph-no-capture`, `nodrag`, `nowheel`, `nopan`) and the classes `globals.css` defines (`agpt-*`, `markdown-output`).
+`components.json` keeps `tailwind.css` at `src/app/globals.css`, the stylesheet the app loads. That is where the shadcn CLI writes, and where `@shadcn/lint` reads the colour tokens from. `globals.css` has no `@import "tailwindcss"` (Tailwind 3 compat), so for the grammar `@shadcn/lint` falls back to the one stylesheet that does: `src/app/tailwind-grammar.css`, which imports Tailwind and `globals.css` (and through it `tailwind.config.ts`). Nothing imports that file, so it never ships. `design-system.mts` drops the notice `@shadcn/lint` prints about this fallback. A few class names that aren't Tailwind are allowed in `.oxlintrc.json`: the PostHog and xyflow markers (`ph-no-capture`, `nodrag`, `nowheel`, `nopan`) and the classes `globals.css` defines (`agpt-*`, `markdown-output`).
 
 ## Styles
 
@@ -121,10 +121,10 @@ Hugeicons only: icon data from `@hugeicons/core-free-icons`, rendered with the `
 
 ## Legacy components
 
-Feature code never imports from `src/components/__legacy__`, from any other `legacy/` path or from `@/components/ui`. Import the atom, molecule or organism in `src/components` instead; Storybook shows them. `LegacyButton`, the `legacy-*` Button variants and sizes (`variant="legacy-outline"`, `size="legacy-sm"`) and the Button's internal variant helpers are only for the Button atom itself.
+Feature code never imports from `src/components/__legacy__`, from any other `legacy/` path or from `@/components/ui`. Import the atom, molecule or organism in `src/components` instead; Storybook shows them. `src/components/__legacy__`, `LegacyButton` and the `legacy-*` Button variants and sizes are deleted; the rules below keep them from coming back. The rounded-md look they drew is the Button's `compact-*` variants and sizes. The Button's internal variant helpers are only for the Button atom itself.
 
 - **Rule `design-system/no-legacy-import`:** the imports.
-- **Rule `design-system/no-legacy-button-variant`:** the `legacy-*` variants. The error names the design-system variant to use instead. It doesn't look the same, so check the screen.
+- **Rule `design-system/no-legacy-button-variant`:** the `legacy-*` variants, should one come back. The error names the design-system variant to use instead.
 
 ## Escape hatch
 

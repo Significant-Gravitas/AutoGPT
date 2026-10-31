@@ -171,12 +171,12 @@ const TabsLineTrigger = React.forwardRef<
       data-slot="tabs-trigger"
       className={cn(
         variant === "pill" && [
-          "flex flex-1 items-start justify-center gap-2.5 whitespace-nowrap rounded-2xl px-3 py-2 text-center font-sans text-caption font-medium leading-tight text-foreground-tertiary ring-offset-surface transition-all",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+          "flex flex-1 items-start justify-center gap-2.5 rounded-2xl px-3 py-2 text-center font-sans text-caption leading-tight font-medium whitespace-nowrap text-foreground-tertiary ring-offset-surface transition-all",
+          "focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50",
           "data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-subtle",
         ],
         variant !== "pill" &&
-          "relative inline-flex items-center justify-center whitespace-nowrap px-3 py-3 font-sans text-body font-medium leading-6 text-foreground-body transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-brand-hover",
+          "relative inline-flex items-center justify-center px-3 py-3 font-sans text-body leading-6 font-medium whitespace-nowrap text-foreground-body transition-all focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:ring-offset-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-brand-hover",
         icon && variant !== "pill" && "gap-1.5",
         variant === "compact" &&
           "px-2.5 py-2 text-body leading-5 text-foreground-secondary data-[state=active]:text-foreground-strong",
@@ -210,8 +210,8 @@ const TabsLineContent = React.forwardRef<
       // panels keep the UA rule, as the segmented control always has.
       className={cn(
         isPill
-          ? "mt-2 ring-offset-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2"
-          : "mt-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:ring-offset-2 data-[state=inactive]:hidden",
+          ? "mt-2 ring-offset-surface focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:outline-none"
+          : "mt-4 focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:ring-offset-2 focus-visible:outline-none data-[state=inactive]:hidden",
         className,
       )}
       {...props}

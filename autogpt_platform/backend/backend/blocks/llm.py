@@ -28,6 +28,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.blocks.llm_errors import format_llm_error_message, is_invalid_model_error
 from backend.data.llm_registry.llm_models import DEFAULT_LLM_MODEL as DEFAULT_LLM_MODEL
 from backend.data.llm_registry.llm_models import (
     LEGACY_MODEL_MAPPINGS as LEGACY_MODEL_MAPPINGS,
@@ -824,13 +825,18 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     # A judgement on the prompt itself, like the user errors below.
                     refusal = e
                     break
-                is_user_error = (
+                # Invalid models cannot recover on retry; other 400s can still
+                # use the context-length recovery below.
+                invalid_model_error = is_invalid_model_error(e)
+                is_user_error = invalid_model_error or (
                     isinstance(e, (anthropic.APIStatusError, openai.APIStatusError))
                     and e.status_code in USER_ERROR_STATUS_CODES
                 )
                 if is_user_error:
-                    logger.warning(f"Error calling LLM: {e}")
-                    error_feedback_message = f"Error calling LLM: {e}"
+                    error_feedback_message = format_llm_error_message(
+                        e, llm_model, is_invalid_model=invalid_model_error
+                    )
+                    logger.warning(error_feedback_message)
                     break
                 # The SDKs' own timeout types do NOT subclass builtin
                 # TimeoutError, so they must be named explicitly or a
@@ -853,7 +859,8 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 ):
                     if input_data.max_tokens is None:
                         input_data.max_tokens = llm_model.max_output_tokens or 4096
-                    input_data.max_tokens = int(input_data.max_tokens * 0.85)
+                    # Zero means "use the model cap" downstream, undoing the reduction.
+                    input_data.max_tokens = max(1, int(input_data.max_tokens * 0.85))
                     logger.debug(
                         f"Reducing max_tokens to {input_data.max_tokens} for next attempt"
                     )

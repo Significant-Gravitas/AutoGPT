@@ -142,7 +142,7 @@ export function FollowupListItem({ followup }: Props) {
               {kindBadge}
             </div>
             <pre
-              className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-medium bg-surface-muted p-3 text-sm text-foreground-emphasis"
+              className="max-h-[60vh] overflow-auto rounded-medium bg-surface-muted p-3 text-sm whitespace-pre-wrap text-foreground-emphasis"
               data-testid="followup-view-body"
             >
               {fullMessage}

@@ -53,7 +53,7 @@ export function BillingPlanOffer({
         variant="h4"
         as="h2"
         // oxlint-disable-next-line design-system/no-restyle -- the plan title is set tight on a 32px line; no Text variant has it
-        className="mb-3 mt-4 leading-8 tracking-display"
+        className="mt-4 mb-3 leading-8 tracking-display"
       >
         {title}
       </Text>
@@ -69,7 +69,7 @@ export function BillingPlanOffer({
             variant="h2"
             as="span"
             // oxlint-disable-next-line design-system/no-restyle -- the price is a sans display number; no Text variant has it
-            className="font-sans text-title font-semibold leading-10 tracking-display"
+            className="font-sans text-title leading-10 font-semibold tracking-display"
           >
             {price.split(" / ")[0]}
           </Text>

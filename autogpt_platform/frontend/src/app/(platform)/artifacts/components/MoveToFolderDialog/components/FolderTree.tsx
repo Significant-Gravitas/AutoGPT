@@ -101,7 +101,7 @@ export function FolderTree({
             }
             className={cn(
               // oxlint-disable-next-line design-system/no-arbitrary-values -- the indent grows with the folder depth
-              "flex items-center gap-2 rounded-lg py-2 pl-[var(--indent)] pr-2 outline-none",
+              "flex items-center gap-2 rounded-lg py-2 pr-2 pl-[var(--indent)] outline-none",
               isDisabled
                 ? "cursor-not-allowed text-foreground-subtle"
                 : "cursor-pointer text-foreground-emphasis hover:bg-surface-muted",

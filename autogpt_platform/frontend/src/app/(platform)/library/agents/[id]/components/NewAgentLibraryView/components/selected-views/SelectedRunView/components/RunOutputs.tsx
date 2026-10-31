@@ -100,7 +100,7 @@ export function RunOutputs({
         hiddenFromReplay && HIDDEN_FROM_REPLAY,
       )}
     >
-      <div className="absolute right-3 top-3 z-10">
+      <div className="absolute top-3 right-3 z-10">
         <OutputActions
           items={items.map((item) => ({
             value: item.value,

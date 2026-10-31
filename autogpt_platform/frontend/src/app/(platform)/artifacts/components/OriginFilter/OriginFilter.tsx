@@ -69,7 +69,7 @@ function OriginTab({ option, active, onClick }: OriginTabProps) {
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        "relative rounded-full px-4 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-foreground-subtle",
+        "relative rounded-full px-4 py-2 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle",
         active
           ? "text-foreground-strong"
           : "text-foreground-tertiary hover:text-foreground-strong",

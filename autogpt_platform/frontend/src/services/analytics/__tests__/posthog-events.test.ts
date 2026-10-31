@@ -25,6 +25,7 @@ const LIVE_EVENT_NAMES = [
   "briefing_opened",
   "briefing_outcome_clicked",
   "checkout_abandoned",
+  "chunk_reload_triggered",
   "contextual_tip_dismissed",
   "contextual_tip_shown",
   "credential_card_never_rendered",

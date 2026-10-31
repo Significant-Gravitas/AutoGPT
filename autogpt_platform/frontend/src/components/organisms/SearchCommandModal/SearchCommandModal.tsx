@@ -121,7 +121,7 @@ export function SearchCommandModal({
         <RXDialog.Overlay className="fixed inset-0 z-[80] bg-black/20 backdrop-blur-sm" />
         <RXDialog.Content
           onOpenAutoFocus={handleOpenAutoFocus}
-          className="fixed left-1/2 top-[18vh] z-[80] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 overflow-hidden rounded-3xl bg-surface shadow-2xl ring-1 ring-border-base focus:outline-none"
+          className="fixed top-[18vh] left-1/2 z-[80] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 overflow-hidden rounded-3xl bg-surface shadow-2xl ring-1 ring-border-base focus:outline-none"
           onKeyDown={handleKeyDown}
         >
           <RXDialog.Title className="sr-only">Search</RXDialog.Title>
@@ -178,7 +178,7 @@ export function SearchCommandModal({
               id={`${idPrefix}-results`}
               data-slot="search-command-modal-results"
               className={cn(
-                "max-h-[26rem] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border-base",
+                "scrollbar-thin max-h-[26rem] scrollbar-thumb-border-base scrollbar-track-transparent overflow-y-auto",
                 totalCount === 0 && "max-h-none",
               )}
             >

@@ -45,21 +45,21 @@ export function WeeklyPicker({
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
-          className="h-[2.25rem] rounded-full border border-foreground-body px-4 py-2 text-sm font-medium leading-4 text-foreground-base hover:bg-surface-hover"
+          className="h-[2.25rem] rounded-full border border-foreground-body px-4 py-2 text-sm leading-4 font-medium text-foreground-base hover:bg-surface-hover"
           onClick={toggleAll}
         >
           Select all
         </button>
         <button
           type="button"
-          className="h-[2.25rem] rounded-full border border-foreground-body px-4 py-2 text-sm font-medium leading-4 text-foreground-base hover:bg-surface-hover"
+          className="h-[2.25rem] rounded-full border border-foreground-body px-4 py-2 text-sm leading-4 font-medium text-foreground-base hover:bg-surface-hover"
           onClick={setWeekdays}
         >
           Weekdays
         </button>
         <button
           type="button"
-          className="h-[2.25rem] rounded-full border border-foreground-body px-4 py-2 text-sm font-medium leading-4 text-foreground-base hover:bg-surface-hover"
+          className="h-[2.25rem] rounded-full border border-foreground-body px-4 py-2 text-sm leading-4 font-medium text-foreground-base hover:bg-surface-hover"
           onClick={setWeekends}
         >
           Weekends

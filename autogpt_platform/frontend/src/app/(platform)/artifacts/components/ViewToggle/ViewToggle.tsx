@@ -40,7 +40,7 @@ export function ViewToggle({ value, onChange }: Props) {
             aria-pressed={active}
             onClick={() => onChange(option.value)}
             className={cn(
-              "flex h-9 w-9 items-center justify-center rounded-full outline-none transition-colors focus-visible:ring-2 focus-visible:ring-foreground-subtle",
+              "flex h-9 w-9 items-center justify-center rounded-full transition-colors outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle",
               active
                 ? "bg-surface-hover text-foreground-strong"
                 : "text-foreground-tertiary hover:bg-surface-hover/70 hover:text-foreground-strong",

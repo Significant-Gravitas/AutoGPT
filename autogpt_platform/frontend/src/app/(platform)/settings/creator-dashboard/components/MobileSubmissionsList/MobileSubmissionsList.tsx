@@ -82,7 +82,7 @@ export function MobileSubmissionsList({
           ? undefined
           : { duration: 0.28, ease: EASE_OUT, delay: 0.04 + index * 0.05 }
       }
-      className="flex w-full min-w-0 max-w-full flex-col gap-3"
+      className="flex w-full max-w-full min-w-0 flex-col gap-3"
       data-testid="mobile-submissions-list"
     >
       <div className="flex items-center justify-between gap-3 px-1">
@@ -137,7 +137,7 @@ export function MobileSubmissionsList({
         </FilterChip>
       </div>
 
-      <div className="w-full min-w-0 max-w-full overflow-hidden rounded-large border border-border-base bg-surface shadow-message-table">
+      <div className="w-full max-w-full min-w-0 overflow-hidden rounded-large border border-border-base bg-surface shadow-message-table">
         {submissions.length > 0 ? (
           submissions.map((submission, rowIndex) => (
             <MobileSubmissionItem

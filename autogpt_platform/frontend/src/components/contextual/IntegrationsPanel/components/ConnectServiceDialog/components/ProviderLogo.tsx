@@ -26,7 +26,7 @@ export function ProviderLogo({ provider, size }: Props) {
       <div
         aria-hidden
         className={cn(
-          "flex shrink-0 items-center justify-center rounded-md bg-surface-hover font-semibold uppercase leading-inherit text-foreground-secondary",
+          "flex shrink-0 items-center justify-center rounded-md bg-surface-hover leading-inherit font-semibold text-foreground-secondary uppercase",
           box,
           letter,
         )}

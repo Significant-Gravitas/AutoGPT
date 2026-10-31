@@ -20,7 +20,7 @@ export function SessionNotFound() {
     <div className="relative flex h-full min-h-0 w-full items-center justify-center bg-surface px-6">
       {/* An open chat's thread chip owns the mobile sidebar button; this
           screen has no chip, so it brings its own. */}
-      <AppSidebarTrigger className="absolute left-4 top-5 rounded-full border border-border-base bg-surface shadow-md hover:bg-surface-hover md:hidden" />
+      <AppSidebarTrigger className="absolute top-5 left-4 rounded-full border border-border-base bg-surface shadow-md hover:bg-surface-hover md:hidden" />
       <div
         role="status"
         className="flex max-w-md flex-col items-center gap-3 text-center"

@@ -57,7 +57,7 @@ export function FileChips({
         >
           <div
             className={cn(
-              "flex w-full flex-wrap gap-2 px-3 pb-2 pt-2",
+              "flex w-full flex-wrap gap-2 px-3 pt-2 pb-2",
               stacked && "gap-1.5 p-0",
             )}
           >
@@ -121,7 +121,7 @@ export function FileChips({
                     className={cn(
                       "inline-flex items-center gap-1 rounded-full bg-surface-hover px-3 py-1 text-sm text-foreground-body",
                       stacked &&
-                        "gap-1.5 border border-border-base bg-surface py-0.5 pl-2 pr-1.5 text-xs text-foreground-strong shadow-sm",
+                        "gap-1.5 border border-border-base bg-surface py-0.5 pr-1.5 pl-2 text-xs text-foreground-strong shadow-sm",
                     )}
                   >
                     {isPreviewableImage(mimeType) ? (

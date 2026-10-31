@@ -266,7 +266,7 @@ function SectionHeading({ label }: { label: string }) {
   return (
     <p
       role="presentation"
-      className="px-3 pb-1 pt-2 text-left text-xs font-medium uppercase tracking-wide text-foreground-subtle"
+      className="px-3 pt-2 pb-1 text-left text-xs font-medium tracking-wide text-foreground-subtle uppercase"
     >
       {label}
     </p>

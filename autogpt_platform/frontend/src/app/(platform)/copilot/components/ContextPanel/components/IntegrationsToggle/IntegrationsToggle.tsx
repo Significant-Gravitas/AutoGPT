@@ -108,7 +108,7 @@ export function IntegrationsToggle({ expert, className, size = "md" }: Props) {
               <TooltipTrigger asChild>
                 <span
                   className={cn(
-                    "flex items-center justify-center rounded-full bg-surface ring-2 ring-surface smooth-shadow-ring-sm",
+                    "flex items-center justify-center rounded-full bg-surface ring-2 smooth-shadow-ring-sm ring-surface",
                     isLarge ? "size-7" : "size-6",
                   )}
                 >
@@ -126,7 +126,7 @@ export function IntegrationsToggle({ expert, className, size = "md" }: Props) {
         {hidden.length > 0 && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="text-xs font-medium tabular-nums text-sidebar-foreground/90">
+              <span className="text-xs font-medium text-sidebar-foreground/90 tabular-nums">
                 +{hidden.length}
               </span>
             </TooltipTrigger>

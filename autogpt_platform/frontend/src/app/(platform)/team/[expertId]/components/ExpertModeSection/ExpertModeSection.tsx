@@ -54,8 +54,8 @@ function ExpertModeOptions({ expert }: Props) {
               className={cn(
                 "flex cursor-pointer items-start gap-3 rounded-xl p-3 text-left transition-colors has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-action",
                 isSelected
-                  ? "bg-surface ring-2 ring-inset ring-action"
-                  : "bg-surface-muted ring-1 ring-inset ring-border-base hover:bg-surface-hover",
+                  ? "bg-surface ring-2 ring-action ring-inset"
+                  : "bg-surface-muted ring-1 ring-border-base ring-inset hover:bg-surface-hover",
                 option.value === "unsupervised" &&
                   isSelected &&
                   "bg-warning-surface ring-warning-foreground",

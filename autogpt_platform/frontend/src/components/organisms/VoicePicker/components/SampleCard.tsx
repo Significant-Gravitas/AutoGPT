@@ -53,7 +53,7 @@ export function SampleCard({
         <span
           data-slot="sample-card-label"
           className={cn(
-            "text-xs font-semibold uppercase tracking-caps",
+            "text-xs font-semibold tracking-caps uppercase",
             labelClassName ?? "text-accent",
           )}
         >

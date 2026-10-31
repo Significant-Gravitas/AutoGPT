@@ -3,6 +3,7 @@ import functools
 import itertools
 import re
 import uuid
+from collections.abc import Iterable
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -64,126 +65,53 @@ from backend.util.json import SafeJson
 from backend.util.posthog_events import PostHogEvent
 from backend.util.test import SpinTestServer
 
-EXPECTED_ROSTER_PRELOAD_SLUGS = {
-    "ai-shortform-video-generator-create-viral-ready-content",
-    "ai-webpage-copy-improver",
-    "ai-youtube-to-blog-converter",
-    "automated-blog-writer",
-    "automated-support-ai",
-    "business-ownerceo-finder",
-    "email-address-finder",
-    "lead-finder-local-businesses",
-    "linkedin-post-generator",
-    "personalized-morning-coffee-newsletter",
-    "smart-meeting-brief",
-    "youtube-to-linkedin-post-converter",
-    "youtube-transcription-scraper",
-}
-# Personas that ship no workflows, so the 2-4 preload bound below stays a real
-# check on everyone else. Three different reasons, and only the middle one is a
-# design choice: Remy's workflow listings are unavailable; dev's specialists are
-# skills-only by design; and Alex, Daniel, James and Sofia carry skills and
-# routines but no preloads because the marketplace has no listing in their
-# domains at all -- every one of the 17 store listings is sales, marketing or
-# content, so there is nothing for recruiting, finance, product or ops to
-# preload. That last group should leave this set once such listings exist.
-# Clip joined the roster from an expert raised on the platform, which had one
-# skill and no workflows, and ships the same way.
-# Note this set now exempts 24 of the 33 roster entries, so the bound below is
-# only really checking the remaining nine.
-PERSONAS_WITHOUT_WORKFLOWS = {
-    "Alex",
-    "Casey",
-    "Clip",
-    "Daniel",
-    "Devon",
-    "Ellis",
-    "Harper",
-    "Ines",
-    "James",
-    "Jordan",
-    "Kai",
-    "Lena",
-    "Marco",
-    "Mina",
-    "Noor",
-    "Omar",
-    "Priya",
-    "Quinn",
-    "Remy",
-    "Riley",
-    "Sasha",
-    "Sofia",
-    "Theo",
-    "Vera",
-}
-# Which skills an expert bundles, and in what order, is catalog content
-# (experts/<key>.yml in Significant-Gravitas/skills-catalog): pinning the
-# lists here broke this suite on every catalog kit change. The tests below
-# pin shape only; the catalog's own check validates every assignment.
-SKILLS_ONLY_ROSTER = {
-    "Devon": ("Dependency & Security Hygiene", ["development"]),
-    "Riley": ("Customer Success & Retention", ["support"]),
-    "Jordan": ("Deal Desk & Proposal Support", ["sales"]),
-}
+# Everything below that names a catalog expert or reads its content checks a
+# rule the catalog must always meet, never the catalog's current copy: the
+# roster lives in Significant-Gravitas/skills-catalog, CI reads its main as
+# prod does, and pinning exact titles, timings, roles or lists here broke this
+# suite on every catalog edit. The catalog's own check validates the content.
+SKILLS_ONLY_ROSTER = ("Devon", "Riley", "Jordan")
 OPERATIONS_EXPERTS = ("Harper", "Vera", "Ellis")
 FINANCE_AND_ANALYTICS_EXPERTS = ("Mina", "Theo", "Quinn")
 
-# Every cron the roster ships, as (expert, slug, cron). A cadence fires
-# unattended from the day of hire, so PreloadSeed.cron limits which workflows
-# may carry one; pinning the whole set here makes adding a cron a deliberate
-# edit to this test rather than a silent roster change.
-EXPECTED_ROSTER_SCHEDULES = {
-    ("Frankie", "personalized-morning-coffee-newsletter", "40 7 * * *"),
-    ("Nadia", "personalized-morning-coffee-newsletter", "0 8 * * 1"),
+# A preload cadence fires unattended on every new hire, so it may only go on a
+# workflow that acts on nothing outside the platform (PreloadSeed.cron), at a
+# cadence we have reviewed: a typo such as "* * * * *" burns users' credits, and
+# the catalog's own check only requires a string. Scheduling a new workflow, or
+# a new cron on one listed here, is a deliberate edit to this map.
+UNATTENDED_SAFE_PRELOADS = {
+    "personalized-morning-coffee-newsletter": {"40 7 * * *", "0 8 * * 1"},
 }
-EXPECTED_WAVE_THREE = {
-    "Sasha": {
-        "role": "Support & Help Desk",
-        "categories": ["support"],
-        "timings": ["after queue access", "on request"],
-    },
-    "Priya": {
-        "role": "Product Management",
-        "categories": ["research", "operations"],
-        "timings": ["after feedback input", "on request"],
-    },
-    "Marco": {
-        "role": "Paid Ads & Performance",
-        "categories": ["marketing"],
-        "timings": ["after account export", "on request"],
-    },
-    "Noor": {
-        "role": "PR & Communications",
-        "categories": ["marketing", "content"],
-        "timings": ["day 1", "on request"],
-    },
-    "Casey": {
-        "role": "Code Review & QA",
-        "categories": ["development"],
-        "timings": ["after access", "on request"],
-    },
-    "Ines": {
-        "role": "People Ops & HR (Non-Advisory)",
-        "categories": ["operations"],
-        "timings": ["day 1", "on request"],
-    },
-    "Omar": {
-        "role": "RevOps & CRM Hygiene",
-        "categories": ["sales", "operations"],
-        "timings": ["after CRM export", "on request"],
-    },
-    "Lena": {
-        "role": "Privacy & Compliance (Non-Advisory)",
-        "categories": ["operations"],
-        "timings": ["day 1", "on request"],
-    },
-    "Kai": {
-        "role": "Executive Assistant",
-        "categories": ["support", "operations"],
-        "timings": ["after inbox access", "on request"],
-    },
-}
+_WEEKDAYS = "monday|tuesday|wednesday|thursday|friday|saturday|sunday"
+# A day-one title or timing that reads as a recurring cadence or a time of
+# day ("weekly", "every Monday", "twice a week", "9am", "at 09:00"): "day 1",
+# "on request", "after CRM export", "once your numbers are connected" and
+# "with every ad" pass.
+_CLOCK_PERIODS = (
+    "days?|weeks?|months?|quarters?|years?|hours?|mornings?|evenings?|nights?"
+    rf"|weekdays?|business days?|{_WEEKDAYS}"
+)
+_CLOCK_COPY = re.compile(
+    r"\b(?:daily|weekly|bi-?weekly|fortnightly|monthly|quarterly|nightly|hourly"
+    r"|annually|yearly|weekdays|business days?"
+    rf"|(?:every|each) (?:\w+ )?(?:{_CLOCK_PERIODS})"
+    r"|(?:once|twice|\w+ times) (?:a|per) (?:day|week|month|quarter|year)"
+    rf"|(?:{_WEEKDAYS})s)\b"
+    r"|\b\d{1,2}(?::\d{2})?\s*[ap]\.?m\b"
+    r"|\b(?:[01]?\d|2[0-3]):[0-5]\d\b",
+    re.IGNORECASE,
+)
+EXPECTED_WAVE_THREE = (
+    "Sasha",
+    "Priya",
+    "Marco",
+    "Noor",
+    "Casey",
+    "Ines",
+    "Omar",
+    "Lena",
+    "Kai",
+)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -643,7 +571,7 @@ async def _load_roster_store_assets() -> dict[str, str]:
     metadata = await store_assets.load_csv_metadata()
     by_slug = {m["slug"]: m for m in metadata.values() if m["is_available"]}
     expected: dict[str, str] = {}
-    for slug in EXPECTED_ROSTER_PRELOAD_SLUGS:
+    for slug in sorted(_store_asset_slugs()):
         assert slug in by_slug, f"Expected roster slug '{slug}' has no store asset"
         meta = by_slug[slug]
         version_id = meta["store_listing_version_id"]
@@ -658,6 +586,19 @@ async def _load_roster_store_assets() -> dict[str, str]:
         )
         expected[slug] = version_id
     return expected
+
+
+def _roster_preload_slugs(roster: Iterable[seed.RosterEntry]) -> set[str]:
+    return {preload["slug"] for entry in roster for preload in entry["preloads"]}
+
+
+def _store_asset_slugs() -> set[str]:
+    """The store assets the roster tests load: every preload the shipped roster
+    names, plus the listings the cadence-migration tests seed hires with."""
+    loaded = _load_catalog_roster()
+    roster = () if isinstance(loaded, str) else loaded[1]
+    removed = {slug for slug, _ in seed.REMOVED_TEMPLATE_CADENCES}
+    return _roster_preload_slugs(roster) | removed
 
 
 async def _hire_roster_and_assert_preloads(
@@ -3723,34 +3664,29 @@ async def test_seed_roster_rejects_missing_preloads_before_template_mutation(
     with pytest.raises(RuntimeError, match="Load marketplace store assets"):
         await seed.seed_roster(real_roster)
 
-    assert resolve.await_count == len(EXPECTED_ROSTER_PRELOAD_SLUGS)
+    assert resolve.await_count == len(_roster_preload_slugs(real_roster))
     upsert.assert_not_awaited()
 
 
-def test_roster_preload_counts_and_scheduled_cadences(
+@pytest.mark.asyncio(loop_scope="session")
+async def test_roster_preload_counts_and_scheduled_cadences(
     real_roster: list[seed.RosterEntry],
 ):
-    """Launch invariant, checked without a DB: every persona ships 2-4 preloads
-    unless it is one we deliberately ship without workflows, and every
-    scheduled cadence on the roster is one we declared — so a cron added to a
-    persona that acts outside the platform fails here rather than firing
-    unattended on someone's account."""
+    """Launch invariant, checked without a DB: a persona ships either no
+    workflows or two to four, every preload is a listing the checked-in store
+    assets carry, and a cadence goes only on a workflow that is safe to run
+    unattended, so a cron added to one that acts outside the platform fails
+    here rather than firing on someone's account."""
+    metadata = await store_assets.load_csv_metadata()
+    available = {meta["slug"] for meta in metadata.values() if meta["is_available"]}
     for entry in real_roster:
-        if entry["name"] in PERSONAS_WITHOUT_WORKFLOWS:
-            assert entry["preloads"] == [], entry["name"]
-        else:
-            assert 2 <= len(entry["preloads"]) <= 4, entry["name"]
-
-    assert {
-        preload["slug"] for entry in real_roster for preload in entry["preloads"]
-    } == EXPECTED_ROSTER_PRELOAD_SLUGS
-    scheduled = {
-        (entry["name"], preload["slug"], preload["cron"])
-        for entry in real_roster
-        for preload in entry["preloads"]
-        if preload["cron"] is not None
-    }
-    assert scheduled == EXPECTED_ROSTER_SCHEDULES
+        name, preloads = entry["name"], entry["preloads"]
+        assert preloads == [] or 2 <= len(preloads) <= 4, name
+        for preload in preloads:
+            assert preload["slug"] in available, (name, preload["slug"])
+            if preload["cron"] is not None:
+                reviewed = UNATTENDED_SAFE_PRELOADS.get(preload["slug"], set())
+                assert preload["cron"] in reviewed, (name, preload)
 
 
 def _catalog_package_slugs(root: Path) -> set[str]:
@@ -3791,25 +3727,22 @@ def test_operations_experts_bundle_skills_and_no_preloads(
 def test_skills_only_roster_bundles_skills_and_no_preloads(
     roster_by_name: dict[str, seed.RosterEntry],
 ):
-    for name, (role, categories) in SKILLS_ONLY_ROSTER.items():
+    for name in SKILLS_ONLY_ROSTER:
         entry = roster_by_name[name]
         assert entry["bundled_skills"]
         assert entry["preloads"] == []
-        assert (entry["role"], entry["categories"]) == (role, categories)
 
 
 def test_wave_three_experts_are_skills_only_with_ordered_packs(
     roster_by_name: dict[str, seed.RosterEntry],
 ):
-    roster = roster_by_name
-    for name, expected in EXPECTED_WAVE_THREE.items():
-        entry = roster[name]
-        assert entry["role"] == expected["role"]
-        assert entry["categories"] == expected["categories"]
+    for name in EXPECTED_WAVE_THREE:
+        entry = roster_by_name[name]
         assert entry["bundled_skills"]
         assert entry["preloads"] == []
         assert entry["routines"] == []
-        assert [item.timing for item in entry["day_one"]] == expected["timings"]
+        assert entry["day_one"], name
+        assert all(item.timing for item in entry["day_one"]), name
         assert len(entry["voice_samples"]) == 2
 
 
@@ -3827,18 +3760,22 @@ def test_wave_three_covers_exactly_the_nine_new_experts():
     }
 
 
-def test_the_roster_is_the_expected_size_with_unique_names(
+def test_the_roster_carries_the_named_experts_with_unique_names(
     real_roster: list[seed.RosterEntry],
 ):
-    """Kept out of the wave-three test above so that adding an expert on either
-    side edits the test about the roster rather than the one about dev's nine.
-    Names must be unique: two entries sharing one is what forced the rename of
-    this branch's Casey, Priya and Sasha when dev's wave three landed."""
-    # 24 from dev's waves, the eight generalists added on top, and Clip; the
-    # senior sales package was folded into Max rather than shipped as its own entry.
-    assert len(real_roster) == 33
+    """The experts these tests name are on the roster, however many others the
+    catalog adds. Names must be unique: two entries sharing one is what forced
+    the rename of this branch's Casey, Priya and Sasha when dev's wave three
+    landed."""
     names = [entry["name"] for entry in real_roster]
     assert len(names) == len(set(names))
+    named = {
+        *SKILLS_ONLY_ROSTER,
+        *OPERATIONS_EXPERTS,
+        *FINANCE_AND_ANALYTICS_EXPERTS,
+        *EXPECTED_WAVE_THREE,
+    }
+    assert named <= set(names), named - set(names)
 
 
 def test_retired_templates_are_off_the_roster(real_roster: list[seed.RosterEntry]):
@@ -3895,61 +3832,66 @@ async def test_seed_roster_rejects_unknown_bundled_skills_before_template_mutati
 def test_roster_day_one_promises_match_work_the_expert_can_do_on_request(
     real_roster: list[seed.RosterEntry],
 ):
-    """Day-one copy may describe draft work, but not an unattended cadence."""
+    """Day-one copy may describe draft work, but not an unattended cadence.
+
+    The cards themselves are catalog content: pinning their titles and timings
+    here broke this suite on every catalog soul edit, so this checks that no
+    card's title or timing puts a clock on the work. Descriptions are left
+    alone, since advice can name a cadence ("what to set aside each month").
+    """
     day_one = {entry["name"]: entry["day_one"] for entry in real_roster}
 
-    assert [(item.title, item.timing) for item in day_one["Maria"]] == [
-        ("A brief before the draft", "day 1"),
-        ("Your money pages, audited", "day 1"),
-    ]
-    assert [item.timing for item in day_one["Mina"]] == [
+    for name, items in day_one.items():
+        assert len(items) <= EXPERT_DAY_ONE_MAX_ITEMS, name
+        for item in items:
+            assert item.title and item.timing, (name, item.title)
+            for copy in (item.title, item.timing):
+                assert not _CLOCK_COPY.search(copy), (name, copy)
+
+
+@pytest.mark.parametrize(
+    "copy",
+    [
+        "weekly",
+        "Every Monday",
+        "Fridays",
+        "9am",
+        "8:30 pm",
+        "at 09:00",
+        "17:45",
+        "once a week",
+        "twice a week",
+        "twice per week",
+        "three times per month",
+        "every two weeks",
+        "biweekly",
+        "weekdays",
+        "each business day",
+        "every hour",
+        "every quarter",
+        "annually",
+    ],
+)
+def test_clock_copy_catches_cadences_and_times_of_day(copy: str):
+    assert _CLOCK_COPY.search(copy)
+
+
+@pytest.mark.parametrize(
+    "copy",
+    [
         "day 1",
-        "day 1",
+        "week 1",
         "on request",
-    ]
-    assert [item.timing for item in day_one["Theo"]] == [
-        "day 1",
-        "day 1",
-        "on request",
-    ]
-    assert [item.timing for item in day_one["Quinn"]] == [
-        "day 1",
-        "day 1",
-        "on request",
-    ]
-    assert [(item.title, item.timing) for item in day_one["Harper"]] == [
-        ("A hiring plan grounded in the role", "day 1"),
-        ("A fair scorecard before screening", "day 1"),
-    ]
-    assert [(item.title, item.timing) for item in day_one["Vera"]] == [
-        ("Your next vendor choice, compared", "day 1"),
-        ("Renewals and spend risks surfaced", "on request"),
-    ]
-    assert [(item.title, item.timing) for item in day_one["Ellis"]] == [
-        ("Key terms in one clear record", "day 1"),
-        ("Playbook gaps ready for counsel", "on request"),
-    ]
-    for name in ("Jules", "Nadia", "Remy", "Frankie"):
-        assert day_one[name] == [], name
-    # Max carries the senior sales package: two day-one reads and one that
-    # waits on a numbers source, none of them a clock.
-    assert [item.timing for item in day_one["Max"]] == [
-        "day 1",
-        "day 1",
+        "after CRM export",
         "once your numbers are connected",
-    ]
-    assert [item.timing for item in day_one["Devon"]] == [
-        "after access",
-        "on request",
-    ]
-    assert [item.timing for item in day_one["Riley"]] == [
-        "after data access",
-        "on request",
-    ]
-    assert [item.timing for item in day_one["Jordan"]] == [
-        "after deal input",
-        "on request",
-    ]
+        "with every ad",
+        "Your week, protected",
+        "Pricing from £3.50",
+        "once a deal closes",
+    ],
+)
+def test_clock_copy_passes_draft_work_timings(copy: str):
+    assert not _CLOCK_COPY.search(copy)
 
 
 def test_finance_and_analytics_roster_pack_is_skills_only(
@@ -3974,8 +3916,9 @@ async def test_upsert_template_refuses_a_fourth_day_one_row_before_writing(
     # One past the cap, however many rows the roster currently gives her —
     # deriving the list from len(maria["day_one"]) + 1 made this test pass
     # silently (and then fail on a MagicMock await) the moment her row count
-    # dropped below the cap.
-    too_many["day_one"] = [maria["day_one"][0]] * (EXPERT_DAY_ONE_MAX_ITEMS + 1)
+    # dropped below the cap. The row is our own, not her catalog copy.
+    row = ExpertDayOneItem(title="A brief before the draft", timing="day 1")
+    too_many["day_one"] = [row] * (EXPERT_DAY_ONE_MAX_ITEMS + 1)
 
     with (
         patch.object(prisma.models.Expert, "prisma") as expert_client,
@@ -4019,12 +3962,14 @@ async def test_roster_preloads_resolve_and_hire_installs_cleanly(
         fixture_roster, templates, expected
     )
 
-    frankie_crons = [
-        w.schedule_cron for w in results["Frankie"].expert.workflows if w.schedule_cron
-    ]
-    assert frankie_crons == ["40 7 * * *"]
-    for name in ("Maria", "Max"):
-        assert all(w.schedule_cron is None for w in results[name].expert.workflows)
+    # Each hire schedules exactly the cadences its template declares.
+    for persona, entry in fixture_roster.items():
+        installed = {
+            w.store_listing_version_id: w.schedule_cron
+            for w in results[persona].expert.workflows
+        }
+        declared = {expected[p["slug"]]: p["cron"] for p in entry["preloads"]}
+        assert installed == declared, persona
     assert all(result.expert.day_one == [] for result in results.values())
 
 

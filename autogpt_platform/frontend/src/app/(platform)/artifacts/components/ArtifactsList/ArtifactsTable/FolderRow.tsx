@@ -137,7 +137,7 @@ export function FolderRow({
       <div
         className={cn(
           ACTIONS_CELL_CLASS,
-          "gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100",
+          "gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100",
         )}
         onClick={(e) => e.stopPropagation()}
       >

@@ -37,7 +37,7 @@ export function SupportOffer({
         variant="h4"
         as="h2"
         // oxlint-disable-next-line design-system/no-restyle -- the plan title is set tight on a 32px line; no Text variant has it
-        className="mb-3 mt-4 leading-8 tracking-display"
+        className="mt-4 mb-3 leading-8 tracking-display"
       >
         {title}
       </Text>
