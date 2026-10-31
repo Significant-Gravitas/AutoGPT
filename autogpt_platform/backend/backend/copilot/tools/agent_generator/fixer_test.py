@@ -1,5 +1,7 @@
 """Unit tests for AgentFixer."""
 
+import pytest
+
 from .fixer import (
     _ADDTODICTIONARY_BLOCK_ID,
     _ADDTOLIST_BLOCK_ID,
@@ -428,184 +430,77 @@ class TestFixLinkStaticProperties:
         assert result["links"][0]["is_static"] is True
 
 
+# A block's own model enum replaces the generic allowed models and default.
+_PERPLEXITY_MODEL = {
+    "type": "string",
+    "enum": [
+        "perplexity/sonar",
+        "perplexity/sonar-pro",
+        "perplexity/sonar-deep-research",
+    ],
+    "default": "perplexity/sonar",
+}
+
+
 class TestFixAiModelParameter:
     """Tests for fix_ai_model_parameter."""
 
-    def test_missing_model_gets_default(self):
-        fixer = AgentFixer()
-        block_id = generate_uuid()
-        node = _make_node(node_id="n1", block_id=block_id, input_default={})
-        agent = _make_agent(nodes=[node])
-
-        blocks = [
-            {
-                "id": block_id,
-                "categories": [{"category": "AI"}],
-                "inputSchema": {
-                    "properties": {"model": {"type": "string"}},
-                },
-            }
-        ]
-
-        result = fixer.fix_ai_model_parameter(agent, blocks)
-
-        assert result["nodes"][0]["input_default"]["model"] == "gpt-4o"
-
-    def test_valid_model_unchanged(self):
-        fixer = AgentFixer()
-        block_id = generate_uuid()
-        node = _make_node(
-            node_id="n1",
-            block_id=block_id,
-            input_default={"model": "claude-opus-4-6"},
-        )
-        agent = _make_agent(nodes=[node])
-
-        blocks = [
-            {
-                "id": block_id,
-                "categories": [{"category": "AI"}],
-                "inputSchema": {
-                    "properties": {"model": {"type": "string"}},
-                },
-            }
-        ]
-
-        result = fixer.fix_ai_model_parameter(agent, blocks)
-
-        assert result["nodes"][0]["input_default"]["model"] == "claude-opus-4-6"
-
-    def test_new_generic_model_survives_string_model_field(self):
-        """claude-opus-5-5 was added to generic_allowed_models; a no-enum AI
-        block (plain string model field) must preserve it instead of
-        falling back to the generic default."""
+    @pytest.mark.parametrize(
+        "name, model_property, input_default, expected",
+        [
+            pytest.param(
+                None, {"type": "string"}, {}, "gpt-4o", id="missing_model_gets_default"
+            ),
+            pytest.param(
+                None,
+                {"type": "string"},
+                {"model": "claude-opus-4-6"},
+                "claude-opus-4-6",
+                id="valid_model_unchanged",
+            ),
+            # In generic_allowed_models, so it must not fall back to the default.
+            pytest.param(
+                None,
+                {"type": "string"},
+                {"model": "claude-opus-5-5"},
+                "claude-opus-5-5",
+                id="new_generic_model_survives_string_model_field",
+            ),
+            pytest.param(
+                "PerplexityBlock",
+                _PERPLEXITY_MODEL,
+                {"model": "gpt-5.2-2025-12-11"},
+                "perplexity/sonar",
+                id="block_specific_enum_uses_block_default",
+            ),
+            pytest.param(
+                "PerplexityBlock",
+                _PERPLEXITY_MODEL,
+                {"model": "perplexity/sonar-pro"},
+                "perplexity/sonar-pro",
+                id="block_specific_enum_valid_model_unchanged",
+            ),
+            pytest.param(
+                "PerplexityBlock",
+                _PERPLEXITY_MODEL,
+                {},
+                "perplexity/sonar",
+                id="block_specific_enum_missing_model_gets_block_default",
+            ),
+        ],
+    )
+    def test_model_set_or_kept(self, name, model_property, input_default, expected):
         fixer = AgentFixer()
         block_id = generate_uuid()
         node = _make_node(
-            node_id="n1",
-            block_id=block_id,
-            input_default={"model": "claude-opus-5-5"},
+            node_id="n1", block_id=block_id, input_default=dict(input_default)
         )
         agent = _make_agent(nodes=[node])
-
-        blocks = [
-            {
-                "id": block_id,
-                "categories": [{"category": "AI"}],
-                "inputSchema": {
-                    "properties": {"model": {"type": "string"}},
-                },
-            }
-        ]
+        blocks = [_ai_block(block_id, {"model": model_property}, name)]
 
         result = fixer.fix_ai_model_parameter(agent, blocks)
 
-        assert result["nodes"][0]["input_default"]["model"] == "claude-opus-5-5"
-
-    def test_block_specific_enum_uses_block_default(self):
-        """Blocks with their own model enum (e.g. PerplexityBlock) should use
-        the block's allowed models and default, not the generic ones."""
-        fixer = AgentFixer()
-        block_id = generate_uuid()
-        node = _make_node(
-            node_id="n1",
-            block_id=block_id,
-            input_default={"model": "gpt-5.2-2025-12-11"},
-        )
-        agent = _make_agent(nodes=[node])
-
-        blocks = [
-            {
-                "id": block_id,
-                "name": "PerplexityBlock",
-                "categories": [{"category": "AI"}],
-                "inputSchema": {
-                    "properties": {
-                        "model": {
-                            "type": "string",
-                            "enum": [
-                                "perplexity/sonar",
-                                "perplexity/sonar-pro",
-                                "perplexity/sonar-deep-research",
-                            ],
-                            "default": "perplexity/sonar",
-                        }
-                    },
-                },
-            }
-        ]
-
-        result = fixer.fix_ai_model_parameter(agent, blocks)
-
-        assert result["nodes"][0]["input_default"]["model"] == "perplexity/sonar"
-
-    def test_block_specific_enum_valid_model_unchanged(self):
-        """A valid block-specific model should not be replaced."""
-        fixer = AgentFixer()
-        block_id = generate_uuid()
-        node = _make_node(
-            node_id="n1",
-            block_id=block_id,
-            input_default={"model": "perplexity/sonar-pro"},
-        )
-        agent = _make_agent(nodes=[node])
-
-        blocks = [
-            {
-                "id": block_id,
-                "name": "PerplexityBlock",
-                "categories": [{"category": "AI"}],
-                "inputSchema": {
-                    "properties": {
-                        "model": {
-                            "type": "string",
-                            "enum": [
-                                "perplexity/sonar",
-                                "perplexity/sonar-pro",
-                                "perplexity/sonar-deep-research",
-                            ],
-                            "default": "perplexity/sonar",
-                        }
-                    },
-                },
-            }
-        ]
-
-        result = fixer.fix_ai_model_parameter(agent, blocks)
-
-        assert result["nodes"][0]["input_default"]["model"] == "perplexity/sonar-pro"
-
-    def test_block_specific_enum_missing_model_gets_block_default(self):
-        """Missing model on a block with enum should use the block's default."""
-        fixer = AgentFixer()
-        block_id = generate_uuid()
-        node = _make_node(node_id="n1", block_id=block_id, input_default={})
-        agent = _make_agent(nodes=[node])
-
-        blocks = [
-            {
-                "id": block_id,
-                "name": "PerplexityBlock",
-                "categories": [{"category": "AI"}],
-                "inputSchema": {
-                    "properties": {
-                        "model": {
-                            "type": "string",
-                            "enum": [
-                                "perplexity/sonar",
-                                "perplexity/sonar-pro",
-                                "perplexity/sonar-deep-research",
-                            ],
-                            "default": "perplexity/sonar",
-                        }
-                    },
-                },
-            }
-        ]
-
-        result = fixer.fix_ai_model_parameter(agent, blocks)
-
-        assert result["nodes"][0]["input_default"]["model"] == "perplexity/sonar"
+        assert result["nodes"][0]["input_default"]["model"] == expected
 
     def test_ai_block_without_model_property_is_skipped(self):
         """AI-category blocks that have no 'model' input property should not
@@ -614,21 +509,22 @@ class TestFixAiModelParameter:
         block_id = generate_uuid()
         node = _make_node(node_id="n1", block_id=block_id, input_default={})
         agent = _make_agent(nodes=[node])
-
-        blocks = [
-            {
-                "id": block_id,
-                "name": "SomeAIBlock",
-                "categories": [{"category": "AI"}],
-                "inputSchema": {
-                    "properties": {"prompt": {"type": "string"}},
-                },
-            }
-        ]
+        blocks = [_ai_block(block_id, {"prompt": {"type": "string"}}, "SomeAIBlock")]
 
         result = fixer.fix_ai_model_parameter(agent, blocks)
 
         assert "model" not in result["nodes"][0]["input_default"]
+
+
+def _ai_block(block_id: str, properties: dict, name: str | None = None) -> dict:
+    block = {
+        "id": block_id,
+        "categories": [{"category": "AI"}],
+        "inputSchema": {"properties": properties},
+    }
+    if name:
+        block["name"] = name
+    return block
 
 
 class TestFixAgentExecutorBlocks:
@@ -762,16 +658,7 @@ class TestFixMCPToolBlocks:
 
     def test_adds_missing_tool_arguments(self):
         fixer = AgentFixer()
-        node = _make_node(
-            node_id="n1",
-            block_id=MCP_TOOL_BLOCK_ID,
-            input_default={
-                "server_url": "https://mcp.example.com/sse",
-                "selected_tool": "search",
-                "tool_input_schema": {},
-            },
-        )
-        agent = _make_agent(nodes=[node])
+        agent = _mcp_agent(tool_input_schema={})
 
         result = fixer.fix_mcp_tool_blocks(agent)
 
@@ -780,16 +667,7 @@ class TestFixMCPToolBlocks:
 
     def test_adds_missing_tool_input_schema(self):
         fixer = AgentFixer()
-        node = _make_node(
-            node_id="n1",
-            block_id=MCP_TOOL_BLOCK_ID,
-            input_default={
-                "server_url": "https://mcp.example.com/sse",
-                "selected_tool": "search",
-                "tool_arguments": {},
-            },
-        )
-        agent = _make_agent(nodes=[node])
+        agent = _mcp_agent(tool_arguments={})
 
         result = fixer.fix_mcp_tool_blocks(agent)
 
@@ -798,22 +676,15 @@ class TestFixMCPToolBlocks:
 
     def test_populates_tool_arguments_from_schema(self):
         fixer = AgentFixer()
-        node = _make_node(
-            node_id="n1",
-            block_id=MCP_TOOL_BLOCK_ID,
-            input_default={
-                "server_url": "https://mcp.example.com/sse",
-                "selected_tool": "search",
-                "tool_input_schema": {
-                    "properties": {
-                        "query": {"type": "string", "default": "hello"},
-                        "limit": {"type": "integer"},
-                    }
-                },
-                "tool_arguments": {},
+        agent = _mcp_agent(
+            tool_input_schema={
+                "properties": {
+                    "query": {"type": "string", "default": "hello"},
+                    "limit": {"type": "integer"},
+                }
             },
+            tool_arguments={},
         )
-        agent = _make_agent(nodes=[node])
 
         result = fixer.fix_mcp_tool_blocks(agent)
 
@@ -823,21 +694,24 @@ class TestFixMCPToolBlocks:
 
     def test_no_op_when_already_complete(self):
         fixer = AgentFixer()
-        node = _make_node(
-            node_id="n1",
-            block_id=MCP_TOOL_BLOCK_ID,
-            input_default={
-                "server_url": "https://mcp.example.com/sse",
-                "selected_tool": "search",
-                "tool_input_schema": {},
-                "tool_arguments": {},
-            },
-        )
-        agent = _make_agent(nodes=[node])
+        agent = _mcp_agent(tool_input_schema={}, tool_arguments={})
 
         fixer.fix_mcp_tool_blocks(agent)
 
         assert len(fixer.fixes_applied) == 0
+
+
+def _mcp_agent(**input_default) -> dict:
+    node = _make_node(
+        node_id="n1",
+        block_id=MCP_TOOL_BLOCK_ID,
+        input_default={
+            "server_url": "https://mcp.example.com/sse",
+            "selected_tool": "search",
+            **input_default,
+        },
+    )
+    return _make_agent(nodes=[node])
 
 
 class TestFixDynamicBlockSinkNames:
