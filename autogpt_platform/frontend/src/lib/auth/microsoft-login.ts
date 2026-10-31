@@ -2,6 +2,7 @@
 // files and the rest are a separate, optional step afterwards.
 
 import { isWaitlistError } from "@/app/api/auth/utils";
+import { UNDELIVERABLE_EMAIL_CODE } from "./undeliverable-email";
 
 // Microsoft's fixed tenant for personal (consumer) accounts.
 const PERSONAL_TENANT_ID = "9188040d-6c67-4c5b-b112-36a304b66dad";
@@ -98,11 +99,10 @@ function isMicrosoftMailbox(email: string | undefined) {
 }
 
 export function microsoftProfileToUser(profile: MicrosoftProfile) {
+  // No `id`: Better Auth keys the account on the `oid` claim, never the
+  // address, since a personal and a work account can share one. `oid` also
+  // stays the same when the deployment moves to a different Microsoft app.
   return {
-    // The account, not its address, is the identity: a personal and a work
-    // account can share one. Tenant plus object ID also survives the
-    // deployment moving to a different Microsoft app.
-    id: `${profile.tid ?? "unknown"}:${profile.oid ?? profile.sub}`,
     // An unconfirmed address joins no existing account (Better Auth answers
     // `account_not_linked`) and creates none (microsoft-sign-up-policy.ts).
     emailVerified: isMicrosoftEmailVerified(profile),
@@ -140,16 +140,25 @@ const SIGN_IN_ERRORS: Record<string, string> = {
   account_not_linked:
     "An AutoGPT account already uses that email. Log in the way you usually do.",
   access_denied: "Microsoft sign-in was cancelled.",
+  // access-blocks.ts, which is server-only.
+  SIGN_IN_BLOCKED:
+    "This sign-in isn't allowed. Contact support if you think this is a mistake.",
 };
 
-// Better Auth sends a sign-up that one of our hooks refused back with the
-// hook's message as the code, spaces turned into underscores: a sentence, so
-// it ends with a full stop. Its text is never shown, since anyone can put
-// anything in the URL.
+// Better Auth sends a sign-up one of our checks refused back with the
+// check's code (access-blocks.ts, disposable-email.ts, undeliverable-email.ts;
+// the first two are server-only, so their codes are written out here). The
+// message that comes with it is never shown, since anyone can put anything
+// in the URL.
+const REFUSED_SIGN_UP_CODES = new Set([
+  "SIGN_UP_BLOCKED",
+  "DISPOSABLE_EMAIL",
+  UNDELIVERABLE_EMAIL_CODE,
+]);
 const REFUSED_SIGN_UP =
   "This sign-up isn't allowed. Use another sign-in method, or contact support if you think this is a mistake.";
 
-/** A sign-up the signup gate refused (see REFUSED_SIGN_UP). */
+/** A sign-up the signup gate refused (SIGN_UP_NOT_ALLOWED, signup-gate.ts). */
 export function isWaitlistSignInError(code: string | null): boolean {
   if (!code) return false;
   return (
@@ -160,6 +169,6 @@ export function isWaitlistSignInError(code: string | null): boolean {
 export function getSocialSignInError(code: string | null): string | null {
   if (!code) return null;
   if (Object.hasOwn(SIGN_IN_ERRORS, code)) return SIGN_IN_ERRORS[code];
-  if (code.endsWith(".")) return REFUSED_SIGN_UP;
+  if (REFUSED_SIGN_UP_CODES.has(code)) return REFUSED_SIGN_UP;
   return "That sign-in didn't finish. Try again, or use another sign-in method.";
 }

@@ -29,17 +29,24 @@ interface SignUpContext {
 // is creating the user: `/callback/:id` names the provider in its params, and
 // `/sign-in/social` (ID tokens, switched off for Microsoft) in its body.
 // Better Auth sends a refused OAuth sign-up to its error URL with the thrown
-// message as the `error` code, which /login explains.
+// `code` as `error`, which /login explains. An APIError without a code ends
+// the callback on a raw 403 instead.
 export function assertMicrosoftSignUpAllowed(
   user: { email: string; emailVerified?: boolean | null },
   ctx: SignUpContext | null | undefined,
 ) {
   if (!isMicrosoftSignUp(ctx)) return;
   if (!user.emailVerified) {
-    throw new APIError("FORBIDDEN", { message: UNCONFIRMED_EMAIL_CODE });
+    throw new APIError("FORBIDDEN", {
+      code: UNCONFIRMED_EMAIL_CODE,
+      message: "Microsoft hasn't confirmed the email address on this account.",
+    });
   }
   if (isTeamEmail(user.email)) {
-    throw new APIError("FORBIDDEN", { message: TEAM_EMAIL_SIGN_UP_CODE });
+    throw new APIError("FORBIDDEN", {
+      code: TEAM_EMAIL_SIGN_UP_CODE,
+      message: "An AutoGPT team address signs up with Google.",
+    });
   }
 }
 

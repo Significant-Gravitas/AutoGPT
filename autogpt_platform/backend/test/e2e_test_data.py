@@ -318,7 +318,7 @@ class TestDataCreator:
             await prisma.authaccount.create(
                 data={
                     "id": str(faker.uuid4()),
-                    "accountId": "e2e-tenant:e2e-object",
+                    "accountId": "e2e-object-id",
                     "providerId": "microsoft",
                     "userId": user_id,
                 }

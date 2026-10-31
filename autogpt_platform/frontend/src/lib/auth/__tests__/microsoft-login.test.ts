@@ -1,33 +1,17 @@
 import { describe, expect, it } from "vitest";
+import { SIGN_IN_BLOCKED_CODE, SIGN_UP_BLOCKED_CODE } from "../access-blocks";
+import { DISPOSABLE_EMAIL_CODE } from "../disposable-email";
 import {
   getSocialSignInError,
   isWaitlistSignInError,
   microsoftProfileToUser,
 } from "../microsoft-login";
+import { SIGN_UP_NOT_ALLOWED_CODE } from "../signup-gate";
+import { UNDELIVERABLE_EMAIL_CODE } from "../undeliverable-email";
 
 const PERSONAL_TENANT = "9188040d-6c67-4c5b-b112-36a304b66dad";
 
 describe("Continue with Microsoft", () => {
-  it("keys the account on tenant and account id, not the address", () => {
-    const personal = microsoftProfileToUser({
-      sub: "pairwise-1",
-      oid: "personal-id",
-      tid: PERSONAL_TENANT,
-      email: "same@company.example",
-    });
-    const work = microsoftProfileToUser({
-      sub: "pairwise-2",
-      oid: "work-id",
-      tid: "company-tenant",
-      email: "same@company.example",
-      xms_edov: true,
-    });
-
-    expect(personal.id).toBe(`${PERSONAL_TENANT}:personal-id`);
-    expect(work.id).toBe("company-tenant:work-id");
-    expect(personal.id).not.toBe(work.id);
-  });
-
   it("trusts a personal account's own Microsoft mailbox and organization-verified work addresses", () => {
     expect(
       microsoftProfileToUser({
@@ -125,21 +109,21 @@ describe("Continue with Microsoft", () => {
     for (const code of ["__proto__", "constructor", "toString"]) {
       expect(getSocialSignInError(code)).toMatch(/didn't finish/);
     }
-    // A refusal from one of our sign-up checks: its own text is never shown,
-    // since anyone can put anything in the URL.
-    expect(
-      getSocialSignInError(
-        "Sign-up_isn't_available_from_this_network_or_email_address._If_you_think_this_is_a_mistake,_please_contact_support.",
-      ),
-    ).toMatch(/isn't allowed/);
+    // A refusal from one of our sign-up checks arrives as its code.
+    for (const code of [
+      SIGN_UP_BLOCKED_CODE,
+      DISPOSABLE_EMAIL_CODE,
+      UNDELIVERABLE_EMAIL_CODE,
+    ]) {
+      expect(getSocialSignInError(code)).toMatch(/sign-up isn't allowed/);
+    }
+    expect(getSocialSignInError(SIGN_IN_BLOCKED_CODE)).toMatch(
+      /sign-in isn't allowed/,
+    );
   });
 
   it("recognizes a sign-up the waitlist refused", () => {
-    expect(
-      isWaitlistSignInError(
-        "This_email_address_is_not_allowed_to_register._Please_contact_support_for_assistance.",
-      ),
-    ).toBe(true);
+    expect(isWaitlistSignInError(SIGN_UP_NOT_ALLOWED_CODE)).toBe(true);
     expect(isWaitlistSignInError("FORBIDDEN")).toBe(true);
     expect(isWaitlistSignInError("account_not_linked")).toBe(false);
     expect(isWaitlistSignInError("unconfirmed_email")).toBe(false);

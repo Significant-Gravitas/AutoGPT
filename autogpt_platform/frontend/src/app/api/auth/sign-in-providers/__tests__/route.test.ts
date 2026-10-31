@@ -31,7 +31,7 @@ describe("GET /api/auth/sign-in-providers", () => {
     getServerSessionMock.mockResolvedValue({ user: { id: "user-1" } });
     listUserAccountsMock.mockResolvedValue([
       { providerId: "credential", accountId: "user-1", accessToken: "x" },
-      { providerId: "microsoft", accountId: "tenant:object", idToken: "y" },
+      { providerId: "microsoft", accountId: "object-id", idToken: "y" },
       { providerId: "microsoft", accountId: "tenant:other", idToken: "z" },
     ]);
 

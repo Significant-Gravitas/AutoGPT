@@ -77,15 +77,17 @@ calendar, files, Teams and Work IQ tools follow it.
 - `frontend/src/app/(no-navbar)/onboarding/steps/AccessStep/`: the access
   step. `accessProviders.tsx` maps a sign-in provider to the connection it
   offers; Google or GitHub join by adding an entry there.
-- `frontend/src/lib/auth/microsoft-login.ts`: the login provider. Accounts
-  are keyed on tenant plus Microsoft's object ID, never the email address.
+- `frontend/src/lib/auth/microsoft-login.ts`: the login provider. Better
+  Auth keys accounts on Microsoft's object ID (`oid`), never the email
+  address.
   An address only counts when Microsoft vouches for it: a personal account's
   own Outlook.com, Hotmail, Live or MSN address, or a work address with
   `xms_edov`. A guest's address is never trusted: a guest signs in through
   an organization that isn't its own, which vouches for addresses it never
   verified. Any other address joins no existing account (Better Auth
   answers `account_not_linked`) and creates none
-  (`microsoft-sign-up-policy.ts` answers `unconfirmed_email`), whether or not
+  (`microsoft-sign-up-policy.ts` refuses with the code `unconfirmed_email`,
+  which Better Auth sends back to /login as `error`), whether or not
   email verification is on. Only the redirect flow signs in: Better Auth's
   ID-token sign-in is switched off for Microsoft. Emailing a confirmation link instead would not be
   safe: the mailbox's owner could confirm it, and the other person's

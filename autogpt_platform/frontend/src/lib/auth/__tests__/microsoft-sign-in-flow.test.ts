@@ -175,6 +175,13 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+// Where a refused sign-up lands: the page, and the `error` code it explains.
+// Better Auth also sends the refusal's message, which nothing shows.
+function refusal(landing: string | null) {
+  const url = new URL(landing ?? "", baseURL);
+  return { path: url.pathname, error: url.searchParams.get("error") };
+}
+
 describe("Continue with Microsoft", () => {
   it("signs up a personal account on its own Outlook.com address", async () => {
     const { handler, db } = await createAuthHandler();
@@ -196,7 +203,7 @@ describe("Continue with Microsoft", () => {
     expect(db.UserAuthAccount).toEqual([
       expect.objectContaining({
         providerId: "microsoft",
-        accountId: `${PERSONAL_TENANT}:personal-id`,
+        accountId: "personal-id",
       }),
     ]);
     expect(db.UserAuthSession).toHaveLength(1);
@@ -219,7 +226,7 @@ describe("Continue with Microsoft", () => {
     expect(db.UserAuthAccount).toEqual([
       expect.objectContaining({
         providerId: "microsoft",
-        accountId: "company-tenant:work-id",
+        accountId: "work-id",
         userId: "existing-user",
       }),
     ]);
@@ -273,7 +280,10 @@ describe("Continue with Microsoft", () => {
         email: "pat@gmail.example",
       });
 
-      expect(landing).toBe("/login?error=unconfirmed_email");
+      expect(refusal(landing)).toEqual({
+        path: "/login",
+        error: "unconfirmed_email",
+      });
       expect(db.UserAuthIdentity).toEqual([]);
       expect(db.UserAuthAccount).toEqual([]);
       expect(db.UserAuthSession).toEqual([]);
@@ -292,7 +302,10 @@ describe("Continue with Microsoft", () => {
       xms_edov: true,
     });
 
-    expect(landing).toBe("/login?error=team_email_requires_google");
+    expect(refusal(landing)).toEqual({
+      path: "/login",
+      error: "team_email_requires_google",
+    });
     expect(db.UserAuthIdentity).toEqual([]);
     expect(db.UserAuthSession).toEqual([]);
   });
@@ -360,7 +373,10 @@ describe("Continue with Microsoft", () => {
       }),
     );
 
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({
+      code: "ID_TOKEN_NOT_SUPPORTED",
+    });
     expect(db.UserAuthIdentity).toEqual([]);
     expect(db.UserAuthSession).toEqual([]);
   });
