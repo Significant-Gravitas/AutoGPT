@@ -13,7 +13,7 @@ API v1 (`/external-api/v1/...`) is deprecated and **stops working on 2027-02-01*
 
 * **Base URL.** `/external-api/v1` becomes `/api/v2`.
 * **Runs go through your library.** v1 ran a graph by graph ID and version. v2 runs a **library agent**: look it up once with `GET /graphs/{graph_id}/library-agent`, then run it with `POST /library/agents/{agent_id}/runs`.
-* **Permissions.** `RUN_AGENT` replaces `EXECUTE_GRAPH`, reading runs needs `READ_RUN`, and most v2 areas have their own read and write permissions. A v1 key usually needs new permissions; see the table below.
+* **Permissions.** `RUN_AGENT` replaces `EXECUTE_GRAPH`, reading runs needs `READ_RUN`, and most v2 areas have their own read and write permissions. A v1 key usually lacks them, and a key's permissions can't be changed, so plan on creating a new key; see the table below.
 * **Lists are paginated.** Every list endpoint takes `limit` and `cursor` and returns `{"items", "next_cursor", "total_count"}`. Code that expected a bare array must read `items` and follow `next_cursor`.
 * **Errors have one shape**: `{"error": {"code", "message", "details"}}` instead of `{"detail": ...}`. See [Errors](api-conventions.md#errors).
 * **Requests act inside an organization.** The key decides which one; see [Organizations and teams](authentication.md#organizations-and-teams).
@@ -76,7 +76,7 @@ The v2 run object returns everything at once: `status`, `outputs` keyed by outpu
 
 ## Checklist
 
-1. Add the v2 permissions your calls need to the key, or create a new key. Check with `GET /me`.
+1. [Create a new key](authentication.md#create-an-api-key) with the v2 permissions your calls need, plus `IDENTITY`, and check it with `GET /me`. Keep the old key for the calls still on v1, and delete it once nothing uses it.
 2. Change the base URL to `/api/v2`.
 3. Replace graph runs with library-agent runs, and send an `Idempotency-Key`.
 4. Read `items` and follow `next_cursor` on every list.
