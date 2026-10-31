@@ -1111,6 +1111,28 @@ describe("the end-of-turn reconcile", () => {
     expect(report).not.toHaveBeenCalled();
   });
 
+  it("replaces a row that differs under its own key, and reports it", async () => {
+    await sendAndPublish(toolTurn.sse.length - 1);
+    const before = render();
+    const rows = toolTurn.rows.map((row) =>
+      row.content === SECOND_TEXT ? { ...row, content: "It says Other." } : row,
+    );
+    backend.publish();
+    vi.spyOn(backend, "view").mockImplementation(() => ({
+      messages: rows.map((row, sequence) => ({ ...row, sequence })),
+      has_more_messages: false,
+      active_stream: null,
+    }));
+    await advance(1_000);
+
+    expect(render().map((m) => m.id)).toEqual(before.map((m) => m.id));
+    expect(textsOf(render())).toEqual([PROMPT, `${FIRST_TEXT}It says Other.`]);
+    expect(report).toHaveBeenCalledWith(
+      "finish",
+      expect.objectContaining({ diffs: ["2: content"] }),
+    );
+  });
+
   it("keeps the reply of a turn longer than the session window rateable", async () => {
     await sendAndPublish(toolTurn.sse.length - 1);
     backend.publish();
@@ -1138,28 +1160,6 @@ describe("the end-of-turn reconcile", () => {
     });
     await advance(0);
     expect(turnSegment().lastReplySequence).toBe(3);
-  });
-
-  it("replaces a row that differs under its own key, and reports it", async () => {
-    await sendAndPublish(toolTurn.sse.length - 1);
-    const before = render();
-    const rows = toolTurn.rows.map((row) =>
-      row.content === SECOND_TEXT ? { ...row, content: "It says Other." } : row,
-    );
-    backend.publish();
-    vi.spyOn(backend, "view").mockImplementation(() => ({
-      messages: rows.map((row, sequence) => ({ ...row, sequence })),
-      has_more_messages: false,
-      active_stream: null,
-    }));
-    await advance(1_000);
-
-    expect(render().map((m) => m.id)).toEqual(before.map((m) => m.id));
-    expect(textsOf(render())).toEqual([PROMPT, `${FIRST_TEXT}It says Other.`]);
-    expect(report).toHaveBeenCalledWith(
-      "finish",
-      expect.objectContaining({ diffs: ["2: content"] }),
-    );
   });
 });
 
