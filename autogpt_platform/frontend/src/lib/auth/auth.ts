@@ -2,12 +2,13 @@ import { betterAuth, type BetterAuthOptions } from "better-auth";
 import {
   APIError,
   createAuthMiddleware,
-  getIp,
+  getIP,
   isAPIError,
 } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { admin, jwt } from "better-auth/plugins";
 import { compare, hash } from "bcryptjs";
+import { PostgresDialect } from "kysely";
 import { Pool } from "pg";
 import { assertSignInAllowed, assertSignUpAllowed } from "./access-blocks";
 import { getTrustedClientIP } from "./client-ip";
@@ -42,7 +43,11 @@ import {
 import { revokeResetLinksMailedElsewhere } from "./reset-links";
 import { RESET_LINK_EXPIRES_IN_SECONDS } from "./set-password-link";
 import { JWKS_ALG } from "./service-token";
-import { isSignupAllowed, readSignupGateConfig } from "./signup-gate";
+import {
+  isSignupAllowed,
+  readSignupGateConfig,
+  SIGN_UP_NOT_ALLOWED_CODE,
+} from "./signup-gate";
 import { supabaseBridge } from "./supabase-bridge";
 import { assertTeamEmailUsesGoogle } from "./team-email-policy";
 import { sendVerificationLink } from "./verification-link";
@@ -121,41 +126,59 @@ const EMAIL_SIGN_UP_PATH = "/sign-up/email";
 function getRequestIP(ctx: HookContext) {
   const headers = ctx?.headers ?? ctx?.request?.headers;
   if (!headers || !ctx?.context) return null;
-  return getTrustedClientIP(getIp(headers, ctx.context.options));
+  return getTrustedClientIP(getIP(headers, ctx.context.options));
 }
 
 export const auth = betterAuth({
   baseURL,
   secret: authSecret,
-  database: authDbPool,
+  // Without database transactions, as before Better Auth 1.7, which turns
+  // them on for a bare pg Pool. A sign-up would then hold one of the pool's
+  // connections throughout while the session hook (access blocks, IP log)
+  // waits on the same pool for another: at ten concurrent sign-ups every
+  // connection waits forever.
+  database: {
+    dialect: new PostgresDialect({ pool: authDbPool }),
+    type: "postgres",
+    transaction: false,
+  },
   telemetry: { enabled: false },
   disabledPaths: DISABLED_AUTH_PATHS,
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
+      const signUpEmail =
+        ctx.path === EMAIL_SIGN_UP_PATH && typeof ctx.body?.email === "string"
+          ? ctx.body.email
+          : null;
       // Before Better Auth looks the address up, so an address that already
       // has an account is refused the same way, in the same time.
-      if (
-        ctx.path === EMAIL_SIGN_UP_PATH &&
-        typeof ctx.body?.email === "string"
-      ) {
-        await assertEmailSignUpAllowed(ctx.body.email, getRequestIP(ctx));
+      if (signUpEmail) {
+        await assertEmailSignUpAllowed(signUpEmail, getRequestIP(ctx));
       }
       // With verification required, sign-up and resend email an address with
       // no session yet: at most a few per IP per window (ip-email-cap.ts).
-      if (!requireEmailVerification) return;
-      await capAuthEmailsPerIP({
-        path: ctx.path,
-        headers: ctx.headers,
-        context: ctx.context,
-      });
-      // After the cap, so each mailer lookup spends one of the IP's slots, and
-      // before the address is looked up, so it answers alike with or without an
-      // account.
-      if (
-        IP_CAPPED_PATHS.has(ctx.path) &&
-        typeof ctx.body?.email === "string"
-      ) {
-        await assertEmailDeliverable(ctx.body.email);
+      if (requireEmailVerification) {
+        await capAuthEmailsPerIP({
+          path: ctx.path,
+          headers: ctx.headers,
+          context: ctx.context,
+        });
+        // After the cap, so each mailer lookup spends one of the IP's slots,
+        // and before the address is looked up, so it answers alike with or
+        // without an account.
+        if (
+          IP_CAPPED_PATHS.has(ctx.path) &&
+          typeof ctx.body?.email === "string"
+        ) {
+          await assertEmailDeliverable(ctx.body.email);
+        }
+      }
+      // Here as well as in user.create.before: with verification required,
+      // Better Auth answers a 403 from creating the user with its generic
+      // "check your email" reply, which would hide the reason from the form.
+      // Also before the lookup, so it answers alike with or without an account.
+      if (signUpEmail) {
+        assertSignUpPolicy(signUpEmail, ctx);
       }
     }),
     // A reset link only reaches whoever holds the address it was mailed to,
@@ -186,23 +209,14 @@ export const auth = betterAuth({
   databaseHooks: {
     user: {
       create: {
-        // Env-driven signup gate (see signup-gate.ts). Fires for both
-        // email/password signup AND a first OAuth sign-in, since both create
-        // a user row. Existing users and the SQL data-migration bypass it.
-        // The thrown message is phrased so the frontend `isWaitlistError()`
-        // maps it to the existing "not allowed" modal.
+        // Fires for both email/password signup AND a first OAuth sign-in,
+        // since both create a user row. The SQL data-migration bypasses it.
         before: async (
           user: { email: string; emailVerified?: boolean | null },
           ctx: HookContext,
         ) => {
-          assertTeamEmailUsesGoogle(user.email, ctx);
+          assertSignUpPolicy(user.email, ctx);
           assertProviderVerifiedEmail(user, ctx);
-          const decision = isSignupAllowed(user.email, readSignupGateConfig());
-          if (!decision.allowed) {
-            throw new APIError("FORBIDDEN", {
-              message: decision.reason ?? "Signups are not allowed.",
-            });
-          }
           // An email sign-up was already checked in hooks.before.
           if (
             ctx?.path === ADMIN_CREATE_USER_PATH ||
@@ -476,6 +490,20 @@ export const auth = betterAuth({
 // instance they belong to, once it exists.
 async function getAuthContext(): Promise<ResetLinkContext> {
   return auth.$context;
+}
+
+// Team addresses sign up through Google (team-email-policy.ts), and the
+// env-driven sign-up gate (signup-gate.ts) phrases its message so the
+// frontend `isWaitlistError()` maps it to the existing "not allowed" modal.
+function assertSignUpPolicy(email: string, ctx: { path?: string } | null) {
+  assertTeamEmailUsesGoogle(email, ctx);
+  const decision = isSignupAllowed(email, readSignupGateConfig());
+  if (!decision.allowed) {
+    throw new APIError("FORBIDDEN", {
+      code: SIGN_UP_NOT_ALLOWED_CODE,
+      message: decision.reason ?? "Signups are not allowed.",
+    });
+  }
 }
 
 // IP and email-domain blocks from /admin/users (access-blocks.ts) answer

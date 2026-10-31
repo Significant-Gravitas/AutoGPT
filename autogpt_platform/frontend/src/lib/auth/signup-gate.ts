@@ -13,10 +13,11 @@
  * Prod leaves both unset → open signup. Dev/preview sets AUTH_SIGNUP_ALLOWLIST
  * so randoms can't sign up on a public preview URL.
  *
- * Enforced in auth.ts via `databaseHooks.user.create.before`, which fires for
- * BOTH email/password signup and a first OAuth sign-in (both create a user).
- * Existing users are unaffected — the hook only runs on user *creation*, and
- * the one-time data migration inserts via raw SQL, bypassing it.
+ * Enforced in auth.ts: in `hooks.before` for an email/password signup, so it
+ * answers alike whether or not the address already has an account, and in
+ * `databaseHooks.user.create.before` for a first OAuth sign-in. Signing in is
+ * unaffected, and the one-time data migration inserts via raw SQL, bypassing
+ * it.
  *
  * Migrating an existing `allowed_users` table to the env var:
  *   psql -tAc "select string_agg(email, ',') from allowed_users" \
@@ -27,6 +28,10 @@ export interface SignupGateConfig {
   allowNewAccounts: boolean;
   allowlist: string[];
 }
+
+// Better Auth sends an OAuth callback's refusal on to the error page only when
+// it carries a code; the frontend's `isWaitlistError()` matches the message.
+export const SIGN_UP_NOT_ALLOWED_CODE = "SIGN_UP_NOT_ALLOWED";
 
 const DISABLED_MESSAGE =
   "New account registration is not allowed at this time.";

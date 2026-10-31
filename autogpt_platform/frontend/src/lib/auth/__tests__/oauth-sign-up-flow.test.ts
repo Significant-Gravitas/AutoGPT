@@ -1,7 +1,12 @@
 // @vitest-environment node
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { isWaitlistError } from "@/app/api/auth/utils";
 import { server } from "@/mocks/mock-server";
+import {
+  TEAM_EMAIL_REQUIRES_GOOGLE_CODE,
+  TEAM_EMAIL_REQUIRES_GOOGLE_MESSAGE,
+} from "../team-email-policy";
 
 // Runs the real Better Auth handler with this app's auth options (from
 // ../auth) on an in-memory database: a sign-in redirect, then the provider's
@@ -10,8 +15,14 @@ import { server } from "@/mocks/mock-server";
 
 vi.mock("pg", () => ({
   Pool: class {
-    async query() {
-      return { rows: [] };
+    async query(sql: string) {
+      if (sql.includes("is_auth_access_blocked(")) {
+        return { rowCount: 1, rows: [{ blocked: false }] };
+      }
+      if (sql.includes("record_auth_ip_event(")) {
+        return { rowCount: 1, rows: [] };
+      }
+      throw new Error(`unexpected query: ${sql}`);
     }
   },
 }));
@@ -29,16 +40,24 @@ vi.mock("better-auth", async (importOriginal) => {
       }),
   };
 });
+vi.mock("next/server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/server")>()),
+  after: vi.fn(),
+}));
 vi.mock("better-auth/next-js", () => ({
   nextCookies: vi.fn(() => ({ id: "next-cookies" })),
 }));
 vi.mock("../supabase-bridge", () => ({
   supabaseBridge: vi.fn(() => ({ id: "supabase-bridge" })),
 }));
+vi.mock("../email-mirror", () => ({
+  mirrorVerifiedEmailToPlatformUser: vi.fn(),
+}));
 vi.mock("../provision-platform-user", () => ({
   provisionPlatformUser: vi.fn(async () => "created"),
   platformUserExists: vi.fn(async () => true),
 }));
+vi.mock("../email", () => ({ sendAuthEmail: vi.fn() }));
 
 const baseURL = "http://localhost:3000";
 const PROVIDERS = ["google", "github", "discord"] as const;
@@ -89,7 +108,10 @@ describe("OAuth sign-up", () => {
 
       const response = await signInWith(handler, provider);
 
-      expect(refusal(response)).toMatch(/verify your email address/);
+      expect(refusal(response)).toEqual({
+        code: "EMAIL_NOT_VERIFIED_BY_PROVIDER",
+        message: expect.stringMatching(/verify your email address/),
+      });
       expect(db.UserAuthIdentity).toEqual([]);
       expect(db.UserAuthSession).toEqual([]);
     },
@@ -103,7 +125,10 @@ describe("OAuth sign-up", () => {
 
       const response = await signInWith(handler, provider);
 
-      expect(refusal(response)).toMatch(/use Google sign-in/);
+      expect(refusal(response)).toEqual({
+        code: TEAM_EMAIL_REQUIRES_GOOGLE_CODE,
+        message: TEAM_EMAIL_REQUIRES_GOOGLE_MESSAGE,
+      });
       expect(db.UserAuthIdentity).toEqual([]);
       expect(db.UserAuthSession).toEqual([]);
     },
@@ -125,6 +150,18 @@ describe("OAuth sign-up", () => {
       expect.objectContaining({ email, emailVerified: true }),
     ]);
     expect(db.UserAuthSession).toHaveLength(1);
+  });
+
+  it("sends an address off the allowlist to the error page with its reason", async () => {
+    vi.stubEnv("AUTH_SIGNUP_ALLOWLIST", "invited@example.com");
+    const { handler, db } = await createAuth();
+    answerAs("github", { email: "someone@example.com", verified: true });
+
+    const { code, message } = refusal(await signInWith(handler, "github"));
+
+    expect(code).toBe("SIGN_UP_NOT_ALLOWED");
+    expect(isWaitlistError(code, message)).toBe(true);
+    expect(db.UserAuthIdentity).toEqual([]);
   });
 
   it("still lets an admin create an unverified team account", async () => {
@@ -168,16 +205,16 @@ async function signInWith(handler: Handler, provider: Provider) {
   );
 }
 
-// The hook's message, from Better Auth's error page: in `error` with spaces as
-// underscores up to 1.6, in `error_description` beside its code from 1.7.
+// A refused sign-up lands on Better Auth's error page, carrying the hook's code
+// and message.
 function refusal(response: Response) {
   expect(response.status).toBe(302);
   const location = new URL(response.headers.get("location") ?? "");
   expect(location.pathname).toBe("/api/auth/error");
-  const message =
-    location.searchParams.get("error_description") ??
-    location.searchParams.get("error");
-  return message?.replaceAll("_", " ");
+  return {
+    code: location.searchParams.get("error"),
+    message: location.searchParams.get("error_description"),
+  };
 }
 
 // What each provider's token and profile endpoints answer for this person.
