@@ -41,7 +41,6 @@ import {
   usePostV2CleanupAllOrphanedExecutions,
   usePostV2CleanupAllStuckQueuedExecutions,
   usePostV2RequeueStuckExecution,
-  usePostV2RequeueMultipleStuckExecutions,
   usePostV2RequeueAllStuckQueuedExecutions,
 } from "@/app/api/__generated__/endpoints/admin/admin";
 import {
@@ -250,11 +249,6 @@ export function ExecutionsTable({
   const { mutateAsync: requeueSingleExecution, isPending: isRequeuingSingle } =
     usePostV2RequeueStuckExecution();
 
-  const {
-    mutateAsync: requeueMultipleExecutions,
-    isPending: isRequeueingMultiple,
-  } = usePostV2RequeueMultipleStuckExecutions();
-
   const { mutateAsync: requeueAllStuck, isPending: isRequeueingAll } =
     usePostV2RequeueAllStuckQueuedExecutions();
 
@@ -276,7 +270,6 @@ export function ExecutionsTable({
     isStoppingMultiple ||
     isCleaningUp ||
     isRequeuingSingle ||
-    isRequeueingMultiple ||
     isRequeueingAll ||
     isCleaningUpAll ||
     isCleaningUpAllStuckQueued ||
@@ -379,31 +372,15 @@ export function ExecutionsTable({
       } else {
         // Multiple executions
         if (stopMode === "requeue") {
-          // Requeue stuck queued executions
-          if (stopTarget === "all") {
-            // Use ALL endpoint for entire dataset
-            const result = await requeueAllStuck();
+          // Requeue All is the only multi-execution requeue the page offers
+          const result = await requeueAllStuck();
 
-            toast({
-              title: "Success",
-              description:
-                (result.data as MutationResponseData)?.message ||
-                `Requeued ${(result.data as MutationResponseData)?.requeued_count || 0} stuck executions`,
-            });
-          } else {
-            // Selected only
-            const allIds = Array.from(selectedIds);
-            const result = await requeueMultipleExecutions({
-              data: { execution_ids: allIds },
-            });
-
-            toast({
-              title: "Success",
-              description:
-                (result.data as MutationResponseData)?.message ||
-                `Requeued ${(result.data as MutationResponseData)?.requeued_count || 0} execution(s)`,
-            });
-          }
+          toast({
+            title: "Success",
+            description:
+              (result.data as MutationResponseData)?.message ||
+              `Requeued ${(result.data as MutationResponseData)?.requeued_count || 0} stuck executions`,
+          });
         } else if (stopMode === "cleanup") {
           // Cleanup executions
           if (stopTarget === "all" && activeTab === "orphaned") {
@@ -1001,12 +978,6 @@ export function ExecutionsTable({
                 <>
                   {stopTarget === "single" && (
                     <>Are you sure you want to requeue this stuck execution?</>
-                  )}
-                  {stopTarget === "selected" && (
-                    <>
-                      Are you sure you want to requeue {selectedIds.size}{" "}
-                      selected execution(s)?
-                    </>
                   )}
                   {stopTarget === "all" && (
                     <>
