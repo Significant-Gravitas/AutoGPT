@@ -247,6 +247,7 @@ def file_path_to_title(file_path: str) -> str:
         "Allquiet": "All Quiet",
         "Anysearch": "AnySearch",
         "Linkedin": "LinkedIn",
+        "Search1Api": "Search1API",  # str.title() key across the digit boundary
         "Tiktok": "TikTok",
         "Youtube": "YouTube",
         "Dataforb2B": "DataForB2B",  # str.title() key across the digit boundary

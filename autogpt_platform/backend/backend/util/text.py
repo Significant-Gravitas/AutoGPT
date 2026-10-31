@@ -287,6 +287,7 @@ _CAMELCASE_EXCEPTIONS: dict[str, str] = {
     "Tik Tok": "TikTok",
     "All Quiet": "AllQuiet",
     "Any Search": "AnySearch",
+    "Search1 API": "Search1API",
 }
 
 _CAMELCASE_EXCEPTION_RE = re.compile(
