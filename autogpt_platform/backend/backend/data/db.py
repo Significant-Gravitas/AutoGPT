@@ -65,7 +65,12 @@ async def connect():
     if prisma.is_connected():
         return
 
-    await prisma.connect()
+    try:
+        await prisma.connect()
+    except Exception:
+        # A failed connect leaves is_connected() True, so the retry would return at once.
+        await prisma.disconnect(DISCONNECT_TIMEOUT)
+        raise
 
     if not prisma.is_connected():
         raise ConnectionError("Failed to connect to Prisma.")
