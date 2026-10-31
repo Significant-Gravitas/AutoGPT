@@ -140,6 +140,8 @@ async def get_paginated(
             params={**(params or {}), "per_page": str(page_size), "page": str(page)},
         )
         batch = response.json()
+        if not isinstance(batch, list):
+            raise ValueError(f"Expected a list from {url}, got {type(batch).__name__}")
         items.extend(item for item in batch if keep is None or keep(item))
         if len(batch) < page_size:
             break

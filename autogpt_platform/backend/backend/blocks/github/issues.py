@@ -22,6 +22,7 @@ from ._auth import (
     GithubCredentialsField,
     GithubCredentialsInput,
 )
+from ._utils import canonical_repo_url
 
 logger = logging.getLogger(__name__)
 
@@ -414,6 +415,7 @@ class GithubMakeIssueBlock(Block):
         credentials: GithubCredentials, repo_url: str, title: str, body: str
     ) -> tuple[int, str]:
         api = get_api(credentials)
+        repo_url = canonical_repo_url(repo_url)
         data = {"title": title, "body": body}
         issues_url = repo_url + "/issues"
         response = await api.post(issues_url, json=data)
@@ -656,7 +658,7 @@ class GithubListIssuesBlock(Block):
 
         data = await get_paginated(
             api,
-            input_data.repo_url + "/issues",
+            canonical_repo_url(input_data.repo_url) + "/issues",
             limit=input_data.limit,
             params=params,
             # The issues endpoint also returns pull requests, marked by the

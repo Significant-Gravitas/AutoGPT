@@ -21,7 +21,7 @@ from ._auth import (
     GithubCredentialsField,
     GithubCredentialsInput,
 )
-from ._utils import github_repo_path
+from ._utils import canonical_repo_url, normalize_repo_path
 
 
 class GithubListBranchesBlock(Block):
@@ -118,7 +118,7 @@ class GithubListBranchesBlock(Block):
         credentials: GithubCredentials, input_data: Input
     ) -> list[Output.BranchItem]:
         api = get_api(credentials)
-        repo_url = input_data.repo_url
+        repo_url = canonical_repo_url(input_data.repo_url)
         branches_url = repo_url + "/branches"
         params: dict[str, str] = {}
         if input_data.protected != "all":
@@ -133,7 +133,7 @@ class GithubListBranchesBlock(Block):
         data = await get_paginated(
             api, branches_url, limit=limit, params=params, start_page=start_page
         )
-        repo_path = github_repo_path(repo_url)
+        repo_path = normalize_repo_path(repo_url)
         branches: list[GithubListBranchesBlock.Output.BranchItem] = [
             {
                 "name": branch["name"],
@@ -210,6 +210,7 @@ class GithubMakeBranchBlock(Block):
         source_branch: str,
     ) -> str:
         api = get_api(credentials)
+        repo_url = canonical_repo_url(repo_url)
         ref_url = repo_url + f"/git/refs/heads/{quote(source_branch, safe='')}"
         response = await api.get(ref_url)
         data = response.json()
@@ -287,6 +288,7 @@ class GithubDeleteBranchBlock(Block):
         credentials: GithubCredentials, repo_url: str, branch: str
     ) -> str:
         api = get_api(credentials)
+        repo_url = canonical_repo_url(repo_url)
         ref_url = repo_url + f"/git/refs/heads/{quote(branch, safe='')}"
         await api.delete(ref_url)
         return "Branch deleted successfully"
@@ -425,6 +427,7 @@ class GithubCompareBranchesBlock(Block):
         head: str,
     ) -> dict:
         api = get_api(credentials)
+        repo_url = canonical_repo_url(repo_url)
         safe_base = quote(base, safe="")
         safe_head = quote(head, safe="")
         compare_url = repo_url + f"/compare/{safe_base}...{safe_head}"

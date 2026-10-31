@@ -6,18 +6,13 @@ _OWNER_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$")
 _REPO_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
-def github_repo_path(repo_url: str) -> str:
-    """Extract 'owner/repo' from a GitHub repository URL."""
-    return repo_url.replace("https://github.com/", "")
-
-
 def normalize_repo_path(repo: str) -> str:
     """
     Normalise a repository reference to 'owner/repo'. Accepts both the bare
     'owner/repo' form and a full github.com URL, and rejects anything else.
 
-    Unlike `github_repo_path`, this validates its input, so the result is always
-    safe to interpolate into an API path.
+    The input is validated, so the result is always safe to interpolate into
+    an API path.
     """
     value = repo.strip()
     if "://" in value or value.lower().startswith(_GITHUB_HOSTS):
@@ -39,3 +34,12 @@ def normalize_repo_path(repo: str) -> str:
         f"Invalid repository {repo!r}. "
         "Expected '{owner}/{repo}' or 'https://github.com/{owner}/{repo}'."
     )
+
+
+def canonical_repo_url(repo_url: str) -> str:
+    """
+    Normalise a repository reference to 'https://github.com/{owner}/{repo}',
+    so callers can append API sub-paths to it. Raises ValueError like
+    `normalize_repo_path`.
+    """
+    return f"https://github.com/{normalize_repo_path(repo_url)}"

@@ -21,7 +21,7 @@ from backend.blocks.github._api import (
     get_paginated,
 )
 from backend.blocks.github._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
-from backend.blocks.github._utils import normalize_repo_path
+from backend.blocks.github._utils import canonical_repo_url, normalize_repo_path
 from backend.blocks.github.commits import (
     FileOperation,
     GithubListCommitsBlock,
@@ -352,6 +352,43 @@ class TestNormalizeRepoPath:
         )
 
 
+# ── canonical_repo_url tests ──
+# Blocks append API sub-paths to repo_url, so it must be reduced to the bare
+# github.com repo URL first.
+
+
+class TestCanonicalRepoUrl:
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "https://github.com/owner/repo",
+            "https://github.com/owner/repo/",
+            "https://github.com/owner/repo.git",
+            "https://github.com/owner/repo?tab=readme-ov-file",
+            "https://github.com/owner/repo#readme",
+            "  https://github.com/owner/repo  ",
+            "github.com/owner/repo",
+            "http://www.github.com/owner/repo",
+            "owner/repo",
+        ],
+    )
+    def test_variants_are_canonicalised(self, value):
+        assert canonical_repo_url(value) == "https://github.com/owner/repo"
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "https://github.com/owner/repo/tree/main",
+            "https://github.com/owner/repo/releases",
+            "https://evil.example.com/owner/repo",
+            "owner/../../x",
+        ],
+    )
+    def test_non_repo_urls_are_rejected(self, value):
+        with pytest.raises(ValueError):
+            canonical_repo_url(value)
+
+
 # ── Request-building tests ──
 # The blocks' static methods are mocked wholesale in block tests, so the
 # param/body construction inside them is exercised here instead.
@@ -657,6 +694,11 @@ class TestGetPaginated:
     def test_extra_params_are_forwarded(self):
         _, api = _paginate([[]], limit=1, params={"state": "open"})
         assert api.requests[0]["state"] == "open"
+
+    def test_non_list_response_raises_a_clear_error(self):
+        # e.g. a repo object returned because the list path was lost
+        with pytest.raises(ValueError, match="Expected a list"):
+            _paginate([{"id": 1, "name": "repo"}], limit=10)  # type: ignore[list-item]
 
 
 # ── convert_comment_url_to_api_endpoint tests ──
@@ -1498,6 +1540,60 @@ class TestListDiscussionsRequests:
     def test_not_found_on_category_lookup_raises_a_clear_error(self):
         with pytest.raises(ValueError, match="Could not resolve"):
             _graphql_via_requests([_NOT_FOUND], category="Q&A")
+
+
+_REPO_URL_VARIANTS = [
+    REPO_URL,
+    REPO_URL + "/",
+    REPO_URL + ".git",
+    REPO_URL + "?tab=readme-ov-file",
+    REPO_URL + "#readme",
+    f"  {REPO_URL}  ",
+]
+
+
+class TestRepoUrlRequests:
+    """repo_url variants reach the right API path through the real stack."""
+
+    @staticmethod
+    def _list_releases(repo_url: str):
+        input_data = GithubListReleasesBlock.Input.model_validate(
+            {
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "repo_url": repo_url,
+                "limit": 1,
+            }
+        )
+        return _via_requests(
+            lambda: GithubListReleasesBlock.list_releases(TEST_CREDENTIALS, input_data),
+            [[_release("v1")]],
+        )
+
+    @pytest.mark.parametrize("repo_url", _REPO_URL_VARIANTS)
+    def test_list_releases_url(self, repo_url):
+        result, sent = self._list_releases(repo_url)
+        assert [(method, url) for method, url, _ in sent] == [
+            ("GET", "https://api.github.com/repos/owner/repo/releases")
+        ]
+        assert [r["tag_name"] for r in result] == ["v1"]
+
+    @pytest.mark.parametrize("suffix", ["/tree/main", "/releases"])
+    def test_list_releases_rejects_deep_links(self, suffix):
+        with pytest.raises(ValueError, match="Invalid repository"):
+            self._list_releases(REPO_URL + suffix)
+
+    @pytest.mark.parametrize("repo_url", _REPO_URL_VARIANTS)
+    def test_create_branch_urls(self, repo_url):
+        _, sent = _via_requests(
+            lambda: repo_branches.GithubMakeBranchBlock.create_branch(
+                TEST_CREDENTIALS, repo_url, "feature", "main"
+            ),
+            [{"object": {"sha": "abc"}}, {}],
+        )
+        assert [(method, url) for method, url, _ in sent] == [
+            ("GET", "https://api.github.com/repos/owner/repo/git/refs/heads/main"),
+            ("POST", "https://api.github.com/repos/owner/repo/git/refs"),
+        ]
 
 
 class TestCreateRepositoryRequest:
