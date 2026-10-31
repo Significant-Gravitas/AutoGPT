@@ -29,6 +29,13 @@ from backend.copilot.model import ChatSessionMetadata
 from backend.copilot.permissions import CopilotPermissions
 
 
+@pytest.fixture(autouse=True)
+def no_execution_context_left_behind():
+    # A sync test sets it in pytest's own context, which every later test copies.
+    yield
+    set_execution_context(None, None)
+
+
 def _make_session() -> MagicMock:
     s = MagicMock()
     s.session_id = "test-session"
