@@ -584,6 +584,37 @@ def test_list_failed_executions(mocker: pytest_mock.MockFixture):
     assert data["executions"][0]["error_message"] == "Something went wrong"
 
 
+@pytest.mark.parametrize(
+    "query",
+    [
+        "offset=-1",
+        "limit=-1",
+        "limit=0",
+        "limit=1001",
+        "hours=0",
+        "hours=-1",
+        "hours=8761",
+        "hours=1000000000",
+    ],
+)
+def test_list_failed_executions_rejects_out_of_range_params(
+    mocker: pytest_mock.MockFixture, query: str
+):
+    details = mocker.patch(
+        "backend.api.features.admin.diagnostics_admin_routes.get_failed_executions_details",
+        return_value=[],
+    )
+    mocker.patch(
+        "backend.api.features.admin.diagnostics_admin_routes.get_failed_executions_count",
+        return_value=0,
+    )
+
+    response = client.get(f"/admin/diagnostics/executions/failed?{query}")
+
+    assert response.status_code == 422
+    details.assert_not_called()
+
+
 def test_list_long_running_executions(mocker: pytest_mock.MockFixture):
     mock_execs = [_make_mock_execution("exec-long-1")]
     mocker.patch(

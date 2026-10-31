@@ -730,19 +730,36 @@
             "name": "limit",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 100, "title": "Limit" }
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
           },
           {
             "name": "offset",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 0, "title": "Offset" }
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
           },
           {
             "name": "hours",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 24, "title": "Hours" }
+            "schema": {
+              "type": "integer",
+              "maximum": 8760,
+              "minimum": 1,
+              "default": 24,
+              "title": "Hours"
+            }
           }
         ],
         "responses": {

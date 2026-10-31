@@ -231,11 +231,11 @@ async def get_execution_diagnostics() -> ExecutionDiagnosticsSummary:
             ) AS orphaned_queued,
             COUNT(*) FILTER (
                 WHERE "executionStatus" = 'FAILED'
-                AND "updatedAt" >= $2::timestamp
+                AND "endedAt" >= $2::timestamp
             ) AS failed_count_1h,
             COUNT(*) FILTER (
                 WHERE "executionStatus" = 'FAILED'
-                AND "updatedAt" >= $1::timestamp
+                AND "endedAt" >= $1::timestamp
             ) AS failed_count_24h,
             COUNT(*) FILTER (
                 WHERE "executionStatus" = 'RUNNING'
@@ -265,11 +265,11 @@ async def get_execution_diagnostics() -> ExecutionDiagnosticsSummary:
             ) AS invalid_running_without_start,
             COUNT(*) FILTER (
                 WHERE "executionStatus" = 'COMPLETED'
-                AND "updatedAt" >= $2::timestamp
+                AND "endedAt" >= $2::timestamp
             ) AS completed_1h,
             COUNT(*) FILTER (
                 WHERE "executionStatus" = 'COMPLETED'
-                AND "updatedAt" >= $1::timestamp
+                AND "endedAt" >= $1::timestamp
             ) AS completed_24h
         FROM {schema_prefix}"AgentGraphExecution"
         WHERE "isDeleted" = false
@@ -964,7 +964,7 @@ async def get_failed_executions_count(hours: int = 24) -> int:
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
     count = await get_graph_executions_count(
         statuses=[AgentExecutionStatus.FAILED],
-        updated_time_gte=cutoff,
+        ended_time_gte=cutoff,
     )
     return count
 
@@ -988,13 +988,13 @@ async def get_failed_executions_details(
     executions = await AgentGraphExecution.prisma().find_many(
         where={
             "executionStatus": AgentExecutionStatus.FAILED,
-            "updatedAt": {"gte": cutoff},
+            "endedAt": {"gte": cutoff},
             "isDeleted": False,
         },
         include=_EXECUTION_ADMIN_INCLUDE,
         take=limit,
         skip=offset,
-        order={"updatedAt": "desc"},  # Most recent failures first
+        order={"endedAt": "desc"},  # Most recent failures first
     )
 
     results = []
@@ -1019,7 +1019,7 @@ async def get_failed_executions_details(
                 status=exec.executionStatus,
                 created_at=exec.createdAt,
                 started_at=exec.startedAt,
-                failed_at=exec.updatedAt,
+                failed_at=exec.endedAt or exec.updatedAt,
                 error_message=error_message,
             )
         )
@@ -1104,6 +1104,7 @@ async def stop_all_long_running_executions(admin_user_id: str) -> int:
 
     # ALSO update DB status directly (don't rely on executor)
     # This ensures executions are marked FAILED even if executor restarted
+    now = datetime.now(timezone.utc)
     result = await AgentGraphExecution.prisma().update_many(
         where={
             "executionStatus": AgentExecutionStatus.RUNNING,
@@ -1112,7 +1113,8 @@ async def stop_all_long_running_executions(admin_user_id: str) -> int:
         },
         data={
             "executionStatus": AgentExecutionStatus.FAILED,
-            "updatedAt": datetime.now(timezone.utc),
+            "updatedAt": now,
+            "endedAt": now,
         },
     )
 
@@ -1161,6 +1163,7 @@ async def cleanup_orphaned_executions_bulk(
     # Update all executions in DB directly (no cancel signals)
     # Only update executions still in RUNNING/QUEUED status to avoid
     # overwriting a legitimately COMPLETED execution (TOCTOU guard)
+    now = datetime.now(timezone.utc)
     result = await AgentGraphExecution.prisma().update_many(
         where={
             "id": {"in": execution_ids},
@@ -1171,7 +1174,8 @@ async def cleanup_orphaned_executions_bulk(
         },
         data={
             "executionStatus": AgentExecutionStatus.FAILED,
-            "updatedAt": datetime.now(timezone.utc),
+            "updatedAt": now,
+            "endedAt": now,
         },
     )
 
@@ -1215,6 +1219,7 @@ async def cleanup_all_stuck_queued_executions(admin_user_id: str) -> int:
     # Find all stuck queued executions (>1h old)
     one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
 
+    now = datetime.now(timezone.utc)
     result = await AgentGraphExecution.prisma().update_many(
         where={
             "executionStatus": AgentExecutionStatus.QUEUED,
@@ -1223,7 +1228,8 @@ async def cleanup_all_stuck_queued_executions(admin_user_id: str) -> int:
         },
         data={
             "executionStatus": AgentExecutionStatus.FAILED,
-            "updatedAt": datetime.now(timezone.utc),
+            "updatedAt": now,
+            "endedAt": now,
         },
     )
 

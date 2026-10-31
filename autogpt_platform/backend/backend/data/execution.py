@@ -733,6 +733,7 @@ async def get_graph_executions_count(
     started_time_lte: Optional[datetime] = None,
     updated_time_gte: Optional[datetime] = None,
     updated_time_lte: Optional[datetime] = None,
+    ended_time_gte: Optional[datetime] = None,
 ) -> int:
     """
     Get count of graph executions with optional filters.
@@ -747,6 +748,7 @@ async def get_graph_executions_count(
         started_time_lte: Optional maximum start time (when execution started running)
         updated_time_gte: Optional minimum update time
         updated_time_lte: Optional maximum update time
+        ended_time_gte: Optional minimum end time (terminal status reached)
 
     Returns:
         Count of matching graph executions
@@ -778,6 +780,9 @@ async def get_graph_executions_count(
             "gte": updated_time_gte or datetime.min.replace(tzinfo=timezone.utc),
             "lte": updated_time_lte or datetime.max.replace(tzinfo=timezone.utc),
         }
+
+    if ended_time_gte:
+        where_filter["endedAt"] = {"gte": ended_time_gte}
 
     if statuses:
         where_filter["OR"] = [{"executionStatus": status} for status in statuses]
