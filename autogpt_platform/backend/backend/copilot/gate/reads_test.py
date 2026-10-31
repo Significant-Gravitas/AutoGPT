@@ -1359,6 +1359,98 @@ async def test_a_sandbox_files_lines_are_judged_and_an_empty_grep_is_not(
     assert "No matches found." in _text_from_mcp_result(empty)
 
 
+@pytest.mark.parametrize("lookup", [{"agent_id": "graph-1"}, {"query": "digest"}])
+async def test_a_library_graph_is_judged_without_the_listing_around_it(rows, lookup):
+    from backend.copilot.tools.find_library_agent import FindLibraryAgentTool
+
+    judge = _judge(_HELD)
+    with patch(f"{_READS}.judge_content", judge), _library_with_graph():
+        result = await _call(
+            FindLibraryAgentTool(), _session(), {**lookup, "include_graph": True}
+        )
+
+    judged = judge.await_args.kwargs["text"]
+    assert _MARKER in judged and _STORE_VALUE in judged
+    assert "/library/agents/" not in judged
+    assert _MARKER not in result.output and len(rows.rows) == 1
+    # The card and the chain row are copy, which never says "agent".
+    (row,) = rows.rows.values()
+    assert "agent" not in json.dumps(row.payload["headline"])
+    assert "agent" not in json.loads(result.output)["ask"]
+
+
+@pytest.mark.parametrize(
+    "lookup, owned",
+    [
+        ({"agent_id": "graph-1"}, False),
+        ({"for_creation": True}, False),
+        ({"agent_id": "graph-1", "include_graph": True}, True),
+    ],
+)
+async def test_a_library_lookup_without_someone_elses_graph_is_not_judged(
+    rows, lookup, owned
+):
+    from backend.copilot.tools.find_library_agent import FindLibraryAgentTool
+
+    judge = _judge(_HELD)
+    with patch(f"{_READS}.judge_content", judge), _library_with_graph(owned):
+        result = await _call(FindLibraryAgentTool(), _session(), lookup)
+
+    judge.assert_not_awaited()
+    assert result.success and rows.rows == {}
+
+
+def _library_with_graph(owned: bool = False):
+    """One library entry whose graph, typed as ``get_graph`` returns it, carries
+    the marker; ``owned`` is whether the user owns that graph."""
+    from contextlib import ExitStack
+
+    from backend.data.graph import GraphModel, NodeModel
+
+    entry = SimpleNamespace(
+        id="lib-1",
+        name="Daily digest",
+        description="Sends a digest",
+        creator_name="creator",
+        status=SimpleNamespace(value="ready"),
+        can_access_graph=owned,
+        has_external_trigger=False,
+        new_output=False,
+        graph_id="graph-1",
+        graph_version=1,
+        input_schema={},
+        output_schema={},
+        trigger_setup_info=None,
+        organization_id=None,
+    )
+    node = NodeModel(
+        id="node-1",
+        block_id=_STORE_VALUE,
+        input_default={"input": _MARKER},
+        graph_id="graph-1",
+        graph_version=1,
+    )
+    graph = GraphModel(
+        id="graph-1",
+        name="Daily digest",
+        description="Sends a digest",
+        nodes=[node],
+        user_id="creator-1",
+        created_at=datetime.now(UTC),
+    )
+    library = SimpleNamespace(
+        get_library_agent_by_graph_id=AsyncMock(return_value=entry),
+        list_library_agents=AsyncMock(return_value=SimpleNamespace(agents=[entry])),
+    )
+    graphs = SimpleNamespace(get_graph=AsyncMock(return_value=graph))
+    stack = ExitStack()
+    for name, db in (("library_db", library), ("graph_db", graphs)):
+        stack.enter_context(
+            patch(f"backend.copilot.tools.agent_search.{name}", lambda db=db: db)
+        )
+    return stack
+
+
 # A scheduled turn's step that could not run answers with the platform's own
 # instructions for the reply; held, the reply never says the step was skipped.
 

@@ -104,6 +104,24 @@ class FindLibraryAgentTool(BaseTool):
         return True
 
     async def _execute(
+        self, user_id: str | None, session: ChatSession, **kwargs
+    ) -> ToolResponseBase:
+        result = await self._find(user_id, session, **kwargs)
+        if not isinstance(result, AgentsFoundResponse):
+            return result.from_outside()
+        # Only a graph the user does not own is outside content, declared as the
+        # response serialises it: a stored ``GraphModel`` has fields it drops.
+        return result.from_outside(
+            *(
+                agent.model_dump(mode="json", include={"graph"}, exclude_none=True)[
+                    "graph"
+                ]
+                for agent in result.agents
+                if agent.graph is not None and not agent.can_access_graph
+            )
+        )
+
+    async def _find(
         self,
         user_id: str | None,
         session: ChatSession,
