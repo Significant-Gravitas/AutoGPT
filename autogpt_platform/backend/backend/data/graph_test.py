@@ -3645,3 +3645,61 @@ def test_linked_llm_model_preserves_required_legacy_credential_slot():
         "aiml_api-anthropic-groq-llama_api-ollama-open_router-openai-v0_api_key_credentials"
     ]
     assert next(iter(slots.values()))[2] is True
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_create_graph_rejects_unsafe_pin_names(server: SpinTestServer):
+    """The store path refuses a graph whose node input-default key or link name
+    carries an unsafe dynamic object-attribute token, so one never persists.
+
+    The base of each token is a real input field, so graph validation — which
+    inspects base names, not the flattened tokens — would pass it on.
+    """
+    # Local import: the module-level name `create_graph` is taken by a
+    # CreateGraph request object throughout this file.
+    from backend.data.graph import create_graph as create_graph_db
+
+    value_block = StoreValueBlock().id
+    node_a, node_b = str(uuid4()), str(uuid4())
+
+    # Unsafe token in a node input-default key.
+    bad_input = Graph(
+        name="bad-input",
+        description="",
+        nodes=[
+            Node(
+                id=node_a,
+                block_id=value_block,
+                input_default={"input_@___class__": "x"},
+            )
+        ],
+        links=[],
+    )
+    with pytest.raises(ValueError, match="unsafe object attribute"):
+        await create_graph_db(bad_input, DEFAULT_USER_ID)
+
+    # Unsafe token in a link sink name.
+    bad_link = Graph(
+        name="bad-link",
+        description="",
+        nodes=[
+            Node(id=node_a, block_id=value_block),
+            Node(id=node_b, block_id=value_block),
+        ],
+        links=[
+            Link(
+                source_id=node_a,
+                sink_id=node_b,
+                source_name="output",
+                sink_name="input_@___class__",
+            )
+        ],
+    )
+    with pytest.raises(ValueError, match="unsafe object attribute"):
+        await create_graph_db(bad_link, DEFAULT_USER_ID)
+
+    # Nothing was written by either refusal.
+    for refused in (bad_input, bad_link):
+        assert (
+            await get_graph(refused.id, refused.version, user_id=DEFAULT_USER_ID)
+        ) is None
