@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { ProfileSidebar } from "./components/ProfileSidebar/ProfileSidebar";
-import { useGetFlag, Flag } from "@/services/feature-flags/use-get-flag";
+import { usePlatformPayment } from "@/hooks/usePlatformPayment";
 import {
   AppWindowIcon,
   Coins01Icon,
@@ -16,7 +16,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { useNewSettingsRedirect } from "./useNewSettingsRedirect";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
+  const { isPaymentEnabled } = usePlatformPayment();
   const { isRedirecting } = useNewSettingsRedirect();
 
   const sidebarLinks = [

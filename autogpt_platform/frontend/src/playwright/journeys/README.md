@@ -138,8 +138,8 @@ PLAYWRIGHT_BASE_URL=https://autogpt-pr-<N>.vercel.app \
   config, so pass it `userAgent: JOURNEY_USER_AGENT` yourself.
 - Users sign up as `journey-<id>@previews.agpt.co`, which the preview
   allowlist accepts. Override the domain with `PLAYWRIGHT_JOURNEY_EMAIL_DOMAIN`.
-- Previews serve real PostHog flags, so `enable-platform-payment` is on there
-  and a fresh user is paywalled: running an agent gets a 402. For journeys
+- Previews run with `ENABLE_PLATFORM_PAYMENT` on, so a fresh user is
+  paywalled: running an agent gets a 402. For journeys
   that run agents, sign in as a paid account instead with
   `PLAYWRIGHT_JOURNEY_EMAIL` and `PLAYWRIGHT_JOURNEY_PASSWORD`. Never put a
   real password in a log, commit or PR.
@@ -182,7 +182,7 @@ Differences from hosted that are still open:
 
 | Area               | Journeys leg                                                                                                                                                                         | Hosted                                                                         |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
-| Payments           | `enable-platform-payment` **on**; journey users get a paid tier without Stripe, so checkout, trials and Stripe webhooks go untested                                                  | On, with Stripe: NO_TIER users get a 402 until they subscribe or start a trial |
+| Payments           | `ENABLE_PLATFORM_PAYMENT` **on**; journey users get a paid tier without Stripe, so checkout, trials and Stripe webhooks go untested                                                  | On, with Stripe: NO_TIER users get a 402 until they subscribe or start a trial |
 | Node execution fee | 1 credit per node (`EXECUTION_COST_COUNT_THRESHOLD=1`), so a run's cost is visible                                                                                                   | 1 credit per 100 node executions                                               |
 | Copilot            | The scripted model: the real engine (Claude Agent SDK), tools, persistence, streaming and cost, with scripted model turns. Memory (Graphiti) calls fail, so turns run without memory | Real models                                                                    |
 | Flag source        | Fixed values from `hosted-flags.json`; JSON flags (model routing, tier limits) at code defaults                                                                                      | PostHog/LaunchDarkly with targeting                                            |

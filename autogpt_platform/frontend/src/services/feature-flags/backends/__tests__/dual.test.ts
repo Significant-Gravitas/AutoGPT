@@ -45,7 +45,7 @@ afterAll(() => {
 describe("feature-flag mismatch report", () => {
   it("names the flag and which way the vendors disagree", async () => {
     reportMismatchToSentry({
-      flag: "enable-platform-payment",
+      flag: "chat-pinning",
       launchdarkly: { value: true },
       posthog: { value: false },
     });
@@ -53,11 +53,11 @@ describe("feature-flag mismatch report", () => {
 
     expect(sent).toHaveLength(1);
     expect(sent[0].message).toBe(
-      "Feature flag mismatch: enable-platform-payment (LaunchDarkly=true, PostHog=false)",
+      "Feature flag mismatch: chat-pinning (LaunchDarkly=true, PostHog=false)",
     );
     expect(sent[0].level).toBe("warning");
     expect(sent[0].tags).toMatchObject({
-      "feature_flag.key": "enable-platform-payment",
+      "feature_flag.key": "chat-pinning",
       "feature_flag.launchdarkly": "true",
       "feature_flag.posthog": "false",
     });
@@ -65,12 +65,12 @@ describe("feature-flag mismatch report", () => {
 
   it("files each flag as its own issue, whichever way it disagrees", async () => {
     reportMismatchToSentry({
-      flag: "enable-platform-payment",
+      flag: "chat-pinning",
       launchdarkly: { value: true },
       posthog: { value: false },
     });
     reportMismatchToSentry({
-      flag: "enable-platform-payment",
+      flag: "chat-pinning",
       launchdarkly: { value: false },
       posthog: { value: true },
     });
@@ -84,17 +84,17 @@ describe("feature-flag mismatch report", () => {
     expect(sent).toHaveLength(3);
     // Sentry may hand the events over in any order.
     const first = sentWithMessage(
-      "Feature flag mismatch: enable-platform-payment (LaunchDarkly=true, PostHog=false)",
+      "Feature flag mismatch: chat-pinning (LaunchDarkly=true, PostHog=false)",
     );
     const flipped = sentWithMessage(
-      "Feature flag mismatch: enable-platform-payment (LaunchDarkly=false, PostHog=true)",
+      "Feature flag mismatch: chat-pinning (LaunchDarkly=false, PostHog=true)",
     );
     const other = sentWithMessage(
       'Feature flag mismatch: copilot-models (LaunchDarkly={"default":"a"}, PostHog=null)',
     );
     expect(first.fingerprint).toEqual([
       "feature-flag-mismatch",
-      "enable-platform-payment",
+      "chat-pinning",
     ]);
     expect(flipped.fingerprint).toEqual(first.fingerprint);
     expect(other.fingerprint).toEqual([

@@ -61,8 +61,8 @@ vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
 }));
 
 function FlagProbe() {
-  const enabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
-  return <span>payment: {String(enabled)}</span>;
+  const enabled = useGetFlag(Flag.CHAT_PINNING);
+  return <span>pinning: {String(enabled)}</span>;
 }
 
 describe("LaunchDarkly initialisation timeout", () => {
@@ -86,7 +86,7 @@ describe("LaunchDarkly initialisation timeout", () => {
       </FeatureFlagProvider>,
     );
 
-    expect(screen.getByText("payment: false")).toBeDefined();
+    expect(screen.getByText("pinning: false")).toBeDefined();
   });
 
   it("wires no LaunchDarkly-only Sentry inspector; the flag seam records for every vendor", () => {

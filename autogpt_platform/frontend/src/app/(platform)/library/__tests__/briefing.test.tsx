@@ -33,10 +33,16 @@ vi.mock("@/services/feature-flags/use-get-flag", async () => {
   >("@/services/feature-flags/use-get-flag");
   return {
     ...actual,
-    useGetFlag: (flag: string) =>
-      flag === actual.Flag.ENABLE_PLATFORM_PAYMENT && flags.paymentsOn,
+    useGetFlag: () => false,
   };
 });
+
+vi.mock("@/hooks/usePlatformPayment", () => ({
+  usePlatformPayment: () => ({
+    isPaymentEnabled: flags.paymentsOn,
+    isResolved: true,
+  }),
+}));
 
 function setupHandlers({ totalCents }: { totalCents: number }) {
   const agents = [

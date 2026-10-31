@@ -13,7 +13,7 @@ from prisma.enums import SubscriptionTier
 from backend.data.redis_client import get_redis_async
 from backend.data.user import get_user_subscription_tier
 from backend.monitoring.instrumentation import record_rate_limit_hit
-from backend.util.feature_flag import Flag, evaluate_feature_flag
+from backend.util.platform_payment import is_platform_payment_enabled
 from backend.util.settings import BehaveAs, Settings
 
 logger = logging.getLogger(__name__)
@@ -77,12 +77,7 @@ async def _requires_budget(user_id: str) -> bool:
         tier = SubscriptionTier.NO_TIER
     if tier != SubscriptionTier.NO_TIER:
         return False
-    enabled, authoritative = await evaluate_feature_flag(
-        Flag.ENABLE_PLATFORM_PAYMENT, user_id
-    )
-    if not authoritative:
-        raise RuntimeError("Payment flag could not be evaluated")
-    return enabled
+    return is_platform_payment_enabled()
 
 
 async def _admit(user_id: str) -> int:

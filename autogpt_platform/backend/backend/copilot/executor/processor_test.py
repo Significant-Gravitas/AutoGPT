@@ -68,6 +68,7 @@ from backend.integrations.codex.transport import (
     CodexCredentialBusyError,
     CodexCredentialIntegrityError,
 )
+from backend.util import platform_payment
 from backend.util.exceptions import (
     DatabaseError,
     ExpertNotFoundError,
@@ -432,10 +433,7 @@ async def test_turn_setup_shares_one_usage_state_read_until_the_model_answers() 
             "backend.copilot.rate_limit.get_feature_flag_value",
             new=AsyncMock(return_value=None),
         ),
-        patch(
-            "backend.copilot.rate_limit.is_feature_enabled",
-            new=AsyncMock(return_value=True),
-        ),
+        patch.object(platform_payment.settings.config, "enable_platform_payment", True),
         # The real gate, whose own reads are the ones it must share.
         patch(
             "backend.copilot.executor.processor.refusal_for",

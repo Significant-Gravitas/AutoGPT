@@ -28,11 +28,13 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast: mockToast }),
 }));
 
-// Mock feature flags — default to payment enabled so button tests work
+// Payment on by default so button tests work
 let mockPaymentEnabled = true;
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { ENABLE_PLATFORM_PAYMENT: "enable-platform-payment" },
-  useGetFlag: () => mockPaymentEnabled,
+vi.mock("@/hooks/usePlatformPayment", () => ({
+  usePlatformPayment: () => ({
+    isPaymentEnabled: mockPaymentEnabled,
+    isResolved: true,
+  }),
 }));
 
 // Mock generated API hooks

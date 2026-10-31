@@ -20,6 +20,7 @@ DEFAULT_FLAGS_FILE = (
 # journeys can assert it exactly.
 HOSTED_SETTINGS = {
     "ENABLE_CREDIT": "true",
+    "ENABLE_PLATFORM_PAYMENT": "true",
     "EXECUTION_COST_COUNT_THRESHOLD": "1",
 }
 

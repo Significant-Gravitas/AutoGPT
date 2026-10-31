@@ -40,7 +40,7 @@ def graph_cleanup():
 
 
 @pytest.fixture
-def client(monkeypatch):
+def client(monkeypatch, set_platform_payment):
     app = fastapi.FastAPI()
     app.include_router(routes.router)
     app.dependency_overrides[routes.enforce_subscription_status_rate_limit] = (
@@ -51,9 +51,7 @@ def client(monkeypatch):
         "role": "user",
         "email": "test@example.com",
     }
-    monkeypatch.setattr(
-        routes, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
-    )
+    set_platform_payment(True)
     monkeypatch.setattr(
         routes,
         "get_user_by_id",
