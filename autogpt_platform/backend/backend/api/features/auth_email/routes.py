@@ -76,7 +76,7 @@ async def send_auth_email(request: AuthEmailRequest) -> None:
             detail="url must point at a trusted frontend origin.",
         )
 
-    email = render_auth_email(request.type, request.url)
+    email = render_auth_email(request.type, request.url, request.to)
 
     # The blocking RPC to the notification service runs off the event loop; a
     # delivery failure there surfaces as a 5xx so a misconfigured mailer fails
