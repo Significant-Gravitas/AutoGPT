@@ -1503,6 +1503,13 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         default="",
         description="Linear team ID used when creating feature request issues",
     )
+    hubspot_client_id: str = Field(
+        default="", description="Client ID of the HubSpot app used for OAuth sign-in"
+    )
+    hubspot_client_secret: str = Field(
+        default="", description="Client secret of the HubSpot OAuth sign-in app"
+    )
+
     linear_client_id: str = Field(default="", description="Linear client ID")
     linear_client_secret: str = Field(default="", description="Linear client secret")
 
