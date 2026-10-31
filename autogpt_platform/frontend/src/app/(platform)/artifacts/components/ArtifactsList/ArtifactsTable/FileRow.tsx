@@ -142,7 +142,7 @@ export function FileRow({
         <button
           type="button"
           aria-label={`Rename ${file.name}`}
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-foreground-subtle opacity-0 transition-opacity hover:bg-surface-hover hover:text-foreground-strong focus-visible:opacity-100 group-hover:opacity-100"
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-foreground-subtle opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface-hover hover:text-foreground-strong focus-visible:opacity-100"
           onClick={(e) => {
             e.stopPropagation();
             setIsRenameOpen(true);
@@ -173,7 +173,7 @@ export function FileRow({
       <div
         className={cn(
           ACTIONS_CELL_CLASS,
-          "opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 has-[[data-state=open]]:opacity-100",
+          "opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 has-[[data-state=open]]:opacity-100",
         )}
         onClick={(e) => e.stopPropagation()}
       >

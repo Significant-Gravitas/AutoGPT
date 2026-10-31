@@ -40,7 +40,7 @@ export function APIKeyRow({
   return (
     <div
       data-selected={selected}
-      className="flex items-center justify-between py-4 pl-3 pr-5 transition-colors data-[selected=true]:bg-surface-hover"
+      className="flex items-center justify-between py-4 pr-5 pl-3 transition-colors data-[selected=true]:bg-surface-hover"
     >
       <div className="flex items-center gap-3">
         <button

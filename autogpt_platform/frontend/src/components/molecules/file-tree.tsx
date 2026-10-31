@@ -335,7 +335,7 @@ const File = forwardRef<
         disabled={!isSelectable}
         data-slot="file-tree-file"
         className={cn(
-          "flex w-fit items-center gap-1 rounded-md pr-1 text-body leading-5 duration-200 ease-in-out rtl:pl-1 rtl:pr-0",
+          "flex w-fit items-center gap-1 rounded-md pr-1 text-body leading-5 duration-200 ease-in-out rtl:pr-0 rtl:pl-1",
           {
             "bg-surface-hover": isSelected && isSelectable,
           },
@@ -402,7 +402,7 @@ const CollapseButton = forwardRef<
         variant="compact-ghost"
         size="compact"
         data-slot="file-tree-collapse-button"
-        className="absolute bottom-1 right-2 h-8 w-fit p-1"
+        className="absolute right-2 bottom-1 h-8 w-fit p-1"
         onClick={
           expandedItems && expandedItems.length > 0
             ? closeAll

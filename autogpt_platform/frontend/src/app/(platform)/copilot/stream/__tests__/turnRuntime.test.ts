@@ -1111,6 +1111,16 @@ describe("the end-of-turn reconcile", () => {
     expect(report).not.toHaveBeenCalled();
   });
 
+  it("reports the end-of-turn check as still settling until it is done", async () => {
+    await sendAndPublish(toolTurn.sse.length);
+    expect(snapshot().phase).toBe("finished");
+    expect(snapshot().probing).toBe(true);
+
+    await advance(5_000);
+
+    expect(snapshot().probing).toBe(false);
+  });
+
   it("replaces a row that differs under its own key, and reports it", async () => {
     await sendAndPublish(toolTurn.sse.length - 1);
     const before = render();

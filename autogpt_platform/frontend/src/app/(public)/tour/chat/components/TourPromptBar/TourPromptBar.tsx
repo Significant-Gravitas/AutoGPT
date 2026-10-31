@@ -53,7 +53,7 @@ export function TourPromptBar({ prompt, isStreaming, onSend }: Props) {
       onClick={send}
       className={cn(
         // oxlint-disable-next-line design-system/no-arbitrary-values -- the prompt bar's indigo glow, no shadow token
-        "flex cursor-pointer items-center gap-3 rounded-xl border border-border-base bg-surface px-5 py-3.5 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(99,102,241,0.4)] outline-none transition-shadow focus-visible:border-border-strong focus-visible:shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_44px_-2px_rgba(99,102,241,0.55)]",
+        "flex cursor-pointer items-center gap-3 rounded-xl border border-border-base bg-surface px-5 py-3.5 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(99,102,241,0.4)] transition-shadow outline-none focus-visible:border-border-strong focus-visible:shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_44px_-2px_rgba(99,102,241,0.55)]",
         isDisabled && "cursor-default opacity-60",
       )}
     >

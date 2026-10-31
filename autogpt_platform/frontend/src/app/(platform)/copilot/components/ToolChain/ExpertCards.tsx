@@ -411,7 +411,7 @@ export function ExpertChangeCard({
             key={`${artifactId ?? name}-summary`}
             className={cn(
               // oxlint-disable-next-line design-system/no-arbitrary-values -- aligns the details with the name after the 42px avatar column
-              "pl-[42px] pt-2 text-sm text-foreground-tertiary",
+              "pt-2 pl-[42px] text-sm text-foreground-tertiary",
               stepDirection &&
                 "delay-75 duration-300 animate-in fade-in fill-mode-both motion-reduce:animate-none",
               stepDirection === "forward" && "slide-in-from-right-4",
@@ -424,7 +424,7 @@ export function ExpertChangeCard({
         {hasCharter && !panelAvailable && showCharter && (
           <div
             // oxlint-disable-next-line design-system/no-arbitrary-values -- aligns the details with the name after the 42px avatar column
-            className="flex flex-col gap-1 pl-[42px] pt-1.5"
+            className="flex flex-col gap-1 pt-1.5 pl-[42px]"
           >
             {tagline && about && (
               <Text variant="body-tight" tone="muted">
@@ -640,7 +640,7 @@ export function ExpertChangeCardSkeleton() {
         </div>
         <div
           // oxlint-disable-next-line design-system/no-arbitrary-values -- aligns the details with the name after the 42px avatar column
-          className="flex flex-col gap-1.5 pl-[42px] pt-2.5"
+          className="flex flex-col gap-1.5 pt-2.5 pl-[42px]"
         >
           <Skeleton className="h-3 w-full" />
           <Skeleton className="h-3 w-4/5" />

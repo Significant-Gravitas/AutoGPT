@@ -1,6 +1,6 @@
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import type { UIMessage } from "ai";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Message, MessageResponse } from "../Message";
 
 const BOTH_BUBBLES = ["user", "assistant"] as const;
@@ -18,6 +18,7 @@ async function renderBubble(from: UIMessage["role"], markdown: string) {
 describe("MessageResponse with text that looks like HTML", () => {
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
   });
 
   it.each(BOTH_BUBBLES)(
@@ -108,6 +109,30 @@ describe("MessageResponse with text that looks like HTML", () => {
 
       expect(container.textContent).not.toContain(`<${tag}>`);
       expect(container.textContent).toContain("Answer");
+    },
+  );
+
+  it.each(BOTH_BUBBLES)(
+    "keeps a placeholder inside a bare app link in the %s's bubble",
+    async (from) => {
+      vi.spyOn(window, "open").mockImplementation(() => null);
+      const container = await renderBubble(
+        from,
+        "Hi <first name>, [open <first name>'s workflow](library/agents/1) to run it.",
+      );
+
+      const links = container.querySelectorAll<HTMLButtonElement>(
+        '[data-streamdown="link"]',
+      );
+      expect(Array.from(links, (link) => link.textContent)).toEqual([
+        "open <first name>'s workflow",
+      ]);
+      expect(container.textContent).toBe(
+        "Hi <first name>, open <first name>'s workflow to run it.",
+      );
+      fireEvent.click(links[0]);
+      await waitFor(() => expect(window.open).toHaveBeenCalledTimes(1));
+      expect(vi.mocked(window.open).mock.calls[0][0]).toBe("/library/agents/1");
     },
   );
 });

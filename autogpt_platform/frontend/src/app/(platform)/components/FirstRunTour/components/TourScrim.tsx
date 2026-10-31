@@ -59,7 +59,7 @@ export function TourScrim({ boxes, dim = true }: Props) {
         <div
           key={index}
           className={cn(
-            "absolute left-[var(--box-left)] top-[var(--box-top)] h-[var(--box-height)] w-[var(--box-width)] rounded-xl transition-[top,left,width,height] duration-300 ease-out motion-reduce:transition-none",
+            "absolute top-[var(--box-top)] left-[var(--box-left)] h-[var(--box-height)] w-[var(--box-width)] rounded-xl transition-[top,left,width,height] duration-300 ease-out motion-reduce:transition-none",
             // Over the dim the lit hole is the highlight; the edge only
             // crisps it. On an undimmed page a dark ring has to carry it.
             dim

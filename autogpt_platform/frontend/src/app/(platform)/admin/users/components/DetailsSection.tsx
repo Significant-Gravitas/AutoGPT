@@ -42,7 +42,7 @@ export function DetailsSection({ user }: Props) {
         <Row label="User ID">
           <span className="flex items-start gap-1">
             <span
-              className="min-w-0 break-all font-mono text-body-sm leading-inherit"
+              className="min-w-0 font-mono text-body-sm leading-inherit break-all"
               translate="no"
             >
               {user.id}

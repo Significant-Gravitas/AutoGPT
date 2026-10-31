@@ -144,7 +144,7 @@ export default function ExpertDetailPage() {
         />
 
         {isPaused ? (
-          <div className="flex items-center justify-between gap-2 rounded-lg bg-warning-surface px-4 py-2.5 ring-1 ring-inset ring-warning-border">
+          <div className="flex items-center justify-between gap-2 rounded-lg bg-warning-surface px-4 py-2.5 ring-1 ring-warning-border ring-inset">
             <Text variant="small" tone="warning">
               Schedules paused
             </Text>

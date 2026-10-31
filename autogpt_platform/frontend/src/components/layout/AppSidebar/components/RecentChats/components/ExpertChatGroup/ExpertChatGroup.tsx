@@ -82,7 +82,7 @@ export function ExpertChatGroup({
           // The size and weight reach ManagedExpertImage's fallback initials (a
           // span that sets its colour, not its size or weight), and the weight
           // ExpertAvatar's initial; every other piece of copy is a toned Text.
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left text-body font-medium leading-5 max-md:py-2 max-md:text-body-lg max-md:leading-6"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left text-body leading-5 font-medium max-md:py-2 max-md:text-body-lg max-md:leading-6"
         >
           {isAutopilot ? (
             <AutopilotAvatar
@@ -169,7 +169,7 @@ function SessionCount({ count }: { count: number }) {
   return (
     <span
       aria-hidden
-      className="shrink-0 rounded-full bg-surface-active/70 px-1.5 text-caption-sm font-medium tabular-nums leading-4.5 text-foreground-secondary"
+      className="shrink-0 rounded-full bg-surface-active/70 px-1.5 text-caption-sm leading-4.5 font-medium text-foreground-secondary tabular-nums"
     >
       {count}
     </span>
@@ -186,7 +186,7 @@ function NewChatLink({ href, label }: { href: string; label: string }) {
           href={href}
           aria-label={name}
           className={cn(
-            "absolute top-1/2 flex -translate-y-1/2 items-center justify-center rounded-md text-foreground-tertiary transition-opacity hover:bg-surface-active hover:text-foreground-strong focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 md:opacity-0",
+            "absolute top-1/2 flex -translate-y-1/2 items-center justify-center rounded-md text-foreground-tertiary transition-opacity group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 hover:bg-surface-active hover:text-foreground-strong focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-foreground-subtle focus-visible:outline-none md:opacity-0",
             NEW_CHAT_SLOT_SIZE_CLASS,
             NEW_CHAT_LINK_OFFSET_CLASS,
           )}

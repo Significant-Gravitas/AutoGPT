@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Calendar as CalendarIcon } from "lucide-react";
+import { Calendar03Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import {
   Popover,
@@ -111,7 +112,7 @@ export const DateInput = ({
         <label
           data-slot="date-input-label"
           htmlFor={id}
-          className="text-body font-medium leading-5 text-foreground-body"
+          className="text-body leading-5 font-medium text-foreground-body"
         >
           {label}
         </label>
@@ -129,7 +130,9 @@ export const DateInput = ({
             aria-labelledby={ariaLabelledBy}
             aria-describedby={ariaDescribedBy}
           >
-            <CalendarIcon
+            <Icon
+              aria-hidden
+              icon={Calendar03Icon}
               data-slot="date-input-icon"
               className={cn("mr-2", size === "default" ? "h-4 w-4" : "h-3 w-3")}
             />
