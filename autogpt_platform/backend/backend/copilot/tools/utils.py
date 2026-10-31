@@ -69,6 +69,7 @@ async def fetch_graph_from_store_slug(
         or (None, None) if not found.
 
     Raises:
+        NotFoundError: If the listing's version is unavailable or deleted.
         DatabaseError: If there's a database error during lookup.
     """
     sdb = store_db()

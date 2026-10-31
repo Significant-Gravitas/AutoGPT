@@ -411,6 +411,8 @@ async def get_available_graph(
         graph.clear_auto_credentials()
         return graph
 
+    except NotFoundError:
+        raise
     except Exception as e:
         logger.error(f"Error getting agent: {e}")
         raise DatabaseError("Failed to fetch workflow") from e
