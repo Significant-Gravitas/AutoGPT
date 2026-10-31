@@ -156,6 +156,26 @@ describe("auth callback GET — session handling", () => {
   });
 });
 
+describe("auth callback GET — Continue with Microsoft", () => {
+  beforeEach(() => {
+    vi.stubEnv("NODE_ENV", "development");
+  });
+
+  it("sends a new account to onboarding, which offers the Microsoft 365 connection", async () => {
+    getServerSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+    postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse(true));
+    getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: true });
+
+    const response = await GET(
+      makeCallbackRequest("/auth/callback?provider=microsoft"),
+    );
+
+    expect(response.headers.get("location")).toBe(`${origin}/onboarding`);
+    expect(revalidatePathMock).toHaveBeenCalledWith("/onboarding", "layout");
+    expect(scheduleAccountCreatedGoalMock).toHaveBeenCalledWith("microsoft");
+  });
+});
+
 describe("auth callback GET — account creation tracking", () => {
   beforeEach(() => {
     vi.stubEnv("NODE_ENV", "development");

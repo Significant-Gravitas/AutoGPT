@@ -14,12 +14,10 @@ GTM segments on the pick, under the label people saw, in MailerLite (`role`,
 `role_other`) and PostHog (`onboarding_role`, `onboarding_role_other`).
 """
 
-from typing import get_args
-
 from prisma.models import UserOnboarding
 from pydantic import BaseModel, ValidationError
 
-from backend.data.onboarding_wizard import OnboardingWizardProgress, WizardStep
+from backend.data.onboarding_wizard import OnboardingWizardProgress
 
 # Each option ID the wizard sends, and the label people saw.
 ROLE_LABELS = {
@@ -33,8 +31,6 @@ ROLE_LABELS = {
 }
 OTHER = "Other"
 OTHER_MAX_CHARS = 100
-# The wizard's steps in the order it shows them.
-WIZARD_STEPS: tuple[WizardStep, ...] = get_args(WizardStep)
 
 
 class OnboardingRole(BaseModel):
@@ -63,9 +59,7 @@ class OnboardingRole(BaseModel):
         reads it. None while they are on that step or back before it: going
         back keeps the role step completed, so a pick being changed, or
         Other's text being typed, and then left by Back is never taken."""
-        if "role" not in progress.completedSteps or WIZARD_STEPS.index(
-            progress.currentStep
-        ) <= WIZARD_STEPS.index("role"):
+        if not _moved_on_from_role(progress):
             return None
         answer = progress.otherRole if progress.role == OTHER else progress.role
         if not answer.strip():
@@ -129,3 +123,16 @@ def drafted_role(draft: object) -> OnboardingRole | None:
     except ValidationError:
         return None
     return OnboardingRole.from_wizard(progress)
+
+
+def _moved_on_from_role(progress: OnboardingWizardProgress) -> bool:
+    """completedSteps lists steps in the order they were first finished, the
+    order the wizard showed them, however an experiment or the paywall
+    arranged it; going back never removes one."""
+    completed = progress.completedSteps
+    if "role" not in completed or progress.currentStep == "role":
+        return False
+    if progress.currentStep not in completed:
+        # The step after everything finished so far.
+        return True
+    return completed.index(progress.currentStep) > completed.index("role")

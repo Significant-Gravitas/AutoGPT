@@ -1,12 +1,17 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useCaptureMarketingPrompt } from "@/hooks/useCaptureMarketingPrompt";
 import { sanitizeAuthNext } from "@/lib/auth-redirect";
+import { providerCallbackPath } from "@/lib/auth/provider-callback";
 import { isBannedNotice } from "@/lib/auth/account-banned";
 import {
   EMAIL_VERIFICATION_NOTICE_PARAM,
   getEmailVerificationNotice,
 } from "@/lib/auth/email-verification";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import {
+  getSocialSignInError,
+  isWaitlistSignInError,
+} from "@/lib/auth/microsoft-login";
 import { environment } from "@/services/environment";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -28,8 +33,13 @@ export function useLoginPage() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
+  const [loadingProvider, setLoadingProvider] = useState<LoginProvider | null>(
+    null,
+  );
+  // A social sign-in that fails returns here with Better Auth's error code.
+  const signInErrorCode = searchParams.get("error");
+  const isWaitlisted = isWaitlistSignInError(signInErrorCode);
+  const [showNotAllowedModal, setShowNotAllowedModal] = useState(isWaitlisted);
   const [verificationEmail, setVerificationEmail] = useState<string | null>(
     null,
   );
@@ -63,17 +73,14 @@ export function useLoginPage() {
   });
 
   async function handleProviderLogin(provider: LoginProvider) {
-    setIsGoogleLoading(true);
+    setLoadingProvider(provider);
     setIsLoggingIn(true);
     // Leftover impersonation (expired admin session, pre-fix cookie) would 403 a non-admin.
     clearImpersonationEverywhere();
 
     try {
       // Include next URL in OAuth flow if present
-      const callbackUrl = nextUrl
-        ? `/auth/callback?next=${encodeURIComponent(nextUrl)}`
-        : `/auth/callback`;
-      const fullCallbackUrl = `${window.location.origin}${callbackUrl}`;
+      const fullCallbackUrl = `${window.location.origin}${providerCallbackPath(provider, nextUrl)}`;
 
       const response = await fetch("/api/auth/login/with-provider", {
         method: "POST",
@@ -89,7 +96,7 @@ export function useLoginPage() {
       const { url } = await response.json();
       if (url) window.location.href = url as string;
     } catch (error) {
-      setIsGoogleLoading(false);
+      setLoadingProvider(null);
       setIsLoggingIn(false);
       setFeedback(
         error instanceof Error ? error.message : "Failed to start OAuth flow",
@@ -149,14 +156,17 @@ export function useLoginPage() {
 
   return {
     form,
-    feedback,
+    feedback:
+      feedback ?? (isWaitlisted ? null : getSocialSignInError(signInErrorCode)),
     nextUrl,
     verificationEmail,
     verificationNotice,
     showBannedNotice,
     user,
     isLoading,
-    isGoogleLoading,
+    isGoogleLoading: loadingProvider === "google",
+    isMicrosoftLoading: loadingProvider === "microsoft",
+    isMicrosoftEnabled: environment.isMicrosoftLoginEnabled(),
     isCloudEnv,
     isUserLoading,
     showNotAllowedModal,

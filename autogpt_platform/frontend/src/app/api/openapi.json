@@ -26667,7 +26667,8 @@
           "copilot-voice-mode",
           "copilot-auto-mode",
           "copilot-stream-shadow",
-          "copilot-stream-runtime"
+          "copilot-stream-runtime",
+          "onboarding-step-order"
         ],
         "title": "FrontendFlag",
         "description": "Every flag the frontend reads; the frontend's `Flag` is generated from this.\n\nA key the backend reads too comes from the backend's `Flag`, so it is written once.",
@@ -26687,7 +26688,8 @@
           "COPILOT_VOICE_MODE",
           "COPILOT_AUTO_MODE",
           "COPILOT_STREAM_SHADOW",
-          "COPILOT_STREAM_RUNTIME"
+          "COPILOT_STREAM_RUNTIME",
+          "ONBOARDING_STEP_ORDER"
         ]
       },
       "FrontendFlagValues": {
@@ -30996,6 +30998,7 @@
           "currentStep": {
             "type": "string",
             "enum": [
+              "access",
               "team",
               "autopilot",
               "role",
@@ -31011,6 +31014,7 @@
             "items": {
               "type": "string",
               "enum": [
+                "access",
                 "team",
                 "autopilot",
                 "role",

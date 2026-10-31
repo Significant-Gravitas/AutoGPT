@@ -76,6 +76,20 @@ describe("POST /api/auth/login/with-provider", () => {
     });
   });
 
+  it("sends a refused Microsoft sign-in back to /login", async () => {
+    signInSocialMock.mockResolvedValue({ url: "https://login.example/x" });
+
+    await POST(makeProviderRequest({ provider: "microsoft" }));
+
+    expect(signInSocialMock).toHaveBeenCalledWith({
+      body: expect.objectContaining({
+        provider: "microsoft",
+        errorCallbackURL: "/login",
+      }),
+      headers: expect.any(Headers),
+    });
+  });
+
   it("returns 400 when no provider is supplied", async () => {
     const response = await POST(makeProviderRequest({ redirectTo: "/x" }));
 

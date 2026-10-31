@@ -3,13 +3,14 @@ import type { OnboardingWizardProgress } from "@/app/api/__generated__/models/on
 import { cleanWizardText, stepKey, type WizardStepKey } from "./progress";
 
 export const MAX_PAIN_POINT_SELECTIONS = 3;
-export type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7;
-export const MAX_STEP: Step = 7;
+export type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+export const MAX_STEP: Step = 8;
 
 // Every step the wizard can show, numbered for one deployment. Optional
 // steps are absent rather than zero so `currentStep === steps.team` can
 // never match by accident.
 export interface StepLayout {
+  access?: number;
   team?: number;
   autopilot?: number;
   role: number;
@@ -20,25 +21,76 @@ export interface StepLayout {
   preparing: number;
 }
 
+/**
+ * Every step, in the order the wizard shows it unless an experiment reorders
+ * it (the `onboarding-step-order` flag). The sign-in access step leads: right
+ * after signing up, the provider's session is fresh, so connecting takes one
+ * click.
+ */
+export const DEFAULT_STEP_ORDER: readonly WizardStepKey[] = [
+  "access",
+  "team",
+  "autopilot",
+  "role",
+  "painPoints",
+  "hire",
+  "subscription",
+  "connect",
+  "preparing",
+];
+
+/**
+ * The order an experiment asks for: the steps it names lead, in its order,
+ * and the rest follow in the default order. It only moves steps, since
+ * `buildStepLayout` decides which ones show. Preparing always comes last, and
+ * anything that is not a step name is ignored. With the paywall on, the
+ * access step always follows the subscription step: connecting a service
+ * needs a plan, which a new account only has once it has subscribed.
+ */
+export function resolveStepOrder(
+  requested: unknown,
+  { paywall = false }: { paywall?: boolean } = {},
+): WizardStepKey[] {
+  const leading: WizardStepKey[] = [];
+  for (const key of Array.isArray(requested) ? requested : []) {
+    if (isMovableStep(key) && !leading.includes(key)) leading.push(key);
+  }
+  const order = [
+    ...leading,
+    ...DEFAULT_STEP_ORDER.filter((key) => !leading.includes(key)),
+  ];
+  if (!paywall || order.indexOf("access") > order.indexOf("subscription")) {
+    return order;
+  }
+  const rest = order.filter((key) => key !== "access");
+  const after = rest.indexOf("subscription") + 1;
+  return [...rest.slice(0, after), "access", ...rest.slice(after)];
+}
+
+function isMovableStep(key: unknown): key is WizardStepKey {
+  return key !== "preparing" && DEFAULT_STEP_ORDER.some((step) => step === key);
+}
+
 export function buildStepLayout({
   hasPaywall = false,
   hasConnect = false,
+  hasAccess = false,
+  order = DEFAULT_STEP_ORDER,
 }: {
   hasPaywall?: boolean;
   hasConnect?: boolean;
+  /** The account signed up with a provider whose data it can also connect. */
+  hasAccess?: boolean;
+  order?: readonly WizardStepKey[];
 }): StepLayout {
-  const order: (keyof StepLayout)[] = [
-    "team",
-    "autopilot",
-    "role",
-    "painPoints",
-    "hire",
-    ...(hasPaywall ? (["subscription"] as const) : []),
-    ...(!hasPaywall && hasConnect ? (["connect"] as const) : []),
-    "preparing",
-  ];
+  const shown = order.filter((key) => {
+    if (key === "access") return hasAccess;
+    if (key === "subscription") return hasPaywall;
+    if (key === "connect") return !hasPaywall && hasConnect;
+    return true;
+  });
   const layout: Partial<Record<keyof StepLayout, number>> = {};
-  order.forEach((key, index) => {
+  shown.forEach((key, index) => {
     layout[key] = index + 1;
   });
   return layout as StepLayout;

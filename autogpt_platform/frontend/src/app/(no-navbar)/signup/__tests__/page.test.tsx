@@ -290,14 +290,23 @@ describe("SignupPage", () => {
     expect(previous?.lastElementChild?.textContent).toBe("Sign up");
   });
 
-  test("renders the legal line right after the Google button in cloud", () => {
+  test("renders the legal line right after the social sign-in buttons in cloud", () => {
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+    vi.stubEnv("NEXT_PUBLIC_AUTH_MICROSOFT_ENABLED", "true");
 
     render(<SignupPage />);
 
-    expect(getLegalLine().previousElementSibling).toBe(
-      screen.getByRole("button", { name: /continue with google/i }),
-    );
+    const buttons = getLegalLine().previousElementSibling;
+    expect(
+      buttons?.contains(
+        screen.getByRole("button", { name: /continue with google/i }),
+      ),
+    ).toBe(true);
+    expect(
+      buttons?.contains(
+        screen.getByRole("button", { name: /continue with microsoft/i }),
+      ),
+    ).toBe(true);
   });
 
   test("opting out swaps the sentence, keeps focus on the toggle and submits the opt-out", async () => {
@@ -595,6 +604,38 @@ describe("SignupPage", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test("keeps Google unavailable while a Microsoft sign-up is starting", async () => {
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+    vi.stubEnv("NEXT_PUBLIC_AUTH_MICROSOFT_ENABLED", "true");
+    let finish = () => {};
+    const settled = new Promise<Response>((resolve) => {
+      finish = () => resolve(new Response(JSON.stringify({})));
+    });
+    const passThrough = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) =>
+      input === PROVIDER_LOGIN_URL ? settled : passThrough(input, init),
+    );
+
+    try {
+      render(<SignupPage />);
+      fireEvent.click(
+        screen.getByRole("button", { name: /continue with microsoft/i }),
+      );
+
+      // Two sign-ups at once would race their redirects.
+      await waitFor(() =>
+        expect(
+          screen
+            .getByRole("button", { name: /continue with google/i })
+            .hasAttribute("disabled"),
+        ).toBe(true),
+      );
+    } finally {
+      finish();
+      await settled;
+    }
   });
 
   test("does not link to the demo tour", () => {
