@@ -111,6 +111,7 @@ from .external.v2.mcp_server import (
 from .features.analytics import router as analytics_router
 from .features.integrations.router import router as integrations_router
 from .middleware.analytics import AnalyticsContextMiddleware
+from .middleware.body_limit import RequestBodyLimitMiddleware
 from .middleware.security import SecurityHeadersMiddleware
 from .utils.auth_before_body import check_token_before_body
 from .utils.cors import build_cors_params
@@ -275,6 +276,9 @@ app = fastapi.FastAPI(
     generate_unique_id_function=custom_generate_unique_id,
 )
 
+# First, so it sits inside the others and its 413 carries their headers. It
+# covers the mounted apps too.
+app.add_middleware(RequestBodyLimitMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 # Marks the PostHog events of an admin acting as a user, and joins a request's
 # events to the browser's PostHog session.
