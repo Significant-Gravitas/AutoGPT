@@ -225,7 +225,9 @@ def build_sdk_env(
             parts.append(f"x-user-id: {_safe(user_id)}")
         if parts:
             env["ANTHROPIC_CUSTOM_HEADERS"] = "\n".join(parts)
-        env["CLAUDE_CODE_EXTRA_BODY"] = _broadcast_extra_body(session_id, user_id)
+        env["CLAUDE_CODE_EXTRA_BODY"] = _broadcast_extra_body(
+            session_id, user_id, model
+        )
 
     # --- Common: workspace isolation + security hardening (all modes) ---
     # Route subagent temp files into the per-session workspace so output
@@ -336,10 +338,12 @@ def _autocompact_pct_for_model(model: str | None) -> int:
     return pct
 
 
-def _broadcast_extra_body(session_id: str | None, user_id: str | None) -> str:
+def _broadcast_extra_body(
+    session_id: str | None, user_id: str | None, model: str | None
+) -> str:
     """``CLAUDE_CODE_EXTRA_BODY``: JSON the CLI merges into every request body
     (main turn, sub-agents, compaction), carrying the fields OpenRouter
-    Broadcast attributes a generation by.
+    Broadcast attributes a generation by, and the providers to route it to.
 
     ``metadata.user_id`` replaces the CLI's own (a JSON blob of its device and
     session ids) so that every user field on the request names the same
@@ -350,4 +354,19 @@ def _broadcast_extra_body(session_id: str | None, user_id: str | None) -> str:
     )
     if user_id:
         body["metadata"] = {"user_id": body["user"]}
+    claude_only = _is_claude_model(model) and (
+        not config.claude_agent_fallback_model
+        or _is_claude_model(config.claude_agent_fallback_model)
+    )
+    if config.openrouter_provider_order and claude_only:
+        body["provider"] = {
+            "order": list(config.openrouter_provider_order),
+            "allow_fallbacks": False,
+        }
     return json.dumps(body)
+
+
+def _is_claude_model(model: str | None) -> bool:
+    """Whether *model* is an Anthropic slug, routed (``anthropic/…``) or
+    bare (``claude-…``)."""
+    return model is not None and model.lower().startswith(("anthropic/", "claude-"))

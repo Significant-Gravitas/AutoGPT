@@ -97,6 +97,8 @@ class Call(BaseModel):
     cache_ttl: CacheTtl | None
     invoice_usd: float
     generation_id: str | None = None
+    # The OpenRouter provider preferences the request asked for, if any.
+    routing: dict | None = None
 
 
 def scripted_usage(index: int, *, cached: bool) -> Usage:

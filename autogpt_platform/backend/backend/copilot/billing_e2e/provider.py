@@ -91,7 +91,9 @@ class FakeProvider:
         ttl = cache_ttl(body)
         usage = scripted_usage(len(self.calls), cached=ttl is not None)
         generation_id = f"gen-{uuid.uuid4().hex}" if route == "openrouter" else None
-        self._bill(route, body["model"], usage, ttl, generation_id)
+        self._bill(
+            route, body["model"], usage, ttl, generation_id, body.get("provider")
+        )
         sse = wire.anthropic_messages(
             message_id=generation_id or f"msg_{uuid.uuid4().hex}",
             model=body["model"],
@@ -219,6 +221,7 @@ class FakeProvider:
         usage: Usage,
         ttl: CacheTtl | None,
         generation_id: str | None,
+        routing: dict | None = None,
     ) -> Call:
         table = price_table(route)
         if table is not None and model not in table:
@@ -233,6 +236,7 @@ class FakeProvider:
             cache_ttl=ttl,
             invoice_usd=table[model].of(usage, ttl) if table is not None else 0.0,
             generation_id=generation_id,
+            routing=routing,
         )
         self.calls.append(call)
         return call

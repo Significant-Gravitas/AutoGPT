@@ -87,6 +87,39 @@ async def test_each_turn_is_charged_what_its_provider_billed(
         pytest.xfail(gap.reason)
 
 
+@pytest.mark.asyncio(loop_scope="function")
+async def test_every_call_through_openrouter_asks_for_the_preferred_providers(
+    provider: FakeProvider,
+    ledger: PlatformLedger,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every model call the CLI makes through OpenRouter, on every turn,
+    restricts fallback to the configured providers."""
+    if _resolve_cli_path() is None:
+        pytest.skip("No Claude Code CLI binary available")
+    preferred = ["provider-a/global", "provider-b"]
+    scenario = next(s for s in SCENARIOS if s.id == "sdk-openrouter")
+    scenario = scenario.model_copy(
+        update={"config": {**scenario.config, "openrouter_provider_order": preferred}}
+    )
+    run_turn = _turn_runner(scenario, provider, tmp_path, monkeypatch)
+    session = _session(scenario)
+
+    for turn, prompt in enumerate(PROMPTS):
+        provider.turn = ledger.turn = turn
+        session.messages.append(ChatMessage(role="user", content=prompt))
+        await run_turn(session, prompt, new_pod=turn == NEW_POD_TURN)
+        await ledger.settle()
+
+    asked = [(c.turn, c.routing) for c in provider.calls if c.route == "openrouter"]
+    assert {turn for turn, _ in asked} == set(range(len(PROMPTS))), asked
+    assert all(
+        routing == {"order": preferred, "allow_fallbacks": False}
+        for _, routing in asked
+    ), asked
+
+
 def _turn_runner(
     scenario: Scenario,
     provider: FakeProvider,
