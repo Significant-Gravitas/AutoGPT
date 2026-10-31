@@ -168,7 +168,7 @@
     "concurrently": "9.2.1",
     "cross-env": "10.1.0",
     "eslint": "8.57.1",
-    "eslint-config-next": "15.5.7",
+    "eslint-config-next": "15.5.28",
     "eslint-plugin-react-hooks": "7.0.1",
     "eslint-plugin-storybook": "9.1.5",
     "happy-dom": "20.8.9",
