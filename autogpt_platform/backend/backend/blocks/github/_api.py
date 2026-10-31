@@ -46,7 +46,8 @@ def _convert_to_api_url(url: str | URL) -> str | URL:
     else:
         raise ValueError("Invalid GitHub URL format.")
 
-    return api_url if url_as_str else urlparse(api_url)
+    parsed_api_url = urlparse(api_url)._replace(query=url.query)
+    return parsed_api_url.geturl() if url_as_str else parsed_api_url
 
 
 def _get_headers(credentials: GithubCredentials) -> dict[str, str]:
