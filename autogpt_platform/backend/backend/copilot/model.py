@@ -39,6 +39,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .autopilot_mode import AutopilotMode
 from .config import ChatConfig, CopilotLlmAuthProvider
+from .duplicate_message_id import is_duplicate_chat_message_id_error
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -1373,8 +1374,6 @@ async def append_and_save_message(
             # ``(sessionId, sequence)`` race that exhausted the retry
             # loop in ``add_chat_messages_batch``) and unrelated
             # exceptions surface as ``DatabaseError``.
-            from .db import is_duplicate_chat_message_id_error
-
             if is_duplicate_chat_message_id_error(e):
                 return None
             raise DatabaseError(

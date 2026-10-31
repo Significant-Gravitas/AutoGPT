@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import re
 import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -28,6 +27,7 @@ from backend.data.expert_attribution import resolve_attributable_expert
 from backend.util.exceptions import ExpertNotFoundError
 from backend.util.json import SafeJson, dumps, sanitize_string
 
+from .duplicate_message_id import is_duplicate_chat_message_id_error
 from .model import (
     CHAT_STATUS_RUNNING,
     ChatMessage,
@@ -637,38 +637,6 @@ async def add_chat_message(
         PrismaChatMessage.prisma().create(data=data),
     )
     return ChatMessage.from_db(message)
-
-
-_UNIQUE_FIELDS_IN_MESSAGE = re.compile(r"fields: \(([^)]*)\)")
-
-
-def _unique_violation_fields(exc: UniqueViolationError) -> list[str] | None:
-    """The fields a unique violation failed on, or None when unknown.
-
-    Prisma reports them as ``meta["target"]`` (e.g. ``["id"]``) and in the
-    message as ``Unique constraint failed on the fields: (`id`)``. Only the
-    message survives the database manager's RPC, which rebuilds the error
-    from it with ``code`` and ``meta`` empty, so read both."""
-    target = exc.meta.get("target") if isinstance(exc.meta, dict) else None
-    if isinstance(target, list):
-        return [str(field) for field in target]
-    match = _UNIQUE_FIELDS_IN_MESSAGE.search(str(exc))
-    if match is None:
-        return None
-    return re.findall(r"`([^`]+)`", match.group(1))
-
-
-def is_duplicate_chat_message_id_error(exc: BaseException) -> bool:
-    """True iff *exc* is a ``UniqueViolationError`` on the ``ChatMessage``
-    row ``id``, i.e. the caller supplied an id that is already saved.
-
-    ``ChatMessage`` has two unique constraints: ``id`` (the idempotency
-    signal, which callers drop quietly) and ``(sessionId, sequence)`` (a
-    sequence race, which callers retry). Only call this on errors from a
-    ``ChatMessage`` insert."""
-    if not isinstance(exc, UniqueViolationError):
-        return False
-    return _unique_violation_fields(exc) == ["id"]
 
 
 async def add_chat_messages_batch(

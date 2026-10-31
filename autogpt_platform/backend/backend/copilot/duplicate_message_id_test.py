@@ -21,7 +21,9 @@ from prisma.models import ChatSession as PrismaChatSession
 from prisma.models import User
 
 from backend.copilot import db as copilot_db
+from backend.copilot import model as copilot_model
 from backend.copilot import turn_queue
+from backend.copilot.duplicate_message_id import is_duplicate_chat_message_id_error
 from backend.copilot.model import ChatMessage, append_and_save_message
 from backend.data.db import prisma as db_client
 from backend.util.test import SpinTestServer
@@ -81,7 +83,7 @@ async def _held_lock(_session_id: str):
     ],
 )
 def test_is_duplicate_chat_message_id_error(exc: BaseException, expected: bool):
-    assert copilot_db.is_duplicate_chat_message_id_error(exc) is expected
+    assert is_duplicate_chat_message_id_error(exc) is expected
 
 
 # ---------- the writers, mocked ----------
@@ -169,8 +171,6 @@ async def test_expert_run_post_skips_a_duplicate_id_without_retrying():
 async def test_append_and_save_message_skips_a_duplicate_id_from_the_rpc():
     """Outside the database manager the batch insert's error arrives through
     the RPC with only its message."""
-    from backend.copilot import model as copilot_model
-
     db = AsyncMock()
     db.get_next_sequence = AsyncMock(return_value=1)
     db.add_chat_messages_batch = AsyncMock(side_effect=_rpc_error(_ID_MESSAGE))
@@ -254,16 +254,14 @@ async def test_a_real_duplicate_id_is_told_apart_from_a_sequence_collision(
 
         with pytest.raises(UniqueViolationError) as same_id:
             await _insert(session_id, message_id, sequence=1)
-        assert copilot_db.is_duplicate_chat_message_id_error(same_id.value)
+        assert is_duplicate_chat_message_id_error(same_id.value)
         # The database manager's RPC keeps only the message.
-        assert copilot_db.is_duplicate_chat_message_id_error(
-            _rpc_error(str(same_id.value))
-        )
+        assert is_duplicate_chat_message_id_error(_rpc_error(str(same_id.value)))
 
         with pytest.raises(UniqueViolationError) as same_sequence:
             await _insert(session_id, str(uuid4()), sequence=0)
-        assert not copilot_db.is_duplicate_chat_message_id_error(same_sequence.value)
-        assert not copilot_db.is_duplicate_chat_message_id_error(
+        assert not is_duplicate_chat_message_id_error(same_sequence.value)
+        assert not is_duplicate_chat_message_id_error(
             _rpc_error(str(same_sequence.value))
         )
     finally:
@@ -300,8 +298,6 @@ async def test_append_and_save_message_skips_a_real_duplicate_id(
 ):
     """The in-memory id check misses when the session it reads is stale (the
     lock degraded, or a writer on another pod); the insert must still dedupe."""
-    from backend.copilot import model as copilot_model
-
     user_id = f"duplicate-id-{uuid4()}"
     await _create_user(user_id)
     try:
