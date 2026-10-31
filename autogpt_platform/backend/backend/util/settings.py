@@ -536,6 +536,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "This is necessary to make sure webhooks find their way.",
     )
 
+    oauth_dynamic_client_registration: bool = Field(
+        default=False,
+        description="Let OAuth clients register themselves (RFC 7591), as MCP "
+        "clients do to sign in without a client ID. Registered clients are public "
+        "and must use PKCE; the consent page tells users the app is unreviewed.",
+    )
+
     trusted_proxy_count: int = Field(
         # Prod is Cloudflare -> Google LB -> pod, so the client is 3rd from the
         # right; 1 keys every anonymous caller on the LB's address, one bucket.

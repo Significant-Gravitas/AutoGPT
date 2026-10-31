@@ -9,6 +9,7 @@ from mcp.shared.auth import OAuthMetadata
 from prisma.enums import APIKeyPermission
 from pydantic import AnyHttpUrl
 
+from backend.api.features.oauth_registration import registration_enabled
 from backend.util.settings import Settings
 
 # RFC 8414 §3.1: an issuer with no path has its document at the origin root.
@@ -23,24 +24,35 @@ def oauth_issuer() -> AnyHttpUrl:
     return AnyHttpUrl(Settings().config.platform_base_url or "https://platform.agpt.co")
 
 
-def authorization_server_metadata(token_path: str) -> OAuthMetadata:
+def authorization_server_metadata(
+    token_path: str, registration_path: str
+) -> OAuthMetadata:
     """What the provider does, for a client that has only its issuer.
 
-    `token_path` is where the token route is mounted, read from the app so the
-    document follows the route if it moves.
+    The paths are where the routes are mounted, read from the app so the
+    document follows a route if it moves. Registration is advertised only
+    when the instance enables it.
     """
+    config = Settings().config
     issuer = oauth_issuer()
-    frontend = Settings().config.frontend_base_url or "http://localhost:3000"
+    origin = str(issuer).rstrip("/")
+    frontend = config.frontend_base_url or "http://localhost:3000"
+    registration = registration_enabled()
     return OAuthMetadata(
         issuer=issuer,
         authorization_endpoint=AnyHttpUrl(f"{frontend}{AUTHORIZE_PAGE_PATH}"),
-        token_endpoint=AnyHttpUrl(f"{str(issuer).rstrip('/')}{token_path}"),
+        token_endpoint=AnyHttpUrl(f"{origin}{token_path}"),
+        registration_endpoint=(
+            AnyHttpUrl(f"{origin}{registration_path}") if registration else None
+        ),
         scopes_supported=[p.value for p in APIKeyPermission],
         response_types_supported=["code"],
         grant_types_supported=["authorization_code", "refresh_token"],
         token_endpoint_auth_methods_supported=[
             "client_secret_basic",
             "client_secret_post",
+            # A client that registered itself is public.
+            *(["none"] if registration else []),
         ],
         # `/authorize` refuses a request without a code challenge.
         code_challenge_methods_supported=["S256", "plain"],
