@@ -2091,10 +2091,14 @@ async def bulk_move_agents_to_folder(
     if missing:
         raise NotFoundError(f"Library agents not found: {', '.join(missing)}")
 
+    to_move = [a for a in matches if a.folderId != folder_id]
+    if not to_move:
+        return []
+
     # Move and read back in one transaction with the same filter, so the
     # returned list is exactly what this call moved.
     scope: prisma.types.LibraryAgentWhereInput = {
-        "id": {"in": [a.id for a in matches]},
+        "id": {"in": [a.id for a in to_move]},
         "userId": user_id,
         "isDeleted": False,
     }

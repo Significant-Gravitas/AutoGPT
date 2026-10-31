@@ -143,3 +143,18 @@ async def test_mixed_valid_and_unknown_ids_move_nothing(server: SpinTestServer):
         await bulk_move_agents_to_folder([agent.id, unknown], folder, user)
     assert agent.id not in str(raised.value)
     assert await _folder_of(agent.id) is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_repeated_move_reports_no_moves(server: SpinTestServer):
+    user = await _user()
+    folder = await _folder(user)
+    agent = await _agent(user)
+
+    first = await bulk_move_agents_to_folder([agent.id], folder, user)
+    assert [a.id for a in first] == [agent.id]
+    assert await _folder_of(agent.id) == folder
+
+    second = await bulk_move_agents_to_folder([agent.id], folder, user)
+    assert second == []
+    assert await _folder_of(agent.id) == folder
