@@ -1,5 +1,6 @@
 """Tests for fire-and-forget Web Push delivery."""
 
+import hashlib
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -7,6 +8,7 @@ import pytest
 from backend.api.model import NotificationPayload
 from backend.data import push_sender
 from backend.data.push_subscription import PushSubscriptionDTO
+from backend.util import secrets_guard
 
 
 @pytest.fixture(autouse=True)
@@ -149,6 +151,26 @@ class TestSendPushForUser:
         await push_sender.send_push_for_user("user-1", _make_payload())
 
         mock_db_client.get_user_push_subscriptions.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_refuses_to_send_with_the_published_vapid_key(
+        self, mocker, mock_db_client, caplog
+    ):
+        published = "pretend-this-was-shipped-in-env-default"
+        mocker.patch.object(
+            secrets_guard,
+            "_RETIRED_VAPID_PRIVATE_KEY_DIGESTS",
+            {hashlib.sha256(published.encode()).hexdigest()},
+        )
+        mocker.patch.object(push_sender, "_settings", _make_settings(private=published))
+        mock_db_client.get_user_push_subscriptions.return_value = [_make_subscription()]
+        mock_webpush = mocker.patch("backend.data.push_sender.webpush")
+
+        await push_sender.send_push_for_user("user-1", _make_payload())
+
+        mock_db_client.get_user_push_subscriptions.assert_not_awaited()
+        mock_webpush.assert_not_called()
+        assert "make init-env" in caplog.text
 
     @pytest.mark.asyncio
     async def test_debounces_rapid_calls(self, mocker, mock_db_client):

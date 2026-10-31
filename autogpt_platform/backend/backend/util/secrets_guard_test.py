@@ -72,6 +72,45 @@ def test_guard_covers_every_secret_that_env_default_used_to_ship():
         assert all(len(digest) == 64 for digest in digests)
 
 
+def test_published_vapid_key_warns_and_still_starts(monkeypatch, caplog):
+    """Nothing stored depends on the Web Push pair, so the backend starts and
+    says how to replace it; the push sender is what refuses the key."""
+    published = "pretend-this-was-shipped-for-VAPID_PRIVATE_KEY"
+    monkeypatch.setattr(
+        secrets_guard,
+        "_RETIRED_VAPID_PRIVATE_KEY_DIGESTS",
+        {hashlib.sha256(published.encode()).hexdigest()},
+    )
+    settings = _settings(_fresh_key())
+    settings.secrets.vapid_private_key = published
+
+    check_secrets(settings)
+
+    warnings = [
+        r.getMessage() for r in caplog.records if "VAPID_PRIVATE_KEY" in r.getMessage()
+    ]
+    assert len(warnings) == 1
+    assert "make init-env" in warnings[0]
+    assert secrets_guard.vapid_private_key_is_published(published)
+    assert not secrets_guard.vapid_private_key_is_published("")
+    assert not secrets_guard.vapid_private_key_is_published(_fresh_key())
+
+
+def test_a_generated_vapid_key_does_not_warn(caplog):
+    settings = _settings(_fresh_key())
+    settings.secrets.vapid_private_key = _fresh_key()
+
+    check_secrets(settings)
+
+    assert "VAPID_PRIVATE_KEY" not in caplog.text
+
+
+def test_the_published_vapid_key_digest_is_registered():
+    digests = secrets_guard._RETIRED_VAPID_PRIVATE_KEY_DIGESTS
+    assert digests, "an empty set silently disables the refusal"
+    assert all(len(digest) == 64 for digest in digests)
+
+
 def _database_url(monkeypatch, settings, password):
     monkeypatch.setenv(
         "DATABASE_URL", f"postgresql://postgres:{password}@db:5432/postgres?schema=x"
