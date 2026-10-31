@@ -131,6 +131,24 @@ class ExecutionContext(BaseModel):
     # spend and the executor can post run results into the expert's thread.
     expert_id: Optional[str] = None
 
+    # Copilot tree attribution. A graph started by an agent turn runs in the
+    # executor process, where the turn's envelope contextvar cannot reach, so
+    # the tree identity travels in the execution payload the same way
+    # ``expert_id`` does. ``AutoPilotBlock`` rebuilds a spawner envelope from
+    # these, which keeps a nested agent turn inside the tree that started it
+    # instead of rooting a fresh, unbounded one. None = not started by a turn.
+    copilot_tree_id: Optional[str] = None
+    copilot_tree_depth: int = 0
+    copilot_tree_tainted: bool = False
+    # The spawning turn's tool ceiling. ``None`` is the root sentinel meaning
+    # unrestricted, so it must stay distinct from an empty list: dropping this
+    # field entirely would reopen the whole registry on the far side, which is
+    # the amplification the envelope exists to prevent.
+    copilot_tree_tools: Optional[list[str]] = None
+    # The chat whose spend ceiling the tree's paid calls count against.
+    copilot_tree_spend_session_id: Optional[str] = None
+    copilot_tree_deadline_at: Optional[datetime] = None
+
     # The chat that started this run, whose approval gate answers its review
     # pauses; None for any run no chat started.
     approval_chat_id: Optional[str] = None
@@ -887,6 +905,19 @@ async def get_graph_execution_meta(
     return GraphExecutionMeta.from_db(execution) if execution else None
 
 
+async def get_graph_execution_copilot_tree(
+    user_id: str, execution_id: str
+) -> Optional[dict[str, JsonValue]]:
+    """The serialised TurnEnvelope a copilot turn started this run with, or
+    None for a run no turn started. Kept off the API models on purpose."""
+    execution = await AgentGraphExecution.prisma().find_first(
+        where={"id": execution_id, "userId": user_id, "isDeleted": False}
+    )
+    if execution is None or not isinstance(execution.copilotTree, dict):
+        return None
+    return execution.copilotTree
+
+
 @overload
 async def get_graph_execution(
     user_id: str,
@@ -983,6 +1014,7 @@ async def create_graph_execution(
     trigger_ref: Optional[str] = None,
     schedule_id: Optional[str] = None,
     webhook_id: Optional[str] = None,
+    copilot_tree: Optional[dict[str, JsonValue]] = None,
 ) -> GraphExecutionWithNodes:
     """
     Create a new AgentGraphExecution record.
@@ -1041,6 +1073,7 @@ async def create_graph_execution(
             **({"triggerRef": trigger_ref} if trigger_ref else {}),
             **({"scheduleId": schedule_id} if schedule_id else {}),
             **({"webhookId": webhook_id} if webhook_id else {}),
+            **({"copilotTree": SafeJson(copilot_tree)} if copilot_tree else {}),
             **({"stats": Json({"is_dry_run": True})} if is_dry_run else {}),
             # Tenancy dual-write fields
             **({"organizationId": organization_id} if organization_id else {}),
@@ -1321,7 +1354,36 @@ async def update_graph_execution_stats(
         ),
     )
 
+    if status == ExecutionStatus.REVIEW:
+        await _save_copilot_tree_ledger(graph_exec)
+
     return GraphExecution.from_db(graph_exec)
+
+
+async def _save_copilot_tree_ledger(execution: AgentGraphExecution) -> None:
+    """A run a copilot turn started keeps its tree's ledger while it waits for
+    review, which can outlast the ledger's TTL. Never raises: without the copy
+    a late resume opens a fresh ledger, as before."""
+    # Local import avoids circular: copilot.tree imports this module.
+    from backend.copilot.tree import TurnEnvelope, ledger_to_save
+
+    tree = execution.copilotTree
+    if not isinstance(tree, dict):
+        return
+    try:
+        saved = await ledger_to_save(TurnEnvelope.model_validate(tree).tree_id)
+        if saved is None:
+            return
+        await AgentGraphExecution.prisma().update(
+            where={"id": execution.id},
+            data={
+                "copilotTree": SafeJson(
+                    {**tree, "ledger": saved.model_dump(exclude_none=True)}
+                )
+            },
+        )
+    except Exception as e:
+        logger.warning(f"Could not save run {execution.id}'s tree ledger: {e}")
 
 
 async def update_node_execution_status_batch(

@@ -161,6 +161,33 @@ async def test_a_spawned_turns_envelope_records_the_tool_call_that_started_it(
 
 
 @pytest.mark.asyncio
+async def test_an_explicit_spawner_names_the_tree_and_the_caller_the_trace() -> None:
+    """A graph-nested turn passes its spawner explicitly; that spawner decides
+    the tree, and the dispatching context still decides the PostHog trace."""
+    with (
+        patch.object(
+            utils, "get_current_envelope", return_value=root_envelope("other-tree")
+        ),
+        patch.object(utils, "admit_turn", new=AsyncMock()),
+    ):
+        set_turn_trace_id("dispatching-turn")
+        set_turn_span("dispatching-turn")
+        try:
+            with tool_span("run_agent", user_id="u1", session_id="s0"):
+                spawning_tool = current_span_id()
+                envelope = await utils._admitted_turn_envelope(
+                    "t1", "s1", "u1", None, None, root_envelope("graph-tree")
+                )
+        finally:
+            set_turn_trace_id(None)
+            set_turn_span(None)
+
+    assert (envelope.tree_id, envelope.depth) == ("graph-tree", 1)
+    assert envelope.ai_trace_id == "dispatching-turn"
+    assert envelope.ai_parent_span_id == spawning_tool
+
+
+@pytest.mark.asyncio
 async def test_a_re_admitted_turn_keeps_the_trace_its_envelope_recorded(
     copilot_queue,
 ) -> None:
