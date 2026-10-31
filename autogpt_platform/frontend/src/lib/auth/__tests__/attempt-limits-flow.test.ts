@@ -79,6 +79,21 @@ vi.mock("@/app/api/helpers", () => ({
 vi.mock("@/lib/auth/server/rollbackSession", () => ({
   rollbackSession: vi.fn(),
 }));
+// While set, every attempt-limit count fails to read, as a database error would.
+const slotReads = vi.hoisted(() => ({ failing: false }));
+vi.mock("../auth-email-cooldown", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../auth-email-cooldown")>();
+  return {
+    ...actual,
+    claimWindowSlot: async (
+      ...args: Parameters<typeof actual.claimWindowSlot>
+    ) => {
+      if (slotReads.failing) throw new Error("connection reset");
+      return actual.claimWindowSlot(...args);
+    },
+  };
+});
 
 const baseURL = "http://localhost:3000";
 const password = "a-long-enough-password"; // pragma: allowlist secret
@@ -139,6 +154,7 @@ async function resetEmailsSent() {
 }
 
 beforeEach(() => {
+  slotReads.failing = false;
   sentEmails.length = 0;
   pendingAfterResponse.length = 0;
   requestHeaders.current = new Headers();
@@ -235,6 +251,57 @@ describe("sign-in through the login page", () => {
     );
     fromIP("198.51.100.100");
     expect((await login("target@example.com", password)).success).toBe(true);
+  });
+
+  it("doesn't count successful sign-ins against the address", async () => {
+    const { api, login } = await createAuth();
+    await signUp(api, "target@example.com");
+    for (let i = 0; i < signIn.perAddress.max; i++) {
+      fromIP(`198.51.100.${i + 1}`);
+      expect((await login("target@example.com", password)).success).toBe(true);
+    }
+
+    fromIP("198.51.100.100");
+    expect(await login("target@example.com", wrongPassword)).toEqual(INVALID);
+  });
+
+  it("keeps the failures counted when a correct sign-in follows them", async () => {
+    const { api, login } = await createAuth();
+    await signUp(api, "target@example.com");
+    for (let i = 0; i < signIn.perAddress.max - 1; i++) {
+      fromIP(`198.51.100.${i + 1}`);
+      await login("target@example.com", wrongPassword);
+    }
+    fromIP("198.51.100.50");
+    const owner = await login("target@example.com", password);
+    fromIP("198.51.100.51");
+    const lastGuess = await login("target@example.com", wrongPassword);
+    fromIP("198.51.100.52");
+    const nextGuess = await login("target@example.com", wrongPassword);
+
+    expect(owner.success).toBe(true);
+    expect(lastGuess).toEqual(INVALID);
+    expect(nextGuess).toEqual({
+      success: false,
+      error: refusedFor("10 minutes"),
+    });
+  });
+
+  it("lets the attempt through and logs it when a count can't be read", async () => {
+    const { api, login } = await createAuth();
+    await signUp(api, "target@example.com");
+    for (let i = 0; i < signIn.perAddress.max; i++) {
+      fromIP(`198.51.100.${i + 1}`);
+      await login("target@example.com", wrongPassword);
+    }
+
+    slotReads.failing = true;
+    fromIP("198.51.100.100");
+    expect((await login("target@example.com", password)).success).toBe(true);
+    expect(console.error).toHaveBeenCalledWith(
+      "Failed to check an auth attempt limit",
+      { error: "connection reset" },
+    );
   });
 
   it("limits only the address when the client IP can't be trusted", async () => {

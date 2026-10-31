@@ -1,8 +1,10 @@
+import { defineRequestState } from "@better-auth/core/context";
 import type { BetterAuthOptions } from "better-auth";
-import { APIError, getIp } from "better-auth/api";
+import { APIError, getIp, isAPIError } from "better-auth/api";
 import {
   type AuthEmailContext,
   claimWindowSlot,
+  releaseWindowSlot,
   type WindowLimit,
 } from "./auth-email-cooldown";
 import { getTrustedClientIP } from "./client-ip";
@@ -11,6 +13,8 @@ interface PathLimits {
   name: string;
   perIP: WindowLimit;
   perAddress: WindowLimit;
+  // A successful attempt gives its address slot back, so only failures count.
+  refundOnSuccess?: boolean;
 }
 
 // Per IP, the rules Better Auth's own limiter applies to these routes over
@@ -23,6 +27,7 @@ export const ATTEMPT_LIMITS = new Map<string, PathLimits>([
       name: "sign-in",
       perIP: { max: 3, windowSeconds: 10 },
       perAddress: { max: 5, windowSeconds: 10 * 60 },
+      refundOnSuccess: true,
     },
   ],
   [
@@ -34,6 +39,9 @@ export const ATTEMPT_LIMITS = new Map<string, PathLimits>([
     },
   ],
 ]);
+
+// The address slot this call claimed, for refundSuccessfulAttempt.
+const claimedAddressSlot = defineRequestState<string | null>(() => null);
 
 interface Args {
   path: string | undefined;
@@ -63,28 +71,53 @@ export async function limitAuthAttempts({
   if (ip) await claimOrRefuse(context, `${limits.name}-ip:${ip}`, limits.perIP);
   const address = addressIn(body);
   if (address) {
-    await claimOrRefuse(
+    const slot = await claimOrRefuse(
       context,
       `${limits.name}-address:${address}`,
       limits.perAddress,
     );
+    if (slot && limits.refundOnSuccess) await claimedAddressSlot.set(slot);
   }
 }
 
+/** A Better Auth after-hook: a successful sign-in frees the slot it claimed. */
+export async function refundSuccessfulAttempt({
+  path,
+  returned,
+  context,
+}: {
+  path: string | undefined;
+  returned: unknown;
+  context: AuthEmailContext;
+}) {
+  if (!path || !ATTEMPT_LIMITS.get(path)?.refundOnSuccess) return;
+  if (isAPIError(returned)) return;
+  const slot = await claimedAddressSlot.get();
+  if (!slot) return;
+  await claimedAddressSlot.set(null);
+  await releaseWindowSlot(context, slot).catch((error: unknown) => {
+    console.error("Failed to release an auth attempt slot", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+}
+
+// The claimed slot's id, or null when the count couldn't be read.
 async function claimOrRefuse(
   context: AuthEmailContext,
   identifier: string,
   limit: WindowLimit,
 ) {
-  const claimed = await claimWindowSlot(context, identifier, limit).catch(
-    (error: unknown) => {
-      console.error("Failed to check an auth attempt limit", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return true;
-    },
-  );
-  if (claimed) return;
+  let slot: string | null;
+  try {
+    slot = await claimWindowSlot(context, identifier, limit);
+  } catch (error) {
+    console.error("Failed to check an auth attempt limit", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+  if (slot) return slot;
   const retryAfter = secondsLeftInWindow(limit.windowSeconds);
   throw new APIError(
     "TOO_MANY_REQUESTS",

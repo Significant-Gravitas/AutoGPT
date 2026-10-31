@@ -97,16 +97,18 @@ function currentWindow(windowSeconds: number) {
   return Math.floor(Date.now() / (windowSeconds * 1000));
 }
 
-export function claimIPEmailSlot(context: AuthEmailContext, ip: string) {
-  return claimWindowSlot(context, `auth-email-ip:${ip}`, {
+export async function claimIPEmailSlot(context: AuthEmailContext, ip: string) {
+  const slot = await claimWindowSlot(context, `auth-email-ip:${ip}`, {
     max: AUTH_EMAILS_PER_IP,
     windowSeconds: AUTH_EMAIL_COOLDOWN_SECONDS,
   });
+  return slot !== null;
 }
 
 // One of `max` fixed rows per identifier and window; each id can only be
 // inserted once, so a burst can't take more than that many. A failed insert
-// whose row now exists lost the race and tries the next slot.
+// whose row now exists lost the race and tries the next slot. Returns the
+// claimed row's id, or null when every slot is taken.
 export async function claimWindowSlot(
   context: AuthEmailContext,
   identifier: string,
@@ -124,12 +126,19 @@ export async function claimWindowSlot(
         value: "sent",
         expiresInSeconds: windowEndsAt - Date.now() / 1000,
       });
-      return true;
+      return id;
     } catch (error) {
       if (!(await rowExists(context, id))) throw error;
     }
   }
-  return false;
+  return null;
+}
+
+export async function releaseWindowSlot(context: AuthEmailContext, id: string) {
+  await context.adapter.deleteMany({
+    model: "verification",
+    where: [{ field: "id", value: id }],
+  });
 }
 
 async function rowExists(context: AuthEmailContext, id: string) {
