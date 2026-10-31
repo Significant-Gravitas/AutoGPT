@@ -1,10 +1,4 @@
-"""Unit tests for the Perplexity Search block.
-
-Complements the ``test_mock`` harness in the block (exercised by
-``test_available_blocks``) with direct coverage of the request shape,
-the attribution headers, and the error boundaries.
-"""
-
+import json
 import logging
 import traceback
 from typing import Any
@@ -16,15 +10,12 @@ from pydantic import SecretStr
 
 from backend.blocks.perplexity_search import _api
 from backend.blocks.perplexity_search._api import (
-    FAST_SEARCH_COST_USD,
-    PERPLEXITY_API_URL,
-    WEB_SEARCH_COST_USD,
     PerplexitySearchResponse,
     PerplexitySearchResult,
     check_domain_filter,
     search,
 )
-from backend.blocks.perplexity_search.search import PerplexitySearchBlock
+from backend.blocks.perplexity_search.api import PerplexitySearchBlock
 from backend.data.execution import ExecutionContext
 from backend.sdk import APIKeyCredentials
 from backend.util.exceptions import BlockExecutionError
@@ -54,9 +45,7 @@ def _row(title: str = "AutoGPT", url: str = "https://agpt.co", **extra) -> dict:
 
 
 def _search_response(results: list[dict]) -> PerplexitySearchResponse:
-    return PerplexitySearchResponse.model_validate(
-        {"id": "search-id", "results": results}
-    )
+    return PerplexitySearchResponse.model_validate({"results": results})
 
 
 class FakeSearch:
@@ -94,13 +83,15 @@ def _exception_chain_text(exc: BaseException) -> str:
     return f"{exc!r}\n{exc}\n" + "".join(traceback.format_exception(exc))
 
 
-def _mock_response(status: int, body: bytes = b"", ok: bool | None = None):
+def _mock_response(status: int, body: bytes | None = None):
+    if body is None:
+        body = json.dumps({"id": "search-id", "results": [_row()]}).encode()
     resp = mock.Mock()
     resp.status = status
-    resp.ok = ok if ok is not None else status < 400
+    resp.ok = 200 <= status < 300
     resp.content = body
     resp.text.return_value = body.decode()
-    resp.json.return_value = {"id": "search-id", "results": [_row()]}
+    resp.json.side_effect = lambda: json.loads(body)
     return resp
 
 
@@ -123,18 +114,30 @@ async def test_search_posts_to_search_endpoint_with_attribution_headers():
 
     assert out.results[0].url == "https://agpt.co"
     init_kwargs = requests_cls.call_args.kwargs
-    assert init_kwargs["trusted_origins"] == [PERPLEXITY_API_URL]
+    assert init_kwargs["trusted_origins"] == ["https://api.perplexity.ai"]
     assert init_kwargs["extra_headers"] == {
         "Authorization": "Bearer mock-perplexity-api-key",
         "X-Pplx-Integration": "autogpt",
     }
     args, kwargs = requests_cls.return_value.post.call_args
-    assert args[0] == f"{PERPLEXITY_API_URL}/search"
+    assert args[0] == "https://api.perplexity.ai/search"
     assert kwargs["json"] == {"query": "q", "max_results": 1}
     assert kwargs["allow_redirects"] is False
 
 
 KEY_MARKER = "mock-perplexity-api-key"
+KEY_REJECTED = (
+    "Perplexity rejected the API key (HTTP {status}). Check the credential in "
+    "your integrations settings."
+)
+PARAMS_REJECTED = (
+    "Perplexity rejected the request parameters (HTTP {status}). Check the "
+    "query, max_results, and filters."
+)
+OTHER_STATUS = (
+    "Perplexity Search request failed with HTTP {status}. Contact Perplexity "
+    "support with this status code."
+)
 
 
 @pytest.mark.asyncio
@@ -144,48 +147,44 @@ KEY_MARKER = "mock-perplexity-api-key"
         (
             401,
             b'{"error":{"message":"Invalid API key provided. Bearer mock-perplexity-api-key","type":"invalid_api_key","code":401}}',
-            "rejected the API key (HTTP 401)",
+            KEY_REJECTED.format(status=401),
         ),
-        (403, b'{"error":{"message":"Forbidden"}}', "rejected the API key (HTTP 403)"),
+        (403, b'{"error":{"message":"Forbidden"}}', KEY_REJECTED.format(status=403)),
         (
             422,
             # FastAPI 422 bodies echo the offending request input.
             b'{"detail":[{"loc":["body","query"],"msg":"Input should be a valid string","input":"mock-perplexity-api-key","type":"string_type"}]}',
-            "rejected the request parameters (HTTP 422)",
+            PARAMS_REJECTED.format(status=422),
         ),
+        (400, b'{"detail":"bad request"}', PARAMS_REJECTED.format(status=400)),
         (
-            400,
-            b'{"detail":"bad request"}',
-            "rejected the request parameters (HTTP 400)",
+            429,
+            b"Too Many Requests",
+            "Perplexity rate limited this request (HTTP 429). Try again shortly.",
         ),
-        (429, b"Too Many Requests", "rate limited this request (HTTP 429)"),
         (
             502,
             b"<html>Bad gateway for Bearer mock-perplexity-api-key</html>",
-            "unavailable right now (HTTP 502)",
+            "Perplexity Search is unavailable right now (HTTP 502). Try again later.",
         ),
-        (301, b"", "failed with HTTP 301"),
-        (402, b'{"error":{"message":"' + b"x" * 2000 + b'"}}', "failed with HTTP 402"),
+        (301, b"", OTHER_STATUS.format(status=301)),
+        (
+            402,
+            b'{"error":{"message":"' + b"x" * 2000 + b'"}}',
+            OTHER_STATUS.format(status=402),
+        ),
     ],
 )
 async def test_search_non_ok_status_raises_fixed_message(
     status: int, body: bytes, expected: str
 ):
-    resp = _mock_response(status, body, ok=False)
+    resp = _mock_response(status, body)
     with mock.patch.object(_api, "Requests") as requests_cls:
         requests_cls.return_value.post = mock.AsyncMock(return_value=resp)
         with pytest.raises(ValueError) as exc_info:
             await search(TEST_CREDENTIALS, {"query": "q"})
-    text = _exception_chain_text(exc_info.value)
-    assert expected in str(exc_info.value)
-    assert len(str(exc_info.value)) < 200
-    # Nothing from the body is reflected: not the key, not the echoed input,
-    # not HTML, not the provider's own message text.
-    assert KEY_MARKER not in text
-    assert "<html>" not in text
-    assert "Input should" not in text
-    assert "Invalid API key provided" not in text
-    assert "xxxx" not in text
+    assert str(exc_info.value) == expected
+    assert KEY_MARKER not in _exception_chain_text(exc_info.value)
 
 
 @pytest.mark.asyncio
@@ -194,7 +193,7 @@ async def test_search_422_body_echoing_the_key_does_not_reach_the_block_error():
         b'{"detail":[{"loc":["header","authorization"],"msg":"Invalid header: '
         b'Bearer mock-perplexity-api-key","type":"value_error"}]}'
     )
-    resp = _mock_response(422, body, ok=False)
+    resp = _mock_response(422, body)
     block = PerplexitySearchBlock()
     with mock.patch.object(_api, "Requests") as requests_cls:
         requests_cls.return_value.post = mock.AsyncMock(return_value=resp)
@@ -213,16 +212,40 @@ async def test_search_422_body_echoing_the_key_does_not_reach_the_block_error():
     assert resp.json.call_count == 0
 
 
+INVALID_RESPONSE = (
+    "Perplexity Search returned an invalid response. Retry the request; if it "
+    "persists, contact Perplexity support."
+)
+
+
 @pytest.mark.asyncio
-async def test_search_malformed_body_raises_without_echoing_it():
-    resp = _mock_response(200)
-    resp.json.return_value = {"results": [{"title": "no url", "secret": "s3cr3t"}]}
+@pytest.mark.parametrize(
+    "body",
+    [
+        b'{"results":[{"title":"no url","secret":"s3cr3t"}]}',
+        b"{}",
+        b'{"results":"s3cr3t"}',
+        b"<html>s3cr3t</html>",
+    ],
+    ids=["row-missing-url", "no-results-field", "results-not-a-list", "not-json"],
+)
+async def test_search_malformed_success_body_raises_fixed_message(body: bytes):
+    resp = _mock_response(200, body)
     with mock.patch.object(_api, "Requests") as requests_cls:
         requests_cls.return_value.post = mock.AsyncMock(return_value=resp)
-        with pytest.raises(ValueError, match="could not parse") as exc_info:
+        with pytest.raises(ValueError) as exc_info:
             await search(TEST_CREDENTIALS, {"query": "q"})
+    assert str(exc_info.value) == INVALID_RESPONSE
     assert "s3cr3t" not in _exception_chain_text(exc_info.value)
-    assert "no url" not in _exception_chain_text(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_search_accepts_an_empty_result_list():
+    resp = _mock_response(200, b'{"results":[]}')
+    with mock.patch.object(_api, "Requests") as requests_cls:
+        requests_cls.return_value.post = mock.AsyncMock(return_value=resp)
+        out = await search(TEST_CREDENTIALS, {"query": "q"})
+    assert out.results == []
 
 
 @pytest.mark.asyncio
@@ -309,12 +332,13 @@ async def test_search_happy_path_yields_each_result():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("recency", ["hour", "day", "week", "month", "year"])
 @pytest.mark.parametrize(
     "domains",
     [["perplexity.ai", "github.com"], ["-reddit.com", "-pinterest.com"]],
     ids=["include-only", "exclude-only"],
 )
-async def test_search_forwards_optional_filters(domains: list[str]):
+async def test_search_forwards_optional_filters(domains: list[str], recency: str):
     fake = FakeSearch(_search_response([]))
     block = PerplexitySearchBlock()
     outputs = await _run(
@@ -323,7 +347,7 @@ async def test_search_forwards_optional_filters(domains: list[str]):
         query="q",
         search_type="fast",
         search_domain_filter=domains,
-        search_recency_filter="week",
+        search_recency_filter=recency,
     )
 
     assert fake.payloads == [
@@ -332,7 +356,7 @@ async def test_search_forwards_optional_filters(domains: list[str]):
             "max_results": 5,
             "search_type": "fast",
             "search_domain_filter": domains,
-            "search_recency_filter": "week",
+            "search_recency_filter": recency,
         }
     ]
     assert outputs["results"] == [[]]
@@ -379,7 +403,6 @@ async def test_invalid_domain_filter_is_rejected_before_the_request(
     "domains, expected",
     [
         (["perplexity.ai", "-reddit.com"], "cannot mix"),
-        ([f"site{i}.com" for i in range(21)], "at most 20"),
         ([""], "cannot be blank"),
     ],
 )
@@ -412,7 +435,7 @@ def test_domain_filter_schema_declares_the_limit():
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "search_type, cost",
-    [("web", WEB_SEARCH_COST_USD), ("fast", FAST_SEARCH_COST_USD)],
+    [("web", 0.005), ("fast", 0.001)],
 )
 async def test_search_records_provider_cost(search_type: str, cost: float):
     block = PerplexitySearchBlock()

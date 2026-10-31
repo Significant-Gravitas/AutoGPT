@@ -30,8 +30,6 @@ from ._config import perplexity
 
 
 class PerplexitySearchBlock(Block):
-    """Search the web with the Perplexity Search API."""
-
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = perplexity.credentials_field(
             description="Perplexity API credentials"
@@ -44,10 +42,7 @@ class PerplexitySearchBlock(Block):
             le=20,
         )
         search_type: PerplexitySearchType = SchemaField(
-            description=(
-                "Web search returns the highest quality results; "
-                "fast search returns results sooner"
-            ),
+            description="Search mode: web (default) or fast.",
             default=PerplexitySearchType.WEB,
             advanced=True,
         )

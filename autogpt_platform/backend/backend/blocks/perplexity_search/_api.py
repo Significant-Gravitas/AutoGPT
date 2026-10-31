@@ -6,7 +6,6 @@ from enum import Enum
 from typing import Any
 
 from aiohttp import ClientError, ClientTimeout
-from pydantic import Field
 
 from backend.sdk import APIKeyCredentials, BaseModel, Requests, SchemaField
 
@@ -16,21 +15,17 @@ PERPLEXITY_API_URL = "https://api.perplexity.ai"
 # User-Agent (AutoGPT-Platform/...) is sent alongside it.
 INTEGRATION_HEADER = {"X-Pplx-Integration": "autogpt"}
 
-# Characters an HTTP header value may not contain. A key with one of these
-# (usually a line break from a copy-paste) is rejected here with a fixed
-# message, so no transport error that mentions the header is ever raised.
+# Control characters aiohttp rejects in header values. Checked before any
+# request so no transport error can describe the Authorization header.
 _FORBIDDEN_HEADER_CHARS = re.compile(r"[\x00-\x08\x0a-\x1f\x7f]")
 
-# search_domain_filter takes at most 20 domains, all include or all exclude.
 MAX_DOMAIN_FILTERS = 20
 
 # Published Search API prices per successful request, by search_type.
 WEB_SEARCH_COST_USD = 0.005
 FAST_SEARCH_COST_USD = 0.001
 
-# A search answers in well under a minute; fail before aiohttp's 300 s default
-# so a hung call doesn't hold an executor worker. ClientTimeout bounds one
-# attempt; the deadline bounds all retries and backoff together.
+# Limit each attempt and the total time across retries/backoff to 60 seconds.
 REQUEST_TIMEOUT = ClientTimeout(total=60)
 REQUEST_DEADLINE_SECONDS = 60
 
@@ -49,8 +44,6 @@ class PerplexityRecencyFilter(Enum):
 
 
 class PerplexitySearchResult(BaseModel):
-    """Schema for a single Perplexity Search API result."""
-
     title: str = SchemaField(description="Title of the result page")
     url: str = SchemaField(description="URL of the result page")
     snippet: str = SchemaField(
@@ -65,16 +58,7 @@ class PerplexitySearchResult(BaseModel):
 
 
 def check_domain_filter(domains: list[str]) -> None:
-    """Enforce the Search API's rules for search_domain_filter.
-
-    Raises ValueError (surfaced as an input validation error) when the list
-    has more than 20 entries, has a blank entry, or mixes include entries
-    with '-' prefixed exclude entries in one request.
-    """
-    if len(domains) > MAX_DOMAIN_FILTERS:
-        raise ValueError(
-            f"search_domain_filter accepts at most {MAX_DOMAIN_FILTERS} domains"
-        )
+    """Reject blank entries and mixed include/exclude modes."""
     if any(not domain.lstrip("-").strip() for domain in domains):
         raise ValueError("search_domain_filter entries cannot be blank")
     excluded = sum(1 for domain in domains if domain.startswith("-"))
@@ -93,23 +77,15 @@ def search_cost_usd(search_type: PerplexitySearchType) -> float:
 
 
 class PerplexitySearchResponse(BaseModel):
-    """The parts of a Search API response body the block uses."""
-
-    id: str | None = None
-    results: list[PerplexitySearchResult] = Field(default_factory=list)
+    results: list[PerplexitySearchResult]
 
 
 async def search(
     credentials: APIKeyCredentials, payload: dict[str, Any]
 ) -> PerplexitySearchResponse:
-    """Send one Search API request and return the parsed response.
-
-    Every failure raises ValueError, which the block turns into a
-    BlockExecutionError on its error output. Error messages are fixed strings
-    chosen by HTTP status; they never include the API key, transport
-    exception text, or anything from the response body (a 422 body echoes
-    request input, and a misbehaving upstream could echo headers).
-    """
+    """Return parsed search results. Raise ValueError for invalid keys, request
+    failures, non-2xx responses, or invalid response data. Error text excludes
+    credentials, transport text, and response bodies."""
     api_key = credentials.api_key.get_secret_value()
     if not api_key or _FORBIDDEN_HEADER_CHARS.search(api_key):
         raise ValueError(
@@ -153,12 +129,12 @@ async def search(
         # Covers JSON decoding and pydantic ValidationError, whose text quotes
         # the offending input; the body is not forwarded.
         raise ValueError(
-            "Perplexity Search returned a response the block could not parse."
+            "Perplexity Search returned an invalid response. Retry the request; "
+            "if it persists, contact Perplexity support."
         ) from None
 
 
 def _http_error_message(status: int) -> str:
-    """Fixed, status-based message for a non-2xx Search API response."""
     if status in (401, 403):
         return (
             f"Perplexity rejected the API key (HTTP {status}). Check the "
@@ -176,4 +152,7 @@ def _http_error_message(status: int) -> str:
             f"Perplexity Search is unavailable right now (HTTP {status}). Try "
             "again later."
         )
-    return f"Perplexity Search request failed with HTTP {status}."
+    return (
+        f"Perplexity Search request failed with HTTP {status}. Contact "
+        "Perplexity support with this status code."
+    )
