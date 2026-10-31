@@ -417,6 +417,8 @@ async def execute_node(
         for key in tool_props:
             if key in input_data:
                 merged_args[key] = input_data[key]
+        # tool_arguments_#_<argument> links arrive nested, and beat a saved value.
+        merged_args.update(input_data.get("tool_arguments") or {})
         _mcp_data.tool_arguments = merged_args
         input_data = _mcp_data.model_dump()
     data.inputs = input_data

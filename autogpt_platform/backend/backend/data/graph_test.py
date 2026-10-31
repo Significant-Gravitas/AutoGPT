@@ -30,6 +30,7 @@ from backend.blocks.io import (
     AgentOutputBlock,
 )
 from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LLMModel
+from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.sql_query_block import SQLQueryBlock
 from backend.data.graph import (
     SUBMITTED_TO_MARKETPLACE,
@@ -3645,3 +3646,67 @@ def test_linked_llm_model_preserves_required_legacy_credential_slot():
         "aiml_api-anthropic-groq-llama_api-ollama-open_router-openai-v0_api_key_credentials"
     ]
     assert next(iter(slots.values()))[2] is True
+
+
+# ============================================================================
+# A link into an MCP tool's argument
+# ============================================================================
+
+
+@pytest.mark.parametrize(
+    "sink_name,argument",
+    [
+        ("query", "query"),
+        ("createRequest_#_objects", "createRequest"),
+        ("tool_arguments_#_query", "query"),
+    ],
+)
+def test_a_link_into_an_mcp_tool_argument_is_valid(sink_name: str, argument: str):
+    """The builder and AutoPilot name a link into a tool argument after the
+    argument, and validation refused that name, so the workflow could neither
+    be saved nor run. A `tool_arguments_#_` link saved, but its argument still
+    read as missing at run time. Either form now provides the argument."""
+    graph = make_graph_model(
+        _value_to_mcp_tool_graph(sink_name, required=[argument]), user_id="user-1"
+    )
+
+    graph.validate_graph(for_run=False)
+    assert graph.validate_graph_get_errors(for_run=True) == {}
+
+
+def _value_to_mcp_tool_graph(sink_name: str, required: list[str]) -> Graph:
+    return Graph(
+        name="Value to MCP tool",
+        description="",
+        nodes=[
+            Node(
+                id="value",
+                block_id=StoreValueBlock().id,
+                input_default={"input": "hi"},
+            ),
+            Node(
+                id="tool",
+                block_id=MCPToolBlock().id,
+                input_default={
+                    "server_url": "https://mcp.example.com/mcp",
+                    "selected_tool": "add_lead",
+                    "tool_input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string"},
+                            "createRequest": {"type": "object"},
+                        },
+                        "required": required,
+                    },
+                },
+            ),
+        ],
+        links=[
+            Link(
+                source_id="value",
+                sink_id="tool",
+                source_name="output",
+                sink_name=sink_name,
+            )
+        ],
+    )
