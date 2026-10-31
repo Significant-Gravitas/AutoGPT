@@ -25,6 +25,7 @@
 * [All Quiet On Call](block-integrations/allquiet/on_call.md)
 * [All Quiet Teams](block-integrations/allquiet/teams.md)
 * [All Quiet Triggers](block-integrations/allquiet/triggers.md)
+* [AnySearch Domains](block-integrations/anysearch/domains.md)
 * [AnySearch Extract](block-integrations/anysearch/extract.md)
 * [AnySearch Parallel Search](block-integrations/anysearch/parallel_search.md)
 * [AnySearch Search](block-integrations/anysearch/search.md)

@@ -6,7 +6,10 @@ from backend.sdk import ProviderBuilder
 # providers without a public rate. One-line addition once rates are published.
 anysearch = (
     ProviderBuilder("anysearch")
-    .with_description("AI-native web search, parallel search and URL extraction")
+    .with_description(
+        "AI-native web search, parallel search, URL extraction "
+        "and domain catalog discovery"
+    )
     .with_api_key("ANYSEARCH_API_KEY", "AnySearch API Key")
     .build()
 )

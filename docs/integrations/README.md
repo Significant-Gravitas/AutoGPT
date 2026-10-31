@@ -286,6 +286,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | Block Name | Description |
 |------------|-------------|
 | [AnySearch](block-integrations/anysearch/search.md#anysearch) | Searches the web using AnySearch - general queries plus vertical domains (finance, academic, health, legal, and more) via domain/sub_domain filters |
+| [AnySearch Domains](block-integrations/anysearch/domains.md#anysearch-domains) | Discovers the AnySearch domain and sub-domain catalog (sub-domain names and their parameter contracts) via the public GET catalog endpoints |
 | [AnySearch Extract](block-integrations/anysearch/extract.md#anysearch-extract) | Extracts readable content from a single URL using AnySearch, optimized for LLM consumption |
 | [AnySearch Parallel Search](block-integrations/anysearch/parallel_search.md#anysearch-parallel-search) | Runs several AnySearch queries in parallel (client-side concurrency via asyncio) |
 | [Ask Wolfram](block-integrations/wolfram/llm_api.md#ask-wolfram) | Ask Wolfram Alpha a question |
