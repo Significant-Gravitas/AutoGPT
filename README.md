@@ -7,6 +7,10 @@
 <h1 align="center">AutoGPT — Your team of AI Experts</h1>
 
 <p align="center">
+  <b>English</b> · <a href="README.zh.md">简体中文</a>
+</p>
+
+<p align="center">
   Bring in specialists for content, sales, research, and recurring work.<br />
   Brief them in plain English. Let <strong>Otto</strong> coordinate.
 </p>
