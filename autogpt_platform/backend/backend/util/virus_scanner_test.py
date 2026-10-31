@@ -1,6 +1,10 @@
 import asyncio
+import contextlib
+import struct
+import time
 from unittest.mock import AsyncMock, Mock, patch
 
+import aioclamd
 import pytest
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
@@ -304,3 +308,105 @@ class TestHelperFunctions:
             log_msg = str(mock_logger.warning.call_args)
             assert "range()" in log_msg
             mock_logger.error.assert_not_called()
+
+
+class TestStreamingToClamd:
+    """Drives the real client against a ClamAV stand-in on a local socket, served
+    by the test's own event loop, so a scan that never yields starves it."""
+
+    @pytest.mark.asyncio
+    async def test_streaming_a_large_file_leaves_the_event_loop_free(self):
+        async with _fake_clamd() as port:
+            scanner = VirusScannerService(
+                VirusScannerSettings(clamav_service_port=port)
+            )
+            result, longest_stall = await _with_longest_stall(
+                scanner.scan_file(b"\x00" * (24 * 1024 * 1024), filename="clip.mp4")
+            )
+
+        assert result.is_clean
+        assert longest_stall < 2.0
+
+    @pytest.mark.asyncio
+    async def test_clamd_closing_mid_stream_falls_back_to_smaller_chunks(self):
+        async with _fake_clamd(stream_max=1024 * 1024) as port:
+            scanner = VirusScannerService(
+                VirusScannerSettings(clamav_service_port=port)
+            )
+            result = await scanner.scan_file(b"\x00" * (3 * 1024 * 1024))
+
+        assert result.is_clean
+
+    @pytest.mark.asyncio
+    async def test_a_found_reply_reports_the_threat(self):
+        async with _fake_clamd(reply=b"stream: Eicar-Test-Signature FOUND\n") as port:
+            scanner = VirusScannerService(
+                VirusScannerSettings(clamav_service_port=port)
+            )
+            result = await scanner.scan_file(b"some upload")
+
+        assert not result.is_clean
+        assert result.threat_name == "Eicar-Test-Signature"
+
+    @pytest.mark.asyncio
+    async def test_a_clamd_that_stops_reading_fails_the_scan_at_the_timeout(self):
+        async with _fake_clamd(stall=True) as port:
+            scanner = VirusScannerService(
+                VirusScannerSettings(clamav_service_port=port, clamav_service_timeout=1)
+            )
+            with pytest.raises(aioclamd.ClamdConnectionError, match="did not answer"):
+                await asyncio.wait_for(
+                    scanner.scan_file(b"\x00" * (16 * 1024 * 1024)), timeout=10
+                )
+
+
+@contextlib.asynccontextmanager
+async def _fake_clamd(
+    stream_max: int | None = None,
+    reply: bytes = b"stream: OK\n",
+    stall: bool = False,
+):
+    released = asyncio.Event()
+
+    async def serve(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        if await reader.readline() == b"nPING\n":
+            writer.write(b"PONG\n")
+        elif stall:
+            await released.wait()
+        else:
+            received = 0
+            while size := struct.unpack("!L", await reader.readexactly(4))[0]:
+                received += len(await reader.readexactly(size))
+                if stream_max is not None and received > stream_max:
+                    writer.write(b"INSTREAM size limit exceeded. ERROR\n")
+                    break
+            else:
+                writer.write(reply)
+        await writer.drain()
+        writer.close()
+
+    server = await asyncio.start_server(serve, "127.0.0.1", 0)
+    try:
+        yield server.sockets[0].getsockname()[1]
+    finally:
+        released.set()
+        server.close()
+        await server.wait_closed()
+
+
+async def _with_longest_stall(coro):
+    stalls = [0.0]
+
+    async def watch():
+        while True:
+            before = time.monotonic()
+            await asyncio.sleep(0.01)
+            stalls.append(time.monotonic() - before)
+
+    watcher = asyncio.create_task(watch())
+    try:
+        return await coro, max(stalls)
+    finally:
+        watcher.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await watcher
