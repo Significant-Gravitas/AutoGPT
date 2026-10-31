@@ -473,7 +473,10 @@ class UserCreditBase(ABC):
             # Transaction doesn't exist or is already active, return early
             return None
 
-        # Atomic operation to enable transaction and update user balance using UserBalance
+        # Atomic operation to enable transaction and update user balance using
+        # UserBalance. Both rows are locked: the balance so the add is serial,
+        # and the transaction so a second fulfilment of the same payment, which
+        # passed the check above before the first committed, adds nothing.
         result = await query_raw_with_schema(
             """
             WITH user_balance_lock AS (
@@ -493,8 +496,13 @@ class UserCreditBase(ABC):
                     ) as balance
             ),
             transaction_check AS (
+                -- Locked, so of several fulfilments racing for one payment only
+                -- the first sees the row inactive: the others wait, re-check the
+                -- row as the first left it (active, re-keyed) and select nothing,
+                -- which makes the rest of this statement a no-op for them.
                 SELECT * FROM {schema_prefix}"CreditTransaction" 
                 WHERE "transactionKey" = $1 AND "userId" = $2 AND "isActive" = false
+                FOR UPDATE
             ),
             balance_update AS (
                 INSERT INTO {schema_prefix}"UserBalance" ("userId", "balance", "updatedAt")
