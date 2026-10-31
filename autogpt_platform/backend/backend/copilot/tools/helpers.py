@@ -52,6 +52,7 @@ from backend.integrations.codex.access import enforce_codex_access
 from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.oauth.refresh_failure import CredentialsNeedReconnectError
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import BlockError, InsufficientBalanceError
 from backend.util.request import HTTPClientError
@@ -63,6 +64,7 @@ from .ayrshare_managed import is_ayrshare, is_not_linked_error
 from .ayrshare_managed import not_linked_response as ayrshare_not_linked_response
 from .ayrshare_managed import provision_for_block as provision_ayrshare_for_block
 from .chat_platform_hint import bot_link_hint
+from .credential_gaps import annotate_credential_gaps, credentials_for_gaps
 from .expert_scope import (
     annotate_expert_grants,
     provider_slug,
@@ -758,11 +760,18 @@ def _credential_rejected_response(
     rejected, provider = _rejected_credential(block, matched_credentials)
     provider_name = provider.replace("_", " ").title() or "The provider"
     named = f" '{rejected.title}'" if rejected and rejected.title else ""
-    refused = (
-        f"{provider_name} rejected the saved credential{named} (HTTP {status_code})"
-        if status_code is not None
-        else f"The saved {provider_name} credential{named} could not be refreshed"
-    )
+    if isinstance(exc, CredentialsNeedReconnectError):
+        refused = (
+            f"The saved {provider_name} credential{named} has to be reconnected: "
+            f"{exc.marker.reason(provider_name)}"
+        )
+    elif status_code is not None:
+        refused = (
+            f"{provider_name} rejected the saved credential{named} "
+            f"(HTTP {status_code})"
+        )
+    else:
+        refused = f"The saved {provider_name} credential{named} could not be refreshed"
     logger.warning(
         "Unattended copilot turn in session %s: block %s did not run, %s",
         session_id,
@@ -825,14 +834,24 @@ def _build_credential_rejected_card(
     provider_name = provider.replace("_", " ").title() or "The provider"
     named = f" '{rejected.title}'" if rejected and rejected.title else ""
     detail = sanitize_provider_message(str(exc))
-    return SetupRequirementsResponse(
-        message=(
+    if isinstance(exc, CredentialsNeedReconnectError):
+        message = (
+            f"The saved {provider_name} credential{named} has to be reconnected: "
+            f"{exc.marker.reason(provider_name)}. Reconnect it or pick a "
+            "different one, then re-run."
+        )
+    elif status_code is not None:
+        message = (
             f"{provider_name} rejected the saved credential{named} "
             f"(HTTP {status_code}). Connect or pick a different one, then re-run."
-            if status_code is not None
-            else f"The saved {provider_name} credential{named} could not be "
+        )
+    else:
+        message = (
+            f"The saved {provider_name} credential{named} could not be "
             "refreshed. Reconnect it or pick a different one, then re-run."
-        ),
+        )
+    return SetupRequirementsResponse(
+        message=message,
         session_id=session_id,
         setup_info=SetupInfo(
             agent_id=block_id,
@@ -1285,11 +1304,30 @@ async def prepare_block_for_execution(
             )
             unattended.message += bot_hint
             return unattended
+        # Connected-but-short (missing scopes, refused refresh) is not "not
+        # configured": the card names what is missing and its reconnect asks
+        # for the full set of scopes.
+        missing_creds_dict, gap_messages = annotate_credential_gaps(
+            (
+                await credentials_for_gaps(user_id, session.expert_id)
+                if missing_credentials
+                else []
+            ),
+            credentials_fields_info,
+            missing_entries,
+        )
         missing_creds_dict = await annotate_expert_grants(
-            user_id, session.expert_id, missing_entries
+            user_id, session.expert_id, missing_creds_dict
         )
         missing_creds_list = list(missing_creds_dict.values())
-        if missing_credentials:
+        if gap_messages:
+            message = (
+                f"Block '{block.name}' can't run yet. "
+                + " ".join(gap_messages)
+                + grant_hint
+                + bot_hint
+            )
+        elif missing_credentials:
             message = (
                 (
                     f"Block '{block.name}' requires credentials that are not "

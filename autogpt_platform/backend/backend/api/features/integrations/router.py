@@ -91,6 +91,7 @@ from backend.integrations.oauth.microsoft_identity import (
 )
 from backend.integrations.oauth.microsoft_recovery import MicrosoftAuthError
 from backend.integrations.oauth.microsoft_tokens import browser_sign_in_available
+from backend.integrations.oauth.refresh_failure import without_reconnect_required
 from backend.integrations.providers import ProviderName, provider_key
 from backend.integrations.service_identity import (
     service_for_catalog_entry,
@@ -1852,10 +1853,10 @@ async def _upgrade_existing_credential(
     merged.id = existing.id
     merged.title = existing.title
     merged.scopes = list(set(existing.scopes) | set(new_credentials.scopes))
-    merged.metadata = {
-        **(existing.metadata or {}),
-        **(new_credentials.metadata or {}),
-    }
+    # A fresh grant supersedes a refresh the provider refused for good.
+    merged.metadata = without_reconnect_required(
+        {**(existing.metadata or {}), **(new_credentials.metadata or {})}
+    )
     # Preserve the existing refresh_token and username if the incremental
     # response doesn't carry them.  Providers like Google only return a
     # refresh_token on first authorization — dropping it here would orphan

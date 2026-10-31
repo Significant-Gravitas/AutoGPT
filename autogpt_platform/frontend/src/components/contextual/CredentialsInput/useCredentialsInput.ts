@@ -22,6 +22,8 @@ import {
   countSupportedTypes,
   filterSystemCredentials,
   getActionButtonText,
+  getMissingScopes,
+  getScopeShortfallMessage,
   getSupportedTypes,
   getSystemCredentials,
   processCredentialDeletion,
@@ -319,20 +321,17 @@ export function useCredentialsInput({
       if (!isMCP) {
         const requiredScopes = schema.credentials_scopes;
         if (requiredScopes && requiredScopes.length > 0) {
-          const grantedScopes = new Set(credentialResult.scopes || []);
-          const hasAllRequiredScopes = new Set(requiredScopes).isSubsetOf(
-            grantedScopes,
+          const missingScopes = getMissingScopes(
+            requiredScopes,
+            credentialResult.scopes,
           );
 
-          if (!hasAllRequiredScopes) {
+          if (missingScopes.length > 0) {
             trackCredentialConnectionFailure(
               "credential_scope_shortfall_blocked_selection",
               { provider },
             );
-            setOAuthError(
-              "Connection failed: the granted permissions don't match what's required. " +
-                "Please contact the application administrator.",
-            );
+            setOAuthError(getScopeShortfallMessage(missingScopes));
             return;
           }
         }
