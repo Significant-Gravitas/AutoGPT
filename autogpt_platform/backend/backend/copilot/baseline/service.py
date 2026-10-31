@@ -64,6 +64,7 @@ from backend.copilot.graphiti.context_marker import append_injected_memory_block
 from backend.copilot.graphiti.context_refresh import join_refresh, start_refresh
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.hidden_rows import visible_to_model
+from backend.copilot.host_fs import save_new_file
 from backend.copilot.learning.capture import capture_chat_turn, find_initiating_user_row
 from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
 from backend.copilot.llm_attribution import openrouter_attribution
@@ -352,9 +353,6 @@ _VISION_MIME_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/w
 # Max size for embedding images directly in the user message (20 MiB raw).
 _MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024
 
-# Matches characters unsafe for filenames.
-_UNSAFE_FILENAME = re.compile(r"[^\w.\-]")
-
 # OpenRouter-specific extra_body flag that embeds the real generation cost
 # into the final usage chunk. Module-level constant so we don't reallocate
 # an identical dict on every streaming call.
@@ -443,16 +441,7 @@ async def _prepare_baseline_attachments(
                     f"{file_info.size_bytes:,} bytes) [embedded as image]"
                 )
             else:
-                safe = _UNSAFE_FILENAME.sub("_", file_info.name) or "file"
-                candidate = os.path.join(working_dir, safe)
-                if os.path.exists(candidate):
-                    stem, ext = os.path.splitext(safe)
-                    idx = 1
-                    while os.path.exists(candidate):
-                        candidate = os.path.join(working_dir, f"{stem}_{idx}{ext}")
-                        idx += 1
-                with open(candidate, "wb") as f:
-                    f.write(content)
+                candidate = save_new_file(working_dir, file_info.name, content)
                 file_descriptions.append(
                     f"- {file_info.name} ({mime}, "
                     f"{file_info.size_bytes:,} bytes) saved to "

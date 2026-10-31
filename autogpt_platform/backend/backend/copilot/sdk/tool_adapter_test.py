@@ -751,9 +751,8 @@ class TestSDKDisallowedTools:
     def test_schedule_wakeup_tool_is_disallowed(self):
         assert "ScheduleWakeup" in SDK_DISALLOWED_TOOLS
 
-    @pytest.mark.parametrize("use_e2b", [False, True])
-    def test_workflow_tool_is_disallowed(self, use_e2b: bool):
-        assert "Workflow" in get_sdk_disallowed_tools(use_e2b=use_e2b)
+    def test_workflow_tool_is_disallowed(self):
+        assert "Workflow" in get_sdk_disallowed_tools()
 
     @pytest.mark.parametrize("tool", ["CronCreate", "CronList", "CronDelete"])
     def test_cli_cron_tools_are_disallowed(self, tool: str):
@@ -766,11 +765,9 @@ class TestSDKDisallowedTools:
         assert tool in SDK_DISALLOWED_TOOLS
 
     @pytest.mark.parametrize("tool", ["CronCreate", "CronList", "CronDelete"])
-    @pytest.mark.parametrize("use_e2b", [False, True])
-    def test_cron_tools_reach_sdk_options_in_both_modes(self, tool: str, use_e2b: bool):
-        """`disallowed_tools` is what removes a built-in from the model's
-        context, so the names must survive the E2B branch too."""
-        assert tool in get_sdk_disallowed_tools(use_e2b=use_e2b)
+    def test_cron_tools_reach_sdk_options(self, tool: str):
+        """`disallowed_tools` is what removes a built-in from the model's context."""
+        assert tool in get_sdk_disallowed_tools()
 
     @pytest.mark.parametrize("tool", ["CronCreate", "CronList", "CronDelete"])
     def test_cron_tools_reach_security_hook_denylist(self, tool: str):
@@ -779,9 +776,8 @@ class TestSDKDisallowedTools:
         assert tool in BLOCKED_TOOLS
 
     @pytest.mark.parametrize("tool", ["ListAgents", "SendMessage"])
-    @pytest.mark.parametrize("use_e2b", [False, True])
-    def test_cli_cross_session_tools_are_disallowed(self, tool: str, use_e2b: bool):
-        assert tool in get_sdk_disallowed_tools(use_e2b=use_e2b)
+    def test_cli_cross_session_tools_are_disallowed(self, tool: str):
+        assert tool in get_sdk_disallowed_tools()
         assert tool in BLOCKED_TOOLS
 
     def test_orchestrator_block_disallows_every_known_builtin(self):
@@ -791,7 +787,7 @@ class TestSDKDisallowedTools:
         from backend.blocks.orchestrator import sdk_disallowed_tools
 
         blocked = set(sdk_disallowed_tools())
-        assert set(get_sdk_disallowed_tools(use_e2b=True)) <= blocked
+        assert set(get_sdk_disallowed_tools()) <= blocked
         assert {"Task", "Agent", "TodoWrite", "Glob", "Grep"} <= blocked
 
 

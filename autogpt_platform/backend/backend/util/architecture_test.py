@@ -525,6 +525,294 @@ def _str_value(node: ast.expr, consts: dict[str, str]) -> str | None:
     return None
 
 
+# ---------------------------------------------------------------------------
+# Rule: copilot code touches the chat's working directory only through host_fs
+# ---------------------------------------------------------------------------
+#
+# Motivation: copilot code reaches the chat's working directory only through
+# ``backend/copilot/host_fs.py``, which opens a checked path without following a
+# link. A listed call acts on a path outside that directory, or on all of it.
+
+_WORKDIR_NAMES = frozenset(
+    {
+        "get_sdk_cwd",
+        "get_workspace_dir",
+        "is_allowed_local_path",
+        "make_session_path",
+        "resolve_allowed_local_path",
+        "sdk_cwd",
+        "validate_ephemeral_path",
+        "workdir_root",
+        "working_dir",
+    }
+)
+_BY_NAME_FILE_CALLS = {
+    "os": frozenset(
+        {
+            "access", "chmod", "chown", "lchown", "link", "listdir", "lstat",
+            "makedirs", "mkdir", "mkfifo", "open", "readlink", "remove",
+            "removedirs", "rename", "renames", "replace", "rmdir", "scandir",
+            "stat", "symlink", "truncate", "unlink", "utime", "walk",
+        }
+    ),
+    "os.path": frozenset(
+        {
+            "exists", "getatime", "getctime", "getmtime", "getsize", "isdir",
+            "isfile", "islink", "lexists", "samefile",
+        }
+    ),
+    "shutil": frozenset(
+        {"chown", "copy", "copy2", "copyfile", "copymode", "copystat", "copytree",
+         "move", "rmtree"}
+    ),
+    "io": frozenset({"open"}),
+    "glob": frozenset({"glob", "iglob"}),
+}  # fmt: skip
+_PATH_METHODS = frozenset(
+    {
+        "chmod", "exists", "glob", "hardlink_to", "is_dir", "is_file",
+        "is_symlink", "iterdir", "lstat", "mkdir", "open", "read_bytes",
+        "read_text", "readlink", "rglob", "rmdir", "samefile", "stat",
+        "symlink_to", "touch", "unlink", "write_bytes", "write_text",
+    }
+)  # fmt: skip
+# Path's forms take one argument; str.replace takes two.
+_ONE_ARG_PATH_METHODS = frozenset({"rename", "replace"})
+
+# "<path> <function> <call>" -> how many such calls it makes, and what they act on.
+_CLI_PROJECTS = "the CLI's projects directory"
+_WHOLE_DIR = "a whole directory; shutil.rmtree follows no link inside it"
+_CLI_TMPDIR = "the CLI's temp directory, beside the working directory"
+_CREATES_IT = "creates the working directory itself"
+_WORKDIR_FILE_CALL_OFFENDERS: dict[str, tuple[int, str]] = {
+    "copilot/baseline/service.py stream_chat_completion_baseline shutil.rmtree": (
+        1,
+        _WHOLE_DIR,
+    ),
+    "copilot/sdk/cost_tracking.py read_cli_session_usage .read_text": (
+        1,
+        _CLI_PROJECTS,
+    ),
+    "copilot/sdk/service.py _cleanup_sdk_tool_results shutil.rmtree": (2, _WHOLE_DIR),
+    "copilot/sdk/service.py _make_cli_tmpdir os.lstat": (1, _CLI_TMPDIR),
+    "copilot/sdk/service.py _make_cli_tmpdir os.mkdir": (1, _CLI_TMPDIR),
+    "copilot/sdk/service.py _scrub_resumed_memory_for_retry .read_bytes": (
+        1,
+        _CLI_PROJECTS,
+    ),
+    "copilot/sdk/service.py _write_cli_session_to_disk .write_bytes": (
+        1,
+        _CLI_PROJECTS,
+    ),
+    "copilot/sdk/service.py _write_cli_session_to_disk os.makedirs": (1, _CLI_PROJECTS),
+    "copilot/sdk/service.py delete_stale_cli_session_file .unlink": (1, _CLI_PROJECTS),
+    "copilot/sdk/service.py read_cli_session_from_disk .read_bytes": (1, _CLI_PROJECTS),
+    "copilot/sdk/service.py read_cli_session_from_disk .write_bytes": (
+        1,
+        _CLI_PROJECTS,
+    ),
+    "copilot/sdk/service.py stream_chat_completion_sdk os.makedirs": (1, _CREATES_IT),
+    "copilot/tools/sandbox.py _build_bwrap_command os.path.exists": (
+        1,
+        "host system paths bound into the sandbox",
+    ),
+    "copilot/tools/sandbox.py _build_bwrap_command os.path.islink": (
+        1,
+        "host system paths bound into the sandbox",
+    ),
+    "copilot/tools/sandbox.py get_workspace_dir os.makedirs": (1, _CREATES_IT),
+    "copilot/tools/skills.py _load_default_body .read_text": (
+        1,
+        "default skill bodies shipped with the backend",
+    ),
+    "copilot/transcript.py cleanup_stale_project_dirs .is_dir": (2, _CLI_PROJECTS),
+    "copilot/transcript.py cleanup_stale_project_dirs .iterdir": (1, _CLI_PROJECTS),
+    "copilot/transcript.py cleanup_stale_project_dirs os.path.isdir": (
+        1,
+        _CLI_PROJECTS,
+    ),
+    "copilot/transcript.py cleanup_stale_project_dirs shutil.rmtree": (
+        2,
+        _CLI_PROJECTS,
+    ),
+    "copilot/transcript.py cleanup_stale_project_dirs .stat": (2, _CLI_PROJECTS),
+    "copilot/transcript.py read_compacted_entries .read_text": (1, _CLI_PROJECTS),
+}
+
+
+def test_workdir_modules_use_host_fs():
+    found = _workdir_file_calls()
+    counts = collections.Counter(key for key, _ in found)
+    new = sorted(
+        f"  backend/{key.split()[0]}:{lineno} {key.split()[1]}() calls {key.split()[2]}"
+        for key, lineno in found
+        if counts[key] > _WORKDIR_FILE_CALL_OFFENDERS.get(key, (0, ""))[0]
+    )
+    assert not new, (
+        "A copilot module that names the chat's working directory opens, checks "
+        "and changes files there through backend/copilot/host_fs.py (pass "
+        "`opener=open_no_follow` to open()). A call on a path outside that "
+        "directory goes in _WORKDIR_FILE_CALL_OFFENDERS with what it acts on:\n"
+        + "\n".join(new)
+    )
+
+
+def test_workdir_file_call_offenders_are_not_stale():
+    counts = collections.Counter(key for key, _ in _workdir_file_calls())
+    stale = sorted(
+        f"{key}: {allowed} allowed, {counts[key]} found"
+        for key, (allowed, _) in _WORKDIR_FILE_CALL_OFFENDERS.items()
+        if counts[key] < allowed
+    )
+    assert not stale, (
+        "These _WORKDIR_FILE_CALL_OFFENDERS counts are above what the modules "
+        "still call; lower them (or drop the entry at 0):\n  " + "\n  ".join(stale)
+    )
+
+
+@pytest.mark.parametrize(
+    "source, expected",
+    [
+        ("def f(sdk_cwd):\n    open(sdk_cwd)", ["f open"]),
+        ("def f(sdk_cwd):\n    open(sdk_cwd, opener=open_no_follow)", []),
+        ("def f(sdk_cwd):\n    open(sdk_cwd, opener=partial(open_no_follow))", []),
+        ("def f(sdk_cwd):\n    open(sdk_cwd, opener=other)", ["f open"]),
+        ("def f(sdk_cwd):\n    to_thread(shutil.rmtree, sdk_cwd)", ["f shutil.rmtree"]),
+        ("def f(sdk_cwd):\n    os.path.exists(sdk_cwd)", ["f os.path.exists"]),
+        ("def f(sdk_cwd):\n    Path(sdk_cwd).write_text('x')", ["f .write_text"]),
+        ("def f(sdk_cwd):\n    os.path.join(sdk_cwd, 'x')", []),
+        ("def f(path):\n    os.remove(path)", []),
+        ("def f(sdk_cwd):\n    Path(sdk_cwd).open()", ["f .open"]),
+        ("def f(sdk_cwd):\n    Path(sdk_cwd).exists()", ["f .exists"]),
+        ("def f(sdk_cwd):\n    Path(sdk_cwd).stat()", ["f .stat"]),
+        ("def f(sdk_cwd):\n    Path(sdk_cwd).rename('x')", ["f .rename"]),
+        ("def f(sdk_cwd):\n    Path(sdk_cwd).replace('x')", ["f .replace"]),
+        ("def f(sdk_cwd):\n    Path(sdk_cwd).readlink()", ["f .readlink"]),
+        ("def f(sdk_cwd):\n    Path(sdk_cwd).samefile('x')", ["f .samefile"]),
+        ("def f(sdk_cwd):\n    Path(sdk_cwd).glob('*')", ["f .glob"]),
+        ("def f(sdk_cwd):\n    glob.glob(sdk_cwd)", ["f glob.glob"]),
+        ("def f(sdk_cwd):\n    glob.iglob(sdk_cwd)", ["f glob.iglob"]),
+        ("def f(sdk_cwd):\n    codecs.open(sdk_cwd)", ["f .open"]),
+        ("def f(sdk_cwd):\n    Image.open(sdk_cwd)", ["f .open"]),
+        ("from os import remove\ndef f(sdk_cwd):\n    remove(sdk_cwd)", ["f os.remove"]),
+        ("from os import remove as rm\ndef f(sdk_cwd):\n    rm(sdk_cwd)", ["f os.remove"]),
+        ("from shutil import rmtree\ndef f(sdk_cwd):\n    to_thread(rmtree, sdk_cwd)", ["f shutil.rmtree"]),
+        ("from os.path import exists\ndef f(sdk_cwd):\n    exists(sdk_cwd)", ["f os.path.exists"]),
+        ("from glob import glob\ndef f(sdk_cwd):\n    glob(sdk_cwd)", ["f glob.glob"]),
+        ("from os import path\ndef f(sdk_cwd):\n    path.isfile(sdk_cwd)", ["f os.path.isfile"]),
+        ("import shutil as sh\ndef f(sdk_cwd):\n    sh.copy(sdk_cwd, 'x')", ["f shutil.copy"]),
+        ("import os.path as osp\ndef f(sdk_cwd):\n    osp.exists(sdk_cwd)", ["f os.path.exists"]),
+        ("from os import path\ndef f(sdk_cwd):\n    path.join(sdk_cwd, 'x')", []),
+        ("def f(sdk_cwd):\n    sdk_cwd.replace('/', '_')", []),
+        ("def f(sdk_cwd):\n    os.replace(sdk_cwd, 'x')", ["f os.replace"]),
+    ],
+)  # fmt: skip
+def test_workdir_file_call_scan_reads_each_form(source: str, expected: list[str]):
+    assert [f"{fn} {call}" for fn, call, _ in _file_calls_in(ast.parse(source))] == (
+        expected
+    )
+
+
+def _workdir_file_calls() -> list[tuple[str, int]]:
+    found: list[tuple[str, int]] = []
+    for py in sorted((BACKEND_ROOT / "copilot").rglob("*.py")):
+        rel = py.relative_to(BACKEND_ROOT).as_posix()
+        if py.name.endswith("_test.py") or rel == "copilot/host_fs.py":
+            continue
+        tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+        found += [
+            (f"{rel} {fn} {call}", lineno) for fn, call, lineno in _file_calls_in(tree)
+        ]
+    return found
+
+
+def _file_calls_in(tree: ast.Module) -> list[tuple[str, str, int]]:
+    """By-name file calls in *tree*, if it names the working directory at all."""
+    names = {
+        getattr(n, "id", None) or getattr(n, "arg", None) or getattr(n, "attr", None)
+        for n in ast.walk(tree)
+        if isinstance(n, (ast.Name, ast.arg, ast.Attribute))
+    }
+    if not names & _WORKDIR_NAMES:
+        return []
+    owner = _enclosing_functions(tree)
+    imported = _imported_names(tree)
+    calls = []
+    for node in ast.walk(tree):
+        call = _by_name_file_call(node, imported)
+        if call:
+            calls.append((owner.get(node, "<module>"), call, node.lineno))
+    return sorted(calls, key=lambda c: c[2])
+
+
+def _by_name_file_call(node: ast.AST, imported: dict[str, str]) -> str | None:
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        if node.func.id != "open":
+            return None
+        opener = next((k.value for k in node.keywords if k.arg == "opener"), None)
+        safe = opener is not None and any(
+            isinstance(n, ast.Name) and n.id == "open_no_follow"
+            for n in ast.walk(opener)
+        )
+        return None if safe else "open"
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+        attr = node.func.attr
+        if attr in _ONE_ARG_PATH_METHODS and _owner(node.func, imported) is None:
+            return f".{attr}" if len(node.args) == 1 else None
+        return None
+    if isinstance(node, ast.Name):
+        full = imported.get(node.id)
+        return full if full and full not in _BY_NAME_FILE_CALLS else None
+    if not isinstance(node, ast.Attribute):
+        return None
+    owner = _owner(node, imported)
+    if owner in _BY_NAME_FILE_CALLS:
+        return (
+            f"{owner}.{node.attr}" if node.attr in _BY_NAME_FILE_CALLS[owner] else None
+        )
+    return f".{node.attr}" if node.attr in _PATH_METHODS else None
+
+
+def _owner(node: ast.Attribute, imported: dict[str, str]) -> str | None:
+    owner = _dotted(node.value)
+    owner = imported.get(owner, owner) if owner else None
+    return owner if owner in _BY_NAME_FILE_CALLS else None
+
+
+def _imported_names(tree: ast.Module) -> dict[str, str]:
+    """Local name -> the listed module or function it was imported as."""
+    names: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.asname and alias.name in _BY_NAME_FILE_CALLS:
+                    names[alias.asname] = alias.name
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            for alias in node.names:
+                full = f"{node.module}.{alias.name}"
+                listed = _BY_NAME_FILE_CALLS.get(node.module, frozenset())
+                if full in _BY_NAME_FILE_CALLS or alias.name in listed:
+                    names[alias.asname or alias.name] = full
+    return names
+
+
+def _dotted(node: ast.expr) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+        return f"{node.value.id}.{node.attr}"
+    return None
+
+
+def _enclosing_functions(tree: ast.Module) -> dict[ast.AST, str]:
+    owner: dict[ast.AST, str] = {}
+    for fn in ast.walk(tree):
+        if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for child in ast.walk(fn):
+                owner[child] = fn.name  # inner functions overwrite outer ones
+    return owner
+
+
 def test_known_offenders_use_posix_separators():
     """_KNOWN_OFFENDERS must use forward slashes since the comparison key
     is built from pathlib.Path.relative_to() which uses OS-native separators.

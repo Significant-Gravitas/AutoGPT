@@ -167,7 +167,7 @@ def _build_storage_supplement(
 ## Tool notes
 
 ### Shell and storage
-- Use `bash_exec` for shell commands ({sandbox_type}); the built-in Bash tool is not available. Working dir: `{working_dir}`. SDK file tools (Read/Write/Edit/Glob/Grep) share this filesystem.
+- Use `bash_exec` for shell commands ({sandbox_type}); the built-in Bash tool is not available. Working dir: `{working_dir}`. The file tools share this filesystem; search it with `grep`/`find` through `bash_exec`.
 - **{storage_system_1_name}** (`{working_dir}`): {characteristics}. {persistence}.
 - **Persistent workspace** (`read_workspace_file`/`write_workspace_file`): cloud storage that survives across sessions. Save files worth keeping here.
 - {file_move_name_1_to_2}: `write_workspace_file(filename="output.json", source_path="/path/to/local/file")`

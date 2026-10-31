@@ -1,9 +1,6 @@
 [
   "Agent",
   "Edit",
-  "Glob",
-  "Grep",
-  "Read",
   "Task",
   "TodoWrite",
   "Write",

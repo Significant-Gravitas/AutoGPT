@@ -18,9 +18,11 @@ from backend.copilot.context import (
     get_workspace_manager,
     is_allowed_local_path,
     looks_like_sdk_tool_result_path,
+    resolve_allowed_local_path,
     sdk_tool_result_redirect_hint,
 )
 from backend.copilot.google_data_redaction import GOOGLE_DATA_METADATA_KEY
+from backend.copilot.host_fs import open_no_follow
 from backend.copilot.model import ChatSession
 from backend.copilot.tool_image import (
     BINARY_IMAGE_READ_GUIDANCE,
@@ -143,7 +145,7 @@ async def _read_source_path(source_path: str, session_id: str) -> bytes | ErrorR
     if isinstance(validated, ErrorResponse):
         return validated
     try:
-        with open(validated, "rb") as f:
+        with open(validated, "rb", opener=open_no_follow) as f:
             return f.read()
     except FileNotFoundError:
         return ErrorResponse(
@@ -260,22 +262,19 @@ def _read_local_tool_result(
     ``read_workspace_file`` with an SDK tool-result path that only exists on
     the host filesystem, not in cloud workspace storage.
 
-    Defence-in-depth: validates *path* via :func:`is_allowed_local_path`
+    Defence-in-depth: validates *path* via :func:`resolve_allowed_local_path`
     regardless of what the caller has already checked.
     """
-    # TOCTOU: path validated then opened separately. Acceptable because
-    # the tool-results directory is server-controlled, not user-writable.
-    expanded = os.path.realpath(os.path.expanduser(path))
-    # Defence-in-depth: re-check with resolved path (caller checked raw path).
-    if not is_allowed_local_path(expanded, sdk_cwd or get_sdk_cwd()):
+    expanded = resolve_allowed_local_path(path, sdk_cwd or get_sdk_cwd())
+    if expanded is None:
         return ErrorResponse(
             message=f"Path not allowed: {os.path.basename(path)}", session_id=session_id
         )
     try:
-        # The 10 MB cap (_MAX_LOCAL_TOOL_RESULT_BYTES) bounds memory usage.
-        # Pre-read size check prevents loading files far above the cap;
-        # the remaining TOCTOU gap is acceptable for server-controlled paths.
-        file_size = os.path.getsize(expanded)
+        # The 10 MB cap bounds memory: read one byte past it, never the whole file.
+        with open(expanded, "rb", opener=open_no_follow) as fh:
+            raw = fh.read(_MAX_LOCAL_TOOL_RESULT_BYTES + 1)
+        file_size = len(raw)
         if file_size > _MAX_LOCAL_TOOL_RESULT_BYTES:
             return ErrorResponse(
                 message=(f"File too large: {os.path.basename(path)}"),
@@ -284,8 +283,6 @@ def _read_local_tool_result(
 
         # Detect binary files: try strict UTF-8 first, fall back to
         # base64-encoding the raw bytes for binary content.
-        with open(expanded, "rb") as fh:
-            raw = fh.read()
         try:
             text_content = raw.decode("utf-8")
         except UnicodeDecodeError:

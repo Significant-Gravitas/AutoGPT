@@ -17,7 +17,6 @@ from backend.copilot.tools._test_data import make_session, setup_test_data
 from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.workdir import validate_ephemeral_path
 from backend.copilot.tools.workspace_files import (
-    _MAX_LOCAL_TOOL_RESULT_BYTES,
     DeleteWorkspaceFileTool,
     ListWorkspaceFilesTool,
     ReadWorkspaceFileTool,
@@ -431,11 +430,11 @@ class TestReadLocalToolResult:
     def test_file_too_large(self, monkeypatch):
         """Files exceeding the size limit are rejected."""
         encoded = "-tmp-copilot-local-read-large"
-        # Create a small file but fake os.path.getsize to return a huge value
+        # A small file, with the cap lowered below its size
         path = self._make_tool_result(encoded, "big.txt", b"small")
         token = _current_project_dir.set(encoded)
         monkeypatch.setattr(
-            "os.path.getsize", lambda _: _MAX_LOCAL_TOOL_RESULT_BYTES + 1
+            "backend.copilot.tools.workspace_files._MAX_LOCAL_TOOL_RESULT_BYTES", 4
         )
         try:
             result = _read_local_tool_result(path, 0, None, "s1")

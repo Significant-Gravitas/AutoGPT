@@ -39,6 +39,7 @@ from backend.copilot.gate.mcp_seam import (
 )
 from backend.copilot.gate.reads import model_view
 from backend.copilot.google_data_redaction import remember_cut_google_output
+from backend.copilot.host_fs import open_no_follow
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import (
     FileRefExpansionError,
@@ -552,7 +553,9 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
         # line-based offset/limit applied to the raw bytes is useless.
         # _navigable_tool_result_text() unwraps the envelope and pretty-
         # prints inner JSON so line offsets actually slice the payload.
-        with open(resolved, encoding="utf-8", errors="replace") as f:
+        with open(
+            resolved, encoding="utf-8", errors="replace", opener=open_no_follow
+        ) as f:
             raw = f.read()
         navigable = _navigable_tool_result_text(raw)
         if char_offset is not None or char_limit is not None:
@@ -938,9 +941,8 @@ def create_copilot_mcp_server(
     sequential dispatch.
 
     When *use_e2b* is True, five additional MCP file tools are registered
-    that route directly to the E2B sandbox filesystem, and the caller should
-    disable the corresponding SDK built-in tools via
-    :func:`get_sdk_disallowed_tools`.
+    that route directly to the E2B sandbox filesystem; the SDK built-ins they
+    stand in for are disabled in both modes by :func:`get_sdk_disallowed_tools`.
 
     Short tool names in *hidden_tool_names* are not registered at all — the
     model never sees them.  ``allowed_tools``/``disallowed_tools`` alone are
@@ -1101,8 +1103,8 @@ def create_copilot_mcp_server(
 #   The CLI renamed "Task" → "Agent" in v2.x; both are listed for compat.
 # WebSearch uses Brave Search via Anthropic's API — safe, no SSRF risk.
 # TodoWrite manages the task checklist shown in the UI — no security concern.
-# In E2B mode, all five are disabled — MCP equivalents provide direct sandbox
-# access.  read_file also handles local tool-results and ephemeral reads.
+# The five file tools are disabled in both modes; the MCP file tools and bash_exec
+# replace them.
 _SDK_BUILTIN_FILE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep"]
 # WebSearch moved to ``SDK_DISALLOWED_TOOLS`` — routed through
 # ``mcp__copilot__web_search`` so cost tracking is unified across paths.
@@ -1220,7 +1222,7 @@ COPILOT_TOOL_NAMES = [
     f"{MCP_TOOL_PREFIX}{READ_TOOL_NAME}",
     f"{MCP_TOOL_PREFIX}{EDIT_TOOL_NAME}",
     f"{MCP_TOOL_PREFIX}{_READ_TOOL_NAME}",
-    *_SDK_BUILTIN_TOOLS,
+    *_SDK_BUILTIN_ALWAYS,
 ]
 
 
@@ -1255,15 +1257,9 @@ def get_copilot_tool_names(
     ]
 
 
-def get_sdk_disallowed_tools(*, use_e2b: bool = False) -> list[str]:
-    """Build the ``disallowed_tools`` list for :class:`ClaudeAgentOptions`.
-
-    When *use_e2b* is True the SDK built-in file tools are also disabled
-    because MCP equivalents provide direct sandbox access.
-    """
-    if not use_e2b:
-        return list(SDK_DISALLOWED_TOOLS)
-    return [*SDK_DISALLOWED_TOOLS, *_SDK_BUILTIN_FILE_TOOLS]
+def get_sdk_disallowed_tools() -> list[str]:
+    """Build the ``disallowed_tools`` list for :class:`ClaudeAgentOptions`."""
+    return list(dict.fromkeys([*SDK_DISALLOWED_TOOLS, *_SDK_BUILTIN_FILE_TOOLS]))
 
 
 def get_sdk_builtin_tools() -> list[str]:

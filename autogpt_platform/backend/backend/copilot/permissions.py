@@ -770,7 +770,7 @@ def apply_tool_permissions(
     base_allowed = get_copilot_tool_names(
         use_e2b=use_e2b, disabled_groups=disabled_groups
     )
-    base_disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
+    base_disallowed = get_sdk_disallowed_tools()
 
     if permissions.is_empty():
         return base_allowed, base_disallowed

@@ -242,7 +242,7 @@ def _options(
         setting_sources=[],
         extra_args={"strict-mcp-config": None, DISABLE_SLASH_COMMANDS_FLAG: None},
         allowed_tools=get_copilot_tool_names(use_e2b=True),
-        disallowed_tools=get_sdk_disallowed_tools(use_e2b=True),
+        disallowed_tools=get_sdk_disallowed_tools(),
         cwd=str(sdk_cwd),
         env=env,
         model=_MODEL,

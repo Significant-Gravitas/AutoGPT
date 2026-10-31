@@ -14,6 +14,7 @@ import os
 import random
 import re
 import shutil
+import stat
 import sys
 import time
 import uuid
@@ -67,6 +68,7 @@ from backend.copilot.graphiti.context_marker import (
     strip_injected_memory_text,
 )
 from backend.copilot.google_data_redaction import install_trace_redaction
+from backend.copilot.host_fs import cli_tmpdir, save_new_file
 from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
@@ -3012,7 +3014,8 @@ def process_cli_restore(
 async def _cleanup_sdk_tool_results(cwd: str) -> None:
     """Remove SDK session artifacts for a specific working directory.
 
-    Cleans up the ephemeral working directory `/tmp/copilot-<session>/`.
+    Cleans up the ephemeral working directory `/tmp/copilot-<session>/` and
+    the CLI's temp directory beside it.
 
     Also sweeps stale CLI project directories (older than 12 h) to prevent
     unbounded disk growth.  The sweep is best-effort, rate-limited to once
@@ -3027,6 +3030,7 @@ async def _cleanup_sdk_tool_results(cwd: str) -> None:
         return
 
     await asyncio.to_thread(shutil.rmtree, normalized, True)
+    await asyncio.to_thread(shutil.rmtree, cli_tmpdir(normalized), True)
 
     # Best-effort sweep of old project dirs to prevent disk leak.
     # Pass the encoded cwd so only this session's project directory is swept,
@@ -3803,27 +3807,6 @@ _VISION_MIME_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/w
 # Max size for embedding images directly in the user message (20 MiB raw).
 _MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024
 
-# Matches characters unsafe for filenames.
-_UNSAFE_FILENAME = re.compile(r"[^\w.\-]")
-
-
-def _save_to_sdk_cwd(sdk_cwd: str, filename: str, content: bytes) -> str:
-    """Write file content to the SDK ephemeral directory.
-
-    Returns the absolute path.  Adds a numeric suffix on name collisions.
-    """
-    safe = _UNSAFE_FILENAME.sub("_", filename) or "file"
-    candidate = os.path.join(sdk_cwd, safe)
-    if os.path.exists(candidate):
-        stem, ext = os.path.splitext(safe)
-        idx = 1
-        while os.path.exists(candidate):
-            candidate = os.path.join(sdk_cwd, f"{stem}_{idx}{ext}")
-            idx += 1
-    with open(candidate, "wb") as f:
-        f.write(content)
-    return candidate
-
 
 class PreparedAttachments(BaseModel):
     """Result of preparing file attachments for a query."""
@@ -3902,7 +3885,7 @@ async def _prepare_file_attachments(
                 # is unreadable there — the workspace tool works in both modes.
                 # A local copy is still written for non-E2B tooling, but the
                 # model is never pointed at that path.
-                _save_to_sdk_cwd(sdk_cwd, file_info.name, content)
+                save_new_file(sdk_cwd, file_info.name, content)
                 # ``file_id=<uuid>`` (not ``file_id:``) — chat-share
                 # allowlisting extracts references via _FILE_ID_RE, which
                 # matches exactly this shape (data/sharing/workspace_refs.py).
@@ -5329,6 +5312,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         try:
             sdk_cwd = _make_sdk_cwd(session_id)
             os.makedirs(sdk_cwd, exist_ok=True)
+            _make_cli_tmpdir(sdk_cwd)
         except (ValueError, OSError) as e:
             logger.error("%s Invalid SDK cwd: %s", log_prefix, e)
             yield StreamError(
@@ -5592,8 +5576,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             )
             fallback_model = _resolve_fallback_model()
 
-        # sdk_cwd routes the CLI's temp dir into the per-session workspace
-        # so sub-agent output files land inside sdk_cwd (see build_sdk_env).
+        # sdk_cwd also names the CLI's temp dir, beside it (see build_sdk_env).
         sdk_env = build_sdk_env(
             session_id=session_id,
             user_id=user_id,
@@ -5631,7 +5614,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             allowed = get_copilot_tool_names(
                 use_e2b=use_e2b, disabled_groups=disabled_tool_groups
             )
-            disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
+            disallowed = get_sdk_disallowed_tools()
 
         if kickoff_hidden:
             kickoff_hidden_mcp = {f"{MCP_TOOL_PREFIX}{n}" for n in kickoff_hidden}
@@ -7453,3 +7436,20 @@ def _stamp_turn_trace_id(
             msg.langfuse_trace_id = trace_id
             if msg.sequence is not None:
                 msg.stamps_pending_save = True
+
+
+def _make_cli_tmpdir(sdk_cwd: str) -> str:
+    """Create the CLI's temp directory with mode 0700, or reuse one an earlier
+    turn of this session left, which must be a 0700 directory of this user."""
+    path = cli_tmpdir(sdk_cwd)
+    try:
+        os.mkdir(path, 0o700)
+    except FileExistsError:
+        st = os.lstat(path)
+        if (
+            not stat.S_ISDIR(st.st_mode)
+            or st.st_uid != os.getuid()
+            or st.st_mode & 0o077
+        ):
+            raise
+    return path
