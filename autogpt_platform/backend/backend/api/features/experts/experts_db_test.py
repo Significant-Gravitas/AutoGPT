@@ -29,6 +29,7 @@ from backend.api.features.experts import (
     routines,
     scheduling,
     seed,
+    setup,
 )
 from backend.api.features.experts.models import (
     EXPERT_DAY_ONE_MAX_ITEMS,
@@ -79,8 +80,12 @@ FINANCE_AND_ANALYTICS_EXPERTS = ("Mina", "Theo", "Quinn")
 # cadence we have reviewed: a typo such as "* * * * *" burns users' credits, and
 # the catalog's own check only requires a string. Scheduling a new workflow, or
 # a new cron on one listed here, is a deliberate edit to this map.
-UNATTENDED_SAFE_PRELOADS = {
-    "personalized-morning-coffee-newsletter": {"40 7 * * *", "0 8 * * 1"},
+UNATTENDED_SAFE_PRELOADS: dict[str, set[str]] = {}
+# Cadences REMOVED_TEMPLATE_CADENCES clears that the catalog's main still ships
+# until Significant-Gravitas/skills-catalog#22 merges; delete then.
+CADENCES_LEAVING_THE_CATALOG = {
+    ("personalized-morning-coffee-newsletter", "40 7 * * *"),
+    ("personalized-morning-coffee-newsletter", "0 8 * * 1"),
 }
 _WEEKDAYS = "monday|tuesday|wednesday|thursday|friday|saturday|sunday"
 # A day-one title or timing that reads as a recurring cadence or a time of
@@ -3684,7 +3689,11 @@ async def test_roster_preload_counts_and_scheduled_cadences(
         assert preloads == [] or 2 <= len(preloads) <= 4, name
         for preload in preloads:
             assert preload["slug"] in available, (name, preload["slug"])
-            if preload["cron"] is not None:
+            cadence = (preload["slug"], preload["cron"])
+            if (
+                preload["cron"] is not None
+                and cadence not in CADENCES_LEAVING_THE_CATALOG
+            ):
                 reviewed = UNATTENDED_SAFE_PRELOADS.get(preload["slug"], set())
                 assert preload["cron"] in reviewed, (name, preload)
 
@@ -4095,6 +4104,53 @@ async def test_seed_clears_removed_cadences_without_live_jobs(server: SpinTestSe
         assert row is not None
         assert row.scheduleId is None
         assert row.scheduleCron is None
+
+
+@pytest.mark.parametrize("cron", ["40 7 * * *", "0 8 * * 1"])
+@pytest.mark.asyncio(loop_scope="session")
+async def test_seed_takes_the_newsletter_off_setup_needed_for_existing_hires(
+    server: SpinTestServer, cron: str
+):
+    """Frankie (daily) and Nadia (Mondays) hires kept the newsletter's cadence
+    with no schedule, because it needs inputs and a sign-in nobody gave, so
+    "Setup needed" listed it; the next seed run clears it and keeps the workflow."""
+    expected = await _load_roster_store_assets()
+    newsletter = expected["personalized-morning-coffee-newsletter"]
+    owner = await _create_seed_user()
+    template = await _seed_template(
+        name="Frankie", preload_listings=[newsletter], preload_crons={newsletter: cron}
+    )
+    scheduler = AsyncMock()
+    scheduler.get_execution_schedules = AsyncMock(return_value=[])
+    with (
+        patch.object(scheduling, "get_scheduler_client", return_value=scheduler),
+        patch.object(seed, "get_scheduler_client", return_value=scheduler),
+    ):
+        hired = await experts_db.hire_expert(owner.id, template.id, None)
+        [workflow] = hired.expert.workflows
+        assert (workflow.schedule_cron, workflow.schedule_id) == (cron, None)
+        listed = await setup.list_setup_items(owner.id)
+        assert {"Your Email Address"} <= {
+            name
+            for item in listed
+            if item.workflow_id == workflow.id
+            for name in item.missing_inputs
+        }
+
+        await seed._clear_removed_cadences()
+
+        assert not [
+            item
+            for item in await setup.list_setup_items(owner.id)
+            if item.workflow_id == workflow.id
+        ]
+    scheduler.add_execution_schedule.assert_not_awaited()
+    row = await prisma.models.ExpertWorkflow.prisma().find_unique(
+        where={"id": workflow.id}
+    )
+    assert row is not None
+    assert row.scheduleCron is None
+    assert row.libraryAgentId is not None
 
 
 @pytest.mark.asyncio(loop_scope="session")

@@ -46,9 +46,9 @@ logger = logging.getLogger(__name__)
 OFFICIAL_CREATOR_USERNAME = "autogpt"
 
 
-# Cadences dropped when the roster consolidated on a single scheduled
-# workflow (Frankie's daily digest). _sync_preloads only reaches template
-# rows, so hires made before the change would keep firing these forever —
+# Cadences the roster no longer ships. _sync_preloads only reaches template
+# rows, so hires made before the change would keep firing these forever, or
+# keep listing them under "Setup needed" when they never got a schedule —
 # every seed run retries this cleanup until no hired copy still carries the
 # old template-managed cadence. Rows whose cron a user changed no longer
 # match and are deliberately left alone.
@@ -56,6 +56,8 @@ REMOVED_TEMPLATE_CADENCES: list[tuple[str, str]] = [
     ("automated-blog-writer", "0 9 * * 1"),
     ("lead-finder-local-businesses", "0 8 * * 1"),
     ("smart-meeting-brief", "0 7 * * 1-5"),
+    ("personalized-morning-coffee-newsletter", "40 7 * * *"),
+    ("personalized-morning-coffee-newsletter", "0 8 * * 1"),
 ]
 
 
