@@ -792,6 +792,12 @@ async def set_default_chat_transport(
     return ChatTransportsResponse(transports=transports)
 
 
+async def _new_session_expert(user_id: str, expert_id: str | None):
+    if expert_id is None:
+        return None
+    return await experts_db.get_expert(user_id, expert_id)
+
+
 async def _resolve_new_session_llm_route(
     user_id: str,
     request: CreateSessionRequest | None,
@@ -934,14 +940,20 @@ async def create_session(
             detail="builder_graph_id and expert_id are mutually exclusive",
         )
 
-    if expert_id is not None:
-        expert = await experts_db.get_expert(user_id, expert_id)
-        if expert is None or expert.is_archived:
-            raise HTTPException(status_code=404, detail="Expert not found")
-
-    llm_auth_provider, llm_credential_id = await _resolve_new_session_llm_route(
-        user_id, request
+    # Two lookups the new chat waits on, neither needing the other: run them
+    # side by side, then fail in the order they used to run in.
+    expert, route = await asyncio.gather(
+        _new_session_expert(user_id, expert_id),
+        _resolve_new_session_llm_route(user_id, request),
+        return_exceptions=True,
     )
+    if isinstance(expert, BaseException):
+        raise expert
+    if expert_id is not None and (expert is None or expert.is_archived):
+        raise HTTPException(status_code=404, detail="Expert not found")
+    if isinstance(route, BaseException):
+        raise route
+    llm_auth_provider, llm_credential_id = route
 
     if llm_auth_provider == "platform":
         await enforce_payment_paywall(user_id)
