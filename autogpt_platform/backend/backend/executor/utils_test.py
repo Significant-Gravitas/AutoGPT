@@ -2503,6 +2503,54 @@ async def test_a_run_given_an_org_the_user_isnt_in_goes_to_their_own(
 
 
 @pytest.mark.asyncio
+async def test_a_triggered_run_moves_to_the_runners_org_with_its_nested_inputs(
+    mocker: MockerFixture,
+):
+    """A delivery to a preset tagged with an org its owner isn't in runs in the
+    owner's own, and the trigger still gets only its config and the payload."""
+    import backend.executor.utils as executor_utils
+    from backend.api.features.integrations.router import _execute_webhook_preset_trigger
+
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    membership = _runner_is_not_in_the_given_org(mocker)
+    trigger_node = mocker.MagicMock(id="abc123-0")
+    trigger_node.block.is_triggered_by_event_type.return_value = True
+    mocker.patch(
+        "backend.api.features.integrations.router.get_graph",
+        new=mocker.AsyncMock(
+            return_value=mocker.MagicMock(webhook_input_node=trigger_node)
+        ),
+    )
+    preset = mocker.MagicMock(
+        id="preset-1",
+        is_active=True,
+        user_id="runner",
+        graph_id="g",
+        graph_version=1,
+        expert_id=None,
+        organization_id="other-org",
+        team_id="other-team",
+        credentials={},
+        inputs={"topic": "news", "_node_input_mask_abc123": {"repo": "o/r"}},
+    )
+    webhook = mocker.MagicMock(id="wh-1", user_id="runner")
+
+    await _execute_webhook_preset_trigger(preset, webhook, "wh-1", "push", {"event": 1})
+
+    membership.assert_awaited_once_with("runner", "other-org", "other-team")
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert (create_kwargs["organization_id"], create_kwargs["team_id"]) == (
+        "runner-org",
+        "runner-team",
+    )
+    validate = executor_utils.validate_and_construct_node_execution_input
+    assert validate.call_args.kwargs["graph_inputs"] == {"topic": "news"}
+    assert validate.call_args.kwargs["nodes_input_masks"] == {
+        "abc123-0": {"repo": "o/r", "payload": {"event": 1}}
+    }
+
+
+@pytest.mark.asyncio
 async def test_a_sub_run_moved_to_the_runners_org_is_billed_there(
     mocker: MockerFixture,
 ):

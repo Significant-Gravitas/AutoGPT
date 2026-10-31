@@ -625,8 +625,8 @@ class AgentValidator:
           ``AgentDropdownInputBlock``, ``AgentTableInputBlock``, etc.).
         - Any trigger block whose ``uiType`` is ``"Webhook"`` /
           ``"Webhook (manual)"``. A triggered agent is started by an external
-          event and needs no user-facing input block; forcing one alongside
-          the trigger produces an invalid graph.
+          event and needs no user-facing input block, but may carry input
+          blocks beside the trigger for values the payload does not supply.
 
         Output requirement — satisfied by at least one output block (any block
         whose ``uiType`` is ``"Output"``). This matches the runtime behavior,
@@ -655,8 +655,8 @@ class AgentValidator:
                 f"block subclass (e.g. AgentGoogleDriveFileInputBlock, "
                 f"AgentDropdownInputBlock, AgentShortTextInputBlock) and set "
                 f"input_default with 'name' and optionally 'title'. For a "
-                f"triggered agent, add a webhook trigger block instead — do not "
-                f"add a separate input block."
+                f"triggered agent, add a webhook trigger block; input blocks "
+                f"may sit beside it for values the event payload does not carry."
             )
             valid = False
 

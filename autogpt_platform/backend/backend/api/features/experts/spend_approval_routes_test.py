@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.api.features.library.model import node_input_mask_key
 from backend.executor.utils_test import (
     _mock_add_graph_execution_create_path,
     _mock_expert_personal_tenancy,
@@ -86,7 +87,9 @@ async def test_webhook_trigger_is_parked(mocker, parked) -> None:
         expert_id="expert-1",
         graph_id="g",
         graph_version=1,
-        inputs={},
+        # A triggered preset nests its trigger config under this key; without
+        # one the delivery is dropped as unconfigured before it reaches spend.
+        inputs={node_input_mask_key(trigger_node.id): {}},
         credentials={},
     )
     webhook = MagicMock(id="wh-1", user_id="owner")

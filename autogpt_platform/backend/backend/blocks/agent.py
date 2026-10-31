@@ -66,7 +66,10 @@ class AgentExecutorBlock(Block):
             return set(required_fields) - set(provided)
 
         @classmethod
-        def get_mismatch_error(cls, data: BlockInput) -> str | None:
+        def get_mismatch_error(
+            cls, data: BlockInput, exclude_fields: set[str] | None = None
+        ) -> str | None:
+            # exclude_fields names node-level fields, never the nested inputs.
             return validate_with_jsonschema(
                 cls.get_input_schema(data), data.get("inputs", {})
             )

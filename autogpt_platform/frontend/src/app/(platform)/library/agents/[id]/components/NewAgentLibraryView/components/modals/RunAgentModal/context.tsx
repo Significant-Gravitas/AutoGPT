@@ -12,10 +12,14 @@ export interface RunAgentModalContextValue {
   setPresetName: (value: string) => void;
   presetDescription: string;
   setPresetDescription: (value: string) => void;
-  // Inputs
+  // Inputs (the agent's regular graph inputs)
   inputValues: Record<string, any>;
   setInputValue: (key: string, value: any) => void;
   agentInputFields: Record<string, any>;
+  // Trigger node config for a triggered agent (sent as `trigger_config`)
+  triggerConfigValues: Record<string, any>;
+  setTriggerConfigValue: (key: string, value: any) => void;
+  triggerConfigFields: Record<string, any>;
   // Credentials
   inputCredentials: Record<string, any>;
   setInputCredentialsValue: (key: string, value: any | undefined) => void;

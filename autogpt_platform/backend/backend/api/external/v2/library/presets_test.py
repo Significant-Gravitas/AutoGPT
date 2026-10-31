@@ -12,11 +12,15 @@ from fastapi import HTTPException, Response
 from fastapi.exceptions import RequestValidationError
 from prisma.enums import APIKeyPermission
 
-from backend.api.features.library.model import LibraryAgentPreset
+from backend.api.features.library.model import LibraryAgentPreset, node_input_mask_key
 from backend.copilot.tools.manage_presets import UpdatePresetTool
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.data.model import CredentialsMetaInput
-from backend.util.exceptions import ConflictError, ExpertRunPausedError
+from backend.util.exceptions import (
+    ConflictError,
+    ExpertRunPausedError,
+    InvalidInputError,
+)
 
 from ..models import (
     AgentPreset,
@@ -34,6 +38,8 @@ ORG = "org-1"
 SECRET = "whsec-do-not-leak"
 PROVIDER_HOOK_ID = "provider-hook-do-not-leak"
 TRIGGER_SECRET = "delivery-secret-do-not-leak"
+TRIGGER_NODE = "node-1"
+MASK = node_input_mask_key(TRIGGER_NODE)
 RUNNER = [APIKeyPermission.WRITE_LIBRARY, APIKeyPermission.RUN_AGENT]
 NEW_CREDENTIALS = {
     "github_credentials": CredentialsMetaInput(
@@ -66,10 +72,10 @@ def test_a_preset_response_carries_no_webhook_secret():
     assert "/ingress" in body
 
 
-async def test_new_trigger_inputs_re_register_the_webhook_with_saved_credentials(
+async def test_a_new_trigger_config_re_registers_the_webhook_with_saved_credentials(
     mocker: pytest_mock.MockFixture,
 ):
-    current = _preset(webhook=True)
+    current = _trigger()
     mocker.patch(
         "backend.api.features.library.db.get_preset",
         new_callable=AsyncMock,
@@ -82,12 +88,15 @@ async def test_new_trigger_inputs_re_register_the_webhook_with_saved_credentials
     )
 
     await presets.update_preset(
-        request=AgentPresetUpdateRequest(inputs={"repo": "a/b"}),
+        request=AgentPresetUpdateRequest(trigger_config={"repo": "a/b"}),
         preset_id=current.id,
         auth=_key(RUNNER),
     )
 
-    assert update.await_args.kwargs["inputs"] == {"repo": "a/b"}
+    assert update.await_args.kwargs["inputs"] == {
+        "topic": "x",
+        MASK: {"secret_token": TRIGGER_SECRET, "repo": "a/b"},
+    }
     assert update.await_args.kwargs["credentials"] == current.credentials
 
 
@@ -159,12 +168,12 @@ async def test_a_run_missing_a_required_input_is_refused(
 async def test_a_trigger_s_settings_are_not_checked_as_graph_inputs(
     mocker: pytest_mock.MockFixture, can_pay: None
 ):
-    """A trigger's inputs configure its block; the graph's inputs come from
+    """A trigger's settings configure its block; the graph's inputs come from
     each event."""
     _stub_preset_and_graph(
         mocker,
         _trigger(),
-        input_schema={"properties": {"topic": {}}, "required": ["topic"]},
+        input_schema={"properties": {"subject": {}}, "required": ["subject"]},
     )
     add = mocker.patch(
         "backend.executor.utils.add_graph_execution",
@@ -174,7 +183,7 @@ async def test_a_trigger_s_settings_are_not_checked_as_graph_inputs(
 
     await _execute()
 
-    assert add.await_args.kwargs["inputs"]["secret_token"] == TRIGGER_SECRET
+    assert add.await_args.kwargs["inputs"][MASK]["secret_token"] == TRIGGER_SECRET
 
 
 @pytest.mark.parametrize("route", ["create", "setup-trigger"])
@@ -240,7 +249,8 @@ async def test_a_read_withholds_a_trigger_s_secret_settings(
     read = await presets.get_preset(preset_id="p-1", auth=_key())
 
     assert TRIGGER_SECRET not in read.model_dump_json()
-    assert read.inputs == {"constants": {"a": 1}}
+    assert read.inputs == {"topic": "x"}
+    assert read.trigger_config == {"constants": {"a": 1}}
     assert read.hidden_inputs == ["secret_token"]
 
 
@@ -285,8 +295,108 @@ async def test_setting_up_a_trigger_returns_its_secret_settings_once(
         auth=_key(),
     )
 
-    assert created.inputs["secret_token"] == TRIGGER_SECRET
+    assert created.trigger_config is not None
+    assert created.trigger_config["secret_token"] == TRIGGER_SECRET
     assert created.hidden_inputs == []
+
+
+async def test_setting_up_a_trigger_stores_its_config_beside_the_agent_s_inputs(
+    mocker: pytest_mock.MockFixture,
+):
+    """Through the real `setup_triggered_preset`: the agent's inputs and the
+    trigger's settings are validated, stored and read back apart."""
+    graph = Mock(
+        id="graph-1",
+        version=1,
+        webhook_input_node=Mock(id=TRIGGER_NODE),
+        organization_id=ORG,
+        team_id=None,
+    )
+    mocker.patch(
+        "backend.data.graph.get_graph", new_callable=AsyncMock, return_value=graph
+    )
+    mocker.patch(
+        "backend.api.features.library.triggers.get_graph",
+        new_callable=AsyncMock,
+        return_value=graph,
+    )
+    mocker.patch(
+        "backend.api.features.experts.experts_db.resolve_expert_for_graph",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    validate = mocker.patch(
+        "backend.api.features.library.triggers.validate_and_construct_node_execution_input",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.library.triggers.resolve_member_tenancy",
+        new_callable=AsyncMock,
+        return_value=(ORG, None),
+    )
+    mocker.patch(
+        "backend.api.features.library.triggers.make_node_credentials_input_map",
+        return_value={},
+    )
+    mocker.patch(
+        "backend.api.features.library.triggers.setup_webhook_for_block",
+        new_callable=AsyncMock,
+        return_value=(Mock(id="hook-1"), None),
+    )
+    create = mocker.patch(
+        "backend.api.features.library.db.create_preset",
+        new_callable=AsyncMock,
+        side_effect=lambda **kwargs: _preset(
+            webhook=True, inputs=kwargs["preset"].inputs
+        ),
+    )
+
+    created = await presets.setup_trigger(
+        request=AgentTriggerSetupRequest(
+            name="On delivery",
+            graph_id="graph-1",
+            graph_version=1,
+            trigger_config={"secret_token": TRIGGER_SECRET},
+            inputs={"topic": "x"},
+        ),
+        auth=_key(RUNNER),
+    )
+
+    assert validate.await_args.kwargs["graph_inputs"] == {"topic": "x"}
+    assert create.await_args.kwargs["preset"].inputs == {
+        "topic": "x",
+        MASK: {"secret_token": TRIGGER_SECRET},
+    }
+    assert created.inputs == {"topic": "x"}
+    assert created.trigger_config == {"secret_token": TRIGGER_SECRET}
+
+
+async def test_a_new_trigger_config_on_an_active_trigger_needs_the_run_permission(
+    mocker: pytest_mock.MockFixture,
+):
+    mocker.patch(
+        "backend.api.features.library.db.get_preset",
+        new_callable=AsyncMock,
+        return_value=_trigger(),
+    )
+    mocker.patch(
+        "backend.data.graph.get_graph",
+        new_callable=AsyncMock,
+        return_value=Mock(webhook_input_node=Mock(id=TRIGGER_NODE)),
+    )
+    update = mocker.patch(
+        "backend.api.features.library.triggers.update_triggered_preset",
+        new_callable=AsyncMock,
+    )
+
+    with pytest.raises(HTTPException) as refusal:
+        await presets.update_preset(
+            request=AgentPresetUpdateRequest(trigger_config={"repo": "a/b"}),
+            preset_id="p-1",
+            auth=_key([APIKeyPermission.WRITE_LIBRARY]),
+        )
+    assert refusal.value.status_code == 403
+    update.assert_not_awaited()
 
 
 async def test_an_update_that_leaves_out_a_hidden_setting_keeps_it(
@@ -305,16 +415,115 @@ async def test_an_update_that_leaves_out_a_hidden_setting_keeps_it(
     )
 
     updated = await presets.update_preset(
-        request=AgentPresetUpdateRequest(inputs={"constants": {"a": 2}}),
+        request=AgentPresetUpdateRequest(trigger_config={"constants": {"a": 2}}),
         preset_id="p-1",
         auth=_key(RUNNER),
     )
 
     assert update.await_args.kwargs["inputs"] == {
-        "constants": {"a": 2},
-        "secret_token": TRIGGER_SECRET,
+        "topic": "x",
+        MASK: {"constants": {"a": 2}, "secret_token": TRIGGER_SECRET},
     }
     assert TRIGGER_SECRET not in updated.model_dump_json()
+
+
+async def test_a_trigger_read_and_sent_back_keeps_its_secret_and_never_shows_it(
+    mocker: pytest_mock.MockFixture,
+):
+    """GET, list and PATCH all leave the secret out, and a PATCH of what was read,
+    or of the agent's inputs alone, saves it unchanged."""
+    mocker.patch(
+        "backend.api.features.library.db.get_preset",
+        new_callable=AsyncMock,
+        return_value=_trigger(),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.list_presets",
+        new_callable=AsyncMock,
+        return_value=Mock(presets=[_trigger()], pagination=Mock(total_items=1)),
+    )
+    update = mocker.patch(
+        "backend.api.features.library.triggers.update_triggered_preset",
+        new_callable=AsyncMock,
+        return_value=_trigger(),
+    )
+
+    read = await presets.get_preset(preset_id="p-1", auth=_key())
+    listed = await presets.list_presets(
+        graph_id=None, page=PageRequest(limit=20), auth=_key()
+    )
+    sent_back = await presets.update_preset(
+        request=AgentPresetUpdateRequest(
+            inputs=read.inputs, trigger_config=read.trigger_config
+        ),
+        preset_id="p-1",
+        auth=_key(RUNNER),
+    )
+    await presets.update_preset(
+        request=AgentPresetUpdateRequest(inputs={"topic": "y"}),
+        preset_id="p-1",
+        auth=_key(RUNNER),
+    )
+
+    for response in (read, listed, sent_back):
+        assert TRIGGER_SECRET not in response.model_dump_json()
+    first, second = (c.kwargs["inputs"] for c in update.await_args_list)
+    assert first == _trigger().inputs
+    assert second == {**_trigger().inputs, "topic": "y"}
+
+
+async def test_trigger_config_on_a_preset_with_no_trigger_is_refused(
+    mocker: pytest_mock.MockFixture,
+):
+    mocker.patch(
+        "backend.api.features.library.db.get_preset",
+        new_callable=AsyncMock,
+        return_value=_preset(inputs={"topic": "x"}),
+    )
+    update = mocker.patch(
+        "backend.api.features.library.triggers.update_triggered_preset",
+        new_callable=AsyncMock,
+    )
+
+    with pytest.raises(InvalidInputError):
+        await presets.update_preset(
+            request=AgentPresetUpdateRequest(trigger_config={"repo": "a/b"}),
+            preset_id="p-1",
+            auth=_key(RUNNER),
+        )
+    update.assert_not_awaited()
+
+
+async def test_a_legacy_flat_trigger_s_new_config_is_stored_under_its_node(
+    mocker: pytest_mock.MockFixture,
+):
+    """One the boot backfill has not reached keeps its trigger config at the top
+    level, so the key comes from its graph's trigger node."""
+    mocker.patch(
+        "backend.api.features.library.db.get_preset",
+        new_callable=AsyncMock,
+        return_value=_preset(webhook=True, inputs={"secret_token": TRIGGER_SECRET}),
+    )
+    mocker.patch(
+        "backend.data.graph.get_graph",
+        new_callable=AsyncMock,
+        return_value=Mock(webhook_input_node=Mock(id=TRIGGER_NODE)),
+    )
+    update = mocker.patch(
+        "backend.api.features.library.triggers.update_triggered_preset",
+        new_callable=AsyncMock,
+        return_value=_trigger(),
+    )
+
+    await presets.update_preset(
+        request=AgentPresetUpdateRequest(trigger_config={"repo": "a/b"}),
+        preset_id="p-1",
+        auth=_key(RUNNER),
+    )
+
+    assert update.await_args.kwargs["inputs"] == {
+        MASK: {"secret_token": TRIGGER_SECRET, "repo": "a/b"}
+    }
 
 
 @pytest.mark.parametrize("scopes, allowed", [([], False), (["RUN_AGENT"], True)])
@@ -446,6 +655,14 @@ async def test_creating_an_active_trigger_preset_needs_the_run_permission(
         # the graph before it runs.
         ({"preset_id": "p-1", "inputs": {"a": 1}}, [APIKeyPermission.RUN_AGENT]),
         ({"preset_id": "p-1", "inputs": {"a": 1}, "is_active": False}, []),
+        (
+            {"preset_id": "p-1", "trigger_config": {"repo": "a/b"}},
+            [APIKeyPermission.RUN_AGENT],
+        ),
+        (
+            {"preset_id": "p-1", "trigger_config": {"repo": "a/b"}, "is_active": False},
+            [],
+        ),
     ],
 )
 def test_turning_a_preset_on_over_mcp_needs_the_run_permission(
@@ -506,6 +723,10 @@ async def test_new_inputs_on_a_trigger_without_credentials_move_it_to_its_new_we
         return_value={},
     )
     mocker.patch(
+        "backend.api.features.library.triggers.validate_and_construct_node_execution_input",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
         "backend.api.features.library.triggers.setup_webhook_for_block",
         new_callable=AsyncMock,
         return_value=(Mock(id="hook-2"), None),
@@ -521,7 +742,7 @@ async def test_new_inputs_on_a_trigger_without_credentials_move_it_to_its_new_we
     )
 
     await presets.update_preset(
-        request=AgentPresetUpdateRequest(inputs={"constants": {"a": 2}}),
+        request=AgentPresetUpdateRequest(inputs={"topic": "y"}),
         preset_id="p-1",
         auth=_key(RUNNER),
     )
@@ -579,6 +800,10 @@ async def test_new_credentials_alone_move_a_trigger_keeping_its_secret_settings(
         "backend.api.features.library.triggers.make_node_credentials_input_map",
         return_value={},
     )
+    mocker.patch(
+        "backend.api.features.library.triggers.validate_and_construct_node_execution_input",
+        new_callable=AsyncMock,
+    )
     register = mocker.patch(
         "backend.api.features.library.triggers.setup_webhook_for_block",
         new_callable=AsyncMock,
@@ -604,11 +829,7 @@ async def test_new_credentials_alone_move_a_trigger_keeping_its_secret_settings(
         TRIGGER_SECRET
     )
     rows = stored.update.await_args.kwargs["data"]["InputPresets"]["create"]
-    assert sorted(row["name"] for row in rows) == [
-        "constants",
-        "github_credentials",
-        "secret_token",
-    ]
+    assert sorted(row["name"] for row in rows) == [MASK, "github_credentials", "topic"]
 
 
 @pytest.fixture
@@ -632,7 +853,10 @@ def stored(mocker: pytest_mock.MockFixture) -> AsyncMock:
 def _trigger() -> LibraryAgentPreset:
     return _preset(
         webhook=True,
-        inputs={"secret_token": TRIGGER_SECRET, "constants": {"a": 1}},
+        inputs={
+            "topic": "x",
+            MASK: {"secret_token": TRIGGER_SECRET, "constants": {"a": 1}},
+        },
     )
 
 

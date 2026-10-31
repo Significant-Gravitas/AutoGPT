@@ -121,8 +121,11 @@ class MCPToolBlock(Block):
             return set(required_fields) - set(tool_arguments)
 
         @classmethod
-        def get_mismatch_error(cls, data: BlockInput) -> str | None:
+        def get_mismatch_error(
+            cls, data: BlockInput, exclude_fields: set[str] | None = None
+        ) -> str | None:
             """Validate tool_arguments against the tool's input schema."""
+            # exclude_fields names node-level fields, never the tool arguments.
             tool_schema = cls.get_input_schema(data)
             if not tool_schema:
                 return None

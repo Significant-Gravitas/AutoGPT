@@ -2684,19 +2684,67 @@ async def migrate_webhook_presets_to_new_version(
     }
     if in_organizations:
         migrate_where["AND"] = in_organizations
-    count = await prisma.models.AgentPreset.prisma().update_many(
-        where=migrate_where,
-        data={"agentGraphVersion": new_graph.version},
-    )
+
+    # reassign_ids() gives every node a new UUID when an agent is edited, so a
+    # preset's stored `_node_input_mask_{old_prefix}` key would no longer match
+    # the new version's trigger node at execution (the mask would be dropped and
+    # the trigger would silently stop firing). Re-key the mask to the new node's
+    # prefix, in the same transaction as the version bump: a preset pinned to the
+    # new version with the old key is no longer a retry candidate, so a partial
+    # write kills the trigger for good.
+    async with transaction() as tx:
+        count = await prisma.models.AgentPreset.prisma(tx).update_many(
+            where=migrate_where,
+            data={"agentGraphVersion": new_graph.version},
+        )
+        # Scoped to presets now pinned to this version so a preset that a
+        # concurrent activation already bumped past it isn't re-keyed to the
+        # wrong node.
+        prefixed = await prisma.models.AgentNodeExecutionInputOutput.prisma(
+            tx
+        ).find_many(
+            where={
+                "agentPresetId": {"in": ids_to_migrate},
+                "name": {"startswith": library_model.NODE_INPUT_MASK_PREFIX},
+                "AgentPreset": {"is": {"agentGraphVersion": new_graph.version}},
+            },
+        )
+        await prisma.models.AgentNodeExecutionInputOutput.prisma(tx).update_many(
+            where={"id": {"in": _trigger_mask_row_ids(prefixed)}},
+            data={"name": library_model.node_input_mask_key(new_trigger_node.id)},
+        )
+
     if count > 0:
         logger.info(
             f"Migrated {count} webhook preset(s) for graph #{new_graph.id} "
             f"to version {new_graph.version} (user #{user_id})"
         )
+
     return library_model.WebhookPresetMigrationResult(
         migrated_count=count,
         skipped_presets=skipped_presets,
     )
+
+
+def _trigger_mask_row_ids(
+    rows: list[prisma.models.AgentNodeExecutionInputOutput],
+) -> list[str]:
+    """Each preset's trigger-config row, picked as its readers pick it: a graph
+    input may use the mask prefix too."""
+    by_preset: dict[
+        str | None, dict[str, prisma.models.AgentNodeExecutionInputOutput]
+    ] = {}
+    for row in rows:
+        by_preset.setdefault(row.agentPresetId, {})[row.name] = row
+    return [
+        named[key].id
+        for named in by_preset.values()
+        if (
+            key := library_model.stored_trigger_mask_key(
+                {name: row.data for name, row in named.items()}
+            )
+        )
+    ]
 
 
 async def delete_preset(user_id: str, preset_id: str) -> None:
