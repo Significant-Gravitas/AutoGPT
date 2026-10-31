@@ -57,8 +57,11 @@ from backend.copilot.tools.skills import _NAME_RE, read_user_skill_with_body
 from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
 from backend.data.db import prisma as db_client
 from backend.data.graph import Graph, GraphSettings, Node
+from backend.data.onboarding import get_user_onboarding
+from backend.data.onboarding_steps import OnboardingStep
 from backend.data.user import get_or_create_user
 from backend.executor import utils as execution_utils
+from backend.util.background import _background_tasks
 from backend.util.clients import get_database_manager_async_client
 from backend.util.exceptions import ConflictError, ExpertRunPausedError, NotFoundError
 from backend.util.json import SafeJson
@@ -7335,3 +7338,74 @@ async def test_hiring_copies_no_autopilot_mode_and_junk_reads_as_default(
     identities = await experts_db.list_expert_identities(test_user.id)
     identity = next(item for item in identities if item.id == hired.expert.id)
     assert identity.autopilot_mode is None
+
+
+# =============================================================================
+# Wallet checklist: the marketplace step
+# =============================================================================
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "surface, ticks",
+    [("expert_page", True), ("copilot", True), ("onboarding", False), (None, False)],
+)
+async def test_only_a_hire_the_user_made_ticks_the_marketplace_step(
+    server: SpinTestServer, test_user, surface, ticks
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+
+    await experts_db.hire_expert(test_user.id, template.id, None, surface)
+
+    assert await _marketplace_step_state(test_user.id) == (ticks, ticks)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_onboarding_hire_ticks_the_step_only_once_rehired_after_firing(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None, "onboarding")
+
+    await experts_db.hire_expert(test_user.id, template.id, None, "expert_page")
+    assert await _marketplace_step_state(test_user.id) == (False, False)
+
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+    await experts_db.hire_expert(test_user.id, template.id, None, "expert_page")
+    assert await _marketplace_step_state(test_user.id) == (True, True)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_failure_to_record_the_step_never_fails_the_hire(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    failing = AsyncMock(side_effect=RuntimeError("redis is down"))
+
+    with patch.object(experts_db, "complete_onboarding_step", failing):
+        hired = await experts_db.hire_expert(
+            test_user.id, template.id, None, "expert_page"
+        )
+
+    assert hired.expert.source_template_id == template.id
+    await _record_marketplace_step()
+    failing.assert_awaited_once_with(test_user.id, OnboardingStep.MARKETPLACE_ADD_AGENT)
+
+
+async def _marketplace_step_state(user_id: str) -> tuple[bool, bool]:
+    """(completed, rewarded) for the step, once the hire's recording has run."""
+    await _record_marketplace_step()
+    onboarding = await get_user_onboarding(user_id)
+    step = OnboardingStep.MARKETPLACE_ADD_AGENT
+    return step in onboarding.completedSteps, step in onboarding.rewardedFor
+
+
+async def _record_marketplace_step() -> None:
+    await asyncio.gather(
+        *(
+            task
+            for task in _background_tasks
+            if task.get_name().startswith("marketplace-step-")
+        ),
+        return_exceptions=True,
+    )

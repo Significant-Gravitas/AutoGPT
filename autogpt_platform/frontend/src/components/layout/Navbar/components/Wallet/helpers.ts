@@ -34,10 +34,10 @@ export function getTaskGroups(state: UserOnboarding | null): TaskGroup[] {
         },
         {
           id: "MARKETPLACE_ADD_AGENT",
-          name: "Get a workflow from the marketplace",
+          name: "Hire an expert or get a workflow from the marketplace",
           amount: 1,
           details:
-            "Search for a workflow in the Marketplace and add it to your Library",
+            "Hire an expert in the Marketplace, or add one of its workflows to your Library",
           video: "/onboarding/marketplace-add.mp4",
         },
         {

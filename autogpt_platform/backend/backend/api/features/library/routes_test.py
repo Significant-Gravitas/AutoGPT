@@ -8,6 +8,7 @@ import pytest_mock
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.rest_api import app as rest_app
+from backend.data.onboarding_steps import OnboardingStep
 from backend.util.exceptions import MissingConfigError
 from backend.util.models import Pagination
 
@@ -291,7 +292,9 @@ def test_add_agent_to_library_success(
     mock_db_call.assert_called_once_with(
         store_listing_version_id="test-version-id", user_id=test_user_id
     )
-    mock_complete_onboarding.assert_awaited_once()
+    mock_complete_onboarding.assert_awaited_once_with(
+        test_user_id, OnboardingStep.MARKETPLACE_ADD_AGENT
+    )
 
 
 @pytest.mark.asyncio

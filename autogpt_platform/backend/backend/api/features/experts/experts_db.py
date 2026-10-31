@@ -118,6 +118,8 @@ from backend.data.expert_run_output import (
 )
 from backend.data.expert_spend import get_weekly_spend
 from backend.data.model import NodeExecutionStats
+from backend.data.onboarding import complete_onboarding_step
+from backend.data.onboarding_steps import OnboardingStep
 from backend.data.user import get_user_by_id
 from backend.util import type as type_utils
 from backend.util.background import spawn_background_task
@@ -1034,6 +1036,13 @@ async def _hire_expert_impl(
         expert = await _resume_revived_hire(expert)
     elif state == "created":
         _schedule_expert_memory(user_id, expert.id)
+    # A hire the user made themselves ticks the wallet's marketplace step and the
+    # onboarding wizard's picks don't; recording it never fails the hire.
+    if state != "existing" and surface in ("expert_page", "copilot"):
+        spawn_background_task(
+            complete_onboarding_step(user_id, OnboardingStep.MARKETPLACE_ADD_AGENT),
+            name=f"marketplace-step-{expert.id}",
+        )
     # A hire that runs setup is counted by its job, once its preloads are
     # known; an idempotent re-hire of an already-active expert is not a hire.
     if state == "created" or await _claim_setup(expert.id):
