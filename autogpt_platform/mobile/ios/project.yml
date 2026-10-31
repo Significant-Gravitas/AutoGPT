@@ -1,0 +1,43 @@
+name: AutoGPT
+options:
+  bundleIdPrefix: co.agpt
+  deploymentTarget:
+    iOS: '16.0'
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    MARKETING_VERSION: '0.1.0'
+    CURRENT_PROJECT_VERSION: '1'
+    AUTOGPT_ORIGIN: https://platform.agpt.co
+targets:
+  AutoGPT:
+    type: application
+    platform: iOS
+    sources: [AutoGPT]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: co.agpt.autogpt
+        TARGETED_DEVICE_FAMILY: '1,2'
+        GENERATE_INFOPLIST_FILE: NO
+    info:
+      path: AutoGPT/Info.plist
+      properties:
+        CFBundleDisplayName: AutoGPT
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        AutoGPTOrigin: $(AUTOGPT_ORIGIN)
+        UILaunchScreen: {}
+        NSMicrophoneUsageDescription: AutoGPT uses the microphone when you record a voice message.
+        NSCameraUsageDescription: AutoGPT uses the camera when you attach a photo.
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        CFBundleURLTypes:
+          - CFBundleURLName: co.agpt.autogpt.auth
+            CFBundleURLSchemes: [autogpt]
+schemes:
+  AutoGPT:
+    build:
+      targets:
+        AutoGPT: all

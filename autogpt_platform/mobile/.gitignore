@@ -1,0 +1,11 @@
+.build/
+.gradle/
+build/
+local.properties
+*.xcuserstate
+xcuserdata/
+*.jks
+*.keystore
+*.p12
+*.mobileprovision
+ios/AutoGPT.xcodeproj/

@@ -49,6 +49,7 @@ import {
   SIGN_UP_NOT_ALLOWED_CODE,
 } from "./signup-gate";
 import { supabaseBridge } from "./supabase-bridge";
+import { mobileAuth } from "./mobile-auth";
 import { assertTeamEmailUsesGoogle } from "./team-email-policy";
 import { sendVerificationLink } from "./verification-link";
 
@@ -489,6 +490,7 @@ export const auth = betterAuth({
       },
     }),
     supabaseBridge(),
+    mobileAuth(),
     // Must be last so cookies set inside server actions stick.
     nextCookies(),
   ],
