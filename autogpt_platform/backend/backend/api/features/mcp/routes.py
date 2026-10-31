@@ -433,7 +433,7 @@ async def mcp_oauth_login(
         preregistered := preregistered_client(server_url, settings.secrets)
     ) is not None:
         client_id, client_secret = preregistered
-        if not (client_id and client_secret):
+        if not client_id:
             raise fastapi.HTTPException(
                 status_code=400,
                 detail={
@@ -456,10 +456,11 @@ async def mcp_oauth_login(
                 server_host(server_url),
             )
         revoke_url = trusted_revoke_url
-        try:
-            token_endpoint_auth_method = select_client_auth_method(metadata)
-        except ValueError as e:
-            raise fastapi.HTTPException(status_code=400, detail=str(e))
+        if client_secret:
+            try:
+                token_endpoint_auth_method = select_client_auth_method(metadata)
+            except ValueError as e:
+                raise fastapi.HTTPException(status_code=400, detail=str(e))
 
     if not client_id:
         # A server with no DCR that only takes secret-holding clients rejects
