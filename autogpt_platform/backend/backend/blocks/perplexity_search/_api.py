@@ -15,8 +15,7 @@ PERPLEXITY_API_URL = "https://api.perplexity.ai"
 # User-Agent (AutoGPT-Platform/...) is sent alongside it.
 INTEGRATION_HEADER = {"X-Pplx-Integration": "autogpt"}
 
-# Control characters aiohttp rejects in header values. Checked before any
-# request so no transport error can describe the Authorization header.
+# Reject forbidden header control characters before aiohttp serializes the key.
 _FORBIDDEN_HEADER_CHARS = re.compile(r"[\x00-\x08\x0a-\x1f\x7f]")
 
 MAX_DOMAIN_FILTERS = 20
