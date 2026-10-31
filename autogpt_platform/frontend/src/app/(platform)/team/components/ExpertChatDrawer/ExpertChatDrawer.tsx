@@ -141,6 +141,7 @@ function ChatPanelBody({ target, identity, chat }: BodyProps) {
               sessionID={sessionId}
               queuedMessages={queuedMessages}
               pendingSend={pendingSend}
+              isTurnSettling={chat.isTurnSettling}
               variant="compact"
               showThreadHeader={false}
             />

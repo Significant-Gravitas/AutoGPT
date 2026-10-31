@@ -521,6 +521,7 @@ export const ChatContainer = ({
                 error={error}
                 isLoading={isLoadingSession}
                 isRestoringActiveSession={isRestoringActiveSession}
+                isTurnSettling={!!isReconnecting || !!isFinishProbing}
                 restoreStatusMessage={restoreStatusMessage}
                 activeStreamStartedAt={activeStreamStartedAt}
                 sessionID={sessionId}
