@@ -335,7 +335,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Firecrawl Search](block-integrations/firecrawl/search.md#firecrawl-search) | Firecrawl searches the web for the given query |
 | [Get Person Detail](block-integrations/apollo/person.md#get-person-detail) | Get detailed person data with Apollo API, including email reveal |
 | [Get Wikipedia Summary](block-integrations/search.md#get-wikipedia-summary) | This block fetches the summary of a given topic from Wikipedia |
-| [Google Maps Search](block-integrations/search.md#google-maps-search) | This block searches for local businesses using Google Maps API |
+| [Google Maps Search](block-integrations/search.md#google-maps-search) | Search Google Maps for businesses and other places that match a text query |
 | [Hacker News Get Item](block-integrations/hacker_news/items.md#hacker-news-get-item) | Get a Hacker News story, comment, poll or job by its id or link, with its comments as a list in reading order |
 | [Hacker News Get Stories](block-integrations/hacker_news/stories.md#hacker-news-get-stories) | Get the top (front page), new, best, Ask HN, Show HN or job stories from Hacker News, in the order Hacker News ranks them |
 | [Hacker News Get User](block-integrations/hacker_news/users.md#hacker-news-get-user) | Get a Hacker News user's profile by username: karma, when the account was created, the about text and how many items they have posted |
