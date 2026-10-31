@@ -109,6 +109,22 @@ def sanitize_pin_name(name: str) -> str:
 # --------------------------------------------------------------------------- #
 
 
+def parse_dynamic_field(field_name: str) -> tuple[str, list[tuple[str, str]]] | None:
+    """
+    Split a field name into its base name and its `(delimiter, identifier)` path,
+    e.g. "items_$_0_#_name" → ("items", [("_$_", "0"), ("_#_", "name")]).
+
+    A plain name has an empty path; malformed syntax returns None.
+    """
+    delim, pos = _next_delim(field_name)
+    if delim is None:
+        return field_name, []
+    tokens = _tokenise(field_name[pos:])
+    if tokens is None:
+        return None
+    return field_name[:pos], tokens
+
+
 def _next_delim(s: str) -> tuple[str | None, int]:
     """
     Return the *earliest* delimiter appearing in `s` and its index.
@@ -311,19 +327,13 @@ def merge_execution_input(data: dict[str, Any]) -> dict[str, Any]:
     merged: dict[str, Any] = {}
 
     for key, value in data.items():
-        # Split off the base name (before the first delimiter, if any)
-        delim, pos = _next_delim(key)
-        if delim is None:
+        parsed = parse_dynamic_field(key)
+        if parsed is None or not parsed[1]:
+            # A plain key, or an invalid one kept as a scalar under the raw name
             merged[key] = value
             continue
 
-        base, path = key[:pos], key[pos:]
-        tokens = _tokenise(path)
-        if tokens is None:
-            # Invalid key; treat as scalar under the raw name
-            merged[key] = value
-            continue
-
+        base, tokens = parsed
         merged[base] = _assign(merged.get(base), tokens, value)
 
     data.update(merged)

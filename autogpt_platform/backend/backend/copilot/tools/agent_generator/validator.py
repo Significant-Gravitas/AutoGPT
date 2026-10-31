@@ -6,7 +6,12 @@ import re
 from typing import Any
 
 from backend.blocks._base import BlockType
-from backend.data.dynamic_fields import DICT_SPLIT
+from backend.data.dynamic_fields import (
+    LIST_SPLIT,
+    extract_base_field_name,
+    is_dynamic_field,
+    parse_dynamic_field,
+)
 
 from .helpers import (
     AGENT_EXECUTOR_BLOCK_ID,
@@ -174,11 +179,13 @@ class AgentValidator:
             input_defaults = node.get("input_default", {})
             node_id = node.get("id")
 
-            linked_inputs = set(
-                link.get("sink_name")
+            # A link into part of an input (files_$_0, config_#_key) provides it.
+            linked_inputs = {
+                extract_base_field_name(link["sink_name"])
                 for link in agent.get("links", [])
-                if link.get("sink_id") == node_id and link.get("sink_name")
-            )
+                if link.get("sink_id") == node_id
+                and isinstance(link.get("sink_name"), str)
+            }
 
             for req_input in required_inputs:
                 if (
@@ -340,7 +347,7 @@ class AgentValidator:
 
         Checks that for each link, the source_name field references a valid
         output property in the source block's outputSchema. Also handles nested
-        outputs with _#_ notation.
+        outputs with _#_, _$_ and _@_ notation.
 
         Args:
             agent: The agent dictionary to validate
@@ -398,8 +405,7 @@ class AgentValidator:
             else:
                 output_props = block_output_schemas.get(block_id, {})
 
-            # Handle nested source names (with _#_ notation)
-            if DICT_SPLIT in source_name:
+            if is_dynamic_field(source_name):
                 detail = _check_nested_chain(output_props, source_name)
                 if detail:
                     self.add_error(
@@ -438,7 +444,7 @@ class AgentValidator:
         Checks that for each link the sink_name references a valid input
         property in the sink block's inputSchema, and that every key in a
         node's input_default is a recognised input property. Also handles
-        nested inputs with _#_ notation and dynamic schemas for
+        nested inputs with _#_, _$_ and _@_ notation and dynamic schemas for
         AgentExecutorBlock.
 
         Args:
@@ -519,7 +525,7 @@ class AgentValidator:
                 f"'{link_id}' to node '{sink_id}'"
             )
 
-            if DICT_SPLIT in sink_name:
+            if is_dynamic_field(sink_name):
                 if not check_nested_input(
                     input_props, sink_name, context, block_name, block_id
                 ):
@@ -561,7 +567,7 @@ class AgentValidator:
                     f"has unknown input_default key '{key}'"
                 )
 
-                if DICT_SPLIT in key:
+                if is_dynamic_field(key):
                     if not check_nested_input(
                         input_props, key, context, block_name, block_id
                     ):
@@ -1142,51 +1148,79 @@ class AgentValidator:
 
 
 def _check_nested_chain(props: dict[str, Any], field_name: str) -> str | None:
-    """Walk a ``_#_`` chain through declared schema levels.
+    """Walk a dynamic field's ``_#_`` / ``_@_`` / ``_$_`` chain through declared
+    schema levels, parsed the way the executor parses it.
 
     Returns an error detail string, or None when the chain is valid or can
-    only be resolved at runtime. Levels that declare ``properties`` are
-    verified strictly; levels that allow additional properties, or are
-    untyped (``Any`` / object without declared properties), accept any
+    only be resolved at runtime. Levels that declare ``properties`` or are
+    arrays are verified strictly; levels that allow additional properties, or
+    are untyped (``Any`` / object without declared properties), accept any
     remaining chain — the executor's dynamic field delivery resolves those
-    at run time. Scalar/array levels reject further nesting.
+    at run time.
     """
-    parts = field_name.split(DICT_SPLIT)
-    schema = props.get(parts[0])
+    parsed = parse_dynamic_field(field_name)
+    if parsed is None:
+        return f"'{field_name}' is not a valid field path"
+    base, steps = parsed
+    schema = props.get(base)
     if schema is None:
         return (
-            f"Parent property '{parts[0]}' does not exist. "
+            f"Parent property '{base}' does not exist. "
             f"Available properties: {list(props)}"
         )
 
-    path = parts[0]
-    for child in parts[1:]:
+    path = base
+    for delimiter, step in steps:
         if not isinstance(schema, dict):
             return None
-        if _allows_additional_properties(schema):
-            return None
-        resolved = _resolve_optional_union(schema)
-        if resolved is not None:
-            schema = resolved
-        declared = schema.get("properties")
-        if isinstance(declared, dict) and declared:
-            if child not in declared:
-                return (
-                    f"Child property '{child}' does not exist in parent "
-                    f"'{path}'. Available properties: {list(declared)}"
-                )
-            schema = declared[child]
-            path = f"{path}{DICT_SPLIT}{child}"
-            continue
-        if _is_scalar_schema(schema):
-            return (
-                f"Parent '{path}' has type '{_schema_display_type(schema)}' "
-                f"and has no extractable sub-fields"
-            )
-        # Untyped / Any / object without declared shape: cannot be verified
-        # statically, resolved dynamically at run time.
-        return None
+        if delimiter == LIST_SPLIT:
+            schema, error = _list_item_schema(schema, path, step)
+        else:
+            schema, error = _child_schema(schema, path, step)
+        if schema is None:
+            return error
+        path = f"{path}{delimiter}{step}"
     return None
+
+
+def _child_schema(
+    schema: dict[str, Any], path: str, child: str
+) -> tuple[dict[str, Any] | None, str | None]:
+    """One ``_#_`` / ``_@_`` step: the child's schema, or (None, why not);
+    (None, None) when only the run can tell."""
+    if _allows_additional_properties(schema):
+        return None, None
+    schema = _resolve_optional_union(schema) or schema
+    declared = schema.get("properties")
+    if isinstance(declared, dict) and declared:
+        if child not in declared:
+            return None, (
+                f"Child property '{child}' does not exist in parent "
+                f"'{path}'. Available properties: {list(declared)}"
+            )
+        return declared[child], None
+    if _is_scalar_schema(schema):
+        return None, (
+            f"Parent '{path}' has type '{_schema_display_type(schema)}' "
+            f"and has no extractable sub-fields"
+        )
+    return None, None
+
+
+def _list_item_schema(
+    schema: dict[str, Any], path: str, index: str
+) -> tuple[dict[str, Any] | None, str | None]:
+    """One ``_$_`` step: the list's item schema, or (None, why not);
+    (None, None) when only the run can tell."""
+    if not (index.isascii() and index.isdigit()):
+        return None, f"List index '{index}' after '{path}' is not a whole number"
+    schema = _resolve_optional_union(schema) or schema
+    if schema.get("type") == "array":
+        return schema.get("items", {}), None
+    types = _schema_types(schema)
+    if not types or "array" in types:
+        return None, None
+    return None, f"Parent '{path}' has type '{' | '.join(types)}' and is not a list"
 
 
 def _allows_additional_properties(schema: dict[str, Any]) -> bool:
@@ -1278,14 +1312,16 @@ def _schema_display_type(schema: dict[str, Any]) -> str:
     anyOf schemas have no direct ``type`` key — render the union of their
     branch types (e.g. ``string | null``) instead of the literal ``None``.
     """
+    return " | ".join(_schema_types(schema)) or "unknown"
+
+
+def _schema_types(schema: dict[str, Any]) -> list[str]:
+    """The type names a schema declares, directly or across its anyOf branches."""
     schema_type = schema.get("type")
     if isinstance(schema_type, str):
-        return schema_type
-    options = [
+        return [schema_type]
+    return [
         o["type"]
         for o in schema.get("anyOf", [])
         if isinstance(o, dict) and isinstance(o.get("type"), str)
     ]
-    if options:
-        return " | ".join(options)
-    return "unknown"

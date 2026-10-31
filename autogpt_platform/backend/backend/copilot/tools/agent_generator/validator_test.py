@@ -1,5 +1,10 @@
 """Unit tests for AgentValidator."""
 
+import pytest
+
+from backend.blocks.data_manipulation import CreateListBlock
+from backend.blocks.io import AgentInputBlock, AgentOutputBlock
+
 from .helpers import (
     AGENT_EXECUTOR_BLOCK_ID,
     AGENT_INPUT_BLOCK_ID,
@@ -1430,3 +1435,126 @@ class TestDeepDeclaredChains:
         v = AgentValidator()
         agent, blocks = self._agent_and_blocks("a_#_b_#_c_#_anything")
         assert v.validate_source_output_existence(agent, blocks) is True
+
+
+class TestListIndexLinks:
+    """Links into and out of a list item (``_$_``), which the executor resolves,
+    checked against the real blocks' schemas."""
+
+    def _blocks(self) -> list[dict]:
+        return [
+            block().get_info().model_dump()
+            for block in (AgentInputBlock, CreateListBlock, AgentOutputBlock)
+        ]
+
+    def _agent(
+        self,
+        sink_name: str = "values_$_1",
+        source_name: str = "list_$_0",
+        list_defaults: dict | None = None,
+    ) -> dict:
+        nodes = [
+            _make_node(
+                node_id="in-a",
+                block_id=AGENT_INPUT_BLOCK_ID,
+                input_default={"name": "first"},
+            ),
+            _make_node(
+                node_id="in-b",
+                block_id=AGENT_INPUT_BLOCK_ID,
+                input_default={"name": "second"},
+            ),
+            _make_node(
+                node_id="list",
+                block_id=CreateListBlock().id,
+                input_default=list_defaults,
+            ),
+            _make_node(
+                node_id="out",
+                block_id=AGENT_OUTPUT_BLOCK_ID,
+                input_default={"name": "first_item"},
+            ),
+        ]
+        links = [
+            _make_link(
+                source_id="in-a",
+                source_name="result",
+                sink_id="list",
+                sink_name="values_$_0",
+            ),
+            _make_link(
+                source_id="in-b",
+                source_name="result",
+                sink_id="list",
+                sink_name=sink_name,
+            ),
+            _make_link(
+                source_id="list",
+                source_name=source_name,
+                sink_id="out",
+                sink_name="value",
+            ),
+        ]
+        return _make_agent(nodes=nodes, links=links)
+
+    def test_list_items_linked_in_and_out_pass(self):
+        agent = self._agent(list_defaults={"values_$_2": "third"})
+        is_valid, error = AgentValidator().validate(agent, self._blocks())
+        assert error is None
+        assert is_valid is True
+
+    @pytest.mark.parametrize(
+        "sink_name, expected",
+        [
+            ("nonexistent_$_0", "Parent property 'nonexistent' does not exist"),
+            ("max_size_$_0", "Parent 'max_size' has type 'integer' and is not a list"),
+            (
+                "values_$_first",
+                "List index 'first' after 'values' is not a whole number",
+            ),
+        ],
+    )
+    def test_invalid_list_item_sink_fails(self, sink_name: str, expected: str):
+        agent = self._agent(sink_name=sink_name)
+        is_valid, error = AgentValidator().validate(agent, self._blocks())
+        assert is_valid is False
+        assert error is not None and expected in error
+
+    @pytest.mark.parametrize(
+        "source_name, expected",
+        [
+            ("nonexistent_$_0", "Parent property 'nonexistent' does not exist"),
+            ("error_$_0", "Parent 'error' has type 'string' and is not a list"),
+        ],
+    )
+    def test_invalid_list_item_source_fails(self, source_name: str, expected: str):
+        agent = self._agent(source_name=source_name)
+        is_valid, error = AgentValidator().validate(agent, self._blocks())
+        assert is_valid is False
+        assert error is not None and expected in error
+
+    @pytest.mark.parametrize(
+        "source_name, valid",
+        [("rows_$_0_#_name", True), ("rows_$_0_#_missing", False)],
+    )
+    def test_declared_fields_of_a_list_item_stay_verified(
+        self, source_name: str, valid: bool
+    ):
+        v = AgentValidator()
+        rows = {
+            "type": "array",
+            "items": {"type": "object", "properties": {"name": {"type": "string"}}},
+        }
+        blocks = [
+            _make_block(block_id="src", output_schema={"properties": {"rows": rows}}),
+            _make_block(block_id="sink", input_schema={"properties": {"input": {}}}),
+        ]
+        nodes = [
+            _make_node(node_id="n1", block_id="src"),
+            _make_node(node_id="n2", block_id="sink"),
+        ]
+        link = _make_link(
+            source_id="n1", source_name=source_name, sink_id="n2", sink_name="input"
+        )
+        agent = _make_agent(nodes=nodes, links=[link])
+        assert v.validate_source_output_existence(agent, blocks) is valid
