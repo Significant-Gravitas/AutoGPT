@@ -23,10 +23,12 @@ from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.data.redis_client import get_redis_async
 from backend.util.exceptions import NotFoundError, RedisError
 
+from .db import add_chat_messages_batch
 from .model import (
     ChatMessage,
     ChatSession,
     Usage,
+    _get_session_from_db,
     _save_session_to_db,
     append_and_save_message,
     create_chat_session,
@@ -335,6 +337,58 @@ async def test_chatsession_db_storage(setup_test_user, test_user_id):
                 loaded.tool_calls is not None
             ), f"Tool calls missing for {orig.role} message"
             assert len(orig.tool_calls) == len(loaded.tool_calls)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_chats_messages_sent_one_at_a_time_are_all_saved(
+    setup_test_user, test_user_id
+):
+    """The first message and every follow-up reach the database, in order."""
+    session = await create_chat_session(test_user_id, dry_run=False)
+    sent = [("user", "first"), ("assistant", "reply"), ("user", "second")]
+    for role, content in sent:
+        appended = await append_and_save_message(
+            session.session_id, ChatMessage(role=role, content=content)
+        )
+        assert appended is not None
+
+    saved = await _get_session_from_db(session.session_id)
+
+    assert saved is not None
+    assert [(m.role, m.content, m.sequence) for m in saved.messages] == [
+        (role, content, sequence) for sequence, (role, content) in enumerate(sent)
+    ]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_follow_up_after_a_save_its_session_missed_lands_after_it(
+    setup_test_user, test_user_id
+):
+    """Another writer saves a reply straight to the database, so the cached
+    session the next send reads is one message behind. Its sequence collides
+    with the reply, and the insert lands after it instead."""
+    session = await create_chat_session(test_user_id, dry_run=False)
+    await append_and_save_message(
+        session.session_id, ChatMessage(role="user", content="first")
+    )
+    await add_chat_messages_batch(
+        session.session_id,
+        [{"role": "assistant", "content": "reply"}],
+        start_sequence=1,
+    )
+
+    appended = await append_and_save_message(
+        session.session_id, ChatMessage(role="user", content="second")
+    )
+
+    assert appended is not None
+    saved = await _get_session_from_db(session.session_id)
+    assert saved is not None
+    assert [(m.role, m.content, m.sequence) for m in saved.messages] == [
+        ("user", "first", 0),
+        ("assistant", "reply", 1),
+        ("user", "second", 2),
+    ]
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1025,6 +1079,162 @@ async def test_append_and_save_message_appends_new_message(
     result = await append_and_save_message(session.session_id, new_msg)
     assert result is not None
     assert result.messages[-1].content == "second message"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("saved", [1, 2])
+async def test_a_follow_up_message_is_saved_without_rereading_the_session(
+    mocker: MockerFixture, saved: int
+) -> None:
+    """A chat with messages already has its row, so the follow-up's save goes
+    straight to the session update and the message insert, from its first
+    saved message on."""
+    session = _make_session_with_messages(
+        *(
+            ChatMessage(role=role, content=f"message {n}", sequence=n)
+            for n, role in zip(range(saved), ["user", "assistant"])
+        )
+    )
+    db = _stub_save_path(mocker, session, next_sequence=saved)
+
+    result = await append_and_save_message(
+        session.session_id, ChatMessage(role="user", content="second message")
+    )
+
+    assert result is not None
+    db.get_chat_session_metadata.assert_not_awaited()
+    db.create_chat_session.assert_not_awaited()
+    db.update_chat_session.assert_awaited_once()
+    [insert] = db.add_chat_messages_batch.await_args_list
+    assert insert.kwargs["start_sequence"] == saved
+    assert [m["content"] for m in insert.kwargs["messages"]] == ["second message"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("row_exists", [True, False])
+async def test_a_chats_first_message_checks_the_session_row_first(
+    mocker: MockerFixture, row_exists: bool
+) -> None:
+    """With no messages saved yet, the save checks for the session row and
+    creates it if it is missing, before inserting the message."""
+    session = _make_session_with_messages()
+    db = _stub_save_path(mocker, session, next_sequence=0, row_exists=row_exists)
+
+    result = await append_and_save_message(
+        session.session_id, ChatMessage(role="user", content="first message")
+    )
+
+    assert result is not None
+    db.get_chat_session_metadata.assert_awaited_once_with(session.session_id)
+    assert db.create_chat_session.await_count == (0 if row_exists else 1)
+    [insert] = db.add_chat_messages_batch.await_args_list
+    assert insert.kwargs["start_sequence"] == 0
+    assert [m["content"] for m in insert.kwargs["messages"]] == ["first message"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_follow_up_takes_its_sequence_from_the_session_it_read(
+    mocker: MockerFixture,
+) -> None:
+    """Every message the locked session holds is saved, so the follow-up's
+    sequence comes from them, not from another database read."""
+    session = _make_session_with_messages(
+        ChatMessage(role="user", content="first", sequence=0),
+        ChatMessage(role="assistant", content="reply", sequence=1),
+    )
+    db = _stub_save_path(mocker, session, next_sequence=2)
+
+    result = await append_and_save_message(
+        session.session_id, ChatMessage(role="user", content="second")
+    )
+
+    assert result is not None
+    db.get_next_sequence.assert_not_awaited()
+    [insert] = db.add_chat_messages_batch.await_args_list
+    assert insert.kwargs["start_sequence"] == 2
+    assert [m["content"] for m in insert.kwargs["messages"]] == ["second"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_session_holding_an_unsaved_message_asks_the_database(
+    mocker: MockerFixture,
+) -> None:
+    """A message not saved yet has no sequence, so the session can't say
+    which comes next: the database does."""
+    session = _make_session_with_messages(
+        ChatMessage(role="user", content="first", sequence=0),
+        ChatMessage(role="assistant", content="streaming", sequence=None),
+    )
+    db = _stub_save_path(mocker, session, next_sequence=2)
+
+    result = await append_and_save_message(
+        session.session_id, ChatMessage(role="user", content="next")
+    )
+
+    assert result is not None
+    db.get_next_sequence.assert_awaited_once_with(session.session_id)
+    [insert] = db.add_chat_messages_batch.await_args_list
+    assert insert.kwargs["start_sequence"] == 2
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_new_chats_first_message_starts_at_zero_without_reading_it(
+    mocker: MockerFixture,
+) -> None:
+    """A new chat holds no messages, so its first one is sequence 0. The save
+    still checks for the session row first (a chat's first message does)."""
+    session = _make_session_with_messages()
+    db = _stub_save_path(mocker, session, next_sequence=0)
+
+    result = await append_and_save_message(
+        session.session_id, ChatMessage(role="user", content="first")
+    )
+
+    assert result is not None
+    db.get_next_sequence.assert_not_awaited()
+    db.get_chat_session_metadata.assert_awaited_once_with(session.session_id)
+    [insert] = db.add_chat_messages_batch.await_args_list
+    assert insert.kwargs["start_sequence"] == 0
+
+
+def _stub_save_path(
+    mocker: MockerFixture,
+    session: ChatSession,
+    *,
+    next_sequence: int,
+    row_exists: bool = True,
+):
+    """The session lock, cache and database behind ``append_and_save_message``;
+    its ``_save_session_to_db`` runs for real against the returned database."""
+    lock = mocker.AsyncMock()
+    lock.acquire = mocker.AsyncMock(return_value=True)
+    lock.release = mocker.AsyncMock()
+    redis = mocker.MagicMock()
+    redis.lock = mocker.MagicMock(return_value=lock)
+    mocker.patch(
+        "backend.copilot.model.get_redis_async",
+        new_callable=mocker.AsyncMock,
+        return_value=redis,
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=session,
+    )
+    mocker.patch(
+        "backend.copilot.model.cache_chat_session", new_callable=mocker.AsyncMock
+    )
+    db = mocker.MagicMock(
+        get_next_sequence=mocker.AsyncMock(return_value=next_sequence),
+        get_chat_session_metadata=mocker.AsyncMock(
+            return_value=mocker.MagicMock() if row_exists else None
+        ),
+        create_chat_session=mocker.AsyncMock(),
+        update_chat_session=mocker.AsyncMock(),
+        add_chat_messages_batch=mocker.AsyncMock(return_value=next_sequence),
+    )
+    mocker.patch("backend.copilot.model.chat_db", return_value=db)
+    return db
 
 
 @pytest.mark.asyncio(loop_scope="session")
