@@ -55,7 +55,7 @@ from backend.util.text import split_camelcase
 
 from .block import BlockInput
 from .db import BaseDbModel, execute_raw_with_schema, query_raw_with_schema, transaction
-from .dynamic_fields import is_tool_pin, sanitize_pin_name
+from .dynamic_fields import assert_safe_pin_name, is_tool_pin, sanitize_pin_name
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE, MAX_GRAPH_VERSIONS_FETCH
 from .model import CredentialsFieldInfo, CredentialsMetaInput, is_credentials_field_name
 
@@ -2246,6 +2246,17 @@ async def __create_graph(
     team_id: str | None = None,
 ):
     graphs = [graph] + graph.sub_graphs
+
+    # Reject unsafe dynamic pin names before anything is written, so no save
+    # path (route, fork, copy, copilot) can persist one. The use-site guards in
+    # dynamic_fields stay the backstop for names already in the DB.
+    for g in graphs:
+        for node in g.nodes:
+            for pin_name in node.input_default:
+                assert_safe_pin_name(pin_name)
+        for link in g.links:
+            assert_safe_pin_name(link.source_name)
+            assert_safe_pin_name(link.sink_name)
 
     # Auto-increment version for any graph entry (parent or sub-graph) whose
     # (id, version) already exists.  This prevents UniqueViolationError when
