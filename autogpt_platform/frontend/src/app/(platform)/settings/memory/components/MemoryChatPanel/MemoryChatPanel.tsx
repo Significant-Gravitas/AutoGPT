@@ -19,6 +19,7 @@ interface Props {
   queuedMessages: React.ComponentProps<
     typeof ChatMessagesContainer
   >["queuedMessages"];
+  isTurnSettling: boolean;
   onSend: (message: string) => Promise<void>;
   onStop: () => void;
   onRetry: () => void;
@@ -35,6 +36,7 @@ export function MemoryChatPanel({
   status,
   error,
   queuedMessages,
+  isTurnSettling,
   onSend,
   onStop,
   onRetry,
@@ -96,6 +98,7 @@ export function MemoryChatPanel({
                     isLoading={false}
                     sessionID={sessionId}
                     queuedMessages={queuedMessages}
+                    isTurnSettling={isTurnSettling}
                   />
                 </div>
                 <div className="relative shrink-0 border-t border-separator bg-surface px-3 pt-2 pb-2">

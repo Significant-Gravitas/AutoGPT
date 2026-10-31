@@ -1,4 +1,4 @@
-import { InfiniteData, QueryClient } from "@tanstack/react-query";
+import { InfiniteData, Query, QueryClient } from "@tanstack/react-query";
 
 import {
   getV2ListFavoriteLibraryAgentsResponse,
@@ -50,7 +50,10 @@ export function updateFavoriteInQueries({
   );
 
   queryClient.setQueriesData(
-    { queryKey: ["/api/internal/library/agents/favorites"] },
+    {
+      queryKey: ["/api/internal/library/agents/favorites"],
+      predicate: (query) => !(newIsFavorite && isSearchedQuery(query)),
+    },
     (
       oldData:
         | InfiniteData<
@@ -117,23 +120,28 @@ export function updateFavoriteInQueries({
           }
         }
       } else {
+        const removedCount = oldData.pages.some(
+          (page) =>
+            page.status === 200 &&
+            page.data.agents.some(
+              (currentAgent: LibraryAgent) => currentAgent.id === agentId,
+            ),
+        )
+          ? 1
+          : 0;
+
         return {
           ...oldData,
           pages: oldData.pages.map((page) => {
             if (page.status !== 200) return page;
 
-            const filteredAgents = page.data.agents.filter(
-              (currentAgent: LibraryAgent) => currentAgent.id !== agentId,
-            );
-
-            const removedCount =
-              filteredAgents.length < page.data.agents.length ? 1 : 0;
-
             return {
               ...page,
               data: {
                 ...page.data,
-                agents: filteredAgents,
+                agents: page.data.agents.filter(
+                  (currentAgent: LibraryAgent) => currentAgent.id !== agentId,
+                ),
                 pagination: {
                   ...page.data.pagination,
                   total_items: page.data.pagination.total_items - removedCount,
@@ -146,5 +154,15 @@ export function updateFavoriteInQueries({
 
       return oldData;
     },
+  );
+}
+
+function isSearchedQuery(query: Query) {
+  const params = query.queryKey[1];
+  return (
+    typeof params === "object" &&
+    params !== null &&
+    "search_term" in params &&
+    Boolean(params.search_term)
   );
 }

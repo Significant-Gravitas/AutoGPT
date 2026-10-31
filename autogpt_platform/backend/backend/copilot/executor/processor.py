@@ -905,8 +905,9 @@ class CoPilotProcessor:
                     if scheduled_watch is not None:
                         scheduled_watch.observe(chunk)
                     # Capture StreamError so mark_session_completed receives
-                    # the error message (stream_and_publish yields but does
-                    # not publish StreamError — that's done by mark_session_completed).
+                    # the error message and code (stream_and_publish yields but
+                    # does not publish StreamError — that's done by
+                    # mark_session_completed).
                     if isinstance(chunk, StreamError):
                         error_msg = chunk.errorText
                         error_code = chunk.code
@@ -924,7 +925,9 @@ class CoPilotProcessor:
                 log.info("Stream cancelled by user")
 
         except BaseException as e:
-            # Handle all exceptions (including CancelledError) with appropriate logging
+            # Handle all exceptions (including CancelledError) with appropriate logging.
+            # This failure replaces any StreamError the stream ended on, code too.
+            error_code = None
             if isinstance(e, asyncio.CancelledError):
                 log.info("Turn cancelled")
                 error_msg = stream_registry.CANCELLED_MESSAGE

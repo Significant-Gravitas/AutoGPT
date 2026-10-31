@@ -44,7 +44,7 @@ from backend.copilot.active_turns import (
     get_running_turn_limit,
 )
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider
-from backend.copilot.db import is_duplicate_chat_message_id_error
+from backend.copilot.duplicate_message_id import is_duplicate_chat_message_id_error
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
     CHAT_STATUS_QUEUED,

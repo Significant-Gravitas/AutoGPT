@@ -10940,6 +10940,17 @@
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
+            "name": "search_term",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Search term to filter favorite agents",
+              "title": "Search Term"
+            },
+            "description": "Search term to filter favorite agents"
+          },
+          {
             "name": "page",
             "in": "query",
             "required": false,
@@ -35345,7 +35356,13 @@
             "type": "string",
             "title": "Store Listing Version Id"
           },
-          "score": { "type": "integer", "title": "Score" },
+          "score": {
+            "type": "integer",
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Score",
+            "description": "Star rating, 1 to 5"
+          },
           "comments": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Comments"

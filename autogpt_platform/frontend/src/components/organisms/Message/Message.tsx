@@ -18,7 +18,8 @@ import { escapeCurrencyAmounts } from "@/lib/markdown-math";
 import { mermaid } from "@/lib/streamdown-mermaid-plugin";
 import rehypeKatex from "rehype-katex";
 import type { UIMessage } from "ai";
-import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+import { ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import type {
   ButtonHTMLAttributes,
   ComponentProps,
@@ -28,7 +29,8 @@ import type {
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import { useReadEveryRender } from "@/hooks/useReadEveryRender";
 import type { LinkSafetyModalProps } from "streamdown";
-import { Streamdown } from "streamdown";
+import { defaultRemarkPlugins, Streamdown } from "streamdown";
+import { remarkAppLinks } from "./app-links";
 import {
   createComponentsMerger,
   type StreamdownComponents,
@@ -280,7 +282,7 @@ export const MessageBranchPrevious = ({
       variant="compact-ghost"
       {...props}
     >
-      {children ?? <ChevronLeftIcon size={14} />}
+      {children ?? <Icon aria-hidden icon={ArrowLeft01Icon} size={14} />}
     </Button>
   );
 };
@@ -303,7 +305,7 @@ export const MessageBranchNext = ({
       variant="compact-ghost"
       {...props}
     >
-      {children ?? <ChevronRightIcon size={14} />}
+      {children ?? <Icon aria-hidden icon={ArrowRight01Icon} size={14} />}
     </Button>
   );
 };
@@ -414,6 +416,10 @@ function renderExternalLinkModal(modalProps: LinkSafetyModalProps) {
 
 const STREAMDOWN_PLUGINS = { code, mermaid, math, cjk };
 
+// Streamdown memoises every block on the identity of this list, so it is built
+// once here.
+const REMARK_PLUGINS = [...Object.values(defaultRemarkPlugins), remarkAppLinks];
+
 const LINK_SAFETY = {
   enabled: true,
   onLinkCheck: isSameOriginLink,
@@ -474,6 +480,7 @@ export const MessageResponse = memo(function MessageResponse({
       )}
       components={mergedComponents}
       plugins={STREAMDOWN_PLUGINS}
+      remarkPlugins={REMARK_PLUGINS}
       linkSafety={LINK_SAFETY}
       {...props}
     >

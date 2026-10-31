@@ -1,6 +1,11 @@
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
-import { InfoIcon, AlertTriangleIcon, XCircleIcon } from "lucide-react";
+import {
+  Alert02Icon,
+  CancelCircleIcon,
+  InformationCircleIcon,
+} from "@hugeicons/core-free-icons";
+import { createIconComponent } from "@/components/atoms/Icon/Icon";
 
 import { cn } from "@/lib/utils";
 
@@ -23,9 +28,9 @@ const alertVariants = cva(
 );
 
 const variantIcons = {
-  default: InfoIcon,
-  warning: AlertTriangleIcon,
-  error: XCircleIcon,
+  default: createIconComponent(InformationCircleIcon),
+  warning: createIconComponent(Alert02Icon),
+  error: createIconComponent(CancelCircleIcon),
 } as const;
 
 interface AlertProps
@@ -50,6 +55,7 @@ const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
         {...props}
       >
         <IconComponent
+          aria-hidden
           data-slot="alert-icon"
           className="h-[1.125rem] w-[1.125rem]"
         />
