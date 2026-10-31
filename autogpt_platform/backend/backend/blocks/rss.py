@@ -148,21 +148,37 @@ class ReadRSSFeedBlock(Block):
 
             feed = await self.parse_feed(input_data.rss_url)
             all_entries = []
+            undated_count = 0
 
             for entry in feed["entries"]:
-                pub_date = datetime(*entry["published_parsed"][:6], tzinfo=timezone.utc)
+                parsed_date = entry.get("published_parsed") or entry.get(
+                    "updated_parsed"
+                )
+                if not parsed_date:
+                    undated_count += 1
+                    continue
+                pub_date = datetime(*parsed_date[:6], tzinfo=timezone.utc)
 
                 if pub_date > start_time:
                     rss_entry = RSSEntry(
-                        title=entry["title"],
-                        link=entry["link"],
+                        title=entry.get("title", ""),
+                        link=entry.get("link", ""),
                         description=entry.get("summary", ""),
                         pub_date=pub_date,
                         author=entry.get("author", ""),
-                        categories=[tag["term"] for tag in entry.get("tags", [])],
+                        categories=[
+                            tag["term"]
+                            for tag in entry.get("tags", [])
+                            if tag.get("term")
+                        ],
                     )
                     all_entries.append(rss_entry)
                     yield "entry", rss_entry
+
+            if undated_count:
+                logging.warning(
+                    f"Skipped {undated_count} RSS feed entries without a date"
+                )
 
             yield "entries", all_entries
             if input_data.run_continuously:
