@@ -13,6 +13,7 @@ from jwt.algorithms import ECAlgorithm
 from prisma.enums import SubscriptionTier
 
 from backend.api.features import subscription_trial_routes as routes
+from backend.api.features.billing.client_country import CLIENT_COUNTRY_SCOPE
 from backend.data.subscription_trial import TrialState
 from backend.data.subscription_trial_config import AcceptedTrialOffer
 from backend.data.subscription_trial_invoice import TrialPaymentDue
@@ -406,7 +407,7 @@ def _country_token(key, country, **overrides) -> str:
     claims = {
         "sub": FRONTEND_SERVICE_SUBJECT,
         "aud": SERVICE_TOKEN_AUDIENCE,
-        "scope": routes.CLIENT_COUNTRY_SCOPE,
+        "scope": CLIENT_COUNTRY_SCOPE,
         "country": country,
         "iat": now,
         "exp": now + 60,
@@ -463,7 +464,7 @@ async def test_a_country_claimed_directly_to_the_backend_is_ignored(
             {
                 "sub": FRONTEND_SERVICE_SUBJECT,
                 "aud": SERVICE_TOKEN_AUDIENCE,
-                "scope": routes.CLIENT_COUNTRY_SCOPE,
+                "scope": CLIENT_COUNTRY_SCOPE,
                 "country": "US",
             },
             "a-shared-secret-anyone-could-guess-0123456789",
