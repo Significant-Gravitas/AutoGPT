@@ -10,9 +10,38 @@ credentials must surface a clean, user-facing ``BlockExecutionError``
 
 import pytest
 
-from backend.blocks.google.sheets import GoogleSheetsReadBlock
+from backend.blocks.google.sheets import (
+    GoogleSheetsReadBlock,
+    format_sheet_name,
+    parse_a1_notation,
+)
 from backend.data.execution import ExecutionContext
 from backend.util.exceptions import BlockExecutionError
+
+
+@pytest.mark.parametrize(
+    ("sheet_name", "expected"),
+    [("Bob's Sheet", "'Bob''s Sheet'"), ("It's", "'It''s'")],
+)
+def test_format_sheet_name_escapes_apostrophes(sheet_name: str, expected: str):
+    assert format_sheet_name(sheet_name) == expected
+
+
+def test_parse_a1_notation_ignores_exclamation_mark_in_quoted_sheet_name():
+    assert parse_a1_notation("'Q1!Plan'!A1:B2") == ("'Q1!Plan'", "A1:B2")
+
+
+def test_read_sheet_preserves_escaped_apostrophe(mocker):
+    service = mocker.MagicMock()
+    service.spreadsheets.return_value.values.return_value.get.return_value.execute.return_value = {
+        "values": []
+    }
+
+    GoogleSheetsReadBlock()._read_sheet(service, "spreadsheet-id", "'Bob''s Sheet'!A1")
+
+    service.spreadsheets.return_value.values.return_value.get.assert_called_once_with(
+        spreadsheetId="spreadsheet-id", range="'Bob''s Sheet'!A1"
+    )
 
 
 @pytest.mark.asyncio
