@@ -42,7 +42,8 @@ jobs:
           GIT_REF: ${{ github.event.inputs.git_ref }}
         run: |
           if [[ -n "$GIT_REF" ]]; then
-            SHA=$(gh api "repos/${{ github.repository }}/commits/${GIT_REF}" --jq .sha)
+            # Encoded, or `gh api` reads a `#` or `?` in the ref as URL syntax.
+            SHA=$(gh api "repos/${{ github.repository }}/commits/$(jq -rn --arg r "$GIT_REF" '$r | @uri')" --jq .sha)
           else
             SHA="${{ github.sha }}"
           fi
