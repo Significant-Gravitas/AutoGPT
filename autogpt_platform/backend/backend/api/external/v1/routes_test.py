@@ -1,3 +1,5 @@
+import asyncio
+import threading
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -181,6 +183,35 @@ def test_execute_block_forwards_execution_context(
     ctx = captured["execution_context"]
     assert ctx.user_id == test_user_id
     assert ctx.user_timezone == "Europe/Amsterdam"
+
+
+def test_execute_block_runs_off_the_server_loop_under_the_time_budget(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        "backend.executor.direct_block_execution.DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS",
+        0.5,
+    )
+    thread_names: list[str] = []
+    block = _stub_block(name="SlowBlock")
+
+    async def _never_finishes(_data, **kwargs):
+        thread_names.append(threading.current_thread().name)
+        await asyncio.Event().wait()
+        yield "result", "unreachable"
+
+    block.execute = _never_finishes
+    monkeypatch.setattr("backend.blocks.get_block", lambda _: block)
+    monkeypatch.setattr(
+        "backend.executor.utils.block_usage_cost", lambda *_a, **_k: (0, {})
+    )
+
+    response = client.post(f"/blocks/{block.id}/execute", json={})
+
+    assert response.status_code == 504, f"got {response.status_code}: {response.text}"
+    assert "did not finish within 0.5 seconds" in response.json()["detail"]
+    assert len(thread_names) == 1
+    assert thread_names[0].startswith("direct-block-execution")
 
 
 def test_disabled_block_still_403(monkeypatch: pytest.MonkeyPatch):

@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from backend.blocks.data_manipulation import FindInDictionaryBlock
+from backend.blocks.data_manipulation import FindInDictionaryBlock, ZipListsBlock
 from backend.util.mock import MockObject
 
 
@@ -101,3 +101,44 @@ async def test_list_of_objects_plucks_attribute_or_is_missing():
     objs = [SimpleNamespace(value="a"), SimpleNamespace(value="b")]
     assert await _find(objs, "value") == [("output", ["a", "b"])]
     assert await _find(objs, "nope") == [("missing", objs)]
+
+
+async def _zip(lists: list, pad_to_longest: bool) -> list[tuple[str, Any]]:
+    block = ZipListsBlock()
+    return [
+        output
+        async for output in block.run(
+            ZipListsBlock.Input(lists=lists, pad_to_longest=pad_to_longest)
+        )
+    ]
+
+
+async def test_zip_pad_refuses_a_result_over_the_item_limit(mocker):
+    pad = mocker.spy(ZipListsBlock, "_zip_pad")
+    # 10 groups of 10,001 elements: 100,010 items from 10 input values.
+    lists = [list(range(10))] + [[] for _ in range(10_000)]
+
+    outputs = await _zip(lists, pad_to_longest=True)
+
+    assert [name for name, _ in outputs] == ["error"]
+    assert "100,010 items" in outputs[0][1]
+    pad.assert_not_called()
+
+
+async def test_zip_truncate_refuses_a_result_over_the_item_limit(mocker):
+    truncate = mocker.spy(ZipListsBlock, "_zip_truncate")
+    lists = [list(range(50_001)), list(range(50_001))]
+
+    outputs = await _zip(lists, pad_to_longest=False)
+
+    assert [name for name, _ in outputs] == ["error"]
+    truncate.assert_not_called()
+
+
+async def test_zip_result_at_the_item_limit_is_built():
+    lists = [list(range(50_000)), list(range(50_000))]
+
+    outputs = dict(await _zip(lists, pad_to_longest=True))
+
+    assert outputs["length"] == 50_000
+    assert outputs["zipped_list"][-1] == [49_999, 49_999]

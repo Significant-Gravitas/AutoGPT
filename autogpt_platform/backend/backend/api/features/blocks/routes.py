@@ -1,6 +1,5 @@
 import base64
 import time
-from collections import defaultdict
 from typing import Annotated
 
 from autogpt_libs.auth import get_request_context, get_user_id, requires_user
@@ -16,7 +15,7 @@ from fastapi import (
 )
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
-from starlette.status import HTTP_402_PAYMENT_REQUIRED
+from starlette.status import HTTP_402_PAYMENT_REQUIRED, HTTP_504_GATEWAY_TIMEOUT
 
 from backend.api.model import CloudStorageUploadResponse
 from backend.blocks import get_block, get_blocks
@@ -25,6 +24,10 @@ from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.execution import ExecutionContext
 from backend.data.user import get_user_by_id
 from backend.executor import utils as execution_utils
+from backend.executor.direct_block_execution import (
+    DirectBlockExecutionTimeoutError,
+    run_block_off_loop,
+)
 from backend.monitoring.instrumentation import record_block_execution
 from backend.util.cache import cached
 from backend.util.cloud_storage import get_cloud_storage_handler
@@ -147,13 +150,9 @@ async def execute_graph_block(
 
     start_time = time.time()
     try:
-        output = defaultdict(list)
-        async for name, data in obj.execute(
-            data,
-            user_id=user_id,
-            execution_context=execution_context,
-        ):
-            output[name].append(data)
+        output = await run_block_off_loop(
+            obj.execute(data, user_id=user_id, execution_context=execution_context)
+        )
 
         # Record successful block execution with duration
         duration = time.time() - start_time
@@ -163,6 +162,11 @@ async def execute_graph_block(
         )
 
         return output
+    except DirectBlockExecutionTimeoutError as e:
+        duration = time.time() - start_time
+        block_type = obj.__class__.__name__
+        record_block_execution(block_type=block_type, status="error", duration=duration)
+        raise HTTPException(status_code=HTTP_504_GATEWAY_TIMEOUT, detail=str(e)) from e
     except Exception:
         # Record failed block execution
         duration = time.time() - start_time

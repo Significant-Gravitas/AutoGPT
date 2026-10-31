@@ -2,6 +2,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from backend.blocks import xml_parser
 from backend.blocks.xml_parser import MAX_XML_DEPTH, XMLParserBlock
 
 
@@ -262,3 +263,54 @@ async def test_run_backslash_before_closing_tag():
 async def test_run_backslash_before_opening_tag_is_mixed_content():
     with pytest.raises(ValueError, match="Mixed text and child elements"):
         await _parse("<a>\\<b>1</b></a>")
+
+
+@pytest.mark.asyncio
+async def test_run_refuses_input_over_one_mebibyte():
+    xml = "<a>" + "x" * (1024 * 1024) + "</a>"
+
+    with pytest.raises(ValueError, match="XML too large"):
+        await _parse(xml)
+
+
+@pytest.mark.asyncio
+async def test_run_hands_the_parser_one_text_token_per_element(mocker):
+    parser_cls = mocker.patch(
+        "backend.blocks.xml_parser.Parser", wraps=xml_parser.Parser
+    )
+    xml = "<r>" + "ab<!-- note -->" * 2_000 + "</r>"
+
+    assert await _parse(xml) == [("parsed_xml", {"r": "ab" * 2_000})]
+    (tokens,) = parser_cls.call_args.args
+    assert [token.type for token in tokens] == ["TAG_OPEN", "TEXT", "TAG_CLOSE"]
+
+
+@pytest.mark.parametrize(
+    "xml, expected",
+    [
+        ("<r>< a >1</ a ></r>", "<r><a>1</a></r>"),
+        ("<r><a>1<   /a></r   >", "<r><a>1</a></r>"),
+        ("<r><a  b>1</a  b></r>", "<r><a  b>1</a  b></r>"),
+        ("<r><a   /></r>", "<r><a></a></r>"),
+    ],
+)
+def test_tokenizer_precheck_writes_tags_without_padding(xml, expected):
+    assert XMLParserBlock._normalize_tokenizer_input(xml) == expected
+
+
+@pytest.mark.parametrize(
+    "xml",
+    [
+        "<r><a" + " " * 2_000 + "/b>1</a></r>",
+        "<r><a/b/></r>",
+        "<r><a>1</a/b></r>",
+    ],
+)
+def test_tokenizer_precheck_rejects_slash_inside_a_tag_name(xml):
+    with pytest.raises(ValueError, match="Invalid XML tag name"):
+        XMLParserBlock._normalize_tokenizer_input(xml)
+
+
+def test_tokenizer_precheck_rejects_an_empty_closing_tag():
+    with pytest.raises(ValueError, match="Empty XML tag"):
+        XMLParserBlock._normalize_tokenizer_input("<r>1</ ></r>")

@@ -1,6 +1,5 @@
 import logging
 import urllib.parse
-from collections import defaultdict
 from typing import Annotated, Any, Optional, Sequence
 
 from fastapi import APIRouter, Body, HTTPException, Security, status
@@ -21,6 +20,10 @@ from backend.data.auth.api_key import APIKeyInfo
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.execution import ExecutionContext, ExecutionTrigger
+from backend.executor.direct_block_execution import (
+    DirectBlockExecutionTimeoutError,
+    run_block_off_loop,
+)
 from backend.executor.utils import (
     add_graph_execution,
     charge_for_direct_block_execution,
@@ -127,10 +130,14 @@ async def execute_graph_block(
         user_timezone=get_user_timezone_or_utc(user.timezone),
     )
 
-    output = defaultdict(list)
-    async for name, data in obj.execute(data, execution_context=execution_context):
-        output[name].append(data)
-    return output
+    try:
+        return await run_block_off_loop(
+            obj.execute(data, execution_context=execution_context)
+        )
+    except DirectBlockExecutionTimeoutError as e:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(e)
+        ) from e
 
 
 @v1_router.post(

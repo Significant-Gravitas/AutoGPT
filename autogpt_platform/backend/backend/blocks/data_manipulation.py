@@ -1195,6 +1195,9 @@ class InterleaveListsBlock(Block):
         yield "length", len(result)
 
 
+ZIP_LISTS_MAX_OUTPUT_ITEMS = 100_000
+
+
 class ZipListsBlock(Block):
     """
     Zips multiple lists together into a list of grouped tuples/lists.
@@ -1300,6 +1303,14 @@ class ZipListsBlock(Block):
             yield "length", 0
             return
 
+        output_items = _zipped_item_count(input_data.lists, input_data.pad_to_longest)
+        if output_items > ZIP_LISTS_MAX_OUTPUT_ITEMS:
+            yield "error", (
+                f"The zipped result would have {output_items:,} items, more "
+                f"than the limit of {ZIP_LISTS_MAX_OUTPUT_ITEMS:,}."
+            )
+            return
+
         if input_data.pad_to_longest:
             result = self._zip_pad(input_data.lists, input_data.fill_value)
         else:
@@ -1307,6 +1318,15 @@ class ZipListsBlock(Block):
 
         yield "zipped_list", result
         yield "length", len(result)
+
+
+def _zipped_item_count(lists: list[list[Any]], pad_to_longest: bool) -> int:
+    """Number of elements the zipped result holds, computed without building it."""
+    lengths = [len(lst) for lst in lists if lst is not None]
+    if not lengths:
+        return 0
+    groups = max(lengths) if pad_to_longest else min(lengths)
+    return groups * len(lengths)
 
 
 class ListDifferenceBlock(Block):
