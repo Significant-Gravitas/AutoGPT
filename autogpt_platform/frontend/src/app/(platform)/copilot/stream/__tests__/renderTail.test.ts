@@ -90,6 +90,7 @@ function snapshot(segments: Segment[]): RuntimeSnapshot {
     notice: null,
     error: null,
     stopped: false,
+    probing: false,
   };
 }
 
