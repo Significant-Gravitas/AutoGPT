@@ -1328,6 +1328,12 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         default="",
         description="The secret key to use for the unsubscribe user by token",
     )
+    cost_approval_signing_key: str = Field(
+        default="",
+        description="HMAC key for high-cost CoPilot approval tokens. Blank "
+        "derives a deployment-stable key from ENCRYPTION_KEY so every worker "
+        "validates the same tokens. With neither set, signing is refused.",
+    )
 
     vapid_private_key: str = Field(
         default="", description="VAPID private key for Web Push"
