@@ -206,6 +206,8 @@ class ReadSpreadsheetBlock(Block):
             # Empty input has no header row; don't let StopIteration escape
             # the async generator (it becomes a RuntimeError).
             header = next(reader, None)
+            while header == []:
+                header = next(reader, None)
             if header is not None:
                 if input_data.strip:
                     header = [h.strip() for h in header]
@@ -231,7 +233,7 @@ class ReadSpreadsheetBlock(Block):
             return data
 
         # csv.reader yields [] for a blank line; don't turn those into {} rows.
-        rows = [process_row(row) for row in reader if any(cell.strip() for cell in row)]
+        rows = [process_row(row) for row in reader if row]
 
         if input_data.produce_singular_result:
             for processed_row in rows:
