@@ -1135,7 +1135,8 @@
         "treg:read",
         "treg:call"
       ],
-      "icon_id": "treg"
+      "icon_id": "treg",
+      "provider": "treg"
     }
   },
   {
