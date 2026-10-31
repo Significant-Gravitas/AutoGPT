@@ -76,28 +76,40 @@ describe("ExpertComputerSection", () => {
     );
   });
 
-  it("says why when the server refuses the desktop under a sandbox limit", async () => {
-    const refusal =
-      "Too many sandboxes are running on your account: 10 at once is the most.";
-    server.use(
-      getGetV2GetExpertComputerMockHandler(computer),
-      http.post("/api/proxy/api/experts/:expertId/computer/desktop", () =>
-        HttpResponse.json({ detail: refusal }, { status: 429 }),
-      ),
-    );
+  it.each([
+    [
+      429,
+      "Too many sandboxes are running on your account: 10 at once is the most.",
+      "Too many sandboxes are running on your account: 10 at once is the most.",
+    ],
+    [
+      502,
+      "Failed to start the desktop.",
+      "The sandbox did not come up. Try again in a moment.",
+    ],
+  ])(
+    "a %i start failure toasts the right reason",
+    async (status, detail, shown) => {
+      server.use(
+        getGetV2GetExpertComputerMockHandler(computer),
+        http.post("/api/proxy/api/experts/:expertId/computer/desktop", () =>
+          HttpResponse.json({ detail }, { status }),
+        ),
+      );
 
-    render(
-      <>
-        <ExpertComputerSection expertId="expert-1" expertName="Maria" />
-        <Toaster />
-      </>,
-    );
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Turn on screen" }),
-    );
+      render(
+        <>
+          <ExpertComputerSection expertId="expert-1" expertName="Maria" />
+          <Toaster />
+        </>,
+      );
+      await userEvent.click(
+        await screen.findByRole("button", { name: "Turn on screen" }),
+      );
 
-    expect(await screen.findByText(refusal)).toBeDefined();
-  });
+      expect(await screen.findByText(shown)).toBeDefined();
+    },
+  );
 
   it("does not show one expert's desktop under another expert", async () => {
     server.use(
