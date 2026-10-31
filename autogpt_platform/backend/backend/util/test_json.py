@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Optional, cast
 
 import jsonschema
+import numpy as np
 import pytest
 from prisma import Json
 from pydantic import BaseModel
@@ -768,6 +769,22 @@ class TestSafeJson:
         metadata = cast(dict[str, Any], inner["metadata"])
         nested_metadata = metadata["nested_key"]
         assert nested_metadata == "NestedValueDelete"
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        (np.float64(2.5), 2.5),
+        (np.float32(0.25), 0.25),
+        (np.int64(3), 3),
+        (np.bool_(True), True),
+    ],
+)
+def test_to_dict_turns_numpy_scalars_into_python_values(value, expected):
+    result = json_util.to_dict({"nested": [value]})
+
+    assert json_util.loads(json_util.dumps(result)) == {"nested": [expected]}
+    assert type(result["nested"][0]) is type(expected)
 
 
 class TestValidateWithJsonschema:
