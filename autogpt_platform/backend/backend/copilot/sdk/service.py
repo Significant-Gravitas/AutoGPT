@@ -252,7 +252,8 @@ from .compaction import (
     sdk_compaction_stats,
     transcript_stats,
 )
-from .env import DISABLE_SLASH_COMMANDS_FLAG, cli_prompt_text, cli_user_message
+from .cli_io import send_user_blocks, send_user_text
+from .env import DISABLE_SLASH_COMMANDS_FLAG, cli_prompt_text
 from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
 from .governor import TurnGovernor
 from .launch_env import launch_options
@@ -4447,10 +4448,7 @@ async def _run_stream_attempt(
                 *ctx.attachments.image_blocks,
                 {"type": "text", "text": cli_text},
             ]
-            user_msg = cli_user_message(content_blocks, ctx.session_id)
-            if client._transport is None:  # noqa: SLF001
-                raise RuntimeError("ClaudeSDKClient transport is not initialized")
-            await client._transport.write(json.dumps(user_msg) + "\n")  # noqa: SLF001
+            await send_user_blocks(client, content_blocks, ctx.session_id)
             state.transcript_builder.append_user(
                 content=[
                     *ctx.attachments.image_blocks,
@@ -4458,7 +4456,7 @@ async def _run_stream_attempt(
                 ]
             )
         else:
-            await client.query(cli_text, session_id=ctx.session_id)
+            await send_user_text(client, state.query_message, ctx.session_id)
             state.transcript_builder.append_user(content=ctx.current_message)
 
         loop_state = _SDKLoopState(
@@ -4516,10 +4514,7 @@ async def _run_stream_attempt(
                 "after thinking-only final turn",
                 ctx.log_prefix,
             )
-            await client.query(
-                _THINKING_ONLY_REPROMPT,
-                session_id=ctx.session_id,
-            )
+            await send_user_text(client, _THINKING_ONLY_REPROMPT, ctx.session_id)
             async for ev in _consume_sdk_until_done(
                 client, ctx, state, acc, loop_state
             ):

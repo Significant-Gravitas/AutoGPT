@@ -577,3 +577,85 @@ def test_no_process_cached_loop_bound_clients():
         "keyed on id(asyncio.get_running_loop()). See "
         "backend/util/clients.py::get_openai_client for context."
     )
+
+
+# ---------------------------------------------------------------------------
+# Rule: only cli_io.py puts a line on the Claude Code CLI's stdin
+# ---------------------------------------------------------------------------
+#
+# Motivation: that stream carries the SDK's control protocol as well as the
+# conversation, so every send goes through cli_io.py, which writes user turns only.
+
+_CLI_IO_MODULE = "copilot/sdk/cli_io.py"
+
+
+def _imports_claude_agent_sdk(tree: ast.Module) -> bool:
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            if any(a.name.split(".")[0] == "claude_agent_sdk" for a in node.names):
+                return True
+        elif (
+            isinstance(node, ast.ImportFrom)
+            and (node.module or "").split(".")[0] == "claude_agent_sdk"
+        ):
+            return True
+    return False
+
+
+def test_only_cli_io_writes_to_the_cli_stdin():
+    offenders: list[str] = []
+    for py in _iter_backend_py_files():
+        rel = py.relative_to(BACKEND_ROOT).as_posix()
+        if rel == _CLI_IO_MODULE or py.name.endswith("_test.py"):
+            continue
+        try:
+            tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+        except SyntaxError:
+            continue
+        if not _imports_claude_agent_sdk(tree):
+            continue
+        for node in ast.walk(tree):
+            # `self._transport` is a module's own attribute; `<client>._transport`
+            # reaches into the SDK's.
+            if (
+                isinstance(node, ast.Attribute)
+                and node.attr == "_transport"
+                and not (isinstance(node.value, ast.Name) and node.value.id == "self")
+            ):
+                offenders.append(f"{rel}:{node.lineno} ._transport")
+            if (
+                isinstance(node, ast.ImportFrom)
+                and (node.module or "").split(".")[0] == "claude_agent_sdk"
+                and any(a.name == "query" for a in node.names)
+            ):
+                offenders.append(
+                    f"{rel}:{node.lineno} import of claude_agent_sdk.query"
+                )
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if isinstance(func, ast.Attribute):
+                name = func.attr
+            elif isinstance(func, ast.Name):
+                name = func.id
+            else:
+                continue
+            # Every SDK entry point that writes a prompt: the client's query()
+            # and connect(prompt), the module-level query(), and a transport's write().
+            if name in ("query", "stream_input"):
+                offenders.append(f"{rel}:{node.lineno} {name}(...)")
+            elif name == "connect" and (node.args or node.keywords):
+                offenders.append(f"{rel}:{node.lineno} connect(<prompt>)")
+            elif (
+                name == "write"
+                and isinstance(func, ast.Attribute)
+                and "transport" in ast.unparse(func.value).lower()
+            ):
+                offenders.append(f"{rel}:{node.lineno} <transport>.write(...)")
+
+    assert not offenders, (
+        "Only backend/copilot/sdk/cli_io.py may send a message to the Claude "
+        "Code CLI; it writes user turns only.\n\n"
+        "Offenders:\n  " + "\n  ".join(offenders) + "\n\n"
+        "Fix: call cli_io.send_user_text() or cli_io.send_user_blocks()."
+    )
