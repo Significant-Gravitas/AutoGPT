@@ -54,10 +54,11 @@ function setupHandlers() {
       const page = Number(params.get("page") ?? 1);
       favoriteSearches.push(searchTerm);
       if (searchTerm) {
+        const matches = searchTerm === "Invoice" ? [unloadedFavorite] : [];
         return {
-          agents: [unloadedFavorite],
+          agents: matches,
           pagination: {
-            total_items: 1,
+            total_items: matches.length,
             total_pages: 1,
             current_page: 1,
             page_size: 10,
