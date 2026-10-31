@@ -733,7 +733,7 @@ async def _build_shared_execution_file_allowlist(
             "NodeExecutions": {
                 "include": {
                     "Input": True,
-                    "Node": {"include": {"AgentBlock": True}},
+                    "Node": True,
                 }
             }
         },

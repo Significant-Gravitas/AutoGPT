@@ -2,7 +2,7 @@ import asyncio
 import logging
 import uuid
 from collections import defaultdict
-from collections.abc import Collection, Container, Mapping, Sequence
+from collections.abc import Collection, Container, Iterable, Mapping, Sequence
 from datetime import datetime, timezone
 from typing import (
     TYPE_CHECKING,
@@ -99,8 +99,22 @@ class Link(BaseDbModel):
             is_static=link.isStatic,
         )
 
+    @property
+    def ends(self) -> tuple[str, str, str, str]:
+        """The two pins the link connects; links with the same ends are
+        duplicates of each other."""
+        return (self.source_id, self.source_name, self.sink_id, self.sink_name)
+
     def __hash__(self):
         return hash((self.source_id, self.sink_id, self.source_name, self.sink_name))
+
+
+def dedupe_links(links: Iterable[Link]) -> list[Link]:
+    """Keeps the first link for each pair of ends, in order."""
+    unique: dict[tuple[str, str, str, str], Link] = {}
+    for link in links:
+        unique.setdefault(link.ends, link)
+    return list(unique.values())
 
 
 class Node(BaseDbModel):
@@ -1296,12 +1310,10 @@ class GraphModel(Graph, GraphMeta):
             organization_id=graph.organizationId if not for_export else None,
             team_id=graph.teamId if not for_export else None,
             nodes=[NodeModel.from_db(node, for_export) for node in graph.Nodes or []],
-            links=list(
-                {
-                    Link.from_db(link)
-                    for node in graph.Nodes or []
-                    for link in (node.Input or []) + (node.Output or [])
-                }
+            links=dedupe_links(
+                Link.from_db(link)
+                for node in graph.Nodes or []
+                for link in (node.Input or []) + (node.Output or [])
             ),
             sub_graphs=[
                 GraphModel.from_db(sub_graph, for_export)
@@ -1800,8 +1812,7 @@ def _sub_graph_refs(graph: AgentGraph, agent_block_id: str) -> list[tuple[str, i
         (graph_id, graph_version)
         for node in graph.Nodes or []
         if (
-            node.AgentBlock
-            and node.AgentBlock.id == agent_block_id
+            node.agentBlockId == agent_block_id
             and (graph_id := cast(str, dict(node.constantInput).get("graph_id")))
             and (
                 graph_version := cast(
@@ -1813,14 +1824,27 @@ def _sub_graph_refs(graph: AgentGraph, agent_block_id: str) -> list[tuple[str, i
 
 
 async def get_connected_output_nodes(node_id: str) -> list[tuple[Link, Node]]:
-    links = await AgentNodeLink.prisma().find_many(
-        where={"agentNodeSourceId": node_id},
-        include={"AgentNodeSink": {"include": AGENT_NODE_INCLUDE}},
+    """Each distinct outgoing link of the node, paired with its sink node.
+
+    Every sink node is read once, however many links lead to it, and without
+    its own links, which no caller needs.
+    """
+    links = dedupe_links(
+        Link.from_db(link)
+        for link in await AgentNodeLink.prisma().find_many(
+            where={"agentNodeSourceId": node_id}
+        )
     )
+    if not links:
+        return []
+    sink_nodes = {
+        node.id: NodeModel.from_db(node)
+        for node in await AgentNode.prisma().find_many(
+            where={"id": {"in": list({link.sink_id for link in links})}}
+        )
+    }
     return [
-        (Link.from_db(link), NodeModel.from_db(link.AgentNodeSink))
-        for link in links
-        if link.AgentNodeSink
+        (link, sink_nodes[link.sink_id]) for link in links if link.sink_id in sink_nodes
     ]
 
 
@@ -2246,6 +2270,8 @@ async def __create_graph(
     team_id: str | None = None,
 ):
     graphs = [graph] + graph.sub_graphs
+    for g in graphs:
+        g.links = dedupe_links(g.links)
 
     # Auto-increment version for any graph entry (parent or sub-graph) whose
     # (id, version) already exists.  This prevents UniqueViolationError when
