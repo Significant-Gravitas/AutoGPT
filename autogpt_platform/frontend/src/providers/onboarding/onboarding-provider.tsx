@@ -17,6 +17,11 @@ import {
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import {
+  isAbortError,
+  isNetworkError,
+  retryTransient,
+} from "@/lib/transient-errors";
 import { usePathname, useRouter } from "next/navigation";
 import {
   createContext,
@@ -112,6 +117,8 @@ export default function OnboardingProvider({
 
   const api = useBackendAPI();
   const pathname = usePathname();
+  const latestPathname = useRef(pathname);
+  const [initRetry, setInitRetry] = useState(0);
   const router = useRouter();
   const { isLoggedIn } = useAuth();
 
@@ -178,6 +185,10 @@ export default function OnboardingProvider({
   }, [isLoggedIn, isOnAuthRoute]);
 
   useEffect(() => {
+    latestPathname.current = pathname;
+  }, [pathname]);
+
+  useEffect(() => {
     // Prevent multiple initializations. Skipped routes don't mark
     // hasInitialized, so init re-runs on the next pathname change.
     if (
@@ -202,8 +213,8 @@ export default function OnboardingProvider({
 
     async function initializeOnboarding() {
       try {
-        const { is_completed } = await resolveResponse(
-          getV1CheckIfOnboardingIsCompleted(),
+        const { is_completed } = await retryTransient(() =>
+          resolveResponse(getV1CheckIfOnboardingIsCompleted()),
         );
 
         const redirectTarget = decideOnboardingRedirect({
@@ -217,7 +228,7 @@ export default function OnboardingProvider({
           return;
         }
 
-        const onboarding = await fetchOnboarding();
+        const onboarding = await retryTransient(fetchOnboarding);
 
         // Handle redirects for completed onboarding
         if (
@@ -232,8 +243,16 @@ export default function OnboardingProvider({
           return;
         }
 
-        if (error instanceof DOMException && error.name === "AbortError") {
+        // A fetch that still can't get through after the retries means the
+        // user is offline or navigating away, not looking at a broken
+        // onboarding. Try again on the next route change instead of alarming
+        // them with a destructive toast.
+        if (isAbortError(error) || isNetworkError(error)) {
+          console.warn("Onboarding initialization deferred:", error);
           hasInitialized.current = false;
+          // A route change that landed while this was in flight was skipped
+          // by the guard above, so run again for it now.
+          if (latestPathname.current !== pathname) setInitRetry((n) => n + 1);
           return;
         }
 
@@ -260,6 +279,7 @@ export default function OnboardingProvider({
     isOnPublicTour,
     isOnPasswordResetRoute,
     isOnPlatformLinkRoute,
+    initRetry,
   ]);
 
   const handleOnboardingNotification = useCallback(

@@ -34,6 +34,7 @@ export function GlassSurface({ params, showRim = true }: Props) {
   const { frost, saturation, tint, edge } = params;
   const backdropFilter = `blur(${frost}px) saturate(${saturation})`;
 
+  /* oxlint-disable design-system/no-inline-styles -- runtime glass knobs; class opacities from custom properties mix in oklab */
   return (
     <>
       <div
@@ -61,4 +62,5 @@ export function GlassSurface({ params, showRim = true }: Props) {
       />
     </>
   );
+  /* oxlint-enable design-system/no-inline-styles */
 }

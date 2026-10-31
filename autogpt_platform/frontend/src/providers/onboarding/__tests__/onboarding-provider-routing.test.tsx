@@ -106,6 +106,28 @@ describe("OnboardingProvider routing — logged-in user", () => {
     consoleError.mockRestore();
   });
 
+  test("retries a dropped request without alarming the user", async () => {
+    mockPathname = "/marketplace";
+    completionError = new TypeError("Failed to fetch");
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    render(
+      <OnboardingProvider>
+        <div />
+      </OnboardingProvider>,
+    );
+
+    await waitFor(() => expect(completedCallCount.value).toBe(2), {
+      timeout: 3000,
+    });
+    await waitFor(() =>
+      expect(routerReplace).toHaveBeenCalledWith("/onboarding"),
+    );
+    expect(toast).not.toHaveBeenCalled();
+    expect(consoleError).not.toHaveBeenCalled();
+  });
+
   test("still reports a genuine initialization failure", async () => {
     mockPathname = "/onboarding";
     const error = new Error("Connection failed");

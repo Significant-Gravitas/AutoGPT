@@ -14,7 +14,14 @@ import { withPushSubscriptionLock } from "./subscription-lock";
 const LOGOUT_TEARDOWN_TIMEOUT_MS = 3_000;
 const TEARDOWN_LOCK_WAIT_MS = 2_000;
 
-export async function setupPushSubscription(): Promise<boolean> {
+/**
+ * `isCancelled` lets the caller drop a setup the user has since overtaken, by
+ * switching notifications off or signing out. It is checked inside the lock,
+ * so a teardown that got the lock first is never undone by a late subscribe.
+ */
+export async function setupPushSubscription(
+  isCancelled: () => boolean = () => false,
+): Promise<boolean> {
   if (!isPushSupported()) return false;
   if (Notification.permission !== "granted") return false;
 
@@ -27,10 +34,23 @@ export async function setupPushSubscription(): Promise<boolean> {
     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || (await fetchVapidPublicKey());
   if (!vapidKey) return false;
 
-  const subscription = await withPushSubscriptionLock(() =>
-    subscribeToPush(registration, vapidKey),
-  );
-  if (!subscription) return false;
+  const subscription = await withPushSubscriptionLock(async () => {
+    if (isCancelled()) return null;
+    const existing = await registration.pushManager
+      .getSubscription()
+      .catch(() => null);
+    const result = await subscribeToPush(registration, vapidKey);
+    if (!result || !isCancelled()) return result;
+    // A teardown that gave up waiting for the lock may already have run and
+    // found nothing, so a subscription this call made after the cancel is
+    // ours to drop. One that was already there is shared with the other
+    // tabs, and a cancel can also mean this tab just unmounted.
+    if (result.endpoint !== existing?.endpoint) {
+      await unsubscribeFromPush(result);
+    }
+    return null;
+  });
+  if (!subscription || isCancelled()) return false;
 
   return sendSubscriptionToServer(subscription);
 }

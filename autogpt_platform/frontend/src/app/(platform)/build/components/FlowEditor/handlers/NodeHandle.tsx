@@ -26,7 +26,7 @@ const InputNodeHandle = ({
       type={"target"}
       position={Position.Left}
       id={cleanedHandleId}
-      className={"-ml-6 mr-2"}
+      className={"mr-2 -ml-6"}
       data-tutorial-id={`input-handler-${nodeId}-${cleanedHandleId}`}
     >
       <div className="pointer-events-none">
@@ -71,7 +71,6 @@ const OutputNodeHandle = ({
         <Icon
           icon={CircleIcon}
           size={16}
-          // TODO(tokens): no exact role: "gray" #808080 (an unconnected output handle; the input handle is text-handle #9CA3AF)
           color={isOutputConnected ? hexColor : "gray"}
           className={cn("text-handle opacity-100", isBroken && "text-error")}
         />

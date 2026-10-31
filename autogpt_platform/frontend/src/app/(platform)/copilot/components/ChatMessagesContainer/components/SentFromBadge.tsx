@@ -20,8 +20,7 @@ export function SentFromBadge({ sentFrom }: Props) {
       href={`/copilot?sessionId=${sentFrom.sessionId}`}
       data-testid="sent-from-badge"
       title="Open the thread this task was sent from"
-      // TODO(tokens): no exact role for bg-purple-100, text-purple-800, hover:bg-purple-200
-      className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 text-caption-sm font-medium leading-inherit text-purple-800 transition-colors hover:bg-purple-200"
+      className="inline-flex items-center gap-1 rounded-full bg-accent-surface px-2 py-0.5 text-caption-sm leading-inherit font-medium text-accent-strong transition-colors hover:bg-brand/50"
     >
       <Icon icon={ArrowTurnBackwardIcon} size={12} />
       Sent from {name}

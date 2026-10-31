@@ -57,14 +57,22 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
     ).messages as UiMessages;
   }, [sessionQuery.data, sessionId, hasActiveStream]);
 
-  const { messages, setMessages, sendMessage, stop, status, error } =
-    useCopilotStream({
-      sessionId,
-      hydratedMessages,
-      hasActiveStream,
-      refetchSession: sessionQuery.refetch,
-      copilotModel: undefined,
-    });
+  const {
+    messages,
+    setMessages,
+    sendMessage,
+    stop,
+    status,
+    error,
+    isReconnecting,
+    isFinishProbing,
+  } = useCopilotStream({
+    sessionId,
+    hydratedMessages,
+    hasActiveStream,
+    refetchSession: sessionQuery.refetch,
+    copilotModel: undefined,
+  });
 
   const { queuedMessages, queueMessage } = useCopilotPendingChips({
     sessionId,
@@ -176,5 +184,6 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
     stop,
     onSend,
     queuedMessages,
+    isTurnSettling: isReconnecting || isFinishProbing || hasActiveStream,
   };
 }

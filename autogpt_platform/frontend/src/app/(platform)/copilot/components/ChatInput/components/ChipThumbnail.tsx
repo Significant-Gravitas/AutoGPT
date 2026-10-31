@@ -35,7 +35,7 @@ export function ChipThumbnail({ attachment, stacked, fallback }: Props) {
   }
   if (attachment.kind === "workspace") {
     return (
-      // eslint-disable-next-line @next/next/no-img-element
+      // eslint-disable-next-line @next/next/no-img-element -- an authenticated workspace download URL next/image cannot optimise
       <img
         src={workspaceFileDownloadUrl(attachment.fileId)}
         alt=""

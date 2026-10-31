@@ -28,7 +28,7 @@ import prisma.models
 
 from backend.data.db import query_raw_with_schema
 from backend.data.notifications import AudienceAction
-from backend.data.onboarding_role import OnboardingRole, get_onboarding_role
+from backend.data.onboarding_role import OnboardingRole, get_answered_role
 from backend.data.user import get_user_by_id, record_excluded_country
 from backend.notifications import posthog_audience
 from backend.notifications.audience_enrichment import (
@@ -95,8 +95,8 @@ async def queue_checkout_opened(
             user, AudienceAction.CHECKOUT_OPENED, (ip_country, stripe_country)
         ):
             return
-        # The profile step sends the role to PostHog itself; only MailerLite
-        # gets it here.
+        # The wizard sends the role to PostHog itself once its role step is
+        # answered (onboarding routes); only MailerLite gets it here.
         if role := await _role(user_id):
             fields.update(role_fields(role))
         await queue_fields(user_id, user.email, fields, AudienceAction.CHECKOUT_OPENED)
@@ -166,7 +166,7 @@ async def _role(user_id: str) -> OnboardingRole | None:
     """The role picked in onboarding, if there is one yet. A failed read
     costs the opener their role, never their checkout event."""
     try:
-        return await get_onboarding_role(user_id)
+        return await get_answered_role(user_id)
     except Exception:
         logger.warning(f"Could not read the onboarding role of {user_id}")
         return None
