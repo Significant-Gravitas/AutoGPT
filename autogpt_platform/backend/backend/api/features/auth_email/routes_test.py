@@ -12,6 +12,7 @@ from pytest_mock import MockerFixture
 
 from backend.api.features.auth_email import routes as auth_email_routes
 from backend.api.rest_api import app as rest_app
+from backend.notifications.renderer import build_urls
 from backend.util.exceptions import EmailUndeliverableError
 
 app = fastapi.FastAPI(exception_handlers=rest_app.exception_handlers)
@@ -243,6 +244,14 @@ def test_rejects_unknown_type(send_mock):
     send_mock.assert_not_called()
 
 
+def test_rejects_account_deleted_type(send_mock):
+    """A frontend service token may only trigger link emails; the account
+    deleted confirmation is sent by the deletion service itself."""
+    res = _post({**VALID_BODY, "type": "account_deleted"})
+    assert res.status_code == 422
+    send_mock.assert_not_called()
+
+
 def test_unauthenticated_request_is_401(mocker: MockerFixture, monkeypatch):
     """Without a frontend service token the route must refuse — proves the
     Security dependency is actually wired to the endpoint."""
@@ -378,3 +387,78 @@ def test_auth_email_design_and_plain_text(send_mock, email_type, subject, button
     assert "Email preferences" not in body
     assert "didn't request this" in text
     assert len(body.encode()) < 60_000
+
+
+LINK = "https://platform.agpt.co/reset-password?token=abc"
+FOOTER = (
+    "This is a service message about an AutoGPT account. "
+    "It's sent even if you've opted out of product news.\n"
+    "AutoGPT, 3rd Floor, 1 Ashley Road, Altrincham, WA14 2DT, UK\n"
+    "https://agpt.co\n"
+    "Discord: {discord}"
+)
+
+
+def test_link_email_plain_text_is_unchanged(send_mock):
+    _post({**VALID_BODY, "type": "change_email", "url": LINK})
+
+    discord = build_urls("").discord
+    _, _, _, text = send_mock.call_args.args
+    assert text == (
+        "Confirm your new email address\n"
+        "\n"
+        "An email address change was requested for your AutoGPT account. "
+        "Use the button below to confirm your new email address. "
+        "If you didn't request this, you can safely ignore this email.\n"
+        "\n"
+        "Confirm email:\n"
+        f"{LINK}\n"
+        "This link was requested from your AutoGPT account settings.\n"
+        f"Something wrong? Ask in Discord: {discord}\n"
+        "\n" + FOOTER.format(discord=discord)
+    )
+
+
+def test_link_email_with_expiry_and_note_plain_text_is_unchanged(send_mock):
+    _post({**VALID_BODY, "type": "set_password", "url": LINK})
+
+    discord = build_urls("").discord
+    _, _, _, text = send_mock.call_args.args
+    assert text == (
+        "Set your password\n"
+        "\n"
+        "Someone asked to sign up for, or verify, an AutoGPT Platform account "
+        "with this email address. Use the button below to set a password and "
+        "finish signing up. If you didn't request this, you can safely ignore "
+        "this email.\n"
+        "\n"
+        "Set password:\n"
+        f"{LINK}\n"
+        "The link expires in 1 hour.\n"
+        "If you already finished signing up with an earlier link, the password "
+        "you chose then no longer works: set a new one with this link, or use "
+        '"Forgot password" on the login page.\n'
+        "This link was requested from the AutoGPT sign-up form.\n"
+        f"Something wrong? Ask in Discord: {discord}\n"
+        "\n" + FOOTER.format(discord=discord)
+    )
+
+
+# verify_email has its own layout, with its own tests.
+@pytest.mark.parametrize(
+    "email_type", ["reset_password", "change_email", "set_password"]
+)
+def test_link_email_html_keeps_ignore_line_button_and_link(send_mock, email_type):
+    _post({**VALID_BODY, "type": email_type, "url": LINK})
+
+    _, _, body, _ = send_mock.call_args.args
+    assert (
+        " If you didn't request this, you can safely ignore this email.</div>" in body
+    )
+    assert (
+        '<div style="padding-top:10px; font-size:12px; line-height:18px; '
+        'color:#575072;">Button not working? Copy this link into your browser:'
+        "</div>" in body
+    )
+    assert body.count(f'<a href="{LINK}"') == 2
+    assert f">{LINK}</a>" in body

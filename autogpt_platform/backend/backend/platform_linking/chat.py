@@ -175,16 +175,23 @@ async def resolve_owner(
     """Resolve the AutoGPT user that owns a platform conversation.
 
     Server context → server owner. DM context → the DM-linked user.
+
+    A closed account's links count as unlinked (``open_only``): account
+    deletion unlinks the chat platforms only best effort, and the bot's turn
+    gate checks the plan and usage, not a closed account, so a link that
+    outlived the close must not run turns as the deleted user.
     """
     db = platform_linking_db()
 
     if platform_server_id:
-        owner = await db.find_server_link_owner(platform, platform_server_id)
+        owner = await db.find_server_link_owner(
+            platform, platform_server_id, open_only=True
+        )
         if owner is None:
             raise NotFoundError("This server is not linked to an AutoGPT account.")
         return owner
 
-    owner = await db.find_user_link_owner(platform, platform_user_id)
+    owner = await db.find_user_link_owner(platform, platform_user_id, open_only=True)
     if owner is None:
         raise NotFoundError("Your DMs are not linked to an AutoGPT account.")
     return owner
@@ -504,7 +511,7 @@ async def list_user_chats(
     server — so a caller can only ever see their own conversations.
     """
     owner_user_id = await platform_linking_db().find_user_link_owner(
-        platform.value, platform_user_id
+        platform.value, platform_user_id, open_only=True
     )
     if owner_user_id is None:
         raise NotFoundError("Your DMs are not linked to an AutoGPT account.")

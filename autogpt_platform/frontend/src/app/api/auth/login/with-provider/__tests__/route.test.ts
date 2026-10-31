@@ -55,6 +55,7 @@ describe("POST /api/auth/login/with-provider", () => {
       body: {
         provider: "google",
         callbackURL: "/auth/callback?next=/marketplace",
+        errorCallbackURL: "/login",
       },
       headers: request.headers,
     });
@@ -71,9 +72,23 @@ describe("POST /api/auth/login/with-provider", () => {
     await POST(makeProviderRequest({ provider: "github" }));
 
     expect(signInSocialMock).toHaveBeenCalledWith({
-      body: { provider: "github", callbackURL: "/auth/callback" },
+      body: {
+        provider: "github",
+        callbackURL: "/auth/callback",
+        errorCallbackURL: "/login",
+      },
       headers: expect.any(Headers),
     });
+  });
+
+  it("sends a refused sign-in, such as a banned account, back to /login", async () => {
+    signInSocialMock.mockResolvedValue({ url: "https://discord.com/oauth2" });
+
+    await POST(makeProviderRequest({ provider: "discord" }));
+
+    expect(signInSocialMock.mock.calls[0][0].body.errorCallbackURL).toBe(
+      "/login",
+    );
   });
 
   it("returns 400 when no provider is supplied", async () => {

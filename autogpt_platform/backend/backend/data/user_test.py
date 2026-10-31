@@ -1006,7 +1006,12 @@ class TestGetBillingEmailRecipient:
         )
         row.name = "User"
 
-        with patch.object(user_module, "prisma") as mock_prisma:
+        with (
+            patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(
+                user_module, "is_account_closed", new=AsyncMock(return_value=False)
+            ),
+        ):
             mock_prisma.user.find_first = AsyncMock(return_value=row)
             recipient = await get_billing_email_recipient("cus_123")
 
@@ -1021,6 +1026,31 @@ class TestGetBillingEmailRecipient:
             marketing_opt_out_at=opted_out_at,
             timezone="Europe/London",
         )
+
+    @pytest.mark.asyncio
+    async def test_a_closed_account_gets_no_billing_mail(self):
+        """A Stripe event in flight or redelivered after the deletion (a final
+        notice, a welcome) must not email an account that is closed."""
+        row = MagicMock(
+            id="user-1",
+            email="user@example.com",
+            welcomeEmailSentAt=None,
+            marketingOptOutAt=None,
+            timezone="Europe/London",
+        )
+        row.name = "User"
+
+        with (
+            patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(
+                user_module, "is_account_closed", new=AsyncMock(return_value=True)
+            ) as closed,
+        ):
+            mock_prisma.user.find_first = AsyncMock(return_value=row)
+            recipient = await get_billing_email_recipient("cus_123")
+
+        assert recipient is None
+        closed.assert_awaited_once_with("user-1")
 
 
 def _credentials_tx(mocker) -> MagicMock:

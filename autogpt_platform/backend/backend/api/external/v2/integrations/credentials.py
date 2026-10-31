@@ -8,12 +8,12 @@ import logging
 from typing import Annotated, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Security
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Security
 from prisma.enums import APIKeyPermission
 from pydantic import SecretStr
 from starlette import status
 
-from backend.api.features.integrations.router import delete_credentials_and_dependents
+from backend.api.features.integrations.router import delete_and_revoke_credentials
 from backend.data.model import (
     APIKeyCredentials,
     HostScopedCredentials,
@@ -113,7 +113,6 @@ async def create_credential(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 async def delete_credential(
-    request: Request,
     credential_id: str,
     force: Annotated[
         bool,
@@ -161,12 +160,11 @@ async def delete_credential(
         )
 
     try:
-        await delete_credentials_and_dependents(
-            request,
+        await delete_and_revoke_credentials(
             auth.user_id,
             existing,
             ProviderName(existing.provider),
-            force,
+            force=force,
         )
     except NeedConfirmation as e:
         raise HTTPException(

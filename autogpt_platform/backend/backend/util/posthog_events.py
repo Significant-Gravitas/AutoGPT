@@ -88,6 +88,13 @@ class PostHogEvent(StrEnum):
     LISTING_ADDED_TO_LIBRARY = "listing_added_to_library"
     LISTING_DOWNLOADED = "listing_downloaded"
 
+    # Account deletion (SECRT-2877): backend/api/features/account_deletion/.
+    # Anonymous: sent with capture_anonymous, never with the user's id.
+    ACCOUNT_DELETION_STARTED = "account_deletion_started"
+    ACCOUNT_DELETION_FEEDBACK = "account_deletion_feedback"
+    ACCOUNT_DELETION_ALTERNATIVE_CLICKED = "account_deletion_alternative_clicked"
+    ACCOUNT_DELETION_COMPLETED = "account_deletion_completed"
+    ACCOUNT_DELETION_KEPT = "account_deletion_kept"
     # Email (SECRT-2735): backend/api/features/postmark/, from Postmark's
     # webhooks for the mail the platform sends itself.
     EMAIL_DELIVERED = "email_delivered"

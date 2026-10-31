@@ -21,7 +21,7 @@ from autogpt_libs.auth import requires_frontend_service
 from fastapi import APIRouter, HTTPException, Security, status
 from pydantic import BaseModel, EmailStr
 
-from backend.notifications.auth import AuthEmailType, render_auth_email
+from backend.notifications.auth import AuthLinkEmailType, render_auth_email
 from backend.util.clients import get_notification_manager_client
 from backend.util.exceptions import EmailUndeliverableError
 from backend.util.settings import Settings
@@ -36,7 +36,9 @@ requires_auth_email_service = requires_frontend_service("auth-email:send")
 
 
 class AuthEmailRequest(BaseModel):
-    type: AuthEmailType
+    # Link emails only: the account-deleted confirmation is sent by the
+    # deletion service, never on a service token's say-so.
+    type: AuthLinkEmailType
     to: EmailStr
     url: str
 

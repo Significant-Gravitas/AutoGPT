@@ -12,6 +12,7 @@ from collections import OrderedDict
 import fastapi
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from .closed_accounts import AccountState, get_account_state, reject_closed_account
 from .jwt_utils import get_jwt_payload, parse_jwt_token_async, verify_user
 from .models import RequestContext, User
 from .permissions import (
@@ -127,7 +128,7 @@ async def get_optional_user_id(
 
     Returns:
         The user ID (str) extracted from the JWT "sub" claim, or None if no valid token is present
-        or its account is banned.
+        or its account is banned or closed.
     """
     if not credentials:
         return None
@@ -148,7 +149,14 @@ async def get_optional_user_id(
     except Exception:
         logger.warning(f"Ban lookup failed for {user_id}; answering as anonymous")
         return None
-    return None if banned else user_id
+    if banned:
+        return None
+    # A closed account is not banned (its owner signs in to keep it), so it is
+    # checked on its own. Like a failed ban lookup, a failed check answers as
+    # someone signed out: these routes are read-only, so that costs little.
+    if await get_account_state(user_id) is not AccountState.OPEN:
+        return None
+    return user_id
 
 
 async def get_unbanned_jwt_payload(
@@ -158,6 +166,9 @@ async def get_unbanned_jwt_payload(
 
     The resolvers below all read it, and FastAPI resolves it once per request.
     Under impersonation the subject is the admin, who may act as a banned user.
+    Deleting an account does not ban it (its owner signs in to reopen it), so
+    only the account deletion routes skip this check: a banned person may
+    still delete their account (``get_user_id_allowing_closed``).
     """
     user_id = jwt_payload.get("sub")
     if user_id and await _is_banned(user_id):
@@ -185,9 +196,14 @@ async def requires_user(
     FastAPI dependency that requires a valid authenticated user.
 
     Raises:
-        HTTPException: 401 for authentication failures
+        HTTPException: 401 for authentication failures, or for a user who
+            closed their account
     """
-    return verify_user(jwt_payload, admin_only=False)
+    user = verify_user(jwt_payload, admin_only=False)
+    # No heal here: routes guarded only by requires_user (POST /auth/user)
+    # provision the row themselves.
+    await reject_closed_account(user.user_id)
+    return user
 
 
 async def requires_admin_user(
@@ -197,9 +213,12 @@ async def requires_admin_user(
     FastAPI dependency that requires a valid admin user.
 
     Raises:
-        HTTPException: 401 for authentication failures, 403 for insufficient permissions
+        HTTPException: 401 for authentication failures, or for an admin who
+            closed their account; 403 for insufficient permissions
     """
-    return verify_user(jwt_payload, admin_only=True)
+    user = verify_user(jwt_payload, admin_only=True)
+    await reject_closed_account(user.user_id)
+    return user
 
 
 async def get_user_id(
@@ -215,40 +234,80 @@ async def get_user_id(
     - Logs all impersonation actions for audit trail
 
     Raises:
-        HTTPException: 401 for authentication failures or missing user ID
+        HTTPException: 401 for authentication failures, a missing user ID, or
+            a token whose own subject closed their account
         HTTPException: 403 if non-admin tries to use impersonation
     """
-    # Get the authenticated user's ID from JWT
+    return await _resolve_user_id(request, jwt_payload, allow_closed=False)
+
+
+async def get_user_id_allowing_closed(
+    request: fastapi.Request,
+    jwt_payload: dict = fastapi.Security(get_jwt_payload),
+) -> str:
+    """``get_user_id`` that still resolves a closed or a banned account.
+
+    Only for the account deletion routes: a repeat request for an account
+    already closed still answers, its owner can see when it will be erased and
+    reopen it, and a banned person can still delete their account (a legal
+    right; the ban stays, so they can never sign in to reopen it). A closed
+    account is never self-healed: that would re-create the User row its
+    erasure removes.
+    """
+    return await _resolve_user_id(request, jwt_payload, allow_closed=True)
+
+
+async def _resolve_user_id(
+    request: fastapi.Request, jwt_payload: dict, *, allow_closed: bool
+) -> str:
+    subject = _token_subject(jwt_payload)
+    check = get_account_state if allow_closed else reject_closed_account
+    state = await check(subject)
+
+    if state is AccountState.OPEN:
+        # Self-heal a missing platform User row for the token's own subject.
+        # Under impersonation that is the admin, never the target: the claims
+        # describe the admin, and provisioning the target from them would be
+        # wrong. Never for an account that is or may be closed: that would
+        # re-create the User row its erasure removes.
+        await _heal_platform_user(jwt_payload)
+
+    return _impersonated_user_id(request, jwt_payload) or subject
+
+
+def _token_subject(jwt_payload: dict) -> str:
+    """The authenticated user's own ID, from the token's ``sub`` claim."""
     user_id = jwt_payload.get("sub")
     if not user_id:
         raise fastapi.HTTPException(
             status_code=401, detail="User ID not found in token"
         )
+    return user_id
 
-    # Self-heal a missing platform User row for the token's own subject. Under
-    # impersonation that is the admin, never the target: the claims describe
-    # the admin, and provisioning the target from them would be wrong.
-    await _heal_platform_user(jwt_payload)
 
-    # Check for admin impersonation header
+def _impersonated_user_id(request: fastapi.Request, jwt_payload: dict) -> str | None:
+    """The user an admin acts as via the impersonation header, if any.
+
+    Raises:
+        HTTPException: 403 if a non-admin sends the header
+    """
     impersonate_header = request.headers.get(IMPERSONATION_HEADER_NAME, "").strip()
-    if impersonate_header:
-        # Verify the authenticated user is an admin
-        authenticated_user = verify_user(jwt_payload, admin_only=False)
-        if authenticated_user.role != "admin":
-            raise fastapi.HTTPException(
-                status_code=403, detail="Only admin users can impersonate other users"
-            )
+    if not impersonate_header:
+        return None
 
-        # Log the impersonation for audit trail
-        logger.info(
-            f"Admin impersonation: {authenticated_user.user_id} ({authenticated_user.email}) "
-            f"acting as user {impersonate_header} for requesting {request.method} {request.url}"
+    # Verify the authenticated user is an admin
+    authenticated_user = verify_user(jwt_payload, admin_only=False)
+    if authenticated_user.role != "admin":
+        raise fastapi.HTTPException(
+            status_code=403, detail="Only admin users can impersonate other users"
         )
 
-        return impersonate_header
-
-    return user_id
+    # Log the impersonation for audit trail
+    logger.info(
+        f"Admin impersonation: {authenticated_user.user_id} ({authenticated_user.email}) "
+        f"acting as user {impersonate_header} for requesting {request.method} {request.url}"
+    )
+    return impersonate_header
 
 
 # ---------------------------------------------------------------------------
@@ -379,6 +438,7 @@ async def get_request_context(
 
     Resolution order:
       1. Extract user_id from JWT (supports admin impersonation via X-Act-As-User-Id).
+         401 when the token's own subject closed their account.
       2. Read X-Org-Id header; fall back to the user's personal org; fail if none.
       3. Validate that the user has an ACTIVE OrgMember row for that org.
       4. Read X-Team-Id header (optional). If set, validate that the
@@ -389,25 +449,10 @@ async def get_request_context(
     from backend.data.db import prisma  # deferred -- only needed at runtime
 
     # --- 1. user_id (reuse existing impersonation logic) ----------------------
-    user_id = jwt_payload.get("sub")
-    if not user_id:
-        raise fastapi.HTTPException(
-            status_code=401, detail="User ID not found in token"
-        )
-
-    impersonate_header = request.headers.get(IMPERSONATION_HEADER_NAME, "").strip()
-    if impersonate_header:
-        authenticated_user = verify_user(jwt_payload, admin_only=False)
-        if authenticated_user.role != "admin":
-            raise fastapi.HTTPException(
-                status_code=403,
-                detail="Only admin users can impersonate other users",
-            )
-        logger.info(
-            f"Admin impersonation: {authenticated_user.user_id} ({authenticated_user.email}) "
-            f"acting as user {impersonate_header} for requesting {request.method} {request.url}"
-        )
-        user_id = impersonate_header
+    subject = _token_subject(jwt_payload)
+    # Before anything below can self-heal the account's User row.
+    account_state = await reject_closed_account(subject)
+    user_id = _impersonated_user_id(request, jwt_payload) or subject
 
     # --- 2. org_id ------------------------------------------------------------
     org_id = request.headers.get(ORG_HEADER_NAME, "").strip() or None
@@ -436,7 +481,9 @@ async def get_request_context(
             # recoverable: the personal org, or the platform User row the org
             # would hang off. Provision the user first so the bootstrap below
             # has something to work with.
-            if await _ensure_platform_user(user_id, jwt_payload):
+            if account_state is AccountState.OPEN and await _ensure_platform_user(
+                user_id, jwt_payload
+            ):
                 await _finish_account_bootstrap(jwt_payload)
 
             org_id, _ = await get_user_default_team(user_id)

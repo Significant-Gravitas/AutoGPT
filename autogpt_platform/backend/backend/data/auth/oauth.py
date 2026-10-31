@@ -25,6 +25,7 @@ from prisma.models import OAuthRefreshToken as PrismaOAuthRefreshToken
 from prisma.types import OAuthApplicationUpdateInput
 from pydantic import BaseModel, Field, SecretStr
 
+from backend.data.db import transaction
 from backend.data.user import is_user_banned
 
 from .base import APIAuthorizationInfo
@@ -735,6 +736,43 @@ async def revoke_refresh_token(
     except Exception as e:
         logger.exception(f"Error revoking refresh token: {e}")
         return None
+
+
+# ============================================================================
+# User-wide Revocation
+# ============================================================================
+
+
+async def revoke_user_oauth_tokens(user_id: str) -> dict[str, int]:
+    """
+    Revoke every OAuth grant issued for a user, across all applications.
+
+    In one transaction: deletes the user's unused authorization codes (a code
+    has no revoked state, and a used one is already spent) and revokes every
+    access and refresh token that isn't revoked yet. Tokens revoked earlier
+    keep their original ``revokedAt``. Applications the user owns as a
+    developer, and tokens other users granted them, are left alone.
+
+    Returns a dict with counts by type, like ``cleanup_expired_oauth_tokens``.
+    """
+    now = datetime.now(timezone.utc)
+    async with transaction() as tx:
+        codes = await PrismaOAuthAuthorizationCode.prisma(tx).delete_many(
+            where={"userId": user_id, "usedAt": None}
+        )
+        refresh = await PrismaOAuthRefreshToken.prisma(tx).update_many(
+            where={"userId": user_id, "revokedAt": None},
+            data={"revokedAt": now},
+        )
+        access = await PrismaOAuthAccessToken.prisma(tx).update_many(
+            where={"userId": user_id, "revokedAt": None},
+            data={"revokedAt": now},
+        )
+    return {
+        "authorization_codes": codes,
+        "access_tokens": access,
+        "refresh_tokens": refresh,
+    }
 
 
 # ============================================================================

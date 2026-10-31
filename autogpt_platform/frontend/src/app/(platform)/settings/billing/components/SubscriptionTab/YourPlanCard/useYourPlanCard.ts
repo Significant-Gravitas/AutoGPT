@@ -28,19 +28,14 @@ import {
   trackPaywallViewed,
   trackPlanSelected,
 } from "@/services/analytics/monetization-analytics";
+import {
+  getSubscriptionPlan,
+  PLAN_LABEL,
+} from "@/services/billing/subscription-plan";
 
 import { formatCents, formatShortDate } from "../../../helpers";
 import { getCheckoutReturnURLs } from "../helpers";
 import { useTierUpgradePreview } from "./useTierUpgradePreview";
-
-const PLAN_LABEL: Record<string, string> = {
-  NO_TIER: "No active subscription",
-  BASIC: "Basic",
-  PRO: "Pro",
-  MAX: "Max",
-  BUSINESS: "Team",
-  ENTERPRISE: "Enterprise",
-};
 
 // ENTERPRISE seats are provisioned by an administrator and the backend
 // rejects every self-service change from them with 403, so the card must
@@ -105,12 +100,19 @@ export function useYourPlanCard() {
   const isUpdatingTier =
     isUpdatePending || isChangingTier || checkoutRedirect.isRedirectingHere;
 
-  const effectiveTier = subscription.data?.tier ?? null;
+  const {
+    tier: effectiveTier,
+    billingCycle: serverCycle,
+    isAdminManaged,
+    pendingTier,
+    pendingEffectiveAt,
+    pendingBillingCycle,
+    isPendingCancel,
+    isPendingDowngrade,
+    isPendingCycleSwitch,
+  } = getSubscriptionPlan(subscription.data);
   const isPaid = effectiveTier !== null && effectiveTier !== "NO_TIER";
-  const isAdminManaged = effectiveTier === "ENTERPRISE";
 
-  const serverCycle: SubscriptionTierRequestBillingCycle =
-    subscription.data?.billing_cycle === "yearly" ? "yearly" : "monthly";
   const [selectedCycle, setSelectedCycle] =
     useState<SubscriptionTierRequestBillingCycle>(serverCycle);
   const [pendingCycle, setPendingCycle] =
@@ -151,34 +153,6 @@ export function useYourPlanCard() {
     effectiveTier && !isAdminManaged ? getNextTier(effectiveTier) : null;
   const previousTierKey =
     effectiveTier && !isAdminManaged ? getPreviousTier(effectiveTier) : null;
-
-  // Any Stripe schedule attached to an ENTERPRISE account is admin business;
-  // surfacing it would offer a "Resume" the backend rejects.
-  const pendingTier = isAdminManaged
-    ? null
-    : (subscription.data?.pending_tier ?? null);
-  const pendingEffectiveAt =
-    subscription.data?.pending_tier_effective_at ?? null;
-  const pendingBillingCycle = subscription.data?.pending_billing_cycle ?? null;
-  // Cancellation = pending change to the "no active subscription" state.
-  const isPendingCancel = pendingTier === "NO_TIER";
-  // Same-tier yearly→monthly schedule: pending_tier matches current tier but
-  // pending_billing_cycle differs from serverCycle. Treat as a cycle-only
-  // switch so the badge + copy describe the change accurately rather than
-  // claiming a confusing "downgrade to <same tier>".
-  const isPendingCycleSwitch =
-    pendingTier !== null &&
-    pendingTier !== "NO_TIER" &&
-    pendingTier === effectiveTier &&
-    pendingBillingCycle !== null &&
-    pendingBillingCycle !== serverCycle;
-  // Paid→paid tier downgrade scheduled in Stripe (e.g. MAX → PRO at period
-  // end). The in-app trigger lives on the Downgrade button below; the Stripe
-  // billing portal can also originate one.
-  const isPendingDowngrade =
-    pendingTier !== null &&
-    pendingTier !== "NO_TIER" &&
-    pendingTier !== effectiveTier;
 
   const tierCostsYearly = subscription.data?.tier_costs_yearly ?? {};
   const tierCosts = subscription.data?.tier_costs ?? {};

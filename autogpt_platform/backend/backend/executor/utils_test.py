@@ -2149,7 +2149,7 @@ async def test_add_graph_execution_refuses_a_banned_owner(
     from backend.util.exceptions import UserBannedError
 
     mocker.patch(
-        "backend.executor.utils.is_user_banned",
+        "backend.executor.utils.is_user_refused",
         new=mocker.AsyncMock(return_value=True),
     )
     mock_edb = mocker.patch("backend.executor.utils.execution_db")

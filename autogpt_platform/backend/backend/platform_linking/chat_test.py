@@ -401,6 +401,74 @@ class TestStartChatTurn:
         assert mock_enqueue.await_args.kwargs["team_id"] == "personal-team"
 
 
+class TestClosedAccountOwner:
+    """A closed account's chat links count as unlinked, even when the unlink
+    at deletion failed: nobody in its server or DMs may run turns as it. The
+    link-owner query drops a closed owner (``open_only``) in the same
+    DB-manager call, so this costs the bot no extra round trip."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "server_id,message",
+        [
+            ("guild-1", "This server is not linked to an AutoGPT account."),
+            (None, "Your DMs are not linked to an AutoGPT account."),
+        ],
+    )
+    async def test_no_turn_runs_as_a_closed_owner(
+        self, server_id: str | None, message: str
+    ):
+        db_mock = MagicMock()
+        db_mock.find_server_link_owner = AsyncMock(return_value=None)
+        db_mock.find_user_link_owner = AsyncMock(return_value=None)
+
+        with (
+            patch(
+                "backend.platform_linking.chat.platform_linking_db",
+                return_value=db_mock,
+            ),
+            patch(
+                "backend.platform_linking.chat.enqueue_copilot_turn",
+                new=AsyncMock(),
+            ) as mock_enqueue,
+        ):
+            with pytest.raises(NotFoundError, match=message):
+                await start_chat_turn(_request(platform_server_id=server_id))
+
+        if server_id:
+            db_mock.find_server_link_owner.assert_awaited_once_with(
+                "DISCORD", server_id, open_only=True
+            )
+        else:
+            db_mock.find_user_link_owner.assert_awaited_once_with(
+                "DISCORD", "pu1", open_only=True
+            )
+        mock_enqueue.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_closed_owners_chats_are_not_listed(self):
+        db_mock = MagicMock()
+        db_mock.find_user_link_owner = AsyncMock(return_value=None)
+
+        with (
+            patch(
+                "backend.platform_linking.chat.platform_linking_db",
+                return_value=db_mock,
+            ),
+            patch(
+                "backend.platform_linking.chat.get_user_sessions",
+                new=AsyncMock(return_value=([], 0)),
+            ) as mock_get_sessions,
+        ):
+            with pytest.raises(NotFoundError):
+                await list_user_chats(Platform.DISCORD, "pu1")
+
+        db_mock.find_user_link_owner.assert_awaited_once_with(
+            "DISCORD", "pu1", open_only=True
+        )
+        mock_get_sessions.assert_not_awaited()
+
+
 class TestListUserChats:
     @pytest.mark.asyncio
     async def test_unlinked_dm_raises_not_found(self):
@@ -437,7 +505,9 @@ class TestListUserChats:
         ):
             result = await list_user_chats(Platform.DISCORD, "pu1")
 
-        db_mock.find_user_link_owner.assert_awaited_once_with("DISCORD", "pu1")
+        db_mock.find_user_link_owner.assert_awaited_once_with(
+            "DISCORD", "pu1", open_only=True
+        )
         get_sessions_call = mock_get_sessions.await_args
         assert get_sessions_call is not None
         assert get_sessions_call.args[0] == "owner-1"

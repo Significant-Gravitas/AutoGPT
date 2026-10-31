@@ -18,6 +18,7 @@ from contextvars import ContextVar
 from typing import Any, AsyncIterator, Optional, Sequence
 
 import pydantic
+from autogpt_libs.auth.closed_accounts import AccountState, get_account_state
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 from mcp.server.auth.settings import AuthSettings
@@ -381,6 +382,9 @@ class ExternalAPITokenVerifier(TokenVerifier):
     async def _tenanted(
         self, token: str, auth: APIAuthorizationInfo
     ) -> TenantedAccessToken | None:
+        if await get_account_state(auth.user_id) is AccountState.CLOSED:
+            logger.warning(f"Rejecting MCP token for closed account {auth.user_id}")
+            return None
         if await owner_is_banned(auth):
             logger.warning(f"Rejecting MCP token for banned user {auth.user_id}")
             return None

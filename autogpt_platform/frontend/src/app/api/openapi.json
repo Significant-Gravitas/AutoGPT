@@ -7,6 +7,146 @@
     "version": "0.1"
   },
   "paths": {
+    "/api/account/deletion": {
+      "get": {
+        "tags": ["account"],
+        "summary": "Get account deletion status",
+        "operationId": "getAccountGet account deletion status",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeletionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["account"],
+        "summary": "Delete account",
+        "operationId": "postAccountDelete account",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountDeletionRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeletionResponse"
+                }
+              }
+            }
+          },
+          "400": { "description": "That email doesn't match your account." },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Account deletion isn't available while impersonating a user."
+          },
+          "404": {
+            "description": "The self-serve-account-deletion flag is off"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "502": {
+            "description": "We couldn't cancel your plan. Nothing was deleted. Try again."
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/account/deletion/feedback": {
+      "post": {
+        "tags": ["account"],
+        "summary": "Send exit feedback",
+        "operationId": "postAccountSend exit feedback",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeletionFeedbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Account deletion isn't available while impersonating a user."
+          },
+          "404": {
+            "description": "The self-serve-account-deletion flag is off"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "429": { "description": "Too many answers from this account" }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/account/deletion/restore": {
+      "post": {
+        "tags": ["account"],
+        "summary": "Keep my account",
+        "operationId": "postAccountKeep my account",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeletionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Account deletion isn't available while impersonating a user."
+          },
+          "409": {
+            "description": "It's too late to keep this account: its data is being erased. Contact contact@agpt.co if you need help."
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/admin/access-blocks": {
       "get": {
         "tags": ["admin"],
@@ -19669,6 +19809,43 @@
         "required": ["blocks", "total"],
         "title": "AccessBlockPage"
       },
+      "AccountDeletionRequestBody": {
+        "properties": {
+          "confirm_email": {
+            "type": "string",
+            "maxLength": 320,
+            "title": "Confirm Email"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["settings", "paywall"],
+            "title": "Source"
+          }
+        },
+        "type": "object",
+        "required": ["confirm_email", "source"],
+        "title": "AccountDeletionRequestBody"
+      },
+      "AccountDeletionResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["open", "scheduled", "too_late"],
+            "title": "Status"
+          },
+          "erase_after": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Erase After"
+          }
+        },
+        "type": "object",
+        "required": ["status"],
+        "title": "AccountDeletionResponse",
+        "description": "Whether the account is closed and waiting to be erased. While it is,\n``erase_after`` says when the erasure may start: until then (``scheduled``)\nits owner can keep the account; from then on, or once the erasure has\nclaimed the request, it is ``too_late``."
+      },
       "AccountIP": {
         "properties": {
           "ip_address": { "type": "string", "title": "Ip Address" },
@@ -23795,6 +23972,63 @@
         "required": ["success"],
         "title": "DeleteLinkResponse"
       },
+      "DeletionFeedbackRequest": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["opened", "answer", "alternative_clicked"],
+            "title": "Kind"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "privacy",
+                  "cost",
+                  "not_using",
+                  "missing_capability",
+                  "limits",
+                  "other",
+                  "skipped"
+                ]
+              },
+              { "type": "null" }
+            ],
+            "title": "Reason"
+          },
+          "text": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Text"
+          },
+          "alternative": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "manage_apps",
+                  "disconnect_all",
+                  "billing",
+                  "keep_account"
+                ]
+              },
+              { "type": "null" }
+            ],
+            "title": "Alternative"
+          },
+          "surface": {
+            "anyOf": [
+              { "type": "string", "enum": ["settings", "paywall"] },
+              { "type": "null" }
+            ],
+            "title": "Surface"
+          }
+        },
+        "type": "object",
+        "required": ["kind"],
+        "title": "DeletionFeedbackRequest",
+        "description": "One open of the Delete account dialog (with the surface it was opened\nfrom), one answer to \"Why are you leaving?\", or one click on the\nalternative it offered. Nothing here identifies the person; the route adds\nno identity either."
+      },
       "DemotionSummary": {
         "properties": {
           "edge_uuid": { "type": "string", "title": "Edge Uuid" },
@@ -26667,7 +26901,8 @@
           "copilot-voice-mode",
           "copilot-auto-mode",
           "copilot-stream-shadow",
-          "copilot-stream-runtime"
+          "copilot-stream-runtime",
+          "self-serve-account-deletion"
         ],
         "title": "FrontendFlag",
         "description": "Every flag the frontend reads; the frontend's `Flag` is generated from this.\n\nA key the backend reads too comes from the backend's `Flag`, so it is written once.",
@@ -26687,7 +26922,8 @@
           "COPILOT_VOICE_MODE",
           "COPILOT_AUTO_MODE",
           "COPILOT_STREAM_SHADOW",
-          "COPILOT_STREAM_RUNTIME"
+          "COPILOT_STREAM_RUNTIME",
+          "SELF_SERVE_ACCOUNT_DELETION"
         ]
       },
       "FrontendFlagValues": {

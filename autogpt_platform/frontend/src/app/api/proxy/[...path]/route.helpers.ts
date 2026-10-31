@@ -242,6 +242,11 @@ export function getWorkspaceDownloadErrorMessage(body: unknown): string | null {
 // phase, which this timeout deliberately excludes.
 export const RESPONSE_START_TIMEOUT_MS = 30_000;
 export const CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS = 120_000;
+// Account deletion cancels Stripe, revokes every connected app and stops the
+// user's work in one request: about 90 s when every bounded step hits its
+// cap, plus the Stripe calls. Giving up earlier shows an error for an account
+// the backend still closes.
+export const ACCOUNT_DELETION_RESPONSE_START_TIMEOUT_MS = 180_000;
 
 export function getResponseStartTimeoutMs(
   path: string[],
@@ -259,6 +264,9 @@ export function getResponseStartTimeoutMs(
     isCodexCredentialControl
   ) {
     return CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS;
+  }
+  if (method === "POST" && path.join("/") === "api/account/deletion") {
+    return ACCOUNT_DELETION_RESPONSE_START_TIMEOUT_MS;
   }
   return RESPONSE_START_TIMEOUT_MS;
 }

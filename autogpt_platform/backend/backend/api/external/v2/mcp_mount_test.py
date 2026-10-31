@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock
 import fastapi
 import pytest
 import pytest_mock
+from autogpt_libs.auth import forget_account_state, remember_account_closed
 from fastapi.testclient import TestClient
 
 from backend.api.external.middleware import VerifiedCredential
@@ -194,3 +195,40 @@ async def test_a_banned_owners_credential_gets_no_mcp_session(
     verified = await ExternalAPITokenVerifier().verify_token(token)
 
     assert (verified is not None) is admitted
+
+
+@pytest.mark.parametrize(
+    "token",
+    ["agpt_key", f"{ACCESS_TOKEN_PREFIX}token"],
+    ids=["api-key", "access-token"],
+)
+async def test_a_closed_accounts_credential_gets_no_mcp_session(
+    mocker: pytest_mock.MockFixture, auth_row, token: str
+) -> None:
+    """Refused even with its ban lifted: closing the account is not undone."""
+    owner = APIAuthorizationInfo(
+        user_id=auth_row("unbanned"),
+        scopes=[],
+        type="api_key",
+        created_at=datetime.now(UTC),
+    )
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.validate_api_key",
+        new_callable=AsyncMock,
+        return_value=owner,
+    )
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.validate_access_token",
+        new_callable=AsyncMock,
+        return_value=(owner, None),
+    )
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.resolve_credential_tenancy",
+        new_callable=AsyncMock,
+        return_value=("org-1", None),
+    )
+    remember_account_closed(owner.user_id)
+    try:
+        assert await ExternalAPITokenVerifier().verify_token(token) is None
+    finally:
+        forget_account_state(owner.user_id)

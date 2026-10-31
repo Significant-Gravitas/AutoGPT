@@ -182,6 +182,13 @@ class Flag(str, Enum):
     # a cohort before it reaches everyone.
     CHAT_CONNECTION_UPSELL = "chat-connection-upsell"
 
+    # Mirror of the frontend `self-serve-account-deletion` flag. Gates
+    # deleting an account from Settings > Account and the paywall: the
+    # deletion and feedback routes 404 when off. Stays off until the data
+    # erasure routine (SECRT-2854) runs in production, since a closed
+    # account is only erased by it. Fail-closed (default False).
+    SELF_SERVE_ACCOUNT_DELETION = "self-serve-account-deletion"
+
 
 def initialize_feature_flags() -> None:
     """Start whichever vendor(s) the configured backend reads from."""

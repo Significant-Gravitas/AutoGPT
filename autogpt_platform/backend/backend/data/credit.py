@@ -3,7 +3,7 @@ import logging
 import time
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 from urllib.parse import urlsplit, urlunsplit
 
 import stripe
@@ -42,6 +42,7 @@ from backend.data.stripe_authentication import requires_authentication
 from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_checkout import (
     ensure_no_unconverted_trial,
+    expire_all_open_checkouts,
     expire_other_subscription_checkouts,
     subscription_checkout_lock,
 )
@@ -1705,12 +1706,60 @@ def invalidate_subscription_caches(user_id: str) -> None:
 # customer replaced that subscription with another plan. The deletion webhook
 # reads it so that cancel is not reported as the customer leaving.
 REPLACED_PLAN_CANCELLATION_COMMENT = "autogpt:replaced_by_another_plan"
+# On the immediate cancel made when the user deletes their account. The webhooks
+# it sets off still sync the tier, but skip the ended emails, the MailerLite
+# moves and the person-level analytics: the account sends its own confirmation
+# and its PostHog person is erased.
+ACCOUNT_DELETION_CANCELLATION_COMMENT = "autogpt:account_deleted"
+
+# Every status Stripe can still cancel. ``incomplete_expired`` and ``canceled``
+# are terminal: Stripe refuses to cancel them, so they are never listed.
+CancellableSubscriptionStatus = Literal[
+    "active", "trialing", "past_due", "unpaid", "paused", "incomplete"
+]
+# A deleted account ends all of them, unpaid ones included: cancelling stops
+# Stripe collecting their open invoices, so what is still owed is written off.
+_ACCOUNT_DELETION_STATUSES: tuple[CancellableSubscriptionStatus, ...] = get_args(
+    CancellableSubscriptionStatus
+)
+
+
+def is_account_deletion_cancellation(subscription: dict) -> bool:
+    """Whether this subscription was ended because its account was deleted."""
+    details = subscription.get("cancellation_details") or {}
+    return details.get("comment") == ACCOUNT_DELETION_CANCELLATION_COMMENT
+
+
+async def cancel_all_subscriptions_now(user_id: str) -> int:
+    """End every subscription Stripe can still cancel now, for a deleted account:
+    trials, paid plans, and past-due, unpaid, paused or incomplete ones.
+
+    No invoice, no proration and no refund; Stripe stops collecting the open
+    invoices of what it cancels. The customer's open Checkouts expire first, so
+    one finished later in another tab can't subscribe or charge the closed
+    account, and one that completes meanwhile is listed and cancelled below.
+    Returns how many subscriptions were cancelled: 0 for a user without a
+    Stripe customer, which this never creates. Raises stripe.StripeError so
+    the caller can stop before closing the account.
+    """
+    user = await get_user_by_id(user_id)
+    if not user.stripe_customer_id:
+        return 0
+    await expire_all_open_checkouts(user.stripe_customer_id)
+    return await _cancel_customer_subscriptions(
+        user.stripe_customer_id,
+        at_period_end=False,
+        cancellation_comment=ACCOUNT_DELETION_CANCELLATION_COMMENT,
+        statuses=_ACCOUNT_DELETION_STATUSES,
+    )
 
 
 async def _cancel_customer_subscriptions(
     customer_id: str,
     exclude_sub_id: str | None = None,
     at_period_end: bool = False,
+    cancellation_comment: str | None = None,
+    statuses: tuple[CancellableSubscriptionStatus, ...] = ("active", "trialing"),
 ) -> int:
     """Cancel all billable Stripe subscriptions for a customer, optionally excluding one.
 
@@ -1724,15 +1773,26 @@ async def _cancel_customer_subscriptions(
     Uses the async Stripe client. Raises stripe.StripeError on list/cancel failure so callers
     that need strict consistency can react; cleanup callers can catch and log instead.
 
+    ``cancellation_comment`` is set as ``cancellation_details.comment`` on an
+    immediate cancel, where the subscription's deletion webhook can read it.
+
+    ``statuses`` are the ones listed and cancelled; widen them only for an
+    immediate cancel. Every status but ``trialing`` takes the paid road.
+
     Returns the number of subscriptions cancelled/scheduled for cancellation.
     """
-    # Query active and trialing separately; Stripe's list API accepts a single status
-    # filter at a time (no OR), and we explicitly want to skip canceled/incomplete/
+    # Query each status separately; Stripe's list API accepts a single status
+    # filter at a time (no OR), and by default we skip canceled/incomplete/
     # past_due subs rather than filter them out client-side via status="all".
     seen_ids: set[str] = set()
     try:
         await _cancel_listed_subscriptions(
-            customer_id, seen_ids, exclude_sub_id, at_period_end
+            customer_id,
+            seen_ids,
+            exclude_sub_id,
+            at_period_end,
+            cancellation_comment,
+            statuses,
         )
     finally:
         if seen_ids:
@@ -1745,8 +1805,10 @@ async def _cancel_listed_subscriptions(
     seen_ids: set[str],
     exclude_sub_id: str | None,
     at_period_end: bool,
+    cancellation_comment: str | None,
+    statuses: tuple[CancellableSubscriptionStatus, ...],
 ) -> None:
-    for status in ("active", "trialing"):
+    for status in statuses:
         subscriptions = await stripe_call(
             stripe.Subscription.list_async,
             customer=customer_id,
@@ -1783,7 +1845,7 @@ async def _cancel_listed_subscriptions(
                 canceled = await stripe_call(
                     stripe.Subscription.cancel_async,
                     sub_id,
-                    **_cancel_params(trial=True),
+                    **_cancel_params(cancellation_comment, trial=True),
                 )
                 if (sub.get("metadata") or {}).get("trial_enrollment_id"):
                     await sync_subscription_from_stripe(dict(canceled))
@@ -1791,16 +1853,21 @@ async def _cancel_listed_subscriptions(
                 await stripe_call(
                     stripe.Subscription.cancel_async,
                     sub_id,
-                    **_cancel_params(trial=False),
+                    **_cancel_params(cancellation_comment, trial=False),
                 )
 
 
-def _cancel_params(*, trial: bool) -> stripe.Subscription.CancelParams:
-    """A trial ends without an invoice or proration."""
+def _cancel_params(
+    cancellation_comment: str | None, *, trial: bool
+) -> stripe.Subscription.CancelParams:
+    """A trial ends without an invoice or proration; a comment, when given,
+    becomes ``cancellation_details.comment``."""
     params: stripe.Subscription.CancelParams = {}
     if trial:
         params["invoice_now"] = False
         params["prorate"] = False
+    if cancellation_comment:
+        params["cancellation_details"] = {"comment": cancellation_comment}
     return params
 
 
@@ -2986,7 +3053,8 @@ async def sync_subscription_from_stripe(
     refreshed (in the background, from the customer's current state).
     ``track_lifecycle=False`` is for the periodic tier sweep, which would
     otherwise fan out one Stripe call per trial; the daily lifecycle sweep
-    covers those users.
+    covers those users. Nor is it refreshed for a cancel made by an account
+    deletion: that would only update the PostHog person the erasure deletes.
 
     The payload is Stripe's latest word on the subscription, so afterwards
     the cached lookups the billing page reads (the active subscription and
@@ -3001,7 +3069,7 @@ async def sync_subscription_from_stripe(
     finally:
         if isinstance(customer_id, str) and customer_id:
             await invalidate_billing_lookups(customer_id)
-    if track_lifecycle:
+    if track_lifecycle and not is_account_deletion_cancellation(stripe_subscription):
         schedule_posthog_lifecycle_sync(
             stripe_customer_id=stripe_subscription.get("customer")
         )

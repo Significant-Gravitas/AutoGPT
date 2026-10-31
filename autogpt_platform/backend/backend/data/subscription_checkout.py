@@ -58,6 +58,20 @@ async def expire_other_subscription_checkouts(
             await stripe_call(stripe.checkout.Session.expire_async, session.id)
 
 
+async def expire_all_open_checkouts(customer_id: str) -> None:
+    """Expire every Checkout the customer still has open, whatever its mode:
+    plan, trial or credit top-up. For a closed account, which must not be
+    subscribed or charged by finishing one later."""
+    sessions = await stripe_call(
+        stripe.checkout.Session.list_async,
+        customer=customer_id,
+        status="open",
+        limit=100,
+    )
+    async for session in stripe_list_items(sessions):
+        await stripe_call(stripe.checkout.Session.expire_async, session.id)
+
+
 async def other_plan_is_live(customer_id: str, exclude_subscription_id: str) -> bool:
     """Whether the customer has a plan besides this one that has not ended.
 

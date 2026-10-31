@@ -9,7 +9,7 @@ Credentials and then called .before_request() on it.
 """
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from threading import Event
 from unittest.mock import AsyncMock, MagicMock
 
@@ -94,17 +94,64 @@ async def test_revoke_tokens_does_not_call_before_request(mocker: MockerFixture)
     # URL is positional or first kwarg
     url = args[0] if args else kwargs.get("url")
     assert url == "https://oauth2.googleapis.com/revoke"
-    assert kwargs["data"] == {"token": "access-token-value"}
+    assert kwargs["data"] == {"token": "refresh-token-value"}
     assert kwargs["headers"]["Content-Type"] == "application/x-www-form-urlencoded"
 
 
 @pytest.mark.asyncio
-async def test_revoke_tokens_returns_false_when_no_access_token(
+async def test_revoke_tokens_revokes_the_grant_when_the_access_token_expired(
     mocker: MockerFixture,
 ):
-    """If the stored credential somehow lacks an access token, don't
-    crash — return False so the caller can surface a clean deletion
-    outcome."""
+    """Google access tokens live an hour and are only refreshed on use, so
+    the stored one has usually expired. Google answers 400 invalid_token
+    for it and leaves the grant live; the refresh token revokes the whole
+    grant."""
+    mock_response = MagicMock()
+    mock_response.ok = True
+    mock_post = AsyncMock(return_value=mock_response)
+    mocker.patch(
+        "backend.integrations.oauth.google.Requests",
+        return_value=MagicMock(post=mock_post),
+    )
+    creds = _creds()
+    expired = datetime.now(timezone.utc) - timedelta(days=3)
+    creds.access_token_expires_at = int(expired.timestamp())
+
+    result = await _handler().revoke_tokens(creds)
+
+    assert result is True
+    mock_post.assert_awaited_once()
+    posted = mock_post.call_args.kwargs["data"]
+    assert posted == {"token": "refresh-token-value"}
+    assert "access-token-value" not in str(mock_post.call_args)
+
+
+@pytest.mark.asyncio
+async def test_revoke_tokens_falls_back_to_the_access_token_without_a_refresh_token(
+    mocker: MockerFixture,
+):
+    mock_response = MagicMock()
+    mock_response.ok = True
+    mock_post = AsyncMock(return_value=mock_response)
+    mocker.patch(
+        "backend.integrations.oauth.google.Requests",
+        return_value=MagicMock(post=mock_post),
+    )
+    creds = _creds()
+    creds.refresh_token = None
+
+    result = await _handler().revoke_tokens(creds)
+
+    assert result is True
+    assert mock_post.call_args.kwargs["data"] == {"token": "access-token-value"}
+
+
+@pytest.mark.asyncio
+async def test_revoke_tokens_returns_false_when_there_is_no_token(
+    mocker: MockerFixture,
+):
+    """If the stored credential somehow lacks both tokens, don't crash —
+    return False so the caller can surface a clean deletion outcome."""
     mock_post = AsyncMock()
     mocker.patch(
         "backend.integrations.oauth.google.Requests",
@@ -112,8 +159,9 @@ async def test_revoke_tokens_returns_false_when_no_access_token(
     )
 
     creds = _creds()
-    # Simulate a credential row that lost its access token
+    # Simulate a credential row that lost its tokens
     object.__setattr__(creds, "access_token", None)
+    creds.refresh_token = None
 
     result = await _handler().revoke_tokens(creds)
 

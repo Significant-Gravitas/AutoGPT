@@ -127,7 +127,11 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         # our Pydantic OAuth2Credentials (which isn't a google-auth
         # Credentials). Switching to the platform's async Requests helper
         # matches how the other providers (reddit/github/...) do it.
-        if not credentials.access_token:
+        # A refresh token revokes the whole grant. A stored access token has
+        # usually expired (they live 1h and refresh only on use), and Google
+        # answers 400 invalid_token for it without revoking anything.
+        token = credentials.refresh_token or credentials.access_token
+        if not token:
             return False
 
         # raise_for_status=False so a 400 (already-revoked token, malformed
@@ -144,7 +148,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         ).post(
             self.revoke_uri,
             headers={"Content-Type": "application/x-www-form-urlencoded"},
-            data={"token": credentials.access_token.get_secret_value()},
+            data={"token": token.get_secret_value()},
         )
         return response.ok
 

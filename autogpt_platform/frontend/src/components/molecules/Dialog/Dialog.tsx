@@ -16,6 +16,10 @@ interface Props extends PropsWithChildren {
   variant?: DialogVariant;
   styling?: CSSProperties;
   className?: string;
+  /** Below lg (the drawer), move focus into the dialog when it opens, as the
+   *  modal above lg always does. Off by default: vaul's drawer leaves focus
+   *  where it was. */
+  autoFocus?: boolean;
 
   forceOpen?: boolean;
   onClose?: (() => void) | undefined;
@@ -35,6 +39,7 @@ function Dialog({
   variant = "default",
   styling,
   className,
+  autoFocus = false,
 
   forceOpen = false,
   onClose,
@@ -76,6 +81,7 @@ function Dialog({
       ) : (
         <Drawer.Root
           shouldScaleBackground
+          autoFocus={autoFocus}
           open={isOpen}
           onOpenChange={(open) => {
             if (!open && !forceOpen) {

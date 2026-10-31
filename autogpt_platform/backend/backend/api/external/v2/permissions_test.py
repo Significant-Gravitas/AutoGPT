@@ -14,6 +14,7 @@ import fastapi
 import fastapi.testclient
 import pytest
 import pytest_mock
+from autogpt_libs.auth import forget_account_state, remember_account_closed
 from prisma.enums import APIKeyPermission, ContentType
 from pydantic import SecretStr
 
@@ -30,7 +31,6 @@ from backend.util.exceptions import NeedConfirmation
 
 USER_ID = "user-1"
 ORG_ID = "org-1"
-_REQUEST = mock.Mock(spec=fastapi.Request)
 
 
 # ============================================================================
@@ -161,7 +161,7 @@ async def test_deleting_a_system_credential_is_refused(
     deleter = _mock_creds_store(mocker, _credential(system_id))
 
     with pytest.raises(fastapi.HTTPException) as raised:
-        await delete_credential(_REQUEST, credential_id=system_id, auth=_tenant())
+        await delete_credential(credential_id=system_id, auth=_tenant())
 
     assert raised.value.status_code == 403
     deleter.assert_not_awaited()
@@ -175,7 +175,7 @@ async def test_deleting_a_managed_credential_is_refused(
     deleter = _mock_creds_store(mocker, _credential("managed-1", is_managed=True))
 
     with pytest.raises(fastapi.HTTPException) as raised:
-        await delete_credential(_REQUEST, credential_id="managed-1", auth=_tenant())
+        await delete_credential(credential_id="managed-1", auth=_tenant())
 
     assert raised.value.status_code == 403
     deleter.assert_not_awaited()
@@ -191,7 +191,7 @@ async def test_deleting_an_sdk_default_credential_is_not_found(
     deleter = _mock_creds_store(mocker, _credential(cred_id))
 
     with pytest.raises(fastapi.HTTPException) as raised:
-        await delete_credential(_REQUEST, credential_id=cred_id, auth=_tenant())
+        await delete_credential(credential_id=cred_id, auth=_tenant())
 
     assert raised.value.status_code == 404
     deleter.assert_not_awaited()
@@ -206,11 +206,11 @@ async def test_deleting_an_ordinary_credential_still_works(
     credential = _credential("mine-1")
     deleter = _mock_creds_store(mocker, credential)
 
-    await delete_credential(_REQUEST, credential_id="mine-1", auth=_tenant())
+    await delete_credential(credential_id="mine-1", auth=_tenant())
 
     # The internal route's deletion: webhooks torn down first, OAuth revoked.
     deleter.assert_awaited_once_with(
-        _REQUEST, USER_ID, credential, ProviderName(credential.provider), False
+        USER_ID, credential, ProviderName(credential.provider), force=False
     )
 
 
@@ -223,7 +223,7 @@ async def test_a_credential_a_trigger_still_uses_needs_force(
     deleter.side_effect = NeedConfirmation("A webhook is still in use")
 
     with pytest.raises(fastapi.HTTPException) as raised:
-        await delete_credential(_REQUEST, credential_id="mine-1", auth=_tenant())
+        await delete_credential(credential_id="mine-1", auth=_tenant())
 
     assert raised.value.status_code == 409
     assert "force=true" in raised.value.detail
@@ -299,6 +299,40 @@ def test_a_banned_owners_credential_reaches_no_v2_route(
     assert response.status_code == status, response.text
     if status == 403:
         assert response.json()["error"]["details"]["code"] == "account_banned"
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"X-API-Key": "k"},
+        {"Authorization": "Bearer k"},
+        {"Authorization": f"Bearer {ACCESS_TOKEN_PREFIX}t"},
+    ],
+    ids=["api-key", "api-key-as-bearer", "access-token"],
+)
+def test_a_closed_accounts_credential_reaches_no_v2_route(
+    auth_row, headers: dict[str, str]
+) -> None:
+    owner = _owner(auth_row("banned"))
+    remember_account_closed(owner.user_id)
+
+    try:
+        with (
+            mock.patch(
+                "backend.api.external.middleware.validate_api_key",
+                new=mock.AsyncMock(return_value=owner),
+            ),
+            mock.patch(
+                "backend.api.external.middleware.validate_access_token",
+                new=mock.AsyncMock(return_value=(owner, None)),
+            ),
+        ):
+            response = _client().get("/probe", headers=headers)
+    finally:
+        forget_account_state(owner.user_id)
+
+    assert response.status_code == 401, response.text
+    assert response.json()["error"]["message"] == "This account is closed."
 
 
 # ---------------------------------------------------------------------------
@@ -407,7 +441,7 @@ def _mock_creds_store(mocker: pytest_mock.MockFixture, credential: APIKeyCredent
     )
     return mocker.patch(
         "backend.api.external.v2.integrations.credentials"
-        ".delete_credentials_and_dependents",
+        ".delete_and_revoke_credentials",
         new_callable=mock.AsyncMock,
     )
 

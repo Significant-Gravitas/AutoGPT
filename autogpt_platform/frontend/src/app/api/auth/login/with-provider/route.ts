@@ -28,6 +28,9 @@ export async function POST(request: Request) {
           provider,
           callbackURL:
             redirectTo || process.env.AUTH_CALLBACK_URL || "/auth/callback",
+          // A sign-in refused at the provider callback (a banned account)
+          // comes back to the login page with the error code in the query.
+          errorCallbackURL: "/login",
         },
         headers: request.headers,
       });

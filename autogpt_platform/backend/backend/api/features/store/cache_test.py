@@ -107,3 +107,19 @@ def _agent_row() -> dict:
         "combined_score": 0.3,
         "total_count": 1,
     }
+
+
+def test_closing_or_keeping_an_account_clears_the_store_caches(mocker):
+    clear = mocker.patch.object(store_cache, "clear_all_caches")
+
+    store_cache.forget_store_listings()
+
+    clear.assert_called_once_with()
+
+
+def test_a_cache_that_cannot_be_cleared_is_only_logged(mocker):
+    mocker.patch.object(
+        store_cache, "clear_all_caches", side_effect=ConnectionError("redis down")
+    )
+
+    store_cache.forget_store_listings()

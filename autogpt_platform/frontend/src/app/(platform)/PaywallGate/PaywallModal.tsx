@@ -4,12 +4,15 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { useCanDeleteAccount } from "@/components/organisms/DeleteAccountFlow/useCanDeleteAccount";
 import { SubscriptionPlans } from "@/components/organisms/SubscriptionPlans/SubscriptionPlans";
 import { TrialCardContent } from "@/components/organisms/TrialCard/TrialCard";
 import { PaymentRecoveryCard } from "@/components/organisms/UsageExperience/PaymentRecoveryCard";
+import { cn } from "@/lib/utils";
 import { usePaymentRecovery } from "@/services/usageExperience/usePaymentRecovery";
 import { Logout03Icon } from "@hugeicons/core-free-icons";
 import { SwitchTierDialog } from "../settings/billing/components/SubscriptionTab/YourPlanCard/SwitchTierDialog";
+import { DeleteAccountButton } from "./components/DeleteAccountButton/DeleteAccountButton";
 import { PausedSchedulesNotice } from "./components/PausedSchedulesNotice";
 import { PaywallPlanChoices } from "./components/PaywallPlanChoices";
 import { PaywallHeader } from "./components/PaywallHeader";
@@ -37,6 +40,7 @@ export function PaywallModal() {
     trialOffer,
     pausedWorkflowSchedules,
   } = usePaywallModal();
+  const canDeleteAccount = useCanDeleteAccount();
   // The gate only opens this modal for accounts without a plan.
   const recovery = usePaymentRecovery("NO_TIER");
 
@@ -56,7 +60,12 @@ export function PaywallModal() {
     >
       <Dialog.Content>
         <div className="relative flex w-full flex-col items-center gap-4 px-2 py-2">
-          <div className="flex w-full justify-start">
+          <div
+            className={cn(
+              "flex w-full justify-start",
+              canDeleteAccount && "flex-wrap gap-1",
+            )}
+          >
             <Button
               variant="ghost"
               size="small"
@@ -66,6 +75,7 @@ export function PaywallModal() {
             >
               Log out
             </Button>
+            {canDeleteAccount ? <DeleteAccountButton /> : null}
           </div>
           {recovery.paymentFailed ? (
             <>

@@ -2,7 +2,7 @@
 
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { PencilEdit02Icon, Tick02Icon } from "@hugeicons/core-free-icons";
-import { useEffect, useRef } from "react";
+import { Fragment, useEffect, useRef, type ReactNode } from "react";
 import { isKey } from "@/lib/keyboard";
 
 interface Props {
@@ -15,8 +15,12 @@ interface Props {
   onChange: (value: string) => void;
   /** Copies the option into free text, for an answer that is close but not
    *  quite right as written. */
-  onEdit: (value: string) => void;
+  onEdit?: (value: string) => void;
   onSubmit: () => void;
+  editable?: boolean;
+  required?: boolean;
+  /** Rendered inside the group, between the selected row and the next one. */
+  selectedContent?: ReactNode;
 }
 
 /** The options for one question as a real radiogroup: a single stop in the tab
@@ -30,8 +34,12 @@ export function QuestionOptionList({
   onChange,
   onEdit,
   onSubmit,
+  editable = true,
+  required = true,
+  selectedContent,
 }: Props) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const showPencil = editable && Boolean(onEdit);
   const selected = options.indexOf(value.trim());
   const active = selected === -1 ? 0 : selected;
 
@@ -74,45 +82,51 @@ export function QuestionOptionList({
     <div
       role="radiogroup"
       aria-labelledby={labelId}
-      aria-required="true"
+      aria-required={required}
       className="flex flex-col gap-2"
     >
       {options.map((option, index) => {
         const isSelected = option === value.trim();
         return (
-          <div key={option} className="relative">
-            <button
-              ref={(element) => {
-                refs.current[index] = element;
-              }}
-              type="button"
-              role="radio"
-              aria-checked={isSelected}
-              tabIndex={index === active ? 0 : -1}
-              onClick={() => onChange(option)}
-              onKeyDown={(event) => handleKeyDown(event, index)}
-              className={
-                "flex w-full items-center justify-between gap-3 rounded-2xl py-3 pr-12 pl-4 text-left text-base leading-snug transition-all " +
-                (isSelected
-                  ? "bg-surface text-foreground-strong ring-2 ring-action"
-                  : "bg-surface-muted text-foreground-body ring-1 ring-separator hover:bg-surface-hover")
-              }
-            >
-              <span>{option}</span>
-              {isSelected && (
-                <Icon icon={Tick02Icon} size={16} className="shrink-0" />
+          <Fragment key={option}>
+            <div className="relative">
+              <button
+                ref={(element) => {
+                  refs.current[index] = element;
+                }}
+                type="button"
+                role="radio"
+                aria-checked={isSelected}
+                tabIndex={index === active ? 0 : -1}
+                onClick={() => onChange(option)}
+                onKeyDown={(event) => handleKeyDown(event, index)}
+                className={
+                  "flex w-full items-center justify-between gap-3 rounded-2xl py-3 pl-4 text-left text-base leading-snug transition-all " +
+                  (showPencil ? "pr-12 " : "pr-4 ") +
+                  (isSelected
+                    ? "bg-surface text-foreground-strong ring-2 ring-action"
+                    : "bg-surface-muted text-foreground-body ring-1 ring-separator hover:bg-surface-hover")
+                }
+              >
+                <span>{option}</span>
+                {isSelected && (
+                  <Icon icon={Tick02Icon} size={16} className="shrink-0" />
+                )}
+              </button>
+              {showPencil && (
+                <button
+                  type="button"
+                  aria-label={`Edit ${option}`}
+                  title="Edit before sending"
+                  onClick={() => onEdit?.(option)}
+                  className="absolute top-1/2 right-2 flex size-8 -translate-y-1/2 items-center justify-center rounded-xl text-foreground-subtle transition-colors hover:bg-surface-active/60 hover:text-foreground-body"
+                >
+                  <Icon icon={PencilEdit02Icon} size={16} />
+                </button>
               )}
-            </button>
-            <button
-              type="button"
-              aria-label={`Edit ${option}`}
-              title="Edit before sending"
-              onClick={() => onEdit(option)}
-              className="absolute top-1/2 right-2 flex size-8 -translate-y-1/2 items-center justify-center rounded-xl text-foreground-subtle transition-colors hover:bg-surface-active/60 hover:text-foreground-body"
-            >
-              <Icon icon={PencilEdit02Icon} size={16} />
-            </button>
-          </div>
+            </div>
+            {isSelected && selectedContent}
+          </Fragment>
         );
       })}
     </div>
