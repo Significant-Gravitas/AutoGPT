@@ -1,12 +1,18 @@
+import time
 from datetime import datetime, timezone
 from typing import Optional, cast
 
 import pytest
 from prisma.enums import ReviewStatus
+from pydantic import SecretStr
 from pytest_mock import MockerFixture
 
+from backend.blocks.anysearch.extract import AnySearchExtractBlock
+from backend.blocks.autopilot import AutoPilotBlock
+from backend.blocks.github.issues import GithubCommentBlock
 from backend.blocks.google._drive import GoogleDriveFile
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
+from backend.blocks.llm import AITextGeneratorBlock
 from backend.data.dynamic_fields import merge_execution_input, parse_execution_output
 from backend.data.execution import (
     ExecutionContext,
@@ -14,7 +20,8 @@ from backend.data.execution import (
     ExecutionTrigger,
     GraphExecutionWithNodes,
 )
-from backend.data.model import User
+from backend.data.graph import Node
+from backend.data.model import APIKeyCredentials, User
 from backend.executor.utils import (
     CRED_ERR_INVALID_PREFIX,
     CRED_ERR_INVALID_TYPE_MISMATCH,
@@ -24,6 +31,7 @@ from backend.executor.utils import (
     _is_optional_picker,
     add_graph_execution,
     is_credential_validation_error_message,
+    validate_exec,
 )
 from backend.util.mock import MockObject
 
@@ -3820,3 +3828,156 @@ async def test_a_resumed_sub_graph_whose_parent_is_gone_names_no_chat(
     context = captured["execution_context"]
     assert context.approval_chat_id is None
     assert context.sensitive_action_safe_mode is True
+
+
+# ============ validate_exec: optional credentials ============ #
+
+
+def _anysearch_node(input_default: dict) -> Node:
+    return Node(block_id=AnySearchExtractBlock().id, input_default=input_default)
+
+
+@pytest.mark.parametrize(
+    "input_default",
+    [
+        {"auth": "anonymous", "credentials": {}},
+        {"credentials": {}},
+        {"auth": "anonymous", "credentials": {"provider": "anysearch"}},
+    ],
+    ids=["anonymous", "default-auth", "id-less-meta"],
+)
+def test_validate_exec_treats_unset_optional_credentials_as_none(input_default):
+    """Graphs saved before #16193 store `{}` for a cleared optional credential.
+    It must validate like an absent field instead of failing the nested
+    credentials schema and leaving the node unqueued."""
+    data, msg = validate_exec(
+        _anysearch_node(input_default), {"url": "https://example.com"}
+    )
+
+    assert data is not None, msg
+    assert data["credentials"] is None
+
+
+def test_validate_exec_passes_api_key_mode_with_unset_credentials():
+    """In api_key mode an unset credential passes validation too; the block
+    then fails with a clear error (see manager_optional_credentials_test)."""
+    data, msg = validate_exec(
+        _anysearch_node({"auth": "api_key", "credentials": {}}),
+        {"url": "https://example.com"},
+    )
+
+    assert data is not None, msg
+    assert data["credentials"] is None
+
+
+def test_validate_exec_keeps_selected_optional_credentials():
+    meta = {"id": "cred-1", "provider": "anysearch", "type": "api_key"}
+    data, msg = validate_exec(
+        _anysearch_node({"auth": "api_key", "credentials": meta}),
+        {"url": "https://example.com"},
+    )
+
+    assert data is not None, msg
+    assert data["credentials"]["id"] == "cred-1"
+
+
+@pytest.mark.parametrize(
+    "model",
+    ["llama3.2", "gpt-4o-mini", "claude-opus-4-5-20251101"],
+    ids=["ollama", "openai", "anthropic"],
+)
+def test_validate_exec_clears_unset_llm_credentials(model):
+    """LLM blocks declare `credentials` with `default=None`; a stored `{}`
+    must not fail the nested schema and leave the node unqueued."""
+    node = Node(
+        block_id=AITextGeneratorBlock().id,
+        input_default={"model": model, "credentials": {}},
+    )
+
+    data, msg = validate_exec(node, {"prompt": "hi"})
+
+    assert data is not None, msg
+    assert data["credentials"] is None
+
+
+def test_validate_exec_clears_unset_autopilot_codex_credentials():
+    """AutoPilot on the platform transport with a stored `{}` Codex
+    reference is queued instead of skipped."""
+    node = Node(
+        block_id=AutoPilotBlock().id,
+        input_default={"transport": "platform", "codex_credentials": {}},
+    )
+
+    data, msg = validate_exec(node, {"prompt": "hi"})
+
+    assert data is not None, msg
+    assert data["codex_credentials"] is None
+
+
+def test_validate_exec_rejects_unset_required_credentials():
+    """Required credential fields stay strict: `{}` is still a mismatch."""
+    node = Node(
+        block_id=GithubCommentBlock().id,
+        input_default={
+            "credentials": {},
+            "issue_url": "https://github.com/o/r/issues/1",
+            "comment": "hi",
+        },
+    )
+
+    data, msg = validate_exec(node, {})
+
+    assert data is None
+    assert "'id' is a required property" in msg
+
+
+# ============ _validate_node_input_credentials: API key expiry ============ #
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "offset, expired",
+    [(-60, True), (0, True), (86400, False), (None, False)],
+    ids=["past", "now", "future", "none"],
+)
+async def test_validate_node_input_credentials_rejects_expired_api_key(
+    mocker: MockerFixture, offset: int | None, expired: bool
+):
+    """#16234: a key past its expiry fails the pre-run check with a marker
+    Copilot reads as "reconnect"."""
+    from backend.executor.utils import _validate_node_input_credentials
+
+    now = int(time.time())
+    key = APIKeyCredentials(
+        id="cred-1",
+        provider="github",
+        api_key=SecretStr("k"),
+        title="GitHub key",
+        expires_at=None if offset is None else now + offset,
+    )
+    store = mocker.MagicMock()
+    store.get_creds_by_id = mocker.AsyncMock(return_value=key)
+    mocker.patch(
+        "backend.executor.utils.get_integration_credentials_store",
+        return_value=store,
+    )
+    node = Node(
+        block_id=GithubCommentBlock().id,
+        input_default={
+            "credentials": {"id": "cred-1", "provider": "github", "type": "api_key"}
+        },
+    )
+
+    errors, _ = await _validate_node_input_credentials(
+        graph=mocker.MagicMock(nodes=[node], links=[]),
+        user_id="user-1",
+        nodes_input_masks=None,
+    )
+
+    if expired:
+        message = errors[node.id]["credentials"]
+        assert message.startswith(CRED_ERR_NOT_AVAILABLE_PREFIX)
+        assert "API key 'GitHub key' expired on" in message
+        assert is_credential_validation_error_message(message)
+    else:
+        assert node.id not in errors

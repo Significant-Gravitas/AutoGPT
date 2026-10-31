@@ -41,7 +41,11 @@ from backend.data.db_accessors import (
 )
 from backend.data.execution import ExecutionContext
 from backend.data.expert_spend import add_weekly_spend
-from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
+from backend.data.model import (
+    APIKeyCredentials,
+    CredentialsFieldInfo,
+    CredentialsMetaInput,
+)
 from backend.executor.auto_credentials import (
     MissingAutoCredentialsError,
     acquire_auto_credentials,
@@ -492,6 +496,20 @@ async def execute_block(
                         message=f"Failed to retrieve credentials for {field_name}",
                         session_id=session_id,
                     ).from_outside()
+                if (
+                    isinstance(credentials, APIKeyCredentials)
+                    and credentials.is_expired()
+                ):
+                    await _release_credential_leases(credential_leases)
+                    return _credential_rejected_response(
+                        block=block,
+                        block_id=block_id,
+                        input_data=input_data,
+                        matched_credentials={field_name: cred_meta},
+                        session_id=session_id,
+                        status_code=None,
+                        exc=credentials.expired_error(),
+                    )
                 exec_kwargs[field_name] = credentials
         except ValueError:
             await _release_credential_leases(credential_leases)

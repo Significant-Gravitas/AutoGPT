@@ -20,6 +20,10 @@ from backend.data.model import (
     UserPasswordCredentials,
     is_sdk_default,
 )
+from backend.integrations.credential_input import (
+    InvalidCredentialInputError,
+    normalize_user_supplied_credentials,
+)
 from backend.integrations.credentials_store import is_system_credential
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NeedConfirmation
@@ -84,6 +88,9 @@ async def create_credential(
             provider=request.provider,
             title=request.title,
             api_key=SecretStr(request.api_key),
+            expires_at=(
+                int(request.expires_at.timestamp()) if request.expires_at else None
+            ),
         )
     elif request.type == "user_password":
         credentials = UserPasswordCredentials(
@@ -100,6 +107,13 @@ async def create_credential(
             title=request.title,
             host=request.host,
             headers={k: SecretStr(v) for k, v in request.headers.items()},
+        )
+
+    try:
+        normalize_user_supplied_credentials(credentials)
+    except InvalidCredentialInputError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e)
         )
 
     await creds_manager.create(auth.user_id, credentials)

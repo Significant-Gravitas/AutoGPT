@@ -4,6 +4,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { toDateTimeLocalValue } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/schema";
 import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
@@ -116,30 +117,16 @@ export function APIKeyCredentialsModal({
             <FormField
               control={form.control}
               name="expiresAt"
-              render={({ field }) => (
+              render={({ field, fieldState }) => (
                 <Input
                   id="expiresAt"
                   label="Expiration Date"
                   type="datetime-local"
                   placeholder="Select expiration date..."
                   value={field.value}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (value) {
-                      const dateTime = new Date(value);
-                      dateTime.setHours(0, 0, 0, 0);
-                      const year = dateTime.getFullYear();
-                      const month = String(dateTime.getMonth() + 1).padStart(
-                        2,
-                        "0",
-                      );
-                      const day = String(dateTime.getDate()).padStart(2, "0");
-                      const normalizedValue = `${year}-${month}-${day}T00:00`;
-                      field.onChange(normalizedValue);
-                    } else {
-                      field.onChange(value);
-                    }
-                  }}
+                  error={fieldState.error?.message}
+                  min={toDateTimeLocalValue(new Date())}
+                  onChange={(e) => field.onChange(e.target.value)}
                   onBlur={field.onBlur}
                   name={field.name}
                 />

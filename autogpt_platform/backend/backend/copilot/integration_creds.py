@@ -309,10 +309,13 @@ async def get_provider_token(
             _credential_id_cache[cache_key] = creds.id
             return token
 
-    # Pass 2: fall back to API key (no expiry, no refresh needed).
+    # Pass 2: fall back to an API key that hasn't expired (no refresh needed).
     for creds in creds_list:
         if creds.type == "api_key":
-            token = cast(APIKeyCredentials, creds).api_key.get_secret_value()
+            api_key_creds = cast(APIKeyCredentials, creds)
+            if api_key_creds.is_expired():
+                continue
+            token = api_key_creds.api_key.get_secret_value()
             _token_cache[cache_key] = token
             _credential_id_cache[cache_key] = creds.id
             return token
