@@ -200,7 +200,6 @@
         "src/app/(platform)/copilot/components/ClarificationQuestionsCard/ClarificationQuestionsCard.tsx",
         "src/app/(platform)/copilot/components/CopilotPendingReviews/useCopilotPendingReviews.ts",
         "src/app/(platform)/copilot/components/CredentialMention/useCredentialMentionEditor.ts",
-        "src/app/(platform)/copilot/components/NotificationBanner/NotificationBanner.tsx",
         "src/app/(platform)/copilot/components/OnboardingIntroCard/useOnboardingIntroCard.ts",
         "src/app/(platform)/copilot/components/RateLimitResetDialog/useRateLimitRefresh.ts",
         "src/app/(platform)/copilot/components/ToolChain/ChainRowView.tsx",
