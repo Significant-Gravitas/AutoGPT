@@ -9,18 +9,15 @@ interface Props {
   diff: string;
 }
 
-const LN_CLASSES = "select-none px-[7px] text-right text-caption-sm leading-5";
+const LN_CLASSES = "select-none px-1.5 text-right text-caption-sm leading-5";
 
 export function FileDiff({ file, diff }: Props) {
   const { rows, added, removed, truncated } = parseUnifiedDiff(diff);
 
   return (
     <div className="overflow-hidden rounded-xl bg-surface font-mono shadow-sm ring-1 ring-border-base/70">
-      <div
-        // TODO(tokens): SECRT-3152, no text token for text-[12.5px]
-        className="flex items-center gap-2 border-b border-border-base py-2.5 pl-4 pr-3 text-[12.5px]"
-      >
-        <span className="inline-flex items-center gap-[7px]">
+      <div className="flex items-center gap-2 border-b border-border-base py-2.5 pr-3 pl-4 text-body-sm leading-inherit">
+        <span className="inline-flex items-center gap-1.5">
           <Icon
             icon={CodeIcon}
             size={15}
@@ -32,18 +29,10 @@ export function FileDiff({ file, diff }: Props) {
         </span>
         <span className="ml-auto inline-flex items-center gap-2 text-xs leading-none">
           <span className="text-success">+{added}</span>
-          <span
-            // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover (a fill and line colour)
-            className="text-red-600"
-          >
-            -{removed}
-          </span>
+          <span className="text-error-foreground">-{removed}</span>
         </span>
       </div>
-      <div
-        // TODO(tokens): SECRT-3152, no text token for text-[12.5px]
-        className="relative max-h-64 overflow-y-auto py-1 text-[12.5px] leading-5 scrollbar-none before:absolute before:bottom-0 before:left-16 before:top-0 before:z-10 before:w-px before:bg-surface-active before:content-['']"
-      >
+      <div className="relative scrollbar-none max-h-64 overflow-y-auto py-1 text-body-sm leading-5 before:absolute before:top-0 before:bottom-0 before:left-16 before:z-10 before:w-px before:bg-surface-active before:content-['']">
         {rows.map((row) => (
           <div
             key={`${row.type}:${row.old ?? ""}:${row.cur ?? ""}`}
@@ -57,10 +46,7 @@ export function FileDiff({ file, diff }: Props) {
             }
           >
             {row.type === "add" && (
-              <span
-                // TODO(tokens): no fitting role for bg-green-600 #149443; #149443 is success (a text colour)
-                className="absolute inset-y-0 left-0 w-[3px] bg-green-600"
-              />
+              <span className="absolute inset-y-0 left-0 w-[3px] bg-success" />
             )}
             {row.type === "del" && (
               <span className="absolute inset-y-0 left-0 w-[3px] bg-error-hover" />
@@ -69,8 +55,7 @@ export function FileDiff({ file, diff }: Props) {
               className={
                 LN_CLASSES +
                 (row.type === "del"
-                  ? // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover (a fill and line colour)
-                    " text-red-600"
+                  ? " text-error-foreground"
                   : " text-foreground-subtle")
               }
             >
@@ -88,12 +73,11 @@ export function FileDiff({ file, diff }: Props) {
             </span>
             <span
               className={
-                "select-none text-center text-caption-sm leading-5 " +
+                "text-center text-caption-sm leading-5 select-none " +
                 (row.type === "add"
                   ? "text-success"
                   : row.type === "del"
-                    ? // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover (a fill and line colour)
-                      "text-red-600"
+                    ? "text-error-foreground"
                     : "text-foreground-subtle")
               }
             >
@@ -101,7 +85,7 @@ export function FileDiff({ file, diff }: Props) {
             </span>
             <code
               className={
-                "whitespace-pre pl-2 pr-3 " +
+                "pr-3 pl-2 whitespace-pre " +
                 (row.type === "ctx"
                   ? "text-foreground-subtle"
                   : "text-foreground-strong")

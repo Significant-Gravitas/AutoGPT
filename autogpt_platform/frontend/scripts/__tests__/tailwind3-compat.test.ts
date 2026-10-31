@@ -102,11 +102,15 @@ function rulesFor(root: Root, selector: string) {
   return rules;
 }
 
+// Values as written, whitespace collapsed (globals.css is Prettier-formatted,
+// so a long value there spans lines), with `!important` from the flag
+// Tailwind sets for an `@utility` declaration.
 function declarations(root: Root, selector: string) {
   const out: Record<string, string> = {};
   for (const rule of rulesFor(root, selector)) {
     rule.walkDecls((decl) => {
-      out[decl.prop] = decl.value;
+      const value = decl.value.replace(/\s+/g, " ");
+      out[decl.prop] = decl.important ? `${value} !important` : value;
     });
   }
   return out;

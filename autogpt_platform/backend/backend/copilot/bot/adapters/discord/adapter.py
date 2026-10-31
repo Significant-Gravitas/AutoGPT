@@ -59,6 +59,12 @@ logger = logging.getLogger(__name__)
 THREAD_HISTORY_LIMIT = 1000
 THREAD_HISTORY_CHAR_BUDGET = 24000
 
+# An @mention in a channel threads off that one message, so without the
+# messages just before it the bot can't tell what "that" refers to. Channels
+# run long and mix topics, so only the recent stretch is read.
+CHANNEL_HISTORY_LIMIT = 30
+CHANNEL_HISTORY_CHAR_BUDGET = 8000
+
 # When a message links or @-mentions other threads/channels, the bot fetches
 # their recent content up-front (same guild only) so the model can read it
 # instead of trying to web-fetch a JS-rendered Discord page. Bounded so a
@@ -579,6 +585,10 @@ class DiscordAdapter(SocketAdapter):
             thread_history = ()
             if channel_type == "thread" and (bot_mentioned or replied_to_bot):
                 thread_history = await self._thread_history(message)
+            elif channel_type == "channel":
+                thread_history = await self._channel_history(
+                    message, self._requester_of(message)
+                )
 
             # Options lead the user's own text; read them before the reply
             # context is put in front of it.
@@ -646,6 +656,12 @@ class DiscordAdapter(SocketAdapter):
         thread_history = ()
         if channel_type == "thread":
             thread_history = await self._thread_history(starter)
+        elif channel_type == "channel":
+            # The starter is the bot's post, so read as the member who ran
+            # the command, not as its author.
+            thread_history = await self._channel_history(
+                starter, user if isinstance(user, discord.Member) else None
+            )
         ctx = MessageContext(
             platform="discord",
             channel_type=channel_type,
@@ -980,6 +996,32 @@ class DiscordAdapter(SocketAdapter):
         starter = await self._thread_starter_entry(message.channel)
         return (starter, *history) if starter else history
 
+    async def _channel_history(
+        self, message: discord.Message, requester: Optional[discord.Member]
+    ) -> tuple[MessageHistoryEntry, ...]:
+        """The channel messages before ``message``, as ``requester`` could
+        read them. The bot can see history a member who may post here can't
+        (no ``read_message_history``), so nothing is read for such a member."""
+        channel = message.channel
+        if (
+            requester is None
+            or not isinstance(channel, discord.abc.GuildChannel)
+            or not await self._can_requester_read(channel, requester)
+        ):
+            return ()
+        try:
+            return await self._budgeted_history(
+                channel.history(
+                    limit=CHANNEL_HISTORY_LIMIT,
+                    before=message,
+                    oldest_first=False,
+                ),
+                CHANNEL_HISTORY_CHAR_BUDGET,
+            )
+        except (discord.Forbidden, discord.HTTPException):
+            logger.warning("Could not fetch Discord channel history", exc_info=True)
+            return ()
+
     async def _thread_starter_entry(
         self, thread: discord.Thread
     ) -> Optional[MessageHistoryEntry]:
@@ -1052,15 +1094,7 @@ class DiscordAdapter(SocketAdapter):
         """
         if message.guild is None:
             return ()
-        # ``message.author`` IS the guild Member (the gateway attaches it to the
-        # event); ``get_member`` only reads the cache, which is empty without the
-        # privileged members intent — so prefer the author and fall back to the
-        # cache only if it somehow isn't a Member (e.g. a webhook).
-        requester = (
-            message.author
-            if isinstance(message.author, discord.Member)
-            else message.guild.get_member(message.author.id)
-        )
+        requester = self._requester_of(message)
         if requester is None:
             return ()
         targets = extract_referenced_targets(
@@ -1074,6 +1108,18 @@ class DiscordAdapter(SocketAdapter):
             if convo is not None:
                 conversations.append(convo)
         return tuple(conversations)
+
+    @staticmethod
+    def _requester_of(message: discord.Message) -> Optional[discord.Member]:
+        if message.guild is None:
+            return None
+        # ``message.author`` IS the guild Member (the gateway attaches it to the
+        # event); ``get_member`` only reads the cache, which is empty without the
+        # privileged members intent — so prefer the author and fall back to the
+        # cache only if it somehow isn't a Member (e.g. a webhook).
+        if isinstance(message.author, discord.Member):
+            return message.author
+        return message.guild.get_member(message.author.id)
 
     async def _fetch_one_referenced(
         self, guild: discord.Guild, requester: discord.Member, target: ReferenceTarget
@@ -1116,7 +1162,9 @@ class DiscordAdapter(SocketAdapter):
         )
 
     async def _can_requester_read(
-        self, channel: "discord.TextChannel | discord.Thread", requester: discord.Member
+        self,
+        channel: "discord.abc.GuildChannel | discord.Thread",
+        requester: discord.Member,
     ) -> bool:
         """Whether ``requester`` may read ``channel`` themselves.
 

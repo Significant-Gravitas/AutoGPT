@@ -786,14 +786,14 @@ def test_routing_cells_use_transport_ready_spellings():
 
 
 def test_mistral_large_4_bills_at_authored_rates():
-    """Mistral Large 4 (OpenRouter live rate $1.36/$4.18 per 1M, $0.07/1M
-    cached input as of 2026-10-21) — flat tier and per-1M projections must
+    """Mistral Large 4 (OpenRouter live rate $0.70/$2.10 per 1M, $0.07/1M
+    cached input as of 2026-10-29) — flat tier and per-1M projections must
     match the authored catalog entry."""
     large = LLMModel("mistralai/mistral-large-4-0")
     assert MODEL_COST[large] == 2
     assert TOKEN_COST[large].model_dump() == {
-        "input": 204.0,
-        "output": 627.0,
+        "input": 105.0,
+        "output": 315.0,
         "cache_read": 10.5,
         "cache_creation": 0.0,
     }

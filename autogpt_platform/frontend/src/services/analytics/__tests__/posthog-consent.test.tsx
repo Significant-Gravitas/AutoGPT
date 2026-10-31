@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Runs the real posthog-js client against a stubbed PostHog host, so these
 // assertions cover what the SDK itself stores and sends, not our calls to it.
 
-const POSTHOG_HOST = "https://posthog.test";
+const POSTHOG_ORIGIN = "https://posthog.test";
 const POSTHOG_KEY = "phc_test";
 const EVENT_PATHS = ["/e/", "/i/v0/e/", "/batch/", "/capture/", "/s/"];
 
@@ -48,6 +48,10 @@ interface FlagsRequest {
   person_properties?: Record<string, unknown>;
 }
 
+// Each test gets its own PostHog host path. A client from an earlier test
+// can still send /flags after that test ends, and it must not count here.
+let testRun = 0;
+let hostPath = "";
 let requests: string[] = [];
 let flagsRequests: FlagsRequest[] = [];
 let captured: string[] = [];
@@ -196,7 +200,9 @@ function cookieNames() {
 beforeEach(() => {
   vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
   vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", POSTHOG_KEY);
-  vi.stubEnv("NEXT_PUBLIC_POSTHOG_HOST", POSTHOG_HOST);
+  testRun += 1;
+  hostPath = `/run-${testRun}`;
+  vi.stubEnv("NEXT_PUBLIC_POSTHOG_HOST", `${POSTHOG_ORIGIN}${hostPath}`);
   vi.stubEnv("NEXT_PUBLIC_COOKIEBOT_CBID", "");
   // posthog-js tries a script tag for remote config first; happy-dom refuses
   // to load scripts and reports it, before the SDK falls back to fetch.
@@ -209,14 +215,19 @@ beforeEach(() => {
   capturedEvents = [];
   server.use(
     http.options(
-      `${POSTHOG_HOST}/*`,
+      `${POSTHOG_ORIGIN}/*`,
       () => new HttpResponse(null, { status: 204, headers: CORS_HEADERS }),
     ),
-    http.all(`${POSTHOG_HOST}/*`, async ({ request }) => {
-      const path = new URL(request.url).pathname;
-      requests.push(path);
-      if (path === "/flags/") flagsRequests.push(await readFlagsBody(request));
-      return HttpResponse.json(path === "/flags/" ? FLAGS_RESPONSE : {}, {
+    http.all(`${POSTHOG_ORIGIN}/*`, async ({ request }) => {
+      const { pathname } = new URL(request.url);
+      const isFlags = pathname.endsWith("/flags/");
+      // Earlier tests' clients still get a reply, but only this test's count.
+      if (pathname.startsWith(`${hostPath}/`)) {
+        const path = pathname.slice(hostPath.length);
+        requests.push(path);
+        if (isFlags) flagsRequests.push(await readFlagsBody(request));
+      }
+      return HttpResponse.json(isFlags ? FLAGS_RESPONSE : {}, {
         headers: CORS_HEADERS,
       });
     }),
@@ -312,7 +323,11 @@ describe("PostHog before analytics consent", () => {
       first.distinct_id,
     );
     expect(first.$device_id).toBe(first.distinct_id);
-    expect(first.person_properties).toEqual({});
+    // posthog-js only adds its own library name and version.
+    expect(first.person_properties).toEqual({
+      $lib: "web",
+      $lib_version: expect.any(String),
+    });
 
     seedEarlierVisit();
     await renderPostHog();

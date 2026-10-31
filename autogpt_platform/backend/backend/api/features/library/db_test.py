@@ -875,6 +875,48 @@ async def test_list_favorite_library_agents(mocker):
     assert result.pagination.current_page == 1
     assert result.pagination.page_size == 50
 
+    where = mock_library_agent.return_value.find_many.call_args.kwargs["where"]
+    assert where["userId"] == "test-user"
+    assert where["isFavorite"] is True
+    assert "OR" not in where
+    assert "isHidden" not in where
+    assert "AND" not in where
+
+
+@pytest.mark.asyncio
+async def test_list_favorite_library_agents_searches_on_the_server(mocker):
+    """A search reaches the query, so favorites that are not paged in yet
+    still match, the same way the main library list searches."""
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_many = mocker.AsyncMock(return_value=[])
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=12)
+    mocker.patch(
+        "backend.api.features.library.db._fetch_execution_counts",
+        new=mocker.AsyncMock(return_value={}),
+    )
+    mocker.patch(
+        "backend.api.features.library.db._fetch_schedule_info",
+        new=mocker.AsyncMock(return_value={}),
+    )
+
+    result = await db.list_favorite_library_agents(
+        "test-user", search_term="report", page=2, page_size=10
+    )
+
+    find_many = mock_library_agent.return_value.find_many.call_args.kwargs
+    where = find_many["where"]
+    assert where["userId"] == "test-user"
+    assert where["isFavorite"] is True
+    assert {"name": {"contains": "report", "mode": "insensitive"}} in where["OR"]
+    assert {
+        "AgentGraph": {"is": {"name": {"contains": "report", "mode": "insensitive"}}}
+    } in where["OR"]
+    assert find_many["skip"] == 10
+    assert find_many["take"] == 10
+    assert find_many["order"] == {"updatedAt": "desc"}
+    assert result.pagination.total_items == 12
+    assert result.pagination.total_pages == 2
+
 
 @pytest.mark.asyncio
 async def test_get_library_agent_rejects_missing_graph(mocker):

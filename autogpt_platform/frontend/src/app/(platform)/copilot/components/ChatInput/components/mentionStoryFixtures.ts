@@ -20,9 +20,33 @@ export const storyCredentials: CredentialsMetaResponse[] = [
   },
 ];
 
+const storyProviders = [
+  {
+    name: "linear",
+    display_name: "Linear",
+    description: "Issues, projects and cycles",
+    supported_auth_types: ["oauth2", "api_key"],
+  },
+  {
+    name: "github",
+    display_name: "GitHub",
+    description: "Repositories, issues and pull requests",
+    supported_auth_types: ["oauth2"],
+  },
+  {
+    name: "notion",
+    display_name: "Notion",
+    description: "Docs and databases",
+    supported_auth_types: ["oauth2"],
+  },
+];
+
 export const mentionStoryHandlers = [
   http.get("*/api/integrations/credentials", () =>
     HttpResponse.json(storyCredentials),
+  ),
+  http.get("*/api/integrations/providers", () =>
+    HttpResponse.json(storyProviders),
   ),
   http.get("*/api/experts/:expertId/credentials", () =>
     HttpResponse.json([
