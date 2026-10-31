@@ -67,6 +67,7 @@ from backend.util.exceptions import (
     NotFoundError,
     UserBannedError,
 )
+from backend.util.json import nesting_depth
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
 from backend.util.type import coerce_inputs_to_schema
@@ -1551,6 +1552,7 @@ async def _add_graph_execution(
 
         logger.info(f"Resuming graph execution #{graph_exec.id} for graph #{graph_id}")
     else:
+        _validate_input_nesting_depth(inputs or {}, nodes_input_masks or {})
         if expert_id:
             organization_id, team_id = await _resolve_expert_execution_tenancy(
                 user_id, expert_id
@@ -1888,6 +1890,38 @@ async def _add_graph_execution(
 
 # A sub-graph run whose parent run is gone: no chat can be named for it.
 PARENT_GONE = ""
+
+
+# A run's inputs and node input masks are stored in JSON columns. Prisma's
+# query engine refuses JSON nested deeper than 128 levels, and past Python's
+# recursion limit ``SafeJson`` falls back to a string repr, which saved a run
+# whose ``inputs`` no longer parsed as a dict and broke every later listing of
+# the user's runs (#15648). Refuse such input before anything is persisted.
+MAX_INPUT_NESTING_DEPTH = 100
+
+
+def _validate_input_nesting_depth(
+    graph_inputs: GraphInput, nodes_input_masks: NodesInputMasks
+) -> None:
+    too_deep = f"nested more than {MAX_INPUT_NESTING_DEPTH} levels deep"
+    for name, value in graph_inputs.items():
+        if nesting_depth(value) > MAX_INPUT_NESTING_DEPTH:
+            raise GraphValidationError(f"Workflow input '{name}' is {too_deep}")
+
+    node_errors = {
+        node_id: {
+            name: f"Input is {too_deep}"
+            for name, value in mask.items()
+            if nesting_depth(value) > MAX_INPUT_NESTING_DEPTH
+        }
+        for node_id, mask in nodes_input_masks.items()
+    }
+    if node_errors := {k: v for k, v in node_errors.items() if v}:
+        n_errors = sum(len(errors) for errors in node_errors.values())
+        raise GraphValidationError(
+            f"Workflow validation failed: {n_errors} node inputs are {too_deep}",
+            node_errors=node_errors,
+        )
 
 
 async def starting_chat(

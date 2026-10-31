@@ -2,6 +2,7 @@
 
 import json
 from datetime import datetime
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import fastapi
@@ -1171,3 +1172,39 @@ def test_execute_graph_records_a_failure_and_re_raises(
         client.post("/graphs/graph-1/execute/1", json={})
 
     assert record.call_args.kwargs["status"] == "error"
+
+
+def test_execute_graph_refuses_an_input_nested_too_deep(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """#15648: an input nested ~1000 levels deep answered 422 but still saved
+    an INCOMPLETE run whose ``inputs`` column held a string, which broke every
+    later listing of the user's runs. The real ``add_graph_execution`` must
+    refuse it as a validation error before anything is written."""
+    credit_model = Mock()
+    credit_model.get_credits = AsyncMock(return_value=100)
+    mocker.patch(
+        "backend.api.features.graphs.routes.get_credit_model",
+        AsyncMock(return_value=credit_model),
+    )
+    mocker.patch(
+        "backend.executor.utils.is_user_paywalled", AsyncMock(return_value=False)
+    )
+    mocker.patch("backend.executor.utils.is_user_banned", AsyncMock(return_value=False))
+    created = mocker.patch(
+        "backend.executor.utils.execution_db.create_graph_execution", AsyncMock()
+    )
+    mocker.patch("backend.api.features.graphs.routes.record_graph_operation", Mock())
+    value: Any = "abyss"
+    for _ in range(300):
+        value = [value]
+
+    response = client.post(
+        "/graphs/graph-1/execute/1", json={"inputs": {"shift_tags": value}}
+    )
+
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail["type"] == "validation_error"
+    assert "shift_tags" in detail["message"]
+    created.assert_not_awaited()

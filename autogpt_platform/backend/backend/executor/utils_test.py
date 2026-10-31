@@ -21,10 +21,12 @@ from backend.executor.utils import (
     CRED_ERR_NOT_AVAILABLE_PREFIX,
     CRED_ERR_REQUIRED,
     CRED_ERR_UNKNOWN_PREFIX,
+    MAX_INPUT_NESTING_DEPTH,
     _is_optional_picker,
     add_graph_execution,
     is_credential_validation_error_message,
 )
+from backend.util.exceptions import GraphValidationError
 from backend.util.mock import MockObject
 
 
@@ -3820,3 +3822,64 @@ async def test_a_resumed_sub_graph_whose_parent_is_gone_names_no_chat(
     context = captured["execution_context"]
     assert context.approval_chat_id is None
     assert context.sensitive_action_safe_mode is True
+
+
+def _nested(value: object, depth: int) -> object:
+    for _ in range(depth):
+        value = [value]
+    return value
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_rejects_an_input_nested_too_deep(
+    mocker: MockerFixture,
+):
+    """#15648: ``SafeJson(inputs)`` fell back to a string repr once the encoder
+    hit the recursion limit, so the run was saved with ``inputs`` that no
+    longer parsed as a dict and every later listing of the user's runs
+    failed. Such input is refused before anything is persisted."""
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+
+    with pytest.raises(GraphValidationError, match="shift_tags"):
+        await add_graph_execution(
+            graph_id="g",
+            user_id="u",
+            inputs={"shift_tags": _nested("abyss", MAX_INPUT_NESTING_DEPTH + 1)},
+        )
+
+    mock_edb.create_graph_execution.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_rejects_a_node_input_mask_nested_too_deep(
+    mocker: MockerFixture,
+):
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+
+    with pytest.raises(GraphValidationError) as exc_info:
+        await add_graph_execution(
+            graph_id="g",
+            user_id="u",
+            nodes_input_masks={
+                "node-1": {
+                    "payload": _nested("abyss", MAX_INPUT_NESTING_DEPTH + 1),
+                    "fine": _nested("abyss", MAX_INPUT_NESTING_DEPTH),
+                }
+            },
+        )
+
+    assert set(exc_info.value.node_errors) == {"node-1"}
+    assert set(exc_info.value.node_errors["node-1"]) == {"payload"}
+    mock_edb.create_graph_execution.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_accepts_an_input_at_the_depth_limit(
+    mocker: MockerFixture,
+):
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    inputs = {"shift_tags": _nested("abyss", MAX_INPUT_NESTING_DEPTH)}
+
+    await add_graph_execution(graph_id="g", user_id="u", inputs=inputs)
+
+    assert mock_edb.create_graph_execution.await_args.kwargs["inputs"] == inputs
