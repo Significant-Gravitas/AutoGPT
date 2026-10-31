@@ -13,6 +13,7 @@ from backend.copilot.budget_gate import AutoContinueGate
 from backend.copilot.model import ChatMessage, ChatSession, ChatSessionMetadata
 from backend.copilot.response_model import StreamStart
 from backend.copilot.turn_budget import TurnBudget
+from backend.util.feature_flag import Flag
 
 _SVC = "backend.copilot.sdk.service"
 
@@ -51,7 +52,7 @@ class _ToolRegistrationReached(Exception):
     pass
 
 
-def _make_patches():
+def _make_patches(*, role_split_enabled: bool = False):
     """Capture registration and stop before any provider is constructed."""
     mcp_server_mock = MagicMock(side_effect=_ToolRegistrationReached)
 
@@ -91,6 +92,10 @@ def _make_patches():
         (f"{_SVC}.build_sdk_env", dict(return_value={})),
         (f"{_SVC}._resolve_sdk_model", dict(return_value=None)),
         (f"{_SVC}.set_execution_context", {}),
+        (
+            f"{_SVC}.is_feature_enabled",
+            dict(new_callable=AsyncMock, return_value=role_split_enabled),
+        ),
         (
             f"{_SVC}._fetch_graphiti_context",
             {"new": AsyncMock(side_effect=lambda user_id, *_: (bool(user_id), ""))},
@@ -144,6 +149,7 @@ def _make_patches():
 async def _run_sdk_turn(
     *,
     user_id: str | None,
+    role_split_enabled: bool = False,
     expert_id: str | None = None,
     extra_patches: list[tuple[str, dict]] | None = None,
 ):
@@ -151,13 +157,15 @@ async def _run_sdk_turn(
 
     session = _make_session()
     session.expert_id = expert_id
-    patches, mcp_server_mock = _make_patches()
+    patches, mcp_server_mock = _make_patches(role_split_enabled=role_split_enabled)
     patches += extra_patches or []
 
     events = []
     with contextlib.ExitStack() as stack, pytest.raises(_ToolRegistrationReached):
-        for target, kwargs in patches:
-            stack.enter_context(patch(target, **kwargs))
+        mocks = {
+            target: stack.enter_context(patch(target, **kwargs))
+            for target, kwargs in patches
+        }
         async with asyncio.timeout(10):
             async for event in stream_chat_completion_sdk(
                 session_id=session.session_id,
@@ -171,13 +179,13 @@ async def _run_sdk_turn(
     assert any(
         isinstance(e, StreamStart) for e in events
     ), f"Turn did not complete far enough to reach tool registration: {events}"
-    return mcp_server_mock
+    return mcp_server_mock, mocks[f"{_SVC}.is_feature_enabled"]
 
 
 class TestSdkExpertsAuthorization:
     @pytest.mark.asyncio
     async def test_anonymous_turn_hides_expert_tools(self) -> None:
-        mcp_server_mock = await _run_sdk_turn(user_id=None)
+        mcp_server_mock, _ = await _run_sdk_turn(user_id=None)
 
         hidden = mcp_server_mock.call_args.kwargs["hidden_tool_names"]
         # Anonymous turns cannot use expert or memory tools.
@@ -190,14 +198,32 @@ class TestSdkExpertsAuthorization:
     async def test_authenticated_plain_turn_keeps_staffing_tools(
         self,
     ) -> None:
-        mcp_server_mock = await _run_sdk_turn(user_id="test-user")
+        mcp_server_mock, is_feature_enabled_mock = await _run_sdk_turn(
+            user_id="test-user"
+        )
 
+        is_feature_enabled_mock.assert_awaited_once_with(
+            Flag.EXPERT_TASK_MANAGEMENT, "test-user", default=False
+        )
         hidden = mcp_server_mock.call_args.kwargs["hidden_tool_names"]
         # Plain Otto session (no session.expert_id): loses the
         # expert-session tools, keeps the staffing ("expert_admin") tools.
         assert "update_expert_soul" in hidden
         assert "hire_expert" not in hidden
         assert "delegate_to_expert" not in hidden
+
+    @pytest.mark.asyncio
+    async def test_the_role_split_flag_moves_no_tool(self) -> None:
+        """The charter rides its own flag; the tool gate does not, so flipping
+        it can never dark a tool that ships today."""
+        off, _ = await _run_sdk_turn(user_id="test-user", role_split_enabled=False)
+        on, _ = await _run_sdk_turn(user_id="test-user", role_split_enabled=True)
+
+        assert (
+            off.call_args.kwargs["hidden_tool_names"]
+            == on.call_args.kwargs["hidden_tool_names"]
+        )
+        assert "delegate_to_expert" not in on.call_args.kwargs["hidden_tool_names"]
 
 
 class TestSdkComputerNoteWiring:

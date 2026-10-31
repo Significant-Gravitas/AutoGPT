@@ -103,11 +103,14 @@ from backend.copilot.permissions import allowed_providers, denied_tool_names
 from backend.copilot.prompting import (
     SHARED_TOOL_NOTES,
     approval_mode_supplement,
+    assemble_system_prompt,
+    copilot_role,
     get_chat_platform_supplement,
     get_delegation_supplement,
     get_expert_oversight_supplement,
     get_graphiti_supplement,
     get_provider_ceiling_supplement,
+    get_role_charter,
     get_team_building_supplement,
 )
 from backend.copilot.provider_failure import classify as classify_provider_failure
@@ -189,6 +192,7 @@ from backend.copilot.transcript import (
 from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.util import json as util_json
 from backend.util.exceptions import NotFoundError
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.llm.provider_billing import (
     PROVIDER_UNAVAILABLE_CODE,
     PROVIDER_UNAVAILABLE_MESSAGE,
@@ -2109,13 +2113,24 @@ async def stream_chat_completion_baseline(
     # Append tool documentation, technical notes, and Graphiti memory instructions
     graphiti_enabled = bool(user_id)
 
-    graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
     auto_mode_supplement = approval_mode_supplement(
         await active_mode(user_id, session),
         interactive=not is_unattended_turn(),
     )
     experts_enabled = bool(user_id)
-    delegation_supplement = get_delegation_supplement() if experts_enabled else ""
+    # The role split rides its own flag. With it off every session is prompted
+    # as Otto is today, which keeps the system prompt the pre-split one.
+    role_split_enabled = (
+        experts_enabled
+        and user_id is not None
+        and await is_feature_enabled(
+            Flag.EXPERT_TASK_MANAGEMENT, user_id, default=False
+        )
+    )
+    role = copilot_role(session.expert_id, role_split_enabled=role_split_enabled)
+    graphiti_supplement = get_graphiti_supplement(role) if graphiti_enabled else ""
+    delegation_supplement = get_delegation_supplement(role) if experts_enabled else ""
+    role_charter = get_role_charter(role) if role_split_enabled else ""
     oversight_supplement = get_expert_oversight_supplement(
         experts_enabled=experts_enabled, expert_id=session.expert_id
     )
@@ -2131,19 +2146,20 @@ async def stream_chat_completion_baseline(
     # the ~20KB guide warm for the whole session.  Empty string for
     # non-builder sessions keeps the cross-user cache hot.
     builder_session_suffix = await build_builder_system_prompt_suffix(session)
-    system_prompt = (
-        base_system_prompt
-        + SHARED_TOOL_NOTES
+    system_prompt = assemble_system_prompt(
+        base_system_prompt,
+        engine_supplement=SHARED_TOOL_NOTES,
         # Empty unless the run's permissions restrict connected accounts.
-        + get_provider_ceiling_supplement(permissions)
-        + delegation_supplement
-        + oversight_supplement
-        + team_building_supplement
-        + chat_platform_supplement
-        + graphiti_supplement
-        + auto_mode_supplement
-        + builder_session_suffix
-        + expert_session_suffix
+        provider_supplement=get_provider_ceiling_supplement(permissions),
+        delegation_supplement=delegation_supplement,
+        oversight_supplement=oversight_supplement,
+        team_building_supplement=team_building_supplement,
+        chat_platform_supplement=chat_platform_supplement,
+        graphiti_supplement=graphiti_supplement,
+        role_charter=role_charter,
+        auto_mode_supplement=auto_mode_supplement,
+        builder_session_suffix=builder_session_suffix,
+        expert_session_suffix=expert_session_suffix,
     )
 
     # Warm context: pre-load relevant facts from Graphiti on first turn.
