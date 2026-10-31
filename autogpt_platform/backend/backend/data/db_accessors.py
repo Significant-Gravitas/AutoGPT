@@ -231,6 +231,19 @@ def review_db():
     return review_db
 
 
+def auth_ip_events_db():
+    if db.is_connected():
+        from backend.data import auth_ip_events as _auth_ip_events_db
+
+        auth_ip_events_db = _auth_ip_events_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        auth_ip_events_db = get_database_manager_async_client()
+
+    return auth_ip_events_db
+
+
 def credit_db():
     if db.is_connected():
         from backend.data import db_manager as _credit_db
