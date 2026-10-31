@@ -5,9 +5,11 @@ Covers:
 - EXTENDED_THINKING provider validation (anthropic/open_router allowed, others rejected)
 - EXTENDED_THINKING model-name validation (must start with "claude")
 - EXTENDED_THINKING options handed to the Claude Agent SDK
+- EXTENDED_THINKING sends the CLI one string prompt
 """
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterable
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import claude_agent_sdk
@@ -20,6 +22,7 @@ from backend.blocks.orchestrator import (
     ExecutionMode,
     OrchestratorBlock,
     _select_final_answer_parts,
+    format_sdk_conversation,
 )
 from backend.copilot.sdk.env import DISABLE_SLASH_COMMANDS_FLAG
 from backend.data.model import APIKeyCredentials
@@ -321,10 +324,14 @@ class TestSelectFinalAnswerParts:
 # ---------------------------------------------------------------------------
 
 
+# What ``ClaudeSDKClient.query()`` accepts; the block sends only the string.
+SDKPrompt = str | AsyncIterable[dict[str, Any]]
+
+
 class _ClientRecorder:
     """Stands in for ``ClaudeSDKClient``: records its options and prompt."""
 
-    seen: list[ClaudeAgentOptions | str] = []
+    seen: list[ClaudeAgentOptions | SDKPrompt] = []
 
     def __init__(self, options: ClaudeAgentOptions) -> None:
         self.seen.append(options)
@@ -335,7 +342,7 @@ class _ClientRecorder:
     async def __aexit__(self, *_: object) -> None:
         return None
 
-    async def query(self, prompt: str) -> None:
+    async def query(self, prompt: SDKPrompt, session_id: str = "default") -> None:
         self.seen.append(prompt)
 
     async def receive_response(self) -> AsyncGenerator[ResultMessage, None]:
@@ -350,8 +357,10 @@ class _ClientRecorder:
 
 
 async def _run_sdk_mode(
-    prompt_text: str, cli_check: MagicMock
-) -> tuple[list[tuple[str, object]], list[ClaudeAgentOptions | str]]:
+    prompt_text: str,
+    cli_check: MagicMock,
+    prompt: list[dict] | None = None,
+) -> tuple[list[tuple[str, object]], list[ClaudeAgentOptions | SDKPrompt]]:
     """Run SDK mode against ``_ClientRecorder``; return outputs and what it saw."""
     input_data = MagicMock(sys_prompt="", prompt=prompt_text)
     input_data.model.value = "claude-test"
@@ -373,7 +382,11 @@ async def _run_sdk_mode(
                 input_data=input_data,
                 credentials=credentials,
                 tool_functions=[],
-                prompt=[{"role": "user", "content": prompt_text}],
+                prompt=(
+                    prompt
+                    if prompt is not None
+                    else [{"role": "user", "content": prompt_text}]
+                ),
                 execution_params=MagicMock(graph_exec_id="graph-exec-1"),
                 execution_processor=MagicMock(),
             )
@@ -411,3 +424,43 @@ async def test_sdk_mode_does_not_start_a_cli_that_is_too_old() -> None:
 
     assert seen == []
     assert outputs == [("error", "The Claude Code CLI is too old")]
+
+
+# ---------------------------------------------------------------------------
+# The prompt reaches the CLI as one string
+# ---------------------------------------------------------------------------
+
+
+def test_format_sdk_conversation_renders_the_turns_and_drops_the_rest() -> None:
+    """Every user, assistant and tool turn is rendered, with its label; an
+    entry that is none of those contributes nothing."""
+    rendered = format_sdk_conversation(
+        [
+            {"role": "user", "content": "find the invoice"},
+            {"role": "assistant", "content": "looking"},
+            {"role": "tool", "content": {"rows": 2}},
+            {"role": "assistant", "content": ""},
+            {"type": "not_a_user_turn"},
+            {"role": "developer", "content": "ignored"},
+        ]
+    )
+
+    assert rendered == (
+        "<conversation_history>\n"
+        "User: find the invoice\n"
+        "You responded: looking\n"
+        'Tool output: {"rows":2}\n'
+        "</conversation_history>"
+    )
+
+
+@pytest.mark.asyncio
+async def test_sdk_mode_sends_a_history_entry_as_text() -> None:
+    history = [{"type": "not_a_user_turn"}, {"role": "assistant", "content": "ok"}]
+    _, seen = await _run_sdk_mode(
+        "hello", MagicMock(return_value="/opt/claude/claude"), prompt=history
+    )
+
+    _options, prompt = seen
+    assert isinstance(prompt, str), f"the CLI was sent a {type(prompt).__name__}"
+    assert "not_a_user_turn" not in prompt
