@@ -142,6 +142,9 @@ async def create_sandbox(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any
     """
     if "network" in kwargs:
         raise ValueError("A box's network is decided here, not by the caller")
+    # e2b 2.56 stopped sending this when unset, leaving it to E2B's default;
+    # keep asking for the internet access every box has had so far.
+    kwargs.setdefault("allow_internet_access", True)
     address = proxy_address()
     if address is None:
         return await sandbox_cls.create(**kwargs)
