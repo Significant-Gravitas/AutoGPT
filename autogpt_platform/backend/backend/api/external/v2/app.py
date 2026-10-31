@@ -130,6 +130,11 @@ v2_app = FastAPI(
             "description": "Monitor, stop, delete, and share agent runs; manage human-in-the-loop reviews",
         },
         {
+            "name": "autopilot",
+            "x-page-title": "AutoPilot",
+            "description": "List AutoPilot sessions and their live status",
+        },
+        {
             "name": "credits",
             "x-page-title": "Credits",
             "description": "Check balance and view transaction history",
