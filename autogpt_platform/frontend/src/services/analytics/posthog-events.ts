@@ -23,6 +23,12 @@ export const FeatureFlagEvent = {
   FEATURE_FLAG_MISMATCHED: "feature_flag_mismatched",
 } as const;
 
+// Ops signal, not a user action: a tab on an older build could not load code
+// on demand after a deploy, and reloaded to pick up the current build.
+export const DeploySkewEvent = {
+  CHUNK_RELOAD_TRIGGERED: "chunk_reload_triggered",
+} as const;
+
 // Marketing email refusals made in the app. `surface` says where; the
 // refusal itself is stored on the user (`marketingOptOutAt`).
 export const MarketingConsentEvent = {
@@ -215,6 +221,7 @@ export const MonetizationEvent = {
 export const PostHogEvent = {
   ...PageEvent,
   ...FeatureFlagEvent,
+  ...DeploySkewEvent,
   ...MarketingConsentEvent,
   ...ExpertsFunnelEvent,
   ...HireFlowEvent,

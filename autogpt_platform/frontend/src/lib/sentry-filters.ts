@@ -44,6 +44,28 @@ export function isInjectedIframeProbe(event: Event) {
   );
 }
 
+// webpack ("Loading chunk 34006 failed.", "Loading CSS chunk 123 failed.")
+// and Turbopack ("Failed to load chunk /_next/static/…").
+const CHUNK_LOAD_MESSAGE =
+  /Loading (CSS )?chunk \S+ failed|Failed to load chunk/;
+
+export function isChunkLoadFailure(name = "", message = "") {
+  return name === "ChunkLoadError" || CHUNK_LOAD_MESSAGE.test(message);
+}
+
+/**
+ * Marks a failed on-demand code load as deploy skew: a tab on an older build
+ * asked for a chunk the current deployment no longer serves. The event is
+ * still sent, so a chunk that fails for another reason stays visible.
+ */
+export function tagDeploySkew<T extends Event>(event: T): T {
+  const exception = event.exception?.values?.[0];
+  if (isChunkLoadFailure(exception?.type, exception?.value)) {
+    event.tags = { ...event.tags, deploy_skew: true };
+  }
+  return event;
+}
+
 export const CLIENT_IGNORE_ERRORS = [
   // Session replay (rrweb) serializing DOM snapshots with cross-origin
   // stylesheets (e.g. from browser extensions or CDN-loaded CSS)

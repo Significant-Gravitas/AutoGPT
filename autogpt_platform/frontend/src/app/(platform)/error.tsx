@@ -1,9 +1,14 @@
 "use client";
 
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { reloadForChunkLoadError } from "@/lib/chunk-load-reload";
 import { getErrorDetails } from "./error/helpers";
 import { useSearchParams } from "next/navigation";
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
+
+interface Props {
+  error: Error & { digest?: string };
+}
 
 function ErrorPageContent() {
   const searchParams = useSearchParams();
@@ -35,7 +40,11 @@ function ErrorPageContent() {
   );
 }
 
-export default function ErrorPage() {
+export default function ErrorPage({ error }: Props) {
+  useEffect(() => {
+    reloadForChunkLoadError(error, "error_boundary");
+  }, [error]);
+
   return (
     <Suspense
       fallback={

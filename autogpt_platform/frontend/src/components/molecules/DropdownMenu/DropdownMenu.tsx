@@ -3,10 +3,11 @@
 import * as React from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import {
-  CheckIcon,
-  ChevronRightIcon,
-  DotFilledIcon,
-} from "@radix-ui/react-icons";
+  ArrowRight01Icon,
+  CircleIcon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 
 const DropdownMenu = DropdownMenuPrimitive.Root;
@@ -65,7 +66,9 @@ const DropdownMenuSubTrigger = React.forwardRef<
     {...props}
   >
     {children}
-    <ChevronRightIcon
+    <Icon
+      aria-hidden
+      icon={ArrowRight01Icon}
       data-slot="menu-submenu-trigger-icon"
       className="ml-auto h-4 w-4"
     />
@@ -149,7 +152,12 @@ const DropdownMenuCheckboxItem = React.forwardRef<
       className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center"
     >
       <DropdownMenuPrimitive.ItemIndicator data-slot="menu-checkbox-item-indicator">
-        <CheckIcon data-slot="menu-checkbox-item-icon" className="h-4 w-4" />
+        <Icon
+          aria-hidden
+          icon={Tick02Icon}
+          data-slot="menu-checkbox-item-icon"
+          className="h-4 w-4"
+        />
       </DropdownMenuPrimitive.ItemIndicator>
     </span>
     {children}
@@ -176,9 +184,11 @@ const DropdownMenuRadioItem = React.forwardRef<
       className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center"
     >
       <DropdownMenuPrimitive.ItemIndicator data-slot="menu-radio-item-indicator">
-        <DotFilledIcon
+        <Icon
+          aria-hidden
+          icon={CircleIcon}
           data-slot="menu-radio-item-icon"
-          className="h-4 w-4 fill-current"
+          className="h-1.5 w-1.5 fill-current"
         />
       </DropdownMenuPrimitive.ItemIndicator>
     </span>

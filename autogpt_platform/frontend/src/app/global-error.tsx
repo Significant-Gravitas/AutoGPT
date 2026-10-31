@@ -1,6 +1,7 @@
 "use client";
 
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { reloadForChunkLoadError } from "@/lib/chunk-load-reload";
 import * as Sentry from "@sentry/nextjs";
 import { useEffect } from "react";
 
@@ -12,6 +13,7 @@ interface Props {
 export default function GlobalError({ error, reset }: Props) {
   useEffect(() => {
     Sentry.captureException(error);
+    reloadForChunkLoadError(error, "error_boundary");
   }, [error]);
 
   return (
