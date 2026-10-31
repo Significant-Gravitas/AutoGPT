@@ -1,5 +1,6 @@
 from collections.abc import Iterator
-from unittest.mock import AsyncMock, MagicMock, patch
+from contextlib import contextmanager
+from unittest.mock import DEFAULT, AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -48,23 +49,11 @@ async def test_terminal_transition_cascades_running_children(terminal_status):
     """When a graph_exec moves to a terminal state, its still-RUNNING child
     node_execs must be batch-updated to FAILED in the same call so we never
     leak the 'parent terminal, child running' invariant."""
-    with patch("backend.data.execution.AgentGraphExecution") as mock_graph, patch(
-        "backend.data.execution.AgentNodeExecution"
-    ) as mock_node:
-        mock_graph.prisma.return_value.update_many = AsyncMock()
-        mock_graph.prisma.return_value.find_unique_or_raise = AsyncMock(
-            return_value=MagicMock()
+    with _patched_db() as (_, mock_node):
+        await update_graph_execution_stats(
+            graph_exec_id="ge-1",
+            status=terminal_status,
         )
-        mock_node.prisma.return_value.update_many = AsyncMock()
-
-        with patch(
-            "backend.data.execution.GraphExecution.from_db",
-            return_value=MagicMock(),
-        ):
-            await update_graph_execution_stats(
-                graph_exec_id="ge-1",
-                status=terminal_status,
-            )
 
     mock_node.prisma.return_value.update_many.assert_awaited_once()
     where = mock_node.prisma.return_value.update_many.await_args.kwargs["where"]
@@ -73,51 +62,22 @@ async def test_terminal_transition_cascades_running_children(terminal_status):
 
 
 @pytest.mark.asyncio
-async def test_non_terminal_transition_does_not_cascade():
-    """Mid-flight status changes (RUNNING/QUEUED/REVIEW) must leave child rows alone."""
-    with patch("backend.data.execution.AgentGraphExecution") as mock_graph, patch(
-        "backend.data.execution.AgentNodeExecution"
-    ) as mock_node:
-        mock_graph.prisma.return_value.update_many = AsyncMock()
-        mock_graph.prisma.return_value.find_unique_or_raise = AsyncMock(
-            return_value=MagicMock()
-        )
-        mock_node.prisma.return_value.update_many = AsyncMock()
-
-        with patch(
-            "backend.data.execution.GraphExecution.from_db",
-            return_value=MagicMock(),
-        ):
-            await update_graph_execution_stats(
-                graph_exec_id="ge-1",
-                status=ExecutionStatus.RUNNING,
-            )
-
-    mock_node.prisma.return_value.update_many.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_cascade_can_be_disabled_explicitly():
-    """`cascade_running_children=False` is the escape hatch for callers that
+@pytest.mark.parametrize(
+    "update",
+    [
+        pytest.param({"status": ExecutionStatus.RUNNING}, id="non_terminal_transition"),
+        pytest.param(
+            {"status": ExecutionStatus.FAILED, "cascade_running_children": False},
+            id="cascade_disabled_explicitly",
+        ),
+    ],
+)
+async def test_children_left_alone(update):
+    """Mid-flight status changes (RUNNING/QUEUED/REVIEW) must leave child rows alone,
+    and so must `cascade_running_children=False`, the escape hatch for callers that
     need to mark a graph terminal without touching children (e.g. resume flows)."""
-    with patch("backend.data.execution.AgentGraphExecution") as mock_graph, patch(
-        "backend.data.execution.AgentNodeExecution"
-    ) as mock_node:
-        mock_graph.prisma.return_value.update_many = AsyncMock()
-        mock_graph.prisma.return_value.find_unique_or_raise = AsyncMock(
-            return_value=MagicMock()
-        )
-        mock_node.prisma.return_value.update_many = AsyncMock()
-
-        with patch(
-            "backend.data.execution.GraphExecution.from_db",
-            return_value=MagicMock(),
-        ):
-            await update_graph_execution_stats(
-                graph_exec_id="ge-1",
-                status=ExecutionStatus.FAILED,
-                cascade_running_children=False,
-            )
+    with _patched_db() as (_, mock_node):
+        await update_graph_execution_stats(graph_exec_id="ge-1", **update)
 
     mock_node.prisma.return_value.update_many.assert_not_awaited()
 
@@ -133,26 +93,14 @@ async def test_cascade_records_terminal_status_in_node_error():
         captured["stats"] = stats
         return {"executionStatus": status}
 
-    with patch("backend.data.execution.AgentGraphExecution") as mock_graph, patch(
-        "backend.data.execution.AgentNodeExecution"
-    ) as mock_node, patch(
+    with _patched_db(), patch(
         "backend.data.execution._get_update_status_data",
         side_effect=fake_get_update_status_data,
     ):
-        mock_graph.prisma.return_value.update_many = AsyncMock()
-        mock_graph.prisma.return_value.find_unique_or_raise = AsyncMock(
-            return_value=MagicMock()
+        await update_graph_execution_stats(
+            graph_exec_id="ge-1",
+            status=ExecutionStatus.TERMINATED,
         )
-        mock_node.prisma.return_value.update_many = AsyncMock()
-
-        with patch(
-            "backend.data.execution.GraphExecution.from_db",
-            return_value=MagicMock(),
-        ):
-            await update_graph_execution_stats(
-                graph_exec_id="ge-1",
-                status=ExecutionStatus.TERMINATED,
-            )
 
     assert captured.get("status") == ExecutionStatus.FAILED
     assert "terminated" in captured.get("stats", {}).get("error", "").lower()
@@ -186,17 +134,7 @@ async def test_rejected_terminal_transition_returns_none_and_does_nothing(
 @pytest.mark.asyncio
 async def test_applied_terminal_transition_returns_row(mock_score_completed_run):
     """The one-row case is unchanged: score, cascade, return the fresh row."""
-    with patch("backend.data.execution.AgentGraphExecution") as mock_graph, patch(
-        "backend.data.execution.AgentNodeExecution"
-    ) as mock_node, patch(
-        "backend.data.execution.GraphExecution.from_db", return_value="row"
-    ):
-        mock_graph.prisma.return_value.update_many = AsyncMock(return_value=1)
-        mock_graph.prisma.return_value.find_unique_or_raise = AsyncMock(
-            return_value=MagicMock()
-        )
-        mock_node.prisma.return_value.update_many = AsyncMock()
-
+    with _patched_db(rows_updated=1, row="row") as (_, mock_node):
         result = await update_graph_execution_stats(
             graph_exec_id="ge-1", status=ExecutionStatus.COMPLETED
         )
@@ -204,3 +142,22 @@ async def test_applied_terminal_transition_returns_row(mock_score_completed_run)
     assert result == "row"
     mock_score_completed_run.assert_awaited_once()
     mock_node.prisma.return_value.update_many.assert_awaited_once()
+
+
+@contextmanager
+def _patched_db(
+    rows_updated: object = DEFAULT, row: object = None
+) -> Iterator[tuple[MagicMock, MagicMock]]:
+    """Patch both Prisma models and `GraphExecution.from_db` (returning `row`, or a fresh
+    mock); `update_many` answers `rows_updated`, or a mock when it is not given."""
+    with patch("backend.data.execution.AgentGraphExecution") as mock_graph, patch(
+        "backend.data.execution.AgentNodeExecution"
+    ) as mock_node, patch(
+        "backend.data.execution.GraphExecution.from_db",
+        return_value=MagicMock() if row is None else row,
+    ):
+        graph_db = mock_graph.prisma.return_value
+        graph_db.update_many = AsyncMock(return_value=rows_updated)
+        graph_db.find_unique_or_raise = AsyncMock(return_value=MagicMock())
+        mock_node.prisma.return_value.update_many = AsyncMock()
+        yield mock_graph, mock_node
