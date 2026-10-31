@@ -103,14 +103,14 @@ describe("Sentry filter for Next's RSC navigation fallback", () => {
     logClientRequestFailure({
       status: 500,
       method: "GET",
-      url: "/api/library/agents",
+      url: "/api/internal/library/agents",
       errorMessage: "Internal Server Error",
     });
     await Sentry.flush(2000);
 
     expect(sent).toHaveLength(1);
     expect(sent[0].message).toBe(
-      "Request failed on client: GET /api/library/agents 500",
+      "Request failed on client: GET /api/internal/library/agents 500",
     );
   });
 

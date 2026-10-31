@@ -135,6 +135,12 @@ RATE_LIMIT_HITS = Counter(
     labelnames=["endpoint"],  # Removed user_id to prevent cardinality explosion
 )
 
+LEGACY_API_PATH_HITS = Counter(
+    "autogpt_legacy_api_path_requests_total",
+    "Requests to the internal API at a path from before it moved under /api/internal",
+    labelnames=["segment"],
+)
+
 SERVICE_INFO = Info(
     "autogpt_service",
     "Service information",
@@ -345,6 +351,11 @@ def record_rate_limit_hit(endpoint: str, user_id: str):
         user_id: User identifier (kept for future sampling/debugging)
     """
     RATE_LIMIT_HITS.labels(endpoint=endpoint).inc()
+
+
+def record_legacy_api_path_hit(segment: str):
+    """Record a request to the internal API at its path from before ``/api/internal``."""
+    LEGACY_API_PATH_HITS.labels(segment=segment).inc()
 
 
 def record_graph_operation(operation: str, status: str):

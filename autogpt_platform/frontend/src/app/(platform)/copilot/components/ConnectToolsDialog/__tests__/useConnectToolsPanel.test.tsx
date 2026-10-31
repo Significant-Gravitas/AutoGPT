@@ -21,11 +21,11 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
 import { useConnectToolsPanel } from "../useConnectToolsPanel";
 
 const PROVIDERS_URL =
-  "http://localhost:3000/api/proxy/api/integrations/providers";
+  "http://localhost:3000/api/proxy/api/internal/integrations/providers";
 const CREDENTIALS_URL =
-  "http://localhost:3000/api/proxy/api/integrations/credentials";
+  "http://localhost:3000/api/proxy/api/internal/integrations/credentials";
 const RECOMMENDED_URL =
-  "http://localhost:3000/api/proxy/api/onboarding/brain-dump/recommended-providers";
+  "http://localhost:3000/api/proxy/api/internal/onboarding/brain-dump/recommended-providers";
 
 function stub(recommendations: { provider: string; reason?: string }[]) {
   server.use(

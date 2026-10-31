@@ -126,7 +126,7 @@ describe("LibraryPage — AgentBriefingPanel without billing (self-hosted)", () 
     setupHandlers({ totalCents: 825 });
     let costSummaryRequests = 0;
     server.use(
-      http.get("/api/proxy/api/executions/cost-summary", () => {
+      http.get("/api/proxy/api/internal/executions/cost-summary", () => {
         costSummaryRequests += 1;
         return HttpResponse.json({}, { status: 500 });
       }),

@@ -120,7 +120,9 @@ describe("IntegrationSetupWizardPage", () => {
     render(<IntegrationSetupWizardPage />);
     await screen.findByRole("button", { name: "Cancel" });
 
-    expect(requested?.pathname).toBe("/api/proxy/api/oauth/app/client%3F1");
+    expect(requested?.pathname).toBe(
+      "/api/proxy/api/internal/oauth/app/client%3F1",
+    );
     expect(requested?.searchParams.get("redirect_uri")).toBe(REGISTERED);
   });
 

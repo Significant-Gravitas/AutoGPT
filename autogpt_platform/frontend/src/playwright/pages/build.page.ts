@@ -612,7 +612,7 @@ export class BuildPage extends BasePage {
 
     const { graphId, graphVersion } = this.getSavedGraphRef();
     const scheduleName = `Daily ${agentName}`;
-    const scheduleCreateUrl = `/api/proxy/api/graphs/${graphId}/schedules`;
+    const scheduleCreateUrl = `/api/proxy/api/internal/graphs/${graphId}/schedules`;
     const timeoutAt = Date.now() + 45000;
     let lastFailure = "schedule request did not run";
 

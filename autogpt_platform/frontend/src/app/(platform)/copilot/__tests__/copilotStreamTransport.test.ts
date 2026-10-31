@@ -140,7 +140,7 @@ describe("copilotStreamTransport.prepareSendMessagesRequest", () => {
       ).rejects.toBe(fetchReached);
       expect(fetchMock).toHaveBeenCalledOnce();
       expect(fetchMock).toHaveBeenCalledWith(
-        "http://test.local/api/chat/sessions/sess-lan-http/stream",
+        "http://test.local/api/internal/chat/sessions/sess-lan-http/stream",
         expect.objectContaining({ method: "POST" }),
       );
     } finally {
@@ -331,7 +331,7 @@ describe("copilotStreamTransport - folder attachments", () => {
     type: "file" as const,
     mediaType: "text/plain",
     filename: "a.txt",
-    url: "/api/proxy/api/workspace/files/file-1/download",
+    url: "/api/proxy/api/internal/workspace/files/file-1/download",
   };
   const FOLDER_PART = {
     type: "data-workspace-folder" as const,

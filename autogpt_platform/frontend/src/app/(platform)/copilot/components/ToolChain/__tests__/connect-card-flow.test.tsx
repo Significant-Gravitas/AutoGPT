@@ -85,7 +85,7 @@ describe("copilot Connect card", () => {
       },
     ];
     server.use(
-      http.get("*/api/integrations/providers", () =>
+      http.get("*/api/internal/integrations/providers", () =>
         HttpResponse.json([
           {
             name: "github",
@@ -93,13 +93,13 @@ describe("copilot Connect card", () => {
           },
         ]),
       ),
-      http.get("*/api/integrations/providers/system", () =>
+      http.get("*/api/internal/integrations/providers/system", () =>
         HttpResponse.json([]),
       ),
-      http.get("*/api/integrations/credentials", () =>
+      http.get("*/api/internal/integrations/credentials", () =>
         HttpResponse.json(savedCredentials),
       ),
-      http.get("*/api/integrations/github/login", ({ request }) => {
+      http.get("*/api/internal/integrations/github/login", ({ request }) => {
         const query = new URL(request.url).searchParams;
         requestedScopes = query.get("scopes") ?? "";
         upgradedCredentialID = query.get("credential_id");
@@ -110,7 +110,7 @@ describe("copilot Connect card", () => {
       }),
       // The real backend grants what the login URL asked for, so the scopes
       // the frontend dropped are the scopes the new credential lacks.
-      http.post("*/api/integrations/github/callback", () => {
+      http.post("*/api/internal/integrations/github/callback", () => {
         const granted = requestedScopes ? requestedScopes.split(",") : [];
         savedCredentials = [
           ...savedCredentials,
@@ -156,7 +156,7 @@ describe("copilot Connect card", () => {
   it("offers an API key below sign-in when either method can satisfy the workflow", async () => {
     server.use(
       http.post(
-        "*/api/integrations/github/credentials",
+        "*/api/internal/integrations/github/credentials",
         async ({ request }) => {
           const body = (await request.json()) as Record<string, unknown>;
           const stored = {
@@ -198,7 +198,7 @@ describe("copilot Connect card", () => {
     // A provider that silently downgrades the grant must not read as connected
     // — that was the shape of the original "Connected, then 401" report.
     server.use(
-      http.get("*/api/integrations/github/login", () => {
+      http.get("*/api/internal/integrations/github/login", () => {
         requestedScopes = "";
         return HttpResponse.json({
           login_url: "https://github.com/login/oauth/authorize",
@@ -222,23 +222,23 @@ describe("copilot Connect card, cards that owe more than a credential", () => {
     upgradedCredentialID = null;
     savedCredentials = [];
     server.use(
-      http.get("*/api/integrations/providers", () =>
+      http.get("*/api/internal/integrations/providers", () =>
         HttpResponse.json([{ name: "github", description: "Repositories" }]),
       ),
-      http.get("*/api/integrations/providers/system", () =>
+      http.get("*/api/internal/integrations/providers/system", () =>
         HttpResponse.json([]),
       ),
-      http.get("*/api/integrations/credentials", () =>
+      http.get("*/api/internal/integrations/credentials", () =>
         HttpResponse.json(savedCredentials),
       ),
-      http.get("*/api/integrations/github/login", ({ request }) => {
+      http.get("*/api/internal/integrations/github/login", ({ request }) => {
         requestedScopes = new URL(request.url).searchParams.get("scopes") ?? "";
         return HttpResponse.json({
           login_url: "https://github.com/login/oauth/authorize",
           state_token: "state-token",
         });
       }),
-      http.post("*/api/integrations/github/callback", () => {
+      http.post("*/api/internal/integrations/github/callback", () => {
         savedCredentials = [oauthCredential("cred-new", [REQUIRED_SCOPE])];
         return HttpResponse.json(savedCredentials[0]);
       }),
@@ -367,13 +367,13 @@ describe("copilot Connect card, a row whose schema widens mid-stream", () => {
     // Satisfies the first card's `repo` but not the second card's `workflow`.
     savedCredentials = [oauthCredential("cred-repo", [REQUIRED_SCOPE])];
     server.use(
-      http.get("*/api/integrations/providers", () =>
+      http.get("*/api/internal/integrations/providers", () =>
         HttpResponse.json([{ name: "github", description: "Repositories" }]),
       ),
-      http.get("*/api/integrations/providers/system", () =>
+      http.get("*/api/internal/integrations/providers/system", () =>
         HttpResponse.json([]),
       ),
-      http.get("*/api/integrations/credentials", () =>
+      http.get("*/api/internal/integrations/credentials", () =>
         HttpResponse.json(savedCredentials),
       ),
     );
@@ -417,16 +417,16 @@ describe("copilot Connect card, upgrade-target selection", () => {
     upgradedCredentialID = null;
     savedCredentials = [];
     server.use(
-      http.get("*/api/integrations/providers", () =>
+      http.get("*/api/internal/integrations/providers", () =>
         HttpResponse.json([{ name: "github", description: "Repositories" }]),
       ),
-      http.get("*/api/integrations/providers/system", () =>
+      http.get("*/api/internal/integrations/providers/system", () =>
         HttpResponse.json([]),
       ),
-      http.get("*/api/integrations/credentials", () =>
+      http.get("*/api/internal/integrations/credentials", () =>
         HttpResponse.json(savedCredentials),
       ),
-      http.get("*/api/integrations/github/login", ({ request }) => {
+      http.get("*/api/internal/integrations/github/login", ({ request }) => {
         const query = new URL(request.url).searchParams;
         requestedScopes = query.get("scopes") ?? "";
         upgradedCredentialID = query.get("credential_id");
@@ -435,7 +435,7 @@ describe("copilot Connect card, upgrade-target selection", () => {
           state_token: "state-token",
         });
       }),
-      http.post("*/api/integrations/github/callback", () =>
+      http.post("*/api/internal/integrations/github/callback", () =>
         HttpResponse.json({ id: "cred-new", provider: "github" }),
       ),
     );
@@ -497,7 +497,7 @@ describe("copilot Connect card, upgrade-target selection", () => {
       const selections: Record<string, string>[] = [];
       server.use(
         http.put(
-          "*/api/chat/sessions/*/credential-selection",
+          "*/api/internal/chat/sessions/*/credential-selection",
           async ({ request }) => {
             const body = (await request.json()) as {
               selections: Record<string, string>;
@@ -506,7 +506,7 @@ describe("copilot Connect card, upgrade-target selection", () => {
             return HttpResponse.json({ status: "ok" });
           },
         ),
-        http.post("*/api/integrations/github/callback", () => {
+        http.post("*/api/internal/integrations/github/callback", () => {
           const added = oauthCredential("cred-new", [REQUIRED_SCOPE]);
           savedCredentials = [...savedCredentials, added];
           return HttpResponse.json(reported ? added : {});
@@ -535,7 +535,7 @@ describe("copilot Connect card, upgrade-target selection", () => {
       let callbackCompleted = false;
       const selections: Record<string, string>[] = [];
       server.use(
-        http.get("*/api/integrations/credentials", () => {
+        http.get("*/api/internal/integrations/credentials", () => {
           if (callbackCompleted && reload === "failed") {
             return HttpResponse.json(
               { detail: "List unavailable" },
@@ -544,14 +544,14 @@ describe("copilot Connect card, upgrade-target selection", () => {
           }
           return HttpResponse.json([original]);
         }),
-        http.post("*/api/integrations/github/callback", () => {
+        http.post("*/api/internal/integrations/github/callback", () => {
           callbackCompleted = true;
           return HttpResponse.json(
             oauthCredential("cred-new", [REQUIRED_SCOPE]),
           );
         }),
         http.put(
-          "*/api/chat/sessions/*/credential-selection",
+          "*/api/internal/chat/sessions/*/credential-selection",
           async ({ request }) => {
             const body = (await request.json()) as {
               selections: Record<string, string>;
@@ -583,7 +583,7 @@ describe("copilot Connect card, upgrade-target selection", () => {
       oauthCredential("cred-b", ["read:user"]),
     ];
     server.use(
-      http.post("*/api/integrations/github/callback", () =>
+      http.post("*/api/internal/integrations/github/callback", () =>
         HttpResponse.json(
           { detail: "Username mismatch: authenticated as a different user" },
           { status: 400 },
@@ -652,16 +652,16 @@ describe("copilot Connect card, API-key provider", () => {
     upgradedCredentialID = null;
     savedCredentials = [];
     server.use(
-      http.get("*/api/integrations/providers", () =>
+      http.get("*/api/internal/integrations/providers", () =>
         HttpResponse.json([{ name: "openai", description: "Models" }]),
       ),
-      http.get("*/api/integrations/providers/system", () =>
+      http.get("*/api/internal/integrations/providers/system", () =>
         HttpResponse.json([]),
       ),
-      http.get("*/api/integrations/credentials", () =>
+      http.get("*/api/internal/integrations/credentials", () =>
         HttpResponse.json(savedCredentials),
       ),
-      http.post("*/api/integrations/openai/credentials", async () => {
+      http.post("*/api/internal/integrations/openai/credentials", async () => {
         const stored = {
           id: "cred-key",
           provider: "openai",
@@ -725,16 +725,16 @@ describe("copilot Connect card, already satisfied", () => {
       },
     ];
     server.use(
-      http.get("*/api/integrations/providers", () =>
+      http.get("*/api/internal/integrations/providers", () =>
         HttpResponse.json([
           { name: "github", description: "Issues, pull requests" },
           { name: "slack", description: "Messages" },
         ]),
       ),
-      http.get("*/api/integrations/providers/system", () =>
+      http.get("*/api/internal/integrations/providers/system", () =>
         HttpResponse.json([]),
       ),
-      http.get("*/api/integrations/credentials", () =>
+      http.get("*/api/internal/integrations/credentials", () =>
         HttpResponse.json(savedCredentials),
       ),
     );
@@ -981,16 +981,16 @@ describe("copilot Connect card, a saved credential the provider refused", () => 
     picked = null;
     savedCredentials = [refused];
     server.use(
-      http.get("*/api/integrations/providers", () =>
+      http.get("*/api/internal/integrations/providers", () =>
         HttpResponse.json([{ name: "github", description: "Repositories" }]),
       ),
-      http.get("*/api/integrations/providers/system", () =>
+      http.get("*/api/internal/integrations/providers/system", () =>
         HttpResponse.json([]),
       ),
-      http.get("*/api/integrations/credentials", () =>
+      http.get("*/api/internal/integrations/credentials", () =>
         HttpResponse.json(savedCredentials),
       ),
-      http.get("*/api/integrations/github/login", ({ request }) => {
+      http.get("*/api/internal/integrations/github/login", ({ request }) => {
         const query = new URL(request.url).searchParams;
         requestedScopes = query.get("scopes") ?? "";
         upgradedCredentialID = query.get("credential_id");
@@ -1000,11 +1000,11 @@ describe("copilot Connect card, a saved credential the provider refused", () => 
         });
       }),
       // A re-auth aimed at an account updates it in place: same id, new token.
-      http.post("*/api/integrations/github/callback", () =>
+      http.post("*/api/internal/integrations/github/callback", () =>
         HttpResponse.json(refused),
       ),
       http.put(
-        "*/api/chat/sessions/:sessionId/credential-selection",
+        "*/api/internal/chat/sessions/:sessionId/credential-selection",
         async ({ request }) => {
           picked = ((await request.json()) as { selections: typeof picked })
             .selections;
@@ -1063,7 +1063,7 @@ describe("copilot Connect card, a saved credential the provider refused", () => 
 
   it("runs on the new credential, not the refused one, when the sign-in adds one", async () => {
     server.use(
-      http.post("*/api/integrations/github/callback", () => {
+      http.post("*/api/internal/integrations/github/callback", () => {
         const added = oauthCredential("cred-new", [REQUIRED_SCOPE]);
         savedCredentials = [refused, added];
         return HttpResponse.json(added);
@@ -1080,7 +1080,7 @@ describe("copilot Connect card, a saved credential the provider refused", () => 
   it("keeps asking when the sign-in comes back without the access needed", async () => {
     // A narrower grant is stored beside the refused account, not over it.
     server.use(
-      http.post("*/api/integrations/github/callback", () => {
+      http.post("*/api/internal/integrations/github/callback", () => {
         const short = oauthCredential("cred-short", []);
         savedCredentials = [refused, short];
         return HttpResponse.json(short);
@@ -1099,7 +1099,7 @@ describe("copilot Connect card, a saved credential the provider refused", () => 
     // Any 2xx other than 200 reaches the dialog as a success with no
     // credential, which is how a credential-less approval looks to the row.
     server.use(
-      http.post("*/api/integrations/github/callback", () => {
+      http.post("*/api/internal/integrations/github/callback", () => {
         const added = oauthCredential("cred-new", [REQUIRED_SCOPE]);
         savedCredentials = [refused, added];
         return HttpResponse.json(added, { status: 201 });
@@ -1169,13 +1169,13 @@ describe("copilot Connect card, a saved credential the provider refused", () => 
       // provider list lags the callback.
       let staleFetches = 0;
       server.use(
-        http.post("*/api/integrations/github/callback", () => {
+        http.post("*/api/internal/integrations/github/callback", () => {
           const added = oauthCredential("cred-new", [REQUIRED_SCOPE]);
           savedCredentials = [refused, other, added];
           staleFetches = 1;
           return HttpResponse.json(added);
         }),
-        http.get("*/api/integrations/credentials", () => {
+        http.get("*/api/internal/integrations/credentials", () => {
           if (staleFetches === 0) return HttpResponse.json(savedCredentials);
           staleFetches -= 1;
           return HttpResponse.json([refused, other]);
@@ -1224,15 +1224,15 @@ describe("named HTTP connections", () => {
   beforeEach(() => {
     savedCredentials = [];
     server.use(
-      http.get("*/api/integrations/providers", () =>
+      http.get("*/api/internal/integrations/providers", () =>
         HttpResponse.json([
           { name: "http", description: "Generic HTTP requests" },
         ]),
       ),
-      http.get("*/api/integrations/providers/system", () =>
+      http.get("*/api/internal/integrations/providers/system", () =>
         HttpResponse.json([]),
       ),
-      http.get("*/api/integrations/credentials", () =>
+      http.get("*/api/internal/integrations/credentials", () =>
         HttpResponse.json(savedCredentials),
       ),
     );
@@ -1244,7 +1244,7 @@ describe("named HTTP connections", () => {
     const selections: Record<string, string>[] = [];
     server.use(
       http.put(
-        "*/api/chat/sessions/*/credential-selection",
+        "*/api/internal/chat/sessions/*/credential-selection",
         async ({ request }) => {
           const body = (await request.json()) as {
             selections: Record<string, string>;
@@ -1253,19 +1253,22 @@ describe("named HTTP connections", () => {
           return HttpResponse.json({ status: "ok" });
         },
       ),
-      http.post("*/api/integrations/http/credentials", async ({ request }) => {
-        const body = (await request.json()) as Record<string, unknown>;
-        created.push(body);
-        const stored = {
-          id: `http-${created.length}`,
-          provider: "http",
-          type: "host_scoped",
-          title: body.title,
-          host: body.host,
-        };
-        savedCredentials.push(stored);
-        return HttpResponse.json(stored);
-      }),
+      http.post(
+        "*/api/internal/integrations/http/credentials",
+        async ({ request }) => {
+          const body = (await request.json()) as Record<string, unknown>;
+          created.push(body);
+          const stored = {
+            id: `http-${created.length}`,
+            provider: "http",
+            type: "host_scoped",
+            title: body.title,
+            host: body.host,
+          };
+          savedCredentials.push(stored);
+          return HttpResponse.json(stored);
+        },
+      ),
     );
     const onSend = vi.fn();
     render(
@@ -1321,8 +1324,10 @@ describe("named HTTP connections", () => {
     async (host) => {
       const selections: Record<string, string>[] = [];
       server.use(
-        http.get("*/api/integrations/credentials", () => HttpResponse.json([])),
-        http.post("*/api/integrations/http/credentials", () =>
+        http.get("*/api/internal/integrations/credentials", () =>
+          HttpResponse.json([]),
+        ),
+        http.post("*/api/internal/integrations/http/credentials", () =>
           HttpResponse.json({
             id: "new-key",
             provider: "http",
@@ -1332,7 +1337,7 @@ describe("named HTTP connections", () => {
           }),
         ),
         http.put(
-          "*/api/chat/sessions/*/credential-selection",
+          "*/api/internal/chat/sessions/*/credential-selection",
           async ({ request }) => {
             const body = (await request.json()) as {
               selections: Record<string, string>;
@@ -1373,24 +1378,27 @@ describe("named HTTP connections", () => {
   it("keeps the key form open after a failed save and lets the user retry", async () => {
     let attempts = 0;
     server.use(
-      http.post("*/api/integrations/http/credentials", async ({ request }) => {
-        attempts += 1;
-        if (attempts === 1)
-          return HttpResponse.json(
-            { detail: "Could not save connection" },
-            { status: 400 },
-          );
-        const body = (await request.json()) as Record<string, unknown>;
-        const stored = {
-          id: "retry-key",
-          provider: "http",
-          type: "host_scoped",
-          host: body.host,
-          title: body.title,
-        };
-        savedCredentials.push(stored);
-        return HttpResponse.json(stored);
-      }),
+      http.post(
+        "*/api/internal/integrations/http/credentials",
+        async ({ request }) => {
+          attempts += 1;
+          if (attempts === 1)
+            return HttpResponse.json(
+              { detail: "Could not save connection" },
+              { status: 400 },
+            );
+          const body = (await request.json()) as Record<string, unknown>;
+          const stored = {
+            id: "retry-key",
+            provider: "http",
+            type: "host_scoped",
+            host: body.host,
+            title: body.title,
+          };
+          savedCredentials.push(stored);
+          return HttpResponse.json(stored);
+        },
+      ),
     );
     const onSend = vi.fn();
     render(
@@ -1685,36 +1693,39 @@ function widerScopePart(): MessagePart {
 function mockTwoProviderBackend() {
   savedCredentials = [];
   server.use(
-    http.get("*/api/integrations/providers", () =>
+    http.get("*/api/internal/integrations/providers", () =>
       HttpResponse.json([
         { name: "github", description: "Repositories" },
         { name: "slack", description: "Messages" },
       ]),
     ),
-    http.get("*/api/integrations/providers/system", () =>
+    http.get("*/api/internal/integrations/providers/system", () =>
       HttpResponse.json([]),
     ),
-    http.get("*/api/integrations/credentials", () =>
+    http.get("*/api/internal/integrations/credentials", () =>
       HttpResponse.json(savedCredentials),
     ),
-    http.get("*/api/integrations/:provider/login", () =>
+    http.get("*/api/internal/integrations/:provider/login", () =>
       HttpResponse.json({
         login_url: "https://example.com/oauth/authorize",
         state_token: "state-token",
       }),
     ),
-    http.post("*/api/integrations/:provider/callback", ({ params }) => {
-      const provider = String(params.provider);
-      const stored = {
-        id: `cred-${provider}`,
-        provider,
-        type: "oauth2",
-        title: provider,
-        scopes: provider === "github" ? [REQUIRED_SCOPE] : ["chat:write"],
-      };
-      savedCredentials = [...savedCredentials, stored];
-      return HttpResponse.json(stored);
-    }),
+    http.post(
+      "*/api/internal/integrations/:provider/callback",
+      ({ params }) => {
+        const provider = String(params.provider);
+        const stored = {
+          id: `cred-${provider}`,
+          provider,
+          type: "oauth2",
+          title: provider,
+          scopes: provider === "github" ? [REQUIRED_SCOPE] : ["chat:write"],
+        };
+        savedCredentials = [...savedCredentials, stored];
+        return HttpResponse.json(stored);
+      },
+    ),
   );
 }
 

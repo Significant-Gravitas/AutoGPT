@@ -47,7 +47,8 @@ test("copilot happy path: a reply's diagram and formula render after their plugi
   // The chat's history comes from the real session, with two finished turns
   // added: one reply holds a mermaid diagram, the other a formula.
   await page.route(
-    (url) => url.pathname === `/api/proxy/api/chat/sessions/${sessionId}`,
+    (url) =>
+      url.pathname === `/api/proxy/api/internal/chat/sessions/${sessionId}`,
     async (route) => {
       if (route.request().method() !== "GET") return route.fallback();
       const response = await route.fetch();

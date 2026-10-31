@@ -66,11 +66,15 @@ const workConnection = {
 
 function mockMicrosoftConnection(credentials: unknown[]) {
   server.use(
-    http.get("*/api/integrations/providers", () => HttpResponse.json([])),
-    http.get("*/api/integrations/:provider/credentials", ({ params }) =>
-      HttpResponse.json(params.provider === "microsoft" ? credentials : []),
+    http.get("*/api/internal/integrations/providers", () =>
+      HttpResponse.json([]),
     ),
-    http.post("*/api/integrations/microsoft/check", () =>
+    http.get(
+      "*/api/internal/integrations/:provider/credentials",
+      ({ params }) =>
+        HttpResponse.json(params.provider === "microsoft" ? credentials : []),
+    ),
+    http.post("*/api/internal/integrations/microsoft/check", () =>
       HttpResponse.json({
         verified: true,
         account_type: "work",
@@ -520,7 +524,7 @@ describe("AIConnectionsSection", () => {
     let listFails = true;
     const removed: string[] = [];
     server.use(
-      http.get("/api/proxy/api/integrations/credentials", () =>
+      http.get("/api/proxy/api/internal/integrations/credentials", () =>
         listFails
           ? HttpResponse.json({ detail: "unavailable" }, { status: 500 })
           : HttpResponse.json([
@@ -567,7 +571,7 @@ describe("AIConnectionsSection", () => {
 
     await waitFor(() =>
       expect(removed).toEqual([
-        "/api/proxy/api/integrations/microsoft/credentials/cred-msft",
+        "/api/proxy/api/internal/integrations/microsoft/credentials/cred-msft",
       ]),
     );
   });

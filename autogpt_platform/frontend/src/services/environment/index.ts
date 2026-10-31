@@ -25,19 +25,13 @@ function getAppEnv(): AppEnv {
 }
 
 function getAGPTServerApiUrl() {
-  if (environment.isServerSide() && process.env.AGPT_SERVER_URL) {
-    return process.env.AGPT_SERVER_URL;
-  }
-
-  const url =
-    process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006/api";
-  return resolveBrowserURL(url);
+  return `${getAGPTServerBaseUrl()}/api/internal`;
 }
 
 function getAGPTServerBaseUrl() {
   // Only strip a trailing "/api"; a plain replace("/api", "") would hit the
   // first "/api" anywhere, e.g. the host in https://api.example.com/api.
-  return getAGPTServerApiUrl().replace(/\/api\/?$/, "");
+  return getConfiguredServerURL().replace(/\/api\/?$/, "");
 }
 
 function getAGPTWsServerUrl() {
@@ -53,6 +47,17 @@ function getAGPTWsServerUrl() {
   if (url.protocol === "http:") url.protocol = "ws:";
   if (url.protocol === "https:") url.protocol = "wss:";
   return url.toString();
+}
+
+// The backend's /api root, as AGPT_SERVER_URL and NEXT_PUBLIC_AGPT_SERVER_URL name it.
+function getConfiguredServerURL() {
+  if (environment.isServerSide() && process.env.AGPT_SERVER_URL) {
+    return process.env.AGPT_SERVER_URL;
+  }
+
+  const url =
+    process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006/api";
+  return resolveBrowserURL(url);
 }
 
 function resolveBrowserURL(url: string) {

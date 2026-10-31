@@ -68,10 +68,10 @@ function makeUsage({
 function mockUsageResponse(body: JsonBodyType) {
   server.use(
     http.get(
-      "*/api/credits/subscription",
+      "*/api/internal/credits/subscription",
       () => new HttpResponse(null, { status: 503 }),
     ),
-    http.get("*/api/chat/usage", () => HttpResponse.json(body)),
+    http.get("*/api/internal/chat/usage", () => HttpResponse.json(body)),
   );
 }
 

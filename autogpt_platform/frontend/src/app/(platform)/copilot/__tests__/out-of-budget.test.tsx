@@ -241,7 +241,7 @@ describe("Send at reset", () => {
       ...budgetHandlers({ usage: weeklyExhausted() }),
       ...atReset.handlers,
       http.post(
-        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+        `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/stream`,
         async ({ request }) => {
           streamed.push(await request.clone().text());
           return streamSseResponse(assistantTextChunks("On it."), {
@@ -399,7 +399,7 @@ describe("Out of budget", () => {
     let offersRead = 0;
     server.use(...budgetHandlers({ usage: weeklyExhausted() }));
     server.use(
-      http.get("*/api/chat/connections", () => {
+      http.get("*/api/internal/chat/connections", () => {
         offersRead += 1;
         return HttpResponse.json({
           offers: [connection("platform"), connection("microsoft_365_copilot")],

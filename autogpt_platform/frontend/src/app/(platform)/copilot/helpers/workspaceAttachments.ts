@@ -61,7 +61,7 @@ export interface WorkspaceFolderPartData {
 export const MAX_ATTACHMENTS = 20;
 
 export function workspaceFileDownloadUrl(fileId: string): string {
-  return `/api/proxy/api/workspace/files/${encodeURIComponent(fileId)}/download`;
+  return `/api/proxy/api/internal/workspace/files/${encodeURIComponent(fileId)}/download`;
 }
 
 export function workspaceItemToAttachment(item: WorkspaceFileItem): Attachment {

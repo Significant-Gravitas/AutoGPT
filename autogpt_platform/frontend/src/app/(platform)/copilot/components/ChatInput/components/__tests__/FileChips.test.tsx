@@ -75,7 +75,9 @@ describe("FileChips", () => {
     );
     expect(sources).toHaveLength(2);
     expect(sources[0]).toMatch(/^blob:/);
-    expect(sources[1]).toBe("/api/proxy/api/workspace/files/file-2/download");
+    expect(sources[1]).toBe(
+      "/api/proxy/api/internal/workspace/files/file-2/download",
+    );
     expect(screen.getByText("photo.jpg")).toBeTruthy();
   });
 

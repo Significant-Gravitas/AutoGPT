@@ -1504,7 +1504,7 @@ def test_an_org_member_is_added_only_by_their_own_acceptance():
         and "add_org_member" in inspect.getsource(route.endpoint)
         for method in route.methods
     }
-    assert adders == {"POST /api/invitations/{token}/accept"}
+    assert adders == {"POST /api/internal/invitations/{token}/accept"}
 
 
 class TestInvitationListPending:

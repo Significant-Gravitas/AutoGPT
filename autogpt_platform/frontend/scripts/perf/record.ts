@@ -48,7 +48,7 @@ async function main() {
   try {
     await signIn(request, options.baseURL, Boolean(options.storageState));
     const session = await request.get(
-      `${options.baseURL}/api/proxy/api/chat/sessions/${options.sessionID}?limit=${MAX_SESSION_ROWS}`,
+      `${options.baseURL}/api/proxy/api/internal/chat/sessions/${options.sessionID}?limit=${MAX_SESSION_ROWS}`,
     );
     if (!session.ok()) {
       throw new Error(`Session GET failed with ${session.status()}`);
@@ -65,7 +65,7 @@ async function main() {
     const { token: jwt } = (await token.json()) as { token?: string };
     if (!jwt) throw new Error("Could not mint a backend token");
     const stream = await request.post(
-      `${options.backendURL}/api/chat/sessions/${options.sessionID}/stream`,
+      `${options.backendURL}/api/internal/chat/sessions/${options.sessionID}/stream`,
       {
         headers: { Authorization: `Bearer ${jwt}` },
         data: {

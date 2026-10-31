@@ -46,7 +46,7 @@ function extractPromptFromUrl(): {
             type: "file",
             mediaType: mimeType ?? "application/json",
             filename: fileName ?? "workflow.json",
-            url: `/api/proxy/api/workspace/files/${fileId}/download`,
+            url: `/api/proxy/api/internal/workspace/files/${fileId}/download`,
           };
         }
       } catch {

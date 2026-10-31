@@ -84,7 +84,7 @@ beforeEach(() => {
   workCheckOverride = null;
   server.use(
     http.post(
-      "*/api/integrations/:provider/device-auth/initiate",
+      "*/api/internal/integrations/:provider/device-auth/initiate",
       ({ request }) => {
         codeRequests.push(new URL(request.url));
         if (codeRefusal) {
@@ -100,10 +100,12 @@ beforeEach(() => {
         });
       },
     ),
-    http.get("*/api/integrations/:provider/credentials", ({ params }) =>
-      HttpResponse.json(params.provider === "microsoft" ? credentials : []),
+    http.get(
+      "*/api/internal/integrations/:provider/credentials",
+      ({ params }) =>
+        HttpResponse.json(params.provider === "microsoft" ? credentials : []),
     ),
-    http.get("*/api/integrations/:provider/login", ({ request }) => {
+    http.get("*/api/internal/integrations/:provider/login", ({ request }) => {
       loginRequests.push(new URL(request.url));
       return HttpResponse.json(
         {
@@ -116,23 +118,26 @@ beforeEach(() => {
         { status: 400 },
       );
     }),
-    http.post("*/api/integrations/microsoft/check", async ({ request }) => {
-      const body = (await request.json()) as { credential_id: string };
-      return HttpResponse.json(
-        body.credential_id === "work-id"
-          ? (workCheckOverride ?? workCheck)
-          : {
-              verified: true,
-              account_type: "personal",
-              message: "Connected.",
-              admin_consent_url: null,
-              capabilities: [
-                capability("mail", "Mail", "available"),
-                capability("teams", "Teams chats", "work_account_only"),
-              ],
-            },
-      );
-    }),
+    http.post(
+      "*/api/internal/integrations/microsoft/check",
+      async ({ request }) => {
+        const body = (await request.json()) as { credential_id: string };
+        return HttpResponse.json(
+          body.credential_id === "work-id"
+            ? (workCheckOverride ?? workCheck)
+            : {
+                verified: true,
+                account_type: "personal",
+                message: "Connected.",
+                admin_consent_url: null,
+                capabilities: [
+                  capability("mail", "Mail", "available"),
+                  capability("teams", "Teams chats", "work_account_only"),
+                ],
+              },
+        );
+      },
+    ),
   );
 });
 
@@ -181,7 +186,7 @@ describe("Microsoft connection", () => {
       answer = resolve;
     });
     server.use(
-      http.get("*/api/integrations/:provider/login", async () => {
+      http.get("*/api/internal/integrations/:provider/login", async () => {
         await answered;
         return HttpResponse.json({ detail: "Try later" }, { status: 503 });
       }),
@@ -397,7 +402,7 @@ describe("Microsoft connection", () => {
   it("asks to sign in again when Microsoft no longer accepts the connection", async () => {
     credentials = [work];
     server.use(
-      http.post("*/api/integrations/microsoft/check", () =>
+      http.post("*/api/internal/integrations/microsoft/check", () =>
         HttpResponse.json(
           {
             detail: {

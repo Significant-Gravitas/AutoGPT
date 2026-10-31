@@ -44,11 +44,11 @@ export function mockBilling(trial = trialResponse(cancelPending)) {
       hits.trial += 1;
       return state.trial;
     }),
-    http.get("*/api/credits/subscription", () => {
+    http.get("*/api/internal/credits/subscription", () => {
       hits.subscription += 1;
       return HttpResponse.json(state.subscription);
     }),
-    http.get("*/api/credits/invoices", () => {
+    http.get("*/api/internal/credits/invoices", () => {
       hits.invoices += 1;
       return HttpResponse.json([]);
     }),
@@ -74,7 +74,7 @@ export function mockPricePerUser() {
 export function mockPlanRequest(respond: () => Response) {
   const body = vi.fn();
   server.use(
-    http.post("*/api/credits/subscription", async ({ request }) => {
+    http.post("*/api/internal/credits/subscription", async ({ request }) => {
       body(await request.json());
       return respond();
     }),

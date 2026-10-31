@@ -83,7 +83,7 @@ function Composer() {
 
 function answerSessionCreate(status: number, detail: string) {
   server.use(
-    http.post("*/api/chat/sessions", () =>
+    http.post("*/api/internal/chat/sessions", () =>
       HttpResponse.json({ detail }, { status }),
     ),
   );

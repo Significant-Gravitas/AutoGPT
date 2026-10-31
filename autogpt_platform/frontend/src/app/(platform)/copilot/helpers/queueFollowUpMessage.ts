@@ -24,7 +24,7 @@ export async function queueFollowUpMessage(
   sessionId: string,
   message: string,
 ): Promise<QueueFollowUpResult> {
-  const url = `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${sessionId}/messages/pending`;
+  const url = `${environment.getAGPTServerBaseUrl()}/api/internal/chat/sessions/${sessionId}/messages/pending`;
   const res = await fetch(url, {
     method: "POST",
     headers: {

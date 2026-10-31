@@ -70,7 +70,7 @@ vi.mock("../useHydrateOnStreamEnd", async (importActual) => {
 });
 
 function streamUrl() {
-  return `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`;
+  return `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/stream`;
 }
 
 function sessionJson(

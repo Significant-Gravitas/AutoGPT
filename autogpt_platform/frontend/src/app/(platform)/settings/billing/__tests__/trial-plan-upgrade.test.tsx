@@ -206,7 +206,7 @@ describe("upgrading past the trial's plan", () => {
     const charge = deferredTrialResponse<void>();
     const sent = vi.fn();
     server.use(
-      http.post("*/api/credits/subscription", async () => {
+      http.post("*/api/internal/credits/subscription", async () => {
         sent();
         await charge.promise;
         return HttpResponse.json({ ...trialSubscription, url: paymentPage });

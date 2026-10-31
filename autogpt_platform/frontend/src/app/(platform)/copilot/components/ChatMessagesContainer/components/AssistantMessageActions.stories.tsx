@@ -39,7 +39,7 @@ function provideSpeechVoice() {
 }
 
 const feedbackHandler = http.post(
-  "*/api/chat/sessions/:sessionId/feedback",
+  "*/api/internal/chat/sessions/:sessionId/feedback",
   () => HttpResponse.json({}),
 );
 

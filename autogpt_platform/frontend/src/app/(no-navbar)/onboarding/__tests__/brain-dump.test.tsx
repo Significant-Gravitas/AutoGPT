@@ -207,7 +207,9 @@ vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
 }));
 
 vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
-  getGetSubscriptionStatusQueryKey: () => ["/api/credits/subscription"],
+  getGetSubscriptionStatusQueryKey: () => [
+    "/api/internal/credits/subscription",
+  ],
   useGetSubscriptionStatus: (opts: {
     query: { select: (res: { status: number; data: unknown }) => unknown };
   }) => ({
@@ -357,7 +359,7 @@ function recordBrainDumpTraffic() {
       return { status: null };
     }),
     http.get(
-      "http://localhost:3000/api/proxy/api/onboarding/brain-dump/recording",
+      "http://localhost:3000/api/proxy/api/internal/onboarding/brain-dump/recording",
       () => {
         calls.push({ endpoint: "recording" });
         return HttpResponse.json({});
@@ -366,7 +368,7 @@ function recordBrainDumpTraffic() {
     // Answered by default so the preparing step's team gate never stalls a
     // wizard test; the section itself is exercised on the greeting page.
     http.get(
-      "http://localhost:3000/api/proxy/api/onboarding/brain-dump/recommended-experts",
+      "http://localhost:3000/api/proxy/api/internal/onboarding/brain-dump/recommended-experts",
       () => HttpResponse.json({ ready: true, team: null }),
     ),
   );
@@ -615,7 +617,7 @@ describe("onboarding brain dump — typed fallback", () => {
   it("returns to the text with the limit spelled out when finalize refuses it as too long", async () => {
     server.use(
       http.post(
-        "http://localhost:3000/api/proxy/api/onboarding/brain-dump/finalize",
+        "http://localhost:3000/api/proxy/api/internal/onboarding/brain-dump/finalize",
         () =>
           HttpResponse.json(
             {

@@ -103,13 +103,13 @@ function arrangeSentry() {
         },
       },
     ]),
-    http.post("*/api/mcp/discover-tools", () =>
+    http.post("*/api/internal/mcp/discover-tools", () =>
       HttpResponse.json({
         tools: [],
         server_url: "https://mcp.sentry.dev/mcp",
       }),
     ),
-    http.post("*/api/mcp/token", () => {
+    http.post("*/api/internal/mcp/token", () => {
       requests.token += 1;
       return HttpResponse.json({
         id: "cred-sentry",
@@ -119,7 +119,7 @@ function arrangeSentry() {
         service: "sentry",
       });
     }),
-    http.post("*/api/experts/:expertId/credentials", () => {
+    http.post("*/api/internal/experts/:expertId/credentials", () => {
       requests.grants += 1;
       return HttpResponse.json([]);
     }),

@@ -151,7 +151,7 @@ function renderKickoff(searchParams: string) {
 }
 
 function stubTransports() {
-  return http.get("*/api/chat/transports", () =>
+  return http.get("*/api/internal/chat/transports", () =>
     HttpResponse.json({
       transports: [
         {
@@ -208,10 +208,10 @@ describe("useExpertKickoff", () => {
     let persistedMessages: unknown[] = [];
     server.use(
       stubTransports(),
-      http.get("*/api/chat/sessions", () =>
+      http.get("*/api/internal/chat/sessions", () =>
         HttpResponse.json({ sessions: [], total: 0 }),
       ),
-      http.post("*/api/chat/sessions", async ({ request }) => {
+      http.post("*/api/internal/chat/sessions", async ({ request }) => {
         createCount += 1;
         createBody = await request.json();
         return HttpResponse.json({
@@ -221,7 +221,7 @@ describe("useExpertKickoff", () => {
           expert_id: EXPERT_ID,
         });
       }),
-      http.get(`*/api/chat/sessions/${KICKOFF_SESSION_ID}`, () =>
+      http.get(`*/api/internal/chat/sessions/${KICKOFF_SESSION_ID}`, () =>
         HttpResponse.json(
           makeSessionPayload(KICKOFF_SESSION_ID, persistedMessages),
         ),
@@ -277,11 +277,11 @@ describe("useExpertKickoff", () => {
     let createCount = 0;
     server.use(
       stubTransports(),
-      http.get("*/api/chat/sessions", () => {
+      http.get("*/api/internal/chat/sessions", () => {
         listCount += 1;
         return HttpResponse.json({ sessions: [], total: 0 });
       }),
-      http.post("*/api/chat/sessions", () => {
+      http.post("*/api/internal/chat/sessions", () => {
         createCount += 1;
         return HttpResponse.json({ id: "should-not-happen" });
       }),
@@ -304,11 +304,11 @@ describe("useExpertKickoff", () => {
     let createCount = 0;
     server.use(
       stubTransports(),
-      http.get("*/api/chat/sessions", () => {
+      http.get("*/api/internal/chat/sessions", () => {
         listCount += 1;
         return HttpResponse.json({ sessions: [], total: 0 });
       }),
-      http.post("*/api/chat/sessions", () => {
+      http.post("*/api/internal/chat/sessions", () => {
         createCount += 1;
         return HttpResponse.json({ id: "should-not-happen" });
       }),
@@ -326,10 +326,10 @@ describe("useExpertKickoff", () => {
     let createCount = 0;
     server.use(
       stubTransports(),
-      http.get("*/api/chat/sessions", () =>
+      http.get("*/api/internal/chat/sessions", () =>
         HttpResponse.json({ sessions: [], total: 0 }),
       ),
-      http.post("*/api/chat/sessions", () => {
+      http.post("*/api/internal/chat/sessions", () => {
         createCount += 1;
         return new HttpResponse(null, { status: 500 });
       }),
@@ -355,7 +355,7 @@ describe("useExpertKickoff", () => {
     let requestedPinnedFirst: string | null = null;
     server.use(
       stubTransports(),
-      http.get("*/api/chat/sessions", ({ request }) => {
+      http.get("*/api/internal/chat/sessions", ({ request }) => {
         const url = new URL(request.url);
         requestedExpertId = url.searchParams.get("expert_id");
         requestedPinnedFirst = url.searchParams.get("pinned_first");
@@ -373,7 +373,7 @@ describe("useExpertKickoff", () => {
           total: 1,
         });
       }),
-      http.get(`*/api/chat/sessions/${EXISTING_SESSION_ID}`, () =>
+      http.get(`*/api/internal/chat/sessions/${EXISTING_SESSION_ID}`, () =>
         HttpResponse.json(
           makeSessionPayload(EXISTING_SESSION_ID, [
             {
@@ -385,7 +385,7 @@ describe("useExpertKickoff", () => {
           ]),
         ),
       ),
-      http.post("*/api/chat/sessions", () => {
+      http.post("*/api/internal/chat/sessions", () => {
         createCount += 1;
         return HttpResponse.json({ id: "should-not-happen" });
       }),
@@ -412,7 +412,7 @@ describe("useExpertKickoff", () => {
     let createCount = 0;
     server.use(
       stubTransports(),
-      http.get("*/api/chat/sessions", () =>
+      http.get("*/api/internal/chat/sessions", () =>
         HttpResponse.json({
           sessions: [
             {
@@ -427,12 +427,12 @@ describe("useExpertKickoff", () => {
           total: 1,
         }),
       ),
-      http.get(`*/api/chat/sessions/${ORPHAN_SESSION_ID}`, () =>
+      http.get(`*/api/internal/chat/sessions/${ORPHAN_SESSION_ID}`, () =>
         HttpResponse.json(
           makeSessionPayload(ORPHAN_SESSION_ID, [persistedKickoffMessage()]),
         ),
       ),
-      http.post("*/api/chat/sessions", () => {
+      http.post("*/api/internal/chat/sessions", () => {
         createCount += 1;
         return HttpResponse.json({ id: "should-not-happen" });
       }),
@@ -469,11 +469,11 @@ describe("useExpertKickoff", () => {
     let createCount = 0;
     server.use(
       stubTransports(),
-      http.get("*/api/chat/sessions", () => {
+      http.get("*/api/internal/chat/sessions", () => {
         listCount += 1;
         return HttpResponse.json({ sessions: [], total: 0 });
       }),
-      http.post("*/api/chat/sessions", () => {
+      http.post("*/api/internal/chat/sessions", () => {
         createCount += 1;
         return HttpResponse.json({ id: "should-not-happen" });
       }),

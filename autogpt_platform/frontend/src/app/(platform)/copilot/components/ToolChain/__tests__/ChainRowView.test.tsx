@@ -107,7 +107,7 @@ describe("ChainRowView - live sub-session rows", () => {
 
   it("does not claim the teammate finished when the poll dies", async () => {
     server.use(
-      http.get("*/api/chat/sessions/:sessionId", () => {
+      http.get("*/api/internal/chat/sessions/:sessionId", () => {
         return new HttpResponse(null, { status: 500 });
       }),
     );

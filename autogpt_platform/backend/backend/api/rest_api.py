@@ -111,6 +111,7 @@ from .external.v2.mcp_server import (
 from .features.analytics import router as analytics_router
 from .features.integrations.router import router as integrations_router
 from .middleware.analytics import AnalyticsContextMiddleware
+from .middleware.legacy_paths import LegacyAPIPathMiddleware, internal_api_segments
 from .middleware.security import SecurityHeadersMiddleware
 from .utils.auth_before_body import check_token_before_body
 from .utils.cors import build_cors_params
@@ -297,150 +298,152 @@ instrument_fastapi(app, service_name="rest-api", expose_endpoint=False)
 add_exception_handlers(app)
 
 app.include_router(
-    backend.api.features.desktop_preview.router, tags=["v1"], prefix="/api"
+    backend.api.features.desktop_preview.router, tags=["v1"], prefix="/api/internal"
 )
-app.include_router(subscription_trial_routes.router, prefix="/api")
-app.include_router(subscription_activation_routes.router, prefix="/api")
+app.include_router(subscription_trial_routes.router, prefix="/api/internal")
+app.include_router(subscription_activation_routes.router, prefix="/api/internal")
 app.include_router(
     api_keys_routes.router,
     tags=["v1", "api-keys"],
-    prefix="/api/api-keys",
+    prefix="/api/internal/api-keys",
 )
 app.include_router(
     skills_routes.router,
     tags=["v1", "skills"],
-    prefix="/api/skills",
+    prefix="/api/internal/skills",
 )
 app.include_router(
     schedules_routes.router,
     tags=["v1", "schedules"],
-    prefix="/api",
+    prefix="/api/internal",
 )
 app.include_router(
     graph_executions_routes.router,
     tags=["v1"],
-    prefix="/api",
+    prefix="/api/internal",
 )
 app.include_router(
     graphs_routes.router,
     tags=["v1", "graphs"],
-    prefix="/api",
+    prefix="/api/internal",
 )
 app.include_router(
     credits_routes.router,
     tags=["v1", "credits"],
-    prefix="/api",
+    prefix="/api/internal",
 )
 app.include_router(
     subscriptions_routes.router,
     tags=["v1", "credits"],
-    prefix="/api",
+    prefix="/api/internal",
 )
 app.include_router(
     blocks_routes.router,
     tags=["v1"],
-    prefix="/api",
+    prefix="/api/internal",
 )
 app.include_router(
     onboarding_routes.router,
     tags=["v1"],
-    prefix="/api",
+    prefix="/api/internal",
 )
 app.include_router(
     user_routes.router,
     tags=["v1"],
-    prefix="/api",
+    prefix="/api/internal",
 )
 app.include_router(
     auth_email_routes.auth_email_router,
-    prefix="/api/auth/email",
+    prefix="/api/internal/auth/email",
     tags=["auth-email"],
 )
 app.include_router(
     integrations_router,
-    prefix="/api/integrations",
+    prefix="/api/internal/integrations",
     tags=["v1", "integrations"],
 )
 app.include_router(
     analytics_router,
-    prefix="/api/analytics",
+    prefix="/api/internal/analytics",
     tags=["analytics"],
 )
 app.include_router(
     backend.api.features.experiments.router,
-    prefix="/api/experiments",
+    prefix="/api/internal/experiments",
     tags=["experiments"],
 )
 app.include_router(
-    backend.api.features.store.routes.router, tags=["v2"], prefix="/api/store"
+    backend.api.features.store.routes.router, tags=["v2"], prefix="/api/internal/store"
 )
 app.include_router(
     backend.api.features.store.skill_routes.router,
     tags=["v2"],
-    prefix="/api/store/skills",
+    prefix="/api/internal/store/skills",
 )
 app.include_router(
-    backend.api.features.builder.routes.router, tags=["v2"], prefix="/api/builder"
+    backend.api.features.builder.routes.router,
+    tags=["v2"],
+    prefix="/api/internal/builder",
 )
 app.include_router(
     backend.api.features.admin.store_admin_routes.router,
     tags=["v2", "admin"],
-    prefix="/api/store",
+    prefix="/api/internal/store",
 )
 app.include_router(
     backend.api.features.admin.credit_admin_routes.router,
     tags=["v2", "admin"],
-    prefix="/api/credits",
+    prefix="/api/internal/credits",
 )
 app.include_router(
     backend.api.features.admin.diagnostics_admin_routes.router,
     tags=["v2", "admin"],
-    prefix="/api",
+    prefix="/api/internal",
 )
 app.include_router(
     backend.api.features.admin.execution_analytics_routes.router,
     tags=["v2", "admin"],
-    prefix="/api/executions",
+    prefix="/api/internal/executions",
 )
 app.include_router(
     backend.api.features.admin.impersonation_admin_routes.router,
     tags=["v2", "admin"],
-    prefix="/api",
+    prefix="/api/internal",
 )
 app.include_router(
     backend.api.features.admin.rate_limit_admin_routes.router,
     tags=["v2", "admin"],
-    prefix="/api/copilot",
+    prefix="/api/internal/copilot",
 )
 app.include_router(
     backend.api.features.admin.platform_cost_routes.router,
     tags=["v2", "admin"],
-    prefix="/api/admin",
+    prefix="/api/internal/admin",
 )
 app.include_router(
     backend.api.features.admin.bot_analytics_routes.router,
     tags=["v2", "admin"],
-    prefix="/api/admin",
+    prefix="/api/internal/admin",
 )
 app.include_router(
     backend.api.features.admin.block_cost_admin_routes.router,
     tags=["v2", "admin"],
-    prefix="/api",
+    prefix="/api/internal",
 )
 app.include_router(
     backend.api.features.admin.memory_admin_routes.router,
     tags=["v2", "admin"],
-    prefix="/api",
+    prefix="/api/internal",
 )
 app.include_router(
     backend.api.features.admin.user_admin_routes.router,
     tags=["admin"],
-    prefix="/api",
+    prefix="/api/internal",
 )
 app.include_router(
     backend.api.features.admin.access_block_admin_routes.router,
     tags=["admin"],
-    prefix="/api",
+    prefix="/api/internal",
 )
 # Dev-only surface: the test-data seeder is never mounted outside a local
 # app_env, matching how docs_url is gated above. The runtime
@@ -449,141 +452,149 @@ if settings.config.app_env == backend.util.settings.AppEnvironment.LOCAL:
     app.include_router(
         backend.api.features.admin.test_data_routes.router,
         tags=["v2", "admin"],
-        prefix="/api",
+        prefix="/api/internal",
     )
 app.include_router(
     backend.api.features.graph_executions.review.routes.router,
     tags=["v2", "executions", "review"],
-    prefix="/api/review",
+    prefix="/api/internal/review",
 )
 app.include_router(
     backend.api.features.briefings.routes.router,
-    prefix="/api",
+    prefix="/api/internal",
 )
 app.include_router(
-    backend.api.features.library.routes.router, tags=["v2"], prefix="/api/library"
+    backend.api.features.library.routes.router,
+    tags=["v2"],
+    prefix="/api/internal/library",
 )
-app.include_router(experts_routes.public_router, tags=["v2", "experts"], prefix="/api")
-app.include_router(experts_routes.router, tags=["v2", "experts"], prefix="/api")
-app.include_router(memory_routes.router, tags=["v2", "memory"], prefix="/api")
 app.include_router(
-    skill_learning_routes.router, tags=["v2", "skill-learning"], prefix="/api"
+    experts_routes.public_router, tags=["v2", "experts"], prefix="/api/internal"
 )
-app.include_router(home_routes.router, prefix="/api")
-app.include_router(feature_flags_routes.router, prefix="/api")
 app.include_router(
-    backend.api.features.otto.routes.router, tags=["v2", "otto"], prefix="/api/otto"
+    experts_routes.router, tags=["v2", "experts"], prefix="/api/internal"
+)
+app.include_router(memory_routes.router, tags=["v2", "memory"], prefix="/api/internal")
+app.include_router(
+    skill_learning_routes.router, tags=["v2", "skill-learning"], prefix="/api/internal"
+)
+app.include_router(home_routes.router, prefix="/api/internal")
+app.include_router(feature_flags_routes.router, prefix="/api/internal")
+app.include_router(
+    backend.api.features.otto.routes.router,
+    tags=["v2", "otto"],
+    prefix="/api/internal/otto",
 )
 
 app.include_router(
     onboarding_dump_routes.router,
     tags=["v1", "onboarding"],
-    prefix="/api",
+    prefix="/api/internal",
 )
 app.include_router(
     backend.api.features.postmark.postmark.router,
     tags=["v1", "email"],
-    prefix="/api/email",
+    prefix="/api/internal/email",
 )
 app.include_router(
     mailerlite_routes.router,
     tags=["v1", "email"],
-    prefix="/api/email",
+    prefix="/api/internal/email",
 )
 app.include_router(
     chat_routes.router,
     tags=["v2", "chat"],
-    prefix="/api/chat",
+    prefix="/api/internal/chat",
 )
 app.include_router(
     chat_feedback.router,
     tags=["v2", "chat"],
-    prefix="/api/chat",
+    prefix="/api/internal/chat",
 )
 app.include_router(
     chat_at_reset.router,
     tags=["v2", "chat"],
-    prefix="/api/chat",
+    prefix="/api/internal/chat",
 )
 app.include_router(
     chat_continuation.router,
     tags=["v2", "chat"],
-    prefix="/api/chat",
+    prefix="/api/internal/chat",
 )
 app.include_router(
     chat_speech.router,
     tags=["chat"],
-    prefix="/api/chat",
+    prefix="/api/internal/chat",
 )
 app.include_router(
     chat_share.owner_router,
     tags=["v2", "chat", "share"],
-    prefix="/api/chat",
+    prefix="/api/internal/chat",
 )
 app.include_router(
     chat_share.public_router,
     tags=["v2", "chat", "share", "public"],
-    prefix="/api/public/shared/chats",
+    prefix="/api/internal/public/shared/chats",
 )
 app.include_router(
     team_routes.router,
     tags=["workspace"],
-    prefix="/api/workspace",
+    prefix="/api/internal/workspace",
 )
 app.include_router(
     workspace_folder_routes.router,
     tags=["workspace"],
-    prefix="/api/workspace",
+    prefix="/api/internal/workspace",
 )
 app.include_router(
     mcp_routes.router,
     tags=["v2", "mcp"],
-    prefix="/api/mcp",
+    prefix="/api/internal/mcp",
 )
 app.include_router(
     backend.api.features.oauth.router,
     tags=["oauth"],
-    prefix="/api/oauth",
+    prefix="/api/internal/oauth",
 )
 app.include_router(
     org_routes.router,
     tags=["v2", "orgs"],
-    prefix="/api/orgs",
+    prefix="/api/internal/orgs",
 )
 app.include_router(
     backend.api.features.orgs.team_routes.router,
     tags=["v2", "orgs", "workspaces"],
-    prefix="/api/orgs/{org_id}/workspaces",
+    prefix="/api/internal/orgs/{org_id}/workspaces",
 )
 app.include_router(
     backend.api.features.orgs.invitation_routes.org_router,
     tags=["v2", "orgs", "invitations"],
-    prefix="/api/orgs/{org_id}/invitations",
+    prefix="/api/internal/orgs/{org_id}/invitations",
 )
 app.include_router(
     backend.api.features.orgs.invitation_routes.router,
     tags=["v2", "invitations"],
-    prefix="/api/invitations",
+    prefix="/api/internal/invitations",
 )
 app.include_router(
     transfer_routes.router,
     tags=["v2", "transfers"],
-    prefix="/api/transfers",
+    prefix="/api/internal/transfers",
 )
 app.include_router(
     push_routes.router,
     tags=["push"],
-    prefix="/api/push",
+    prefix="/api/internal/push",
 )
 app.include_router(
     search_routes.router,
     tags=["search"],
-    prefix="/api/search",
+    prefix="/api/internal/search",
 )
 app.include_router(
     backend.api.features.platform_linking.routes.router,
     tags=["platform-linking"],
-    prefix="/api/platform-linking",
+    prefix="/api/internal/platform-linking",
 )
 
 # Mount inbound routes for webhook-driven chat adapters (Slack Events API, …).
@@ -617,6 +628,8 @@ async def health():
 
 # After the last route: a route added below this wouldn't check its token first.
 check_token_before_body(app)
+# Added last so it runs first: every middleware and route sees the rewritten path.
+app.add_middleware(LegacyAPIPathMiddleware, segments=internal_api_segments(app))
 
 
 class AgentServer(backend.util.service.AppProcess):

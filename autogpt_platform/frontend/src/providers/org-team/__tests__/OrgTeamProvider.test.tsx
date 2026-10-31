@@ -96,7 +96,7 @@ describe("OrgTeamProvider", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/proxy/api/orgs",
+      "/api/proxy/api/internal/orgs",
       expect.objectContaining({
         headers: { "Content-Type": "application/json" },
       }),

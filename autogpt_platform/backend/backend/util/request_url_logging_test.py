@@ -120,12 +120,12 @@ async def test_rest_server_logs_no_credentials_from_request_urls(
     ):
         # Fails validation, so the 422 handler logs the request path.
         messages = await client.get(
-            f"/api/public/shared/chats/{SHARE_TOKEN}/messages",
+            f"/api/internal/public/shared/chats/{SHARE_TOKEN}/messages",
             params={"limit": "many", "token": SESSION_TOKEN},
         )
         # The webhook lookup fails server-side, so the 500 handler logs the path.
         ingress = await client.post(
-            f"/api/integrations/github/webhooks/{WEBHOOK_ID}/ingress",
+            f"/api/internal/integrations/github/webhooks/{WEBHOOK_ID}/ingress",
             params={"token": SESSION_TOKEN},
             json={},
         )
@@ -134,10 +134,10 @@ async def test_rest_server_logs_no_credentials_from_request_urls(
     logs = service_output.getvalue()
     for credential in CREDENTIALS:
         assert credential not in logs
-    shared_chat = f"/api/public/shared/chats/{REDACTED}/messages"
+    shared_chat = f"/api/internal/public/shared/chats/{REDACTED}/messages"
     assert f"GET {shared_chat}?limit={REDACTED}&token={REDACTED} HTTP/1.1" in logs
     assert f"Validation failed for GET {shared_chat}" in logs
-    webhook = f"/api/integrations/github/webhooks/{REDACTED}/ingress"
+    webhook = f"/api/internal/integrations/github/webhooks/{REDACTED}/ingress"
     assert f"POST {webhook}?token={REDACTED} HTTP/1.1" in logs
     assert f"POST {webhook} failed." in logs
 
@@ -152,7 +152,7 @@ async def test_admin_impersonation_audit_logs_no_credentials_from_the_url(
             "method": "POST",
             "scheme": "https",
             "server": ("backend", 443),
-            "path": f"/api/invitations/{INVITATION_TOKEN}/accept",
+            "path": f"/api/internal/invitations/{INVITATION_TOKEN}/accept",
             "query_string": f"token={SESSION_TOKEN}".encode(),
             "headers": [(b"host", b"backend"), (b"x-act-as-user-id", b"user-1")],
         }
@@ -164,7 +164,7 @@ async def test_admin_impersonation_audit_logs_no_credentials_from_the_url(
     logs = service_output.getvalue()
     for credential in CREDENTIALS:
         assert credential not in logs
-    url = f"https://backend/api/invitations/{REDACTED}/accept?token={REDACTED}"
+    url = f"https://backend/api/internal/invitations/{REDACTED}/accept?token={REDACTED}"
     assert f"acting as user user-1 for requesting POST {url}" in logs
 
 
@@ -199,22 +199,22 @@ async def test_sentry_gets_no_credentials_from_request_urls(
     ):
         query = {"token": SESSION_TOKEN}
         await client.get(
-            f"/api/public/shared/chats/{SHARE_TOKEN}/messages",
+            f"/api/internal/public/shared/chats/{SHARE_TOKEN}/messages",
             params={"limit": "many", **query},
         )
         # Sent as %26, which Sentry decodes before before_send sees the query.
         await client.get(
-            f"/api/public/shared/chats/{SHARE_TOKEN}/x",
+            f"/api/internal/public/shared/chats/{SHARE_TOKEN}/x",
             params={"token": f"&{SESSION_TOKEN}"},
         )
         # Sentry builds request.url from the Host header, which the client sets.
         await client.get(
-            f"/api/public/shared/chats/{SHARE_TOKEN}/messages",
+            f"/api/internal/public/shared/chats/{SHARE_TOKEN}/messages",
             params={"limit": "many"},
             headers={"host": "evil?"},
         )
         await client.get(
-            f"/api/integrations/generic_webhook/webhooks/{WEBHOOK_ID}/ingress",
+            f"/api/internal/integrations/generic_webhook/webhooks/{WEBHOOK_ID}/ingress",
             params=query,
         )
 
@@ -224,11 +224,11 @@ async def test_sentry_gets_no_credentials_from_request_urls(
     assert len(requests) >= 6
     assert {request.get("query_string") for request in requests} == {REDACTED}
     assert any(
-        f"/api/public/shared/chats/{REDACTED}/messages" in request["url"]
+        f"/api/internal/public/shared/chats/{REDACTED}/messages" in request["url"]
         for request in requests
     )
     # The request no route matched is named after its URL.
-    assert f"/api/public/shared/chats/{REDACTED}/x" in {
+    assert f"/api/internal/public/shared/chats/{REDACTED}/x" in {
         event.get("transaction", "").removeprefix(f"http://{host}")
         for event in sentry.events
     }

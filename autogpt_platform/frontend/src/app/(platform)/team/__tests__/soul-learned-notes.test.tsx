@@ -188,7 +188,7 @@ describe("Soul drawer — what I've learned", () => {
   test("says so when the memories cannot be loaded, instead of claiming there are none", async () => {
     server.use(
       http.get(
-        "/api/proxy/api/memory/experts/:expertId/facts",
+        "/api/proxy/api/internal/memory/experts/:expertId/facts",
         () => new HttpResponse(null, { status: 500 }),
       ),
     );

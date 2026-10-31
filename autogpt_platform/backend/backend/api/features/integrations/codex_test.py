@@ -116,10 +116,10 @@ def test_codex_login_reuses_generic_oauth_contract():
     payload = response.json()
     assert payload["state_token"] == "state-123"
     assert payload["login_url"].startswith(
-        "http://localhost:3000/api/proxy/api/integrations/codex/device-login/login-123#"
+        "http://localhost:3000/api/proxy/api/internal/integrations/codex/device-login/login-123#"
     )
     assert payload["cancel_url"] == (
-        "/api/proxy/api/integrations/codex/device-login/login-123/cancel"
+        "/api/proxy/api/internal/integrations/codex/device-login/login-123/cancel"
     )
     assert "state=state-123" in payload["login_url"].split("#", 1)[1]
     assert "user_code=ABCD-EFGH" in payload["login_url"].split("#", 1)[1]
@@ -540,7 +540,7 @@ def test_build_device_login_url_uses_same_origin_proxy():
     )
 
     assert url == (
-        "https://platform.example/api/proxy/api/integrations/codex/"
+        "https://platform.example/api/proxy/api/internal/integrations/codex/"
         "device-login/login%2Fid#state=state+token&verification_url="
         "https%3A%2F%2Fauth.openai.com%2Fcodex%2Fdevice&user_code=ABCD+EFGH"
     )
@@ -555,7 +555,9 @@ def test_build_device_login_cancel_url_uses_same_origin_proxy():
         ),
     )
 
-    assert url == ("/api/proxy/api/integrations/codex/device-login/login%2Fid/cancel")
+    assert url == (
+        "/api/proxy/api/internal/integrations/codex/device-login/login%2Fid/cancel"
+    )
 
 
 def test_codex_account_uses_user_owned_credential_lease():

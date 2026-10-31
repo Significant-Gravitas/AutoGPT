@@ -29,7 +29,7 @@ it("does not mount the paid plan while initial trial status is pending", async (
 
 it("retains the paid plan fallback when trial status fails", async () => {
   server.use(
-    http.get("*/api/credits/trial", () =>
+    http.get("*/api/internal/credits/trial", () =>
       HttpResponse.json({ detail: "Unavailable" }, { status: 503 }),
     ),
   );

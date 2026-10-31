@@ -81,16 +81,25 @@ def _execution_meta() -> execution_db.GraphExecutionMeta:
 
 
 EXPECTED_OPERATIONS = {
-    ("get", "/api/graphs"): "getV1List user graphs",
-    ("post", "/api/graphs"): "postV1Create new graph",
-    ("get", "/api/graphs/{graph_id}"): "getV1Get specific graph",
-    ("put", "/api/graphs/{graph_id}"): "putV1Update graph version",
-    ("delete", "/api/graphs/{graph_id}"): "deleteV1Delete graph permanently",
-    ("get", "/api/graphs/{graph_id}/versions"): "getV1Get all graph versions",
-    ("get", "/api/graphs/{graph_id}/versions/{version}"): "getV1Get graph version",
-    ("put", "/api/graphs/{graph_id}/versions/active"): "putV1Set active graph version",
-    ("patch", "/api/graphs/{graph_id}/settings"): "patchV1Update graph settings",
-    ("post", "/api/graphs/{graph_id}/execute/{graph_version}"): (
+    ("get", "/api/internal/graphs"): "getV1List user graphs",
+    ("post", "/api/internal/graphs"): "postV1Create new graph",
+    ("get", "/api/internal/graphs/{graph_id}"): "getV1Get specific graph",
+    ("put", "/api/internal/graphs/{graph_id}"): "putV1Update graph version",
+    ("delete", "/api/internal/graphs/{graph_id}"): "deleteV1Delete graph permanently",
+    ("get", "/api/internal/graphs/{graph_id}/versions"): "getV1Get all graph versions",
+    (
+        "get",
+        "/api/internal/graphs/{graph_id}/versions/{version}",
+    ): "getV1Get graph version",
+    (
+        "put",
+        "/api/internal/graphs/{graph_id}/versions/active",
+    ): "putV1Set active graph version",
+    (
+        "patch",
+        "/api/internal/graphs/{graph_id}/settings",
+    ): "patchV1Update graph settings",
+    ("post", "/api/internal/graphs/{graph_id}/execute/{graph_version}"): (
         "postV1Execute graph agent"
     ),
 }
@@ -128,7 +137,7 @@ def test_execute_graph_is_behind_the_payment_paywall():
         r
         for r in real_app.routes
         if isinstance(r, APIRoute)
-        and r.path == "/api/graphs/{graph_id}/execute/{graph_version}"
+        and r.path == "/api/internal/graphs/{graph_id}/execute/{graph_version}"
     )
     assert "enforce_payment_paywall" in {
         d.call.__name__ for d in route.dependant.dependencies if d.call
@@ -147,41 +156,50 @@ def test_graph_surface_has_no_other_operations():
     assert served == set(EXPECTED_OPERATIONS)
 
 
-# /api/graphs/{graph_id}/* is served by three modules. Every fourth segment
+# /api/internal/graphs/{graph_id}/* is served by three modules. Every fourth segment
 # is literal, so order between them is unobservable - this is what keeps it so.
 @pytest.mark.parametrize(
     "path,module",
     [
-        ("/api/graphs/{graph_id}", "backend.api.features.graphs.routes"),
+        ("/api/internal/graphs/{graph_id}", "backend.api.features.graphs.routes"),
         (
-            "/api/graphs/{graph_id}/execute/{graph_version}",
-            "backend.api.features.graphs.routes",
-        ),
-        ("/api/graphs/{graph_id}/settings", "backend.api.features.graphs.routes"),
-        ("/api/graphs/{graph_id}/versions", "backend.api.features.graphs.routes"),
-        (
-            "/api/graphs/{graph_id}/versions/active",
+            "/api/internal/graphs/{graph_id}/execute/{graph_version}",
             "backend.api.features.graphs.routes",
         ),
         (
-            "/api/graphs/{graph_id}/versions/{version}",
+            "/api/internal/graphs/{graph_id}/settings",
             "backend.api.features.graphs.routes",
         ),
-        ("/api/graphs/{graph_id}/schedules", "backend.api.features.schedules.routes"),
         (
-            "/api/graphs/{graph_id}/executions",
+            "/api/internal/graphs/{graph_id}/versions",
+            "backend.api.features.graphs.routes",
+        ),
+        (
+            "/api/internal/graphs/{graph_id}/versions/active",
+            "backend.api.features.graphs.routes",
+        ),
+        (
+            "/api/internal/graphs/{graph_id}/versions/{version}",
+            "backend.api.features.graphs.routes",
+        ),
+        (
+            "/api/internal/graphs/{graph_id}/schedules",
+            "backend.api.features.schedules.routes",
+        ),
+        (
+            "/api/internal/graphs/{graph_id}/executions",
             "backend.api.features.graph_executions.routes",
         ),
         (
-            "/api/graphs/{graph_id}/executions/{graph_exec_id}",
+            "/api/internal/graphs/{graph_id}/executions/{graph_exec_id}",
             "backend.api.features.graph_executions.routes",
         ),
         (
-            "/api/graphs/{graph_id}/executions/{graph_exec_id}/stop",
+            "/api/internal/graphs/{graph_id}/executions/{graph_exec_id}/stop",
             "backend.api.features.graph_executions.routes",
         ),
         (
-            "/api/graphs/{graph_id}/executions/{graph_exec_id}/share",
+            "/api/internal/graphs/{graph_id}/executions/{graph_exec_id}/share",
             "backend.api.features.graph_executions.routes",
         ),
     ],

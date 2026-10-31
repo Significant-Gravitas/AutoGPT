@@ -19,7 +19,7 @@ REDACTED = "[REDACTED]"
 # them, so it alone is kept. The match is zero-width so that overlapping
 # prefixes, which a crafted path or Host header can stack, are all found.
 _CREDENTIAL_PATH_SEGMENT = re.compile(
-    r"(?=/api/(?:integrations/(?:[^/?\s]+/)?webhooks|platform-linking/(?:user-)?tokens"
+    r"(?=/api/(?:internal/)?(?:integrations/(?:[^/?\s]+/)?webhooks|platform-linking/(?:user-)?tokens"
     r"|public/shared(?:/chats)?|invitations(?!/pending(?:[/?\s\"']|$)))/([^/?\s]+))"
 )
 # A request target can't contain whitespace, so in a longer message its query

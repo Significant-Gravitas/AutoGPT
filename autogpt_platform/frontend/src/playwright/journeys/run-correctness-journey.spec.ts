@@ -199,9 +199,12 @@ async function importAgent(page: Page, testInfo: TestInfo, graph: GraphSpec) {
 }
 
 async function findLibraryAgent(page: Page, name: string) {
-  const response = await page.request.get("/api/proxy/api/library/agents", {
-    params: { search_term: name },
-  });
+  const response = await page.request.get(
+    "/api/proxy/api/internal/library/agents",
+    {
+      params: { search_term: name },
+    },
+  );
   expect(response.ok(), `GET library agents: ${response.status()}`).toBe(true);
   const body = (await response.json()) as {
     agents: { id: string; graph_id: string; name: string }[];
@@ -225,7 +228,7 @@ async function startRunFromLibrary(page: Page, agentURL: string) {
 
 async function getRunStatus(page: Page, graphID: string, runID: string) {
   const response = await page.request.get(
-    `/api/proxy/api/graphs/${graphID}/executions/${runID}`,
+    `/api/proxy/api/internal/graphs/${graphID}/executions/${runID}`,
   );
   expect(response.ok(), `GET execution: ${response.status()}`).toBe(true);
   const body = (await response.json()) as { status: string };

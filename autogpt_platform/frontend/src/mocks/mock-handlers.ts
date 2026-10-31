@@ -47,7 +47,7 @@ import { http, HttpResponse } from "msw";
 // Pass hard-coded data to individual handler functions to override faker-generated data.
 export const mockHandlers = [
   // No activation in progress unless a test explicitly provides one.
-  http.get("/api/proxy/api/credits/pro-activation/current", () =>
+  http.get("/api/proxy/api/internal/credits/pro-activation/current", () =>
     HttpResponse.json({ detail: "No activation in progress" }, { status: 404 }),
   ),
   // No published releases unless a test provides some.

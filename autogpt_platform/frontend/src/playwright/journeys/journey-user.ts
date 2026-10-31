@@ -116,7 +116,7 @@ async function signIn(page: Page, user: JourneyUser) {
 // The app's sign-up, sign-in and /auth/callback do this before the user's
 // first page; among other things it creates their personal org.
 async function finishAccountSetup(page: Page) {
-  const response = await page.request.post("/api/proxy/api/auth/user");
+  const response = await page.request.post("/api/proxy/api/internal/auth/user");
   expect(
     response.ok(),
     `account setup failed: ${response.status()} ${await response.text()}`,
@@ -125,9 +125,12 @@ async function finishAccountSetup(page: Page) {
 
 async function completeOnboarding(page: Page) {
   for (const step of COMPLETED_ONBOARDING_STEPS) {
-    const response = await page.request.post("/api/proxy/api/onboarding/step", {
-      params: { step },
-    });
+    const response = await page.request.post(
+      "/api/proxy/api/internal/onboarding/step",
+      {
+        params: { step },
+      },
+    );
     expect(
       response.ok(),
       `onboarding step ${step} failed: ${response.status()} ${await response.text()}`,

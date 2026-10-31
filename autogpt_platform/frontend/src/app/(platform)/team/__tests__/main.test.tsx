@@ -357,7 +357,7 @@ describe("TeamPage", () => {
           ],
         },
       ]),
-      http.get("*/api/experts/:expertId/credentials", () => {
+      http.get("*/api/internal/experts/:expertId/credentials", () => {
         credentialRequests();
         return HttpResponse.json([]);
       }),
@@ -476,7 +476,7 @@ describe("TeamPage", () => {
     server.use(
       getListExpertsMockHandler([hiredMaria]),
       http.get(
-        "*/api/schedules",
+        "*/api/internal/schedules",
         () => new HttpResponse(null, { status: 401 }),
       ),
     );
@@ -858,7 +858,7 @@ describe("TeamPage", () => {
         schedule_names: [],
         trigger_names: [],
       }),
-      http.delete("*/api/experts/expert-maria", async () => {
+      http.delete("*/api/internal/experts/expert-maria", async () => {
         await delay(80);
         return new HttpResponse(null, { status: 204 });
       }),
@@ -891,13 +891,16 @@ describe("TeamPage", () => {
   test("blocks firing until the detach preview resolves", async () => {
     server.use(
       getListExpertsMockHandler([hiredMaria]),
-      http.get("*/api/experts/expert-maria/detach-preview", async () => {
-        await delay(60);
-        return HttpResponse.json({
-          schedule_names: [],
-          trigger_names: [],
-        });
-      }),
+      http.get(
+        "*/api/internal/experts/expert-maria/detach-preview",
+        async () => {
+          await delay(60);
+          return HttpResponse.json({
+            schedule_names: [],
+            trigger_names: [],
+          });
+        },
+      ),
     );
 
     render(<TeamPage />);
@@ -927,7 +930,7 @@ describe("TeamPage", () => {
     let previewRequests = 0;
     server.use(
       getListExpertsMockHandler([hiredMaria]),
-      http.get("*/api/experts/expert-maria/detach-preview", () => {
+      http.get("*/api/internal/experts/expert-maria/detach-preview", () => {
         previewRequests += 1;
         if (previewRequests === 1) {
           return new HttpResponse(null, { status: 404 });
@@ -972,7 +975,7 @@ describe("TeamPage", () => {
     server.use(
       getListExpertsMockHandler([hiredMaria]),
       http.get(
-        "*/api/experts/expert-maria/detach-preview",
+        "*/api/internal/experts/expert-maria/detach-preview",
         () => new HttpResponse(null, { status: 404 }),
       ),
       getArchiveExpertMockHandler(archiveSpy),
@@ -1281,7 +1284,7 @@ describe("TeamPage - setup needed card", () => {
         makeSetupItem({ resolution: "allow", credential_id: "cred-notion" }),
       ]),
       http.post(
-        "/api/proxy/api/experts/:expertId/credentials",
+        "/api/proxy/api/internal/experts/:expertId/credentials",
         async ({ params, request }) => {
           granted = {
             expertId: String(params.expertId),
@@ -1309,11 +1312,13 @@ describe("TeamPage - setup needed card", () => {
     let items = [makeSetupItem()];
     let granted: string[][] = [];
     server.use(
-      http.get("/api/proxy/api/experts/setup", () => HttpResponse.json(items)),
+      http.get("/api/proxy/api/internal/experts/setup", () =>
+        HttpResponse.json(items),
+      ),
       getGetV1ListProvidersMockHandler([
         { name: "notion", supported_auth_types: ["api_key"] },
       ]),
-      http.post("/api/proxy/api/integrations/notion/credentials", () =>
+      http.post("/api/proxy/api/internal/integrations/notion/credentials", () =>
         HttpResponse.json(
           {
             id: "cred-notion",
@@ -1325,7 +1330,7 @@ describe("TeamPage - setup needed card", () => {
         ),
       ),
       http.post(
-        "/api/proxy/api/experts/:expertId/credentials",
+        "/api/proxy/api/internal/experts/:expertId/credentials",
         async ({ request }) => {
           const body = (await request.json()) as { credential_ids: string[] };
           granted = [...granted, body.credential_ids];
@@ -1366,17 +1371,19 @@ describe("TeamPage - setup needed card", () => {
     let items = [makeSetupItem({ providers: ["google"] })];
     let granted: string[][] = [];
     server.use(
-      http.get("/api/proxy/api/experts/setup", () => HttpResponse.json(items)),
+      http.get("/api/proxy/api/internal/experts/setup", () =>
+        HttpResponse.json(items),
+      ),
       getGetV1ListProvidersMockHandler([
         { name: "google", supported_auth_types: ["oauth2"] },
       ]),
-      http.get("/api/proxy/api/integrations/google/login", () =>
+      http.get("/api/proxy/api/internal/integrations/google/login", () =>
         HttpResponse.json({
           login_url: "https://accounts.example/auth",
           state_token: "state",
         }),
       ),
-      http.post("/api/proxy/api/integrations/google/callback", () =>
+      http.post("/api/proxy/api/internal/integrations/google/callback", () =>
         HttpResponse.json({
           id: "cred-google",
           provider: "google",
@@ -1385,7 +1392,7 @@ describe("TeamPage - setup needed card", () => {
         }),
       ),
       http.post(
-        "/api/proxy/api/experts/:expertId/credentials",
+        "/api/proxy/api/internal/experts/:expertId/credentials",
         async ({ request }) => {
           const body = (await request.json()) as { credential_ids: string[] };
           granted = [...granted, body.credential_ids];
@@ -1475,7 +1482,7 @@ describe("TeamPage - setup needed card", () => {
           setup_failures: ["SEO Audit"],
         },
       ]),
-      http.post("/api/proxy/api/experts", async ({ request }) => {
+      http.post("/api/proxy/api/internal/experts", async ({ request }) => {
         hires.push(await request.json());
         return HttpResponse.json({ expert: hiredMaria });
       }),

@@ -84,7 +84,7 @@ describe("sharedChatFileUrl", () => {
       "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
     );
     expect(url).toBe(
-      "/api/proxy/api/public/shared/chats/550e8400-e29b-41d4-a716-446655440000/files/6ba7b810-9dad-11d1-80b4-00c04fd430c8/download",
+      "/api/proxy/api/internal/public/shared/chats/550e8400-e29b-41d4-a716-446655440000/files/6ba7b810-9dad-11d1-80b4-00c04fd430c8/download",
     );
   });
 });
@@ -109,13 +109,13 @@ describe("sharedChatFilePattern", () => {
 
   test("rejects non-UUID file IDs", () => {
     const pattern = sharedChatFilePattern(SHARE_TOKEN);
-    const badUrl = `/api/proxy/api/public/shared/chats/${SHARE_TOKEN}/files/not-a-uuid/download`;
+    const badUrl = `/api/proxy/api/internal/public/shared/chats/${SHARE_TOKEN}/files/not-a-uuid/download`;
     expect(badUrl.match(pattern)).toBeNull();
   });
 
   test("rejects workspace-file URLs (anchored on share prefix)", () => {
     const pattern = sharedChatFilePattern(SHARE_TOKEN);
-    const workspaceUrl = `/api/proxy/api/workspace/files/${FILE_ID}/download`;
+    const workspaceUrl = `/api/proxy/api/internal/workspace/files/${FILE_ID}/download`;
     expect(workspaceUrl.match(pattern)).toBeNull();
   });
 
@@ -123,10 +123,10 @@ describe("sharedChatFilePattern", () => {
     // Tokens are UUIDs in production, but the helper must still be
     // safe against a caller passing a token with regex special chars.
     const pattern = sharedChatFilePattern("token.with*special?chars");
-    const url = `/api/proxy/api/public/shared/chats/token.with*special?chars/files/${FILE_ID}/download`;
+    const url = `/api/proxy/api/internal/public/shared/chats/token.with*special?chars/files/${FILE_ID}/download`;
     expect(url.match(pattern)?.[1]).toBe(FILE_ID);
     // And a similar URL with different escaping is rejected.
-    const evilUrl = `/api/proxy/api/public/shared/chats/tokenXwithYspecialZchars/files/${FILE_ID}/download`;
+    const evilUrl = `/api/proxy/api/internal/public/shared/chats/tokenXwithYspecialZchars/files/${FILE_ID}/download`;
     expect(evilUrl.match(pattern)).toBeNull();
   });
 });

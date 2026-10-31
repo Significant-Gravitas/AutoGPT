@@ -15,7 +15,7 @@ export async function isEmailSuppressed(email: string) {
   try {
     const token = await mintServiceToken("auth-email:send");
     const response = await fetch(
-      `${environment.getAGPTServerBaseUrl()}/api/auth/email/suppression`,
+      `${environment.getAGPTServerBaseUrl()}/api/internal/auth/email/suppression`,
       {
         method: "POST",
         headers: {

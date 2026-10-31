@@ -79,14 +79,14 @@ describe("useFireExpertDialog invalidation", () => {
     await waitFor(() => expect(onFired).toHaveBeenCalled());
 
     const calls = invalidateSpy.mock.calls;
-    expect(containsKey(calls, ["/api/experts"])).toBe(true);
+    expect(containsKey(calls, ["/api/internal/experts"])).toBe(true);
     expect(containsKey(calls, getListExpertIdentitiesQueryKey())).toBe(true);
     expect(containsKey(calls, getGetExpertQueryKey("expert-maria"))).toBe(true);
     expect(containsKey(calls, getGetHomeDashboardQueryKey())).toBe(true);
     expect(
       containsKey(calls, getGetV1ListExecutionSchedulesForAUserQueryKey()),
     ).toBe(true);
-    expect(containsKey(calls, ["/api/library/agents"])).toBe(true);
+    expect(containsKey(calls, ["/api/internal/library/agents"])).toBe(true);
   });
 
   it("does not fire before the preview has resolved", async () => {
@@ -145,7 +145,7 @@ describe("useFireExpertDialog invalidation", () => {
       releaseRetry = resolve;
     });
     server.use(
-      http.get("*/api/experts/:expertId/detach-preview", async () => {
+      http.get("*/api/internal/experts/:expertId/detach-preview", async () => {
         await retryGate;
         return HttpResponse.json({
           schedule_names: ["Weekly report"],

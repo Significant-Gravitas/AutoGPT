@@ -246,11 +246,11 @@ describe("SubscriptionStep", () => {
     let profileCalled = false;
 
     server.use(
-      http.post("*/api/onboarding/profile", () => {
+      http.post("*/api/internal/onboarding/profile", () => {
         profileCalled = true;
         return HttpResponse.json({}, { status: 200 });
       }),
-      http.post("*/api/credits/subscription", async ({ request }) => {
+      http.post("*/api/internal/credits/subscription", async ({ request }) => {
         capturedTierBody = (await request.json()) as typeof capturedTierBody;
         // Return null url so the hook doesn't try to navigate window.location
         // (would tear down the test environment).
@@ -289,7 +289,7 @@ describe("SubscriptionStep", () => {
     const gtagCalls = installGtagShim();
     const location = stubLocation();
     server.use(
-      http.post("*/api/credits/subscription", () =>
+      http.post("*/api/internal/credits/subscription", () =>
         HttpResponse.json({ url: "https://checkout.stripe.com/pay/cs_test" }),
       ),
     );
@@ -318,7 +318,7 @@ describe("SubscriptionStep", () => {
     const location = stubLocation();
     let posts = 0;
     server.use(
-      http.post("*/api/credits/subscription", () => {
+      http.post("*/api/internal/credits/subscription", () => {
         posts += 1;
         return HttpResponse.json({
           url: "https://checkout.stripe.com/pay/cs_test",
@@ -353,7 +353,7 @@ describe("SubscriptionStep", () => {
       });
       const received = vi.fn();
       server.use(
-        http.post("*/api/credits/subscription", async () => {
+        http.post("*/api/internal/credits/subscription", async () => {
           received();
           await pending;
           return HttpResponse.json({ url });
@@ -385,7 +385,7 @@ describe("SubscriptionStep", () => {
     // The backend modified the subscription in place — no Checkout ever
     // started, so counting it would inflate the funnel.
     server.use(
-      http.post("*/api/credits/subscription", () =>
+      http.post("*/api/internal/credits/subscription", () =>
         HttpResponse.json({ url: null }),
       ),
     );
@@ -408,10 +408,10 @@ describe("SubscriptionStep", () => {
     } | null = null;
 
     server.use(
-      http.post("*/api/onboarding/profile", () =>
+      http.post("*/api/internal/onboarding/profile", () =>
         HttpResponse.json({}, { status: 200 }),
       ),
-      http.post("*/api/credits/subscription", async ({ request }) => {
+      http.post("*/api/internal/credits/subscription", async ({ request }) => {
         capturedTierBody = (await request.json()) as typeof capturedTierBody;
         return HttpResponse.json({ url: null });
       }),
@@ -434,10 +434,10 @@ describe("SubscriptionStep", () => {
     let capturedTierBody: { billing_cycle?: string } | null = null;
 
     server.use(
-      http.post("*/api/onboarding/profile", () =>
+      http.post("*/api/internal/onboarding/profile", () =>
         HttpResponse.json({}, { status: 200 }),
       ),
-      http.post("*/api/credits/subscription", async ({ request }) => {
+      http.post("*/api/internal/credits/subscription", async ({ request }) => {
         capturedTierBody = (await request.json()) as typeof capturedTierBody;
         return HttpResponse.json({ url: null });
       }),
@@ -458,7 +458,7 @@ describe("SubscriptionStep", () => {
     assignArm("yearly-max");
     let capturedTierBody: { surface?: string } | null = null;
     server.use(
-      http.post("*/api/credits/subscription", async ({ request }) => {
+      http.post("*/api/internal/credits/subscription", async ({ request }) => {
         capturedTierBody = (await request.json()) as typeof capturedTierBody;
         return HttpResponse.json({ url: null });
       }),
@@ -494,7 +494,7 @@ describe("SubscriptionStep", () => {
   test("reports no pricing arm for a user the experiment did not enrol", async () => {
     assignArm(null);
     server.use(
-      http.post("*/api/credits/subscription", () =>
+      http.post("*/api/internal/credits/subscription", () =>
         HttpResponse.json({ url: null }),
       ),
     );
@@ -519,11 +519,11 @@ describe("SubscriptionStep", () => {
     let stripeCalled = false;
     let profileCalledSync = false;
     server.use(
-      http.post("*/api/credits/subscription", () => {
+      http.post("*/api/internal/credits/subscription", () => {
         stripeCalled = true;
         return HttpResponse.json({ url: null });
       }),
-      http.post("*/api/onboarding/profile", () => {
+      http.post("*/api/internal/onboarding/profile", () => {
         profileCalledSync = true;
         return HttpResponse.json({}, { status: 200 });
       }),
@@ -549,10 +549,10 @@ describe("SubscriptionStep", () => {
     let posts = 0;
     let resolveTier: (value: unknown) => void = () => undefined;
     server.use(
-      http.post("*/api/onboarding/profile", () =>
+      http.post("*/api/internal/onboarding/profile", () =>
         HttpResponse.json({}, { status: 200 }),
       ),
-      http.post("*/api/credits/subscription", () => {
+      http.post("*/api/internal/credits/subscription", () => {
         posts += 1;
         return new Promise((resolve) => {
           resolveTier = () => resolve(HttpResponse.json({ url: null }));

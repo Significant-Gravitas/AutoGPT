@@ -33,7 +33,7 @@ function makeArtifact(id: string, title = `${id}.txt`) {
     id,
     title,
     mimeType: "text/plain",
-    sourceUrl: `/api/proxy/api/workspace/files/${id}/download`,
+    sourceUrl: `/api/proxy/api/internal/workspace/files/${id}/download`,
     origin: "agent" as const,
   };
 }

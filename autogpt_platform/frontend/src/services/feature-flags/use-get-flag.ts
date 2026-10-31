@@ -12,7 +12,7 @@ import { useFlagSource } from "./flag-source";
 import { usePwFlagOverrides } from "./pw-flag-overrides";
 
 // Declared once, on the backend (`FrontendFlag` in `backend/util/feature_flag/frontend.py`),
-// which is also the set `/api/feature-flags` serves.
+// which is also the set `/api/internal/feature-flags` serves.
 export { Flag };
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";

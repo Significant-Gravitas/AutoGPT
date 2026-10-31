@@ -55,7 +55,7 @@ export function buildRequestUrl(
 }
 
 export function buildClientUrl(path: string): string {
-  return `/api/proxy/api${path}`;
+  return `/api/proxy/api/internal${path}`;
 }
 
 export function buildServerUrl(path: string): string {

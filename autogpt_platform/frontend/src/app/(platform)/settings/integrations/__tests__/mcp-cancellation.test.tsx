@@ -59,7 +59,7 @@ describe("MCP preset cancellation during requests", () => {
     const exchanged = vi.fn();
     const requestSignals: AbortSignal[] = [];
     server.use(
-      http.post("*/api/mcp/oauth/login", async ({ request }) => {
+      http.post("*/api/internal/mcp/oauth/login", async ({ request }) => {
         requestSignals.push(request.signal);
         started();
         await gate.pending;
@@ -68,7 +68,7 @@ describe("MCP preset cancellation during requests", () => {
           state_token: "state",
         });
       }),
-      http.post("*/api/mcp/oauth/callback", () => {
+      http.post("*/api/internal/mcp/oauth/callback", () => {
         exchanged();
         return HttpResponse.json({});
       }),
@@ -99,7 +99,7 @@ describe("MCP preset cancellation during requests", () => {
     const started = vi.fn();
     const requestSignals: AbortSignal[] = [];
     server.use(
-      http.post("*/api/mcp/discover-tools", async ({ request }) => {
+      http.post("*/api/internal/mcp/discover-tools", async ({ request }) => {
         requestSignals.push(request.signal);
         started();
         await gate.pending;

@@ -24,7 +24,7 @@ describe("copilotStreamStore pending first send persistence", () => {
       type: "file",
       mediaType: "text/plain",
       filename: "workspace-note.txt",
-      url: "/api/workspace/files/workspace-file-id/download",
+      url: "/api/internal/workspace/files/workspace-file-id/download",
     };
     const firstStore = firstModule.useCopilotStreamStore.getState();
 
@@ -124,7 +124,7 @@ describe("copilotStreamStore pending first send persistence", () => {
         type: "file",
         mediaType: "text/plain",
         filename: "workspace-note.txt",
-        url: "/api/workspace/files/workspace-file-id/download",
+        url: "/api/internal/workspace/files/workspace-file-id/download",
       },
     ]);
     store.bindPendingFirstSendToSession("target-session");
@@ -251,7 +251,7 @@ describe("copilotStreamStore message snapshots", () => {
           type: "file",
           mediaType: "text/markdown",
           filename: "brief.md",
-          url: "/api/proxy/api/workspace/files/bbbbbbbb-0000-0000-0000-000000000002/download",
+          url: "/api/proxy/api/internal/workspace/files/bbbbbbbb-0000-0000-0000-000000000002/download",
         },
       ]),
     ];

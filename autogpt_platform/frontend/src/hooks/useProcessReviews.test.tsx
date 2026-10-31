@@ -87,7 +87,9 @@ test("a chat review invalidates its session's queue, not an execution's", async 
 
 test("still invalidates when the mutation rejects", async () => {
   server.use(
-    http.post("/api/proxy/api/review/action", () => HttpResponse.error()),
+    http.post("/api/proxy/api/internal/review/action", () =>
+      HttpResponse.error(),
+    ),
   );
   const { result, invalidatedKeys } = setup();
 

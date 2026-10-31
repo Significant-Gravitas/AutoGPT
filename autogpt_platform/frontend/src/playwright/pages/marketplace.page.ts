@@ -270,7 +270,7 @@ export class MarketplacePage extends BasePage {
     // select a file to trigger it. This satisfies the "at least one image is
     // required" rule without a real storage bucket.
     await this.page.route(
-      "**/api/store/submissions/media",
+      "**/api/internal/store/submissions/media",
       async (route) =>
         await route.fulfill({
           status: 200,

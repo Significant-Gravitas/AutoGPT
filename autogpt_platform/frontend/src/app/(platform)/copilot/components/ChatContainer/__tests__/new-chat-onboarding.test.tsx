@@ -145,7 +145,9 @@ function mockOnboarding(completed = false) {
   const request = vi.fn(() =>
     HttpResponse.json(completed ? null : { session_id: "kickoff-session" }),
   );
-  server.use(http.get("/api/proxy/api/experts/:expertId/onboarding", request));
+  server.use(
+    http.get("/api/proxy/api/internal/experts/:expertId/onboarding", request),
+  );
   return request;
 }
 

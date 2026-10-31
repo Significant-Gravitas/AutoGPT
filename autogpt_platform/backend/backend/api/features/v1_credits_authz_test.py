@@ -12,7 +12,7 @@ shared router-level enforcement), so every gated route is asserted here:
 dropping the dependency from any single route must fail this suite. Route
 coverage is not left to the hand-maintained ``GATED_ROUTES`` list either —
 every test in this module drives the real mounted application, so a
-``/api/credits`` route served by any module is in view, and two introspection
+``/api/internal/credits`` route served by any module is in view, and two introspection
 tests walk the routing table.
 
 Every ungated route is asserted by the property that makes it safe rather
@@ -115,52 +115,52 @@ GATED_ROUTES: list[GatedRoute] = [
     GatedRoute(
         name="get_user_credits",
         method="GET",
-        path="/api/credits",
+        path="/api/internal/credits",
         check_ok=lambda r: r.json() == {"credits": 1000},
     ),
     GatedRoute(
         name="request_top_up",
         method="POST",
-        path="/api/credits",
+        path="/api/internal/credits",
         body={"credit_amount": 500},
         check_ok=lambda r: r.json()["checkout_url"].startswith("https://"),
     ),
     GatedRoute(
         name="refund_top_up",
         method="POST",
-        path="/api/credits/test-transaction-key/refund",
+        path="/api/internal/credits/test-transaction-key/refund",
         body={"reason": "duplicate charge"},
         check_ok=lambda r: r.json() == 500,
     ),
     GatedRoute(
         name="fulfill_checkout",
         method="PATCH",
-        path="/api/credits",
+        path="/api/internal/credits",
         check_ok=lambda r: r.content == b"",
     ),
     GatedRoute(
         name="configure_user_auto_top_up",
         method="POST",
-        path="/api/credits/auto-top-up",
+        path="/api/internal/credits/auto-top-up",
         body={"amount": 500, "threshold": 100},
         check_ok=lambda r: r.json() == "Auto top-up settings updated",
     ),
     GatedRoute(
         name="get_credit_history",
         method="GET",
-        path="/api/credits/transactions",
+        path="/api/internal/credits/transactions",
         check_ok=lambda r: r.json()["transactions"] == [],
     ),
     GatedRoute(
         name="get_refund_requests",
         method="GET",
-        path="/api/credits/refunds",
+        path="/api/internal/credits/refunds",
         check_ok=lambda r: r.json() == [],
     ),
     GatedRoute(
         name="list_invoices",
         method="GET",
-        path="/api/credits/invoices",
+        path="/api/internal/credits/invoices",
         check_ok=lambda r: r.json() == [],
     ),
 ]
@@ -270,8 +270,8 @@ def test_credits_route_requires_manage_billing(
 @pytest.mark.parametrize(
     "path, expected_json",
     [
-        ("/api/credits/auto-top-up", {"amount": 500, "threshold": 100}),
-        ("/api/credits/manage", {"url": "https://billing.example.com/portal"}),
+        ("/api/internal/credits/auto-top-up", {"amount": 500, "threshold": 100}),
+        ("/api/internal/credits/manage", {"url": "https://billing.example.com/portal"}),
     ],
     ids=["get_user_auto_top_up", "manage_payment_method"],
 )
@@ -305,7 +305,7 @@ def test_manage_payment_method_opens_the_callers_own_portal(
     """
     _use_role("plain_member", test_user_id)
 
-    resp = client.get("/api/credits/manage")
+    resp = client.get("/api/internal/credits/manage")
 
     assert resp.status_code == 200, resp.text
     credit_stubs.model.create_billing_portal_session.assert_awaited_once_with(
@@ -416,7 +416,9 @@ def test_every_credits_route_is_gated_or_explicitly_exempt():
     gated: set[str] = set()
     unexplained: set[str] = set()
     for route in app.routes:
-        if not isinstance(route, APIRoute) or not route.path.startswith("/api/credits"):
+        if not isinstance(route, APIRoute) or not route.path.startswith(
+            "/api/internal/credits"
+        ):
             continue
         if OrgAction.MANAGE_BILLING in _enforced_org_actions(route.dependant):
             gated.add(route.name)
@@ -734,7 +736,7 @@ def test_personal_org_owner_passes_real_context_resolution(
     mock_prisma.orgmember.find_first = AsyncMock(return_value=Mock(orgId="personal-1"))
     mock_prisma.orgmember.find_unique = AsyncMock(return_value=_org_member(owner=True))
 
-    resp = client.get("/api/credits")
+    resp = client.get("/api/internal/credits")
 
     assert resp.status_code == 200, resp.text
     assert resp.json() == {"credits": 1000}
@@ -750,7 +752,7 @@ def test_plain_member_of_shared_org_rejected_real_context_resolution(
     """The same real resolution path rejects a plain member of a pooled org."""
     mock_prisma.orgmember.find_unique = AsyncMock(return_value=_org_member())
 
-    resp = client.get("/api/credits", headers={"X-Org-Id": "shared-org"})
+    resp = client.get("/api/internal/credits", headers={"X-Org-Id": "shared-org"})
 
     assert resp.status_code == 403, resp.text
     assert resp.json()["detail"] == "Missing org permission: MANAGE_BILLING"

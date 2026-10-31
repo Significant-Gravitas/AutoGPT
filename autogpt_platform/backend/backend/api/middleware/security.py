@@ -23,19 +23,19 @@ class SecurityHeadersMiddleware:
         "/api/health",
         "/api/v1/health",
         "/api/status",
-        "/api/blocks",
+        "/api/internal/blocks",
         "/api/v1/blocks",
         # Workspace file previews (user-private; response sets Cache-Control: private)
-        "/api/workspace/files/*/preview",
+        "/api/internal/workspace/files/*/preview",
         # Public store/marketplace pages (read-only)
-        "/api/store/agents",
+        "/api/internal/store/agents",
         "/api/v1/store/agents",
-        "/api/store/categories",
+        "/api/internal/store/categories",
         "/api/v1/store/categories",
-        "/api/store/featured",
+        "/api/internal/store/featured",
         "/api/v1/store/featured",
         # Public graph templates (read-only, no user data)
-        "/api/graphs/templates",
+        "/api/internal/graphs/templates",
         "/api/v1/graphs/templates",
         # Documentation endpoints
         "/api/docs",

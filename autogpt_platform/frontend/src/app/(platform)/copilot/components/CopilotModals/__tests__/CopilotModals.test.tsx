@@ -114,13 +114,13 @@ function arrangeSentryGrantForMaria() {
         },
       },
     ]),
-    http.post("*/api/mcp/discover-tools", () =>
+    http.post("*/api/internal/mcp/discover-tools", () =>
       HttpResponse.json({
         tools: [],
         server_url: "https://mcp.sentry.dev/mcp",
       }),
     ),
-    http.post("*/api/mcp/token", () =>
+    http.post("*/api/internal/mcp/token", () =>
       HttpResponse.json({
         id: "cred-sentry",
         provider: "mcp",
@@ -129,12 +129,15 @@ function arrangeSentryGrantForMaria() {
         service: "sentry",
       }),
     ),
-    http.post("*/api/experts/expert-maria/credentials", async ({ request }) => {
-      grants.granted = (
-        (await request.json()) as { credential_ids: string[] }
-      ).credential_ids;
-      return HttpResponse.json([]);
-    }),
+    http.post(
+      "*/api/internal/experts/expert-maria/credentials",
+      async ({ request }) => {
+        grants.granted = (
+          (await request.json()) as { credential_ids: string[] }
+        ).credential_ids;
+        return HttpResponse.json([]);
+      },
+    ),
   );
   return grants;
 }

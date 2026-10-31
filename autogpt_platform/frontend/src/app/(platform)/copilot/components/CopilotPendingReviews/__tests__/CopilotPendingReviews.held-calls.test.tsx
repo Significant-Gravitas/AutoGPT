@@ -32,7 +32,9 @@ function heldCall(id: string, text: string): PendingHumanReviewModel {
 function serveQueue(reviews: PendingHumanReviewModel[]) {
   const sent: ReviewRequest[] = [];
   server.use(
-    http.get(`*/api/review/session/${CHAT}`, () => HttpResponse.json(reviews)),
+    http.get(`*/api/internal/review/session/${CHAT}`, () =>
+      HttpResponse.json(reviews),
+    ),
     getPostV2ProcessReviewActionMockHandler200(async (info) => {
       sent.push((await info.request.json()) as ReviewRequest);
       return { approved_count: 1, rejected_count: 0, failed_count: 0 };

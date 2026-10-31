@@ -59,7 +59,7 @@ vi.mock("framer-motion", async (importActual) => {
 
 import ArtifactsPage from "../page";
 
-const PROXY = "/api/proxy/api/workspace";
+const PROXY = "/api/proxy/api/internal/workspace";
 
 function makeFile(
   overrides: Partial<WorkspaceFileItem> = {},

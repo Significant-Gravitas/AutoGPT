@@ -20,7 +20,7 @@ const GOOGLE_CREDENTIAL: CredentialsMetaResponse = {
 const listCredentials = vi.fn();
 
 function credentialsHandler() {
-  return http.get("*/api/integrations/credentials", () => {
+  return http.get("*/api/internal/integrations/credentials", () => {
     listCredentials();
     return HttpResponse.json([GOOGLE_CREDENTIAL]);
   });
@@ -69,7 +69,7 @@ describe("useConnectedIntegrations", () => {
   it("only offers granted credentials for an expert even with owner credentials cached", async () => {
     server.use(
       credentialsHandler(),
-      http.get("*/api/experts/:expertId/credentials", ({ params }) =>
+      http.get("*/api/internal/experts/:expertId/credentials", ({ params }) =>
         HttpResponse.json(
           params.expertId === "expert-a"
             ? [
@@ -104,7 +104,7 @@ describe("useConnectedIntegrations", () => {
 
   it("does not fall back to owner accounts when expert grants fail", async () => {
     server.use(
-      http.get("*/api/experts/:expertId/credentials", () =>
+      http.get("*/api/internal/experts/:expertId/credentials", () =>
         HttpResponse.json({ detail: "unavailable" }, { status: 500 }),
       ),
     );

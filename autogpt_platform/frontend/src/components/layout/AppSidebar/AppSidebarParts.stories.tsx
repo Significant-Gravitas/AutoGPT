@@ -80,7 +80,7 @@ const meta: Meta = {
         getGetFeatureFlagsMockHandler200({ flags: {}, configured: false }),
         // No profile: the footer then skips the wallet, which needs the
         // onboarding provider and is hidden without billing anyway.
-        http.get("*/api/proxy/api/store/profile", () =>
+        http.get("*/api/proxy/api/internal/store/profile", () =>
           HttpResponse.json({ detail: "Not found" }, { status: 404 }),
         ),
       ],

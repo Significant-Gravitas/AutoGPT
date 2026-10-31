@@ -11,7 +11,7 @@ const cards = realCards();
 function renderCard(story: string) {
   const card = cards.find((c) => c.story === story)!;
   server.use(
-    http.get(`*/api/review/session/${CHAT_SESSION}`, () =>
+    http.get(`*/api/internal/review/session/${CHAT_SESSION}`, () =>
       HttpResponse.json([card.review]),
     ),
     realCardSchemaHandler(cards),

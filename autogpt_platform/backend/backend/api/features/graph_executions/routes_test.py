@@ -52,25 +52,28 @@ def setup_app_auth(mock_jwt_user, test_user_id):
 # publishes. Two are deliberately unauthenticated and three carry no tag of
 # their own, so neither can be hoisted to the router.
 EXPECTED_OPERATIONS = {
-    ("get", "/api/executions"): (["v1", "graphs"], True),
-    ("get", "/api/executions/cost-summary"): (["v1", "graphs"], True),
-    ("delete", "/api/executions/{graph_exec_id}"): (["v1", "graphs"], True),
-    ("get", "/api/graphs/{graph_id}/executions"): (["v1", "graphs"], True),
-    ("get", "/api/graphs/{graph_id}/executions/{graph_exec_id}"): (
+    ("get", "/api/internal/executions"): (["v1", "graphs"], True),
+    ("get", "/api/internal/executions/cost-summary"): (["v1", "graphs"], True),
+    ("delete", "/api/internal/executions/{graph_exec_id}"): (["v1", "graphs"], True),
+    ("get", "/api/internal/graphs/{graph_id}/executions"): (["v1", "graphs"], True),
+    ("get", "/api/internal/graphs/{graph_id}/executions/{graph_exec_id}"): (
         ["v1", "graphs"],
         True,
     ),
-    ("post", "/api/graphs/{graph_id}/executions/{graph_exec_id}/stop"): (
+    ("post", "/api/internal/graphs/{graph_id}/executions/{graph_exec_id}/stop"): (
         ["v1", "graphs"],
         True,
     ),
-    ("post", "/api/graphs/{graph_id}/executions/{graph_exec_id}/share"): (["v1"], True),
-    ("delete", "/api/graphs/{graph_id}/executions/{graph_exec_id}/share"): (
+    ("post", "/api/internal/graphs/{graph_id}/executions/{graph_exec_id}/share"): (
         ["v1"],
         True,
     ),
-    ("get", "/api/public/shared/{share_token}"): (["v1"], False),
-    ("get", "/api/public/shared/{share_token}/files/{file_id}/download"): (
+    ("delete", "/api/internal/graphs/{graph_id}/executions/{graph_exec_id}/share"): (
+        ["v1"],
+        True,
+    ),
+    ("get", "/api/internal/public/shared/{share_token}"): (["v1"], False),
+    ("get", "/api/internal/public/shared/{share_token}/files/{file_id}/download"): (
         ["v1", "graphs"],
         False,
     ),
@@ -90,8 +93,9 @@ def test_execution_operation_is_published(
 
 
 def test_execution_surface_has_no_other_operations():
-    """Keyed on the owning module, not a path prefix: /api/executions/admin/* and
-    /api/public/shared/chats/* belong to other modules and share these prefixes."""
+    """Keyed on the owning module, not a path prefix: /api/internal/executions/admin/* and
+    /api/internal/public/shared/chats/* belong to other modules and share these prefixes.
+    """
     served = {
         (method.lower(), route.path)
         for route in real_app.routes
@@ -119,39 +123,45 @@ def test_execution_path_is_served_by_this_module(path: str):
 @pytest.mark.parametrize(
     "path,module",
     [
-        ("/api/graphs/{graph_id}", "backend.api.features.graphs.routes"),
+        ("/api/internal/graphs/{graph_id}", "backend.api.features.graphs.routes"),
         (
-            "/api/graphs/{graph_id}/execute/{graph_version}",
-            "backend.api.features.graphs.routes",
-        ),
-        ("/api/graphs/{graph_id}/settings", "backend.api.features.graphs.routes"),
-        ("/api/graphs/{graph_id}/versions", "backend.api.features.graphs.routes"),
-        (
-            "/api/graphs/{graph_id}/versions/active",
+            "/api/internal/graphs/{graph_id}/execute/{graph_version}",
             "backend.api.features.graphs.routes",
         ),
         (
-            "/api/graphs/{graph_id}/versions/{version}",
+            "/api/internal/graphs/{graph_id}/settings",
             "backend.api.features.graphs.routes",
         ),
         (
-            "/api/graphs/{graph_id}/schedules",
+            "/api/internal/graphs/{graph_id}/versions",
+            "backend.api.features.graphs.routes",
+        ),
+        (
+            "/api/internal/graphs/{graph_id}/versions/active",
+            "backend.api.features.graphs.routes",
+        ),
+        (
+            "/api/internal/graphs/{graph_id}/versions/{version}",
+            "backend.api.features.graphs.routes",
+        ),
+        (
+            "/api/internal/graphs/{graph_id}/schedules",
             "backend.api.features.schedules.routes",
         ),
         (
-            "/api/graphs/{graph_id}/executions",
+            "/api/internal/graphs/{graph_id}/executions",
             "backend.api.features.graph_executions.routes",
         ),
         (
-            "/api/graphs/{graph_id}/executions/{graph_exec_id}",
+            "/api/internal/graphs/{graph_id}/executions/{graph_exec_id}",
             "backend.api.features.graph_executions.routes",
         ),
         (
-            "/api/graphs/{graph_id}/executions/{graph_exec_id}/stop",
+            "/api/internal/graphs/{graph_id}/executions/{graph_exec_id}/stop",
             "backend.api.features.graph_executions.routes",
         ),
         (
-            "/api/graphs/{graph_id}/executions/{graph_exec_id}/share",
+            "/api/internal/graphs/{graph_id}/executions/{graph_exec_id}/share",
             "backend.api.features.graph_executions.routes",
         ),
     ],

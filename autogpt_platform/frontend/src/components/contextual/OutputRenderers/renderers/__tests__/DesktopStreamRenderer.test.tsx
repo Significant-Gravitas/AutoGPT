@@ -45,7 +45,7 @@ describe("DesktopStreamRenderer", () => {
     expect(
       desktopStreamRenderer.canRender({
         ...streamValue,
-        url: "/api/proxy/api/desktop-preview?token=abc",
+        url: "/api/proxy/api/internal/desktop-preview?token=abc",
         requires_auth: true,
       }),
     ).toBe(true);
@@ -54,7 +54,7 @@ describe("DesktopStreamRenderer", () => {
   it("shows a notice instead of the frame to a viewer who is not the owner", () => {
     const ownerBound = {
       ...streamValue,
-      url: "/api/proxy/api/desktop-preview?token=abc",
+      url: "/api/proxy/api/internal/desktop-preview?token=abc",
       requires_auth: true,
     };
     const { container } = render(

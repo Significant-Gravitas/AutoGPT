@@ -8,8 +8,8 @@ import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 // The tier buttons only show with billing on, which the server flags answer:
 // the flags request is mocked with billing on, and the auth store marked as
 // loaded so the flags request is made.
-const SUBSCRIPTION_URL = "*/api/credits/subscription";
-const FLAGS_URL = "*/api/feature-flags";
+const SUBSCRIPTION_URL = "*/api/internal/credits/subscription";
+const FLAGS_URL = "*/api/internal/feature-flags";
 // A fixed date that stays in the future, so a pending change reads as upcoming.
 const PENDING_EFFECTIVE_AT = "2099-02-15T00:00:00Z";
 

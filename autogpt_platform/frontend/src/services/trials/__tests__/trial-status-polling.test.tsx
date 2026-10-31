@@ -72,7 +72,7 @@ beforeEach(() => {
   requests.mockReset();
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   server.use(
-    http.get("*/api/proxy/api/credits/trial", () => {
+    http.get("*/api/proxy/api/internal/credits/trial", () => {
       requests(useAuthStore.getState().user?.id);
       return HttpResponse.json(trial);
     }),

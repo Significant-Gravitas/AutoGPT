@@ -76,7 +76,7 @@ describe("Marketplace category filter", () => {
         },
       }),
       getGetV2ListStoreCategoriesMockHandler(CATEGORIES),
-      http.get("/api/proxy/api/store/agents", ({ request }) => {
+      http.get("/api/proxy/api/internal/store/agents", ({ request }) => {
         const params = new URL(request.url).searchParams;
         // The featured shelf is a separate query; keep it empty so the grid
         // is the only thing rendering agent names.

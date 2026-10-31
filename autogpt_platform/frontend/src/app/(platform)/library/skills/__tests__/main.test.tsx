@@ -294,7 +294,7 @@ describe("SkillsPage", () => {
         // The generated handler hardcodes application/json, which would send
         // the archive through the mutator's text path — mock the zip itself.
         http.get(
-          "/api/proxy/api/skills/:name/package",
+          "/api/proxy/api/internal/skills/:name/package",
           () =>
             new HttpResponse(
               new Blob([new Uint8Array([0x50, 0x4b, 0x03, 0x04])]),
@@ -357,7 +357,7 @@ describe("SkillsPage", () => {
         },
       });
       await vi.waitFor(() =>
-        expect(posted).toEqual(["/api/proxy/api/skills/package"]),
+        expect(posted).toEqual(["/api/proxy/api/internal/skills/package"]),
       );
 
       fireEvent.change(input, {
@@ -373,8 +373,8 @@ describe("SkillsPage", () => {
       });
       await vi.waitFor(() =>
         expect(posted).toEqual([
-          "/api/proxy/api/skills/package",
-          "/api/proxy/api/skills",
+          "/api/proxy/api/internal/skills/package",
+          "/api/proxy/api/internal/skills",
         ]),
       );
     } finally {

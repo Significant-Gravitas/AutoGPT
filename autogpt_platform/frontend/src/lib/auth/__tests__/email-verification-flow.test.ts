@@ -1369,7 +1369,7 @@ describe("an address the mailer won't deliver to", () => {
     expect(db.UserAuthIdentity).toHaveLength(0);
     expect(sentEmails).toEqual([]);
     expect(String(lookup.mock.calls[0][0])).toMatch(
-      /\/api\/auth\/email\/suppression$/,
+      /\/api\/internal\/auth\/email\/suppression$/,
     );
   });
 

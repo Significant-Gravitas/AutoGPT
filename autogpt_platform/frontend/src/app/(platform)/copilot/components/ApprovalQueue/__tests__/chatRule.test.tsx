@@ -19,10 +19,10 @@ function serve(
 ) {
   const sent: { reviews: Record<string, unknown>[] }[] = [];
   server.use(
-    http.get(`*/api/review/session/${CHAT_SESSION}`, () =>
+    http.get(`*/api/internal/review/session/${CHAT_SESSION}`, () =>
       HttpResponse.json([review]),
     ),
-    http.post("*/api/review/action", async ({ request }) => {
+    http.post("*/api/internal/review/action", async ({ request }) => {
       sent.push(
         (await request.json()) as { reviews: Record<string, unknown>[] },
       );

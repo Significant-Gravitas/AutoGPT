@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { watchForUnexpectedErrors } from "../guard";
 
 const activationURL =
-  "http://localhost:3000/api/proxy/api/credits/pro-activation/current";
+  "http://localhost:3000/api/proxy/api/internal/credits/pro-activation/current";
 
 async function collect(
   status: number,

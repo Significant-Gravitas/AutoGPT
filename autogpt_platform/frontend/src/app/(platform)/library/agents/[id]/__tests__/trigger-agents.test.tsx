@@ -929,7 +929,7 @@ describe("Library agent view — trigger agents", () => {
       emptySchedulesHandler,
       getGetV2ListTriggerAgentsMockHandler([]),
       http.get(
-        "http://localhost:3000/api/proxy/api/library/presets",
+        "http://localhost:3000/api/proxy/api/internal/library/presets",
         ({ request }) => {
           const page = Number(
             new URL(request.url).searchParams.get("page") ?? "1",
@@ -973,7 +973,7 @@ describe("Library agent view — trigger agents", () => {
       // The preset is in the list, but its by-ID detail fetch 404s — the
       // race where it's deleted between the list load and selection.
       http.get(
-        "http://localhost:3000/api/proxy/api/library/presets/:presetId",
+        "http://localhost:3000/api/proxy/api/internal/library/presets/:presetId",
         () =>
           new HttpResponse(
             JSON.stringify({ detail: "Preset #preset-1 not found" }),
@@ -1017,7 +1017,7 @@ describe("Library agent view — trigger agents", () => {
       emptySchedulesHandler,
       getGetV2ListTriggerAgentsMockHandler([]),
       http.get(
-        "http://localhost:3000/api/proxy/api/library/presets/:presetId",
+        "http://localhost:3000/api/proxy/api/internal/library/presets/:presetId",
         () =>
           new HttpResponse(
             JSON.stringify({ detail: "Preset #gone-template not found" }),

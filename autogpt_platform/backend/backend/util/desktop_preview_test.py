@@ -23,7 +23,7 @@ def test_preview_link_hides_credentials_and_requires_owner(cryptor):
     assert "password" not in link
     assert "private" not in link
     # Origin-relative, so it works on any origin the owner is signed in to.
-    assert link.startswith("/api/proxy/api/desktop-preview?")
+    assert link.startswith("/api/proxy/api/internal/desktop-preview?")
     assert not link.startswith("//")
     assert urlsplit(link).netloc == ""
     token = parse_qs(urlsplit(link).query)["token"][0]

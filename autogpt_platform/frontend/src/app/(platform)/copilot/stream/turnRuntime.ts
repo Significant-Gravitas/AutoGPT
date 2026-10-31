@@ -1367,7 +1367,7 @@ export class TurnRuntime {
   }
 
   private streamUrl() {
-    return `${this.deps.baseUrl()}/api/chat/sessions/${this.sessionId}/stream`;
+    return `${this.deps.baseUrl()}/api/internal/chat/sessions/${this.sessionId}/stream`;
   }
 
   private resumeUrl(turnId: string, cursor: string | null) {

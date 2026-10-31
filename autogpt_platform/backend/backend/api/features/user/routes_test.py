@@ -219,7 +219,7 @@ def test_record_user_consent_route_answers_404_for_a_deleted_account(
     real_app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     try:
         response = fastapi.testclient.TestClient(real_app).post(
-            "/api/auth/user/consent",
+            "/api/internal/auth/user/consent",
             json={"terms_version": "2026-10", "marketing_opt_out": True},
         )
     finally:
@@ -495,14 +495,14 @@ def test_invalid_json_request() -> None:
 # Nothing is hoisted onto this router — a router-level dependency would
 # silently authenticate the email-link route.
 AUTHENTICATED = {
-    ("post", "/api/auth/user"),
-    ("get", "/api/auth/user/timezone"),
-    ("post", "/api/auth/user/timezone"),
-    ("post", "/api/auth/user/consent"),
-    ("get", "/api/auth/user/preferences"),
-    ("post", "/api/auth/user/preferences"),
+    ("post", "/api/internal/auth/user"),
+    ("get", "/api/internal/auth/user/timezone"),
+    ("post", "/api/internal/auth/user/timezone"),
+    ("post", "/api/internal/auth/user/consent"),
+    ("get", "/api/internal/auth/user/preferences"),
+    ("post", "/api/internal/auth/user/preferences"),
 }
-UNAUTHENTICATED = {("post", "/api/auth/user/preferences/from-email")}
+UNAUTHENTICATED = {("post", "/api/internal/auth/user/preferences/from-email")}
 
 
 @pytest.mark.parametrize("method,path", sorted(AUTHENTICATED))
@@ -622,7 +622,7 @@ def _apply_footer_choice(user_id: str, choice: str) -> httpx.Response:
     link = generate_preference_link(user_id, choice)
     token = urllib.parse.parse_qs(urllib.parse.urlparse(link).query)["t"][0]
     return fastapi.testclient.TestClient(real_app, raise_server_exceptions=False).post(
-        "/api/auth/user/preferences/from-email",
+        "/api/internal/auth/user/preferences/from-email",
         params={"choice": choice, "token": token},
     )
 

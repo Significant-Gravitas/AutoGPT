@@ -151,7 +151,7 @@ describe("plan choices while a trial cancellation is pending", () => {
     const prices = deferredTrialResponse<void>();
     const { hits } = mockBilling();
     server.use(
-      http.get("*/api/credits/subscription", async () => {
+      http.get("*/api/internal/credits/subscription", async () => {
         hits.subscription += 1;
         await prices.promise;
         return HttpResponse.json(trialSubscription);
@@ -169,7 +169,7 @@ describe("plan choices while a trial cancellation is pending", () => {
   it("shows nothing when plan prices fail to load", async () => {
     const { hits } = mockBilling();
     server.use(
-      http.get("*/api/credits/subscription", () => {
+      http.get("*/api/internal/credits/subscription", () => {
         hits.subscription += 1;
         return HttpResponse.json({ detail: "unavailable" }, { status: 500 });
       }),

@@ -98,7 +98,9 @@ describe("AuthorizePage", () => {
     render(<AuthorizePage />);
     await screen.findByRole("button", { name: "Deny" });
 
-    expect(requested?.pathname).toBe("/api/proxy/api/oauth/app/client%231");
+    expect(requested?.pathname).toBe(
+      "/api/proxy/api/internal/oauth/app/client%231",
+    );
     expect(requested?.searchParams.get("redirect_uri")).toBe(REGISTERED);
   });
 });

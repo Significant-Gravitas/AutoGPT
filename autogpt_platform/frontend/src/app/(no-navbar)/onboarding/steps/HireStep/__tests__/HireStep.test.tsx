@@ -91,7 +91,7 @@ function mockTeam(team: ExpertRecommendations | null, ready = true) {
 function mockHires(failing = new Set<string>(), gate?: Promise<void>) {
   const hired: string[] = [];
   server.use(
-    http.post("*/api/experts", async ({ request }) => {
+    http.post("*/api/internal/experts", async ({ request }) => {
       const { template_id } = (await request.json()) as {
         template_id: string;
       };
@@ -193,7 +193,7 @@ describe("HireStep — hiring", () => {
     mockTeam(TEAM);
     const hires: unknown[] = [];
     server.use(
-      http.post("*/api/experts", async ({ request }) => {
+      http.post("*/api/internal/experts", async ({ request }) => {
         hires.push(await request.json());
         return HttpResponse.json({
           expert: { id: "exp-1", name: "Maria" },
@@ -245,7 +245,7 @@ describe("HireStep — hiring", () => {
   it("keeps the card open and says so when the hire fails", async () => {
     mockTeam(TEAM);
     server.use(
-      http.post("*/api/experts", () =>
+      http.post("*/api/internal/experts", () =>
         HttpResponse.json({ detail: "nope" }, { status: 503 }),
       ),
     );
@@ -600,7 +600,7 @@ describe("HireStep — while the job is still running", () => {
   it("shows skeleton cards and the way out, then the team when it lands", async () => {
     let ready = false;
     server.use(
-      http.get("*/api/onboarding/brain-dump/recommended-experts", () =>
+      http.get("*/api/internal/onboarding/brain-dump/recommended-experts", () =>
         HttpResponse.json(
           ready ? { ready: true, team: TEAM } : { ready: false },
         ),
@@ -630,12 +630,15 @@ it.each([408, 429, 503])(
   async (status) => {
     let calls = 0;
     server.use(
-      http.get("*/api/onboarding/brain-dump/recommended-experts", () => {
-        calls += 1;
-        return calls === 1
-          ? HttpResponse.json({ detail: "try again" }, { status })
-          : HttpResponse.json({ ready: true, team: TEAM });
-      }),
+      http.get(
+        "*/api/internal/onboarding/brain-dump/recommended-experts",
+        () => {
+          calls += 1;
+          return calls === 1
+            ? HttpResponse.json({ detail: "try again" }, { status })
+            : HttpResponse.json({ ready: true, team: TEAM });
+        },
+      ),
     );
     render(<HireStep />);
     await waitFor(() => expect(calls).toBe(1));
@@ -650,7 +653,7 @@ it.each([408, 429, 503])(
 it("stops waiting after the deadline if transient errors persist", async () => {
   let calls = 0;
   server.use(
-    http.get("*/api/onboarding/brain-dump/recommended-experts", () => {
+    http.get("*/api/internal/onboarding/brain-dump/recommended-experts", () => {
       calls += 1;
       return HttpResponse.json({ detail: "unavailable" }, { status: 503 });
     }),

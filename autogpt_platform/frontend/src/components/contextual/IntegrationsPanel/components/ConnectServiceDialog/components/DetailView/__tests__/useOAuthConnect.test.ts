@@ -208,7 +208,7 @@ describe("useOAuthConnect — popup window lifecycle", () => {
         data: {
           login_url: "https://github.com/login/oauth",
           state_token: "state-token",
-          cancel_url: "/api/oauth/pending/cancel",
+          cancel_url: "/api/internal/oauth/pending/cancel",
         },
       } as never;
     });
@@ -226,7 +226,7 @@ describe("useOAuthConnect — popup window lifecycle", () => {
       "https://github.com/login/oauth",
       expect.objectContaining({
         stateToken: "state-token",
-        cancelUrl: "/api/oauth/pending/cancel",
+        cancelUrl: "/api/internal/oauth/pending/cancel",
         preOpenedWindow: fakeWindow,
         useCrossOriginListeners: true,
       }),

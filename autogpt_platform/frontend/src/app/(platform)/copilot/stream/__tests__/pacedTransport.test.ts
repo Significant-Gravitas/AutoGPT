@@ -32,7 +32,7 @@ describe("a paced POST turn read through the shadow tee", () => {
       setStreamShadowRate(1);
       server.use(
         http.post(
-          `${BASE}/api/chat/sessions/s1/stream`,
+          `${BASE}/api/internal/chat/sessions/s1/stream`,
           () =>
             new HttpResponse(arrivingOverTime(essayFrames(300), 5), {
               headers: { "content-type": "text/event-stream" },

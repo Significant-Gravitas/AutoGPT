@@ -13,7 +13,7 @@ export interface CreditSnapshot {
 }
 
 export async function getCreditBalance(page: Page) {
-  const response = await page.request.get("/api/proxy/api/credits");
+  const response = await page.request.get("/api/proxy/api/internal/credits");
   expect(response.ok(), `GET credits: ${response.status()}`).toBe(true);
   const body = (await response.json()) as { credits: number };
   return body.credits;
@@ -21,7 +21,7 @@ export async function getCreditBalance(page: Page) {
 
 export async function getCreditTransactions(page: Page) {
   const response = await page.request.get(
-    "/api/proxy/api/credits/transactions",
+    "/api/proxy/api/internal/credits/transactions",
     { params: { transaction_count_limit: 100 } },
   );
   expect(response.ok(), `GET credit transactions: ${response.status()}`).toBe(

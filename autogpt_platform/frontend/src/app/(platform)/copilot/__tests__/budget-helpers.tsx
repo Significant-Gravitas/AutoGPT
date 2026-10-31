@@ -148,11 +148,11 @@ export function fakeAtReset(jobs: AtResetTurn[] = []) {
     maxMessageChars: Infinity,
   };
   const handlers = [
-    http.get("*/api/chat/sessions/:sessionId/at-reset", () =>
+    http.get("*/api/internal/chat/sessions/:sessionId/at-reset", () =>
       HttpResponse.json({ jobs: state.jobs }),
     ),
     http.post(
-      "*/api/chat/sessions/:sessionId/at-reset",
+      "*/api/internal/chat/sessions/:sessionId/at-reset",
       async ({ request, params }) => {
         const body = (await request.json()) as {
           kind: "send";
@@ -179,7 +179,7 @@ export function fakeAtReset(jobs: AtResetTurn[] = []) {
       },
     ),
     http.delete(
-      "*/api/chat/sessions/:sessionId/at-reset/:kind",
+      "*/api/internal/chat/sessions/:sessionId/at-reset/:kind",
       ({ params }) => {
         state.cancelled.push(String(params.kind));
         state.jobs = state.jobs.filter((job) => job.kind !== params.kind);

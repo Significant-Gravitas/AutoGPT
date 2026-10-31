@@ -120,7 +120,9 @@ vi.mock("../steps/BrainDumpStep/recordingStore", () => ({
 }));
 let tier = "NO_TIER";
 vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
-  getGetSubscriptionStatusQueryKey: () => ["/api/credits/subscription"],
+  getGetSubscriptionStatusQueryKey: () => [
+    "/api/internal/credits/subscription",
+  ],
   useGetSubscriptionStatus: (opts: {
     query: { select: (res: { status: number; data: unknown }) => unknown };
   }) => ({

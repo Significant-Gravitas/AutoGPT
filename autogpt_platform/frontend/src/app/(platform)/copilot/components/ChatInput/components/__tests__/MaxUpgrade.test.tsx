@@ -22,7 +22,7 @@ describe("contextual Max upsell", () => {
   it("links the locked server model to existing billing without fetching or showing prices", async () => {
     const billingRequest = vi.fn(() => HttpResponse.error());
     mockMaxUpgrade();
-    server.use(http.all("*/api/credits/*", billingRequest));
+    server.use(http.all("*/api/internal/credits/*", billingRequest));
     render(<ConnectionPicker />);
     await openPicker();
 

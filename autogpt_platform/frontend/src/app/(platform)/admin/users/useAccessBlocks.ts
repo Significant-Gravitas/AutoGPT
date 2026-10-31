@@ -68,7 +68,7 @@ export function isIPReportQuery(query: Query) {
   const [key] = query.queryKey;
   return (
     typeof key === "string" &&
-    key.startsWith("/api/admin/users/") &&
+    key.startsWith("/api/internal/admin/users/") &&
     key.endsWith("/ip-report")
   );
 }

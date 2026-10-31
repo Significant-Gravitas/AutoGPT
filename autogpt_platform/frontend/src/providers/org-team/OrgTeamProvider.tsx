@@ -43,7 +43,7 @@ export default function OrgTeamProvider({ children }: Props) {
 
     async function loadOrgs() {
       try {
-        const res = await fetch("/api/proxy/api/orgs", {
+        const res = await fetch("/api/proxy/api/internal/orgs", {
           headers: { "Content-Type": "application/json" },
         });
         if (!res.ok) {

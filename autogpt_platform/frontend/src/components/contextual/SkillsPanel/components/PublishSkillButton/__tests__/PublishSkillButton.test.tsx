@@ -76,24 +76,27 @@ describe("PublishSkillButton", () => {
     const u = user();
     let body: unknown = null;
     server.use(
-      http.post("*/api/store/skills/submissions", async ({ request }) => {
-        body = await request.json();
-        return HttpResponse.json(
-          {
-            skill_listing_version_id: "v1",
-            slug: "brand-voice-guide",
-            name: "brand-voice-guide",
-            description: "d",
-            categories: ["content"],
-            required_providers: ["google"],
-            version: 1,
-            status: "PENDING",
-            review_comments: null,
-            is_live: false,
-          },
-          { status: 201 },
-        );
-      }),
+      http.post(
+        "*/api/internal/store/skills/submissions",
+        async ({ request }) => {
+          body = await request.json();
+          return HttpResponse.json(
+            {
+              skill_listing_version_id: "v1",
+              slug: "brand-voice-guide",
+              name: "brand-voice-guide",
+              description: "d",
+              categories: ["content"],
+              required_providers: ["google"],
+              version: 1,
+              status: "PENDING",
+              review_comments: null,
+              is_live: false,
+            },
+            { status: 201 },
+          );
+        },
+      ),
     );
     render(<PublishSkillButton skillName="brand-voice-guide" />);
     await u.click(screen.getByTestId("skill-publish-button"));

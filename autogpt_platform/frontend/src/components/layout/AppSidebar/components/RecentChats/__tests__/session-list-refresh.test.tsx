@@ -88,7 +88,7 @@ beforeEach(() => {
   seedPages(75);
   listRequests = [];
   server.use(
-    http.get("*/api/chat/sessions", ({ request }) => {
+    http.get("*/api/internal/chat/sessions", ({ request }) => {
       const url = new URL(request.url);
       const offset = Number(url.searchParams.get("offset") ?? "0");
       const limit = Number(url.searchParams.get("limit") ?? "50");

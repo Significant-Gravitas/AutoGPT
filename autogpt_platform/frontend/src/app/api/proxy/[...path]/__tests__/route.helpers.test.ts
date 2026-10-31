@@ -16,7 +16,55 @@ import {
   isPrivateStoreMediaRequest,
   PRIVATE_MEDIA_RANGE_CHUNK_BYTES,
   isPrivateStoreVideoRequest,
+  isStoreSearchRequest,
 } from "../route.helpers";
+
+describe("a proxied path under api/internal", () => {
+  const FILE_ID = "550e8400-e29b-41d4-a716-446655440000";
+  const media = ["api", "internal", "store", "submissions", "media", "u-1"];
+
+  it.each([
+    [
+      "private store media",
+      () => isPrivateStoreMediaRequest([...media, "images", "a.png"]),
+    ],
+    [
+      "a private store video",
+      () => isPrivateStoreVideoRequest([...media, "videos", "a.mp4"]),
+    ],
+    [
+      "a workspace download",
+      () =>
+        isWorkspaceDownloadRequest([
+          "api",
+          "internal",
+          "workspace",
+          "files",
+          FILE_ID,
+          "download",
+        ]),
+    ],
+    [
+      "a store search",
+      () =>
+        isStoreSearchRequest(
+          ["api", "internal", "store", "search"],
+          new URLSearchParams(),
+        ),
+    ],
+  ])("is recognised as %s, as its pre-move path is", (_name, classify) => {
+    expect(classify()).toBe(true);
+  });
+
+  it("gives the Codex login its longer response timeout", () => {
+    expect(
+      getResponseStartTimeoutMs(
+        ["api", "internal", "integrations", "codex", "login"],
+        "GET",
+      ),
+    ).toBe(CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS);
+  });
+});
 
 describe("private store media request matching", () => {
   const imagePath = [

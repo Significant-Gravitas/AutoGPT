@@ -444,7 +444,7 @@ describe.each([
             "user.email": "ada@example.com",
             "user.name": "ada",
             "user.id": "user-1",
-            "http.route": "/api/library",
+            "http.route": "/api/internal/library",
             "server.address": "backend.agpt.co",
           },
         },
@@ -458,7 +458,7 @@ describe.each([
     });
     expect(event.spans[0].data).toEqual({
       "user.id": "user-1",
-      "http.route": "/api/library",
+      "http.route": "/api/internal/library",
       "server.address": "backend.agpt.co",
     });
   });

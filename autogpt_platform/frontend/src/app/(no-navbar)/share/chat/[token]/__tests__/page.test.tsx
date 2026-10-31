@@ -182,7 +182,7 @@ describe("SharedChatPage", () => {
     // Backend returns 404 for unknown/revoked tokens.
     server.use(
       http.get(
-        "*/api/public/shared/chats/:token",
+        "*/api/internal/public/shared/chats/:token",
         () => new HttpResponse(null, { status: 404 }),
       ),
     );
@@ -203,7 +203,7 @@ describe("SharedChatPage", () => {
     // the branded chrome.
     server.use(
       http.get(
-        "*/api/public/shared/chats/:token",
+        "*/api/internal/public/shared/chats/:token",
         () => new HttpResponse(null, { status: 404 }),
       ),
     );
@@ -301,7 +301,7 @@ describe("SharedChatPage", () => {
         }),
       ),
       http.get(
-        "*/api/proxy/api/public/shared/chats/:token/files/:fileId/download",
+        "*/api/proxy/api/internal/public/shared/chats/:token/files/:fileId/download",
         () => new HttpResponse("# artifact"),
       ),
     );
@@ -383,7 +383,7 @@ describe("SharedChatPage", () => {
       const { renew } = installCookiebot();
       server.use(
         http.get(
-          "*/api/public/shared/chats/:token",
+          "*/api/internal/public/shared/chats/:token",
           () => new HttpResponse(null, { status: 404 }),
         ),
       );

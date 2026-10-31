@@ -178,7 +178,7 @@ describe("WorkspaceFileCards", () => {
   it("lists generated documents from all of the expert's chats", async () => {
     const expertRequests: URLSearchParams[] = [];
     server.use(
-      http.get("*/api/workspace/files", ({ request }) => {
+      http.get("*/api/internal/workspace/files", ({ request }) => {
         const params = new URL(request.url).searchParams;
         if (params.get("expert_id") !== "expert-maria") {
           return HttpResponse.json(listResponse());
@@ -330,7 +330,7 @@ describe("WorkspaceFileCards", () => {
 
   it("toasts and still closes the dialog when delete fails", async () => {
     server.use(
-      http.delete("/api/proxy/api/workspace/files/:fileId", () =>
+      http.delete("/api/proxy/api/internal/workspace/files/:fileId", () =>
         HttpResponse.json({ detail: "boom" }, { status: 500 }),
       ),
     );

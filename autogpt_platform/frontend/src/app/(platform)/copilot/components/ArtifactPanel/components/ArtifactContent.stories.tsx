@@ -12,7 +12,7 @@ import {
   TableIcon,
 } from "@hugeicons/core-free-icons";
 
-const PROXY_BASE = "/api/proxy/api/workspace/files";
+const PROXY_BASE = "/api/proxy/api/internal/workspace/files";
 
 function makeArtifact(overrides?: Partial<ArtifactRef>): ArtifactRef {
   return {

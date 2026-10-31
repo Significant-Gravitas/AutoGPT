@@ -8,7 +8,8 @@ const SINGLE_BYTE_RANGE_RE =
 // it so every video response stays buffered.
 export const PRIVATE_MEDIA_RANGE_CHUNK_BYTES = 4 * 1024 * 1024;
 
-export function isPrivateStoreMediaRequest(path: string[]): boolean {
+export function isPrivateStoreMediaRequest(requestPath: string[]): boolean {
+  const path = withoutInternalPrefix(requestPath);
   return (
     path.length === 7 &&
     path[0] === "api" &&
@@ -23,9 +24,10 @@ export function isPrivateStoreMediaRequest(path: string[]): boolean {
 
 // The store searches the backend limits per visitor, by the signed client IP.
 export function isStoreSearchRequest(
-  path: string[],
+  requestPath: string[],
   params: URLSearchParams,
 ): boolean {
+  const path = withoutInternalPrefix(requestPath);
   const route = path.join("/");
   if (route === "api/store/search") return true;
   return (
@@ -33,7 +35,8 @@ export function isStoreSearchRequest(
   );
 }
 
-export function isPrivateStoreVideoRequest(path: string[]): boolean {
+export function isPrivateStoreVideoRequest(requestPath: string[]): boolean {
+  const path = withoutInternalPrefix(requestPath);
   return isPrivateStoreMediaRequest(path) && path[5] === "videos";
 }
 
@@ -66,7 +69,8 @@ export function shouldBufferPrivateMedia(headers: Headers): boolean {
   );
 }
 
-export function isWorkspaceDownloadRequest(path: string[]): boolean {
+export function isWorkspaceDownloadRequest(requestPath: string[]): boolean {
+  const path = withoutInternalPrefix(requestPath);
   // api/workspace/files/{id}/download
   if (
     path.length === 5 &&
@@ -244,9 +248,10 @@ export const RESPONSE_START_TIMEOUT_MS = 30_000;
 export const CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS = 120_000;
 
 export function getResponseStartTimeoutMs(
-  path: string[],
+  requestPath: string[],
   method: string,
 ): number {
+  const path = withoutInternalPrefix(requestPath);
   const isCodexCredentialControl =
     path.length >= 5 &&
     path.slice(0, 4).join("/") === "api/integrations/codex/credentials" &&
@@ -301,4 +306,12 @@ export function watchResponseStart(
     // only the overall fetch ceiling applies.
     clear: () => clearTimeout(timer),
   };
+}
+
+// Reads api/internal/<route> as api/<route>, so a tab still running the bundle
+// from before the API moved under /api/internal classifies its requests the same.
+function withoutInternalPrefix(path: string[]): string[] {
+  return path[0] === "api" && path[1] === "internal"
+    ? ["api", ...path.slice(2)]
+    : path;
 }

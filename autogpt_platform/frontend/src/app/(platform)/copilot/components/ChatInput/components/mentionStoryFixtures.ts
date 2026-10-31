@@ -42,13 +42,13 @@ const storyProviders = [
 ];
 
 export const mentionStoryHandlers = [
-  http.get("*/api/integrations/credentials", () =>
+  http.get("*/api/internal/integrations/credentials", () =>
     HttpResponse.json(storyCredentials),
   ),
-  http.get("*/api/integrations/providers", () =>
+  http.get("*/api/internal/integrations/providers", () =>
     HttpResponse.json(storyProviders),
   ),
-  http.get("*/api/experts/:expertId/credentials", () =>
+  http.get("*/api/internal/experts/:expertId/credentials", () =>
     HttpResponse.json([
       {
         credential_id: "google-work",
@@ -58,7 +58,7 @@ export const mentionStoryHandlers = [
       },
     ]),
   ),
-  http.get("*/api/workspace/files", ({ request }) => {
+  http.get("*/api/internal/workspace/files", ({ request }) => {
     const query =
       new URL(request.url).searchParams.get("q")?.toLowerCase() ?? "";
     return HttpResponse.json({
@@ -85,7 +85,7 @@ export const mentionStoryHandlers = [
       has_more: false,
     });
   }),
-  http.get("*/api/workspace/folders", () =>
+  http.get("*/api/internal/workspace/folders", () =>
     HttpResponse.json({
       folders: [
         {

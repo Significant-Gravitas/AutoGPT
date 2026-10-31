@@ -147,7 +147,7 @@ describe("server backend", () => {
     it("asks again after a request that failed, until one succeeds", async () => {
       let requests = 0;
       server.use(
-        http.get("/api/proxy/api/feature-flags", () =>
+        http.get("/api/proxy/api/internal/feature-flags", () =>
           requests++ === 0
             ? HttpResponse.json({ detail: "bad gateway" }, { status: 502 })
             : HttpResponse.json({
@@ -172,7 +172,7 @@ describe("server backend", () => {
     it("backs off on failed requests too, so an outage is not hammered", async () => {
       let requests = 0;
       server.use(
-        http.get("/api/proxy/api/feature-flags", () => {
+        http.get("/api/proxy/api/internal/feature-flags", () => {
           requests++;
           return HttpResponse.json({ detail: "bad gateway" }, { status: 502 });
         }),
@@ -389,7 +389,7 @@ describe("the frontend's flags are the set the endpoint serves", () => {
   it("keys the endpoint's flags by the same enum the frontend reads from", () => {
     const schemas = openapi.components.schemas;
     const response =
-      openapi.paths["/api/feature-flags"].get.responses["200"].content[
+      openapi.paths["/api/internal/feature-flags"].get.responses["200"].content[
         "application/json"
       ].schema.$ref;
 

@@ -52,7 +52,7 @@ beforeEach(() => {
   }));
   listRequests = [];
   server.use(
-    http.get("*/api/chat/sessions", ({ request }) => {
+    http.get("*/api/internal/chat/sessions", ({ request }) => {
       const url = new URL(request.url);
       const offset = Number(url.searchParams.get("offset") ?? "0");
       const limit = Number(url.searchParams.get("limit") ?? "50");
@@ -127,7 +127,7 @@ describe("useSessionList — older pages", () => {
       releaseThirdPage = resolve;
     });
     server.use(
-      http.get("*/api/chat/sessions", async ({ request }) => {
+      http.get("*/api/internal/chat/sessions", async ({ request }) => {
         const url = new URL(request.url);
         const offset = Number(url.searchParams.get("offset") ?? "0");
         const limit = Number(url.searchParams.get("limit") ?? "50");
@@ -185,7 +185,7 @@ describe("useSessionList — older pages", () => {
     let holdNextFirstPage = false;
     let releaseFirstPage: () => void = () => {};
     server.use(
-      http.get("*/api/chat/sessions", async ({ request }) => {
+      http.get("*/api/internal/chat/sessions", async ({ request }) => {
         const url = new URL(request.url);
         const offset = Number(url.searchParams.get("offset") ?? "0");
         const limit = Number(url.searchParams.get("limit") ?? "50");
@@ -278,7 +278,7 @@ describe("useSessionList — whether the list loaded", () => {
     expect(empty.current.sessions).toEqual([]);
 
     server.use(
-      http.get("*/api/chat/sessions", () =>
+      http.get("*/api/internal/chat/sessions", () =>
         HttpResponse.json({ detail: "boom" }, { status: 500 }),
       ),
     );

@@ -46,10 +46,13 @@ beforeEach(() => {
       used_percent: 0,
       file_count: 0,
     }),
-    http.get("/api/proxy/api/workspace/files/:id/download", ({ params }) => {
-      downloadRequests.push(String(params.id));
-      return HttpResponse.text("PK\u0003\u0004 binary zip bytes");
-    }),
+    http.get(
+      "/api/proxy/api/internal/workspace/files/:id/download",
+      ({ params }) => {
+        downloadRequests.push(String(params.id));
+        return HttpResponse.text("PK\u0003\u0004 binary zip bytes");
+      },
+    ),
   );
 });
 
@@ -87,7 +90,7 @@ async function openViewer() {
 function expectDownloadLink(viewer: HTMLElement, fileId: string) {
   const link = within(viewer).getByRole("link", { name: /download/i });
   expect(link.getAttribute("href")).toBe(
-    `/api/proxy/api/workspace/files/${fileId}/download`,
+    `/api/proxy/api/internal/workspace/files/${fileId}/download`,
   );
 }
 
@@ -107,7 +110,7 @@ describe("ArtifactsPage - office files in the viewer", () => {
 
       const img = within(viewer).getByTestId("file-viewer-office-preview");
       expect(img.getAttribute("src")).toContain(
-        "/api/proxy/api/workspace/files/deck1/preview?w=800",
+        "/api/proxy/api/internal/workspace/files/deck1/preview?w=800",
       );
       expect(img.getAttribute("alt")).toBe("deck.pptx");
       expectDownloadLink(viewer, "deck1");
@@ -166,7 +169,7 @@ describe("ArtifactsPage - office files in the viewer", () => {
 
     const img = within(viewer).getByTestId("file-viewer-office-preview");
     expect(img.getAttribute("src")).toContain(
-      "/api/proxy/api/workspace/files/doc1/preview?w=800",
+      "/api/proxy/api/internal/workspace/files/doc1/preview?w=800",
     );
     expect(viewer.querySelector("pre")).toBeNull();
 

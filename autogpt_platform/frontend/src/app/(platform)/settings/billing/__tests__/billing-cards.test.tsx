@@ -50,14 +50,17 @@ afterEach(() => setTrialUser(null));
 beforeEach(() => {
   setTrialUser("billing-user");
   server.use(
-    http.post("*/api/credits/subscription/preview", async ({ request }) => {
-      const body = (await request.json()) as {
-        billing_cycle: "monthly" | "yearly";
-      };
-      return HttpResponse.json(
-        maxUpgradePreview({ billing_cycle: body.billing_cycle }),
-      );
-    }),
+    http.post(
+      "*/api/internal/credits/subscription/preview",
+      async ({ request }) => {
+        const body = (await request.json()) as {
+          billing_cycle: "monthly" | "yearly";
+        };
+        return HttpResponse.json(
+          maxUpgradePreview({ billing_cycle: body.billing_cycle }),
+        );
+      },
+    ),
   );
 });
 
@@ -68,13 +71,13 @@ function jsonHandler(method: "get" | "post", path: string, body: JsonBodyType) {
 describe("YourPlanCard", () => {
   it("renders the current tier label, monthly cost, and Upgrade CTA", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "PRO",
         monthly_cost: 5000,
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/p/test",
       }),
     );
@@ -93,13 +96,13 @@ describe("YourPlanCard", () => {
 
   it("hides the Upgrade button on the top tier (BUSINESS / Team) and exposes Downgrade to Max", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "BUSINESS",
         monthly_cost: 50000,
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", { url: null }),
+      jsonHandler("get", "/api/internal/credits/manage", { url: null }),
     );
 
     render(<YourPlanCard />);
@@ -114,13 +117,13 @@ describe("YourPlanCard", () => {
 
   it("MAX subscriber sees Downgrade-to-Pro, Manage, and Talk-to-sales for Team", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "MAX",
         monthly_cost: 32000,
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/p/test",
       }),
     );
@@ -146,7 +149,7 @@ describe("YourPlanCard", () => {
 
   it("shows 'Downgrade scheduled' badge + 'Switches to Pro on …' when pending downgrade is set", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "MAX",
         monthly_cost: 32000,
         has_active_stripe_subscription: true,
@@ -154,7 +157,7 @@ describe("YourPlanCard", () => {
         pending_tier: "PRO",
         pending_tier_effective_at: "2026-05-30T00:00:00Z",
       }),
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/p/test",
       }),
     );
@@ -173,13 +176,13 @@ describe("YourPlanCard", () => {
 
   it("renders the 'no active subscription' state for NO_TIER users", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "NO_TIER",
         monthly_cost: 0,
         has_active_stripe_subscription: false,
         status: "inactive",
       }),
-      jsonHandler("get", "/api/credits/manage", { url: null }),
+      jsonHandler("get", "/api/internal/credits/manage", { url: null }),
     );
 
     render(<YourPlanCard />);
@@ -196,7 +199,7 @@ describe("YourPlanCard", () => {
 describe("YourPlanCard cycle toggle", () => {
   it("renders Monthly selected when billing_cycle is monthly", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "PRO",
         monthly_cost: 5000,
         billing_cycle: "monthly",
@@ -205,7 +208,7 @@ describe("YourPlanCard cycle toggle", () => {
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/p/test",
       }),
     );
@@ -220,7 +223,7 @@ describe("YourPlanCard cycle toggle", () => {
 
   it("renders Yearly selected when billing_cycle is yearly", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "PRO",
         monthly_cost: 51000,
         billing_cycle: "yearly",
@@ -229,7 +232,7 @@ describe("YourPlanCard cycle toggle", () => {
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/p/test",
       }),
     );
@@ -244,7 +247,7 @@ describe("YourPlanCard cycle toggle", () => {
 
   it("opens the confirmation dialog with prorated copy when monthly Pro user clicks Yearly", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "PRO",
         monthly_cost: 5000,
         billing_cycle: "monthly",
@@ -255,7 +258,7 @@ describe("YourPlanCard cycle toggle", () => {
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/p/test",
       }),
     );
@@ -289,7 +292,7 @@ describe("YourPlanCard cycle toggle", () => {
 
   it("shows Max-specific yearly savings copy in the confirmation dialog", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "MAX",
         monthly_cost: 32000,
         billing_cycle: "monthly",
@@ -298,7 +301,7 @@ describe("YourPlanCard cycle toggle", () => {
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/p/test",
       }),
     );
@@ -327,7 +330,7 @@ describe("YourPlanCard cycle toggle", () => {
 
   it("opens the confirmation dialog with end-of-period copy when a yearly Pro user clicks Monthly", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "PRO",
         monthly_cost: 51000,
         billing_cycle: "yearly",
@@ -336,7 +339,7 @@ describe("YourPlanCard cycle toggle", () => {
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/p/test",
       }),
     );
@@ -364,14 +367,14 @@ describe("YourPlanCard cycle toggle", () => {
     // but the title shouldn't read "Switch Team to yearly billing?" since
     // BUSINESS is contact-sales and not a user-managed yearly tier.
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "BUSINESS",
         monthly_cost: 50000,
         billing_cycle: "monthly",
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/p/test",
       }),
     );
@@ -402,7 +405,7 @@ describe("YourPlanCard cycle toggle", () => {
       success_url?: string;
     } | null = null;
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "PRO",
         monthly_cost: 5000,
         billing_cycle: "monthly",
@@ -411,10 +414,10 @@ describe("YourPlanCard cycle toggle", () => {
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/p/test",
       }),
-      http.post("*/api/credits/subscription", async ({ request }) => {
+      http.post("*/api/internal/credits/subscription", async ({ request }) => {
         capturedBody = (await request.json()) as typeof capturedBody;
         return HttpResponse.json({ url: "" });
       }),
@@ -442,7 +445,7 @@ describe("YourPlanCard cycle toggle", () => {
   it("cancelling the dialog leaves no mutation fired", async () => {
     let mutationFired = false;
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "PRO",
         monthly_cost: 5000,
         billing_cycle: "monthly",
@@ -451,10 +454,10 @@ describe("YourPlanCard cycle toggle", () => {
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/p/test",
       }),
-      http.post("*/api/credits/subscription", () => {
+      http.post("*/api/internal/credits/subscription", () => {
         mutationFired = true;
         return HttpResponse.json({ url: "" });
       }),
@@ -476,7 +479,7 @@ describe("YourPlanCard cycle toggle", () => {
   it("opens a confirmation dialog (no API call) when a paid user clicks Upgrade to Max", async () => {
     let mutationFired = false;
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "PRO",
         monthly_cost: 5000,
         billing_cycle: "monthly",
@@ -485,10 +488,10 @@ describe("YourPlanCard cycle toggle", () => {
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/p/test",
       }),
-      http.post("*/api/credits/subscription", () => {
+      http.post("*/api/internal/credits/subscription", () => {
         mutationFired = true;
         return HttpResponse.json({ url: "" });
       }),
@@ -510,7 +513,7 @@ describe("YourPlanCard cycle toggle", () => {
   it("fires updateTier with the server billing cycle when the upgrade dialog is confirmed", async () => {
     let capturedBody: { tier?: string; billing_cycle?: string } | null = null;
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "PRO",
         monthly_cost: 51000,
         billing_cycle: "yearly",
@@ -519,10 +522,10 @@ describe("YourPlanCard cycle toggle", () => {
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/p/test",
       }),
-      http.post("*/api/credits/subscription", async ({ request }) => {
+      http.post("*/api/internal/credits/subscription", async ({ request }) => {
         capturedBody = (await request.json()) as typeof capturedBody;
         return HttpResponse.json({ url: "" });
       }),
@@ -548,7 +551,7 @@ describe("YourPlanCard cycle toggle", () => {
   it("cancelling the upgrade dialog leaves no mutation fired", async () => {
     let mutationFired = false;
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "PRO",
         monthly_cost: 5000,
         billing_cycle: "monthly",
@@ -557,10 +560,10 @@ describe("YourPlanCard cycle toggle", () => {
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/p/test",
       }),
-      http.post("*/api/credits/subscription", () => {
+      http.post("*/api/internal/credits/subscription", () => {
         mutationFired = true;
         return HttpResponse.json({ url: "" });
       }),
@@ -587,7 +590,7 @@ describe("YourPlanCard cycle toggle", () => {
   it("clicking Downgrade to Pro opens a confirmation dialog with end-of-period copy", async () => {
     let mutationFired = false;
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "MAX",
         monthly_cost: 32000,
         billing_cycle: "monthly",
@@ -597,10 +600,10 @@ describe("YourPlanCard cycle toggle", () => {
         status: "active",
         current_period_end: 1900000000,
       }),
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/p/test",
       }),
-      http.post("*/api/credits/subscription", () => {
+      http.post("*/api/internal/credits/subscription", () => {
         mutationFired = true;
         return HttpResponse.json({ url: "" });
       }),
@@ -622,7 +625,7 @@ describe("YourPlanCard cycle toggle", () => {
   it("confirming the downgrade dialog fires updateTier with prevTier + serverCycle", async () => {
     let capturedBody: { tier?: string; billing_cycle?: string } | null = null;
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "MAX",
         monthly_cost: 326400,
         billing_cycle: "yearly",
@@ -631,10 +634,10 @@ describe("YourPlanCard cycle toggle", () => {
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/p/test",
       }),
-      http.post("*/api/credits/subscription", async ({ request }) => {
+      http.post("*/api/internal/credits/subscription", async ({ request }) => {
         capturedBody = (await request.json()) as typeof capturedBody;
         return HttpResponse.json({ url: "" });
       }),
@@ -662,7 +665,7 @@ describe("YourPlanCard cycle toggle", () => {
   it("cancelling the downgrade dialog leaves no mutation fired", async () => {
     let mutationFired = false;
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "MAX",
         monthly_cost: 32000,
         billing_cycle: "monthly",
@@ -671,10 +674,10 @@ describe("YourPlanCard cycle toggle", () => {
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/p/test",
       }),
-      http.post("*/api/credits/subscription", () => {
+      http.post("*/api/internal/credits/subscription", () => {
         mutationFired = true;
         return HttpResponse.json({ url: "" });
       }),
@@ -697,14 +700,14 @@ describe("YourPlanCard cycle toggle", () => {
   it("NO_TIER user clicking Start Pro skips the confirmation dialog (Stripe Checkout flow)", async () => {
     let mutationFired = false;
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "NO_TIER",
         monthly_cost: 0,
         has_active_stripe_subscription: false,
         status: "inactive",
       }),
-      jsonHandler("get", "/api/credits/manage", { url: null }),
-      http.post("*/api/credits/subscription", () => {
+      jsonHandler("get", "/api/internal/credits/manage", { url: null }),
+      http.post("*/api/internal/credits/subscription", () => {
         mutationFired = true;
         return HttpResponse.json({ url: "" });
       }),
@@ -721,14 +724,14 @@ describe("YourPlanCard cycle toggle", () => {
 
   it("hides the cycle toggle entirely for ENTERPRISE tier", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "ENTERPRISE",
         monthly_cost: 0,
         billing_cycle: "monthly",
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", { url: null }),
+      jsonHandler("get", "/api/internal/credits/manage", { url: null }),
     );
 
     render(<YourPlanCard />);
@@ -742,7 +745,7 @@ describe("YourPlanCard cycle toggle", () => {
     // Stripe "Manage subscription" portal — even when a stray schedule is
     // attached to the account.
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "ENTERPRISE",
         monthly_cost: 0,
         billing_cycle: "monthly",
@@ -751,7 +754,7 @@ describe("YourPlanCard cycle toggle", () => {
         pending_tier: "NO_TIER",
         pending_tier_effective_at: "2026-05-30T00:00:00Z",
       }),
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/p/test",
       }),
     );
@@ -773,14 +776,14 @@ describe("YourPlanCard cycle toggle", () => {
 
   it("BASIC account still sees Upgrade to Pro (backend accepts BASIC → PRO)", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "BASIC",
         monthly_cost: 0,
         billing_cycle: "monthly",
         has_active_stripe_subscription: false,
         status: "inactive",
       }),
-      jsonHandler("get", "/api/credits/manage", { url: null }),
+      jsonHandler("get", "/api/internal/credits/manage", { url: null }),
     );
 
     render(<YourPlanCard />);
@@ -796,14 +799,14 @@ describe("YourPlanCard cycle toggle", () => {
     // BASIC is a reserved internal slot (no Stripe sub, no upgrade target);
     // showing a cycle toggle would imply user-manageable billing.
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "BASIC",
         monthly_cost: 0,
         billing_cycle: "monthly",
         has_active_stripe_subscription: false,
         status: "inactive",
       }),
-      jsonHandler("get", "/api/credits/manage", { url: null }),
+      jsonHandler("get", "/api/internal/credits/manage", { url: null }),
     );
 
     render(<YourPlanCard />);
@@ -815,13 +818,13 @@ describe("YourPlanCard cycle toggle", () => {
     // NO_TIER means no active subscription — the user has nothing to switch.
     // The toggle would be dead UI implying functionality that doesn't apply.
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "NO_TIER",
         monthly_cost: 0,
         has_active_stripe_subscription: false,
         status: "inactive",
       }),
-      jsonHandler("get", "/api/credits/manage", { url: null }),
+      jsonHandler("get", "/api/internal/credits/manage", { url: null }),
     );
 
     render(<YourPlanCard />);
@@ -832,7 +835,7 @@ describe("YourPlanCard cycle toggle", () => {
   it("downgrade preserves yearly cycle (forwards billing_cycle in mutation)", async () => {
     let capturedBody: { tier?: string; billing_cycle?: string } | null = null;
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "MAX",
         monthly_cost: 326400,
         billing_cycle: "yearly",
@@ -841,10 +844,10 @@ describe("YourPlanCard cycle toggle", () => {
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/p/test",
       }),
-      http.post("*/api/credits/subscription", async ({ request }) => {
+      http.post("*/api/internal/credits/subscription", async ({ request }) => {
         capturedBody = (await request.json()) as typeof capturedBody;
         return HttpResponse.json({ url: "" });
       }),
@@ -875,7 +878,7 @@ describe("YourPlanCard cycle toggle", () => {
   it("resume preserves yearly cycle (forwards billing_cycle in mutation)", async () => {
     let capturedBody: { tier?: string; billing_cycle?: string } | null = null;
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "PRO",
         monthly_cost: 51000,
         billing_cycle: "yearly",
@@ -885,10 +888,10 @@ describe("YourPlanCard cycle toggle", () => {
         status: "active",
         pending_tier: "NO_TIER",
       }),
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/p/test",
       }),
-      http.post("*/api/credits/subscription", async ({ request }) => {
+      http.post("*/api/internal/credits/subscription", async ({ request }) => {
         capturedBody = (await request.json()) as typeof capturedBody;
         return HttpResponse.json({ url: "" });
       }),
@@ -911,7 +914,7 @@ describe("YourPlanCard cycle toggle", () => {
 
   it("shows 'Cycle switch scheduled' badge + cycle-only secondary line when same-tier yearly→monthly is queued", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "PRO",
         monthly_cost: 51000,
         billing_cycle: "yearly",
@@ -923,7 +926,7 @@ describe("YourPlanCard cycle toggle", () => {
         pending_billing_cycle: "monthly",
         pending_tier_effective_at: "2026-12-15T00:00:00Z",
       }),
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/p/test",
       }),
     );
@@ -948,7 +951,9 @@ describe("YourPlanCard cycle toggle", () => {
 
 describe("PaymentMethodCard", () => {
   it("disables 'Open portal' until the portal URL resolves", async () => {
-    server.use(jsonHandler("get", "/api/credits/manage", { url: null }));
+    server.use(
+      jsonHandler("get", "/api/internal/credits/manage", { url: null }),
+    );
 
     render(<PaymentMethodCard />);
 
@@ -960,7 +965,7 @@ describe("PaymentMethodCard", () => {
 
   it("enables 'Open portal' once the portal URL is available", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/p/test",
       }),
     );
@@ -976,7 +981,7 @@ describe("PaymentMethodCard", () => {
 
 describe("InvoicesCard", () => {
   it("renders a no-invoices empty state when Stripe returns no invoices", async () => {
-    server.use(jsonHandler("get", "/api/credits/invoices", []));
+    server.use(jsonHandler("get", "/api/internal/credits/invoices", []));
 
     render(<InvoicesCard />);
 
@@ -985,7 +990,7 @@ describe("InvoicesCard", () => {
 
   it("renders an invoice row per Stripe invoice", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/invoices", [
+      jsonHandler("get", "/api/internal/credits/invoices", [
         {
           id: "in_001",
           number: "INV-001",
@@ -1010,7 +1015,7 @@ describe("InvoicesCard", () => {
 describe("AutopilotUsageCard", () => {
   it("renders today + week percent values", async () => {
     server.use(
-      jsonHandler("get", "/api/chat/usage", {
+      jsonHandler("get", "/api/internal/chat/usage", {
         daily: { percent_used: 12, resets_at: null },
         weekly: { percent_used: 35, resets_at: null },
       }),
@@ -1027,7 +1032,7 @@ describe("AutopilotUsageCard", () => {
 
 describe("BalanceCard", () => {
   it("renders the Intl-formatted balance and an Add Credits CTA", async () => {
-    server.use(jsonHandler("get", "/api/credits", { credits: 1234 }));
+    server.use(jsonHandler("get", "/api/internal/credits", { credits: 1234 }));
 
     render(<BalanceCard />);
 
@@ -1038,7 +1043,7 @@ describe("BalanceCard", () => {
 
   it("renders ErrorCard with a Retry button on a 500 from /api/credits", async () => {
     server.use(
-      http.get("*/api/credits", () =>
+      http.get("*/api/internal/credits", () =>
         HttpResponse.json({ detail: "boom" }, { status: 500 }),
       ),
     );
@@ -1055,7 +1060,7 @@ describe("BalanceCard", () => {
 describe("AutoRefillCard", () => {
   it("renders the disabled state when no auto top-up is configured", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/auto-top-up", {
+      jsonHandler("get", "/api/internal/credits/auto-top-up", {
         amount: 0,
         threshold: 0,
       }),
@@ -1076,7 +1081,7 @@ describe("AutoRefillCard", () => {
 
   it("renders the configured state when auto top-up has values", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/auto-top-up", {
+      jsonHandler("get", "/api/internal/credits/auto-top-up", {
         amount: 2000,
         threshold: 500,
       }),
@@ -1094,7 +1099,7 @@ describe("AutoRefillCard", () => {
 describe("UsageCard", () => {
   it("renders the 30-day chart with the totals header", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/transactions", {
+      jsonHandler("get", "/api/internal/credits/transactions", {
         transactions: [
           {
             transaction_key: "u1",
@@ -1115,7 +1120,7 @@ describe("UsageCard", () => {
 
   it("renders the zero-state when there is no usage at all", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/transactions", {
+      jsonHandler("get", "/api/internal/credits/transactions", {
         transactions: [],
         next_transaction_time: null,
       }),
@@ -1131,7 +1136,7 @@ describe("UsageCard", () => {
 describe("TransactionHistoryCard", () => {
   it("renders a no-transactions empty state when the API returns []", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/transactions", {
+      jsonHandler("get", "/api/internal/credits/transactions", {
         transactions: [],
         next_transaction_time: null,
       }),
@@ -1144,7 +1149,7 @@ describe("TransactionHistoryCard", () => {
 
   it("renders signed balance changes with neutral debits and highlighted credits", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/transactions", {
+      jsonHandler("get", "/api/internal/credits/transactions", {
         transactions: [
           {
             transaction_key: "TXN-A",
@@ -1181,7 +1186,7 @@ describe("TransactionHistoryCard", () => {
 
   it("renders ErrorCard with a Retry button on a 500", async () => {
     server.use(
-      http.get("*/api/credits/transactions", () =>
+      http.get("*/api/internal/credits/transactions", () =>
         HttpResponse.json({ detail: "boom" }, { status: 500 }),
       ),
     );
@@ -1201,7 +1206,7 @@ describe("TransactionHistoryCard", () => {
  */
 describe("Card mutation flows", () => {
   it("BalanceCard: opening the Add Credits dialog renders the amount input", async () => {
-    server.use(jsonHandler("get", "/api/credits", { credits: 1000 }));
+    server.use(jsonHandler("get", "/api/internal/credits", { credits: 1000 }));
 
     render(<BalanceCard />);
 
@@ -1219,7 +1224,7 @@ describe("Card mutation flows", () => {
   });
 
   it("BalanceCard: invalid amount (4) keeps the checkout button disabled until a valid amount is entered", async () => {
-    server.use(jsonHandler("get", "/api/credits", { credits: 1000 }));
+    server.use(jsonHandler("get", "/api/internal/credits", { credits: 1000 }));
 
     render(<BalanceCard />);
 
@@ -1302,13 +1307,13 @@ describe("Card mutation flows", () => {
 
   it("YourPlanCard: hides users without an active subscription from Manage controls", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "NO_TIER",
         monthly_cost: 0,
         has_active_stripe_subscription: false,
         status: "inactive",
       }),
-      jsonHandler("get", "/api/credits/manage", { url: null }),
+      jsonHandler("get", "/api/internal/credits/manage", { url: null }),
     );
 
     render(<YourPlanCard />);
@@ -1352,7 +1357,7 @@ describe("YourPlanCard begin_checkout", () => {
   function freeAccount(checkoutURL: string | null) {
     const hits = { get: 0, post: 0 };
     server.use(
-      http.get("*/api/credits/subscription", () => {
+      http.get("*/api/internal/credits/subscription", () => {
         hits.get += 1;
         return HttpResponse.json({
           tier: "NO_TIER",
@@ -1364,8 +1369,8 @@ describe("YourPlanCard begin_checkout", () => {
           tier_costs: { PRO: 4900 },
         });
       }),
-      jsonHandler("get", "/api/credits/manage", { url: null }),
-      http.post("*/api/credits/subscription", () => {
+      jsonHandler("get", "/api/internal/credits/manage", { url: null }),
+      http.post("*/api/internal/credits/subscription", () => {
         hits.post += 1;
         return HttpResponse.json({ url: checkoutURL });
       }),
@@ -1455,7 +1460,7 @@ describe("YourPlanCard begin_checkout", () => {
         trialResponse({ eligible: true, active: false, status: null }),
       ),
       getPostTrialsStartTrialCheckoutMockHandler200(trialCheckout),
-      http.post("*/api/credits", () => {
+      http.post("*/api/internal/credits", () => {
         topUps += 1;
         return HttpResponse.json({
           checkout_url: "https://checkout.stripe.com/pay/cs_top_up",
@@ -1531,8 +1536,8 @@ describe("BalanceCard checkout", () => {
     });
     let topUps = 0;
     server.use(
-      jsonHandler("get", "/api/credits", { credits: 1000 }),
-      http.post("*/api/credits", () => {
+      jsonHandler("get", "/api/internal/credits", { credits: 1000 }),
+      http.post("*/api/internal/credits", () => {
         topUps += 1;
         return HttpResponse.json({
           checkout_url: "https://checkout.stripe.com/pay/cs_top_up",

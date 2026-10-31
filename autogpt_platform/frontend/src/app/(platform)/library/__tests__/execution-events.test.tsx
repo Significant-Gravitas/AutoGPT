@@ -67,7 +67,7 @@ function countExecutionListRequests() {
   function record({ request }: { request: Request }) {
     if (
       request.method === "GET" &&
-      new URL(request.url).pathname.endsWith("/api/executions")
+      new URL(request.url).pathname.endsWith("/api/internal/executions")
     ) {
       counter.count += 1;
     }

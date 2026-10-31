@@ -95,7 +95,7 @@ test.each(["paid", "trial"])(
     const requested = vi.fn();
     server.use(
       http.post(
-        `*/api/credits/${mode === "paid" ? "subscription" : "trial"}`,
+        `*/api/internal/credits/${mode === "paid" ? "subscription" : "trial"}`,
         async ({ request }) => {
           requested(await request.json());
           await pending;
@@ -159,7 +159,7 @@ test.each(["paid", "trial"])(
     let attempts = 0;
     server.use(
       http.post(
-        `*/api/credits/${mode === "paid" ? "subscription" : "trial"}`,
+        `*/api/internal/credits/${mode === "paid" ? "subscription" : "trial"}`,
         () => {
           attempts++;
           return attempts === 1
@@ -314,7 +314,7 @@ test("refreshes a rejected offer and submits its new token on retry", async () =
           : trialOffer,
       ),
     ),
-    http.post("*/api/credits/trial", async ({ request }) => {
+    http.post("*/api/internal/credits/trial", async ({ request }) => {
       requestBody(await request.json());
       if (rejected)
         return HttpResponse.json({
@@ -481,7 +481,7 @@ test.each(["failed", "left with Back"])(
   async (outcome) => {
     mockStatus(eligible({ ...trialOffer, tier: "BASIC" }));
     server.use(
-      http.post("*/api/credits/subscription", () =>
+      http.post("*/api/internal/credits/subscription", () =>
         outcome === "failed"
           ? HttpResponse.json({ detail: "Please try again" }, { status: 503 })
           : HttpResponse.json({ url: "https://checkout.stripe.com/paid" }),

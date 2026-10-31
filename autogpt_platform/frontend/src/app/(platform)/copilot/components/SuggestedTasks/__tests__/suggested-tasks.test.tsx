@@ -40,7 +40,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   };
 });
 
-const URL = "*/api/onboarding/brain-dump/suggested-tasks";
+const URL = "*/api/internal/onboarding/brain-dump/suggested-tasks";
 
 const TASKS: SuggestedTask[] = [
   {
@@ -354,7 +354,7 @@ describe("Suggested first tasks — while the greeting is being written", () => 
     let introReads = 0;
     let written = false;
     server.use(
-      http.get("*/api/onboarding/brain-dump/intro", () => {
+      http.get("*/api/internal/onboarding/brain-dump/intro", () => {
         introReads += 1;
         written = introReads > 1;
         return HttpResponse.json({

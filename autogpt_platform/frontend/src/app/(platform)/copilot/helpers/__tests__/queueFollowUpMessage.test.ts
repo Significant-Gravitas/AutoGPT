@@ -50,7 +50,7 @@ describe("queueFollowUpMessage", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe(
-      "https://api.example.test/api/chat/sessions/sess-1/messages/pending",
+      "https://api.example.test/api/internal/chat/sessions/sess-1/messages/pending",
     );
     expect(init?.method).toBe("POST");
     const headers = init?.headers as Record<string, string>;

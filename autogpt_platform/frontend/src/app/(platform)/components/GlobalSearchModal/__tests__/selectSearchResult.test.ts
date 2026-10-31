@@ -59,7 +59,7 @@ describe("selectSearchResult", () => {
     const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
     selectSearchResult(router, asItem({ id: "file1", type: "workspace_file" }));
     expect(openSpy).toHaveBeenCalledWith(
-      "/api/proxy/api/workspace/files/file1/download",
+      "/api/proxy/api/internal/workspace/files/file1/download",
       "_blank",
       "noopener,noreferrer",
     );

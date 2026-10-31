@@ -63,15 +63,15 @@ def track_checkout_started(mocker: pytest_mock.MockFixture) -> AsyncMock:
 
 
 EXPECTED_OPERATIONS = {
-    ("get", "/api/credits"),
-    ("post", "/api/credits"),
-    ("patch", "/api/credits"),
-    ("post", "/api/credits/{transaction_key}/refund"),
-    ("get", "/api/credits/auto-top-up"),
-    ("post", "/api/credits/auto-top-up"),
-    ("get", "/api/credits/transactions"),
-    ("get", "/api/credits/refunds"),
-    ("get", "/api/credits/invoices"),
+    ("get", "/api/internal/credits"),
+    ("post", "/api/internal/credits"),
+    ("patch", "/api/internal/credits"),
+    ("post", "/api/internal/credits/{transaction_key}/refund"),
+    ("get", "/api/internal/credits/auto-top-up"),
+    ("post", "/api/internal/credits/auto-top-up"),
+    ("get", "/api/internal/credits/transactions"),
+    ("get", "/api/internal/credits/refunds"),
+    ("get", "/api/internal/credits/invoices"),
 }
 
 
@@ -112,20 +112,23 @@ def test_credit_surface_has_no_other_operations():
     "path,module",
     [
         (
-            "/api/credits/subscription",
+            "/api/internal/credits/subscription",
             "backend.api.features.billing.subscriptions.routes",
         ),
         (
-            "/api/credits/manage",
+            "/api/internal/credits/manage",
             "backend.api.features.billing.subscriptions.routes",
         ),
         (
-            "/api/credits/stripe_webhook",
+            "/api/internal/credits/stripe_webhook",
             "backend.api.features.billing.subscriptions.routes",
         ),
-        ("/api/credits/transactions", "backend.api.features.billing.credits.routes"),
         (
-            "/api/credits/{transaction_key}/refund",
+            "/api/internal/credits/transactions",
+            "backend.api.features.billing.credits.routes",
+        ),
+        (
+            "/api/internal/credits/{transaction_key}/refund",
             "backend.api.features.billing.credits.routes",
         ),
     ],

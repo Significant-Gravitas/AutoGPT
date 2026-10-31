@@ -41,9 +41,9 @@ const audioMimeTypes = [
 
 function buildDownloadURL(fileID: string, shareToken?: string): string {
   if (shareToken) {
-    return `/api/proxy/api/public/shared/${shareToken}/files/${fileID}/download`;
+    return `/api/proxy/api/internal/public/shared/${shareToken}/files/${fileID}/download`;
   }
-  return `/api/proxy/api/workspace/files/${fileID}/download`;
+  return `/api/proxy/api/internal/workspace/files/${fileID}/download`;
 }
 
 function canRenderWorkspaceFile(value: unknown): boolean {

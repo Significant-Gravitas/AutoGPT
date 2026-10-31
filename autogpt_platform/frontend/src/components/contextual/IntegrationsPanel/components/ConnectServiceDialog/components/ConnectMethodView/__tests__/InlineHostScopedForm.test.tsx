@@ -13,7 +13,7 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
 import { InlineHostScopedForm } from "../InlineHostScopedForm";
 
 const CREATE_CREDENTIALS_URL =
-  "http://localhost:3000/api/proxy/api/integrations/:provider/credentials";
+  "http://localhost:3000/api/proxy/api/internal/integrations/:provider/credentials";
 
 const PREFILLED_HOST = "api.example.com:8443";
 

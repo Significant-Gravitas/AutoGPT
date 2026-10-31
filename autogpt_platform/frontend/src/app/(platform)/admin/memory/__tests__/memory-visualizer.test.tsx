@@ -76,7 +76,7 @@ function makeExpert(id: string, name: string, role = "Researcher"): Expert {
 function setupBaseHandlers(experts: Expert[] = []) {
   server.use(
     getListExpertsMockHandler200(experts),
-    http.get("*/api/admin/memory/:userId/overview", () =>
+    http.get("*/api/internal/admin/memory/:userId/overview", () =>
       HttpResponse.json({
         ...getGetV2GetMemoryOverviewResponseMock200(),
         expert_id: null,
@@ -89,7 +89,7 @@ function setupBaseHandlers(experts: Expert[] = []) {
         communities: 0,
       }),
     ),
-    http.get("*/api/admin/memory/:userId/graph", () =>
+    http.get("*/api/internal/admin/memory/:userId/graph", () =>
       HttpResponse.json({
         ...getGetV2GetGraphResponseMock200(),
         expert_id: null,
@@ -101,7 +101,7 @@ function setupBaseHandlers(experts: Expert[] = []) {
       }),
     ),
     http.get(
-      "*/api/admin/memory/:userId/experts/:expertId/overview",
+      "*/api/internal/admin/memory/:userId/experts/:expertId/overview",
       ({ params }) =>
         HttpResponse.json({
           ...getGetV2GetMemoryOverviewResponseMock200(),
@@ -116,7 +116,7 @@ function setupBaseHandlers(experts: Expert[] = []) {
         }),
     ),
     http.get(
-      "*/api/admin/memory/:userId/experts/:expertId/graph",
+      "*/api/internal/admin/memory/:userId/experts/:expertId/graph",
       ({ params }) =>
         HttpResponse.json({
           ...getGetV2GetGraphResponseMock200(),
@@ -284,7 +284,7 @@ describe("MemoryVisualizer — memory scope", () => {
     const overviewScopes: Array<string | null> = [];
     const graphScopes: Array<string | null> = [];
     server.use(
-      http.get("*/api/admin/memory/:userId/overview", () => {
+      http.get("*/api/internal/admin/memory/:userId/overview", () => {
         overviewScopes.push(null);
         return HttpResponse.json({
           ...getGetV2GetMemoryOverviewResponseMock200(),
@@ -292,7 +292,7 @@ describe("MemoryVisualizer — memory scope", () => {
           entities: 12,
         });
       }),
-      http.get("*/api/admin/memory/:userId/graph", () => {
+      http.get("*/api/internal/admin/memory/:userId/graph", () => {
         graphScopes.push(null);
         return HttpResponse.json({
           ...getGetV2GetGraphResponseMock200(),
@@ -303,7 +303,7 @@ describe("MemoryVisualizer — memory scope", () => {
         });
       }),
       http.get(
-        "*/api/admin/memory/:userId/experts/:expertId/overview",
+        "*/api/internal/admin/memory/:userId/experts/:expertId/overview",
         ({ params }) => {
           overviewScopes.push(String(params.expertId));
           return HttpResponse.json({
@@ -313,7 +313,7 @@ describe("MemoryVisualizer — memory scope", () => {
         },
       ),
       http.get(
-        "*/api/admin/memory/:userId/experts/:expertId/graph",
+        "*/api/internal/admin/memory/:userId/experts/:expertId/graph",
         ({ params }) => {
           graphScopes.push(String(params.expertId));
           return HttpResponse.json({
@@ -347,7 +347,7 @@ describe("MemoryVisualizer — memory scope", () => {
     const graphScopes: Array<string | null> = [];
     server.use(
       http.get(
-        "*/api/admin/memory/:userId/experts/:expertId/overview",
+        "*/api/internal/admin/memory/:userId/experts/:expertId/overview",
         ({ params }) => {
           overviewScopes.push(String(params.expertId));
           return HttpResponse.json({
@@ -357,7 +357,7 @@ describe("MemoryVisualizer — memory scope", () => {
         },
       ),
       http.get(
-        "*/api/admin/memory/:userId/experts/:expertId/graph",
+        "*/api/internal/admin/memory/:userId/experts/:expertId/graph",
         ({ params }) => {
           graphScopes.push(String(params.expertId));
           return HttpResponse.json({
@@ -407,7 +407,7 @@ describe("MemoryVisualizer — memory scope", () => {
     setupBaseHandlers([makeExpert("expert-ada", "Ada")]);
     let dreamRequests = 0;
     server.use(
-      http.post("*/api/admin/memory/:userId/dream", () => {
+      http.post("*/api/internal/admin/memory/:userId/dream", () => {
         dreamRequests += 1;
         return HttpResponse.json(
           {
@@ -475,7 +475,7 @@ describe("MemoryVisualizer — memory scope", () => {
   test("expert-list errors keep Otto memory available", async () => {
     setupBaseHandlers();
     server.use(
-      http.get("*/api/experts", () =>
+      http.get("*/api/internal/experts", () =>
         HttpResponse.json({ detail: "boom" }, { status: 500 }),
       ),
     );
@@ -492,7 +492,9 @@ describe("MemoryVisualizer — memory scope", () => {
   test("removed experts reset the selected scope to Otto", async () => {
     let experts = [makeExpert("expert-ada", "Ada")];
     setupBaseHandlers();
-    server.use(http.get("*/api/experts", () => HttpResponse.json(experts)));
+    server.use(
+      http.get("*/api/internal/experts", () => HttpResponse.json(experts)),
+    );
     render(<MemoryVisualizerWithRefetch />);
 
     const selector = await screen.findByRole("combobox", {
@@ -524,7 +526,7 @@ describe("MemoryVisualizer — memory scope", () => {
     let expertsRequestFails = false;
     setupBaseHandlers();
     server.use(
-      http.get("*/api/experts", () =>
+      http.get("*/api/internal/experts", () =>
         expertsRequestFails
           ? HttpResponse.json({ detail: "boom" }, { status: 500 })
           : HttpResponse.json([makeExpert("expert-ada", "Ada")]),
@@ -574,7 +576,7 @@ describe("MemoryVisualizer — memory scope", () => {
   test("announces expert loading separately from an empty roster", async () => {
     setupBaseHandlers();
     server.use(
-      http.get("*/api/experts", async () => {
+      http.get("*/api/internal/experts", async () => {
         await delay(100);
         return HttpResponse.json([]);
       }),
@@ -617,7 +619,7 @@ describe("MemoryVisualizer — memory scope", () => {
   test("switching scope swaps the rendered graph content, not just the request", async () => {
     setupBaseHandlers([makeExpert("expert-ada", "Ada")]);
     server.use(
-      http.get("*/api/admin/memory/:userId/graph", () =>
+      http.get("*/api/internal/admin/memory/:userId/graph", () =>
         HttpResponse.json({
           ...getGetV2GetGraphResponseMock200(),
           expert_id: null,
@@ -634,7 +636,7 @@ describe("MemoryVisualizer — memory scope", () => {
         }),
       ),
       http.get(
-        "*/api/admin/memory/:userId/experts/:expertId/graph",
+        "*/api/internal/admin/memory/:userId/experts/:expertId/graph",
         ({ params }) =>
           HttpResponse.json({
             ...getGetV2GetGraphResponseMock200(),
@@ -730,25 +732,29 @@ describe("MemoryVisualizer — memory scope", () => {
       // Malfunctioning server: the expert endpoints return account-
       // scoped payloads (expert_id echo of null) instead of the
       // requested expert's data.
-      http.get("*/api/admin/memory/:userId/experts/:expertId/overview", () =>
-        HttpResponse.json({
-          ...getGetV2GetMemoryOverviewResponseMock200(),
-          expert_id: null,
-          entities: 999,
-          episodes: 1,
-          relates_to_edges: 1,
-          mentions_edges: 1,
-          communities: 1,
-        }),
+      http.get(
+        "*/api/internal/admin/memory/:userId/experts/:expertId/overview",
+        () =>
+          HttpResponse.json({
+            ...getGetV2GetMemoryOverviewResponseMock200(),
+            expert_id: null,
+            entities: 999,
+            episodes: 1,
+            relates_to_edges: 1,
+            mentions_edges: 1,
+            communities: 1,
+          }),
       ),
-      http.get("*/api/admin/memory/:userId/experts/:expertId/graph", () =>
-        HttpResponse.json({
-          ...getGetV2GetGraphResponseMock200(),
-          expert_id: null,
-          nodes: [],
-          edges: [],
-          truncated: false,
-        }),
+      http.get(
+        "*/api/internal/admin/memory/:userId/experts/:expertId/graph",
+        () =>
+          HttpResponse.json({
+            ...getGetV2GetGraphResponseMock200(),
+            expert_id: null,
+            nodes: [],
+            edges: [],
+            truncated: false,
+          }),
       ),
     );
 
@@ -857,7 +863,7 @@ describe("MemoryVisualizer — 202 + polling contract", () => {
         job_id: "job-dream-done",
         state: "queued",
       }),
-      http.get("*/api/admin/memory/:userId/dream/:jobId", () =>
+      http.get("*/api/internal/admin/memory/:userId/dream/:jobId", () =>
         HttpResponse.json(completedDreamStatus("job-dream-done")),
       ),
     );
@@ -885,7 +891,7 @@ describe("MemoryVisualizer — 202 + polling contract", () => {
     setupBaseHandlers();
     let triggers = 0;
     server.use(
-      http.post("*/api/admin/memory/:userId/dream", () => {
+      http.post("*/api/internal/admin/memory/:userId/dream", () => {
         triggers += 1;
         return HttpResponse.json(
           {
@@ -896,18 +902,20 @@ describe("MemoryVisualizer — 202 + polling contract", () => {
           { status: 202 },
         );
       }),
-      http.get("*/api/admin/memory/:userId/dream/:jobId", ({ params }) =>
-        HttpResponse.json(
-          params.jobId === "job-dream-1"
-            ? completedDreamStatus("job-dream-1")
-            : {
-                ...getGetV2GetDreamPassStatusResponseMock200(),
-                job_id: String(params.jobId),
-                kind: "dream_pass",
-                state: "running",
-                current_phase: "consolidate",
-              },
-        ),
+      http.get(
+        "*/api/internal/admin/memory/:userId/dream/:jobId",
+        ({ params }) =>
+          HttpResponse.json(
+            params.jobId === "job-dream-1"
+              ? completedDreamStatus("job-dream-1")
+              : {
+                  ...getGetV2GetDreamPassStatusResponseMock200(),
+                  job_id: String(params.jobId),
+                  kind: "dream_pass",
+                  state: "running",
+                  current_phase: "consolidate",
+                },
+          ),
       ),
     );
     render(<MemoryVisualizer />);
@@ -928,7 +936,7 @@ describe("MemoryVisualizer — 202 + polling contract", () => {
     setupBaseHandlers([makeExpert("expert-ada", "Ada")]);
     const graphRequests = new Map<string, number>();
     server.use(
-      http.get("*/api/admin/memory/:userId/graph", ({ request }) => {
+      http.get("*/api/internal/admin/memory/:userId/graph", ({ request }) => {
         const url = new URL(request.url);
         const requestKey = [
           "autopilot",
@@ -945,7 +953,7 @@ describe("MemoryVisualizer — 202 + polling contract", () => {
         });
       }),
       http.get(
-        "*/api/admin/memory/:userId/experts/:expertId/graph",
+        "*/api/internal/admin/memory/:userId/experts/:expertId/graph",
         ({ request, params }) => {
           const url = new URL(request.url);
           const requestKey = [
@@ -1039,7 +1047,7 @@ describe("MemoryVisualizer — 202 + polling contract", () => {
       }),
       // Status endpoint flakes — the poll loop must stop and the
       // button must come back, not spin forever.
-      http.get("*/api/admin/memory/:userId/dream/:jobId", () =>
+      http.get("*/api/internal/admin/memory/:userId/dream/:jobId", () =>
         HttpResponse.json({ error: "boom" }, { status: 500 }),
       ),
     );
@@ -1077,7 +1085,7 @@ describe("MemoryVisualizer — 202 + polling contract", () => {
         // into error state — the terminal handler must treat the error
         // as terminal even though stale data exists, or the button is
         // stuck on "Dreaming…" forever with polling stopped.
-        http.get("*/api/admin/memory/:userId/dream/:jobId", () => {
+        http.get("*/api/internal/admin/memory/:userId/dream/:jobId", () => {
           statusCalls += 1;
           if (statusCalls === 1) {
             return HttpResponse.json({

@@ -30,14 +30,14 @@ function mockPastDueTrial(status: string, paymentDue: boolean) {
           : null,
       }),
     ),
-    http.get("*/api/credits/subscription", () =>
+    http.get("*/api/internal/credits/subscription", () =>
       HttpResponse.json({
         tier: "NO_TIER",
         monthly_cost: 0,
         has_active_stripe_subscription: false,
       }),
     ),
-    http.get("*/api/credits/invoices", () => HttpResponse.json([])),
+    http.get("*/api/internal/credits/invoices", () => HttpResponse.json([])),
   );
 }
 

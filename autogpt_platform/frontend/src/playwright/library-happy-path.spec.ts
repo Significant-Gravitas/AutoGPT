@@ -108,7 +108,7 @@ async function createLongRunningSavedAgent(
   page: Page,
   agentName: string,
 ): Promise<{ graphId: string; graphVersion: number }> {
-  const response = await page.request.post("/api/proxy/api/graphs", {
+  const response = await page.request.post("/api/proxy/api/internal/graphs", {
     data: {
       graph: createLongRunningCalculatorGraph(agentName),
       source: "upload",
@@ -139,7 +139,7 @@ async function createDeterministicCalculatorSavedAgent(
   agentName: string,
   outputName: string,
 ): Promise<void> {
-  const response = await page.request.post("/api/proxy/api/graphs", {
+  const response = await page.request.post("/api/proxy/api/internal/graphs", {
     data: {
       graph: {
         name: agentName,
@@ -200,7 +200,7 @@ async function getExecutionStatusFromApi(
   runId: string,
 ): Promise<string> {
   const response = await page.request.get(
-    `/api/proxy/api/graphs/${graphId}/executions/${runId}`,
+    `/api/proxy/api/internal/graphs/${graphId}/executions/${runId}`,
   );
   expect(response.ok(), "execution details API should succeed").toBe(true);
 
@@ -342,7 +342,7 @@ test("library happy path: user can start and stop a saved task from runner UI", 
       response.request().method() === "POST" &&
       response
         .url()
-        .includes(`/api/graphs/${graphId}/executions/${runId}/stop`),
+        .includes(`/api/internal/graphs/${graphId}/executions/${runId}/stop`),
     { timeout: 15000 },
   );
   await stopTaskButton.click();

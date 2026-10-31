@@ -31,7 +31,7 @@ function fakeAgents(total: number, page: number, pageSize: number) {
 function installHandler(total = 47, pageSize = 10) {
   server.use(
     http.get(
-      "http://localhost:3000/api/proxy/api/store/my-unpublished-agents",
+      "http://localhost:3000/api/proxy/api/internal/store/my-unpublished-agents",
       ({ request }) => {
         const url = new URL(request.url);
         const page = Number(url.searchParams.get("page") ?? "1");
@@ -55,7 +55,7 @@ function installSearchHandler() {
 
   server.use(
     http.get(
-      "http://localhost:3000/api/proxy/api/store/my-unpublished-agents",
+      "http://localhost:3000/api/proxy/api/internal/store/my-unpublished-agents",
       ({ request }) => {
         const url = new URL(request.url);
         const searchQuery = url.searchParams.get("search_query") ?? "";
@@ -180,7 +180,7 @@ describe("AgentSelectStep", () => {
   it("shows the empty state when the user has no agents", async () => {
     server.use(
       http.get(
-        "http://localhost:3000/api/proxy/api/store/my-unpublished-agents",
+        "http://localhost:3000/api/proxy/api/internal/store/my-unpublished-agents",
         () =>
           HttpResponse.json({
             agents: [],
@@ -316,7 +316,7 @@ describe("AgentSelectStep", () => {
   it("renders the error state when the API fails", async () => {
     server.use(
       http.get(
-        "http://localhost:3000/api/proxy/api/store/my-unpublished-agents",
+        "http://localhost:3000/api/proxy/api/internal/store/my-unpublished-agents",
         () => HttpResponse.json({ detail: "boom" }, { status: 500 }),
       ),
     );

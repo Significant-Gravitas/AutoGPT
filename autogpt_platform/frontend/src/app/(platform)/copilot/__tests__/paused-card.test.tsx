@@ -155,7 +155,7 @@ describe("the Paused card in a reopened chat", () => {
     let phase: "paused" | "running" | "done" = "paused";
     server.use(
       http.post(
-        "*/api/chat/sessions/:sessionId/continue",
+        "*/api/internal/chat/sessions/:sessionId/continue",
         async ({ request }) => {
           continued.push(await request.json());
           phase = "running";
@@ -163,7 +163,7 @@ describe("the Paused card in a reopened chat", () => {
         },
       ),
       http.get(
-        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+        `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/stream`,
         ({ request }) => {
           phase = "done";
           return streamSseResponse(assistantTextChunks(answer), {
@@ -225,7 +225,7 @@ describe("the Paused card as the turn lands", () => {
     let sent = false;
     server.use(
       http.post(
-        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+        `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/stream`,
         ({ request }) => {
           sent = true;
           return streamSseResponse(

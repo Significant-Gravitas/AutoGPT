@@ -21,7 +21,7 @@ describe("Transaction history activity and states", () => {
     "renders %s as a signed credit-balance change",
     async (type, amount, name, formatted) => {
       server.use(
-        http.get("*/api/credits/transactions", () =>
+        http.get("*/api/internal/credits/transactions", () =>
           HttpResponse.json({
             transactions: [
               { ...topUp, transaction_type: type, description: name, amount },
@@ -42,7 +42,7 @@ describe("Transaction history activity and states", () => {
 
   it("renders direct block usage outside an agent run", async () => {
     server.use(
-      http.get("*/api/credits/transactions", () =>
+      http.get("*/api/internal/credits/transactions", () =>
         HttpResponse.json({
           transactions: [
             {
@@ -70,7 +70,7 @@ describe("Transaction history activity and states", () => {
 
   it("uses the conversation destination for Expert tool use, never a library route", async () => {
     server.use(
-      http.get("*/api/credits/transactions", () =>
+      http.get("*/api/internal/credits/transactions", () =>
         HttpResponse.json({
           transactions: [
             {
@@ -127,7 +127,7 @@ describe("Transaction history activity and states", () => {
       parent_agent_name: "Morning briefing",
     };
     server.use(
-      http.get("*/api/credits/transactions", () =>
+      http.get("*/api/internal/credits/transactions", () =>
         HttpResponse.json({
           transactions: [
             {
@@ -174,7 +174,7 @@ describe("Transaction history activity and states", () => {
 
   it("shows loading, then the genuine empty state", async () => {
     server.use(
-      http.get("*/api/credits/transactions", async () => {
+      http.get("*/api/internal/credits/transactions", async () => {
         await delay(100);
         return HttpResponse.json({ transactions: [], next_cursor: null });
       }),
@@ -189,7 +189,7 @@ describe("Transaction history activity and states", () => {
   it("retries an initial error without claiming that ongoing credit activity stopped", async () => {
     let attempts = 0;
     server.use(
-      http.get("*/api/credits/transactions", () => {
+      http.get("*/api/internal/credits/transactions", () => {
         attempts += 1;
         return attempts === 1
           ? HttpResponse.json({ detail: "Unavailable" }, { status: 500 })

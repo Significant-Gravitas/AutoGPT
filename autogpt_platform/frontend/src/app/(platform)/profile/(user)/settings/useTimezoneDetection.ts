@@ -34,7 +34,7 @@ export const useTimezoneDetection = (currentTimezone?: string) => {
 
       // Invalidate queries to refresh the data
       await queryClient.invalidateQueries({
-        queryKey: ["/api/auth/user/timezone"],
+        queryKey: ["/api/internal/auth/user/timezone"],
       });
 
       // Show success notification

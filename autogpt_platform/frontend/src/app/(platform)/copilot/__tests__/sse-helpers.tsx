@@ -87,7 +87,7 @@ export function copilotStreamSequenceHandler({
 }): HttpHandler {
   let turn = 0;
   return http.post(
-    `${baseUrl}/api/chat/sessions/${sessionId}/stream`,
+    `${baseUrl}/api/internal/chat/sessions/${sessionId}/stream`,
     ({ request }) => {
       const chunks =
         chunksPerTurn[turn] ?? chunksPerTurn[chunksPerTurn.length - 1];
