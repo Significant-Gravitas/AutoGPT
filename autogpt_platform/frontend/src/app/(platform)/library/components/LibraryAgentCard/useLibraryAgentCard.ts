@@ -3,14 +3,17 @@
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useEffect, useState } from "react";
 
-import { usePatchV2UpdateLibraryAgent } from "@/app/api/__generated__/endpoints/library/library";
+import {
+  getGetV2ListFavoriteLibraryAgentsQueryKey,
+  usePatchV2UpdateLibraryAgent,
+} from "@/app/api/__generated__/endpoints/library/library";
 import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { updateFavoriteInQueries } from "./helpers";
+import { isSearchedQuery, updateFavoriteInQueries } from "./helpers";
 
 interface Props {
   agent: LibraryAgent;
@@ -81,6 +84,11 @@ export function useLibraryAgentCard({ agent, onFavoriteAdd }: Props) {
         title: "Error",
         description: "Failed to update favorite status. Please try again.",
         variant: "destructive",
+      });
+    } finally {
+      queryClient.invalidateQueries({
+        queryKey: getGetV2ListFavoriteLibraryAgentsQueryKey(),
+        predicate: isSearchedQuery,
       });
     }
   }

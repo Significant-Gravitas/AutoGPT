@@ -1,4 +1,4 @@
-import { InfiniteData, QueryClient } from "@tanstack/react-query";
+import { InfiniteData, Query, QueryClient } from "@tanstack/react-query";
 
 import {
   getV2ListFavoriteLibraryAgentsResponse,
@@ -50,7 +50,10 @@ export function updateFavoriteInQueries({
   );
 
   queryClient.setQueriesData(
-    { queryKey: ["/api/library/agents/favorites"] },
+    {
+      queryKey: ["/api/library/agents/favorites"],
+      predicate: (query) => !(newIsFavorite && isSearchedQuery(query)),
+    },
     (
       oldData:
         | InfiniteData<
@@ -146,5 +149,15 @@ export function updateFavoriteInQueries({
 
       return oldData;
     },
+  );
+}
+
+export function isSearchedQuery(query: Query) {
+  const params = query.queryKey[1];
+  return (
+    typeof params === "object" &&
+    params !== null &&
+    "search_term" in params &&
+    Boolean(params.search_term)
   );
 }
