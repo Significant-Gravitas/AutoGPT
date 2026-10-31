@@ -9,6 +9,7 @@ import asyncio
 import logging
 import mimetypes
 import posixpath
+import re
 import uuid
 from collections.abc import Collection, Sequence
 from typing import TYPE_CHECKING, Optional
@@ -276,6 +277,7 @@ class WorkspaceManager:
         overwrite: bool = False,
         metadata: Optional[dict] = None,
         scanned_checksums: Collection[str] = (),
+        rename_on_conflict: bool = False,
     ) -> WorkspaceFile:
         """
         Write file to workspace.
@@ -295,6 +297,8 @@ class WorkspaceManager:
             scanned_checksums: SHA-256s of bytes the server has already
                 scanned clean; content hashing to one of them is not scanned
                 again. Never pass hashes a client supplied.
+            rename_on_conflict: When the path is taken, store beside it as
+                ``name (n).ext`` instead of failing or replacing the file.
 
         Returns:
             Created WorkspaceFile instance
@@ -327,6 +331,10 @@ class WorkspaceManager:
         # Resolve path with session prefix
         path = self._resolve_path(path)
         self._authorize_path(path, write=True)
+        requested_path = path
+        if rename_on_conflict:
+            path = await self._free_path(requested_path)
+            filename = posixpath.basename(path)
         is_internal = is_internal_workspace_file(
             name=filename, path=path, metadata=metadata
         )
@@ -358,7 +366,7 @@ class WorkspaceManager:
         # blocked by a potentially slow or unavailable scanner.
         db = workspace_db()
 
-        if not overwrite:
+        if not overwrite and not rename_on_conflict:
             existing = await db.get_workspace_file_by_path(self.workspace_id, path)
             if existing is not None:
                 raise ValueError(f"File already exists at path: {path}")
@@ -389,9 +397,11 @@ class WorkspaceManager:
         # Create database record - handle race condition where another request
         # created a file at the same path between our check and create
         async def _persist_db_record(
-            retries: int = 2 if overwrite else 0,
+            path: str,
+            name: str,
+            retries: int = 2 if overwrite or rename_on_conflict else 0,
         ) -> WorkspaceFile:
-            """Create DB record, retrying on conflict if overwrite=True.
+            """Create DB record, retrying on conflict when overwriting or renaming.
 
             Cleans up the orphaned storage file on any failure.
             """
@@ -399,7 +409,7 @@ class WorkspaceManager:
                 return await db.create_workspace_file(
                     workspace_id=self.workspace_id,
                     file_id=file_id,
-                    name=filename,
+                    name=name,
                     path=path,
                     storage_path=storage_path,
                     mime_type=mime_type,
@@ -409,6 +419,12 @@ class WorkspaceManager:
                     is_internal=is_internal,
                 )
             except UniqueViolationError:
+                if retries > 0 and rename_on_conflict:
+                    # Another write took the free name after we looked.
+                    free = await self._free_path(requested_path)
+                    return await _persist_db_record(
+                        free, posixpath.basename(free), retries=retries - 1
+                    )
                 if retries > 0:
                     # Delete conflicting file and retry
                     existing = await db.get_workspace_file_by_path(
@@ -416,7 +432,7 @@ class WorkspaceManager:
                     )
                     if existing:
                         await self.delete_file(existing.id)
-                    return await _persist_db_record(retries=retries - 1)
+                    return await _persist_db_record(path, name, retries=retries - 1)
                 if overwrite:
                     raise ValueError(
                         f"Unable to overwrite file at path: {path} "
@@ -451,7 +467,7 @@ class WorkspaceManager:
                 replaced_storage_path = publication.replaced_storage_path
                 replaced_file_id = publication.replaced_file_id
             else:
-                file = await _persist_db_record()
+                file = await _persist_db_record(path, filename)
         except Exception:
             try:
                 await storage.delete(storage_path)
@@ -480,8 +496,8 @@ class WorkspaceManager:
                 )
 
         logger.info(
-            f"Wrote file {file.id} ({filename}) to workspace {self.workspace_id} "
-            f"at path {path}, size={len(content)} bytes"
+            f"Wrote file {file.id} ({file.name}) to workspace {self.workspace_id} "
+            f"at path {file.path}, size={len(content)} bytes"
         )
 
         # Fire-and-forget: index this file in the hybrid-search store so
@@ -503,6 +519,24 @@ class WorkspaceManager:
             logger.warning(f"Failed to schedule file embedding for {file.id}: {e}")
 
         return file
+
+    async def _free_path(self, path: str) -> str:
+        """``path`` if no live file holds it, else the next ``name (n).ext``
+        beside it."""
+        db = workspace_db()
+        if await db.get_workspace_file_by_path(self.workspace_id, path) is None:
+            return path
+        stem, ext = posixpath.splitext(path)
+        prefix = f"{stem} ("
+        numbered = re.compile(re.escape(prefix) + r"(\d+)\)" + re.escape(ext))
+        taken = [
+            int(match.group(1))
+            for file in await db.list_workspace_files(
+                self.workspace_id, path_prefix=prefix
+            )
+            if (match := numbered.fullmatch(file.path))
+        ]
+        return f"{prefix}{max(taken, default=0) + 1}){ext}"
 
     async def write_skill_package(
         self,
