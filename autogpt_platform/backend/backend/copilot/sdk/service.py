@@ -58,6 +58,7 @@ from backend.copilot.budget_gate import gate_auto_continue
 from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.sandbox_status import build_sandbox_replaced_notice
 from backend.copilot.continuation import as_model_prompt
+from backend.copilot.expert_check import forget_expert_checks
 from backend.copilot.feedback_db import RATEABLE_ROLES
 from backend.copilot.cli_session_entry import rewrite_user_entry
 from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
@@ -7279,6 +7280,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # r3105523410 — text-only requeue silently stripped it).
             _auto_requeued = False
             _first_auto_event = True
+            # The continuation reads its expert again instead of reusing the
+            # turn's check: the user may have archived the expert since.
+            forget_expert_checks()
 
             async def _requeue_drained(reason: str) -> None:
                 logger.warning(

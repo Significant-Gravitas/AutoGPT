@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Callable, cast
 
 from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
 
+from backend.api.features.experts.models import CheckedExpert
 from backend.copilot import stream_registry
 from backend.copilot.ai_spans import set_turn_span, trace_id_for
 from backend.copilot.baseline import stream_chat_completion_baseline
@@ -30,6 +31,12 @@ from backend.copilot.credit_billing import (
     credit_billing,
 )
 from backend.copilot.engine import resolve_use_sdk
+from backend.copilot.expert_check import (
+    checked_expert,
+    forget_expert_checks,
+    remember_expert_check,
+    sharing_expert_checks,
+)
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
     EXPERT_SESSION_TEMPORARY_MESSAGE,
@@ -238,16 +245,10 @@ async def _normalize_private_expert_session_tenancy(
         return session
 
     from backend.copilot.model import upsert_chat_session
-    from backend.data.db_accessors import experts_db
 
-    try:
-        organization_id, team_id = await experts_db().resolve_private_expert_tenancy(
-            session.user_id, session.expert_id
-        )
-    except ExpertNotFoundError as e:
-        raise ExpertSessionUnavailableError(EXPERT_SESSION_MISSING_MESSAGE) from e
-    except ExpertPrivateTenancyNotFoundError as e:
-        raise ExpertSessionUnavailableError(EXPERT_SESSION_TEMPORARY_MESSAGE) from e
+    check = await _read_private_expert_check(session.user_id, session.expert_id)
+    remember_expert_check(session.user_id, session.expert_id, check)
+    organization_id, team_id = check.organization_id, check.team_id
     if (session.organization_id, session.team_id) == (organization_id, team_id):
         return session
 
@@ -263,6 +264,10 @@ async def _wait_for_expert_setup(session: "ChatSession") -> bool:
 
     Returns whether the turn waited."""
     if session.expert_id is None:
+        return False
+    # The turn's expert check read the setup status a moment ago.
+    check = checked_expert(session.user_id, session.expert_id)
+    if check is not None and check.expert.setup_status != "installing":
         return False
     from backend.data.db_accessors import experts_db
 
@@ -281,6 +286,31 @@ async def _wait_for_expert_setup(session: "ChatSession") -> bool:
         await asyncio.sleep(EXPERT_SETUP_POLL_SECONDS)
         waited = True
     return waited
+
+
+async def _reauthorize_private_expert_after_setup_wait(
+    session: "ChatSession",
+) -> None:
+    expert_id = session.expert_id
+    if expert_id is None:
+        return
+    intended_scope = session.organization_id, session.team_id
+    forget_expert_checks()
+    check = await _read_private_expert_check(session.user_id, expert_id)
+    if (check.organization_id, check.team_id) != intended_scope:
+        raise ExpertSessionUnavailableError(EXPERT_SESSION_TEMPORARY_MESSAGE)
+    remember_expert_check(session.user_id, expert_id, check)
+
+
+async def _read_private_expert_check(user_id: str, expert_id: str) -> CheckedExpert:
+    from backend.data.db_accessors import experts_db
+
+    try:
+        return await experts_db().check_private_expert(user_id, expert_id)
+    except ExpertNotFoundError as error:
+        raise ExpertSessionUnavailableError(EXPERT_SESSION_MISSING_MESSAGE) from error
+    except ExpertPrivateTenancyNotFoundError as error:
+        raise ExpertSessionUnavailableError(EXPERT_SESSION_TEMPORARY_MESSAGE) from error
 
 
 async def _closing_at_model_output(
@@ -596,7 +626,7 @@ class CoPilotProcessor:
             cluster_lock: Distributed lock for refresh
             log: Structured logger
         """
-        with turn_transaction(entry) as turn:
+        with turn_transaction(entry) as turn, sharing_expert_checks():
             await self._run_turn(entry, cancel, cluster_lock, log, turn)
 
     async def _run_turn(
@@ -692,19 +722,21 @@ class CoPilotProcessor:
                     log.info(f"Turn not started: the {pause.reason} limit is used up")
                     await _refuse_turn(entry, session, pause, scheduled_watch)
                     return
-                if credit_turn is not None:
-                    log.info(
-                        f"The {credit_turn.refusal.reason} limit is used up: "
-                        f"billing this block turn to credits, up to "
-                        f"{credit_turn.cap_credits} credits"
-                    )
-                    await cost_context_stack.enter_async_context(
-                        credit_billing(credit_turn)
-                    )
             if await _wait_for_expert_setup(session):
                 # Up to a minute: long enough for the user to convert or end
                 # their trial, so the rest of the setup reads both again.
                 trial_reads.forget()
+                await _reauthorize_private_expert_after_setup_wait(session)
+
+            if credit_turn is not None:
+                log.info(
+                    f"The {credit_turn.refusal.reason} limit is used up: "
+                    f"billing this block turn to credits, up to "
+                    f"{credit_turn.cap_credits} credits"
+                )
+                await cost_context_stack.enter_async_context(
+                    credit_billing(credit_turn)
+                )
 
             if entry.llm_auth_provider == "codex":
                 from backend.integrations.codex.access import enforce_codex_access

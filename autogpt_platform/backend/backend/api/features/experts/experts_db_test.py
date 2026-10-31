@@ -2478,6 +2478,80 @@ async def test_resolve_private_expert_tenancy_allows_missing_default_team():
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_check_private_expert_reads_the_hire_and_its_owners_scope(
+    server: SpinTestServer, test_user, other_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    check = await experts_db.check_private_expert(test_user.id, hired.expert.id)
+
+    fresh = await experts_db.get_expert(
+        test_user.id, hired.expert.id, include_workflows=False
+    )
+    assert fresh is not None
+    identity_fields = {
+        "id",
+        "name",
+        "role",
+        "identity",
+        "voice_preferences",
+        "boundaries",
+        "protected_soul_rules",
+        "is_archived",
+        "setup_status",
+    }
+    assert check.expert.model_dump(include=identity_fields) == fresh.model_dump(
+        include=identity_fields
+    )
+    assert (
+        check.organization_id,
+        check.team_id,
+    ) == await experts_db.resolve_private_expert_tenancy(test_user.id, hired.expert.id)
+    for user_id, expert_id in (
+        (other_user.id, hired.expert.id),
+        (test_user.id, template.id),
+    ):
+        with pytest.raises(experts_db.ExpertNotFoundError):
+            await experts_db.check_private_expert(user_id, expert_id)
+
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+    with pytest.raises(experts_db.ExpertNotFoundError):
+        await experts_db.check_private_expert(test_user.id, hired.expert.id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_check_private_expert_skips_the_roster_only_reads():
+    """The latest run and the weekly spend are roster card fields; a turn's
+    check never needs them, and the latest-run read grows with the expert's
+    history."""
+    row = SimpleNamespace(id="expert-1")
+    expert = SimpleNamespace(id="expert-1")
+    manager = SimpleNamespace(find_first=AsyncMock(return_value=row))
+    latest_runs = AsyncMock()
+    weekly_spend = AsyncMock()
+    with (
+        patch.object(prisma.models.Expert, "prisma", return_value=manager),
+        patch.object(
+            experts_db,
+            "get_user_default_team",
+            new=AsyncMock(return_value=("personal-org", "personal-team")),
+        ),
+        patch.object(experts_db, "_latest_runs", latest_runs),
+        patch.object(experts_db, "get_weekly_spend", weekly_spend),
+        patch.object(experts_db, "_to_model", return_value=expert) as to_model,
+        patch.object(experts_db, "CheckedExpert", side_effect=SimpleNamespace),
+    ):
+        check = await experts_db.check_private_expert("owner-1", "expert-1")
+
+    to_model.assert_called_once_with(row)
+    assert check.expert is expert
+    assert (check.organization_id, check.team_id) == ("personal-org", "personal-team")
+    latest_runs.assert_not_awaited()
+    weekly_spend.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_owner_can_update_expert_soul(server: SpinTestServer, test_user):
     template = await _seed_template(name="Maria", preload_listings=[])
     hired = await experts_db.hire_expert(test_user.id, template.id, None)

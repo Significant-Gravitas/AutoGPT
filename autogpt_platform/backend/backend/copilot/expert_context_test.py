@@ -19,10 +19,12 @@ import pytest
 
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
+    CheckedExpert,
     Expert,
     ExpertRoutine,
     ExpertWorkflowRef,
 )
+from backend.copilot.expert_check import remember_expert_check, sharing_expert_checks
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
     EXPERT_SESSION_TEMPORARY_MESSAGE,
@@ -135,6 +137,95 @@ class TestBuildExpertIdentitySuffix:
         assert "never present yourself as Otto" in result
         assert "call `expert_onboarding` exactly once" in result
         assert "Do not use `ask_question` for it" in result
+
+    @pytest.mark.asyncio
+    async def test_in_a_turn_it_is_built_from_the_expert_the_turn_checked(self):
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(return_value=_expert(name="Someone else"))
+        mock_db.resolve_private_expert_tenancy = AsyncMock(
+            return_value=("another-org", None)
+        )
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+            sharing_expert_checks(),
+        ):
+            remember_expert_check(
+                "user-1",
+                "exp-1",
+                CheckedExpert(
+                    expert=_expert(),
+                    organization_id="personal-org",
+                    team_id="personal-team",
+                ),
+            )
+            result = await build_expert_identity_suffix(
+                "user-1",
+                "exp-1",
+                organization_id="personal-org",
+                team_id="personal-team",
+            )
+
+        assert "For this session you are Maria" in result
+        mock_db.get_expert.assert_not_awaited()
+        mock_db.resolve_private_expert_tenancy.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_in_a_turn_a_chat_outside_the_checked_tenancy_is_refused(self):
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(return_value=_expert())
+        mock_db.resolve_private_expert_tenancy = AsyncMock(
+            return_value=("team-org", "team-team")
+        )
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+            sharing_expert_checks(),
+            pytest.raises(ExpertSessionUnavailableError, match="personal workspace"),
+        ):
+            remember_expert_check(
+                "user-1",
+                "exp-1",
+                CheckedExpert(
+                    expert=_expert(),
+                    organization_id="personal-org",
+                    team_id="personal-team",
+                ),
+            )
+            await build_expert_identity_suffix(
+                "user-1", "exp-1", organization_id="team-org", team_id="team-team"
+            )
+
+    @pytest.mark.asyncio
+    async def test_a_check_for_another_expert_is_not_used(self):
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(return_value=_expert(name="Theo"))
+        mock_db.resolve_private_expert_tenancy = AsyncMock(
+            return_value=("personal-org", "personal-team")
+        )
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+            sharing_expert_checks(),
+        ):
+            remember_expert_check(
+                "user-1",
+                "exp-1",
+                CheckedExpert(
+                    expert=_expert(),
+                    organization_id="personal-org",
+                    team_id="personal-team",
+                ),
+            )
+            result = await build_expert_identity_suffix(
+                "user-1",
+                "exp-2",
+                organization_id="personal-org",
+                team_id="personal-team",
+            )
+
+        assert "For this session you are Theo" in result
+        mock_db.get_expert.assert_awaited_once()
+        mock_db.resolve_private_expert_tenancy.assert_awaited_once_with(
+            "user-1", "exp-2"
+        )
 
     @pytest.mark.asyncio
     async def test_plain_session_returns_empty(self):
