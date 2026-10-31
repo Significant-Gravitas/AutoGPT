@@ -7,50 +7,134 @@ import { UNDELIVERABLE_EMAIL_CODE } from "./undeliverable-email";
 // Microsoft's fixed tenant for personal (consumer) accounts.
 const PERSONAL_TENANT_ID = "9188040d-6c67-4c5b-b112-36a304b66dad";
 
-// Mail domains Microsoft runs itself, where a personal account's address is
-// that account's own mailbox. The same Microsoft domains as the backend's
-// PUBLIC_EMAIL_DOMAINS (backend/data/access_blocks.py).
+// Outlook.com's own mail domains, where a personal account's address is that
+// account's mailbox. Each one's mail went to Outlook.com's consumer servers
+// (MX *.olc.protection.outlook.com) on 2026-10-31. A Microsoft-sounding
+// domain whose mail goes anywhere else is left out (outlook.co.uk is someone
+// else's; hotmail.nl and hotmail.cz route to a Microsoft 365 organization):
+// an address there can be an alias the account keeps after the mailbox is
+// gone.
 const MICROSOFT_MAIL_DOMAINS = new Set([
+  "hotmail.at",
   "hotmail.be",
   "hotmail.ca",
+  "hotmail.cl",
+  "hotmail.co.id",
+  "hotmail.co.il",
+  "hotmail.co.in",
   "hotmail.co.jp",
+  "hotmail.co.kr",
+  "hotmail.co.nz",
+  "hotmail.co.th",
   "hotmail.co.uk",
+  "hotmail.co.za",
   "hotmail.com",
+  "hotmail.com.ar",
   "hotmail.com.au",
+  "hotmail.com.br",
+  "hotmail.com.hk",
+  "hotmail.com.my",
+  "hotmail.com.ph",
+  "hotmail.com.sg",
+  "hotmail.com.tr",
+  "hotmail.com.tw",
+  "hotmail.com.vn",
   "hotmail.de",
+  "hotmail.dk",
   "hotmail.es",
+  "hotmail.fi",
   "hotmail.fr",
+  "hotmail.gr",
+  "hotmail.hk",
+  "hotmail.hu",
+  "hotmail.ie",
   "hotmail.it",
-  "hotmail.nl",
+  "hotmail.jp",
+  "hotmail.lt",
+  "hotmail.lv",
+  "hotmail.my",
+  "hotmail.no",
+  "hotmail.ph",
+  "hotmail.pt",
+  "hotmail.rs",
+  "hotmail.se",
+  "hotmail.sg",
+  "hotmail.sk",
+  "live.at",
   "live.be",
   "live.ca",
+  "live.cl",
+  "live.cn",
+  "live.co.in",
+  "live.co.kr",
   "live.co.uk",
+  "live.co.za",
   "live.com",
+  "live.com.ar",
   "live.com.au",
+  "live.com.mx",
+  "live.com.my",
+  "live.com.pe",
+  "live.com.ph",
+  "live.com.pt",
+  "live.com.sg",
   "live.de",
+  "live.dk",
+  "live.fi",
   "live.fr",
+  "live.hk",
   "live.ie",
+  "live.in",
   "live.it",
   "live.jp",
   "live.nl",
+  "live.no",
+  "live.ph",
+  "live.ru",
+  "live.se",
   "msn.com",
+  "msn.nl",
+  "outlook.at",
   "outlook.be",
-  "outlook.co.uk",
+  "outlook.cl",
+  "outlook.co.id",
+  "outlook.co.il",
+  "outlook.co.nz",
+  "outlook.co.th",
   "outlook.com",
+  "outlook.com.ar",
   "outlook.com.au",
+  "outlook.com.br",
+  "outlook.com.gr",
+  "outlook.com.pe",
+  "outlook.com.tr",
+  "outlook.com.vn",
+  "outlook.cz",
   "outlook.de",
+  "outlook.dk",
   "outlook.es",
   "outlook.fr",
+  "outlook.hu",
   "outlook.ie",
   "outlook.in",
   "outlook.it",
   "outlook.jp",
+  "outlook.kr",
+  "outlook.lv",
+  "outlook.my",
+  "outlook.ph",
+  "outlook.pt",
+  "outlook.sa",
+  "outlook.sg",
+  "outlook.sk",
+  "passport.com",
   "windowslive.com",
 ]);
 
 // The `error` a refused sign-up returns to /login with (see
-// microsoft-sign-up-policy.ts).
-export const UNCONFIRMED_EMAIL_CODE = "unconfirmed_email";
+// microsoft-sign-up-policy.ts). `account_not_linked` is Better Auth's own
+// answer when an account already uses the address.
+export const ACCOUNT_NOT_LINKED_CODE = "account_not_linked";
 export const TEAM_EMAIL_SIGN_UP_CODE = "team_email_requires_google";
 
 interface MicrosoftProfile {
@@ -126,6 +210,9 @@ export function getMicrosoftLoginProvider() {
     // Only the redirect flow, which microsoft-sign-up-policy.ts guards, signs
     // in. An ID token handed straight to /sign-in/social would skip it.
     disableIdTokenSignIn: true,
+    // Name and email only: the Graph photo would sit in the user row and in
+    // every session cookie.
+    disableProfilePhoto: true,
     mapProfileToUser: microsoftProfileToUser,
   };
 }
@@ -133,12 +220,12 @@ export function getMicrosoftLoginProvider() {
 const SIGN_IN_ERRORS: Record<string, string> = {
   [TEAM_EMAIL_SIGN_UP_CODE]:
     "An AutoGPT team address signs up with Google. Use Continue with Google instead.",
-  [UNCONFIRMED_EMAIL_CODE]:
-    "Microsoft hasn't confirmed the email address on that account, so it can't be used to sign up here. Sign up with your email address instead. You can still connect Microsoft 365 afterwards.",
   email_not_found:
     "Microsoft didn't share an email address for that account, so it can't sign in here. Use another sign-in method.",
-  account_not_linked:
-    "An AutoGPT account already uses that email. Log in the way you usually do.",
+  // Also what an address Microsoft didn't confirm gets, so it doesn't say
+  // whether an account uses the address.
+  [ACCOUNT_NOT_LINKED_CODE]:
+    "We can't sign you in with that Microsoft account. If you already have an AutoGPT account, log in the way you usually do. If not, sign up with your email address. You can connect Microsoft 365 afterwards.",
   access_denied: "Microsoft sign-in was cancelled.",
   // access-blocks.ts, which is server-only.
   SIGN_IN_BLOCKED:

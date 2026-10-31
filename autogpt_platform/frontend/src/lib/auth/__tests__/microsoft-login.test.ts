@@ -92,15 +92,41 @@ describe("Continue with Microsoft", () => {
   ])("doesn't vouch for %s", (_case, tid, email, claims) => {
     const user = microsoftProfileToUser({ sub: "s", tid, email, ...claims });
 
-    // Kept, so an account that already uses it can be named in the refusal.
+    // Kept, so an account already linked to this Microsoft login still signs
+    // in (without an address, Better Auth stops at `email_not_found`).
     expect(user).toMatchObject({ emailVerified: false, email });
   });
 
+  it.each([
+    "pat@hotmail.se",
+    "pat@live.se",
+    "pat@outlook.com.br",
+    "pat@msn.nl",
+  ])("trusts %s, an Outlook.com mailbox on a country domain", (email) => {
+    expect(
+      microsoftProfileToUser({ sub: "s", tid: PERSONAL_TENANT, email })
+        .emailVerified,
+    ).toBe(true);
+  });
+
+  it.each(["pat@outlook.co.uk", "pat@hotmail.nl"])(
+    "doesn't trust %s, a Microsoft-sounding domain whose mail goes elsewhere",
+    (email) => {
+      expect(
+        microsoftProfileToUser({ sub: "s", tid: PERSONAL_TENANT, email })
+          .emailVerified,
+      ).toBe(false);
+    },
+  );
+
   it("explains refused sign-ins in plain language", () => {
     expect(getSocialSignInError(null)).toBeNull();
-    expect(getSocialSignInError("unconfirmed_email")).toMatch(
-      /Sign up with your email address instead/,
-    );
+    // One answer whether or not an account uses the address, so it doesn't
+    // tell which.
+    const notLinked = getSocialSignInError("account_not_linked");
+    expect(notLinked).toMatch(/If you already have an AutoGPT account, log in/);
+    expect(notLinked).toMatch(/If not, sign up with your email address/);
+    expect(notLinked).not.toMatch(/already uses/);
     expect(getSocialSignInError("email_not_found")).toMatch(
       /didn't share an email address/,
     );
@@ -126,7 +152,6 @@ describe("Continue with Microsoft", () => {
     expect(isWaitlistSignInError(SIGN_UP_NOT_ALLOWED_CODE)).toBe(true);
     expect(isWaitlistSignInError("FORBIDDEN")).toBe(true);
     expect(isWaitlistSignInError("account_not_linked")).toBe(false);
-    expect(isWaitlistSignInError("unconfirmed_email")).toBe(false);
     expect(isWaitlistSignInError(null)).toBe(false);
   });
 });

@@ -1,7 +1,7 @@
 import { APIError } from "better-auth/api";
 import {
+  ACCOUNT_NOT_LINKED_CODE,
   TEAM_EMAIL_SIGN_UP_CODE,
-  UNCONFIRMED_EMAIL_CODE,
 } from "./microsoft-login";
 import { isTeamEmail } from "./team-email";
 
@@ -12,7 +12,9 @@ import { isTeamEmail } from "./team-email";
  * confirm it would not help: the mailbox's owner could open it, or claim the
  * account later with a reset link, and the other person's Microsoft login
  * would still sign in to it. So nothing is created, and /login tells the
- * person to sign up with their email address instead.
+ * person to sign up with their email address instead. The refusal is the one
+ * Better Auth gives when an account already uses the address, so it doesn't
+ * say whether one does (as email sign-up doesn't).
  *
  * An AutoGPT team address gets an account only through Google, as with every
  * other way to sign up; a team member's existing account still signs in with
@@ -37,9 +39,11 @@ export function assertMicrosoftSignUpAllowed(
 ) {
   if (!isMicrosoftSignUp(ctx)) return;
   if (!user.emailVerified) {
+    // No message: Better Auth adds one to the redirect as `error_description`,
+    // which its own `account_not_linked` doesn't carry.
     throw new APIError("FORBIDDEN", {
-      code: UNCONFIRMED_EMAIL_CODE,
-      message: "Microsoft hasn't confirmed the email address on this account.",
+      code: ACCOUNT_NOT_LINKED_CODE,
+      message: "",
     });
   }
   if (isTeamEmail(user.email)) {

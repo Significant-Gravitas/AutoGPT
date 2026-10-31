@@ -86,9 +86,13 @@ calendar, files, Teams and Work IQ tools follow it.
   an organization that isn't its own, which vouches for addresses it never
   verified. Any other address joins no existing account (Better Auth
   answers `account_not_linked`) and creates none
-  (`microsoft-sign-up-policy.ts` refuses with the code `unconfirmed_email`,
-  which Better Auth sends back to /login as `error`), whether or not
-  email verification is on. Only the redirect flow signs in: Better Auth's
+  (`microsoft-sign-up-policy.ts` refuses with the same
+  `account_not_linked` and no message, so the redirect is the same either
+  way and doesn't reveal whether an account uses the address), whether
+  or not email verification is on. "Outlook.com" here means the domains in
+  `MICROSOFT_MAIL_DOMAINS`, each checked to route mail to Outlook.com's
+  consumer servers. Sign-in reads only name and email: Better Auth's
+  profile-photo fetch is switched off. Only the redirect flow signs in: Better Auth's
   ID-token sign-in is switched off for Microsoft. Emailing a confirmation link instead would not be
   safe: the mailbox's owner could confirm it, and the other person's
   Microsoft login would still sign in to the account.

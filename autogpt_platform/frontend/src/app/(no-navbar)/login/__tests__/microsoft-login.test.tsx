@@ -114,14 +114,14 @@ describe("Continue with Microsoft on the login page", () => {
     ).toBeDefined();
   });
 
-  test("explains a sign-up Microsoft could not vouch for", () => {
-    mockSearchParams = new URLSearchParams({ error: "unconfirmed_email" });
+  test("explains a refused Microsoft sign-in without saying whether an account uses the address", () => {
+    mockSearchParams = new URLSearchParams({ error: "account_not_linked" });
 
     render(<LoginPage />);
 
     expect(
       screen.getByText(
-        /Microsoft hasn't confirmed the email address on that account/,
+        "We can't sign you in with that Microsoft account. If you already have an AutoGPT account, log in the way you usually do. If not, sign up with your email address. You can connect Microsoft 365 afterwards.",
       ),
     ).toBeDefined();
   });

@@ -65,6 +65,9 @@ const PERSONAL_TENANT = "9188040d-6c67-4c5b-b112-36a304b66dad";
 
 type Handler = (request: Request) => Promise<Response>;
 
+// Every request for a Microsoft profile photo; sign-in shouldn't make any.
+const photoRequests: string[] = [];
+
 function emptyDB() {
   return {
     UserAuthIdentity: [] as Array<Record<string, unknown>>,
@@ -144,10 +147,10 @@ async function continueWithMicrosoft(
           id_token: idToken(claims),
         }),
     ),
-    http.get(
-      "https://graph.microsoft.com/v1.0/me/photos/*",
-      () => new HttpResponse(null, { status: 404 }),
-    ),
+    http.get("https://graph.microsoft.com/v1.0/me/photos/*", ({ request }) => {
+      photoRequests.push(request.url);
+      return new HttpResponse(null, { status: 404 });
+    }),
   );
   const start = await handler(
     new Request(`${baseURL}/api/auth/sign-in/social`, {
@@ -173,6 +176,7 @@ async function continueWithMicrosoft(
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  photoRequests.length = 0;
 });
 
 // Where a refused sign-up lands: the page, and the `error` code it explains.
@@ -207,6 +211,8 @@ describe("Continue with Microsoft", () => {
       }),
     ]);
     expect(db.UserAuthSession).toHaveLength(1);
+    // Name and email only: Microsoft's profile photo is never fetched.
+    expect(photoRequests).toEqual([]);
   });
 
   it("signs a work address its organization verified in to the account that uses it", async () => {
@@ -280,15 +286,34 @@ describe("Continue with Microsoft", () => {
         email: "pat@gmail.example",
       });
 
-      expect(refusal(landing)).toEqual({
-        path: "/login",
-        error: "unconfirmed_email",
-      });
+      // Better Auth's answer when an account uses the address, to the byte.
+      expect(landing).toBe("/login?error=account_not_linked");
       expect(db.UserAuthIdentity).toEqual([]);
       expect(db.UserAuthAccount).toEqual([]);
       expect(db.UserAuthSession).toEqual([]);
     },
   );
+
+  it("answers an address Microsoft didn't confirm the same, whether or not an account uses it", async () => {
+    const claims = {
+      sub: "pairwise",
+      oid: "someone-else",
+      tid: PERSONAL_TENANT,
+      email: "pat@company.example",
+    };
+    const withAccount = await createAuthHandler();
+    existingAccount(withAccount.db, "pat@company.example");
+    const withoutAccount = await createAuthHandler();
+
+    const landings = [
+      await continueWithMicrosoft(withAccount.handler, claims),
+      await continueWithMicrosoft(withoutAccount.handler, claims),
+    ];
+
+    expect(landings[0]).toBe(landings[1]);
+    expect(withAccount.db.UserAuthAccount).toEqual([]);
+    expect(withoutAccount.db.UserAuthIdentity).toEqual([]);
+  });
 
   it("keeps an AutoGPT team address to Google sign-up", async () => {
     const { handler, db } = await createAuthHandler();

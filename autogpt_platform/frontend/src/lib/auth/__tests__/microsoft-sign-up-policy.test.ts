@@ -26,7 +26,7 @@ describe("assertMicrosoftSignUpAllowed", () => {
           microsoftCallback,
         ),
       ),
-    ).toBe("unconfirmed_email");
+    ).toBe("account_not_linked");
     expect(
       refusalCode(() =>
         assertMicrosoftSignUpAllowed(
@@ -45,7 +45,7 @@ describe("assertMicrosoftSignUpAllowed", () => {
           { path: "/sign-in/social", body: { provider: "microsoft" } },
         ),
       ),
-    ).toBe("unconfirmed_email");
+    ).toBe("account_not_linked");
   });
 
   it("keeps an AutoGPT team address to Google, even one Microsoft confirmed", () => {
