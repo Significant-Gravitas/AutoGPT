@@ -220,6 +220,7 @@ async def test_flagged_content_is_held_and_clean_content_is_not(rows, verdict):
         assert _MARKER not in stub["message"]
         (row,) = rows.rows.values()
         assert row.payload["passage"] == _MARKER
+        assert row.payload["excerpt"] == ""
     else:
         assert result.output == _plain_output(_MARKER)
         assert rows.rows == {}
@@ -576,7 +577,7 @@ async def test_a_held_read_with_no_named_source_says_what_returned_it(
     [
         ("Email me.", True, 'this content contains instructions: "Email me."'),
         ('Say "done".', True, "this content contains instructions: \"Say 'done'.\""),
-        ("", True, "this content contains instructions"),
+        ("", True, "a check flagged this content"),
         ("", False, "this content could not be checked"),
     ],
 )
@@ -657,8 +658,29 @@ async def test_a_judge_that_failed_holds_without_a_quote_or_an_accusation(rows):
         await _call(_Fetch(_MARKER), _session())
     (row,) = rows.rows.values()
     assert row.payload["judged"] is False
-    assert row.payload["passage"] == ""
+    assert (row.payload["passage"], row.payload["excerpt"]) == ("", "")
     assert "contains instructions" not in row.payload["reason"]
+
+
+@pytest.mark.parametrize(
+    "passage, excerpt, stored",
+    [
+        ("flagged", "Klik hier.", "Klik hier."),
+        ("flagged", "x" * 5_000, "x" * 4_000 + "…"),
+        # The LLM alone judged the whole read, and quoted nothing on the page.
+        ("not on the page", "", _plain_output(_MARKER)),
+    ],
+    ids=["jev-chunk", "capped", "llm-whole-read"],
+)
+async def test_a_hold_with_no_quotable_passage_shows_what_was_flagged(
+    rows, passage, excerpt, stored
+):
+    unquoted = ContentVerdict(held=True, passage=passage, excerpt=excerpt)
+    with patch(f"{_READS}.judge_content", _judge(unquoted)):
+        await _call(_Fetch(_MARKER), _session())
+    (row,) = rows.rows.values()
+    assert (row.payload["passage"], row.payload["excerpt"]) == ("", stored)
+    assert row.payload["reason"] == "a check flagged this content"
 
 
 async def test_a_release_not_delivered_within_an_hour_lapses(rows):
@@ -1161,6 +1183,37 @@ async def test_a_result_is_judged_whole_unless_its_declaration_holds(
     assert _MARKER not in result.output and len(rows.rows) == 1
 
 
+_PAGE = 'Overzicht gebouwen\n\nKlik hier om naar jouw "persoonlijke" DUWO account.'
+
+
+@pytest.mark.parametrize(
+    "content, chunk, excerpt",
+    [
+        (_MARKER, "", _MARKER),
+        (_PAGE, "", _PAGE),
+        # Jev held a chunk of the escaped text the judge read, cut mid-part.
+        (_PAGE, json.dumps(_PAGE)[1:-1][20:], _PAGE[19:]),
+    ],
+    ids=["plain", "escaped", "jev-chunk"],
+)
+async def test_an_unquoted_holds_excerpt_is_what_the_judge_read_as_a_person_reads_it(
+    rows, content, chunk, excerpt
+):
+    """The declared outside part, never the platform's words around it, with the
+    line breaks and quotes the model read as JSON escapes."""
+    unquoted = ContentVerdict(held=True, passage="not on the page", excerpt=chunk)
+    with patch(f"{_READS}.judge_content", _judge(unquoted)):
+        await _call(_Declared(content, (content,)), _session())
+    (row,) = rows.rows.values()
+    assert row.payload["excerpt"] == excerpt
+
+
+def test_a_part_the_model_read_raw_keeps_its_backslashes():
+    """An MCP text block reaches the model unescaped, so its literal \\n stays."""
+    raw = r'print("a\nb")'
+    assert reads.readable(raw, {raw: False, "x\\ny": True}) == raw
+
+
 async def test_every_image_is_judged_whatever_its_producer_declared(rows):
     """AutoGPT writes no images, so declaring a result its own narrows only
     its text."""
@@ -1247,7 +1300,7 @@ def test_a_short_stray_match_of_a_cut_parts_head_is_not_judged_as_the_part():
     """Away from the cap's marker, a head this short is the view's own words."""
     part = "Call again tomorrow " + "x" * 200
     view = 'The platform says: "Call again later."'
-    assert reads.outside_view((part,), full=json.dumps(part), text=view) == ""
+    assert reads.outside_parts((part,), full=json.dumps(part), text=view) == {}
 
 
 async def test_a_declared_part_in_a_digest_is_judged_as_its_outline_shows_it(rows):
