@@ -556,6 +556,22 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "direct. Do not set it before the proxy exists: E2B fails closed, so a "
         "box pointed at nothing has no egress at all.",
     )
+    e2b_deployment_sandbox_limit: int = Field(
+        default=0,
+        ge=0,
+        description="Most E2B boxes this deployment (its APP_ENV) may have running "
+        "at once on the platform's E2B key; a start past it is refused. 0 sets no "
+        "ceiling of its own.",
+    )
+    e2b_account_sandbox_limit: int = Field(
+        # Twice the running-turn cap, so a user at that cap can still open
+        # desktops and run sandboxed blocks beside it.
+        default=10,
+        ge=0,
+        description="Most E2B boxes one account may have running at once in this "
+        "deployment on the platform's E2B key; a start past it is refused. 0 turns "
+        "the cap off.",
+    )
 
     frontend_base_url: str = Field(
         default="",

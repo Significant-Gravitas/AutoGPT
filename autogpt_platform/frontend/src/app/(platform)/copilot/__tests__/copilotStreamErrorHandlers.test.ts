@@ -154,6 +154,29 @@ describe("handleStreamError", () => {
     expect(onReconnect).not.toHaveBeenCalled();
   });
 
+  it("names a sandbox limit refusal and says why, without retrying or a usage limit", () => {
+    const onRateLimit = vi.fn();
+    const onReconnect = vi.fn();
+    handleStreamError({
+      error: new Error(
+        "[code:sandbox_limit_reached] Too many sandboxes are running on your account: 10 at once is the most. Wait for one of your tasks to finish, then try again.",
+      ),
+      onRateLimit,
+      onReconnect,
+      isUserStoppingRef: makeRef(false),
+    });
+
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Couldn't start a sandbox",
+        description:
+          "Too many sandboxes are running on your account: 10 at once is the most. Wait for one of your tasks to finish, then try again.",
+      }),
+    );
+    expect(onRateLimit).not.toHaveBeenCalled();
+    expect(onReconnect).not.toHaveBeenCalled();
+  });
+
   it("names a platform provider outage without routing it to a usage limit", () => {
     const onRateLimit = vi.fn();
     handleStreamError({

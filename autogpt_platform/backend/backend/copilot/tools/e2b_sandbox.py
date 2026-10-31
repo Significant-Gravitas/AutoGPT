@@ -116,6 +116,7 @@ from backend.util.e2b_template import (
     ensure_template,
     forget_template,
 )
+from backend.util.sandbox_limits import SandboxLimitError
 from backend.util.sandbox_login import run_internal, take_baseline
 from backend.util.sandbox_metadata import MountState, SandboxMetadata, owned_by_user
 
@@ -447,6 +448,7 @@ async def _connect_pinned(
         sandbox_id,
         owner.egress_owner(swap_user_id, ()),
         apply_network=pin_egress,
+        resumes=info.state != SandboxState.RUNNING,
         owner_at_pin=ceiling_at_pin,
         api_key=api_key,
         timeout=timeout,
@@ -956,6 +958,8 @@ async def get_or_create_owner_sandbox(
                     template=template,
                     session_id=session_id,
                 )
+            except SandboxLimitError:
+                raise
             except Exception as exc:
                 if value in retried_ids:
                     raise
@@ -1054,6 +1058,8 @@ async def get_or_create_owner_sandbox(
                     )
                     last_exc = None
                     break
+                except SandboxLimitError:
+                    raise
                 except Exception as exc:
                     last_exc = exc
                     logger.warning(
