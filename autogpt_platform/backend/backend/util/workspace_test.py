@@ -107,9 +107,12 @@ async def test_write_file_no_overwrite_unique_violation_raises_and_cleans_up(
 async def test_write_file_overwrite_conflict_then_retry_succeeds(
     manager, mock_storage, mock_db
 ):
-    """overwrite=True + conflict → delete existing → retry succeeds."""
+    """overwrite=True + conflict → the retry replaces the file now at the path
+    in its own insert, and that file's blob goes only after the commit."""
     created_file = _make_workspace_file()
-    existing_file = _make_workspace_file(id="old-id")
+    existing_file = _make_workspace_file(
+        id="old-id", storage_path="ws-123/old/test.txt"
+    )
 
     mock_db.get_workspace_file_by_path.return_value = existing_file
     mock_db.create_workspace_file.side_effect = [_unique_violation(), created_file]
@@ -126,14 +129,23 @@ async def test_write_file_overwrite_conflict_then_retry_succeeds(
             return_value=250 * 1024 * 1024,
         ),
         patch.object(manager, "delete_file", new_callable=AsyncMock) as mock_delete,
+        patch(
+            "backend.api.features.workspace.embeddings.delete_workspace_file_embedding",
+            new_callable=AsyncMock,
+        ) as mock_unindex,
     ):
         result = await manager.write_file(
             filename="test.txt", content=b"hello", overwrite=True
         )
 
     assert result == created_file
-    mock_delete.assert_called_once_with("old-id")
-    mock_storage.delete.assert_not_called()
+    mock_delete.assert_not_called()
+    assert [
+        c.kwargs["replacing_file_id"]
+        for c in mock_db.create_workspace_file.call_args_list
+    ] == ["old-id", "old-id"]
+    mock_storage.delete.assert_awaited_once_with("ws-123/old/test.txt")
+    mock_unindex.assert_awaited_once_with(file_id="old-id", user_id=manager.user_id)
 
 
 @pytest.mark.asyncio

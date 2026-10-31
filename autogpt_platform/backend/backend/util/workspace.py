@@ -23,7 +23,7 @@ from backend.data.db_accessors import (
     workspace_skill_db,
 )
 from backend.data.skill_capacity import skill_owner_folder
-from backend.data.workspace import WorkspaceFile
+from backend.data.workspace import WorkspaceFile, storage_limit_exceeded
 from backend.data.workspace_internal import is_internal_workspace_file
 from backend.data.workspace_scope import (
     EXPERT_FILE_ACCESS_DENIED,
@@ -47,20 +47,6 @@ from backend.util.workspace_storage import (
 
 if TYPE_CHECKING:
     from backend.data.workspace_folder import WorkspaceFolder
-
-
-def format_bytes(n: int) -> str:
-    """Format bytes as a human-readable string (e.g. 250 MB, 1.0 GB)."""
-    KB, MB, GB = 1024, 1024**2, 1024**3
-    if n < KB:
-        return f"{n} B"
-    if n < MB:
-        kb = round(n / KB)
-        return f"{n / MB:.1f} MB" if kb >= 1024 else f"{kb} KB"
-    if n < GB:
-        mb = round(n / MB)
-        return f"{n / GB:.1f} GB" if mb >= 1024 else f"{mb} MB"
-    return f"{n / GB:.1f} GB"
 
 
 logger = logging.getLogger(__name__)
@@ -331,37 +317,24 @@ class WorkspaceManager:
             name=filename, path=path, metadata=metadata
         )
 
-        # Enforce per-user workspace storage quota (tier-based).
-        # For overwrites, subtract the existing file's size so replacing a file
-        # with a same-size or smaller file is not rejected near the cap.
+        # Both refusals come before virus scanning, so a cheap check isn't
+        # blocked by a potentially slow or unavailable scanner. The quota one
+        # is early only: the row's own transaction holds it against concurrent
+        # writes. An overwrite does not count the file it replaces.
+        db = workspace_db()
         storage_limit, current_usage = await asyncio.gather(
             get_workspace_storage_limit_bytes(self.user_id),
-            workspace_db().get_workspace_total_size(self.workspace_id),
+            db.get_workspace_total_size(self.workspace_id),
         )
-        if overwrite:
-            db = workspace_db()
-            existing = await db.get_workspace_file_by_path(self.workspace_id, path)
-            if existing is not None:
-                current_usage = max(0, current_usage - existing.size_bytes)
+        existing = await db.get_workspace_file_by_path(self.workspace_id, path)
+        if existing is not None and not overwrite:
+            raise ValueError(f"File already exists at path: {path}")
+        if existing is not None:
+            current_usage = max(0, current_usage - existing.size_bytes)
 
         projected_usage = current_usage + len(content)
         if storage_limit > 0 and projected_usage > storage_limit:
-            raise ValueError(
-                f"Storage limit exceeded. "
-                f"You've used {format_bytes(current_usage)} of your "
-                f"{format_bytes(storage_limit)} quota. "
-                f"Delete some files or upgrade your plan for more storage."
-            )
-
-        # Check if file exists at path (only error for non-overwrite case).
-        # Done before virus scanning so a cheap duplicate-path check isn't
-        # blocked by a potentially slow or unavailable scanner.
-        db = workspace_db()
-
-        if not overwrite:
-            existing = await db.get_workspace_file_by_path(self.workspace_id, path)
-            if existing is not None:
-                raise ValueError(f"File already exists at path: {path}")
+            raise storage_limit_exceeded(current_usage, storage_limit)
 
         # Scan here — callers must NOT duplicate this scan.
         # WorkspaceManager owns virus scanning for all persisted files.
@@ -389,14 +362,14 @@ class WorkspaceManager:
         # Create database record - handle race condition where another request
         # created a file at the same path between our check and create
         async def _persist_db_record(
+            replacing: WorkspaceFile | None,
             retries: int = 2 if overwrite else 0,
-        ) -> WorkspaceFile:
-            """Create DB record, retrying on conflict if overwrite=True.
-
-            Cleans up the orphaned storage file on any failure.
-            """
+        ) -> tuple[WorkspaceFile, WorkspaceFile | None]:
+            """Create DB record in place of ``replacing``, retrying against
+            the file then at the path on conflict if overwrite=True; returns
+            the record and the file it replaced."""
             try:
-                return await db.create_workspace_file(
+                file = await db.create_workspace_file(
                     workspace_id=self.workspace_id,
                     file_id=file_id,
                     name=filename,
@@ -407,22 +380,22 @@ class WorkspaceManager:
                     checksum=checksum,
                     metadata=metadata,
                     is_internal=is_internal,
+                    storage_limit_bytes=storage_limit,
+                    replacing_file_id=replacing.id if replacing else None,
                 )
             except UniqueViolationError:
                 if retries > 0:
-                    # Delete conflicting file and retry
-                    existing = await db.get_workspace_file_by_path(
+                    current = await db.get_workspace_file_by_path(
                         self.workspace_id, path
                     )
-                    if existing:
-                        await self.delete_file(existing.id)
-                    return await _persist_db_record(retries=retries - 1)
+                    return await _persist_db_record(current, retries - 1)
                 if overwrite:
                     raise ValueError(
                         f"Unable to overwrite file at path: {path} "
                         f"(concurrent write conflict)"
                     ) from None
                 raise ValueError(f"File already exists at path: {path}")
+            return file, replacing
 
         replaced_storage_path: str | None = None
         replaced_file_id: str | None = None
@@ -439,6 +412,7 @@ class WorkspaceManager:
                     overwrite=overwrite,
                     checksum=checksum,
                     metadata=metadata,
+                    storage_limit_bytes=storage_limit,
                 )
                 publication = await workspace_skill_db().publish_workspace_skill_file(
                     write
@@ -451,7 +425,10 @@ class WorkspaceManager:
                 replaced_storage_path = publication.replaced_storage_path
                 replaced_file_id = publication.replaced_file_id
             else:
-                file = await _persist_db_record()
+                file, replaced = await _persist_db_record(existing)
+                if replaced is not None:
+                    replaced_storage_path = replaced.storage_path
+                    replaced_file_id = replaced.id
         except Exception:
             try:
                 await storage.delete(storage_path)
@@ -463,7 +440,7 @@ class WorkspaceManager:
             try:
                 await storage.delete(replaced_storage_path)
             except Exception:
-                logger.warning("Failed to clean up replaced skill blob", exc_info=True)
+                logger.warning("Failed to clean up replaced blob", exc_info=True)
 
         if replaced_file_id and replaced_file_id != file.id:
             try:
@@ -475,9 +452,7 @@ class WorkspaceManager:
                     file_id=replaced_file_id, user_id=self.user_id
                 )
             except Exception:
-                logger.warning(
-                    "Failed to clean up replaced skill embedding", exc_info=True
-                )
+                logger.warning("Failed to clean up replaced embedding", exc_info=True)
 
         logger.info(
             f"Wrote file {file.id} ({filename}) to workspace {self.workspace_id} "
@@ -529,7 +504,9 @@ class WorkspaceManager:
         for path in [*(item.path for item in package), *removed]:
             self._authorize_path(path, write=True)
         config = config if config is not None else Config()
-        await self._require_package_room(package, removed, config.max_file_size_mb)
+        storage_limit = await self._require_package_room(
+            package, removed, config.max_file_size_mb
+        )
         for item in package:
             if compute_file_checksum(item.content) not in scanned_checksums:
                 await scan_content_safe(
@@ -545,6 +522,7 @@ class WorkspaceManager:
                 overwrite=True,
                 files=stored[1:],
                 removed_paths=removed,
+                storage_limit_bytes=storage_limit,
                 **stored[0].model_dump(),
             )
             publication = await workspace_skill_db().publish_workspace_skill_file(write)
@@ -600,7 +578,9 @@ class WorkspaceManager:
 
     async def _require_package_room(
         self, package: list[SkillPackageFile], removed: list[str], max_file_size_mb: int
-    ) -> None:
+    ) -> int:
+        """Refuse a package that cannot fit before its blobs are scanned and
+        stored, and return the quota its publication enforces."""
         max_file_size = max_file_size_mb * 1024 * 1024
         for item in package:
             if len(item.content) > max_file_size:
@@ -620,12 +600,8 @@ class WorkspaceManager:
         current_usage = max(0, current_usage)
         projected = current_usage + sum(len(item.content) for item in package)
         if storage_limit > 0 and projected > storage_limit:
-            raise ValueError(
-                f"Storage limit exceeded. "
-                f"You've used {format_bytes(current_usage)} of your "
-                f"{format_bytes(storage_limit)} quota. "
-                f"Delete some files or upgrade your plan for more storage."
-            )
+            raise storage_limit_exceeded(current_usage, storage_limit)
+        return storage_limit
 
     async def _store_package_blob(
         self, storage: WorkspaceStorageBackend, item: SkillPackageFile

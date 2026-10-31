@@ -7,14 +7,17 @@ This module provides functions for managing user workspaces and workspace files.
 import logging
 import posixpath
 import re
+from collections.abc import Collection
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 
 import pydantic
+from prisma import Prisma
 from prisma.errors import UniqueViolationError
 from prisma.models import UserWorkspace, UserWorkspaceFile
 from prisma.types import UserWorkspaceFileWhereInput
 
+from backend.data.db import transaction
 from backend.data.skill_capacity import skill_owner_folder
 from backend.data.workspace_scope import (
     SHARED_ROOTS,
@@ -146,6 +149,8 @@ async def create_workspace_file(
     checksum: Optional[str] = None,
     metadata: Optional[dict] = None,
     is_internal: bool = False,
+    storage_limit_bytes: int = 0,
+    replacing_file_id: Optional[str] = None,
 ) -> WorkspaceFile:
     """
     Create a new workspace file record.
@@ -168,6 +173,10 @@ async def create_workspace_file(
         checksum: Optional SHA256 checksum
         metadata: Optional additional metadata
         is_internal: Otto's own working file, left out of the user's lists
+        storage_limit_bytes: The owner's storage quota (0 for none); a row
+            that would not fit is refused with ``storage_limit_exceeded``
+        replacing_file_id: The live file at ``path`` this one replaces; it is
+            soft-deleted in the same transaction, so a refused write keeps it
 
     Returns:
         Created WorkspaceFile instance
@@ -176,26 +185,110 @@ async def create_workspace_file(
     if not path.startswith("/"):
         path = f"/{path}"
 
-    file = await UserWorkspaceFile.prisma().create(
-        data={
-            "id": file_id,
-            "workspaceId": workspace_id,
-            "name": name,
-            "path": path,
-            "storagePath": storage_path,
-            "mimeType": mime_type,
-            "sizeBytes": size_bytes,
-            "checksum": checksum,
-            "metadata": SafeJson(metadata or {}),
-            "isInternal": is_internal,
-        }
-    )
+    async with transaction() as tx:
+        await tx.execute_raw("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
+        await require_storage_room(
+            tx, workspace_id, size_bytes, storage_limit_bytes, replacing=[path]
+        )
+        if replacing_file_id is not None:
+            await tx.userworkspacefile.update_many(
+                where={
+                    "id": replacing_file_id,
+                    "workspaceId": workspace_id,
+                    "isDeleted": False,
+                },
+                data={"isDeleted": True, "deletedAt": datetime.now(timezone.utc)},
+            )
+        file = await tx.userworkspacefile.create(
+            data={
+                "id": file_id,
+                "workspaceId": workspace_id,
+                "name": name,
+                "path": path,
+                "storagePath": storage_path,
+                "mimeType": mime_type,
+                "sizeBytes": size_bytes,
+                "checksum": checksum,
+                "metadata": SafeJson(metadata or {}),
+                "isInternal": is_internal,
+            }
+        )
 
     logger.info(
         f"Created workspace file {file.id} at path {path} "
         f"in workspace {workspace_id}"
     )
     return WorkspaceFile.from_db(file)
+
+
+async def require_storage_room(
+    tx: Prisma,
+    workspace_id: str,
+    added_bytes: int,
+    limit_bytes: int,
+    replacing: Collection[str] = (),
+) -> None:
+    """Refuse a write of ``added_bytes`` that would take the workspace past
+    ``limit_bytes`` (0 for none), counting the live files at ``replacing`` as
+    gone. Holds the workspace's storage lock until ``tx`` ends, so writes
+    racing for the last free space are decided one at a time.
+
+    ``tx`` must be READ COMMITTED, so the count sees what the previous lock
+    holder committed, and must take no other advisory lock after this one.
+    """
+    if limit_bytes <= 0:
+        return
+    await tx.execute_raw(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+        f"workspace-storage:{workspace_id}",
+    )
+    used = await _live_size(tx, workspace_id, replacing)
+    if used + added_bytes > limit_bytes:
+        raise storage_limit_exceeded(used, limit_bytes)
+
+
+async def _live_size(tx: Prisma, workspace_id: str, replacing: Collection[str]) -> int:
+    rows = await tx.query_raw(
+        'SELECT COALESCE(SUM("sizeBytes"), 0)::bigint AS used '
+        'FROM "UserWorkspaceFile" WHERE "workspaceId" = $1 AND NOT "isDeleted"',
+        workspace_id,
+    )
+    replaced = (
+        await tx.userworkspacefile.find_many(
+            where={
+                "workspaceId": workspace_id,
+                "isDeleted": False,
+                "path": {"in": list(replacing)},
+            }
+        )
+        if replacing
+        else []
+    )
+    return max(0, int(rows[0]["used"]) - sum(f.sizeBytes for f in replaced))
+
+
+def storage_limit_exceeded(used_bytes: int, limit_bytes: int) -> ValueError:
+    """The refusal every quota check raises; callers map its prefix."""
+    return ValueError(
+        "Storage limit exceeded. "
+        f"You've used {format_bytes(used_bytes)} of your "
+        f"{format_bytes(limit_bytes)} quota. "
+        "Delete some files or upgrade your plan for more storage."
+    )
+
+
+def format_bytes(n: int) -> str:
+    """Format bytes as a human-readable string (e.g. 250 MB, 1.0 GB)."""
+    KB, MB, GB = 1024, 1024**2, 1024**3
+    if n < KB:
+        return f"{n} B"
+    if n < MB:
+        kb = round(n / KB)
+        return f"{n / MB:.1f} MB" if kb >= 1024 else f"{kb} KB"
+    if n < GB:
+        mb = round(n / MB)
+        return f"{n / GB:.1f} GB" if mb >= 1024 else f"{mb} MB"
+    return f"{n / GB:.1f} GB"
 
 
 async def get_workspace_file(
