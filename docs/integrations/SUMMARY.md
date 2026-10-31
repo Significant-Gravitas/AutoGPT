@@ -152,6 +152,7 @@
 * [Rmfg Review Links](block-integrations/rmfg/review_links.md)
 * [Rmfg Triggers](block-integrations/rmfg/triggers.md)
 * [Search](block-integrations/search.md)
+* [Serply Search](block-integrations/serply/search.md)
 * [Slack Blocks](block-integrations/slack/blocks.md)
 * [Slant3D Filament](block-integrations/slant3d/filament.md)
 * [Slant3D Order](block-integrations/slant3d/order.md)
