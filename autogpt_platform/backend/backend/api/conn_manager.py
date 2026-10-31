@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from collections import Counter
 from typing import Awaitable, Callable, Dict, Optional, Set
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -59,6 +60,9 @@ LostHandler = Callable[[], Awaitable[None]]
 MAX_SUBSCRIPTIONS_PER_SOCKET = 1000
 # Sockets one user may hold open on this server process.
 MAX_SOCKETS_PER_USER = 32
+# Shard streams (Redis connections) this process may hold per shard, over all
+# its sockets; while a shard is at it, new sockets are refused.
+MAX_STREAMS_PER_SHARD = 300
 # Opening a shard connection retries for minutes while Redis is down; give up
 # sooner so the handler answers and the router reads the socket again.
 _STREAM_OPEN_TIMEOUT_S = 15.0
@@ -79,8 +83,8 @@ class _ShardStream:
         self._client: AsyncRedis | None = None
         self._pubsub: AsyncPubSub | None = None
         self._task: asyncio.Task | None = None
-        # channels we SUNSUBSCRIBEd whose confirmation is still on its way
-        self._unsubscribing: set[str] = set()
+        # SUNSUBSCRIBEs sent per channel whose confirmation is still on its way
+        self._unsubscribing: Counter[str] = Counter()
         self._stopping = False
 
     async def add(self, channel: str, handler: MessageHandler) -> None:
@@ -94,7 +98,6 @@ class _ShardStream:
             if not self.handlers:
                 await self._close_quietly()
             raise
-        self._unsubscribing.discard(channel)
         self.handlers[channel] = handler
         if self._task is None:
             self._task = asyncio.create_task(self._pump(pubsub))
@@ -107,7 +110,7 @@ class _ShardStream:
             return
         if self._pubsub is None:
             return
-        self._unsubscribing.add(channel)
+        self._unsubscribing[channel] += 1
         try:
             await self._pubsub.sunsubscribe(channel)
         except Exception:
@@ -161,8 +164,8 @@ class _ShardStream:
             msg_type = message.get("type")
             channel = message.get("channel")
             if msg_type == "sunsubscribe":
-                if channel in self._unsubscribing:
-                    self._unsubscribing.discard(channel)
+                if self._unsubscribing[channel] > 0:
+                    self._unsubscribing[channel] -= 1
                     continue
                 # Not ours: the slot moved and Redis dropped the subscription.
                 return
@@ -190,18 +193,18 @@ class ConnectionManager:
         self._ws_streams: dict[WebSocket, dict[Shard, _ShardStream]] = {}
         # user_id → that user's sockets on this process
         self._user_sockets: dict[str, set[WebSocket]] = {}
+        # shard → shard streams open to it from this process
+        self._streams_per_shard: Counter[Shard] = Counter()
 
     async def connect_socket(self, websocket: WebSocket, *, user_id: str) -> bool:
-        """Accept the socket, or refuse the handshake and return False when the
-        user already holds ``MAX_SOCKETS_PER_USER`` here."""
-        sockets = self._user_sockets.setdefault(user_id, set())
-        if len(sockets) >= MAX_SOCKETS_PER_USER:
-            logger.warning(f"Refusing WebSocket for user #{user_id}: too many open")
-            await websocket.close(
-                code=WS_CLOSE_TRY_AGAIN_LATER, reason="Too many connections"
-            )
+        """Accept the socket, or close it with 1013 and return False when the
+        user holds ``MAX_SOCKETS_PER_USER`` here or a shard is at
+        ``MAX_STREAMS_PER_SHARD``."""
+        held = len(self._user_sockets.get(user_id, ()))
+        if held >= MAX_SOCKETS_PER_USER or self._a_shard_is_full():
+            await self._refuse(websocket, user_id)
             return False
-        sockets.add(websocket)
+        self._user_sockets.setdefault(user_id, set()).add(websocket)
         try:
             await websocket.accept()
         except BaseException:
@@ -216,8 +219,9 @@ class ConnectionManager:
         self.active_connections.discard(websocket)
         self._release_user_socket(user_id, websocket)
         # Stop the shard streams before dropping bookkeeping to avoid leaks.
-        for stream in self._ws_streams.pop(websocket, {}).values():
+        for shard, stream in self._ws_streams.pop(websocket, {}).items():
             await stream.stop()
+            self._release_stream(shard)
         self._ws_notifications.pop(websocket, None)
         for channel_key in self._ws_subs.pop(websocket, {}):
             subscribers = self.subscriptions.get(channel_key)
@@ -306,16 +310,19 @@ class ConnectionManager:
         streams = self._ws_streams.setdefault(websocket, {})
         stream = streams.get(shard)
         if stream is None:
+            if self._streams_per_shard[shard] >= MAX_STREAMS_PER_SHARD:
+                raise ValueError("Server busy, try again later")
 
             async def on_lost() -> None:
                 await self._close_for_lost_stream(websocket)
 
             stream = streams[shard] = _ShardStream(on_lost)
+            self._streams_per_shard[shard] += 1
         try:
             await stream.add(full_channel, handler)
         except BaseException:
-            if not stream.handlers:
-                streams.pop(shard, None)
+            if not stream.handlers and streams.pop(shard, None) is not None:
+                self._release_stream(shard)
             raise
 
     async def _unsubscribe(self, websocket: WebSocket, full_channel: str) -> None:
@@ -326,6 +333,7 @@ class ConnectionManager:
             await stream.remove(full_channel)
             if not stream.handlers:
                 streams.pop(shard, None)
+                self._release_stream(shard)
             return
 
     async def _close_for_lost_stream(self, websocket: WebSocket) -> None:
@@ -339,6 +347,26 @@ class ConnectionManager:
         except Exception as e:
             if not _is_ws_close_race(e, websocket):
                 logger.warning("Failed to close WebSocket", exc_info=True)
+
+    async def _refuse(self, websocket: WebSocket, user_id: str) -> None:
+        # Accepted first, so the client gets 1013 rather than a failed handshake.
+        logger.warning(f"Refusing WebSocket for user #{user_id}: server busy")
+        try:
+            await websocket.accept()
+            await websocket.close(
+                code=WS_CLOSE_TRY_AGAIN_LATER, reason="Try again later"
+            )
+        except Exception as e:
+            if not _is_ws_close_race(e, websocket):
+                logger.warning("Failed to refuse WebSocket", exc_info=True)
+
+    def _a_shard_is_full(self) -> bool:
+        return any(n >= MAX_STREAMS_PER_SHARD for n in self._streams_per_shard.values())
+
+    def _release_stream(self, shard: Shard) -> None:
+        self._streams_per_shard[shard] -= 1
+        if self._streams_per_shard[shard] <= 0:
+            del self._streams_per_shard[shard]
 
     def _release_user_socket(self, user_id: str, websocket: WebSocket) -> None:
         sockets = self._user_sockets.get(user_id)

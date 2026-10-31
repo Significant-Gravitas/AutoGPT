@@ -15,6 +15,7 @@ import backend.data.redis_client as redis_client
 from backend.api.conn_manager import (
     ConnectionManager,
     _graph_execs_channel_key,
+    _notification_bus_channel,
     event_bus_channel,
     graph_exec_channel_key,
 )
@@ -424,9 +425,12 @@ async def test_one_socket_holds_one_connection_per_shard(monkeypatch) -> None:
             )
         await asyncio.sleep(0.2)
 
-        shards = {redis_client.resolve_shard_for_channel(c) for c in channels.values()}
+        shards = {
+            redis_client.resolve_shard_for_channel(c)
+            for c in [*channels.values(), _notification_bus_channel(user_id)]
+        }
         assert len(shards) > 1, "the channels must spread over several shards"
-        assert len(opened) <= len(shards) + 1  # + the notification channel's shard
+        assert len(opened) == len(shards)
         assert len(opened) == len(set(cm._ws_streams[ws]))
 
         for graph_id, channel in channels.items():

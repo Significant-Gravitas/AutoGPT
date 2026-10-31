@@ -258,7 +258,12 @@ def test_only_the_shard_stream_opens_pubsub_connections() -> None:
     """Only ``_ShardStream`` opens pub/sub connections, so they stay one per
     shard per socket."""
     api_dir = Path(__file__).parent
-    openers = {"connect_sharded_pubsub_async", "connect_sharded_pubsub"}
+    openers = {
+        "connect_sharded_pubsub_async",
+        "connect_sharded_pubsub",
+        "listen_events",
+        "wait_for_event",
+    }
     callers: set[str] = set()
     for path in api_dir.rglob("*.py"):
         if path.name.endswith("_test.py"):
@@ -337,7 +342,8 @@ async def test_sockets_per_user_are_capped(
             assert await connection_manager.connect_socket(ws, user_id="user-1")
         refused = sockets[-1]
         assert not await connection_manager.connect_socket(refused, user_id="user-1")
-        refused.accept.assert_not_called()
+        # Accepted, then closed, so the browser sees the 1013 code.
+        refused.accept.assert_awaited_once()
         refused.close.assert_awaited_once()
         assert refused.close.await_args.kwargs["code"] == WS_CLOSE_TRY_AGAIN_LATER
 
@@ -347,6 +353,34 @@ async def test_sockets_per_user_are_capped(
         )
         await connection_manager.disconnect_socket(sockets[0], user_id="user-1")
         assert await connection_manager.connect_socket(refused, user_id="user-1")
+
+
+@pytest.mark.asyncio
+async def test_streams_per_shard_are_capped_per_process(
+    connection_manager: ConnectionManager,
+    fake_redis: _FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Over all its sockets the process holds at most ``MAX_STREAMS_PER_SHARD``
+    connections to a shard; at it, new sockets and new streams are refused."""
+    monkeypatch.setattr("backend.api.conn_manager.MAX_STREAMS_PER_SHARD", 2)
+    fake_redis.shard_of = lambda c: ("redis", 2) if c.endswith("/u-b") else ("redis", 1)
+    ws1, ws2, ws3, ws4 = (AsyncMock(spec=WebSocket) for _ in range(4))
+
+    assert await connection_manager.connect_socket(ws1, user_id="u-a")
+    assert await connection_manager.connect_socket(ws2, user_id="u-b")
+    assert await connection_manager.connect_socket(ws3, user_id="u-a")
+    # Shard 1 now holds two streams (ws1's and ws3's notifications).
+    with pytest.raises(ValueError, match="Server busy"):
+        await connection_manager.subscribe_graph_execs(
+            user_id="u-b", graph_id="g", websocket=ws2
+        )
+    assert not await connection_manager.connect_socket(ws4, user_id="u-c")
+    assert ws4.close.await_args.kwargs["code"] == WS_CLOSE_TRY_AGAIN_LATER
+
+    await connection_manager.disconnect_socket(ws1, user_id="u-a")
+    assert await connection_manager.connect_socket(ws4, user_id="u-c")
+    assert len(fake_redis.clients) == 4
 
 
 @pytest.mark.asyncio
@@ -465,6 +499,52 @@ async def test_stream_keeps_flowing_after_its_own_sunsubscribe(
         fake_redis.pubsubs[0].sunsubscribe.assert_awaited_once_with("{u/g}/exec/a")
     finally:
         await stream.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_quick_resubscribe_is_not_read_as_a_lost_stream(
+    fake_redis: _FakeRedis,
+) -> None:
+    on_a = AsyncMock()
+    on_lost = AsyncMock()
+    stream = _ShardStream(on_lost=on_lost)
+    try:
+        await stream.add("{u/g}/exec/a", AsyncMock())
+        await stream.add("{u/g}/exec/b", AsyncMock())
+        await stream.remove("{u/g}/exec/a")
+        await stream.add("{u/g}/exec/a", on_a)
+        # The removal's confirmation arrives after the channel is back.
+        inbox = fake_redis.pubsubs[0].inbox
+        inbox.put_nowait({"type": "sunsubscribe", "channel": "{u/g}/exec/a"})
+        inbox.put_nowait({"type": "smessage", "channel": "{u/g}/exec/a", "data": 1})
+        await _until(lambda: on_a.await_count == 1)
+        on_lost.assert_not_awaited()
+    finally:
+        await stream.stop()
+
+
+@pytest.mark.asyncio
+async def test_opening_a_stream_gives_up_when_redis_does_not_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("backend.api.conn_manager._STREAM_OPEN_TIMEOUT_S", 0.05)
+
+    async def never_connects(channel: str) -> MagicMock:
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    stream = _ShardStream(on_lost=AsyncMock())
+    # The outer bound turns a missing open timeout into a failure, not a hang.
+    async with asyncio.timeout(5):
+        with (
+            patch(
+                "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
+                side_effect=never_connects,
+            ),
+            pytest.raises(TimeoutError),
+        ):
+            await stream.add("{u/g}/exec/a", AsyncMock())
+    assert stream.handlers == {}
 
 
 @pytest.mark.asyncio

@@ -113,6 +113,7 @@ async def test_websocket_router_stops_when_the_handshake_is_refused(
         "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
     )
     mock_manager.connect_socket.return_value = False
+    mock_websocket.receive_text.side_effect = WebSocketDisconnect()
 
     await websocket_router(
         cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
