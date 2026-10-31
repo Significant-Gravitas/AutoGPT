@@ -3,8 +3,8 @@
 Mirrors ``soul_proposal`` for team changes: the preview tools (``hire_expert``,
 ``raise_expert``, ``update_expert``) write nothing and park the exact proposal
 in Redis under a one-time ``confirmation_id``, and ``confirm_expert_change``
-loads it bound to the same Otto session, consumes it single-use, and
-applies it.
+loads it bound to the same Otto session, takes the user's own Approve of it,
+consumes it single-use, and applies it.
 """
 
 import logging
@@ -25,6 +25,7 @@ from backend.api.features.experts.models import (
     HireResult,
     RaiseResult,
 )
+from backend.copilot.gate.card_approval import take_card_answer
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import experts_db
 from backend.data.redis_client import AsyncRedisClient
@@ -85,12 +86,6 @@ class ExpertChangeProposal(BaseModel):
     expert_id: str | None = None
     # Only set for ``kind == "update"``: see ``ExpertSoulSnapshot``.
     expected_soul: ExpertSoulSnapshot | None = None
-    # The human turn this preview answered — see ``user_turn_watermark``.
-    # ``None`` only for a proposal parked by code that predates the field.
-    # An unknown watermark cannot prove the user answered anything, so the
-    # gate refuses it rather than reading it as "answered at -1", which any
-    # session with one sequenced user message would clear.
-    user_turn_watermark: int | None = None
     # Only for a hire proposed for a task already in the chat (see
     # ``hire_expert``): the task, whether confirming this id hands it over,
     # and the id of the other choice for the same hire.
@@ -128,21 +123,20 @@ def _stale_preview_error(session_id: str) -> ErrorResponse:
 def _unapproved_preview_error(session_id: str) -> ErrorResponse:
     return ErrorResponse(
         message=(
-            "The user has not answered this preview yet, so there is nothing "
-            "to confirm. Read the change back to them and call "
-            "tool:confirm_expert_change only after they reply approving it."
+            "Nothing changed: only the user's click on Approve on this change's "
+            "card applies it; a reply in the chat does not. Ask them to use the "
+            "card's Approve button (in the AutoGPT app if this chat shows no "
+            "card), and call tool:confirm_expert_change only once they have."
         ),
         session_id=session_id,
     )
 
 
-def _unwatermarked_preview_error(session_id: str) -> ErrorResponse:
+def _declined_preview_error(session_id: str) -> ErrorResponse:
     return ErrorResponse(
         message=(
-            "This preview was created before the approval check and carries "
-            "no record of the turn it answered, so it cannot be confirmed. "
-            f"Call {_PREVIEW_TOOLS} again for a fresh preview and confirm "
-            "that one after the user approves it."
+            "The user declined this change on its card, so it was discarded and "
+            "nothing changed. Do not propose it again unless they ask."
         ),
         session_id=session_id,
     )
@@ -157,25 +151,6 @@ def _already_confirmed_error(session_id: str) -> ErrorResponse:
             "change, or if that earlier confirmation reported an error."
         ),
         session_id=session_id,
-    )
-
-
-def user_turn_watermark(session: ChatSession) -> int:
-    """Sequence of the newest human-authored message in this session.
-
-    The preview stores it and ``load_bound_proposal`` demands a strictly
-    higher one, so the approval the confirm claims to act on has to be a real
-    user turn. Without it the same assistant turn that previewed a change can
-    call ``confirm_expert_change`` on the id it just received, and the whole
-    preview/confirm seam collapses into one uninterrupted model decision.
-    """
-    return max(
-        (
-            message.sequence
-            for message in session.messages
-            if message.role == "user" and message.sequence is not None
-        ),
-        default=-1,
     )
 
 
@@ -207,8 +182,7 @@ def autopilot_session_guard(
     ``origin`` is a property of the session, not of the invocation, so it
     cannot by itself prove a human wrote *this* turn — a scheduled follow-up
     fired into a chat the user already owns still reads as interactive. The
-    user-turn watermark in ``load_bound_proposal`` is what closes that gap at
-    the confirm step.
+    user's own Approve that ``load_bound_proposal`` requires closes that gap.
     """
     if not user_id:
         return ErrorResponse(
@@ -276,6 +250,7 @@ async def load_bound_proposal(
     user_id: str,
     session: ChatSession,
 ) -> ExpertChangeProposal | ErrorResponse:
+    """The proposal, once the user approved exactly this id on its card."""
     key = proposal_key(confirmation_id)
     raw = await redis.get(key)
     if raw is None:
@@ -299,23 +274,29 @@ async def load_bound_proposal(
             session_id=session.session_id,
         )
 
+    sibling = proposal.sibling_confirmation_id
+    # "Not now" on a hire offered with its task declines both of its ids.
+    others = (sibling,) if sibling else ()
+    answer = await take_card_answer(
+        user_id, session.session_id, confirmation_id, *others
+    )
+    if answer == "declined":
+        for cid in (confirmation_id, *others):
+            await redis.delete(proposal_key(cid))
+        return _declined_preview_error(session.session_id)
     # Checked before the DEL below so a premature confirm doesn't burn the
     # proposal the user is about to approve for real.
-    if proposal.user_turn_watermark is None:
-        return _unwatermarked_preview_error(session.session_id)
-    if user_turn_watermark(session) <= proposal.user_turn_watermark:
+    if answer is None:
         return _unapproved_preview_error(session.session_id)
 
-    sibling = proposal.sibling_confirmation_id
     if sibling is None:
         return await _consume(redis, confirmation_id, session.session_id, proposal)
     # One hire parked two ways (the plain hire / "hire and start"): a SET NX
     # on a key both ids share decides which answer takes it. The other id's
     # proposal is left in place and refused by this claim, so nothing is
     # destroyed before this confirm is sure to complete; a failure releases
-    # the claim and the user's answer stays answerable. One shared key rather
-    # than a multi-key DEL, because the two proposal keys can sit on
-    # different cluster slots.
+    # the claim. One shared key rather than a multi-key DEL, because the two
+    # proposal keys can sit on different cluster slots.
     claim = _claim_key(confirmation_id, sibling)
     if not await redis.set(claim, confirmation_id, nx=True, ex=PROPOSAL_TTL_SECONDS):
         return _already_confirmed_error(session.session_id)

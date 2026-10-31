@@ -4,6 +4,7 @@ import logging
 
 from pydantic import BaseModel, Field, ValidationError
 
+from backend.copilot.gate.card_approval import take_card_answer
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import experts_db
 from backend.data.redis_client import AsyncRedisClient
@@ -51,6 +52,7 @@ async def load_bound_proposal(
     user_id: str,
     session: ChatSession,
 ) -> SoulEditProposal | ErrorResponse:
+    """The proposal, once the user approved exactly this id on its card."""
     key = proposal_key(confirmation_id)
     raw = await redis.get(key)
     if raw is None:
@@ -76,11 +78,41 @@ async def load_bound_proposal(
             session_id=session.session_id,
         )
 
+    answer = await take_card_answer(user_id, session.session_id, confirmation_id)
+    if answer == "declined":
+        await redis.delete(key)
+        return _declined_error(session.session_id)
+    # Checked before the DEL below, so the proposal stays for the user to answer.
+    if answer is None:
+        return _unapproved_error(session.session_id)
+
     # GET and DEL are intentionally separate: binding must be checked before
     # consumption so a mismatched caller cannot invalidate a legitimate proposal.
     if await redis.delete(key) == 0:
         return _stale_preview_error(session.session_id)
     return proposal
+
+
+def _declined_error(session_id: str) -> ErrorResponse:
+    return ErrorResponse(
+        message=(
+            "The user declined this Soul edit on its card, so it was discarded "
+            "and nothing changed. Do not propose it again unless they ask."
+        ),
+        session_id=session_id,
+    )
+
+
+def _unapproved_error(session_id: str) -> ErrorResponse:
+    return ErrorResponse(
+        message=(
+            "Nothing changed: only the user's click on Approve on this edit's "
+            "card applies it; a reply in the chat does not. Ask them to use the "
+            "card's Approve button (in the AutoGPT app if this chat shows no "
+            "card), and call tool:confirm_expert_soul_update only once they have."
+        ),
+        session_id=session_id,
+    )
 
 
 async def apply_proposal(

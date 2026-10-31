@@ -117,9 +117,14 @@ def test_the_headline_names_the_action_and_its_object():
     assert headline_for("create_folder", {"name": "x" * 100}).text.endswith("…”")
 
 
+# No longer held (each applies only on its card's Approve); old chats keep the
+# cards they were held under, and the reference fixture still builds one.
+_HELD_BEFORE = {"confirm_expert_change", "confirm_expert_soul_update"}
+
+
 def test_every_tool_the_gate_can_hold_has_its_own_words():
     held = {tool for tool in classified_tools() if effect_for(tool) in PARKABLE}
-    assert gated_tools() == held
+    assert gated_tools() == held | _HELD_BEFORE
 
 
 def test_fields_follow_the_schema_required_first_with_labels_and_formats():
