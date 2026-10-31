@@ -124,7 +124,7 @@ After components provided all necessary data, the agent needs to build the final
 Currently, `PromptStrategy` (*not* a protocol) is responsible for building the final prompt.
 
 If you want to change the way the prompt is built, you need to create a new `PromptStrategy` class, and then call relevant methods in your agent class.
-You can have a look at the default strategy used by the AutoGPT Agent: [OneShotAgentPromptStrategy](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/original_autogpt/agents/prompt_strategies/one_shot.py), and how it's used in the [Agent](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/original_autogpt/agents/agent.py) (search for `self.prompt_strategy`).
+You can have a look at the default strategy used by the AutoGPT Agent: [OneShotAgentPromptStrategy](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/original_autogpt/autogpt/agents/prompt_strategies/one_shot.py), and how it's used in the [Agent](https://github.com/Significant-Gravitas/AutoGPT/tree/master/classic/original_autogpt/autogpt/agents/agent.py) (search for `self.prompt_strategy`).
 
 ## Example `UserInteractionComponent`
 
