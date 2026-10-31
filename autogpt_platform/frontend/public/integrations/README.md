@@ -16,5 +16,6 @@ The generic `database.png` and `generic_webhook.png` icons are rendered from `Da
 | `openseo.png`     | [OpenSEO app icon](https://github.com/every-app/open-seo/blob/0ffff93101043aad7600a3b6a499a0cd2887ef49/public/apple-touch-icon.png), served at [openseo.so](https://openseo.so)  |
 | `posthog.png`     | [PostHog brand logomark](https://github.com/PostHog/posthog.com/blob/master/static/brand/posthog-logomark%402x.png)                                                              |
 | `rmfg.png`        | [RMFG app icon](https://rmfg.com/apple-icon.png)                                                                                                                                 |
+| `spraay.png`      | [Spraay app icon](https://spraay.app/spraay-logo-1000x1000.png), linked from [spraay.app](https://spraay.app); resized to 256x256                                                |
 | `stripe_link.png` | [Link app icon](https://images.stripeassets.com/fzn2n1nzq965/35yClx6UuTze6h851WsJqW/18da88ac03bd96140d16bdac62b94578/app-icon.png), linked from [link.com](https://www.link.com) |
 | `typesafe.png`    | [TypeSafe app icon](https://framerusercontent.com/images/kcuF2BEp5XaVfkmFB634IPRKQH0.png), linked from [typesafe.ai](https://typesafe.ai)                                        |

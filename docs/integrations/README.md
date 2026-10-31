@@ -86,6 +86,9 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Slant3D Process Order](block-integrations/slant3d/order_status.md#slant3d-process-order) | Submit an approved Slant3D draft to order physical 3D-printed parts for manufacturing and delivery |
 | [Slant3D Slicer](block-integrations/slant3d/slicing.md#slant3d-slicer) | Get a live 3D printing quote for physical parts from STL URLs or attached workspace files |
 | [Slant3D Tracking](block-integrations/slant3d/order_status.md#slant3d-tracking) | Track order status and shipping |
+| [Spraay Batch Payment](block-integrations/spraay/batch_payment.md#spraay-batch-payment) | Prepare a non-custodial batch payment to up to 200 recipients on Base or peaq |
+| [Spraay Get Balance](block-integrations/spraay/balance.md#spraay-get-balance) | Check native ETH and ERC-20 balances for any wallet on Base |
+| [Spraay Transaction Status](block-integrations/spraay/transaction_status.md#spraay-transaction-status) | Check the on-chain status of an EVM transaction and decode it into a plain-English summary with token transfers |
 | [Store Value](block-integrations/basic.md#store-value) | Holds or receives a value and outputs it statically so that it can be used multiple times within the same agent run |
 | [Universal Type Converter](block-integrations/basic.md#universal-type-converter) | This block is used to convert a value to a universal type |
 | [XML Parser](block-integrations/basic.md#xml-parser) | Parses XML using gravitasml to tokenize and coverts it to dict |
