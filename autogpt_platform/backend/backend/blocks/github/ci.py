@@ -17,6 +17,7 @@ from backend.blocks._base import (
 )
 from backend.data.model import SchemaField
 from backend.util.request import HTTPClientError
+from backend.util.user_regex import compile_user_regex
 
 from ._api import get_api
 from ._auth import (
@@ -29,9 +30,7 @@ from ._auth import (
 
 logger = logging.getLogger(__name__)
 
-# Compiling the search pattern isn't covered by the timeout, and the timeout
-# is shared by every line searched in one run.
-SEARCH_PATTERN_MAX_LENGTH = 10_000
+# The search timeout is shared by every line searched in one run.
 SEARCH_TIMEOUT_SECONDS = 5.0
 SEARCH_TIMED_OUT = "Searching the CI logs timed out."
 
@@ -442,13 +441,8 @@ class GithubGetCIResultsBlock(Block):
 
 
 def _compile_search_pattern(pattern: str) -> regex.Pattern[str]:
-    if len(pattern) > SEARCH_PATTERN_MAX_LENGTH:
-        raise ValueError(
-            f"Search pattern is too large to evaluate safely "
-            f"({len(pattern)} characters; maximum {SEARCH_PATTERN_MAX_LENGTH})."
-        )
     try:
-        return regex.compile(pattern, regex.IGNORECASE | regex.MULTILINE)
+        return compile_user_regex(pattern, regex.IGNORECASE | regex.MULTILINE)
     except regex.error as error:
         raise ValueError(f"Invalid search pattern: {error}") from error
 

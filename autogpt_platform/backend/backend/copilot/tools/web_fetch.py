@@ -134,15 +134,24 @@ def _html_to_text(html: str) -> str:
     return h.handle(cleaned_html).strip()
 
 
-_TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
+_TITLE_OPEN_RE = re.compile(r"<title", re.IGNORECASE)
+_TITLE_CLOSE_RE = re.compile(r"</title>", re.IGNORECASE)
 
 
 def _extract_title(html: str) -> str | None:
-    match = _TITLE_RE.search(html)
-    if not match:
+    # Each delimiter is searched for once, so this is linear in the page's length;
+    # a later <title can't have an end the first one lacks.
+    opening = _TITLE_OPEN_RE.search(html)
+    if not opening:
         return None
-    title = re.sub(r"\s+", " ", unescape(match.group(1))).strip()
-    return title or None
+    content_start = html.find(">", opening.end()) + 1
+    if not content_start:
+        return None
+    closing = _TITLE_CLOSE_RE.search(html, content_start)
+    if not closing:
+        return None
+    title = re.sub(r"\s+", " ", unescape(html[content_start : closing.start()]))
+    return title.strip() or None
 
 
 def _is_client_rendered_shell(raw_html: str, extracted_text: str) -> bool:

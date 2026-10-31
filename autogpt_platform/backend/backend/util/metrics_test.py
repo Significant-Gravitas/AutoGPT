@@ -250,6 +250,54 @@ def test_before_send_output_survives_the_sdk_transport() -> None:
     )
 
 
+_JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.c2lnbmF0dXJlLWJ5dGVz"
+
+
+@pytest.mark.parametrize(
+    "message, filtered",
+    [
+        (f"token {_JWT}", True),
+        (f"base64-{_JWT}", True),
+        ("eyJhbGciOiJIUzI1NiJ9 and nothing after", False),
+    ],
+)
+def test_before_send_filters_a_jwt_wherever_its_run_starts(
+    message: str, filtered: bool
+) -> None:
+    scrubbed = _before_send(_log_event("backend.api.rest_api", message), {})
+
+    assert scrubbed is not None
+    assert (scrubbed["logentry"]["formatted"] == "[Filtered]") is filtered
+
+
+def test_before_send_searches_no_more_than_its_budget(monkeypatch) -> None:
+    searched: list[int] = []
+    pattern = metrics._EMBEDDED_SECRET_ASSIGNMENT
+
+    class _Recording:
+        def search(self, text: str):
+            searched.append(len(text))
+            return pattern.search(text)
+
+    monkeypatch.setattr(metrics, "_EMBEDDED_SECRET_ASSIGNMENT", _Recording())
+    chunk = "x" * metrics._SENTRY_MAX_VALUE_LENGTH
+    event = _log_event("backend.api.rest_api", "api_key=FAKE-SECRET-1")
+    event["breadcrumbs"] = {"values": [{"message": chunk}] * 3}
+    event["extra"] = {"payload": {"items": [chunk] * 100}}
+
+    scrubbed = _before_send(event, {})
+
+    assert scrubbed is not None
+    assert sum(searched) <= metrics._SENTRY_SCRUB_BUDGET
+    assert scrubbed["logentry"]["formatted"] == "[Filtered]"
+    payload = scrubbed["extra"]["payload"]["items"]
+    assert set(payload) == {chunk, "[Filtered]"}
+    # Earlier log lines come last, so they never use up what the error needs.
+    assert [crumb["message"] for crumb in scrubbed["breadcrumbs"]["values"]] == [
+        "[Filtered]"
+    ] * 3
+
+
 def test_before_send_keeps_untyped_balance_message() -> None:
     try:
         raise RuntimeError("Third-party API reported insufficient balance")
@@ -426,6 +474,16 @@ def test_sentry_init_sends_no_trace_headers_to_third_parties(monkeypatch) -> Non
     metrics.sentry_init()
 
     assert calls[0]["trace_propagation_targets"] == []
+
+
+def test_sentry_init_cuts_long_values_before_they_are_scrubbed(monkeypatch) -> None:
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    metrics.sentry_init()
+
+    assert calls[0]["max_value_length"] == metrics._SENTRY_MAX_VALUE_LENGTH
 
 
 def test_sentry_init_skipped_in_subprocess_spawned_by_pytest(monkeypatch) -> None:

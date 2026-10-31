@@ -276,6 +276,15 @@ class TestValidateEmailRecipients:
         with pytest.raises(ValueError, match="Invalid email address"):
             validate_email_recipients(["not-an-email"])
 
+    def test_address_at_the_length_limit(self):
+        validate_email_recipients(["a" * (254 - len("@example.com")) + "@example.com"])
+
+    def test_address_over_the_length_limit(self):
+        with pytest.raises(ValueError, match="Invalid email address"):
+            validate_email_recipients(
+                ["a" * (255 - len("@example.com")) + "@example.com"]
+            )
+
     def test_invalid_missing_domain_dot(self):
         with pytest.raises(ValueError, match="Invalid email address"):
             validate_email_recipients(["user@localhost"])
