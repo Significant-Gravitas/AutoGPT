@@ -10,6 +10,7 @@ import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
 import type { ChainRow } from "./helpers";
 import { ProviderIcon, RowIcon } from "./RowIcon";
 import { useSubSessionEffectiveStatus } from "./SubSessionLive";
+import { StepClock } from "./StepClock";
 import { SwapText } from "./SwapText";
 import { HeldTag } from "./HeldCallRowParts";
 import { heldShowsOwnCall } from "./heldRow";
@@ -155,6 +156,13 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
   const heldTag = row.held ? (
     <HeldTag state={row.held.state} read={row.held.read} />
   ) : null;
+  const stepClock =
+    row.state === "running" &&
+    !isReasoning &&
+    !liveSubSession &&
+    row.held?.state !== "waiting" ? (
+      <StepClock stepKey={row.key} />
+    ) : null;
 
   return (
     <div className="flex items-stretch gap-2.5">
@@ -187,6 +195,7 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
           >
             {rowText}
             {heldTag}
+            {stepClock}
             {!liveReasoning && (
               <Icon
                 icon={ArrowDown01Icon}
@@ -202,6 +211,7 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
           <div className="flex h-7 items-center gap-1.5">
             {rowText}
             {heldTag}
+            {stepClock}
           </div>
         )}
         {row.detail && (
