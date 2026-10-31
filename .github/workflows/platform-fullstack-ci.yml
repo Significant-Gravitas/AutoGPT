@@ -4,12 +4,14 @@ on:
   push:
     branches: [master, dev]
     paths:
+      - ".dockerignore"
       - ".github/workflows/platform-fullstack-ci.yml"
       - ".github/scripts/validate_playwright_json.py"
       - ".github/scripts/test_validate_playwright_json.py"
       - ".github/scripts/validate_cobertura.py"
       - ".github/scripts/test_validate_cobertura.py"
       - ".github/scripts/test_e2e_seed_cache_contract.py"
+      - ".github/scripts/test_frontend_build_context.py"
       - ".github/scripts/hosted_journeys_env.py"
       - ".github/scripts/test_hosted_journeys_env.py"
       - ".github/scripts/docker-pull-with-retry.sh"
@@ -18,12 +20,14 @@ on:
       - "autogpt_platform/**"
   pull_request:
     paths:
+      - ".dockerignore"
       - ".github/workflows/platform-fullstack-ci.yml"
       - ".github/scripts/validate_playwright_json.py"
       - ".github/scripts/test_validate_playwright_json.py"
       - ".github/scripts/validate_cobertura.py"
       - ".github/scripts/test_validate_cobertura.py"
       - ".github/scripts/test_e2e_seed_cache_contract.py"
+      - ".github/scripts/test_frontend_build_context.py"
       - ".github/scripts/hosted_journeys_env.py"
       - ".github/scripts/test_hosted_journeys_env.py"
       - ".github/scripts/docker-pull-with-retry.sh"
@@ -100,6 +104,7 @@ jobs:
             ../../.github/scripts/test_validate_playwright_json.py \
             ../../.github/scripts/test_validate_cobertura.py \
             ../../.github/scripts/test_e2e_seed_cache_contract.py \
+            ../../.github/scripts/test_frontend_build_context.py \
             ../../.github/scripts/test_hosted_journeys_env.py \
             ../scripted_model/tests \
             --junitxml="$RUNNER_TEMP/fullstack-validator-results/playwright-validator-tests.xml"
