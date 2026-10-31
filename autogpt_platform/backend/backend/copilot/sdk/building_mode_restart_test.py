@@ -294,6 +294,10 @@ class TestApplyBuildingModeRestart:
             "backend.copilot.sdk.service.build_builder_system_prompt_suffix",
             new=mocker.AsyncMock(return_value="<building_guide>GUIDE</building_guide>"),
         )
+        mocker.patch(
+            "backend.copilot.sdk.service.gate_active",
+            new=mocker.AsyncMock(return_value=True),
+        )
         identity = mocker.patch(
             "backend.copilot.sdk.service.build_expert_identity_suffix",
             new=mocker.AsyncMock(
@@ -319,7 +323,7 @@ class TestApplyBuildingModeRestart:
             )
 
         identity.assert_awaited_once_with(
-            "user-1", "expert-1", organization_id=None, team_id=None
+            "user-1", "expert-1", organization_id=None, team_id=None, gated=True
         )
         assert not _graphiti_ingest_allowed(
             expert_identity_validated=False,

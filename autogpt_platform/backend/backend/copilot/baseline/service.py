@@ -58,7 +58,7 @@ from backend.copilot.context import (
 from backend.copilot.continuation import send_trailing_note_as_user
 from backend.copilot.expert_context import build_expert_identity_suffix
 from backend.copilot.expert_kickoff import is_expert_kickoff_turn
-from backend.copilot.gate import active_mode
+from backend.copilot.gate import active_mode, gate_active
 from backend.copilot.gate.held import resolve_answered
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.graphiti.context_marker import append_injected_memory_block
@@ -1891,6 +1891,7 @@ async def stream_chat_completion_baseline(
         session.expert_id,
         organization_id=session.organization_id,
         team_id=session.team_id,
+        gated=await gate_active(session.user_id, session),
     )
 
     # The session row is the tenancy anchor; the turn entry's org/team only
