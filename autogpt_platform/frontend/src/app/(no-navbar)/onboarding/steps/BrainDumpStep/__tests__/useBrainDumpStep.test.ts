@@ -999,6 +999,27 @@ describe("useBrainDumpStep — typing", () => {
     expect(finalizeBody()).toMatchObject({ recording_id: "rec-1" });
   });
 
+  it("submits typed text where crypto.randomUUID is missing", async () => {
+    const originalCrypto = globalThis.crypto;
+    vi.stubGlobal("crypto", {
+      getRandomValues: originalCrypto.getRandomValues.bind(originalCrypto),
+    });
+    const { result } = await renderStep();
+
+    act(() => {
+      result.current.setTypedText("notes");
+    });
+    await act(async () => {
+      await result.current.handleSubmitTyped();
+    });
+
+    expect(finalizeBody()).toMatchObject({
+      recording_id: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      input_mode: "typed",
+    });
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
+  });
+
   it("fails on a typed dump the pipeline could not process", async () => {
     finalizeBrainDump.mockResolvedValue({
       status: 200,

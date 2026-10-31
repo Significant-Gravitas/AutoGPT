@@ -9,17 +9,18 @@ import type { CustomEdge } from "@/app/(platform)/build/components/FlowEditor/ed
 import { cleanNodes, cleanEdges } from "../../lib/dexie/draft-utils";
 import isEqual from "lodash/isEqual";
 import { environment } from "@/services/environment";
+import { v4 as uuidv4 } from "uuid";
 
 const SESSION_TEMP_ID_KEY = "builder_temp_flow_id";
 
 export function getOrCreateTempFlowId(): string {
   if (environment.isServerSide()) {
-    return `temp_${crypto.randomUUID()}`;
+    return `temp_${uuidv4({})}`;
   }
 
   let tempId = sessionStorage.getItem(SESSION_TEMP_ID_KEY);
   if (!tempId) {
-    tempId = `temp_${crypto.randomUUID()}`;
+    tempId = `temp_${uuidv4({})}`;
     sessionStorage.setItem(SESSION_TEMP_ID_KEY, tempId);
   }
   return tempId;
