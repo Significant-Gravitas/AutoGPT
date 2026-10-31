@@ -88,7 +88,11 @@ from backend.data.skill_package import (
     package_tree_sha256,
 )
 from backend.data.skill_version_files import SkillVersionFile
-from backend.data.skill_versions import SkillVersionRecord, content_hash
+from backend.data.skill_versions import (
+    SkillHeadRecord,
+    SkillVersionRecord,
+    content_hash,
+)
 from backend.data.workspace_scope import (
     EXPERT_SKILL_SCOPE_DENIED,
     WorkspaceAccessDeniedError,
@@ -2808,8 +2812,11 @@ async def list_all_skills(
     """
     skills = get_default_skills_for_index()
     if user_id:
-        owned = await list_user_skills(user_id, expert_id, scope)
-        paused = await paused_skill_names(user_id, expert_id)
+        # Independent reads: the owner's skill files and the paused names.
+        owned, paused = await asyncio.gather(
+            list_user_skills(user_id, expert_id, scope),
+            paused_skill_names(user_id, expert_id),
+        )
         if paused is None and require_complete:
             raise RuntimeError("Skill registry availability could not be verified")
         if paused is not None:
@@ -2950,7 +2957,11 @@ async def build_skills_update_notice(
     try:
         if not await is_skills_feature_enabled(user_id):
             return ""
-        current = await list_all_skills(user_id, expert_id, require_complete=True)
+        # The registry and the session's skill versions are independent reads.
+        current, session_versions = await asyncio.gather(
+            list_all_skills(user_id, expert_id, require_complete=True),
+            _session_skill_versions(user_id, expert_id, session_id),
+        )
     except Exception:
         logger.exception("[skills] failed to diff skills for update notice")
         return ""
@@ -2963,17 +2974,14 @@ async def build_skills_update_notice(
         for slug in await _consume_updated(user_id, expert_id)
         if slug in current_slugs and slug not in added
     ]
-    if session_id:
+    if session_id and session_versions is not None:
+        heads, previous = session_versions
         try:
-            heads = await skill_versions_db().list_heads(
-                user_id, owner_key_for(expert_id)
-            )
             current_versions = {
                 h.skill_name: h.current_version_id
                 for h in heads
                 if h.skill_name in current_slugs
             }
-            previous = await read_seen_index_revision(session_id)
             try:
                 previous_versions = json.loads(previous) if previous else {}
             except ValueError:
@@ -3023,6 +3031,23 @@ async def build_skills_update_notice(
     return (
         f"<{SKILLS_UPDATE_TAG}>\n" + "\n".join(lines) + f"\n</{SKILLS_UPDATE_TAG}>\n\n"
     )
+
+
+async def _session_skill_versions(
+    user_id: str, expert_id: str | None, session_id: str | None
+) -> tuple[list[SkillHeadRecord], str | None] | None:
+    """The owner's skill heads and the versions this chat last saw, or
+    ``None`` without a session or when the heads can't be read."""
+    if not session_id:
+        return None
+    try:
+        return await asyncio.gather(
+            skill_versions_db().list_heads(user_id, owner_key_for(expert_id)),
+            read_seen_index_revision(session_id),
+        )
+    except Exception:
+        logger.warning("[skills] could not check session skill versions", exc_info=True)
+        return None
 
 
 # ---------------------------------------------------------------------------

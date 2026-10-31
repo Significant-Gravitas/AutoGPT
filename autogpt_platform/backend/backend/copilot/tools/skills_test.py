@@ -1,6 +1,7 @@
 """Tests for the skill registry (frontmatter parsing + rendering + the
 ``<available_skills>`` index builder)."""
 
+import asyncio
 import hashlib
 import json
 import os
@@ -1603,6 +1604,54 @@ async def test_skills_update_notice_empty_when_flag_disabled():
             "user-1", prior_contents=["<available_skills>\n</available_skills>\n\nhi"]
         )
     assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_skills_update_notice_reads_the_registry_and_versions_side_by_side(
+    fake_learning_store, monkeypatch
+):
+    """Each read waits until the others have started, so reads made one after
+    another would time out and the turn would get no notice at all."""
+    started = {name: asyncio.Event() for name in ("files", "paused", "heads", "seen")}
+
+    def read(name: str, result):
+        async def _read(*_args, **_kwargs):
+            started[name].set()
+            await asyncio.wait_for(
+                asyncio.gather(*(event.wait() for event in started.values())),
+                timeout=2,
+            )
+            return result
+
+        return AsyncMock(side_effect=_read)
+
+    files = read("files", [ParsedSkill(name="mine", description="d", body="x")])
+    paused = read("paused", set())
+    heads = read("heads", [])
+    seen = read("seen", None)
+    monkeypatch.setattr(skills_module, "list_user_skills", files)
+    monkeypatch.setattr(skills_module, "paused_skill_names", paused)
+    monkeypatch.setattr(fake_learning_store, "list_heads", heads)
+    monkeypatch.setattr(skills_module, "read_seen_index_revision", seen)
+    monkeypatch.setattr(
+        skills_module, "is_skills_feature_enabled", AsyncMock(return_value=True)
+    )
+    monkeypatch.setattr(skills_module, "_consume_updated", AsyncMock(return_value=[]))
+
+    defaults = skills_module.get_default_skills_for_index()
+    notice = await build_skills_update_notice(
+        "user-1",
+        prior_contents=[
+            _history_with_index(skills_module.render_skills_index(defaults))
+        ],
+        session_id="chat-1",
+    )
+
+    assert "New skills: mine." in notice
+    files.assert_awaited_once()
+    paused.assert_awaited_once()
+    heads.assert_awaited_once()
+    seen.assert_awaited_once_with("chat-1")
 
 
 # ---------------------------------------------------------------------------
