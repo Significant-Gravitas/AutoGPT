@@ -22,6 +22,7 @@ import {
   assertEmailHasMailServer,
   sharedLookups,
 } from "./email-deliverability";
+import { limitAuthAttempts, refundSuccessfulAttempt } from "./attempt-limits";
 import { isAwaitingEmailVerification } from "./email-verification";
 import { emailRepeatSignUp } from "./existing-user-sign-up";
 import { capAuthEmailsPerIP, IP_CAPPED_PATHS } from "./ip-email-cap";
@@ -144,6 +145,13 @@ export const auth = betterAuth({
   disabledPaths: DISABLED_AUTH_PATHS,
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
+      // Sign-in and reset emails are limited per IP and address (attempt-limits.ts).
+      await limitAuthAttempts({
+        path: ctx.path,
+        body: ctx.body,
+        headers: ctx.headers,
+        context: ctx.context,
+      });
       const signUpEmail =
         ctx.path === EMAIL_SIGN_UP_PATH && typeof ctx.body?.email === "string"
           ? ctx.body.email
@@ -188,6 +196,12 @@ export const auth = betterAuth({
     // logged and the address left unverified: the next sign-in sends a fresh
     // verify link (sendOnSignIn).
     after: createAuthMiddleware(async (ctx) => {
+      // A successful sign-in doesn't count towards its address's limit.
+      await refundSuccessfulAttempt({
+        path: ctx.path,
+        returned: ctx.context.returned,
+        context: ctx.context,
+      });
       if (ctx.path !== "/reset-password") return;
       if (isAPIError(ctx.context.returned)) return;
       const token = ctx.body?.token ?? ctx.query?.token;
