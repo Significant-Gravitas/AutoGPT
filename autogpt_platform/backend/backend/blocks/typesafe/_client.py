@@ -15,11 +15,14 @@ from typesafe_sdk._core.errors import (
 )
 from typesafe_sdk._core.json import serialize
 from typesafe_sdk._core.response_types import SystemOneResponse
-from typesafe_sdk.constants import DEFAULT_BASE_URL, DEFAULT_MODEL
+from typesafe_sdk.constants import DEFAULT_MODEL
+
+from backend.util.settings import Settings
 
 from ._budget import PreparedState, prepare_state
 from ._wire import WireCapture, capture_wire
 
+settings = Settings()
 logger = logging.getLogger(__name__)
 # Pins TypeSafe has answered "Unknown model" for; later calls skip straight to the alias.
 _retired_models: set[str] = set()
@@ -72,7 +75,9 @@ async def _call_jev(
 ) -> JevCallResult:
     prepared = prepare_state(state, questions)
     async with AsyncTypeSafeClient(
-        api_key=api_key, base_url=DEFAULT_BASE_URL, retry=RetryPolicy(max_retries=0)
+        api_key=api_key,
+        base_url=settings.config.typesafe_api_base_url,
+        retry=RetryPolicy(max_retries=0),
     ) as client:
         with capture_wire() as wire:
             started = perf_counter()
