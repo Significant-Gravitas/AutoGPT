@@ -566,5 +566,6 @@ export function useExpertChatDrawer({
     isResolvingSession,
     isCreating,
     pendingSend,
+    isTurnSettling: isReconnecting || isFinishProbing || hasActiveStream,
   };
 }

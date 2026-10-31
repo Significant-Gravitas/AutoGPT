@@ -296,7 +296,7 @@ def test_fal_video_block_bills_fifteen_credits_per_second():
 
 
 def test_exa_blocks_bill_cost_usd_via_sdk_config(registered_exa_costs):
-    """End-to-end: Exa's ProviderBuilder.with_base_cost(100, COST_USD) is live."""
+    """End-to-end: Exa's ProviderBuilder.with_base_cost(150, COST_USD) is live."""
     block = ExaSearchBlock()
     creds = {
         "credentials": {
@@ -305,10 +305,10 @@ def test_exa_blocks_bill_cost_usd_via_sdk_config(registered_exa_costs):
             "type": exa_credentials.type,
         }
     }
-    # $0.05 provider spend * 100 credits/USD = 5 credits.
+    # $0.05 provider spend * 150 credits/USD = 7.5, billed as 8 credits.
     stats = NodeExecutionStats(provider_cost=0.05, provider_cost_type="cost_usd")
     cost, _ = block_usage_cost(block, creds, stats=stats)
-    assert cost == 5
+    assert cost == 8
     # Pre-flight: unknown cost → 0.
     cost, _ = block_usage_cost(block, creds)
     assert cost == 0

@@ -38,6 +38,12 @@ interface Props {
   isCurrentlyStreaming: boolean;
   /** Assistant row that closes its turn: shows the stats bar and actions. */
   isLastInTurn: boolean;
+  /** Last rendered row: only the latest turn's stats bar says how it ended. */
+  isLatestTurn: boolean;
+  /** The latest turn's stream has really ended (see TurnStatsBar). */
+  isTurnSettled: boolean;
+  /** The latest turn's stream is still settling (probe, reconnect, restore). */
+  isTurnSettling?: boolean;
   /** This row's entry from the turn stats map. */
   turnStat?: TurnStats;
   /** The turn this row closes, for the stats bar. Only set when the bar
@@ -68,6 +74,9 @@ export const MessageRow = memo(function MessageRow({
   isLastAssistant,
   isCurrentlyStreaming,
   isLastInTurn,
+  isLatestTurn,
+  isTurnSettled,
+  isTurnSettling,
   turnStat,
   turnMessages,
   elapsedSeconds,
@@ -188,6 +197,9 @@ export const MessageRow = memo(function MessageRow({
             turnMessages={turnMessages ?? [message]}
             elapsedSeconds={elapsedSeconds}
             stats={turnStat}
+            isLatest={isLatestTurn}
+            isSettled={isTurnSettled}
+            isSettling={isTurnSettling}
           />
         )}
         {indicator}
