@@ -14,6 +14,7 @@ import {
   type FailureCause,
   isInsufficientDump,
   isTypedTextTooLong,
+  newRecordingId,
   SILENCE_NUDGE_SECONDS,
 } from "./helpers";
 import {
@@ -374,7 +375,7 @@ export function useBrainDumpStep() {
   async function submitTyped(text: string) {
     setSubmittedMode("typed");
     setScreen("processing");
-    const recordingId = recorder.recordingId ?? crypto.randomUUID();
+    const recordingId = recorder.recordingId ?? newRecordingId();
     await pendingSkip;
     await saveWizardAnswers();
     try {
@@ -456,7 +457,7 @@ export function useBrainDumpStep() {
     }
     try {
       await finalizeBrainDump({
-        recording_id: crypto.randomUUID(),
+        recording_id: newRecordingId(),
         input_mode: "skipped",
       });
     } catch {
