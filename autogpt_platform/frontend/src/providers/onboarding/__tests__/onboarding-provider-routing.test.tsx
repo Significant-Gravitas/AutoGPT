@@ -276,6 +276,47 @@ describe("OnboardingProvider routing — logged-in user", () => {
     expect(completedCallCount.value).toBe(0);
   });
 
+  test.each(["/link/abc123", "/link/slack/installed"])(
+    "incomplete user on %s stays put (link token must not be lost to onboarding)",
+    async (path) => {
+      mockPathname = path;
+      mockIsCompleted = false;
+
+      render(
+        <OnboardingProvider>
+          <div data-testid="child" />
+        </OnboardingProvider>,
+      );
+
+      await new Promise((r) => setTimeout(r, 30));
+      expect(routerReplace).not.toHaveBeenCalled();
+      expect(completedCallCount.value).toBe(0);
+    },
+  );
+
+  test("leaving /link/<token> for another page still redirects to /onboarding", async () => {
+    mockPathname = "/link/abc123";
+    mockIsCompleted = false;
+    const { rerender } = render(
+      <OnboardingProvider>
+        <div data-testid="child" />
+      </OnboardingProvider>,
+    );
+    await new Promise((r) => setTimeout(r, 30));
+    expect(routerReplace).not.toHaveBeenCalled();
+
+    mockPathname = "/home";
+    rerender(
+      <OnboardingProvider>
+        <div data-testid="child" />
+      </OnboardingProvider>,
+    );
+
+    await waitFor(() =>
+      expect(routerReplace).toHaveBeenCalledWith("/onboarding"),
+    );
+  });
+
   test("incomplete user already on /onboarding stays put", async () => {
     mockPathname = "/onboarding";
     mockIsCompleted = false;
