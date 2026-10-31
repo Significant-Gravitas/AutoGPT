@@ -26,6 +26,7 @@ from prisma.models import (
 )
 from prisma.types import (
     AgentGraphCreateInput,
+    AgentGraphOrderByInput,
     AgentGraphWhereInput,
     AgentNodeCreateInput,
     AgentNodeLinkCreateInput,
@@ -1490,6 +1491,21 @@ async def list_graphs_paginated(
     )
 
 
+def _active_else_newest_order(
+    version: int | None,
+) -> AgentGraphOrderByInput | list[AgentGraphOrderByInput]:
+    """`order` for an owner/admin `AgentGraph` lookup by id.
+
+    With no version pinned this resolves to the active version, else the
+    newest one, so a graph with no active version still resolves rather
+    than 404ing. The non-owner library path deliberately picks the newest
+    submitted version instead (see `get_graph()`).
+    """
+    if version is None:
+        return [{"isActive": "desc"}, {"version": "desc"}]
+    return {"version": "desc"}
+
+
 async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph | None:
     where_clause: AgentGraphWhereInput = {
         "id": graph_id,
@@ -1500,7 +1516,7 @@ async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph
 
     graph = await AgentGraph.prisma().find_first(
         where=where_clause,
-        order={"version": "desc"},
+        order=_active_else_newest_order(version),
     )
 
     if not graph:
@@ -1528,7 +1544,9 @@ async def get_graph(
 ) -> GraphModel | None:
     """
     Retrieves a graph from the DB.
-    Defaults to the version with `is_active` if `version` is not passed.
+    Defaults to the version with `is_active` if `version` is not passed, or
+    the newest version if none is active. A non-owner reading through their
+    library gets the newest submitted version in their library instead.
 
     Access: the caller owns it, or has that exact version in their library
     AND that version was submitted to the marketplace. Neither half of the
@@ -1575,7 +1593,7 @@ async def get_graph(
         graph = await AgentGraph.prisma().find_first(
             where=graph_where_clause,
             include=AGENT_GRAPH_INCLUDE,
-            order={"version": "desc"},
+            order=_active_else_newest_order(version),
         )
 
     # The only non-owner path. A store listing on its own must not grant
@@ -1701,7 +1719,8 @@ async def get_graph_as_admin(
     """
     Intentionally parallels the get_graph but should only be used for admin tasks, because can return any graph that's been submitted
     Retrieves a graph from the DB.
-    Defaults to the version with `is_active` if `version` is not passed.
+    Defaults to the version with `is_active` if `version` is not passed, or
+    the newest version if none is active.
 
     Returns `None` if the record is not found.
     """
@@ -1716,7 +1735,7 @@ async def get_graph_as_admin(
     graph = await AgentGraph.prisma().find_first(
         where=where_clause,
         include=AGENT_GRAPH_INCLUDE,
-        order={"version": "desc"},
+        order=_active_else_newest_order(version),
     )
 
     # Admin access bypasses ownership and marketplace checks — route-level
