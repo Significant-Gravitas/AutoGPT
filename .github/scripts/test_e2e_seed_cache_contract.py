@@ -14,6 +14,7 @@ SEED_VERIFY_CACHED_STEP = (
     "Set up tests - Verify cached seed credentials with fresh encryption key"
 )
 FRONTEND_WAIT_STEP = "Wait for frontend image build"
+SERVICES_START_STEP = "Set up Platform - Start (all other services)"
 SEED_SAVE_STEP = "Push E2E test data to GHCR"
 PLAYWRIGHT_STEP = "Run Playwright E2E suite"
 PLAYWRIGHT_REPORT_STEP = "Validate Playwright JSON report"
@@ -133,9 +134,11 @@ class E2ESeedCacheContractTests(unittest.TestCase):
         for name in (SEED_VERIFY_CACHED_STEP, SEED_VERIFY_STEP):
             self.assertLess(steps.index(name), steps.index(PLAYWRIGHT_STEP))
 
-    def test_seed_waits_for_the_frontend_build_and_is_time_boxed(self):
-        # Seeding beside the Next.js build froze the runner for up to 48 minutes
-        # (OPEN-3734); a restored dump's check still overlaps the build.
+    def test_services_and_seed_wait_for_the_frontend_build_and_seed_is_time_boxed(
+        self,
+    ):
+        # Beside the Next.js build, seeding froze the runner for up to 48 minutes
+        # (OPEN-3734) and the started backend services lost it (SECRT-3254).
         workflow = (
             Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
         ).read_text(encoding="utf-8")
@@ -147,10 +150,9 @@ class E2ESeedCacheContractTests(unittest.TestCase):
         self.assertIn(
             "wait: [platform-build-frontend]", _step(workflow, FRONTEND_WAIT_STEP)
         )
-        self.assertLess(
-            steps.index(SEED_VERIFY_CACHED_STEP), steps.index(FRONTEND_WAIT_STEP)
-        )
-        self.assertLess(steps.index(FRONTEND_WAIT_STEP), steps.index(SEED_CREATE_STEP))
+        for name in (SERVICES_START_STEP, SEED_VERIFY_CACHED_STEP, SEED_CREATE_STEP):
+            with self.subTest(step=name):
+                self.assertLess(steps.index(FRONTEND_WAIT_STEP), steps.index(name))
 
         timeout = re.search(
             r"^\s+timeout-minutes: (\d+)$",

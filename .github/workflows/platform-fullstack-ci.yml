@@ -412,8 +412,27 @@ jobs:
               cp -a /seed/. /app/.next/cache/
           EOF
 
+      # The runner has 15.6 GiB and a cold `next build` peaks near 8 GiB; a runner
+      # that runs out leaves no other memory readings (SECRT-3254).
+      - name: Set up Platform - Log runner memory
+        id: memory-log
+        background: true
+        run: |
+          lowest=
+          for i in $(seq 180); do
+            [ -f /tmp/stop-memory-log ] && break
+            read -r used available < <(free -m | awk '/^Mem:/ {print $3, $7}')
+            swap=$(free -m | awk '/^Swap:/ {print $3}')
+            echo "$(date -u +%T) used=${used}M available=${available}M swap=${swap}M"
+            if [ -z "$lowest" ] || [ "$available" -lt "$lowest" ]; then lowest=$available; fi
+            # Once a minute, which containers hold it
+            if (( i % 6 == 0 )); then docker stats --no-stream --format '  {{.Name}} {{.MemUsage}}' || true; fi
+            sleep 10
+          done
+          echo "Lowest available memory: ${lowest}M"
+
       # The backend images finish minutes before the Next.js build, so they are
-      # baked on their own and the backend stack starts while the frontend builds.
+      # baked on their own and the database is migrated while the frontend builds.
       - name: Set up Platform - Build backend Docker images
         id: platform-build-backend
         working-directory: autogpt_platform
@@ -523,9 +542,14 @@ jobs:
           echo "restored=true" >> "$GITHUB_OUTPUT"
           echo "✅ E2E test data restored from cache"
 
+      # Beside the Next.js build, the backend services and the seed run the
+      # runner out of memory and freeze or lose it (OPEN-3734, SECRT-3254).
+      - name: Wait for frontend image build
+        wait: [platform-build-frontend]
+
       - name: Set up Platform - Start (all other services)
         run: |
-          # Everything but the frontend, whose image may still be building
+          # Everything but the frontend, which starts once the seed is in
           docker compose -f ../docker-compose.resolved.yml up -d --no-build \
             $(docker compose -f ../docker-compose.resolved.yml config --services | grep -vx frontend)
           echo "Waiting for rest_server to be ready..."
@@ -545,7 +569,6 @@ jobs:
         env:
           NEXT_PUBLIC_PW_TEST: true
 
-      # A restored dump's check runs before the wait below, so it still overlaps the frontend build.
       - name: Set up tests - Verify cached seed credentials with fresh encryption key
         id: e2e-seed-verify-cached
         if: steps.e2e-seed-restore.outputs.restored == 'true'
@@ -553,10 +576,6 @@ jobs:
           docker cp ../backend/test/e2e_test_data.py $(docker compose -f ../docker-compose.resolved.yml ps -q rest_server):/tmp/e2e_test_data.py
           docker compose -f ../docker-compose.resolved.yml exec -T rest_server \
             sh -c "cd /app/autogpt_platform && python /tmp/e2e_test_data.py --refresh-credentials-only"
-
-      # Seeding while the Next.js build runs can freeze the whole runner (OPEN-3734).
-      - name: Wait for frontend image build
-        wait: [platform-build-frontend]
 
       - name: Set up tests - Create E2E test data
         id: e2e-seed-create
@@ -613,6 +632,13 @@ jobs:
             docker compose -f ../docker-compose.resolved.yml logs --tail=100 frontend
             exit 1
           }
+
+      - name: Stop runner memory log
+        if: always()
+        run: touch /tmp/stop-memory-log
+
+      - name: Wait for runner memory log
+        wait: [memory-log]
 
       - name: Copy source maps from Docker for E2E coverage
         run: |
