@@ -115,6 +115,15 @@ def truncate(value: Any, size_limit: int) -> Any:
     STR_MIN, STR_MAX = min(8, size_limit), size_limit
     LIST_MIN, LIST_MAX = 1, 2**12
 
+    # Fast path: the maximal limits are the least-truncated point in the space
+    # the search below explores, so whenever that result already fits it is the
+    # answer the search is after. Probe it once instead of running the full
+    # ~299-probe grid, each probe of which re-serialises the payload.
+    # Note this still applies LIST_MAX, so long lists stay capped as before.
+    maximal = _truncate_value(value, STR_MAX, LIST_MAX)
+    if measure(maximal) <= size_limit:
+        return maximal
+
     # Binary search for the largest str_limit and list_limit that fit
     best = None
 
