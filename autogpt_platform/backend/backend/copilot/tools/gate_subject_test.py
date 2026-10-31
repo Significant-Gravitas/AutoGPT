@@ -27,6 +27,7 @@ from backend.blocks.discord.bot_blocks import SendDiscordMessageBlock
 from backend.blocks.email_block import SendEmailBlock
 from backend.blocks.generic_webhook.triggers import GenericWebhookTriggerBlock
 from backend.blocks.github.issues import GithubAddLabelBlock
+from backend.blocks.github.repo import GithubCreateRepositoryBlock
 from backend.blocks.github.repo_files import GithubCreateFileBlock
 from backend.blocks.google.gmail import GmailSendBlock
 from backend.blocks.http import SendWebRequestBlock
@@ -195,19 +196,35 @@ async def test_a_call_that_runs_nothing_never_asks(gate, ran, payload, extra):
     gate.open_review.assert_not_awaited()
 
 
-async def test_an_ask_first_block_asks_in_auto_and_the_card_names_it(gate, ran):
+@pytest.mark.parametrize(
+    "block, payload, name, irreversible",
+    [
+        (SendEmailBlock, _EMAIL, "Send Email", True),
+        # The new repo is public unless the call says otherwise.
+        (
+            GithubCreateRepositoryBlock,
+            {"name": "otter-notes"},
+            "Github Create Repository",
+            False,
+        ),
+    ],
+    ids=["email", "github repo"],
+)
+async def test_an_ask_first_block_asks_in_auto_and_the_card_names_it(
+    gate, ran, block, payload, name, irreversible
+):
     judge = AsyncMock()
     with patch(f"{_GATE}.supervise", judge):
-        result = await _run_capability(_session(), SendEmailBlock().id, _EMAIL)
+        result = await _run_capability(_session(), block().id, payload)
     assert _is_held(result)
     ran.assert_not_awaited()
     judge.assert_not_awaited()
     args = gate.open_review.await_args.args
     reason, subject = args[5], args[6]
-    assert subject.name == "Send Email"
-    assert subject.key == f"block:{SendEmailBlock().id}"
-    assert reason == "Runs Send Email, which reaches outside the platform."
-    assert subject.irreversible
+    assert subject.name == name
+    assert subject.key == f"block:{block().id}"
+    assert reason == f"Runs {name}, which reaches outside the platform."
+    assert subject.irreversible is irreversible
 
 
 @pytest.mark.parametrize("allowed", [True, False])

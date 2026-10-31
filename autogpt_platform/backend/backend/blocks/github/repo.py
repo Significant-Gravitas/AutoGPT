@@ -581,7 +581,7 @@ class GithubCreateRepositoryBlock(Block):
                     "https://github.com/owner/test-repo.git",
                 )
             },
-            effect=BlockEffect.EXTERNAL_JUDGED,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
