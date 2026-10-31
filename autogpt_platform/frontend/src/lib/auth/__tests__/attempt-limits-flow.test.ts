@@ -349,6 +349,27 @@ describe("sign-in through the login page", () => {
     expect(statuses).toEqual([...statuses.slice(0, -1).map(() => 401), 429]);
     expect(last?.headers.get("X-Retry-After")).toBe(String(10 * 60));
   });
+
+  it("stores a bounded identifier for an address of any length", async () => {
+    const { handler } = await createAuth();
+    const address = `${"a".repeat(10_000)}@example.com`;
+
+    await handler(
+      new Request(`${baseURL}/api/auth/sign-in/email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Origin: baseURL },
+        body: JSON.stringify({ email: address, password: wrongPassword }),
+      }),
+    );
+
+    const identifiers = testDB.current.UserAuthVerification.map((row) =>
+      String((row as { identifier: unknown }).identifier),
+    );
+    expect(identifiers.some((id) => id.startsWith("sign-in-address:"))).toBe(
+      true,
+    );
+    expect(Math.max(...identifiers.map((id) => id.length))).toBeLessThan(100);
+  });
 });
 
 describe("reset emails through the reset-password page", () => {

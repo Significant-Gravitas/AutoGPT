@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { defineRequestState } from "@better-auth/core/context";
 import type { BetterAuthOptions } from "better-auth";
 import { APIError, getIP, isAPIError } from "better-auth/api";
@@ -71,9 +72,12 @@ export async function limitAuthAttempts({
   if (ip) await claimOrRefuse(context, `${limits.name}-ip:${ip}`, limits.perIP);
   const address = addressIn(body);
   if (address) {
+    // Hashed: this runs before Better Auth validates the body, so the address
+    // can be any length.
+    const addressKey = createHash("sha256").update(address).digest("hex");
     const slot = await claimOrRefuse(
       context,
-      `${limits.name}-address:${address}`,
+      `${limits.name}-address:${addressKey}`,
       limits.perAddress,
     );
     if (slot && limits.refundOnSuccess) await claimedAddressSlot.set(slot);
