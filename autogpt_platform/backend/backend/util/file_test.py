@@ -2,14 +2,18 @@
 Tests for cloud storage integration in file utilities.
 """
 
+import base64
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from PIL import Image
 
 from backend.data.execution import ExecutionContext
 from backend.data.workspace_scope import WorkspaceAccessDeniedError, WorkspaceScope
 from backend.util.file import (
+    _image_mime_type,
     is_media_file_ref,
     parse_data_uri,
     resolve_media_content,
@@ -27,6 +31,122 @@ def make_test_context(
         user_id=user_id,
         graph_exec_id=graph_exec_id,
     )
+
+
+@pytest.mark.parametrize(
+    "image_format,mime",
+    [
+        ("PNG", "image/png"),
+        ("JPEG", "image/jpeg"),
+        ("MPO", "image/jpeg"),
+        ("WEBP", "image/webp"),
+        ("GIF", "image/gif"),
+    ],
+)
+@pytest.mark.parametrize(
+    "source",
+    ["workspace-id", "workspace-path", "url-missing", "url-generic", "url-non-image"],
+)
+async def test_extensionless_images_keep_their_real_mime_type(
+    tmp_path, monkeypatch, image_format, mime, source
+):
+    """Real image bytes reach external APIs with canonical MIME, without relying on names."""
+    buffer = BytesIO()
+    image = Image.new("RGB", (2, 2), color="red")
+    if image_format == "MPO":
+        # A multi-picture JPEG: Pillow only writes MPO with a second frame.
+        image.save(
+            buffer,
+            format="MPO",
+            save_all=True,
+            append_images=[Image.new("RGB", (2, 2), color="blue")],
+        )
+        assert Image.open(BytesIO(buffer.getvalue())).format == "MPO"
+    else:
+        image.save(buffer, format=image_format)
+    content = buffer.getvalue()
+    ctx = make_test_context()
+    ctx.workspace_id = "ws-1" if source.startswith("workspace") else None
+    cloud = MagicMock()
+    cloud.is_cloud_path.return_value = False
+    manager = MagicMock()
+    info = MagicMock()
+    info.name = "image"
+    info.mime_type = mime
+    manager.read_file_by_id = AsyncMock(return_value=content)
+    manager.read_file = AsyncMock(return_value=content)
+    manager.get_file_info = AsyncMock(return_value=info)
+    manager.get_file_info_by_path = AsyncMock(return_value=info)
+    response = MagicMock()
+    response.content = content
+    response.headers = {
+        "url-missing": {},
+        "url-generic": {"Content-Type": "application/octet-stream"},
+        "url-non-image": {"Content-Type": "text/plain"},
+    }.get(source, {})
+    monkeypatch.setattr("backend.util.file.TEMP_DIR", tmp_path)
+    with (
+        patch(
+            "backend.util.file.get_cloud_storage_handler",
+            new=AsyncMock(return_value=cloud),
+        ),
+        patch("backend.util.file.scan_content_safe", new=AsyncMock()),
+        patch("backend.util.workspace.WorkspaceManager", return_value=manager),
+        patch("backend.util.file.Requests.get", new=AsyncMock(return_value=response)),
+    ):
+        ref = {
+            "workspace-id": "workspace://file-1",
+            "workspace-path": "workspace:///image",
+            "url-missing": "https://example.com/image",
+            "url-generic": "https://example.com/image",
+            "url-non-image": "https://example.com/image",
+        }[source]
+        result = await store_media_file(
+            MediaFileType(ref), ctx, return_format="for_external_api"
+        )
+
+    assert result.startswith(f"data:{mime};base64,")
+    assert base64.b64decode(result.split(",", 1)[1]) == content
+
+
+def test_image_mime_type_falls_back_when_a_png_chunk_checksum_is_corrupt():
+    """Pillow raises SyntaxError for a bad chunk CRC; that must use the fallback."""
+    buffer = BytesIO()
+    Image.new("RGB", (4, 4), color="red").save(buffer, format="PNG")
+    data = bytearray(buffer.getvalue())
+    idat = data.index(b"IDAT")
+    length = int.from_bytes(data[idat - 4 : idat], "big")
+    data[idat + 4 + length] ^= 0xFF
+
+    assert _image_mime_type(bytes(data), "application/octet-stream") == (
+        "application/octet-stream"
+    )
+
+
+@pytest.mark.parametrize("content", [b"ordinary text", b"\x89PNG\r\n\x1a\n"])
+async def test_invalid_or_nonimage_content_is_not_relabelled_as_an_image(
+    tmp_path, monkeypatch, content
+):
+    """A missing MIME hint must not turn text or a broken image into a supported image."""
+    cloud = MagicMock()
+    cloud.is_cloud_path.return_value = False
+    response = MagicMock(content=content, headers={})
+    monkeypatch.setattr("backend.util.file.TEMP_DIR", tmp_path)
+    with (
+        patch(
+            "backend.util.file.get_cloud_storage_handler",
+            new=AsyncMock(return_value=cloud),
+        ),
+        patch("backend.util.file.scan_content_safe", new=AsyncMock()),
+        patch("backend.util.file.Requests.get", new=AsyncMock(return_value=response)),
+    ):
+        result = await store_media_file(
+            MediaFileType("https://example.com/content"),
+            make_test_context(),
+            return_format="for_external_api",
+        )
+    assert result.startswith("data:application/octet-stream;base64,")
+    assert base64.b64decode(result.split(",", 1)[1]) == content
 
 
 class TestFileCloudIntegration:
