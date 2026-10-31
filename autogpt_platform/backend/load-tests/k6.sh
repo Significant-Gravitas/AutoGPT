@@ -1,19 +1,24 @@
 #!/usr/bin/env bash
-# Runs k6 on this machine from the grafana/k6 image, with this directory
-# mounted, so Docker is the only thing to install. Arguments go to k6
-# unchanged:
+# Runs k6 on this machine in Docker, with this directory mounted, so Docker is
+# the only thing to install. Arguments go to k6 unchanged:
 #
-#   ./k6.sh run tests/api/core-api-test.js
+#   ./k6.sh run tests/workload.js
 #
-# Settings and secrets travel by name: each K6_*, LOAD_TEST_* or test setting
-# (PR_NUMBER, VUS, DURATION, ...) exported in the calling shell is passed into
-# the container without its value appearing on a command line.
+# The image is the pinned grafana/k6 release plus the xk6-sse extension (see
+# Dockerfile), which the copilot scenario needs to time a streamed turn. The
+# first run builds it, in about two minutes; later runs reuse it. K6_IMAGE
+# names another image to run instead, and K6_REBUILD_IMAGE=true rebuilds.
+#
+# Settings and secrets travel by name: each K6_*, LOAD_TEST_*, RUN_*,
+# STRIPE_TEST_SECRET_KEY or test setting (PR_NUMBER, LOAD_PROFILE, SCENARIOS,
+# ...) exported in the calling shell is passed into the container without its
+# value appearing on a command line.
 #
 # Grafana Cloud k6 bills every virtual-user hour, so these tests run locally.
 # A command that would use it (k6 cloud ..., --out cloud, K6_OUT=cloud) is
 # refused unless --cloud comes first and K6_CLOUD_TOKEN is set:
 #
-#   ./k6.sh --cloud cloud run tests/api/core-api-test.js
+#   ./k6.sh --cloud cloud run tests/workload.js
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -56,7 +61,33 @@ if [ "$uses_cloud" = true ]; then
   echo "k6.sh: using Grafana Cloud k6, billed per virtual-user hour (peak VUs x duration); local runs are the default." >&2
 fi
 
-image="${K6_IMAGE:-grafana/k6:2.3.0}"
+# The image tag names the k6 release and the extension version baked in, so
+# bumping either in the Dockerfile builds a new image instead of reusing a
+# stale one.
+k6_version="$(sed -n 's/^ARG K6_VERSION=//p' Dockerfile)"
+sse_version="$(sed -n 's/^ARG XK6_SSE_VERSION=//p' Dockerfile)"
+default_image="autogpt-k6:${k6_version}-sse-${sse_version}"
+image="${K6_IMAGE:-$default_image}"
+
+if [ -z "${K6_IMAGE:-}" ]; then
+  if [ "${K6_REBUILD_IMAGE:-}" = true ] ||
+    ! docker image inspect "$image" >/dev/null 2>&1; then
+    echo "k6.sh: building $image (k6 ${k6_version} + xk6-sse ${sse_version}); this takes about two minutes the first time" >&2
+    # A Docker config that points at a credential helper can stall the pull of
+    # the public base images; an empty, temporary config has no helper and
+    # leaves the caller's Docker login untouched.
+    build_config="$(mktemp -d)"
+    echo '{}' >"$build_config/config.json"
+    DOCKER_CONFIG="$build_config" docker build --quiet -t "$image" . >/dev/null
+    rm -rf "$build_config"
+  fi
+fi
+
+# Each run gets an id unless the caller set one: it names the run's throwaway
+# accounts and its summary file, results/<RUN_ID>.json.
+export RUN_ID="${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$RANDOM}"
+mkdir -p results
+
 docker_args=(
   run --rm -i
   --user "$(id -u):$(id -g)"
@@ -77,8 +108,10 @@ for name in $(compgen -e); do
         docker_args+=(-e "$name")
       fi
       ;;
-    K6_* | LOAD_TEST_* | PR_NUMBER | VUS | DURATION | RAMP_UP | RAMP_DOWN | \
-      REQUESTS_PER_VU | CONCURRENT_REQUESTS | ENDPOINT | THRESHOLD_*)
+    K6_IMAGE | K6_REBUILD_IMAGE) ;;
+    K6_* | LOAD_TEST_* | RUN_* | PR_NUMBER | LOAD_PROFILE | SCENARIOS | \
+      RATE_SCALE | WARMUP | DURATION | COPILOT_* | GRAPH_* | SEED_* | \
+      THRESHOLD_* | STRIPE_TEST_SECRET_KEY)
       docker_args+=(-e "$name")
       ;;
   esac
