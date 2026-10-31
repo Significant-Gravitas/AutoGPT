@@ -91,7 +91,7 @@
     "dexie": "4.4.7",
     "dotenv": "18.0.8",
     "embla-carousel-react": "8.6.0",
-    "eventsource-parser": "3.0.6",
+    "eventsource-parser": "4.1.2",
     "flatbush": "4.6.2",
     "framer-motion": "13.3.0",
     "geist": "1.8.1",
