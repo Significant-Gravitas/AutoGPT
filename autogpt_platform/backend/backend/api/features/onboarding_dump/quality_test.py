@@ -7,10 +7,12 @@ rejection rather than a silent pass, recorded as an outage and not a verdict.
 """
 
 import asyncio
+import json
 import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from prisma.enums import BrainDumpInputMode
 from pytest_mock import MockerFixture
 
 from backend.api.features.onboarding_dump import quality
@@ -140,6 +142,32 @@ async def test_spaceless_script_dump_passes_on_characters(llm):
     client_factory.assert_not_called()
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "transcript,verdict",
+    [
+        ("", DETERMINISTIC),
+        ("... !!! ,,, --- ???", DETERMINISTIC),
+        ("you " * 30, DETERMINISTIC),
+        ("a" * 200, DETERMINISTIC),
+        (SUBSTANTIAL_DUMP, None),
+        (SPANISH_DUMP, None),
+    ],
+    ids=["empty", "symbols", "word-loop", "char-loop", "english", "spanish"],
+)
+async def test_typed_text_is_decided_by_the_same_deterministic_layer(
+    llm, transcript: str, verdict: quality.QualityRejection | None
+):
+    # The judge would answer the other way, so only the deterministic layer
+    # can produce ``verdict``.
+    client_factory = llm(_llm_client(json.dumps({"usable": verdict is not None})))
+    rejection = await quality.check_transcript_quality(
+        transcript, input_mode=BrainDumpInputMode.typed
+    )
+    assert rejection == verdict
+    client_factory.assert_not_called()
+
+
 # --- threshold seams: exact boundaries route correctly --------------------
 
 # 45 distinct natural words, sliced to sit exactly on CLEAR_PASS_WORDS.
@@ -237,6 +265,29 @@ async def test_llm_verdict_tolerates_markdown_fence(llm):
     assert await quality.check_transcript_quality("Automate my invoices.") is None
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "mode,asked,not_asked",
+    [
+        ({}, "mic testing", "keyboard mashing"),
+        ({"input_mode": BrainDumpInputMode.voice}, "mic testing", "keyboard mashing"),
+        ({"input_mode": BrainDumpInputMode.typed}, "keyboard mashing", "mic testing"),
+    ],
+    ids=["default", "voice", "typed"],
+)
+async def test_typed_text_is_judged_without_the_speech_rules(
+    llm, mode: dict, asked: str, not_asked: str
+):
+    client = _llm_client('{"usable": true}')
+    llm(client)
+
+    assert await quality.check_transcript_quality("I run a bakery.", **mode) is None
+
+    prompt = client.chat.completions.create.await_args.kwargs["messages"][0]["content"]
+    assert asked in prompt and not_asked not in prompt
+    assert prompt.endswith("I run a bakery.\n")
+
+
 def test_count_words_skips_tokens_without_a_letter_or_digit():
     assert quality.count_words("  Uh... -- I run 2 shops !!! ") == 5
 
@@ -298,8 +349,11 @@ async def test_the_judge_asks_for_no_reasoning_and_logs_why_a_verdict_is_missing
         (_no_choices_client, "judge_malformed"),
     ],
 )
+@pytest.mark.parametrize(
+    "input_mode", [BrainDumpInputMode.voice, BrainDumpInputMode.typed]
+)
 async def test_a_judge_failure_rejects_as_unavailable_and_logs_an_error(
-    llm, caplog, monkeypatch, make_client, reason: str
+    llm, caplog, monkeypatch, make_client, reason: str, input_mode: BrainDumpInputMode
 ):
     """The user must not be told they said too little, and the outage must
     be seen: only an ERROR record becomes a Sentry event."""
@@ -308,7 +362,10 @@ async def test_a_judge_failure_rejects_as_unavailable_and_logs_an_error(
 
     with caplog.at_level(logging.WARNING, logger=quality.logger.name):
         rejection = await asyncio.wait_for(
-            quality.check_transcript_quality("Automate my invoices."), timeout=5
+            quality.check_transcript_quality(
+                "Automate my invoices.", input_mode=input_mode
+            ),
+            timeout=5,
         )
 
     assert rejection == quality.QualityRejection(

@@ -300,7 +300,9 @@ async def finalize_typed_dump(
     # produce "asdf asdf asdf" just as easily as a silent mic produces a
     # hallucinated transcript. Only the claim winner reaches this point,
     # so concurrent retries never run duplicate quality checks.
-    rejection = await quality.check_transcript_quality(text)
+    rejection = await quality.check_transcript_quality(
+        text, input_mode=BrainDumpInputMode.typed
+    )
     if rejection is not None:
         return await _quality_rejection(
             user_id, recording_id, rejection, text, BrainDumpInputMode.typed
