@@ -84,6 +84,7 @@ def _concrete_paths(routes: list[BaseRoute]):
 
 # Every step the lifespan awaits before it serves. A failure in any of these
 # stops the boot, so a data migration goes in `_run_data_migrations` instead.
+# Only awaited calls are seen; every migration today is async.
 _LIFESPAN_STARTUP_AWAITS = {
     "backend.data.db.connect",
     "backend.data.redis_client.get_redis_async",

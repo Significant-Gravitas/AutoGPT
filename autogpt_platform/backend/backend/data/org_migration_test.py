@@ -635,8 +635,8 @@ class TestBackfillHardening:
     async def test_a_user_whose_org_cannot_be_created_is_logged_and_skipped(
         self, mock_prisma, caplog, error
     ):
-        """A slug that keeps clashing, or a row the database refuses, costs that
-        user their org until next time, not every later user theirs."""
+        """An account whose org cannot be created costs that account its org
+        until next time, not every later account theirs."""
         mock_prisma.query_raw = AsyncMock(
             return_value=[_backfill_row(f"user-{i}") for i in (1, 2, 3)]
         )
@@ -655,6 +655,20 @@ class TestBackfillHardening:
         assert [r.levelno for r in caplog.records if "user-2" in r.getMessage()] == [
             logging.ERROR
         ]
+
+    @pytest.mark.asyncio
+    async def test_a_database_that_stops_answering_ends_the_loop(self, mock_prisma):
+        mock_prisma.query_raw = AsyncMock(
+            return_value=[_backfill_row(f"user-{i}") for i in (1, 2, 3)]
+        )
+        mock_prisma.orgmember.find_first = AsyncMock(
+            side_effect=[None, ConnectionError("database gone")]
+        )
+
+        with pytest.raises(ConnectionError):
+            await create_orgs_for_existing_users()
+
+        assert mock_prisma.organization.create.await_count == 1
 
     @pytest.mark.asyncio
     async def test_find_owned_personal_org_is_ordered_oldest_first(self, mock_prisma):

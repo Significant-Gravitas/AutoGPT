@@ -393,8 +393,8 @@ async def _get_or_create_backfill_org(row: dict) -> bool:
     Mirrors ``ensure_personal_org``'s race handling: on ``UniqueViolationError``
     re-check whether the user now owns a personal org — a concurrent writer won
     (skip, return False) — versus a slug clash with a *different* user (retry
-    with a fresh suffix). Raises if creation keeps failing, so a genuinely
-    stuck user fails loud rather than silently missing an org.
+    with a fresh suffix). Raises if creation keeps failing, so the caller can
+    report the stuck user.
     """
     user_id: str = row["id"]
     for _ in range(3):
