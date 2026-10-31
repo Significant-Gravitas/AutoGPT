@@ -2003,45 +2003,6 @@ async def _get_descendant_folder_ids(
     return result
 
 
-async def move_agent_to_folder(
-    library_agent_id: str,
-    folder_id: Optional[str],
-    user_id: str,
-) -> library_model.LibraryAgent:
-    """
-    Moves a library agent to a folder.
-
-    Args:
-        library_agent_id: The ID of the library agent.
-        folder_id: The target folder ID (None for root).
-        user_id: The ID of the user.
-
-    Returns:
-        The updated LibraryAgent.
-
-    Raises:
-        NotFoundError: If the agent or folder doesn't exist.
-        DatabaseError: If there's a database error.
-    """
-    logger.debug(f"Moving agent #{library_agent_id} to folder #{folder_id}")
-
-    # Authorization: verify agent belongs to user before updating.
-    # update() uses where={"id": ...} without userId, so check ownership first.
-    await get_library_agent(library_agent_id, user_id)
-
-    # Authorization: folderId is set directly, FK only checks existence
-    # not ownership, so verify the folder belongs to the user.
-    if folder_id:
-        await get_folder(folder_id, user_id)
-
-    await prisma.models.LibraryAgent.prisma().update(
-        where={"id": library_agent_id},
-        data={"folderId": folder_id},
-    )
-
-    return await get_library_agent(library_agent_id, user_id)
-
-
 async def bulk_move_agents_to_folder(
     agent_ids: list[str],
     folder_id: Optional[str],

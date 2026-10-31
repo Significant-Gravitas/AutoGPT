@@ -161,7 +161,6 @@ class ActiveSession:
     blocking: bool = False  # If True, HTTP request is waiting for completion
     status: Literal["running", "completed", "failed"] = "running"
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    asyncio_task: asyncio.Task | None = None
     checkpoint: TurnCheckpoint | None = None
 
 
@@ -1222,39 +1221,6 @@ async def get_session(session_id: str) -> ActiveSession | None:
         return None
 
     return _parse_session_meta(meta, session_id)
-
-
-async def get_session_with_expiry_info(
-    session_id: str,
-) -> tuple[ActiveSession | None, str | None]:
-    """Get a session by its ID with expiration detection.
-
-    Returns (session, error_code) where error_code is:
-    - None if session found
-    - "SESSION_EXPIRED" if stream exists but metadata is gone (TTL expired)
-    - "SESSION_NOT_FOUND" if neither exists
-
-    Args:
-        session_id: Session ID to look up
-
-    Returns:
-        Tuple of (ActiveSession or None, error_code or None)
-    """
-    redis = await get_redis_async()
-    meta_key = _get_session_meta_key(session_id)
-
-    meta: dict[Any, Any] = await redis.hgetall(meta_key)  # type: ignore[misc]
-
-    if not meta:
-        # Metadata expired — we can't resolve turn_id, so check using
-        # session_id as a best-effort fallback for the stream key.
-        stream_key = _get_turn_stream_key(session_id)
-        stream_len = await redis.xlen(stream_key)
-        if stream_len > 0:
-            return None, "SESSION_EXPIRED"
-        return None, "SESSION_NOT_FOUND"
-
-    return _parse_session_meta(meta, session_id), None
 
 
 async def get_active_session(

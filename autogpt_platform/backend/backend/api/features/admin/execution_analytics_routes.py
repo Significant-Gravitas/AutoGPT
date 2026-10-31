@@ -88,18 +88,6 @@ class ExecutionAnalyticsConfig(BaseModel):
     recommended_model: str
 
 
-class AccuracyTrendsRequest(BaseModel):
-    graph_id: str = Field(..., description="Graph ID to analyze", min_length=1)
-    user_id: Optional[str] = Field(None, description="Optional user ID filter")
-    days_back: int = Field(30, description="Number of days to look back", ge=7, le=90)
-    drop_threshold: float = Field(
-        10.0, description="Alert threshold percentage", ge=1.0, le=50.0
-    )
-    include_historical: bool = Field(
-        False, description="Include historical data for charts"
-    )
-
-
 router = APIRouter(
     prefix="/admin",
     tags=["admin", "execution_analytics"],

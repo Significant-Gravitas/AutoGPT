@@ -538,10 +538,6 @@ def _as_owner(owner: "SandboxOwner | str") -> SandboxOwner:
     return SandboxOwner(kind="session", id=owner)
 
 
-def _sandbox_key(session_id: str) -> str:
-    return SandboxOwner(kind="session", id=session_id).key()
-
-
 async def _get_stored_sandbox_id(owner: SandboxOwner) -> str | None:
     redis = await get_redis_async()
     raw = await redis.get(owner.key())

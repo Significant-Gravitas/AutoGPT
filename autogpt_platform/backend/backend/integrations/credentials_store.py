@@ -298,11 +298,6 @@ def is_system_credential(credential_id: str) -> bool:
     return credential_id in SYSTEM_CREDENTIAL_IDS
 
 
-def is_system_provider(provider: str) -> bool:
-    """Check if a provider has system-managed credentials available."""
-    return provider in SYSTEM_PROVIDERS
-
-
 class IntegrationCredentialsStore:
     @thread_cached
     async def locks(self) -> AsyncRedisKeyedMutex:
@@ -437,10 +432,6 @@ class IntegrationCredentialsStore:
     ) -> list[Credentials]:
         credentials = await self.get_all_creds(user_id)
         return [c for c in credentials if provider_matches(c.provider, provider)]
-
-    async def get_authorized_providers(self, user_id: str) -> list[str]:
-        credentials = await self.get_all_creds(user_id)
-        return list(set(c.provider for c in credentials))
 
     async def update_creds(self, user_id: str, updated: Credentials) -> None:
         if updated.id in SYSTEM_CREDENTIAL_IDS:

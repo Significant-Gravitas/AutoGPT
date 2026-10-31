@@ -687,14 +687,6 @@ async def get_active_user_ids_in_timerange(start_time: str, end_time: str) -> li
         ) from e
 
 
-async def get_active_users_ids() -> list[str]:
-    user_ids = await get_active_user_ids_in_timerange(
-        (datetime.now() - timedelta(days=30)).isoformat(),
-        datetime.now().isoformat(),
-    )
-    return user_ids
-
-
 async def get_user_notification_preference(user_id: str) -> NotificationPreference:
     """The volume knob: a Briefing frequency plus two switches. Billing and
     account messages are service mail and are not gated by any of it."""

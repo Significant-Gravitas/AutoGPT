@@ -634,13 +634,6 @@ class WebhookPresetMigrationResult(pydantic.BaseModel):
     skipped_presets: list[SkippedWebhookPreset] = pydantic.Field(default_factory=list)
 
 
-class LibraryAgentFilter(str, Enum):
-    """Possible filters for searching library agents."""
-
-    IS_FAVOURITE = "isFavourite"
-    IS_CREATED_BY_USER = "isCreatedByUser"
-
-
 class LibraryAgentSort(str, Enum):
     """Possible sort options for sorting library agents."""
 

@@ -19,58 +19,9 @@ import asyncio
 import logging
 from collections.abc import AsyncGenerator, Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Protocol, TypedDict
+from typing import Any, Protocol
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Typed dict definitions for tool definitions and conversation messages.
-# These document the expected shapes and allow callers to pass TypedDict
-# subclasses (e.g. ``ChatCompletionToolParam``) without ``type: ignore``.
-# ---------------------------------------------------------------------------
-
-
-class FunctionParameters(TypedDict, total=False):
-    """JSON Schema object describing a tool function's parameters."""
-
-    type: str
-    properties: dict[str, Any]
-    required: list[str]
-    additionalProperties: bool
-
-
-class FunctionDefinition(TypedDict, total=False):
-    """Function definition within a tool definition."""
-
-    name: str
-    description: str
-    parameters: FunctionParameters
-
-
-class ToolDefinition(TypedDict):
-    """OpenAI-compatible tool definition (function-calling format).
-
-    Compatible with ``openai.types.chat.ChatCompletionToolParam`` and the
-    dict-based tool definitions built by ``OrchestratorBlock``.
-    """
-
-    type: str
-    function: FunctionDefinition
-
-
-class ConversationMessage(TypedDict, total=False):
-    """A single message in the conversation (OpenAI chat format).
-
-    Primarily for documentation; at runtime plain dicts are used because
-    messages from different providers carry varying keys.
-    """
-
-    role: str
-    content: str | list[Any] | None
-    tool_calls: list[dict[str, Any]]
-    tool_call_id: str
-    name: str
 
 
 @dataclass

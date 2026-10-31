@@ -188,40 +188,6 @@ def build_missing_credentials_from_field_info(
     }
 
 
-def extract_credentials_as_dict(
-    credentials_input_schema: dict[str, Any] | None,
-) -> dict[str, CredentialsMetaInput]:
-    """
-    Extract credential requirements as a dict keyed by field name.
-
-    Args:
-        credentials_input_schema: The credentials_input_schema from a Graph object
-
-    Returns:
-        Dict mapping field name to CredentialsMetaInput
-    """
-    credentials: dict[str, CredentialsMetaInput] = {}
-
-    if (
-        not isinstance(credentials_input_schema, dict)
-        or "properties" not in credentials_input_schema
-    ):
-        return credentials
-
-    for cred_name, cred_schema in credentials_input_schema["properties"].items():
-        provider = _extract_provider_from_schema(cred_schema)
-        cred_type = _extract_credential_type_from_schema(cred_schema)
-
-        credentials[cred_name] = CredentialsMetaInput(
-            id=cred_name,
-            title=cred_schema.get("title", cred_name),
-            provider=provider,  # type: ignore
-            type=cred_type,  # type: ignore
-        )
-
-    return credentials
-
-
 def _extract_provider_from_schema(cred_schema: dict[str, Any]) -> str:
     """Extract provider from credential schema."""
     if "credentials_provider" in cred_schema and cred_schema["credentials_provider"]:

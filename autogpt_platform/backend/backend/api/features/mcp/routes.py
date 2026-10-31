@@ -528,12 +528,6 @@ class MCPOAuthCallbackRequest(BaseModel):
     )
 
 
-class MCPOAuthCallbackResponse(BaseModel):
-    """Response after successfully storing OAuth credentials."""
-
-    credential_id: str
-
-
 @router.post(
     "/oauth/callback",
     summary="Exchange OAuth code for MCP tokens",

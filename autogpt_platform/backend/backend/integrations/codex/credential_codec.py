@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from pydantic import SecretStr
 
 from backend.data.model import CREDENTIALS_ADAPTER, OAuth2Credentials
@@ -9,7 +7,6 @@ from backend.integrations.codex.auth_bundle import (
     decode_jwt_claims,
     decode_provider_state,
     encode_provider_state,
-    read_auth_bundle,
 )
 
 
@@ -50,15 +47,6 @@ def bundle_from_credentials(credentials: OAuth2Credentials) -> CodexAuthBundleV1
     if credentials.provider_state_version != 1 or credentials.provider_state is None:
         raise CodexAuthBundleError("Codex credential provider state is unavailable")
     return decode_provider_state(credentials.provider_state)
-
-
-def checkpoint_credentials(
-    credentials: OAuth2Credentials,
-    auth_path: Path,
-    runtime_version: str,
-) -> OAuth2Credentials:
-    bundle = read_auth_bundle(auth_path, runtime_version)
-    return checkpoint_credentials_from_bundle(credentials, bundle)
 
 
 def checkpoint_credentials_from_bundle(

@@ -2589,11 +2589,6 @@ async def read_skill_bundle_files(
     return out
 
 
-async def find_user_skill_slug(user_id: str, name: str) -> str | None:
-    """Folder slug of personal Otto's skill called *name*."""
-    return (await find_user_skill_slugs(user_id, [name])).get(name.strip().lower())
-
-
 async def find_user_skill_slugs(user_id: str, names: list[str]) -> dict[str, str]:
     """Folder slug per requested name, keyed by the lowercased name.
 

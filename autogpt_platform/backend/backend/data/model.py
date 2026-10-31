@@ -39,7 +39,6 @@ from pydantic_core import (
     ValidationError,
     core_schema,
 )
-from typing_extensions import TypedDict
 
 from backend.data.onboarding_steps import OnboardingStep
 from backend.data.onboarding_wizard import OnboardingWizardProgress
@@ -499,13 +498,6 @@ class UserMetadata(BaseModel):
     integration_credentials: list[Credentials] = Field(default_factory=list)
     """⚠️ Deprecated; use `UserIntegrations.credentials` instead"""
     integration_oauth_states: list[OAuthState] = Field(default_factory=list)
-    """⚠️ Deprecated; use `UserIntegrations.oauth_states` instead"""
-
-
-class UserMetadataRaw(TypedDict, total=False):
-    integration_credentials: list[dict]
-    """⚠️ Deprecated; use `UserIntegrations.credentials` instead"""
-    integration_oauth_states: list[dict]
     """⚠️ Deprecated; use `UserIntegrations.oauth_states` instead"""
 
 
@@ -1079,24 +1071,6 @@ class GraphExecutionStats(BaseModel):
         default=False,
         description="Whether this execution was a dry-run simulation",
     )
-
-
-class UserExecutionSummaryStats(BaseModel):
-    """Summary of user statistics for a specific user."""
-
-    model_config = ConfigDict(
-        extra="allow",
-        arbitrary_types_allowed=True,
-    )
-
-    total_credits_used: float = Field(default=0)
-    total_executions: int = Field(default=0)
-    successful_runs: int = Field(default=0)
-    failed_runs: int = Field(default=0)
-    most_used_agent: str = Field(default="")
-    total_execution_time: float = Field(default=0)
-    average_execution_time: float = Field(default=0)
-    cost_breakdown: dict[str, float] = Field(default_factory=dict)
 
 
 class UserOnboarding(BaseModel):
