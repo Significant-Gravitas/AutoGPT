@@ -175,7 +175,7 @@
     "import-in-the-middle": "2.0.2",
     "knip": "6.32.2",
     "monocart-reporter": "2.10.0",
-    "msw": "2.11.6",
+    "msw": "2.15.0",
     "msw-storybook-addon": "3.0.3",
     "orval": "8.22.0",
     "oxlint": "1.83.0",
