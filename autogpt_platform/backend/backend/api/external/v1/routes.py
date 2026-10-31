@@ -3,7 +3,7 @@ import urllib.parse
 from collections import defaultdict
 from typing import Annotated, Any, Optional, Sequence
 
-from fastapi import APIRouter, Body, HTTPException, Security, status
+from fastapi import APIRouter, Body, HTTPException, Query, Security, status
 from prisma.enums import AgentExecutionStatus, APIKeyPermission
 from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
@@ -27,6 +27,7 @@ from backend.executor.utils import (
 )
 from backend.integrations.webhooks.graph_lifecycle_hooks import before_graph_activate
 from backend.util.exceptions import InsufficientBalanceError
+from backend.util.models import MAX_PAGE
 from backend.util.settings import Settings
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
@@ -330,7 +331,7 @@ async def get_store_agents(
     sorted_by: store_db.StoreAgentsSortOptions | None = None,
     search_query: str | None = None,
     category: str | None = None,
-    page: int = 1,
+    page: int = Query(default=1, ge=1, le=MAX_PAGE),
     page_size: int = 20,
 ) -> store_model.StoreAgentsResponse:
     """
@@ -404,7 +405,7 @@ async def get_store_creators(
     featured: bool = False,
     search_query: str | None = None,
     sorted_by: store_db.StoreCreatorsSortOptions | None = None,
-    page: int = 1,
+    page: int = Query(default=1, ge=1, le=MAX_PAGE),
     page_size: int = 20,
 ) -> store_model.CreatorsResponse:
     """
