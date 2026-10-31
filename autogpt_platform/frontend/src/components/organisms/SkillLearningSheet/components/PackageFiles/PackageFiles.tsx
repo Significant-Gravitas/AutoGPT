@@ -26,7 +26,7 @@ export function PackageFiles({ before, after }: Props) {
         >
           <summary
             data-slot="skill-learning-sheet-package-files-item-summary"
-            className="cursor-pointer break-all text-sm"
+            className="cursor-pointer text-sm break-all"
           >
             <span data-slot="skill-learning-sheet-package-files-item-path">
               {change.path}

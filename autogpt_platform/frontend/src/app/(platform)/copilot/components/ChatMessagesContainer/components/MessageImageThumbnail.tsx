@@ -35,11 +35,10 @@ export function MessageImageThumbnail({ artifact, readOnly }: Props) {
       aria-label={`Open ${artifact.title}`}
       className={cn(
         FRAME,
-        // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
-        "transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400",
+        "transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-foreground-subtle focus-visible:outline-none",
       )}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {/* eslint-disable-next-line @next/next/no-img-element -- a user or workspace image URL next/image cannot optimise */}
       <img
         src={artifact.sourceUrl}
         alt={artifact.title}
@@ -75,7 +74,7 @@ export function PendingImageThumbnail({ attachment, fallback }: PendingProps) {
           onError={() => setFailed(true)}
         />
       ) : (
-        // eslint-disable-next-line @next/next/no-img-element
+        // eslint-disable-next-line @next/next/no-img-element -- a user or workspace image URL next/image cannot optimise
         <img
           src={attachment.url}
           alt={attachment.name}
@@ -84,10 +83,7 @@ export function PendingImageThumbnail({ attachment, fallback }: PendingProps) {
         />
       )}
       {attachment.isUploading && (
-        <span
-          // TODO(tokens): no fitting role for bg-black/20 #141414; #141414 is foreground-base (a text colour)
-          className="absolute inset-0 flex items-center justify-center bg-black/20"
-        >
+        <span className="absolute inset-0 flex items-center justify-center bg-foreground-base/20">
           <Icon
             icon={Loading03Icon}
             size={20}

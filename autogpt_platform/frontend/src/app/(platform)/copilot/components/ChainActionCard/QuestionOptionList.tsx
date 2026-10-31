@@ -92,7 +92,7 @@ export function QuestionOptionList({
               onClick={() => onChange(option)}
               onKeyDown={(event) => handleKeyDown(event, index)}
               className={
-                "flex w-full items-center justify-between gap-3 rounded-2xl py-3 pl-4 pr-12 text-left text-base leading-snug transition-all " +
+                "flex w-full items-center justify-between gap-3 rounded-2xl py-3 pr-12 pl-4 text-left text-base leading-snug transition-all " +
                 (isSelected
                   ? "bg-surface text-foreground-strong ring-2 ring-action"
                   : "bg-surface-muted text-foreground-body ring-1 ring-separator hover:bg-surface-hover")
@@ -108,7 +108,7 @@ export function QuestionOptionList({
               aria-label={`Edit ${option}`}
               title="Edit before sending"
               onClick={() => onEdit(option)}
-              className="absolute right-2 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-xl text-foreground-subtle transition-colors hover:bg-surface-active/60 hover:text-foreground-body"
+              className="absolute top-1/2 right-2 flex size-8 -translate-y-1/2 items-center justify-center rounded-xl text-foreground-subtle transition-colors hover:bg-surface-active/60 hover:text-foreground-body"
             >
               <Icon icon={PencilEdit02Icon} size={16} />
             </button>

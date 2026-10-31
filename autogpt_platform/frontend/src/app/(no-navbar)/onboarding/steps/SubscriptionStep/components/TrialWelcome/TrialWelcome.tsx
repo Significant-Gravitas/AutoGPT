@@ -51,7 +51,8 @@ export function TrialWelcome({
           onClick={onStart}
           loading={isStarting}
           disabled={isStarting || isBlocked}
-          className="h-12 w-full text-base"
+          textSize="body-md"
+          className="h-12 w-full"
         >
           Start my free trial
         </Button>
@@ -60,7 +61,7 @@ export function TrialWelcome({
             {error}
           </Text>
         ) : null}
-        <Text variant="small" tone="muted" className="text-balance text-center">
+        <Text variant="small" tone="muted" className="text-center text-balance">
           <Icon
             icon={SquareLock02Icon}
             size={13}

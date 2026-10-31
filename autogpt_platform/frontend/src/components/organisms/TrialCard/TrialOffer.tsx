@@ -33,9 +33,7 @@ export function TrialOffer({ trial, isStarting, isBlocked, onStart }: Props) {
           </TrialTitle>
           <span
             data-slot="trial-offer-pill"
-            // TODO(tokens): no role for the purple-100 pill or its purple-700
-            // text.
-            className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-tiny font-medium leading-inherit text-purple-700"
+            className="inline-flex items-center rounded-full bg-accent-surface px-2 py-0.5 text-tiny leading-inherit font-medium text-accent-strong"
           >
             No charge today
           </span>

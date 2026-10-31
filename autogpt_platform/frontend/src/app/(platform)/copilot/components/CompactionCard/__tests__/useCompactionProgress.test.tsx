@@ -1,7 +1,8 @@
 import { act, render, renderHook, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { formatElapsed } from "../../JobStatsBar/formatElapsed";
-import { CompactionCard, SHOW_TIME_AFTER_SECONDS } from "../CompactionCard";
+import { SHOW_TIME_AFTER_SECONDS } from "../../JobStatsBar/constants";
+import { CompactionCard } from "../CompactionCard";
 import { PARKED_POLL_MS, PHASE_CURVE, type CompactionPhase } from "../helpers";
 import { useCompactionProgress } from "../useCompactionProgress";
 

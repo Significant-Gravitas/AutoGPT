@@ -14,6 +14,7 @@ import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopi
 import { CardProviderIcon } from "./BlockCards";
 import { CARD, HALF, StatusCard } from "./ResultCards";
 import { asObject, inline, resultItemKey, str } from "./resultHelpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface ItemsProps {
   steps: Record<string, unknown>[];
@@ -52,8 +53,7 @@ export function PlanSteps({ steps }: ItemsProps) {
               <Icon
                 icon={CheckmarkCircle02Icon}
                 size={15}
-                // TODO(tokens): no exact role for text-green-500
-                className="shrink-0 text-green-500"
+                className="shrink-0 text-success"
               />
             ) : (
               <Icon
@@ -100,8 +100,7 @@ function ErrorList({ errors }: ErrorListProps) {
           <Icon
             icon={AlertCircleIcon}
             size={14}
-            // TODO(tokens): no exact role for text-red-400
-            className="mt-px shrink-0 text-red-400"
+            className="mt-px shrink-0 text-error"
           />
           <span className="min-w-0 break-words">{error}</span>
         </div>
@@ -156,9 +155,9 @@ export function QuestionsCard({ questions }: QuestionsCardProps) {
               {str(entry, "question") ?? inline(entry)}
             </p>
             {str(entry, "example") && (
-              <p className="truncate text-xs text-foreground-subtle">
+              <Text variant="small-tight" tone="subtle" className="truncate">
                 e.g. {str(entry, "example")}
-              </p>
+              </Text>
             )}
           </div>
         </div>
@@ -186,12 +185,16 @@ export function SetupCard({ output, provider }: SetupCardProps) {
         />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-body-sm font-medium leading-inherit text-foreground-emphasis">
+        <Text
+          variant="body-sm-medium-inherit"
+          tone="emphasis"
+          className="truncate"
+        >
           {name}
-        </p>
-        <p className="truncate text-xs text-foreground-tertiary">
+        </Text>
+        <Text variant="small-tight" tone="muted" className="truncate">
           Connection required
-        </p>
+        </Text>
       </div>
     </div>
   );
@@ -211,13 +214,17 @@ export function SkillCard({ output }: OutputProps) {
         />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-body-sm font-medium leading-inherit text-foreground-emphasis">
+        <Text
+          variant="body-sm-medium-inherit"
+          tone="emphasis"
+          className="truncate"
+        >
           {name}
-        </p>
+        </Text>
         {str(output, "description") && (
-          <p className="truncate text-xs text-foreground-tertiary">
+          <Text variant="small-tight" tone="muted" className="truncate">
             {str(output, "description")}
-          </p>
+          </Text>
         )}
       </div>
       {triggers[0] && (
@@ -236,19 +243,18 @@ export function SuggestedGoalCard({ output }: OutputProps) {
 
   return (
     <div className={`${CARD} ${HALF} flex flex-col gap-2 p-3`}>
-      <p className="text-body-sm font-medium leading-inherit text-foreground-emphasis">
+      <Text variant="body-sm-medium-inherit" tone="emphasis">
         {goal}
-      </p>
+      </Text>
       {str(output, "reason") && (
-        <p className="text-xs text-foreground-tertiary">
+        <Text variant="small-tight" tone="muted">
           {str(output, "reason")}
-        </p>
+        </Text>
       )}
       {actions && (
         <button
           type="button"
-          // TODO(tokens): no fitting role for hover:bg-zinc-700 #505057; #505057 is foreground-body (a text colour)
-          className="w-fit rounded-lg bg-action-hover px-2.5 py-1.5 text-xs font-medium text-action-foreground transition-colors hover:bg-zinc-700"
+          className="w-fit rounded-lg bg-action-hover px-2.5 py-1.5 text-xs font-medium text-action-foreground transition-colors hover:bg-action"
           onClick={() =>
             actions.onSend(`Please create a workflow with this goal: ${goal}`)
           }
@@ -279,7 +285,7 @@ export function TriggerSetupCard({ output }: OutputProps) {
       </p>
       {url && (
         <div className="flex items-center gap-2 rounded-lg bg-surface-muted p-2 ring-1 ring-border-base/70">
-          <code className="ph-no-capture min-w-0 flex-1 break-all text-xs text-foreground-secondary">
+          <code className="ph-no-capture min-w-0 flex-1 text-xs break-all text-foreground-secondary">
             {url}
           </code>
           <button

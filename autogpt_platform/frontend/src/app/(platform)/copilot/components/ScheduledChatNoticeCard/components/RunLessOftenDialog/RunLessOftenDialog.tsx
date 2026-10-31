@@ -42,7 +42,7 @@ export function RunLessOftenDialog({ scheduleKey, isOpen, setIsOpen }: Props) {
             <Skeleton className="h-10 w-full" />
           </div>
         ) : dialog.refusal ? (
-          <Text variant="body" className="text-foreground-secondary">
+          <Text tone="secondary" variant="body">
             {dialog.refusal}
           </Text>
         ) : dialog.isError || !dialog.cadence ? (
@@ -95,7 +95,7 @@ function CadenceChoices({ cadence, selected, onSelect }: ChoicesProps) {
 
   if (cadence.options.length === 0) {
     return (
-      <Text variant="body" className="text-foreground-secondary">
+      <Text tone="secondary" variant="body">
         “{cadence.title}” already runs once a week or less, so there is nothing
         less often to switch it to.
       </Text>
@@ -103,7 +103,7 @@ function CadenceChoices({ cadence, selected, onSelect }: ChoicesProps) {
   }
   return (
     <div className="flex flex-col gap-3">
-      <Text variant="body" className="text-foreground-secondary">
+      <Text tone="secondary" variant="body">
         {cadence.current ? `It runs ${lowerFirst(cadence.current)} now. ` : ""}
         Fewer runs use less of your allowance. Times are in {cadence.timezone}.
       </Text>

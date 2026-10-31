@@ -17,23 +17,19 @@ export function StatTile({ label, icon, value, detail, isLoading }: Props) {
     <div className="flex flex-col gap-1 rounded-2xl bg-surface p-4 smooth-shadow-ring-sm">
       <div className="flex items-center gap-1.5 text-foreground-tertiary">
         <Icon icon={icon} size={14} aria-hidden />
-        <Text variant="small-medium" className="!text-foreground-tertiary">
+        <Text variant="small-medium" tone="muted">
           {label}
         </Text>
       </div>
       {isLoading ? (
         <Skeleton className="mt-1 h-8 w-16 rounded-md" />
       ) : (
-        <Text
-          variant="h3"
-          as="p"
-          className="!font-sans !text-heading !font-semibold tabular-nums !leading-9 !text-foreground-strong"
-        >
+        <p className="font-sans text-heading leading-9 font-semibold tracking-title text-foreground-strong tabular-nums">
           {value ?? "—"}
-        </Text>
+        </p>
       )}
       {detail ? (
-        <Text variant="small" className="!text-foreground-tertiary">
+        <Text variant="small" tone="muted">
           {detail}
         </Text>
       ) : null}

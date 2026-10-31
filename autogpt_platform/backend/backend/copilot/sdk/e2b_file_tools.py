@@ -743,7 +743,11 @@ _BRIDGE_SKIP_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
 async def bridge_to_sandbox(
-    sandbox: Any, file_path: str, offset: int, limit: int
+    sandbox: Any,
+    file_path: str,
+    offset: int,
+    limit: int,
+    content: str | None = None,
 ) -> str | None:
     """Best-effort copy of a host-side SDK file into the E2B sandbox.
 
@@ -753,6 +757,10 @@ async def bridge_to_sandbox(
 
     Only copies when offset=0 and limit is large enough to indicate the model
     wants the full file.  Errors are logged but never propagated.
+
+    *content*, when given, is written in place of the file's bytes, so a
+    caller that showed the model a transformed view of the file (e.g. an
+    unwrapped MCP envelope) can give bash the same text.
 
     Returns the sandbox path on success, or ``None`` on skip/failure.
 
@@ -772,9 +780,14 @@ async def bridge_to_sandbox(
     try:
         expanded = os.path.realpath(os.path.expanduser(file_path))
         basename = os.path.basename(expanded)
-        source_id = hashlib.sha256(expanded.encode()).hexdigest()[:12]
+        source = f"{expanded}:transformed" if content is not None else expanded
+        source_id = hashlib.sha256(source.encode()).hexdigest()[:12]
         unique_name = f"{source_id}-{basename}"
-        file_size = os.path.getsize(expanded)
+        file_size = (
+            os.path.getsize(expanded)
+            if content is None
+            else len(content.encode("utf-8"))
+        )
         if file_size > _BRIDGE_SKIP_BYTES:
             logger.warning(
                 "[E2B] Skipping bridge for large file (%d bytes): %s",
@@ -783,16 +796,7 @@ async def bridge_to_sandbox(
             )
             return None
 
-        def _read_bytes() -> bytes:
-            with open(expanded, "rb") as fh:
-                return fh.read()
-
-        raw_content = await asyncio.to_thread(_read_bytes)
-        try:
-            text_content: str | None = raw_content.decode("utf-8")
-        except UnicodeDecodeError:
-            text_content = None
-        data: str | bytes = text_content if text_content is not None else raw_content
+        data = content if content is not None else await _read_host_file(expanded)
         if file_size <= _BRIDGE_SHELL_MAX_BYTES:
             sandbox_path = f"/tmp/{unique_name}"
             await _sandbox_write(sandbox, sandbox_path, data)
@@ -813,7 +817,11 @@ async def bridge_to_sandbox(
 
 
 async def bridge_and_annotate(
-    sandbox: Any, file_path: str, offset: int, limit: int
+    sandbox: Any,
+    file_path: str,
+    offset: int,
+    limit: int,
+    content: str | None = None,
 ) -> str | None:
     """Bridge a host file to the sandbox and return a newline-prefixed annotation.
 
@@ -822,10 +830,24 @@ async def bridge_and_annotate(
     ``"\\n[Sandbox copy available at /tmp/abc-file.txt]"`` on success, or
     ``None`` if bridging was skipped or failed.
     """
-    sandbox_path = await bridge_to_sandbox(sandbox, file_path, offset, limit)
+    sandbox_path = await bridge_to_sandbox(sandbox, file_path, offset, limit, content)
     if sandbox_path is None:
         return None
     return f"\n[Sandbox copy available at {sandbox_path}]"
+
+
+async def _read_host_file(path: str) -> str | bytes:
+    """The file as text when it decodes as UTF-8, else its raw bytes."""
+
+    def _read_bytes() -> bytes:
+        with open(path, "rb") as fh:
+            return fh.read()
+
+    raw_content = await asyncio.to_thread(_read_bytes)
+    try:
+        return raw_content.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw_content
 
 
 # Local read (for SDK-internal paths)

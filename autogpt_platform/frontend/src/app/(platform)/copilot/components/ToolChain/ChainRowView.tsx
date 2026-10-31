@@ -10,6 +10,7 @@ import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
 import type { ChainRow } from "./helpers";
 import { ProviderIcon, RowIcon } from "./RowIcon";
 import { useSubSessionEffectiveStatus } from "./SubSessionLive";
+import { StepClock } from "./StepClock";
 import { SwapText } from "./SwapText";
 import { HeldTag } from "./HeldCallRowParts";
 import { heldShowsOwnCall } from "./heldRow";
@@ -39,7 +40,7 @@ function ReasoningStream({ text, live }: ReasoningStreamProps) {
         "text-body-sm leading-5 text-foreground-subtle",
         live
           ? "max-h-24 overflow-hidden [mask-image:linear-gradient(to_bottom,transparent_0,black_16px,black_100%)]"
-          : "max-h-64 overflow-y-auto scrollbar-none",
+          : "scrollbar-none max-h-64 overflow-y-auto",
       )}
     >
       <p className="whitespace-pre-wrap">{text}</p>
@@ -155,6 +156,13 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
   const heldTag = row.held ? (
     <HeldTag state={row.held.state} read={row.held.read} />
   ) : null;
+  const stepClock =
+    row.state === "running" &&
+    !isReasoning &&
+    !liveSubSession &&
+    row.held?.state !== "waiting" ? (
+      <StepClock stepKey={row.key} />
+    ) : null;
 
   return (
     <div className="flex items-stretch gap-2.5">
@@ -187,6 +195,7 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
           >
             {rowText}
             {heldTag}
+            {stepClock}
             {!liveReasoning && (
               <Icon
                 icon={ArrowDown01Icon}
@@ -202,13 +211,11 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
           <div className="flex h-7 items-center gap-1.5">
             {rowText}
             {heldTag}
+            {stepClock}
           </div>
         )}
         {row.detail && (
-          <p
-            // TODO(tokens): no exact role for text-red-400
-            className="animate-fade-in truncate text-xs text-red-400 motion-reduce:animate-none"
-          >
+          <p className="animate-fade-in truncate text-xs text-error motion-reduce:animate-none">
             {row.detail}
           </p>
         )}
@@ -220,7 +227,7 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
           >
             <div
               className={cn(
-                "px-px pb-px pt-1.5",
+                "px-px pt-1.5 pb-px",
                 showContent && PANEL_REVEAL,
                 hidesOutputFromReplay(row) && HIDDEN_FROM_REPLAY,
               )}
