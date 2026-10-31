@@ -14,7 +14,7 @@ from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.filename import MAX_FILENAME_BYTES as MAX_FILENAME_BYTES
 from backend.util.filename import MAX_FILENAME_LENGTH as MAX_FILENAME_LENGTH
 from backend.util.filename import sanitize_filename as sanitize_filename
-from backend.util.request import Requests
+from backend.util.media_download import download_media_url
 from backend.util.settings import Config
 from backend.util.type import MediaFileType
 from backend.util.virus_scanner import scan_content_safe
@@ -328,7 +328,7 @@ async def store_media_file(
 
     elif file.startswith(("http://", "https://")):
         # URL - download first to get Content-Type header
-        resp = await Requests().get(file)
+        resp = await download_media_url(file)
 
         # Check file size limit
         if len(resp.content) > MAX_FILE_SIZE_BYTES:
@@ -425,6 +425,7 @@ async def store_media_file(
 
     else:
         raise ValueError(f"Invalid return_format: {return_format}")
+
 
 
 def get_dir_size(path: Path) -> int:
