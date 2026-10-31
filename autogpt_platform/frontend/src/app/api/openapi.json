@@ -11366,7 +11366,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "404": { "description": "Folder not found" },
+          "404": { "description": "Agent or folder not found" },
           "422": {
             "description": "Validation Error",
             "content": {

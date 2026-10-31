@@ -1998,15 +1998,17 @@ async def bulk_move_agents_to_folder(
     Moves multiple library agents to a folder.
 
     Args:
-        agent_ids: The IDs of the library agents.
+        agent_ids: The IDs of the library agents. Graph IDs are also accepted
+            and move every library entry of that graph.
         folder_id: The target folder ID (None for root).
         user_id: The ID of the user.
 
     Returns:
-        The updated LibraryAgents.
+        The moved LibraryAgents.
 
     Raises:
-        NotFoundError: If any agent or the folder doesn't exist.
+        NotFoundError: If any agent or the folder doesn't exist. Nothing is
+            moved in that case.
         DatabaseError: If there's a database error.
     """
     logger.debug(f"Bulk moving {len(agent_ids)} agents to folder #{folder_id}")
@@ -2016,26 +2018,48 @@ async def bulk_move_agents_to_folder(
     if folder_id:
         await get_folder(folder_id, user_id)
 
-    # Update all agents
-    await prisma.models.LibraryAgent.prisma().update_many(
+    if not agent_ids:
+        return []
+
+    # Resolve every ID before writing, so an unknown one moves nothing.
+    # Archived agents can be moved; deleted ones can't.
+    matches = await prisma.models.LibraryAgent.prisma().find_many(
         where={
-            "id": {"in": agent_ids},
             "userId": user_id,
             "isDeleted": False,
+            "OR": [
+                {"id": {"in": agent_ids}},
+                {"agentGraphId": {"in": agent_ids}},
+            ],
         },
-        data={"folderId": folder_id},
     )
+    found = {a.id for a in matches} | {a.agentGraphId for a in matches}
+    missing = [i for i in dict.fromkeys(agent_ids) if i not in found]
+    if missing:
+        raise NotFoundError(f"Library agents not found: {', '.join(missing)}")
 
-    # Fetch and return updated agents
-    agents = await prisma.models.LibraryAgent.prisma().find_many(
-        where={
-            "id": {"in": agent_ids},
-            "userId": user_id,
-        },
-        include=library_agent_include(
-            user_id, include_nodes=False, include_executions=False
-        ),
-    )
+    to_move = [a for a in matches if a.folderId != folder_id]
+    if not to_move:
+        return []
+
+    # Move and read back in one transaction with the same filter, so the
+    # returned list is exactly what this call moved.
+    scope: prisma.types.LibraryAgentWhereInput = {
+        "id": {"in": [a.id for a in to_move]},
+        "userId": user_id,
+        "isDeleted": False,
+    }
+    async with transaction() as tx:
+        await prisma.models.LibraryAgent.prisma(tx).update_many(
+            where=scope,
+            data={"folderId": folder_id},
+        )
+        agents = await prisma.models.LibraryAgent.prisma(tx).find_many(
+            where=scope,
+            include=library_agent_include(
+                user_id, include_nodes=False, include_executions=False
+            ),
+        )
 
     schedule_info = await _fetch_schedule_info(user_id)
     return [

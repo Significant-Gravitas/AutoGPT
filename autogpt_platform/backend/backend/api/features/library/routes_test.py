@@ -367,3 +367,21 @@ async def test_list_trigger_agents_route(
         user_id=test_user_id,
         library_agent_id="parent-id",
     )
+
+
+def test_bulk_move_agents_unknown_id_returns_404(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    library_agents = mocker.MagicMock()
+    library_agents.find_many = AsyncMock(return_value=[])
+    library_agents.update_many = AsyncMock()
+    mocker.patch("prisma.models.LibraryAgent.prisma", return_value=library_agents)
+
+    response = client.post(
+        "/folders/agents/bulk-move",
+        json={"agent_ids": ["unknown-agent-id"], "folder_id": None},
+    )
+
+    assert response.status_code == 404
+    assert "unknown-agent-id" in response.json()["detail"]
+    library_agents.update_many.assert_not_called()
