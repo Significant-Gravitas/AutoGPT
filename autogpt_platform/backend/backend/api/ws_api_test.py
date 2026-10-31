@@ -1,11 +1,14 @@
 import json
-from typing import cast
+from typing import cast, get_args
 from unittest.mock import AsyncMock
 
+import pydantic
 import pytest
+from annotated_types import MaxLen
 from fastapi import WebSocket, WebSocketDisconnect
 from pytest_snapshot.plugin import Snapshot
 
+from backend.api import model as api_model
 from backend.api.conn_manager import ConnectionManager
 from backend.api.test_helpers import override_config
 from backend.api.ws_api import AppEnvironment, WebsocketServer, WSMessage, WSMethod
@@ -63,6 +66,60 @@ def test_websocket_server_uses_cors_helper(mocker) -> None:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+
+def test_websocket_server_limits_incoming_message_size(mocker) -> None:
+    serve_websockets = mocker.patch("backend.api.ws_api.uvicorn.run")
+
+    with override_config(settings, "app_env", AppEnvironment.LOCAL):
+        WebsocketServer().run()
+
+    assert serve_websockets.call_args.kwargs["ws_max_size"] <= 4096
+
+
+def test_every_websocket_request_string_is_length_bounded() -> None:
+    """Client-supplied ids become Redis channel names, so each is bounded."""
+    requests = [
+        model
+        for name, model in vars(api_model).items()
+        if name.startswith("WS")
+        and name.endswith("Request")
+        and isinstance(model, type)
+        and issubclass(model, pydantic.BaseModel)
+    ]
+    assert requests, "found no WebSocket request models"
+    unbounded = [
+        f"{model.__name__}.{field_name}"
+        for model in requests
+        for field_name, field in model.model_fields.items()
+        if str in (field.annotation, *get_args(field.annotation))
+        and not any(isinstance(m, MaxLen) for m in field.metadata)
+    ]
+    assert unbounded == []
+
+
+def test_an_overlong_id_is_refused() -> None:
+    with pytest.raises(pydantic.ValidationError):
+        api_model.WSSubscribeGraphExecutionsRequest.model_validate(
+            {"graph_id": "g" * (api_model.WS_ID_MAX_LENGTH + 1)}
+        )
+
+
+@pytest.mark.asyncio
+async def test_websocket_router_stops_when_the_handshake_is_refused(
+    mock_websocket: AsyncMock, mock_manager: AsyncMock, mocker
+) -> None:
+    mocker.patch(
+        "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+    mock_manager.connect_socket.return_value = False
+
+    await websocket_router(
+        cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
+    )
+
+    mock_websocket.receive_text.assert_not_called()
+    mock_manager.disconnect_socket.assert_not_called()
 
 
 def test_websocket_server_blocks_localhost_in_production(mocker) -> None:

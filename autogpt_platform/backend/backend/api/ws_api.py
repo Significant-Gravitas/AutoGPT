@@ -30,6 +30,8 @@ logger = logging.getLogger(__name__)
 settings = Settings()
 
 ACCOUNT_BANNED_CLOSE_CODE = 4004
+# Clients send only subscribe, unsubscribe and heartbeat messages of ~100 bytes.
+WS_MAX_MESSAGE_BYTES = 4096
 
 
 @asynccontextmanager
@@ -234,7 +236,8 @@ async def websocket_router(
     user_id = await authenticate_websocket(websocket)
     if not user_id:
         return
-    await manager.connect_socket(websocket, user_id=user_id)
+    if not await manager.connect_socket(websocket, user_id=user_id):
+        return
 
     # Track WebSocket connection
     update_websocket_connections(user_id, 1)
@@ -384,5 +387,6 @@ class WebsocketServer(AppProcess):
             host=Config().websocket_server_host,
             port=Config().websocket_server_port,
             ws="websockets-sansio",
+            ws_max_size=WS_MAX_MESSAGE_BYTES,
             log_config=None,
         )
