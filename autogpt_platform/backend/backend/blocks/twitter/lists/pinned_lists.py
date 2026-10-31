@@ -169,7 +169,7 @@ class TwitterGetPinnedListsBlock(Block):
 
     class Input(ListExpansionInputs):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["lists.read", "users.read", "offline.access"]
+            ["list.read", "users.read", "offline.access"]
         )
 
     class Output(BlockSchemaOutput):
