@@ -68,7 +68,7 @@ class _CountedId(str):
 def test_duplicate_review_ids_are_found_in_one_pass():
     """Finding the repeated id costs one look per review, not one scan of
     the whole list per distinct id."""
-    count = 2000
+    count = 999
     ids = [_CountedId(f"exec-{i}") for i in range(count)] + [_CountedId("exec-0")]
     reviews = [ReviewItem.model_construct(node_exec_id=i, approved=True) for i in ids]
     _CountedId.comparisons = 0
@@ -83,3 +83,23 @@ def test_distinct_review_ids_pass():
     reviews = [ReviewItem(node_exec_id=f"exec-{i}", approved=True) for i in range(3)]
 
     assert len(ReviewRequest(reviews=reviews).reviews) == 3
+
+
+def test_more_reviews_than_the_cap_are_refused_before_any_is_validated():
+    """Items past the cap are never looked at: the one error is the count,
+    though every item after the first thousand is invalid."""
+    reviews = [{"node_exec_id": f"exec-{i}", "approved": True} for i in range(1000)]
+    reviews += [{"node_exec_id": i, "approved": "maybe"} for i in range(1000)]
+
+    with pytest.raises(ValidationError) as caught:
+        ReviewRequest.model_validate({"reviews": reviews})
+
+    errors = caught.value.errors()
+    assert len(errors) == 1
+    assert "At most 1000 reviews" in errors[0]["msg"]
+
+
+def test_reviews_at_the_cap_pass():
+    reviews = [{"node_exec_id": f"exec-{i}", "approved": True} for i in range(1000)]
+
+    assert len(ReviewRequest.model_validate({"reviews": reviews}).reviews) == 1000

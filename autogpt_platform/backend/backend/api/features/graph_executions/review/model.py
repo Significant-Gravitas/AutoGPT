@@ -14,6 +14,9 @@ from backend.copilot.constants import legacy_chat_session_id
 if TYPE_CHECKING:
     from prisma.models import PendingHumanReview
 
+# The most review items one request may carry.
+MAX_REVIEWS_PER_REQUEST = 1000
+
 # SafeJson-compatible type alias for review data
 SafeJsonData = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
 
@@ -253,6 +256,17 @@ class ReviewRequest(BaseModel):
         False,
         description="Set by a chat's own queue, which can continue: no turn starts while other cards in the chat still wait",
     )
+
+    @field_validator("reviews", mode="before")
+    @classmethod
+    def validate_review_count(cls, reviews: Any) -> Any:
+        """Refuse an oversized list before any of its items is validated."""
+        if isinstance(reviews, list) and len(reviews) > MAX_REVIEWS_PER_REQUEST:
+            raise ValueError(
+                f"At most {MAX_REVIEWS_PER_REQUEST} reviews can be sent in one "
+                f"request, got {len(reviews)}"
+            )
+        return reviews
 
     @model_validator(mode="after")
     def validate_review_completeness(self):
