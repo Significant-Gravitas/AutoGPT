@@ -187,7 +187,10 @@ def _apply_credential_result(
         or creds_field_name not in block_input_schema.get_required_fields()
     )
     if creds_field_optional:
-        new_node.input_default[creds_field_name] = {}
+        # Drop the key rather than writing `{}`: an id-less object fails the
+        # field's nested credentials schema in `validate_exec`, so the node
+        # would never be queued. An absent key means "not configured".
+        new_node.input_default.pop(creds_field_name, None)
         logger.warning(
             f"Node #{new_node.id}: cleared stale optional "
             f"credentials #{creds_meta['id']} for "

@@ -47,6 +47,14 @@ class MissingConfigError(Exception):
     """The attempted operation requires configuration which is not available"""
 
 
+class CredentialsExpiredError(Exception):
+    """A stored API key is past its ``expires_at``.
+
+    Deliberately not a ``ValueError``: the executor reads a ``ValueError`` from
+    loading credentials as "not found" and may run the node without them.
+    """
+
+
 class NotFoundError(ValueError):
     """The requested record was not found, resulting in an error condition"""
 

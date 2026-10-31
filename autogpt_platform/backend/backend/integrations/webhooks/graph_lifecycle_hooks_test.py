@@ -111,7 +111,25 @@ async def test_before_graph_activate_clears_optional_unloadable_credentials():
         mgr.cached_getter.return_value = failing_getter
         await _before_graph_activate(graph, "user-1")
 
-    assert node.input_default["credentials"] == {}
+    # Removed, not set to `{}`: an id-less object fails the field's nested
+    # credentials schema at queue time and the node is silently skipped.
+    assert "credentials" not in node.input_default
+
+
+@pytest.mark.asyncio
+async def test_before_graph_activate_removes_deleted_optional_credentials():
+    """A deleted credential on a field with a schema default is removed, so
+    the node runs as if none had been picked."""
+    node = _make_node(required=False)
+    graph = MagicMock(nodes=[node])
+
+    with patch(
+        "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
+    ) as mgr:
+        mgr.cached_getter.return_value = AsyncMock(return_value=None)
+        await _before_graph_activate(graph, "user-1")
+
+    assert "credentials" not in node.input_default
 
 
 @pytest.mark.asyncio

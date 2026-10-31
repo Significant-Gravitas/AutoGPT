@@ -4,7 +4,13 @@ import pytest
 from prisma.models import User as PrismaUser
 from pydantic import SecretStr
 
-from backend.data.model import HostScopedCredentials, NodeExecutionStats, User
+from backend.data.model import (
+    APIKeyCredentials,
+    HostScopedCredentials,
+    NodeExecutionStats,
+    User,
+)
+from backend.util.exceptions import CredentialsExpiredError
 
 
 class TestHostScopedCredentials:
@@ -300,3 +306,31 @@ class TestUserFromDbConsent:
         assert user.terms_version is None
         assert user.marketing_opt_out_at is None
         assert user.marketing_opt_out_source is None
+
+
+@pytest.mark.parametrize(
+    "expires_at, expired",
+    [(None, False), (1_001, False), (999, True), (1_000, True)],
+    ids=["none", "future", "past", "exactly-now"],
+)
+def test_api_key_is_expired(expires_at: int | None, expired: bool):
+    creds = APIKeyCredentials(
+        provider="openai", api_key=SecretStr("k"), expires_at=expires_at
+    )
+    assert creds.is_expired(now=1_000) is expired
+
+
+def test_api_key_expired_error_names_key_and_date():
+    creds = APIKeyCredentials(
+        provider="openai",
+        api_key=SecretStr("sk-secret"),
+        title="Work key",
+        expires_at=1798675200,  # 2026-12-31T00:00Z
+    )
+    error = creds.expired_error()
+    assert isinstance(error, CredentialsExpiredError)
+    assert not isinstance(error, ValueError)
+    assert str(error) == (
+        "API key 'Work key' expired on 2026-12-31 00:00 UTC. Add a new key."
+    )
+    assert "sk-secret" not in str(error)

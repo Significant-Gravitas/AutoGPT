@@ -56,6 +56,7 @@ export function HostScopedCredentialsModal({
   const formSchema = z.object({
     host: z
       .string()
+      .trim()
       .min(1, "Host is required")
       .refine((val) => !/^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(val), {
         message: "Enter only the host (e.g. api.example.com), not a full URL",
@@ -120,6 +121,9 @@ export function HostScopedCredentialsModal({
     currentHost || form.getValues("host"),
   );
 
+  const hasUsableHeader =
+    Object.keys(headerPairsToRecord(headerPairs)).length > 0;
+
   const addHeaderPair = () => {
     setHeaderPairs((prev) => addHeaderPairToList(prev));
   };
@@ -139,9 +143,20 @@ export function HostScopedCredentialsModal({
   async function onSubmit(values: z.infer<typeof formSchema>) {
     const headers = headerPairsToRecord(headerPairs);
 
+    // Check before touching the existing credentials: submitting with no
+    // usable header must not delete a working credential for this host.
+    if (Object.keys(headers).length === 0) {
+      toast({
+        title: "Add at least one header",
+        description: "Each header needs a name and a value.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Delete existing host-scoped credentials for the same host to avoid duplicates.
     // Uses unfiltered provider credentials (not the hook's pre-filtered list).
-    const host = values.host;
+    const host = values.host.trim();
     const existingForHost = findExistingHostCredentials(
       allProviderCredentials,
       host,
@@ -288,7 +303,12 @@ export function HostScopedCredentialsModal({
             </div>
 
             <div className="pt-8">
-              <Button type="submit" className="w-full" size="small">
+              <Button
+                type="submit"
+                className="w-full"
+                size="small"
+                disabled={!hasUsableHeader}
+              >
                 {hasExistingForHost
                   ? "Update & use these credentials"
                   : "Save & use these credentials"}

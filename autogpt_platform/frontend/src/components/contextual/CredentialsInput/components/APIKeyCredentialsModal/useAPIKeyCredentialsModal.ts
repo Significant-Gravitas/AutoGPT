@@ -3,6 +3,7 @@ import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
+import { expiryInputToUnix } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/schema";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm, type UseFormReturn } from "react-hook-form";
@@ -38,9 +39,26 @@ export function useAPIKeyCredentialsModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const formSchema = z.object({
-    apiKey: z.string().min(1, "API Key is required"),
-    title: z.string().min(1, "Name is required"),
-    expiresAt: z.string().optional(),
+    apiKey: z.string().trim().min(1, "API Key is required"),
+    title: z.string().trim().min(1, "Name is required"),
+    expiresAt: z
+      .string()
+      .optional()
+      .superRefine((value, ctx) => {
+        if (!value) return;
+        const expiresAt = expiryInputToUnix(value);
+        if (expiresAt === undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Pick a valid date",
+          });
+        } else if (expiresAt * 1000 <= Date.now()) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Expiry must be in the future",
+          });
+        }
+      }),
   });
 
   const form = useForm<APIKeyFormValues>({
@@ -57,11 +75,11 @@ export function useAPIKeyCredentialsModal({
     setIsSubmitting(true);
     try {
       const expiresAt = values.expiresAt
-        ? new Date(values.expiresAt).getTime() / 1000
+        ? expiryInputToUnix(values.expiresAt)
         : undefined;
       const newCredentials = await credentials.createAPIKeyCredentials({
-        api_key: values.apiKey,
-        title: values.title,
+        api_key: values.apiKey.trim(),
+        title: values.title.trim(),
         expires_at: expiresAt,
       });
       onCredentialsCreate({
