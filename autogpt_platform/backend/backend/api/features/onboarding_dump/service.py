@@ -48,7 +48,7 @@ from backend.data.onboarding import (
     format_brain_dump_for_extraction,
     get_user_onboarding,
 )
-from backend.data.onboarding_role import OTHER
+from backend.data.onboarding_role import OTHER, OnboardingRole, get_onboarding_role
 from backend.data.onboarding_wizard import OnboardingWizardProgress
 from backend.data.tally import extract_business_understanding
 from backend.data.understanding import (
@@ -575,6 +575,20 @@ async def _saved_wizard_answers(user_id: str) -> tuple[str, list[str]] | None:
     return role, list(progress.painPoints)
 
 
+async def _wizard_role(user_id: str) -> OnboardingRole | None:
+    """The pick the wizard kept at its last step; for an account with none, the
+    role its saved progress or business understanding holds."""
+    try:
+        role = await get_onboarding_role(user_id)
+    except Exception as e:
+        logger.warning(f"Brain dump intro: onboarding role read failed: {e}")
+        role = None
+    if role is not None:
+        return role
+    user_role, _ = await _safe_understanding(user_id)
+    return OnboardingRole.from_understanding(user_role)
+
+
 async def _safe_templates() -> list[Expert]:
     try:
         return await list_templates()
@@ -782,7 +796,7 @@ async def get_intro_card(user_id: str) -> IntroCardResponse:
     if dump is None or _nothing_to_reflect(dump):
         return IntroCardResponse(
             path="B",
-            greeting=prompts.PATH_B_GREETING,
+            greeting=prompts.path_b_greeting(await _wizard_role(user_id)),
             prompts=intro.fallback_prompts(),
             team=team,
             team_pending=team_pending,

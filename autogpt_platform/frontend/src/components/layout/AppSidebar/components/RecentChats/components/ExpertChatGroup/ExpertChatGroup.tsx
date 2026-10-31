@@ -45,6 +45,8 @@ interface Props {
   newChatHref: string | null;
   color?: string | null;
   isAutopilot?: boolean;
+  /** The chat on screen, when it is in this group. */
+  activeSessionId?: string | null;
   sessions: SessionSummaryResponse[];
   renderItem: (session: SessionSummaryResponse) => ReactNode;
 }
@@ -56,10 +58,18 @@ export function ExpertChatGroup({
   newChatHref,
   color,
   isAutopilot,
+  activeSessionId = null,
   sessions,
   renderItem,
 }: Props) {
-  const [isOpen, setIsOpen] = useState(!!isAutopilot);
+  const [isOpen, setIsOpen] = useState(!!isAutopilot || !!activeSessionId);
+  // Opening one of this expert's chats from elsewhere opens the group; a
+  // collapse while that same chat stays on screen is the user's and is kept.
+  const [lastActiveId, setLastActiveId] = useState(activeSessionId);
+  if (activeSessionId !== lastActiveId) {
+    setLastActiveId(activeSessionId);
+    if (activeSessionId) setIsOpen(true);
+  }
   const [visibleCount, setVisibleCount] = useState(
     isAutopilot ? OTTO_PREVIEW_COUNT : EXPERT_CHAT_PAGE_SIZE,
   );

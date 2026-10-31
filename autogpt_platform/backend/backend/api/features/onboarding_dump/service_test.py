@@ -7,6 +7,7 @@ stored row rather than inferred from a response body.
 """
 
 import asyncio
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -30,6 +31,8 @@ from backend.api.features.onboarding_dump.models import (
     ExpertRecommendations,
     RecommendedExpert,
 )
+from backend.data.onboarding_role import OnboardingRole
+from backend.data.onboarding_wizard import OnboardingWizardProgress
 from backend.data.understanding import BusinessUnderstanding, BusinessUnderstandingInput
 
 USER_ID = "user-1"
@@ -226,6 +229,10 @@ def extraction(mocker: MockerFixture) -> dict[str, AsyncMock]:
     mocks = {
         "scan_content_safe": AsyncMock(),
         "get_business_understanding": AsyncMock(return_value=None),
+        "get_onboarding_role": AsyncMock(return_value=None),
+        "get_user_onboarding": AsyncMock(
+            return_value=SimpleNamespace(wizardProgress=None)
+        ),
         "extract_business_understanding": AsyncMock(
             return_value=BusinessUnderstandingInput.model_construct()
         ),
@@ -1053,6 +1060,95 @@ async def test_intro_card_takes_path_b_when_the_user_skipped(dumps: DumpStore):
     assert card.prompts == intro.fallback_prompts()
     assert card.greeting_done is False
     assert card.transcript is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "user_role, expected",
+    [
+        ("Founder/CEO", "You told me your role is Founder / CEO, but"),
+        ("I run a small bakery.", prompts.PATH_B_GREETING),
+    ],
+)
+async def test_path_b_greeting_names_the_understanding_role_when_the_wizard_kept_none(
+    dumps: DumpStore,
+    extraction: dict[str, AsyncMock],
+    user_role: str,
+    expected: str,
+):
+    extraction["get_business_understanding"].return_value = (
+        BusinessUnderstanding.model_construct(user_role=user_role)
+    )
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.skipped)
+    await dumps.update_dump(USER_ID, RECORDING_ID, status=BrainDumpStatus.completed)
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert card.path == "B"
+    assert expected in card.greeting
+    assert user_role not in card.greeting
+    assert "?" not in card.greeting
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "picked, expected",
+    [
+        (OnboardingRole(choice="Sales/BD"), "You told me your role is Sales / BD, but"),
+        (OnboardingRole(choice="Other", other="Baker"), prompts.PATH_B_GREETING),
+    ],
+)
+async def test_path_b_greeting_names_the_role_the_wizard_kept_over_a_rewritten_one(
+    dumps: DumpStore,
+    extraction: dict[str, AsyncMock],
+    picked: OnboardingRole,
+    expected: str,
+):
+    # The understanding's copy was rewritten after the wizard, to another option ID.
+    extraction["get_onboarding_role"].return_value = picked
+    extraction["get_business_understanding"].return_value = (
+        BusinessUnderstanding.model_construct(user_role="Founder/CEO")
+    )
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.skipped)
+    await dumps.update_dump(USER_ID, RECORDING_ID, status=BrainDumpStatus.completed)
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert expected in card.greeting
+    assert "Founder" not in card.greeting
+
+
+@pytest.mark.asyncio
+async def test_path_b_greeting_names_the_role_saved_in_progress_when_no_pick_was_kept(
+    dumps: DumpStore,
+    extraction: dict[str, AsyncMock],
+):
+    # The wizard's progress is newer than the understanding's copy of the role.
+    extraction["get_user_onboarding"].return_value = SimpleNamespace(
+        wizardProgress=OnboardingWizardProgress(
+            version=1,
+            currentStep="painPoints",
+            completedSteps=["team", "autopilot", "role"],
+            role="Sales/BD",
+            otherRole="",
+            painPoints=[],
+            otherPainPoint="",
+            selectedBilling="monthly",
+            hasUserSelectedBilling=False,
+            selectedCountryCode="US",
+            hiredTemplateIds=[],
+        ).model_dump()
+    )
+    extraction["get_business_understanding"].return_value = (
+        BusinessUnderstanding.model_construct(user_role="Founder/CEO")
+    )
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.skipped)
+    await dumps.update_dump(USER_ID, RECORDING_ID, status=BrainDumpStatus.completed)
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert "You told me your role is Sales / BD, but" in card.greeting
+    assert "Founder" not in card.greeting
 
 
 @pytest.mark.asyncio

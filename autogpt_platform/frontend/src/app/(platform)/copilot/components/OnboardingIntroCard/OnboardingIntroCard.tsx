@@ -20,6 +20,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
 import { SuggestedTaskCards } from "../SuggestedTasks/SuggestedTaskCards";
 import type { useSuggestedTasks } from "../SuggestedTasks/useSuggestedTasks";
+import { IntroStandup } from "./components/IntroStandup/IntroStandup";
 
 interface Props {
   name: string | null;
@@ -27,6 +28,7 @@ interface Props {
   suggestions: ReturnType<typeof useSuggestedTasks>;
   transcript?: string;
   disabled?: boolean;
+  path: string;
 }
 
 // Otto's avatar travels into this card's heading from the loader, so the
@@ -57,6 +59,7 @@ export function OnboardingIntroCard({
   suggestions,
   transcript = "",
   disabled = false,
+  path,
 }: Props) {
   const prefersReducedMotion = useReducedMotion();
   const [isCopied, setIsCopied] = useState(false);
@@ -161,6 +164,10 @@ export function OnboardingIntroCard({
         <Text variant="large" tone="secondary" className="text-pretty">
           {greeting}
         </Text>
+      </motion.div>
+
+      <motion.div {...reveal(promptsStart)}>
+        <IntroStandup path={path} disabled={disabled} />
       </motion.div>
 
       {suggestions.tasks.length > 0 && (

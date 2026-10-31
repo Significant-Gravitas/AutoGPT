@@ -141,6 +141,8 @@ def test_the_local_prompt_asks_for_the_head_of_ai_voice():
     """
     assert "Head of AI" in intro._LOCAL_PROMPT
     assert "NEVER name a specific expert" in intro._LOCAL_PROMPT
+    # The one ask belongs to the card under the greeting.
+    assert "Do not ask a question" in intro._LOCAL_PROMPT
     # The JSON contract the parser depends on is unchanged.
     assert '"greeting"' in intro._LOCAL_PROMPT
     assert '"prompts"' in intro._LOCAL_PROMPT

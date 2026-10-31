@@ -34,6 +34,7 @@ test("landing happy path: a user finishing onboarding lands on /home", async ({
   });
 
   await expectHomeLanding(page, copilotRequests);
+  await expectAskWithinPhoneWidth(page);
 });
 
 async function expectHomeLanding(page: Page, copilotRequests: string[]) {
@@ -42,6 +43,23 @@ async function expectHomeLanding(page: Page, copilotRequests: string[]) {
   await expect(page.getByText("Application error")).toHaveCount(0);
   // /copilot only redirects to /home; entering it from these pages crashed Next's router on Vercel.
   expect(copilotRequests).toEqual([]);
+}
+
+// Otto's first ask sits in a column with a narrow gutter below md; a card
+// that bleeds past it is clipped at the screen edge.
+async function expectAskWithinPhoneWidth(page: Page) {
+  // A user fresh out of onboarding meets the first-run walkthrough first.
+  const tour = page.getByTestId("first-run-tour");
+  await tour.getByRole("button", { name: "Skip tour" }).click();
+  await expect(tour).toHaveCount(0);
+  const width = 390;
+  await page.setViewportSize({ width, height: 844 });
+  const ask = page.getByRole("region", { name: "One thing I need from you" });
+  await expect(ask).toBeVisible({ timeout: 15000 });
+  const box = await ask.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(width);
 }
 
 function recordCopilotNavigations(page: Page): string[] {
