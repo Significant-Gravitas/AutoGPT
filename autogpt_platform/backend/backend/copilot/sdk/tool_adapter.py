@@ -545,6 +545,16 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
     # cross-session reads.  sdk_cwd files (workspace outputs) are NOT allowed
     # here — they are served by the e2b_file_tools Read handler instead.
     if not is_sdk_tool_path(file_path):
+        # A truncation notice's workspace_path ("tool-outputs/<id>.json")
+        # names a workspace file, not a host one; point the model at the
+        # tool that can read it instead of a bare rejection.
+        workspace_path = file_path.lstrip("/")
+        if workspace_path.startswith("tool-outputs/"):
+            return _mcp_err(
+                f"{workspace_path} is a workspace file, not an SDK tool-result "
+                f"file. Read it with read_workspace_file("
+                f'path="{workspace_path}", offset=0, length=50000).'
+            )
         return _mcp_err(f"Path not allowed: {os.path.basename(file_path)}")
 
     resolved = os.path.realpath(os.path.expanduser(file_path))
@@ -637,14 +647,11 @@ def _extract_single_text_block(envelope: object) -> str | None:
 _READ_TOOL_NAME = "read_tool_result"
 _READ_TOOL_DESCRIPTION = (
     "Read an SDK-internal tool-result file or a workspace:// URI. "
-    "Use this tool only for paths under ~/.claude/projects/.../tool-results/ "
-    "or tool-outputs/, and for workspace:// URIs returned by other tools. "
+    "Use this tool only for host paths under ~/.claude/projects/.../tool-results/ or .../tool-outputs/, and for workspace:// URIs returned by other tools. "
+    "Workspace tool-outputs/<id>.json: use read_workspace_file. "
     "For files in the working directory use read_file instead. "
-    "MCP envelopes are auto-unwrapped and JSON payloads pretty-printed, "
-    "so offset/limit (line-based) slice into the actual payload, not the "
-    "envelope wrapper. For piping a slice into another tool's command, "
-    "use `@@agptfile:<absolute-path>[<start>-<end>]` in that tool's "
-    "argument instead — it works in bash_exec and avoids a round-trip."
+    "MCP envelopes are auto-unwrapped and JSON payloads pretty-printed, so offset/limit (line-based) slice into the actual payload, not the envelope wrapper. "
+    "To pipe a slice into another tool, use `@@agptfile:<absolute-path>[<start>-<end>]` in its argument (works in bash_exec)."
 )
 _READ_TOOL_SCHEMA = {
     "type": "object",
