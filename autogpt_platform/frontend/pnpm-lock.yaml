@@ -186,6 +186,9 @@ importers:
       geist:
         specifier: 1.8.1
         version: 1.8.1(next@15.5.28(@babel/core@7.29.7)(@opentelemetry/api@1.10.0)(@playwright/test@1.56.1)(@types/node@26.6.2)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))
+      hast-util-sanitize:
+        specifier: 5.0.2
+        version: 5.0.2
       highlight.js:
         specifier: 11.12.0
         version: 11.12.0
