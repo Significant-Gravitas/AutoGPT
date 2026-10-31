@@ -10,7 +10,6 @@ import starlette.middleware.cors
 import uvicorn
 from autogpt_libs.auth import add_auth_responses_to_openapi
 from autogpt_libs.auth import verify_settings as verify_auth_settings
-from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.routing import APIRoute
 from mcp.shared.auth import ProtectedResourceMetadata
 
@@ -111,6 +110,7 @@ from .external.v2.mcp_server import (
 from .features.analytics import router as analytics_router
 from .features.integrations.router import router as integrations_router
 from .middleware.analytics import AnalyticsContextMiddleware
+from .middleware.compression import BoundedGZipMiddleware
 from .middleware.security import SecurityHeadersMiddleware
 from .utils.auth_before_body import check_token_before_body
 from .utils.cors import build_cors_params
@@ -281,7 +281,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(AnalyticsContextMiddleware)
 
 # Add GZip compression middleware for large responses (like /api/blocks)
-app.add_middleware(GZipMiddleware, minimum_size=50_000)  # 50KB threshold
+app.add_middleware(BoundedGZipMiddleware)
 
 # Add 401 responses to authenticated endpoints in OpenAPI spec
 add_auth_responses_to_openapi(app)

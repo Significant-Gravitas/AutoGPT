@@ -312,6 +312,29 @@ def test_upload_copilot_skill_rejects_malformed_markdown() -> None:
     assert response.status_code == 400
 
 
+@pytest.mark.parametrize(
+    "frontmatter,reason",
+    [
+        ("name: &n oauth_flow\ndescription: d", "cannot use YAML anchors"),
+        (f"name: oauth_flow\ndescription: {'x' * 70_000}", "larger than 64 KiB"),
+    ],
+    ids=["anchor", "oversized"],
+)
+def test_upload_copilot_skill_says_which_frontmatter_limit_it_broke(
+    mocker: pytest_mock.MockFixture, frontmatter: str, reason: str
+) -> None:
+    store_mock = AsyncMock()
+    mocker.patch("backend.api.features.skills.routes.store_user_skill", store_mock)
+
+    response = client.post(
+        "/skills", json={"content": f"---\n{frontmatter}\n---\n\n# Body\n"}
+    )
+
+    assert response.status_code == 400
+    assert reason in response.json()["detail"]
+    store_mock.assert_not_awaited()
+
+
 def test_upload_copilot_skill_returns_409_when_at_cap(
     mocker: pytest_mock.MockFixture,
 ) -> None:

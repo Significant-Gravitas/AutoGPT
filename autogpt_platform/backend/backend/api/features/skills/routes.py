@@ -46,6 +46,7 @@ from backend.copilot.tools.skills import (
     read_user_skill_package,
     read_user_skill_with_body,
     skill_folder,
+    skill_markdown_error,
     store_user_skill,
 )
 
@@ -129,7 +130,8 @@ async def upload_copilot_skill(
     if parsed is None:
         raise HTTPException(
             status_code=400,
-            detail=(
+            detail=skill_markdown_error(body.content)
+            or (
                 "File is not a valid SKILL.md — expected YAML frontmatter with "
                 "'name' and 'description' followed by a markdown body."
             ),
@@ -178,7 +180,8 @@ async def upload_copilot_skill_package(
     if parsed is None:
         raise HTTPException(
             status_code=400,
-            detail=(
+            detail=skill_markdown_error(package.skill_md)
+            or (
                 "The archive's SKILL.md is not valid — expected YAML "
                 "frontmatter with 'name' and 'description' followed by a "
                 "markdown body."

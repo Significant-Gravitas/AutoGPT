@@ -1,4 +1,5 @@
 import asyncio
+import codecs
 import ipaddress
 import re
 import socket
@@ -99,6 +100,42 @@ BLOCKED_IP_NETWORKS = [
 
 ALLOWED_SCHEMES = ["http", "https"]
 HOSTNAME_REGEX = re.compile(r"^[A-Za-z0-9.-]+$")  # Basic DNS-safe hostname pattern
+
+# The longest name DNS allows, checked before IDNA encoding.
+MAX_HOSTNAME_LENGTH = 253
+
+# Charsets a remote server may name for a response body we decode, by their
+# canonical codec names. Anything else is decoded as UTF-8.
+ALLOWED_RESPONSE_CHARSETS = frozenset(
+    {
+        "utf-8",
+        "utf-8-sig",
+        "utf-16",
+        "utf-16-le",
+        "utf-16-be",
+        "utf-32",
+        "utf-32-le",
+        "utf-32-be",
+        "ascii",
+        *(f"iso8859-{n}" for n in (*range(1, 12), *range(13, 17))),
+        *(f"cp{n}" for n in range(1250, 1259)),
+        "cp874",
+        "cp932",
+        "cp949",
+        "koi8-r",
+        "koi8-u",
+        "mac-roman",
+        "shift_jis",
+        "euc_jp",
+        "iso2022_jp",
+        "gb2312",
+        "gbk",
+        "gb18030",
+        "big5",
+        "big5hkscs",
+        "euc_kr",
+    }
+)
 
 # IPv6 prefixes whose last 32 bits are an IPv4 address the network may route
 # the connection to: the well-known NAT64 prefix (RFC 6052), SIIT (RFC 2765)
@@ -276,6 +313,9 @@ async def validate_url_host(
     if not parsed.hostname:
         raise ValueError(f"Invalid host/URL; no host in parse result: {url}")
 
+    if len(parsed.hostname) > MAX_HOSTNAME_LENGTH:
+        raise ValueError(f"Hostname is longer than {MAX_HOSTNAME_LENGTH} characters")
+
     # IDNA encode to prevent Unicode domain attacks
     try:
         ascii_hostname = idna.encode(parsed.hostname).decode("ascii")
@@ -432,9 +472,7 @@ class Response:
         """
         if encoding is None:
             # Try to extract charset from headers; fall back to UTF-8
-            ctype = self.headers.get("content-type", "")
-            match = re.search(r"charset=([^\s;]+)", ctype, flags=re.I)
-            encoding = match.group(1) if match else None
+            encoding = _response_charset(self.headers.get("content-type", ""))
         return self.content.decode(encoding or "utf-8", errors="replace")
 
     @property
@@ -449,6 +487,18 @@ class Response:
         """
         if self.status >= 400:
             raise http_status_error(self.status, self.reason, self.content)
+
+
+def _response_charset(content_type: str) -> str | None:
+    """The allowed codec a ``Content-Type`` header names, or None."""
+    match = re.search(r"charset=([^\s;]+)", content_type, flags=re.I)
+    if not match:
+        return None
+    try:
+        name = codecs.lookup(match.group(1).strip("\"'")).name
+    except LookupError:
+        return None
+    return name if name in ALLOWED_RESPONSE_CHARSETS else None
 
 
 def http_status_error(status: int, reason: str | None, body: bytes) -> Exception:

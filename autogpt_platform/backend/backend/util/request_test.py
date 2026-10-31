@@ -1,11 +1,14 @@
 from unittest.mock import MagicMock
 from urllib.parse import urlparse
 
+import idna
 import pytest
+import pytest_mock
 from aiohttp import web
 
 from backend.util.request import (
     Requests,
+    Response,
     ResponseTooLargeError,
     _is_ip_blocked,
     _read_body,
@@ -867,3 +870,54 @@ async def test_a_head_response_is_not_refused_for_the_size_of_the_resource():
 
 def test_the_default_limit_follows_the_file_size_setting():
     assert Requests().max_response_bytes == Config().max_file_size_mb * 1024 * 1024
+
+
+# The longest hostname DNS allows.
+_DNS_MAX_HOSTNAME = 253
+
+
+@pytest.mark.asyncio
+async def test_validate_url_host_refuses_an_overlong_hostname_before_encoding_it(
+    mocker: pytest_mock.MockerFixture,
+):
+    encode = mocker.patch("backend.util.request.idna.encode", wraps=idna.encode)
+
+    with pytest.raises(ValueError, match=f"longer than {_DNS_MAX_HOSTNAME}"):
+        await validate_url_host(f"https://{'a' * 5000}.com/")
+
+    encode.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_validate_url_host_accepts_a_hostname_at_the_length_limit():
+    hostname = ".".join(["a" * 63, "b" * 63, "c" * 63, "d" * 61])
+    assert len(hostname) == _DNS_MAX_HOSTNAME
+
+    url, trusted, _ = await validate_url_host(
+        f"https://{hostname}/", trusted_hostnames=[hostname]
+    )
+
+    assert trusted
+    assert url.hostname == hostname
+
+
+def _response(body: bytes, content_type: str) -> Response:
+    raw = MagicMock(status=200, headers={"content-type": content_type}, reason="OK")
+    return Response(response=raw, url="https://example.com/", body=body)
+
+
+@pytest.mark.parametrize("charset", ["punycode", "unicode_escape", "no-such-codec"])
+def test_response_text_decodes_an_unlisted_charset_as_utf8(charset: str):
+    body = "abc-caf\\xe9-é".encode()
+
+    text = _response(body, f"text/plain; charset={charset}").text()
+
+    assert text == body.decode("utf-8")
+
+
+@pytest.mark.parametrize(
+    "content_type",
+    ["text/plain; charset=ISO-8859-1", 'text/plain; charset="iso-8859-1"'],
+)
+def test_response_text_uses_a_listed_charset(content_type: str):
+    assert _response(b"caf\xe9", content_type).text() == "café"

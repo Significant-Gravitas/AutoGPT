@@ -1,5 +1,6 @@
 import json
 import re
+from collections import Counter
 from datetime import datetime
 from functools import cache
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Union
@@ -260,9 +261,9 @@ class ReviewRequest(BaseModel):
             raise ValueError("At least one review must be provided")
 
         # Ensure no duplicate node_exec_ids
-        node_ids = [review.node_exec_id for review in self.reviews]
-        if len(node_ids) != len(set(node_ids)):
-            duplicates = [nid for nid in set(node_ids) if node_ids.count(nid) > 1]
+        counts = Counter(review.node_exec_id for review in self.reviews)
+        duplicates = [nid for nid, count in counts.items() if count > 1]
+        if duplicates:
             raise ValueError(f"Duplicate review IDs found: {', '.join(duplicates)}")
 
         return self
