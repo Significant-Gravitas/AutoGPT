@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import {
   currentSessionID,
-  firstWords,
+  expectAnswerToStart,
   savedMessages,
   startChat,
 } from "./copilot-chat";
@@ -32,11 +32,8 @@ test.describe("copilot follow-up journey", () => {
     const run = scriptedRun("answer-then-follow-up");
     const firstMessage = `Tell me about today. ${run.marker}`;
     await startChat(page, firstMessage);
+    await expectAnswerToStart(page, ANSWER);
     const transcript = page.getByRole("log");
-    await expect(
-      transcript.getByText(firstWords(ANSWER)),
-      "the answer should start streaming",
-    ).toBeVisible({ timeout: 60_000 });
 
     await page
       .getByRole("textbox", { name: "Chat message input" })

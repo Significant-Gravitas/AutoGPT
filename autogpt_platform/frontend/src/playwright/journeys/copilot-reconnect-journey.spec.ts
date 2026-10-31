@@ -2,7 +2,7 @@ import type { BrowserContext, Page } from "@playwright/test";
 import {
   currentSessionID,
   cutChatStreams,
-  firstWords,
+  expectAnswerToStart,
   isChatStream,
   recordChatStreams,
   savedAssistantTexts,
@@ -81,11 +81,8 @@ async function loseConnectionMidAnswer({
   const run = scriptedRun("slow-answer");
   await recordChatStreams(page);
   await startChat(page, `Answer me slowly. ${run.marker}`);
+  await expectAnswerToStart(page, ANSWER);
   const transcript = page.getByRole("log");
-  await expect(
-    transcript.getByText(firstWords(ANSWER)),
-    "the answer should start streaming",
-  ).toBeVisible({ timeout: 60_000 });
 
   // The connection drops mid-answer while the model is still writing it.
   // Online, one drop resumes silently: the chat speaks up from the second
