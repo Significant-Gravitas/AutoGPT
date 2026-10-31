@@ -3,11 +3,10 @@ import {
   TableBody,
   TableCell,
   TableHead,
-  TableHeader,
   TableRow,
-} from "@/components/__legacy__/ui/table";
+} from "@/components/molecules/Table/components/TablePrimitives";
 
-import { PaginationControls } from "../../../../../components/__legacy__/ui/pagination-controls";
+import { PaginationControls } from "@/components/molecules/PaginationControls/PaginationControls";
 import { SearchAndFilterAdminSpending } from "./SearchAndFilterAdminSpending";
 import { getUsersTransactionHistory } from "@/app/(platform)/admin/spending/actions";
 import { AdminAddMoneyButton } from "./AddMoneyButton";
@@ -36,10 +35,10 @@ export async function AdminUserGrantHistory({
     const isPositive = type === CreditTransactionType.GRANT;
     const isNeutral = type === CreditTransactionType.TOP_UP;
     const color = isPositive
-      ? "text-green-600"
+      ? "text-success"
       : isNeutral
-        ? "text-blue-600"
-        : "text-red-600";
+        ? "text-info-foreground"
+        : "text-error-foreground";
     return <span className={color}>${Math.abs(amount / 100)}</span>;
   };
 
@@ -53,11 +52,11 @@ export async function AdminUserGrantHistory({
     let bgColor = "";
 
     if (isGrant) {
-      bgColor = "bg-green-100 text-green-800";
+      bgColor = "bg-success/30 text-success-foreground";
     } else if (isPurchased) {
-      bgColor = "bg-blue-100 text-blue-800";
+      bgColor = "bg-info/20 text-info-foreground";
     } else if (isSpent) {
-      bgColor = "bg-red-100 text-red-800";
+      bgColor = "bg-error-surface text-error-foreground";
     }
 
     return (
@@ -83,57 +82,64 @@ export async function AdminUserGrantHistory({
     <div className="space-y-4">
       <SearchAndFilterAdminSpending initialSearch={initialSearch} />
 
-      <div className="rounded-md border bg-white">
+      <div className="rounded-md border bg-surface">
         <Table>
-          <TableHeader className="bg-gray-50">
+          <thead className="bg-surface-muted [&_tr]:border-b">
             <TableRow>
-              <TableHead className="font-medium">User</TableHead>
-              <TableHead className="font-medium">Type</TableHead>
-              <TableHead className="font-medium">Date</TableHead>
-              <TableHead className="font-medium">Reason</TableHead>
-              <TableHead className="font-medium">Admin</TableHead>
-              <TableHead className="font-medium">Starting Balance</TableHead>
-              <TableHead className="font-medium">Amount</TableHead>
-              <TableHead className="font-medium">Ending Balance</TableHead>
-              {/* <TableHead className="font-medium">Current Balance</TableHead> */}
-              <TableHead className="text-right font-medium">Actions</TableHead>
+              <TableHead>User</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead>Reason</TableHead>
+              <TableHead>Admin</TableHead>
+              <TableHead>Starting Balance</TableHead>
+              <TableHead>Amount</TableHead>
+              <TableHead>Ending Balance</TableHead>
+              {/* <TableHead>Current Balance</TableHead> */}
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
-          </TableHeader>
+          </thead>
           <TableBody>
             {history.length === 0 ? (
               <TableRow>
-                <TableCell
+                <td
                   colSpan={9}
-                  className="py-10 text-center text-gray-500"
+                  className="px-2 py-10 text-center align-middle text-foreground-tertiary"
                 >
                   No transactions found
-                </TableCell>
+                </td>
               </TableRow>
             ) : (
               history.map((transaction) => (
                 <TableRow
                   key={`${transaction.user_id}-${transaction.transaction_time}`}
-                  className="hover:bg-gray-50"
                 >
-                  <TableCell className="font-medium">
-                    {transaction.user_email}
+                  <TableCell>
+                    <span className="font-medium">
+                      {transaction.user_email}
+                    </span>
                   </TableCell>
 
                   <TableCell>
                     {formatType(transaction.transaction_type)}
                   </TableCell>
-                  <TableCell className="text-gray-600">
-                    {formatDate(transaction.transaction_time)}
+                  <TableCell>
+                    <span className="text-foreground-secondary">
+                      {formatDate(transaction.transaction_time)}
+                    </span>
                   </TableCell>
                   <TableCell>{transaction.reason}</TableCell>
-                  <TableCell className="text-gray-600">
-                    {transaction.admin_email}
+                  <TableCell>
+                    <span className="text-foreground-secondary">
+                      {transaction.admin_email}
+                    </span>
                   </TableCell>
-                  <TableCell className="font-medium text-green-600">
-                    $
-                    {((transaction.running_balance ?? 0) +
-                      -transaction.amount) /
-                      100}
+                  <TableCell>
+                    <span className="font-medium text-success">
+                      $
+                      {((transaction.running_balance ?? 0) +
+                        -transaction.amount) /
+                        100}
+                    </span>
                   </TableCell>
                   <TableCell>
                     {formatAmount(
@@ -141,10 +147,12 @@ export async function AdminUserGrantHistory({
                       transaction.transaction_type,
                     )}
                   </TableCell>
-                  <TableCell className="font-medium text-green-600">
-                    ${(transaction.running_balance ?? 0) / 100}
+                  <TableCell>
+                    <span className="font-medium text-success">
+                      ${(transaction.running_balance ?? 0) / 100}
+                    </span>
                   </TableCell>
-                  {/* <TableCell className="font-medium text-green-600">
+                  {/* <TableCell className="font-medium text-success">
                     ${transaction.current_balance / 100}
                   </TableCell> */}
                   <TableCell className="text-right">

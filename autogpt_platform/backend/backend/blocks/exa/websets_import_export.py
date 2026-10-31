@@ -20,6 +20,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -217,6 +218,7 @@ class ExaCreateImportBlock(Block):
             ],
             test_credentials=TEST_CREDENTIALS,
             test_mock=self._create_test_mock(),
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -354,6 +356,7 @@ class ExaGetImportBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=ExaGetImportBlock.Input,
             output_schema=ExaGetImportBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -421,6 +424,7 @@ class ExaListImportsBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=ExaListImportsBlock.Input,
             output_schema=ExaListImportsBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -471,6 +475,7 @@ class ExaDeleteImportBlock(Block):
             input_schema=ExaDeleteImportBlock.Input,
             output_schema=ExaDeleteImportBlock.Output,
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -555,6 +560,7 @@ class ExaExportWebsetBlock(Block):
             ],
             test_credentials=TEST_CREDENTIALS,
             test_mock=self._create_test_mock(),
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

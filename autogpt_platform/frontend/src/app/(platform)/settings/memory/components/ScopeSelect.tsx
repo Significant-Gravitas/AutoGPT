@@ -24,11 +24,9 @@ interface Props {
 function ScopeCheck({ selected }: { selected: boolean }) {
   if (!selected) return null;
   return (
-    <Icon
-      icon={Tick02Icon}
-      size={16}
-      className="ml-auto shrink-0 text-violet-600"
-    />
+    <span className="ml-auto flex shrink-0 text-brand">
+      <Icon icon={Tick02Icon} size={16} />
+    </span>
   );
 }
 
@@ -44,9 +42,9 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
           type="button"
           aria-label="Memory scope"
           className={cn(
-            "flex w-full items-center gap-2.5 rounded-[10px] border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-textBlack",
-            "transition-colors hover:border-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400",
-            "data-[state=open]:border-violet-500",
+            "flex w-full items-center gap-2.5 rounded-medium border border-border-base bg-surface px-3 py-2 text-sm font-medium text-foreground-base",
+            "transition-colors hover:border-border-strong focus-visible:ring-2 focus-visible:ring-brand/70 focus-visible:outline-none",
+            "data-[state=open]:border-brand",
           )}
         >
           {selectedExpert ? (
@@ -61,25 +59,27 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
           <span className="min-w-0 truncate">
             {selectedExpert?.name ?? "Otto"}
           </span>
-          <Icon
-            icon={ArrowDown01Icon}
-            size={16}
-            className="ml-auto shrink-0 text-zinc-500"
-          />
+          <span className="ml-auto flex shrink-0 text-foreground-tertiary">
+            <Icon icon={ArrowDown01Icon} size={16} />
+          </span>
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="max-h-96 w-[300px] overflow-y-auto rounded-[12px] p-1.5"
+        // oxlint-disable-next-line design-system/no-restyle -- the scope menu is wider, rounder and padded for two-line rows
+        className="max-h-96 w-[300px] overflow-y-auto rounded-medium p-1.5"
       >
         <DropdownMenuItem
-          className="flex items-start gap-2.5 rounded-[8px] px-2.5 py-2"
+          // oxlint-disable-next-line design-system/no-restyle -- two-line scope row with an avatar
+          className="flex items-start gap-2.5 rounded-small px-2.5 py-2"
           onSelect={() => onSelect(null)}
         >
           <AutopilotAvatar size={28} />
           <span className="flex min-w-0 flex-col leading-snug">
-            <span className="text-sm font-medium text-textBlack">Otto</span>
-            <span className="text-xs text-zinc-500">
+            <span className="text-sm font-medium text-foreground-base">
+              Otto
+            </span>
+            <span className="text-xs text-foreground-tertiary">
               Your account memory — everything you do together
             </span>
           </span>
@@ -89,13 +89,15 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
         {experts.length > 0 && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel className="px-2.5 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-400">
+            {/* oxlint-disable-next-line design-system/no-restyle -- the experts group label is an eyebrow, not a menu label */}
+            <DropdownMenuLabel className="px-2.5 pt-1.5 pb-0.5 text-tiny leading-inherit font-semibold tracking-caps text-foreground-subtle uppercase">
               Your experts
             </DropdownMenuLabel>
             {experts.map((expert) => (
               <DropdownMenuItem
                 key={expert.id}
-                className="flex items-start gap-2.5 rounded-[8px] px-2.5 py-2"
+                // oxlint-disable-next-line design-system/no-restyle -- two-line scope row with an avatar
+                className="flex items-start gap-2.5 rounded-small px-2.5 py-2"
                 onSelect={() => onSelect(expert.id)}
               >
                 <ExpertAvatar
@@ -104,11 +106,11 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
                   size={28}
                 />
                 <span className="flex min-w-0 flex-col leading-snug">
-                  <span className="truncate text-sm font-medium text-textBlack">
+                  <span className="truncate text-sm font-medium text-foreground-base">
                     {expert.name}
                   </span>
                   {expert.role && (
-                    <span className="truncate text-xs text-zinc-500">
+                    <span className="truncate text-xs text-foreground-tertiary">
                       {expert.role}
                     </span>
                   )}

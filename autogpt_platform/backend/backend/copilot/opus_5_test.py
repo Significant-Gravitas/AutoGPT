@@ -41,7 +41,7 @@ async def test_thinking_advanced_routes_opus_5_5_without_catalog_refusal(
     expected = "anthropic/claude-opus-5-5" if use_openrouter else "claude-opus-5-5"
     assert normalize_model_for_transport(route.model, cfg) == expected
     assert cfg.fast_advanced_model == "anthropic/claude-opus-5-5"
-    assert cfg.thinking_standard_model == "anthropic/claude-sonnet-5"
+    assert cfg.thinking_standard_model == "anthropic/claude-sonnet-5-5"
 
 
 def test_opus_5_has_public_metadata_and_provider_prices():

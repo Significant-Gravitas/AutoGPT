@@ -22,6 +22,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -172,6 +173,7 @@ class ExaGetWebsetItemBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaGetWebsetItemBlock.Input,
             output_schema=ExaGetWebsetItemBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -255,6 +257,7 @@ class ExaListWebsetItemsBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaListWebsetItemsBlock.Input,
             output_schema=ExaListWebsetItemsBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -337,6 +340,7 @@ class ExaDeleteWebsetItemBlock(Block):
             input_schema=ExaDeleteWebsetItemBlock.Input,
             output_schema=ExaDeleteWebsetItemBlock.Output,
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -400,6 +404,7 @@ class ExaBulkWebsetItemsBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaBulkWebsetItemsBlock.Input,
             output_schema=ExaBulkWebsetItemsBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -473,6 +478,7 @@ class ExaWebsetItemsSummaryBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaWebsetItemsSummaryBlock.Input,
             output_schema=ExaWebsetItemsSummaryBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -568,6 +574,7 @@ class ExaGetNewItemsBlock(Block):
             categories={BlockCategory.SEARCH, BlockCategory.DATA},
             input_schema=ExaGetNewItemsBlock.Input,
             output_schema=ExaGetNewItemsBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(

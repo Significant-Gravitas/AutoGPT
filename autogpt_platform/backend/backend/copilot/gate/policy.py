@@ -7,21 +7,43 @@ decision here must hold even if it always answered "allow".
 from enum import Enum
 from typing import Any
 
-from backend.copilot.model import AutopilotMode
+from backend.copilot.autopilot_mode import AutopilotMode
 
 DEFAULT_MODE: AutopilotMode = "auto"
+
+# Strictest first: a chat in ``ask_first`` asks the most.
+_MODES_BY_STRICTNESS: tuple[AutopilotMode, ...] = ("ask_first", "auto", "unsupervised")
+
+
+def strictest_mode(*modes: AutopilotMode) -> AutopilotMode:
+    return min(modes, key=_MODES_BY_STRICTNESS.index)
 
 
 class Effect(str, Enum):
     READ = "read"
     WORKSPACE = "workspace"
     SHELL = "shell"
+    # Work handed to a chat of one of the user's Experts, which the gate covers itself.
+    TEAM = "team"
     PLATFORM = "platform"
+    # Outward, but cheap to get wrong: Auto lets the supervisor judge it.
+    EXTERNAL_JUDGED = "external_judged"
     EXTERNAL = "external"
     # Never gated: the call is itself a question to the user, finishes a
-    # review that is already open, or answers to L1's irreversible-action pause
-    # until it can name its subject.
+    # review that is already open, or runs nothing.
     UNGATED = "ungated"
+
+
+# What the gate can hold for an answer, and so what a rule can be set on.
+PARKABLE = frozenset(
+    {
+        Effect.SHELL,
+        Effect.TEAM,
+        Effect.PLATFORM,
+        Effect.EXTERNAL_JUDGED,
+        Effect.EXTERNAL,
+    }
+)
 
 
 class Verdict(str, Enum):
@@ -109,15 +131,9 @@ _PLATFORM = frozenset(
         "confirm_expert_change",
         "confirm_expert_soul_update",
         "grant_expert_credential",
-        "hire_expert",
         "install_expert_workflow",
-        "raise_expert",
         "remove_expert_workflow",
         "revoke_expert_credential",
-        "update_expert",
-        "update_expert_soul",
-        "delegate_to_expert",
-        "handoff_to_expert",
         "message_session",
         "run_sub_session",
         # Deletes inside the workspace: the user may have put the thing there.
@@ -127,19 +143,32 @@ _PLATFORM = frozenset(
     }
 )
 
-_EXTERNAL = frozenset(
-    {"browser_act", "edit_chat_platform_message", "post_to_chat_platform"}
-)
+# The chat they open keeps this one's origin, so the gate judges what the Expert does
+# there; Ask First still asks, as that chat runs in Auto.
+_TEAM = frozenset({"delegate_to_expert", "handoff_to_expert"})
+
+_EXTERNAL = frozenset({"browser_act"})
+
+# A bot post in a chat platform the user linked: the supervisor judges it.
+_EXTERNAL_JUDGED = frozenset({"edit_chat_platform_message", "post_to_chat_platform"})
 
 _UNGATED = frozenset(
     {
         "connect_integration",
         "request_credential_grant",
         "resume_capability",
-        "run_agent",
-        "run_capability",
+        # Previews: they only park a proposal and put it to the user on its own
+        # card. The confirm that applies it is what the gate holds.
+        "hire_expert",
+        "raise_expert",
+        "update_expert",
+        "update_expert_soul",
     }
 )
+
+# Decided by the block or workflow they run (``gate_subject``); without one
+# they cannot be read, and unreadable asks.
+_BY_SUBJECT = frozenset({"run_agent", "run_capability"})
 
 # Registered straight onto the MCP server by ``create_copilot_mcp_server``, so
 # the second seam in ``sdk/tool_adapter.py`` is the only gate they reach.
@@ -152,28 +181,48 @@ _EFFECTS: dict[str, Effect] = {
     **{name: Effect.READ for name in _READ | MCP_FILE_READ_TOOLS},
     **{name: Effect.WORKSPACE for name in _WORKSPACE | MCP_FILE_WRITE_TOOLS},
     "bash_exec": Effect.SHELL,
+    **{name: Effect.TEAM for name in _TEAM},
     **{name: Effect.PLATFORM for name in _PLATFORM},
-    **{name: Effect.EXTERNAL for name in _EXTERNAL},
+    **{name: Effect.EXTERNAL_JUDGED for name in _EXTERNAL_JUDGED},
+    **{name: Effect.EXTERNAL for name in _EXTERNAL | _BY_SUBJECT},
     **{name: Effect.UNGATED for name in _UNGATED},
 }
 
 _MODE_VERDICTS: dict[AutopilotMode, dict[Effect, Verdict]] = {
+    # Work in the chat's own sandbox never asks; the supervisor still holds a
+    # command that reaches outside it.
     "ask_first": {
         Effect.READ: Verdict.RUN,
         Effect.WORKSPACE: Verdict.RUN,
-        Effect.SHELL: Verdict.ASK,
+        Effect.SHELL: Verdict.JUDGE,
+        Effect.TEAM: Verdict.ASK,
         Effect.PLATFORM: Verdict.ASK,
+        Effect.EXTERNAL_JUDGED: Verdict.ASK,
         Effect.EXTERNAL: Verdict.ASK,
     },
+    # An outward act asks until the user's rule on it says otherwise; one cheap
+    # to get wrong goes to the supervisor instead.
     "auto": {
         Effect.READ: Verdict.RUN,
         Effect.WORKSPACE: Verdict.RUN,
         Effect.SHELL: Verdict.JUDGE,
+        Effect.TEAM: Verdict.RUN,
         Effect.PLATFORM: Verdict.JUDGE,
+        Effect.EXTERNAL_JUDGED: Verdict.JUDGE,
         Effect.EXTERNAL: Verdict.ASK,
     },
     "unsupervised": {effect: Verdict.RUN for effect in Effect},
 }
+
+
+# A paid read with no subject to price it: consult_teammate is one bounded
+# call on the cheap aux model, well under a cent.
+_ESTIMATES = {"consult_teammate": 10_000}
+
+
+def estimate_for(tool_name: str) -> int:
+    """What one call of a tool is expected to cost, in microdollars."""
+    return _ESTIMATES.get(tool_name, 0)
 
 
 # Deletes that destroy data no restore path brings back. A folder delete is not
@@ -194,7 +243,10 @@ def effect_for(tool_name: str) -> Effect:
 
 
 def verdict_for(mode: AutopilotMode, tool_name: str) -> Verdict:
-    effect = effect_for(tool_name)
+    return verdict_for_effect(mode, effect_for(tool_name))
+
+
+def verdict_for_effect(mode: AutopilotMode, effect: Effect) -> Verdict:
     if effect is Effect.UNGATED:
         return Verdict.RUN
     return _MODE_VERDICTS[mode][effect]

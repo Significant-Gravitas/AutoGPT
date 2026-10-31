@@ -8,9 +8,11 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-} from "@/components/__legacy__/ui/card";
+} from "@/components/atoms/Card/Card";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
-import { InfoIcon } from "lucide-react";
+import { CookieSettingsLink } from "@/components/molecules/CookieSettingsLink/CookieSettingsLink";
+import { InformationCircleIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { useParams } from "next/navigation";
 import { ShareActions } from "../components/ShareHeader/ShareActions";
 import { ShareHeader } from "../components/ShareHeader/ShareHeader";
@@ -31,6 +33,7 @@ function ExecutionShareChrome({
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="container mx-auto px-4 py-8">{children}</div>
       </div>
+      <CookieSettingsLink className="mb-1 shrink-0 self-center" />
     </div>
   );
 }
@@ -65,11 +68,15 @@ export default function SharePage() {
       <ExecutionShareChrome>
         <div className="flex items-center justify-center py-16">
           <div className="mx-auto w-full max-w-md p-6">
-            <Card className="border-dashed">
-              <CardContent className="pt-6">
+            <div className="rounded-2xl border border-dashed border-border-strong bg-surface p-px text-foreground-base">
+              <div className="p-6">
                 <div className="space-y-4 text-center">
-                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-                    <InfoIcon className="h-6 w-6 text-muted-foreground" />
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                    <Icon
+                      aria-hidden
+                      icon={InformationCircleIcon}
+                      className="h-6 w-6"
+                    />
                   </div>
                   <div className="space-y-2">
                     <h3 className="text-lg font-semibold">
@@ -90,8 +97,8 @@ export default function SharePage() {
                     </button>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
             <div className="mt-8 text-center text-xs text-muted-foreground">
               <p>Powered by AutoGPT Platform</p>
             </div>
@@ -106,19 +113,23 @@ export default function SharePage() {
       <div className="mx-auto max-w-6xl">
         <div className="mb-6">
           <Alert>
-            <InfoIcon className="h-4 w-4" />
+            <Icon
+              aria-hidden
+              icon={InformationCircleIcon}
+              className="h-4 w-4"
+            />
             <AlertDescription>
-              This is a publicly shared agent run result. The person who shared
-              this link can disable access at any time.
+              This is a publicly shared workflow run result. The person who
+              shared this link can disable access at any time.
             </AlertDescription>
           </Alert>
         </div>
 
-        <Card className="mb-6">
+        <Card variant="outlined" className="mb-6">
           <CardHeader>
-            <CardTitle className="text-2xl">
+            <h3 className="text-2xl font-semibold tracking-tight">
               {executionData.graph_name}
-            </CardTitle>
+            </h3>
             {executionData.graph_description && (
               <p className="mt-2 text-muted-foreground">
                 {executionData.graph_description}
@@ -143,7 +154,7 @@ export default function SharePage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card variant="outlined">
           <CardHeader>
             <CardTitle>Output</CardTitle>
           </CardHeader>

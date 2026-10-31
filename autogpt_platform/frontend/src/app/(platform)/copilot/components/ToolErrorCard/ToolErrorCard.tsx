@@ -25,29 +25,29 @@ export function ToolErrorCard({
   actions,
 }: Props) {
   return (
-    <div className="space-y-3 rounded-lg bg-red-50 p-4">
+    <div className="space-y-3 rounded-lg bg-error-surface p-4">
       <div className="flex items-start gap-2">
         <Icon
           icon={AlertDiamondIcon}
           size={20}
-          className="mt-0.5 shrink-0 text-red-500"
+          className="mt-0.5 shrink-0 text-error"
         />
         <div className="flex-1 space-y-2">
-          <Text variant="body-medium" className="text-red-900">
+          <Text variant="body-medium" className="text-error-foreground">
             {message || fallbackMessage}
           </Text>
           {(error || details) && (
-            <details className="text-xs text-red-700">
+            <details className="text-xs text-error-foreground">
               <summary className="cursor-pointer font-medium">
                 Technical details
               </summary>
               {error && (
-                <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100 p-2">
+                <pre className="mt-2 max-h-40 overflow-auto rounded bg-error-surface p-2 break-words whitespace-pre-wrap">
                   {error}
                 </pre>
               )}
               {details && (
-                <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100 p-2">
+                <pre className="mt-2 max-h-40 overflow-auto rounded bg-error-surface p-2 break-words whitespace-pre-wrap">
                   {details}
                 </pre>
               )}

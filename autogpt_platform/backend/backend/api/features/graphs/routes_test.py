@@ -13,19 +13,23 @@ from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.graphs.routes import router
 from backend.api.rest_api import app as real_app
-from backend.api.rest_api import handle_internal_http_error
+from backend.api.utils.exceptions import add_exception_handlers
+from backend.blocks.basic import StoreValueBlock
+from backend.blocks.generic_webhook.triggers import GenericWebhookTriggerBlock
+from backend.blocks.google.sheets import GoogleSheetsReadBlock
+from backend.blocks.io import AgentInputBlock, AgentOutputBlock
+from backend.blocks.sql_query_block import SQLQueryBlock
 from backend.data import execution as execution_db
 from backend.data.execution import ExecutionStatus
-from backend.data.graph import GraphModel
+from backend.data.graph import GraphModel, NodeModel
 from backend.data.onboarding import OnboardingStep
-from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 from backend.util.exceptions import GraphValidationError
 
 app = fastapi.FastAPI()
 app.include_router(router)
-# Mirror rest_api.py's GraphActivationError -> 400 mapping so the atomicity
-# tests verify the same behaviour the real app exposes.
-app.add_exception_handler(GraphActivationError, handle_internal_http_error(400))
+# Same handler set as the real app (GraphActivationError -> 400 included), so
+# the atomicity tests verify the behaviour it actually exposes.
+add_exception_handlers(app)
 client = fastapi.testclient.TestClient(app)
 
 
@@ -224,7 +228,7 @@ def test_get_graphs(
 
     mocker.patch(
         "backend.data.graph.list_graphs_paginated",
-        return_value=Mock(graphs=[mock_graph]),
+        return_value=([mock_graph], Mock()),
     )
 
     response = client.get("/graphs")
@@ -273,6 +277,162 @@ def test_get_graph(
         json.dumps(response_data, indent=2, sort_keys=True),
         "grph_single",
     )
+
+
+def _graph_owned_by(owner_id: str) -> GraphModel:
+    owner = {
+        "user_id": owner_id,
+        "organization_id": "owner-org",
+        "team_id": "owner-team",
+        "created_at": datetime(2025, 9, 4, 13, 37),
+    }
+    sub_graph = GraphModel(
+        id="sub-graph",
+        name="Sub",
+        description="",
+        nodes=[
+            NodeModel(
+                id="query",
+                block_id=SQLQueryBlock().id,
+                graph_id="sub-graph",
+                graph_version=1,
+                input_default={"host": "db.internal", "query": "select 1"},
+            )
+        ],
+        **owner,
+    )
+    return GraphModel(
+        id="graph-123",
+        version=1,
+        is_active=True,
+        name="Shared",
+        description="",
+        nodes=[
+            NodeModel(
+                id="trigger",
+                block_id=GenericWebhookTriggerBlock().id,
+                graph_id="graph-123",
+                graph_version=1,
+                input_default={"secret_token": "owner-token"},
+                webhook_id="owner-webhook",
+            )
+        ],
+        sub_graphs=[sub_graph],
+        **owner,
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/graphs/graph-123",
+        "/graphs/graph-123?for_export=false",
+        "/graphs/graph-123/versions/1",
+    ],
+)
+def test_get_graph_gives_someone_who_isnt_the_owner_an_export(
+    mocker: pytest_mock.MockFixture, path: str
+) -> None:
+    """A teammate or library member reading a graph they don't own gets what
+    an export gives, whatever they ask for: no stored secrets, no trigger
+    subscription, no owner."""
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph",
+        return_value=_graph_owned_by("someone-else"),
+    )
+
+    response = client.get(path)
+
+    assert response.status_code == 200
+    graph = response.json()
+    assert (graph["user_id"], graph["organization_id"], graph["team_id"]) == (
+        "",
+        None,
+        None,
+    )
+    [trigger] = graph["nodes"]
+    assert trigger["webhook_id"] is None
+    assert "secret_token" not in trigger["input_default"]
+    [sub_graph] = graph["sub_graphs"]
+    assert not any(
+        sub_graph.get(key) for key in ("user_id", "organization_id", "team_id")
+    )
+    assert "host" not in sub_graph["nodes"][0]["input_default"]
+
+
+def test_get_graph_gives_the_owner_their_graph_as_saved(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph",
+        return_value=_graph_owned_by(test_user_id),
+    )
+
+    graph = client.get("/graphs/graph-123").json()
+
+    assert (graph["user_id"], graph["organization_id"], graph["team_id"]) == (
+        test_user_id,
+        "owner-org",
+        "owner-team",
+    )
+    [trigger] = graph["nodes"]
+    assert trigger["webhook_id"] == "owner-webhook"
+    assert trigger["input_default"]["secret_token"] == "owner-token"
+    assert graph["sub_graphs"][0]["nodes"][0]["input_default"]["host"] == "db.internal"
+
+
+def test_an_owners_export_keeps_everything_the_export_kept(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """An export comes back with its owner blanked, so the route can't tell an
+    owner's export from anyone else's and sends it through `shared_copy`.
+    That has to take nothing away, such as the plain inputs an export keeps
+    on a node whose block is missing."""
+    export = GraphModel(
+        id="graph-123",
+        version=1,
+        is_active=True,
+        name="Exported",
+        description="",
+        user_id="",
+        created_at=datetime(2025, 9, 4, 13, 37),
+        nodes=[
+            NodeModel(
+                id="gone",
+                block_id="00000000-0000-0000-0000-0000000dead00",
+                graph_id="graph-123",
+                graph_version=1,
+                input_default={"note": "plain"},
+            )
+        ],
+    )
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph",
+        return_value=export,
+    )
+
+    graph = client.get("/graphs/graph-123?for_export=true").json()
+
+    assert graph["nodes"][0]["input_default"] == {"note": "plain"}
+
+
+def test_get_graph_all_versions_exports_only_the_versions_someone_else_owns(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph_all_versions",
+        return_value=[_graph_owned_by(test_user_id), _graph_owned_by("teammate")],
+    )
+
+    own, teammates = client.get("/graphs/graph-123/versions").json()
+
+    assert own["user_id"] == test_user_id
+    assert own["nodes"][0]["webhook_id"] == "owner-webhook"
+    assert own["nodes"][0]["input_default"]["secret_token"] == "owner-token"
+    assert teammates["user_id"] == ""
+    assert teammates["nodes"][0]["webhook_id"] is None
+    assert "secret_token" not in teammates["nodes"][0]["input_default"]
+    assert "host" not in teammates["sub_graphs"][0]["nodes"][0]["input_default"]
 
 
 def test_get_graph_not_found(
@@ -410,7 +570,7 @@ def test_update_graph_returns_400_and_persists_nothing_on_activation_error(
         "backend.api.features.graphs.routes.graph_db.create_graph", new=AsyncMock()
     )
     update_lib_agent_mock = mocker.patch(
-        "backend.api.features.graphs.routes.library_db.update_library_agent_version_and_settings",
+        "backend.api.features.graphs.routes.library_db.update_agent_version_in_library",
         new=AsyncMock(),
     )
 
@@ -692,6 +852,238 @@ def test_create_new_graph_reassigns_ids_and_persists_in_order(
     assert response.status_code == 200
     assert calls == ["graph", "library"]
     assert response.json()["id"] != "submitted-id"
+
+
+def _unnamed_output_graph() -> dict:
+    """Store Value wired into an Agent Output whose required Name is empty."""
+    return {
+        "name": "Unnamed output",
+        "description": "",
+        "nodes": [
+            {
+                "id": "value",
+                "block_id": StoreValueBlock().id,
+                "input_default": {"input": "hi"},
+            },
+            {"id": "output", "block_id": AgentOutputBlock().id, "input_default": {}},
+        ],
+        "links": [
+            {
+                "source_id": "value",
+                "sink_id": "output",
+                "source_name": "output",
+                "sink_name": "value",
+            }
+        ],
+    }
+
+
+def test_create_new_graph_names_the_missing_field_on_the_submitted_node(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Saving used to answer "'Input' object has no attribute 'name'". The
+    builder needs the field, keyed by the node id it sent rather than the
+    fresh one the graph is given, to mark it on the canvas."""
+    create_graph_mock = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.create_graph", new=AsyncMock()
+    )
+
+    response = client.post("/graphs", json={"graph": _unnamed_output_graph()})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == {
+        "type": "validation_error",
+        "message": "Agent Output › Name: This field is required",
+        "node_errors": {"output": {"name": "This field is required"}},
+    }
+    create_graph_mock.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "block,title",
+    [(AgentInputBlock, "Agent Input"), (AgentOutputBlock, "Agent Output")],
+    ids=["input", "output"],
+)
+@pytest.mark.parametrize("name", [None, "", "   "], ids=["null", "empty", "whitespace"])
+def test_create_new_graph_refuses_a_blank_input_or_output_name(
+    mocker: pytest_mock.MockFixture, block: type, title: str, name: str | None
+) -> None:
+    """A name that is there but blank names nothing either; it would add a
+    nameless field to the graph's inputs or outputs."""
+    create_graph_mock = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.create_graph", new=AsyncMock()
+    )
+    graph = {
+        "name": "Blank name",
+        "description": "",
+        "nodes": [
+            {"id": "io", "block_id": block().id, "input_default": {"name": name}}
+        ],
+        "links": [],
+    }
+
+    response = client.post("/graphs", json={"graph": graph})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == {
+        "type": "validation_error",
+        "message": f"{title} › Name: This field is required",
+        "node_errors": {"io": {"name": "This field is required"}},
+    }
+    create_graph_mock.assert_not_awaited()
+
+
+def test_update_graph_names_the_missing_field_on_the_submitted_node(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph_all_versions",
+        new=AsyncMock(return_value=[Mock(version=1, is_active=True)]),
+    )
+    create_graph_mock = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.create_graph", new=AsyncMock()
+    )
+
+    response = client.put(
+        "/graphs/graph-1", json={"id": "graph-1", **_unnamed_output_graph()}
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["node_errors"] == {
+        "output": {"name": "This field is required"}
+    }
+    create_graph_mock.assert_not_awaited()
+
+
+def _sheets_read_graph(credentials_id: str) -> dict:
+    """A Google Sheets Read agent whose spreadsheet was chosen in the Drive
+    picker, which embeds the credential it used as `_credentials_id`."""
+    return {
+        "name": "Sheets",
+        "description": "",
+        "nodes": [
+            {
+                "id": "node-1",
+                "block_id": GoogleSheetsReadBlock().id,
+                "input_default": {
+                    "spreadsheet": {
+                        "_credentials_id": credentials_id,
+                        "id": "sheet-1",
+                        "name": "test",
+                        "mimeType": "application/vnd.google-apps.spreadsheet",
+                    },
+                    "range": "A1",
+                },
+            }
+        ],
+        "links": [],
+    }
+
+
+@pytest.fixture
+def google_sheets_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Google blocks disable themselves when no OAuth client is configured, as
+    in CI, and graph validation rejects a disabled block."""
+    monkeypatch.setattr("backend.blocks.google.sheets.GOOGLE_SHEETS_DISABLED", False)
+
+
+def _own_credentials(mocker: pytest_mock.MockFixture, *credentials_ids: str) -> None:
+    mocker.patch(
+        "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager.store.get_all_creds",
+        new=AsyncMock(return_value=[Mock(id=cid) for cid in credentials_ids]),
+    )
+
+
+@pytest.mark.usefixtures("google_sheets_enabled")
+@pytest.mark.parametrize(
+    "owned_ids,expected_credentials_id",
+    [(["own-cred"], "own-cred"), ([], None)],
+    ids=["picked-with-own-account", "imported-with-someone-elses"],
+)
+def test_create_new_graph_keeps_only_a_file_picked_with_the_callers_credentials(
+    mocker: pytest_mock.MockFixture,
+    owned_ids: list[str],
+    expected_credentials_id: str | None,
+) -> None:
+    """[SECRT-1772] Saving a new agent kept the range but dropped the Drive
+    file you had picked, because every save nulled picker inputs. A file that
+    embeds someone else's credentials is still cleared."""
+    _own_credentials(mocker, *owned_ids)
+    create_graph_mock = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.create_graph", new=AsyncMock()
+    )
+    mocker.patch(
+        "backend.api.features.graphs.routes.library_db.create_library_agent",
+        new=AsyncMock(),
+    )
+
+    response = client.post("/graphs", json={"graph": _sheets_read_graph("own-cred")})
+
+    assert response.status_code == 200
+    saved: GraphModel = create_graph_mock.await_args.args[0]
+    spreadsheet = saved.nodes[0].input_default["spreadsheet"]
+    assert (spreadsheet or {}).get("_credentials_id") == expected_credentials_id
+    assert saved.nodes[0].input_default["range"] == "A1"
+
+
+@pytest.mark.usefixtures("google_sheets_enabled")
+def test_update_graph_keeps_the_file_the_owner_picked(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """[SECRT-1772] Saving a new version dropped the picked file the same way
+    (reproduced on dev by re-picking the file and saving again)."""
+    _own_credentials(mocker, "own-cred")
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph_all_versions",
+        new=AsyncMock(return_value=[Mock(version=1, is_active=False)]),
+    )
+    create_graph_mock = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.create_graph",
+        new=AsyncMock(return_value=Mock(version=2, is_active=False)),
+    )
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph",
+        new=AsyncMock(side_effect=lambda *a, **k: create_graph_mock.await_args.args[0]),
+    )
+
+    response = client.put(
+        "/graphs/graph-1", json={"id": "graph-1", **_sheets_read_graph("own-cred")}
+    )
+
+    assert response.status_code == 200
+    saved: GraphModel = create_graph_mock.await_args.args[0]
+    assert saved.nodes[0].input_default["spreadsheet"]["_credentials_id"] == "own-cred"
+    assert saved.nodes[0].input_default["range"] == "A1"
+
+
+@pytest.mark.usefixtures("google_sheets_enabled")
+def test_update_graph_clears_someone_elses_file_in_an_inactive_version(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """An inactive version skips activation, but must not keep a file picked
+    with someone else's credentials either: activating it later won't
+    rewrite its nodes."""
+    _own_credentials(mocker, "own-cred")
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph_all_versions",
+        new=AsyncMock(return_value=[Mock(version=1, is_active=True)]),
+    )
+    create_graph_mock = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.create_graph",
+        new=AsyncMock(return_value=Mock(version=2, is_active=False)),
+    )
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph",
+        new=AsyncMock(side_effect=lambda *a, **k: create_graph_mock.await_args.args[0]),
+    )
+    graph = {"id": "graph-1", "is_active": False, **_sheets_read_graph("foreign")}
+
+    response = client.put("/graphs/graph-1", json=graph)
+
+    assert response.status_code == 200
+    saved: GraphModel = create_graph_mock.await_args.args[0]
+    assert not saved.is_active
+    assert saved.nodes[0].input_default == {"spreadsheet": None, "range": "A1"}
 
 
 def test_set_active_version_returns_404_for_an_unknown_version(

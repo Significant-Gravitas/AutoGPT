@@ -2,8 +2,6 @@
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Button } from "@/components/atoms/Button/Button";
-import { Icon } from "@/components/atoms/Icon/Icon";
-import { UserAiIcon } from "@hugeicons/core-free-icons";
 import { useTrackFunnelViewOnce } from "@/services/experts/use-track-funnel-view-once";
 import { SectionHeader } from "../SectionHeader";
 import { ExpertCard } from "./components/ExpertCard";
@@ -52,7 +50,6 @@ export function ExpertsSection({ category }: Props) {
   return (
     <section id="experts" className="mb-20 scroll-mt-24">
       <SectionHeader
-        titleIcon={<Icon icon={UserAiIcon} size="2.2rem" aria-hidden />}
         title="Meet the AI Experts"
         subtitle="Hire a ready-made specialist — competent on day one, working for you in minutes."
         actions={
@@ -85,6 +82,7 @@ export function ExpertsSection({ category }: Props) {
             <ExpertCard
               key={template.id}
               expert={template}
+              category={category}
               isHired={hiredTemplateIds.has(template.id)}
             />
           ))}

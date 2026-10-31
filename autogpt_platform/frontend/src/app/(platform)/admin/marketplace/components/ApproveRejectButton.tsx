@@ -1,8 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/__legacy__/ui/button";
-import { CheckCircle, XCircle } from "lucide-react";
+import { Button } from "@/components/atoms/Button/Button";
+import {
+  CancelCircleIcon,
+  CheckmarkCircle02Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import {
   Dialog,
   DialogContent,
@@ -10,9 +14,9 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@/components/__legacy__/ui/dialog";
-import { Label } from "@/components/__legacy__/ui/label";
-import { Textarea } from "@/components/__legacy__/ui/textarea";
+} from "@/components/molecules/Dialog/components/DialogPrimitives";
+import { Label } from "@/components/atoms/Label/Label";
+import { Textarea } from "@/components/atoms/Textarea/Textarea";
 import type { StoreSubmissionAdminView } from "@/app/api/__generated__/models/storeSubmissionAdminView";
 import { useRouter } from "next/navigation";
 import {
@@ -55,29 +59,35 @@ export function ApproveRejectButtons({
     <>
       {!isApproved && (
         <Button
-          size="sm"
-          variant="outline"
-          className="text-green-600 hover:bg-green-50 hover:text-green-700"
+          size="xs"
+          variant="secondary"
           onClick={(e) => {
             e.stopPropagation();
             setIsApproveDialogOpen(true);
           }}
         >
-          <CheckCircle className="mr-2 h-4 w-4" />
-          Approve
+          <span className="flex items-center gap-1.5 text-success">
+            <Icon
+              aria-hidden
+              icon={CheckmarkCircle02Icon}
+              className="h-4 w-4"
+            />
+            Approve
+          </span>
         </Button>
       )}
       <Button
-        size="sm"
-        variant="outline"
-        className="text-red-600 hover:bg-red-50 hover:text-red-700"
+        size="xs"
+        variant="secondary"
         onClick={(e) => {
           e.stopPropagation();
           setIsRejectDialogOpen(true);
         }}
       >
-        <XCircle className="mr-2 h-4 w-4" />
-        {isApproved ? "Revoke" : "Reject"}
+        <span className="flex items-center gap-1.5 text-error-hover">
+          <Icon aria-hidden icon={CancelCircleIcon} className="h-4 w-4" />
+          {isApproved ? "Revoke" : "Reject"}
+        </span>
       </Button>
 
       {/* Approve Dialog */}
@@ -113,12 +123,15 @@ export function ApproveRejectButtons({
             <DialogFooter>
               <Button
                 type="button"
-                variant="outline"
+                variant="compact-outline"
+                size="compact"
                 onClick={() => setIsApproveDialogOpen(false)}
               >
                 Cancel
               </Button>
-              <Button type="submit">Approve</Button>
+              <Button variant="compact-primary" size="compact" type="submit">
+                Approve
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -169,12 +182,17 @@ export function ApproveRejectButtons({
             <DialogFooter>
               <Button
                 type="button"
-                variant="outline"
+                variant="compact-outline"
+                size="compact"
                 onClick={() => setIsRejectDialogOpen(false)}
               >
                 Cancel
               </Button>
-              <Button type="submit" variant="destructive">
+              <Button
+                type="submit"
+                variant="compact-destructive"
+                size="compact"
+              >
                 {isApproved ? "Revoke" : "Reject"}
               </Button>
             </DialogFooter>

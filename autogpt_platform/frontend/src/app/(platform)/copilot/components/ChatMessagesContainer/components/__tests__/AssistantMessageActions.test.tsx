@@ -185,7 +185,7 @@ describe("AssistantMessageActions feedback", () => {
     ]);
   });
 
-  test("a reply still keyed by the stream's id cannot be rated yet", async () => {
+  test("a reply still keyed by the stream's id says why it can't be rated yet", async () => {
     const bodies = captureRequests();
     render(
       <AssistantMessageActions
@@ -194,13 +194,86 @@ describe("AssistantMessageActions feedback", () => {
       />,
     );
 
-    expect((upvoteButton() as HTMLButtonElement).disabled).toBe(true);
-    expect((downvoteButton() as HTMLButtonElement).disabled).toBe(true);
+    // Clickable, so the click is answered instead of silently swallowed.
+    expect((upvoteButton() as HTMLButtonElement).disabled).toBe(false);
+    expect(upvoteButton().getAttribute("aria-disabled")).toBe("true");
+    expect(downvoteButton().getAttribute("aria-disabled")).toBe("true");
+
+    fireEvent.click(upvoteButton());
+    fireEvent.click(downvoteButton());
+
+    expect(toastTitles()).toEqual([
+      "Can't rate this reply yet",
+      "Can't rate this reply yet",
+    ]);
+    expect(
+      screen.queryByPlaceholderText(
+        "Tell us what went wrong or could be improved...",
+      ),
+    ).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Copy" }));
 
     await waitFor(() => expect(toastTitles()).toContain("Copied!"));
     expect(bodies).toEqual([]);
+  });
+
+  test("a saved bubble a later unsaved turn joined can't be rated by its own id", () => {
+    const bodies = captureRequests();
+    render(
+      <AssistantMessageActions
+        message={reply(`${SESSION_ID}-seq-5`)}
+        sessionID={SESSION_ID}
+        savedMessageId={null}
+      />,
+    );
+
+    expect(upvoteButton().getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(upvoteButton());
+
+    expect(toastTitles()).toEqual(["Can't rate this reply yet"]);
+    expect(bodies).toEqual([]);
+  });
+
+  test("a live reply is rated by the saved id the chat learned for it", async () => {
+    const bodies = captureRequests();
+    render(
+      <AssistantMessageActions
+        message={reply("turn:turn-1")}
+        sessionID={SESSION_ID}
+        savedMessageId={`${SESSION_ID}-seq-12`}
+      />,
+    );
+
+    expect(upvoteButton().getAttribute("aria-disabled")).toBeNull();
+    fireEvent.click(upvoteButton());
+
+    await waitFor(() =>
+      expect(toastTitles()).toContain("Thank you for your feedback!"),
+    );
+    expect(bodies).toEqual([
+      {
+        message_id: `${SESSION_ID}-seq-12`,
+        score_name: "user-feedback",
+        score_value: 1,
+      },
+    ]);
+  });
+
+  test("a saved id passed in wins over the bubble's own id", async () => {
+    const bodies = captureRequests();
+    render(
+      <AssistantMessageActions
+        message={reply()}
+        sessionID={SESSION_ID}
+        savedMessageId={`${SESSION_ID}-seq-9`}
+      />,
+    );
+
+    fireEvent.click(upvoteButton());
+
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0].message_id).toBe(`${SESSION_ID}-seq-9`);
   });
 
   test("copying a saved reply records a copy without thanking the user", async () => {

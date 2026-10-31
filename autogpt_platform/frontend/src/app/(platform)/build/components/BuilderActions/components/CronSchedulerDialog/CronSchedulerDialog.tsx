@@ -3,7 +3,8 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { InfoIcon } from "lucide-react";
+import { InformationCircleIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { useCronSchedulerDialog } from "./useCronSchedulerDialog";
 
 type CronSchedulerDialogProps = {
@@ -20,7 +21,7 @@ export function CronSchedulerDialog({
   setOpen,
 
   defaultCronExpression = "",
-  title = "Schedule Graph",
+  title = "Schedule Workflow",
   inputs,
   credentials,
 }: CronSchedulerDialogProps) {
@@ -67,18 +68,32 @@ export function CronSchedulerDialog({
 
           {/* Timezone info */}
           {userTimezone === "not-set" ? (
-            <div className="flex items-center gap-2 rounded-xlarge border border-amber-200 bg-amber-50 p-3">
-              <InfoIcon className="h-4 w-4 text-amber-600" />
-              <Text variant="body" className="text-amber-800">
+            <div className="flex items-center gap-2 rounded-xlarge border border-warning-border bg-warning-surface p-3">
+              <span className="flex text-warning-foreground">
+                <Icon
+                  aria-hidden
+                  icon={InformationCircleIcon}
+                  className="h-4 w-4"
+                />
+              </span>
+              <Text variant="body" tone="warning">
                 No timezone set. Schedule will run in UTC.
                 <a href="/settings/account" className="ml-1 underline">
-                  Set your timezone
+                  <Text variant="body" as="span" tone="inherit">
+                    Set your timezone
+                  </Text>
                 </a>
               </Text>
             </div>
           ) : (
             <div className="flex items-center gap-2 rounded-xlarge bg-muted/50 p-3">
-              <InfoIcon className="h-4 w-4 text-muted-foreground" />
+              <span className="flex text-muted-foreground">
+                <Icon
+                  aria-hidden
+                  icon={InformationCircleIcon}
+                  className="h-4 w-4"
+                />
+              </span>
               <Text variant="body">
                 Schedule will run in your timezone:{" "}
                 <Text variant="body-medium" as="span">

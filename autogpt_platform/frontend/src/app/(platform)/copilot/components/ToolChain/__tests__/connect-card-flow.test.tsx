@@ -54,7 +54,7 @@ vi.mock("@/lib/oauth-popup", () => ({
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   toast: vi.fn(),
   useToast: () => ({ toast: vi.fn() }),
-  useToastOnFail: () => () => {},
+  useToastOnFail: () => () => () => {},
 }));
 
 import { toast } from "@/components/molecules/Toast/use-toast";
@@ -151,6 +151,37 @@ describe("copilot Connect card", () => {
       "I've configured the required credentials.",
     );
     await screen.findByText("Connected. Continuing…");
+  });
+
+  it("offers an API key below sign-in when either method can satisfy the workflow", async () => {
+    server.use(
+      http.post(
+        "*/api/integrations/github/credentials",
+        async ({ request }) => {
+          const body = (await request.json()) as Record<string, unknown>;
+          const stored = {
+            id: "github-key",
+            provider: "github",
+            type: "api_key",
+            title: body.title,
+          };
+          savedCredentials = [stored];
+          return HttpResponse.json(stored);
+        },
+      ),
+    );
+    const { onSend } = renderChain([
+      setupRequirementsPart(["oauth2", "api_key"]),
+    ]);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Connect" }));
+    await screen.findByRole("button", { name: "Continue with GitHub" });
+    await user.click(screen.getByText("Use an API key instead"));
+    await user.type(await screen.findByLabelText("Name"), "Work account");
+    await user.type(screen.getByLabelText("API key"), "test-github-key");
+    await user.click(screen.getByRole("button", { name: "Save and connect" }));
+    await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+    expect(requestedScopes).toBeNull();
   });
 
   it("offers the existing account for upgrade instead of a fresh grant", async () => {
@@ -278,7 +309,7 @@ describe("copilot Connect card, cards that owe more than a credential", () => {
       </CredentialsProvider>,
     );
 
-    await screen.findByText("Plug in what this needs");
+    await screen.findByText(/Connect your apps|Your apps are connected/);
     // The MCP entry's buildMessage returns null, so a Proceed here would draft
     // an empty message and do nothing at all.
     expect(screen.queryByRole("button", { name: "Proceed" })).toBeNull();
@@ -434,8 +465,9 @@ describe("copilot Connect card, upgrade-target selection", () => {
     await user.click(
       screen.getByRole("button", { name: "Update this account" }),
     );
-    await user.click(await screen.findByText("OAuth"));
-    await user.click(await screen.findByRole("button", { name: "Continue" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Continue with GitHub" }),
+    );
 
     await waitFor(() => expect(upgradedCredentialID).toBe("cred-b"));
   });
@@ -450,12 +482,100 @@ describe("copilot Connect card, upgrade-target selection", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Connect" }));
     await user.click(await screen.findByRole("button", { name: "Add new" }));
-    await user.click(await screen.findByText("OAuth"));
-    await user.click(await screen.findByRole("button", { name: "Continue" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Continue with GitHub" }),
+    );
 
     await waitFor(() => expect(requestedScopes).toBe(REQUIRED_SCOPE));
     expect(upgradedCredentialID).toBeNull();
   });
+
+  it.each([true, false])(
+    "switches from a selected account to the new account (reported: %s)",
+    async (reported) => {
+      savedCredentials = [oauthCredential("cred-existing", [REQUIRED_SCOPE])];
+      const selections: Record<string, string>[] = [];
+      server.use(
+        http.put(
+          "*/api/chat/sessions/*/credential-selection",
+          async ({ request }) => {
+            const body = (await request.json()) as {
+              selections: Record<string, string>;
+            };
+            selections.push(body.selections);
+            return HttpResponse.json({ status: "ok" });
+          },
+        ),
+        http.post("*/api/integrations/github/callback", () => {
+          const added = oauthCredential("cred-new", [REQUIRED_SCOPE]);
+          savedCredentials = [...savedCredentials, added];
+          return HttpResponse.json(reported ? added : {});
+        }),
+      );
+      const { onSend } = renderChain();
+      const user = userEvent.setup();
+      await user.click(
+        await screen.findByRole("button", { name: "Change account" }),
+      );
+      await user.click(await screen.findByRole("button", { name: "Add new" }));
+      await user.click(
+        await screen.findByRole("button", { name: "Continue with GitHub" }),
+      );
+      await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+      expect(selections).toEqual([{ github: "cred-new" }]);
+      expect(upgradedCredentialID).toBeNull();
+    },
+  );
+
+  it.each(["stale", "failed"])(
+    "continues with the newly connected account after a %s credential reload",
+    async (reload) => {
+      const original = oauthCredential("cred-existing", [REQUIRED_SCOPE]);
+      savedCredentials = [original];
+      let callbackCompleted = false;
+      const selections: Record<string, string>[] = [];
+      server.use(
+        http.get("*/api/integrations/credentials", () => {
+          if (callbackCompleted && reload === "failed") {
+            return HttpResponse.json(
+              { detail: "List unavailable" },
+              { status: 500 },
+            );
+          }
+          return HttpResponse.json([original]);
+        }),
+        http.post("*/api/integrations/github/callback", () => {
+          callbackCompleted = true;
+          return HttpResponse.json(
+            oauthCredential("cred-new", [REQUIRED_SCOPE]),
+          );
+        }),
+        http.put(
+          "*/api/chat/sessions/*/credential-selection",
+          async ({ request }) => {
+            const body = (await request.json()) as {
+              selections: Record<string, string>;
+            };
+            selections.push(body.selections);
+            return HttpResponse.json({ status: "ok" });
+          },
+        ),
+      );
+      const { onSend } = renderChain();
+      const user = userEvent.setup();
+      await user.click(
+        await screen.findByRole("button", { name: "Change account" }),
+      );
+      await user.click(await screen.findByRole("button", { name: "Add new" }));
+      await user.click(
+        await screen.findByRole("button", { name: "Continue with GitHub" }),
+      );
+
+      await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+      expect(selections).toEqual([{ github: "cred-new" }]);
+      expect(upgradedCredentialID).toBeNull();
+    },
+  );
 
   it("surfaces the backend's refusal when the sign-in is a different user", async () => {
     savedCredentials = [
@@ -479,8 +599,9 @@ describe("copilot Connect card, upgrade-target selection", () => {
     await user.click(
       screen.getByRole("button", { name: "Update this account" }),
     );
-    await user.click(await screen.findByText("OAuth"));
-    await user.click(await screen.findByRole("button", { name: "Continue" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Continue with GitHub" }),
+    );
 
     // The sign-in was aimed at cred-b, and a different user behind it is
     // refused rather than stored as yet another account.
@@ -848,12 +969,499 @@ describe("copilot Connect card, a card that arrives after the first connection",
   });
 });
 
-function renderChain() {
+describe("copilot Connect card, a saved credential the provider refused", () => {
+  // The credential the provider refused. It stays on file and still has every
+  // scope the card asks for, which is what made the row read Connected.
+  const refused = oauthCredential("cred-refused", [REQUIRED_SCOPE]);
+  let picked: Record<string, string> | null = null;
+
+  beforeEach(() => {
+    requestedScopes = null;
+    upgradedCredentialID = null;
+    picked = null;
+    savedCredentials = [refused];
+    server.use(
+      http.get("*/api/integrations/providers", () =>
+        HttpResponse.json([{ name: "github", description: "Repositories" }]),
+      ),
+      http.get("*/api/integrations/providers/system", () =>
+        HttpResponse.json([]),
+      ),
+      http.get("*/api/integrations/credentials", () =>
+        HttpResponse.json(savedCredentials),
+      ),
+      http.get("*/api/integrations/github/login", ({ request }) => {
+        const query = new URL(request.url).searchParams;
+        requestedScopes = query.get("scopes") ?? "";
+        upgradedCredentialID = query.get("credential_id");
+        return HttpResponse.json({
+          login_url: "https://github.com/login/oauth/authorize",
+          state_token: "state-token",
+        });
+      }),
+      // A re-auth aimed at an account updates it in place: same id, new token.
+      http.post("*/api/integrations/github/callback", () =>
+        HttpResponse.json(refused),
+      ),
+      http.put(
+        "*/api/chat/sessions/:sessionId/credential-selection",
+        async ({ request }) => {
+          picked = ((await request.json()) as { selections: typeof picked })
+            .selections;
+          return HttpResponse.json({});
+        },
+      ),
+    );
+  });
+
+  afterEach(resetStores);
+
+  function renderRefusedChain() {
+    const onSend = vi.fn();
+    render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain
+            parts={[refusedRequirementsPart("cred-refused")]}
+            isStreaming={false}
+          />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+    return { onSend };
+  }
+
+  async function reconnect() {
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Reconnect" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Continue with GitHub" }),
+    );
+  }
+
+  it("offers Reconnect instead of calling the refused credential Connected", async () => {
+    const { onSend } = renderRefusedChain();
+
+    // A Connected row renders no button, so it would leave nothing to click.
+    await screen.findByRole("button", { name: "Reconnect" });
+    expect(screen.queryByText("Connected")).toBeNull();
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("renews the refused account in place and continues the chat", async () => {
+    const { onSend } = renderRefusedChain();
+
+    await reconnect();
+
+    await waitFor(() => expect(upgradedCredentialID).toBe("cred-refused"));
+    // The renewal keeps the credential's id, so a card that kept treating that
+    // id as refused would never send.
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(picked).toEqual({ github: "cred-refused" });
+    await screen.findByText("Connected. Continuing…");
+  });
+
+  it("runs on the new credential, not the refused one, when the sign-in adds one", async () => {
+    server.use(
+      http.post("*/api/integrations/github/callback", () => {
+        const added = oauthCredential("cred-new", [REQUIRED_SCOPE]);
+        savedCredentials = [refused, added];
+        return HttpResponse.json(added);
+      }),
+    );
+    const { onSend } = renderRefusedChain();
+
+    await reconnect();
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(picked).toEqual({ github: "cred-new" });
+  });
+
+  it("keeps asking when the sign-in comes back without the access needed", async () => {
+    // A narrower grant is stored beside the refused account, not over it.
+    server.use(
+      http.post("*/api/integrations/github/callback", () => {
+        const short = oauthCredential("cred-short", []);
+        savedCredentials = [refused, short];
+        return HttpResponse.json(short);
+      }),
+    );
+    const { onSend } = renderRefusedChain();
+
+    await reconnect();
+
+    await waitFor(() => expect(savedCredentials).toHaveLength(2));
+    await screen.findByRole("button", { name: "Reconnect" });
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("finds the new account when the sign-in does not report it", async () => {
+    // Any 2xx other than 200 reaches the dialog as a success with no
+    // credential, which is how a credential-less approval looks to the row.
+    server.use(
+      http.post("*/api/integrations/github/callback", () => {
+        const added = oauthCredential("cred-new", [REQUIRED_SCOPE]);
+        savedCredentials = [refused, added];
+        return HttpResponse.json(added, { status: 201 });
+      }),
+    );
+    const { onSend } = renderRefusedChain();
+
+    await reconnect();
+
+    // Nothing says the refused account was renewed, so it must not be the
+    // one the chat runs on.
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(picked).toEqual({ github: "cred-new" });
+  });
+
+  describe("when another saved account still works", () => {
+    const other = {
+      ...oauthCredential("cred-other", [REQUIRED_SCOPE]),
+      title: "Work",
+    };
+
+    beforeEach(() => {
+      savedCredentials = [refused, other];
+    });
+
+    it("asks instead of quietly running on the other account", async () => {
+      const { onSend } = renderRefusedChain();
+      const user = userEvent.setup();
+
+      // A different account can mean posting as someone else, so the row
+      // waits for the user rather than calling the other one Connected.
+      await user.click(
+        await screen.findByRole("button", { name: "Reconnect" }),
+      );
+      expect(screen.queryByText("Connected")).toBeNull();
+      // Only the account that still works is offered; the refused one is
+      // renewed through Add new.
+      expect(screen.queryByRole("radio", { name: /GitHub/ })).toBeNull();
+      await user.click(await screen.findByRole("radio", { name: /Work/ }));
+      await user.click(
+        screen.getByRole("button", { name: "Use this account" }),
+      );
+
+      await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+      expect(picked).toEqual({ github: "cred-other" });
+    });
+
+    it("runs on the renewed account once the user signs in to it again", async () => {
+      const { onSend } = renderRefusedChain();
+      const user = userEvent.setup();
+
+      await user.click(
+        await screen.findByRole("button", { name: "Reconnect" }),
+      );
+      await user.click(await screen.findByRole("button", { name: "Add new" }));
+      await user.click(
+        await screen.findByRole("button", { name: "Continue with GitHub" }),
+      );
+
+      // Both accounts now fit; the one just signed in to is the one meant.
+      await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+      expect(picked).toEqual({ github: "cred-refused" });
+    });
+
+    it("waits for a newly added account rather than falling back to the other", async () => {
+      // The first list fetched after the sign-in predates it, as when the
+      // provider list lags the callback.
+      let staleFetches = 0;
+      server.use(
+        http.post("*/api/integrations/github/callback", () => {
+          const added = oauthCredential("cred-new", [REQUIRED_SCOPE]);
+          savedCredentials = [refused, other, added];
+          staleFetches = 1;
+          return HttpResponse.json(added);
+        }),
+        http.get("*/api/integrations/credentials", () => {
+          if (staleFetches === 0) return HttpResponse.json(savedCredentials);
+          staleFetches -= 1;
+          return HttpResponse.json([refused, other]);
+        }),
+      );
+      const { onSend } = renderRefusedChain();
+      const user = userEvent.setup();
+
+      await user.click(
+        await screen.findByRole("button", { name: "Reconnect" }),
+      );
+      await user.click(await screen.findByRole("button", { name: "Add new" }));
+      await user.click(
+        await screen.findByRole("button", { name: "Continue with GitHub" }),
+      );
+
+      // Until the list shows the new account, the other one is the only
+      // usable match; picking it then would run on an account nobody chose.
+      await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+      expect(picked).toEqual({ github: "cred-new" });
+    });
+  });
+});
+
+function refusedRequirementsPart(credentialID: string): MessagePart {
+  const part = setupRequirementsPart() as unknown as {
+    output: Record<string, unknown>;
+  };
+  return {
+    ...part,
+    output: {
+      ...part.output,
+      message: "The saved Github credential 'GitHub' could not be refreshed.",
+      rejection: {
+        provider: "github",
+        detail: "invalid_grant",
+        status_code: null,
+        credential_id: credentialID,
+        credential_title: "GitHub",
+      },
+    },
+  } as unknown as MessagePart;
+}
+
+describe("named HTTP connections", () => {
+  beforeEach(() => {
+    savedCredentials = [];
+    server.use(
+      http.get("*/api/integrations/providers", () =>
+        HttpResponse.json([
+          { name: "http", description: "Generic HTTP requests" },
+        ]),
+      ),
+      http.get("*/api/integrations/providers/system", () =>
+        HttpResponse.json([]),
+      ),
+      http.get("*/api/integrations/credentials", () =>
+        HttpResponse.json(savedCredentials),
+      ),
+    );
+  });
+  afterEach(resetStores);
+
+  it("saves Linear and GitHub keys for their own hosts and continues only after both are ready", async () => {
+    const created: Record<string, unknown>[] = [];
+    const selections: Record<string, string>[] = [];
+    server.use(
+      http.put(
+        "*/api/chat/sessions/*/credential-selection",
+        async ({ request }) => {
+          const body = (await request.json()) as {
+            selections: Record<string, string>;
+          };
+          selections.push(body.selections);
+          return HttpResponse.json({ status: "ok" });
+        },
+      ),
+      http.post("*/api/integrations/http/credentials", async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        created.push(body);
+        const stored = {
+          id: `http-${created.length}`,
+          provider: "http",
+          type: "host_scoped",
+          title: body.title,
+          host: body.host,
+        };
+        savedCredentials.push(stored);
+        return HttpResponse.json(stored);
+      }),
+    );
+    const onSend = vi.fn();
+    render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain
+            parts={[
+              httpRequirementsPart("linear", "https://api.linear.app/graphql"),
+              httpRequirementsPart("github", "https://api.github.com/repos"),
+            ]}
+            isStreaming={false}
+          />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+    const user = userEvent.setup();
+    await screen.findByText("0 of 2 ready");
+    await screen.findByText("Linear");
+    await screen.findByText("GitHub");
+    const buttons = await screen.findAllByRole("button", {
+      name: "Connect",
+    });
+    await user.click(buttons[0]);
+    await screen.findByRole("heading", { name: "Connect Linear" });
+    expect(screen.queryByLabelText("Host")).toBeNull();
+    await user.type(screen.getByLabelText("API key"), "linear-test-key");
+    await user.click(screen.getByRole("button", { name: "Save and connect" }));
+    await screen.findByText("1 of 2 ready");
+    expect(onSend).not.toHaveBeenCalled();
+    expect(created[0]).toMatchObject({
+      provider: "http",
+      type: "host_scoped",
+      host: "api.linear.app",
+      headers: { Authorization: "linear-test-key" },
+    });
+    await user.click(await screen.findByRole("button", { name: "Connect" }));
+    await screen.findByRole("heading", { name: "Connect GitHub" });
+    await user.type(screen.getByLabelText("API key"), "github-test-key");
+    await user.click(screen.getByRole("button", { name: "Save and connect" }));
+    await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+    expect(created[1]).toMatchObject({
+      host: "api.github.com",
+      headers: { Authorization: "Bearer github-test-key" },
+    });
+    expect(selections).toEqual([
+      { "http:api.linear.app": "http-1" },
+      { "http:api.github.com": "http-2" },
+    ]);
+  });
+
+  it.each(["api.linear.app", "api.github.com"])(
+    "validates a returned host-scoped credential when the list stays stale (host: %s)",
+    async (host) => {
+      const selections: Record<string, string>[] = [];
+      server.use(
+        http.get("*/api/integrations/credentials", () => HttpResponse.json([])),
+        http.post("*/api/integrations/http/credentials", () =>
+          HttpResponse.json({
+            id: "new-key",
+            provider: "http",
+            type: "host_scoped",
+            title: "Linear",
+            host,
+          }),
+        ),
+        http.put(
+          "*/api/chat/sessions/*/credential-selection",
+          async ({ request }) => {
+            const body = (await request.json()) as {
+              selections: Record<string, string>;
+            };
+            selections.push(body.selections);
+            return HttpResponse.json({ status: "ok" });
+          },
+        ),
+      );
+      const { onSend } = renderChain([
+        httpRequirementsPart("linear", "https://api.linear.app/graphql"),
+      ]);
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: "Connect" }));
+      await user.type(
+        await screen.findByLabelText("API key"),
+        "linear-test-key",
+      );
+      await user.click(
+        screen.getByRole("button", { name: "Save and connect" }),
+      );
+
+      if (host === "api.linear.app") {
+        await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+        expect(selections).toEqual([{ "http:api.linear.app": "new-key" }]);
+      } else {
+        expect(
+          await screen.findByText(
+            "That account is missing the access this needs. Try connecting again.",
+          ),
+        ).toBeDefined();
+        expect(onSend).not.toHaveBeenCalled();
+        expect(selections).toEqual([]);
+      }
+    },
+  );
+
+  it("keeps the key form open after a failed save and lets the user retry", async () => {
+    let attempts = 0;
+    server.use(
+      http.post("*/api/integrations/http/credentials", async ({ request }) => {
+        attempts += 1;
+        if (attempts === 1)
+          return HttpResponse.json(
+            { detail: "Could not save connection" },
+            { status: 400 },
+          );
+        const body = (await request.json()) as Record<string, unknown>;
+        const stored = {
+          id: "retry-key",
+          provider: "http",
+          type: "host_scoped",
+          host: body.host,
+          title: body.title,
+        };
+        savedCredentials.push(stored);
+        return HttpResponse.json(stored);
+      }),
+    );
+    const onSend = vi.fn();
+    render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain
+            parts={[
+              httpRequirementsPart("linear", "https://api.linear.app/graphql"),
+            ]}
+            isStreaming={false}
+          />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Connect" }));
+    await user.type(await screen.findByLabelText("API key"), "retry-test-key");
+    await user.click(screen.getByRole("button", { name: "Save and connect" }));
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Couldn't connect Linear" }),
+      ),
+    );
+    expect(onSend).not.toHaveBeenCalled();
+    expect((screen.getByLabelText("API key") as HTMLInputElement).value).toBe(
+      "retry-test-key",
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "Save and connect" }),
+    );
+    await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+    expect(attempts).toBe(2);
+  });
+});
+
+function httpRequirementsPart(name: string, url: string): MessagePart {
+  return {
+    type: "tool-run_block",
+    toolCallId: `http-${name}`,
+    state: "output-available",
+    input: { block_name: "HttpSendRequestBlock" },
+    output: {
+      type: "setup_requirements",
+      message: "Connect your apps to continue.",
+      session_id: SESSION_ID,
+      setup_info: {
+        agent_id: `block-${name}`,
+        agent_name: "HTTP request",
+        requirements: {},
+        user_readiness: {
+          has_all_credentials: false,
+          missing_credentials: {
+            credentials: {
+              provider: "http",
+              types: ["host_scoped"],
+              discriminator: "url",
+              discriminator_values: [url],
+            },
+          },
+        },
+      },
+    },
+  } as unknown as MessagePart;
+}
+
+function renderChain(parts: MessagePart[] = [setupRequirementsPart()]) {
   const onSend = vi.fn();
   const utils = render(
     <CredentialsProvider>
       <CopilotChatActionsProvider onSend={onSend}>
-        <ToolChain parts={[setupRequirementsPart()]} isStreaming={false} />
+        <ToolChain parts={parts} isStreaming={false} />
       </CopilotChatActionsProvider>
     </CredentialsProvider>,
   );
@@ -863,13 +1471,14 @@ function renderChain() {
 async function completeConnectFlow() {
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: "Connect" }));
-  await user.click(await screen.findByText("OAuth"));
-  await user.click(await screen.findByRole("button", { name: "Continue" }));
+  await user.click(
+    await screen.findByRole("button", { name: "Continue with GitHub" }),
+  );
 }
 
 /** What the backend returns when a block needs a credential the user's
  *  connected account doesn't cover — here GitHub without the `repo` scope. */
-function setupRequirementsPart(): MessagePart {
+function setupRequirementsPart(types = ["oauth2"]): MessagePart {
   return {
     type: "tool-run_block",
     toolCallId: "call-run_block",
@@ -888,7 +1497,7 @@ function setupRequirementsPart(): MessagePart {
           missing_credentials: {
             credentials: {
               provider: "github",
-              types: ["oauth2"],
+              types,
               scopes: [REQUIRED_SCOPE],
             },
           },
@@ -902,7 +1511,7 @@ function setupRequirementsPart(): MessagePart {
  *  credential list — so a "nothing was sent" assertion cannot pass merely
  *  because nothing has mounted yet. */
 async function settle({ connectedRows }: { connectedRows: number }) {
-  await screen.findByText("Plug in what this needs");
+  await screen.findByText(/Connect your apps|Your apps are connected/);
   await waitFor(() =>
     expect(screen.getAllByText("Connected")).toHaveLength(connectedRows),
   );
@@ -1013,8 +1622,9 @@ async function connectRemainingProvider(index = 0) {
   const user = userEvent.setup();
   const buttons = await screen.findAllByRole("button", { name: "Connect" });
   await user.click(buttons[index]);
-  await user.click(await screen.findByText("OAuth"));
-  await user.click(await screen.findByRole("button", { name: "Continue" }));
+  await user.click(
+    await screen.findByRole("button", { name: /^Continue with / }),
+  );
 }
 
 function questionPart(questions: PendingQuestions["questions"]): MessagePart {

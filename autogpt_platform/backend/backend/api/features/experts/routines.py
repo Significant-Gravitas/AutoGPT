@@ -32,10 +32,12 @@ firing turn makes back to the row — lives in ``routine_jobs``.
 import logging
 from datetime import datetime, timezone
 
+import prisma
 import prisma.enums
 import prisma.models
 import prisma.types
 from apscheduler.triggers.cron import CronTrigger
+from pydantic import ValidationError
 
 from backend.api.features.experts.models import ExpertRoutine
 from backend.api.features.experts.routine_jobs import (
@@ -43,8 +45,11 @@ from backend.api.features.experts.routine_jobs import (
     delete_routine_schedules,
     spread_cron,
 )
+from backend.copilot.credential_selection import CredentialPin, CredentialPins
+from backend.copilot.scheduled_chats.forget import forget_routine
 from backend.data.user import get_user_by_id
 from backend.util.clients import get_scheduler_client
+from backend.util.exceptions import RoutineNotFoundError, RoutineUnansweredAsksError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
@@ -72,7 +77,36 @@ def to_model(row: prisma.models.ExpertRoutine) -> ExpertRoutine:
         enabled=row.enabledAt is not None and row.firedAt is None,
         customized=row.customizedAt is not None,
         grants_credentials=row.grantsCredentials,
+        credential_pins=_credential_pins(row.credentialPins),
     )
+
+
+UNREADABLE_PIN = CredentialPin(
+    id="unreadable-pin", title="a saved account choice that could not be read"
+)
+"""Stands in for a stored pin that no longer parses. No account has its id, so
+the provider's steps fail naming the lost pin instead of running unpinned on
+whichever account comes first, the silent switch a pin exists to prevent."""
+
+
+def _credential_pins(raw: object) -> CredentialPins:
+    """Read the stored pins. An entry that no longer parses still pins its
+    provider, to ``UNREADABLE_PIN``: the routine loads and its other steps
+    run, while that provider's steps stop until the owner picks an account
+    again."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        logger.error("Ignoring unreadable credential pins %r", type(raw).__name__)
+        return {}
+    pins: CredentialPins = {}
+    for provider, value in raw.items():
+        try:
+            pins[str(provider)] = CredentialPin.model_validate(value)
+        except ValidationError:
+            logger.warning("Unreadable credential pin for %s; its steps stop", provider)
+            pins[str(provider)] = UNREADABLE_PIN
+    return pins
 
 
 async def get_routine(routine_id: str) -> ExpertRoutine | None:
@@ -87,19 +121,6 @@ async def get_routine(routine_id: str) -> ExpertRoutine | None:
         where={"id": routine_id}
     )
     return to_model(row) if row is not None else None
-
-
-class RoutineNotFoundError(Exception):
-    """No such routine on this owner."""
-
-
-class RoutineUnansweredAsksError(Exception):
-    """The routine still has questions nobody answered.
-
-    A seeded proposal names what it needs to know — which repo, which inbox,
-    what hour. Scheduling it before those are answered would run it against
-    guesses on somebody's account, every day, unattended.
-    """
 
 
 async def install_routines(
@@ -162,6 +183,7 @@ async def enable_routine(
     session_mode: str | None = None,
     pinned_session_id: str | None = None,
     grants_credentials: bool | None = None,
+    credential_pins: CredentialPins | None = None,
 ) -> ExpertRoutine:
     """Switch a routine on, resolving the proposal into what actually runs.
 
@@ -240,6 +262,15 @@ async def enable_routine(
         # without this the row would say PINNED and behave like FRESH. The tool
         # always supplies one; this closes the RPC path, which does not.
         raise ValueError("A PINNED routine needs the chat it should fire into.")
+    # A THREAD routine that stays one keeps the thread its first fire minted,
+    # through a new cadence or prompt: its jobs name no chat, since each fire
+    # reads the row's, so the row is what has to keep it.
+    thread = (
+        row.sessionId
+        if mode == prisma.enums.ExpertRoutineSession.THREAD
+        and row.sessionMode == prisma.enums.ExpertRoutineSession.THREAD
+        else None
+    )
     schedule_ids = await create_routine_schedules(
         user_id=user_id,
         expert_id=expert_id,
@@ -257,7 +288,7 @@ async def enable_routine(
         "runAt": resolved_run_at,
         "scheduleIds": schedule_ids,
         "sessionMode": mode,
-        "sessionId": pinned,
+        "sessionId": pinned or thread,
         "enabledAt": now,
         # Re-arming a spent one-shot makes it pending again; leaving the old
         # stamp would enable a row that still reads as already run.
@@ -268,6 +299,10 @@ async def enable_routine(
     # direction, so a rewording never quietly widens what a routine can touch.
     if grants_credentials is not None:
         data["grantsCredentials"] = grants_credentials
+    # Same rule for the accounts it runs on: ``None`` keeps the ones chosen
+    # when it was set up.
+    if credential_pins is not None:
+        data["credentialPins"] = _pins_json(credential_pins)
     if customized:
         data["customizedAt"] = now
     try:
@@ -289,6 +324,10 @@ async def enable_routine(
     # clearing first would leave a routine that says it is running and is not.
     await delete_routine_schedules(user_id, row)
     return to_model(updated)
+
+
+def _pins_json(pins: CredentialPins) -> prisma.Json:
+    return prisma.Json({provider: pin.model_dump() for provider, pin in pins.items()})
 
 
 def _session_mode(value: str) -> prisma.enums.ExpertRoutineSession:
@@ -316,6 +355,7 @@ async def create_routine(
     session_mode: str | None = None,
     session_id: str | None = None,
     grants_credentials: bool = True,
+    credential_pins: CredentialPins | None = None,
 ) -> ExpertRoutine:
     """Record standing work worked out with the owner in conversation.
 
@@ -356,6 +396,8 @@ async def create_routine(
         "grantsCredentials": grants_credentials,
         "customizedAt": datetime.now(timezone.utc),
     }
+    if credential_pins:
+        data["credentialPins"] = _pins_json(credential_pins)
     if expert_id is None:
         data["userId"] = user_id
     else:
@@ -384,6 +426,17 @@ async def disable_routine(
     )
     if updated is None:
         raise RoutineNotFoundError(routine_id)
+    # Switched off is no longer paused for failing: its jobs are gone. The
+    # routine is off whatever this does, so a failure is logged, not raised;
+    # a streak left behind ends on its first run once switched back on.
+    try:
+        await forget_routine(user_id, row.id)
+    except Exception:
+        logger.warning(
+            "Could not clear the failure streak of switched-off routine %s",
+            row.id,
+            exc_info=True,
+        )
     return to_model(updated)
 
 

@@ -3,6 +3,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaOutput,
     BlockType,
@@ -49,6 +50,7 @@ class PostToThreadsBlock(Block):
             input_schema=PostToThreadsBlock.Input,
             output_schema=PostToThreadsBlock.Output,
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

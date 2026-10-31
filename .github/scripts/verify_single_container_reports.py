@@ -116,7 +116,11 @@ def verify_trivy(path: Path, expected_image: str) -> None:
     for result in results:
         if not isinstance(result, dict):
             raise ValueError(f"{path.name} has an invalid result entry")
-        for key in ("Target", "Class", "Type"):
+        # Trivy writes secret results with a Target and Class but no Type.
+        identity = ("Target", "Class", "Type")
+        if result.get("Class") == "secret":
+            identity = ("Target", "Class")
+        for key in identity:
             if not isinstance(result.get(key), str) or not result[key]:
                 raise ValueError(f"{path.name} result is missing {key}")
         for key in TRIVY_FINDING_KEYS:

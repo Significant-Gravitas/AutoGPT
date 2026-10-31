@@ -1,4 +1,9 @@
-from backend.blocks._base import BlockOutput, BlockSchemaInput, BlockSchemaOutput
+from backend.blocks._base import (
+    BlockEffect,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import APIKeyCredentials, SchemaField
 
 from ._api import (
@@ -65,6 +70,7 @@ class Slant3DFilamentBlock(Slant3DBlockBase):
             test_mock={
                 "_make_request": lambda *args, **kwargs: {"data": [TEST_FILAMENT]}
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(

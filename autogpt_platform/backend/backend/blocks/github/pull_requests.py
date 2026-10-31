@@ -6,6 +6,7 @@ from typing_extensions import TypedDict
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -117,6 +118,7 @@ class GithubListPullRequestsBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -220,6 +222,7 @@ class GithubMakePullRequestBlock(Block):
                 )
             },
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -341,6 +344,7 @@ class GithubReadPullRequestBlock(Block):
                 "read_pr": lambda *args, **kwargs: TEST_PR_PAYLOAD,
                 "read_pr_changes": lambda *args, **kwargs: "List of changes made in the pull request.",
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -452,6 +456,7 @@ class GithubAssignPRReviewerBlock(Block):
             test_mock={
                 "assign_reviewer": lambda *args, **kwargs: "Reviewer assigned successfully"
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -519,6 +524,7 @@ class GithubUnassignPRReviewerBlock(Block):
             test_mock={
                 "unassign_reviewer": lambda *args, **kwargs: "Reviewer unassigned successfully"
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -637,6 +643,7 @@ class GithubListPRReviewersBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -757,6 +764,7 @@ class GithubMergePullRequestBlock(Block):
                 )
             },
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

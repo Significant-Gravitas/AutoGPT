@@ -39,6 +39,7 @@ from backend.copilot.bot.adapters.base import (
 )
 from backend.copilot.bot.adapters.shared import InboundFile, collect_attachments
 from backend.copilot.bot.bot_backend import BotBackend
+from backend.copilot.bot.choices import QUESTION_KIND, ButtonKind
 from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
 from backend.copilot.bot.text import iter_chunks, resolve_mentions
 
@@ -55,17 +56,14 @@ logger = logging.getLogger(__name__)
 _MENTION_OPEN = "\ue000"
 _MENTION_CLOSE = "\ue001"
 _MENTION_STASH_RE = re.compile("\ue000([^\ue000\ue001]+)\ue001")
-_EXPIRED_NOTICE = "This question has expired — type your answer instead."
-_NOT_YOUR_QUESTION = (
-    "This question was for someone else — they still need to answer it."
-)
 
 UPDATES_PATH = "/api/copilot-webhooks/telegram/updates"
 
 # Telegram chat IDs are integers of any length; groups/supergroups are
 # negative (supergroups start with -100). Used to tell a raw proactive chat
 # ref from a name (names are never purely numeric).
-_CHAT_ID_RE = re.compile(r"^-?\d+$")
+# A chat id, optionally pinned to a forum topic (``chat_id|topic_id``).
+_CHAT_ID_RE = re.compile(r"^-?\d+(\|\d+)?$")
 
 # Message fields that carry a downloadable file, with a fallback filename for
 # the kinds Telegram doesn't name.
@@ -168,7 +166,9 @@ class TelegramAdapter(WebhookAdapter):
             # This runs as a fire-and-forget task — an unhandled error would
             # only surface as asyncio's deferred "exception never retrieved".
             try:
-                await commands.handle(self._api, self._client, message, command)
+                await commands.handle(
+                    self._api, self._client, message, command, self.send_link
+                )
             except Exception:
                 logger.exception("Telegram command handler failed")
             return
@@ -197,27 +197,25 @@ class TelegramAdapter(WebhookAdapter):
             logger.debug("Telegram reaction ack failed", exc_info=True)
 
     async def _dispatch_callback_query(self, callback_query: dict[str, Any]) -> None:
-        """Resolve a clicked ask_question choice button and feed the answer
-        back through the normal message pipeline, exactly like a typed
-        reply."""
+        """Resolve a clicked choice or card button and feed the answer back
+        through the normal message pipeline, exactly like a typed reply."""
         query_id = callback_query.get("id")
         parsed = choice_ui.parse_callback_data(callback_query.get("data") or "")
-        if parsed is None:
+        ctx = _context_from_callback_query(callback_query, "")
+        if parsed is None or ctx is None:
             if query_id:
                 await self._answer_callback_query(query_id)
             return
-        token, index = parsed
-        clicker_id = str((callback_query.get("from") or {}).get("id", ""))
-        resolved = await choices.resolve_choice("telegram", token, index, clicker_id)
-        if resolved.text is None:
+        kind, token, index = parsed
+        answer = await choices.answer_button(
+            self._api, "telegram", kind, token, index, ctx.user_id, ctx.server_id
+        )
+        if not answer.answered:
             if query_id:
                 await self._answer_callback_query(
-                    query_id,
-                    text=(_NOT_YOUR_QUESTION if resolved.refused else _EXPIRED_NOTICE),
-                    show_alert=True,
+                    query_id, text=answer.text, show_alert=True
                 )
             return
-        option = resolved.text
         if query_id:
             await self._answer_callback_query(query_id)
         message = callback_query.get("message") or {}
@@ -229,7 +227,7 @@ class TelegramAdapter(WebhookAdapter):
                     "editMessageText",
                     chat_id=chat_id,
                     message_id=message_id,
-                    text=f"✅ You answered: {option}",
+                    text=answer.text,
                 )
             except Exception:
                 logger.debug(
@@ -238,9 +236,9 @@ class TelegramAdapter(WebhookAdapter):
                 )
         if self._on_message_callback is None:
             return
-        ctx = _context_from_callback_query(callback_query, option)
-        if ctx is not None:
-            await self._on_message_callback(ctx, self)
+        ctx.text = answer.reply or ""
+        ctx.follow = answer.follow
+        await self._on_message_callback(ctx, self)
 
     async def _answer_callback_query(self, query_id: str, **kwargs: Any) -> None:
         try:
@@ -275,6 +273,7 @@ class TelegramAdapter(WebhookAdapter):
         is_private = chat.get("type") == "private"
         text = message.get("text") or message.get("caption") or ""
 
+        replied_to_bot = False
         if is_private:
             channel_type: ChannelType = "dm"
             bot_mentioned = True
@@ -291,13 +290,14 @@ class TelegramAdapter(WebhookAdapter):
             if not mentioned and not replied_to_bot:
                 return None
             channel_type = "channel"
-            bot_mentioned = True
+            bot_mentioned = mentioned
             if bot_username:
                 text = re.sub(
                     rf"@{re.escape(bot_username)}\b", "", text, flags=re.IGNORECASE
                 ).strip()
 
         target_id = _encode_target(chat_id, message.get("message_thread_id"))
+        topic_id = _topic_id(message)
         attachments, skipped = await self._extract_attachments(message)
         return MessageContext(
             platform="telegram",
@@ -310,6 +310,11 @@ class TelegramAdapter(WebhookAdapter):
             username=sender.get("username") or sender.get("first_name") or "unknown",
             text=text,
             bot_mentioned=bot_mentioned,
+            replied_to_bot=replied_to_bot,
+            channel_name=None if is_private else chat.get("title"),
+            public_channel_id=None if is_private else chat_id,
+            public_thread_id=None if is_private else topic_id,
+            post_channel_id=None if is_private else target_id,
             mentionable_users=_collect_mentionable_users(message),
             attachments=attachments,
             skipped_attachments=skipped,
@@ -477,6 +482,7 @@ class TelegramAdapter(WebhookAdapter):
         options: list[str],
         token: str,
         mentionable_users: tuple[tuple[str, str], ...] = (),
+        kind: ButtonKind = QUESTION_KIND,
     ) -> bool:
         chat_id, thread_id = _decode_target(channel_id)
         await self._client.call(
@@ -485,7 +491,7 @@ class TelegramAdapter(WebhookAdapter):
             text=self.localize_markup(text),
             parse_mode="HTML",
             message_thread_id=thread_id,
-            reply_markup=choice_ui.choice_keyboard(token, options),
+            reply_markup=choice_ui.choice_keyboard(token, options, kind),
         )
         return True
 
@@ -717,6 +723,7 @@ def _context_from_callback_query(
         return None
     is_private = chat.get("type") == "private"
     target_id = _encode_target(chat_id, message.get("message_thread_id"))
+    topic_id = _topic_id(message)
     return MessageContext(
         platform="telegram",
         channel_type="dm" if is_private else "channel",
@@ -727,7 +734,23 @@ def _context_from_callback_query(
         username=sender.get("username") or sender.get("first_name") or "unknown",
         text=option,
         bot_mentioned=True,
+        channel_name=None if is_private else chat.get("title"),
+        public_channel_id=None if is_private else chat_id,
+        public_thread_id=None if is_private else topic_id,
+        post_channel_id=None if is_private else target_id,
     )
+
+
+def _topic_id(message: dict[str, Any]) -> str | None:
+    """The forum topic the message was posted in, if any.
+
+    ``message_thread_id`` alone also marks reply threads outside forums, so
+    only ``is_topic_message`` makes it a topic.
+    """
+    thread_id = message.get("message_thread_id")
+    if not message.get("is_topic_message") or thread_id is None:
+        return None
+    return str(thread_id)
 
 
 def _collect_mentionable_users(message: dict[str, Any]) -> tuple[tuple[str, str], ...]:

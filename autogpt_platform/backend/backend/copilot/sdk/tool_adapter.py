@@ -28,17 +28,26 @@ from backend.copilot.context import (
     _current_session,
     _current_user_id,
     _encode_cwd_for_cli,
+    bash_command_as_written,
     get_execution_context,
     is_sdk_tool_path,
     reset_consult_budget,
 )
-from backend.copilot.gate.mcp_seam import gate_non_registry_tool
+from backend.copilot.gate.mcp_seam import (
+    gate_non_registry_tool,
+    release_non_registry_read,
+    screen_non_registry_read,
+)
+from backend.copilot.gate.reads import model_view
+from backend.copilot.google_data_redaction import remember_cut_google_output
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import (
     FileRefExpansionError,
     expand_file_refs_in_args,
     read_file_bytes,
+    text_outside_file_refs,
 )
+from backend.copilot.tool_image import truncate_mcp_result
 from backend.copilot.tools import (
     DEFERRED_TOOL_NAMES,
     TOOL_REGISTRY,
@@ -60,6 +69,7 @@ from .e2b_file_tools import (
     WRITE_TOOL_DESCRIPTION,
     WRITE_TOOL_NAME,
     WRITE_TOOL_SCHEMA,
+    DeclaredResult,
     bridge_and_annotate,
     get_edit_tool_handler,
     get_read_tool_handler,
@@ -340,19 +350,23 @@ async def _execute_tool_sync(
     broader session lifecycle (user closes the tab / cancel endpoint).
     """
     effective_id = f"sdk-{uuid.uuid4().hex[:12]}"
-    result = await base_tool.execute(
-        user_id=user_id,
-        session=session,
-        tool_call_id=effective_id,
-        **args,
-    )
+    token = model_view.set(cap_late_tool_result)
+    try:
+        result = await base_tool.execute(
+            user_id=user_id,
+            session=session,
+            tool_call_id=effective_id,
+            **args,
+        )
+    finally:
+        model_view.reset(token)
 
     text = (
         result.output if isinstance(result.output, str) else json.dumps(result.output)
     )
-
     return {
-        "content": [{"type": "text", "text": text}],
+        "content": [{"type": "text", "text": text}]
+        + ([result.image.mcp()] if result.image is not None else []),
         "isError": not result.success,
     }
 
@@ -465,7 +479,7 @@ def _build_input_schema(base_tool: BaseTool) -> dict[str, Any]:
     """
     return {
         "type": "object",
-        "properties": base_tool.parameters.get("properties", {}),
+        "properties": base_tool.model_parameters.get("properties", {}),
     }
 
 
@@ -558,28 +572,18 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
         #
         # When E2B is active, also copy the file into the sandbox so
         # bash_exec can process it (the model often uses Read then bash).
-        # CAVEAT: only bridge when the on-disk bytes and what the model
-        # just read are the same — i.e. when ``_navigable_tool_result_text``
-        # did *not* transform the content. If we pretty-printed an MCP
-        # envelope, the model sees a pretty-printed slice while the
-        # bridged sandbox file would hold the raw envelope; bash commands
-        # operating on the bridged copy would then see different content
-        # than the model just read, leading to silent format-mismatch
-        # bugs. Same constraint applies to char-mode slices. The new
-        # bash_exec SDK-path redirect (added in this PR) covers the
-        # alternative workflow when the bridge is skipped — the model
-        # can use ``read_tool_result`` again with offsets, or pipe a
+        # The copy holds ``navigable``, the unwrapped text the model's line
+        # offsets point into, not the raw MCP envelope on disk, so bash
+        # sees the same lines the model just read. Char-mode slices skip
+        # the bridge: the model can read again with offsets, or pipe a
         # slice via ``@@agptfile:<path>[<start>-<end>]``.
         sandbox = _current_sandbox.get(None)
-        if (
-            sandbox is not None
-            and navigable == raw
-            and char_offset is None
-            and char_limit is None
-        ):
-            annotation = await bridge_and_annotate(sandbox, resolved, offset, limit)
+        if sandbox is not None and char_offset is None and char_limit is None:
+            annotation = await bridge_and_annotate(
+                sandbox, resolved, offset, limit, navigable
+            )
             if annotation:
-                text += annotation
+                text = f"{annotation.lstrip()}\n{text}"
         return _mcp_ok(text)
     except FileNotFoundError:
         return _mcp_err(f"File not found: {file_path}")
@@ -682,9 +686,10 @@ _READ_TOOL_SCHEMA = {
 # ---------------------------------------------------------------------------
 
 
-def cap_late_tool_result(text: str) -> str:
-    """A late tool result, cut exactly as the MCP wrapper cuts a direct one."""
-    result = {"content": [{"type": "text", "text": text}], "isError": False}
+def cap_late_tool_result(text: str, success: bool = True) -> str:
+    """A tool result, cut exactly as the MCP wrapper cuts a direct one: what
+    the held-read judge reads and what a late result delivers."""
+    result = {"content": [{"type": "text", "text": text}], "isError": not success}
     return _text_from_mcp_result(truncate(result, _MCP_MAX_CHARS))
 
 
@@ -842,9 +847,38 @@ def _make_truncating_wrapper(
             refusal = await gate_non_registry_tool(name, args, user_id, session)
             if refusal is not None:
                 return refusal
+            released = await release_non_registry_read(
+                name, original_args, user_id, session
+            )
+            if released is not None:
+                if not released.get("isError"):
+                    # A release is the read succeeding, late.
+                    _clear_tool_failures(name)
+                return released
 
-        result = await run(args)
-        truncated = truncate(result, _MCP_MAX_CHARS)
+        command = original_args.get("command") if name == "bash_exec" else None
+        as_written = (
+            text_outside_file_refs(command) if isinstance(command, str) else None
+        )
+        with bash_command_as_written(as_written):
+            result = await run(args)
+        truncated = truncate_mcp_result(result, _MCP_MAX_CHARS)
+        remember_cut_google_output(
+            _text_from_mcp_result(result), _text_from_mcp_result(truncated)
+        )
+        # Registry tools were judged inside ``BaseTool.execute`` on this cap.
+        if session is not None and name not in TOOL_REGISTRY:
+            truncated = await screen_non_registry_read(
+                name,
+                original_args,
+                user_id,
+                session,
+                truncated,
+                outside=(
+                    result.outside if isinstance(result, DeclaredResult) else None
+                ),
+                full=result,
+            )
 
         if truncated.get("isError"):
             _record_tool_failure(name, original_args)
@@ -893,12 +927,12 @@ def create_copilot_mcp_server(
 ):
     """Create an in-process MCP server configuration for CoPilot tools.
 
-    All tools are annotated with ``readOnlyHint=True`` so the SDK CLI
-    dispatches concurrent tool calls in parallel rather than sequentially.
-    This is a deliberate override: even side-effect tools use the hint
-    because the MCP tools are already individually sandboxed and the
-    pre-launch duplicate-execution bug (SECRT-2204) is worse than
-    sequential dispatch.
+    Tools are annotated with ``readOnlyHint=True`` so the SDK CLI runs the
+    calls in one message in parallel, even tools with side effects.  The
+    exception is a tool that ``writes_files``: the CLI runs a call without
+    the hint on its own, after the calls written before it and before the
+    ones after, so a copy of a file never starts while the command that
+    builds it is still running (SECRT-3178).
 
     When *use_e2b* is True, five additional MCP file tools are registered
     that route directly to the E2B sandbox filesystem, and the caller should
@@ -936,15 +970,13 @@ def create_copilot_mcp_server(
         handler = create_tool_handler(base_tool)
         schema = _build_input_schema(base_tool)
         required = list(base_tool.parameters.get("required", []))
-        # All tools annotated readOnlyHint=True to enable parallel dispatch.
-        # The SDK CLI uses this hint to dispatch concurrent tool calls in
-        # parallel rather than sequentially.  Side-effect safety is ensured
-        # by the tool implementations themselves (idempotency, credentials).
         decorated = tool(
             tool_name,
             base_tool.description,
             schema,
-            annotations=_PARALLEL_ANNOTATION,
+            annotations=(
+                _MUTATING_ANNOTATION if base_tool.writes_files else _PARALLEL_ANNOTATION
+            ),
         )(
             _make_truncating_wrapper(
                 handler,
@@ -1101,6 +1133,17 @@ _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 #   sdk_cwd is a per-session /tmp dir that is never restored.  Leaving them
 #   exposed lets the model promise unattended monitoring that silently never
 #   fires — `schedule_followup` is the primitive that actually persists.
+# ListAgents/SendMessage: reach other CLI sessions in the same pod.
+# NotebookEdit: writes files outside the MCP Write/Edit tools.
+# Skill: Claude Code's own skills; copilot skills go through read_skill.
+# Workflow: spawns multi-agent runs with no copilot budget or UI.  With
+#   slash commands disabled its description also grows from ~5K to ~20K
+#   chars on every request.
+# EnterWorktree/ExitWorktree/ReportFindings: Claude Code dev-loop tools.
+# TaskStop: unused here, and permissions cannot name it, so filtered sessions
+#   would drop it anyway.
+# A built-in in neither this list nor _SDK_BUILTIN_* is denied by
+# security_hooks and fails cli_builtin_tools_test.py.
 SDK_DISALLOWED_TOOLS = [
     "Bash",
     "WebFetch",
@@ -1113,6 +1156,15 @@ SDK_DISALLOWED_TOOLS = [
     "CronCreate",
     "CronList",
     "CronDelete",
+    "ListAgents",
+    "SendMessage",
+    "NotebookEdit",
+    "Skill",
+    "Workflow",
+    "EnterWorktree",
+    "ExitWorktree",
+    "ReportFindings",
+    "TaskStop",
 ]
 
 # Tools that are blocked entirely in security hooks (defence-in-depth).
@@ -1126,33 +1178,9 @@ BLOCKED_TOOLS = {
     "command",
 }
 
-# Tools allowed only when their path argument stays within the SDK workspace.
-# The SDK uses these to handle oversized tool results (writes to tool-results/
-# files, then reads them back) and for workspace file operations.
-# Read is included because the SDK reads back oversized tool results from
-# tool-results/ and tool-outputs/ directories.  It is also in
-# SDK_DISALLOWED_TOOLS (which controls the SDK's disallowed_tools config),
-# but the security hooks check workspace scope BEFORE the blocked list
-# so that these internal reads are permitted.
-# Write and Edit are NOT included: they are fully replaced by MCP equivalents.
-WORKSPACE_SCOPED_TOOLS = {"Glob", "Grep", "Read"}
-
-# Dangerous patterns in tool inputs
-DANGEROUS_PATTERNS = [
-    r"sudo",
-    r"rm\s+-rf",
-    r"dd\s+if=",
-    r"/etc/passwd",
-    r"/etc/shadow",
-    r"chmod\s+777",
-    r"curl\s+.*\|.*sh",
-    r"wget\s+.*\|.*sh",
-    r"eval\s*\(",
-    r"exec\s*\(",
-    r"__import__",
-    r"os\.system",
-    r"subprocess",
-]
+# Allowed Glob/Grep calls must also stay within the session's local paths.
+# Native Read/Write/Edit stay blocked; MCP handlers provide file access.
+WORKSPACE_SCOPED_TOOLS = {"Glob", "Grep"}
 
 # Platform-tool names whose MCP wrappers must NOT be exposed to SDK mode.
 # Baseline ships an MCP ``TodoWrite`` for model-flexibility parity; SDK mode

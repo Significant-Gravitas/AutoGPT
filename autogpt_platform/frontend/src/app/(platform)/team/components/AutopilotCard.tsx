@@ -10,18 +10,18 @@ import {
 } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { AUTOPILOT_BLURB, AUTOPILOT_ROLE } from "../helpers";
 import {
-  AUTOPILOT_BLURB,
-  AUTOPILOT_PILL_CLASS,
-  AUTOPILOT_ROLE,
-} from "../helpers";
-import {
-  AUTOPILOT_COVER_COLOR,
-  AUTOPILOT_COVER_URL,
-  AUTOPILOT_NAME,
-} from "@/components/molecules/AutopilotAvatar/helpers";
+  CHIP_SHAPE,
+  CHIP_SIZE,
+} from "@/app/(platform)/marketplace/components/CategoryChip/CategoryChip";
+import { categoryTagStyle } from "@/app/(platform)/marketplace/components/CategoryChip/CategoryTag";
+import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
+import { AUTOPILOT_HEX } from "@/components/molecules/ExpertAvatar/colors";
 import { CardStat, CardStats } from "./CardStats";
 import { ExpertCover } from "./ExpertTeamCard/components/ExpertCover";
+
+const AUTOPILOT_COVER_COLOR = AUTOPILOT_HEX;
 
 interface Props {
   skillCount: number;
@@ -39,24 +39,21 @@ export function AutopilotCard({
   return (
     <section
       aria-label={AUTOPILOT_NAME}
-      className="flex flex-col overflow-hidden rounded-2xl bg-white smooth-shadow-ring-sm"
+      className="flex flex-col overflow-hidden rounded-2xl bg-surface smooth-shadow-ring-sm"
     >
       <Link
         href="/team/autopilot"
         aria-label={`View ${AUTOPILOT_NAME}`}
         className="flex flex-1 flex-col items-start p-2 pb-4"
       >
-        <ExpertCover
-          color={AUTOPILOT_COVER_COLOR}
-          status="built-in"
-          art={AUTOPILOT_COVER_URL}
-        />
+        <ExpertCover color={AUTOPILOT_COVER_COLOR} status="built-in" />
 
         <div className="flex w-full items-start gap-3 px-2">
           <AutopilotAvatar
             size={88}
-            transparent={false}
-            className="relative z-10 -mt-12 ml-1 rounded-full"
+            backgroundColor={AUTOPILOT_COVER_COLOR}
+            // oxlint-disable-next-line design-system/no-restyle -- AutopilotAvatar has no bordered variant (src/components is P9's)
+            className="relative z-10 -mt-12 ml-1 rounded-full border border-border-base ring-4 ring-surface"
           />
         </div>
 
@@ -64,21 +61,20 @@ export function AutopilotCard({
           <Text
             variant="lead-medium"
             tone="primary"
-            className="w-full truncate pb-1"
+            className="mb-1 w-full truncate"
           >
             {AUTOPILOT_NAME}
           </Text>
-          <Text
-            variant="small-medium"
-            as="span"
-            className={cn(
-              "inline-flex items-center gap-1.5 self-start rounded-full px-2.5 py-0.5",
-              AUTOPILOT_PILL_CLASS,
-            )}
+          {/* Not a category, but it sits in the same row as the experts'
+              topic tags and should not read as a different kind of thing. */}
+          <span
+            className={cn(CHIP_SHAPE, CHIP_SIZE.small, "h-[22px] max-w-full")}
+            // oxlint-disable-next-line design-system/no-inline-styles -- the tag colour is per-topic data from marketplace's categoryTagStyle (P7)
+            style={categoryTagStyle(AUTOPILOT_COVER_COLOR)}
           >
-            <Icon icon={SparklesIcon} size={12} />
-            {AUTOPILOT_ROLE}
-          </Text>
+            <Icon icon={SparklesIcon} size={12} className="shrink-0" />
+            <span className="truncate">{AUTOPILOT_ROLE}</span>
+          </span>
           <Text
             variant="body"
             tone="muted"

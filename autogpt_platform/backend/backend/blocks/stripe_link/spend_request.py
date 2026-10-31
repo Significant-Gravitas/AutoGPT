@@ -16,6 +16,7 @@ from pydantic import field_validator, model_validator
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -197,6 +198,7 @@ class StripeLinkListPaymentMethodsBlock(Block):
                     ]
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -447,6 +449,7 @@ class StripeLinkCreateCardSpendRequestBlock(Block):
                     "approval_url": "",
                 }
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -563,6 +566,7 @@ class StripeLinkCreateTokenSpendRequestBlock(Block):
                     "approval_url": "",
                 }
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -678,6 +682,7 @@ class StripeLinkGetSpendRequestStatusBlock(Block):
             test_mock={
                 "_link_api_request": lambda *args, **kwargs: {"status": "approved"}
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -839,6 +844,8 @@ class StripeLinkRetrieveCardBlock(Block):
                     },
                 }
             },
+            # A GET, but it discloses the card number and CVC, so it asks.
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

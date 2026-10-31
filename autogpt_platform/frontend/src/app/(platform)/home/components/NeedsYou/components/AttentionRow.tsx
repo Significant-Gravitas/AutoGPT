@@ -10,8 +10,10 @@ import { useState } from "react";
 import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { attentionReason } from "@/app/(platform)/copilot/components/ApprovalQueue/helpers";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { AttentionRowActions } from "./AttentionRowActions";
+import { HeldPassageQuote } from "./HeldPassageQuote";
 
 interface Props {
   item: HomeAttentionItem;
@@ -29,6 +31,7 @@ const ICONS: Record<HomeAttentionItem["kind"], IconSvgElement> = {
 
 export function AttentionRow({ item, isProcessing, onDecision }: Props) {
   const [confirmDecline, setConfirmDecline] = useState(false);
+  const reason = attentionReason(item.review);
 
   function handleDecline() {
     if (!confirmDecline) {
@@ -49,7 +52,7 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
             size={48}
           />
         ) : (
-          <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-500">
+          <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-surface-hover text-foreground-tertiary">
             <Icon icon={ICONS[item.kind]} size={22} aria-hidden="true" />
           </span>
         )}
@@ -61,8 +64,9 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
             {item.priority === "high" ? (
               <Text
                 variant="small-medium"
+                tone="warning"
                 as="span"
-                className="rounded bg-amber-50 px-1.5 py-px text-amber-700 ring-1 ring-inset ring-amber-600/10"
+                className="rounded bg-warning-surface px-1.5 py-px ring-1 ring-warning-foreground/10 ring-inset"
               >
                 Waiting
               </Text>
@@ -73,8 +77,11 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
             tone="secondary"
             className="text-pretty break-words"
           >
-            {item.description}
+            {reason?.line ?? item.description}
           </Text>
+          {reason?.passage ? (
+            <HeldPassageQuote passage={reason.passage} />
+          ) : null}
         </div>
       </div>
 

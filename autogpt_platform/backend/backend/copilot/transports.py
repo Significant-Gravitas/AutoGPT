@@ -18,14 +18,15 @@ from typing import Optional, get_args
 from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider
+from backend.data.db_accessors import user_db
 from backend.data.model import Credentials, OAuth2Credentials
-from backend.data.user import get_user_default_chat_route, set_user_default_chat_route
+from backend.data.user import set_user_default_chat_route
 from backend.integrations.codex.access import has_codex_access_for_discovery
 from backend.integrations.codex.auth_bundle import CodexAuthBundleError
 from backend.integrations.codex.credential_codec import bundle_from_credentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.integrations.oauth.microsoft_365_copilot import (
-    Microsoft365CopilotDeviceAuthHandler,
+from backend.integrations.oauth.microsoft_services import (
+    is_microsoft_365_copilot_credential,
 )
 from backend.integrations.providers import ProviderName
 from backend.util.settings import BehaveAs, Settings
@@ -113,7 +114,9 @@ async def get_chat_transports(user_id: str) -> list[ChatTransportResponse]:
         for credentials in await _valid_microsoft_365_copilot_credentials(user_id)
     )
 
-    saved_provider, saved_credential_id = await get_user_default_chat_route(user_id)
+    saved_provider, saved_credential_id = await user_db().get_user_default_chat_route(
+        user_id
+    )
     _mark_default(transports, saved_provider, saved_credential_id)
     return transports
 
@@ -285,9 +288,13 @@ def _is_valid_codex_credentials(credentials: Credentials | None) -> bool:
 async def _valid_microsoft_365_copilot_credentials(
     user_id: str,
 ) -> list[Credentials]:
-    credentials = await credentials_manager.store.get_creds_by_provider(
-        user_id, ProviderName.MICROSOFT_365_COPILOT
-    )
+    credentials = [
+        credential
+        for provider in (ProviderName.MICROSOFT, ProviderName.MICROSOFT_365_COPILOT)
+        for credential in await credentials_manager.store.get_creds_by_provider(
+            user_id, provider
+        )
+    ]
     return [
         credential
         for credential in credentials
@@ -299,11 +306,8 @@ def _is_valid_microsoft_365_copilot_credentials(
     credentials: Credentials | None,
 ) -> bool:
     return (
-        isinstance(credentials, OAuth2Credentials)
-        and credentials.provider == ProviderName.MICROSOFT_365_COPILOT
-        and set(Microsoft365CopilotDeviceAuthHandler.CHAT_SCOPES).issubset(
-            credentials.scopes
-        )
+        is_microsoft_365_copilot_credential(credentials)
+        and isinstance(credentials, OAuth2Credentials)
         and _microsoft_365_copilot_token_usable(credentials)
     )
 

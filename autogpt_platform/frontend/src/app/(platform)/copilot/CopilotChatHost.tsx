@@ -1,29 +1,80 @@
 "use client";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
+import type { FloatingControls } from "./components/ChatMessagesContainer/components/ThreadHeader";
 import { ProviderLimitDialog } from "./components/ProviderLimitDialog/ProviderLimitDialog";
 import { RateLimitGate } from "./components/RateLimitResetDialog/RateLimitGate";
-import { useCopilotPage } from "./useCopilotPage";
+import { useCopilotPage, useCopilotRuntimePage } from "./useCopilotPage";
 import { FlaskConicalIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { useUsageExperience } from "@/services/usageExperience/useUsageExperience";
+import { useRateLimitRefresh } from "./components/RateLimitResetDialog/useRateLimitRefresh";
 
 interface Props {
   droppedFiles: File[];
   onDroppedFilesConsumed: () => void;
-  /** The new layout floats its sidebar/files controls over the chat's
-   *  top-left corner on small viewports. */
-  hasFloatingControls?: boolean;
+  /** Which layout floats its controls over the chat's top-left corner on
+   *  small viewports. */
+  floatingControls?: FloatingControls;
 }
+
+type CopilotPage = ReturnType<typeof useCopilotPage>;
 
 /**
  * Session-scoped chat host. Parent mounts this with `key={sessionId}` so
- * session-local view state resets on switch, while the actual AI SDK Chat
- * instance is preserved in the per-session runtime registry.
+ * session-local view state resets on switch, while the stream itself is
+ * preserved in a per-session runtime registry. Keyed again by the stream
+ * flag, so flags resolving after mount swap the stream hook by remounting.
  */
-export function CopilotChatHost({
+export function CopilotChatHost(props: Props) {
+  const isStreamRuntime = useGetFlag(Flag.COPILOT_STREAM_RUNTIME) === true;
+  return isStreamRuntime ? (
+    <RuntimeChatHostBody key="stream-runtime" {...props} />
+  ) : (
+    <AiSdkChatHostBody key="ai-sdk" {...props} />
+  );
+}
+
+function AiSdkChatHostBody(props: Props) {
+  const page = useCopilotPage();
+  const usage = useUsageExperience();
+  const usageRefresh = useRateLimitRefresh(page.rateLimitMessage, usage.retry);
+  return (
+    <ChatHostView
+      {...props}
+      page={page}
+      usage={usage}
+      usageRefresh={usageRefresh}
+    />
+  );
+}
+
+function RuntimeChatHostBody(props: Props) {
+  const page = useCopilotRuntimePage();
+  const usage = useUsageExperience();
+  const usageRefresh = useRateLimitRefresh(page.rateLimitMessage, usage.retry);
+  return (
+    <ChatHostView
+      {...props}
+      page={page}
+      usage={usage}
+      usageRefresh={usageRefresh}
+    />
+  );
+}
+
+function ChatHostView({
   droppedFiles,
   onDroppedFilesConsumed,
-  hasFloatingControls,
-}: Props) {
+  floatingControls,
+  page,
+  usage,
+  usageRefresh,
+}: Props & {
+  page: CopilotPage;
+  usage: ReturnType<typeof useUsageExperience>;
+  usageRefresh: ReturnType<typeof useRateLimitRefresh>;
+}) {
   const {
     sessionId,
     messages,
@@ -38,10 +89,12 @@ export function CopilotChatHost({
     isUserStopping,
     createSession,
     onSend,
+    onStartTask,
     onEnqueue,
     queuedMessages,
     isLoadingSession,
     isSessionError,
+    isSessionNotFound,
     isCreatingSession,
     isUploadingFiles,
     pendingSend,
@@ -58,12 +111,17 @@ export function CopilotChatHost({
     sessionChatStatus,
     sessionSentFrom,
     sessionAutopilotMode,
+    chatLlmAuthProvider,
     expertIdentity,
     isResolvingExpertIdentity,
     isAdoptingExpertSession,
     isKickoffStarting,
     followBackendTurn,
-  } = useCopilotPage();
+  } = page;
+  function dismissAfterProviderChange() {
+    usageRefresh.release();
+    dismissRateLimit();
+  }
 
   return (
     <>
@@ -71,13 +129,19 @@ export function CopilotChatHost({
           immutable metadata. Never based on the global isDryRun preference
           (which only predicts future sessions). */}
       {sessionId && sessionDryRun && (
-        <div className="flex items-center justify-center gap-1.5 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800">
+        <div className="flex items-center justify-center gap-1.5 bg-warning-surface px-3 py-1.5 text-xs font-medium text-warning-foreground">
           <Icon icon={FlaskConicalIcon} size={13} />
-          Test mode — this session runs agents as simulation
+          Test mode — this session runs workflows as simulation
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-hidden">
         <ChatContainer
+          isUsageRefused={!!rateLimitMessage || usageRefresh.guarded}
+          usageFailure={platformLimitFailure}
+          onDismissUsage={dismissAfterProviderChange}
+          usageRefresh={usageRefresh}
+          usage={usage}
+          chatAuthProvider={chatLlmAuthProvider}
           messages={messages}
           status={status}
           error={error}
@@ -87,6 +151,7 @@ export function CopilotChatHost({
           sessionAutopilotMode={sessionAutopilotMode}
           isLoadingSession={isLoadingSession}
           isSessionError={isSessionError}
+          isSessionNotFound={isSessionNotFound}
           isCreatingSession={isCreatingSession}
           isReconnecting={isReconnecting}
           isFinishProbing={isFinishProbing}
@@ -96,6 +161,7 @@ export function CopilotChatHost({
           isUserStopping={isUserStopping}
           onCreateSession={createSession}
           onSend={onSend}
+          onStartTask={onStartTask}
           onStop={stop}
           onEnqueue={onEnqueue}
           queuedMessages={queuedMessages}
@@ -112,14 +178,16 @@ export function CopilotChatHost({
           isAdoptingExpertSession={isAdoptingExpertSession}
           isKickoffStarting={isKickoffStarting}
           onBackendTurn={followBackendTurn}
-          hasFloatingControls={hasFloatingControls}
+          floatingControls={floatingControls}
         />
       </div>
       <RateLimitGate
+        refreshState={usageRefresh}
         rateLimitMessage={rateLimitMessage}
         failure={platformLimitFailure}
         sessionId={sessionId}
         onDismiss={dismissRateLimit}
+        onSendNow={onSend}
       />
       <ProviderLimitDialog
         failure={providerLimit}

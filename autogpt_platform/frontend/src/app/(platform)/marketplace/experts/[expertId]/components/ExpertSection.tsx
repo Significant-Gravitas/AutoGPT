@@ -4,27 +4,45 @@ interface Props {
   title: string;
   count?: number;
   description?: string;
+  /** A smaller heading for detail sections that sit below the story. */
+  quiet?: boolean;
   children: ReactNode;
 }
 
-export function ExpertSection({ title, count, description, children }: Props) {
+export function ExpertSection({
+  title,
+  count,
+  description,
+  quiet = false,
+  children,
+}: Props) {
   const headingId = useId();
 
   return (
     <section aria-labelledby={headingId}>
       <h2
         id={headingId}
-        className="flex items-baseline gap-2 text-xl font-semibold tracking-[-0.02em] text-zinc-900"
+        className={
+          quiet
+            ? "flex items-baseline gap-2 text-lg font-semibold tracking-title text-foreground-emphasis"
+            : "flex items-baseline gap-2 text-2xl font-semibold tracking-heading text-foreground-strong"
+        }
       >
         {title}
         {count !== undefined ? (
-          <span className="text-base font-normal tabular-nums text-zinc-400">
+          <span className="text-base font-normal text-foreground-subtle tabular-nums">
             {count}
           </span>
         ) : null}
       </h2>
       {description ? (
-        <p className="mt-1.5 text-base leading-6 text-zinc-500">
+        <p
+          className={
+            quiet
+              ? "mt-1 text-sm leading-5 text-foreground-tertiary"
+              : "mt-1.5 text-base leading-6 text-foreground-tertiary"
+          }
+        >
           {description}
         </p>
       ) : null}

@@ -25,11 +25,11 @@ from backend.copilot.response_model import (
 )
 from backend.copilot.service import strip_user_context_tags
 from backend.copilot.token_tracking import persist_and_record_usage
+from backend.data.db_accessors import user_db
 from backend.data.model import OAuth2Credentials
-from backend.data.user import get_user_by_id
 from backend.integrations.credential_lease import CredentialLease
-from backend.integrations.oauth.microsoft_365_copilot import (
-    Microsoft365CopilotDeviceAuthHandler,
+from backend.integrations.oauth.microsoft_services import (
+    is_microsoft_365_copilot_credential,
 )
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
@@ -90,7 +90,7 @@ async def _get_timezone(user_id: str | None) -> str:
     if not user_id:
         return "UTC"
     try:
-        user = await get_user_by_id(user_id)
+        user = await user_db().get_user_by_id(user_id)
     except Exception:
         logger.warning("Could not load user timezone for Microsoft 365 Copilot")
         return "UTC"
@@ -101,11 +101,8 @@ def _validate_credential_lease(credential_lease: CredentialLease | None) -> str:
     if credential_lease is None:
         raise RuntimeError("microsoft_365_copilot_credential_required")
     credentials = credential_lease.credentials
-    required_scopes = set(Microsoft365CopilotDeviceAuthHandler.CHAT_SCOPES)
-    if (
-        not isinstance(credentials, OAuth2Credentials)
-        or credentials.provider != ProviderName.MICROSOFT_365_COPILOT
-        or not required_scopes.issubset(credentials.scopes)
+    if not is_microsoft_365_copilot_credential(credentials) or not isinstance(
+        credentials, OAuth2Credentials
     ):
         raise RuntimeError("microsoft_365_copilot_credential_not_found")
     return credentials.access_token.get_secret_value()

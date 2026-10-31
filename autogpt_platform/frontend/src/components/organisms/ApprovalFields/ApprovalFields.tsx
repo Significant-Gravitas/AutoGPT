@@ -3,7 +3,14 @@
 import { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { FieldValue } from "./components/FieldValue";
-import { type FieldSpec, humanize, MAX_FIELDS, visibleKeys } from "./helpers";
+import { ReferenceValue } from "./components/ReferenceValue";
+import {
+  type FieldSpec,
+  humanize,
+  MAX_FIELDS,
+  type Reference,
+  visibleKeys,
+} from "./helpers";
 
 interface Props {
   // Labels and order from the tool's or block's input schema.
@@ -14,6 +21,10 @@ interface Props {
   // Keys the card's headline already names.
   hiddenKeys?: string[];
   idsWhenAlone?: boolean;
+  // What the id arguments name; one shows as its name, linked when it has a page.
+  references?: Reference[];
+  // Ids per argument before clipping; a clipped list no longer counts itself.
+  referenceTotals?: Record<string, number>;
 }
 
 export function ApprovalFields({
@@ -22,31 +33,56 @@ export function ApprovalFields({
   clipped = [],
   hiddenKeys = [],
   idsWhenAlone = false,
+  references = [],
+  referenceTotals = {},
 }: Props) {
   const [showAll, setShowAll] = useState(false);
-  const labels = new Map(fields.map((f) => [f.key, f.label]));
+  const specs = new Map(fields.map((f) => [f.key, f]));
   const ordered = visibleKeys({
     keys: [...fields.map((f) => f.key), ...Object.keys(values)],
     values,
     hiddenKeys,
     idsWhenAlone,
-  }).map((key) => ({ key, label: labels.get(key) ?? humanize(key) }));
+    references,
+  }).map((key) => ({
+    key,
+    label: specs.get(key)?.label ?? humanize(key),
+    format: specs.get(key)?.format,
+  }));
 
   if (ordered.length === 0) return null;
   const shown = showAll ? ordered : ordered.slice(0, MAX_FIELDS);
   const more = ordered.length - shown.length;
 
   return (
-    <div className="flex flex-col gap-2">
-      <dl className="grid grid-cols-1 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-[minmax(5rem,9rem)_minmax(0,1fr)] sm:gap-y-2">
+    <div data-slot="approval-fields" className="flex flex-col gap-2">
+      <dl
+        data-slot="approval-fields-list"
+        className="grid grid-cols-1 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-[minmax(5rem,9rem)_minmax(0,1fr)] sm:gap-y-2"
+      >
         {shown.map((field) => (
-          <div key={field.key} className="contents">
-            <dt className="text-zinc-500 sm:pt-px">{field.label}</dt>
-            <dd className="mb-1.5 min-w-0 text-zinc-900 [overflow-wrap:anywhere] sm:mb-0">
-              <FieldValue
+          <div
+            key={field.key}
+            data-slot="approval-fields-row"
+            className="contents"
+          >
+            <dt
+              data-slot="approval-fields-label"
+              className="text-foreground-tertiary sm:pt-px"
+            >
+              {field.label}
+            </dt>
+            <dd
+              data-slot="approval-fields-value"
+              className="mb-1.5 min-w-0 [overflow-wrap:anywhere] text-foreground-strong sm:mb-0"
+            >
+              <FieldOrReference
                 name={field.key}
                 value={values[field.key]}
+                format={field.format}
                 clipped={clipped.includes(field.key)}
+                references={references}
+                total={referenceTotals[field.key]}
               />
             </dd>
           </div>
@@ -64,4 +100,32 @@ export function ApprovalFields({
       )}
     </div>
   );
+}
+
+interface FieldOrReferenceProps {
+  name: string;
+  value: unknown;
+  format?: string | null;
+  clipped: boolean;
+  references: Reference[];
+  total?: number;
+}
+
+function FieldOrReference({
+  name,
+  value,
+  format,
+  clipped,
+  references,
+  total,
+}: FieldOrReferenceProps) {
+  const refs = references.filter((ref) => ref.key === name);
+  if (!refs.some((ref) => ref.name))
+    return (
+      <FieldValue name={name} value={value} format={format} clipped={clipped} />
+    );
+  const counted = Array.isArray(value)
+    ? value.filter((v) => typeof v === "string" && v.trim()).length
+    : refs.length;
+  return <ReferenceValue refs={refs} total={total ?? counted} />;
 }

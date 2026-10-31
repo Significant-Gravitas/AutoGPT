@@ -8,6 +8,7 @@ import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/Autopilo
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { SelectableCard } from "../components/SelectableCard";
+import { OTHER_ROLE_MAX_LENGTH } from "../helpers";
 import { useOnboardingWizardStore } from "../store";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import {
@@ -89,7 +90,7 @@ export function RoleStep() {
           <Text variant="h4">What best describes you?</Text>
         </div>
 
-        <div className="flex w-full max-w-[100vw] flex-nowrap gap-4 overflow-x-auto px-8 scrollbar-none md:grid md:grid-cols-4 md:overflow-hidden md:px-0">
+        <div className="scrollbar-none flex w-full max-w-[100vw] flex-nowrap gap-4 overflow-x-auto px-8 md:grid md:grid-cols-4 md:overflow-hidden md:px-0">
           {ROLES.map((r) => (
             <SelectableCard
               key={r.id}
@@ -123,6 +124,7 @@ export function RoleStep() {
                   placeholder="Describe your role..."
                   value={otherRole}
                   onChange={(e) => setOtherRole(e.target.value)}
+                  maxLength={OTHER_ROLE_MAX_LENGTH}
                   autoFocus
                 />
               </div>
@@ -135,7 +137,7 @@ export function RoleStep() {
           size="small"
           onClick={handleNext}
           disabled={!canContinue}
-          className="h-10 w-56 rounded-xl"
+          className="h-10 w-56"
         >
           Next
         </Button>

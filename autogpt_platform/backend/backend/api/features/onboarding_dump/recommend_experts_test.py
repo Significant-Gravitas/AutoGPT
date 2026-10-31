@@ -206,11 +206,9 @@ def test_the_fallback_maps_wizard_answers_to_the_roster(
         user_role, pain_points, ROSTER
     )
 
-    names = [e.name for e in team.experts]
-    # The wizard's answers pick who leads; the rest of the roster fills in
-    # behind them so the row is never a single card.
-    assert names[: len(expected_lead)] == expected_lead
-    assert sorted(names) == sorted(t.name for t in ROSTER)
+    # Only the templates the answers point at: nothing has been read, so
+    # nothing else on the roster has earned a card.
+    assert [e.name for e in team.experts] == expected_lead
     assert (team.raise_suggestion.role if team.raise_suggestion else None) == (
         expected_raise
     )
@@ -234,9 +232,7 @@ def test_the_fallback_drops_the_raise_door_once_a_template_covers_it(
     # would be a lie: the door only opens when the role is still a gap.
     team = recommend_experts.fallback_expert_recommendations(user_role, [], FULL_ROSTER)
 
-    names = [e.name for e in team.experts]
-    assert names[: len(expected_names)] == expected_names
-    assert len(names) == min(recommend_experts.MAX_EXPERTS, len(FULL_ROSTER))
+    assert [e.name for e in team.experts] == expected_names
     assert team.raise_suggestion is None
 
 
@@ -293,10 +289,14 @@ def client(mocker: MockerFixture) -> MagicMock:
     return fake
 
 
-def _completion(payload: object) -> SimpleNamespace:
+def _completion(payload: object, finish_reason: str = "stop") -> SimpleNamespace:
     content = payload if isinstance(payload, str) else json.dumps(payload)
     return SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content=content))]
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(content=content), finish_reason=finish_reason
+            )
+        ]
     )
 
 
@@ -352,8 +352,12 @@ async def test_a_generation_with_nothing_usable_degrades_to_the_fallback(
 
 
 @pytest.mark.asyncio
-async def test_non_json_output_is_retried_once_then_falls_back(client: MagicMock):
-    client.chat.completions.create.return_value = _completion("no json here")
+async def test_non_json_output_is_retried_once_then_falls_back(
+    client: MagicMock, caplog: pytest.LogCaptureFixture
+):
+    client.chat.completions.create.return_value = _completion(
+        '{"diagnosis": "You said tickets pile', finish_reason="length"
+    )
 
     team = await recommend_experts.generate_expert_recommendations(
         TRANSCRIPT, user_role="Marketing", pain_points=[], templates=ROSTER
@@ -361,6 +365,25 @@ async def test_non_json_output_is_retried_once_then_falls_back(client: MagicMock
 
     assert team.source == "fallback"
     assert client.chat.completions.create.await_count == 2
+    # Why it failed, never what the model wrote: the output echoes the dump.
+    assert "finish_reason=length, 36 chars" in caplog.text
+    assert "tickets pile" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_the_generation_asks_for_no_reasoning(client: MagicMock):
+    # Haiku 5.5's adaptive thinking spent the whole output budget on a real
+    # brain dump and returned no JSON; the answer is a matching task.
+    client.chat.completions.create.return_value = _completion(
+        {"experts": [{"template_id": "tpl-max"}]}
+    )
+
+    await recommend_experts.generate_expert_recommendations(
+        TRANSCRIPT, user_role="Sales/BD", pain_points=[], templates=ROSTER
+    )
+
+    kwargs = client.chat.completions.create.await_args.kwargs
+    assert kwargs["extra_body"] == {"reasoning": {"enabled": False}}
 
 
 @pytest.mark.asyncio
@@ -410,16 +433,19 @@ async def test_the_prompt_carries_the_roster_and_the_wizard_answers(
     assert TRANSCRIPT in content
 
 
-def test_fallback_prioritizes_all_matching_templates_before_truncating():
+def test_fallback_offers_one_row_of_matches_and_never_pads_from_the_roster():
     unrelated = [_template(f"other-{i}", f"Other{i}", "Ops") for i in range(16)]
-    first = _template("sales-first", "First", "Sales")
-    second = _template("sales-second", "Second", " SALES ")
+    sales = [_template(f"sales-{i}", f"Seller{i}", " SALES ") for i in range(5)]
     team = recommend_experts.fallback_expert_recommendations(
-        "Sales/BD", ["Finding leads", "Email & outreach"], [*unrelated, first, second]
+        "Sales/BD", ["Finding leads", "Email & outreach"], [*unrelated, *sales]
     )
     ids = [expert.template_id for expert in team.experts]
-    assert ids[:2] == [first.id, second.id]
-    assert len(ids) == len(set(ids)) == recommend_experts.MAX_EXPERTS
+    assert ids == [t.id for t in sales[: recommend_experts.MAX_FALLBACK_EXPERTS]]
+
+    team = recommend_experts.fallback_expert_recommendations(
+        "Other", [], [*unrelated, *sales]
+    )
+    assert team.experts == []
 
 
 @pytest.mark.asyncio

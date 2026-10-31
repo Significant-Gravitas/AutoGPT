@@ -199,3 +199,78 @@ async def test_backfill_reads_bounded_batches_without_offset_skips():
     assert [
         call.kwargs["where"]["updatedAt"] for call in db.update_many.await_args_list
     ] == ["0", "1", "2"]
+
+
+def test_template_projection_replaces_retired_defaults_only():
+    from backend.api.features.experts.presentation import template_presentation
+
+    row = SimpleNamespace(
+        name="Noor",
+        isTemplate=True,
+        avatarUrl="/avatars/notion/2-2-15-8-2-0-27-0-0-0.sky.svg",
+        bio=None,
+        identity="",
+        tagline=None,
+    )
+    assert (
+        template_presentation(row)["avatarUrl"]
+        == "/autogpt-characters/v2.1/expert-noor/neutral/128.webp"
+    )
+    row.avatarUrl = "/experts/clay/v5/noor-marketing.png"
+    assert (
+        template_presentation(row)["avatarUrl"]
+        == "/autogpt-characters/v2.1/expert-noor/neutral/128.webp"
+    )
+    row.avatarUrl = "https://custom.example/image.png"
+    assert template_presentation(row)["avatarUrl"] == row.avatarUrl
+    row.avatarUrl = "/autogpt-characters/v2.1/expert-general-01/neutral/128.webp"
+    assert template_presentation(row)["avatarUrl"] == row.avatarUrl
+    row.avatarUrl = "/experts/clay/v5/noor-marketing.png"
+    row.isTemplate = False
+    assert template_presentation(row)["avatarUrl"] == row.avatarUrl
+
+
+async def test_hired_avatar_refresh_is_scoped_to_its_template_and_known_default():
+    from unittest.mock import AsyncMock, patch
+
+    from backend.api.features.experts.seed import _backfill_hired_copies
+
+    template = SimpleNamespace(
+        id="template",
+        name="Noor",
+        avatarUrl="/autogpt-characters/v2.1/expert-noor/neutral/128.webp",
+        jobTitle="Writer",
+        tagline="Hi",
+        bio=None,
+        categories=[],
+        role="Communications",
+        identity="Instructions",
+    )
+    hires = [
+        SimpleNamespace(
+            **{**vars(template), "id": str(i), "updatedAt": str(i), "avatarUrl": url}
+        )
+        for i, url in enumerate(
+            [
+                "/experts/clay/v5/noor-marketing.png",
+                "https://custom.example/image.png",
+                "/autogpt-characters/v2.1/expert-general-01/neutral/128.webp",
+            ]
+        )
+    ]
+    db = AsyncMock()
+    db.find_many.return_value = hires
+    db.update_many.return_value = 1
+    with patch(
+        "backend.api.features.experts.seed.prisma.models.Expert.prisma", return_value=db
+    ):
+        assert await _backfill_hired_copies(template, template) == 1
+    db.update_many.assert_awaited_once_with(
+        where={
+            "id": "0",
+            "sourceTemplateId": "template",
+            "isTemplate": False,
+            "updatedAt": "0",
+        },
+        data={"avatarUrl": "/autogpt-characters/v2.1/expert-noor/neutral/128.webp"},
+    )

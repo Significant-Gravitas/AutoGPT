@@ -1,5 +1,6 @@
 "use client";
 
+import { getCategoryHex } from "@/components/molecules/ExpertAvatar/colors";
 import { useStoreCategories } from "@/hooks/useStoreCategories";
 import { CategoryChip } from "../CategoryChip/CategoryChip";
 import { getCategoryAccent } from "../ExpertsSection/helpers";
@@ -26,7 +27,7 @@ export function CategoryFilter({ selected, onSelect }: Props) {
       role="group"
       aria-label="Browse experts by category"
     >
-      <span className="text-sm font-medium text-zinc-500">
+      <span className="text-sm font-medium text-foreground-tertiary">
         Browse experts by category
       </span>
       {/* One flex item, so the whole list drops below the label before it
@@ -43,6 +44,7 @@ export function CategoryFilter({ selected, onSelect }: Props) {
             <CategoryChip
               key={category.value}
               label={category.label}
+              color={getCategoryHex(category.value)}
               title={category.description}
               icon={icon}
               accent={accent}

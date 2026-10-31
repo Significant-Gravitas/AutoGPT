@@ -16,6 +16,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -228,6 +229,7 @@ class ExaCreateMonitorBlock(Block):
             ],
             test_credentials=TEST_CREDENTIALS,
             test_mock=self._create_test_mock(),
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -378,6 +380,7 @@ class ExaGetMonitorBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaGetMonitorBlock.Input,
             output_schema=ExaGetMonitorBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -454,6 +457,7 @@ class ExaUpdateMonitorBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaUpdateMonitorBlock.Input,
             output_schema=ExaUpdateMonitorBlock.Output,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -519,6 +523,7 @@ class ExaDeleteMonitorBlock(Block):
             input_schema=ExaDeleteMonitorBlock.Input,
             output_schema=ExaDeleteMonitorBlock.Output,
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -579,6 +584,7 @@ class ExaListMonitorsBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaListMonitorsBlock.Input,
             output_schema=ExaListMonitorsBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(

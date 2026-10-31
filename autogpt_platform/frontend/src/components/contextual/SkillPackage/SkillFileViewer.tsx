@@ -1,3 +1,4 @@
+import { Text } from "@/components/atoms/Text/Text";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import {
@@ -19,7 +20,7 @@ export function SkillFileViewer({ source, path, onClose }: Props) {
 
   return (
     <Dialog
-      title={<span className="break-all font-mono text-sm">{path}</span>}
+      title={<span className="font-mono text-sm break-all">{path}</span>}
       styling={{ width: "760px" }}
       controlled={{
         isOpen: path !== null,
@@ -37,9 +38,11 @@ export function SkillFileViewer({ source, path, onClose }: Props) {
               <Skeleton className="h-4 w-2/3" />
             </div>
           ) : unavailable ? (
-            <p className="text-sm text-zinc-500">{unavailable}</p>
+            <Text variant="body-tight" tone="muted">
+              {unavailable}
+            </Text>
           ) : (
-            <pre className="max-h-[60vh] overflow-auto rounded-md bg-zinc-50 p-3 font-mono text-[13px] leading-5 text-zinc-700">
+            <pre className="max-h-[60vh] overflow-auto rounded-md bg-surface-muted p-3 font-mono text-body-sm leading-5 text-foreground-body">
               {content}
             </pre>
           )}

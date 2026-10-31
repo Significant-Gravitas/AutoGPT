@@ -285,6 +285,9 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 
 | Block Name | Description |
 |------------|-------------|
+| [AnySearch](block-integrations/anysearch/search.md#anysearch) | Searches the web using AnySearch - general queries plus vertical domains (finance, academic, health, legal, and more) via domain/sub_domain filters |
+| [AnySearch Extract](block-integrations/anysearch/extract.md#anysearch-extract) | Extracts readable content from a single URL using AnySearch, optimized for LLM consumption |
+| [AnySearch Parallel Search](block-integrations/anysearch/parallel_search.md#anysearch-parallel-search) | Runs several AnySearch queries in parallel (client-side concurrency via asyncio) |
 | [Ask Wolfram](block-integrations/wolfram/llm_api.md#ask-wolfram) | Ask Wolfram Alpha a question |
 | [Exa Bulk Webset Items](block-integrations/exa/websets_items.md#exa-bulk-webset-items) | Get all items from a webset in bulk (with configurable limits) |
 | [Exa Cancel Enrichment](block-integrations/exa/websets_enrichment.md#exa-cancel-enrichment) | Cancel a running enrichment operation |
@@ -333,6 +336,12 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Get Person Detail](block-integrations/apollo/person.md#get-person-detail) | Get detailed person data with Apollo API, including email reveal |
 | [Get Wikipedia Summary](block-integrations/search.md#get-wikipedia-summary) | This block fetches the summary of a given topic from Wikipedia |
 | [Google Maps Search](block-integrations/search.md#google-maps-search) | Search Google Maps for businesses and other places that match a text query |
+| [Hacker News Get Item](block-integrations/hacker_news/items.md#hacker-news-get-item) | Get a Hacker News story, comment, poll or job by its id or link, with its comments as a list in reading order |
+| [Hacker News Get Stories](block-integrations/hacker_news/stories.md#hacker-news-get-stories) | Get the top (front page), new, best, Ask HN, Show HN or job stories from Hacker News, in the order Hacker News ranks them |
+| [Hacker News Get User](block-integrations/hacker_news/users.md#hacker-news-get-user) | Get a Hacker News user's profile by username: karma, when the account was created, the about text and how many items they have posted |
+| [Hacker News Search](block-integrations/hacker_news/search.md#hacker-news-search) | Search Hacker News stories and comments by keyword, author, date, points or linked domain, sorted by relevance or newest first |
+| [Parallel Ask Many Decisions](block-integrations/parallel/ask_many.md#parallel-ask-many-decisions) | Ask several yes/no, choice and score questions about one subject in a single Parallel request, answered from shared current web evidence |
+| [Parallel Score Decision](block-integrations/parallel/score.md#parallel-score-decision) | Rate something on an ordered scale you define, using current web evidence from Parallel |
 | [Search Filter Typeahead](block-integrations/dataforb2b/typeahead.md#search-filter-typeahead) | Resolve the exact filter value (company, industry, job title, skill, school, investor, location, category) for people and company searches with DataForB2B |
 | [Search Organizations](block-integrations/apollo/organization.md#search-organizations) | Search for organizations in Apollo |
 | [Search People](block-integrations/apollo/people.md#search-people) | Search for people in Apollo |
@@ -388,7 +397,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Post To Snapchat](block-integrations/ayrshare/post_to_snapchat.md#post-to-snapchat) | Post to Snapchat using Ayrshare |
 | [Post To Telegram](block-integrations/ayrshare/post_to_telegram.md#post-to-telegram) | Post to Telegram using Ayrshare |
 | [Post To Threads](block-integrations/ayrshare/post_to_threads.md#post-to-threads) | Post to Threads using Ayrshare |
-| [Post To Tik Tok](block-integrations/ayrshare/post_to_tiktok.md#post-to-tik-tok) | Post to TikTok using Ayrshare |
+| [Post To TikTok](block-integrations/ayrshare/post_to_tiktok.md#post-to-tiktok) | Post to TikTok using Ayrshare |
 | [Post To X](block-integrations/ayrshare/post_to_x.md#post-to-x) | Post to X / Twitter using Ayrshare |
 | [Post To YouTube](block-integrations/ayrshare/post_to_youtube.md#post-to-youtube) | Post to YouTube using Ayrshare |
 | [Publish To Medium](block-integrations/misc.md#publish-to-medium) | Publishes a post to Medium |
@@ -523,6 +532,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Gmail Reply](block-integrations/google/gmail.md#gmail-reply) | Reply to Gmail threads with automatic HTML detection and proper text formatting |
 | [Gmail Send](block-integrations/google/gmail.md#gmail-send) | Send emails via Gmail with automatic HTML detection and proper text formatting |
 | [Hub Spot Engagement](block-integrations/hubspot/engagement.md#hub-spot-engagement) | Manages HubSpot engagements - sends emails and tracks engagement metrics |
+| [Send Email To Me](block-integrations/communication.md#send-email-to-me) | Email yourself: sends a message to your own inbox, at your account's email address, from the platform, with no email account to sign in to |
 
 ## Developer Tools
 
@@ -535,6 +545,17 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [AllQuiet List Incidents](block-integrations/allquiet/incident_search.md#allquiet-list-incidents) | Searches All Quiet incidents by status, severity, team or text |
 | [AllQuiet List Teams](block-integrations/allquiet/teams.md#allquiet-list-teams) | Lists All Quiet teams and their IDs |
 | [AllQuiet Update Incident](block-integrations/allquiet/incidents.md#allquiet-update-incident) | Investigates, resolves, escalates or comments on an All Quiet incident |
+| [Conductor Create Session](block-integrations/conductor/create_session.md#conductor-create-session) | Start a new agent session (chat) in an existing Conductor workspace, optionally with a first prompt, and optionally wait for the agent's reply |
+| [Conductor Create Workspace](block-integrations/conductor/create_workspace.md#conductor-create-workspace) | Create a Conductor cloud workspace for a project or repository, optionally start its agent with a prompt and wait for the reply |
+| [Conductor Get Account](block-integrations/conductor/account.md#conductor-get-account) | Get an overview of your Conductor account in one call: who you are, the projects (repositories) you can open workspaces in, your sections and your routines |
+| [Conductor Get Session](block-integrations/conductor/get_session.md#conductor-get-session) | Get a Conductor agent session: its details, whether the agent is idle, working or errored, and recent transcript messages |
+| [Conductor Get Workspace](block-integrations/conductor/get_workspace.md#conductor-get-workspace) | Get everything about one Conductor workspace: details, current status, shared preview URL and its agent sessions |
+| [Conductor List Workspaces](block-integrations/conductor/list_workspaces.md#conductor-list-workspaces) | List Conductor workspaces, optionally filtered by project, state, name, repository, creator or activity date |
+| [Conductor Manage Routine](block-integrations/conductor/routines.md#conductor-manage-routine) | Create a Conductor routine (a saved prompt that runs a fresh agent in a project whenever its webhook URL is called) or rotate a routine's webhook secret |
+| [Conductor Manage Section](block-integrations/conductor/sections.md#conductor-manage-section) | Create or delete a Conductor cloud section |
+| [Conductor Manage Session](block-integrations/conductor/manage_session.md#conductor-manage-session) | Rename, cancel or archive a Conductor agent session |
+| [Conductor Manage Workspace](block-integrations/conductor/manage_workspace.md#conductor-manage-workspace) | Change a Conductor workspace: rename it, archive, unarchive or sleep it, share or stop sharing a port at its public preview URL, or move it into a section |
+| [Conductor Send Message](block-integrations/conductor/send_message.md#conductor-send-message) | Send a prompt to a Conductor agent session and, by default, wait for the agent to finish and return its reply |
 | [Exa Code Context](block-integrations/exa/code_context.md#exa-code-context) | Search billions of GitHub repos, docs, and Stack Overflow for relevant code examples |
 | [Execute Code](block-integrations/misc.md#execute-code) | Executes code in a sandbox environment with internet access |
 | [Execute Code Step](block-integrations/misc.md#execute-code-step) | Execute code in a previously instantiated sandbox |
@@ -556,6 +577,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Github Get Notification Thread](block-integrations/github/notifications.md#github-get-notification-thread) | This block fetches a single GitHub notification thread |
 | [Github Get PR Review Comments](block-integrations/github/reviews.md#github-get-pr-review-comments) | This block gets all review comments from a GitHub pull request or from a specific review |
 | [Github Get Repository Info](block-integrations/github/repo.md#github-get-repository-info) | This block retrieves metadata about a GitHub repository |
+| [Github Get Repository Traffic](block-integrations/github/traffic.md#github-get-repository-traffic) | Get a GitHub repository's views and clones over the last 14 days, with unique visitors and cloners, plus its top referring sites and most viewed pages |
 | [Github Get Repository Tree](block-integrations/github/repo_files.md#github-get-repository-tree) | This block lists the entire file tree of a GitHub repository recursively |
 | [Github Get User Info](block-integrations/github/users.md#github-get-user-info) | This block fetches information about a GitHub user, or about the authenticated user (yourself) if no username is given |
 | [Github Issues Trigger](block-integrations/github/triggers.md#github-issues-trigger) | This block triggers on GitHub issues events |
@@ -618,11 +640,13 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | Block Name | Description |
 |------------|-------------|
 | [Google Calendar Create Event](block-integrations/google/calendar.md#google-calendar-create-event) | This block creates a new event in Google Calendar with customizable parameters |
+| [Notion Append To Page](block-integrations/notion/append_to_page.md#notion-append-to-page) | Add content to the end of an existing Notion page |
 | [Notion Create Page](block-integrations/notion/create_page.md#notion-create-page) | Create a new page in Notion |
 | [Notion Read Database](block-integrations/notion/read_database.md#notion-read-database) | Query a Notion database with optional filtering and sorting, returning structured entries |
 | [Notion Read Page](block-integrations/notion/read_page.md#notion-read-page) | Read a Notion page by its ID and return its raw JSON |
 | [Notion Read Page Markdown](block-integrations/notion/read_page_markdown.md#notion-read-page-markdown) | Read a Notion page and convert it to Markdown format with proper formatting for headings, lists, links, and rich text |
 | [Notion Search](block-integrations/notion/search.md#notion-search) | Search your Notion workspace for pages and databases by text query |
+| [Notion Update Page Properties](block-integrations/notion/update_page_properties.md#notion-update-page-properties) | Update an existing Notion page's properties, its title among them, its icon or cover, or whether it is in the trash |
 | [Todoist Close Task](block-integrations/todoist/tasks.md#todoist-close-task) | Closes a task in Todoist |
 | [Todoist Create Comment](block-integrations/todoist/comments.md#todoist-create-comment) | Creates a new comment on a Todoist task or project |
 | [Todoist Create Label](block-integrations/todoist/labels.md#todoist-create-label) | Creates a new label in Todoist, It will not work if same name already exists |
@@ -663,6 +687,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Data Sampling](block-integrations/logic.md#data-sampling) | This block samples data from a given dataset using various sampling methods |
 | [Exa Webset Ready Check](block-integrations/exa/websets.md#exa-webset-ready-check) | Check if webset is ready for next operation - enables conditional workflow branching |
 | [If Input Matches](block-integrations/logic.md#if-input-matches) | Handles conditional logic based on comparison operators |
+| [Parallel Choice Decision](block-integrations/parallel/choice.md#parallel-choice-decision) | Pick one of several options using current web evidence from Parallel, with a probability for each option |
+| [Parallel Yes No Decision](block-integrations/parallel/yes_no.md#parallel-yes-no-decision) | Answer a yes/no question using current web evidence from Parallel, and forward data to the yes, no or unsure output |
 | [Pinecone Init](block-integrations/logic.md#pinecone-init) | Initializes a Pinecone index |
 | [Pinecone Insert](block-integrations/logic.md#pinecone-insert) | Upload data to a Pinecone index |
 | [Pinecone Query](block-integrations/logic.md#pinecone-query) | Queries a Pinecone index |

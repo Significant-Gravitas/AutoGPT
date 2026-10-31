@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, SecretStr
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -98,6 +99,7 @@ class SendEmailBlock(Block):
             test_output=[("status", "Email sent successfully")],
             test_mock={"send_email": lambda *args, **kwargs: "Email sent successfully"},
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     ALLOWED_SMTP_PORTS = {25, 465, 587, 2525}

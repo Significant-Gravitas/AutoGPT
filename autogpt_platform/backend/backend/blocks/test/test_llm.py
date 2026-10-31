@@ -14,7 +14,13 @@ import backend.blocks.llm as llm
 from backend.blocks._base import DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 from backend.data.execution import ExecutionContext
 from backend.data.model import NodeExecutionStats
+from backend.util.exceptions import BlockExecutionError
 from backend.util.llm import saturation
+from backend.util.llm.prompt_refusal import PROMPT_REFUSED_MESSAGE
+from backend.util.llm.prompt_refusal_test import (
+    OPENAI_INVALID_PROMPT_BODY,
+    openai_sdk_error,
+)
 from backend.util.llm.providers import FAST_FAIL_TIMEOUT_SECONDS, ProviderResponse
 from backend.util.settings import Config
 
@@ -136,8 +142,12 @@ class TestLLMStatsTracking:
         )
 
         outputs = {}
-        # Mock secrets.token_hex to return consistent ID
-        with patch("secrets.token_hex", return_value="test123456"):
+        # Patch the deterministic output-tag helper to a fixed value
+        with patch.object(
+            llm.AIStructuredResponseGeneratorBlock,
+            "get_collision_proof_output_tag_id",
+            return_value="test123456",
+        ):
             async for output_name, output_data in block.run(
                 input_data, credentials=llm.TEST_CREDENTIALS
             ):
@@ -242,8 +252,12 @@ class TestLLMStatsTracking:
         )
 
         outputs = {}
-        # Mock secrets.token_hex to return consistent ID
-        with patch("secrets.token_hex", return_value="test123456"):
+        # Patch the deterministic output-tag helper to a fixed value
+        with patch.object(
+            llm.AIStructuredResponseGeneratorBlock,
+            "get_collision_proof_output_tag_id",
+            return_value="test123456",
+        ):
             async for output_name, output_data in block.run(
                 input_data, credentials=llm.TEST_CREDENTIALS
             ):
@@ -306,7 +320,11 @@ class TestLLMStatsTracking:
             retry=2,
         )
 
-        with patch("secrets.token_hex", return_value="test123456"):
+        with patch.object(
+            llm.AIStructuredResponseGeneratorBlock,
+            "get_collision_proof_output_tag_id",
+            return_value="test123456",
+        ):
             async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                 pass
 
@@ -347,7 +365,11 @@ class TestLLMStatsTracking:
             retry=1,
         )
 
-        with patch("secrets.token_hex", return_value="tok123456"):
+        with patch.object(
+            llm.AIStructuredResponseGeneratorBlock,
+            "get_collision_proof_output_tag_id",
+            return_value="tok123456",
+        ):
             async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                 pass
 
@@ -490,8 +512,12 @@ class TestLLMStatsTracking:
                 max_tokens=1000,  # Large enough to avoid chunking
             )
 
-            # Mock secrets.token_hex to return consistent ID
-            with patch("secrets.token_hex", return_value="test123456"):
+            # Patch the deterministic output-tag helper to a fixed value
+            with patch.object(
+                llm.AIStructuredResponseGeneratorBlock,
+                "get_collision_proof_output_tag_id",
+                return_value="test123456",
+            ):
                 outputs = {}
                 async for output_name, output_data in block.run(
                     input_data, credentials=llm.TEST_CREDENTIALS
@@ -661,8 +687,12 @@ class TestLLMStatsTracking:
 
         # Run the block
         outputs = {}
-        # Mock secrets.token_hex to return consistent ID
-        with patch("secrets.token_hex", return_value="test123456"):
+        # Patch the deterministic output-tag helper to a fixed value
+        with patch.object(
+            llm.AIStructuredResponseGeneratorBlock,
+            "get_collision_proof_output_tag_id",
+            return_value="test123456",
+        ):
             async for output_name, output_data in block.run(
                 input_data, credentials=llm.TEST_CREDENTIALS
             ):
@@ -1120,6 +1150,40 @@ class TestUserErrorStatusCodeHandling:
             call_count > 1
         ), f"Expected multiple retry attempts for 500, got {call_count}"
 
+
+class TestContextLengthRetryHandling:
+    """Context-length failures retry with reduced max_tokens, never reaching 0."""
+
+    @pytest.mark.asyncio
+    async def test_max_tokens_reduction_clamps_above_zero(self):
+        import backend.blocks.llm as llm
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+        seen_max_tokens = []
+
+        async def mock_llm_call(*args, **kwargs):
+            seen_max_tokens.append(kwargs["max_tokens"])
+            raise ValueError("This model's maximum context length is 8192 tokens")
+
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Test",
+                expected_format={"key": "desc"},
+                model=llm.DEFAULT_LLM_MODEL,
+                credentials=_TEST_AI_CREDENTIALS,
+                max_tokens=2,
+                retry=5,
+            )
+
+            with pytest.raises(RuntimeError):
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
+
+        assert len(seen_max_tokens) > 1, "context-length errors should keep retrying"
+        assert all(
+            tokens >= 1 for tokens in seen_max_tokens[1:]
+        ), f"max_tokens decayed below 1: {seen_max_tokens}"
+
     @pytest.mark.asyncio
     async def test_user_error_logs_warning_not_exception(self):
         """User-caused errors should log with logger.warning, not logger.exception."""
@@ -1148,6 +1212,151 @@ class TestUserErrorStatusCodeHandling:
 
         mock_warning.assert_called_once()
         mock_exception.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_invalid_model_id_error_appends_guidance(self):
+        """Invalid model ID errors should surface a targeted remediation hint."""
+        import backend.blocks.llm as llm
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+        call_count = 0
+
+        async def mock_llm_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            response = httpx.Response(
+                400, request=httpx.Request("POST", "https://api.openai.com/v1/chat")
+            )
+            raise openai.APIStatusError(
+                (
+                    "Error code: 400 - {'error': {'message': "
+                    "'invalid model ID: claude-haiku-4-5-20251001'}}"
+                ),
+                response=response,
+                body=None,
+            )
+
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Test",
+                expected_format={"key": "desc"},
+                model=llm.LLMModel.CLAUDE_4_5_HAIKU,
+                credentials=_TEST_AI_CREDENTIALS,
+                retry=3,
+            )
+
+            with pytest.raises(RuntimeError) as exc_info:
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
+
+        assert call_count == 1
+        assert "check anthropic's current model list" in str(exc_info.value).lower()
+        assert "update the block's model configuration" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_generic_bad_request_does_not_append_model_guidance(self):
+        """Non-model 400 errors should keep their original provider message and
+        still be retried (i.e. they are not treated as non-retryable)."""
+        import backend.blocks.llm as llm
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+        call_count = 0
+
+        async def mock_llm_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            response = httpx.Response(
+                400, request=httpx.Request("POST", "https://api.openai.com/v1/chat")
+            )
+            raise openai.APIStatusError(
+                "Error code: 400 - {'error': {'message': 'prompt rejected by moderation'}}",
+                response=response,
+                body=None,
+            )
+
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Test",
+                expected_format={"key": "desc"},
+                model=llm.LLMModel.CLAUDE_4_5_HAIKU,
+                credentials=_TEST_AI_CREDENTIALS,
+                retry=2,
+            )
+
+            with pytest.raises(RuntimeError) as exc_info:
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
+
+        # Generic 400s are retryable, so the mock must be invoked more than once.
+        assert call_count > 1
+        error_message = str(exc_info.value).lower()
+        assert "check anthropic's current model list" not in error_message
+        assert "update the block's model configuration" not in error_message
+
+    @pytest.mark.asyncio
+    async def test_anthropic_invalid_model_id_error_appends_guidance(self):
+        """Invalid model ID errors from the Anthropic SDK should also surface
+        remediation guidance and skip retries."""
+        import backend.blocks.llm as llm
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+        call_count = 0
+
+        async def mock_llm_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+            response = httpx.Response(404, request=request)
+            raise anthropic.APIStatusError(
+                "Error code: 404 - model `claude-imaginary` does not exist",
+                response=response,
+                body=None,
+            )
+
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Test",
+                expected_format={"key": "desc"},
+                model=llm.LLMModel.CLAUDE_4_5_HAIKU,
+                credentials=_TEST_AI_CREDENTIALS,
+                retry=3,
+            )
+
+            with pytest.raises(RuntimeError) as exc_info:
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
+
+        assert call_count == 1
+        error_message = str(exc_info.value).lower()
+        assert "check anthropic's current model list" in error_message
+        assert "update the block's model configuration" in error_message
+
+
+async def test_a_refused_prompt_fails_the_block_with_a_plain_error():
+    """Not a BlockUnknownError quoting the provider: those go to Sentry."""
+    provider = AsyncMock(
+        side_effect=await openai_sdk_error(400, OPENAI_INVALID_PROMPT_BODY)
+    )
+    block = llm.AITextGeneratorBlock()
+
+    with (
+        patch.object(llm, "_llm_call", provider),
+        pytest.raises(BlockExecutionError) as caught,
+    ):
+        async for _ in block.execute(
+            {
+                "prompt": "the user's prompt",
+                "model": llm.DEFAULT_LLM_MODEL,
+                "credentials": llm.TEST_CREDENTIALS_INPUT,
+                "retry": 3,
+            },
+            execution_context=ExecutionContext(),
+            credentials=llm.TEST_CREDENTIALS,
+        ):
+            pass
+
+    assert str(caught.value) == PROMPT_REFUSED_MESSAGE
+    assert provider.await_count == 1
 
 
 class TestLLMModelMissing:
@@ -1267,7 +1476,7 @@ class TestAnthropicCacheControl:
     @pytest.mark.asyncio
     async def test_system_prompt_sent_as_block_with_cache_control(self):
         """The system prompt is wrapped in a structured block with cache_control ephemeral."""
-        mock_resp = MagicMock()
+        mock_resp = MagicMock(stop_reason="end_turn")
         mock_resp.content = [MagicMock(type="text", text="hello")]
         mock_resp.usage = MagicMock(input_tokens=5, output_tokens=3)
 
@@ -1304,7 +1513,7 @@ class TestAnthropicCacheControl:
     @pytest.mark.asyncio
     async def test_last_tool_gets_cache_control(self):
         """cache_control is placed on the last tool in the Anthropic tools list."""
-        mock_resp = MagicMock()
+        mock_resp = MagicMock(stop_reason="end_turn")
         mock_resp.content = [MagicMock(type="text", text="ok")]
         mock_resp.usage = MagicMock(input_tokens=10, output_tokens=5)
 
@@ -1360,7 +1569,7 @@ class TestAnthropicCacheControl:
     @pytest.mark.asyncio
     async def test_no_tools_no_cache_control_on_tools(self):
         """When there are no tools, the Anthropic call receives anthropic.NOT_GIVEN for tools."""
-        mock_resp = MagicMock()
+        mock_resp = MagicMock(stop_reason="end_turn")
         mock_resp.content = [MagicMock(type="text", text="ok")]
         mock_resp.usage = MagicMock(input_tokens=5, output_tokens=2)
 
@@ -1401,7 +1610,7 @@ class TestAnthropicCacheControl:
         Anthropic rejects empty text blocks; the guard in llm_call must ensure
         the system argument is omitted entirely when no system messages are present.
         """
-        mock_resp = MagicMock()
+        mock_resp = MagicMock(stop_reason="end_turn")
         mock_resp.content = [MagicMock(type="text", text="ok")]
         mock_resp.usage = MagicMock(input_tokens=3, output_tokens=2)
 
@@ -1436,7 +1645,7 @@ class TestAnthropicCacheControl:
         only whitespace should NOT reach the Anthropic API (it would be rejected
         as an empty text block).
         """
-        mock_resp = MagicMock()
+        mock_resp = MagicMock(stop_reason="end_turn")
         mock_resp.content = [MagicMock(type="text", text="ok")]
         mock_resp.usage = MagicMock(input_tokens=3, output_tokens=2)
 
@@ -1465,6 +1674,55 @@ class TestAnthropicCacheControl:
         assert (
             "system" not in captured_kwargs
         ), "whitespace-only sysprompt must be omitted to avoid Anthropic 400"
+
+
+class TestStableStructuredOutputTag:
+    """The json_output tag must be deterministic for a given expected_format so
+    Anthropic ephemeral prompt-cache prefixes stay byte-stable across calls."""
+
+    def test_same_expected_format_yields_identical_tag_and_system_prefix(self):
+        import json as _json
+
+        block_a = llm.AIStructuredResponseGeneratorBlock()
+        block_b = llm.AIStructuredResponseGeneratorBlock()
+        expected_format = {"key1": "desc1", "key2": "desc2"}
+
+        tag_a = block_a.get_collision_proof_output_tag_id(expected_format)
+        tag_b = block_b.get_collision_proof_output_tag_id(expected_format)
+        assert tag_a == tag_b
+        assert len(tag_a) == 16
+
+        output_tag_start = f'<json_output id="{tag_a}">'
+        sys_a = block_a.response_format_instructions(
+            expected_format,
+            list_mode=False,
+            pure_json_mode=False,
+            output_tag_start=output_tag_start,
+        )
+        sys_b = block_b.response_format_instructions(
+            expected_format,
+            list_mode=False,
+            pure_json_mode=False,
+            output_tag_start=f'<json_output id="{tag_b}">',
+        )
+        assert sys_a == sys_b
+        assert output_tag_start in sys_a
+
+        # Parser still matches the deterministic tag used in the instruction.
+        payload = {"key1": "v1", "key2": "v2"}
+        response_text = f"{output_tag_start}{_json.dumps(payload)}</json_output>"
+        parsed = block_a.get_json_from_response(
+            response_text,
+            pure_json_mode=False,
+            output_tag_start=output_tag_start,
+        )
+        assert parsed == payload
+
+    def test_different_expected_format_yields_different_tag(self):
+        block = llm.AIStructuredResponseGeneratorBlock()
+        tag_a = block.get_collision_proof_output_tag_id({"a": "1"})
+        tag_b = block.get_collision_proof_output_tag_id({"a": "2"})
+        assert tag_a != tag_b
 
 
 class TestLLMRequestTimeout:
@@ -1885,6 +2143,16 @@ class TestLLMModelMissingHandler:
         # strip — no alias-map entry needed.
         assert llm.LLMModel("anthropic/claude-opus-4-7") is llm.LLMModel.CLAUDE_4_7_OPUS
         assert llm.LLMModel("anthropic/claude-opus-4-6") is llm.LLMModel.CLAUDE_4_6_OPUS
+
+    def test_dot_versioned_point_release_resolves(self) -> None:
+        # OpenRouter serves the point releases under dot-versioned slugs
+        # (``anthropic/claude-sonnet-5.5``) while the enum value hyphenates
+        # them; ``_missing_``'s prefix strip alone can't bridge that, so the
+        # alias map carries the dotted form.
+        assert (
+            llm.LLMModel("anthropic/claude-sonnet-5.5")
+            is llm.LLMModel.CLAUDE_5_5_SONNET
+        )
 
     def test_unknown_slug_raises(self) -> None:
         # Bare unknown strings still fail loudly — the alias map is an

@@ -10,7 +10,7 @@ from sentry_sdk.api import capture_exception as _sentry_capture_exception
 from sentry_sdk.api import flush as _sentry_flush
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
-from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
+from sentry_sdk.scrubber import DEFAULT_DENYLIST, DEFAULT_PII_DENYLIST
 
 try:
     from sentry_sdk.integrations.anthropic import AnthropicIntegration
@@ -20,6 +20,8 @@ except ImportError:
 from backend.util.exceptions import get_execution_failure_reason
 from backend.util.security import SENSITIVE_FIELD_NAMES
 from backend.util.settings import BehaveAs, Settings
+from backend.util.tracing import traces_sampler
+from backend.util.url_redaction import REDACTED, redact_url
 
 settings = Settings()
 
@@ -87,9 +89,19 @@ _SENTRY_SENSITIVE_FIELDS = sorted(
         "verification_url",
     }
 )
-_SENTRY_EVENT_SCRUBBER = EventScrubber(
-    denylist=_SENTRY_SENSITIVE_FIELDS,
-    recursive=True,
+# A user is known to Sentry by their id only, so their email and IP address are
+# filtered wherever else they turn up, such as in extras or a frame's locals.
+# Exact names only: keys like ``email_verified`` stay readable.
+_SENTRY_PERSONAL_FIELDS = ("email", "user_email", "recipient", "ip", "ip_address")
+# Matched case-insensitively against every key in the event, as sentry's
+# EventScrubber does (with its PII list, since send_default_pii is off).
+_SENTRY_SENSITIVE_KEYS = frozenset(
+    field.lower()
+    for field in (
+        *_SENTRY_SENSITIVE_FIELDS,
+        *DEFAULT_PII_DENYLIST,
+        *_SENTRY_PERSONAL_FIELDS,
+    )
 )
 _EMBEDDED_SECRET_ASSIGNMENT = re.compile(
     r"(?i)(?:access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|"
@@ -106,14 +118,17 @@ _TOKEN_SHAPED_VALUE = re.compile(
 _FILTERED_VALUE = "[Filtered]"
 
 
-def _scrub_embedded_secret_values(value: object) -> object:
+def _scrub_secrets(value: object) -> object:
     if isinstance(value, dict):
         for key, nested in value.items():
-            value[key] = _scrub_embedded_secret_values(nested)
+            if isinstance(key, str) and key.lower() in _SENTRY_SENSITIVE_KEYS:
+                value[key] = _FILTERED_VALUE
+            else:
+                value[key] = _scrub_secrets(nested)
         return value
     if isinstance(value, list):
         for index, nested in enumerate(value):
-            value[index] = _scrub_embedded_secret_values(nested)
+            value[index] = _scrub_secrets(nested)
         return value
     if isinstance(value, str) and (
         _EMBEDDED_SECRET_ASSIGNMENT.search(value) or _TOKEN_SHAPED_VALUE.search(value)
@@ -123,8 +138,39 @@ def _scrub_embedded_secret_values(value: object) -> object:
 
 
 def _scrub_sentry_event(event: dict) -> None:
-    _SENTRY_EVENT_SCRUBBER.scrub_dict(event)
-    _scrub_embedded_secret_values(event)
+    """Scrub sensitive keys and secret-shaped values from an outgoing event.
+
+    ``before_send`` sees the event after the SDK has serialized it, and the
+    transport then ``json.dumps`` it as is. So every replacement must be plain
+    JSON: sentry's EventScrubber writes ``AnnotatedValue`` objects, and one of
+    those here made the SDK drop the whole event as an internal error. ``_meta``
+    is the SDK's own annotation tree and is left alone.
+    """
+    _redact_request_urls(event)
+    for key, value in event.items():
+        if key != "_meta":
+            event[key] = _scrub_secrets(value)
+
+
+def _redact_request_urls(event: dict) -> None:
+    """Mask credentials in the request URL the ASGI integration attaches.
+
+    EventScrubber only scrubs a request's headers, cookies and body, so the
+    query string, which for the WebSocket holds the user's session JWT, and
+    the path secrets in ``url`` would otherwise be sent with every event.
+    """
+    request = event.get("request") or {}
+    if isinstance(request.get("url"), str):
+        request["url"] = redact_url(request["url"])
+    # The SDK has already decoded the query, so a %26 inside a value reads as a
+    # separator and the rest of the value as a key. None of it can be kept.
+    if request.get("query_string"):
+        request["query_string"] = REDACTED
+    # A request no route matched is named after its raw URL.
+    transaction = event.get("transaction")
+    source = (event.get("transaction_info") or {}).get("source")
+    if source == "url" and isinstance(transaction, str):
+        event["transaction"] = redact_url(transaction)
 
 
 # FalkorDB (Graphiti CoPilot memory) connection-teardown noise. graphiti-core's
@@ -248,8 +294,79 @@ def _before_send(event, hint):
         if any(kw in msg for kw in _USER_AUTH_KEYWORDS):
             return None
 
+    _strip_user_pii(event)
+    _strip_ip_headers(event)
     _scrub_sentry_event(event)
     return event
+
+
+def _before_send_transaction(event, hint):
+    """Transactions skip ``before_send`` but carry the same request data, and
+    every WebSocket connection is one."""
+    _strip_user_pii(event)
+    _strip_ip_headers(event)
+    _redact_request_urls(event)
+    return event
+
+
+# Sentry knows a user by their id only: never their email, name or IP
+# address, whichever code put them on the scope.
+_SENTRY_USER_FIELDS = frozenset({"id"})
+
+
+def _strip_user_pii(event: dict) -> None:
+    user = event.get("user")
+    if user is None:
+        return
+    kept = {
+        field: value for field, value in user.items() if field in _SENTRY_USER_FIELDS
+    }
+    if kept:
+        event["user"] = kept
+    else:
+        del event["user"]
+
+
+# Request headers that carry the visitor's IP address or the location derived
+# from it. The backends sit behind Cloudflare, which adds ``Cf-Connecting-Ip``
+# and its ``Cf-Ip*`` location headers to every request; sentry-sdk only drops
+# ``X-Forwarded-For`` and ``X-Real-Ip`` with PII off.
+_IP_HEADER_MARKERS = (
+    "forwarded",
+    "proxied_for",
+    "real_ip",
+    "connecting_ip",
+    "client_ip",
+    "vercel_ip",
+)
+
+
+def _is_ip_header(name: str) -> bool:
+    key = name.lower().replace("-", "_")
+    return key.startswith("cf_ip") or any(m in key for m in _IP_HEADER_MARKERS)
+
+
+def _strip_ip_headers(event: dict) -> None:
+    request = event.get("request")
+    if not isinstance(request, dict):
+        return
+    headers = request.get("headers")
+    if not isinstance(headers, dict):
+        return
+    request["headers"] = {
+        name: value for name, value in headers.items() if not _is_ip_header(name)
+    }
+
+
+def _sentry_environment() -> str:
+    """The environment events are tagged with. A deployment that names itself
+    (a PR preview, say) takes precedence over the one computed from the app
+    environment and behaviour mode. A blank name counts as none."""
+    config = settings.config
+    return (
+        config.sentry_environment.strip()
+        or f"app:{config.app_env.value}-behave:{config.behave_as.value}"
+    )
 
 
 def sentry_init():
@@ -265,9 +382,19 @@ def sentry_init():
     _sentry_init(
         dsn=sentry_dsn,
         traces_sample_rate=1.0,
+        traces_sampler=traces_sampler,
+        # Traces reach our own services only, through the RPC client's headers
+        # (backend.util.service); outbound calls to third parties, such as a
+        # block's request to a user-supplied URL, carry no Sentry headers.
+        trace_propagation_targets=[],
         profiles_sample_rate=1.0,
-        environment=f"app:{settings.config.app_env.value}-behave:{settings.config.behave_as.value}",
+        release=settings.config.sentry_release.strip() or None,
+        environment=_sentry_environment(),
+        # The SDK default, pinned: no IP address, request headers with
+        # personal data or cookies.
+        send_default_pii=False,
         before_send=_before_send,
+        before_send_transaction=_before_send_transaction,
         integrations=[
             AsyncioIntegration(),
             LoggingIntegration(),

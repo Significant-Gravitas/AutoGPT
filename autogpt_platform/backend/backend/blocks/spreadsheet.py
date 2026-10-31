@@ -3,6 +3,7 @@ from pathlib import Path
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -100,6 +101,7 @@ class ReadSpreadsheetBlock(Block):
                 ("row", {"a": "1", "b": "2", "c": "3"}),
                 ("row", {"a": "4", "b": "5", "c": "6"}),
             ],
+            effect=BlockEffect.READ,
         )
 
     async def run(

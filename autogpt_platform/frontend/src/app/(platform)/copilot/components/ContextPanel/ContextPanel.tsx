@@ -1,16 +1,25 @@
 "use client";
 
+import { Text } from "@/components/atoms/Text/Text";
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
-} from "@/components/ui/sheet";
+} from "@/components/molecules/Sheet/Sheet";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
-import { MAX_CONTEXT_PANEL_WIDTH, MIN_CONTEXT_PANEL_WIDTH } from "../../store";
+import {
+  MAX_CONTEXT_PANEL_WIDTH,
+  MIN_CONTEXT_PANEL_WIDTH,
+  type ContextPanelTab,
+  useCopilotUIStore,
+} from "../../store";
 import { PanelResizeHandle } from "../PanelResizeHandle";
+import { WorkspaceFileCards } from "../WorkspaceFileCards/WorkspaceFileCards";
 import { ArtifactsTab } from "./components/ArtifactsTab/ArtifactsTab";
+import { IntegrationsTab } from "./components/IntegrationsTab/IntegrationsTab";
 import { useContextPanel } from "./useContextPanel";
 
 interface Props {
@@ -23,13 +32,21 @@ interface Props {
 const PANEL_EASE: [number, number, number, number] = [0.32, 0.72, 0, 1];
 const PANEL_DURATION = 0.3;
 
-// Files render as a card grid above the composer (``WorkspaceFileCards``), so
-// this panel only ever holds the artifacts library. The open flag also drives
-// that card, so both the docked desktop panel and the mobile sheet claim the
-// screen for the artifacts tab only — a "files" tab belongs to the card.
+const TAB_TITLES: Record<ContextPanelTab, string> = {
+  files: "Files",
+  artifacts: "Artifacts",
+  integrations: "Integrations",
+};
+
+const TAB_DESCRIPTIONS: Record<ContextPanelTab, string> = {
+  files: "Files from this chat.",
+  artifacts: "Artifacts from this chat to preview.",
+  integrations: "The tools this chat's expert can use.",
+};
+
 export function ContextPanel({ sessionId, mobile }: Props) {
+  const expert = useCopilotUIStore((s) => s.contextPanelExpert);
   const {
-    isOpen,
     activeTab,
     showExpanded,
     closeArtifactPanel,
@@ -39,39 +56,65 @@ export function ContextPanel({ sessionId, mobile }: Props) {
   const [isResizing, setIsResizing] = useState(false);
   const shouldReduceMotion = useReducedMotion();
 
-  const library = (
+  // The mobile sheet titles itself in its header; the artifacts library
+  // brings its own toolbar.
+  const showTitle = !mobile && activeTab !== "artifacts";
+
+  const content = (
     <div className="flex min-h-0 flex-1 flex-col">
-      <ArtifactsTab sessionId={sessionId} />
+      {showTitle && (
+        <Text
+          variant="large-semibold-tight"
+          as="h2"
+          tone="primary"
+          className="mx-6 mt-6 mb-1 shrink-0"
+        >
+          {TAB_TITLES[activeTab]}
+        </Text>
+      )}
+      {activeTab === "artifacts" ? (
+        <ArtifactsTab sessionId={sessionId} />
+      ) : (
+        <div className="min-h-0 flex-1 overflow-y-auto p-3 pt-4">
+          {activeTab === "integrations" ? (
+            <IntegrationsTab />
+          ) : sessionId ? (
+            <WorkspaceFileCards sessionId={sessionId} expert={expert} />
+          ) : null}
+        </div>
+      )}
     </div>
   );
 
   if (mobile) {
     return (
       <Sheet
-        open={isOpen && activeTab === "artifacts"}
+        open={showExpanded}
         onOpenChange={(open) => !open && closeArtifactPanel()}
       >
         <SheetContent
           side="right"
           className="flex w-full flex-col p-0 sm:max-w-full"
         >
-          <SheetHeader className="mt-12 p-2 text-left">
-            <SheetTitle className="text-sm font-medium text-zinc-900">
-              Artifacts
+          <SheetHeader className="mt-12 px-6 pt-2 pb-1 text-left">
+            <SheetTitle>
+              <Text as="span" variant="lg-semibold" tone="primary">
+                {TAB_TITLES[activeTab]}
+              </Text>
             </SheetTitle>
+            <SheetDescription className="sr-only">
+              {TAB_DESCRIPTIONS[activeTab]}
+            </SheetDescription>
           </SheetHeader>
-          {library}
+          {content}
         </SheetContent>
       </Sheet>
     );
   }
 
-  const isDocked = showExpanded && activeTab === "artifacts";
-
   // Width is the animated property because the panel pushes the chat column
   // rather than overlaying it. Dragging the handle bypasses the tween (a
-  // queued 300ms tween per pointer move would trail the cursor). The chat's
-  // sidebar icon toggles the panel, so it carries no header of its own.
+  // queued 300ms tween per pointer move would trail the cursor).
   const transition =
     shouldReduceMotion || isResizing
       ? { duration: 0 }
@@ -79,14 +122,14 @@ export function ContextPanel({ sessionId, mobile }: Props) {
 
   return (
     <AnimatePresence initial={false}>
-      {isDocked && (
+      {showExpanded && (
         <motion.div
           data-context-panel
           initial={{ width: 0, opacity: 0 }}
           animate={{ width: contextPanelWidth, opacity: 1 }}
           exit={{ width: 0, opacity: 0 }}
           transition={transition}
-          className="relative h-full shrink-0 border-l border-l-[#80808017] bg-sidebar"
+          className="relative h-full shrink-0 border-l border-l-separator bg-sidebar"
         >
           {/* Sibling of the clip, not a child of it: the handle is
               -translate-x-1/2 and deliberately straddles the border, so
@@ -99,7 +142,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
             maxWidth={MAX_CONTEXT_PANEL_WIDTH}
           />
           <div className="h-full overflow-hidden">
-            {/* Fixed inner width: the library keeps its final layout while
+            {/* Fixed inner width: the content keeps its final layout while
                 the shell widens, so nothing reflows mid-animation. That also
                 means the inner is wider than the shell for the whole tween,
                 so the clip above is what stops it spilling over the chat. */}
@@ -107,7 +150,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
               style={{ width: contextPanelWidth }}
               className="flex h-full min-h-0 flex-col overflow-hidden"
             >
-              {library}
+              {content}
             </div>
           </div>
         </motion.div>

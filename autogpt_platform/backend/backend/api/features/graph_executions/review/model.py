@@ -2,7 +2,7 @@ import json
 import re
 from datetime import datetime
 from functools import cache
-from typing import TYPE_CHECKING, Any, Dict, List, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Union
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -158,6 +158,21 @@ class ReviewItem(BaseModel):
             "block (node) will be automatically approved. This only affects approved reviews."
         ),
     )
+    chat_rule: Literal["allow", "judge"] | None = Field(
+        default=None,
+        description=(
+            "AutoPilot cards naming a subject only: once approved, the subject "
+            "runs ('allow') or goes to the supervisor ('judge') for the rest of "
+            "the chat instead of asking."
+        ),
+    )
+    chat_rule_scope: Literal["chat", "expert", "team"] = Field(
+        default="chat",
+        description=(
+            "Where chat_rule holds: this chat, every chat with this chat's "
+            "Expert (or Otto), or every Expert on the user's team."
+        ),
+    )
 
     @field_validator("reviewed_data")
     @classmethod
@@ -233,6 +248,10 @@ class ReviewRequest(BaseModel):
     reviews: List[ReviewItem] = Field(
         description="All reviews with their approval status, data, and messages"
     )
+    wait_for_other_cards: bool = Field(
+        False,
+        description="Set by a chat's own queue, which can continue: no turn starts while other cards in the chat still wait",
+    )
 
     @model_validator(mode="after")
     def validate_review_completeness(self):
@@ -256,6 +275,10 @@ class ReviewResponse(BaseModel):
     rejected_count: int = Field(description="Number of reviews successfully rejected")
     failed_count: int = Field(description="Number of reviews that failed processing")
     error: str | None = Field(None, description="Error message if operation failed")
+    awaiting_other_cards: bool = Field(
+        False,
+        description="The answers start no chat turn yet: other cards in the chat still wait",
+    )
 
 
 def _block_named(name: str | None):

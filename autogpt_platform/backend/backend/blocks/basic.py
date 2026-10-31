@@ -5,6 +5,7 @@ from typing import Any
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -46,6 +47,7 @@ class FileStoreBlock(Block):
             input_schema=FileStoreBlock.Input,
             output_schema=FileStoreBlock.Output,
             static_output=True,
+            effect=BlockEffect.WORKSPACE,
         )
 
     async def run(
@@ -107,6 +109,7 @@ class StoreValueBlock(Block):
                 ("output", "Existing Data"),  # Data is provided, so data is returned.
             ],
             static_output=True,
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -134,6 +137,7 @@ class PrintToConsoleBlock(Block):
                 ("output", "Hello, World!"),
                 ("status", "printed"),
             ],
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -191,6 +195,7 @@ class UniversalTypeConverterBlock(Block):
             categories={BlockCategory.BASIC},
             input_schema=UniversalTypeConverterBlock.Input,
             output_schema=UniversalTypeConverterBlock.Output,
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -230,6 +235,7 @@ class ReverseListOrderBlock(Block):
             output_schema=ReverseListOrderBlock.Output,
             test_input={"input_list": [1, 2, 3, 4, 5]},
             test_output=[("reversed_list", [5, 4, 3, 2, 1])],
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:

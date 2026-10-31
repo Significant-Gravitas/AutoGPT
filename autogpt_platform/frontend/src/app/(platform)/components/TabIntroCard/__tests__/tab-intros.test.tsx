@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { act, render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,15 +7,6 @@ vi.mock("posthog-js", () => ({ default: { capture } }));
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({ user: { id: "user-1" } }),
-}));
-
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: {
-    ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump",
-    HIRE_EXPERTS: "hire-experts",
-  },
-  useGetFlag: () => false,
-  useFlagStatus: () => ({ enabled: true, ready: true }),
 }));
 
 const completeStep = vi.hoisted(() => vi.fn());
@@ -68,7 +59,7 @@ describe("AgentsTabIntro", () => {
     ).toBeDefined();
 
     await userEvent.click(
-      screen.getByRole("button", { name: "See my agents" }),
+      screen.getByRole("button", { name: "See my workflows" }),
     );
 
     await waitFor(() =>
@@ -91,10 +82,10 @@ describe("MarketplaceTabIntro", () => {
     document.body.appendChild(featured);
 
     render(<MarketplaceTabIntro />);
-    expect(await screen.findByText("Agents ready to work.")).toBeDefined();
+    expect(await screen.findByText("Workflows ready to work.")).toBeDefined();
 
     await userEvent.click(
-      screen.getByRole("button", { name: "Browse featured agents" }),
+      screen.getByRole("button", { name: "Browse featured workflows" }),
     );
 
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
@@ -114,34 +105,43 @@ describe("MarketplaceTabIntro", () => {
     document.body.appendChild(listing);
 
     render(<MarketplaceTabIntro />);
-    await screen.findByText("Agents ready to work.");
+    await screen.findByText("Workflows ready to work.");
 
     await userEvent.click(
-      screen.getByRole("button", { name: "Browse featured agents" }),
+      screen.getByRole("button", { name: "Browse featured workflows" }),
     );
 
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
     await waitFor(() =>
-      expect(screen.queryByText("Agents ready to work.")).toBeNull(),
+      expect(screen.queryByText("Workflows ready to work.")).toBeNull(),
     );
     listing.remove();
   });
 
   it("still closes when there is nothing to scroll to at all", async () => {
     render(<MarketplaceTabIntro />);
-    await screen.findByText("Agents ready to work.");
+    await screen.findByText("Workflows ready to work.");
 
     await userEvent.click(
-      screen.getByRole("button", { name: "Browse featured agents" }),
+      screen.getByRole("button", { name: "Browse featured workflows" }),
     );
 
     await waitFor(() =>
-      expect(screen.queryByText("Agents ready to work.")).toBeNull(),
+      expect(screen.queryByText("Workflows ready to work.")).toBeNull(),
     );
   });
 });
 
 describe("BuildTabIntro", () => {
+  it("defers its intro while the builder tutorial is running", async () => {
+    useTutorialStore.getState().setIsTutorialRunning(true);
+    render(<BuildTabIntro />);
+    expect(screen.queryByText("Create your own workflows.")).toBeNull();
+    expect(completeStep).not.toHaveBeenCalled();
+    act(() => useTutorialStore.getState().setIsTutorialRunning(false));
+    expect(await screen.findByText("Create your own workflows.")).toBeDefined();
+    expect(completeStep).not.toHaveBeenCalled();
+  });
   it("sends the user to Otto from the primary CTA", async () => {
     render(<BuildTabIntro />);
     expect(await screen.findByText("Create your own workflows.")).toBeDefined();
@@ -150,7 +150,7 @@ describe("BuildTabIntro", () => {
       screen.getByRole("button", { name: "Ask Otto to build it" }),
     );
 
-    expect(push).toHaveBeenCalledWith("/copilot");
+    expect(push).toHaveBeenCalledWith("/copilot?new=1");
     expect(startTutorial).not.toHaveBeenCalled();
     expect(completeStep).toHaveBeenCalledWith("BUILD_TAB_INTRO");
     expect(capture).toHaveBeenCalledWith("tab_intro_cta_clicked", {

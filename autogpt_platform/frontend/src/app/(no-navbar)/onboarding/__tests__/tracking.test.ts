@@ -1,133 +1,79 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { sendDatafastEvent } = vi.hoisted(() => ({
-  sendDatafastEvent: vi.fn(),
+const { posthog } = vi.hoisted(() => ({
+  posthog: { __loaded: true, is_capturing: () => true, capture: vi.fn() },
 }));
-
-vi.mock("@/services/analytics", () => ({
-  analytics: { sendDatafastEvent },
-}));
+vi.mock("posthog-js", () => ({ default: posthog }));
 
 import {
   buildStepLayout,
   NO_PAYWALL_STEPS,
-  PAYWALL_FIRST_STEPS,
+  PAYWALL_LAST_STEPS,
 } from "../store";
 import { onboardingStepKey, trackOnboardingStep } from "../tracking";
 
 describe("onboardingStepKey", () => {
-  // Pain points is step 3 with the paywall and step 2 without it, so the
-  // number alone can't identify a step across cohorts.
+  // Optional steps shift numeric positions; analytics keeps stable names.
   it("maps the same key across both step layouts", () => {
     expect(
-      onboardingStepKey(PAYWALL_FIRST_STEPS, PAYWALL_FIRST_STEPS.painPoints),
+      onboardingStepKey(PAYWALL_LAST_STEPS, PAYWALL_LAST_STEPS.painPoints),
     ).toBe("pain_points");
     expect(
       onboardingStepKey(NO_PAYWALL_STEPS, NO_PAYWALL_STEPS.painPoints),
     ).toBe("pain_points");
     expect(
-      onboardingStepKey(PAYWALL_FIRST_STEPS, PAYWALL_FIRST_STEPS.preparing),
+      onboardingStepKey(PAYWALL_LAST_STEPS, PAYWALL_LAST_STEPS.preparing),
     ).toBe("preparing");
     expect(
       onboardingStepKey(NO_PAYWALL_STEPS, NO_PAYWALL_STEPS.preparing),
     ).toBe("preparing");
   });
 
-  it("names the intro steps when the layout has them", () => {
-    const steps = buildStepLayout({ hasIntro: true, hasPaywall: true });
-    expect(onboardingStepKey(steps, 1)).toBeNull();
-    expect(onboardingStepKey(steps, 2)).toBe("team");
-    expect(onboardingStepKey(steps, 3)).toBe("autopilot");
-    expect(onboardingStepKey(steps, 4)).toBe("role");
-    expect(onboardingStepKey(steps, 6)).toBe("preparing");
-  });
-
   it("names the hire step when the layout has it", () => {
     const steps = buildStepLayout({
-      hasIntro: true,
-      hasHire: true,
       hasPaywall: true,
     });
-    expect(onboardingStepKey(steps, 6)).toBe("hire");
+    expect(onboardingStepKey(steps, 5)).toBe("hire");
+    expect(onboardingStepKey(steps, 6)).toBeNull();
     expect(onboardingStepKey(steps, 7)).toBe("preparing");
   });
 
-  // The paywall reports itself as `paywall_view`; reporting it again here would
+  // The paywall reports itself as `paywall_viewed`; reporting it again here would
   // double-count the top of the funnel.
   it("returns null for the subscription step", () => {
     expect(
-      onboardingStepKey(PAYWALL_FIRST_STEPS, PAYWALL_FIRST_STEPS.subscription),
+      onboardingStepKey(PAYWALL_LAST_STEPS, PAYWALL_LAST_STEPS.subscription!),
     ).toBeNull();
   });
 });
 
 describe("trackOnboardingStep", () => {
   beforeEach(() => {
-    vi.restoreAllMocks();
-    sendDatafastEvent.mockReset();
+    posthog.capture.mockReset();
     sessionStorage.clear();
   });
 
-  it("reports one goal per step name", () => {
-    trackOnboardingStep("role");
-    trackOnboardingStep("pain_points");
-
-    expect(sendDatafastEvent).toHaveBeenNthCalledWith(1, "onboarding_role", {});
-    expect(sendDatafastEvent).toHaveBeenNthCalledWith(
-      2,
-      "onboarding_pain_points",
-      {},
-    );
-  });
-
-  it("reports each step at most once per session", () => {
+  it("reports each step to PostHog once, as onboarding_step_viewed", () => {
     trackOnboardingStep("role");
     trackOnboardingStep("role");
+    trackOnboardingStep("hire");
 
-    expect(sendDatafastEvent).toHaveBeenCalledTimes(1);
+    expect(posthog.capture.mock.calls).toEqual([
+      ["onboarding_step_viewed", { step: "role" }],
+      ["onboarding_step_viewed", { step: "hire" }],
+    ]);
   });
 
-  it("does not let one step suppress another", () => {
-    trackOnboardingStep("role");
-    trackOnboardingStep("preparing");
-
-    expect(sendDatafastEvent).toHaveBeenCalledTimes(2);
-  });
-
-  it("still reports when sessionStorage is unavailable", () => {
-    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
-      throw new Error("storage blocked");
-    });
-
-    trackOnboardingStep("role");
-
-    expect(sendDatafastEvent).toHaveBeenCalledTimes(1);
-  });
-
-  it("never throws when the DataFast script does", () => {
-    sendDatafastEvent.mockImplementation(() => {
-      throw new Error("datafast unavailable");
-    });
-
-    expect(() => trackOnboardingStep("role")).not.toThrow();
-  });
-});
-
-it.each([false, true])(
-  "tracks the optional connection step once, with intro=%s",
-  (hasIntro) => {
-    sessionStorage.clear();
-    sendDatafastEvent.mockReset();
-    const steps = buildStepLayout({ hasIntro, hasConnect: true });
+  it("tracks the optional connection step once", () => {
+    const steps = buildStepLayout({ hasConnect: true });
     const key = onboardingStepKey(steps, steps.connect!);
     expect(key).toBe("connect");
     if (key) {
       trackOnboardingStep(key);
       trackOnboardingStep(key);
     }
-    expect(sendDatafastEvent).toHaveBeenCalledExactlyOnceWith(
-      "onboarding_connect",
-      {},
-    );
-  },
-);
+    expect(posthog.capture.mock.calls).toEqual([
+      ["onboarding_step_viewed", { step: "connect" }],
+    ]);
+  });
+});

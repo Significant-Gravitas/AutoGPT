@@ -9,7 +9,7 @@ import { useBlockMenuStore } from "@/app/(platform)/build/stores/blockMenuStore"
 const PAGE_SIZE = 10;
 
 export const useIntegrationBlocks = () => {
-  const { integration } = useBlockMenuStore();
+  const integration = useBlockMenuStore((state) => state.integration);
 
   const {
     data: blocksQueryData,

@@ -13,6 +13,7 @@ from .db import confirm_server_link, confirm_user_link
 from .manager import PlatformLinkingManager, PlatformLinkingManagerClient
 from .models import (
     BotChatRequest,
+    BotExpert,
     CreateLinkTokenRequest,
     CreateUserLinkTokenRequest,
     LinkType,
@@ -43,6 +44,7 @@ class TestManagerWiring:
             "start_chat_turn",
             "list_user_server_ids",
             "get_user_dm_id",
+            "list_user_experts",
         }
         for name in expected:
             assert hasattr(
@@ -88,8 +90,25 @@ class TestManagerWiring:
             return_value=db_mock,
         ):
             result = await manager.resolve_user_link(Platform.DISCORD, "pu1")
-        db_mock.resolve_user_link.assert_awaited_once_with("DISCORD", "pu1")
+        db_mock.resolve_user_link.assert_awaited_once_with("DISCORD", "pu1", False)
         assert result.linked is False
+
+    @pytest.mark.asyncio
+    async def test_resolve_user_link_forwards_include_account(self):
+        manager = PlatformLinkingManager()
+        db_mock = MagicMock()
+        db_mock.resolve_user_link = AsyncMock(
+            return_value=ResolveResponse(linked=True, account_hint="b***@agpt.co")
+        )
+        with patch(
+            "backend.platform_linking.manager.platform_linking_db",
+            return_value=db_mock,
+        ):
+            result = await manager.resolve_user_link(
+                Platform.TELEGRAM, "pu1", include_account=True
+            )
+        db_mock.resolve_user_link.assert_awaited_once_with("TELEGRAM", "pu1", True)
+        assert result.account_hint == "b***@agpt.co"
 
     @pytest.mark.asyncio
     async def test_get_user_dm_id_returns_matching_platform_link(self):
@@ -378,3 +397,17 @@ class TestAdversarialConfirmRace:
         losses = [r for r in results if isinstance(r, LinkTokenExpiredError)]
         assert len(successes) == 1
         assert len(losses) == 1
+
+
+class TestListUserExpertsRpc:
+    @pytest.mark.asyncio
+    async def test_delegates_to_chat(self):
+        manager = PlatformLinkingManager()
+        experts = [BotExpert(id="e1", name="Bolt", role="Builder")]
+        with patch(
+            "backend.platform_linking.manager.list_user_experts",
+            new=AsyncMock(return_value=experts),
+        ) as listed:
+            result = await manager.list_user_experts(Platform.DISCORD, "u1", None)
+        assert result == experts
+        listed.assert_awaited_once_with(Platform.DISCORD, "u1", None)

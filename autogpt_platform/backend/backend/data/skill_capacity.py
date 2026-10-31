@@ -32,3 +32,11 @@ def skill_origin(metadata: dict | None) -> str | None:
 def skill_owner_folder(path: str) -> str | None:
     match = _ROOT_PATH.fullmatch(path)
     return match.group(1) if match else None
+
+
+def skill_name_key(name: str) -> str:
+    """Compare key for skill names: the row may carry a display name ("Deep
+    Research") for the skill whose folder is ``deep-research``. Every place
+    that decides whether two names are the same skill uses this one key, so
+    a request cannot pass one check and fail another on spelling alone."""
+    return re.sub(r"[\s_-]+", "-", name.strip().lower())

@@ -1,23 +1,53 @@
 import { Tick02Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { ApprovalFields } from "@/components/organisms/ApprovalFields/ApprovalFields";
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import { cn } from "@/lib/utils";
 import { approvalCardId } from "../ApprovalQueue/helpers";
 import type { HeldRowInfo, HeldState } from "./heldRow";
 
 const TAGS: Record<HeldState, { text: string; className: string }> = {
-  waiting: { text: "Waiting for you", className: "bg-amber-50 text-amber-700" },
-  approved: { text: "Approved", className: "bg-zinc-100 text-zinc-500" },
-  rejected: { text: "Rejected", className: "bg-zinc-100 text-zinc-500" },
-  expired: { text: "Expired", className: "bg-zinc-100 text-zinc-500" },
-  closed: { text: "Not run", className: "bg-zinc-100 text-zinc-500" },
-  unknown: { text: "Unclear", className: "bg-amber-50 text-amber-700" },
-  "not-run": { text: "Not run", className: "bg-red-50 text-red-700" },
+  waiting: {
+    text: "Waiting for you",
+    className: "bg-warning-surface text-warning-foreground",
+  },
+  approved: {
+    text: "Approved",
+    className: "bg-surface-hover text-foreground-tertiary",
+  },
+  rejected: {
+    text: "Rejected",
+    className: "bg-surface-hover text-foreground-tertiary",
+  },
+  expired: {
+    text: "Expired",
+    className: "bg-surface-hover text-foreground-tertiary",
+  },
+  closed: {
+    text: "Not run",
+    className: "bg-surface-hover text-foreground-tertiary",
+  },
+  unknown: {
+    text: "Unclear",
+    className: "bg-warning-surface text-warning-foreground",
+  },
+  "not-run": {
+    text: "Not run",
+    className: "bg-error-surface text-error-foreground",
+  },
 };
 
-export function HeldTag({ state }: { state: HeldState }) {
+// A held read is released or kept out, not approved or rejected.
+const READ_TAGS: Partial<Record<HeldState, string>> = {
+  waiting: "Held",
+  approved: "Released",
+  rejected: "Kept out",
+};
+
+export function HeldTag({ state, read }: { state: HeldState; read?: boolean }) {
   const tag = TAGS[state];
+  const text = (read && READ_TAGS[state]) || tag.text;
   return (
     <span
       className={cn(
@@ -26,7 +56,7 @@ export function HeldTag({ state }: { state: HeldState }) {
       )}
     >
       {state === "approved" && <Icon icon={Tick02Icon} size={11} aria-hidden />}
-      {tag.text}
+      {text}
     </span>
   );
 }
@@ -40,8 +70,20 @@ const DETAIL: Record<Exclude<HeldState, "approved">, string> = {
   "not-run": `${AUTOPILOT_NAME} couldn't open an approval for this, so nothing ran.`,
 };
 
-export function HeldCallDetail({ held }: { held: HeldRowInfo }) {
-  if (held.state === "approved") return null;
+const READ_DETAIL: Partial<Record<HeldState, string>> = {
+  waiting: `Nothing from it has reached ${AUTOPILOT_NAME} yet. ${AUTOPILOT_NAME} carried on without it.`,
+  rejected: `You kept this out, so ${AUTOPILOT_NAME} never saw it.`,
+  unknown: `It isn't clear whether this reached ${AUTOPILOT_NAME}. Check before relying on it.`,
+};
+
+interface HeldCallDetailProps {
+  held: HeldRowInfo;
+  showArgs?: boolean;
+}
+
+export function HeldCallDetail({ held, showArgs = true }: HeldCallDetailProps) {
+  const card = showArgs ? held.card : undefined;
+  if (held.state === "approved" && !card) return null;
   const reviewId = held.reviewId;
   function goToApproval() {
     if (!reviewId) return;
@@ -50,8 +92,20 @@ export function HeldCallDetail({ held }: { held: HeldRowInfo }) {
     el?.focus({ preventScroll: true });
   }
   return (
-    <div className="flex flex-col items-start gap-1 rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-600">
-      <p>{DETAIL[held.state]}</p>
+    <div className="flex flex-col items-start gap-1 rounded-lg border border-border-base px-3 py-2 text-sm text-foreground-secondary">
+      {held.state !== "approved" && (
+        <p>{(held.read && READ_DETAIL[held.state]) || DETAIL[held.state]}</p>
+      )}
+      {card && (
+        <div className="w-full py-1">
+          <ApprovalFields
+            fields={card.fields}
+            values={card.args}
+            clipped={card.clipped}
+            idsWhenAlone
+          />
+        </div>
+      )}
       {held.state === "waiting" && reviewId && (
         <Button
           variant="link"

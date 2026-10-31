@@ -1,6 +1,5 @@
 """Scheduling and queue hand-off tests for alerts and Briefings."""
 
-from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -19,11 +18,6 @@ NOW = datetime(2026, 8, 3, 7, 30, tzinfo=timezone.utc)
 @pytest.fixture(scope="session")
 def server() -> None:
     return None
-
-
-@pytest.fixture(scope="session", autouse=True)
-def graph_cleanup() -> Iterator[None]:
-    yield
 
 
 def _candidates(users: list) -> object:
