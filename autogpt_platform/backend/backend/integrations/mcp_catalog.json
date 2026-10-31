@@ -455,6 +455,21 @@
     }
   },
   {
+    "name": "mcp_companyenrich",
+    "display_name": "CompanyEnrich",
+    "description": "Enrich company profiles, search companies and people, find lookalikes, and look up people by email.",
+    "mcp_server": {
+      "server_url": "https://mcp.companyenrich.com/mcp",
+      "documentation_url": "https://docs.companyenrich.com/docs/mcp-server",
+      "setup_instructions": "Create an account at app.companyenrich.com and copy your API key from the dashboard. Use the API key as the bearer token. Tool calls consume CompanyEnrich credits, and search result counts affect usage.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "bearer"
+      ],
+      "icon_id": "companyenrich"
+    }
+  },
+  {
     "name": "mcp_composio",
     "display_name": "Composio",
     "description": "Connect approved external apps through Composio Connect and discover their tools.",
