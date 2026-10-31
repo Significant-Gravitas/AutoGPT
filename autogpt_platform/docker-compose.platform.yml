@@ -245,7 +245,7 @@ services:
     image: rabbitmq:4.1.4
     container_name: rabbitmq
     healthcheck:
-      test: rabbitmq-diagnostics -q ping
+      test: docker-entrypoint.sh rabbitmq-diagnostics -q ping
       interval: 30s
       timeout: 10s
       retries: 5

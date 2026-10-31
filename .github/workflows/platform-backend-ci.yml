@@ -255,7 +255,7 @@ jobs:
           RABBITMQ_DEFAULT_USER: ${{ env.RABBITMQ_DEFAULT_USER }}
           RABBITMQ_DEFAULT_PASS: ${{ env.RABBITMQ_DEFAULT_PASS }}
         options: >-
-          --health-cmd "rabbitmq-diagnostics -q check_running"
+          --health-cmd "docker-entrypoint.sh rabbitmq-diagnostics -q check_running"
           --health-interval 30s
           --health-timeout 10s
           --health-retries 5
