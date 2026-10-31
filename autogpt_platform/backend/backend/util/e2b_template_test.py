@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import threading
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -256,6 +257,44 @@ class TestEnsureTemplate:
             gate.set()
             await asyncio.gather(first, second)
         st.assert_awaited_once()
+        assert not e2b_template._inflight
+
+    def test_first_turns_on_two_event_loops_both_get_the_template(self):
+        # The executor runs a loop per worker thread; B starts while A's check
+        # is still in flight, and A's check stays open until B's call is over.
+        loops: dict[str, asyncio.AbstractEventLoop] = {}
+        errors: dict[str, RuntimeError | None] = {}
+        a_checking, b_done = threading.Event(), threading.Event()
+
+        async def state(*_args):
+            if asyncio.get_running_loop() is loops["a"]:
+                a_checking.set()
+                b_done.wait(timeout=10)
+            return TemplateState.READY
+
+        def turn(name: str) -> None:
+            loop = loops[name] = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(ensure_template(DESKTOP_IMAGE.alias, _KEY))
+                errors[name] = None
+            except RuntimeError as e:
+                errors[name] = e
+            finally:
+                loop.close()
+                if name == "b":
+                    b_done.set()
+
+        a = threading.Thread(target=turn, args=("a",))
+        b = threading.Thread(target=turn, args=("b",))
+        with patch(f"{_M}.get_template_state", AsyncMock(side_effect=state)):
+            a.start()
+            assert a_checking.wait(timeout=10)
+            b.start()
+            b.join(timeout=10)
+            a.join(timeout=10)
+        assert not a.is_alive() and not b.is_alive()
+        assert errors == {"a": None, "b": None}
+        assert e2b_template._scoped_key(DESKTOP_IMAGE, _KEY) in e2b_template._ready
         assert not e2b_template._inflight
 
     @pytest.mark.asyncio
