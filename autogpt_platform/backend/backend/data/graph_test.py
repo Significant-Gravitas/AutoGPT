@@ -3088,6 +3088,44 @@ async def test_migrate_llm_models_matches_provider_prefixed_legacy_values():
     )
 
 
+@pytest.mark.parametrize(
+    "stored_value, replacement",
+    [
+        ("claude-opus-4-1", LLMModel.CLAUDE_4_7_OPUS),
+        ("anthropic/claude-opus-4-1", LLMModel.CLAUDE_4_7_OPUS),
+        ("anthropic/claude-opus-4.1", LLMModel.CLAUDE_4_7_OPUS),
+        ("claude-opus-4-0", LLMModel.CLAUDE_4_7_OPUS),
+        ("anthropic/claude-opus-4", LLMModel.CLAUDE_4_7_OPUS),
+        ("claude-sonnet-4-0", LLMModel.CLAUDE_4_6_SONNET),
+        ("anthropic/claude-sonnet-4", LLMModel.CLAUDE_4_6_SONNET),
+    ],
+)
+@pytest.mark.asyncio
+async def test_migrate_llm_models_maps_retired_claude_aliases_to_their_family(
+    stored_value: str, replacement: LLMModel
+):
+    """Anthropic retired these aliases with their snapshots. A stored one
+    lands on its family's successor in nodes and presets, and the enum keeps
+    refusing it, which is what keeps the copilot's registry gate from sending it."""
+    with pytest.raises(ValueError):
+        LLMModel(stored_value)
+
+    with patch(
+        "backend.data.graph.execute_raw_with_schema",
+        new_callable=AsyncMock,
+    ) as mock_execute:
+        await migrate_llm_models(next(iter(LLMModel)))
+
+    # (is_preset_query, replacement, stored_value) for each targeted rewrite.
+    rewrites = {
+        ('"agentPresetId"' in call.args[0], call.args[2], call.args[-1])
+        for call in mock_execute.await_args_list
+        if "NOT IN" not in call.args[0]
+    }
+    assert (False, replacement.value, stored_value) in rewrites
+    assert (True, replacement.value, stored_value) in rewrites
+
+
 @pytest.mark.asyncio
 async def test_migrate_llm_models_covers_preset_overrides():
     """Regression: migrate_llm_models must also rewrite legacy values stored
