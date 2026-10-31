@@ -163,10 +163,24 @@ jobs:
               per_page: 100
             });
 
+            // Only commands the live listener would have acted on count: the
+            // same OWNER/MEMBER/COLLABORATOR gate and bot allowlist as above.
+            // Otherwise anyone who can comment could leave a `!undeploy` after
+            // a maintainer's `!deploy` and keep the preview environment alive
+            // past the PR's close.
+            const BOT_ALLOWLIST = ['autogpt-batch-bot[bot]'];
+            const isTrusted = (comment) => (
+              ['OWNER', 'MEMBER', 'COLLABORATOR'].includes(comment.author_association) ||
+              BOT_ALLOWLIST.includes(comment.user?.login)
+            );
+
             let lastDeployIndex = -1;
             let lastUndeployIndex = -1;
 
             comments.forEach((comment, index) => {
+              if (!isTrusted(comment)) {
+                return;
+              }
               if (comment.body.trim() === '!deploy') {
                 lastDeployIndex = index;
               } else if (comment.body.trim() === '!undeploy') {
