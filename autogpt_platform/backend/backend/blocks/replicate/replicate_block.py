@@ -4,6 +4,7 @@ from typing import Optional
 
 from pydantic import SecretStr
 from replicate.client import Client as ReplicateClient
+from replicate.prediction import Prediction
 
 from backend.blocks._base import (
     Block,
@@ -20,8 +21,13 @@ from backend.blocks.replicate._auth import (
 )
 from backend.blocks.replicate._helper import (
     ReplicateModelNotRunnableError,
-    create_unpinned_prediction,
     extract_result,
+    start_prediction,
+)
+from backend.blocks.replicate._pricing import (
+    OFFICIAL_MODEL_PRICES,
+    MetricPrice,
+    official_run_cost_usd,
 )
 from backend.data.execution import ExecutionContext
 from backend.data.model import (
@@ -35,9 +41,10 @@ from backend.util.file import MediaFileType, store_media_file
 
 logger = logging.getLogger(__name__)
 
-# Replicate $/sec varies by hardware tier (CPU $0.000100 → 8×H100 $0.005600).
-# The API doesn't return which tier ran the prediction, so we pick a single
-# rate that covers up to A100-80GB ($0.001875/sec) without under-billing.
+# Community models are billed by run time, at a $/sec that varies by hardware
+# tier (CPU $0.000100 → 8×H100 $0.005600). The API doesn't return which tier
+# ran the prediction, so we pick a single rate that covers up to A100-80GB
+# ($0.001875/sec) without under-billing.
 # Cheaper hardware (L40S/L4/T4) is over-billed slightly; multi-GPU configs
 # are still under-billed but are rare in user-facing community models.
 _REPLICATE_USD_PER_SEC = 0.002000
@@ -241,8 +248,8 @@ class ReplicateModelBlock(Block):
         Run the Replicate model. This method can be mocked for testing.
 
         Uses predictions.async_create + async_wait instead of async_run so
-        we can read ``prediction.metrics.predict_time`` after completion
-        and emit it as ``provider_cost`` for the COST_USD resolver.
+        we can read ``prediction.metrics`` after completion and emit the
+        run's price as ``provider_cost`` for the COST_USD resolver.
 
         Args:
             model_ref: The model reference (e.g., "owner/model-name:version")
@@ -255,18 +262,11 @@ class ReplicateModelBlock(Block):
         api_key_str = api_key.get_secret_value()
         client = ReplicateClient(api_token=api_key_str)
 
-        # Replicate SDK: version-pinned refs use `version=`; unpinned refs
-        # try `model=` and fall back to the latest version (see _helper).
-        # Matches the `owner/name[:version]` contract above.
-        if ":" in model_ref:
-            model_name, version = model_ref.split(":", 1)
-            prediction = await client.predictions.async_create(
-                version=version, input=model_inputs
-            )
-        else:
-            prediction = await create_unpinned_prediction(
-                client, model_ref, model_inputs
-            )
+        model_name, _, version = model_ref.partition(":")
+        prices = OFFICIAL_MODEL_PRICES.get(model_name)
+        prediction = await start_prediction(
+            client, model_name, version, model_inputs, priced=prices is not None
+        )
 
         await prediction.async_wait()
 
@@ -280,15 +280,23 @@ class ReplicateModelBlock(Block):
         if prediction.status == "canceled":
             raise RuntimeError("Replicate prediction was canceled")
 
-        if prediction.metrics and prediction.metrics.get("predict_time"):
-            predict_time = float(prediction.metrics["predict_time"])
+        cost_usd = _run_cost_usd(prices, model_inputs, prediction)
+        if cost_usd > 0:
             self.merge_stats(
                 NodeExecutionStats(
-                    provider_cost=predict_time * _REPLICATE_USD_PER_SEC,
-                    provider_cost_type="cost_usd",
+                    provider_cost=cost_usd, provider_cost_type="cost_usd"
                 )
             )
 
         if prediction.output is None:
             raise RuntimeError("Replicate prediction returned no output")
         return extract_result(prediction.output)
+
+
+def _run_cost_usd(
+    prices: tuple[MetricPrice, ...] | None, model_inputs: dict, prediction: Prediction
+) -> float:
+    metrics = prediction.metrics or {}
+    if prices is not None:
+        return official_run_cost_usd(prices, model_inputs, metrics, prediction.output)
+    return float(metrics.get("predict_time") or 0) * _REPLICATE_USD_PER_SEC

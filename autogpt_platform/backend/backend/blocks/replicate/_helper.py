@@ -1,5 +1,7 @@
 import logging
+import re
 
+from pydantic import BaseModel, ValidationError
 from replicate.client import Client as ReplicateClient
 from replicate.exceptions import ReplicateError
 from replicate.helpers import FileOutput
@@ -9,9 +11,41 @@ logger = logging.getLogger(__name__)
 
 ReplicateOutputs = FileOutput | list[FileOutput] | list[str] | str | list[dict]
 
+_MODEL_NAME = re.compile(r"[\w.-]+/[\w.-]+")
+_VERSION = re.compile(r"[A-Za-z0-9]+")
+
 
 class ReplicateModelNotRunnableError(ValueError):
-    """The model has no version we can run: it doesn't exist or has none."""
+    """The block can't run this model or version, so no prediction was made."""
+
+
+async def start_prediction(
+    client: ReplicateClient,
+    model_name: str,
+    version: str | None,
+    model_inputs: dict,
+    *,
+    priced: bool,
+) -> Prediction:
+    """Start a run; a model the block has no price for runs only if it is a
+    community model, which Replicate bills by run time."""
+    if not _MODEL_NAME.fullmatch(model_name):
+        raise ReplicateModelNotRunnableError(
+            f"Replicate model name '{model_name}' must look like 'owner/model-name'."
+        )
+    if version:
+        await _require_version_of(client, model_name, version)
+        if not priced:
+            await _require_community_model(client, model_name)
+        return await client.predictions.async_create(
+            version=version, input=model_inputs
+        )
+    if priced:
+        return await create_unpinned_prediction(client, model_name, model_inputs)
+    listing = await _require_community_model(client, model_name)
+    return await client.predictions.async_create(
+        version=_latest_version_id(listing, model_name), input=model_inputs
+    )
 
 
 async def create_unpinned_prediction(
@@ -31,13 +65,60 @@ async def create_unpinned_prediction(
         if e.status != 404:
             raise
 
-    version = await _resolve_latest_version(client, model_name)
-    return await client.predictions.async_create(version=version, input=model_inputs)
+    listing = await _get_listing(client, model_name)
+    return await client.predictions.async_create(
+        version=_latest_version_id(listing, model_name), input=model_inputs
+    )
 
 
-async def _resolve_latest_version(client: ReplicateClient, model_name: str) -> str:
+class _VersionRef(BaseModel):
+    id: str
+
+
+class _ModelListing(BaseModel):
+    is_official: bool
+    latest_version: _VersionRef | None = None
+
+
+async def _require_community_model(
+    client: ReplicateClient, model_name: str
+) -> _ModelListing:
+    listing = await _get_listing(client, model_name)
+    if listing.is_official:
+        raise ReplicateModelNotRunnableError(
+            f"Replicate model '{model_name}' is an official model with its own "
+            "price, and the Replicate block can't run it yet. Use another model, "
+            "or a block made for this one."
+        )
+    return listing
+
+
+async def _require_version_of(
+    client: ReplicateClient, model_name: str, version: str
+) -> None:
+    """Replicate runs a version by its hash alone, so check it is the named model's."""
+    if not _VERSION.fullmatch(version):
+        raise ReplicateModelNotRunnableError(
+            f"Version '{version}' is not a Replicate version hash."
+        )
     try:
-        model = await client.models.async_get(model_name)
+        await client._async_request(
+            "GET", f"/v1/models/{model_name}/versions/{version}"
+        )
+    except ReplicateError as e:
+        if e.status != 404:
+            raise
+        raise ReplicateModelNotRunnableError(
+            f"Version '{version}' was not found for Replicate model "
+            f"'{model_name}'. Leave 'version' empty to run the model's latest "
+            "version."
+        ) from e
+
+
+async def _get_listing(client: ReplicateClient, model_name: str) -> _ModelListing:
+    try:
+        # The SDK's Model drops `is_official`, so read the listing directly.
+        response = await client._async_request("GET", f"/v1/models/{model_name}")
     except ReplicateError as e:
         if e.status != 404:
             raise
@@ -45,14 +126,22 @@ async def _resolve_latest_version(client: ReplicateClient, model_name: str) -> s
             f"Replicate model '{model_name}' was not found. Check that the name "
             "is 'owner/model-name' and that your API key can access it."
         ) from e
+    try:
+        return _ModelListing.model_validate(response.json())
+    except ValidationError as e:
+        raise RuntimeError(
+            f"Replicate returned an unexpected listing for model '{model_name}'"
+        ) from e
 
-    if model.latest_version is None:
+
+def _latest_version_id(listing: _ModelListing, model_name: str) -> str:
+    if listing.latest_version is None:
         raise ReplicateModelNotRunnableError(
             f"Replicate model '{model_name}' has no published version to run. "
             "Set 'version' to a version hash from the model's Versions tab on "
             "Replicate."
         )
-    return model.latest_version.id
+    return listing.latest_version.id
 
 
 def extract_result(output: ReplicateOutputs) -> str:
