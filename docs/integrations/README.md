@@ -112,6 +112,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Baas Bot Fetch Meeting Data](block-integrations/baas/bots.md#baas-bot-fetch-meeting-data) | Retrieve recorded meeting data |
 | [Create Dictionary](block-integrations/data.md#create-dictionary) | Creates a dictionary with the specified key-value pairs |
 | [Create List](block-integrations/data.md#create-list) | Creates a list with the specified values |
+| [Darkmoon Findings Parser](block-integrations/darkmoon/findings.md#darkmoon-findings-parser) | Parses the JSON findings of a Darkmoon scan (open source autonomous AI pentest engine), filters them by severity and proof status, and returns counts, a pass/fail gate and a Markdown report |
 | [Data For Seo Keyword Suggestions](block-integrations/dataforseo/keyword_suggestions.md#data-for-seo-keyword-suggestions) | Get keyword suggestions from DataForSEO Labs Google API |
 | [Data For Seo Related Keywords](block-integrations/dataforseo/related_keywords.md#data-for-seo-related-keywords) | Get related keywords from DataForSEO Labs Google API |
 | [Exa Create Import](block-integrations/exa/websets_import_export.md#exa-create-import) | Import CSV data to use with websets for targeted searches |
