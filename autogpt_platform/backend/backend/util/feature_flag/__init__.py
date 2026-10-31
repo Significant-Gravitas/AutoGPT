@@ -71,9 +71,7 @@ class Flag(str, Enum):
     COPILOT_COST_LIMITS = "copilot-cost-limits"
     # Numeric USD threshold. A served value equal to the config fallback is
     # still a vendor answer; callers must use ``evaluate_feature_flag_value``.
-    COPILOT_COST_CONFIRMATION_THRESHOLD_USD = (
-        "copilot-cost-confirmation-threshold-usd"
-    )
+    COPILOT_COST_CONFIRMATION_THRESHOLD_USD = "copilot-cost-confirmation-threshold-usd"
     # AutoPilot auto mode: the permission gate in ``copilot/gate``.
     # A ROLLOUT control, not a safety control — off means today's
     # ungated behaviour, which is why it defaults False rather than
@@ -464,9 +462,7 @@ async def evaluate_feature_flag_value(
     ``evaluated`` is False when *value* is only *default* because the vendor
     could not answer. A served value equal to *default* is still evaluated.
     """
-    return await _evaluate_flag_value(
-        flag_key, user_id, default, attributes=attributes
-    )
+    return await _evaluate_flag_value(flag_key, user_id, default, attributes=attributes)
 
 
 async def evaluate_experiment_variant(flag_key: str, user_id: str) -> str | None:
