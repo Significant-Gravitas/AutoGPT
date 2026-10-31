@@ -9,7 +9,7 @@ import tempfile
 import threading
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from concurrent.futures import Future
 from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
@@ -2376,6 +2376,55 @@ def _register_dream_pass_jobs(scheduler: _SystemJobs) -> None:
     )
 
 
+class _KeptScheduleJobs:
+    """``add_job`` for the system jobs every start re-adds. An interval job whose
+    interval is unchanged keeps its stored next run: re-added afresh, the run
+    moves a whole interval past each restart, so a scheduler restarted more often
+    than that never runs it."""
+
+    def __init__(
+        self,
+        scheduler: BackgroundScheduler,
+        stores: Mapping[str, ResilientSQLAlchemyJobStore],
+    ):
+        self._scheduler = scheduler
+        self._stores = stores
+
+    def add_job(
+        self, func: Callable[..., object], *args: Any, **options: Any
+    ) -> JobObj:
+        trigger = args[0] if args else options.get("trigger")
+        if trigger == "interval" and "next_run_time" not in options:
+            stored = self._stored_job(options["id"], options["jobstore"])
+            if stored is not None and _same_interval(stored.trigger, options):
+                # None for a paused job, which stays paused.
+                options["next_run_time"] = stored.next_run_time
+        return self._scheduler.add_job(func, *args, **options)
+
+    def _stored_job(self, job_id: str, jobstore: str) -> JobObj | None:
+        store = self._stores.get(jobstore)
+        if store is None:
+            return None
+        try:
+            return store.lookup_job(job_id)
+        except Exception as e:
+            # A first start finds no table yet; scheduling afresh is no worse.
+            logger.debug(
+                "Stored job %s unreadable, scheduling it afresh: %s", job_id, e
+            )
+            return None
+
+
+def _same_interval(trigger: object, options: dict[str, Any]) -> bool:
+    units = ("weeks", "days", "hours", "minutes", "seconds")
+    interval = IntervalTrigger(
+        **{unit: options[unit] for unit in units if unit in options}
+    )
+    return (
+        isinstance(trigger, IntervalTrigger) and trigger.interval == interval.interval
+    )
+
+
 def ensure_embeddings_coverage():
     """
     Ensure all content types (store agents, blocks, docs) have embeddings for search.
@@ -2993,10 +3042,11 @@ class Scheduler(AppService):
         )
 
         if self.register_system_tasks:
+            system_jobs = _KeptScheduleJobs(self.scheduler, self._persistent_jobstores)
             # ALERTS — empty the ten-minute debounce window. Runs every
             # minute so a condition raised at :01 goes out at :11, not at the
             # next quarter hour.
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 flush_matured_alerts,
                 id="flush_matured_alerts",
                 trigger="interval",
@@ -3012,7 +3062,7 @@ class Scheduler(AppService):
 
             # BRIEFINGS — hourly, because "07:30 in the user's own timezone"
             # is a different UTC hour for each of them.
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 send_due_briefings,
                 CronTrigger.from_crontab("30 * * * *"),
                 id="send_due_briefings",
@@ -3023,7 +3073,7 @@ class Scheduler(AppService):
             )
 
             # Notification LATE EXECUTIONS ALERT
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 report_late_executions,
                 id="report_late_executions",
                 trigger="interval",
@@ -3033,7 +3083,7 @@ class Scheduler(AppService):
             )
 
             # Block Error Rate Monitoring
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 report_block_error_rates,
                 id="report_block_error_rates",
                 trigger="interval",
@@ -3045,7 +3095,7 @@ class Scheduler(AppService):
             # Auth identity <-> platform User invariant. Heals any auth
             # identity that has no platform User row and pages when it had to.
             if config.auth_identity_orphan_sweep_enabled:
-                self.scheduler.add_job(
+                system_jobs.add_job(
                     report_orphaned_auth_identities,
                     id="report_orphaned_auth_identities",
                     trigger="interval",
@@ -3056,7 +3106,7 @@ class Scheduler(AppService):
                 )
 
             # Cloud Storage Cleanup - configurable interval
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 cleanup_expired_files,
                 id="cleanup_expired_files",
                 trigger="interval",
@@ -3067,7 +3117,7 @@ class Scheduler(AppService):
             )
 
             # OAuth Token Cleanup - configurable interval
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 cleanup_oauth_tokens,
                 id="cleanup_oauth_tokens",
                 trigger="interval",
@@ -3078,7 +3128,7 @@ class Scheduler(AppService):
             )
 
             # Sign-in IP log retention - daily
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 cleanup_auth_ip_events,
                 id="cleanup_auth_ip_events",
                 trigger="interval",
@@ -3089,7 +3139,7 @@ class Scheduler(AppService):
             )
 
             # Failed Push Subscription Cleanup - configurable interval
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 cleanup_failed_push_subscriptions,
                 id="cleanup_failed_push_subscriptions",
                 trigger="interval",
@@ -3099,7 +3149,7 @@ class Scheduler(AppService):
             )
 
             # Platform Link Token Cleanup - configurable interval
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 cleanup_platform_link_tokens,
                 id="cleanup_platform_link_tokens",
                 trigger="interval",
@@ -3111,7 +3161,7 @@ class Scheduler(AppService):
             # Stripe Subscription Tier Reconciliation - configurable interval
             # Safety net for missed/lost Stripe webhooks: makes Stripe the
             # eventual source of truth for STRIPE-sourced tiers (incl. downgrades).
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 reconcile_stripe_tiers,
                 id="reconcile_stripe_tiers",
                 trigger="interval",
@@ -3122,7 +3172,7 @@ class Scheduler(AppService):
             )
 
             # Execution Accuracy Monitoring - configurable interval
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 execution_accuracy_alerts,
                 id="report_execution_accuracy_alerts",
                 trigger="interval",
@@ -3135,7 +3185,7 @@ class Scheduler(AppService):
             # Embedding Coverage - Every 6 hours
             # Ensures all approved agents have embeddings for hybrid search
             # Critical: missing embeddings = agents invisible in search
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 ensure_embeddings_coverage,
                 id="ensure_embeddings_coverage",
                 trigger="interval",
@@ -3156,7 +3206,7 @@ class Scheduler(AppService):
             # Block Description Optimization - Every 24 hours
             # Generates concise LLM-optimized block descriptions for
             # agent generation. Only processes blocks missing descriptions.
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 optimize_block_descriptions,
                 id="optimize_block_descriptions",
                 trigger="interval",
@@ -3168,13 +3218,13 @@ class Scheduler(AppService):
 
             # Dream passes: close those that outlived their lease, and delete
             # the closed ones past their retention.
-            _register_dream_pass_jobs(self.scheduler)
+            _register_dream_pass_jobs(system_jobs)
 
             # Schedule Index Reconcile - Every 24 hours
             # Safety net for the best-effort index writes: re-adds rows a
             # failed write missed and clears rows for jobs APScheduler
             # auto-removed (fired one-shots) outside our delete path.
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 reconcile_schedule_index,
                 id="reconcile_schedule_index",
                 trigger="interval",
