@@ -28,7 +28,7 @@ export function AnsweredQuestions({ items }: Props) {
               {item.question}
             </p>
             {item.answer && (
-              <p className="whitespace-pre-wrap text-body-sm leading-inherit text-foreground-emphasis">
+              <p className="text-body-sm leading-inherit whitespace-pre-wrap text-foreground-emphasis">
                 {item.answer}
               </p>
             )}

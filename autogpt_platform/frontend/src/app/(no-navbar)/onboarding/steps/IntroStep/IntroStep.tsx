@@ -29,7 +29,7 @@ export function IntroStep({ slide }: Props) {
       className={cn("w-full", slide === "team" ? "max-w-2xl" : "max-w-lg")}
     >
       <div className="flex w-full flex-col items-center gap-8 px-4">
-        <h1 className="text-center font-poppins text-heading-sm font-medium leading-tight text-foreground-base">
+        <h1 className="text-center font-poppins text-heading-sm leading-tight font-medium text-foreground-base">
           {title}
         </h1>
 

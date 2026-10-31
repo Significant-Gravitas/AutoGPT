@@ -4,7 +4,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { Info } from "lucide-react";
+import { InformationCircleIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import ReactMarkdown from "react-markdown";
 
 type Props = {
@@ -29,9 +30,10 @@ export function InformationTooltip({ description, iconSize = 24 }: Props) {
             aria-label="More information"
             onClick={(event) => event.preventDefault()}
             data-slot="information-tooltip-trigger"
-            className="inline-flex flex-none items-center justify-center rounded-full p-1 text-current hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong"
+            className="inline-flex flex-none items-center justify-center rounded-full p-1 text-current hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:outline-none"
           >
-            <Info
+            <Icon
+              icon={InformationCircleIcon}
               data-slot="information-tooltip-icon"
               aria-hidden
               size={iconSize}

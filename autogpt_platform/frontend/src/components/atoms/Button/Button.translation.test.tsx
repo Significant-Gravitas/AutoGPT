@@ -3,13 +3,11 @@ import { translateText } from "@/tests/integrations/translation";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 import { Button } from "./Button";
-import type { ButtonProps, LegacyButtonProps } from "./helpers";
-
-type DesignSystemButtonProps = Exclude<ButtonProps, LegacyButtonProps>;
+import type { ButtonProps } from "./helpers";
 
 afterEach(cleanup);
 
-const cases: Partial<DesignSystemButtonProps>[] = [
+const cases: Partial<ButtonProps>[] = [
   { variant: "primary" },
   { variant: "secondary" },
   { variant: "ghost" },
@@ -22,7 +20,7 @@ it.each(cases)("preserves translated labels through loading: %j", (props) => {
     return (
       <TooltipProvider>
         <Button
-          {...(props as DesignSystemButtonProps)}
+          {...(props as ButtonProps)}
           loading={loading}
           data-goal="checkout"
         >

@@ -19,8 +19,8 @@ export type As =
   | "pre"
   | "button";
 
-// Typography comes from the size roles in tailwind.config.ts; each bundles
-// its line-height.
+// Typography comes from the size roles in globals.css (`--text-*`); each
+// bundles its line-height.
 export const variants = {
   // Headings
   h1: "font-poppins text-display font-semibold tracking-title text-foreground-base",

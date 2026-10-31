@@ -611,6 +611,9 @@ def _folder_subtree(
 class ReadWorkspaceFileTool(BaseTool):
     """Tool for reading file content from workspace."""
 
+    # ``save_to_path`` copies the file into the sandbox.
+    writes_files = True
+
     MAX_INLINE_SIZE_BYTES = 32 * 1024
     PREVIEW_SIZE = 500
 
@@ -984,6 +987,8 @@ def _path_under_skills_registry(path: str | None) -> bool:
 class WriteWorkspaceFileTool(BaseTool):
     """Tool for writing files to workspace."""
 
+    writes_files = True
+
     @property
     def name(self) -> str:
         return "write_workspace_file"
@@ -1243,6 +1248,8 @@ class WriteWorkspaceFileTool(BaseTool):
 
 class DeleteWorkspaceFileTool(BaseTool):
     """Tool for deleting files from workspace."""
+
+    writes_files = True
 
     @property
     def name(self) -> str:

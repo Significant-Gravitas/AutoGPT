@@ -191,7 +191,7 @@ function OfferMark({ offer }: { offer: AIConnectionOffer }) {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="px-3 pb-1.5 pt-3 text-caption-sm font-medium uppercase leading-inherit tracking-eyebrow text-foreground-tertiary first:pt-0">
+    <p className="px-3 pt-3 pb-1.5 text-caption-sm leading-inherit font-medium tracking-eyebrow text-foreground-tertiary uppercase first:pt-0">
       {children}
     </p>
   );

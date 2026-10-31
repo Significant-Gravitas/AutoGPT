@@ -41,7 +41,7 @@ export function TourMessageList({ messages, isStreaming, footer }: Props) {
   return (
     <Conversation className="min-h-0 flex-1">
       {/* oxlint-disable-next-line design-system/no-restyle -- the tour thread's tighter spacing; ConversationContent has no size for it */}
-      <ConversationContent className="gap-6 px-3 pb-6 pt-4">
+      <ConversationContent className="gap-6 px-3 pt-4 pb-6">
         {messages.map((message) => (
           <div
             key={message.id}

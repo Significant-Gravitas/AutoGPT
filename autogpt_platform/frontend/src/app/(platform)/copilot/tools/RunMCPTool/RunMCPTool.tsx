@@ -89,7 +89,7 @@ export function RunMCPToolComponent({ part }: Props) {
         <div className="mt-2 rounded-lg border border-error/30 bg-error-surface px-3 py-2 text-sm text-error-foreground">
           {errorOutput.message}
           {errorOutput.error && (
-            <pre className="mt-1 whitespace-pre-wrap break-words text-xs opacity-80">
+            <pre className="mt-1 text-xs break-words whitespace-pre-wrap opacity-80">
               {errorOutput.error}
             </pre>
           )}

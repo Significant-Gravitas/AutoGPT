@@ -8,7 +8,7 @@ export function HeldPassage({ passage }: Props) {
       <figcaption className="text-xs text-foreground-tertiary">
         What it says
       </figcaption>
-      <blockquote className="whitespace-pre-wrap border-l-2 border-warning bg-warning-surface/60 px-3 py-2 text-sm text-foreground-emphasis [overflow-wrap:anywhere]">
+      <blockquote className="border-l-2 border-warning bg-warning-surface/60 px-3 py-2 text-sm [overflow-wrap:anywhere] whitespace-pre-wrap text-foreground-emphasis">
         {passage}
       </blockquote>
     </figure>

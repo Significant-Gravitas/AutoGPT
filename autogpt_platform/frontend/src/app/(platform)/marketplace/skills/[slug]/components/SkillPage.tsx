@@ -100,7 +100,7 @@ export function SkillPage({ slug }: Props) {
             <Icon icon={BookOpen01Icon} size={32} aria-hidden />
           </span>
           <div className="min-w-0 flex-1">
-            <h1 className="text-heading font-semibold leading-8 tracking-heading text-foreground-strong">
+            <h1 className="text-heading leading-8 font-semibold tracking-heading text-foreground-strong">
               {title}
             </h1>
             {icon && skill.categories[0] ? (

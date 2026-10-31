@@ -81,6 +81,7 @@ interface CapturedAuthOptions {
     };
   };
   advanced: { database: { generateId: () => string } };
+  database: { type: string; transaction?: boolean };
   socialProviders: Record<string, { clientId: string; clientSecret: string }>;
   plugins: Array<{ id: string; opts?: JwtPluginOptions }>;
 }
@@ -186,6 +187,17 @@ describe("auth config", () => {
       email: "user@example.com",
       role: "authenticated",
       user_metadata: { name: "Regular" },
+    });
+  });
+
+  it("runs the database without transactions", async () => {
+    // Better Auth would hold a pool connection for a whole sign-up while the
+    // session hook waits on the same pool for another (see auth.ts).
+    const options = await loadAuthOptions();
+
+    expect(options.database).toMatchObject({
+      type: "postgres",
+      transaction: false,
     });
   });
 

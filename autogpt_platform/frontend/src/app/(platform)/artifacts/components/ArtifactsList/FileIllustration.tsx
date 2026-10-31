@@ -187,13 +187,13 @@ function VideoContent() {
   return (
     <div className="relative h-16 overflow-hidden rounded-sm bg-action-hover/10">
       {/* Play triangle */}
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
         <svg viewBox="0 0 7 10" className="h-2.5 w-[7px]" aria-hidden>
           <path d="M0 0L7 5L0 10Z" className="fill-action-hover/55" />
         </svg>
       </div>
       {/* Timeline at the bottom */}
-      <div className="absolute bottom-1 left-1 right-1 h-1 rounded-full bg-action-hover/10">
+      <div className="absolute right-1 bottom-1 left-1 h-1 rounded-full bg-action-hover/10">
         <div className="h-full w-1/3 rounded-full bg-action-hover/40" />
       </div>
     </div>
@@ -203,10 +203,10 @@ function VideoContent() {
 function ImgContent() {
   return (
     <div className="relative h-16">
-      <div className="absolute bottom-0 left-0 right-0 h-4 bg-gradient-to-t from-action-hover/20 to-transparent" />
+      <div className="absolute right-0 bottom-0 left-0 h-4 bg-gradient-to-t from-action-hover/20 to-transparent" />
       <div className="absolute bottom-1 left-1 h-3 w-5 rounded-t-full bg-action-hover/25" />
-      <div className="absolute bottom-1 right-2 h-5 w-4 rounded-t-full bg-action-hover/30" />
-      <div className="absolute right-1.5 top-1.5 size-2 rounded-full bg-action-hover/40" />
+      <div className="absolute right-2 bottom-1 h-5 w-4 rounded-t-full bg-action-hover/30" />
+      <div className="absolute top-1.5 right-1.5 size-2 rounded-full bg-action-hover/40" />
     </div>
   );
 }
@@ -390,7 +390,7 @@ export function FileIllustration({
       <div className={cn(cardBase, config.cardClass)}>{config.content}</div>
       <span
         className={cn(
-          "absolute rounded-md bg-action px-2 py-1 text-caption-sm font-semibold uppercase leading-inherit tracking-wide text-action-foreground shadow-md shadow-black/10",
+          "absolute rounded-md bg-action px-2 py-1 text-caption-sm leading-inherit font-semibold tracking-wide text-action-foreground uppercase shadow-md shadow-black/10",
           config.badgePositionClass ?? DEFAULT_BADGE_POSITION,
           badgeClassName,
         )}
