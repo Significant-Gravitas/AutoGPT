@@ -41,6 +41,7 @@ import {
 import { useCredentialFailureCounters } from "./useCredentialFailureCounters";
 import { HeldOutcomesContext } from "../ChatMessagesContainer/HeldOutcomesContext";
 import { ChainRowView } from "./ChainRowView";
+import { useNoteRunningSteps } from "./StepClock";
 import { applyHeldOutcome } from "./heldRow";
 import { useHeldAnswersStore } from "../ApprovalQueue/heldAnswersStore";
 import {
@@ -240,6 +241,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
       ),
     [parts, pendingQuestions, heldOutcomes, heldAnswers],
   );
+  useNoteRunningSteps(rows);
   if (rows.length === 0) return null;
 
   const askedRecords = rows.flatMap((row) => {

@@ -296,14 +296,19 @@ async def _listed_graph_ids(where: prisma.types.LibraryAgentWhereInput) -> list[
 
 async def list_favorite_library_agents(
     user_id: str,
+    search_term: Optional[str] = None,
     page: int = 1,
     page_size: int = 50,
 ) -> library_model.LibraryAgentResponse:
     """
     Retrieves a paginated list of favorite LibraryAgent records for a given user.
 
+    Searching uses the same matching as `list_library_agents`, so the Favorites
+    tab finds favorites that have not been paged in yet.
+
     Args:
         user_id: The ID of the user whose favorite LibraryAgents we want to retrieve.
+        search_term: Optional string to filter favorites by name/description.
         page: Current page (1-indexed).
         page_size: Number of items per page.
 
@@ -313,71 +318,13 @@ async def list_favorite_library_agents(
     Raises:
         DatabaseError: If there is an issue fetching from Prisma.
     """
-    logger.debug(
-        f"Fetching favorite library agents for user_id={user_id}, "
-        f"page={page}, page_size={page_size}"
-    )
-
-    if page < 1 or page_size < 1:
-        logger.warning(f"Invalid pagination: page={page}, page_size={page_size}")
-        raise InvalidInputError("Invalid pagination input")
-
-    where_clause: prisma.types.LibraryAgentWhereInput = {
-        "userId": user_id,
-        "isDeleted": False,
-        "isArchived": False,
-        "isFavorite": True,  # Only fetch favorites
-    }
-
-    # Sort favorites by updated date descending
-    order_by: prisma.types.LibraryAgentOrderByInput = {"updatedAt": "desc"}
-
-    library_agents = await prisma.models.LibraryAgent.prisma().find_many(
-        where=where_clause,
-        include=library_agent_include(
-            user_id, include_nodes=False, include_executions=False
-        ),
-        order=order_by,
-        skip=(page - 1) * page_size,
-        take=page_size,
-    )
-    agent_count = await prisma.models.LibraryAgent.prisma().count(where=where_clause)
-
-    logger.debug(
-        f"Retrieved {len(library_agents)} favorite library agents for user #{user_id}"
-    )
-
-    graph_ids = [a.agentGraphId for a in library_agents if a.agentGraphId]
-    execution_counts, schedule_info = await asyncio.gather(
-        _fetch_execution_counts(user_id, graph_ids),
-        _fetch_schedule_info(user_id),
-    )
-
-    # Only pass valid agents to the response
-    valid_library_agents: list[library_model.LibraryAgent] = []
-
-    for agent in library_agents:
-        try:
-            library_agent = library_model.LibraryAgent.from_db(
-                agent,
-                execution_count_override=execution_counts.get(agent.agentGraphId),
-                schedule_info=schedule_info,
-            )
-            valid_library_agents.append(library_agent)
-        except Exception as e:
-            # Skip this agent if there was an error
-            logger.error(f"Error parsing LibraryAgent #{agent.id} from DB item: {e}")
-            continue
-
-    # Return the response with only valid agents
-    return library_model.LibraryAgentResponse(
-        agents=valid_library_agents,
-        pagination=Pagination(
-            total_items=agent_count,
-            total_pages=(agent_count + page_size - 1) // page_size,
-            current_page=page,
-            page_size=page_size,
-        ),
+    return await list_library_agents(
+        user_id=user_id,
+        search_term=search_term,
+        favorite=True,
+        sort_by=library_model.LibraryAgentSort.UPDATED_AT,
+        page=page,
+        page_size=page_size,
     )
 
 
