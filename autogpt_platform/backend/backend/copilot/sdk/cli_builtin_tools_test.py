@@ -6,8 +6,9 @@ from pathlib import Path
 
 import pytest
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, SystemMessage
+from mcp.types import ListToolsRequest
 
-from .env import build_sdk_env
+from .env import build_sdk_env, config
 from .launch_env import launch_options
 from .tool_adapter import (
     create_copilot_mcp_server,
@@ -16,10 +17,35 @@ from .tool_adapter import (
 )
 
 
+@pytest.fixture(
+    params=[
+        pytest.param((False, None, False, False), id="no-sandbox"),
+        pytest.param((False, None, True, True), id="full-sandbox"),
+        pytest.param((True, "test-e2b-key", False, True), id="e2b-active"),
+        pytest.param((False, "test-e2b-key", False, False), id="e2b-disabled"),
+        pytest.param((True, None, False, False), id="e2b-missing-key"),
+        pytest.param((True, "", False, False), id="e2b-empty-key"),
+        pytest.param((True, None, True, True), id="e2b-missing-key-local"),
+        pytest.param((False, "test-e2b-key", True, True), id="e2b-disabled-local"),
+    ]
+)
+def bash_available(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch):
+    e2b_enabled, e2b_key, local_sandbox, available = request.param
+    monkeypatch.setattr(config, "use_e2b_sandbox", e2b_enabled)
+    monkeypatch.setattr(config, "e2b_api_key", e2b_key)
+    monkeypatch.setattr(
+        "backend.copilot.tools.bash_exec.has_full_sandbox", lambda: local_sandbox
+    )
+    return available
+
+
 @pytest.mark.parametrize("use_e2b", [False, True])
 @pytest.mark.asyncio
 async def test_cli_offers_only_allowed_tools(
-    use_e2b: bool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    use_e2b: bool,
+    bash_available: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     # A run inside Claude Code inherits its CLAUDE_* flags, which change the tool set.
     for key in [
@@ -38,13 +64,35 @@ async def test_cli_offers_only_allowed_tools(
         ),
         timeout=60,
     )
-    assert {"Task", "TodoWrite", "mcp__copilot__bash_exec"} <= set(offered), offered
+    assert {"Task", "TodoWrite"} <= set(offered), offered
+    assert ("mcp__copilot__bash_exec" in offered) is bash_available, offered
     unclassified = sorted(set(offered) - set(allowed))
     assert not unclassified, (
         f"The bundled Claude CLI offers {unclassified}, which security_hooks "
         "denies and nothing classifies. Add each to SDK_DISALLOWED_TOOLS in "
         "sdk/tool_adapter.py, or to _SDK_BUILTIN_ALWAYS if the copilot should use it."
     )
+
+
+@pytest.mark.parametrize("use_e2b", [False, True])
+@pytest.mark.asyncio
+async def test_mcp_advertises_bash_only_with_a_supported_sandbox(
+    use_e2b: bool, bash_available: bool
+):
+    server = create_copilot_mcp_server(use_e2b=use_e2b)["instance"]
+    result = await server.request_handlers[ListToolsRequest](
+        ListToolsRequest(method="tools/list")
+    )
+    offered = {f"mcp__copilot__{t.name}" for t in result.root.tools}
+
+    assert ("mcp__copilot__bash_exec" in offered) is bash_available
+    assert offered <= set(get_copilot_tool_names(use_e2b=use_e2b))
+    assert "Bash" in get_sdk_disallowed_tools(use_e2b=use_e2b)
+    assert "Bash" not in get_copilot_tool_names(use_e2b=use_e2b)
+    if bash_available:
+        bash_tool = next(t for t in result.root.tools if t.name == "bash_exec")
+        assert bash_tool.annotations is not None
+        assert bash_tool.annotations.readOnlyHint is False
 
 
 async def _cli_offered_tools(

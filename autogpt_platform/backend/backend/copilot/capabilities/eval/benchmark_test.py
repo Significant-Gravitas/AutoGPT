@@ -1,13 +1,22 @@
 """Tier-0 gate: the registry index must beat the recorded find_block results on
 the real query set, and the pinned named cases must resolve."""
 
+from unittest.mock import patch
+
 import pytest
 
 from backend.copilot.capabilities.index import CapabilityIndex
 from backend.copilot.capabilities.registry import build_entries
 from backend.copilot.tools import TOOL_GROUPS, TOOL_REGISTRY
 
-from .benchmark import NAMED_CASES, Report, evaluate, format_report, load_cases
+from .benchmark import (
+    NAMED_CASES,
+    UNAVAILABLE,
+    Report,
+    evaluate,
+    format_report,
+    load_cases,
+)
 
 # Floors from the plan (section 3): keep >= 90% of what find_block found,
 # answer > 90% of queries with something.  Labels are "what the turn did
@@ -24,9 +33,11 @@ def report() -> Report:
     # Score against the same catalogue the recorded results came from: a
     # machine without provider secrets disables the Google, Twitter, Notion
     # and Reddit blocks, and thirteen labelled answers vanish with them.
-    index = CapabilityIndex(
-        build_entries(TOOL_REGISTRY, TOOL_GROUPS, include_disabled_blocks=True)
-    )
+    # The recorded catalogue also has sandboxed bash merged with ExecuteCodeBlock.
+    with patch("backend.copilot.tools.bash_exec.has_full_sandbox", return_value=True):
+        index = CapabilityIndex(
+            build_entries(TOOL_REGISTRY, TOOL_GROUPS, include_disabled_blocks=True)
+        )
     result = evaluate(index, load_cases())
     print("\n" + format_report(result))
     return result
@@ -63,3 +74,4 @@ def test_registry_returns_something_far_more_often(report: Report):
 def test_named_cases(report: Report):
     assert report.named_failures() == {}, format_report(report)
     assert set(report.named) == set(NAMED_CASES)
+    assert all(got != [UNAVAILABLE] for got in report.named.values())

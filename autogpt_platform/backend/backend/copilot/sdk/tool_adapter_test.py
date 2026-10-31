@@ -20,6 +20,7 @@ from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.tools import DEFERRED_TOOL_NAMES, TOOL_REGISTRY
 from backend.util.truncate import truncate
 
+from .env import config
 from .tool_adapter import (
     _MCP_MAX_CHARS,
     _STRIP_FROM_LLM,
@@ -726,6 +727,14 @@ class TestReadOnlyAnnotations:
     """Tools get readOnlyHint=True for parallel dispatch, except the ones
     that write files, which the CLI must run in the model's order."""
 
+    @pytest.fixture(params=[False, True], ids=["no-sandbox", "full-sandbox"])
+    def bash_available(self, request, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(config, "use_e2b_sandbox", False)
+        monkeypatch.setattr(
+            "backend.copilot.tools.bash_exec.has_full_sandbox", lambda: request.param
+        )
+        return request.param
+
     def test_parallel_annotation_constant(self):
         """_PARALLEL_ANNOTATION is a ToolAnnotations with readOnlyHint=True."""
         from .tool_adapter import _PARALLEL_ANNOTATION
@@ -734,19 +743,24 @@ class TestReadOnlyAnnotations:
         assert _PARALLEL_ANNOTATION.readOnlyHint is True
 
     @pytest.mark.asyncio
-    async def test_file_writers_are_not_read_only(self):
+    async def test_file_writers_are_not_read_only(self, bash_available: bool):
         """SECRT-3178: ``write_workspace_file(source_path=...)`` in the same
         message as the ``bash_exec`` building that file ran beside it and
         stored half the file. Without the hint the CLI orders them."""
         hints = await self._read_only_hints(create_copilot_mcp_server())
 
-        for name in ("bash_exec", "write_workspace_file", "read_workspace_file"):
+        assert ("bash_exec" in hints) is bash_available
+        if bash_available:
+            assert hints["bash_exec"] is False
+        for name in ("write_workspace_file", "read_workspace_file"):
             assert hints[name] is False, name
         for name in ("run_capability", "list_workspace_files", "find_library_agent"):
             assert hints[name] is True, name
 
     @pytest.mark.asyncio
-    async def test_every_registered_tool_follows_writes_files(self):
+    async def test_every_registered_tool_follows_writes_files(
+        self, bash_available: bool
+    ):
         hints = await self._read_only_hints(create_copilot_mcp_server())
 
         for name, base_tool in TOOL_REGISTRY.items():
