@@ -532,20 +532,17 @@ class TestNewlyRegisteredBlockCosts:
         assert BLOCK_COSTS[ValidateEmailsBlock][0].cost_amount == 150
 
     def test_claude_code_block_registered(self):
-        """ClaudeCodeBlock spawns an E2B sandbox + runs Claude inside it.
-
-        Claude Code CLI returns ``total_cost_usd`` on every response; the
-        block pipes it into execution_stats and bills via COST_USD 150 cr/$
-        (1.5× margin matching TOKEN_COST).
-        """
+        """ClaudeCodeBlock is billed for the platform's E2B sandbox by walltime,
+        at the other E2B blocks' 1 credit per 10 seconds."""
         from backend.blocks._base import BlockCostType
         from backend.blocks.claude_code import ClaudeCodeBlock
         from backend.data.block_cost_config import BLOCK_COSTS
 
         assert ClaudeCodeBlock in BLOCK_COSTS
         entry = BLOCK_COSTS[ClaudeCodeBlock][0]
-        assert entry.cost_type == BlockCostType.COST_USD
-        assert entry.cost_amount == 150
+        assert entry.cost_type == BlockCostType.SECOND
+        assert entry.cost_amount == 1
+        assert entry.cost_divisor == 10
         # Filter keys on `e2b_credentials` (not `credentials`) — verifies the
         # cost gate matches the block's actual input field name.
         assert "e2b_credentials" in entry.cost_filter
