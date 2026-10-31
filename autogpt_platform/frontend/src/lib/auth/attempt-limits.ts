@@ -1,6 +1,6 @@
 import { defineRequestState } from "@better-auth/core/context";
 import type { BetterAuthOptions } from "better-auth";
-import { APIError, getIp, isAPIError } from "better-auth/api";
+import { APIError, getIP, isAPIError } from "better-auth/api";
 import {
   type AuthEmailContext,
   claimWindowSlot,
@@ -66,7 +66,7 @@ export async function limitAuthAttempts({
   const limits = path ? ATTEMPT_LIMITS.get(path) : undefined;
   if (!limits) return;
   const ip = headers
-    ? getTrustedClientIP(getIp(headers, context.options))
+    ? getTrustedClientIP(getIP(headers, context.options))
     : null;
   if (ip) await claimOrRefuse(context, `${limits.name}-ip:${ip}`, limits.perIP);
   const address = addressIn(body);
