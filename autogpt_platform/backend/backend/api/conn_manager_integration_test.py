@@ -390,3 +390,60 @@ async def test_slow_consumer_receives_all_events_without_loss(monkeypatch) -> No
     finally:
         await cm.disconnect_socket(ws, user_id=user_id)
         redis_client.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_one_socket_holds_one_connection_per_shard(monkeypatch) -> None:
+    """Sixty subscriptions spread over every shard reach one socket through at
+    most one Redis connection per shard, and every event still arrives."""
+    user_id = f"user-conn-int-5-{uuid4().hex[:8]}"
+    graph_ids = [f"graph-{uuid4().hex[:8]}" for _ in range(60)]
+    opened: list[str] = []
+    real_connect = redis_client.connect_sharded_pubsub_async
+
+    async def counting_connect(channel: str):
+        opened.append(channel)
+        return await real_connect(channel)
+
+    monkeypatch.setattr(redis_client, "connect_sharded_pubsub_async", counting_connect)
+
+    cm = ConnectionManager()
+    ws: AsyncMock = AsyncMock(spec=WebSocket)
+    sent: list[str] = []
+    ws.send_text = AsyncMock(side_effect=lambda m: sent.append(m))
+
+    redis_client.get_redis.cache_clear()
+    cluster = redis_client.get_redis()
+    channels = {g: event_bus_channel(graph_all_channel(user_id, g)) for g in graph_ids}
+
+    try:
+        await cm.connect_socket(ws, user_id=user_id)
+        for graph_id in graph_ids:
+            await cm.subscribe_graph_execs(
+                user_id=user_id, graph_id=graph_id, websocket=ws
+            )
+        await asyncio.sleep(0.2)
+
+        shards = {redis_client.resolve_shard_for_channel(c) for c in channels.values()}
+        assert len(shards) > 1, "the channels must spread over several shards"
+        assert len(opened) <= len(shards) + 1  # + the notification channel's shard
+        assert len(opened) == len(set(cm._ws_streams[ws]))
+
+        for graph_id, channel in channels.items():
+            cluster.spublish(
+                channel,
+                _graph_event_payload(
+                    user_id=user_id,
+                    graph_id=graph_id,
+                    graph_exec_id=f"exec-{graph_id}",
+                    marker=graph_id,
+                ).decode(),
+            )
+        delivered = await _wait_until(lambda: len(sent) >= len(graph_ids), 10.0)
+        assert delivered, f"only delivered {len(sent)}/{len(graph_ids)}"
+        assert {json.loads(m)["channel"] for m in sent} == {
+            _graph_execs_channel_key(user_id, graph_id=g) for g in graph_ids
+        }
+    finally:
+        await cm.disconnect_socket(ws, user_id=user_id)
+        redis_client.disconnect()
