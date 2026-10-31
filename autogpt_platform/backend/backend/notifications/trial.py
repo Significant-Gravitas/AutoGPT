@@ -92,9 +92,7 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
     if kind == "ended" and await _another_plan_is_live(trial, current):
         await leave_trial_group(user)
         return True
-    data = trial_notice_data(
-        trial, kind, first_name(user.name, user.email) or "there", current
-    )
+    data = trial_notice_data(trial, kind, first_name(user.name) or "there", current)
     claim = trial_notice_key(trial, kind)
     data.notice_key = claim
     if not await claim_once(claim):

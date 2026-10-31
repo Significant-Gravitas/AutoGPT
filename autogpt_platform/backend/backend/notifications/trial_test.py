@@ -173,8 +173,7 @@ async def test_notice_uses_shared_notification_queue(trial, outcome):
                 get_user_by_id=AsyncMock(
                     return_value=SimpleNamespace(
                         id="user-1",
-                        # What email sign-up stores: the address's local part.
-                        name="sam.carter",
+                        name=None,
                         email="sam.carter@example.com",
                         marketing_opt_out_at=None,
                         timezone="America/Chicago",

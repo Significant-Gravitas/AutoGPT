@@ -105,7 +105,10 @@ async def get_onboarding_agents(
 class OnboardingProfileRequest(pydantic.BaseModel):
     """Request body for onboarding profile submission."""
 
-    user_name: str = pydantic.Field(min_length=1, max_length=100)
+    # Empty for an account that gave no name at sign-up.
+    user_name: Annotated[
+        str, pydantic.StringConstraints(strip_whitespace=True, max_length=100)
+    ]
     user_role: str = pydantic.Field(min_length=1, max_length=100)
     pain_points: list[Annotated[str, pydantic.StringConstraints(max_length=2000)]] = (
         pydantic.Field(default_factory=list, max_length=20)
@@ -156,7 +159,7 @@ async def submit_onboarding_profile(
     existing = await get_business_understanding(user_id)
     if (
         existing
-        and existing.user_name == data.user_name
+        and (existing.user_name or "") == data.user_name
         and existing.user_role == data.user_role
         and existing.pain_points == data.pain_points
     ):
@@ -175,7 +178,7 @@ async def submit_onboarding_profile(
         understanding_input = BusinessUnderstandingInput.model_construct()
 
     # Ensure the direct fields are set even if LLM missed them
-    understanding_input.user_name = data.user_name
+    understanding_input.user_name = data.user_name or None
     understanding_input.user_role = data.user_role
     if not understanding_input.pain_points:
         understanding_input.pain_points = data.pain_points

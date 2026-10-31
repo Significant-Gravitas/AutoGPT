@@ -67,7 +67,7 @@ vi.mock("@sentry/nextjs", () => ({
 import { signup } from "../actions";
 
 const email = "new.user@example.com";
-const validPassword = "a-long-enough-password";
+const validPassword = "a-long-enough-password"; // pragma: allowlist secret
 
 function signupWithValidPayload() {
   return signup(email, validPassword, validPassword, false);
@@ -108,7 +108,7 @@ describe("signup", () => {
       body: {
         email,
         password: validPassword,
-        name: "new.user",
+        name: "",
         callbackURL: "/auth/callback?method=email",
       },
       headers: expect.any(Headers),

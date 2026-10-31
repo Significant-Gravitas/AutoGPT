@@ -731,6 +731,24 @@ it("rejects a response for another signed-in account without hydrating or cachin
 });
 
 describe("profile saving before completion", () => {
+  it("saves an account that gave no name with no name, not its address", async () => {
+    user = {
+      id: "u1",
+      email: "jane.doe87@example.com",
+      user_metadata: { name: "" },
+    };
+    atPaywall();
+    tier = "PRO";
+    render(<OnboardingPage />);
+    fireEvent.click(await screen.findByTestId("step-preparing"));
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/home"));
+    expect(submitProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ user_name: "" }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(completeStep).toHaveBeenCalledOnce();
+  });
+
   it("waits for the in-flight profile save before completing or clearing the draft", async () => {
     atPaywall();
     tier = "PRO";

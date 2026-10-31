@@ -1257,6 +1257,32 @@ class TestGetOrCreateUserStatus:
         assert result.was_created is True
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("given, stored", [("", None), ("Sam", "Sam")])
+    async def test_stores_no_name_for_an_empty_one(self, given, stored):
+        db_user = MagicMock(id="user-new", email="alice@example.com", name=stored)
+
+        with (
+            patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(
+                user_module.User,
+                "from_db",
+                return_value=_application_user("user-new", "alice@example.com"),
+            ),
+        ):
+            mock_prisma.user.find_unique = AsyncMock(return_value=None)
+            mock_prisma.user.create = AsyncMock(return_value=db_user)
+
+            await user_module.get_or_create_user_with_status(
+                {
+                    "sub": "user-new",
+                    "email": "alice@example.com",
+                    "user_metadata": {"name": given},
+                }
+            )
+
+        assert mock_prisma.user.create.await_args.kwargs["data"]["name"] == stored
+
+    @pytest.mark.asyncio
     async def test_reports_existing_user(self):
         db_user = MagicMock(id="user-existing", email="bob@example.com", name=None)
 

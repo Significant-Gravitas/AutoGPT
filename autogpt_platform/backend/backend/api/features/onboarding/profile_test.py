@@ -150,6 +150,25 @@ async def test_an_unchanged_profile_still_keeps_the_pick(
     role_writes["posthog"].assert_called_once_with(user_id=USER_ID, role=kept)
 
 
+@pytest.mark.parametrize("sent", ["", "   "])
+async def test_a_profile_without_a_name_is_saved_with_none(mocker, client, sent):
+    extract = mocker.patch.object(
+        routes,
+        "extract_business_understanding",
+        new=AsyncMock(return_value=BusinessUnderstandingInput.model_construct()),
+    )
+    upsert = mocker.patch.object(
+        routes, "upsert_business_understanding", new=AsyncMock()
+    )
+    response = await client.post(
+        "/onboarding/profile",
+        json={"user_name": sent, "user_role": "Founder/CEO", "pain_points": []},
+    )
+    assert response.status_code == 200
+    assert "What is your name?" not in extract.await_args.args[0]
+    assert upsert.await_args.args[1].user_name is None
+
+
 async def test_onboarding_profile_missing_fields(client):
     response = await client.post(
         "/onboarding/profile",
@@ -183,12 +202,13 @@ async def test_profile_pain_point_size_is_bounded(
         extract.assert_not_awaited()
 
 
+@pytest.mark.parametrize("stored, sent", [("John", "John"), (None, "")])
 async def test_identical_saved_profile_does_not_repeat_personalization(
-    mocker, profile_dependencies, client
+    mocker, profile_dependencies, client, stored, sent
 ):
     existing, admission = profile_dependencies
     existing.return_value = BusinessUnderstanding.model_construct(
-        user_name="John", user_role="Founder/CEO", pain_points=["Finding leads"]
+        user_name=stored, user_role="Founder/CEO", pain_points=["Finding leads"]
     )
     extract = mocker.patch.object(
         routes, "extract_business_understanding", new=AsyncMock()
@@ -196,7 +216,7 @@ async def test_identical_saved_profile_does_not_repeat_personalization(
     response = await client.post(
         "/onboarding/profile",
         json={
-            "user_name": "John",
+            "user_name": sent,
             "user_role": "Founder/CEO",
             "pain_points": ["Finding leads"],
         },
