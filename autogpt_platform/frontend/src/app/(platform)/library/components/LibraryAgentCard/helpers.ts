@@ -120,23 +120,28 @@ export function updateFavoriteInQueries({
           }
         }
       } else {
+        const removedCount = oldData.pages.some(
+          (page) =>
+            page.status === 200 &&
+            page.data.agents.some(
+              (currentAgent: LibraryAgent) => currentAgent.id === agentId,
+            ),
+        )
+          ? 1
+          : 0;
+
         return {
           ...oldData,
           pages: oldData.pages.map((page) => {
             if (page.status !== 200) return page;
 
-            const filteredAgents = page.data.agents.filter(
-              (currentAgent: LibraryAgent) => currentAgent.id !== agentId,
-            );
-
-            const removedCount =
-              filteredAgents.length < page.data.agents.length ? 1 : 0;
-
             return {
               ...page,
               data: {
                 ...page.data,
-                agents: filteredAgents,
+                agents: page.data.agents.filter(
+                  (currentAgent: LibraryAgent) => currentAgent.id !== agentId,
+                ),
                 pagination: {
                   ...page.data.pagination,
                   total_items: page.data.pagination.total_items - removedCount,
@@ -152,7 +157,7 @@ export function updateFavoriteInQueries({
   );
 }
 
-export function isSearchedQuery(query: Query) {
+function isSearchedQuery(query: Query) {
   const params = query.queryKey[1];
   return (
     typeof params === "object" &&

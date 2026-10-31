@@ -99,4 +99,40 @@ describe("updateFavoriteInQueries", () => {
       agentIds(queryClient.getQueryData<FavoritesData>(searchedKey)),
     ).toEqual([]);
   });
+
+  test("removing a favorite lowers the total on every loaded page", () => {
+    const queryClient = new QueryClient();
+    const removed = makeAgent({ id: "fav-1" });
+    const pageOf = (page: number, agents: LibraryAgent[]) => ({
+      status: 200 as const,
+      headers: new Headers(),
+      data: {
+        agents,
+        pagination: {
+          total_items: 25,
+          total_pages: 3,
+          current_page: page,
+          page_size: 10,
+        },
+      },
+    });
+    queryClient.setQueryData<FavoritesData>(unsearchedKey, {
+      pageParams: [1, 2],
+      pages: [pageOf(1, [removed]), pageOf(2, [makeAgent({ id: "fav-11" })])],
+    });
+
+    updateFavoriteInQueries({
+      queryClient,
+      agentId: removed.id,
+      agent: removed,
+      newIsFavorite: false,
+    });
+
+    const data = queryClient.getQueryData<FavoritesData>(unsearchedKey);
+    expect(
+      data?.pages.map((page) =>
+        page.status === 200 ? page.data.pagination.total_items : null,
+      ),
+    ).toEqual([24, 24]);
+  });
 });

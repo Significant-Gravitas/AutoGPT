@@ -1,5 +1,6 @@
 "use client";
 
+import { keepPreviousData } from "@tanstack/react-query";
 import { useGetV2ListFavoriteLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
 import {
   getPaginatedTotalCount,
@@ -17,7 +18,8 @@ export function useFavoriteAgents({ searchTerm }: Props) {
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-    isLoading: agentLoading,
+    isLoading,
+    isPlaceholderData,
   } = useGetV2ListFavoriteLibraryAgentsInfinite(
     {
       page: 1,
@@ -25,20 +27,25 @@ export function useFavoriteAgents({ searchTerm }: Props) {
       search_term: searchTerm || undefined,
     },
     {
-      query: { getNextPageParam: getPaginationNextPageNumber },
+      query: {
+        getNextPageParam: getPaginationNextPageNumber,
+        placeholderData: keepPreviousData,
+      },
     },
   );
 
-  const allAgents = agentsQueryData
-    ? unpaginate(agentsQueryData, "agents")
-    : [];
+  const allAgents =
+    agentsQueryData && !isPlaceholderData
+      ? unpaginate(agentsQueryData, "agents")
+      : [];
+  const agentLoading = isLoading || isPlaceholderData;
 
   const agentCount = getPaginatedTotalCount(agentsQueryData);
 
   return {
     allAgents,
     agentLoading,
-    hasNextPage,
+    hasNextPage: hasNextPage && !isPlaceholderData,
     agentCount,
     isFetchingNextPage,
     fetchNextPage,

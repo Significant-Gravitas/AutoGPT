@@ -1,6 +1,6 @@
 "use client";
 
-import { getQueryClient } from "@/lib/react-query/queryClient";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import {
@@ -13,7 +13,7 @@ import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { isSearchedQuery, updateFavoriteInQueries } from "./helpers";
+import { updateFavoriteInQueries } from "./helpers";
 
 interface Props {
   agent: LibraryAgent;
@@ -26,7 +26,7 @@ export function useLibraryAgentCard({ agent, onFavoriteAdd }: Props) {
   const isFromMarketplace = Boolean(marketplace_listing);
   const [isFavorite, setIsFavorite] = useState(is_favorite);
   const { toast } = useToast();
-  const queryClient = getQueryClient();
+  const queryClient = useQueryClient();
   const { mutateAsync: updateLibraryAgent } = usePatchV2UpdateLibraryAgent();
   const { user, isLoggedIn } = useAuth();
   const logoutInProgress = isLogoutInProgress();
@@ -88,7 +88,6 @@ export function useLibraryAgentCard({ agent, onFavoriteAdd }: Props) {
     } finally {
       queryClient.invalidateQueries({
         queryKey: getGetV2ListFavoriteLibraryAgentsQueryKey(),
-        predicate: isSearchedQuery,
       });
     }
   }

@@ -6,6 +6,7 @@ import {
   getGetV2ListLibraryAgentsMockHandler,
   getGetV2ListLibraryAgentsResponseMock,
   getGetV2ListFavoriteLibraryAgentsMockHandler,
+  getPatchV2UpdateLibraryAgentMockHandler,
 } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { getGetV2ListLibraryFoldersMockHandler } from "@/app/api/__generated__/endpoints/folders/folders.msw";
 import { getGetV1ListAllExecutionsMockHandler } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
@@ -21,10 +22,15 @@ function makeAgent(overrides: Partial<LibraryAgent> = {}): LibraryAgent {
 
 function setupHandlers() {
   const favoriteSearches: (string | null)[] = [];
+  const unfavorited = new Set<string>();
   const favoritesPage = (page: number) =>
     Array.from({ length: 10 }, (_, i) => {
       const n = (page - 1) * 10 + i;
-      return makeAgent({ id: `fav-${n}`, name: `Loaded Favorite ${n}` });
+      return makeAgent({
+        id: `fav-${n}`,
+        name: `Loaded Favorite ${n}`,
+        is_favorite: true,
+      });
     }).slice(0, Math.max(0, TOTAL_FAVORITES - (page - 1) * 10));
   const unloadedFavorite = makeAgent({
     id: "fav-unloaded",
@@ -59,14 +65,20 @@ function setupHandlers() {
         };
       }
       return {
-        agents: favoritesPage(page),
+        agents: favoritesPage(page).filter((a) => !unfavorited.has(a.id)),
         pagination: {
-          total_items: TOTAL_FAVORITES,
+          total_items: TOTAL_FAVORITES - unfavorited.size,
           total_pages: 3,
           current_page: page,
           page_size: 10,
         },
       };
+    }),
+    getPatchV2UpdateLibraryAgentMockHandler(async ({ request, params }) => {
+      const body = (await request.json()) as { is_favorite?: boolean };
+      const id = String(params.libraryAgentId);
+      if (body.is_favorite === false) unfavorited.add(id);
+      return makeAgent({ id, is_favorite: body.is_favorite ?? true });
     }),
     getGetV2ListLibraryFoldersMockHandler({
       folders: [],
@@ -125,5 +137,28 @@ describe("LibraryPage favorites search", () => {
       expect(screen.queryByText("Loaded Favorite 0")).toBeNull(),
     );
     expect(getFavoritesTab()?.textContent).toContain("Favorites 1");
+  });
+
+  test("unfavoriting brings the Favorites badge back in line with the server", async () => {
+    setupHandlers();
+
+    render(<LibraryPage />);
+
+    await waitFor(() =>
+      expect(getFavoritesTab()?.hasAttribute("data-disabled")).toBe(false),
+    );
+    await userEvent.click(getFavoritesTab()!);
+    await screen.findByText("Loaded Favorite 0");
+
+    const [firstHeart] = screen.getAllByRole("button", {
+      name: "Remove from favorites",
+    });
+    await userEvent.click(firstHeart);
+
+    await waitFor(() =>
+      expect(getFavoritesTab()?.textContent).toContain(
+        `Favorites ${TOTAL_FAVORITES - 1}`,
+      ),
+    );
   });
 });
