@@ -12,7 +12,7 @@ from backend.api.features.library.triggers import (
     setup_triggered_preset,
     update_triggered_preset,
 )
-from backend.data.includes import MAX_NAMED_INPUTS
+from backend.data.includes import MAX_NODE_INPUT_OUTPUT_FETCH
 from backend.util.exceptions import InvalidInputError, MissingConfigError, NotFoundError
 
 _USER = "test-user-triggers"
@@ -293,7 +293,7 @@ async def test_webhook_setup_rejected_raises():
 async def test_an_oversized_trigger_config_registers_no_webhook():
     """Refused before the webhook is registered, so none is left to clean up."""
     p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
-    oversized = {f"field_{i}": i for i in range(MAX_NAMED_INPUTS + 1)}
+    oversized = {f"field_{i}": i for i in range(MAX_NODE_INPUT_OUTPUT_FETCH + 1)}
     with (
         p_graph,
         p_creds,
@@ -376,6 +376,23 @@ def _update_patches(*, current, graph=..., webhook=..., feedback=None):
     }
     with contextlib.ExitStack() as stack:
         yield {k: stack.enter_context(p) for k, p in patchers.items()}
+
+
+@pytest.mark.asyncio
+async def test_an_oversized_trigger_update_registers_no_webhook():
+    """Refused before the webhook is registered, so none is left to prune."""
+    oversized = {f"field_{i}": i for i in range(MAX_NODE_INPUT_OUTPUT_FETCH + 1)}
+    with _update_patches(current=_preset(webhook_id="wh-old")) as m:
+        with pytest.raises(InvalidInputError, match="at most"):
+            await update_triggered_preset(
+                user_id=_USER,
+                preset_id="preset-1",
+                inputs=oversized,
+                credentials={},
+            )
+    m["setup"].assert_not_awaited()
+    m["update"].assert_not_awaited()
+    m["prune"].assert_not_awaited()
 
 
 @pytest.mark.asyncio

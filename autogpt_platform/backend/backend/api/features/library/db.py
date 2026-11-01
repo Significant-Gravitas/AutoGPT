@@ -31,7 +31,7 @@ from backend.data.graph import GraphSettings
 from backend.data.includes import (
     AGENT_PRESET_INCLUDE,
     LIBRARY_FOLDER_INCLUDE,
-    MAX_NAMED_INPUTS,
+    MAX_NODE_INPUT_OUTPUT_FETCH,
     library_agent_include,
 )
 from backend.data.model import CredentialsMetaInput, GraphInput
@@ -2501,11 +2501,7 @@ async def update_preset(
 def preset_input_rows(
     entries: Mapping[str, object],
 ) -> list[prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput]:
-    """Build a preset's input rows from its merged inputs and credentials.
-
-    Each name becomes a row of its own, so the count is bounded here, where the
-    rows are written, rather than at each caller.
-    """
+    """One row per name, bounded here rather than at each caller."""
     check_preset_input_count(entries)
     return [
         prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(
@@ -2517,10 +2513,10 @@ def preset_input_rows(
 
 def check_preset_input_count(entries: Mapping[str, object]) -> None:
     """Refuse a preset with more named inputs than one read brings back."""
-    if len(entries) > MAX_NAMED_INPUTS:
+    if len(entries) > MAX_NODE_INPUT_OUTPUT_FETCH:
         raise InvalidInputError(
-            f"A preset takes at most {MAX_NAMED_INPUTS} inputs and credentials "
-            f"together; got {len(entries)}"
+            f"A preset takes at most {MAX_NODE_INPUT_OUTPUT_FETCH} inputs and "
+            f"credentials together; got {len(entries)}"
         )
 
 

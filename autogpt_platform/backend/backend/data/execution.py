@@ -58,6 +58,7 @@ from backend.util import type as type_utils
 from backend.util.exceptions import (
     DatabaseError,
     ExecutionFailureReason,
+    InvalidInputError,
     NotFoundError,
     get_execution_failure_reason,
 )
@@ -989,6 +990,8 @@ async def create_graph_execution(
     Returns:
         The id of the AgentGraphExecution and the list of ExecutionResult for each node.
     """
+    check_node_input_counts(starting_nodes_input)
+
     # Defense in depth: attribution must never cross users, even if a
     # caller forgets its ownership check. Only costs a query on the rare
     # expert-attributed path.
@@ -1070,6 +1073,22 @@ async def create_graph_execution(
         )
 
     return GraphExecutionWithNodes.from_db(result)
+
+
+def check_node_input_counts(
+    starting_nodes_input: list[tuple[str, BlockInput]],
+) -> None:
+    """Refuse a run whose starting inputs would outgrow what a read brings back.
+
+    A node's input is one row per name, and the names come from the request, the
+    node's own defaults and the input masks of whatever started the run.
+    """
+    for node_id, node_input in starting_nodes_input:
+        if len(node_input) > MAX_NODE_INPUT_OUTPUT_FETCH:
+            raise InvalidInputError(
+                f"Node #{node_id} takes at most {MAX_NODE_INPUT_OUTPUT_FETCH} "
+                f"inputs; got {len(node_input)}"
+            )
 
 
 async def upsert_execution_input(

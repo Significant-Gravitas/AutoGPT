@@ -9,63 +9,58 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from backend.api.features.library.db import check_preset_input_count, preset_input_rows
+from backend.api.features.library.db import preset_input_rows
 from backend.api.features.library.model import LibraryAgentPreset
-from backend.data.includes import (
-    AGENT_PRESET_INCLUDE,
-    MAX_NAMED_INPUTS,
-    MAX_NODE_INPUT_OUTPUT_FETCH,
-)
+from backend.data.includes import AGENT_PRESET_INCLUDE, MAX_NODE_INPUT_OUTPUT_FETCH
 from backend.util.exceptions import InvalidInputError
 
 _ROW_TYPE = "AgentNodeExecutionInputOutputCreateWithoutRelationsInput"
+_BUILDER = "preset_input_rows"
+_RELATION = "InputPresets"
 _BACKEND_ROOT = Path(__file__).resolve().parents[4] / "backend"
 
 
 def test_a_preset_at_the_bound_is_written_in_full():
-    entries = {f"in_{i}": i for i in range(MAX_NAMED_INPUTS)}
+    entries = {f"in_{i}": i for i in range(MAX_NODE_INPUT_OUTPUT_FETCH)}
 
     rows = preset_input_rows(entries)
 
-    assert len(rows) == MAX_NAMED_INPUTS
+    assert len(rows) == MAX_NODE_INPUT_OUTPUT_FETCH
     assert {row["name"] for row in rows} == set(entries)
 
 
 def test_a_preset_over_the_bound_is_refused():
-    entries = {f"in_{i}": i for i in range(MAX_NAMED_INPUTS + 1)}
+    entries = {f"in_{i}": i for i in range(MAX_NODE_INPUT_OUTPUT_FETCH + 1)}
 
     with pytest.raises(InvalidInputError, match="at most"):
         preset_input_rows(entries)
 
 
 def test_a_read_brings_back_a_preset_at_the_write_bound_in_full():
-    # Were the write bound the higher of the two, a stored preset would come
-    # back short and from_db would rebuild it with inputs missing.
-    fetch_args = cast(dict, AGENT_PRESET_INCLUDE["InputPresets"])
-    assert MAX_NAMED_INPUTS <= fetch_args["take"]
+    # A read of fewer rows than a write may store would rebuild a stored preset
+    # with inputs missing.
+    fetch_args = cast(dict, AGENT_PRESET_INCLUDE[_RELATION])
+    assert fetch_args["take"] == MAX_NODE_INPUT_OUTPUT_FETCH
 
 
 def test_every_preset_input_row_is_built_by_the_bounded_builder():
-    """A second writer of these rows would skip the bound, so there is one."""
-    builders = set()
-    for path in _BACKEND_ROOT.rglob("*.py"):
+    """A second writer of these rows would skip the bound, so there is one.
+
+    Prisma takes the typed row constructor or a plain dict, so this counts both:
+    `create_graph_execution` writes its own node-input rows as dicts.
+    """
+    unbounded = set()
+    for path in sorted(_BACKEND_ROOT.rglob("*.py")):
         if path.name.endswith("_test.py") or path.name.startswith("test_"):
             continue
         tree = ast.parse(path.read_text(), filename=str(path))
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        for scope in ast.walk(tree):
+            if not isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
-            for inner in ast.walk(node):
-                if (
-                    isinstance(inner, ast.Call)
-                    and isinstance(inner.func, ast.Attribute)
-                    and inner.func.attr == _ROW_TYPE
-                ):
-                    builders.add(
-                        (path.relative_to(_BACKEND_ROOT).as_posix(), node.name)
-                    )
+            if _writes_rows_itself(scope):
+                unbounded.add((path.relative_to(_BACKEND_ROOT).as_posix(), scope.name))
 
-    assert builders == {("api/features/library/db.py", "preset_input_rows")}
+    assert unbounded == {("api/features/library/db.py", _BUILDER)}
 
 
 def test_from_db_warns_when_the_stored_rows_hit_the_read_cap(caplog):
@@ -92,11 +87,57 @@ def test_from_db_stays_quiet_below_the_read_cap(caplog):
     assert not any("MAX_NODE_INPUT_OUTPUT_FETCH" in m for m in caplog.messages)
 
 
-def test_the_check_accepts_the_bound_and_refuses_one_more():
-    check_preset_input_count({f"in_{i}": i for i in range(MAX_NAMED_INPUTS)})
+def _writes_rows_itself(scope: ast.AST) -> bool:
+    for node in ast.walk(scope):
+        if _is_typed_row_call(node) or _is_unbounded_relation_write(node):
+            return True
+    return False
 
-    with pytest.raises(InvalidInputError):
-        check_preset_input_count({f"in_{i}": i for i in range(MAX_NAMED_INPUTS + 1)})
+
+def _is_typed_row_call(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == _ROW_TYPE
+    )
+
+
+def _is_unbounded_relation_write(node: ast.AST) -> bool:
+    """An `InputPresets=` or `[...]["InputPresets"] =` whose rows we don't build."""
+    written = _relation_write_value(node)
+    return written is not None and not _is_builder_call(written)
+
+
+def _relation_write_value(node: ast.AST) -> ast.expr | None:
+    """The `create` value of a write to the relation, where there is one."""
+    if isinstance(node, ast.keyword) and node.arg == _RELATION:
+        return _create_entry(node.value)
+    if isinstance(node, ast.Assign) and len(node.targets) == 1:
+        target = node.targets[0]
+        if (
+            isinstance(target, ast.Subscript)
+            and isinstance(target.slice, ast.Constant)
+            and target.slice.value == _RELATION
+        ):
+            return _create_entry(node.value)
+    return None
+
+
+def _create_entry(value: ast.expr) -> ast.expr | None:
+    if not isinstance(value, ast.Dict):
+        return None
+    for key, entry in zip(value.keys, value.values):
+        if isinstance(key, ast.Constant) and key.value == "create":
+            return entry
+    return None
+
+
+def _is_builder_call(value: ast.expr) -> bool:
+    return (
+        isinstance(value, ast.Call)
+        and isinstance(value.func, ast.Name)
+        and value.func.id == _BUILDER
+    )
 
 
 def _input_row(name: str) -> MagicMock:

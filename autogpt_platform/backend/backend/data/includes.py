@@ -26,11 +26,8 @@ EXECUTION_RESULT_ORDER: list[prisma.types.AgentNodeExecutionOrderByInput] = [
 # on pathological cases — `NodeExecutionResult.from_db` rebuilds input/output
 # dicts from these rows, so silently truncating real data would corrupt the
 # result. Matches `MAX_NODE_EXECUTIONS_FETCH` for symmetry.
+# Writes are held to it too, so a stored value always comes back whole.
 MAX_NODE_INPUT_OUTPUT_FETCH = 1000
-
-# A write may not store more named inputs than a read fetches them back, or the
-# read truncates silently. Same number, read from the write side.
-MAX_NAMED_INPUTS = MAX_NODE_INPUT_OUTPUT_FETCH
 
 EXECUTION_RESULT_INCLUDE: prisma.types.AgentNodeExecutionInclude = {
     "Input": {"order_by": {"time": "asc"}, "take": MAX_NODE_INPUT_OUTPUT_FETCH},
