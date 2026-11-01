@@ -332,3 +332,49 @@ test("a JSON draft that doesn't parse is shown again when the card remounts", ()
       .value,
   ).toBe(draft);
 });
+
+test("edits a number beyond 2^53 without rounding it", () => {
+  const onReviewDataChange = vi.fn();
+  render(
+    <PendingReviewCard
+      review={makeReview({ payload: 1 as unknown as ReviewPayload })}
+      onReviewDataChange={onReviewDataChange}
+    />,
+  );
+
+  const field = screen.getByRole("spinbutton");
+  fireEvent.change(field, { target: { value: "9007199254740993" } });
+
+  expect(onReviewDataChange).toHaveBeenLastCalledWith(
+    "ne-1",
+    '"9007199254740993"',
+  );
+  expect(screen.getByRole("spinbutton")).toHaveProperty(
+    "value",
+    "9007199254740993",
+  );
+
+  fireEvent.change(screen.getByRole("spinbutton"), {
+    target: { value: "2.5" },
+  });
+  expect(onReviewDataChange).toHaveBeenLastCalledWith("ne-1", "2.5");
+});
+
+test("keeps an integer beyond 2^53 typed into a JSON payload", () => {
+  const onReviewDataChange = vi.fn();
+  render(
+    <PendingReviewCard
+      review={makeReview({ payload: [1] as unknown as ReviewPayload })}
+      onReviewDataChange={onReviewDataChange}
+    />,
+  );
+
+  fireEvent.change(screen.getByPlaceholderText("Edit JSON data"), {
+    target: { value: "[9007199254740993]" },
+  });
+
+  expect(onReviewDataChange).toHaveBeenLastCalledWith(
+    "ne-1",
+    JSON.stringify(["9007199254740993"], null, 2),
+  );
+});

@@ -13,6 +13,7 @@ import { getSystemHeaders } from "@/lib/impersonation";
 import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
 import { getPostHogSessionHeader } from "@/services/analytics/posthog-request-context";
 import { environment } from "@/services/environment";
+import { parseJsonExact } from "@/lib/json-text";
 import { transformDates } from "./date-transformer";
 import {
   fetchWithFailureLog,
@@ -28,7 +29,15 @@ function getBaseURL(): string {
   }
 }
 
-const getBody = async <T>(c: Response | Request): Promise<T> => {
+// Graph bodies are opened and saved back whole, so a rounded integer would be
+// written into the next version even if the user never touched it.
+const GRAPH_PATH =
+  /^\/api\/graphs(?:\/[^/?]+(?:\/versions(?:\/[^/?]+)?)?)?(?:\?|$)/;
+
+const getBody = async <T>(
+  c: Response | Request,
+  keepBigIntegers = false,
+): Promise<T> => {
   // 204 No Content responses (and 200s with Content-Length: 0) have no body.
   // Calling .json() on them throws "Unexpected end of JSON input" because the
   // backend may still set Content-Type: application/json on 204s. Short-circuit
@@ -43,7 +52,7 @@ const getBody = async <T>(c: Response | Request): Promise<T> => {
   const contentType = c.headers.get("content-type");
 
   if (contentType && contentType.includes("application/json")) {
-    return c.json();
+    return keepBigIntegers ? (parseJsonExact(await c.text()) as T) : c.json();
   }
 
   if (
@@ -191,7 +200,7 @@ export const customMutator = async <
     throw new ApiError(errorMessage, response.status, responseData);
   }
 
-  const responseData = await getBody<unknown>(response);
+  const responseData = await getBody<unknown>(response, GRAPH_PATH.test(url));
 
   // Transform ISO date strings to Date objects in the response data
   const transformedData =
