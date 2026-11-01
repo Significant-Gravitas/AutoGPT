@@ -29,6 +29,7 @@ import fastapi.testclient
 import pytest
 
 from backend.api.features.integrations.router import router
+from backend.api.middleware.body_limit import RequestBodyTooLarge
 from backend.data.integrations import WebhookWithRelations
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
@@ -650,6 +651,34 @@ class TestVerificationOrder:
 
         assert resp.status_code == 200
         creds_manager.get.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# A body over the platform's size limit, raised while a manager reads it
+# inside verify_signature, must not be relabelled as a bad signature.
+# ---------------------------------------------------------------------------
+
+
+def test_oversized_body_during_verify_signature_is_not_logged_as_a_bad_signature(
+    caplog,
+):
+    webhook = _make_webhook(ProviderName.GITHUB)
+    mock_manager = MagicMock()
+    mock_manager.verify_signature = AsyncMock(side_effect=RequestBodyTooLarge())
+
+    patches = _patch_ingress(webhook) + [
+        patch(
+            "backend.api.features.integrations.router.get_webhook_manager",
+            return_value=mock_manager,
+        )
+    ]
+    with ExitStack() as stack:
+        for p in patches:
+            stack.enter_context(p)
+        resp = _post("github")
+
+    assert resp.status_code == 413, resp.text
+    assert "Signature verification failed" not in caplog.text
 
 
 async def test_preset_trigger_refuses_foreign_owner(mocker):
