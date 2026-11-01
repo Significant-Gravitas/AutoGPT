@@ -1024,7 +1024,7 @@ def test_response_text_uses_a_listed_charset(content_type: str):
         ("cp950", b"\xa4\xa4\xf9\xd6", "\u4e2d\u7881"),
         ("Shift_JIS", b"\x82\xa0", "\u3042"),
         ("Shift_JIS_2004", b"\x82\xa0", "\u3042"),
-        ("ISO-2022-JP-2", b"\x1b$B$\"\x1b(B", "\u3042"),
+        ("ISO-2022-JP-2", b'\x1b$B$"\x1b(B', "\u3042"),
         ("MacCyrillic", b"\x80", "\u0410"),
         ("KOI8-T", b"\xf0", "\u041f"),
         ("johab", b"\x88\x61", "\uac00"),
