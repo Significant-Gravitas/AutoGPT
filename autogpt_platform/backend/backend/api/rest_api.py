@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import logging
 import platform
+from collections.abc import Awaitable, Callable
 from enum import Enum
 from typing import Any, Optional
 
@@ -110,6 +111,7 @@ from .external.v2.mcp_server import (
 from .features.analytics import router as analytics_router
 from .features.integrations.router import router as integrations_router
 from .middleware.analytics import AnalyticsContextMiddleware
+from .middleware.body_limit import RequestBodyLimitMiddleware
 from .middleware.compression import BoundedGZipMiddleware
 from .middleware.security import SecurityHeadersMiddleware
 from .utils.auth_before_body import check_token_before_body
@@ -167,24 +169,7 @@ async def lifespan_context(app: fastapi.FastAPI):
 
     await backend.data.block.initialize_blocks()
 
-    await backend.data.user.migrate_and_encrypt_user_integrations()
-    await backend.data.graph.fix_llm_provider_credentials()
-    await backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL)
-    await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
-    await backend.data.org_migration.run_migration()
-
-    # Guarded, unlike its neighbours above: this backfill only corrects what
-    # the builder displays for Otto nodes saved before `transport`
-    # existed. The block honours the connection either way, so a failure here
-    # changes nothing about which account pays — and refusing to boot the
-    # platform over a cosmetic migration would be the worse outcome.
-    try:
-        await asyncio.wait_for(
-            backend.data.autopilot_migrate.migrate_autopilot_transport(apply=True),
-            timeout=30,
-        )
-    except Exception:
-        logger.error("Otto transport backfill failed", exc_info=True)
+    await _run_data_migrations()
 
     # Fail-hard: the catalog is load-bearing — a broken load stops the boot.
     backend.data.llm_registry.load_catalog()
@@ -228,6 +213,37 @@ async def lifespan_context(app: fastapi.FastAPI):
         await backend.data.db.disconnect()
     except Exception:
         logger.warning("db.disconnect failed", exc_info=True)
+
+
+async def _run_data_migrations() -> None:
+    """Run the start-up data migrations, logging any that fails and going on.
+
+    Each is idempotent and runs again on the next start, so none stops the boot.
+    """
+    migrations: list[tuple[str, Callable[[], Awaitable[object]]]] = [
+        ("user integrations", backend.data.user.migrate_and_encrypt_user_integrations),
+        (
+            "LLM models",
+            lambda: backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL),
+        ),
+        (
+            "legacy triggered graphs",
+            backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs,
+        ),
+        ("org bootstrap", backend.data.org_migration.run_migration),
+        (
+            "Otto transport",
+            lambda: asyncio.wait_for(
+                backend.data.autopilot_migrate.migrate_autopilot_transport(apply=True),
+                timeout=30,
+            ),
+        ),
+    ]
+    for name, migrate in migrations:
+        try:
+            await migrate()
+        except Exception:
+            logger.error(f"Start-up data migration '{name}' failed", exc_info=True)
 
 
 def custom_generate_unique_id(route: APIRoute):
@@ -275,6 +291,9 @@ app = fastapi.FastAPI(
     generate_unique_id_function=custom_generate_unique_id,
 )
 
+# First, so it sits inside the others and its 413 carries their headers. It
+# covers the mounted apps too.
+app.add_middleware(RequestBodyLimitMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 # Marks the PostHog events of an admin acting as a user, and joins a request's
 # events to the browser's PostHog session.
