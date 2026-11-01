@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isJsonTextFor,
   parseJsonExact,
-  restoreIntegerLiterals,
+  parseJsonExactWithIntegers,
 } from "./json-text";
 
 describe("isJsonTextFor", () => {
@@ -87,20 +87,47 @@ describe("parseJsonExact", () => {
   });
 });
 
-describe("restoreIntegerLiterals", () => {
+describe("parseJsonExactWithIntegers", () => {
   const big = "9007199254740995";
 
-  it("writes digits read from a JSON number back as that number", () => {
-    const loaded = parseJsonExact(
-      `{"value": ${big}, "list": [${big}], "label": "${big}"}`,
+  it("gives the path of each big integer that was a JSON number", () => {
+    const { value, integers } = parseJsonExactWithIntegers(
+      `{"a/b": {"list": [1, ${big}]}, "label": "${big}", "n": -${big}}`,
     );
-    expect(restoreIntegerLiterals(JSON.stringify(loaded))).toBe(
-      `{"value":${big},"list":[${big}],"label":"${big}"}`,
-    );
+    expect(value).toEqual({
+      "a/b": { list: [1, big] },
+      label: big,
+      n: `-${big}`,
+    });
+    expect(integers).toEqual([
+      { path: ["a/b", "list", "1"], digits: big },
+      { path: ["n"], digits: `-${big}` },
+    ]);
   });
 
-  it("keeps digits that were never read as a number a string", () => {
-    const json = '{"value":"9007199254740997","note":"x 9007199254740995"}';
-    expect(restoreIntegerLiterals(json)).toBe(json);
+  it("gives a bare top-level integer the empty path", () => {
+    expect(parseJsonExactWithIntegers(big)).toEqual({
+      value: big,
+      integers: [{ path: [], digits: big }],
+    });
+  });
+
+  it("keeps a string of a control character and digits a string", () => {
+    const text = `{"s": "\\u0000${big}", "t": "\\u0001${big}", "n": ${big}}`;
+    const { value, integers } = parseJsonExactWithIntegers(text);
+    expect(value).toEqual({ s: `\u0000${big}`, t: `\u0001${big}`, n: big });
+    expect(integers).toEqual([{ path: ["n"], digits: big }]);
+  });
+
+  it("reads floats and short integers without the exact pass", () => {
+    for (const text of [
+      '{"f": 0.30000000000000004, "g": 1.2345678901234567e30}',
+      '{"n": 123456789012345, "f": 12345678901234567.5}',
+    ]) {
+      expect(parseJsonExactWithIntegers(text)).toEqual({
+        value: JSON.parse(text),
+        integers: [],
+      });
+    }
   });
 });
