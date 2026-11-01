@@ -176,6 +176,22 @@ def test_a_bomb_is_refused_without_a_member_being_read(monkeypatch):
     opened.assert_not_called()
 
 
+def test_a_package_whose_real_bytes_pass_the_total_is_refused(monkeypatch):
+    """The declared sizes are small, so the check before reading passes; the
+    bytes the reader returns are what the package total is held against."""
+    data = _zip({"SKILL.md": SKILL_MD, **{f"f{i}.bin": b"x" for i in range(11)}})
+    produced = b"\0" * MAX_PACKAGE_FILE_BYTES
+    monkeypatch.setattr(
+        "backend.api.features.skill_zip.read_member",
+        lambda archive, info, *, max_bytes: produced,
+    )
+
+    with pytest.raises(SkillPackageError) as exc:
+        package_from_zip(data)
+    assert exc.value.over_limit
+    assert str(MAX_PACKAGE_BYTES) in str(exc.value)
+
+
 def test_a_file_over_the_per_file_cap_is_refused_unread(monkeypatch):
     """The package validator would also catch the size — but only after the
     member has been decompressed, which is the cost this check avoids."""

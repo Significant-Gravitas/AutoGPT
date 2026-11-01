@@ -45,12 +45,27 @@ def package_from_zip(data: bytes) -> SkillPackage:
         root = members.pop(ROOT_SKILL_MD)
         # A member's CRC is verified as it decompresses, so a corrupt archive
         # opens cleanly and fails here.
+        # The declared sizes are the archive's own claim, so the package total
+        # is held against the bytes each read actually produced.
+        unpacked = 0
+
+        def read_counted(info: zipfile.ZipInfo) -> bytes:
+            nonlocal unpacked
+            content = _read(archive, info)
+            unpacked += len(content)
+            if unpacked > MAX_PACKAGE_BYTES:
+                raise SkillPackageError(
+                    f"archive unpacks to more than {MAX_PACKAGE_BYTES} bytes",
+                    over_limit=True,
+                )
+            return content
+
         try:
-            skill_md = _decoded(_read(archive, root))
+            skill_md = _decoded(read_counted(root))
             files = [
                 SkillFile(
                     relative_path=path,
-                    content=_read(archive, info),
+                    content=read_counted(info),
                     is_executable=bool(_mode(info) & 0o111),
                 )
                 for path, info in members.items()
