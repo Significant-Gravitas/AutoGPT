@@ -28,6 +28,10 @@ EXECUTION_RESULT_ORDER: list[prisma.types.AgentNodeExecutionOrderByInput] = [
 # result. Matches `MAX_NODE_EXECUTIONS_FETCH` for symmetry.
 MAX_NODE_INPUT_OUTPUT_FETCH = 1000
 
+# A write may not store more named inputs than a read fetches them back, or the
+# read truncates silently. Same number, read from the write side.
+MAX_NAMED_INPUTS = MAX_NODE_INPUT_OUTPUT_FETCH
+
 EXECUTION_RESULT_INCLUDE: prisma.types.AgentNodeExecutionInclude = {
     "Input": {"order_by": {"time": "asc"}, "take": MAX_NODE_INPUT_OUTPUT_FETCH},
     "Output": {"order_by": {"time": "asc"}, "take": MAX_NODE_INPUT_OUTPUT_FETCH},
@@ -75,7 +79,7 @@ def graph_execution_include(
 
 
 AGENT_PRESET_INCLUDE: prisma.types.AgentPresetInclude = {
-    "InputPresets": True,
+    "InputPresets": {"order_by": {"time": "asc"}, "take": MAX_NODE_INPUT_OUTPUT_FETCH},
     "Webhook": True,
 }
 

@@ -1,6 +1,7 @@
 import asyncio
 import itertools
 import logging
+from collections.abc import Mapping
 from typing import Literal, LiteralString, Optional, cast
 
 import fastapi
@@ -30,6 +31,7 @@ from backend.data.graph import GraphSettings
 from backend.data.includes import (
     AGENT_PRESET_INCLUDE,
     LIBRARY_FOLDER_INCLUDE,
+    MAX_NAMED_INPUTS,
     library_agent_include,
 )
 from backend.data.model import CredentialsMetaInput, GraphInput
@@ -2315,15 +2317,7 @@ async def create_preset(
         isActive=preset.is_active,
         webhookId=webhook_id,
         InputPresets={
-            "create": [
-                prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
-                    name=name, data=SafeJson(data)
-                )
-                for name, data in {
-                    **preset.inputs,
-                    **preset.credentials,
-                }.items()
-            ]
+            "create": preset_input_rows({**preset.inputs, **preset.credentials}),
         },
     )
     if organization_id:
@@ -2479,18 +2473,15 @@ async def update_preset(
                     "Preset inputs and credentials must be provided together"
                 )
             update_data["InputPresets"] = {
-                "create": [
-                    prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
-                        name=name, data=SafeJson(data)
-                    )
-                    for name, data in {
+                "create": preset_input_rows(
+                    {
                         **inputs,
                         **{
                             key: creds_meta.model_dump(exclude_none=True)
                             for key, creds_meta in credentials.items()
                         },
-                    }.items()
-                ],
+                    }
+                ),
             }
             # Existing InputPresets must be deleted, in a separate query
             await prisma.models.AgentNodeExecutionInputOutput.prisma(tx).delete_many(
@@ -2505,6 +2496,32 @@ async def update_preset(
     if not updated:
         raise RuntimeError(f"AgentPreset #{preset_id} vanished while updating")
     return library_model.LibraryAgentPreset.from_db(updated)
+
+
+def preset_input_rows(
+    entries: Mapping[str, object],
+) -> list[prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput]:
+    """Build a preset's input rows from its merged inputs and credentials.
+
+    Each name becomes a row of its own, so the count is bounded here, where the
+    rows are written, rather than at each caller.
+    """
+    check_preset_input_count(entries)
+    return [
+        prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(
+            name=name, data=SafeJson(data)
+        )
+        for name, data in entries.items()
+    ]
+
+
+def check_preset_input_count(entries: Mapping[str, object]) -> None:
+    """Refuse a preset with more named inputs than one read brings back."""
+    if len(entries) > MAX_NAMED_INPUTS:
+        raise InvalidInputError(
+            f"A preset takes at most {MAX_NAMED_INPUTS} inputs and credentials "
+            f"together; got {len(entries)}"
+        )
 
 
 async def set_preset_webhook(

@@ -12,6 +12,7 @@ from backend.api.features.library.triggers import (
     setup_triggered_preset,
     update_triggered_preset,
 )
+from backend.data.includes import MAX_NAMED_INPUTS
 from backend.util.exceptions import InvalidInputError, MissingConfigError, NotFoundError
 
 _USER = "test-user-triggers"
@@ -69,14 +70,16 @@ def _not_a_member():
     )
 
 
-async def _setup(*, expert_id: str | None = None):
+async def _setup(*, expert_id: str | None = None, trigger_config: dict | None = None):
     return await setup_triggered_preset(
         user_id=_USER,
         graph_id="graph-1",
         graph_version=1,
         name="My Trigger",
         description="",
-        trigger_config={"repo": "owner/repo"},
+        trigger_config=(
+            {"repo": "owner/repo"} if trigger_config is None else trigger_config
+        ),
         agent_credentials={},
         expert_id=expert_id,
     )
@@ -283,6 +286,24 @@ async def test_webhook_setup_rejected_raises():
     with p_graph, p_creds, p_webhook, p_expert, p_create as create_mock:
         with pytest.raises(InvalidInputError, match="no enabled events"):
             await _setup()
+    create_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_oversized_trigger_config_registers_no_webhook():
+    """Refused before the webhook is registered, so none is left to clean up."""
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    oversized = {f"field_{i}": i for i in range(MAX_NAMED_INPUTS + 1)}
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook as webhook_mock,
+        p_create as create_mock,
+        pytest.raises(InvalidInputError, match="at most"),
+    ):
+        await _setup(trigger_config=oversized)
+    webhook_mock.assert_not_awaited()
     create_mock.assert_not_awaited()
 
 

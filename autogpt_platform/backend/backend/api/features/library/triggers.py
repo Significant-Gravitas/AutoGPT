@@ -96,6 +96,8 @@ async def setup_triggered_preset(
             or {}
         ),
     }
+    # Before the webhook is registered, so a refused config registers none.
+    db.check_preset_input_count(trigger_config_with_credentials)
 
     if expert_id:
         organization_id, team_id = await _resolve_private_expert_tenancy(
@@ -192,6 +194,7 @@ async def update_triggered_preset(
                     or {}
                 ),
             }
+            db.check_preset_input_count(trigger_config_with_credentials)
             new_webhook, feedback = await setup_webhook_for_block(
                 user_id=user_id,
                 trigger_block=trigger_node.block,

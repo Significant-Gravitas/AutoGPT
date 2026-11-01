@@ -42,6 +42,7 @@ from backend.data.execution import (
     NodesInputMasks,
 )
 from backend.data.graph import GraphModel, Node
+from backend.data.includes import MAX_NAMED_INPUTS
 from backend.data.model import (
     USER_TIMEZONE_NOT_SET,
     CredentialsMetaInput,
@@ -64,6 +65,7 @@ from backend.util.exceptions import (
     ExpertPrivateTenancyNotFoundError,
     GraphNotFoundError,
     GraphValidationError,
+    InvalidInputError,
     NotFoundError,
     UserBannedError,
 )
@@ -985,8 +987,25 @@ async def validate_and_construct_node_execution_input(
         nodes_input_masks=nodes_input_masks,
         dry_run=dry_run,
     )
+    _check_node_input_counts(starting_nodes_input)
 
     return graph, starting_nodes_input, nodes_input_masks, nodes_to_skip
+
+
+def _check_node_input_counts(
+    starting_nodes_input: list[tuple[str, BlockInput]],
+) -> None:
+    """Refuse a run whose starting inputs would outgrow what a read brings back.
+
+    A node's input is one row per name, and the names come from the request, the
+    node's own defaults and the input masks of whatever started the run.
+    """
+    for node_id, node_input in starting_nodes_input:
+        if len(node_input) > MAX_NAMED_INPUTS:
+            raise InvalidInputError(
+                f"Node #{node_id} takes at most {MAX_NAMED_INPUTS} inputs; "
+                f"got {len(node_input)}"
+            )
 
 
 def _merge_nodes_input_masks(
