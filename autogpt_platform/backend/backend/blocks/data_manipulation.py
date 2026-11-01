@@ -9,7 +9,7 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
-from backend.util.json import loads
+from backend.util.json import dumps, loads
 from backend.util.mock import MockObject
 from backend.util.prompt import estimate_token_count_str
 
@@ -1195,7 +1195,10 @@ class InterleaveListsBlock(Block):
         yield "length", len(result)
 
 
-ZIP_LISTS_MAX_OUTPUT_ITEMS = 100_000
+# Most bytes a zipped result may add to its input, as JSON: the fill value
+# written into each padded cell, plus the separators around every cell and
+# group. Each input element appears in the result at most once.
+ZIP_LISTS_MAX_ADDED_BYTES = 4 * 1024 * 1024
 
 
 class ZipListsBlock(Block):
@@ -1303,11 +1306,14 @@ class ZipListsBlock(Block):
             yield "length", 0
             return
 
-        output_items = _zipped_item_count(input_data.lists, input_data.pad_to_longest)
-        if output_items > ZIP_LISTS_MAX_OUTPUT_ITEMS:
+        added_bytes = _zipped_added_bytes(
+            input_data.lists, input_data.pad_to_longest, input_data.fill_value
+        )
+        if added_bytes > ZIP_LISTS_MAX_ADDED_BYTES:
             yield "error", (
-                f"The zipped result would have {output_items:,} items, more "
-                f"than the limit of {ZIP_LISTS_MAX_OUTPUT_ITEMS:,}."
+                f"The zipped result would add {added_bytes / 2**20:.1f} MiB to "
+                f"its input, more than the limit of "
+                f"{ZIP_LISTS_MAX_ADDED_BYTES / 2**20:g} MiB."
             )
             return
 
@@ -1320,13 +1326,19 @@ class ZipListsBlock(Block):
         yield "length", len(result)
 
 
-def _zipped_item_count(lists: list[list[Any]], pad_to_longest: bool) -> int:
-    """Number of elements the zipped result holds, computed without building it."""
+def _zipped_added_bytes(
+    lists: list[list[Any]], pad_to_longest: bool, fill_value: Any
+) -> int:
+    """JSON bytes the zipped result adds to its input, computed without building it."""
     lengths = [len(lst) for lst in lists if lst is not None]
     if not lengths:
         return 0
     groups = max(lengths) if pad_to_longest else min(lengths)
-    return groups * len(lengths)
+    cells = groups * len(lengths)
+    padded_cells = cells - sum(min(length, groups) for length in lengths)
+    fill_bytes = len(dumps(fill_value).encode()) if padded_cells else 0
+    # A "," after each cell, "[]," around each group.
+    return padded_cells * fill_bytes + cells + groups * 3
 
 
 class ListDifferenceBlock(Block):

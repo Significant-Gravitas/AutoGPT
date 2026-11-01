@@ -4,7 +4,12 @@ from typing import Any
 
 import pytest
 
-from backend.blocks.data_manipulation import FindInDictionaryBlock, ZipListsBlock
+from backend.blocks.data_manipulation import (
+    FindInDictionaryBlock,
+    ZipListsBlock,
+    _zipped_added_bytes,
+)
+from backend.util.json import dumps
 from backend.util.mock import MockObject
 
 
@@ -113,21 +118,38 @@ async def _zip(lists: list, pad_to_longest: bool) -> list[tuple[str, Any]]:
     ]
 
 
-async def test_zip_pad_refuses_a_result_over_the_item_limit(mocker):
+async def test_zip_pad_refuses_padding_over_the_size_limit(mocker):
     pad = mocker.spy(ZipListsBlock, "_zip_pad")
-    # 10 groups of 10,001 elements: 100,010 items from 10 input values.
-    lists = [list(range(10))] + [[] for _ in range(10_000)]
+    # 1,000 groups, 10 of every 11 cells padded with a 1 KB fill value.
+    lists = [list(range(1_000))] + [[] for _ in range(10)]
+
+    outputs = [
+        output
+        async for output in ZipListsBlock().run(
+            ZipListsBlock.Input(lists=lists, pad_to_longest=True, fill_value="x" * 1_000)
+        )
+    ]
+
+    assert [name for name, _ in outputs] == ["error"]
+    assert "more than the limit of 4 MiB" in outputs[0][1]
+    pad.assert_not_called()
+
+
+async def test_zip_pad_refuses_many_small_padded_cells(mocker):
+    pad = mocker.spy(ZipListsBlock, "_zip_pad")
+    # 1,500 values and 1,500 empty lists: 2.25 million cells of "null".
+    lists = [list(range(1_500))] + [[] for _ in range(1_500)]
 
     outputs = await _zip(lists, pad_to_longest=True)
 
     assert [name for name, _ in outputs] == ["error"]
-    assert "100,010 items" in outputs[0][1]
     pad.assert_not_called()
 
 
-async def test_zip_truncate_refuses_a_result_over_the_item_limit(mocker):
+async def test_zip_truncate_refuses_a_result_over_the_size_limit(mocker):
     truncate = mocker.spy(ZipListsBlock, "_zip_truncate")
-    lists = [list(range(50_001)), list(range(50_001))]
+    # 900,000 groups of two: about 4.3 MiB of separators and brackets.
+    lists = [list(range(900_000)), list(range(900_000))]
 
     outputs = await _zip(lists, pad_to_longest=False)
 
@@ -135,10 +157,21 @@ async def test_zip_truncate_refuses_a_result_over_the_item_limit(mocker):
     truncate.assert_not_called()
 
 
-async def test_zip_result_at_the_item_limit_is_built():
-    lists = [list(range(50_000)), list(range(50_000))]
+async def test_zip_result_under_the_size_limit_is_built():
+    lists = [list(range(50_000)), list(range(50_000)), list(range(10))]
 
     outputs = dict(await _zip(lists, pad_to_longest=True))
 
     assert outputs["length"] == 50_000
-    assert outputs["zipped_list"][-1] == [49_999, 49_999]
+    assert outputs["zipped_list"][-1] == [49_999, 49_999, None]
+
+
+def test_added_bytes_match_the_serialized_result():
+    lists = [list(range(300)), list(range(10)), []]
+    fill = "x" * 50
+    zipped = ZipListsBlock()._zip_pad(lists, fill)
+    grown = len(dumps(zipped)) - len(dumps(lists))
+
+    estimate = _zipped_added_bytes(lists, pad_to_longest=True, fill_value=fill)
+
+    assert grown <= estimate <= grown * 1.1
