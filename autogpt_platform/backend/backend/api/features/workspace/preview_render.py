@@ -107,6 +107,10 @@ async def render_in_child(renderer: Renderer, content: bytes, width: int) -> byt
     finally:
         if process.returncode is None:
             process.kill()
+            # The exit is only reported once the output pipe closes, and reading
+            # stops when the output is refused or the render is cancelled, so
+            # discard what the child left in the pipe first.
+            await _discard(cast(asyncio.StreamReader, process.stdout))
             await process.wait()
     return _result(process.returncode, stdout)
 
@@ -165,6 +169,11 @@ async def _read_bounded(stream: asyncio.StreamReader, limit: int) -> bytes:
     return bytes(out)
 
 
+async def _discard(stream: asyncio.StreamReader) -> None:
+    while await stream.read(64 * 1024):
+        pass
+
+
 def _result(returncode: int | None, stdout: bytes) -> bytes:
     if returncode == _EXIT_OK and stdout:
         return stdout
@@ -173,14 +182,16 @@ def _result(returncode: int | None, stdout: bytes) -> bytes:
     if returncode == _EXIT_NO_THUMBNAIL:
         raise NoEmbeddedThumbnail()
     if returncode == _EXIT_NO_MEMORY_CAP:
-        raise RenderFailed()  # _check_memory_cap has already warned once
+        if not _check_memory_cap():
+            _warn_child_could_not_cap_memory()
+        raise RenderFailed()
     logger.warning(f"Preview render exited with code {returncode}")
     raise RenderFailed()
 
 
 @functools.cache
-def _check_memory_cap() -> None:
-    """Warn once when a child cannot apply the memory cap.
+def _check_memory_cap() -> bool:
+    """Warn once when a child cannot apply the memory cap; return whether it did.
 
     On Windows the child renders without one. Elsewhere a child that cannot
     set it exits without rendering, so every preview is "not available".
@@ -190,17 +201,27 @@ def _check_memory_cap() -> None:
             "RLIMIT_AS is not available on this platform; preview renders run "
             "without a memory cap"
         )
-        return
+        return True
     try:
         _, hard_limit = resource.getrlimit(resource.RLIMIT_AS)
     except (ValueError, OSError) as e:
         logger.warning(f"RLIMIT_AS is not available ({e}); previews will not render")
-        return
+        return True
     if hard_limit != resource.RLIM_INFINITY and hard_limit < RENDER_MAX_MEMORY_BYTES:
         logger.warning(
             f"RLIMIT_AS hard limit {hard_limit} is below the preview memory cap "
             f"{RENDER_MAX_MEMORY_BYTES}; previews will not render"
         )
+        return True
+    return False
+
+
+@functools.cache
+def _warn_child_could_not_cap_memory() -> None:
+    # The limits checked above allowed the cap, yet the child could not set it.
+    logger.warning(
+        "Preview render child could not set its memory cap; previews will not render"
+    )
 
 
 # ---------------------------------------------------------------------------
