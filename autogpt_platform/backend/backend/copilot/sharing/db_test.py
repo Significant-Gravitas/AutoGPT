@@ -29,6 +29,7 @@ from backend.copilot.model import ChatMessage
 from backend.copilot.sharing.db import (
     _build_shared_execution_file_allowlist,
     _collect_execution_ids_from_messages,
+    _collect_public_execution_outputs,
     _file_referenced_in_session,
     disable_chat_session_share,
     enable_chat_session_share,
@@ -795,6 +796,68 @@ class TestSharedExecutionFileAllowlist:
                 "shareToken": "share-token",
             }
         )
+
+
+def test_public_outputs_use_yielded_output_over_input_value():
+    node = SimpleNamespace(
+        Node=SimpleNamespace(agentBlockId="output-block"),
+        executionData={"name": "report", "value": "raw", "format": "{{ report }}!"},
+        Input=None,
+        Output=[SimpleNamespace(name="output", data="raw!")],
+    )
+    with patch(
+        "backend.copilot.sharing.db.get_block",
+        return_value=SimpleNamespace(block_type=BlockType.OUTPUT),
+    ):
+        outputs = _collect_public_execution_outputs(
+            SimpleNamespace(NodeExecutions=[node])
+        )
+    assert outputs == {"report": ["raw!"]}
+
+
+_MODERATED = "Failed due to content moderation"
+
+
+def _public_outputs(node: SimpleNamespace) -> dict:
+    with patch(
+        "backend.copilot.sharing.db.get_block",
+        return_value=SimpleNamespace(block_type=BlockType.OUTPUT),
+    ):
+        return _collect_public_execution_outputs(SimpleNamespace(NodeExecutions=[node]))
+
+
+def test_public_outputs_mask_moderation_cleared_outputs():
+    node = SimpleNamespace(
+        Node=SimpleNamespace(agentBlockId="output-block"),
+        executionData={"name": "report", "value": "secret", "format": "{{ report }}!"},
+        Input=None,
+        Output=[SimpleNamespace(name="output", data="secret!")],
+        stats={
+            "error": _MODERATED,
+            "cleared_inputs": {
+                "name": ["report"],
+                "value": [_MODERATED],
+                "format": [_MODERATED],
+            },
+            "cleared_outputs": {"output": [_MODERATED]},
+        },
+    )
+    assert _public_outputs(node) == {"report": [_MODERATED]}
+
+
+def test_public_outputs_mask_moderation_cleared_inputs():
+    node = SimpleNamespace(
+        Node=SimpleNamespace(agentBlockId="output-block"),
+        executionData={"name": "report", "value": "secret"},
+        Input=None,
+        Output=[],
+        stats={
+            "error": _MODERATED,
+            "cleared_inputs": {"name": ["report"], "value": [_MODERATED]},
+            "cleared_outputs": {},
+        },
+    )
+    assert _public_outputs(node) == {"report": [_MODERATED]}
 
 
 class TestLinkNewExecutionToChatShare:

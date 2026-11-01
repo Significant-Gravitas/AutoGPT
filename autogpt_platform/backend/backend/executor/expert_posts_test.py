@@ -44,11 +44,14 @@ def _redis_allowing_posts() -> MagicMock:
     return redis
 
 
-def _output_node(name: str, value: object) -> SimpleNamespace:
+def _output_node(
+    name: str, value: object, output: list | None = None
+) -> SimpleNamespace:
     return SimpleNamespace(
         queue_time=None,
         add_time=datetime(2026, 8, 14, tzinfo=timezone.utc),
         input_data={"name": name, "value": value},
+        output_data={"output": output} if output is not None else {},
         status=ExecutionStatus.COMPLETED,
     )
 
@@ -279,6 +282,25 @@ def test_post_attaches_run_metadata_with_output_type():
     output_query = db_client.get_node_executions.call_args.kwargs
     assert output_query["graph_exec_id"] == "exec-1"
     assert output_query["block_ids"]
+
+
+def test_post_classifies_the_formatted_output_not_the_raw_value():
+    db_client = MagicMock()
+    db_client.get_graph_metadata.return_value = SimpleNamespace(name="Weekly Report")
+    db_client.get_library_agent_id_by_graph_id.return_value = "lib-1"
+    db_client.get_node_executions.return_value = [
+        _output_node("result", {"metric": "signups"}, output=["word " * 100])
+    ]
+    with patch(f"{_MODULE}.get_redis", return_value=_redis_allowing_posts()):
+        handle_expert_run_post(
+            db_client,
+            _entry(expert_id="expert-1"),
+            ExecutionStatus.COMPLETED,
+            GraphExecutionStats(),
+        )
+    metadata = db_client.append_expert_run_message.call_args.kwargs["metadata"]
+    assert metadata["output_type"] == "doc"
+    assert metadata["output_key"] == "result"
 
 
 def test_failed_post_skips_output_fetch():

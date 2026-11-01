@@ -41,6 +41,7 @@ from backend.copilot.sharing.models import (
 )
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.db import transaction
+from backend.data.expert_run_output import moderation_cleared_io, output_values
 from backend.data.sharing.tokens import generate_share_token
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 from backend.util import type as type_utils
@@ -733,6 +734,7 @@ async def _build_shared_execution_file_allowlist(
             "NodeExecutions": {
                 "include": {
                     "Input": True,
+                    "Output": True,
                     "Node": {"include": {"AgentBlock": True}},
                 }
             }
@@ -856,13 +858,16 @@ def _collect_public_execution_outputs(
         input_data = _node_execution_input_data(node_exec)
         if "name" not in input_data:
             continue
-        name = input_data["name"]
-        value = input_data.get("value")
-        outputs.setdefault(name, []).append(value)
+        outputs.setdefault(input_data["name"], []).extend(
+            output_values(input_data, _node_execution_output_data(node_exec))
+        )
     return outputs
 
 
 def _node_execution_input_data(node_exec: Any) -> BlockInput:
+    cleared_inputs, _ = moderation_cleared_io(getattr(node_exec, "stats", None))
+    if cleared_inputs is not None:
+        return cleared_inputs
     execution_data = getattr(node_exec, "executionData", None)
     if execution_data:
         return type_utils.convert(execution_data, BlockInput)
@@ -872,6 +877,16 @@ def _node_execution_input_data(node_exec: Any) -> BlockInput:
         if data.name and data.data is not None:
             input_data[data.name] = type_utils.convert(data.data, Any)
     return input_data
+
+
+def _node_execution_output_data(node_exec: Any) -> CompletedBlockOutput:
+    _, cleared_outputs = moderation_cleared_io(getattr(node_exec, "stats", None))
+    if cleared_outputs is not None:
+        return cleared_outputs
+    output_data: CompletedBlockOutput = {}
+    for data in getattr(node_exec, "Output", None) or []:
+        output_data.setdefault(data.name, []).append(type_utils.convert(data.data, Any))
+    return output_data
 
 
 def _graph_name(graph: "AgentGraph | None") -> str | None:

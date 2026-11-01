@@ -189,7 +189,7 @@ def _resolve_run_output(
             block_ids=list(get_output_block_ids()),
         )
         outputs = reconstruct_run_outputs(
-            (node.queue_time, node.add_time, node.input_data)
+            (node.queue_time, node.add_time, node.input_data, node.output_data)
             for node in node_execs
             if node.status != ExecutionStatus.INCOMPLETE
         )
