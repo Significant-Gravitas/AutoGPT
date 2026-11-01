@@ -204,9 +204,11 @@ export function SetupRequirementsCard({
   function handleRun() {
     const message = buildProceedMessage();
     markSent();
-    void reportCredentialPicks(sessionID, inputCredentials).then(() =>
-      onSend(message),
-    );
+    void reportCredentialPicks(
+      sessionID,
+      inputCredentials,
+      credentialFields,
+    ).then(() => onSend(message));
   }
 
   // Inside a chain this card renders no Proceed of its own — the chain only
@@ -260,7 +262,7 @@ export function SetupRequirementsCard({
   // Inside a tool chain the card's own Proceed is replaced by the chain's
   // single Proceed step — register readiness + message with the chain.
   const registerWithChain = useStableCallback((actions: ChainActions) => {
-    actions.register({
+    actions.register(actionId, {
       id: actionId,
       ready: canRun,
       manualProceed: needsManualPick || hasUserActionableInputs,
@@ -270,7 +272,8 @@ export function SetupRequirementsCard({
       // A trigger's line carries the chosen credential ids, and an edit-mode
       // card's may carry run inputs; only a bare confirmation is shareable.
       credentialsOnly: needsCredentials && !needsInputs && !isTriggerMode,
-      beforeSend: () => reportCredentialPicks(sessionID, inputCredentials),
+      beforeSend: () =>
+        reportCredentialPicks(sessionID, inputCredentials, credentialFields),
       onSent: markSent,
       connectors: needsCredentials
         ? {
@@ -335,10 +338,7 @@ export function SetupRequirementsCard({
           below it; standalone the card keeps the full credentials picker. */}
       {needsCredentials && !chainActions && (
         <div className="rounded-2xl border bg-background p-3">
-          <Text
-            variant="small"
-            className="w-fit border-b text-foreground-tertiary"
-          >
+          <Text tone="muted" variant="small" className="w-fit border-b">
             {credentialsLabel ??
               (isEditMode ? "Credentials" : "Workflow credentials")}
           </Text>
@@ -358,16 +358,13 @@ export function SetupRequirementsCard({
           renders in the card below it, not inside the accordion. */}
       {isEditMode && !chainActions && (inputSchema || hasAdvancedFields) && (
         <div className="rounded-2xl border bg-background p-3 pt-4">
-          <Text
-            variant="small"
-            className="w-fit border-b text-foreground-tertiary"
-          >
+          <Text tone="muted" variant="small" className="w-fit border-b">
             Inputs
           </Text>
           {inputSchema && (
             <FormRenderer
               jsonSchema={inputSchema}
-              className="mb-3 mt-3"
+              className="mt-3 mb-3"
               handleChange={(v) =>
                 setInputValues((prev) => ({ ...prev, ...(v.formData ?? {}) }))
               }

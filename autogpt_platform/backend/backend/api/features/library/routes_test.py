@@ -237,8 +237,36 @@ async def test_get_favorite_library_agents_success(
 
     mock_db_call.assert_called_once_with(
         user_id=test_user_id,
+        search_term=None,
         page=1,
         page_size=15,
+    )
+
+
+def test_get_favorite_library_agents_passes_search_term(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    mock_db_call = mocker.patch(
+        "backend.api.features.library.db.list_favorite_library_agents"
+    )
+    mock_db_call.return_value = library_model.LibraryAgentResponse(
+        agents=[],
+        pagination=Pagination(
+            total_items=0, total_pages=0, current_page=2, page_size=10
+        ),
+    )
+
+    response = client.get(
+        "/agents/favorites", params={"search_term": "foo", "page": 2, "page_size": 10}
+    )
+    assert response.status_code == 200
+
+    mock_db_call.assert_called_once_with(
+        user_id=test_user_id,
+        search_term="foo",
+        page=2,
+        page_size=10,
     )
 
 

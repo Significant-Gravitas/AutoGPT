@@ -8,7 +8,7 @@ from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Awaitable, Optional, TypeVar, cast
 
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
@@ -25,6 +25,7 @@ from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.data import redis_client as redis
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
+from backend.data.db_accessors import experts_db
 from backend.data.dynamic_fields import parse_execution_output
 from backend.data.execution import (
     ExecutionContext,
@@ -57,7 +58,10 @@ from backend.executor.cost_tracking import (
 )
 from backend.integrations.codex.access import enforce_codex_access
 from backend.integrations.credential_lease import CredentialLease
-from backend.integrations.credentials_store import provider_matches
+from backend.integrations.credentials_store import (
+    is_system_credential,
+    provider_matches,
+)
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.monitoring.instrumentation import record_graph_run_completion
 from backend.util import json, product_analytics, tracing
@@ -114,6 +118,7 @@ from .utils import (
     GRAPH_EXECUTION_QUEUE_NAME,
     GRAPH_EXECUTION_ROUTING_KEY,
     LEGACY_GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
+    NODE_UNWIND_GRACE_SECONDS,
     CancelExecutionEvent,
     ExecutionOutputEntry,
     LogMetadata,
@@ -309,6 +314,24 @@ def execute_graph(
 T = TypeVar("T")
 
 
+async def _finish_despite_cancel(work: Awaitable[T]) -> T:
+    """Await ``work`` to its end even if the caller is cancelled meanwhile,
+    any number of times, then re-raise the cancel. A failure of ``work``
+    itself wins over the cancel, since it is the more useful error to
+    surface."""
+    task = asyncio.ensure_future(work)
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                continue
+        task.result()
+        raise
+
+
 async def execute_node(
     node: Node,
     data: NodeExecutionEntry,
@@ -389,7 +412,14 @@ async def execute_node(
         _input_data.user_id = user_id
         input_data = _input_data.model_dump()
     elif isinstance(node_block, MCPToolBlock):
-        _mcp_data = MCPToolBlock.Input(**node.input_default)
+        _mcp_input = dict(node.input_default)
+        # Read from the per-node masks, not input_data: tool arguments share
+        # input_data's namespace and a tool may declare its own `credentials`.
+        if run_credentials := ((nodes_input_masks or {}).get(node_id) or {}).get(
+            "credentials"
+        ):
+            _mcp_input["credentials"] = run_credentials
+        _mcp_data = MCPToolBlock.Input(**_mcp_input)
         # Dynamic tool fields are flattened to top-level by validate_exec
         # (via get_input_defaults). Collect them back into tool_arguments.
         tool_schema = _mcp_data.tool_input_schema
@@ -449,6 +479,7 @@ async def execute_node(
     creds_locks: list[AsyncRedisLock] = []
     credential_leases: dict[str, CredentialLease] = {}
     runtime_credential_leases: dict[str, CredentialLease] = {}
+    expert_allowed_credentials: set[str] | None = None
     try:
         # Handle regular credentials fields
         for field_name, input_type in input_model.get_credentials_fields().items():
@@ -477,6 +508,22 @@ async def execute_node(
                 continue  # Block runs without credentials
 
             credentials_meta = input_type(**field_value)
+            # An expert run uses only the credentials granted to it.
+            if execution_context.expert_id is not None and not is_system_credential(
+                credentials_meta.id
+            ):
+                if expert_allowed_credentials is None:
+                    expert_allowed_credentials = set(
+                        await experts_db().expert_allowed_credential_ids(
+                            user_id, execution_context.expert_id
+                        )
+                    )
+                if credentials_meta.id not in expert_allowed_credentials:
+                    raise ValueError(
+                        f"Credentials #{credentials_meta.id} in field "
+                        f"'{field_name}' have not been granted to this expert. "
+                        f"Grant them on the expert's Integrations page."
+                    )
             # Write normalized values back so JSON schema validation also passes
             # (model_validator may have fixed legacy formats like "ProviderName.MCP")
             input_data[field_name] = credentials_meta.model_dump(mode="json")
@@ -864,15 +911,22 @@ class ExecutionProcessor:
         transaction named after its block."""
         block = get_block(node_exec.block_id)
         with node_transaction(node_exec, block) as span:
-            return await self._run_node(
-                node_exec,
-                block,
-                node_exec_progress,
-                nodes_input_masks,
-                graph_stats_pair,
-                nodes_to_skip,
-                span,
+            # Its own task, even when a caller such as the Orchestrator runs a
+            # tool node inline from a longer-lived task: a stop's cleanup waits
+            # for this task (see wait_for_done), so it must end with the node.
+            node_run = asyncio.ensure_future(
+                self._run_node(
+                    node_exec,
+                    block,
+                    node_exec_progress,
+                    nodes_input_masks,
+                    graph_stats_pair,
+                    nodes_to_skip,
+                    span,
+                )
             )
+            node_exec_progress.track_unwinding(node_exec.node_exec_id, node_run)
+            return await node_run
 
     async def _run_node(
         self,
@@ -914,6 +968,35 @@ class ExecutionProcessor:
         execution_stats.cputime = timing_info.cpu_time
         record_node_result(span, status, execution_stats)
 
+        # A stop cancels this task, even after the block has finished. The
+        # block's charge, its final status and the run's totals must still be
+        # written, so a cancel arriving now waits for them before it is
+        # re-raised. The run's cleanup waits for them too (see wait_for_done):
+        # its terminal sweep would otherwise fail the node first.
+        settle = asyncio.ensure_future(
+            self._settle_node(
+                node=node,
+                node_exec=node_exec,
+                status=status,
+                execution_stats=execution_stats,
+                graph_stats_pair=graph_stats_pair,
+                db_client=db_client,
+                log_metadata=log_metadata,
+            )
+        )
+        node_exec_progress.track_settling(node_exec.node_exec_id, settle)
+        return await _finish_despite_cancel(settle)
+
+    async def _settle_node(
+        self,
+        node: Node,
+        node_exec: NodeExecutionEntry,
+        status: ExecutionStatus,
+        execution_stats: NodeExecutionStats,
+        graph_stats_pair: tuple[GraphExecutionStats, threading.Lock],
+        db_client: "DatabaseManagerAsyncClient",
+        log_metadata: LogMetadata,
+    ) -> NodeExecutionStats:
         # Log platform cost + reconcile dynamic billing BEFORE graph/node stats
         # are aggregated and persisted — otherwise the reconciled delta never
         # lands in `graph_stats.cost` or the persisted node stats. RUN-only
@@ -1097,10 +1180,21 @@ class ExecutionProcessor:
                 status = ExecutionStatus.TERMINATED
 
         finally:
+            # The block is done, so from here the node's own task (started in
+            # on_node_execution) is its bookkeeping, which the run's cleanup
+            # waits for in full rather than for the unwind grace.
+            if task := asyncio.current_task():
+                node_exec_progress.track_settling(node_exec.node_exec_id, task)
             if status == ExecutionStatus.FAILED and stats.error is not None:
-                await persist_output(
-                    "error", str(stats.error) or type(stats.error).__name__
-                )
+                try:
+                    await _finish_despite_cancel(
+                        persist_output(
+                            "error", str(stats.error) or type(stats.error).__name__
+                        )
+                    )
+                except asyncio.CancelledError:
+                    # The block has already failed: settle it, don't end here.
+                    pass
             tracing.set_data("executor.node.output_count", outputs)
         return status
 
@@ -1633,9 +1727,12 @@ class ExecutionProcessor:
             log_metadata.info(f"Stopping node execution {node_id}")
             inflight_exec.stop()
 
+        # One unwind grace for all nodes together, so several blocks that
+        # ignore the cancel can't add up past stop_graph_execution's wait.
+        unwind_until = time.time() + NODE_UNWIND_GRACE_SECONDS
         for node_id, inflight_exec in running_node_execution.items():
             try:
-                inflight_exec.wait_for_done(timeout=3600.0)
+                inflight_exec.wait_for_done(timeout=3600.0, unwind_until=unwind_until)
             except TimeoutError:
                 log_metadata.exception(
                     f"Node execution #{node_id} did not stop in time, "

@@ -116,10 +116,12 @@ and `setup-autogpt.bat` scripts described in
 same steps for you and can also set up a local Ollama model.
 
 {% hint style="warning" %}
-Docker Compose publishes PostgreSQL, Redis, RabbitMQ, and every backend service
-port on all network interfaces. Redis has no password, PostgreSQL and RabbitMQ
-use the default passwords from this repository, and signup is open. Run the
+Docker Compose publishes the frontend (port 3000), the REST API (8006) and the
+WebSocket server (8001) on all network interfaces, and signup is open. Run the
 stack on a machine and network you trust.
+PostgreSQL, Redis, RabbitMQ, FalkorDB and ClamAV are published on `127.0.0.1`
+only, and all but ClamAV require a password `make init-env` generates for your
+install.
 {% endhint %}
 
 ### Development prerequisites
@@ -170,15 +172,21 @@ To run the platform, follow these steps:
 
   This copies each `.env.default` to `.env` (for `autogpt_platform`, `backend`
   and `frontend`) and fills in the secrets that `.env.default` deliberately
-  leaves blank — `ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET_KEY`, `INTERNAL_API_KEY`
-  and `BETTER_AUTH_SECRET` — with values generated for your machine. Those files
-  are public, so shipping working values in them would mean every install in
-  the world shared one publicly-readable key. It is safe to re-run: it never
-  overwrites an existing `.env` or a value you set yourself. You can then edit
-  the `.env` files to add your own environment variables.
+  leaves blank — `ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET_KEY`,
+  `INTERNAL_API_KEY`, `BETTER_AUTH_SECRET`, and the passwords of the database,
+  RabbitMQ, Redis and FalkorDB — with values generated for your machine. Those
+  files are public, so shipping working values in them would mean every install
+  in the world shared one publicly-readable key. It never overwrites an
+  existing `.env` or a value you set yourself, and you can then edit the `.env`
+  files to add your own environment variables. To upgrade an install that is
+  already running, follow
+  [Upgrading: service passwords are generated per install](#upgrading-service-passwords-are-generated-per-install)
+  instead: there this command replaces the passwords this repository used to
+  publish, and the restart after it empties RabbitMQ's queues.
 
-  The backend **refuses to start** while `ENCRYPTION_KEY` is empty, so run this
-  before bringing the stack up.
+  The backend **refuses to start** while `ENCRYPTION_KEY` is empty, and Docker
+  Compose refuses to start without the database password, so run this before
+  bringing the stack up.
 
 - Run the platform services:
   ```
@@ -268,11 +276,20 @@ Your connected integrations are encrypted with `ENCRYPTION_KEY`, so the steps
 move them to the new key instead of losing them. Run everything from
 `autogpt_platform/`.
 
-1. Stop the stack:
+1. Empty RabbitMQ's queues, then stop the stack and update it. The restart in
+   step 5 recreates RabbitMQ, and a recreated RabbitMQ starts with empty
+   queues, so while the version you have now is still running, first follow
+   steps 1 to 3 of
+   [Upgrading: service passwords are generated per install](#upgrading-service-passwords-are-generated-per-install),
+   which leave the queues empty and only RabbitMQ running. The steps here take
+   the place of its step 4. Then:
 
    ```bash
-   docker compose down
+   docker compose stop -t 60
+   git pull
    ```
+
+   Use `stop`, not `down`: `down` would also throw away Redis's data.
 
 2. Keep the key your data is currently encrypted with. If you never set one,
    it is the value `.env.default` contained up to release `v0.7.4`:
@@ -293,9 +310,9 @@ move them to the new key instead of losing them. Run everything from
 
 3. Generate the new values. `make init-env` creates any missing `.env` file
    and fills in every secret whose line is present but empty; it never
-   overwrites a value. So in `backend/.env` make sure these two lines exist
-   with nothing after the `=`, and do the same for `BETTER_AUTH_SECRET=` in
-   `frontend/.env`:
+   overwrites one of these keys. So in `backend/.env` make sure these two lines
+   exist with nothing after the `=`, and do the same for `BETTER_AUTH_SECRET=`
+   in `frontend/.env`:
 
    ```
    ENCRYPTION_KEY=
@@ -315,9 +332,8 @@ move them to the new key instead of losing them. Run everything from
    cp -n .env.default .env
    cp -n backend/.env.default backend/.env
    cp -n frontend/.env.default frontend/.env
-   python3 single-container/runtime_config.py fill-env --path .env
-   python3 single-container/runtime_config.py fill-env --path backend/.env
-   python3 single-container/runtime_config.py fill-env --path frontend/.env
+   python3 single-container/runtime_config.py fill-env \
+     --path .env --path backend/.env --path frontend/.env
    ```
 
    Do not re-run `setup-autogpt.sh` or `setup-autogpt.bat` for this: they also
@@ -369,6 +385,160 @@ If the stack already ran on the new key, stop it and run step 4 now. Whatever
 nobody touched is recovered; a user who connected something in between gets
 their older credentials re-encrypted but still revoked, and reconnects those.
 
+### Upgrading: service passwords are generated per install
+
+The database, RabbitMQ and FalkorDB used to take their passwords from the
+`.env.default` files, Redis had none, and Docker Compose published all of
+them on every network interface. They are now published on `127.0.0.1` only,
+and their passwords are generated per install, like the secrets above.
+
+The upgrade recreates the RabbitMQ container, and a recreated RabbitMQ starts
+with empty queues: workflow runs waiting to start, chat turns, scheduled
+runs and emails still queued there are lost. So empty the queues first,
+while the version you have now is still running, and upgrade by these steps
+rather than by running the setup script again, which recreates RabbitMQ the
+same way. Run them from `autogpt_platform/`, in PowerShell on Windows:
+
+1. Stop the services that queue new work, so that those working through the
+   queues can catch up. Leave out any your version doesn't have:
+
+   ```bash
+   docker compose stop frontend rest_server websocket_server scheduler_server platform_linking_manager
+   ```
+
+   A backend you run outside Docker (`poetry run app`) does both, so leave it
+   running for now.
+
+2. Run this about once a minute. For each of RabbitMQ's virtual hosts
+   (usually only `/`, but versions differ in which one the platform's queues
+   end up in, so it checks them all), it lists the queues, how many messages
+   each holds, and how many services read it:
+
+   ```bash
+   docker compose exec rabbitmq sh -c 'set -f; IFS=; rabbitmqctl -s list_vhosts | while read -r vhost; do echo == virtual host $vhost; rabbitmqctl -q list_queues -p $vhost name messages consumers; done'
+   ```
+
+   Go on once every queue shows `0` messages on two checks in a row, apart
+   from those nothing reads (the last case below). A queue that keeps its
+   messages:
+
+   - with a consumer is still being worked through: wait.
+   - with none has lost its reader. Look for a service that isn't running
+     (`docker compose ps -a`, and the `poetry run app` process if you run the
+     backend outside Docker) or that keeps logging errors as it retries
+     (`docker compose logs --since 5m`), get it going again, and wait.
+   - is read by nothing in the version you run if it is a dead-letter queue,
+     whose name starts with `failed_notifications` (it keeps emails that
+     already failed to send), or if it has had no consumer for ten minutes
+     while the services still running log no errors (an earlier version used
+     it). RabbitMQ can't carry what these hold over to the new version: note
+     which queues they are, and go on only if you can do without their
+     messages.
+
+3. Stop everything but RabbitMQ, and the backend too if you run it outside
+   Docker. `-t 60` gives Redis a minute to write its data out as it stops.
+   On Linux and macOS:
+
+   ```bash
+   services=$(docker compose ps --services | grep -vx rabbitmq)
+   [ -z "$services" ] || docker compose stop -t 60 $services
+   ```
+
+   In PowerShell:
+
+   ```powershell
+   $services = @(docker compose ps --services | Where-Object { $_ -ne "rabbitmq" })
+   if ($services) { docker compose stop -t 60 $services }
+   ```
+
+   Wait ten seconds, since RabbitMQ updates these counts only every five, then
+   run the command from step 2 once more. With nothing else running, nothing
+   can add a message or take one, so this is the check that counts: every
+   queue must show `0`, apart from those you noted in step 2. If any
+   other queue holds a message, start everything again with
+   `docker compose start` (and `poetry run app` in `backend/`, if you run the
+   backend outside Docker) and go back to step 1.
+
+4. Update the stack, generate the passwords, and rebuild and start it:
+
+   ```bash
+   git pull
+   make init-env
+   docker compose up -d --build
+   ```
+
+   On Windows, where `make` is usually not installed, run
+   `installer\setup-autogpt.bat` in place of `make init-env`, then
+   `docker compose up -d --build`. The script generates the passwords before
+   anything reads them and starts the stack on the images you have; the
+   second command rebuilds them and restarts what changed. Compose stops
+   before it builds anything if `.env` has no `POSTGRES_PASSWORD`, which an
+   install from before that setting existed lacks, so don't build first. With
+   the queues empty and the stack stopped, neither restart loses anything.
+   Don't run `docker compose down` during the upgrade: it throws away Redis's
+   data, which holds work in progress such as AutoPilot's batch requests,
+   while `up` keeps it.
+
+   If `docker compose ps -a` listed a service named `redis` rather than
+   `redis-0` to `redis-2`, your version predates the Redis cluster. The
+   cluster starts empty, and what the old Redis held stays behind in its
+   stopped container.
+
+`make init-env` replaces each password that still holds the published value,
+adds the ones your `.env` files predate (`REDIS_PASSWORD`, for one), and keeps
+the database password the same in the three files that hold it:
+`POSTGRES_PASSWORD` in `.env`, `DB_PASS` in `backend/.env` and
+`DATABASE_URL` in `frontend/.env`. Passwords you set yourself are kept, but it
+stops with an error on one that Compose would take from the environment when
+the stack starts (`$NAME`, `${NAME}`, or the name alone on a line): write the
+password itself. The database applies `POSTGRES_PASSWORD` every time it
+starts, so its data stays where it is. A database, Redis, RabbitMQ or
+FalkorDB that `backend/.env` points at another host is a service of your own,
+and `make init-env` leaves its password as it is. The host that counts is the
+one the backend reads: `DB_HOST`; `REDIS_CLUSTER_HOST`, or else `REDIS_HOST`;
+`RABBITMQ_CLUSTER_HOST`, or else `RABBITMQ_HOST`; and `GRAPHITI_FALKORDB_HOST`.
+
+If you upgraded without emptying the queues, workflow runs that were waiting
+to start stay **Queued**. An hour later an admin can start them again from
+**Admin › Diagnostics**, tab **Stuck Queued**, with **Requeue All**.
+
+Don't skip `make init-env`. Without it, the stack goes on using only the
+passwords its `.env` files hold, and the backend logs a warning at startup
+while one of them is a value this repository published. A password an older
+file has no line for came from `.env.default`, which now leaves it blank:
+
+- Compose refuses to start without `POSTGRES_PASSWORD` in
+  `autogpt_platform/.env`.
+- FalkorDB doesn't start without `GRAPHITI_FALKORDB_PASSWORD`, which a
+  `backend/.env` created before v0.6.55 lacks.
+- The backend can't log in to RabbitMQ without `RABBITMQ_DEFAULT_PASS`, which
+  a `backend/.env` created before v0.4.10 lacks.
+
+`make init-env` adds each of them, and the backend's startup log names the
+last two while they are missing.
+
+If something outside the stack logs in to one of these services, such as a
+backup job or a database tool, give it the new password from those files.
+To reach a service from another machine, forward its port over SSH (for
+example `ssh -L 5432:127.0.0.1:5432 <host>`) rather than publishing it on
+the network again. Docker Engine 28 and later keep other machines away from
+ports published on `127.0.0.1`; older versions let a machine on the same
+local network reach them, so update Docker if yours is older.
+
+If your database's `pg_hba.conf` asks local connections for a password, the
+database can't change its own password with only the new one, so it doesn't
+start and logs why. Start it once with `PGPASSWORD` set to its current
+password, for example in a `docker-compose.override.yml`:
+
+```yaml
+services:
+  db:
+    environment:
+      PGPASSWORD: <the database's current password>
+```
+
+Remove the override once it has started.
+
 ### Upgrading an existing (Supabase-based) installation
 
 Older versions of the platform ran authentication on a bundled Supabase
@@ -379,9 +549,11 @@ three things changed:
    `.env.default`s. `make init-env` copies `.env.default` → `.env` for
    `autogpt_platform`, `backend` and `frontend`, but only where no `.env`
    exists yet (it uses `cp -n`): it creates missing `.env` *files* and never
-   overwrites an existing one. It does **not** merge newly-added variables
-   into an `.env` you already have — for an existing install, diff each
-   `.env` against its `.env.default` and copy the new keys across yourself.
+   overwrites an existing one. Apart from the service passwords (see
+   [Upgrading: service passwords are generated per install](#upgrading-service-passwords-are-generated-per-install)),
+   it does **not** merge newly-added variables into an `.env` you already
+   have — for an existing install, diff each `.env` against its
+   `.env.default` and copy the new keys across yourself.
    The `SUPABASE_*` URL/key variables are gone; the frontend now uses
    `BETTER_AUTH_SECRET` and `DATABASE_URL`.
 
@@ -418,7 +590,7 @@ three things changed:
    *Fast path — reuse the data directory:*
    ```sh
    cd autogpt_platform
-   docker compose down
+   docker compose stop -t 60                      # not down: that drops RabbitMQ's queues and Redis's data
    mkdir -p data/db
    rm -rf data/db/data                            # discards a freshly-initialised new DB
    cp -a db/docker/volumes/db/data data/db/data   # copy, so the old dir stays intact

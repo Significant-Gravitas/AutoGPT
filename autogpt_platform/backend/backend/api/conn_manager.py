@@ -12,13 +12,9 @@ from starlette.websockets import WebSocketState
 
 from backend.api.model import WSMessage, WSMethod
 from backend.data import redis_client as redis
+from backend.data.db_accessors import execution_db
 from backend.data.event_bus import _assert_no_wildcard
-from backend.data.execution import (
-    ExecutionEventType,
-    exec_channel,
-    get_graph_execution_meta,
-    graph_all_channel,
-)
+from backend.data.execution import ExecutionEventType, exec_channel, graph_all_channel
 from backend.data.notification_bus import NotificationEvent
 from backend.util.settings import Settings
 
@@ -250,7 +246,9 @@ class ConnectionManager:
         self, *, user_id: str, graph_exec_id: str, websocket: WebSocket
     ) -> str:
         # Hash-tagged channel needs graph_id; resolve once per subscribe.
-        meta = await get_graph_execution_meta(user_id, graph_exec_id)
+        meta = await execution_db().get_graph_execution_meta(
+            user_id=user_id, execution_id=graph_exec_id
+        )
         if meta is None:
             raise ValueError(
                 f"graph_exec #{graph_exec_id} not found for user #{user_id}"

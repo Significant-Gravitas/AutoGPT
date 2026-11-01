@@ -118,6 +118,7 @@ class RunBlockTool(BaseTool):
         validate_only: bool = False,
         gate_approved: bool = False,
         gate_decided: bool = False,
+        refs_resolved: bool = False,
         **kwargs,  # dry_run is intentionally not accepted; read from session.dry_run
     ) -> ToolResponseBase:
         """Execute a block with the given input data.
@@ -131,6 +132,8 @@ class RunBlockTool(BaseTool):
                 irreversible-action pause would ask the same question twice.
             gate_decided: The chat's approval gate reached a verdict on this
                 call; with unified approvals on, its yes is the block's review.
+            refs_resolved: The input's file references were resolved before
+                the gate reviewed the call, so it runs as reviewed.
 
         Returns:
             BlockOutputResponse: Block execution outputs
@@ -172,6 +175,7 @@ class RunBlockTool(BaseTool):
             session_id=session_id,
             dry_run=dry_run,
             validate_only=validate_only,
+            refs_resolved=refs_resolved,
         )
         if isinstance(prep_or_err, ToolResponseBase):
             return prep_or_err

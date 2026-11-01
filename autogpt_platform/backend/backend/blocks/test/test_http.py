@@ -306,6 +306,10 @@ class TestHttpBlockWithHostScopedCredentials:
             "User-Agent": "test-agent",
         }
         assert call_args.kwargs["headers"] == expected_headers
+        # The credential's header names, so a cross-origin redirect drops them.
+        assert mock_requests_class.call_args.kwargs["sensitive_headers"] == set(
+            exact_match_credentials.headers
+        )
 
         # Verify response handling
         assert len(result) == 1

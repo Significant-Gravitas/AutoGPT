@@ -26,8 +26,7 @@ function ActivityNavIndicator() {
     return (
       <LoadingSpinner
         size="small"
-        // TODO(tokens): no exact role for text-neutral-400 (#A3A3A3)
-        className="shrink-0 text-neutral-400"
+        className="shrink-0 text-foreground-subtle"
         aria-hidden="true"
       />
     );
@@ -36,8 +35,7 @@ function ActivityNavIndicator() {
     <Icon
       icon={ArrowUpRight01Icon}
       size={16}
-      // TODO(tokens): no exact role for text-neutral-400 (#A3A3A3)
-      className="shrink-0 text-neutral-400"
+      className="shrink-0 text-foreground-subtle"
       aria-hidden="true"
     />
   );
@@ -65,8 +63,7 @@ export function ActivityItem({ execution }: Props) {
           <Icon
             icon={Alert02Icon}
             size={18}
-            // TODO(tokens): no exact role for text-amber-600 (#D97706)
-            className="text-amber-600"
+            className="text-warning-foreground"
           />
         ) : (
           <Icon icon={CheckmarkCircle02Icon} size={18} className="text-brand" />
@@ -84,7 +81,7 @@ export function ActivityItem({ execution }: Props) {
           <Icon
             icon={Alert01Icon}
             size={18}
-            // TODO(tokens): no exact role for text-yellow-600 (#DFAF00)
+            // oxlint-disable-next-line design-system/no-raw-colors -- orange/yellow hue kept; warning-foreground would be a hue change (deferred visual change)
             className="text-yellow-600"
           />
         );
@@ -156,11 +153,7 @@ export function ActivityItem({ execution }: Props) {
       {/* Icon + Agent Name */}
       <div className="flex items-center space-x-2">
         {getStatusIcon()}
-        <Text
-          variant="small-medium"
-          // TODO(tokens): no exact role for text-gray-900 (#111827)
-          className="max-w-44 truncate text-gray-900"
-        >
+        <Text variant="small-medium" className="max-w-44 truncate">
           {execution.agent_name}
         </Text>
       </div>

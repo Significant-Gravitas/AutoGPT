@@ -1,0 +1,1105 @@
+{
+  "src/app/(platform)/PaywallGate/PaywallModal.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/PaywallGate/components/PausedSchedulesNotice.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/PaywallGate/components/PaywallHeader.tsx": {
+    "no-restyle": 5
+  },
+  "src/app/(platform)/PaywallGate/components/PaywallPlanChoices.tsx": {
+    "no-restyle": 8
+  },
+  "src/app/(platform)/PlatformChrome/PlatformChrome.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/PlatformChrome/components/InsetHeaderSidebarTrigger/InsetHeaderSidebarTrigger.tsx": {
+    "no-restyle": 6
+  },
+  "src/app/(platform)/PlatformChrome/components/InsetHeaderTitle/InsetHeaderTitle.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/PlatformChrome/components/UsageIndicator/UsageIndicator.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/auth/auth-code-error/page.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/auth/authorize/page.tsx": {
+    "no-restyle": 4
+  },
+  "src/app/(platform)/auth/integrations/setup-wizard/page.tsx": {
+    "no-restyle": 4
+  },
+  "src/app/(platform)/build/components/BuilderActions/components/AgentOutputs/AgentOutputs.tsx": {
+    "no-restyle": 10
+  },
+  "src/app/(platform)/build/components/BuilderActions/components/RunGraph/RunGraph.tsx": {
+    "no-restyle": 15
+  },
+  "src/app/(platform)/build/components/BuilderActions/components/RunInputDialog/RunInputDialog.tsx": {
+    "no-restyle": 6
+  },
+  "src/app/(platform)/build/components/BuilderChatPanel/BuilderChatPanel.tsx": {
+    "no-restyle": 7
+  },
+  "src/app/(platform)/build/components/BuilderChatPanel/components/NoModelNotice.tsx": {
+    "no-restyle": 5
+  },
+  "src/app/(platform)/build/components/BuilderChatPanel/components/PanelHeader.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/build/components/DraftRecoveryDialog/DraftRecoveryPopup.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/build/components/FloatingSafeModeToogle.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/build/components/FlowEditor/Flow/components/CustomControl.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/build/components/FlowEditor/Flow/components/TriggerAgentBanner.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/build/components/FlowEditor/edges/CustomEdge.tsx": {
+    "no-restyle": 7
+  },
+  "src/app/(platform)/build/components/FlowEditor/handlers/NodeHandle.tsx": {
+    "no-restyle": 6
+  },
+  "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/NodeAdvancedToggle.tsx": {
+    "no-restyle": 5
+  },
+  "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/NodeBadges.tsx": {
+    "no-restyle": 6
+  },
+  "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/NodeContextMenu.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/NodeExecutionBadge.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/NodeOutput/NodeOutput.tsx": {
+    "no-restyle": 26
+  },
+  "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/NodeOutput/components/ContentRenderer.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/NodeOutput/components/NodeDataViewer/NodeDataViewer.tsx": {
+    "no-restyle": 35
+  },
+  "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/NodeOutput/components/ViewMoreData.tsx": {
+    "no-restyle": 18
+  },
+  "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/NodeRightClickMenu.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/SubAgentUpdate/SubAgentUpdateFeature.tsx": {
+    "no-restyle": 6
+  },
+  "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/SubAgentUpdate/components/IncompatibleUpdateDialog.tsx": {
+    "no-restyle": 27
+  },
+  "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/SubAgentUpdate/components/ResolutionModeBar.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/WebhookDisclaimer.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/build/components/FlowEditor/nodes/OutputHandler.tsx": {
+    "no-restyle": 8
+  },
+  "src/app/(platform)/build/components/MCPToolDialog.tsx": {
+    "no-restyle": 17
+  },
+  "src/app/(platform)/build/components/MobileWarning/MobileWarning.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/AllBlocksContent/AllBlocksContent.tsx": {
+    "no-restyle": 5
+  },
+  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/Block.tsx": {
+    "no-restyle": 11
+  },
+  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/BlockMenu/BlockMenu.tsx": {
+    "no-restyle": 6
+  },
+  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/BlockMenuContent/BlockMenuContent.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/BlockMenuDefault/BlockMenuDefault.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/BlockMenuSearchBar/BlockMenuSearchBar.tsx": {
+    "no-restyle": 15
+  },
+  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/FilterChip.tsx": {
+    "no-restyle": 4
+  },
+  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/FilterSheet/FilterSheet.tsx": {
+    "no-restyle": 23
+  },
+  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/HorizontalScroll.tsx": {
+    "no-restyle": 10
+  },
+  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/Integration.tsx": {
+    "no-restyle": 15
+  },
+  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/IntegrationBlocks/IntegrationBlocks.tsx": {
+    "no-restyle": 5
+  },
+  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/IntegrationChip.tsx": {
+    "no-restyle": 6
+  },
+  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/IntergrationBlock.tsx": {
+    "no-restyle": 22
+  },
+  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/MarketplaceAgentBlock.tsx": {
+    "no-restyle": 17
+  },
+  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/NoSearchResult.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/SearchHistoryChip.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/UGCAgentBlock.tsx": {
+    "no-restyle": 19
+  },
+  "src/app/(platform)/build/components/NewControlPanel/NewSaveControl/NewSaveControl.tsx": {
+    "no-restyle": 7
+  },
+  "src/app/(platform)/build/components/NewControlPanel/NewSearchGraph/GraphMenu/GraphMenu.tsx": {
+    "no-restyle": 4
+  },
+  "src/app/(platform)/build/components/NewControlPanel/NewSearchGraph/GraphMenuContent/GraphContent.tsx": {
+    "no-restyle": 7
+  },
+  "src/app/(platform)/build/components/NewControlPanel/NewSearchGraph/GraphMenuSearchBar/GraphMenuSearchBar.tsx": {
+    "no-restyle": 15
+  },
+  "src/app/(platform)/build/components/ReadOnlyBanner/ReadOnlyBanner.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/components/ContextualTips/ContextualTips.tsx": {
+    "no-restyle": 4
+  },
+  "src/app/(platform)/components/FirstRunTour/components/TourSpotlight.tsx": {
+    "no-restyle": 4
+  },
+  "src/app/(platform)/components/FirstRunTour/components/TourStepCard.tsx": {
+    "no-restyle": 8
+  },
+  "src/app/(platform)/components/TabIntroCard/TabIntroCard.tsx": {
+    "no-restyle": 6
+  },
+  "src/app/(platform)/components/WorkflowsMovedNotice/WorkflowsMovedContent.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/components/WorkflowsMovedNotice/WorkflowsMovedDialog.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/components/WorkflowsMovedNotice/WorkflowsMovedWalkthrough.tsx": {
+    "no-restyle": 10
+  },
+  "src/app/(platform)/copilot/components/AgentSavedCard/AgentSavedCard.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/components/AnsweredQuestions/AnsweredQuestions.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/components/ApprovalQueue/components/ApprovalCard/ApproveSplitButton.tsx": {
+    "no-restyle": 12
+  },
+  "src/app/(platform)/copilot/components/ApprovalQueue/components/ApprovalCard/ChangePreview.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/components/ApprovalQueue/components/ApprovalCard/MoneyBlock.tsx": {
+    "no-inline-styles": 1
+  },
+  "src/app/(platform)/copilot/components/ApprovalQueue/components/ApprovalHeadline.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/copilot/components/ApprovalQueue/components/CompactApprovalLine.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/copilot/components/ApprovalQueue/components/QueueFooter.tsx": {
+    "no-restyle": 5
+  },
+  "src/app/(platform)/copilot/components/ApprovalQueue/components/ReceiptLine.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/copilot/components/ArtifactCard/ArtifactCard.tsx": {
+    "no-restyle": 6
+  },
+  "src/app/(platform)/copilot/components/ArtifactPanel/ArtifactPanel.tsx": {
+    "no-inline-styles": 2
+  },
+  "src/app/(platform)/copilot/components/ArtifactPanel/components/ArtifactContent.tsx": {
+    "no-restyle": 38
+  },
+  "src/app/(platform)/copilot/components/ChainActionCard/ConnectionsSection.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/components/ChainActionCard/InputsSection.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/components/ChainActionCard/QuestionsSection.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/components/ChatContainer/components/ArchivedExpertNotice.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/components/ChatContainer/components/ComposerPanelTab.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/copilot/components/ChatContainer/components/PausedDraftNote.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/components/ChatContainer/components/SessionNotFound.tsx": {
+    "no-restyle": 8
+  },
+  "src/app/(platform)/copilot/components/ChatInput/ChatInput.tsx": {
+    "no-restyle": 59,
+    "require-static-classes": 22
+  },
+  "src/app/(platform)/copilot/components/ChatInput/components/AudioWaveform.tsx": {
+    "no-inline-styles": 10
+  },
+  "src/app/(platform)/copilot/components/ChatInput/components/AutopilotModeSelector/AutopilotModeSelector.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/copilot/components/ChatInput/components/ComposerOverflowMenu.tsx": {
+    "no-restyle": 10
+  },
+  "src/app/(platform)/copilot/components/ChatInput/components/ComposerPlusMenu.tsx": {
+    "no-restyle": 8
+  },
+  "src/app/(platform)/copilot/components/ChatInput/components/ConnectionPicker/ChoiceRow.tsx": {
+    "no-restyle": 5
+  },
+  "src/app/(platform)/copilot/components/ChatInput/components/ConnectionPicker/ConnectAccountRow.tsx": {
+    "no-restyle": 5
+  },
+  "src/app/(platform)/copilot/components/ChatInput/components/ConnectionPicker/ConnectionPicker.tsx": {
+    "no-restyle": 23
+  },
+  "src/app/(platform)/copilot/components/ChatInput/components/ConnectionPicker/ConnectionPickerPanel.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/components/ChatInput/components/ConnectionPicker/MaxUpgradeCard.tsx": {
+    "no-restyle": 6
+  },
+  "src/app/(platform)/copilot/components/ChatInput/components/ConnectionPicker/TierToggle.tsx": {
+    "no-restyle": 6
+  },
+  "src/app/(platform)/copilot/components/ChatInput/components/FileChips.tsx": {
+    "no-inline-styles": 1,
+    "no-restyle": 4
+  },
+  "src/app/(platform)/copilot/components/ChatInput/components/MentionDropdown.stories.tsx": {
+    "require-static-classes": 1
+  },
+  "src/app/(platform)/copilot/components/ChatInput/components/MentionDropdown.tsx": {
+    "no-restyle": 4
+  },
+  "src/app/(platform)/copilot/components/ChatInput/components/RecipientChip.tsx": {
+    "no-restyle": 5
+  },
+  "src/app/(platform)/copilot/components/ChatInput/components/RecordingButton.tsx": {
+    "no-restyle": 20
+  },
+  "src/app/(platform)/copilot/components/ChatInput/components/WorkspaceFilePicker/WorkspaceFileList.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/copilot/components/ChatInput/components/WorkspaceFilePicker/WorkspaceFilePicker.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/copilot/components/ChatInput/components/WorkspaceFilePicker/WorkspaceFolderRows.tsx": {
+    "no-restyle": 1,
+    "require-static-classes": 1
+  },
+  "src/app/(platform)/copilot/components/ChatMessagesContainer/ChatMessagesContainer.tsx": {
+    "no-inline-styles": 1,
+    "no-restyle": 40,
+    "require-static-classes": 1
+  },
+  "src/app/(platform)/copilot/components/ChatMessagesContainer/components/AssistantMessageActions.tsx": {
+    "no-restyle": 6
+  },
+  "src/app/(platform)/copilot/components/ChatMessagesContainer/components/ExpertAvatar/ExpertAvatar.tsx": {
+    "no-restyle": 6
+  },
+  "src/app/(platform)/copilot/components/ChatMessagesContainer/components/FeedbackModal.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/copilot/components/ChatMessagesContainer/components/MessageAttachments.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/copilot/components/ChatMessagesContainer/components/MessageImageThumbnail.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/copilot/components/ChatMessagesContainer/components/MessagePartRenderer.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/components/ChatMessagesContainer/components/MessageRow/MessageRow.tsx": {
+    "no-restyle": 17,
+    "require-static-classes": 1
+  },
+  "src/app/(platform)/copilot/components/ChatMessagesContainer/components/MessageRow/components/AssistantRowActions.tsx": {
+    "no-restyle": 11
+  },
+  "src/app/(platform)/copilot/components/ChatMessagesContainer/components/MessageRow/components/UserRowActions.tsx": {
+    "no-restyle": 7
+  },
+  "src/app/(platform)/copilot/components/ChatMessagesContainer/components/PendingUploadMessage.tsx": {
+    "no-restyle": 25
+  },
+  "src/app/(platform)/copilot/components/ChatMessagesContainer/components/ReasoningCollapse.tsx": {
+    "no-restyle": 12
+  },
+  "src/app/(platform)/copilot/components/ChatMessagesContainer/components/StoppedTaskCard.tsx": {
+    "no-restyle": 4
+  },
+  "src/app/(platform)/copilot/components/ChatMessagesContainer/components/TailSpacer.tsx": {
+    "no-inline-styles": 1
+  },
+  "src/app/(platform)/copilot/components/ChatMessagesContainer/components/ThreadHeader.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/copilot/components/ChatMessagesContainer/components/VirtualTranscript/VirtualTranscript.tsx": {
+    "no-inline-styles": 4
+  },
+  "src/app/(platform)/copilot/components/ClarificationQuestionsCard/ClarificationQuestionsCard.tsx": {
+    "no-restyle": 7
+  },
+  "src/app/(platform)/copilot/components/CompactionCard/CompactionCard.tsx": {
+    "no-inline-styles": 1,
+    "no-restyle": 2
+  },
+  "src/app/(platform)/copilot/components/ConnectToolsDialog/ConnectProviderRow.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/copilot/components/ConnectToolsDialog/ConnectToolsPanel.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/copilot/components/ContextPanel/ContextPanel.tsx": {
+    "no-inline-styles": 1,
+    "no-restyle": 4
+  },
+  "src/app/(platform)/copilot/components/ContextPanel/ContextPanelToggle.tsx": {
+    "no-restyle": 20
+  },
+  "src/app/(platform)/copilot/components/ContextPanel/components/ArtifactsTab/components/ArtifactMiniCard.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/components/ContextPanel/components/IntegrationsTab/IntegrationsTab.tsx": {
+    "no-restyle": 16
+  },
+  "src/app/(platform)/copilot/components/ContextPanel/components/IntegrationsToggle/IntegrationsToggle.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/components/DrawnLineLoader/DrawnLineLoader.tsx": {
+    "no-inline-styles": 2
+  },
+  "src/app/(platform)/copilot/components/EmptySession/components/TextGenerateEffect/TextGenerateEffect.tsx": {
+    "no-inline-styles": 1
+  },
+  "src/app/(platform)/copilot/components/ExpertOnboardingCard/ExpertOnboardingCard.tsx": {
+    "no-inline-styles": 1,
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/components/ExpertOnboardingCard/components/OnboardingReview.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/copilot/components/FileDropZone/FileDropZone.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/components/NotificationBanner/NotificationBanner.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/copilot/components/OnboardingIntroCard/OnboardingIntroCard.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/components/OrbitLoader/OrbitLoader.tsx": {
+    "no-inline-styles": 2
+  },
+  "src/app/(platform)/copilot/components/RateLimitResetDialog/RateLimitResetDialog.tsx": {
+    "no-restyle": 6
+  },
+  "src/app/(platform)/copilot/components/ScaleLoader/ScaleLoader.tsx": {
+    "no-inline-styles": 2
+  },
+  "src/app/(platform)/copilot/components/ScheduledChatNoticeCard/ScheduledChatNoticeCard.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/copilot/components/SendAtReset/ScheduledSendChip.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/copilot/components/SetupRequirementsCard/SetupRequirementsCard.tsx": {
+    "no-restyle": 4
+  },
+  "src/app/(platform)/copilot/components/SuggestedTasks/SuggestedTaskCard.tsx": {
+    "no-restyle": 13
+  },
+  "src/app/(platform)/copilot/components/SuggestedTasks/SuggestedTaskList.tsx": {
+    "no-restyle": 13
+  },
+  "src/app/(platform)/copilot/components/SuggestedTasks/SuggestedTasksBlock.tsx": {
+    "no-restyle": 9
+  },
+  "src/app/(platform)/copilot/components/TaskProgressBar/TaskProgressBar.tsx": {
+    "no-restyle": 6
+  },
+  "src/app/(platform)/copilot/components/TaskProgressBar/components/StatusIcon/StatusIcon.tsx": {
+    "no-restyle": 5
+  },
+  "src/app/(platform)/copilot/components/TokenDevtoolBadge/TokenDevtoolBadge.tsx": {
+    "no-restyle": 4
+  },
+  "src/app/(platform)/copilot/components/TokenDevtoolBadge/components/BreakdownSection.tsx": {
+    "no-inline-styles": 1
+  },
+  "src/app/(platform)/copilot/components/TokenDevtoolBadge/components/ContextBar.tsx": {
+    "no-inline-styles": 2
+  },
+  "src/app/(platform)/copilot/components/ToolAccordion/AccordionContent.tsx": {
+    "no-restyle": 16
+  },
+  "src/app/(platform)/copilot/components/ToolAccordion/ToolAccordion.tsx": {
+    "no-inline-styles": 1,
+    "no-restyle": 2
+  },
+  "src/app/(platform)/copilot/components/ToolChain/AgentCards.tsx": {
+    "no-restyle": 4
+  },
+  "src/app/(platform)/copilot/components/ToolChain/BlockCards.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/copilot/components/ToolChain/ChainRowView.tsx": {
+    "no-restyle": 5
+  },
+  "src/app/(platform)/copilot/components/ToolChain/ConsultCard.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/components/ToolChain/ExecutionCard.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/copilot/components/ToolChain/ExpertCards.tsx": {
+    "no-restyle": 8
+  },
+  "src/app/(platform)/copilot/components/ToolChain/ExpertHandoffParts.tsx": {
+    "no-restyle": 4
+  },
+  "src/app/(platform)/copilot/components/ToolChain/FileDiff.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/components/ToolChain/HandoffRetry.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/components/ToolChain/HandoffStatusAvatar.tsx": {
+    "no-inline-styles": 2
+  },
+  "src/app/(platform)/copilot/components/ToolChain/HeldCallRowParts.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/copilot/components/ToolChain/InfoCards.tsx": {
+    "no-restyle": 5,
+    "require-static-classes": 1
+  },
+  "src/app/(platform)/copilot/components/ToolChain/ListCards.tsx": {
+    "no-restyle": 5
+  },
+  "src/app/(platform)/copilot/components/ToolChain/ResultCards.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/copilot/components/ToolChain/RowIcon.tsx": {
+    "no-restyle": 32
+  },
+  "src/app/(platform)/copilot/components/ToolChain/SkillLoadedCard.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/components/ToolChain/ToolChain.tsx": {
+    "no-restyle": 2,
+    "require-static-classes": 1
+  },
+  "src/app/(platform)/copilot/components/ToolChain/ToolResultViews.tsx": {
+    "no-restyle": 3,
+    "require-static-classes": 1
+  },
+  "src/app/(platform)/copilot/components/ToolErrorCard/ToolErrorCard.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/copilot/components/TurnPausedCard/components/LivePausedCard/LivePausedCard.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/components/TurnPausedCard/components/LivePausedCard/components/PausedCardActions.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/copilot/components/TurnPausedCard/components/PausedLine.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/components/UsageLimits/StorageBar.tsx": {
+    "no-inline-styles": 1,
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/components/UsageLimits/UsageBar.tsx": {
+    "no-inline-styles": 1,
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/components/UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard.tsx": {
+    "no-restyle": 6
+  },
+  "src/app/(platform)/copilot/components/UsageLimits/UsagePopover/UsagePopover.tsx": {
+    "no-restyle": 1,
+    "require-static-classes": 1
+  },
+  "src/app/(platform)/copilot/components/WorkspaceFileCards/WorkspaceFileCards.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/copilot/components/WorkspaceFileCards/components/FileRowActions.tsx": {
+    "no-restyle": 6
+  },
+  "src/app/(platform)/copilot/components/WorkspaceFileCards/components/FilesEmptyState.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/copilot/components/WorkspaceFileCards/components/SessionActivityContent.tsx": {
+    "no-restyle": 3,
+    "require-static-classes": 1
+  },
+  "src/app/(platform)/copilot/components/WorkspaceFileCards/components/StackSection.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/components/WorkspaceFileCards/components/WorkspaceFileCard.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/components/WorkspaceFileCards/components/WorkspaceFilesContent.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/copilot/styleguide/page.tsx": {
+    "no-restyle": 78
+  },
+  "src/app/(platform)/copilot/tools/AskQuestion/AskQuestion.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/copilot/tools/CreateAgent/components/SuggestedGoalCard.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/copilot/tools/CreateAgent/helpers.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/copilot/tools/DecomposeGoal/components/StepItem.tsx": {
+    "no-restyle": 6
+  },
+  "src/app/(platform)/copilot/tools/DecomposeGoal/helpers.tsx": {
+    "no-restyle": 7
+  },
+  "src/app/(platform)/copilot/tools/EditAgent/helpers.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/copilot/tools/FeatureRequests/helpers.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/copilot/tools/FindAgents/helpers.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/copilot/tools/FindBlocks/helpers.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/copilot/tools/FolderTool/FolderTool.tsx": {
+    "no-inline-styles": 1,
+    "no-restyle": 7
+  },
+  "src/app/(platform)/copilot/tools/GenericTool/GenericTool.tsx": {
+    "no-restyle": 17
+  },
+  "src/app/(platform)/copilot/tools/RunAgent/helpers.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/copilot/tools/RunBlock/components/BlockDetailsCard/BlockDetailsCard.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/copilot/tools/RunBlock/components/BlockInputCard/BlockInputCard.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/tools/RunBlock/components/BlockOutputCard/BlockOutputCard.tsx": {
+    "no-restyle": 6
+  },
+  "src/app/(platform)/copilot/tools/RunBlock/helpers.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/copilot/tools/RunMCPTool/components/MCPToolOutputCard/MCPToolOutputCard.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/copilot/tools/RunMCPTool/helpers.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/copilot/tools/SearchDocs/helpers.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/copilot/tools/SetupTrigger/helpers.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/copilot/tools/ViewAgentOutput/ViewAgentOutput.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/copilot/tools/ViewAgentOutput/helpers.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/copilot/voice/components/VoiceModeButton.tsx": {
+    "no-restyle": 12
+  },
+  "src/app/(platform)/copilot/voice/components/VoiceTrace.tsx": {
+    "no-inline-styles": 1
+  },
+  "src/app/(platform)/dev/brain-dump-debug/components/DebugPanel.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/dev/brain-dump-debug/components/TimingPanel.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/home/components/AgentTeam/AgentTeam.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/home/components/AgentTeam/components/AgentRow.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/home/components/AgentTeam/components/StatusBadge.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/home/components/HomeHeader/HomeHeader.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/home/components/HomeSectionLabel/HomeSectionLabel.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/home/components/HomeTile/HomeTile.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/home/components/HomeTileFilter/HomeTileFilter.tsx": {
+    "no-restyle": 5
+  },
+  "src/app/(platform)/home/components/NeedsYou/NeedsYou.tsx": {
+    "no-restyle": 5
+  },
+  "src/app/(platform)/home/components/NeedsYou/components/AttentionRow.tsx": {
+    "no-restyle": 7
+  },
+  "src/app/(platform)/home/components/NeedsYou/components/AttentionRowActions.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/home/components/NeedsYou/components/HeldCallRow.tsx": {
+    "no-restyle": 15
+  },
+  "src/app/(platform)/home/components/NeedsYou/components/HeldReviewDialog.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/home/components/NeedsYou/components/ReviewSidebar.tsx": {
+    "no-restyle": 5
+  },
+  "src/app/(platform)/home/components/NowNext/components/ActiveRow.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/home/components/NowNext/components/UpcomingRow.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/home/components/RecentWork/RecentWork.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/home/components/RecentWork/components/BriefingByline.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/home/components/RecentWork/components/OutcomeRow.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/home/components/RecentWork/components/WorkGroup.tsx": {
+    "no-restyle": 10
+  },
+  "src/app/(platform)/home/components/RecentWork/components/WorkItemRow.tsx": {
+    "no-restyle": 2
+  },
+  "src/app/(platform)/raise/components/AboutStep/AboutStep.tsx": {
+    "no-restyle": 4
+  },
+  "src/app/(platform)/raise/components/BudgetStep/BudgetStep.tsx": {
+    "no-restyle": 4
+  },
+  "src/app/(platform)/raise/components/JobTitleStep/JobTitleStep.tsx": {
+    "no-restyle": 5
+  },
+  "src/app/(platform)/raise/components/KitStep/AttachmentStep.tsx": {
+    "no-restyle": 4
+  },
+  "src/app/(platform)/raise/components/KitStep/KitBudget.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/raise/components/KitStep/KitResultRow.tsx": {
+    "no-restyle": 9
+  },
+  "src/app/(platform)/raise/components/KitStep/KitSearchField.tsx": {
+    "no-restyle": 7
+  },
+  "src/app/(platform)/raise/components/KitStep/KitSearchResults.tsx": {
+    "no-restyle": 1
+  },
+  "src/app/(platform)/raise/components/KitStep/SelectedAttachments.tsx": {
+    "no-restyle": 5
+  },
+  "src/app/(platform)/raise/components/NameStep/NameStep.tsx": {
+    "no-restyle": 3
+  },
+  "src/app/(platform)/raise/components/RaiseFlow/RaiseFlow.tsx": {
+    "no-restyle": 7
+  },
+  "src/components/atoms/Button/helpers.ts": {
+    "no-unknown-classes": 7
+  },
+  "src/components/atoms/Text/helpers.ts": {
+    "no-raw-colors": 1
+  },
+  "src/components/auth/AuthCard.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/auth/AuthFeedback.tsx": {
+    "no-restyle": 17
+  },
+  "src/components/auth/AuthSplitLayout/components/FeatureList.tsx": {
+    "no-restyle": 2
+  },
+  "src/components/auth/AuthSplitLayout/components/MarketingFooter.tsx": {
+    "no-restyle": 2
+  },
+  "src/components/auth/AuthSplitLayout/components/MarketingHeader.tsx": {
+    "no-restyle": 4
+  },
+  "src/components/auth/AuthSplitLayout/components/TeamAvatars.tsx": {
+    "no-restyle": 10
+  },
+  "src/components/auth/CheckYourInbox/CheckYourInbox.tsx": {
+    "no-restyle": 3
+  },
+  "src/components/auth/GoogleOAuthButton.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/auth/MobileWarningBanner.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/contextual/CredentialsInput/components/APIKeyCredentialsModal/APIKeyCredentialsModal.tsx": {
+    "no-restyle": 2
+  },
+  "src/components/contextual/CredentialsInput/components/AyrshareConnectButton/AyrshareConnectButton.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/contextual/CredentialsInput/components/ConnectCredentialDialog/components/ExistingCredentialsView/ExistingCredentialsView.tsx": {
+    "no-restyle": 3
+  },
+  "src/components/contextual/CredentialsInput/components/CredentialRow/CredentialRow.tsx": {
+    "no-restyle": 6
+  },
+  "src/components/contextual/CredentialsInput/components/CredentialTypeSelector/CredentialTypeSelector.tsx": {
+    "no-restyle": 3
+  },
+  "src/components/contextual/CredentialsInput/components/CredentialsFlatView/CredentialsFlatView.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView.tsx": {
+    "no-restyle": 5
+  },
+  "src/components/contextual/CredentialsInput/components/HotScopedCredentialsModal/HotScopedCredentialsModal.tsx": {
+    "no-restyle": 3
+  },
+  "src/components/contextual/CronScheduler/cron-scheduler.tsx": {
+    "no-restyle": 13
+  },
+  "src/components/contextual/DeviceAuth/DeviceAuthConnectButton.tsx": {
+    "no-restyle": 6
+  },
+  "src/components/contextual/EditAgentModal/components/EditAgentForm.tsx": {
+    "no-restyle": 37
+  },
+  "src/components/contextual/GoogleDrivePicker/GoogleDrivePicker.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/contextual/IntegrationsPanel/IntegrationsPanel.tsx": {
+    "no-restyle": 4
+  },
+  "src/components/contextual/IntegrationsPanel/components/AIConnectionsSection/AIConnectionsSection.tsx": {
+    "no-restyle": 2
+  },
+  "src/components/contextual/IntegrationsPanel/components/AIConnectionsSection/ProviderBox.tsx": {
+    "no-restyle": 6
+  },
+  "src/components/contextual/IntegrationsPanel/components/AvailableIntegrations/AvailableIntegrations.tsx": {
+    "no-restyle": 3
+  },
+  "src/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/ConnectMethodView/ConnectMethodView.tsx": {
+    "no-restyle": 3
+  },
+  "src/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/ConnectMethodView/InlineApiKeyForm.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/ConnectMethodView/InlineHostScopedForm.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/ConnectMethodView/InlineUserPasswordForm.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/ApiKeyConnectForm.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/PublicMCPPanel.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/UnsupportedNotice.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/ListView.tsx": {
+    "no-restyle": 3
+  },
+  "src/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/PopularProviderTile.tsx": {
+    "no-restyle": 5
+  },
+  "src/components/contextual/IntegrationsPanel/components/CredentialRow/CredentialRow.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/contextual/IntegrationsPanel/components/IntegrationsHeader/IntegrationsHeader.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/contextual/IntegrationsPanel/components/IntegrationsListEmpty/IntegrationsListEmpty.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/contextual/IntegrationsPanel/components/IntegrationsSearch/IntegrationsSearch.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/contextual/IntegrationsPanel/components/ProviderGroup/ProviderGroup.tsx": {
+    "no-restyle": 13
+  },
+  "src/components/contextual/MCPAuthSchemeField/MCPAuthSchemeField.tsx": {
+    "require-static-classes": 1
+  },
+  "src/components/contextual/OutputRenderers/components/OutputActions.tsx": {
+    "no-restyle": 5
+  },
+  "src/components/contextual/OutputRenderers/components/OutputItem.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/contextual/OutputRenderers/renderers/CSVRenderer.tsx": {
+    "no-inline-styles": 2
+  },
+  "src/components/contextual/OutputRenderers/renderers/CodeRenderer.tsx": {
+    "no-inline-styles": 4
+  },
+  "src/components/contextual/OutputRenderers/renderers/MarkdownRenderer.tsx": {
+    "no-restyle": 2
+  },
+  "src/components/contextual/OutputRenderers/renderers/VideoRenderer.tsx": {
+    "no-restyle": 3
+  },
+  "src/components/contextual/OutputRenderers/renderers/WorkspaceFileRenderer.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/contextual/PublishAgentModal/components/AgentInfoStep/AgentInfoStep.tsx": {
+    "no-restyle": 38
+  },
+  "src/components/contextual/PublishAgentModal/components/AgentInfoStep/components/ThumbnailImages.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/contextual/PublishAgentModal/components/AgentSelectStep/AgentSelectStep.tsx": {
+    "no-restyle": 4
+  },
+  "src/components/contextual/PublishAgentModal/components/PublishAuthPrompt.tsx": {
+    "no-restyle": 3
+  },
+  "src/components/contextual/PublishAgentModal/components/RejectionFeedback.tsx": {
+    "no-restyle": 2
+  },
+  "src/components/contextual/PublishAgentModal/components/ReviewStepper.tsx": {
+    "no-restyle": 4
+  },
+  "src/components/contextual/PublishAgentModal/components/StepStrip.tsx": {
+    "no-restyle": 6
+  },
+  "src/components/contextual/SchedulesPanel/SchedulesPanel.tsx": {
+    "no-restyle": 6
+  },
+  "src/components/contextual/SchedulesPanel/components/EmptyFollowups/EmptyFollowups.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/contextual/SchedulesPanel/components/FollowupListItem/FollowupListItem.tsx": {
+    "no-restyle": 2
+  },
+  "src/components/contextual/SchedulesPanel/components/GraphScheduleListItem/GraphScheduleListItem.tsx": {
+    "no-restyle": 4,
+    "require-static-classes": 2
+  },
+  "src/components/contextual/SchedulesPanel/components/PausedChatListItem/PausedChatListItem.tsx": {
+    "no-restyle": 2
+  },
+  "src/components/contextual/SkillPackage/SkillPackageFileList.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/contextual/SkillsPanel/components/EmptySkills/EmptySkills.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/contextual/SkillsPanel/components/PublishSkillButton/PublishSkillButton.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/contextual/SkillsPanel/components/SkillListItem/SkillListItem.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/layout/AppSidebar/AppSidebar.tsx": {
+    "no-restyle": 7,
+    "require-static-classes": 2
+  },
+  "src/components/layout/AppSidebar/components/AppSidebarHeader/AppSidebarHeader.tsx": {
+    "no-restyle": 5
+  },
+  "src/components/layout/AppSidebar/components/ChatsRailItem/ChatsRailItem.tsx": {
+    "no-restyle": 3,
+    "require-static-classes": 1
+  },
+  "src/components/layout/AppSidebar/components/CollapsibleNavGroup/CollapsibleNavGroup.tsx": {
+    "no-restyle": 10
+  },
+  "src/components/layout/AppSidebar/components/RecentChats/RecentChats.tsx": {
+    "no-restyle": 4
+  },
+  "src/components/layout/AppSidebar/components/RecentChats/components/ExpertChatGroup/ExpertChatGroup.tsx": {
+    "no-restyle": 28
+  },
+  "src/components/layout/AppSidebar/components/RecentChats/components/RecentChatItem/RecentChatItem.tsx": {
+    "no-restyle": 14
+  },
+  "src/components/layout/AppSidebar/components/SidebarSearch/SidebarSearch.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/layout/AppSidebar/components/SidebarUserActions/SidebarUserActions.tsx": {
+    "no-restyle": 4
+  },
+  "src/components/layout/Navbar/components/AccountMenu/AccountMenu.tsx": {
+    "no-restyle": 7
+  },
+  "src/components/layout/Navbar/components/AccountMenu/components/AccountMenuActivityRow.tsx": {
+    "no-restyle": 6
+  },
+  "src/components/layout/Navbar/components/AccountMenu/components/AccountMenuHeader.tsx": {
+    "no-restyle": 6
+  },
+  "src/components/layout/Navbar/components/AccountMenu/components/AccountMenuOrgList.tsx": {
+    "no-restyle": 3
+  },
+  "src/components/layout/Navbar/components/AccountMenu/components/AccountMenuRow.tsx": {
+    "no-restyle": 2
+  },
+  "src/components/layout/Navbar/components/AgentActivityDropdown/components/ActivityDropdown/ActivityDropdown.tsx": {
+    "no-inline-styles": 2,
+    "no-restyle": 7
+  },
+  "src/components/layout/Navbar/components/AgentActivityDropdown/components/ActivityItem.tsx": {
+    "no-restyle": 13
+  },
+  "src/components/layout/Navbar/components/Wallet/Wallet.tsx": {
+    "no-restyle": 6
+  },
+  "src/components/layout/Navbar/components/Wallet/components/WalletCompactPanel.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/layout/Navbar/components/Wallet/components/WalletCopilotUsage.tsx": {
+    "no-restyle": 8,
+    "require-static-classes": 1
+  },
+  "src/components/layout/Navbar/components/Wallet/components/WalletEarnCredits.tsx": {
+    "no-restyle": 11
+  },
+  "src/components/layout/Navbar/components/Wallet/components/WalletFullPanel.tsx": {
+    "no-restyle": 6
+  },
+  "src/components/layout/Navbar/components/Wallet/components/WalletRefill.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/layout/Navbar/components/Wallet/components/WalletTaskGroups.tsx": {
+    "no-inline-styles": 1
+  },
+  "src/components/layout/Navbar/components/Wallet/components/WalletTrialNote.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/layout/NotificationSettings/NotificationSettingsControls.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/layout/SectionNav/SectionMobileNav.tsx": {
+    "no-restyle": 10
+  },
+  "src/components/layout/SectionNav/SectionNavItem.tsx": {
+    "no-restyle": 5
+  },
+  "src/components/layout/SectionNav/SectionSidebar.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner.tsx": {
+    "no-restyle": 2
+  },
+  "src/components/renderers/InputRenderer/base/anyof/components/AnyOfFieldTitle.tsx": {
+    "no-restyle": 6,
+    "require-static-classes": 1
+  },
+  "src/components/renderers/InputRenderer/base/object/WrapIfAdditionalTemplate.tsx": {
+    "no-inline-styles": 2
+  },
+  "src/components/renderers/InputRenderer/base/standard/FieldError.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/renderers/InputRenderer/base/standard/FieldTemplate.tsx": {
+    "no-inline-styles": 2
+  },
+  "src/components/renderers/InputRenderer/base/standard/TitleField.tsx": {
+    "no-restyle": 6,
+    "require-static-classes": 1
+  },
+  "src/components/renderers/InputRenderer/base/standard/buttons/AddButton.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/renderers/InputRenderer/base/standard/buttons/IconButton.tsx": {
+    "no-restyle": 5,
+    "require-static-classes": 1
+  },
+  "src/components/renderers/InputRenderer/base/standard/widgets/FileInput/FileWidget.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/renderers/InputRenderer/base/standard/widgets/SelectInput/SelectWidget.tsx": {
+    "require-static-classes": 1
+  },
+  "src/components/renderers/InputRenderer/base/standard/widgets/TextInput/TextInputExpanderModal.tsx": {
+    "no-restyle": 13
+  },
+  "src/components/renderers/InputRenderer/base/standard/widgets/TextInput/TextWidget.tsx": {
+    "no-restyle": 8
+  },
+  "src/components/renderers/InputRenderer/custom/AirtableBasePickerField/components/BaseDropdown.tsx": {
+    "no-restyle": 5
+  },
+  "src/components/renderers/InputRenderer/custom/AirtableBasePickerField/components/PickerStates.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/renderers/InputRenderer/custom/JsonTextField/JsonTextField.tsx": {
+    "no-restyle": 4
+  },
+  "src/components/renderers/InputRenderer/custom/LlmModelField/components/LlmIcon.tsx": {
+    "no-inline-styles": 4
+  },
+  "src/components/renderers/InputRenderer/custom/LlmModelField/components/LlmMenuHeader.tsx": {
+    "no-restyle": 1
+  },
+  "src/components/renderers/InputRenderer/custom/LlmModelField/components/LlmMenuItem.tsx": {
+    "no-restyle": 4
+  },
+  "src/components/renderers/InputRenderer/custom/LlmModelField/components/LlmModelPicker.tsx": {
+    "no-restyle": 7
+  },
+  "src/components/renderers/InputRenderer/custom/MultiSelectField/MultiSelectField.tsx": {
+    "no-restyle": 8
+  },
+  "src/services/experts/useHireFlow.tsx": {
+    "no-restyle": 5
+  }
+}
