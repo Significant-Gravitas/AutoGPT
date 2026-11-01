@@ -24,18 +24,50 @@ const JSON_TOKEN = /"(?:[^"\\]|\\.)*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g;
 // The smallest unsafe integer, 2^53, has 16 digits.
 const LONG_DIGIT_RUN = /\d{16}/;
 
+// Marks a big integer while JSON.parse runs, so it can be told apart from a
+// string that holds the same digits.
+const MARK = "\u0000";
+
+// `${key}${MARK}${digits}` for each big integer read from a JSON number.
+// Kept in the browser only: on the server it would be shared across users.
+const integerLiterals = new Set<string>();
+
 /**
  * JSON.parse, except integers beyond Number.MAX_SAFE_INTEGER come back as
  * their digit string instead of a rounded number. The backend converts the
- * string to its int when the field is typed as one.
+ * string to its int when the field is typed as one; for any other field,
+ * restoreIntegerLiterals sends it back as the number it was read as.
  */
 export function parseJsonExact(text: string): unknown {
   if (!LONG_DIGIT_RUN.test(text)) return JSON.parse(text);
-  return JSON.parse(
-    text.replace(JSON_TOKEN, (token) =>
-      isUnsafeIntegerText(token) ? `"${token}"` : token,
-    ),
+  const marked = text.replace(JSON_TOKEN, (token) =>
+    isUnsafeIntegerText(token) ? `"\\u0000${token}"` : token,
   );
+  return JSON.parse(marked, (key, value) => {
+    if (typeof value !== "string" || !value.startsWith(MARK)) return value;
+    const digits = value.slice(1);
+    if (!isUnsafeIntegerText(digits)) return value;
+    if (typeof window !== "undefined") {
+      integerLiterals.add(key + MARK + digits);
+    }
+    return digits;
+  });
+}
+
+/**
+ * Writes each digit string that parseJsonExact read from a JSON number under
+ * the same key back as that number, so an untouched value keeps its type.
+ * Digits stored or typed as a string stay a string unless the same key held
+ * them as a number in something loaded before.
+ */
+export function restoreIntegerLiterals(json: string): string {
+  if (integerLiterals.size === 0 || !LONG_DIGIT_RUN.test(json)) return json;
+  const marked = JSON.parse(json, (key, value) =>
+    typeof value === "string" && integerLiterals.has(key + MARK + value)
+      ? MARK + value
+      : value,
+  );
+  return JSON.stringify(marked).replace(/"\\u0000(-?\d+)"/g, "$1");
 }
 
 // A number too large to hold at all (1e400) parses to Infinity, which is

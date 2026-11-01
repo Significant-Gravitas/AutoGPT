@@ -70,8 +70,10 @@ describe("graph with an integer beyond 2^53", () => {
       links: [],
     });
 
+    // Numbers go back as numbers, so a field of any type keeps its type;
+    // the string stays a string.
     expect(savedBody).toContain(
-      `{"value":"${BIG}","records":[{"id":"${BIG}"}],"count":42,"label":"${BIG}"}`,
+      `{"value":${BIG},"records":[{"id":${BIG}}],"count":42,"label":"${BIG}"}`,
     );
     expect(JSON.stringify(saved.data)).toContain(`"value":"${BIG}"`);
   });

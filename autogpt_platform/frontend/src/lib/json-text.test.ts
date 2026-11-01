@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isJsonTextFor, parseJsonExact } from "./json-text";
+import {
+  isJsonTextFor,
+  parseJsonExact,
+  restoreIntegerLiterals,
+} from "./json-text";
 
 describe("isJsonTextFor", () => {
   it("matches the same value however it is formatted", () => {
@@ -80,5 +84,23 @@ describe("parseJsonExact", () => {
 
   it("throws on invalid JSON like JSON.parse", () => {
     expect(() => parseJsonExact('{"a": 9007199254740993')).toThrow();
+  });
+});
+
+describe("restoreIntegerLiterals", () => {
+  const big = "9007199254740995";
+
+  it("writes digits read from a JSON number back as that number", () => {
+    const loaded = parseJsonExact(
+      `{"value": ${big}, "list": [${big}], "label": "${big}"}`,
+    );
+    expect(restoreIntegerLiterals(JSON.stringify(loaded))).toBe(
+      `{"value":${big},"list":[${big}],"label":"${big}"}`,
+    );
+  });
+
+  it("keeps digits that were never read as a number a string", () => {
+    const json = '{"value":"9007199254740997","note":"x 9007199254740995"}';
+    expect(restoreIntegerLiterals(json)).toBe(json);
   });
 });

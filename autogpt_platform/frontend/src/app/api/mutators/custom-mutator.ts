@@ -13,7 +13,7 @@ import { getSystemHeaders } from "@/lib/impersonation";
 import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
 import { getPostHogSessionHeader } from "@/services/analytics/posthog-request-context";
 import { environment } from "@/services/environment";
-import { parseJsonExact } from "@/lib/json-text";
+import { parseJsonExact, restoreIntegerLiterals } from "@/lib/json-text";
 import { transformDates } from "./date-transformer";
 import {
   fetchWithFailureLog,
@@ -29,10 +29,20 @@ function getBaseURL(): string {
   }
 }
 
-// Graph bodies are opened and saved back whole, so a rounded integer would be
-// written into the next version even if the user never touched it.
-const GRAPH_PATH =
-  /^\/api\/graphs(?:\/[^/?]+(?:\/versions(?:\/[^/?]+)?)?)?(?:\?|$)/;
+// Routes that return block inputs the app sends back: graphs, executions
+// ("Run again"), reviews, library agents and presets, store listing graphs.
+// A rounded integer from them would be saved or run even if never touched.
+const EXACT_INTEGER_ROUTES = [
+  "/api/graphs",
+  "/api/executions",
+  "/api/library/",
+  "/api/review/",
+  "/api/store/listings/versions/",
+];
+
+function keepsBigIntegers(url: string): boolean {
+  return EXACT_INTEGER_ROUTES.some((route) => url.startsWith(route));
+}
 
 const getBody = async <T>(
   c: Response | Request,
@@ -81,7 +91,10 @@ export const customMutator = async <
     | "PUT"
     | "DELETE"
     | "PATCH";
-  const data = requestOptions.body;
+  const data =
+    typeof requestOptions.body === "string"
+      ? restoreIntegerLiterals(requestOptions.body)
+      : requestOptions.body;
   let headers: Record<string, string> = {
     ...((requestOptions.headers as Record<string, string>) || {}),
   };
@@ -200,7 +213,7 @@ export const customMutator = async <
     throw new ApiError(errorMessage, response.status, responseData);
   }
 
-  const responseData = await getBody<unknown>(response, GRAPH_PATH.test(url));
+  const responseData = await getBody<unknown>(response, keepsBigIntegers(url));
 
   // Transform ISO date strings to Date objects in the response data
   const transformedData =
