@@ -916,6 +916,10 @@ class _FakeHandle:
             )
         return result
 
+    async def disconnect(self) -> None:
+        self._task.cancel()
+        self._box.disconnects += 1
+
 
 class _FakeCommands:
     def __init__(self, box: "_FakeBox"):
@@ -975,6 +979,7 @@ class _FakeBox:
         self.paused = False
         self.next_process = process
         self.processes: dict[int, _FakeProcess] = {}
+        self.disconnects = 0
         self.sandbox_id = "box-under-test"
         self.set_timeout = AsyncMock(side_effect=self._set_timeout)
         self.get_info = AsyncMock(side_effect=self._get_info)
@@ -1254,6 +1259,49 @@ class TestBashExecE2BTimeouts:
         )
         # E2B's deadline only closes the stream; the tool kills the command.
         assert proc.killed is True
+
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize("stream", ["stdout", "stderr"])
+    async def test_command_that_keeps_printing_is_killed(self, kill_tree, stream):
+        # Its output is held in this process, and the timeout can be hours away.
+        proc = _FakeProcess(
+            [(0.1 * i, stream, "123456") for i in range(1, 100)], runtime=60, code=0
+        )
+        box = _FakeBox(limit=30, process=proc)
+
+        with patch("backend.copilot.tools.bash_exec.MAX_OUTPUT_SIZE", 10):
+            result = await _run(box, timeout=20)
+
+        assert isinstance(result, BashExecResponse)
+        assert (result.timed_out, result.exit_code) == (False, -1)
+        kept = {"stdout": "", "stderr": "", stream: "1234561234"}
+        assert result.stdout == kept["stdout"]
+        assert result.stderr == (
+            f"Printed more than 10 characters\n{kept['stderr']}".rstrip("\n")
+        )
+        assert result.message == (
+            "Printed more than 10 characters; it was killed, with every process "
+            "it started."
+        )
+        # Stopped at the chunk that did not fit, not at the timeout.
+        assert proc.printed == 2
+        assert box.disconnects == 1
+        kill_tree.assert_awaited_once()
+        assert proc.killed is True
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_output_up_to_the_limit_is_returned_whole(self):
+        proc = _FakeProcess(
+            [(0.1, "stdout", "12345"), (0.2, "stdout", "67890")], runtime=0.3, code=0
+        )
+        box = _FakeBox(limit=30, process=proc)
+
+        with patch("backend.copilot.tools.bash_exec.MAX_OUTPUT_SIZE", 10):
+            result = await _run(box, timeout=20)
+
+        assert isinstance(result, BashExecResponse)
+        assert (result.stdout, result.exit_code) == ("1234567890", 0)
+        assert proc.killed is False
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_timeout_kills_the_children_before_the_shell(self, kill_tree):
