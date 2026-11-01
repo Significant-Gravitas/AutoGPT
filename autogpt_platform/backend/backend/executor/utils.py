@@ -51,6 +51,7 @@ from backend.data.execution import (
     GraphExecutionStats,
     GraphExecutionWithNodes,
     NodesInputMasks,
+    check_node_input_counts,
 )
 from backend.data.graph import GraphModel, Node
 from backend.data.model import (
@@ -1038,6 +1039,9 @@ async def validate_and_construct_node_execution_input(
         nodes_input_masks=nodes_input_masks,
         dry_run=dry_run,
     )
+    # Also enforced by create_graph_execution; here a schedule or a request is
+    # refused before anything is written.
+    check_node_input_counts(starting_nodes_input)
 
     return graph, starting_nodes_input, nodes_input_masks, nodes_to_skip
 
