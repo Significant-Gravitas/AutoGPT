@@ -16,6 +16,7 @@ from backend.data.graph import (
     Link,
     Node,
     _sub_graph_refs,
+    dedupe_links,
     get_connected_output_nodes,
     get_graph,
     get_node,
@@ -203,3 +204,23 @@ async def test_connected_output_nodes_return_each_link_and_sink_once(
     assert sink.id == link.sink_id
     assert sink.input_links == [] and sink.output_links == []
     assert loaded is not None and len(loaded.links) == 1
+
+
+@pytest.mark.parametrize("static_flags", [(False, True), (True, False)])
+def test_dedupe_links_keeps_static_when_any_duplicate_is_static(static_flags):
+    links = [
+        Link(
+            id=f"link-{i}",
+            source_id="a",
+            source_name="output",
+            sink_id="b",
+            sink_name="input",
+            is_static=is_static,
+        )
+        for i, is_static in enumerate(static_flags)
+    ]
+
+    result = dedupe_links(links)
+
+    assert len(result) == 1
+    assert result[0].is_static is True

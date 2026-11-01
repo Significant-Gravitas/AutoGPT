@@ -114,10 +114,13 @@ class Link(BaseDbModel):
 
 
 def dedupe_links(links: Iterable[Link]) -> list[Link]:
-    """Keeps the first link for each pair of ends, in order."""
+    """Keeps the first link for each pair of ends, in order; it is static if
+    any of its duplicates is."""
     unique: dict[tuple[str, str, str, str], Link] = {}
     for link in links:
-        unique.setdefault(link.ends, link)
+        kept = unique.setdefault(link.ends, link)
+        if link.is_static and not kept.is_static:
+            unique[link.ends] = kept.model_copy(update={"is_static": True})
     return list(unique.values())
 
 
