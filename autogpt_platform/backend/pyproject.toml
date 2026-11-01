@@ -47,7 +47,7 @@ jsonschema = "^4.25.0"
 langfuse = "^3.14.1"
 launchdarkly-server-sdk = "^9.14.1"
 markdown-it-py = "^4.0.0"
-mem0ai = "1.0.8"
+mem0ai = "2.0.0b2"
 # Pinned to an upstream master commit until a moviepy release allows pillow 13
 # (every release up to 2.2.1 caps pillow below 12). Switch back to the release
 # then: https://github.com/Zulko/moviepy/pull/2562, SECRT-3057.
@@ -97,7 +97,7 @@ pytest-snapshot = "^0.9.0"
 aiofiles = "^25.1.0"
 tiktoken = ">=0.12,<0.15"
 aioclamd = "^1.0.0"
-setuptools = "^80.9.0"
+setuptools = ">=80.9,<85.0"
 gcloud-aio-storage = "^9.5.0"
 pandas = "^2.3.1"
 firecrawl-py = "^4.3.6"
