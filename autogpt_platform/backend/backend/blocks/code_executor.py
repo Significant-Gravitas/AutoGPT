@@ -4,6 +4,7 @@ from e2b import SandboxState
 from e2b_code_interpreter import AsyncSandbox
 from e2b_code_interpreter import Result as E2BExecutionResult
 from e2b_code_interpreter.charts import Chart as E2BExecutionResultChart
+from e2b_code_interpreter.constants import DEFAULT_TIMEOUT as RUN_CODE_TIMEOUT
 from pydantic import BaseModel, Field, JsonValue, SecretStr
 
 from backend.blocks._base import (
@@ -28,7 +29,10 @@ from backend.util.e2b_network import (
     EgressOwner,
     connect_sandbox,
     create_sandbox,
+    hold_sandbox,
     kill_sandbox,
+    release_sandbox,
+    uses_platform_e2b_key,
 )
 from backend.util.sandbox_files import (
     SandboxFileOutput,
@@ -38,6 +42,10 @@ from backend.util.sandbox_metadata import SandboxMetadata, owned_by_user
 
 if TYPE_CHECKING:
     from backend.executor.utils import ExecutionContext
+
+# A resumed box outlives ``run_code``'s own limit, so a step that runs to it
+# times out with its box intact rather than losing the box to its lifetime.
+RESUMED_SANDBOX_SECONDS = RUN_CODE_TIMEOUT + 60
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -134,6 +142,7 @@ class BaseE2BExecutorMixin:
         timeout: Optional[int] = None,
         sandbox_id: Optional[str] = None,
         dispose_sandbox: bool = False,
+        pause_when_kept: bool = False,
         execution_context: Optional["ExecutionContext"] = None,
         extract_files: bool = False,
         envs: Optional[dict[str, str]] = None,
@@ -147,12 +156,17 @@ class BaseE2BExecutorMixin:
         3. Connect to existing sandbox and execute (ExecuteCodeStepBlock)
 
         Args:
+            pause_when_kept: If True, a sandbox that is not disposed is paused
+                             when this returns, unless another run still
+                             holds it; the next connect resumes it.
             extract_files: If True and execution_context provided, extract files
                            created/modified during execution and store to workspace.
             input_files: Files to write into the sandbox before the code
                          runs, keyed by absolute path.
         """  # noqa
         sandbox = None
+        # The box this run is counted on (``hold_sandbox``) while it keeps it.
+        held = ""
         files: list[SandboxFileOutput] = []
         owner_user_id = execution_context.user_id if execution_context else None
         egress_owner = EgressOwner(
@@ -172,12 +186,20 @@ class BaseE2BExecutorMixin:
                     raise PermissionError(
                         f"Sandbox {sandbox_id} does not belong to this user"
                     )
+                if pause_when_kept and not dispose_sandbox:
+                    # Counted before the connect: a run on this box returning
+                    # meanwhile must leave it running for this one.
+                    held = sandbox_id
+                    await hold_sandbox(held)
                 sandbox = await connect_sandbox(
                     AsyncSandbox,
                     sandbox_id,
                     egress_owner,
-                    resumes=info.state != SandboxState.RUNNING,
+                    # A box read as running can be paused by another run's
+                    # release before our hold, so a held connect may wake it.
+                    resumes=bool(held) or info.state != SandboxState.RUNNING,
                     api_key=api_key,
+                    timeout=RESUMED_SANDBOX_SECONDS,
                 )
             else:
                 # Create new sandbox (ExecuteCodeBlock/InstantiateCodeSandboxBlock case)
@@ -189,6 +211,9 @@ class BaseE2BExecutorMixin:
                     timeout=timeout,
                     metadata=metadata,
                 )
+                if pause_when_kept and not dispose_sandbox:
+                    held = sandbox.sandbox_id
+                    await hold_sandbox(held)
                 if setup_commands:
                     for cmd in setup_commands:
                         await sandbox.commands.run(cmd)
@@ -240,6 +265,8 @@ class BaseE2BExecutorMixin:
             # Dispose of sandbox if requested to reduce usage costs
             if dispose_sandbox and sandbox:
                 await kill_sandbox(sandbox)
+            elif held:
+                await release_sandbox(held, sandbox, api_key=api_key)
 
     def process_execution_results(
         self, results: list[E2BExecutionResult]
@@ -330,7 +357,9 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
         dispose_sandbox: bool = SchemaField(
             description=(
                 "Whether to dispose of the sandbox immediately after execution. "
-                "If disabled, the sandbox will run until its timeout expires."
+                "If disabled, the sandbox will run until its timeout expires. "
+                "On the platform's E2B credits it is always disposed, since "
+                "this block returns no sandbox ID to reuse."
             ),
             default=True,
         )
@@ -423,7 +452,12 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
                 template_id=input_data.template_id,
                 setup_commands=input_data.setup_commands,
                 timeout=input_data.timeout,
-                dispose_sandbox=input_data.dispose_sandbox,
+                # No sandbox ID is returned, so a kept box is unreachable:
+                # on the operator's key, dispose it rather than pause it.
+                dispose_sandbox=(
+                    input_data.dispose_sandbox or uses_platform_e2b_key(credentials)
+                ),
+                pause_when_kept=uses_platform_e2b_key(credentials),
                 execution_context=execution_context,
                 extract_files=True,
                 envs=injection.envs,
@@ -557,6 +591,7 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
                 template_id=input_data.template_id,
                 setup_commands=input_data.setup_commands,
                 timeout=input_data.timeout,
+                pause_when_kept=uses_platform_e2b_key(credentials),
                 metadata=SandboxMetadata.for_block(
                     execution_context, "code", self.id, input_data.template_id
                 ).as_e2b(),
@@ -665,6 +700,7 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
                 language=input_data.language,
                 sandbox_id=input_data.sandbox_id,
                 dispose_sandbox=input_data.dispose_sandbox,
+                pause_when_kept=uses_platform_e2b_key(credentials),
                 # The ownership check on the supplied id needs the caller.
                 execution_context=execution_context,
             )

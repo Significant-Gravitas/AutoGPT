@@ -653,13 +653,16 @@ class _FakeTx:
     def __init__(self):
         self.organization = MagicMock()
         self.organization.create = AsyncMock(return_value=MagicMock(id="org-new"))
+        self.organization.update_many = AsyncMock(return_value=1)
         self.orgmember = MagicMock(create=AsyncMock())
         self.team = MagicMock()
         self.team.create = AsyncMock(return_value=MagicMock(id="ws-new"))
         self.teammember = MagicMock(create=AsyncMock())
         self.organizationprofile = MagicMock(create=AsyncMock())
         self.organizationseatassignment = MagicMock(create=AsyncMock())
-        self.orgbalance = MagicMock(create=AsyncMock())
+        self.orgbalance = MagicMock(
+            create=AsyncMock(), update_many=AsyncMock(return_value=1)
+        )
 
 
 @pytest.fixture
@@ -725,6 +728,76 @@ class TestCreatePersonalOrg:
         await create_personal_org("user-9", "taken", "Taken")
 
         assert fake_tx.organization.create.call_args[1]["data"]["slug"] == "taken-1"
+
+    @pytest.mark.asyncio
+    async def test_a_conversion_flips_the_old_org_in_the_new_orgs_transaction(
+        self, mock_prisma, fake_tx
+    ):
+        from backend.data.org_migration import create_personal_org
+
+        await create_personal_org(
+            "user-9", "alice-personal-1", "Alice", replaces_org_id="org-old"
+        )
+
+        # Before the create: the old org holds the one-personal-per-user slot.
+        assert [c[0] for c in fake_tx.organization.method_calls] == [
+            "update_many",
+            "create",
+        ]
+        fake_tx.organization.update_many.assert_awaited_once_with(
+            where={"id": "org-old", "isPersonal": True, "deletedAt": None},
+            data={"isPersonal": False},
+        )
+        mock_prisma.organization.update.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_conversion_whose_slug_fails_writes_nothing(
+        self, mock_prisma, fake_tx, mocker
+    ):
+        from backend.data.org_migration import create_personal_org
+
+        mocker.patch(
+            "backend.data.org_migration._resolve_unique_slug",
+            new=AsyncMock(side_effect=RuntimeError("no free slug")),
+        )
+
+        with pytest.raises(RuntimeError, match="no free slug"):
+            await create_personal_org(
+                "user-9", "alice-personal-1", "Alice", replaces_org_id="org-old"
+            )
+
+        fake_tx.organization.update_many.assert_not_called()
+        mock_prisma.organization.update.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_an_org_converted_meanwhile_is_not_converted_again(
+        self, mock_prisma, fake_tx
+    ):
+        from backend.data.org_migration import create_personal_org
+
+        fake_tx.organization.update_many.return_value = 0
+
+        with pytest.raises(ValueError, match="already a team org"):
+            await create_personal_org(
+                "user-9", "alice-personal-1", "Alice", replaces_org_id="org-old"
+            )
+
+        fake_tx.organization.create.assert_not_called()
+        fake_tx.orgbalance.update_many.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_converted_org_starts_with_a_zero_balance(
+        self, mock_prisma, fake_tx
+    ):
+        from backend.data.org_migration import create_personal_org
+
+        await create_personal_org(
+            "user-9", "alice-personal-1", "Alice", replaces_org_id="org-old"
+        )
+
+        fake_tx.orgbalance.update_many.assert_awaited_once_with(
+            where={"orgId": "org-old"}, data={"balance": 0}
+        )
 
 
 # ---------------------------------------------------------------------------

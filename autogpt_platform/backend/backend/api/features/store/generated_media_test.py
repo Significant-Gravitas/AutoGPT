@@ -1,8 +1,10 @@
 import io
+from collections import Counter
 from unittest.mock import AsyncMock, Mock
 
 import httpx
 import pytest
+from fastapi import HTTPException
 from PIL import Image, UnidentifiedImageError
 
 from backend.api.features.library import db as library_db
@@ -27,6 +29,16 @@ def generated_media_io(monkeypatch, tmp_path):
     monkeypatch.setattr(image_gen, "ideogram_credentials", TEST_CREDENTIALS)
     monkeypatch.setattr(media, "Settings", lambda: settings)
     monkeypatch.setattr(local_media, "Settings", lambda: settings)
+
+    counters = Counter()
+
+    async def incr_with_ttl(redis, key, ttl_seconds):
+        assert ttl_seconds == 24 * 60 * 60
+        counters[key] += 1
+        return counters[key]
+
+    monkeypatch.setattr(image_gen, "get_redis_async", AsyncMock())
+    monkeypatch.setattr(image_gen, "incr_with_ttl", incr_with_ttl)
 
     objects = {}
 
@@ -167,7 +179,7 @@ async def test_flux_still_requests_and_preserves_jpeg(
     download = AsyncMock(return_value=httpx.Response(200, content=source.getvalue()))
     monkeypatch.setattr(image_gen, "Requests", Mock(return_value=Mock(get=download)))
 
-    result = await image_gen.generate_agent_image(graph)
+    result = await image_gen.generate_agent_image(graph, "test-user")
     assert result.read() == source.getvalue()
     assert run.call_args.kwargs["input"]["output_format"] == "jpg"
 
@@ -193,3 +205,72 @@ async def test_generate_image_regenerates_when_the_existence_check_fails(
 
     generate.assert_awaited_once()
     assert result.image_url.endswith("users/test-user/images/agent_graph-1.jpeg")
+
+
+@pytest.mark.parametrize("use_v2", [True, False], ids=["ideogram", "replicate"])
+@pytest.mark.parametrize("provider_format,mode", [("PNG", "RGB")])
+async def test_generated_images_stop_at_each_users_daily_limit(
+    generated_media_io,
+    graph_and_library_update,
+    ideogram_response,
+    monkeypatch,
+    provider_format,
+    mode,
+    use_v2,
+):
+    settings, _, _ = generated_media_io
+    settings.config.use_agent_image_generation_v2 = use_v2
+    _, update = graph_and_library_update
+    _, ideogram, _ = ideogram_response
+    replicate = Mock(return_value="https://replicate.example/image.png")
+    monkeypatch.setattr(image_gen.settings.secrets, "replicate_api_key", "test-key")
+    monkeypatch.setattr(
+        image_gen, "ReplicateClient", Mock(return_value=Mock(run=replicate))
+    )
+    generate = ideogram if use_v2 else replicate
+    monkeypatch.setattr(image_gen, "DAILY_LIMIT", 3)
+
+    results = [
+        await library_db.add_generated_agent_image(
+            GraphBaseMeta(id=f"graph-{i}", name="Agent", description=""),
+            "test-user",
+            f"library-agent-{i}",
+        )
+        for i in range(5)
+    ]
+
+    assert [result is not None for result in results] == [True] * 3 + [False] * 2
+    assert generate.call_count == update.await_count == 3
+    with pytest.raises(HTTPException) as exc_info:
+        await routes.generate_image("graph-4", user_id="test-user")
+    assert exc_info.value.status_code == 429
+    assert generate.call_count == 3
+    await routes.generate_image("graph-4", user_id="other-user")
+    assert generate.call_count == 4
+
+
+@pytest.mark.parametrize("provider_format,mode", [("PNG", "RGB")])
+async def test_no_image_is_generated_when_the_limit_cannot_be_checked(
+    generated_media_io,
+    graph_and_library_update,
+    ideogram_response,
+    monkeypatch,
+    provider_format,
+    mode,
+):
+    graph, update = graph_and_library_update
+    _, generate, _ = ideogram_response
+    monkeypatch.setattr(
+        image_gen, "get_redis_async", AsyncMock(side_effect=ConnectionError)
+    )
+
+    result = await library_db.add_generated_agent_image(
+        graph, "test-user", "library-agent-1"
+    )
+
+    assert result is None
+    with pytest.raises(HTTPException) as exc_info:
+        await routes.generate_image(graph.id, user_id="test-user")
+    assert exc_info.value.status_code == 503
+    generate.assert_not_awaited()
+    update.assert_not_awaited()
