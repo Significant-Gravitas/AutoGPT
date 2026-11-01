@@ -6,7 +6,6 @@ from typing import Any
 import regex
 
 MAX_PATTERN_LENGTH = 10_000
-# About 3 MB and 0.1 s of compiling at most.
 MAX_COMPILED_ITEMS = 10_000
 
 # The type stubs for `regex` leave its parser out.
