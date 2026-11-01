@@ -53,7 +53,10 @@ from backend.data.model import (
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.data.user import is_user_banned
-from backend.integrations.credentials_store import is_system_credential
+from backend.integrations.credentials_store import (
+    CredentialsSnapshot,
+    is_system_credential,
+)
 from backend.monitoring.instrumentation import record_graph_execution
 from backend.util import product_analytics
 from backend.util.clients import (
@@ -483,6 +486,10 @@ async def _validate_node_input_credentials(
     """
     credential_errors: dict[str, dict[str, str]] = defaultdict(dict)
     nodes_to_skip: set[str] = set()
+    linked_inputs = _linked_inputs(graph)
+    user_credentials = CredentialsSnapshot(
+        lambda: get_integration_credentials_store().get_all_creds(user_id)
+    )
 
     for node in graph.nodes:
         block = node.block
@@ -573,9 +580,7 @@ async def _validate_node_input_credentials(
 
             try:
                 # Fetch the corresponding Credentials and perform sanity checks
-                credentials = await get_integration_credentials_store().get_creds_by_id(
-                    user_id, credentials_meta.id
-                )
+                credentials = await user_credentials.get(credentials_meta.id)
             except Exception as e:
                 # Handle any errors fetching credentials
                 # If credentials were explicitly configured but unavailable, it's an error
@@ -608,7 +613,7 @@ async def _validate_node_input_credentials(
         if auto_credentials_fields:
             for _kwarg_name, info in auto_credentials_fields.items():
                 field_name = info["field_name"]
-                if _is_linked(graph, node, field_name):
+                if (node.id, field_name) in linked_inputs:
                     # An upstream block supplies the file at run time, so the
                     # stored value (possibly a leftover None) isn't what runs.
                     continue
@@ -694,8 +699,7 @@ async def _validate_node_input_credentials(
                         )
                         continue
                     try:
-                        creds_store = get_integration_credentials_store()
-                        creds = await creds_store.get_creds_by_id(user_id, cred_id)
+                        creds = await user_credentials.get(cred_id)
                     except Exception as e:
                         if field_is_optional:
                             _mark_optional_skip()
@@ -748,12 +752,12 @@ def _is_optional_picker(input_schema: type[BlockSchema], field_name: str) -> boo
     return field is not None and type(None) in get_args(field.annotation)
 
 
-def _is_linked(graph: GraphModel, node: Node, field_name: str) -> bool:
-    """Whether a link supplies the whole input. A link into one attribute of
-    it (e.g. `spreadsheet_@_id`) can't bring the `_credentials_id`."""
-    return any(
-        link.sink_id == node.id and link.sink_name == field_name for link in graph.links
-    )
+def _linked_inputs(graph: GraphModel) -> set[tuple[str, str]]:
+    """The (node id, input name) pairs a link supplies as a whole input, built
+    once per validation so each lookup is constant time. A link into one
+    attribute of an input (e.g. `spreadsheet_@_id`) can't bring the
+    `_credentials_id`, so it doesn't count as the whole input."""
+    return {(link.sink_id, link.sink_name) for link in graph.links}
 
 
 def make_node_credentials_input_map(

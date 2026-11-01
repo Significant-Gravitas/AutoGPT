@@ -273,6 +273,16 @@ class TestParseTsv:
 # parse_file_content — YAML
 # ---------------------------------------------------------------------------
 
+KIB = 1024
+MIB = 1024 * KIB
+
+
+def _yaml_expanding_to(expanded: int, *, padding: int) -> str:
+    """YAML whose text is about ``padding`` bytes plus a few KiB, and whose
+    ``uses`` list expands to about ``expanded`` bytes through an alias."""
+    uses = ", ".join(["*b"] * (expanded // 1000))
+    return f"pad: {'y' * padding}\nbase: &b [{'x' * 1000}]\nuses: [{uses}]"
+
 
 class TestParseYaml:
     def test_list(self):
@@ -299,6 +309,53 @@ class TestParseYaml:
         result = parse_file_content(content, "yaml")
         # Malformed YAML should fall back to the original string, not raise.
         assert result == content
+
+    def test_anchors_and_aliases_parse(self):
+        content = "base: &b {x: 1}\nuse: *b"
+        result = parse_file_content(content, "yaml")
+        assert result == {"base": {"x": 1}, "use": {"x": 1}}
+
+    def test_yaml_expanding_past_the_limit_falls_back_to_text(self, monkeypatch):
+        monkeypatch.setattr(
+            "backend.util.file_content_parser.MAX_YAML_EXPANDED_BYTES", 1024
+        )
+        uses = ", ".join(["*b"] * 40)
+        content = f"base: &b [xxxxxxxx, xxxxxxxx, xxxxxxxx]\nuses: [{uses}]"
+
+        assert parse_file_content(content, "yaml") == content
+        with pytest.raises(ValueError, match="expands to more than 1 KiB"):
+            parse_file_content(content, "yaml", strict=True)
+
+    def test_yaml_that_refers_to_itself_falls_back_to_text(self):
+        content = "items: &a [1, *a]"
+
+        assert parse_file_content(content, "yaml") == content
+
+    @pytest.mark.parametrize(
+        "padding, expanded",
+        [
+            pytest.param(0, 900 * KIB, id="small file under the 1 MiB minimum"),
+            pytest.param(256 * KIB, 1536 * KIB, id="256 KiB file under 8x its size"),
+        ],
+    )
+    def test_yaml_within_its_expanded_budget_parses(self, padding, expanded):
+        content = _yaml_expanding_to(expanded, padding=padding)
+
+        assert isinstance(parse_file_content(content, "yaml"), dict)
+
+    @pytest.mark.parametrize(
+        "padding, expanded",
+        [
+            pytest.param(0, 2 * MIB, id="small file over the 1 MiB minimum"),
+            pytest.param(256 * KIB, 3 * MIB, id="256 KiB file over 8x its size"),
+        ],
+    )
+    def test_yaml_past_its_expanded_budget_falls_back_to_text(self, padding, expanded):
+        content = _yaml_expanding_to(expanded, padding=padding)
+
+        assert parse_file_content(content, "yaml") == content
+        with pytest.raises(ValueError, match="expands to more than"):
+            parse_file_content(content, "yaml", strict=True)
 
 
 # ---------------------------------------------------------------------------

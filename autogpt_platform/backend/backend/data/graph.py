@@ -540,27 +540,7 @@ class GraphModel(Graph, GraphMeta):
             f"{graph_credentials_inputs}"
         )
 
-        # Warn if same-provider credentials inputs can't be combined (= bad UX)
-        graph_cred_fields = list(graph_credentials_inputs.values())
-        for i, (field, keys, _) in enumerate(graph_cred_fields):
-            for other_field, other_keys, _ in list(graph_cred_fields)[i + 1 :]:
-                if field.provider != other_field.provider:
-                    continue
-                if ProviderName.HTTP in field.provider:
-                    continue
-                # MCP credentials are intentionally split by server URL
-                if ProviderName.MCP in field.provider:
-                    continue
-
-                # If this happens, that means a block implementation probably needs
-                # to be updated.
-                logger.warning(
-                    "Multiple combined credentials fields "
-                    f"for provider {field.provider} "
-                    f"on graph #{self.id} ({self.name}); "
-                    f"fields: {field} <> {other_field};"
-                    f"keys: {keys} <> {other_keys}."
-                )
+        self._warn_uncombined_credentials_inputs(graph_credentials_inputs)
 
         # Build JSON schema directly to avoid expensive create_model + validation overhead
         properties = {}
@@ -642,6 +622,42 @@ class GraphModel(Graph, GraphMeta):
             "properties": properties,
             "required": required_fields,
         }
+
+    def _warn_uncombined_credentials_inputs(
+        self,
+        graph_credentials_inputs: dict[
+            str, tuple[CredentialsFieldInfo, set[tuple[str, str]], bool]
+        ],
+    ) -> None:
+        """Warn if same-provider credentials inputs can't be combined (= bad UX).
+
+        Inputs are grouped by provider, and each provider with more than one
+        input is warned about once.
+        """
+        by_provider: defaultdict[
+            frozenset, list[tuple[CredentialsFieldInfo, set[tuple[str, str]]]]
+        ] = defaultdict(list)
+        for field, keys, _ in graph_credentials_inputs.values():
+            by_provider[field.provider].append((field, keys))
+
+        for provider, fields in by_provider.items():
+            if len(fields) < 2:
+                continue
+            if ProviderName.HTTP in provider:
+                continue
+            # MCP credentials are intentionally split by server URL
+            if ProviderName.MCP in provider:
+                continue
+
+            # If this happens, that means a block implementation probably needs
+            # to be updated.
+            logger.warning(
+                "Multiple combined credentials fields "
+                f"for provider {provider} "
+                f"on graph #{self.id} ({self.name}); "
+                f"fields: {' <> '.join(str(field) for field, _ in fields)}; "
+                f"keys: {' <> '.join(str(keys) for _, keys in fields)}."
+            )
 
     def aggregate_credentials_inputs(
         self,
@@ -1694,11 +1710,24 @@ async def get_store_listed_graphs(graph_ids: list[str]) -> dict[str, GraphModel]
     return graphs
 
 
+async def get_graph_at_version(
+    graph_id: str, version: int, *, client: Prisma | None
+) -> GraphModel | None:
+    """The graph at exactly *version*, with no access check: `get_graph` with
+    `skip_access_check=True`, on *client*. Not exposed over RPC."""
+    graph = await AgentGraph.prisma(client).find_first(
+        where={"id": graph_id, "version": version},
+        include=AGENT_GRAPH_INCLUDE,
+    )
+    return GraphModel.from_db(graph) if graph else None
+
+
 async def get_graph_as_admin(
     graph_id: str,
     version: int | None = None,
     user_id: str | None = None,
     for_export: bool = False,
+    client: Prisma | None = None,
 ) -> GraphModel | None:
     """
     Intentionally parallels the get_graph but should only be used for admin tasks, because can return any graph that's been submitted
@@ -1715,7 +1744,7 @@ async def get_graph_as_admin(
     if version is not None:
         where_clause["version"] = version
 
-    graph = await AgentGraph.prisma().find_first(
+    graph = await AgentGraph.prisma(client).find_first(
         where=where_clause,
         include=AGENT_GRAPH_INCLUDE,
         order={"version": "desc"},
@@ -1727,7 +1756,7 @@ async def get_graph_as_admin(
         return None
 
     if for_export:
-        sub_graphs = await get_sub_graphs(graph)
+        sub_graphs = await get_sub_graphs(graph, client=client)
         return GraphModel.from_db(
             graph=graph,
             sub_graphs=sub_graphs,
@@ -1737,14 +1766,16 @@ async def get_graph_as_admin(
     return GraphModel.from_db(graph, for_export)
 
 
-async def get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
+async def get_sub_graphs(
+    graph: AgentGraph, client: Prisma | None = None
+) -> list[AgentGraph]:
     """All sub-graphs of a given graph, recursively, flattened into a list."""
-    [sub_graphs] = await get_sub_graphs_of_each([graph])
+    [sub_graphs] = await get_sub_graphs_of_each([graph], client=client)
     return sub_graphs
 
 
 async def get_sub_graphs_of_each(
-    graphs: Sequence[AgentGraph],
+    graphs: Sequence[AgentGraph], client: Prisma | None = None
 ) -> list[list[AgentGraph]]:
     """
     Each graph's sub-graphs, recursively, flattened, in the order of `graphs`.
@@ -1768,7 +1799,7 @@ async def get_sub_graphs_of_each(
         ]
         if missing := {ref for level in refs for ref in level} - fetched.keys():
             fetched.update(dict.fromkeys(missing))
-            rows = await AgentGraph.prisma().find_many(
+            rows = await AgentGraph.prisma(client).find_many(
                 where={
                     "OR": [
                         {"id": graph_id, "version": graph_version, "userId": user_id}
