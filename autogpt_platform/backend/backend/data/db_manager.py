@@ -152,6 +152,7 @@ from backend.data.graph import (
     get_graph_settings,
     get_node,
     get_store_listed_graphs,
+    is_graph_version_owner,
     validate_graph_execution_permissions,
 )
 from backend.data.human_review import (
@@ -413,6 +414,7 @@ class DatabaseManager(AppService):
     get_graph_metadata = _(get_graph_metadata)
     get_graph_settings = _(get_graph_settings)
     get_store_listed_graphs = _(get_store_listed_graphs)
+    is_graph_version_owner = _(is_graph_version_owner)
 
     # ============ Credits ============ #
     spend_credits = _(_spend_credits, name="spend_credits")
@@ -976,6 +978,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_graph = d.get_graph
     get_graph_metadata = d.get_graph_metadata
     get_graph_settings = d.get_graph_settings
+    is_graph_version_owner = d.is_graph_version_owner
     get_node = d.get_node
     get_store_listed_graphs = d.get_store_listed_graphs
 

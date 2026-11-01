@@ -26,6 +26,7 @@ from backend.copilot.rate_limit import enforce_payment_paywall, is_user_paywalle
 from backend.copilot.scheduled_chats.reconnect import (
     resume_after_reconnect_in_background,
 )
+from backend.data.credential_scope import scope_error
 from backend.data.db_accessors import experts_db
 from backend.data.execution import ExecutionTrigger
 from backend.data.graph import NodeModel, get_graph, set_node_webhook
@@ -43,6 +44,7 @@ from backend.data.model import (
     HostScopedCredentials,
     OAuth2Credentials,
     OAuthState,
+    UserPasswordCredentials,
     is_sdk_default,
 )
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
@@ -295,6 +297,11 @@ class CredentialsMetaResponse(BaseModel):
         default=None,
         description="Host pattern for host-scoped or MCP server URL for MCP credentials",
     )
+    scope: str | None = Field(
+        default=None,
+        description="What a user/password login may be used for, e.g. "
+        "smtp://host[:port]; null for a login saved before scopes existed",
+    )
     mcp_auth_scheme: MCPAuthScheme | None = Field(
         default=None,
         description="Manual authorization scheme for MCP credentials",
@@ -354,6 +361,7 @@ def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
         scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
         username=cred.username if isinstance(cred, OAuth2Credentials) else None,
         host=CredentialsMetaResponse.get_host(cred),
+        scope=cred.scope if isinstance(cred, UserPasswordCredentials) else None,
         mcp_auth_scheme=mcp_auth_scheme,
         is_managed=cred.is_managed,
         service=identity.service,
@@ -1175,6 +1183,10 @@ async def create_credentials(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Provider-runtime credentials cannot be created directly",
         )
+    if isinstance(credentials, UserPasswordCredentials) and (
+        error := scope_error(provider.value, credentials.scope)
+    ):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
     credentials.provider = provider
     try:
         await creds_manager.create(user_id, credentials)
@@ -1381,7 +1393,9 @@ async def webhook_ingress_generic(
     # Only after the signature: loading can refresh the owner's OAuth token.
     try:
         credentials = (
-            await creds_manager.get(user_id, webhook.credentials_id)
+            await creds_manager.get(
+                user_id, webhook.credentials_id, allow_sdk_default=True
+            )
             if webhook.credentials_id
             else None
         )
@@ -1450,7 +1464,7 @@ async def webhook_ping(
     webhook_manager = get_webhook_manager(webhook.provider)
 
     credentials = (
-        await creds_manager.get(user_id, webhook.credentials_id)
+        await creds_manager.get(user_id, webhook.credentials_id, allow_sdk_default=True)
         if webhook.credentials_id
         else None
     )
@@ -2005,7 +2019,9 @@ async def _cleanup_orphaned_webhook_for_graph(
                         ProviderName(webhook.provider)
                     )
                     credentials = (
-                        await creds_manager.get(user_id, webhook.credentials_id)
+                        await creds_manager.get(
+                            user_id, webhook.credentials_id, allow_sdk_default=True
+                        )
                         if webhook.credentials_id
                         else None
                     )
