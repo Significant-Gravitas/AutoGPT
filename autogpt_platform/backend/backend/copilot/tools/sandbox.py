@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_TIMEOUT = 30
 _MAX_TIMEOUT = 120
 # Kept per output stream (bytes here, characters for E2B's decoded text); a
-# command that prints more is killed, since its output is held in this process.
+# command that prints more is stopped.
 MAX_OUTPUT_SIZE = 1_000_000
 _READ_CHUNK = 65536
 # A killed bwrap is reaped at once; this only bounds a wait that should not block.

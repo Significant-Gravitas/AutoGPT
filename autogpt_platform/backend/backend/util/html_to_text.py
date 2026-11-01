@@ -1,4 +1,4 @@
-"""html2text for HTML from untrusted sources."""
+"""html2text with a limit on the text it produces."""
 
 import html2text
 
@@ -6,10 +6,8 @@ import html2text
 class BoundedHTML2Text(html2text.HTML2Text):
     """``HTML2Text`` whose ``handle()`` stops after ``max_chars`` characters of output.
 
-    html2text repeats the indentation of every open list and blockquote on each
-    line, so its output grows with nesting depth times lines: quadratically in
-    the size of a document whose author picks both. The limit therefore holds
-    while converting rather than on the result; ``truncated`` says it was hit.
+    The limit holds while converting, since nested lists and blockquotes repeat
+    their indentation on every line; ``truncated`` says it was hit.
     """
 
     def __init__(self, max_chars: int) -> None:

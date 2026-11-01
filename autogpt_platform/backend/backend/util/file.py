@@ -439,6 +439,14 @@ def get_dir_size(path: Path) -> int:
     return total
 
 
+def check_total_file_size(total_size: int) -> None:
+    """Raise once the files a block loads together pass the file limit."""
+    if total_size > MAX_FILE_SIZE_BYTES:
+        raise ValueError(
+            f"Files too large: {total_size} bytes in total > {MAX_FILE_SIZE_BYTES} bytes"
+        )
+
+
 async def resolve_media_content(
     content: MediaFileType,
     execution_context: "ExecutionContext",

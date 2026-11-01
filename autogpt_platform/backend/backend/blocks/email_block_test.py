@@ -190,7 +190,7 @@ def _send_to_local_server(serve) -> Exception | str:
                 "Body",
                 _make_credentials(None),
             )
-        except Exception as exc:
+        except (smtplib.SMTPException, OSError) as exc:
             result = exc
         server.join(timeout=10)
         return result

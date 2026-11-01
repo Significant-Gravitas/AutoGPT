@@ -152,10 +152,9 @@ class TestResolveWriteContent:
         assert result == b"file content"
 
     async def test_source_path_is_read_only_past_the_size_limit(self, ephemeral_dir):
-        # The caller refuses it; reading all of it first would hold it whole.
         big = ephemeral_dir / "big.bin"
-        with open(big, "wb") as f:
-            f.truncate(3 * 1024 * 1024)
+        big.touch()
+        os.truncate(big, 3 * 1024 * 1024)
         with patch("backend.copilot.tools.workspace_files._MAX_FILE_SIZE_MB", 1):
             result = await _resolve_write_content(None, None, str(big), "s1")
         assert isinstance(result, bytes)

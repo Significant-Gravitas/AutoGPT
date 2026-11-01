@@ -1,9 +1,7 @@
-"""Bounds on what an E2B sandbox sends back into this process.
+"""Reading an E2B sandbox's output and files with a size limit applied while reading."""
 
-What runs in a sandbox decides how much it prints and how large its files are,
-and the SDK holds all of it in memory before any size check could run."""
-
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 import httpx
 from e2b import AsyncSandbox, CommandResult
@@ -49,9 +47,8 @@ class OutputLimitedCodeSandbox(AsyncCodeSandbox):
     """The code interpreter sandbox, with ``run_code`` given up on past the limit.
 
     The response body is counted as it arrives, after decompression, rather
-    than the messages ``run_code`` hands its callbacks: the SDK holds a message
-    until its newline arrives, so one long line would never reach a callback.
-    ``run_code`` builds a fresh client from ``_client`` for each request.
+    than the messages ``run_code`` hands its callbacks, which arrive only once
+    whole. ``run_code`` builds a fresh client from ``_client`` for each request.
     """
 
     @property

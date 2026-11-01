@@ -3,7 +3,7 @@
 These drive the E2B SDK's own readers, since the limits rely on how they read."""
 
 import json
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -78,7 +78,6 @@ async def test_run_code_gives_up_on_a_program_that_keeps_printing():
 
 @pytest.mark.asyncio
 async def test_run_code_gives_up_on_a_message_that_never_ends():
-    # The SDK holds a message until its newline, so no callback would see it.
     sent = _Sent()
 
     async def body() -> AsyncIterator[bytes]:

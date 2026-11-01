@@ -256,11 +256,7 @@ def _refusal(credentials: SMTPCredentials, server: str) -> str:
 
 
 class _BoundedSMTP(smtplib.SMTP):
-    """``smtplib.SMTP`` that caps the size of one server reply.
-
-    smtplib keeps every line of a multi-line reply until the last one arrives,
-    limiting each line's length but not their number.
-    """
+    """``smtplib.SMTP`` that caps the size of one server reply."""
 
     MAX_REPLY_BYTES = 1024 * 1024  # a real reply is a few KB
 

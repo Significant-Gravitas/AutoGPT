@@ -25,7 +25,12 @@ from backend.blocks._base import (
 )
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
-from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
+from backend.util.file import (
+    MediaFileType,
+    check_total_file_size,
+    get_exec_file_path,
+    store_media_file,
+)
 from backend.util.html_to_text import BoundedHTML2Text
 from backend.util.settings import Settings
 
@@ -167,6 +172,7 @@ async def create_mime_message(
 
     # Handle attachments if any
     if input_data.attachments:
+        total_size = 0
         for attach in input_data.attachments:
             local_path = await store_media_file(
                 file=attach,
@@ -175,6 +181,8 @@ async def create_mime_message(
             )
             assert execution_context.graph_exec_id  # Validated by store_media_file
             abs_path = get_exec_file_path(execution_context.graph_exec_id, local_path)
+            total_size += Path(abs_path).stat().st_size
+            check_total_file_size(total_size)
             part = MIMEBase("application", "octet-stream")
             with open(abs_path, "rb") as f:
                 part.set_payload(f.read())
@@ -1244,6 +1252,7 @@ async def _build_reply_message(
     msg.attach(_make_mime_text(input_data.body, input_data.content_type))
 
     # Handle attachments
+    total_size = 0
     for attach in input_data.attachments:
         local_path = await store_media_file(
             file=attach,
@@ -1252,6 +1261,8 @@ async def _build_reply_message(
         )
         assert execution_context.graph_exec_id  # Validated by store_media_file
         abs_path = get_exec_file_path(execution_context.graph_exec_id, local_path)
+        total_size += Path(abs_path).stat().st_size
+        check_total_file_size(total_size)
         part = MIMEBase("application", "octet-stream")
         with open(abs_path, "rb") as f:
             part.set_payload(f.read())
@@ -1784,6 +1795,7 @@ To: {original_to}
                 msg.attach(part)
 
         # Add any additional attachments
+        total_size = 0
         for attach in input_data.additionalAttachments:
             local_path = await store_media_file(
                 file=attach,
@@ -1792,6 +1804,8 @@ To: {original_to}
             )
             assert execution_context.graph_exec_id  # Validated by store_media_file
             abs_path = get_exec_file_path(execution_context.graph_exec_id, local_path)
+            total_size += Path(abs_path).stat().st_size
+            check_total_file_size(total_size)
             part = MIMEBase("application", "octet-stream")
             with open(abs_path, "rb") as f:
                 part.set_payload(f.read())

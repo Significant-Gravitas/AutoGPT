@@ -1263,7 +1263,6 @@ class TestBashExecE2BTimeouts:
     @pytest.mark.asyncio(loop_scope="session")
     @pytest.mark.parametrize("stream", ["stdout", "stderr"])
     async def test_command_that_keeps_printing_is_killed(self, kill_tree, stream):
-        # Its output is held in this process, and the timeout can be hours away.
         proc = _FakeProcess(
             [(0.1 * i, stream, "123456") for i in range(1, 100)], runtime=60, code=0
         )

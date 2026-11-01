@@ -272,7 +272,6 @@ async def test_execute_handles_text_truncation_only():
 
 
 def test_html_that_expands_when_converted_is_cut_off_while_converting():
-    # html2text indents each <pre> line once per open list: 6.4 GB unbounded.
     page = "<p>first words</p>" + "<ul>" * 20_000 + "<pre>" + "\n" * 80_000
 
     text = _html_to_text(page)

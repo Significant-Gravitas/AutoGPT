@@ -1,7 +1,7 @@
 import base64
 from types import SimpleNamespace
 from typing import cast
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -137,7 +137,6 @@ class TestGmailReadBlock:
 
     @pytest.mark.asyncio
     async def test_html_that_expands_when_converted_is_bounded(self):
-        """html2text indents every <pre> line once per open list."""
         html_text = "<p>first words</p>" + "<ul>" * 20_000 + "<pre>" + "\n" * 80_000
 
         msg = {
@@ -406,6 +405,33 @@ class TestCreateMimeMessageValidation:
         # Should succeed without raising
         result = await create_mime_message(input_data, exec_ctx)
         assert isinstance(result, str)
+
+    @pytest.mark.asyncio
+    async def test_attachments_are_limited_in_total(self, tmp_path):
+        (tmp_path / "pad.bin").write_bytes(b"x" * 40)
+        input_data = SimpleNamespace(
+            to=["user@example.com"],
+            cc=[],
+            bcc=[],
+            subject="Test",
+            body="Hello",
+            attachments=["pad.bin"] * 50,
+        )
+        exec_ctx = cast(ExecutionContext, SimpleNamespace(graph_exec_id="test-exec-id"))
+        store = AsyncMock(return_value="pad.bin")
+
+        with (
+            patch("backend.blocks.google.gmail.store_media_file", new=store),
+            patch(
+                "backend.blocks.google.gmail.get_exec_file_path",
+                side_effect=lambda _, path: str(tmp_path / path),
+            ),
+            patch("backend.util.file.MAX_FILE_SIZE_BYTES", 100),
+            pytest.raises(ValueError, match="Files too large"),
+        ):
+            await create_mime_message(input_data, exec_ctx)
+
+        assert store.await_count == 3
 
 
 class TestBuildReplyMessageValidation:

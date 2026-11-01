@@ -56,8 +56,7 @@ async def test_output_up_to_the_cap_is_returned_whole():
 
 @pytest.mark.asyncio
 async def test_a_process_the_kill_missed_cannot_hold_the_run_open():
-    # setsid puts the loop outside the process group the timeout kills, and it
-    # starts printing only after that kill.
+    # A process outside the stopped group must not keep the run open.
     script = "setsid bash -c 'sleep 2; while :; do echo y; sleep 0.01; done' & sleep 60"
 
     stdout, stderr, exit_code, timed_out = await _run(script, 1)

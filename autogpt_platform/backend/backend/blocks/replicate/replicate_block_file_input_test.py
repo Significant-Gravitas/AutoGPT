@@ -119,3 +119,19 @@ async def test_files_override_same_named_model_input():
         result = await block._build_model_inputs(input_data, _exec_context())
 
     assert result["image"] == "data:image/png;base64,NEW"
+
+
+@pytest.mark.asyncio
+async def test_files_total_size_is_limited():
+    block = ReplicateModelBlock()
+    input_data = _make_input(files=["workspace://a"] * 50)
+    store = AsyncMock(return_value="data:image/png;base64," + "A" * 18)
+
+    with (
+        patch("backend.blocks.replicate.replicate_block.store_media_file", new=store),
+        patch("backend.util.file.MAX_FILE_SIZE_BYTES", 100),
+        pytest.raises(ValueError, match="Files too large"),
+    ):
+        await block._build_model_inputs(input_data, _exec_context())
+
+    assert store.await_count == 3

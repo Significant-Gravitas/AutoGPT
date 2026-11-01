@@ -953,12 +953,11 @@ def test_only_cli_io_writes_to_the_cli_stdin():
 # Rule: what an E2B sandbox sends back is read through a limit
 # ---------------------------------------------------------------------------
 #
-# Motivation: whatever runs in a sandbox decides how much it prints and how
-# large its files are, and the SDK holds all of it in this process before any
-# size check could run. `files.read` is called with format="stream" and stopped
-# at the caller's limit (`read_sandbox_file`); `commands.run` goes through
-# `run_sandbox_command`, or, like bash_exec, follows a background handle with
-# callbacks that stop at a limit.
+# Motivation: a sandbox's output and files are read into this process, and a
+# limit applied after reading bounds nothing. `files.read` is called with
+# format="stream" and stopped at the caller's limit (`read_sandbox_file`);
+# `commands.run` goes through `run_sandbox_command`, or, like bash_exec,
+# follows a background handle with callbacks that stop at a limit.
 
 _SANDBOX_COMMAND_RUNNERS = frozenset(
     {"util/sandbox_output.py", "copilot/tools/bash_exec.py"}
