@@ -1028,6 +1028,10 @@ def test_response_text_uses_a_listed_charset(content_type: str):
         ("MacCyrillic", b"\x80", "\u0410"),
         ("KOI8-T", b"\xf0", "\u041f"),
         ("johab", b"\x88\x61", "\uac00"),
+        ("IBM866", b"\x8f", "\u041f"),
+        ("cp866", b"\x8f", "\u041f"),
+        ("cp437", b"\x80", "\u00c7"),
+        ("cp1125", b"\x8f", "\u041f"),
     ],
 )
 def test_response_text_decodes_a_listed_text_charset(

@@ -125,6 +125,33 @@ ALLOWED_RESPONSE_CHARSETS = frozenset(
         "koi8-r",
         "koi8-u",
         "koi8-t",
+        # DOS and other legacy single-byte codepages
+        *(
+            f"cp{n}"
+            for n in (
+                437,
+                720,
+                737,
+                775,
+                850,
+                852,
+                855,
+                857,
+                858,
+                860,
+                861,
+                862,
+                863,
+                864,
+                865,
+                866,
+                869,
+                1125,
+            )
+        ),
+        "kz1048",
+        "ptcp154",
+        "hp-roman8",
         "mac-arabic",
         "mac-croatian",
         "mac-cyrillic",
