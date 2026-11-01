@@ -76,9 +76,7 @@ export function PendingReviewCard({
     // field rather than turning into a text box.
     const isNumber =
       typeof data === "number" ||
-      (typeof review.payload === "number" &&
-        typeof data === "string" &&
-        isUnsafeIntegerText(data));
+      (typeof data === "string" && isUnsafeIntegerText(data));
 
     if (isNumber) {
       return (

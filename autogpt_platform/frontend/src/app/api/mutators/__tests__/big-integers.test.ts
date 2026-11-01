@@ -77,6 +77,28 @@ describe("big integers in loaded block data", () => {
     );
   });
 
+  it("a bare integer review payload is approved as a JSON number", async () => {
+    serveJson(
+      "get",
+      "/api/review/pending",
+      `[{"node_exec_id": "n1", "payload": ${BIG}}]`,
+    );
+    const [review] = await load("/api/review/pending");
+    const sent = serveJson("post", "/api/review/action", "{}");
+
+    await customMutator("/api/review/action", {
+      method: "POST",
+      body: JSON.stringify({
+        reviews: [
+          { node_exec_id: review.node_exec_id, reviewed_data: review.payload },
+        ],
+      }),
+    });
+
+    expect(sent()).toContain(`"reviewed_data":${BIG}`);
+    expect(sent()).not.toContain(`"reviewed_data":"${BIG}"`);
+  });
+
   it("digits typed as a string are sent as a string", async () => {
     const sent = serveJson("post", "/api/review/action", "{}");
     await customMutator("/api/review/action", {
@@ -173,6 +195,20 @@ describe("big integers sent back to where they were loaded from", () => {
       reviews: [{ node_exec_id: "r-nul", reviewed_data: review.payload }],
     });
     expect(sent()).toContain(`{"s":"\\u0000${BIG}","n":${BIG}}`);
+  });
+
+  it("a review payload that was a string is approved as a string", async () => {
+    serveJson(
+      "get",
+      "/api/review/execution/e-str",
+      `[{"node_exec_id": "r-str", "payload": "${BIG}"}]`,
+    );
+    const [review] = await load("/api/review/execution/e-str");
+    const sent = serveJson("post", "/api/review/action", "{}");
+    await send("POST", "/api/review/action", {
+      reviews: [{ node_exec_id: "r-str", reviewed_data: review.payload }],
+    });
+    expect(sent()).toContain(`"reviewed_data":"${BIG}"`);
   });
 
   it("a body that is not JSON is sent unchanged", async () => {

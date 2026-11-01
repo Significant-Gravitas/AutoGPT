@@ -20,7 +20,8 @@ export function isJsonTextFor(text: string, value: unknown): boolean {
   }
 }
 
-const JSON_TOKEN = /"(?:[^"\\]|\\.)*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g;
+const JSON_TOKEN =
+  /"(?:[^"\\]|\\.)*"|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/g;
 // 16 or more digits that are not part of a fraction or exponent. The smallest
 // unsafe integer, 2^53, has 16 digits, so text without such a run (floats
 // like 0.30000000000000004 included) holds no unsafe integer.

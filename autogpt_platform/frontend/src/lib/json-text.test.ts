@@ -85,6 +85,13 @@ describe("parseJsonExact", () => {
   it("throws on invalid JSON like JSON.parse", () => {
     expect(() => parseJsonExact('{"a": 9007199254740993')).toThrow();
   });
+
+  it("rejects leading-zero numbers like JSON.parse", () => {
+    const text = "[09007199254740993]";
+    expect(() => JSON.parse(text)).toThrow();
+    expect(() => parseJsonExact(text)).toThrow();
+    expect(parseJsonExact("[0, -0, 0.5, 0e20]")).toEqual([0, -0, 0.5, 0]);
+  });
 });
 
 describe("parseJsonExactWithIntegers", () => {
