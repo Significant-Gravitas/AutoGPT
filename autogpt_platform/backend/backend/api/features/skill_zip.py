@@ -34,8 +34,8 @@ def package_from_zip(data: bytes) -> SkillPackage:
 
     Every refusal is a :class:`SkillPackageError`, ``over_limit`` set where the
     REST edge owes a 413. Sizes are checked from the central directory first,
-    so a zip bomb is refused without a member being decompressed, and again on
-    the bytes each member actually unpacks to as it is read.
+    and again on the bytes each member unpacks to as it is read: a member whose
+    unpacked size passes a cap is refused before it is fully read.
     """
     try:
         archive = zipfile.ZipFile(io.BytesIO(data))

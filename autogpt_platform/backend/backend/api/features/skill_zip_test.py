@@ -298,8 +298,8 @@ def _with_a_corrupt_member(data: bytes) -> bytes:
 def test_a_member_declaring_less_than_it_unpacks_to_is_refused_undecompressed(
     method: int, monkeypatch
 ):
-    """A bzip2 or LZMA member that declares a small size passes the central
-    directory check, so it is refused by its method before it unpacks."""
+    """A bzip2 or LZMA member is refused by its method before it unpacks,
+    whatever size it declares."""
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr("SKILL.md", SKILL_MD, zipfile.ZIP_DEFLATED)

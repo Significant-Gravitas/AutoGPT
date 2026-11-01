@@ -1,8 +1,8 @@
 """Bounded reads of zip archive members.
 
-A member's size in the central directory is whatever the archive says it is,
-so these readers count the bytes a member actually decompresses to, as they
-are produced, and stop once a cap is passed.
+These readers count the bytes a member decompresses to, as they are
+produced, and stop once a cap is passed, whatever size the central directory
+records for it.
 
 Only stored and deflated members are read. ``zipfile`` inflates a deflate
 member in steps no larger than the read asked for, but decompresses each
