@@ -181,11 +181,32 @@ async def test_excel_is_read_from_the_bytes_that_were_checked(workbook_path):
 
     import pandas as pd
 
+    from backend.blocks import spreadsheet
+    from backend.util.file_content_parser import check_xlsx_unpacked_size
+
+    checked: list[bytes] = []
+    read: list[bytes] = []
     real_read_excel = pd.read_excel
-    with patch("pandas.read_excel", wraps=real_read_excel) as read_excel:
+    original = workbook_path.read_bytes()
+
+    def check_then_change_file(archive, **kwargs):
+        checked.append(archive.getvalue())
+        check_xlsx_unpacked_size(archive, **kwargs)
+        workbook_path.write_bytes(b"not the workbook that was checked")
+
+    def record_read(source, *args, **kwargs):
+        assert isinstance(source, io.BytesIO)
+        read.append(source.getvalue())
+        return real_read_excel(source, *args, **kwargs)
+
+    with (
+        patch.object(spreadsheet, "check_xlsx_unpacked_size", check_then_change_file),
+        patch("pandas.read_excel", record_read),
+    ):
         rows = await read_rows(file_input=MediaFileType("book.xlsx"))
 
-    assert isinstance(read_excel.call_args.args[0], io.BytesIO)
+    assert checked == [original]
+    assert read == checked
     assert rows[0]["status"] == "N/A"
 
 
