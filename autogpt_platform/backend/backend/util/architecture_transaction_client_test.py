@@ -71,6 +71,13 @@ def test_the_rule_follows_every_way_a_helper_is_reached(tmp_path):
         "\n"
         "async def careless(name, client: Prisma | None = None):\n"
         "    return await Folder.prisma().find_first(where={'name': name})\n"
+        "\n"
+        "async def ping(name):\n"
+        "    await pong(name)\n"
+        "    return await Folder.prisma().find_first(where={'name': name})\n"
+        "\n"
+        "async def pong(name):\n"
+        "    return await ping(name)\n"
     )
     (package / "writer.py").write_text(
         "from . import store as store_db\n"
@@ -89,6 +96,8 @@ def test_the_rule_follows_every_way_a_helper_is_reached(tmp_path):
         "        await store_db.members(name)\n"
         "        if tx is None and parent is None:\n"
         "            await store_db.lookup(name)\n"
+        "        await store_db.ping(name)\n"
+        "        await store_db.pong(name)\n"
         "        await Folder.prisma(tx).create(data={'name': name})\n"
     )
 
@@ -102,6 +111,8 @@ def test_the_rule_follows_every_way_a_helper_is_reached(tmp_path):
         "backend/pkg/writer.py:11 calls query_raw_with_schema without client=",
         "backend/pkg/writer.py:13 calls lookup, which queries the global client",
         "backend/pkg/writer.py:14 calls members, which queries the global client",
+        "backend/pkg/writer.py:17 calls ping, which queries the global client",
+        "backend/pkg/writer.py:18 calls pong, which queries the global client",
     ]
 
 
@@ -180,10 +191,12 @@ def _scan(
             yield node.lineno, f"calls {function.name}, which queries the global client"
 
 
-_VISITING: set[tuple[str, str, frozenset[str], frozenset[str]]] = set()
+_Key = tuple[str, str, frozenset[str], frozenset[str], pathlib.Path]
+_REACHES: dict[_Key, bool] = {}
+_VISITING: set[_Key] = set()
+_CYCLES_CUT = [0]
 
 
-@functools.cache
 def _reaches_global(
     module: str,
     function_name: str,
@@ -191,15 +204,26 @@ def _reaches_global(
     unset: frozenset[str],
     root: pathlib.Path,
 ) -> bool:
-    key = (module, function_name, bound, unset)
+    key = (module, function_name, bound, unset, root)
+    if key in _REACHES:
+        return _REACHES[key]
     function = _module_functions(module, root).get(function_name)
-    if function is None or key in _VISITING:
+    if function is None:
         return False
+    if key in _VISITING:
+        _CYCLES_CUT[0] += 1
+        return False
+    cuts_before = _CYCLES_CUT[0]
     _VISITING.add(key)
     try:
-        return any(True for _ in _scan(module, function.body, bound, unset, root))
+        reaches = any(True for _ in _scan(module, function.body, bound, unset, root))
     finally:
         _VISITING.discard(key)
+    # A False found while a cycle was cut short may be wrong; only remember it
+    # once nothing below was cut.
+    if reaches or _CYCLES_CUT[0] == cuts_before:
+        _REACHES[key] = reaches
+    return reaches
 
 
 def _reachable(

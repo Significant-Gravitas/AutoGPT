@@ -766,4 +766,8 @@ class CredentialsSnapshot:
         return (await asyncio.shield(self._loaded)).get(credentials_id)
 
     async def _by_id(self) -> dict[str, Credentials]:
-        return {c.id: c for c in await self._load()}
+        by_id: dict[str, Credentials] = {}
+        for credentials in await self._load():
+            # First match wins, as in IntegrationCredentialsStore.get_creds_by_id.
+            by_id.setdefault(credentials.id, credentials)
+        return by_id

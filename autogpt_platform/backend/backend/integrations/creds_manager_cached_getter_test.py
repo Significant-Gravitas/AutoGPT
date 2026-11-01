@@ -50,3 +50,15 @@ async def test_an_empty_store_is_not_reloaded(mocker):
     assert await get_credentials("a") is None
     assert await get_credentials("b") is None
     load.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_duplicate_id_resolves_to_the_first_match(mocker):
+    """The same choice `IntegrationCredentialsStore.get_creds_by_id` makes."""
+    manager = IntegrationCredentialsManager()
+    later = STORED.model_copy(update={"title": "Later"})
+    mocker.patch.object(
+        manager.store, "get_all_creds", AsyncMock(return_value=[STORED, later])
+    )
+
+    assert await manager.cached_getter("user-a")(STORED.id) is STORED
