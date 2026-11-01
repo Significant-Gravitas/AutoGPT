@@ -436,7 +436,7 @@ def test_office_preview_declines_an_oversized_thumbnail(mocker):
     assert response.status_code == 413
 
 
-# The embedded thumbnail is counted as it unpacks: 10 MB, the image ceiling.
+# The embedded thumbnail cap: 10 MB, the same as an image preview.
 _THUMBNAIL_CAP = 10_000_000
 
 
@@ -467,8 +467,12 @@ def test_office_thumbnail_at_the_cap_is_read():
     assert thumbnail is not None and len(thumbnail) == _THUMBNAIL_CAP
 
 
-@pytest.mark.parametrize("method", [zipfile.ZIP_DEFLATED, zipfile.ZIP_BZIP2])
-def test_office_preview_declines_a_thumbnail_that_unpacks_past_the_cap(mocker, method):
+@pytest.mark.parametrize(
+    "method, status", [(zipfile.ZIP_DEFLATED, 413), (zipfile.ZIP_BZIP2, 415)]
+)
+def test_office_preview_declines_a_thumbnail_that_unpacks_past_the_cap(
+    mocker, method, status
+):
     _mock_lookups(mocker, _make_file(name="report.docx", path="/report.docx"))
     _mock_storage(mocker, _office_with_thumbnail(_THUMBNAIL_CAP + 1, method))
     _mock_redis(mocker)
@@ -478,7 +482,7 @@ def test_office_preview_declines_a_thumbnail_that_unpacks_past_the_cap(mocker, m
 
     response = client.get("/files/file-001/preview")
 
-    assert response.status_code in (413, 415)
+    assert response.status_code == status
     resize.assert_not_called()
 
 

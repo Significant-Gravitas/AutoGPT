@@ -64,8 +64,7 @@ TEXT_PREVIEW_HEADERS = {
 PREVIEW_MAX_IMAGE_BYTES = 10_000_000
 PREVIEW_MAX_DOC_BYTES = 50_000_000
 PREVIEW_MAX_TEXT_BYTES = 50_000_000
-# The embedded thumbnail an Office file carries, counted as it unpacks; the
-# same ceiling as an image previewed on its own.
+# The embedded thumbnail of an Office file: the same cap as an image preview.
 MAX_EMBEDDED_THUMBNAIL_BYTES = 10_000_000
 
 OFFICE_MIMES = frozenset(
@@ -197,6 +196,8 @@ async def _office_thumbnail(file: WorkspaceFile, width: int) -> bytes:
             content = await _retrieve(file)
             try:
                 raw = await asyncio.to_thread(_extract_zip_thumbnail, content)
+            except fastapi.HTTPException:
+                raise
             except Exception as e:
                 raise fastapi.HTTPException(
                     status_code=415, detail="Cannot render preview"

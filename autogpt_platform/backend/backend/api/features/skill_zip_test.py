@@ -295,16 +295,12 @@ def _with_a_corrupt_member(data: bytes) -> bytes:
 
 
 @pytest.mark.parametrize("method", [zipfile.ZIP_BZIP2, zipfile.ZIP_LZMA])
-def test_a_member_declaring_less_than_it_unpacks_to_is_refused_undecompressed(
-    method: int, monkeypatch
-):
-    """A bzip2 or LZMA member is refused by its method before it unpacks,
-    whatever size it declares."""
+def test_a_bzip2_or_lzma_member_is_refused(method: int, monkeypatch):
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr("SKILL.md", SKILL_MD, zipfile.ZIP_DEFLATED)
         archive.writestr("big.bin", b"\0" * (MAX_PACKAGE_FILE_BYTES + 1), method)
-    data = _declaring(buffer.getvalue(), "big.bin", 100)
+    data = _with_file_size(buffer.getvalue(), "big.bin", 100)
     assert zipfile.ZipFile(io.BytesIO(data)).getinfo("big.bin").file_size == 100
 
     decompressor = zipfile._get_decompressor
@@ -319,9 +315,8 @@ def test_a_member_declaring_less_than_it_unpacks_to_is_refused_undecompressed(
         package_from_zip(data)
 
 
-def _declaring(data: bytes, name: str, size: int) -> bytes:
-    """Rewrite the size a member declares, in its local header and its central
-    directory entry, leaving its compressed stream as it was."""
+def _with_file_size(data: bytes, name: str, size: int) -> bytes:
+    """Set a member's file size field in both of its headers."""
     out = bytearray(data)
     header = zipfile.ZipFile(io.BytesIO(data)).getinfo(name).header_offset
     struct.pack_into("<I", out, header + 22, size)

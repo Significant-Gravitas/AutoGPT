@@ -2,6 +2,7 @@
 
 import io
 import json
+import struct
 import zipfile
 from unittest.mock import patch
 
@@ -13,6 +14,7 @@ from backend.util.file_content_parser import (
     infer_format_from_uri,
     parse_file_content,
 )
+from backend.util.zip_member import ZipMemberError
 
 # ---------------------------------------------------------------------------
 # infer_format_from_uri
@@ -485,7 +487,7 @@ class TestMimeMapping:
 # parse_file_content — Excel unpacked size
 # ---------------------------------------------------------------------------
 
-# A workbook member is counted as it unpacks: 50 MiB each, 200 MiB in all.
+# The .xlsx caps: 50 MiB per member, 200 MiB per workbook.
 _XLSX_MEMBER_CAP = 50 * 1024 * 1024
 
 
@@ -505,8 +507,7 @@ class TestXlsxUnpackedSize:
 
     @staticmethod
     def _with_member(xlsx: bytes, size: int) -> bytes:
-        """Append a member of ``size`` zero bytes, written in pieces so the test
-        never holds it whole; deflate packs it to a few tens of KB."""
+        """Append a member of ``size`` zero bytes, written in pieces."""
         buf = io.BytesIO(xlsx)
         with (
             zipfile.ZipFile(buf, "a", zipfile.ZIP_DEFLATED) as archive,
@@ -525,7 +526,7 @@ class TestXlsxUnpackedSize:
                 "pandas.read_excel",
                 side_effect=AssertionError("the workbook was read"),
             ) as read_excel,
-            pytest.raises(ValueError, match="File too large"),
+            pytest.raises(ValueError, match="unpacks to more than"),
         ):
             parse_file_content(data, "xlsx", strict=True)
         read_excel.assert_not_called()
@@ -578,6 +579,32 @@ class TestXlsxUnpackedSize:
         assert report.call_args.kwargs["tags"]["xlsx_limit"] == "MAX_XLSX_TOTAL_BYTES"
         assert report.call_args.kwargs["extras"]["limit_bytes"] == 1_000
         assert report.call_args.kwargs["extras"]["unpacked_bytes"] > 1_000
+
+    @staticmethod
+    def _with_encrypted_flag(xlsx: bytes) -> bytes:
+        """Set the encrypted flag on every member, in both of its headers."""
+        out = bytearray(xlsx)
+        with zipfile.ZipFile(io.BytesIO(xlsx)) as archive:
+            entry = archive.start_dir
+            for info in archive.infolist():
+                out[info.header_offset + 6] |= 0x1
+                out[entry + 8] |= 0x1
+                name_len, extra_len, comment_len = struct.unpack_from(
+                    "<HHH", out, entry + 28
+                )
+                entry += 46 + name_len + extra_len + comment_len
+        return bytes(out)
+
+    def test_an_encrypted_member_is_refused(self, xlsx_bytes: bytes):
+        data = self._with_encrypted_flag(xlsx_bytes)
+
+        with pytest.raises(ZipMemberError, match="is encrypted"):
+            parse_file_content(data, "xlsx", strict=True)
+
+    def test_an_encrypted_member_falls_back_to_the_raw_bytes(self, xlsx_bytes: bytes):
+        data = self._with_encrypted_flag(xlsx_bytes)
+
+        assert parse_file_content(data, "xlsx") == data
 
     def test_a_workbook_within_the_caps_is_not_reported(self, xlsx_bytes: bytes):
         with patch.object(file_content_parser.sentry_sdk, "capture_message") as report:

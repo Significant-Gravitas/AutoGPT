@@ -145,13 +145,12 @@ async def test_excel_cell_containing_the_delimiter_survives(tmp_path):
     assert rows == [{"name": "widget", "note": "a;b"}]
 
 
-# A workbook member is counted as it unpacks: 50 MiB each, 200 MiB in all.
+# The .xlsx caps: 50 MiB per member, 200 MiB per workbook.
 XLSX_MEMBER_CAP = 50 * 1024 * 1024
 
 
 def add_member(workbook: Path, name: str, size: int) -> None:
-    """Append a member of ``size`` zero bytes, written in pieces so the test
-    never holds it whole; deflate packs it to a few tens of KB."""
+    """Append a member of ``size`` zero bytes, written in pieces."""
     with (
         zipfile.ZipFile(workbook, "a", zipfile.ZIP_DEFLATED) as archive,
         archive.open(name, "w") as member,
@@ -170,7 +169,7 @@ async def test_excel_member_unpacking_past_the_cap_is_refused_unread(workbook_pa
             "pandas.read_excel",
             side_effect=AssertionError("the workbook was read"),
         ) as read_excel,
-        pytest.raises(ValueError, match="File too large"),
+        pytest.raises(ValueError, match="unpacks to more than"),
     ):
         await read_rows(file_input=MediaFileType("book.xlsx"))
     read_excel.assert_not_called()
@@ -191,7 +190,7 @@ async def test_excel_member_past_the_cap_is_reported_once(workbook_path):
 
     with (
         patch("backend.util.file_content_parser.sentry_sdk.capture_message") as report,
-        pytest.raises(ValueError, match="File too large"),
+        pytest.raises(ValueError, match="unpacks to more than"),
     ):
         await read_rows(file_input=MediaFileType("book.xlsx"))
 

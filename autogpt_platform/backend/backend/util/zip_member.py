@@ -1,14 +1,4 @@
-"""Bounded reads of zip archive members.
-
-These readers count the bytes a member decompresses to, as they are
-produced, and stop once a cap is passed, whatever size the central directory
-records for it.
-
-Only stored and deflated members are read. ``zipfile`` inflates a deflate
-member in steps no larger than the read asked for, but decompresses each
-compressed chunk of the other methods (bzip2, LZMA) whole, which no read size
-can bound. Office files and ordinary zip tools use deflate.
-"""
+"""Zip member reads under a byte cap, for stored and deflate members only."""
 
 import os
 import zipfile
@@ -17,6 +7,7 @@ from typing import IO, Literal
 
 READ_CHUNK_BYTES = 64 * 1024
 _BOUNDED_METHODS = frozenset({zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED})
+_ENCRYPTED_FLAG = 0x1
 
 
 class ZipMemberError(ValueError):
@@ -49,6 +40,8 @@ def iter_member(
 ) -> Iterator[bytes]:
     """Yield a member's bytes in chunks, raising :class:`ZipMemberTooLarge` as
     soon as more than ``max_bytes`` have been produced."""
+    if info.flag_bits & _ENCRYPTED_FLAG:
+        raise ZipMemberError(f"'{info.filename[:120]}' is encrypted")
     if info.compress_type not in _BOUNDED_METHODS:
         raise ZipMemberError(
             f"'{info.filename[:120]}' uses an unsupported compression method"

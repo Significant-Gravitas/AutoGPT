@@ -48,8 +48,7 @@ from backend.util.zip_member import ZipMemberTooLarge, check_unpacked_size
 
 logger = logging.getLogger(__name__)
 
-# An .xlsx is a zip whose sheets openpyxl reads whole, so the bytes its members
-# actually unpack to are counted before it is handed over.
+# The .xlsx caps, per member and per workbook, checked before pandas reads it.
 MAX_XLSX_MEMBER_BYTES = 50 * 1024 * 1024
 MAX_XLSX_TOTAL_BYTES = 200 * 1024 * 1024
 
@@ -358,11 +357,9 @@ def check_xlsx_unpacked_size(
     *,
     source: Literal["spreadsheet_block", "file_content_parser"],
 ) -> None:
-    """Refuse a workbook whose members unpack past the .xlsx caps.
+    """Refuse a workbook past the .xlsx caps, reporting each refusal to Sentry.
 
     Only a zip is read; anything else is left for the Excel reader to reject.
-    Each refusal is reported to Sentry, so how often workbooks reach the caps
-    shows whether larger ones need support.
     """
     if not zipfile.is_zipfile(file):
         return
@@ -374,9 +371,7 @@ def check_xlsx_unpacked_size(
         )
     except ZipMemberTooLarge as e:
         _report_xlsx_refusal(e, source)
-        raise ZipMemberTooLarge(
-            f"File too large: {e}", cap=e.cap, counted=e.counted, limit=e.limit
-        ) from e
+        raise
 
 
 def _report_xlsx_refusal(error: ZipMemberTooLarge, source: str) -> None:

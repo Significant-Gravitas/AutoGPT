@@ -1,6 +1,4 @@
-"""Tests for bounded zip member reads: the cap is counted on the bytes a member
-actually unpacks to, and only methods that can be read in bounded steps are
-read at all."""
+"""Tests for zip member reads under a byte cap."""
 
 import io
 import zipfile
@@ -49,7 +47,6 @@ def test_a_member_past_the_cap_is_refused():
 
 
 def test_the_read_stops_at_the_first_chunk_past_the_cap():
-    """A member far over the cap is not unpacked to the end before refusing."""
     archive, info = _member(_zip({"a.bin": b"\0" * (READ_CHUNK_BYTES * 50)}))
     chunks = iter_member(archive, info, max_bytes=READ_CHUNK_BYTES)
 
@@ -58,9 +55,7 @@ def test_the_read_stops_at_the_first_chunk_past_the_cap():
         next(chunks)
 
 
-def test_a_large_declared_size_is_not_what_is_counted():
-    """The cap is checked on the bytes produced, whatever the central
-    directory says the member holds."""
+def test_the_cap_is_counted_on_the_bytes_read():
     archive, info = _member(_zip({"a.bin": b"\0" * 5_000}))
     info.file_size = 10**9
 
@@ -74,6 +69,17 @@ def test_a_member_of_another_method_is_refused_unread(method: int, monkeypatch):
     monkeypatch.setattr(archive, "open", opened)
 
     with pytest.raises(ZipMemberError, match="unsupported compression method"):
+        read_member(archive, info, max_bytes=10_000_000)
+    opened.assert_not_called()
+
+
+def test_an_encrypted_member_is_refused_unread(monkeypatch):
+    archive, info = _member(_zip({"a.bin": b"\0" * 1_000}))
+    info.flag_bits |= 0x1
+    opened = MagicMock(side_effect=AssertionError("the member was opened"))
+    monkeypatch.setattr(archive, "open", opened)
+
+    with pytest.raises(ZipMemberError, match="'a.bin' is encrypted"):
         read_member(archive, info, max_bytes=10_000_000)
     opened.assert_not_called()
 
