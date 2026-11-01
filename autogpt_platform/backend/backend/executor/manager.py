@@ -2163,7 +2163,7 @@ class ExecutionManager(AppProcess):
                     f"[{self.service_name}] Rate limit exceeded for user {user_id} on graph {graph_id}: "
                     f"{current_running_count}/{settings.config.max_concurrent_graph_executions_per_user} running executions"
                 )
-                _ack_message(reject=True, requeue=True)
+                _ack_message(reject=True, requeue=True, delay=True)
                 return
 
         except Exception as e:

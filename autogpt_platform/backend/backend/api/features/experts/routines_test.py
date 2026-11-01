@@ -360,6 +360,20 @@ async def test_enable_routine_refuses_more_repeat_times_than_the_limit():
     schedules.assert_not_awaited()
 
 
+async def test_enable_routine_refuses_a_cron_that_never_fires_before_any_job():
+    schedules = AsyncMock()
+    with (
+        patch(f"{_ROUTINES}._owned_routine", AsyncMock(return_value=_row())),
+        patch(f"{_ROUTINES}.get_user_by_id", AsyncMock(return_value=None)),
+        patch(f"{_ROUTINES}.create_routine_schedules", schedules),
+    ):
+        with pytest.raises(ValueError, match="never fires"):
+            await enable_routine(
+                "user-1", None, "routine-1", crons=["0 9 * * *", "0 0 30 2 *"]
+            )
+    schedules.assert_not_awaited()
+
+
 async def test_enable_routine_schedules_each_distinct_cron_once():
     schedules = AsyncMock(side_effect=_StopAfterScheduling)
     with (

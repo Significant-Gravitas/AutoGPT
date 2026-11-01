@@ -98,6 +98,16 @@ def test_a_run_refused_for_want_of_a_worker_waits_in_the_delay_queue(manager):
     assert channel.basic_nack.call_args.kwargs["requeue"] is False
 
 
+def test_a_run_over_the_per_graph_limit_waits_in_the_delay_queue(manager):
+    manager_module.get_db_client().get_graph_executions_count.return_value = 10**6
+
+    _deliver(manager, user="alice", run="a1")
+
+    assert manager.active_graph_runs == {}
+    (published,) = manager.run_client.publish_message.call_args_list
+    assert published.kwargs["routing_key"] == GRAPH_EXECUTION_DELAY_ROUTING_KEY
+
+
 def _deliver(
     manager: ExecutionManager, *, user: str, run: str, root: str | None = None
 ) -> None:

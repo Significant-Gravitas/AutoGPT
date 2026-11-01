@@ -40,7 +40,6 @@ from backend.executor.scheduler import (
     _MAX_PLAN_LOOKUP_RETRIES,
     _MAX_USAGE_WAITS,
     _USAGE_WAIT_SPREAD_SECONDS,
-    MAX_CRON_LENGTH,
     CopilotTurnJobArgs,
     CopilotTurnJobInfo,
     GraphExecutionJobArgs,
@@ -67,6 +66,7 @@ from backend.executor.scheduler import (
     reconcile_stripe_tiers,
     refresh_near_expiry_credentials,
 )
+from backend.util.cron import MAX_CRON_LENGTH
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,

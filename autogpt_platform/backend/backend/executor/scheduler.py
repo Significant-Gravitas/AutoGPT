@@ -127,6 +127,7 @@ from backend.util.clients import (
     get_scheduler_client,
 )
 from backend.util.cloud_storage import cleanup_expired_files_async
+from backend.util.cron import check_cron_fires, check_cron_length
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
@@ -2764,11 +2765,6 @@ def _normalize_cron_day_of_week(cron: str) -> str:
     return " ".join(parts)
 
 
-MAX_CRON_LENGTH = 200
-# The rarest cron that fires at all (Feb 29 on one weekday) can go 40 years between runs.
-_MAX_CRON_FIRE_GAP = timedelta(days=50 * 366)
-
-
 def _build_trigger(
     *, cron: str | None, run_at: datetime | None, user_timezone: str
 ) -> Union[CronTrigger, DateTrigger]:
@@ -2784,26 +2780,12 @@ def _build_trigger(
 
 
 def _build_cron_trigger(cron: str, user_timezone: str) -> CronTrigger:
-    if len(cron) > MAX_CRON_LENGTH:
-        raise ValueError(
-            f"Cron expression is too long (max {MAX_CRON_LENGTH} characters)"
-        )
+    check_cron_length(cron)
     trigger = CronTrigger.from_crontab(
         _normalize_cron_day_of_week(cron), timezone=user_timezone
     )
-    # A cron with no fire time would be stored and never run.
-    if not _cron_fires_within(trigger, _MAX_CRON_FIRE_GAP):
-        raise ValueError(f"Cron expression {cron!r} never fires")
+    check_cron_fires(trigger, cron)
     return trigger
-
-
-def _cron_fires_within(trigger: CronTrigger, horizon: timedelta) -> bool:
-    now = datetime.now(trigger.timezone)
-    trigger.end_date = now + horizon
-    try:
-        return trigger.get_next_fire_time(None, now) is not None
-    finally:
-        trigger.end_date = None
 
 
 def _updated_graph_job_args(
@@ -3782,6 +3764,9 @@ class Scheduler(AppService):
         job, info = self._authorized_job(schedule_id, user_id, action="resume")
         if job.next_run_time is not None:
             return False
+        # Resuming computes the next fire time from the stored trigger.
+        if isinstance(job.trigger, CronTrigger):
+            check_cron_fires(job.trigger, info.cron or "")
         logger.info(f"Resuming job {schedule_id} (kind={info.kind})")
         self.scheduler.resume_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
         self._invalidate_jobs_cache()

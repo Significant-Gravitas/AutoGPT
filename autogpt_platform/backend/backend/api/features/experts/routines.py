@@ -36,7 +36,6 @@ import prisma
 import prisma.enums
 import prisma.models
 import prisma.types
-from apscheduler.triggers.cron import CronTrigger
 from pydantic import ValidationError
 
 from backend.api.features.experts.models import MAX_ROUTINE_CRONS, ExpertRoutine
@@ -49,6 +48,7 @@ from backend.copilot.credential_selection import CredentialPin, CredentialPins
 from backend.copilot.scheduled_chats.forget import forget_routine
 from backend.data.user import get_user_by_id
 from backend.util.clients import get_scheduler_client
+from backend.util.cron import validate_cron
 from backend.util.exceptions import RoutineNotFoundError, RoutineUnansweredAsksError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
@@ -246,7 +246,7 @@ async def enable_routine(
             "and not neither."
         )
     for cron in resolved_crons:
-        CronTrigger.from_crontab(cron, timezone=user_timezone)
+        validate_cron(cron, user_timezone)
     # A spent one-shot switched on again needs a new time: re-arming it at the
     # old one would either fire immediately or never, and neither is a thing
     # the owner asked for.
