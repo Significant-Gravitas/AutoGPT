@@ -120,6 +120,10 @@ _TOKEN_SHAPED_VALUE = re.compile(
     r"\b(?:sk-(?:proj-)?|gh[pousr]_|github_pat_|xox[baprs]-)[a-z0-9_-]{8,})"
 )
 _FILTERED_VALUE = "[Filtered]"
+# Three bounds in the order the SDK applies them: ``custom_repr`` caps a frame local
+# before it is repr()'d, ``max_value_length`` then cuts every string in the event, and
+# the ``before_send`` scrubber searches what is left.
+_MAX_LOCAL_REPR = 1024
 # The SDK cuts every string in an event to this length before ``before_send``.
 _SENTRY_MAX_VALUE_LENGTH = 8 * 1024
 # Characters of text the scrubber searches per event; strings past it are filtered.
@@ -419,12 +423,21 @@ def sentry_init():
         max_value_length=_SENTRY_MAX_VALUE_LENGTH,
         before_send=_before_send,
         before_send_transaction=_before_send_transaction,
+        custom_repr=_bounded_repr,
         integrations=[
             AsyncioIntegration(),
             LoggingIntegration(),
         ]
         + optional_integrations,
     )
+
+
+def _bounded_repr(value: object) -> str | None:
+    """The SDK repr()s frame locals in full while holding the GIL, which takes seconds
+    and gigabytes when a traceback holds a large upload."""
+    if isinstance(value, (str, bytes, bytearray)) and len(value) > _MAX_LOCAL_REPR:
+        return f"{value[:_MAX_LOCAL_REPR]!r}... ({len(value):,} long)"
+    return None
 
 
 def _running_under_pytest() -> bool:

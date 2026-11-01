@@ -497,6 +497,72 @@ def test_sentry_init_cuts_long_values_before_they_are_scrubbed(monkeypatch) -> N
     assert calls[0]["max_value_length"] == metrics._SENTRY_MAX_VALUE_LENGTH
 
 
+def test_a_large_frame_local_reaches_the_event_truncated(monkeypatch) -> None:
+    """A failed virus scan's traceback holds the upload in several frames, and the
+    SDK's full repr of each took seconds and a gigabyte for a 90 MB file."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    metrics.sentry_init()
+
+    def write_file(content: bytes) -> None:
+        raise RuntimeError("Virus scanning failed")
+
+    try:
+        write_file(b"x" * 5_000_000)
+    except RuntimeError:
+        event, _ = event_from_exception(
+            sys.exc_info(), client_options={**DEFAULT_OPTIONS, **calls[0]}
+        )
+
+    raising_frame = event["exception"]["values"][0]["stacktrace"]["frames"][-1]
+    assert len(raising_frame["vars"]["content"]) < 2_000
+
+
+def test_both_event_bounds_hold_through_one_trip_to_before_send(monkeypatch) -> None:
+    """The SDK applies ``custom_repr`` and ``max_value_length`` in the one serialize
+    pass before ``before_send``, so the scrubber only ever searches bounded text."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    metrics.sentry_init()
+    options = {**DEFAULT_OPTIONS, **calls[0]}
+
+    def write_file(content: bytes) -> None:
+        raise RuntimeError("Virus scanning failed")
+
+    try:
+        write_file(b"x" * 5_000_000)
+    except RuntimeError:
+        event, _ = event_from_exception(sys.exc_info(), client_options=options)
+
+    event.update(_log_event("backend.api.rest_api", "api_key=FAKE-SECRET-1"))
+    event["extra"] = {"transcript": "y" * 1_000_000}
+    scrubbed = _before_send(
+        serialize(
+            event,
+            max_value_length=options["max_value_length"],
+            custom_repr=options["custom_repr"],
+        ),
+        {},
+    )
+
+    assert scrubbed is not None
+    # custom_repr cut the frame local before repr() built a 5 MB copy, so it reports
+    # the original length; without it the value arrives as a max_value_length slice.
+    local = scrubbed["exception"]["values"][0]["stacktrace"]["frames"][-1]["vars"][
+        "content"
+    ]
+    assert local.endswith("... (5,000,000 long)")
+    assert len(local) < metrics._SENTRY_MAX_VALUE_LENGTH
+    # max_value_length cut the long innocent value, so the scrubber searched it and
+    # kept it; unbounded it would exceed the budget and be dropped as [Filtered].
+    assert scrubbed["extra"]["transcript"] != "[Filtered]"
+    assert len(scrubbed["extra"]["transcript"]) <= metrics._SENTRY_MAX_VALUE_LENGTH
+    # And the budget the two bounds left over still caught the secret.
+    assert scrubbed["logentry"]["formatted"] == "[Filtered]"
+
+
 def test_sentry_init_skipped_in_subprocess_spawned_by_pytest(monkeypatch) -> None:
     """A spawned service subprocess does not inherit sys.modules, but does
     inherit PYTEST_CURRENT_TEST from the environment."""

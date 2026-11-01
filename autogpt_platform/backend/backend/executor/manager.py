@@ -23,6 +23,7 @@ from backend.blocks import get_block, get_blocks
 from backend.blocks._base import BlockSchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.mcp.block import MCPToolBlock
+from backend.copilot.rate_limit import platform_spend_refusal
 from backend.data import redis_client as redis
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
 from backend.data.db_accessors import experts_db
@@ -110,7 +111,12 @@ from .node_tracing import (
     output_transaction,
     record_node_result,
 )
-from .simulator import get_dry_run_credentials, prepare_dry_run, simulate_block
+from .simulator import (
+    get_dry_run_credentials,
+    prepare_dry_run,
+    simulate_block,
+    track_dry_run_block_cost,
+)
 from .utils import (
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
     GRAPH_EXECUTION_CANCEL_EXCHANGE,
@@ -145,7 +151,7 @@ def _get_execution_credit_balance(
     graph_exec: GraphExecutionEntry,
 ) -> int:
     """Return the balance for the wallet billed by this execution."""
-    organization_id = graph_exec.execution_context.organization_id
+    organization_id = billing.billed_org_id(graph_exec.execution_context)
     if organization_id:
         return db_client.get_org_credits(org_id=organization_id)
     return db_client.get_credits(graph_exec.user_id)
@@ -471,6 +477,14 @@ async def execute_node(
     # Check for dry-run platform credentials (OrchestratorBlock uses the
     # platform's OpenRouter key instead of user credentials).
     _dry_run_creds = get_dry_run_credentials(input_data) if _dry_run_input else None
+    # A dry run skips credits, so a block it runs for real on the platform's
+    # key is bounded by the user's allowance instead.
+    if _dry_run_creds is not None and (
+        refusal := await platform_spend_refusal(user_id)
+    ):
+        log_metadata.warning(f"Dry-run block not run: {refusal}")
+        yield "error", refusal
+        return
 
     # Last-minute fetch credentials. OAuth credentials come with a system-wide lease
     # that stops them being refreshed or replaced during execution. ⚠️ This means
@@ -640,6 +654,15 @@ async def execute_node(
         # Re-raise to maintain normal error flow
         raise
     finally:
+        # Stats and the Sentry scope first: the node is billed on the stats, and a
+        # second cancel landing in one of the awaits below would skip both.
+        if execution_stats is not None:
+            execution_stats += node_block.execution_stats
+            execution_stats.input_size = input_size
+            execution_stats.output_size = output_size
+        scope._user = original_user
+        scope._tags = original_tags
+
         # Ensure all credentials are released even if execution fails
         await _release_credential_leases(list(credential_leases.values()), log_metadata)
         for creds_lock in creds_locks:
@@ -653,15 +676,12 @@ async def execute_node(
                 except Exception as e:
                     log_metadata.error(f"Failed to release credentials lock: {e}")
 
-        # Update execution stats
-        if execution_stats is not None:
-            execution_stats += node_block.execution_stats
-            execution_stats.input_size = input_size
-            execution_stats.output_size = output_size
-
-        # Restore scope AFTER error has been captured
-        scope._user = original_user
-        scope._tags = original_tags
+        if _dry_run_creds is not None:
+            await track_dry_run_block_cost(
+                node_block.execution_stats,
+                user_id=user_id,
+                model=input_data.get("model"),
+            )
 
 
 async def _get_node_credentials(
@@ -982,6 +1002,7 @@ class ExecutionProcessor:
                 graph_stats_pair=graph_stats_pair,
                 db_client=db_client,
                 log_metadata=log_metadata,
+                stopped=node_exec_progress.stop_requested,
             )
         )
         node_exec_progress.track_settling(node_exec.node_exec_id, settle)
@@ -996,6 +1017,7 @@ class ExecutionProcessor:
         graph_stats_pair: tuple[GraphExecutionStats, threading.Lock],
         db_client: "DatabaseManagerAsyncClient",
         log_metadata: LogMetadata,
+        stopped: bool = False,
     ) -> NodeExecutionStats:
         # Log platform cost + reconcile dynamic billing BEFORE graph/node stats
         # are aggregated and persisted — otherwise the reconciled delta never
@@ -1006,7 +1028,8 @@ class ExecutionProcessor:
         # Reconcile on FAILED / TERMINATED too — partial work consumed real
         # provider tokens, and the pre-flight charge should be refunded down
         # to the actually-tracked usage rather than being absorbed wholesale
-        # by the user.
+        # by the user. A stop request mid LLM request also bills that
+        # request's estimated input tokens (see billing.bills_stop_estimate).
         if status in (
             ExecutionStatus.COMPLETED,
             ExecutionStatus.FAILED,
@@ -1029,6 +1052,7 @@ class ExecutionProcessor:
                     node_exec=node_exec,
                     stats=execution_stats,
                     pre_flight_charge=node_exec.pre_flight_charge,
+                    bill_stop_estimate=billing.bills_stop_estimate(status, stopped),
                 )
                 if reconciled_delta != 0:
                     execution_stats.reconciled_cost_delta += reconciled_delta
@@ -1720,12 +1744,15 @@ class ExecutionProcessor:
         This method is decorated with @error_logged(swallow=True) to ensure cleanup
         never fails in the finally block.
         """
-        # Cancel and wait for all node executions to complete
+        # Cancel and wait for all node executions to complete. Only a stop
+        # request ends a run TERMINATED, and its nodes are billed for the
+        # requests it cuts off (see billing.bills_stop_estimate).
+        stop_requested = execution_status == ExecutionStatus.TERMINATED
         for node_id, inflight_exec in running_node_execution.items():
             if inflight_exec.is_done():
                 continue
             log_metadata.info(f"Stopping node execution {node_id}")
-            inflight_exec.stop()
+            inflight_exec.stop(stop_requested=stop_requested)
 
         # One unwind grace for all nodes together, so several blocks that
         # ignore the cancel can't add up past stop_graph_execution's wait.
