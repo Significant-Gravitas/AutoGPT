@@ -13,7 +13,11 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.blocks.video._utils import extract_source_name, strip_chapters_inplace
+from backend.blocks.video._utils import (
+    check_video_frame_size,
+    extract_source_name,
+    strip_chapters_inplace,
+)
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
@@ -76,6 +80,9 @@ class LoopVideoBlock(Block):
 
         # 2) Load the clip
         strip_chapters_inplace(input_abspath)
+        check_video_frame_size(
+            input_abspath, block_name=self.name, block_id=str(self.id)
+        )
         clip = None
         looped_clip = None
         try:

@@ -14,6 +14,7 @@ from backend.blocks._base import (
 )
 from backend.blocks.video._utils import (
     VideoMediaStorage,
+    check_video_frame_size,
     extract_source_name,
     get_video_codecs,
     strip_chapters_inplace,
@@ -76,6 +77,9 @@ class VideoClipBlock(VideoMediaStorage, Block):
         subclip = None
         try:
             strip_chapters_inplace(video_abspath)
+            check_video_frame_size(
+                video_abspath, block_name=self.name, block_id=str(self.id)
+            )
             clip = VideoFileClip(video_abspath)
             subclip = clip.subclipped(start_time, end_time)
             video_codec, audio_codec = get_video_codecs(output_abspath)

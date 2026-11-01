@@ -8,10 +8,16 @@ import re
 import subprocess
 from pathlib import Path
 
+from moviepy.video.io.ffmpeg_reader import ffmpeg_parse_infos
+
 from backend.data.execution import ExecutionContext
+from backend.util.exceptions import BlockExecutionError
 from backend.util.file import MediaFileType, store_media_file
 
 logger = logging.getLogger(__name__)
+
+# Largest decoded frame (width * height) the video blocks will open: 4K UHD.
+MAX_VIDEO_FRAME_PIXELS = 3840 * 2160
 
 # Known operation tags added by video blocks
 _VIDEO_OPS = (
@@ -132,6 +138,34 @@ def strip_chapters_inplace(video_path: str) -> None:
     finally:
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
+
+
+def check_video_frame_size(video_path: str, *, block_name: str, block_id: str) -> None:
+    """Raise if the video's frame has more than MAX_VIDEO_FRAME_PIXELS pixels.
+
+    The limit is on width * height only, so it holds the same for any
+    orientation or aspect ratio. The size comes from the container header,
+    read with moviepy's info parser (the one `VideoFileClip` uses) without
+    decoding any frames, and is turned for rotation metadata the way
+    `VideoFileClip` turns it. Call it after `strip_chapters_inplace` and before
+    `VideoFileClip`.
+    """
+    infos = ffmpeg_parse_infos(video_path)
+    size = infos.get("video_size")
+    if not size:
+        return
+    width, height = size
+    if abs(infos.get("video_rotation", 0)) in (90, 270):
+        width, height = height, width
+    if width * height > MAX_VIDEO_FRAME_PIXELS:
+        raise BlockExecutionError(
+            message=(
+                f"Video frame size {width}x{height} is over the limit of "
+                f"{MAX_VIDEO_FRAME_PIXELS:,} pixels per frame (width x height)"
+            ),
+            block_name=block_name,
+            block_id=block_id,
+        )
 
 
 class VideoMediaStorage:

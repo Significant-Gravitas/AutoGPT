@@ -24,6 +24,7 @@ from backend.blocks.elevenlabs._auth import (
 )
 from backend.blocks.video._utils import (
     VideoMediaStorage,
+    check_video_frame_size,
     extract_source_name,
     get_video_codecs,
     strip_chapters_inplace,
@@ -159,6 +160,9 @@ class VideoNarrationBlock(VideoMediaStorage, Block):
 
         try:
             strip_chapters_inplace(video_abspath)
+            check_video_frame_size(
+                video_abspath, block_name=self.name, block_id=str(self.id)
+            )
             video = VideoFileClip(video_abspath)
             narration_original = AudioFileClip(audio_abspath)
             narration_scaled = narration_original.with_volume_scaled(narration_volume)

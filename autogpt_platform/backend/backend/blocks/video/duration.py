@@ -11,7 +11,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.blocks.video._utils import strip_chapters_inplace
+from backend.blocks.video._utils import check_video_frame_size, strip_chapters_inplace
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
@@ -67,6 +67,9 @@ class MediaDurationBlock(Block):
         clip = None
         try:
             if input_data.is_video:
+                check_video_frame_size(
+                    media_abspath, block_name=self.name, block_id=str(self.id)
+                )
                 clip = VideoFileClip(media_abspath)
             else:
                 clip = AudioFileClip(media_abspath)
