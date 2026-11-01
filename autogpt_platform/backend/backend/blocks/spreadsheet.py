@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 from backend.blocks._base import (
@@ -135,17 +136,20 @@ class ReadSpreadsheetBlock(Block):
                 try:
                     import pandas as pd
 
-                    check_xlsx_unpacked_size(file_path, source="spreadsheet_block")
-                    # dtype=object and keep_default_na=False keep the sheet's own
-                    # values: "N/A"/"NULL"/"NaN" stay text instead of being read as
-                    # missing, and a gap in a numeric column no longer upcasts the
-                    # whole column to float (turning 12 into "12.0").
-                    df = pd.read_excel(
-                        file_path,
-                        sheet_name=input_data.sheet_name or 0,
-                        dtype=object,
-                        keep_default_na=False,
-                    )
+                    def _read_xlsx() -> "pd.DataFrame":
+                        check_xlsx_unpacked_size(file_path, source="spreadsheet_block")
+                        # dtype=object and keep_default_na=False keep the sheet's own
+                        # values: "N/A"/"NULL"/"NaN" stay text instead of being read as
+                        # missing, and a gap in a numeric column no longer upcasts the
+                        # whole column to float (turning 12 into "12.0").
+                        return pd.read_excel(
+                            file_path,
+                            sheet_name=input_data.sheet_name or 0,
+                            dtype=object,
+                            keep_default_na=False,
+                        )
+
+                    df = await asyncio.to_thread(_read_xlsx)
 
                     # Write the CSV with the same dialect it is parsed with below,
                     # otherwise a non-default delimiter yields a single column.
