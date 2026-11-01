@@ -100,6 +100,7 @@ async def list_library_agents(
     is_hidden: Optional[bool] = None,
     organization_id: Optional[str] = None,
     include_nodes: bool = False,
+    folder_ids: list[str] | None = None,
 ) -> library_model.LibraryAgentResponse:
     """
     Retrieves a paginated list of LibraryAgent records for a given user.
@@ -113,6 +114,7 @@ async def list_library_agents(
         page: Current page (1-indexed).
         page_size: Number of items per page.
         folder_id: Filter by folder ID. If provided, only returns agents in this folder.
+        folder_ids: Only returns agents in one of these folders.
         include_root_only: If True, only returns agents without a folder (root-level).
         include_executions: Whether to include execution data for status calculation.
             Defaults to False for performance (UI fetches status separately).
@@ -166,6 +168,8 @@ async def list_library_agents(
     # Apply folder filter (skip when searching — search spans all folders)
     if folder_id is not None and not search_term:
         where_clause["folderId"] = folder_id
+    elif folder_ids is not None and not search_term:
+        where_clause["folderId"] = {"in": folder_ids}
     elif include_root_only and not search_term:
         where_clause["folderId"] = None
 
@@ -2122,6 +2126,7 @@ async def get_root_agent_summaries(
 
 
 _FOLDER_AGENTS_PAGE_SIZE = 250
+_FOLDER_AGENTS_MAX_PAGES = 8
 
 
 async def get_folder_agents_map(
@@ -2129,22 +2134,24 @@ async def get_folder_agents_map(
 ) -> dict[str, list[dict[str, str | None]]]:
     """Get a lightweight list of agents (id, name, description) per folder.
 
-    Pages through the user's library once and groups it by folder, so the
-    number of queries follows the number of agents, not of folders. Creation
-    order has an id tiebreak, so offset paging neither skips nor repeats.
+    Pages through the agents in the requested folders once and groups them by
+    folder, so the number of queries follows the number of agents, not of
+    folders; it stops after ``_FOLDER_AGENTS_MAX_PAGES`` pages. Creation order
+    has an id tiebreak, so offset paging neither skips nor repeats.
     """
     agents_map: dict[str, list[dict[str, str | None]]] = {
         folder_id: [] for folder_id in folder_ids
     }
     if not agents_map:
         return agents_map
-    for page in itertools.count(1):
+    for page in range(1, _FOLDER_AGENTS_MAX_PAGES + 1):
         resp = await list_library_agents(
             user_id=user_id,
             sort_by=library_model.LibraryAgentSort.CREATED_AT,
             page=page,
             page_size=_FOLDER_AGENTS_PAGE_SIZE,
             organization_id=organization_id,
+            folder_ids=list(agents_map),
         )
         for agent in resp.agents:
             if agent.folder_id in agents_map:

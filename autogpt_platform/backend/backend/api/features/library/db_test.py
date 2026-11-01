@@ -2723,3 +2723,40 @@ async def test_get_folder_agents_map_lists_the_library_once_however_many_folders
         for c in list_agents.await_args_list
     } == {("test-user", "org-a", library_model.LibraryAgentSort.CREATED_AT)}
     assert all("folder_id" not in c.kwargs for c in list_agents.await_args_list)
+    assert all(
+        c.kwargs["folder_ids"] == folder_ids for c in list_agents.await_args_list
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_folder_agents_map_stops_at_its_page_cap(mocker):
+    list_agents = mocker.patch.object(
+        db,
+        "list_library_agents",
+        AsyncMock(
+            return_value=MagicMock(agents=[], pagination=MagicMock(total_pages=100))
+        ),
+    )
+
+    await db.get_folder_agents_map("test-user", ["folder-0"], "org-a")
+
+    assert list_agents.await_count == db._FOLDER_AGENTS_MAX_PAGES
+
+
+@pytest.mark.asyncio
+async def test_list_library_agents_filters_on_folder_ids(mocker):
+    mocker.patch("prisma.models.AgentGraph.prisma").return_value.find_many = (
+        mocker.AsyncMock(return_value=[])
+    )
+    find_many = mocker.AsyncMock(return_value=[])
+    library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    library_agent.return_value.find_many = find_many
+    library_agent.return_value.count = mocker.AsyncMock(return_value=0)
+    mocker.patch(
+        "backend.api.features.library.db._fetch_execution_counts",
+        new=mocker.AsyncMock(return_value={}),
+    )
+
+    await db.list_library_agents("test-user", folder_ids=["f1", "f2"])
+
+    assert find_many.call_args.kwargs["where"]["folderId"] == {"in": ["f1", "f2"]}
