@@ -65,6 +65,14 @@ def setup_app_auth(mock_jwt_user, test_user_id):
     app.dependency_overrides.clear()
 
 
+@pytest.fixture(autouse=True)
+def caller_owns_every_graph_id(mocker: pytest_mock.MockFixture, test_user_id):
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.graph_owner_id",
+        new=AsyncMock(return_value=test_user_id),
+    )
+
+
 def _execution_meta() -> execution_db.GraphExecutionMeta:
     return execution_db.GraphExecutionMeta(
         id="exec-1",

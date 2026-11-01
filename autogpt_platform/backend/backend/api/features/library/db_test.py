@@ -588,6 +588,10 @@ async def test_update_graph_in_library_allows_archived_library_agent(mocker):
     updated_library_agent = mocker.Mock()
 
     mocker.patch(
+        "backend.api.features.library.db.graph_db.graph_owner_id",
+        new=mocker.AsyncMock(return_value="test-user"),
+    )
+    mocker.patch(
         "backend.api.features.library.db.graph_db.get_graph_all_versions",
         new=mocker.AsyncMock(return_value=[existing_version]),
     )
@@ -646,6 +650,10 @@ async def test_update_graph_in_library_moves_webhook_presets_only_when_asked(
         AsyncMock(return_value=("org-fallback", "team-fallback")),
     )
     graph_model = mocker.Mock(is_active=True)
+    mocker.patch(
+        "backend.api.features.library.db.graph_db.graph_owner_id",
+        new=mocker.AsyncMock(return_value="test-user"),
+    )
     mocker.patch(
         "backend.api.features.library.db.graph_db.get_graph_all_versions",
         new=mocker.AsyncMock(return_value=[mocker.Mock(version=1, is_active=True)]),
@@ -2652,6 +2660,10 @@ async def test_an_external_save_cannot_version_a_graph_outside_its_organization(
     mocker.patch(
         "backend.api.features.library.db.writable_organization_ids",
         new=AsyncMock(return_value=frozenset({"org-a"})),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.graph_db.graph_owner_id",
+        new=mocker.AsyncMock(return_value="test-user"),
     )
     mocker.patch(
         "backend.data.graph.get_graph_version_owners",

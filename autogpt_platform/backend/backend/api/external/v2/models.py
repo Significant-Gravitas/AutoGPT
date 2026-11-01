@@ -14,9 +14,10 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Collection, Literal, Optional, Self, TypeAlias
 
-from pydantic import BaseModel, Field, JsonValue, field_validator
+from pydantic import BaseModel, Field, JsonValue, field_validator, model_validator
 
 import backend.blocks._base as block_types
+from backend.data.credential_scope import scope_error
 from backend.data.model import CredentialsMetaInput
 from backend.util.text_limits import (
     MAX_CRON_LENGTH,
@@ -1338,6 +1339,19 @@ class UserPasswordCredentialCreateRequest(_CredentialCreateBase):
     type: Literal["user_password"]
     username: str = Field(max_length=MAX_NAME_LENGTH)
     password: str = Field(max_length=MAX_SECRET_LENGTH)
+    scope: str | None = Field(
+        default=None,
+        max_length=MAX_URL_LENGTH,
+        description="What this login may be used for, as a URI: "
+        "smtp://host[:port] for smtp, postgresql:// mysql:// or mssql:// "
+        "host[:port] for database; required for those providers",
+    )
+
+    @model_validator(mode="after")
+    def validate_scope(self) -> Self:
+        if error := scope_error(self.provider, self.scope):
+            raise ValueError(error)
+        return self
 
 
 class HostScopedCredentialCreateRequest(_CredentialCreateBase):
