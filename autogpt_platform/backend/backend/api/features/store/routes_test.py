@@ -1,10 +1,13 @@
 import datetime
 import json
+import socket
 import uuid
+from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
 import fastapi.testclient
 import prisma.enums
+import prisma.models
 import pytest
 import pytest_mock
 from autogpt_libs.auth import get_optional_user_id
@@ -12,6 +15,7 @@ from pydantic import BaseModel
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.store.db import StoreAgentsSortOptions
+from backend.api.utils.exceptions import add_exception_handlers
 from backend.data.graph import GraphModelWithoutNodes
 
 from . import model as store_model
@@ -23,10 +27,24 @@ FIXED_NOW = datetime.datetime(2023, 1, 1, 0, 0, 0)
 
 app = fastapi.FastAPI()
 app.include_router(store_routes.router)
+add_exception_handlers(app)
 
 client = fastapi.testclient.TestClient(app)
 
 TEST_ORG_ID = "test-org-id"
+
+
+def _store_cache_redis_reachable() -> bool:
+    try:
+        with socket.create_connection(("127.0.0.1", 17000), timeout=0.2):
+            return True
+    except OSError:
+        return False
+
+
+def _clear_store_caches() -> None:
+    if _store_cache_redis_reachable():
+        store_routes.store_cache.clear_all_caches()
 
 
 def _test_request_context():
@@ -57,12 +75,12 @@ def setup_app_auth(mock_jwt_user):
     from autogpt_libs.auth.dependencies import get_request_context
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
-    store_routes.store_cache.clear_all_caches()
+    _clear_store_caches()
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     app.dependency_overrides[get_request_context] = _test_request_context
     yield
     app.dependency_overrides.clear()
-    store_routes.store_cache.clear_all_caches()
+    _clear_store_caches()
 
 
 def test_get_agents_defaults(
@@ -1067,6 +1085,94 @@ def test_post_review_rejects_out_of_range_score(
 
     assert response.status_code == 422
     mock_create.assert_not_called()
+
+
+def _delete_submission_version(
+    owning_org_id: str | None,
+    owning_user_id: str,
+    status: prisma.enums.SubmissionStatus,
+):
+    version = MagicMock()
+    version.id = "slv-1"
+    version.storeListingId = "sl-1"
+    version.submissionStatus = status
+    version.StoreListing = MagicMock()
+    version.StoreListing.owningOrgId = owning_org_id
+    version.StoreListing.owningUserId = owning_user_id
+    return version
+
+
+def _patch_store_listing_version(mocker: pytest_mock.MockFixture, version):
+    mock_client = AsyncMock()
+    mock_client.find_unique.return_value = version
+    mock_client.count.return_value = 1
+    mocker.patch.object(
+        prisma.models.StoreListingVersion, "prisma", return_value=mock_client
+    )
+    return mock_client
+
+
+def test_delete_submission_missing_is_404(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_client = _patch_store_listing_version(mocker, None)
+
+    response = client.delete("/submissions/missing-id")
+
+    assert response.status_code == 404
+    mock_client.delete.assert_not_called()
+
+
+def test_delete_submission_another_users_is_404(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    version = _delete_submission_version(
+        owning_org_id="other-org",
+        owning_user_id="other-user",
+        status=prisma.enums.SubmissionStatus.PENDING,
+    )
+    mock_client = _patch_store_listing_version(mocker, version)
+
+    response = client.delete("/submissions/slv-1")
+
+    assert response.status_code == 404
+    mock_client.delete.assert_not_called()
+
+
+def test_delete_submission_approved_is_400(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    version = _delete_submission_version(
+        owning_org_id=TEST_ORG_ID,
+        owning_user_id=test_user_id,
+        status=prisma.enums.SubmissionStatus.APPROVED,
+    )
+    mock_client = _patch_store_listing_version(mocker, version)
+
+    response = client.delete("/submissions/slv-1")
+
+    assert response.status_code == 400
+    assert "approved" in response.json()["detail"].lower()
+    mock_client.delete.assert_not_called()
+
+
+def test_delete_submission_pending_own_is_true(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    version = _delete_submission_version(
+        owning_org_id=TEST_ORG_ID,
+        owning_user_id=test_user_id,
+        status=prisma.enums.SubmissionStatus.PENDING,
+    )
+    mock_client = _patch_store_listing_version(mocker, version)
+
+    response = client.delete("/submissions/slv-1")
+
+    assert response.status_code == 200
+    assert response.json() is True
+    mock_client.delete.assert_called_once()
 
 
 def test_post_review_accepts_in_range_score(mocker: pytest_mock.MockFixture) -> None:
