@@ -25,6 +25,7 @@ MAX_REGEX_TEXT_LENGTH = 1_000_000
 REGEX_TIMEOUT_SECONDS = 1.0
 MAX_MATCHES = 1000  # Maximum number of matches to prevent memory exhaustion
 MAX_MATCH_LENGTH = 10_000  # Maximum length per match
+MAX_TEXT_OUTPUT_LENGTH = 10_000_000  # Maximum characters a text block may output
 
 
 class MatchTextPatternBlock(Block):
@@ -315,8 +316,12 @@ class CombineTextsBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        combined_text = input_data.delimiter.join(input_data.input)
-        yield "output", combined_text
+        texts, delimiter = input_data.input, input_data.delimiter
+        _check_output_length(
+            "Combined text",
+            sum(len(t) for t in texts) + max(len(texts) - 1, 0) * len(delimiter),
+        )
+        yield "output", delimiter.join(texts)
 
 
 class TextSplitBlock(Block):
@@ -386,7 +391,11 @@ class TextReplaceBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        yield "output", input_data.text.replace(input_data.old, input_data.new)
+        text, old, new = input_data.text, input_data.old, input_data.new
+        _check_output_length(
+            "Replaced text", len(text) + text.count(old) * (len(new) - len(old))
+        )
+        yield "output", text.replace(old, new)
 
 
 class FileReadBlock(Block):
@@ -517,3 +526,11 @@ class FileReadBlock(Block):
                 yield "content", chunk
         else:
             yield "content", ""
+
+
+def _check_output_length(label: str, length: int) -> None:
+    if length > MAX_TEXT_OUTPUT_LENGTH:
+        raise ValueError(
+            f"{label} would be {length:,} characters, over the limit of "
+            f"{MAX_TEXT_OUTPUT_LENGTH:,} characters."
+        )

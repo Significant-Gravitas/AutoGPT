@@ -3,11 +3,12 @@ from typing import Sequence, cast
 import prisma.enums
 import prisma.types
 
+# No "AgentBlock": nothing reads it. `AgentNode.agentBlockId` has its id, and
+# the block itself comes from the in-memory registry.
 AGENT_NODE_INCLUDE: prisma.types.AgentNodeInclude = {
     "Input": True,
     "Output": True,
     "Webhook": True,
-    "AgentBlock": True,
 }
 
 AGENT_GRAPH_INCLUDE: prisma.types.AgentGraphInclude = {
@@ -28,10 +29,16 @@ EXECUTION_RESULT_ORDER: list[prisma.types.AgentNodeExecutionOrderByInput] = [
 # result. Matches `MAX_NODE_EXECUTIONS_FETCH` for symmetry.
 MAX_NODE_INPUT_OUTPUT_FETCH = 1000
 
-EXECUTION_RESULT_INCLUDE: prisma.types.AgentNodeExecutionInclude = {
+# For node executions read under their graph execution: the parent is already
+# at hand, so it isn't attached again to each of them.
+NESTED_EXECUTION_RESULT_INCLUDE: prisma.types.AgentNodeExecutionInclude = {
     "Input": {"order_by": {"time": "asc"}, "take": MAX_NODE_INPUT_OUTPUT_FETCH},
     "Output": {"order_by": {"time": "asc"}, "take": MAX_NODE_INPUT_OUTPUT_FETCH},
     "Node": True,
+}
+
+EXECUTION_RESULT_INCLUDE: prisma.types.AgentNodeExecutionInclude = {
+    **NESTED_EXECUTION_RESULT_INCLUDE,
     "GraphExecution": True,
 }
 
@@ -46,7 +53,7 @@ MAX_GRAPH_VERSIONS_FETCH = 50
 
 GRAPH_EXECUTION_INCLUDE_WITH_NODES: prisma.types.AgentGraphExecutionInclude = {
     "NodeExecutions": {
-        "include": EXECUTION_RESULT_INCLUDE,
+        "include": NESTED_EXECUTION_RESULT_INCLUDE,
         "order_by": EXECUTION_RESULT_ORDER,
         "take": MAX_NODE_EXECUTIONS_FETCH,  # Avoid loading excessive node executions.
     }
