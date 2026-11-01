@@ -518,8 +518,8 @@ def test_preview_past_the_render_timeout_is_not_available(
     redis.set.assert_not_called()
 
 
-def test_image_preview_over_the_render_memory_cap_is_too_large(mocker):
-    cap = asyncio.run(memory_cap_above_child_baseline())
+async def test_image_preview_over_the_render_memory_cap_is_too_large(mocker):
+    cap = await memory_cap_above_child_baseline()
     mocker.patch.object(preview_render, "RENDER_MAX_MEMORY_BYTES", cap)
     mocker.patch.object(preview_render, "image_thumbnail", allocating_renderer)
     _mock_lookups(mocker, _make_file(mime_type="image/png"))
@@ -532,7 +532,7 @@ def test_image_preview_over_the_render_memory_cap_is_too_large(mocker):
     assert response.json()["detail"] == "File too large to preview"
 
 
-async def test_concurrent_pdf_previews_all_render(mocker):
+async def test_two_concurrent_pdf_previews_both_complete(mocker):
     _mock_render_io(mocker, _pdf_bytes())
 
     for pair in range(10):

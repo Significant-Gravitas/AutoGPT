@@ -217,6 +217,7 @@ def test_render_under_a_lower_hard_limit_warns_once_and_does_not_run():
 
     assert parent.stdout.split() == ["failed", "failed"]
     assert parent.stderr.count("previews will not render") == 1
+    assert "exited with code" not in parent.stderr
 
 
 @pytest.mark.parametrize(

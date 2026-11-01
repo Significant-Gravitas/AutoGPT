@@ -4,9 +4,10 @@ Thumbnail renderers for workspace previews, run in a short-lived child process.
 Each render of a file's bytes runs in a fresh interpreter started with
 ``python -m`` (never a fork of the threaded API process), is killed once it
 passes ``RENDER_TIMEOUT_SECONDS``, and is capped at ``RENDER_MAX_MEMORY_BYTES``
-of address space; a child that cannot set the cap does not render. The parent awaits it on the event loop, so a render never
-holds a thread of the default executor. The child receives only the
-environment variables in ``CHILD_ENV_ALLOWLIST``.
+of address space; a child that cannot set the cap does not render. The parent
+awaits it on the event loop, so a render never holds a thread of the default
+executor. The child receives only the environment variables in
+``CHILD_ENV_ALLOWLIST``.
 
 The module imports only what rendering needs, so a child starts in a fraction
 of a second. The child answers with an exit code and the raw thumbnail bytes,
@@ -171,6 +172,8 @@ def _result(returncode: int | None, stdout: bytes) -> bytes:
         raise PreviewTooLarge()
     if returncode == _EXIT_NO_THUMBNAIL:
         raise NoEmbeddedThumbnail()
+    if returncode == _EXIT_NO_MEMORY_CAP:
+        raise RenderFailed()  # _check_memory_cap has already warned once
     logger.warning(f"Preview render exited with code {returncode}")
     raise RenderFailed()
 
