@@ -1387,14 +1387,23 @@ async def add_store_agent_to_library_in_transaction(
     store_listing_version_id: str,
     user_id: str,
     tx: prisma.Prisma,
+    *,
+    organization_id: str | None,
+    team_id: str | None,
 ) -> library_model.LibraryAgent:
     """Add a marketplace agent using the caller's transaction.
 
     Sends no ``listing_added_to_library``: the caller may still roll back, and
-    the upsert cannot tell a first-time add from a restore.
+    the upsert cannot tell a first-time add from a restore. The caller resolves
+    the tenancy (``resolve_default_tenancy``) before opening the transaction.
     """
     return await _add_store_agent_to_library(
-        store_listing_version_id, user_id, tx=tx, track_listing_added=False
+        store_listing_version_id,
+        user_id,
+        tx=tx,
+        track_listing_added=False,
+        organization_id=organization_id,
+        team_id=team_id,
     )
 
 
@@ -1424,7 +1433,7 @@ async def _add_store_agent_to_library(
         if existing is not None:
             return existing
     graph_model = await resolve_graph_model_for_library(
-        store_listing_version, user_id, admin=False
+        store_listing_version, user_id, admin=False, tx=tx
     )
     library_agent = await add_graph_to_library(
         graph_model,
@@ -2112,13 +2121,17 @@ async def get_root_agent_summaries(
     ]
 
 
+_FOLDER_AGENTS_PAGE_SIZE = 250
+
+
 async def get_folder_agents_map(
     user_id: str, folder_ids: list[str], organization_id: Optional[str] = None
 ) -> dict[str, list[dict[str, str | None]]]:
     """Get a lightweight list of agents (id, name, description) per folder.
 
     Pages through the user's library once and groups it by folder, so the
-    number of queries follows the number of agents, not of folders.
+    number of queries follows the number of agents, not of folders. Creation
+    order has an id tiebreak, so offset paging neither skips nor repeats.
     """
     agents_map: dict[str, list[dict[str, str | None]]] = {
         folder_id: [] for folder_id in folder_ids
@@ -2127,7 +2140,11 @@ async def get_folder_agents_map(
         return agents_map
     for page in itertools.count(1):
         resp = await list_library_agents(
-            user_id=user_id, page=page, organization_id=organization_id
+            user_id=user_id,
+            sort_by=library_model.LibraryAgentSort.CREATED_AT,
+            page=page,
+            page_size=_FOLDER_AGENTS_PAGE_SIZE,
+            organization_id=organization_id,
         )
         for agent in resp.agents:
             if agent.folder_id in agents_map:

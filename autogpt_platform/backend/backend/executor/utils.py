@@ -44,7 +44,6 @@ from backend.data.execution import (
 from backend.data.graph import GraphModel, Node
 from backend.data.model import (
     USER_TIMEZONE_NOT_SET,
-    Credentials,
     CredentialsMetaInput,
     GraphInput,
     NodeExecutionStats,
@@ -53,7 +52,10 @@ from backend.data.model import (
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.data.user import is_user_banned
-from backend.integrations.credentials_store import is_system_credential
+from backend.integrations.credentials_store import (
+    CredentialsSnapshot,
+    is_system_credential,
+)
 from backend.monitoring.instrumentation import record_graph_execution
 from backend.util import product_analytics
 from backend.util.clients import (
@@ -470,7 +472,9 @@ async def _validate_node_input_credentials(
     """
     credential_errors: dict[str, dict[str, str]] = defaultdict(dict)
     nodes_to_skip: set[str] = set()
-    user_credentials = _UserCredentialsById(user_id)
+    user_credentials = CredentialsSnapshot(
+        lambda: get_integration_credentials_store().get_all_creds(user_id)
+    )
 
     for node in graph.nodes:
         block = node.block
@@ -718,31 +722,6 @@ async def _validate_node_input_credentials(
             nodes_to_skip.add(node.id)
 
     return credential_errors, nodes_to_skip
-
-
-class _UserCredentialsById:
-    """The user's credentials by id, loaded on the first lookup and reused for
-    the rest of one validation, however many nodes it checks."""
-
-    def __init__(self, user_id: str):
-        self._user_id = user_id
-        self._by_id: dict[str, Credentials] | None = None
-        self._load_error: Exception | None = None
-
-    async def get(self, credentials_id: str) -> Credentials | None:
-        if self._load_error is not None:
-            raise self._load_error
-        if self._by_id is None:
-            try:
-                loaded = await get_integration_credentials_store().get_all_creds(
-                    self._user_id
-                )
-            except Exception as e:
-                self._load_error = e
-                raise
-            # First match wins, as in CredentialsStore.get_creds_by_id.
-            self._by_id = {c.id: c for c in reversed(loaded)}
-        return self._by_id.get(credentials_id)
 
 
 def _is_optional_picker(input_schema: type[BlockSchema], field_name: str) -> bool:

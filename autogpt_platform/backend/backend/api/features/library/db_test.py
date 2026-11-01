@@ -477,7 +477,11 @@ async def test_system_install_of_a_listing_sends_nothing(add_to_library_steps):
 async def test_transactional_marketplace_add_sends_nothing(add_to_library_steps):
     # The caller's transaction may still roll back; its own event covers it.
     await db.add_store_agent_to_library_in_transaction(
-        "version123", "test-user", tx=MagicMock()
+        "version123",
+        "test-user",
+        tx=MagicMock(),
+        organization_id=None,
+        team_id=None,
     )
 
     add_to_library_steps["track"].assert_not_called()
@@ -2713,7 +2717,9 @@ async def test_get_folder_agents_map_lists_the_library_once_however_many_folders
         {"id": "a2", "name": "Agent a2", "description": None},
     ]
     assert not any(result[folder_id] for folder_id in folder_ids[1:])
-    assert [call.kwargs for call in list_agents.await_args_list] == [
-        {"user_id": "test-user", "page": 1, "organization_id": "org-a"},
-        {"user_id": "test-user", "page": 2, "organization_id": "org-a"},
-    ]
+    assert [call.kwargs["page"] for call in list_agents.await_args_list] == [1, 2]
+    assert {
+        (c.kwargs["user_id"], c.kwargs["organization_id"], c.kwargs["sort_by"])
+        for c in list_agents.await_args_list
+    } == {("test-user", "org-a", library_model.LibraryAgentSort.CREATED_AT)}
+    assert all("folder_id" not in c.kwargs for c in list_agents.await_args_list)
