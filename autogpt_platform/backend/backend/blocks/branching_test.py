@@ -5,10 +5,7 @@ from __future__ import annotations
 import pytest
 
 from backend.blocks import get_block
-from backend.blocks.branching import (
-    ComparisonOperator,
-    ConditionBlock,
-)
+from backend.blocks.branching import ComparisonOperator, ConditionBlock
 from backend.data.execution import ExecutionContext
 from backend.data.graph import Link, Node
 from backend.executor.utils import validate_exec
@@ -182,6 +179,9 @@ B1 = 9007199254740993  # 2**53 + 1, not representable as a float
         (" 3 ", "==", "3.0", True),
         (str(B1), "==", f"{B1}.0", True),
         (f"{B1}.0", ">", str(B0), True),
+        (f"{B1}.5", "==", str(B1), False),
+        (f"{B1}.5", ">", str(B1), True),
+        (f"{B0}.5", "==", str(B0), False),
         ("3", "<", "3.5", True),
         ("1e3", "==", 1000, True),
         ("0.1", "==", "0.10000000000000001", True),
@@ -215,6 +215,15 @@ async def test_condition_passthrough_keeps_parsed_value1(value1: str, expected: 
 async def test_condition_passthrough_of_out_of_range_int_is_serializable(
     value1: str,
 ):
+    outputs = await _run(value1=value1, operator="==", value2=value1)
+
+    assert outputs["result"] is True
+    assert outputs["yes_output"] == float(value1)
+    json.dumps(outputs)
+
+
+async def test_condition_passthrough_of_large_fraction_is_serializable():
+    value1 = f"{B1}.5"
     outputs = await _run(value1=value1, operator="==", value2=value1)
 
     assert outputs["result"] is True

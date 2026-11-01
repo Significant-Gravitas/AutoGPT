@@ -1,5 +1,5 @@
 import math
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from enum import Enum
 from typing import Any
 
@@ -37,15 +37,30 @@ def _normalize_operand(value: Any) -> Any:
         number = float(text)
     except ValueError:
         return text
-    # A whole number past 2**53 ("9007199254740993.0") loses digits as a float.
-    if math.isfinite(number) and number.is_integer() and abs(number) >= 2**53:
-        return int(Decimal(text))
+    if not math.isfinite(number):
+        return number
+    # float() has no fractional bits at |x| >= 2**53, so is_integer() is
+    # always True there. Use Decimal to keep whole values exact and to
+    # keep fractions distinct from their integer part.
+    try:
+        decimal = Decimal(text)
+    except InvalidOperation:
+        return number
+    if decimal == decimal.to_integral_value():
+        if abs(decimal) >= 2**53:
+            return int(decimal)
+        return number
+    if abs(number) >= 2**53:
+        return decimal
     return number
 
 
 def _passthrough(raw: Any, value: Any) -> Any:
     # Block outputs are serialized with orjson, which rejects ints outside
-    # the 64-bit range; emit the float such inputs produced before.
+    # the 64-bit range and does not encode Decimal; emit the float such
+    # inputs produced before.
+    if isinstance(value, Decimal):
+        return float(value)
     out_of_range = isinstance(value, int) and not -(2**63) <= value < 2**64
     if isinstance(raw, str) and out_of_range:
         return float(raw.strip())
