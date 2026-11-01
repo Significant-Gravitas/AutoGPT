@@ -55,7 +55,7 @@ export function ExpertWorkflowListItem({
   return (
     <div
       data-testid="expert-workflow-row"
-      className="group relative flex flex-col items-stretch gap-3 rounded-2xl bg-surface px-3.5 py-2.5 transition-colors smooth-shadow-ring-sm hover:bg-surface-muted sm:flex-row sm:items-center sm:gap-4"
+      className="group relative flex flex-col items-stretch gap-3 rounded-2xl bg-surface px-3.5 py-2.5 smooth-shadow-ring-sm transition-colors hover:bg-surface-muted sm:flex-row sm:items-center sm:gap-4"
     >
       {libraryHref ? (
         <NextLink
@@ -70,16 +70,14 @@ export function ExpertWorkflowListItem({
           <Text variant="body-md-medium" tone="primary" className="truncate">
             {name}
           </Text>
-          <Text
-            variant="small-medium"
-            as="span"
+          <span
             className={cn(
-              "shrink-0 rounded-md px-2 py-0.5 ring-1 ring-inset ring-border-base/80",
+              "shrink-0 rounded-md px-2 py-0.5 font-sans text-caption font-medium ring-1 ring-border-base/80 ring-inset",
               status.className,
             )}
           >
             {status.label}
-          </Text>
+          </span>
         </div>
         {workflow.description ? (
           <Text variant="body-md" tone="muted" className="mt-0.5 truncate">
@@ -89,14 +87,12 @@ export function ExpertWorkflowListItem({
         {meta.length > 0 || credentialProviders.length > 0 ? (
           <div className="mt-1 flex flex-wrap items-center gap-2">
             {meta.length > 0 ? (
-              <Text
-                variant="body-md"
-                tone="secondary"
-                className="flex items-center gap-1.5"
-              >
+              <div className="flex items-center gap-1.5 text-foreground-secondary">
                 <Icon icon={Activity01Icon} size={14} className="shrink-0" />
-                {meta.join(" · ")}
-              </Text>
+                <Text variant="body-md" tone="secondary">
+                  {meta.join(" · ")}
+                </Text>
+              </div>
             ) : null}
             {meta.length > 0 && credentialProviders.length > 0 ? (
               <Text variant="body-md" as="span" tone="disabled">

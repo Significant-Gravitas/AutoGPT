@@ -1,8 +1,5 @@
 "use client";
 
-// TODO(tokens): no role for these colours yet, so they stay raw:
-// text-gray-500 #6B7280.
-
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import { Select } from "@/components/atoms/Select/Select";
 import { AUTOPILOT_MEMORY_SCOPE } from "./useMemoryScope";
@@ -56,15 +53,21 @@ export function MemoryScopeSelector({
         />
       </div>
       <div aria-live="polite" className="flex flex-col gap-1 text-xs">
-        {loading ? <p className="text-gray-500">Loading experts…</p> : null}
+        {loading ? (
+          <p className="text-foreground-tertiary">Loading experts…</p>
+        ) : null}
         {value !== AUTOPILOT_MEMORY_SCOPE ? (
-          <p className="text-gray-500">Expert memory is read-only.</p>
+          <p className="text-foreground-tertiary">
+            Expert memory is read-only.
+          </p>
         ) : null}
         {error ? (
           <p className="text-error-foreground">Failed to load experts.</p>
         ) : null}
         {!loading && !error && experts.length === 0 ? (
-          <p className="text-gray-500">No experts for this account.</p>
+          <p className="text-foreground-tertiary">
+            No experts for this account.
+          </p>
         ) : null}
       </div>
     </div>

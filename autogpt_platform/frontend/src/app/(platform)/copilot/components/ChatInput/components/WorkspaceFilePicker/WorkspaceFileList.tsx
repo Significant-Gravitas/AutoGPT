@@ -94,9 +94,9 @@ export function WorkspaceFileList({
   if (files.length === 0) {
     return (
       <div className="flex flex-col items-center gap-2 py-8">
-        <p className="text-center text-sm text-foreground-tertiary">
+        <Text variant="body-tight" tone="muted" className="text-center">
           {emptyMessage}
-        </p>
+        </Text>
         {emptyAction}
       </div>
     );
@@ -136,8 +136,7 @@ export function WorkspaceFileList({
                 className={cn(
                   "flex w-full items-center gap-3 rounded-2xl border bg-surface p-3 text-left transition-colors",
                   isSelected
-                    ? // TODO(tokens): no exact role for border-violet-300, ring-violet-200
-                      "border-violet-300 ring-1 ring-violet-200"
+                    ? "border-brand/40 ring-1 ring-brand/20"
                     : "border-border-base hover:border-border-strong",
                 )}
               >
@@ -148,16 +147,14 @@ export function WorkspaceFileList({
                 />
                 <div className="flex min-w-0 flex-1 flex-col">
                   <Text
+                    tone="primary"
                     variant="body-medium"
-                    className="truncate text-foreground-strong"
+                    className="truncate"
                     title={file.name}
                   >
                     {file.name}
                   </Text>
-                  <Text
-                    variant="small"
-                    className="truncate text-foreground-tertiary"
-                  >
+                  <Text tone="muted" variant="small" className="truncate">
                     {getFileTypeLabel(file.mime_type)} ·{" "}
                     {formatFileSize(file.size_bytes)} ·{" "}
                     {formatRelativeDate(file.created_at)}
@@ -166,8 +163,7 @@ export function WorkspaceFileList({
                 {isSelected && (
                   <Icon
                     icon={CheckmarkCircle02Icon}
-                    // TODO(tokens): no exact role for text-violet-600
-                    className="h-5 w-5 shrink-0 text-violet-600"
+                    className="h-5 w-5 shrink-0 text-brand"
                   />
                 )}
               </button>

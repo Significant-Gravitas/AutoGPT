@@ -117,7 +117,7 @@ export function FloatingReviewsPanel({
   return (
     <div
       data-slot="floating-reviews-panel"
-      className={cn("fixed bottom-20 right-4 z-50", className)}
+      className={cn("fixed right-4 bottom-20 z-50", className)}
     >
       {!isOpen && pendingReviews.length > 0 && (
         <Button
@@ -140,7 +140,7 @@ export function FloatingReviewsPanel({
             onClick={() => setIsOpen(false)}
             variant="icon"
             size="icon"
-            className="absolute right-4 top-4 z-10"
+            className="absolute top-4 right-4 z-10"
           >
             <Icon icon={Cancel01Icon} size={16} />
           </Button>

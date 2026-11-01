@@ -19,7 +19,7 @@ export function LlmMenuHeader({ label, onBack }: Props) {
         icon={ArrowLeft02Icon}
         className="h-4 w-4 text-foreground-emphasis"
       />
-      <Text variant="body" className="text-foreground-strong">
+      <Text variant="body" tone="primary">
         {label}
       </Text>
     </button>

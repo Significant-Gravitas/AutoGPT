@@ -1,6 +1,7 @@
 "use client";
 
 import type { SuggestedTask } from "@/app/api/__generated__/models/suggestedTask";
+import { tourTarget } from "@/lib/tour-targets";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { SuggestedTaskCard } from "./SuggestedTaskCard";
@@ -27,7 +28,10 @@ export function SuggestedTaskCards({
   const prefersReducedMotion = useReducedMotion();
 
   return (
-    <ol className={cn("grid grid-cols-1 gap-3 sm:grid-cols-2", className)}>
+    <ol
+      {...tourTarget("first-tasks")}
+      className={cn("grid grid-cols-1 gap-3 sm:grid-cols-2", className)}
+    >
       <AnimatePresence initial={false}>
         {tasks.map((task) => (
           <motion.li

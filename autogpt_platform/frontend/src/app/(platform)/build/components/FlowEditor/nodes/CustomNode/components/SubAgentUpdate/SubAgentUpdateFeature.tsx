@@ -84,22 +84,10 @@ function SubAgentUpdateAvailableBar({
   onUpdate,
 }: SubAgentUpdateAvailableBarProps): React.ReactElement {
   return (
-    <div
-      // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:bg-blue-900/30 #1E3A8A
-      className="flex items-center justify-between gap-2 rounded-t-xl bg-info-surface px-3 py-2 dark:bg-blue-900/30"
-    >
+    <div className="flex items-center justify-between gap-2 rounded-t-xl bg-info-surface px-3 py-2">
       <div className="flex items-center gap-2">
-        <Icon
-          icon={ArrowUp02Icon}
-          // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-blue-400 #60A5FA
-          className="h-4 w-4 text-info-foreground dark:text-blue-400"
-        />
-        <Text
-          variant="body-tight"
-          as="span"
-          // TODO(tokens): no exact role: text-blue-700 #1D4ED8; dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-blue-300 #93C5FD
-          className="text-blue-700 dark:text-blue-300"
-        >
+        <Icon icon={ArrowUp02Icon} className="h-4 w-4 text-info-foreground" />
+        <Text variant="body-tight" as="span" className="text-info-foreground">
           Update available (v{currentVersion} → v{latestVersion})
         </Text>
         {!isCompatible && (
@@ -111,11 +99,7 @@ function SubAgentUpdateAvailableBar({
               <Text variant="small-medium-lh-normal" tone="inherit">
                 Incompatible changes detected
               </Text>
-              <Text
-                variant="small-tight"
-                // TODO(tokens): no fitting role for text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
-                className="text-gray-400"
-              >
+              <Text variant="small-tight" tone="subtle">
                 Click Update to see details
               </Text>
             </TooltipContent>
@@ -128,9 +112,8 @@ function SubAgentUpdateAvailableBar({
         onClick={onUpdate}
         className={cn(
           "h-7",
-          // TODO(tokens): no exact role: text-amber-600 #D97706
           !isCompatible &&
-            "border-warning text-amber-600 hover:bg-warning-surface",
+            "border-warning text-warning-foreground hover:bg-warning-surface",
         )}
       >
         <Text variant="small-medium-tight" as="span" tone="inherit">

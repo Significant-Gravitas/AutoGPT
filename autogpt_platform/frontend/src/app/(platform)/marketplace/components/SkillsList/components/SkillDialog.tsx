@@ -65,7 +65,7 @@ export function SkillDialog({ slug, onClose }: Props) {
             ) : (
               <>
                 <div className="mb-6 flex flex-wrap items-start justify-between gap-4 border-b border-border-base pb-5">
-                  <p className="min-w-0 max-w-[52ch] flex-1 text-body-md leading-6 text-foreground-secondary">
+                  <p className="max-w-[52ch] min-w-0 flex-1 text-body-md leading-6 text-foreground-secondary">
                     {skill.description}
                   </p>
                   <SkillActions

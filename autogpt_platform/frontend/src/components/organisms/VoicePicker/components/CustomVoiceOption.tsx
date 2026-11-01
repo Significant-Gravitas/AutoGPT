@@ -38,7 +38,7 @@ export function CustomVoiceOption({
         htmlFor={`${textareaId}-choice`}
         data-slot="custom-voice-option-label"
         className={cn(
-          "mb-2 block cursor-pointer text-xs font-semibold uppercase tracking-caps",
+          "mb-2 block cursor-pointer text-xs font-semibold tracking-caps uppercase",
           labelClassName ?? "text-accent",
         )}
       >
@@ -72,7 +72,7 @@ export function CustomVoiceOption({
         placeholder="Paste a few sentences written the way you'd like this expert to sound."
         data-slot="custom-voice-option-textarea"
         className={cn(
-          "w-full resize-none border bg-background text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring",
+          "w-full resize-none border bg-background text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:ring-1 focus:ring-ring focus:outline-none",
           compact ? "rounded-md px-3 py-2" : "rounded-xl px-4 py-2.5",
           isSelected ? "border-ring" : "border-input focus:border-ring",
         )}

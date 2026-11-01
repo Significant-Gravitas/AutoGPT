@@ -6,6 +6,7 @@ import {
 } from "@/components/atoms/Avatar/Avatar";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -54,6 +55,7 @@ export function InstallSkillButton({
         size="small"
         onClick={onAddToLibrary}
         loading={isAdding}
+        // oxlint-disable-next-line design-system/no-restyle -- the left half of a split button; Button has no split variant
         className="!rounded-r-none border-r-0 sm:w-auto"
         data-testid="skill-install-button"
       >
@@ -69,6 +71,7 @@ export function InstallSkillButton({
           size="small"
           aria-label={MENU_LABEL}
           disabled={isAdding}
+          // oxlint-disable-next-line design-system/no-restyle -- the right half of a split button; Button has no split variant
           className="!min-w-0 !rounded-l-none border-l border-l-white/25 px-2.5"
         >
           <Icon icon={ArrowDown01Icon} size={16} aria-hidden />
@@ -95,14 +98,17 @@ export function ExpertInstallMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[15rem]">
-        <DropdownMenuLabel className="text-xs font-normal text-foreground-tertiary">
-          {MENU_LABEL}
+        <DropdownMenuLabel>
+          <Text variant="small-tight" as="div" tone="muted">
+            {MENU_LABEL}
+          </Text>
         </DropdownMenuLabel>
         {experts.map((expert) => (
           <DropdownMenuItem
             key={expert.id}
             disabled={isAdding}
             onSelect={() => onAddToExpert(expert)}
+            // oxlint-disable-next-line design-system/no-restyle -- a taller row for the expert's avatar and role
             className="gap-2.5 py-2"
           >
             <Avatar className="h-6 w-6">

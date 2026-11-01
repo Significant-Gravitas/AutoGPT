@@ -35,6 +35,15 @@ SEARCH_PATTERN_MAX_LENGTH = 10_000
 SEARCH_TIMEOUT_SECONDS = 5.0
 SEARCH_TIMED_OUT = "Searching the CI logs timed out."
 
+# GitHub check-run conclusions that count as a pass. Everything else that is
+# completed (failure, timed_out, action_required, cancelled, stale,
+# startup_failure, or a missing conclusion) counts as a failure.
+PASSING_CONCLUSIONS = frozenset({"success", "neutral", "skipped"})
+
+
+def _is_passing(run: dict) -> bool:
+    return run.get("conclusion") in PASSING_CONCLUSIONS
+
 
 def _is_not_found(error: HTTPClientError) -> bool:
     # GitHub answers an unknown commit ref with 422 "No commit found for SHA";
@@ -396,11 +405,9 @@ class GithubGetCIResultsBlock(Block):
             all_completed = all(run["status"] == "completed" for run in check_runs)
             if all_completed:
                 yield "overall_status", "completed"
-                # Determine overall conclusion
-                has_failure = any(
-                    run["conclusion"] in ["failure", "timed_out", "action_required"]
-                    for run in check_runs
-                )
+                # Allow-list: any other completed conclusion (cancelled, stale,
+                # startup_failure, action_required, ...) is not a pass.
+                has_failure = any(not _is_passing(run) for run in check_runs)
                 if has_failure:
                     yield "overall_conclusion", "failure"
                 else:
@@ -411,9 +418,11 @@ class GithubGetCIResultsBlock(Block):
 
         # Count checks
         total = len(check_runs)
-        passed = sum(1 for run in check_runs if run.get("conclusion") == "success")
+        passed = sum(1 for run in check_runs if _is_passing(run))
         failed = sum(
-            1 for run in check_runs if run.get("conclusion") in ["failure", "timed_out"]
+            1
+            for run in check_runs
+            if run.get("status") == "completed" and not _is_passing(run)
         )
 
         yield "total_checks", total

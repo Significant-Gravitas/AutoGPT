@@ -1,6 +1,3 @@
-// TODO(tokens): no role for these colours yet, so they stay raw:
-// text-gray-500 #6B7280.
-
 import { withRoleAccess } from "@/lib/withRoleAccess";
 import { MemoryVisualizer } from "./components/MemoryVisualizer";
 
@@ -10,7 +7,7 @@ function MemoryDashboard() {
       <div className="flex flex-col gap-4">
         <div>
           <h1 className="text-3xl font-bold">Memory Inspector</h1>
-          <p className="text-gray-500">
+          <p className="text-foreground-tertiary">
             View entities, facts, and communities stored in your Graphiti memory
             graph. Trigger a community rebuild on demand.
           </p>

@@ -11,10 +11,10 @@ export function EmptySkills() {
       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent-surface">
         <Icon icon={BookOpen01Icon} size={24} className="text-accent-strong" />
       </div>
-      <Text variant="h4" className="text-foreground-strong">
+      <Text variant="h4" tone="primary">
         No skills yet
       </Text>
-      <Text variant="body" className="max-w-md !text-foreground-tertiary">
+      <Text variant="body" tone="muted" className="max-w-md">
         Give your experts a repeatable process to follow. Select{" "}
         <strong>New skill</strong> to create one in chat, or{" "}
         <strong>Upload skill</strong> to import one you&apos;ve saved.

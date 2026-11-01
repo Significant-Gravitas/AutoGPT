@@ -35,9 +35,7 @@ async def test_a_value_linked_into_an_mcp_tool_argument_reaches_the_tool(
     assert inputs is not None, error
     call_tool = AsyncMock(return_value="ok")
 
-    with patch.object(MCPToolBlock, "_call_mcp_tool", call_tool), patch.object(
-        MCPToolBlock, "_auto_lookup_credential", AsyncMock(return_value=None)
-    ):
+    with patch.object(MCPToolBlock, "_call_mcp_tool", call_tool):
         outputs = [
             output
             async for output in execute_node(

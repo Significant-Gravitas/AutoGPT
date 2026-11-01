@@ -33,10 +33,10 @@ export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
       className="flex flex-col gap-4"
     >
       <div className="flex flex-col gap-1 px-4">
-        <Text variant="body-medium" as="span" className="text-foreground-base">
+        <Text variant="body-medium" as="span">
           Your links
         </Text>
-        <Text variant="small" className="text-foreground-tertiary">
+        <Text variant="small" tone="muted">
           Add up to {MAX_LINKS} links. Site, GitHub, X, anything you want
           visible.
         </Text>
@@ -59,15 +59,8 @@ export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
                 transition={{ duration: 0.18, ease: EASE_OUT }}
               >
                 <div className="flex items-center gap-2">
-                  <div
-                    // TODO(tokens): no exact role (focus-within:border-purple-400 #925CF7, focus-within:ring-purple-400 #925CF7)
-                    className="flex flex-1 items-center gap-2 rounded-3xl border border-border-base bg-surface px-4 transition-colors duration-150 focus-within:border-purple-400 focus-within:ring-1 focus-within:ring-purple-400"
-                  >
-                    <Icon
-                      icon={Link02Icon}
-                      size={16}
-                      className="text-foreground-subtle"
-                    />
+                  <div className="flex flex-1 items-center gap-2 rounded-3xl border border-border-base bg-surface px-4 text-foreground-subtle transition-colors duration-150 focus-within:border-brand/80 focus-within:ring-1 focus-within:ring-brand/80">
+                    <Icon icon={Link02Icon} size={16} />
                     <input
                       type="url"
                       value={link.value}
@@ -92,7 +85,7 @@ export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
         </div>
 
         {links.length === 0 ? (
-          <Text variant="small" className="px-4 text-foreground-subtle">
+          <Text variant="small" tone="subtle" className="mx-4">
             No links yet.
           </Text>
         ) : null}

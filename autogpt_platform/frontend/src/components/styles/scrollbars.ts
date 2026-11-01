@@ -1,2 +1,2 @@
 export const scrollbarStyles =
-  "scrollbar-thin scrollbar-thumb-zinc-300 scrollbar-track-transparent";
+  "scrollbar-thin scrollbar-thumb-border-strong scrollbar-track-transparent";

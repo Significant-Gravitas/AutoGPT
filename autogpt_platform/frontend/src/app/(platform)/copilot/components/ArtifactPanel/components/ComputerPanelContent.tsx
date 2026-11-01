@@ -29,8 +29,7 @@ function Pill({ tone, label }: PillProps) {
       className={cn(
         "rounded-full px-2 py-0.5 text-xs font-medium",
         tone === "on"
-          ? // TODO(tokens): no exact role for bg-emerald-50, text-emerald-700
-            "bg-emerald-50 text-emerald-700"
+          ? "bg-success-surface text-success-foreground"
           : tone === "off"
             ? "bg-surface-hover text-foreground-secondary"
             : "bg-surface-muted text-foreground-tertiary",
@@ -131,7 +130,7 @@ export function ComputerPanelContent({ sessionId }: Props) {
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-base p-6 text-center">
           <Text variant="small-medium">Screen is not on this panel yet</Text>
-          <Text variant="small" className="max-w-xs text-foreground-tertiary">
+          <Text tone="muted" variant="small" className="max-w-xs">
             {isExpert
               ? "This chat runs on the expert's own computer. Turn on its screen to watch it work in a real browser, or ask for one in the chat."
               : "Turn on this chat's screen to watch it work in a real browser, or ask for one in the chat. It is the same machine your commands run in."}
@@ -140,7 +139,7 @@ export function ComputerPanelContent({ sessionId }: Props) {
       )}
 
       {computer && !computer.e2b_active ? (
-        <Text variant="small" className="text-warning-foreground">
+        <Text tone="warning" variant="small">
           Cloud sandboxes are not configured on this deployment.
         </Text>
       ) : null}

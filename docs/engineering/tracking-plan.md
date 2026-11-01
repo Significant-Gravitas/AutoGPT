@@ -85,9 +85,10 @@ at logout; a Vercel preview reports `environment: preview`, while the dev
 deployment, which is Vercel's `staging` custom environment rather than a
 preview, reports `environment: dev`.
 
-`source` is reserved for the emitter. The three events that used it for
+`source` is reserved for the emitter. The events that used it for
 something else now use `hire_started.surface`,
-`expert_recommended.team_source` and `workflow_installed_on_expert.workflow_source`.
+`expert_recommended.team_source`, `workflow_installed_on_expert.workflow_source`
+and, for the four `first_run_tour_*` events, `opened_from`.
 
 ### Identity
 
@@ -332,23 +333,28 @@ merges the website pageviews into the new user:
 | --- | --- | --- | --- | --- |
 | `onboarding_step_viewed` | browser | live | `step` (`team`, `autopilot`, `role`, `pain_points`, `connect`, `hire`, `preparing`) | A wizard step is shown (once per tab). The paywall step reports `paywall_viewed` instead. |
 | `onboarding_completed` | backend | live | — | `ONBOARDING_COMPLETE` is first recorded for the user (`complete_onboarding_step`). |
-| `brain_dump_started` | browser | live | — | Recording starts. |
-| `brain_dump_completed` | browser | live | `input_mode`, `duration_secs` and `finalize_latency_ms` (voice) or `chars` (typed) | A dump was accepted and the wizard advances. `finalize_latency_ms` is the `finalizeBrainDump()` round trip, timed after the upload flush. |
+| `brain_dump_started` | browser | live | `prompt_set` (the role's "Otto might ask" set) | Recording starts. |
+| `brain_dump_completed` | browser | live | `input_mode`, `duration_secs` and `finalize_latency_ms` (voice) or `chars` (typed), `prompt_set`, `prompts_seen` (distinct live prompts shown) | A dump was accepted and the wizard advances. `finalize_latency_ms` is the `finalizeBrainDump()` round trip, timed after the upload flush. |
 | `brain_dump_canceled` | browser | live | — | Recording is cancelled. |
-| `brain_dump_skipped` | browser | live | — | The step is skipped. |
+| `brain_dump_skipped` | browser | live | `prompt_set`, `prompts_seen` | The step is skipped. |
 | `brain_dump_recovery_shown` | browser | live | `parts` | A saved partial recording is offered back. |
 | `brain_dump_recovery_used` | browser | live | — | The saved recording is used. |
 | `brain_dump_retry` | browser | live | `attempt` | A failed finalize is retried. |
 | `brain_dump_restarted` | browser | live | — | Recording starts over. |
 | `brain_dump_download` | browser | live | — | The recording is downloaded after a failure. |
-| `brain_dump_permission_denied` | browser | live | — | Microphone permission is refused. |
-| `brain_dump_mic_failed` | browser | live | `error_name` | The microphone fails to open, for any reason, a refused permission included. |
-| `brain_dump_typed_fallback` | browser | live | `reason` | The user types instead of speaking. |
+| `brain_dump_permission_denied` | browser | live | — | Microphone permission is refused, on the first ask and again on each refused retry. |
+| `brain_dump_mic_failed` | browser | live | `error_name` | The microphone fails to open, for any reason, a refused permission included. Sent again on each failed retry, so count people, not events. |
+| `brain_dump_typed_fallback` | browser | live | `reason` (`chose_to_type`, `permission_denied`), `prompt_set` | The user types instead of speaking. `permission_denied` is sent once per visit, however many retries are refused. |
+| `brain_dump_prompt_advanced` | browser | live | `via` (`auto`, `click`), `screen` (`rest`, `typing`, `recording`), `prompt_index`, `prompt_set` | The "Otto might ask" question moves on, by its timer (12 s at rest on narrow screens, 20 s typing, 15 s recording; not while the ideas are paused) or "Another question". Not sent for the first question. |
+| `brain_dump_permission_retried` | browser | live | `result` (`granted`, `denied`, `unavailable`), `via` (`retry_link`, `record_instead`, `permission_change`), `permission_state` (`prompt`, `granted`, `denied`, `unknown`) | After a refused microphone, the user asks for it again, or allows the site in its settings (`permission_change`). Sent before `brain_dump_started`. `result` is the browser's answer, not the take: `granted` with no `brain_dump_started` after it means the user had already sent their text, or left the step, while the prompt was open. |
 | `transcription_failed` | browser | live | `error_code`, `finalize_latency_ms` | Finalize returns a failure. |
-| `welcome_dialog_closed` | browser | live | — | The first-landing welcome dialog closes. |
-| `capability_card_viewed` | browser | live | `card_index`, `deck` | A capability card is shown. |
-| `capability_cards_completed` | browser | live | `card_index`, `deck` | The deck is finished. |
-| `capability_cards_skipped` | browser | live | `card_index`, `deck` | The deck is skipped. |
+| `welcome_dialog_closed` | browser | live | — | The first-landing intro ends (since SECRT-3149, the first-run walkthrough, finished or skipped). |
+| `first_run_tour_shown` | browser | live | `opened_from` (`auto` after onboarding, `menu` from "Show me around") | The guided first run over the real sidebar opens. |
+| `first_run_tour_step_viewed` | browser | live | `opened_from`, `step_id`, `step_index`, `target` (what it pointed at once that settled, about half a second: the sidebar item, also inside a phone's opened sidebar sheet; `menu` only where the item is not on screen; or null while the first tasks load) | A walkthrough step is shown, once per step per walkthrough (going Back and Next again does not repeat it). |
+| `first_run_tour_completed` | browser | live | `opened_from`, `step_id`, `step_index`, `via` (`start_here`, `connect_tools`) | The last step's "Start here", or its "connect your tools first". |
+| `first_run_tour_skipped` | browser | live | `opened_from`, `step_id`, `step_index`, `via` (null) | Skip tour, Close or Escape, at `step_id`. |
+| `contextual_tip_shown` | browser | live | `tip` (`second-chat`, `first-cost`, `first-expert`) | A one-time tip appears the first time its surface matters. |
+| `contextual_tip_dismissed` | browser | live | `tip` | The tip is put away ("Got it" or Escape); it never shows again. |
 | `intro_path` | browser | live | `path` | The intro path (A/B) is chosen. |
 | `intro_followup_sent` | browser | live | `chars` | First message after the intro card. |
 | `later_dump_completed` | browser | live | — | A brain dump sent later from the composer. |
@@ -568,6 +574,7 @@ user or chat when their client goes through OpenRouter.
 | --- | --- | --- | --- | --- |
 | `$feature_flag_called` | browser (posthog-js) | live | set by PostHog | A PostHog flag is read (`useExperiment`). |
 | `feature_flag_mismatched` | browser | live | `flag`, `launchdarkly` (`value`, `resolved`), `posthog` (`value`, `resolved`) | Ops signal: with both flag vendors configured, LaunchDarkly and PostHog resolved a flag to different values (`useDualFlag`). Not a user action; keep out of funnels. |
+| `chunk_reload_triggered` | browser | live | `surface` (`unhandled_rejection`, `error_boundary`), `path` | Ops signal: a tab on an older build could not load a code chunk after a deploy (`ChunkLoadError`), and the page reloaded once to pick up the current build (`lib/chunk-load-reload.ts`). At most one reload a minute per tab. Not a user action; keep out of funnels. |
 
 Arms are also stored in the database (`analytics.experiment_assignment`),
 so an experiment can be read in PostHog and Looker alike.
@@ -715,6 +722,7 @@ history PostHog already holds.
 | `experiment_exposed` | browser | Nothing: `useLaunchDarklyExperiment` had no caller and was deleted. PostHog-bucketed experiments use `$feature_flag_called`. |
 | `copilot_trigger_setup` | backend | Nothing: never sent (no caller). |
 | `intro_card_dismissed`, `raise_door_clicked`, `intro_start_with_autopilot` | browser | Nothing: declared, never sent. |
+| `capability_card_viewed`, `capability_cards_completed`, `capability_cards_skipped` | browser | `first_run_tour_step_viewed`, `first_run_tour_completed` and `first_run_tour_skipped` (SECRT-3149): the four concept cards were replaced by the walkthrough over the real UI. |
 
 ## Renamed
 

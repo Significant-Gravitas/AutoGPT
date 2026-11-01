@@ -14,6 +14,7 @@ import jsonschema.validators
 import orjson
 from fastapi.encoders import jsonable_encoder as to_dict
 from prisma import Json
+from referencing import Registry
 
 from .truncate import truncate
 from .type import type_match
@@ -235,7 +236,8 @@ def _schema_type_fingerprint(value: Any) -> _SchemaTypeFingerprint | None:
 def _new_validator(schema: dict[str, Any]):
     validator_cls = jsonschema.validators.validator_for(schema)
     validator_cls.check_schema(schema)
-    return validator_cls(schema)
+    # Resolve `$ref` only within the schema and the bundled meta-schemas.
+    return validator_cls(schema, registry=Registry())
 
 
 def _remember(key: _SchemaCacheKey, value: Any) -> Any:
