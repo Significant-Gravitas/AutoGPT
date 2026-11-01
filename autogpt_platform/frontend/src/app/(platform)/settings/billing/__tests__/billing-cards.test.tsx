@@ -1021,7 +1021,7 @@ describe("AutopilotUsageCard", () => {
         daily: { percent_used: 12, resets_at: null },
         weekly: { percent_used: 35, resets_at: null },
       }),
-      jsonHandler("get", "/api/credits/subscription", { tier: "PRO" }),
+      jsonHandler("get", "/api/internal/credits/subscription", { tier: "PRO" }),
       getGetTrialsGetTrialStatusMockHandler200(
         trialResponse({ active: false, status: null }),
       ),

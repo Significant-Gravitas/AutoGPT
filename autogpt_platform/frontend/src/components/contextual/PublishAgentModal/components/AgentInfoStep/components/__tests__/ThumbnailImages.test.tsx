@@ -212,7 +212,7 @@ describe("ThumbnailImages", () => {
   it("explains the daily limit when generating is refused for the day", async () => {
     toastSpy.mockClear();
     server.use(
-      http.post("*/api/store/submissions/generate_image", () =>
+      http.post("*/api/internal/store/submissions/generate_image", () =>
         HttpResponse.json(
           { detail: "Limit: 25 generated agent images per day." },
           { status: 429 },

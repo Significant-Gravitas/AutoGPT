@@ -13,7 +13,7 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
 import { InlineUserPasswordForm } from "../InlineUserPasswordForm";
 
 const CREATE_CREDENTIALS_URL =
-  "http://localhost:3000/api/proxy/api/integrations/:provider/credentials";
+  "http://localhost:3000/api/proxy/api/internal/integrations/:provider/credentials";
 
 async function findConnectButton() {
   return (await screen.findByRole("button", {
