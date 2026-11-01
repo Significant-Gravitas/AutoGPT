@@ -23,6 +23,7 @@ from backend.blocks import get_block, get_blocks
 from backend.blocks._base import BlockSchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.mcp.block import MCPToolBlock
+from backend.copilot.rate_limit import platform_spend_refusal
 from backend.data import redis_client as redis
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
 from backend.data.db_accessors import experts_db
@@ -110,7 +111,12 @@ from .node_tracing import (
     output_transaction,
     record_node_result,
 )
-from .simulator import get_dry_run_credentials, prepare_dry_run, simulate_block
+from .simulator import (
+    get_dry_run_credentials,
+    prepare_dry_run,
+    simulate_block,
+    track_dry_run_block_cost,
+)
 from .utils import (
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
     GRAPH_EXECUTION_CANCEL_EXCHANGE,
@@ -471,6 +477,14 @@ async def execute_node(
     # Check for dry-run platform credentials (OrchestratorBlock uses the
     # platform's OpenRouter key instead of user credentials).
     _dry_run_creds = get_dry_run_credentials(input_data) if _dry_run_input else None
+    # A dry run skips credits, so a block it runs for real on the platform's
+    # key is bounded by the user's allowance instead.
+    if _dry_run_creds is not None and (
+        refusal := await platform_spend_refusal(user_id)
+    ):
+        log_metadata.warning(f"Dry-run block not run: {refusal}")
+        yield "error", refusal
+        return
 
     # Last-minute fetch credentials. OAuth credentials come with a system-wide lease
     # that stops them being refreshed or replaced during execution. ⚠️ This means
@@ -652,6 +666,13 @@ async def execute_node(
                     await creds_lock.release()
                 except Exception as e:
                     log_metadata.error(f"Failed to release credentials lock: {e}")
+
+        if _dry_run_creds is not None:
+            await track_dry_run_block_cost(
+                node_block.execution_stats,
+                user_id=user_id,
+                model=input_data.get("model"),
+            )
 
         # Update execution stats
         if execution_stats is not None:

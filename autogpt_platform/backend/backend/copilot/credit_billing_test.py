@@ -21,6 +21,7 @@ from backend.copilot.credit_billing import (
     bill_to_credits,
     credit_billing,
     record_credit_billed_cost,
+    tool_spend_refusal,
     wait_for_cost,
 )
 from backend.copilot.rate_limit import RateLimitUnavailable
@@ -602,3 +603,33 @@ async def test_another_users_cost_stays_off_the_turn(credits):
         assert not await record_credit_billed_cost("user-2", 90_000)
 
     credits.spend_credits.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_outside_a_credit_billed_turn_a_tool_asks_the_allowance(mocker):
+    allowance = mocker.patch(
+        "backend.copilot.credit_billing.platform_spend_refusal",
+        AsyncMock(return_value="You've reached your daily usage limit."),
+    )
+    assert await tool_spend_refusal("user-1") == (
+        "You've reached your daily usage limit."
+    )
+    allowance.assert_awaited_once_with("user-1")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "spent_credits, refused", [(74, False), (75, True)], ids=["under-cap", "at-cap"]
+)
+async def test_a_credit_billed_turns_tools_spend_up_to_its_cap(
+    credits, mocker, spent_credits, refused
+):
+    allowance = mocker.patch(
+        "backend.copilot.credit_billing.platform_spend_refusal", AsyncMock()
+    )
+    turn = await _billed(credits, balance=75)
+    async with credit_billing(turn):
+        await record_credit_billed_cost("user-1", spent_credits * 10_000)
+        refusal = await tool_spend_refusal("user-1")
+    assert (refusal is not None) is refused
+    allowance.assert_not_awaited()
