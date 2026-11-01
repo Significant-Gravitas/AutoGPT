@@ -126,7 +126,9 @@ async def test_zip_pad_refuses_padding_over_the_size_limit(mocker):
     outputs = [
         output
         async for output in ZipListsBlock().run(
-            ZipListsBlock.Input(lists=lists, pad_to_longest=True, fill_value="x" * 1_000)
+            ZipListsBlock.Input(
+                lists=lists, pad_to_longest=True, fill_value="x" * 1_000
+            )
         )
     ]
 

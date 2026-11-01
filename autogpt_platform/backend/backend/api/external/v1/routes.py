@@ -11,8 +11,8 @@ import backend.api.features.store.cache as store_cache
 import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
 import backend.blocks
-from backend.blocks._base import AnyBlockSchema
 from backend.api.external.middleware import require_auth, require_permission
+from backend.blocks._base import AnyBlockSchema
 from backend.copilot.rate_limit import UserPaywalledError, enforce_payment_paywall
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db

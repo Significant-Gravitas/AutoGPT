@@ -144,7 +144,9 @@ async def execute_graph_block(
     try:
         slot = claim_direct_block_execution_slot(user_id)
     except DirectBlockExecutionLimitError as e:
-        raise HTTPException(status_code=HTTP_429_TOO_MANY_REQUESTS, detail=str(e)) from e
+        raise HTTPException(
+            status_code=HTTP_429_TOO_MANY_REQUESTS, detail=str(e)
+        ) from e
 
     with slot:
         return await _run_direct_block(obj, data, user_id, user.timezone, slot)
