@@ -199,13 +199,16 @@ async def test_extract_text_information_stops_searching_at_the_match_cap(mocker)
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("pattern", [pattern for pattern, _ in OVERSIZED_PATTERNS])
-async def test_extract_text_information_skips_an_oversized_pattern(
-    mocker, pattern: str
+@pytest.mark.parametrize(
+    "pattern, reason", OVERSIZED_PATTERNS, ids=["too-long", "repeats-too-much"]
+)
+async def test_extract_text_information_refuses_an_oversized_pattern_as_an_error(
+    mocker, pattern: str, reason: str
 ):
     block = ExtractTextInformationBlock()
     compile_pattern = mocker.patch("backend.util.user_regex.regex.compile")
     input_data = block.Input(text="order 42", pattern=pattern)
 
-    assert await _collect_outputs(block, input_data) == NO_MATCH_OUTPUTS
+    with pytest.raises(ValueError, match=reason):
+        await _collect_outputs(block, input_data)
     compile_pattern.assert_not_called()

@@ -214,6 +214,9 @@ class ExtractTextInformationBlock(Block):
 
             yield "matched_results", matches
             yield "matched_count", len(matches)
+        except ValueError:
+            # A pattern too large to evaluate is an error, never "no match".
+            raise
         except Exception:
             # Return empty results on any regex error
             yield "negative", input_data.text
