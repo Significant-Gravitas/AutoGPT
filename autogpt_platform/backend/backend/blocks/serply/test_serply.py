@@ -56,6 +56,11 @@ def _row(position: int = 1, link: str = "https://agpt.co") -> dict:
     }
 
 
+def test_client_strips_key_on_cross_origin_redirect():
+    client = SerplyClient(TEST_CREDENTIALS)
+    assert "X-Api-Key" in client.requests.sensitive_headers
+
+
 def test_results_from_response_maps_fields():
     [r] = results_from_response({"results": [_row()]})
     assert r.title == "AutoGPT"

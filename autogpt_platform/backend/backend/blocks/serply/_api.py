@@ -51,6 +51,8 @@ class SerplyClient:
                 "X-Api-Key": credentials.api_key.get_secret_value(),
                 "User-Agent": "AutoGPT",
             },
+            # Drop the key if a redirect ever leaves api.serply.io.
+            sensitive_headers={"X-Api-Key"},
         )
 
     async def search(self, params: dict[str, Any]) -> dict[str, Any]:
