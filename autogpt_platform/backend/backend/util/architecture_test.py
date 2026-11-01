@@ -947,3 +947,120 @@ def test_only_cli_io_writes_to_the_cli_stdin():
         "Offenders:\n  " + "\n  ".join(offenders) + "\n\n"
         "Fix: call cli_io.send_user_text() or cli_io.send_user_blocks()."
     )
+
+
+# ---------------------------------------------------------------------------
+# Rule: work billed after it starts reads the ledger decided when it started
+# ---------------------------------------------------------------------------
+#
+# Outside ``backend/data/``, only the functions listed here read the org ledger:
+# admission points that decide or gate it, charges that read that decision, and
+# billing routes and reads outside any run.
+
+_ORG_LEDGER_CALLS = frozenset(
+    {
+        "get_credit_model",
+        "get_org_credits",
+        "get_personal_org_owner",
+        "spend_org_credits",
+    }
+)
+_ADMITS = "decides the ledger when the work is admitted"
+_PINNED = "org from the ledger decided at admission"
+_GATES = "balance gate before the work is admitted"
+_OUTSIDE_RUN = "billing route or balance read outside any run"
+_ORG_LEDGER_CALL_SITES: dict[str, tuple[int, str]] = {
+    **{
+        f"{module} {function} get_credit_model": (1, _OUTSIDE_RUN)
+        for module, functions in {
+            "api/external/v2/credits.py": (
+                "get_balance",
+                "get_transactions",
+                "list_invoices",
+            ),
+            "api/features/billing/credits/routes.py": (
+                "configure_user_auto_top_up",
+                "fulfill_checkout",
+                "get_credit_history",
+                "get_refund_requests",
+                "get_user_credits",
+                "list_invoices",
+                "refund_top_up",
+                "request_top_up",
+            ),
+            "api/features/billing/subscriptions/routes.py": ("manage_payment_method",),
+            "api/features/home/service.py": ("_get_credits",),
+        }.items()
+        for function in functions
+    },
+    "api/external/v2/library/helpers.py assert_can_pay get_credit_model": (1, _GATES),
+    "api/external/v2/mcp_calls.py check_tool_limits get_credit_model": (1, _GATES),
+    "api/features/graphs/routes.py execute_graph get_credit_model": (1, _GATES),
+    "copilot/credit_billing.py _balance get_org_credits": (1, _PINNED),
+    "copilot/credit_billing.py _debit spend_org_credits": (1, _PINNED),
+    "copilot/credit_billing.py bill_to_credits get_personal_org_owner": (1, _ADMITS),
+    "executor/billing.py charge_reconciled_usage get_personal_org_owner": (
+        1,
+        "picks the low-balance alert only, after the charge has landed",
+    ),
+    "executor/billing.py charge_reconciled_usage spend_org_credits": (1, _PINNED),
+    "executor/billing.py charge_usage get_org_credits": (1, _PINNED),
+    "executor/billing.py charge_usage spend_org_credits": (2, _PINNED),
+    "executor/manager.py _get_execution_credit_balance get_org_credits": (
+        1,
+        _PINNED,
+    ),
+    "executor/utils.py _bills_own_wallet get_personal_org_owner": (1, _ADMITS),
+}
+
+
+def test_org_ledger_is_read_only_where_it_is_decided():
+    found = _org_ledger_call_sites()
+    expected = {site: count for site, (count, _) in _ORG_LEDGER_CALL_SITES.items()}
+
+    unlisted = sorted(f"{s} ({n})" for s, n in found.items() if s not in expected)
+    changed = sorted(
+        f"{s}: {expected[s]} listed, {found.get(s, 0)} found"
+        for s in expected
+        if found.get(s, 0) != expected[s]
+    )
+    assert not unlisted and not changed, (
+        "The org ledger is read outside the functions that decide it once per "
+        "run or turn. A charge must use the ledger its work was admitted on "
+        "(executor: billing.billed_org_id; AutoPilot: CreditBilledTurn).\n\n"
+        f"Unlisted: {unlisted}\nCounts changed: {changed}"
+    )
+
+
+def _org_ledger_call_sites() -> collections.Counter[str]:
+    sites: collections.Counter[str] = collections.Counter()
+    for py in _iter_backend_py_files():
+        rel = py.relative_to(BACKEND_ROOT).as_posix()
+        name = py.name
+        if (
+            rel.startswith("data/")
+            or "test" in py.relative_to(BACKEND_ROOT).parts
+            or name.endswith("_test.py")
+            or name.startswith("test_")
+            or name == "conftest.py"
+        ):
+            continue
+        tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+        for function, call in _calls_by_function(tree):
+            called = _decorator_name(call.func)
+            if called in _ORG_LEDGER_CALLS:
+                sites[f"{rel} {function} {called}"] += 1
+    return sites
+
+
+def _calls_by_function(tree: ast.Module):
+    def walk(node: ast.AST, function: str):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                yield from walk(child, child.name)
+                continue
+            if isinstance(child, ast.Call):
+                yield function, child
+            yield from walk(child, function)
+
+    yield from walk(tree, "<module>")

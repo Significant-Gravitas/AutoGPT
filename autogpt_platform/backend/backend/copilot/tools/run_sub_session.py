@@ -32,6 +32,7 @@ from backend.copilot.active_turns import spawn_limit_message
 from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.context import get_current_permissions, get_workspace_manager
+from backend.copilot.gate import child_autopilot_mode
 from backend.copilot.model import (
     ChatSession,
     create_chat_session,
@@ -257,6 +258,8 @@ class RunSubSessionTool(BaseTool):
                 # origin would put the staffing tools one hop away from the
                 # gate that refuses them directly.
                 origin="automation",
+                # It starts in the mode the parent's gate enforces.
+                inherited_autopilot_mode=child_autopilot_mode(session, None),
             )
             inner_session_id = new_session.session_id
             opened_here = True
