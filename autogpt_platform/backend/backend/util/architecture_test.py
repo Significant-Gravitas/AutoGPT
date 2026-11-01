@@ -1077,6 +1077,52 @@ def _opens_for_writing(call: ast.Call) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Rule: REST routes run blocks through the direct block execution workers
+# ---------------------------------------------------------------------------
+#
+# Motivation: the API server's event loop serves every request in the
+# process, and block runs belong on the direct block execution workers. Routes
+# hand a block's ``execute()`` stream to
+# ``backend.executor.direct_block_execution``, which runs it on a worker loop
+# under a time budget and a per-user cap.
+
+_API_PACKAGE = BACKEND_ROOT / "api"
+
+
+def _iterates_block_execute(node: ast.AST) -> bool:
+    if isinstance(node, ast.AsyncFor):
+        target = node.iter
+    elif isinstance(node, ast.comprehension) and node.is_async:
+        target = node.iter
+    else:
+        return False
+    return (
+        isinstance(target, ast.Call)
+        and isinstance(target.func, ast.Attribute)
+        and target.func.attr == "execute"
+    )
+
+
+def test_api_routes_do_not_iterate_block_execute():
+    offenders: list[str] = []
+    for py in _API_PACKAGE.rglob("*.py"):
+        if "__pycache__" in py.parts or py.name.endswith("_test.py"):
+            continue
+        tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+        offenders.extend(
+            f"{py.relative_to(BACKEND_ROOT).as_posix()}:{node.lineno}"
+            for node in ast.walk(tree)
+            if _iterates_block_execute(node)
+        )
+
+    assert not offenders, (
+        "API code must not iterate a block's execute() stream itself; pass it "
+        "to backend.executor.direct_block_execution.run_block_off_loop.\n\n"
+        "Offenders:\n  " + "\n  ".join(offenders)
+    )
+
+
+# ---------------------------------------------------------------------------
 # Rule: work billed after it starts reads the ledger decided when it started
 # ---------------------------------------------------------------------------
 #
