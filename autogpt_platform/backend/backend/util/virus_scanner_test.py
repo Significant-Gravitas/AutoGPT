@@ -107,7 +107,7 @@ class TestVirusScannerService:
 
         async def mock_instream(_):
             await asyncio.sleep(0.001)
-            return None
+            return {"stream": ("OK", None)}
 
         mock_client = Mock()
         mock_client.ping = AsyncMock(return_value=True)
@@ -125,7 +125,7 @@ class TestVirusScannerService:
     async def test_scan_clean_file(self, scanner):
         async def mock_instream(_):
             await asyncio.sleep(0.001)  # Small delay to ensure timing > 0
-            return None  # No virus detected
+            return {"stream": ("OK", None)}
 
         mock_client = Mock()
         mock_client.ping = AsyncMock(return_value=True)
@@ -141,6 +141,16 @@ class TestVirusScannerService:
         assert result.threat_name is None
         assert result.file_size == len(content)
         assert result.scan_time_ms > 0
+
+    @pytest.mark.asyncio
+    async def test_a_client_that_returns_no_result_fails_the_scan(self, scanner):
+        mock_client = Mock()
+        mock_client.ping = AsyncMock(return_value=True)
+        mock_client.instream = AsyncMock(return_value=None)
+        scanner._client = mock_client
+
+        with pytest.raises(aioclamd.ResponseError, match="no result"):
+            await scanner.scan_file(b"some upload", filename="upload.bin")
 
     @pytest.mark.asyncio
     async def test_scan_infected_file(self, scanner):
@@ -216,7 +226,7 @@ class TestVirusScannerService:
     async def test_concurrent_scans(self, scanner):
         async def mock_instream(_):
             await asyncio.sleep(0.001)  # Small delay to ensure timing > 0
-            return None
+            return {"stream": ("OK", None)}
 
         mock_client = Mock()
         mock_client.ping = AsyncMock(return_value=True)
@@ -389,6 +399,18 @@ class TestStreamingToClamd:
             )
             monkeypatch.setattr(virus_scanner, "_scanner", scanner)
             with pytest.raises(VirusScanError, match="allocate memory"):
+                await scan_content_safe(b"some upload")
+
+    @pytest.mark.asyncio
+    async def test_an_empty_reply_refuses_the_file(self, monkeypatch):
+        async with _fake_clamd(reply=b"") as port:
+            scanner = VirusScannerService(
+                VirusScannerSettings(
+                    clamav_service_port=port, mark_failed_scans_as_clean=True
+                )
+            )
+            monkeypatch.setattr(virus_scanner, "_scanner", scanner)
+            with pytest.raises(VirusScanError):
                 await scan_content_safe(b"some upload")
 
     @pytest.mark.asyncio

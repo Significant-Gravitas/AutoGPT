@@ -80,7 +80,7 @@ class VirusScannerService:
         Returns (False, None) for clean.
         """
         if not raw:
-            return False, None
+            raise aioclamd.ResponseError("ClamAV returned no result")
         status, threat = next(iter(raw.values()))
         if status == "ERROR":
             raise aioclamd.ResponseError(f"ClamAV could not scan the stream: {threat}")
