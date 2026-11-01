@@ -3,8 +3,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.blocks.autopilot import AutoPilotBlock, AutoPilotTransport
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
+from backend.data.execution import ExecutionContext
 from backend.data.graph import Graph, Node, make_graph_model
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     GraphActivationError,
@@ -151,6 +153,107 @@ async def test_before_graph_activate_removes_deleted_optional_credentials():
         await _before_graph_activate(graph, "user-1")
 
     assert "credentials" not in node.input_default
+
+
+DELETED_CODEX = {
+    "id": "deleted-cred",
+    "provider": "codex",
+    "type": "oauth2",
+    "title": "Personal ChatGPT",
+}
+
+
+def _legacy_autopilot_node(**input_default: Any):
+    node = MagicMock()
+    node.id = "node-1"
+    node.block_id = AutoPilotBlock().id
+    node.credentials_optional = False
+    node.input_default = {"prompt": "do the thing", **input_default}
+    node.block.input_schema = AutoPilotBlock.Input
+    node.block.name = "AutoPilotBlock"
+    return node
+
+
+async def _activate_with_missing_credential(node) -> None:
+    graph = MagicMock(nodes=[node])
+    with patch(
+        "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
+    ) as mgr:
+        mgr.cached_getter.return_value = AsyncMock(return_value=None)
+        await _before_graph_activate(graph, "user-1")
+
+
+async def _run_autopilot_after_save(node):
+    """Drive AutoPilotBlock.run on the persisted defaults so we can see
+    which account would be billed."""
+    block = AutoPilotBlock()
+    create_session = AsyncMock(return_value="session-1")
+    execute_copilot = AsyncMock(
+        return_value=(
+            "done",
+            [],
+            "[]",
+            "session-1",
+            {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+        )
+    )
+    input_data = AutoPilotBlock.Input.model_validate(node.input_default)
+    context = ExecutionContext(
+        user_id="user-1",
+        graph_id="graph-1",
+        graph_exec_id="graph-exec-1",
+        node_id="node-1",
+        node_exec_id="node-exec-1",
+    )
+    with (
+        patch.object(block, "create_session", create_session),
+        patch.object(block, "execute_copilot", execute_copilot),
+    ):
+        outputs = {
+            name: value
+            async for name, value in block.run(input_data, execution_context=context)
+        }
+    return outputs, create_session
+
+
+@pytest.mark.asyncio
+async def test_legacy_autopilot_deleted_credential_does_not_switch_to_platform():
+    """A submitted legacy AutoPilot node encodes ChatGPT billing as the
+    presence of `codex_credentials` and has no `transport`. Clearing a
+    deleted reference must not make run() bill platform credits (#16193)."""
+    node = _legacy_autopilot_node(codex_credentials=DELETED_CODEX)
+
+    await _activate_with_missing_credential(node)
+
+    assert "codex_credentials" not in node.input_default
+    assert (
+        node.input_default.get("transport") == AutoPilotTransport.CODEX_APP_SERVER.value
+    )
+
+    outputs, create_session = await _run_autopilot_after_save(node)
+    assert "error" in outputs
+    assert "ChatGPT" in outputs["error"]
+    create_session.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_platform_autopilot_deleted_credential_stays_on_platform():
+    """An explicit platform choice is credential-free; a leftover deleted
+    Codex reference must still be dropped without rewriting transport."""
+    node = _legacy_autopilot_node(
+        transport=AutoPilotTransport.PLATFORM.value,
+        codex_credentials=DELETED_CODEX,
+    )
+
+    await _activate_with_missing_credential(node)
+
+    assert "codex_credentials" not in node.input_default
+    assert node.input_default["transport"] == AutoPilotTransport.PLATFORM.value
+
+    outputs, create_session = await _run_autopilot_after_save(node)
+    assert outputs["response"] == "done"
+    assert create_session.await_args.kwargs["llm_auth_provider"] == "platform"
+    assert create_session.await_args.kwargs["llm_credential_id"] is None
 
 
 @pytest.mark.asyncio
