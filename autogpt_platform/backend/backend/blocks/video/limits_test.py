@@ -208,6 +208,26 @@ async def test_narration_refuses_oversized_frame(video_dir, exec_ctx):
         )
 
 
+async def test_narration_refuses_oversized_frame_before_tts(video_dir, exec_ctx):
+    block = VideoNarrationBlock()
+    with patch("backend.blocks.video.narration.ElevenLabs") as elevenlabs:
+        await _assert_refused_before_open(
+            "backend.blocks.video.narration",
+            block,
+            VideoNarrationBlock.Input.model_validate(
+                {
+                    "credentials": TEST_CREDENTIALS_INPUT,
+                    "video_in": OVERSIZED,
+                    "script": "Hello",
+                }
+            ),
+            exec_ctx,
+            video_dir,
+            credentials=TEST_CREDENTIALS,
+        )
+    elevenlabs.assert_not_called()
+
+
 async def test_text_overlay_refuses_oversized_frame(video_dir, exec_ctx):
     block = VideoTextOverlayBlock()
     await _assert_refused_before_open(

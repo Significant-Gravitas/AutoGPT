@@ -101,6 +101,7 @@ class VideoNarrationBlock(VideoMediaStorage, Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("video_out", str), ("audio_file", str)],
             test_mock={
+                "_check_input_video": lambda *args: None,
                 "_generate_narration_audio": lambda *args: b"mock audio content",
                 "_add_narration_to_video": lambda *args: None,
                 "_store_input_video": lambda *args, **kwargs: "test.mp4",
@@ -127,6 +128,13 @@ class VideoNarrationBlock(VideoMediaStorage, Block):
                 provider_cost=script_usd,
                 provider_cost_type="cost_usd",
             )
+        )
+
+    def _check_input_video(self, video_abspath: str) -> None:
+        """Strip chapters and check the frame size, before any narration is paid for."""
+        strip_chapters_inplace(video_abspath)
+        check_video_frame_size(
+            video_abspath, block_name=self.name, block_id=str(self.id)
         )
 
     def _generate_narration_audio(
@@ -159,10 +167,6 @@ class VideoNarrationBlock(VideoMediaStorage, Block):
         original = None
 
         try:
-            strip_chapters_inplace(video_abspath)
-            check_video_frame_size(
-                video_abspath, block_name=self.name, block_id=str(self.id)
-            )
             video = VideoFileClip(video_abspath)
             narration_original = AudioFileClip(audio_abspath)
             narration_scaled = narration_original.with_volume_scaled(narration_volume)
@@ -222,6 +226,8 @@ class VideoNarrationBlock(VideoMediaStorage, Block):
             video_abspath = get_exec_file_path(
                 execution_context.graph_exec_id, local_video_path
             )
+
+            self._check_input_video(video_abspath)
 
             # Generate narration audio via ElevenLabs
             audio_content = self._generate_narration_audio(
