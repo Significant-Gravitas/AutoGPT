@@ -1,5 +1,6 @@
 """Response compression, as the REST API registers it, has a bounded cost."""
 
+import asyncio
 import gzip
 from collections.abc import Iterator
 
@@ -11,6 +12,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from starlette.requests import Request
 from starlette.responses import Response, StreamingResponse
 from starlette.routing import Route
+from starlette.types import Message, Receive, Scope, Send
 from starlette.testclient import TestClient
 
 from backend.api.rest_api import app as rest_app
@@ -187,3 +189,49 @@ def test_a_response_of_exactly_the_cap_is_still_compressed(
     assert response.headers["content-encoding"] == "gzip"
     assert len(response.content) == 5 * MIB
     assert sum(compressed_bytes) == 5 * MIB
+
+
+@pytest.mark.asyncio
+async def test_an_event_stream_without_a_length_reaches_the_client_before_it_ends() -> (
+    None
+):
+    first_chunk = b"data: first\n\n"
+    delivered = asyncio.Event()
+    sent: list[Message] = []
+
+    async def stream(scope: Scope, receive: Receive, send: Send) -> None:
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"text/event-stream")],
+            }
+        )
+        await send(
+            {"type": "http.response.body", "body": first_chunk, "more_body": True}
+        )
+        await asyncio.wait_for(delivered.wait(), timeout=2)
+        await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+    async def receive() -> Message:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message: Message) -> None:
+        sent.append(message)
+        if message["type"] == "http.response.body" and message.get("body"):
+            delivered.set()
+
+    scope: Scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/events",
+        "headers": [(b"accept-encoding", b"gzip")],
+    }
+    entry = _registered_gzip_middleware()
+    middleware = entry.cls(stream, *entry.args, **entry.kwargs)
+    await middleware(scope, receive, send)
+
+    start = next(m for m in sent if m["type"] == "http.response.start")
+    assert b"content-encoding" not in dict(start["headers"])
+    bodies = [m["body"] for m in sent if m["type"] == "http.response.body"]
+    assert bodies[0] == first_chunk
