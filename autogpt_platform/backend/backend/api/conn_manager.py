@@ -436,6 +436,8 @@ class _ShardStream:
         except Exception:
             # No confirmation is coming; a stale count would hide a real drop.
             self._unsubscribing[channel] -= 1
+            if self._unsubscribing[channel] <= 0:
+                del self._unsubscribing[channel]
             logger.warning(f"SUNSUBSCRIBE failed for {channel}", exc_info=True)
 
     async def stop(self) -> None:
@@ -488,6 +490,8 @@ class _ShardStream:
             if msg_type == "sunsubscribe":
                 if self._unsubscribing[channel] > 0:
                     self._unsubscribing[channel] -= 1
+                    if self._unsubscribing[channel] <= 0:
+                        del self._unsubscribing[channel]
                     continue
                 # Not ours: the slot moved and Redis dropped the subscription.
                 return

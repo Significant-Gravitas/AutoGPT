@@ -573,6 +573,27 @@ async def test_a_failed_sunsubscribe_does_not_hide_a_later_drop(
 
 
 @pytest.mark.asyncio
+async def test_unsubscribing_forgets_a_channel_once_its_sunsubscribe_confirms(
+    fake_redis: _FakeRedis,
+) -> None:
+    """A long-lived stream must not keep a {channel: 0} entry per channel it
+    has ever unsubscribed from."""
+    stream = _ShardStream(on_lost=AsyncMock())
+    try:
+        await stream.add("{u/g}/exec/keep", AsyncMock())
+        inbox = fake_redis.pubsubs[0].inbox
+        for i in range(5):
+            channel = f"{{u/g}}/exec/churn-{i}"
+            await stream.add(channel, AsyncMock())
+            await stream.remove(channel)
+            inbox.put_nowait({"type": "sunsubscribe", "channel": channel})
+            await _until(lambda c=channel: stream._unsubscribing[c] == 0)
+        assert stream._unsubscribing == {}
+    finally:
+        await stream.stop()
+
+
+@pytest.mark.asyncio
 async def test_a_quick_resubscribe_is_not_read_as_a_lost_stream(
     fake_redis: _FakeRedis,
 ) -> None:
