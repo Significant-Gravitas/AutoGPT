@@ -18,8 +18,7 @@ export const ControlPanelButton = React.forwardRef<HTMLButtonElement, Props>(
         type={type}
         disabled={disabled}
         className={cn(
-          // TODO(tokens): no fitting role for hover:text-zinc-950 #09090B; #09090B is foreground, whose .dark value (250 250 250) differs (QUALITY 43, SECRT-3154)
-          "flex w-auto items-center justify-center whitespace-normal bg-surface px-4 py-4 text-foreground-emphasis shadow-none hover:cursor-pointer hover:bg-surface-hover hover:text-zinc-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500",
+          "flex w-auto items-center justify-center bg-surface px-4 py-4 whitespace-normal text-foreground-emphasis shadow-none hover:cursor-pointer hover:bg-surface-hover hover:text-foreground-base focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none focus-visible:ring-inset",
           selected &&
             "bg-accent-surface text-accent-strong hover:cursor-default hover:bg-accent-surface hover:text-accent-strong active:bg-accent-surface active:text-accent-strong",
           disabled && "cursor-not-allowed opacity-50 hover:cursor-not-allowed",

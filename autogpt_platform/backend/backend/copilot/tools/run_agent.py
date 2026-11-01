@@ -1073,6 +1073,7 @@ class RunAgentTool(BaseTool):
         try:
             execution = await execution_utils.add_graph_execution(
                 graph_id=library_agent.graph_id,
+                graph_version=graph.version,
                 user_id=user_id,
                 inputs=inputs,
                 graph_credentials_inputs=graph_credentials,

@@ -93,7 +93,7 @@ See [Data fetching patterns](#-data-fetching-patterns) for more examples.
 6. Use Tailwind + design tokens (avoid hardcoded values)
 7. Only use Hugeicons via the `Icon` atom
 8. Test in Storybook: `pnpm storybook`
-9. Verify in Chromatic after PR
+9. Attach before/after screenshots (1440 and 390 px) to the PR; Chromatic is off
 
 **Example structure:**
 
@@ -182,9 +182,9 @@ While server components and actions are cool and cutting-edge, they introduce a 
 
 - [Tailwind CSS](https://tailwindcss.com/docs) + [shadcn/ui](https://ui.shadcn.com/) ([Radix Primitives](https://www.radix-ui.com/docs/primitives/overview/introduction) under the hood)
 - Use the design system under `src/components` for primitives and building blocks
-- Do not use anything under `src/components/_legacy__`; migrate away from it when touching old code
-- Reference the design system catalog on Chromatic: [`https://dev--670f94474adee5e32c896b98.chromatic.com/`](https://dev--670f94474adee5e32c896b98.chromatic.com/)
-- Use the `scrollbar-*` utilities for scrollbar styling: [`tailwind-scrollbar`](https://www.npmjs.com/package/tailwind-scrollbar) 3's classes, kept in `tailwind.scrollbar.ts`
+- Do not use anything under `src/components/__legacy__`; migrate away from it when touching old code (`design-system/no-legacy-import` fails new imports)
+- Browse the design system in Storybook (`pnpm storybook`); the rules and the lint that enforces them are in [`docs/engineering/design-system.md`](../../docs/engineering/design-system.md)
+- Use the `scrollbar-*` utilities for scrollbar styling: [`tailwind-scrollbar`](https://www.npmjs.com/package/tailwind-scrollbar) 3's classes, ported to `@utility` in `src/app/globals.css`
 
 ---
 
@@ -622,9 +622,9 @@ Control flow:
 
 - Use Tailwind utilities; prefer semantic, composable class names
 - Use shadcn/ui components as building blocks when available
-- Use the `scrollbar-*` utilities (`tailwind.scrollbar.ts`) for scrollbar styling
-- Tailwind CSS 4 runs with Tailwind 3's theme and output (`tailwind.v3-preset.ts`, `src/app/tailwind-v3-preflight.css`, `postcss.tailwind3-compat.cjs`), so every class keeps its Tailwind 3 value. Look values up in the [Tailwind 3 docs](https://v3.tailwindcss.com/docs): `shadow-sm` is still the small shadow, a bare `ring` is 3px and `outline-none` draws a transparent outline. Names that exist only in Tailwind 4, such as `shadow-xs`, `rounded-xs` or `blur-xs`, generate nothing
-- Keep responsive and dark-mode behavior consistent with the design system
+- Use the `scrollbar-*` utilities (`@utility` in `src/app/globals.css`) for scrollbar styling
+- The theme is CSS-first: the colour roles, type scale, radii, the `dark` variant and the app's own utilities are in `src/app/globals.css` (`@theme`, `@custom-variant`, `@utility`); `tailwind.config.ts` and its preset keep the raw palette, spacing, shadows and motion. Tailwind CSS 4 runs with Tailwind 3's theme and output (`tailwind.v3-preset.ts`, `src/app/tailwind-v3-preflight.css`, `postcss.tailwind3-compat.cjs`), so every class keeps its Tailwind 3 value. Look values up in the [Tailwind 3 docs](https://v3.tailwindcss.com/docs): `shadow-sm` is still the small shadow, a bare `ring` is 3px and `outline-none` draws a transparent outline. Names that exist only in Tailwind 4, such as `shadow-xs`, `rounded-xs` or `blur-xs`, generate nothing
+- Keep responsive behavior consistent with the design system; no `dark:` classes, the role tokens carry the theme
 
 Additional requirements:
 
@@ -836,10 +836,11 @@ Common scripts (see `package.json` for full list):
 - `pnpm dev` — Start Next.js dev server (generates API client first)
 - `pnpm build` — Build for production
 - `pnpm start` — Start production server
-- `pnpm lint` — ESLint + Prettier check
+- `pnpm lint` — ESLint, oxlint (including the `design-system/*` rules) and Prettier check
 - `pnpm format` — Format code
 - `pnpm types` — Type-check
 - `pnpm knip` — Report unused files, exports and dependencies (run `pnpm generate:api` first)
+- `pnpm lint:ds-baseline` — Rewrite `scripts/eslint-rules/design-system-baseline.json`, the per-file counts of existing design-system violations that `pnpm lint` grandfathers (run it after removing violations, or moving, renaming or splitting a file)
 - `pnpm test:unit` — Run integration/unit tests (Vitest + RTL + MSW)
 - `pnpm test:unit:watch` — Watch mode for integration tests
 - `pnpm test` — Run Playwright E2E tests
@@ -855,7 +856,7 @@ Generated API client:
 
 - Client-first: server components only for SEO or extreme TTFB needs
 - Uses generated API hooks; no new `BackendAPI` usages
-- UI uses `src/components` primitives; no new `_legacy__` components
+- UI uses `src/components` primitives; no new `__legacy__` components
 - Logic is separated into `use*.ts` and `helpers.ts` when non-trivial
 - Reusable logic extracted to `src/services/` or `src/lib/utils.ts` when appropriate
 - Navigation uses the Next.js router
@@ -869,7 +870,7 @@ Generated API client:
 
 When touching legacy code:
 
-- Replace usages of `src/components/_legacy__/*` with the modern design system components under `src/components`
+- Replace usages of `src/components/__legacy__/*` with the modern design system components under `src/components`
 - Replace `BackendAPI` or `src/lib/autogpt-server-api/*` with generated API hooks
 - Move presentational logic into render files and data/behavior into hooks
 - Keep one-off transformations in local `helpers.ts`; move reusable logic to `src/services/` or `src/lib/utils.ts`
@@ -878,6 +879,6 @@ When touching legacy code:
 
 ## 📚 References
 
-- Design system (Chromatic): [`https://dev--670f94474adee5e32c896b98.chromatic.com/`](https://dev--670f94474adee5e32c896b98.chromatic.com/)
+- Design system rules: [`docs/engineering/design-system.md`](../../docs/engineering/design-system.md); components in Storybook (`pnpm storybook`)
 - Project README for setup and API client examples: `autogpt_platform/frontend/README.md`
 - Conventional Commits: [conventionalcommits.org](https://www.conventionalcommits.org/)

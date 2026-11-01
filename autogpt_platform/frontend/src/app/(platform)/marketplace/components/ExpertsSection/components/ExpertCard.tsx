@@ -55,25 +55,25 @@ export function ExpertCard({ expert, isHired, category }: Props) {
 
   return (
     <div
-      // TODO(tokens): no exact role: shadow-[…] #101828, hover:shadow-[…] #101828
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border-base/80 bg-surface text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]"
+      // oxlint-disable-next-line design-system/no-arbitrary-values -- the card's hover lift shadow has no shadow token
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border-base/80 bg-surface text-left shadow-message-table transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]"
     >
       <div
         className="pointer-events-none absolute inset-x-0 top-0 h-[4.5rem]"
+        // oxlint-disable-next-line design-system/no-inline-styles -- the card band is tinted at runtime with the expert's own colour
         style={{ backgroundColor: expertPastel(topicColor) }}
       />
       <Link
         href={`/marketplace/experts/${expert.id}`}
-        // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
-        className="relative flex flex-1 flex-col gap-4 rounded-2xl p-6 outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+        className="relative flex flex-1 flex-col gap-4 rounded-2xl p-6 outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle"
       >
         <ExpertAvatar
           name={expert.name}
           avatarUrl={expert.avatar_url}
           size={88}
           backgroundColor={topicColor}
-          // TODO(tokens): no exact role: border-[#e3e3e3] #E3E3E3; no fitting role for ring-white #FEFEFE; #FEFEFE is surface (a surface fill), action-foreground (a text colour)
-          className="rounded-full border border-[#e3e3e3] ring-4 ring-white"
+          // oxlint-disable-next-line design-system/no-restyle -- the card portrait's frame; ExpertAvatar has no framed size
+          className="rounded-full border border-border-base ring-4 ring-surface"
         />
 
         <div>
@@ -105,6 +105,7 @@ export function ExpertCard({ expert, isHired, category }: Props) {
                     icon={areaAccent.icon ?? Book04Icon}
                     size={12}
                     className="shrink-0"
+                    // oxlint-disable-next-line design-system/no-inline-styles -- the skill glyph wears the expert's own colour, known only at runtime
                     style={{ color: topicColor }}
                     aria-hidden
                   />
@@ -119,8 +120,7 @@ export function ExpertCard({ expert, isHired, category }: Props) {
                       className={cn(
                         CHIP_SHAPE,
                         CHIP_SIZE.small,
-                        // TODO(tokens): no exact role: focus-visible:ring-violet-600 #7C3AED
-                        "h-6 cursor-default border-transparent px-0 text-foreground-tertiary outline-none focus-visible:ring-2 focus-visible:ring-violet-600",
+                        "h-6 cursor-default border-transparent px-0 text-foreground-tertiary outline-none focus-visible:ring-2 focus-visible:ring-brand",
                       )}
                     >
                       +{restSkills.length} skills
@@ -148,12 +148,13 @@ export function ExpertCard({ expert, isHired, category }: Props) {
               icon={ArrowRight02Icon}
               size={16}
               aria-hidden
+              // oxlint-disable-next-line design-system/no-restyle -- the arrow nudges on hover; Icon has no motion prop
               className="transition-transform duration-200 group-hover:translate-x-0.5"
             />
           </span>
         </div>
       </Link>
-      <div className="absolute right-5 top-5 z-10">
+      <div className="absolute top-5 right-5 z-10">
         <ExpertHireControl expert={expert} isHired={isHired} />
       </div>
     </div>

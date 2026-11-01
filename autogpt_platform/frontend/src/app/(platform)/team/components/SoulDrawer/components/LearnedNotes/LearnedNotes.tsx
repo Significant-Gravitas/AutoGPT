@@ -68,14 +68,10 @@ function NotesList({
             className="flex items-start justify-between gap-2 py-2.5"
           >
             <div className="min-w-0 flex-1">
-              <Text variant="small" as="p" className="text-textBlack">
+              <Text variant="small" as="p">
                 {fact.fact || `${fact.source} → ${fact.target}`}
               </Text>
-              <Text
-                variant="small"
-                as="span"
-                className="text-foreground-subtle"
-              >
+              <Text variant="small" as="span" tone="subtle">
                 {formatWhen(fact.created_at)}
               </Text>
             </div>
@@ -83,6 +79,7 @@ function NotesList({
               type="button"
               variant="ghost"
               size="small"
+              // oxlint-disable-next-line design-system/no-restyle -- no Button variant is a 28px ghost pill with secondary text; ghost/xs would turn it rectangular (deferred)
               className="h-7 !min-w-0 shrink-0 px-2 text-foreground-secondary"
               loading={forgettingUuid === fact.uuid}
               onClick={() => onForget(fact.uuid)}
@@ -95,6 +92,7 @@ function NotesList({
       <Link
         href={`/settings/memory?expert=${encodeURIComponent(expertId)}`}
         variant="secondary"
+        // oxlint-disable-next-line design-system/no-restyle -- Link has no secondary-colour tone (src/components is P9's)
         className="mt-3 inline-block text-foreground-secondary"
       >
         See all in memory settings

@@ -60,7 +60,7 @@ export function Collapsible({
       >
         <div
           data-slot="collapsible-trigger-content"
-          className="flex-end flex flex-wrap items-center gap-2"
+          className="flex flex-wrap items-center gap-2"
         >
           {trigger}
           <Icon

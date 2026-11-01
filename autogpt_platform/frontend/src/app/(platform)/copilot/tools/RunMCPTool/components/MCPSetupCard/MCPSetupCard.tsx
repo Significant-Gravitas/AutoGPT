@@ -35,6 +35,7 @@ import { ContentMessage } from "../../../../components/ToolAccordion/AccordionCo
 import { ChainActionsContext } from "../../../../components/ToolChain/chainActions";
 import { CredentialRejectionNotice } from "../../../../components/CredentialRejectionNotice/CredentialRejectionNotice";
 import { coerceExpertGrant } from "../../../../components/SetupRequirementsCard/helpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   output: SetupRequirementsResponse;
@@ -388,7 +389,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // as the state machine driving that row's callbacks.
   useEffect(() => {
     if (!chainActions) return;
-    chainActions.register({
+    chainActions.register(actionId, {
       id: actionId,
       ready: connected,
       buildMessage: () => null,
@@ -441,8 +442,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     // owns the error display.
     return (
       <div className="mt-2 grid gap-2">
-        {/* TODO(tokens): no exact role for green-200 #94D5AC */}
-        <div className="rounded-lg border border-green-200 bg-success-surface px-3 py-2 text-sm text-success-foreground">
+        <div className="rounded-lg border border-success/40 bg-success-surface px-3 py-2 text-sm text-success-foreground">
           Connected to {service}.{" "}
           <button
             type="button"
@@ -488,8 +488,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
           <div
             role="alert"
             aria-live="polite"
-            // TODO(tokens): no exact role for red-200 #FAC5C5
-            className="mt-2 rounded-lg border border-red-200 bg-error-surface px-3 py-2 text-sm text-error-foreground"
+            className="mt-2 rounded-lg border border-error/30 bg-error-surface px-3 py-2 text-sm text-error-foreground"
           >
             {error ?? grantError}
           </div>
@@ -503,21 +502,20 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
               disabled={loading}
               nameSuffix={service}
               className="grid gap-1"
-              // TODO(tokens): no exact role for gray-700 #374151
-              labelClassName="text-xs font-medium text-gray-700"
+              labelClassName="text-xs font-medium text-foreground-body"
               selectClassName="rounded border bg-background px-2 py-1.5 text-sm"
             />
-            <label
+            <Text
+              variant="small-medium-tight"
+              as="label"
+              tone="body"
               htmlFor={manualTokenInputId}
-              // TODO(tokens): no exact role for gray-700 #374151
-              className="text-xs font-medium text-gray-700"
             >
               {`${mcpAuthTokenLabel(manualAuthScheme)} for ${service}`}
-            </label>
-            {/* TODO(tokens): no exact role for gray-500 #6B7280 */}
-            <p id={manualTokenHintId} className="text-xs text-gray-500">
+            </Text>
+            <Text variant="small-tight" tone="muted" id={manualTokenHintId}>
               {mcpAuthTokenHint(manualAuthScheme)}
-            </p>
+            </Text>
             <div className="flex gap-2">
               <input
                 id={manualTokenInputId}

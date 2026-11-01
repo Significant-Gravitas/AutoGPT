@@ -14,7 +14,7 @@ export function IntegrationsListEmpty({ query }: Props) {
   // is one quiet line rather than the full empty state.
   if (trimmed) {
     return (
-      <Text variant="body" className="px-4 text-foreground-tertiary">
+      <Text variant="body" tone="muted" className="px-4">
         {`None of your connected integrations match "${trimmed}".`}
       </Text>
     );
@@ -24,10 +24,10 @@ export function IntegrationsListEmpty({ query }: Props) {
     <div className="flex flex-col items-center justify-center gap-4 px-6 py-10 text-center">
       <IntegrationsMarquee />
       <div className="flex flex-col items-center gap-1">
-        <Text variant="large-medium" as="span" className="text-textBlack">
+        <Text variant="large-medium" as="span">
           No integration connected
         </Text>
-        <Text variant="body" className="max-w-[360px] text-foreground-tertiary">
+        <Text variant="body" tone="muted" className="max-w-[360px]">
           Connect a service to let your experts and workflows use third-party
           tools like GitHub, Gmail, or Figma.
         </Text>

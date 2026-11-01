@@ -340,6 +340,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Hacker News Get Stories](block-integrations/hacker_news/stories.md#hacker-news-get-stories) | Get the top (front page), new, best, Ask HN, Show HN or job stories from Hacker News, in the order Hacker News ranks them |
 | [Hacker News Get User](block-integrations/hacker_news/users.md#hacker-news-get-user) | Get a Hacker News user's profile by username: karma, when the account was created, the about text and how many items they have posted |
 | [Hacker News Search](block-integrations/hacker_news/search.md#hacker-news-search) | Search Hacker News stories and comments by keyword, author, date, points or linked domain, sorted by relevance or newest first |
+| [Parallel Ask Many Decisions](block-integrations/parallel/ask_many.md#parallel-ask-many-decisions) | Ask several yes/no, choice and score questions about one subject in a single Parallel request, answered from shared current web evidence |
+| [Parallel Score Decision](block-integrations/parallel/score.md#parallel-score-decision) | Rate something on an ordered scale you define, using current web evidence from Parallel |
 | [Search Filter Typeahead](block-integrations/dataforb2b/typeahead.md#search-filter-typeahead) | Resolve the exact filter value (company, industry, job title, skill, school, investor, location, category) for people and company searches with DataForB2B |
 | [Search Organizations](block-integrations/apollo/organization.md#search-organizations) | Search for organizations in Apollo |
 | [Search People](block-integrations/apollo/people.md#search-people) | Search for people in Apollo |
@@ -685,6 +687,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Data Sampling](block-integrations/logic.md#data-sampling) | This block samples data from a given dataset using various sampling methods |
 | [Exa Webset Ready Check](block-integrations/exa/websets.md#exa-webset-ready-check) | Check if webset is ready for next operation - enables conditional workflow branching |
 | [If Input Matches](block-integrations/logic.md#if-input-matches) | Handles conditional logic based on comparison operators |
+| [Parallel Choice Decision](block-integrations/parallel/choice.md#parallel-choice-decision) | Pick one of several options using current web evidence from Parallel, with a probability for each option |
+| [Parallel Yes No Decision](block-integrations/parallel/yes_no.md#parallel-yes-no-decision) | Answer a yes/no question using current web evidence from Parallel, and forward data to the yes, no or unsure output |
 | [Pinecone Init](block-integrations/logic.md#pinecone-init) | Initializes a Pinecone index |
 | [Pinecone Insert](block-integrations/logic.md#pinecone-insert) | Upload data to a Pinecone index |
 | [Pinecone Query](block-integrations/logic.md#pinecone-query) | Queries a Pinecone index |

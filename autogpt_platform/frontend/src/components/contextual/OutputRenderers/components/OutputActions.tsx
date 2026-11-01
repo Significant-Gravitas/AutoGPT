@@ -85,8 +85,7 @@ export function OutputActions({
             icon={Copy01Icon}
             className={cn(
               "size-4",
-              // TODO(tokens): no exact role for text-neutral-500 #737373
-              isPrimary ? "text-action-foreground" : "text-neutral-500",
+              isPrimary ? "text-action-foreground" : "text-foreground-tertiary",
             )}
           />
         )}
@@ -104,8 +103,7 @@ export function OutputActions({
           icon={Download04Icon}
           className={cn(
             "size-4",
-            // TODO(tokens): no exact role for text-neutral-500 #737373
-            isPrimary ? "text-action-foreground" : "text-neutral-500",
+            isPrimary ? "text-action-foreground" : "text-foreground-tertiary",
           )}
         />
         {isPrimary && <span>Download All</span>}

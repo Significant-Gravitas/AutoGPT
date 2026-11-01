@@ -1,7 +1,3 @@
-// TODO(tokens): no role for these colours yet, so they stay raw:
-// bg-gray-50 #F9FAFB, text-gray-500 #6B7280, text-gray-600 #4B5563,
-// text-gray-700 #374151.
-
 import { notFound } from "next/navigation";
 import { withRoleAccess } from "@/lib/withRoleAccess";
 import { GenerateTestDataButton } from "./components/GenerateTestDataButton";
@@ -14,20 +10,20 @@ function TestDataDashboard() {
       <div className="flex flex-col gap-6">
         <div className="flex items-center justify-between">
           <div>
-            <Text variant="h1" className="text-3xl">
+            <Text variant="h2" as="h1">
               Test Data Generation
             </Text>
-            <Text variant="body" className="text-gray-500">
+            <Text variant="body" tone="muted">
               Generate sample data for testing and development
             </Text>
           </div>
         </div>
 
         <div className="rounded-lg border bg-surface p-6 shadow-sm">
-          <Text variant="h2" className="mb-4 text-xl">
+          <Text variant="h4" as="h2" className="mb-4">
             Generate Test Data
           </Text>
-          <Text variant="body" className="mb-6 text-gray-600">
+          <Text variant="body" className="mb-6" tone="secondary">
             Use this tool to populate the database with sample test data. This
             is useful for development and testing purposes.
           </Text>
@@ -36,7 +32,7 @@ function TestDataDashboard() {
             <Text variant="body-medium" className="mb-2">
               Available Script Types:
             </Text>
-            <ul className="list-inside list-disc space-y-2 text-gray-600">
+            <ul className="list-inside list-disc space-y-2 text-foreground-secondary">
               <li>
                 <Text variant="body" as="span">
                   <Text variant="body-medium" as="span">
@@ -63,11 +59,11 @@ function TestDataDashboard() {
           <GenerateTestDataButton />
         </div>
 
-        <div className="rounded-lg border bg-gray-50 p-6">
-          <Text variant="body-medium" className="mb-2 text-gray-700">
+        <div className="rounded-lg border bg-surface-muted p-6">
+          <Text variant="body-medium" className="mb-2" tone="body">
             What data is created?
           </Text>
-          <div className="grid gap-4 text-sm text-gray-600 md:grid-cols-2">
+          <div className="grid gap-4 text-sm text-foreground-secondary md:grid-cols-2">
             <div>
               <Text variant="body-medium">E2E Script:</Text>
               <ul className="mt-1 list-inside list-disc">

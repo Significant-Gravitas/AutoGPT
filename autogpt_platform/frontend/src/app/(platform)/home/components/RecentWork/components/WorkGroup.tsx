@@ -29,7 +29,8 @@ export function WorkGroup({ group, timezone }: Props) {
         variant="small-medium"
         as="span"
         className={cn(
-          "shrink-0 rounded-full border px-1.5 capitalize leading-4",
+          "shrink-0 rounded-full border px-1.5 leading-4 capitalize",
+          // oxlint-disable-next-line design-system/require-static-classes -- ACTOR_CHIPS holds whole, static class strings
           chip.className,
         )}
       >

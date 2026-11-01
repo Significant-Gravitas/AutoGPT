@@ -139,8 +139,7 @@ const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
     "font-normal text-foreground-base",
     "placeholder:font-normal placeholder:text-placeholder",
     // Focus and hover states
-    // TODO(tokens): no role is purple-400 #925CF7, the focus border and ring.
-    "focus:border-purple-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-purple-400 focus:ring-offset-0",
+    "focus:border-brand focus:shadow-none focus:outline-none focus:ring-1 focus:ring-brand focus:ring-offset-0",
     className,
   );
 
@@ -286,7 +285,7 @@ const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
           type="button"
           onClick={handleTogglePassword}
           disabled={props.disabled}
-          className="absolute right-4 top-1/2 -translate-y-1/2 text-foreground-subtle transition-colors hover:text-foreground-secondary disabled:cursor-not-allowed disabled:opacity-50"
+          className="absolute top-1/2 right-4 -translate-y-1/2 text-foreground-subtle transition-colors hover:text-foreground-secondary disabled:cursor-not-allowed disabled:opacity-50"
           aria-label={showPassword ? "Hide password" : "Show password"}
           aria-pressed={showPassword}
           aria-controls={inputId}
@@ -321,7 +320,7 @@ const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
         as="span"
         tone="error"
         className={cn(
-          "absolute left-0 top-full mt-1 transition-opacity duration-200",
+          "absolute top-full left-0 mt-1 transition-opacity duration-200",
           error ? "opacity-100" : "opacity-0",
         )}
       >
@@ -345,6 +344,7 @@ const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
               data-slot="input-label-text"
               variant={labelVariant}
               as="span"
+              // oxlint-disable-next-line design-system/require-static-classes -- labelClassName is a caller override that existing call sites outside the design system still use
               className={cn("text-foreground-base", labelClassName)}
             >
               {label}

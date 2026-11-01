@@ -78,13 +78,7 @@ export const RunInputDialog = ({
               {hasCredentials() && credentialFields.length > 0 && (
                 <div data-id="run-input-credentials-section">
                   <div className="mb-4">
-                    <Text
-                      // TODO(tokens): no exact role: text-gray-900 #111827
-                      variant="h4"
-                      className="text-gray-900"
-                    >
-                      Credentials
-                    </Text>
+                    <Text variant="h4">Credentials</Text>
                   </div>
                   <div className="px-2" data-id="run-input-credentials-form">
                     <CredentialsGroupedView
@@ -102,13 +96,7 @@ export const RunInputDialog = ({
               {hasInputs() && (
                 <div data-id="run-input-inputs-section">
                   <div className="mb-4">
-                    <Text
-                      // TODO(tokens): no exact role: text-gray-900 #111827
-                      variant="h4"
-                      className="text-gray-900"
-                    >
-                      Inputs
-                    </Text>
+                    <Text variant="h4">Inputs</Text>
                   </div>
                   <div data-id="run-input-inputs-form">
                     <FormRenderer

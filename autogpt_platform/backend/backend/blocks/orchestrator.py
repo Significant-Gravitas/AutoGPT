@@ -8,7 +8,7 @@ import tempfile
 import types
 import uuid as uuid_mod
 from collections import Counter
-from collections.abc import AsyncIterable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from concurrent.futures import Future
 from enum import Enum
 from functools import partial
@@ -27,8 +27,9 @@ from backend.blocks._base import (
     BlockType,
 )
 from backend.blocks.agent import AgentExecutorBlock
+from backend.copilot.sdk.cli_io import send_user_text
 from backend.copilot.sdk.cli_version import require_verbatim_prompts_cli
-from backend.copilot.sdk.env import DISABLE_SLASH_COMMANDS_FLAG, cli_prompt_text
+from backend.copilot.sdk.env import DISABLE_SLASH_COMMANDS_FLAG
 from backend.copilot.sdk.env import config as copilot_config
 from backend.copilot.sdk.env import without_url_credentials
 from backend.copilot.sdk.launch_env import launch_options
@@ -410,6 +411,31 @@ def _select_final_answer_parts(
     if not has_tool_calls and any(part.strip() for part in text_parts):
         return list(text_parts)
     return current
+
+
+_SDK_CONVERSATION_LABELS = {
+    "user": "User",
+    "assistant": "You responded",
+    "tool": "Tool output",
+}
+
+
+def format_sdk_conversation(prompt: list[dict[str, Any]]) -> str:
+    """Render a multi-turn prompt as the text of one SDK user message.
+
+    The CLI takes no assistant or tool turn on stdin, so the turns go in as
+    text, laid out like the copilot's ``_format_conversation_context``; an
+    entry that is not a user, assistant or tool turn is dropped.
+    """
+    lines: list[str] = []
+    for p in prompt:
+        role, content = p.get("role"), p.get("content")
+        label = _SDK_CONVERSATION_LABELS.get(role) if isinstance(role, str) else None
+        if label and content:
+            if not isinstance(content, str):
+                content = json.dumps(content)
+            lines.append(f"{label}: {content}")
+    return "<conversation_history>\n" + "\n".join(lines) + "\n</conversation_history>"
 
 
 def sdk_disallowed_tools() -> list[str]:
@@ -1803,27 +1829,19 @@ class OrchestratorBlock(Block):
             # ClaudeAgentOptions.system_prompt to avoid sending them twice.
             sdk_prompt = [p for p in prompt if p.get("role") != "system"]
 
-            # Build user message from prompt.
-            # The SDK's query() accepts a string or an async iterable of message dicts.
-            # For multi-turn conversations, pass the full history as an async iterable
-            # to preserve assistant replies, tool calls/results, and system messages.
+            # The user message is always one string, sent with ``send_user_text``.
             has_multi_turn = any(
                 p.get("role") in ("assistant", "tool") for p in sdk_prompt
             )
             if has_multi_turn:
-
-                async def _prompt_iter():
-                    for p in sdk_prompt:
-                        yield p
-
-                user_message: str | AsyncIterable[dict[str, Any]] = _prompt_iter()
+                user_message = format_sdk_conversation(sdk_prompt)
             else:
                 # Single-turn: collapse user content into one string
                 user_parts = []
                 for p in sdk_prompt:
                     if p.get("role") == "user" and p.get("content"):
                         user_parts.append(str(p["content"]))
-                user_message = cli_prompt_text(
+                user_message = (
                     "\n\n".join(user_parts) if user_parts else input_data.prompt
                 )
 
@@ -1842,7 +1860,7 @@ class OrchestratorBlock(Block):
                 require_verbatim_prompts_cli, options.cli_path
             )
             async with ClaudeSDKClient(options=launch_options(options)) as client:
-                await client.query(user_message)
+                await send_user_text(client, user_message)
 
                 msg_iter = client.receive_response().__aiter__()
                 fetch_context = contextvars.copy_context()

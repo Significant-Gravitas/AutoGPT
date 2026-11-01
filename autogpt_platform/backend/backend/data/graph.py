@@ -16,6 +16,7 @@ from typing import (
     get_args,
 )
 
+from prisma import Prisma
 from prisma.enums import SubmissionStatus
 from prisma.models import (
     AgentGraph,
@@ -47,6 +48,7 @@ from backend.util.exceptions import (
     GraphNotInLibraryError,
     GraphValidationError,
     NotAuthorizedError,
+    NotFoundError,
 )
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
@@ -55,7 +57,7 @@ from backend.util.text import split_camelcase
 
 from .block import BlockInput
 from .db import BaseDbModel, execute_raw_with_schema, query_raw_with_schema, transaction
-from .dynamic_fields import is_tool_pin, sanitize_pin_name
+from .dynamic_fields import assert_safe_pin_name, is_tool_pin, sanitize_pin_name
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE, MAX_GRAPH_VERSIONS_FETCH
 from .model import CredentialsFieldInfo, CredentialsMetaInput, is_credentials_field_name
 
@@ -1856,6 +1858,16 @@ async def get_graph_version_owners(graph_id: str) -> set[tuple[str, str | None]]
     return {(version.userId, version.organizationId) for version in versions}
 
 
+async def is_graph_version_owner(graph_id: str, version: int, user_id: str) -> bool:
+    """Whether *user_id* saved this version of the graph."""
+    return (
+        await AgentGraph.prisma().count(
+            where={"id": graph_id, "version": version, "userId": user_id}
+        )
+        > 0
+    )
+
+
 async def assert_graph_within(
     graph_id: str, user_id: str, organization_ids: Collection[str | None]
 ) -> None:
@@ -2247,27 +2259,34 @@ async def __create_graph(
 ):
     graphs = [graph] + graph.sub_graphs
 
-    # Auto-increment version for any graph entry (parent or sub-graph) whose
-    # (id, version) already exists.  This prevents UniqueViolationError when
-    # the copilot re-saves an agent that already exists at the requested version.
-    # NOTE: This issues one find_first query per graph entry (N+1 pattern).
-    # Sub-graph counts are typically small (< 5), so the overhead is negligible.
+    # Reject unsafe dynamic pin names before anything is written, so no save
+    # path (route, fork, copy, copilot) can persist one. The use-site guards in
+    # dynamic_fields stay the backstop for names already in the DB.
     for g in graphs:
-        existing = await AgentGraph.prisma(tx).find_first(
+        for node in g.nodes:
+            for pin_name in node.input_default:
+                assert_safe_pin_name(pin_name)
+        for link in g.links:
+            assert_safe_pin_name(link.source_name)
+            assert_safe_pin_name(link.sink_name)
+
+    # A graph ID has one owner: refuse anyone else's, and number the version
+    # after the latest stored one.
+    for g in graphs:
+        owner_id = await graph_owner_id(g.id, tx)
+        if owner_id is not None and owner_id != user_id:
+            raise NotFoundError(f"Workflow #{g.id} not found")
+
+        latest = await AgentGraph.prisma(tx).find_first(
             where={"id": g.id},
             order={"version": "desc"},
         )
-        if existing and existing.version >= g.version:
-            old_version = g.version
-            g.version = existing.version + 1
+        if latest and (next_version := latest.version + 1) != g.version:
             logger.warning(
-                "Auto-incremented graph %s version from %d to %d "
-                "(version %d already exists)",
-                g.id,
-                old_version,
-                g.version,
-                existing.version,
+                f"Saving graph {g.id} as v{next_version} rather than the "
+                f"requested v{g.version}: its latest version is v{latest.version}"
             )
+            g.version = next_version
 
     await AgentGraph.prisma(tx).create_many(
         data=[
@@ -2318,6 +2337,14 @@ async def __create_graph(
             for link in graph.links
         ]
     )
+
+
+async def graph_owner_id(graph_id: str, tx: Prisma | None = None) -> str | None:
+    """The owner of the graph ID's first version, or None when it has none."""
+    first_version = await AgentGraph.prisma(tx).find_first(
+        where={"id": graph_id}, order={"version": "asc"}
+    )
+    return first_version.userId if first_version else None
 
 
 # ------------------------ UTILITIES ------------------------ #

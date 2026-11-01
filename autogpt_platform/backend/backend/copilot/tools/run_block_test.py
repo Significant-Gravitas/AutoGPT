@@ -708,7 +708,12 @@ class TestRunBlockInputValidation:
             )
 
         assert isinstance(response, SetupRequirementsResponse)
-        assert "'spreadsheet'" in response.message
+        # The card shows this line to the user, so it names the field by its
+        # title (the key here, since the schema gives none), never quoted.
+        assert response.message == (
+            "Choose your spreadsheet in the card below. The step runs again "
+            "with your choice."
+        )
         inputs = response.setup_info.requirements["inputs"]
         picker_field = next((i for i in inputs if i["name"] == "spreadsheet"), None)
         assert picker_field is not None
