@@ -74,16 +74,16 @@ export function GraphScheduleListItem({
       >
         <div
           className={cn(
-            // TODO(tokens): no exact role for border-slate-50 #F7F8F9, bg-emerald-50 #ecfdf5
-            "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-slate-50 bg-emerald-50",
+            "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-separator bg-success-surface",
             iconClassName,
           )}
         >
           <Icon
             icon={Calendar03Icon}
             size={18}
-            // TODO(tokens): no exact role for text-emerald-700 #047857
-            className={iconClassName ? "text-inherit" : "text-emerald-700"}
+            className={
+              iconClassName ? "text-inherit" : "text-success-foreground"
+            }
           />
         </div>
         <div className="flex min-w-0 flex-col gap-1">
@@ -94,21 +94,16 @@ export function GraphScheduleListItem({
             {agentLabel}
           </Text>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-            <Text
-              variant="small"
-              className="!text-foreground-tertiary"
-              title={nextRunTitle}
-            >
+            <Text variant="small" tone="muted" title={nextRunTitle}>
               {nextRunLabel}
             </Text>
             <span className="text-foreground-disabled">•</span>
-            <Text variant="small" className="!text-foreground-tertiary">
+            <Text variant="small" tone="muted">
               {recurrenceLabel}
             </Text>
             <span className="text-foreground-disabled">•</span>
             <span
-              // TODO(tokens): no exact role for bg-emerald-100 #d1fae5
-              className="flex rounded-md bg-emerald-100 px-2 py-0.5"
+              className="flex rounded-md bg-success-surface px-2 py-0.5"
               data-testid="schedule-kind-badge"
             >
               <Text variant="small-tight" as="span" tone="success-strong">
@@ -153,22 +148,18 @@ export function GraphScheduleListItem({
         <Dialog.Content>
           <div className="flex flex-col gap-5">
             <div className="flex items-center gap-3">
-              <div
-                // TODO(tokens): no exact role for border-emerald-100 #d1fae5, bg-emerald-50 #ecfdf5
-                className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50"
-              >
+              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-success/20 bg-success-surface">
                 <Icon
                   icon={Calendar03Icon}
                   size={20}
-                  // TODO(tokens): no exact role for text-emerald-700 #047857
-                  className="text-emerald-700"
+                  className="text-success-foreground"
                 />
               </div>
               <div className="min-w-0">
                 <Text variant="body-medium" className="truncate">
                   {agentLabel}
                 </Text>
-                <Text variant="small" className="!text-foreground-tertiary">
+                <Text variant="small" tone="muted">
                   Recurring workflow run
                 </Text>
               </div>

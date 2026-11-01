@@ -17,6 +17,7 @@ import {
 import type { QuestionRequest } from "./helpers";
 import { QuestionAnswerField } from "./QuestionAnswerField";
 import { QuestionMultiAnswerField } from "./QuestionMultiAnswerField";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   requests: QuestionRequest[];
@@ -67,9 +68,9 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
             size={18}
             className="text-foreground-subtle"
           />
-          <span className="text-sm font-medium text-foreground-strong">
+          <Text variant="body-medium-tight" as="span" tone="primary">
             Answer a few questions
-          </span>
+          </Text>
         </span>
         <button
           type="button"
@@ -85,11 +86,11 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
-        className="flex flex-col gap-4 px-5 pb-4 pt-5"
+        className="flex flex-col gap-4 px-5 pt-5 pb-4"
       >
         <span
           id={labelId}
-          className="text-lg font-medium leading-snug text-foreground-strong"
+          className="text-lg leading-snug font-medium text-foreground-strong"
         >
           {question.question}
         </span>
@@ -119,7 +120,7 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
         )}
       </m.div>
 
-      <div className="flex items-center justify-between px-5 pb-4 pt-1">
+      <div className="flex items-center justify-between px-5 pt-1 pb-4">
         <span className="flex items-center gap-2">
           <button
             type="button"
@@ -143,8 +144,7 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
                   (i === current
                     ? "size-2.5 border-2 border-action"
                     : i < current
-                      ? // TODO(tokens): no fitting role for bg-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
-                        "size-2 bg-zinc-400"
+                      ? "size-2 bg-foreground-subtle"
                       : "size-2 border border-border-strong")
                 }
               />

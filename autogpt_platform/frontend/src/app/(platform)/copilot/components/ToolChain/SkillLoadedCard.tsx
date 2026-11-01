@@ -6,6 +6,7 @@ import { BookBookmarkIcon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { CARD, HALF } from "./ResultCards";
 import { str } from "./resultHelpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   output: Record<string, unknown>;
@@ -34,12 +35,16 @@ export function SkillLoadedCard({ output }: Props) {
         />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-body-sm font-medium leading-inherit text-foreground-emphasis">
+        <Text
+          variant="body-sm-medium-inherit"
+          tone="emphasis"
+          className="truncate"
+        >
           Skill loaded: {name} v{version} · {origin}
-        </p>
-        <p className="truncate text-xs text-foreground-tertiary">
+        </Text>
+        <Text variant="small-tight" tone="muted" className="truncate">
           Loaded for this task; loading is not a success record.
-        </p>
+        </Text>
       </div>
       <Link
         href={href}

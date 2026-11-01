@@ -2,8 +2,13 @@
 
 import { useState } from "react";
 import { Text } from "@/components/atoms/Text/Text";
-import { DeviceAuthConnectButton } from "@/components/contextual/DeviceAuth/DeviceAuthConnectButton";
+import { MicrosoftConnectionPanel } from "@/components/contextual/MicrosoftConnection/MicrosoftConnectionPanel";
+import { useMicrosoftBrowserSignIn } from "@/components/contextual/MicrosoftConnection/useMicrosoftBrowserSignIn";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import {
+  MICROSOFT_BASE_SCOPES,
+  MICROSOFT_COPILOT_SCOPES,
+} from "@/lib/microsoft-setup";
 import { ProviderBox } from "./ProviderBox";
 
 interface Props {
@@ -13,8 +18,9 @@ interface Props {
 
 export function MicrosoftCopilotProviderBox({ isLinked, onSuccess }: Props) {
   const [isOpen, setIsOpen] = useState(false);
+  const { browserAvailable } = useMicrosoftBrowserSignIn();
 
-  function handleSuccess() {
+  function handleDone() {
     setIsOpen(false);
     onSuccess();
   }
@@ -41,13 +47,13 @@ export function MicrosoftCopilotProviderBox({ isLinked, onSuccess }: Props) {
           <Text variant="small" as="p" tone="muted">
             Requires a paid Microsoft Copilot or Copilot Business add-on from
             your work or school organization. The included Microsoft 365 Copilot
-            Chat does not qualify. This connection answers chats but does not
-            run AutoGPT tools.
+            Chat does not qualify. Chats you run on Copilot are answered by
+            Microsoft 365 Copilot itself, without AutoGPT&apos;s tools.
           </Text>
-          <DeviceAuthConnectButton
-            provider="microsoft_365_copilot"
-            providerName="Microsoft 365 Copilot"
-            onSuccess={handleSuccess}
+          <MicrosoftConnectionPanel
+            browserAvailable={browserAvailable}
+            scopes={[...MICROSOFT_BASE_SCOPES, ...MICROSOFT_COPILOT_SCOPES]}
+            onDone={handleDone}
           />
         </div>
       </Dialog.Content>

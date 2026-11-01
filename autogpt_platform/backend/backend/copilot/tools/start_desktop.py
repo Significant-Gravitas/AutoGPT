@@ -45,7 +45,7 @@ class StartDesktopTool(BaseTool):
             "user can watch and control. It is the same machine bash_exec runs "
             "in, so files, ~/workspace and running processes are shared (in an "
             "expert session it is the expert's own persistent computer; "
-            "~/shared is the user's workspace). The machine suspends between "
+            "~/shared is the user's folder). The machine suspends between "
             "turns and the screen comes back as you left it. Use when a task "
             "needs a browser or GUI app."
         )

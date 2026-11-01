@@ -6,6 +6,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { possessive } from "./expertHandoff";
 import { useHandoffRetry } from "./useHandoffRetry";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   title: string;
@@ -21,9 +22,9 @@ export function HandoffRetry({ title, name, expertId, onSend }: Props) {
   const { asked, markAsked, known, threadId } = useHandoffRetry(expertId);
   if (asked) {
     return (
-      <span className="text-sm text-foreground-tertiary">
+      <Text variant="body-tight" as="span" tone="muted">
         Asked Otto to try again.
-      </span>
+      </Text>
     );
   }
   if (!known) return null;
@@ -31,7 +32,7 @@ export function HandoffRetry({ title, name, expertId, onSend }: Props) {
     return (
       <NextLink
         href={`/copilot?sessionId=${encodeURIComponent(threadId)}`}
-        className="inline-flex shrink-0 items-center gap-1 rounded text-sm font-medium text-foreground-emphasis underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus"
+        className="inline-flex shrink-0 items-center gap-1 rounded text-sm font-medium text-foreground-emphasis underline-offset-2 hover:underline focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none"
       >
         Open {possessive(name)} chat
         <Icon

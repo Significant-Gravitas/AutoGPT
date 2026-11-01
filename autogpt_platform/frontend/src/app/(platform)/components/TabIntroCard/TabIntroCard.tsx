@@ -129,38 +129,25 @@ export function TabIntroCard({
             initial={{ opacity: 0, y: 16, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ duration: 0.45, ease: [0, 0, 0.2, 1] }}
-            // TODO(tokens): no exact role for shadow-[0_24px_80px_-24px_rgba(0,0,0,0.3)]
-            className="w-full max-w-[26rem] overflow-hidden rounded-3xl bg-surface shadow-[0_24px_80px_-24px_rgba(0,0,0,0.3)] outline-none"
+            className="w-full max-w-[26rem] overflow-hidden rounded-3xl bg-surface shadow-2xl outline-none"
             ref={dialogRef}
             tabIndex={-1}
           >
             {/* Tinted stage: the card's icon floats here. */}
-            <div
-              // TODO(tokens): no exact role for from-[#e6dbff], to-[#d0b9ff], via-[#ddccff]
-              className="relative h-44 bg-gradient-to-br from-[#e6dbff] via-[#ddccff] to-[#d0b9ff]"
-            >
+            <div className="relative h-44 bg-gradient-to-br from-brand/15 via-brand/20 to-brand/30">
               <GlassPixelBackdrop />
               <div className="flex h-full items-center justify-center">
                 <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-surface shadow-lg">
-                  <Icon
-                    // TODO(tokens): no exact role for text-violet-600 (#7C3AED)
-                    icon={icon}
-                    size={40}
-                    className="text-violet-600"
-                  />
+                  <Icon icon={icon} size={40} className="text-brand" />
                 </div>
               </div>
             </div>
 
-            <div className="flex flex-col gap-3 px-7 pb-7 pt-6 text-left">
-              <Text
-                variant="lead-semibold"
-                as="h3"
-                className="text-foreground-strong"
-              >
+            <div className="flex flex-col gap-3 px-7 pt-6 pb-7 text-left">
+              <Text variant="lead-semibold" tone="primary" as="h3">
                 {title}
               </Text>
-              <Text variant="large" className="text-foreground-secondary">
+              <Text variant="large" tone="secondary">
                 {body}
               </Text>
               {altAction && (
@@ -168,8 +155,7 @@ export function TabIntroCard({
                   variant="ghost"
                   size="small"
                   onClick={altAction.onClick}
-                  // TODO(tokens): no exact role for text-violet-600 (#7C3AED)
-                  className="w-fit self-start px-0 text-violet-600 underline-offset-4 hover:bg-transparent hover:underline"
+                  className="w-fit self-start px-0 text-brand underline-offset-4 hover:bg-transparent hover:underline"
                 >
                   {altAction.label}
                 </Button>

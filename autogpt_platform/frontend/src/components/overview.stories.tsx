@@ -36,7 +36,7 @@ function OverviewComponent() {
                 href="https://www.figma.com/design/nO9NFynNuicLtkiwvOxrbz/AutoGPT-Design-System?node-id=3-2083&m=dev"
                 target="_blank"
                 rel="noopener noreferrer"
-                className={`${linkStyle} text-md`}
+                className={linkStyle}
               >
                 📋 Figma Reference
               </a>
@@ -293,11 +293,11 @@ function OverviewComponent() {
             <h4 className="text-lg font-semibold text-gray-900">
               🧢 Development Workflow
             </h4>
-            <p className="text-md leading-relaxed text-gray-600">
+            <p className="leading-relaxed text-gray-600">
               All design system changes should follow our established workflow
               to ensure quality and consistency.
             </p>
-            <div className="text-md space-y-4">
+            <div className="space-y-4">
               <div>
                 <strong className="text-gray-900">
                   For External Contributors:
@@ -332,10 +332,10 @@ function OverviewComponent() {
             <h4 className="text-lg font-semibold text-gray-900">
               📋 Component Guidelines
             </h4>
-            <p className="text-md leading-relaxed text-gray-600">
+            <p className="leading-relaxed text-gray-600">
               Follow these principles when creating or modifying components:
             </p>
-            <ul className="text-md space-y-2 text-gray-600">
+            <ul className="space-y-2 text-gray-600">
               <li>
                 <strong className="text-gray-900">Accessibility First</strong>
                 <ul>
@@ -392,7 +392,7 @@ function OverviewComponent() {
       {/* Social Links */}
       <div className="space-y-8">
         <h3 className="text-3xl font-bold text-gray-900">Get Involved</h3>
-        <p className="text-md leading-relaxed text-gray-600">
+        <p className="leading-relaxed text-gray-600">
           Join the AutoGPT community and help build the future of AI automation.
         </p>
         <div className="grid grid-cols-1 gap-6 md:grid-cols-4">

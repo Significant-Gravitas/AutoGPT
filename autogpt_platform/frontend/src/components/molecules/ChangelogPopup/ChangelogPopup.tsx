@@ -33,7 +33,7 @@ export function ChangelogPopup() {
   return (
     <div
       data-slot="changelog-popup"
-      className={`fixed bottom-4 right-4 z-50 w-[360px] max-w-[calc(100vw-2rem)] transition-all duration-500 ease-out sm:bottom-6 sm:right-6 ${
+      className={`fixed right-4 bottom-4 z-50 w-[360px] max-w-[calc(100vw-2rem)] transition-all duration-500 ease-out sm:right-6 sm:bottom-6 ${
         isFading
           ? "pointer-events-none translate-y-2 opacity-0"
           : "translate-y-0 opacity-100"
@@ -97,7 +97,7 @@ export function ChangelogPopup() {
             withTooltip={false}
             onClick={dismiss}
             data-slot="changelog-popup-dismiss"
-            className="-mr-1 -mt-1 text-muted-foreground hover:text-foreground"
+            className="-mt-1 -mr-1 text-muted-foreground hover:text-foreground"
             aria-label="Dismiss changelog"
           >
             <Icon

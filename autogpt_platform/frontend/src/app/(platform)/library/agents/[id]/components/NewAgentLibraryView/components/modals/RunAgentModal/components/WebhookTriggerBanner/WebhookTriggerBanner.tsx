@@ -1,14 +1,10 @@
 export function WebhookTriggerBanner() {
   return (
-    <div
-      // TODO(tokens): no exact role for border-blue-200 (#BFDBFE)
-      className="mb-4 rounded-lg border border-blue-200 bg-info-surface p-4"
-    >
+    <div className="mb-4 rounded-lg border border-info/30 bg-info-surface p-4">
       <div className="flex items-start">
         <div className="flex-shrink-0">
           <svg
-            // TODO(tokens): no exact role for text-blue-400 (#60A5FA)
-            className="h-5 w-5 text-blue-400"
+            className="h-5 w-5 text-info"
             viewBox="0 0 20 20"
             fill="currentColor"
           >
@@ -20,16 +16,10 @@ export function WebhookTriggerBanner() {
           </svg>
         </div>
         <div className="ml-3">
-          <h3
-            // TODO(tokens): no exact role for text-blue-800 (#1E40AF)
-            className="text-sm font-medium text-blue-800"
-          >
+          <h3 className="text-sm font-medium text-info-foreground">
             Webhook Trigger
           </h3>
-          <div
-            // TODO(tokens): no exact role for text-blue-700 (#1D4ED8)
-            className="mt-2 text-sm text-blue-700"
-          >
+          <div className="mt-2 text-sm text-info-foreground">
             <p>
               This will create a webhook endpoint that automatically runs your
               workflow when triggered by external events.

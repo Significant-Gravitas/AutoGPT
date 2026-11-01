@@ -32,20 +32,14 @@ function NavItemContent({
 
   return (
     <>
-      <UIIcon
-        icon={Icon}
-        size={16}
-        // TODO(tokens): no exact role for text-[#1F1F20] (#1F1F20)
-        className={isActive ? "text-foreground-base" : "text-[#1F1F20]"}
-      />
+      <UIIcon icon={Icon} size={16} className="text-foreground-base" />
       <Text
         variant="body"
         as="span"
         className={cn(
           "flex-1",
           isActive
-            ? // TODO(tokens): no exact role for text-[#1F1F20] (#1F1F20)
-              "font-medium text-[#1F1F20]"
+            ? "font-medium text-foreground-base"
             : "font-normal text-foreground-body",
         )}
       >
@@ -82,9 +76,8 @@ export function SectionNavItem({ item, isActive }: Props) {
         href={item.href}
         aria-current={isActive ? "page" : undefined}
         className={cn(
-          "flex h-[38px] w-full items-center gap-2 rounded-[8px] px-3 text-foreground-body transition-colors",
-          // TODO(tokens): no exact role for hover:bg-[#F5F5F6] (#F5F5F6)
-          isActive ? "bg-surface-hover" : "hover:bg-[#F5F5F6]",
+          "flex h-[38px] w-full items-center gap-2 rounded-lg px-3 text-foreground-body transition-colors",
+          isActive ? "bg-surface-hover" : "hover:bg-surface-hover/60",
         )}
       >
         <NavItemContent

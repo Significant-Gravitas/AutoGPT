@@ -33,6 +33,7 @@ from pydantic import BaseModel
 from backend.copilot.constants import HUNG_TOOL_CAP_SECONDS
 from backend.copilot.context import (
     E2B_WORKDIR,
+    get_bash_command_as_written,
     get_current_permissions,
     get_current_sandbox,
     looks_like_sdk_tool_result_path,
@@ -44,6 +45,7 @@ from backend.copilot.gate.policy import Effect
 from backend.copilot.gate.shell_write import workspace_write_target
 from backend.copilot.gate.subject import Subject
 from backend.copilot.integration_creds import (
+    expert_allowed_ids,
     get_github_user_git_identity,
     get_integration_env_vars,
     grant_to_box,
@@ -191,6 +193,7 @@ class BashExecTool(BaseTool):
     """Execute Bash commands on E2B or in a bubblewrap sandbox."""
 
     has_gate_subject = True
+    writes_files = True
 
     @property
     def name(self) -> str:
@@ -202,10 +205,11 @@ class BashExecTool(BaseTool):
             "Execute a Bash command or script. Shares filesystem with SDK file tools. "
             "Useful for scripts, data processing, and package installation. "
             "Killed after `timeout` seconds. Anything that should persist belongs "
-            "in ~/workspace (a durable volume); other paths are scratch. The "
+            "in ~/workspace (a durable folder; the user's uploads are not in it, "
+            "see list_workspace_files); other paths are scratch. The "
             "desktop (start_desktop) is this same machine, all paths included. "
             "Expert sessions: ~/workspace is the expert's own machine, ~/shared "
-            "is the user's workspace."
+            "is the user's folder."
         )
 
     @property
@@ -299,9 +303,16 @@ class BashExecTool(BaseTool):
         # Pre-flight redirect: bash sandbox can't reach host-side SDK
         # tool-result paths. Without this the model burns turns retrying
         # `cat /root/.claude/projects/...` after `Permission denied`.
-        if looks_like_sdk_tool_result_path(command):
+        # Checks the command as written, minus its ``@@agptfile:`` refs, so
+        # neither a ref nor the file content it expands to trips the check.
+        # A command that is only refs is unset, and its expanded script is
+        # checked instead.
+        as_written = get_bash_command_as_written()
+        if as_written is None:
+            as_written = command
+        if looks_like_sdk_tool_result_path(as_written):
             return ErrorResponse(
-                message=sdk_tool_result_redirect_hint(command),
+                message=sdk_tool_result_redirect_hint(as_written),
                 error="sdk_tool_result_path_in_bash_command",
                 session_id=session_id,
             ).from_outside()
@@ -381,6 +392,10 @@ class BashExecTool(BaseTool):
         secret_values: list[str] = []
         if user_id is not None:
             selected = await selected_credentials(session_id)
+            # An expert's box gets only what the expert was granted.
+            allowed_ids = await expert_allowed_ids(
+                user_id, owner.id if owner is not None and owner.is_expert else None
+            )
             # The run's ceiling on connected accounts.  Without the proxy,
             # leaving a provider's token out is what keeps it from the box.
             # Behind it, a provider outside the ceiling gets no grant (and so
@@ -389,7 +404,11 @@ class BashExecTool(BaseTool):
             providers = allowed_providers(get_current_permissions())
             if proxy_address() is not None:
                 grants = await placeholder_grants(
-                    user_id, required_scopes, selected, providers
+                    user_id,
+                    required_scopes,
+                    selected,
+                    providers,
+                    allowed_ids=allowed_ids,
                 )
                 try:
                     # Before the command runs: its placeholders resolve only
@@ -406,7 +425,11 @@ class BashExecTool(BaseTool):
                 envs.update(placeholder_env(grants))
             else:
                 integration_env = await get_integration_env_vars(
-                    user_id, required_scopes, selected, providers
+                    user_id,
+                    required_scopes,
+                    selected,
+                    providers,
+                    allowed_ids=allowed_ids,
                 )
                 secret_values = [v for v in integration_env.values() if v]
                 envs.update(integration_env)
@@ -416,7 +439,7 @@ class BashExecTool(BaseTool):
             # a run whose ceiling leaves GitHub out, which may not use it.
             if providers is None or "github" in providers:
                 git_identity = await get_github_user_git_identity(
-                    user_id, selected.get("github")
+                    user_id, selected.get("github"), allowed_ids=allowed_ids
                 )
                 if git_identity:
                     envs.update(git_identity)

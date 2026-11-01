@@ -10,6 +10,7 @@ import Link from "next/link";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { safeHostname } from "./resultHelpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface StatusPillProps {
   status: string;
@@ -41,16 +42,13 @@ interface LinkCardProps {
 export const CARD = "rounded-xl bg-surface ring-1 ring-border-base/70";
 export const HALF = "w-full sm:w-1/2";
 export const RESULT_GRID =
-  // TODO(tokens): no fitting role for scrollbar-thumb-zinc-300 #C5C5C9; #C5C5C9 is foreground-disabled (a text colour) and border-strong (a line colour)
-  "grid max-h-64 gap-1.5 overflow-y-auto pr-0.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 sm:grid-cols-2";
+  "grid max-h-64 gap-1.5 overflow-y-auto pr-0.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border-strong sm:grid-cols-2";
 
 const STATUS_STYLES: Record<string, string> = {
   COMPLETED: "bg-success-surface text-success",
   FAILED: "bg-error-surface text-error",
-  // TODO(tokens): no exact role for bg-purple-50; no fitting role for text-purple-600 #6C2EDF; #6C2EDF is brand-hover (a fill)
-  RUNNING: "bg-purple-50 text-purple-600",
-  // TODO(tokens): no exact role for text-amber-600
-  QUEUED: "bg-warning-surface text-amber-600",
+  RUNNING: "bg-accent-surface text-brand-hover",
+  QUEUED: "bg-warning-surface text-warning-foreground",
 };
 
 export function StatusPill({ status, className }: StatusPillProps) {
@@ -59,7 +57,7 @@ export function StatusPill({ status, className }: StatusPillProps) {
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-caption-sm font-medium leading-inherit",
+        "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-caption-sm leading-inherit font-medium",
         STATUS_STYLES[normalized] ??
           "bg-surface-hover text-foreground-tertiary",
         className,
@@ -80,20 +78,22 @@ export function StatusCard({ label, ok }: StatusCardProps) {
         <Icon
           icon={CheckmarkCircle02Icon}
           size={16}
-          // TODO(tokens): no exact role for text-green-500
-          className="shrink-0 text-green-500"
+          className="shrink-0 text-success"
         />
       ) : (
         <Icon
           icon={CancelCircleIcon}
           size={16}
-          // TODO(tokens): no exact role for text-red-400
-          className="shrink-0 text-red-400"
+          className="shrink-0 text-error"
         />
       )}
-      <p className="min-w-0 truncate text-body-sm font-medium leading-inherit text-foreground-body">
+      <Text
+        variant="body-sm-medium-inherit"
+        tone="body"
+        className="min-w-0 truncate"
+      >
         {label}
-      </p>
+      </Text>
     </div>
   );
 }
@@ -101,12 +101,17 @@ export function StatusCard({ label, ok }: StatusCardProps) {
 export function StatCard({ value, label }: StatCardProps) {
   return (
     <div className={`${CARD} ${HALF} flex items-baseline gap-2 p-2.5`}>
-      <span className="text-lg font-semibold leading-none text-foreground-emphasis">
+      <span className="text-lg leading-none font-semibold text-foreground-emphasis">
         {value.toLocaleString()}
       </span>
-      <span className="min-w-0 truncate text-xs text-foreground-tertiary">
+      <Text
+        variant="small-tight"
+        as="span"
+        tone="muted"
+        className="min-w-0 truncate"
+      >
         {label}
-      </span>
+      </Text>
     </div>
   );
 }
@@ -114,7 +119,7 @@ export function StatCard({ value, label }: StatCardProps) {
 export function ChipList({ label, items }: ChipListProps) {
   return (
     <div className={`${CARD} ${HALF} p-2.5`}>
-      <p className="mb-1.5 text-caption-sm uppercase leading-inherit tracking-wide text-foreground-subtle">
+      <p className="mb-1.5 text-caption-sm leading-inherit tracking-wide text-foreground-subtle uppercase">
         {label}
       </p>
       <div className="flex flex-wrap gap-1">
@@ -151,15 +156,26 @@ export function LinkCard({ url, title, meta, secret }: LinkCardProps) {
         />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-body-sm font-medium leading-inherit text-foreground-emphasis">
+        <Text
+          variant="body-sm-medium-inherit"
+          tone="emphasis"
+          className="truncate"
+        >
           {title ?? domain}
-        </p>
-        <p className="truncate text-xs text-foreground-tertiary">
+        </Text>
+        <Text variant="small-tight" tone="muted" className="truncate">
           {title ? domain : url}
-        </p>
+        </Text>
       </div>
       {meta && (
-        <span className="shrink-0 text-xs text-foreground-subtle">{meta}</span>
+        <Text
+          variant="small-tight"
+          as="span"
+          tone="subtle"
+          className="shrink-0"
+        >
+          {meta}
+        </Text>
       )}
       <Link
         href={url}
