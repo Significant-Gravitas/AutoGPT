@@ -3,7 +3,12 @@
 import pytest
 import yaml
 
-from backend.util.bounded_yaml import MAX_YAML_DEPTH, YAMLLimitError, load_bounded_yaml
+from backend.util.bounded_yaml import (
+    MAX_YAML_DEPTH,
+    MAX_YAML_NODES,
+    YAMLLimitError,
+    load_bounded_yaml,
+)
 
 
 def _load(text: str, *, allow_anchors: bool = True, **limits: int):
@@ -93,6 +98,29 @@ def test_nesting_is_refused_once_it_passes_the_limit_before_the_rest_is_read(
 
     with pytest.raises(YAMLLimitError, match="nested more than 32 levels deep"):
         _load(unfinished, allow_anchors=allow_anchors)
+
+
+@pytest.mark.parametrize("allow_anchors", [True, False])
+def test_a_document_over_the_node_budget_is_refused_while_composing(
+    allow_anchors: bool,
+) -> None:
+    # Never closed, so only a refusal made while composing avoids a syntax error.
+    unfinished = "[" + "1, " * (MAX_YAML_NODES + 1)
+
+    with pytest.raises(YAMLLimitError, match="more than 250,000 nodes"):
+        _load(
+            unfinished,
+            allow_anchors=allow_anchors,
+            max_bytes=len(unfinished) + 1,
+            max_expanded_bytes=len(unfinished) * 8,
+        )
+
+
+@pytest.mark.parametrize("allow_anchors", [True, False])
+def test_a_document_within_the_node_budget_parses(allow_anchors: bool) -> None:
+    items = ", ".join(["1"] * 1000)
+
+    assert len(_load(f"[{items}]", allow_anchors=allow_anchors)) == 1000
 
 
 def test_invalid_yaml_raises_a_yaml_error() -> None:

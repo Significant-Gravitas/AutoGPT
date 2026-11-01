@@ -7,6 +7,13 @@ import yaml
 # Deepest nesting of lists and mappings a document may have, counted through aliases.
 MAX_YAML_DEPTH = 32
 
+# Most nodes a document may compose, counting each alias as one. Composing
+# builds a Python object per node before any size check can run, so this caps
+# the memory a document can take there. Ordinary documents come nowhere near
+# it: 250,000 nodes is a file of several megabytes of records, while frontmatter
+# is held to 16 KiB by its caller.
+MAX_YAML_NODES = 250_000
+
 
 class YAMLLimitError(ValueError):
     """YAML refused for breaking one of the limits of :func:`load_bounded_yaml`."""
@@ -29,8 +36,8 @@ def load_bounded_yaml(
     in error messages.
 
     Raises:
-        YAMLLimitError: over ``max_bytes`` or ``max_expanded_bytes``, nested
-            more than :data:`MAX_YAML_DEPTH` levels deep, refers to itself,
+        YAMLLimitError: over ``max_bytes`` or ``max_expanded_bytes``, more
+            than :data:`MAX_YAML_NODES` nodes, nested more than :data:`MAX_YAML_DEPTH` levels deep, refers to itself,
             or uses anchors or aliases when ``allow_anchors`` is False.
         yaml.YAMLError: not valid YAML.
     """
@@ -52,7 +59,8 @@ def load_bounded_yaml(
 
 class _DepthLimitedLoader(yaml.SafeLoader):
     """Safe loader that stops composing once lists and mappings nest more
-    than :data:`MAX_YAML_DEPTH` levels deep, before reading any further.
+    than :data:`MAX_YAML_DEPTH` levels deep or past :data:`MAX_YAML_NODES`
+    nodes, before reading any further.
 
     Depth reached through aliases is checked after composing, in
     :func:`_check_expanded_document`.
@@ -62,8 +70,14 @@ class _DepthLimitedLoader(yaml.SafeLoader):
         super().__init__(text)
         self.subject = subject
         self.collection_depth = 0
+        self.node_count = 0
 
     def compose_node(self, parent: yaml.Node | None, index: Any) -> yaml.Node | None:
+        self.node_count += 1
+        if self.node_count > MAX_YAML_NODES:
+            raise YAMLLimitError(
+                f"{self.subject} has more than {MAX_YAML_NODES:,} nodes."
+            )
         if not self.check_event(yaml.SequenceStartEvent, yaml.MappingStartEvent):
             return super().compose_node(parent, index)
         if self.collection_depth >= MAX_YAML_DEPTH:
