@@ -54,7 +54,8 @@ _RenewLock = Callable[[], Awaitable[None]]
 # spam Redis. If the lock has been lost the renewal raises and the loop aborts.
 _LOCK_RENEW_EVERY = 50
 
-# The same limit as CreateOrgRequest.slug.
+# Caps the derived base at CreateOrgRequest.slug's limit; a collision suffix and
+# conversion's "-personal-1" can take the final slug to 116 characters.
 _MAX_SLUG_LENGTH = 100
 
 
