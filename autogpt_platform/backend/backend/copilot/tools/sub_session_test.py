@@ -11,6 +11,7 @@ tests patch the three integration seams — ``enqueue_copilot_turn``,
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -1419,3 +1420,55 @@ class TestRefusedSpawnCleanup:
         )
 
         deleted.assert_not_awaited()
+
+
+class TestAThreadNothingReached:
+    """A send that raised at the publish leaves an empty, idle thread with no
+    stream meta. Polling it must say so, not report "running" forever: the
+    hand-off tells Otto to check this thread before sending again (Sentry)."""
+
+    def _empty_thread(self, monkeypatch, age: timedelta):
+        sub = MagicMock(user_id="alice", expert_id=None, messages=[])
+        sub.chat_status = "idle"
+        sub.started_at = datetime.now(UTC) - age
+        sub.metadata.delegated_by_session_id = None
+
+        async def fake_get(_sid):
+            return sub
+
+        async def no_stream(_sid):
+            return None
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.get_chat_session",
+            fake_get,
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+            no_stream,
+        )
+
+    @pytest.mark.parametrize(
+        "age", [timedelta(seconds=20), timedelta(minutes=10), timedelta(days=2)]
+    )
+    @pytest.mark.asyncio
+    async def test_an_empty_thread_is_unconfirmed_and_never_resent(
+        self, monkeypatch, mock_waiter, age
+    ):
+        """From an empty thread alone a task the broker never got cannot be
+        told from one it still holds (a lost confirm, a stopped executor), so
+        whatever its age it is "unconfirmed", never "safe to send again", and
+        never "queued", whose live view turns an idle session into
+        "completed" (CodeRabbit)."""
+        self._empty_thread(monkeypatch, age)
+        r = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            sub_session_id="inner-7",
+            wait_if_running=30,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "unconfirmed"
+        assert "Don't send it again" in r.message
+        assert "safe to send" not in r.message
+        mock_waiter.result_mock.assert_not_awaited()

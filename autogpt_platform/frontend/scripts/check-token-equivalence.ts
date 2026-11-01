@@ -26,6 +26,7 @@
  * Prints `old class | new class | resolved value` and exits 1 on any
  * difference. DS2 and DS5 tickets run this script; they do not edit it.
  */
+import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
@@ -43,8 +44,6 @@ import { comparePngs } from "./screenshot-pages";
 
 const localRequire = createRequire(join(process.cwd(), "package.json"));
 const postcss = localRequire("postcss");
-const tailwindcss = localRequire("tailwindcss");
-const loadConfig = localRequire("tailwindcss/loadConfig");
 
 interface Pair {
   group: string;
@@ -160,14 +159,49 @@ function companions(cls: string) {
   return "";
 }
 
+// Each checkout compiles with its own Tailwind, so a base checkout from
+// before the Tailwind 4 upgrade still builds the way it did.
 async function compileCss(dir: string, classes: string[]) {
-  const config = loadConfig(join(dir, "tailwind.config.ts"));
-  const globals = readFileSync(join(dir, "src/app/globals.css"), "utf8");
+  const dirRequire = createRequire(join(dir, "package.json"));
+  const from = join(dir, "src/app/globals.css");
+  const globals = readFileSync(from, "utf8");
   const raw = classes.flatMap((c) => [c, companions(c)]).join(" ");
-  const result = await postcss([
-    tailwindcss({ ...config, content: [{ raw, extension: "html" }] }),
-  ]).process(globals, { from: join(dir, "src/app/globals.css") });
-  return result.css as string;
+  const major = Number(
+    dirRequire("tailwindcss/package.json").version.split(".")[0],
+  );
+  if (major < 4) {
+    const loadConfig = dirRequire("tailwindcss/loadConfig");
+    const config = loadConfig(join(dir, "tailwind.config.ts"));
+    const result = await postcss([
+      dirRequire("tailwindcss")({
+        ...config,
+        content: [{ raw, extension: "html" }],
+      }),
+    ]).process(globals, { from });
+    return result.css as string;
+  }
+  // Tailwind 4 takes the classes from `@source inline()` and runs the
+  // checkout's own postcss.config.mjs. It runs in a plain Node process: under
+  // tsx, Tailwind 4 reads tailwind.config.ts's default export as
+  // `{ default: config }` and finds no theme.
+  const css = `${globals}\n@source inline(${JSON.stringify(raw)});\n`;
+  const script = `
+    import postcss from "postcss";
+    import { createRequire } from "node:module";
+    const require = createRequire(${JSON.stringify(join(dir, "package.json"))});
+    const { default: config } = await import(${JSON.stringify(join(dir, "postcss.config.mjs"))});
+    const plugins = Object.entries(config.plugins).map(([name, options]) => require(name)(options));
+    let input = "";
+    for await (const chunk of process.stdin) input += chunk;
+    const result = await postcss(plugins).process(input, { from: ${JSON.stringify(from)} });
+    process.stdout.write(result.css);
+  `;
+  return execFileSync(process.execPath, ["--input-type=module", "-e", script], {
+    cwd: dir,
+    input: css,
+    maxBuffer: 256 * 1024 * 1024,
+    encoding: "utf8",
+  });
 }
 
 function escapeClass(cls: string) {

@@ -132,7 +132,20 @@ class RaisedExpertLifetimeLimitExceededError(Exception):
         return f"Raised expert lifetime limit of {self.limit} reached"
 
 
-class GraphNotFoundError(ValueError):
+class RoutineNotFoundError(NotFoundError):
+    """No such routine on this owner."""
+
+
+class RoutineUnansweredAsksError(ValueError):
+    """The routine still has questions nobody answered.
+
+    A seeded proposal names what it needs to know — which repo, which inbox,
+    what hour. Scheduling it before those are answered would run it against
+    guesses on somebody's account, every day, unattended.
+    """
+
+
+class GraphNotFoundError(NotFoundError):
     """The requested Agent Graph was not found, resulting in an error condition"""
 
 
@@ -359,4 +372,10 @@ class ExpertRunPausedError(ValueError):
 
 
 class ConflictError(Exception):
-    """The request lost to a concurrent change of the same resource; retrying may succeed."""
+    """The request conflicts with the resource's current state (HTTP 409): a name
+    already taken, or a lost race with a concurrent change, which a retry may win."""
+
+
+class EmailUndeliverableError(ValueError):
+    """The mail provider won't deliver to this address (an earlier hard bounce,
+    spam complaint or suppression), so retrying the send can't succeed."""

@@ -42,10 +42,7 @@ export function ExpertOverview({
   return (
     <div className="flex flex-col gap-4">
       {expert.bio ? (
-        <Text
-          variant="body"
-          className="!text-body-md !leading-relaxed !text-foreground-secondary"
-        >
+        <Text variant="body-md" tone="secondary">
           {getBioLead(expert.bio)}
         </Text>
       ) : null}
@@ -96,28 +93,19 @@ export function ExpertOverview({
             <ActivityChart days={overview.chartDays} />
           ) : (
             <PanelEmptyState
+              textSize="body-md"
               tiles={[
-                <Icon
-                  key="a"
-                  icon={BubbleChatIcon}
-                  size={22}
-                  // TODO(tokens): no exact role: text-sky-500 #0EA5E9
-                  className="text-sky-500"
-                />,
-                <Icon
-                  key="b"
-                  icon={PlayIcon}
-                  size={22}
-                  // TODO(tokens): no exact role: text-orange-500 #FE8700
-                  className="text-orange-500"
-                />,
-                <Icon
-                  key="c"
-                  icon={File02Icon}
-                  size={22}
-                  // TODO(tokens): no exact role: text-violet-500 #8B5CF6
-                  className="text-violet-500"
-                />,
+                // oxlint-disable-next-line design-system/no-raw-colors -- sky has no role; info blue would change the hue (deferred)
+                <span key="a" className="inline-flex text-sky-500">
+                  <Icon icon={BubbleChatIcon} size={22} />
+                </span>,
+                // oxlint-disable-next-line design-system/no-raw-colors -- orange has no role; amber would change the hue (deferred)
+                <span key="b" className="inline-flex text-orange-500">
+                  <Icon icon={PlayIcon} size={22} />
+                </span>,
+                <span key="c" className="inline-flex text-brand">
+                  <Icon icon={File02Icon} size={22} />
+                </span>,
               ]}
               title="Nothing to chart yet"
               description={`Once ${expert.name} starts chatting and running workflows, each day shows up here.`}

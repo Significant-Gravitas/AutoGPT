@@ -34,8 +34,7 @@ export function AccountMenuHeader({
       <PopoverTrigger asChild>
         <button
           type="button"
-          // TODO(tokens): no exact role for data-[state=open]:bg-neutral-100 (#F5F5F5), hover:bg-neutral-100 (#F5F5F5), focus-visible:bg-neutral-100 (#F5F5F5)
-          className="group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left outline-none transition-colors data-[state=open]:bg-neutral-100 hover:bg-neutral-100 focus-visible:bg-neutral-100"
+          className="group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors outline-none hover:bg-surface-hover focus-visible:bg-surface-hover data-[state=open]:bg-surface-hover"
           aria-controls={popupId}
           aria-haspopup="true"
           data-testid="account-menu-org-trigger"
@@ -54,16 +53,12 @@ export function AccountMenuHeader({
               </>
             ) : (
               <>
-                <span
-                  // TODO(tokens): no exact role for text-neutral-900 (#171717)
-                  className="truncate text-sm font-semibold leading-tight text-neutral-900"
-                >
+                <span className="truncate text-sm leading-tight font-semibold text-foreground-strong">
                   {userName}
                 </span>
                 <span
                   data-testid="account-menu-user-email"
-                  // TODO(tokens): no exact role for text-neutral-700 (#404040)
-                  className="truncate text-sm leading-tight text-neutral-700"
+                  className="truncate text-sm leading-tight text-foreground-body"
                 >
                   {userEmail}
                 </span>
@@ -72,8 +67,7 @@ export function AccountMenuHeader({
           </div>
           <Icon
             icon={ArrowRight01Icon}
-            // TODO(tokens): no exact role for text-neutral-700 (#404040)
-            className="shrink-0 text-neutral-700"
+            className="shrink-0 text-foreground-body"
             size={16}
             aria-hidden="true"
           />
@@ -85,8 +79,7 @@ export function AccountMenuHeader({
         side="right"
         align="start"
         sideOffset={12}
-        // TODO(tokens): no exact role for border-neutral-200 (#E5E5E5)
-        className="w-64 rounded-2xl border border-neutral-200 p-0 shadow-lg"
+        className="w-64 rounded-2xl border border-border-base p-0 shadow-lg"
         data-testid="account-menu-org-popover"
       >
         <AccountMenuOrgList />

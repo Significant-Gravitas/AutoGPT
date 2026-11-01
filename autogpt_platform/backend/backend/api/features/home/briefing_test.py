@@ -614,3 +614,25 @@ def test_the_live_brief_is_authored_by_autopilot_too() -> None:
     )
 
     assert briefing.author.kind == "autopilot"
+
+
+@pytest.mark.parametrize(
+    "trigger_source, expected",
+    [("schedule", "schedule"), ("webhook", "webhook"), ("manual", "manual")],
+)
+def test_a_run_whose_job_carried_no_schedule_id_still_says_what_started_it(
+    trigger_source: str, expected: str
+) -> None:
+    # Schedules created before their job stored a schedule_id fire runs with
+    # none; the execution's own trigger_source still records the scheduler.
+    run = _execution(
+        exec_id="run",
+        status=ExecutionStatus.FAILED,
+        ended_at=NOW - timedelta(hours=1),
+    ).model_copy(update={"trigger_source": trigger_source})
+
+    briefing = compose_briefing(
+        now=NOW, executions=[run], expert_by_id={}, agent_by_graph=NO_LINK
+    )
+
+    assert [outcome.trigger for outcome in briefing.outcomes] == [expected]

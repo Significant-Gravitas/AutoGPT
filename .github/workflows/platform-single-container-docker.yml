@@ -479,5 +479,5 @@ jobs:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PASSWORD }}
           repository: significantgravitas/autogpt
-          short-description: Run the AutoGPT Platform, including FalkorDB-backed memory, in one container.
+          short-description: Self-host your AI team. Hire experts, delegate work, and review results with AutoGPT.
           readme-filepath: ./autogpt_platform/single-container/README.md

@@ -471,7 +471,13 @@ class SubSessionStatusResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.MCP_TOOL_OUTPUT
     status: Literal[
-        "running", "completed", "cancelled", "error", "queued", "transferred"
+        "running",
+        "completed",
+        "cancelled",
+        "error",
+        "queued",
+        "transferred",
+        "unconfirmed",
     ] = Field(
         description=(
             "Current state of the child session.  ``queued`` means the "
@@ -480,7 +486,9 @@ class SubSessionStatusResponse(ToolResponseBase):
             "existing turn on its next drain.  ``transferred`` is terminal "
             "for the caller: ``handoff_to_expert`` gave the task away, so no "
             "result is coming back and there is nothing to poll — the "
-            "receiving expert now owns it and reports to the user directly."
+            "receiving expert now owns it and reports to the user directly.  "
+            "``unconfirmed``: nothing has reached the thread and delivery "
+            "can't be confirmed; it must not be sent again on that basis."
         ),
     )
     sub_session_id: str = Field(
@@ -652,6 +660,38 @@ class ExpertChangePreview(BaseModel):
     color: str = ""
 
 
+class ExpertHandoffTask(BaseModel):
+    """The task a hire was proposed for, handed over when the user approves.
+
+    ``title`` is how the user would name it and labels the card's primary
+    button; ``brief`` is the task written for the expert, who cannot see the
+    chat it came from.
+    """
+
+    title: str
+    brief: str
+
+
+class ExpertHandoffOutcome(BaseModel):
+    """Whether the task a hire was approved for reached the new expert.
+
+    ``link`` opens the expert's thread, where the work is happening; it is
+    unset when the task did not start.
+    """
+
+    title: str
+    # ``sent``: on the queue for the expert's thread (a worker picks it up).
+    # ``queued``: waiting for one of the user's task slots. ``unconfirmed``:
+    # the send raised after it may have reached the broker.
+    status: Literal["sent", "queued", "unconfirmed", "failed"]
+    sub_session_id: str | None = None
+    link: str | None = None
+    # Only for ``failed``: nothing reached the expert and sending it again can
+    # help. A refusal (paused, out of budget or depth, no free task slot)
+    # says itself what has to change first, so it is never retryable.
+    retry: bool = False
+
+
 class ExpertSummary(BaseModel):
     """The expert ``confirm_expert_change`` created — same charter fields as
     the preview, so the card can show the whole thing after the fact."""
@@ -811,6 +851,12 @@ class ExpertChangeProposedResponse(ToolResponseBase):
     applied: bool = False
     preview: ExpertChangePreview
     confirmation_id: str
+    # Set when the hire was proposed for a task already in the chat: the card
+    # then asks Hire and start (``handoff_confirmation_id``) or Not now; the
+    # plain ``confirmation_id`` is for a user who asks in chat to hire without
+    # starting the task.
+    handoff: ExpertHandoffTask | None = None
+    handoff_confirmation_id: str | None = None
 
 
 class ExpertChangeAppliedResponse(ToolResponseBase):
@@ -821,6 +867,8 @@ class ExpertChangeAppliedResponse(ToolResponseBase):
     kind: ExpertChangeKind
     expert: ExpertSummary
     failed_workflows: list[str] = Field(default_factory=list)
+    # Only for a hire approved together with its task.
+    handoff: ExpertHandoffOutcome | None = None
 
 
 # Agent generation models

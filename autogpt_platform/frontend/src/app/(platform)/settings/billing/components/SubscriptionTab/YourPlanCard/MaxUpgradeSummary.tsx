@@ -72,11 +72,13 @@ export function MaxUpgradeSummary({ preview }: Props) {
             emphasized
           />
         </div>
-        <Text variant="small" tone="secondary" className="pt-2 leading-5">
-          Next renewal: {dateLabel(preview.period_end)}. Max’s regular price is{" "}
-          {amount(preview.recurring_amount)} {recurringTax} per {unit}, before
-          any applicable discounts or account credits.
-        </Text>
+        <div className="pt-2">
+          <Text variant="small-loose" tone="secondary">
+            Next renewal: {dateLabel(preview.period_end)}. Max’s regular price
+            is {amount(preview.recurring_amount)} {recurringTax} per {unit},
+            before any applicable discounts or account credits.
+          </Text>
+        </div>
       </div>
     </div>
   );
@@ -95,15 +97,15 @@ function SummaryRow({
     <div className="flex items-start justify-between gap-4">
       <Text
         variant={emphasized ? "body-medium" : "small"}
-        className={
-          emphasized ? "text-foreground-strong" : "text-foreground-secondary"
-        }
+        tone={emphasized ? "primary" : "secondary"}
       >
         {label}
       </Text>
       <Text
         variant={emphasized ? "body-medium" : "small"}
-        className={`shrink-0 tabular-nums ${emphasized ? "text-foreground-strong" : "text-foreground-secondary"}`}
+        tone={emphasized ? "primary" : "secondary"}
+        // oxlint-disable-next-line design-system/no-restyle -- amounts use tabular figures
+        className="shrink-0 tabular-nums"
       >
         {value}
       </Text>

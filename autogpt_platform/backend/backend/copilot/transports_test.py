@@ -155,6 +155,37 @@ async def test_microsoft_365_copilot_is_a_secretless_user_connection() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_microsoft_work_connection_offers_copilot_without_a_second_sign_in() -> (
+    None
+):
+    def connection(account_type: str, credential_id: str) -> OAuth2Credentials:
+        credentials = _microsoft_credentials(credential_id)
+        credentials.provider = "microsoft"
+        credentials.metadata["microsoft_identity"] = {
+            "tenant_id": "tenant",
+            "account_id": credential_id,
+            "account_type": account_type,
+        }
+        return credentials
+
+    transports.credentials_manager.store.get_creds_by_provider.side_effect = (
+        lambda _user_id, provider: (
+            [connection("work", "work"), connection("personal", "personal")]
+            if provider == "microsoft"
+            else []
+        )
+    )
+
+    transport_list = await get_chat_transports(USER_ID)
+
+    assert [
+        transport.credential_id
+        for transport in transport_list
+        if transport.auth_provider == "microsoft_365_copilot"
+    ] == ["work"]
+
+
+@pytest.mark.asyncio
 async def test_linking_microsoft_preserves_the_existing_self_host_chatgpt_default(
     mocker: pytest_mock.MockerFixture,
 ) -> None:

@@ -41,6 +41,7 @@ from backend.copilot.baseline.reasoning import (
     anthropic_thinking_extra_body,
     reasoning_extra_body,
 )
+from backend.copilot.baseline.tool_order import writes_files
 from backend.copilot.baseline.tool_persistence import BaselineToolPersistence
 from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.builder_context import (
@@ -132,6 +133,7 @@ from backend.copilot.response_model import (
     StreamUsage,
     ToolDisplayData,
 )
+from backend.copilot.sandbox_status import build_sandbox_replaced_notice
 from backend.copilot.service import (
     _build_system_prompt,
     _get_main_client,
@@ -2329,6 +2331,8 @@ async def stream_chat_completion_baseline(
     # on ``user_message_for_transcript``: that would persist one stale figure
     # per turn, the same trap the warm-context injection below names.
     budget_status = await build_turn_budget_block(envelope, user_id)
+    if e2b_sandbox is not None:
+        budget_status += await build_sandbox_replaced_notice(session_id)
     if budget_status:
         for msg in reversed(openai_messages):
             if msg["role"] == "user":
@@ -2688,6 +2692,7 @@ async def stream_chat_completion_baseline(
                 update_conversation=_bound_conversation_updater,
                 max_iterations=max_tool_rounds,
                 last_iteration_message=_LAST_ITERATION_HINT,
+                runs_alone=writes_files,
             ):
                 loop_result_holder[0] = loop_result
                 # Engine switch requested (enter_agent_building_mode): end

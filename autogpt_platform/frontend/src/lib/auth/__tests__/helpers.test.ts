@@ -89,16 +89,23 @@ describe("getRedirectPath", () => {
   it("returns null for public paths", () => {
     expect(getRedirectPath("/marketplace")).toBeNull();
   });
+
+  it("returns null instead of throwing when the path is missing", () => {
+    expect(getRedirectPath(undefined)).toBeNull();
+    expect(getRedirectPath(null)).toBeNull();
+    expect(getRedirectPath("")).toBeNull();
+  });
 });
 
 describe("broadcastLogout", () => {
-  it("writes a logout timestamp to the logout storage key", () => {
+  it("writes a fresh value to the logout storage key every time", () => {
+    broadcastLogout();
     broadcastLogout();
 
-    expect(storageSet).toHaveBeenCalledWith(
-      "supabase-logout",
-      expect.stringMatching(/^\d+$/),
-    );
+    // Other tabs only hear a write that changes the value.
+    const [first, second] = storageSet.mock.calls.map(([, value]) => value);
+    expect(storageSet).toHaveBeenCalledWith("supabase-logout", first);
+    expect(first).not.toBe(second);
   });
 });
 

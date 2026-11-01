@@ -642,6 +642,8 @@ async def get_graph_executions(
     order_by: Literal["createdAt", "startedAt", "updatedAt"] = "createdAt",
     order_direction: Literal["asc", "desc"] = "desc",
     expert_id: Optional[str] = None,
+    organization_id: Optional[str] = None,
+    deleted: bool = False,
 ) -> list[GraphExecutionMeta]:
     """
     Get graph executions with optional filters and ordering.
@@ -653,22 +655,29 @@ async def get_graph_executions(
         execution_ids: Filter by list of execution IDs (mutually exclusive with graph_exec_id)
         order_by: Field to order by. Defaults to "createdAt"
         order_direction: Sort direction. Defaults to "desc"
+        organization_id: Only executions stored in this org. An exact match,
+            unlike in `get_graph_executions_paginated`, where it also lists the
+            org's executions the user can see
+        deleted: List the executions deleted from history instead of the
+            visible ones
     """
     where_filter: AgentGraphExecutionWhereInput = {
-        "isDeleted": False,
+        "isDeleted": deleted,
     }
     if graph_exec_id:
         where_filter["id"] = graph_exec_id
     elif execution_ids:
         where_filter["id"] = {"in": execution_ids}
 
-    # Scope by user_id and optionally team_id. Don't conflate either with
-    # organizationId — those are separate columns in the schema and a
+    # Scope by user_id and optionally team_id or organization_id. Don't
+    # conflate them: they are separate columns in the schema, and a
     # team_id/user_id value is not a valid organizationId.
     if user_id:
         where_filter["userId"] = user_id
     if team_id:
         where_filter["teamId"] = team_id
+    if organization_id:
+        where_filter["organizationId"] = organization_id
     if graph_id:
         where_filter["agentGraphId"] = graph_id
     if graph_version is not None:
@@ -2014,6 +2023,10 @@ async def get_shared_execution_file(
     share is still live (see :func:`live_execution_share`), None otherwise.
     Uses a single query and returns a uniform None for all failure modes
     to prevent timing-based enumeration attacks.
+
+    The run must still be shared under this same token and not deleted: an
+    allowlist row that outlived an unshare, a re-share or a delete (a write
+    that failed halfway, or two that raced) authorises nothing.
     """
     record = await SharedExecutionFile.prisma().find_first(
         where={

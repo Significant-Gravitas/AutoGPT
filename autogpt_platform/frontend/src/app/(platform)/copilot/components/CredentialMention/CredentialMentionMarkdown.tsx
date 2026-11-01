@@ -2,11 +2,11 @@ import { createElement } from "react";
 import {
   MessageResponse,
   type MessageResponseProps,
-} from "@/components/ai-elements/message";
+} from "@/components/organisms/Message/Message";
 import {
   createComponentsMerger,
   type StreamdownComponents,
-} from "@/components/ai-elements/streamdown-components";
+} from "@/components/organisms/Message/streamdown-components";
 import { useReadEveryRender } from "@/hooks/useReadEveryRender";
 import { CredentialMentionBadge } from "./CredentialMentionBadge";
 import {

@@ -53,8 +53,8 @@ export function AllVariants() {
   return (
     <div className="space-y-8">
       {/* Headings */}
-      <div className="mb-19 mb-20 space-y-6">
-        <h2 className="mb-4 border-b border-border pb-2 text-xl text-zinc-500">
+      <div className="mb-20 space-y-6">
+        <h2 className="mb-4 border-b border-border pb-2 text-xl text-foreground-tertiary">
           Headings
         </h2>
         <Text variant="h1">Heading 1</Text>
@@ -71,7 +71,7 @@ export function AllVariants() {
         />
       </div>
       {/* Body Text */}
-      <h2 className="mb-4 border-b border-border pb-2 text-xl text-zinc-500">
+      <h2 className="mb-4 border-b border-border pb-2 text-xl text-foreground-tertiary">
         Body Text
       </h2>
       <div className="flex flex-row gap-8">
@@ -242,6 +242,33 @@ export function AllTones() {
               </Text>
             ))}
           </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+//=============================================================================
+// Pinned line heights: a size role with its line height fixed (the -tight,
+// -loose, -relaxed, -inherit and -lh-* variants), for copy that keeps the
+// line height of the raw size it replaced. The parent's 30px line height
+// shows what the -inherit variants pick up.
+//=============================================================================
+export function PinnedLineHeights() {
+  const pinned = textVariants.filter((variant) =>
+    // `-tracking-tight` pins letter-spacing, not line height.
+    /(?<!-tracking)-(tight|loose|relaxed|inherit|lh-[a-z0-9]+)(-tracking)?$/.test(
+      variant,
+    ),
+  );
+  return (
+    <div className="space-y-3 p-8 leading-[30px]">
+      {pinned.map((variant) => (
+        <div key={variant} className="flex items-baseline gap-6">
+          <Text variant="small" tone="muted" className="w-56 shrink-0">
+            {variant}
+          </Text>
+          <Text variant={variant}>Find decision-makers at any company</Text>
         </div>
       ))}
     </div>

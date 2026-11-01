@@ -6,6 +6,7 @@ import {
 import { ConfirmLinkResponse } from "@/app/api/__generated__/models/confirmLinkResponse";
 import { ConfirmUserLinkResponse } from "@/app/api/__generated__/models/confirmUserLinkResponse";
 import { LinkType } from "@/app/api/__generated__/models/linkType";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useParams, useSearchParams } from "next/navigation";
 import {
@@ -38,6 +39,7 @@ export function usePlatformLinkingPage() {
   const token = TOKEN_PATTERN.test(rawToken) ? rawToken : null;
   const platformFromUrl = getPlatformDisplayName(searchParams.get("platform"));
   const { user, isUserLoading, logOut } = useAuth();
+  const { toast } = useToast();
 
   const {
     data: info,
@@ -85,7 +87,18 @@ export function usePlatformLinkingPage() {
   }
 
   async function handleSwitchAccount() {
-    await logOut();
+    try {
+      await logOut();
+    } catch {
+      // The sign-out never reached the server: this account is still
+      // signed in, so don't send the user on as if it weren't.
+      toast({
+        title: "Couldn't sign you out",
+        description: "Check your connection and try again.",
+        variant: "destructive",
+      });
+      return;
+    }
     window.location.href = getLoginRedirect(token);
   }
 

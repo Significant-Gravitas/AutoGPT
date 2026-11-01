@@ -12,12 +12,17 @@ import {
   extendedButtonVariants,
   ICON_ONLY_SIZES,
 } from "./helpers";
+import { CompactButtonProps, isCompactButton } from "./compact-variants";
+import { CompactButton } from "./CompactButton";
 import { Loading03Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
-export function Button(props: ButtonProps) {
+export function Button(props: ButtonProps | CompactButtonProps) {
+  if (isCompactButton(props)) return <CompactButton {...props} />;
+
   const {
-    className,
+    className: callerClassName,
+    textSize = "body",
     variant,
     size,
     loading = false,
@@ -27,16 +32,16 @@ export function Button(props: ButtonProps) {
     rightIcon,
     children,
     as = "button",
-    unmask = false,
     asChild: _asChild, // Destructure to prevent passing to DOM
     ...restProps
   } = props;
+  const className =
+    textSize === "body-md"
+      ? cn(callerClassName, "text-body-md")
+      : callerClassName;
 
   const disabled = "disabled" in props ? props.disabled : false;
   const isDisabled = disabled;
-
-  const applyUnmask = (...classes: Array<string | false | null | undefined>) =>
-    cn(...classes, unmask && "sentry-unmask");
 
   // Extract aria-label for tooltip on icon variant
   const ariaLabel =
@@ -98,7 +103,7 @@ export function Button(props: ButtonProps) {
     const linkButton = (
       <button
         data-slot="button"
-        className={applyUnmask(
+        className={cn(
           extendedButtonVariants({ variant: "link", className }),
           loading && "pointer-events-none opacity-60",
           isDisabled && "pointer-events-none opacity-50",
@@ -116,11 +121,11 @@ export function Button(props: ButtonProps) {
   if (loading) {
     const loadingClassName =
       variant === "ghost"
-        ? applyUnmask(
+        ? cn(
             extendedButtonVariants({ variant, size, className }),
             "pointer-events-none",
           )
-        : applyUnmask(
+        : cn(
             extendedButtonVariants({ variant: "primary", size, className }),
             "pointer-events-none border-foreground-tertiary bg-foreground-tertiary text-action-foreground",
           );
@@ -161,7 +166,7 @@ export function Button(props: ButtonProps) {
       <NextLink
         data-slot="button"
         {...(restProps as LinkProps)}
-        className={applyUnmask(
+        className={cn(
           extendedButtonVariants({ variant, size, className }),
           loading && "pointer-events-none",
           isDisabled && "pointer-events-none opacity-50",
@@ -178,7 +183,7 @@ export function Button(props: ButtonProps) {
   const regularButton = (
     <button
       data-slot="button"
-      className={applyUnmask(
+      className={cn(
         extendedButtonVariants({ variant, size, className }),
         loading && "pointer-events-none",
       )}

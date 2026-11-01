@@ -1,4 +1,5 @@
 import type { ApprovalSpend } from "../../helpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   spend: ApprovalSpend;
@@ -43,10 +44,10 @@ export function MoneyBlock({ spend }: Props) {
           style={{ width: `${share * 100}%` }}
         />
       </div>
-      <p className="text-xs text-foreground-tertiary">
+      <Text variant="small-tight" tone="muted">
         Approving runs this step and adds {dollars(spend.unit)} to this
         chat&apos;s ceiling.
-      </p>
+      </Text>
     </div>
   );
 }

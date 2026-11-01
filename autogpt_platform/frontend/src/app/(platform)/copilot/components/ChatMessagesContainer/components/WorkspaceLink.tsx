@@ -51,7 +51,7 @@ export function WorkspaceLink({ fileID, label }: Props) {
       onClick={handleClick}
       data-streamdown="link"
       // Streamdown's own link look; doubled to outrank the chat's `[&_a]` colour.
-      className="wrap-anywhere font-medium [&&]:text-primary [&&]:underline"
+      className="font-medium [&&]:text-primary [&&]:underline"
     >
       {label}
     </a>

@@ -1,6 +1,6 @@
 import json
 from datetime import datetime
-from unittest.mock import AsyncMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import prisma.enums
 import prisma.errors
@@ -13,7 +13,7 @@ from backend.util.exceptions import DatabaseError, NotFoundError
 
 from . import categories as store_categories
 from . import db
-from .model import MyAgentsSortBy, Profile, SubmissionStats
+from .model import MyAgentsSortBy, ProfileUpdateRequest, SubmissionStats
 
 
 @pytest.fixture(autouse=True)
@@ -337,7 +337,7 @@ async def test_update_profile(mocker):
     mock_profile_db.return_value.update = AsyncMock(return_value=mock_profile)
 
     # Test data
-    profile = Profile(
+    profile = ProfileUpdateRequest(
         name="Test Creator",
         username="creator",
         description="Test description",
@@ -380,7 +380,7 @@ async def test_update_profile_creates_when_missing(mocker):
     mock_profile_db.return_value.create = AsyncMock(return_value=created_profile)
     mock_profile_db.return_value.update = AsyncMock()
 
-    profile = Profile(
+    profile = ProfileUpdateRequest(
         name="New Creator",
         username="newcreator",
         description="Fresh start",
@@ -436,7 +436,7 @@ async def test_update_profile_tolerates_create_race(mocker):
     )
     mock_profile_db.return_value.update = AsyncMock(return_value=updated_profile)
 
-    profile = Profile(
+    profile = ProfileUpdateRequest(
         name="New Name",
         username="raced",
         description="New desc",
@@ -449,6 +449,101 @@ async def test_update_profile_tolerates_create_race(mocker):
     assert result.name == "New Name"
     mock_profile_db.return_value.create.assert_called_once()
     mock_profile_db.return_value.update.assert_called_once()
+
+
+def _profile_row(**overrides) -> prisma.models.Profile:
+    fields = dict(
+        id="profile-id",
+        name="Test Creator",
+        username="creator",
+        userId="user-id",
+        description="Test description",
+        links=["link1"],
+        avatarUrl="avatar.jpg",
+        isFeatured=False,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
+    )
+    fields.update(overrides)
+    return prisma.models.Profile(**fields)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_profile_only_writes_fields_that_were_sent(mocker):
+    """PATCH semantics: omitted fields must not appear in the update at all."""
+    mock_profile_db = mocker.patch("prisma.models.Profile.prisma")
+    mock_profile_db.return_value.find_first = AsyncMock(return_value=_profile_row())
+    mock_profile_db.return_value.update = AsyncMock(
+        return_value=_profile_row(description="New bio")
+    )
+
+    await db.update_profile("user-id", ProfileUpdateRequest(description=" New bio "))
+
+    update_call = mock_profile_db.return_value.update.call_args
+    assert update_call.kwargs["data"] == {"description": "New bio"}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_profile_null_avatar_clears_it(mocker):
+    """An explicit null avatar_url is a clear, not a no-op."""
+    mock_profile_db = mocker.patch("prisma.models.Profile.prisma")
+    mock_profile_db.return_value.find_first = AsyncMock(return_value=_profile_row())
+    mock_profile_db.return_value.update = AsyncMock(
+        return_value=_profile_row(avatarUrl=None)
+    )
+
+    await db.update_profile("user-id", ProfileUpdateRequest(avatar_url=None))
+
+    update_call = mock_profile_db.return_value.update.call_args
+    assert update_call.kwargs["data"] == {"avatarUrl": None}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_profile_empty_patch_returns_current_profile(mocker):
+    mock_profile_db = mocker.patch("prisma.models.Profile.prisma")
+    mock_profile_db.return_value.find_first = AsyncMock(return_value=_profile_row())
+    mock_profile_db.return_value.update = AsyncMock()
+
+    result = await db.update_profile("user-id", ProfileUpdateRequest())
+
+    assert result.username == "creator"
+    mock_profile_db.return_value.update.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_profile_rejects_username_without_letters_or_digits(mocker):
+    mock_profile_db = mocker.patch("prisma.models.Profile.prisma")
+    mock_profile_db.return_value.update = AsyncMock()
+
+    with pytest.raises(ValueError, match="username"):
+        await db.update_profile("user-id", ProfileUpdateRequest(username="!!!"))
+
+    mock_profile_db.return_value.update.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_profile_rejects_null_for_required_field(mocker):
+    mock_profile_db = mocker.patch("prisma.models.Profile.prisma")
+    mock_profile_db.return_value.update = AsyncMock()
+
+    with pytest.raises(ValueError, match="links"):
+        await db.update_profile("user-id", ProfileUpdateRequest(links=None))
+
+    mock_profile_db.return_value.update.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_profile_username_taken_is_a_conflict(mocker):
+    from backend.util.exceptions import ConflictError
+
+    mock_profile_db = mocker.patch("prisma.models.Profile.prisma")
+    mock_profile_db.return_value.find_first = AsyncMock(return_value=_profile_row())
+    mock_profile_db.return_value.update = AsyncMock(
+        side_effect=prisma.errors.UniqueViolationError({})
+    )
+
+    with pytest.raises(ConflictError, match="already taken"):
+        await db.update_profile("user-id", ProfileUpdateRequest(username="taken"))
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1023,6 +1118,7 @@ async def test_get_my_agents_search_filters_agent_name_and_description(mocker):
         "StoreListingVersions": {
             "none": {
                 "isAvailable": True,
+                "isDeleted": False,
                 "StoreListing": {"is": {"isDeleted": False}},
             }
         },
@@ -1067,13 +1163,13 @@ async def test_delete_store_submission_blocks_cross_org(mocker):
     they were the original submitting user."""
     version = _submission_version(owning_org_id="org-B")
     mock_client = AsyncMock()
-    mock_client.find_first.return_value = version
+    mock_client.find_unique.return_value = version
     mocker.patch.object(
         prisma.models.StoreListingVersion, "prisma", return_value=mock_client
     )
 
     result = await db.delete_store_submission(
-        user_id="user-1", submission_id="slv-1", organization_id="org-A"
+        user_id="user-1", store_listing_version_id="slv-1", organization_id="org-A"
     )
 
     assert result is False
@@ -1084,14 +1180,14 @@ async def test_delete_store_submission_blocks_cross_org(mocker):
 async def test_delete_store_submission_allows_own_org(mocker):
     version = _submission_version(owning_org_id="org-A")
     mock_client = AsyncMock()
-    mock_client.find_first.return_value = version
+    mock_client.find_unique.return_value = version
     mock_client.count.return_value = 1  # other versions remain
     mocker.patch.object(
         prisma.models.StoreListingVersion, "prisma", return_value=mock_client
     )
 
     result = await db.delete_store_submission(
-        user_id="user-1", submission_id="slv-1", organization_id="org-A"
+        user_id="user-1", store_listing_version_id="slv-1", organization_id="org-A"
     )
 
     assert result is True
@@ -1104,14 +1200,14 @@ async def test_delete_store_submission_tenantless_personal_fallback(mocker):
     personal owner even when the caller has an active org."""
     version = _submission_version(owning_org_id=None, owning_user_id="user-1")
     mock_client = AsyncMock()
-    mock_client.find_first.return_value = version
+    mock_client.find_unique.return_value = version
     mock_client.count.return_value = 1
     mocker.patch.object(
         prisma.models.StoreListingVersion, "prisma", return_value=mock_client
     )
 
     result = await db.delete_store_submission(
-        user_id="user-1", submission_id="slv-1", organization_id="org-A"
+        user_id="user-1", store_listing_version_id="slv-1", organization_id="org-A"
     )
 
     assert result is True
@@ -1614,7 +1710,7 @@ async def test_update_profile_publishes_a_live_creators_new_avatar(
 
     result = await db.update_profile(
         "owner-id",
-        Profile(
+        ProfileUpdateRequest(
             name="Owner",
             username="owner",
             description="",
@@ -1656,7 +1752,7 @@ async def test_update_profile_saves_when_publishing_the_avatar_fails(
 
     result = await db.update_profile(
         "owner-id",
-        Profile(
+        ProfileUpdateRequest(
             name="Owner",
             username="owner",
             description="",
@@ -1809,3 +1905,63 @@ async def test_reject_completes_when_the_reactivated_version_fails_to_load(
 
     assert result.status == prisma.enums.SubmissionStatus.REJECTED
     publish.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_organizations_submissions_are_counted_on_their_own(mocker):
+    """The stats count the user's submissions in every organization; paging an
+    organization's listing by that total ran out early or late."""
+    mock_store_sub = mocker.patch("prisma.models.StoreSubmission.prisma")
+    mock_store_sub.return_value.find_many = AsyncMock(return_value=[])
+    mock_store_sub.return_value.count = AsyncMock(return_value=2)
+    mocker.patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(
+            return_value=[
+                SubmissionStats(
+                    total=7, approved=3, pending=2, total_runs=99, average_rating=3.9
+                )
+            ]
+        ),
+    )
+
+    result = await db.get_store_submissions(
+        user_id="user-id", page=1, page_size=20, organization_id="org-a"
+    )
+
+    assert result.pagination.total_items == 2
+    count_where = mock_store_sub.return_value.count.call_args.kwargs["where"]
+    assert (
+        count_where == mock_store_sub.return_value.find_many.call_args.kwargs["where"]
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_submission_in_an_organization_needs_a_graph_from_it(mocker):
+    """The user owns graphs in each of their organizations; submitting for one
+    must not publish another's."""
+    mocker.patch(
+        "prisma.models.OrgMember.prisma",
+        return_value=MagicMock(find_first=AsyncMock(return_value=MagicMock())),
+    )
+    find_graph = AsyncMock(return_value=None)
+    mocker.patch(
+        "prisma.models.AgentGraph.prisma",
+        return_value=MagicMock(find_first=find_graph),
+    )
+
+    with pytest.raises(NotFoundError):
+        await db.create_store_submission(
+            user_id="user-id",
+            graph_id="graph-1",
+            graph_version=1,
+            slug="agent",
+            name="Agent",
+            sub_heading="An agent",
+            organization_id="org-a",
+        )
+
+    assert find_graph.call_args.kwargs["where"]["OR"] == [
+        {"organizationId": "org-a"},
+        {"organizationId": None},
+    ]

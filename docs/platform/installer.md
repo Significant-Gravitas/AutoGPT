@@ -216,10 +216,15 @@ script uses that checkout; otherwise it clones the repository into a new
 
 Both create the three `.env` files if they are missing and generate the
 secrets `.env.default` leaves blank (`ENCRYPTION_KEY`,
-`UNSUBSCRIBE_SECRET_KEY`, `INTERNAL_API_KEY`, `BETTER_AUTH_SECRET`), the same
-as `make init-env`.
-Running a script again never changes a value that is already set. If you are
-upgrading an install that ran without its own `ENCRYPTION_KEY`, read
+`UNSUBSCRIBE_SECRET_KEY`, `INTERNAL_API_KEY`, `BETTER_AUTH_SECRET`, and the
+passwords of the database, RabbitMQ, Redis and FalkorDB), the same as
+`make init-env`. Running a script again never changes a value you set; it does
+replace a service password that still holds the value this repository used to
+ship, and restarts the stack, which empties RabbitMQ's queues. So to upgrade an
+install that is running, follow
+[Upgrading: service passwords are generated per install](getting-started.md#upgrading-service-passwords-are-generated-per-install)
+instead of running a script again.
+If you are upgrading an install that ran without its own `ENCRYPTION_KEY`, read
 [Upgrading: secrets are generated per install](getting-started.md#upgrading-secrets-are-generated-per-install)
 first so your connected integrations move to the new key.
 

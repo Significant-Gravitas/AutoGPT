@@ -24,7 +24,7 @@ from backend.platform_linking.models import ChatTurnHandle, TurnDenial
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 from backend.util.settings import Settings
 
-from . import choices, sessions
+from . import choices, failures, sessions
 from .adapters.base import (
     FileAttachment,
     MessageContext,
@@ -33,6 +33,7 @@ from .adapters.base import (
 )
 from .bot_backend import BotBackend, BotStreamError, ChatTurnDeniedError
 from .config import SESSION_TTL
+from .options import TurnOptions
 from .prompt import PendingMessage, clamp_thread_name, format_batch
 from .text import iter_chunks, split_at_boundary
 
@@ -146,9 +147,11 @@ class TurnStreamer:
         file_ids: list[str] | None = None,
         session_id: str | None = None,
         turn: ChatTurnHandle | None = None,
+        options: TurnOptions | None = None,
     ) -> None:
         """Start a turn from ``batch`` and stream its reply here; with
         ``turn``, stream that one instead, which something else started."""
+        options = options or TurnOptions()
 
         redis = await get_redis_async()
         cache_key = sessions.session_cache_key(ctx.platform, target_id)
@@ -171,6 +174,9 @@ class TurnStreamer:
                 await redis.set(cache_key, sid, ex=SESSION_TTL)
             except Exception:
                 logger.warning("Failed to cache session id for target %s", target_id)
+
+        async def _on_notice(notice: str) -> None:
+            await adapter.send_message(target_id, notice)
 
         flush_at = adapter.chunk_flush_at
         buffer = ""
@@ -299,7 +305,10 @@ class TurnStreamer:
                     session_id=active_session_id,
                     platform_server_id=ctx.server_id,
                     file_ids=file_ids,
+                    expert_id=options.expert_id,
+                    model=options.model,
                     on_session_id=_on_session_id,
+                    on_notice=_on_notice,
                     on_setup_required=_on_setup_required,
                     on_setup_dropped=_on_setup_dropped,
                     on_clarification_needed=_on_clarification_needed,
@@ -328,36 +337,18 @@ class TurnStreamer:
             return
         except BotStreamError as exc:
             # Stream couldn't complete (timeout, subscribe fail, backend stream
-            # error). Track the specific kind, surface a generic message, and
-            # do NOT fire reply_sent below.
-            logger.warning(
-                "Stream failed for target %s: %s (%s)",
-                target_id,
-                exc,
-                exc.error_kind,
-            )
+            # error). Track the specific kind, tell the user what kind of
+            # failure it was, and do NOT fire reply_sent below.
             self._track_stream_error(ctx, exc.error_kind)
-            await adapter.send_message(
-                target_id,
-                "AutoGPT ran into an error. Try again in a moment.",
-            )
+            await _send_failure(adapter, target_id, ctx, exc)
             return
-        except NotFoundError:
-            logger.exception("Chat turn rejected")
+        except NotFoundError as exc:
             self._track_stream_error(ctx, "chat_turn_rejected")
-            await adapter.send_message(
-                target_id, "AutoGPT ran into an error. Try again later."
-            )
+            await _send_failure(adapter, target_id, ctx, exc)
             return
-        except Exception:
-            logger.exception(
-                "Unexpected error during streaming for target %s", target_id
-            )
+        except Exception as exc:
             self._track_stream_error(ctx, "stream_exception")
-            await adapter.send_message(
-                target_id,
-                "Something went wrong. Try again in a moment.",
-            )
+            await _send_failure(adapter, target_id, ctx, exc)
             return
         finally:
             typing_task.cancel()
@@ -577,6 +568,18 @@ class TurnStreamer:
             channel_type=ctx.channel_type,
             error_kind=error_kind,
         )
+
+
+async def _send_failure(
+    adapter: PlatformAdapter,
+    target_id: str,
+    ctx: MessageContext,
+    exc: BaseException,
+) -> None:
+    category = failures.categorize(exc)
+    reference = failures.new_reference()
+    failures.report_failure(exc, category, reference, platform=ctx.platform)
+    await adapter.send_message(target_id, failures.failure_reply(category, reference))
 
 
 async def _keep_typing(adapter: PlatformAdapter, target_id: str) -> None:

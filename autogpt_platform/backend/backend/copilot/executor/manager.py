@@ -32,6 +32,7 @@ from backend.util.process import AppProcess, freeze_startup_heap
 from backend.util.retry import continuous_retry
 from backend.util.settings import Settings
 
+from .cli_warmup import start_cli_warmup
 from .processor import execute_copilot_turn, init_worker
 from .utils import (
     COPILOT_EXECUTION_QUEUE_NAME,
@@ -130,6 +131,7 @@ class CoPilotExecutor(AppProcess):
         )
 
         _load_catalog()
+        start_cli_warmup()
         # Load the block registry before taking turns. A turn's first tool call
         # loads it otherwise, and the collections over the grown heap stall every turn.
         load_started = time.monotonic()

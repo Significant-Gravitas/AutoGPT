@@ -10,12 +10,21 @@ import prisma.models
 import pytest
 
 from backend.api.features.experts import experts_db
+from backend.api.features.store.store_listing_versions import (
+    installable_store_version_where,
+)
 from backend.data.db import connect
 from backend.data.includes import library_agent_include
-from backend.util.exceptions import MissingConfigError, NotFoundError
+from backend.util.exceptions import (
+    MissingConfigError,
+    NotAuthorizedError,
+    NotFoundError,
+)
 
 from . import db
 from . import model as library_model
+from ._add_to_library import restore_existing_library_agent
+from .exceptions import LibraryAgentInAnotherOrganizationError
 
 
 @pytest.mark.parametrize("expert_id", [None, "expert-1"])
@@ -281,17 +290,20 @@ async def test_add_agent_to_library(mocker):
         return_value=mock_library_agent_data
     )
 
-    # Mock graph_db.get_graph function that's called in resolve_graph_for_library
-    # (lives in _add_to_library.py after refactor, not db.py)
+    # Mock _fetch_schedule_info used by add_graph_to_library
+    mocker.patch(
+        "backend.api.features.library._add_to_library._fetch_schedule_info",
+        new=mocker.AsyncMock(return_value={}),
+    )
+
+    # Mock graph_db.get_graph, called by resolve_graph_model_for_library
     mock_graph_db = mocker.patch(
         "backend.api.features.library._add_to_library.graph_db"
     )
     mock_graph_model = mocker.Mock()
     mock_graph_model.id = "agent1"
     mock_graph_model.version = 1
-    mock_graph_model.nodes = (
-        []
-    )  # Empty list so _has_human_in_the_loop_blocks returns False
+    mock_graph_model.nodes = []
     mock_graph_db.get_graph = mocker.AsyncMock(return_value=mock_graph_model)
 
     # Mock the model conversion
@@ -592,7 +604,7 @@ async def test_update_graph_in_library_allows_archived_library_agent(mocker):
         new=mocker.AsyncMock(return_value=current_library_agent),
     )
     mock_update_library_agent = mocker.patch(
-        "backend.api.features.library.db.update_library_agent_version_and_settings",
+        "backend.api.features.library.db.update_agent_version_in_library",
         new=mocker.AsyncMock(return_value=updated_library_agent),
     )
     mock_clear_unowned = mocker.patch(
@@ -619,7 +631,102 @@ async def test_update_graph_in_library_allows_archived_library_agent(mocker):
         "graph-id",
         include_archived=True,
     )
-    mock_update_library_agent.assert_awaited_once_with("test-user", created_graph)
+    mock_update_library_agent.assert_awaited_once_with(
+        "test-user", "graph-id", 2, organization_ids=None
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("move", [True, False])
+async def test_update_graph_in_library_moves_webhook_presets_only_when_asked(
+    mocker, move: bool
+):
+    mocker.patch(
+        "backend.api.features.orgs.db.get_user_default_team",
+        AsyncMock(return_value=("org-fallback", "team-fallback")),
+    )
+    graph_model = mocker.Mock(is_active=True)
+    mocker.patch(
+        "backend.api.features.library.db.graph_db.get_graph_all_versions",
+        new=mocker.AsyncMock(return_value=[mocker.Mock(version=1, is_active=True)]),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.graph_db.make_graph_model",
+        return_value=graph_model,
+    )
+    mocker.patch(
+        "backend.api.features.library.db.before_graph_activate",
+        new=mocker.AsyncMock(return_value=graph_model),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.graph_db.create_graph",
+        new=mocker.AsyncMock(
+            return_value=mocker.Mock(
+                id="graph-id", version=2, is_active=True, webhook_input_node=object()
+            )
+        ),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.get_library_agent_by_graph_id",
+        new=mocker.AsyncMock(return_value=mocker.Mock()),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.update_agent_version_in_library",
+        new=mocker.AsyncMock(),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.graph_db.set_graph_active_version",
+        new=mocker.AsyncMock(),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.on_graph_deactivate", new=mocker.AsyncMock()
+    )
+    migrate = mocker.patch(
+        "backend.api.features.library.db.migrate_webhook_presets_to_new_version",
+        new=mocker.AsyncMock(),
+    )
+
+    await db.update_graph_in_library(
+        mocker.Mock(id="graph-id"), "test-user", move_webhook_presets=move
+    )
+
+    assert migrate.await_count == (1 if move else 0)
+
+
+@pytest.mark.asyncio
+async def test_create_graph_in_library_tags_the_graph_and_entry_with_the_tenant(
+    mocker,
+):
+    """An External API call creates the agent in its credential's organization."""
+    graph_model = mocker.Mock(is_active=False)
+    created_graph = mocker.Mock(id="graph-id", version=1)
+    library_agent = mocker.Mock()
+    mocker.patch(
+        "backend.api.features.library.db.graph_db.make_graph_model",
+        return_value=graph_model,
+    )
+    mocker.patch(
+        "backend.api.features.library.db.clear_unowned_auto_credentials",
+        new=mocker.AsyncMock(),
+    )
+    create_graph = mocker.patch(
+        "backend.api.features.library.db.graph_db.create_graph",
+        new=mocker.AsyncMock(return_value=created_graph),
+    )
+    create_entry = mocker.patch(
+        "backend.api.features.library.db.create_library_agent",
+        new=mocker.AsyncMock(return_value=[library_agent]),
+    )
+
+    await db.create_graph_in_library(
+        mocker.Mock(), "test-user", organization_id="org-1", team_id="team-1"
+    )
+
+    create_graph.assert_awaited_once_with(
+        graph_model, "test-user", organization_id="org-1", team_id="team-1"
+    )
+    assert create_entry.await_args.kwargs["organization_id"] == "org-1"
+    assert create_entry.await_args.kwargs["team_id"] == "team-1"
 
 
 @pytest.mark.asyncio
@@ -784,6 +891,37 @@ async def test_get_library_agent_rejects_missing_graph(mocker):
         await db.get_library_agent("library-id", "test-user")
 
     mock_from_db.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_get_library_agent_loads_the_graphs_store_listing(mocker):
+    """The listing is looked up by graph id with the relations `from_db`
+    reads, so the library page keeps its marketplace info."""
+    library_agent = MagicMock(id="library-id", AgentGraph=MagicMock(id="graph-1"))
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_first = mocker.AsyncMock(
+        return_value=library_agent
+    )
+    listing = MagicMock(name="store-listing")
+    mock_store_listing = mocker.patch("prisma.models.StoreListing.prisma")
+    mock_store_listing.return_value.find_first = mocker.AsyncMock(return_value=listing)
+    mocker.patch.object(db, "_fetch_schedule_info", mocker.AsyncMock(return_value={}))
+    mocker.patch.object(
+        db.graph_db, "get_sub_graphs", mocker.AsyncMock(return_value=[])
+    )
+    mock_from_db = mocker.patch.object(library_model.LibraryAgent, "from_db")
+
+    await db.get_library_agent("library-id", "test-user")
+
+    mock_store_listing.return_value.find_first.assert_awaited_once_with(
+        where={
+            "agentGraphId": "graph-1",
+            "isDeleted": False,
+            "hasApprovedVersion": True,
+        },
+        include={"ActiveVersion": True, "CreatorProfile": True},
+    )
+    assert mock_from_db.call_args.kwargs["store_listing"] is listing
 
 
 @pytest.mark.asyncio
@@ -1595,6 +1733,51 @@ async def test_create_expert_preset_rejects_shared_webhook(mocker):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "inputs, credentials, saved",
+    [({"topic": "x"}, {}, ["topic"]), ({}, {}, []), ({"topic": "x"}, None, None)],
+)
+async def test_new_inputs_need_credentials_alongside_which_may_be_empty(
+    mocker, inputs, credentials, saved
+):
+    """Inputs and credentials share their rows, so one is never replaced alone;
+    either may be `{}`, as for a preset that needs no credentials."""
+    mocker.patch.object(
+        db, "get_preset", new=AsyncMock(return_value=MagicMock(expert_id=None))
+    )
+
+    @asynccontextmanager
+    async def fake_tx():
+        yield None
+
+    preset_client = AsyncMock()
+    mocker.patch.object(prisma.models.AgentPreset, "prisma", return_value=preset_client)
+    mocker.patch.object(
+        prisma.models.AgentNodeExecutionInputOutput, "prisma", return_value=AsyncMock()
+    )
+    mocker.patch.object(db, "transaction", fake_tx)
+    mocker.patch.object(
+        library_model.LibraryAgentPreset, "from_db", return_value=MagicMock()
+    )
+
+    update = db.update_preset(
+        user_id="owner",
+        preset_id="preset-1",
+        inputs=inputs,
+        credentials=credentials,
+    )
+
+    if saved is None:
+        with pytest.raises(ValueError):
+            await update
+        preset_client.update.assert_not_awaited()
+        return
+    await update
+    rows = preset_client.update.await_args.kwargs["data"]["InputPresets"]["create"]
+    assert [row["name"] for row in rows] == saved
+
+
+@pytest.mark.asyncio
 async def test_update_expert_preset_rehomes_on_metadata_only_update(mocker):
     current = MagicMock(
         id="preset-1",
@@ -2209,3 +2392,236 @@ async def test_cleanup_trigger_agents_processes_each_independently(mocker):
     recursive_delete.assert_awaited_once_with(
         library_agent_id="sole", user_id="test-user", soft_delete=True
     )
+
+
+@pytest.mark.asyncio
+async def test_re_adding_a_listing_leaves_another_organizations_entry_alone(mocker):
+    """The entry is unique per user, so a re-add from another org would restore
+    and hand back a row that org can't see."""
+    delegate = MagicMock()
+    delegate.find_unique = AsyncMock(return_value=MagicMock(organizationId="org-b"))
+    delegate.update = AsyncMock()
+    mocker.patch("prisma.models.LibraryAgent.prisma", return_value=delegate)
+    listing_version = MagicMock(AgentGraph=MagicMock(id="graph-1", version=1))
+
+    with pytest.raises(LibraryAgentInAnotherOrganizationError):
+        await restore_existing_library_agent(
+            listing_version, "user-1", organization_id="org-a"
+        )
+    delegate.update.assert_not_awaited()
+
+
+@pytest.fixture
+def library_rows(mocker):
+    """The LibraryAgent queries inside update_agent_version_in_library."""
+    rows = MagicMock()
+    rows.find_first_or_raise = AsyncMock(return_value=MagicMock(id="entry-a"))
+    rows.find_many = AsyncMock(return_value=[])
+    rows.delete_many = AsyncMock()
+    rows.update = AsyncMock(return_value=MagicMock())
+    mocker.patch("prisma.models.LibraryAgent.prisma", return_value=rows)
+    # The target version: the user's own, in org-a.
+    rows.versions = MagicMock(
+        find_unique=AsyncMock(
+            return_value=MagicMock(userId="test-user", organizationId="org-a")
+        )
+    )
+    mocker.patch("prisma.models.AgentGraph.prisma", return_value=rows.versions)
+    # The marketplace version another user's target must have: none.
+    rows.listings = MagicMock(find_first=AsyncMock(return_value=None))
+    mocker.patch("prisma.models.StoreListingVersion.prisma", return_value=rows.listings)
+
+    @asynccontextmanager
+    async def transaction():
+        yield None
+
+    mocker.patch("backend.api.features.library.db.transaction", transaction)
+    mocker.patch(
+        "backend.api.features.library.db._fetch_schedule_info",
+        new=AsyncMock(return_value={}),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.graph_db.get_sub_graphs",
+        new=AsyncMock(return_value=[]),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.library_model.LibraryAgent.from_db",
+        return_value=MagicMock(id="entry-a"),
+    )
+    mocker.patch("backend.api.features.library.db.schedule_library_agent_embedding")
+    return rows
+
+
+@pytest.mark.asyncio
+async def test_a_version_moves_only_the_named_entry_in_the_callers_organizations(
+    library_rows,
+):
+    """The user's first entry for the graph could be another organization's."""
+    await db.update_agent_version_in_library(
+        "test-user",
+        "graph-id",
+        2,
+        library_agent_id="entry-a",
+        organization_ids=frozenset({"org-a"}),
+    )
+
+    assert library_rows.update.await_args.kwargs["where"] == {"id": "entry-a"}
+    where = library_rows.find_first_or_raise.await_args.kwargs["where"]
+    assert where["id"] == "entry-a"
+    assert where["AND"] == [{"OR": [{"organizationId": {"in": ["org-a"]}}]}]
+
+
+@pytest.mark.asyncio
+async def test_another_organizations_entry_on_the_version_is_not_replaced(
+    library_rows,
+):
+    """An entry is unique per user, graph and version, and the one already on
+    the version isn't this call's to remove."""
+    library_rows.find_many.return_value = [
+        MagicMock(id="entry-b", organizationId="org-b")
+    ]
+
+    with pytest.raises(LibraryAgentInAnotherOrganizationError):
+        await db.update_agent_version_in_library(
+            "test-user", "graph-id", 2, organization_ids=frozenset({"org-a"})
+        )
+
+    library_rows.delete_many.assert_not_awaited()
+    library_rows.update.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "organization_id, organization_ids",
+    [
+        ("org-b", frozenset({"org-a"})),
+        # An untagged version is the personal org's.
+        (None, frozenset({"org-a"})),
+    ],
+)
+@pytest.mark.asyncio
+async def test_an_entry_is_not_pointed_at_the_users_version_outside_its_organizations(
+    library_rows, organization_id, organization_ids
+):
+    """Running the entry would run that version, billed where the entry is."""
+    library_rows.versions.find_unique.return_value = MagicMock(
+        userId="test-user", organizationId=organization_id
+    )
+
+    with pytest.raises(NotAuthorizedError):
+        await db.update_agent_version_in_library(
+            "test-user",
+            "graph-id",
+            2,
+            library_agent_id="entry-a",
+            organization_ids=organization_ids,
+        )
+
+    library_rows.find_first_or_raise.assert_not_awaited()
+    library_rows.update.assert_not_awaited()
+
+
+@pytest.mark.parametrize("organization_ids", [None, frozenset({"org-a"})])
+@pytest.mark.asyncio
+async def test_a_marketplace_agent_follows_only_a_version_it_could_be_installed_at(
+    library_rows, organization_ids
+):
+    """A version in the library that was ever submitted can be read, run and
+    forked, so pointing a creator's agent at a pending or rejected one would
+    unlock it. This takes what adding the agent takes, by the same predicate."""
+    library_rows.versions.find_unique.return_value = MagicMock(
+        userId="creator", organizationId="creators-org"
+    )
+
+    with pytest.raises(NotFoundError):
+        await db.update_agent_version_in_library(
+            "test-user",
+            "graph-id",
+            2,
+            library_agent_id="entry-a",
+            organization_ids=organization_ids,
+        )
+    library_rows.update.assert_not_awaited()
+
+    library_rows.listings.find_first.return_value = MagicMock()
+    await db.update_agent_version_in_library(
+        "test-user",
+        "graph-id",
+        2,
+        library_agent_id="entry-a",
+        organization_ids=organization_ids,
+    )
+    library_rows.update.assert_awaited_once()
+    assert library_rows.listings.find_first.await_args.kwargs["where"] == {
+        "agentGraphId": "graph-id",
+        "agentGraphVersion": 2,
+        **installable_store_version_where(),
+    }
+
+
+@pytest.mark.asyncio
+async def test_without_organizations_the_users_own_versions_move_as_before(
+    library_rows,
+):
+    """The web app's own saves and version picks pass no organization."""
+    library_rows.versions.find_unique.return_value = MagicMock(
+        userId="test-user", organizationId="org-b"
+    )
+
+    await db.update_agent_version_in_library("test-user", "graph-id", 2)
+
+    library_rows.update.assert_awaited_once()
+
+
+@pytest.mark.parametrize("organization_ids", [None, frozenset({"org-a"})])
+@pytest.mark.asyncio
+async def test_a_version_that_does_not_exist_is_not_found(
+    library_rows, organization_ids
+):
+    library_rows.versions.find_unique.return_value = None
+
+    with pytest.raises(NotFoundError):
+        await db.update_agent_version_in_library(
+            "test-user", "graph-id", 9, organization_ids=organization_ids
+        )
+
+    library_rows.update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_presets_move_only_within_the_callers_organizations(mocker):
+    presets = MagicMock(find_many=AsyncMock(return_value=[]))
+    mocker.patch("prisma.models.AgentPreset.prisma", return_value=presets)
+
+    await db.migrate_webhook_presets_to_new_version(
+        "test-user",
+        MagicMock(id="graph-id", version=2),
+        organization_ids=frozenset({"org-a", None}),
+    )
+
+    assert presets.find_many.await_args.kwargs["where"]["AND"] == [
+        {"OR": [{"organizationId": {"in": ["org-a"]}}, {"organizationId": None}]}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_an_external_save_cannot_version_a_graph_outside_its_organization(
+    mocker,
+):
+    mocker.patch(
+        "backend.api.features.library.db.writable_organization_ids",
+        new=AsyncMock(return_value=frozenset({"org-a"})),
+    )
+    mocker.patch(
+        "backend.data.graph.get_graph_version_owners",
+        new=AsyncMock(return_value={("test-user", None)}),
+    )
+    create = mocker.patch(
+        "backend.api.features.library.db.graph_db.create_graph", new=AsyncMock()
+    )
+
+    with pytest.raises(NotAuthorizedError):
+        await db.update_graph_in_library(
+            MagicMock(id="graph-id"), "test-user", organization_id="org-a"
+        )
+
+    create.assert_not_awaited()

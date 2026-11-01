@@ -1,7 +1,14 @@
 import { Resolver } from "node:dns/promises";
 import { environment } from "@/services/environment";
+import { APIError } from "better-auth/api";
 import { getDomainAndParents } from "./access-blocks";
 import list from "./disposable-email-domains.json";
+import { isEmailSuppressed } from "./email-suppression";
+import {
+  UNDELIVERABLE_EMAIL_CODE,
+  UNDELIVERABLE_EMAIL_HINT,
+  UNDELIVERABLE_EMAIL_TITLE,
+} from "./undeliverable-email";
 
 // Vendored from github.com/disposable-email-domains/disposable-email-domains
 // (CC0); refresh with scripts/refresh-disposable-email-domains.mjs.
@@ -105,6 +112,37 @@ export async function acceptsMail(email: string, options: Options = {}) {
   if (!environment.isCloud()) return true;
   const domain = getEmailDomain(email);
   return Boolean(domain) && (await hasMailServer(domain, options));
+}
+
+// Cloud only: refuses a domain DNS says takes no mail. A DNS error or timeout
+// lets the address through.
+export async function assertEmailHasMailServer(
+  email: string,
+  options: Options = {},
+) {
+  if (await acceptsMail(email, options)) return;
+  throw undeliverableEmailError();
+}
+
+// Sign-up and resend, cloud only: also refuses an address the mailer has
+// suppressed. Either lookup failing lets the address through.
+export async function assertEmailDeliverable(
+  email: string,
+  options: Options = {},
+) {
+  const [takesMail, suppressed] = await Promise.all([
+    acceptsMail(email, options),
+    isEmailSuppressed(email),
+  ]);
+  if (takesMail && !suppressed) return;
+  throw undeliverableEmailError();
+}
+
+export function undeliverableEmailError() {
+  return new APIError("BAD_REQUEST", {
+    code: UNDELIVERABLE_EMAIL_CODE,
+    message: `${UNDELIVERABLE_EMAIL_TITLE}. ${UNDELIVERABLE_EMAIL_HINT}`,
+  });
 }
 
 // null means DNS gave no definitive answer.

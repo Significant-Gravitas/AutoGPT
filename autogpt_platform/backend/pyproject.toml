@@ -47,7 +47,7 @@ jsonschema = "^4.25.0"
 langfuse = "^3.14.1"
 launchdarkly-server-sdk = "^9.14.1"
 markdown-it-py = "^4.0.0"
-mem0ai = "^0.1.115"
+mem0ai = "1.0.8"
 # Pinned to an upstream master commit until a moviepy release allows pillow 13
 # (every release up to 2.2.1 caps pillow below 12). Switch back to the release
 # then: https://github.com/Zulko/moviepy/pull/2562, SECRT-3057.
@@ -123,7 +123,7 @@ aiohappyeyeballs = "^2.6.1"
 black = "^24.10.0"
 faker = ">=38.2,<41.0"
 isort = "^5.13.2"
-poethepoet = ">=0.41,<0.49"
+poethepoet = ">=0.41,<0.50"
 pre-commit = "^4.4.0"
 pyright = "^1.1.407"
 pytest-cov = "^7.1.0"

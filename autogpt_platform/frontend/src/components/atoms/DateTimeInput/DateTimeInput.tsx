@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Calendar as CalendarIcon, Clock } from "lucide-react";
+import { Calendar03Icon, Clock01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
 
@@ -10,8 +11,8 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/__legacy__/ui/popover";
-import { Calendar } from "@/components/__legacy__/ui/calendar";
+} from "@/components/molecules/Popover/Popover";
+import { Calendar } from "@/components/atoms/Calendar/Calendar";
 
 function toLocalISODateTimeString(d: Date) {
   const year = d.getFullYear();
@@ -136,11 +137,11 @@ export const DateTimeInput = ({
     // Base styles matching other form components
     "rounded-3xl border border-border-base bg-surface px-4 shadow-none",
     "font-normal text-foreground-base w-full text-body leading-5",
-    "placeholder:font-normal !placeholder:text-placeholder",
+    "placeholder:font-normal",
     // Focus and hover states
     "focus:border-foreground-subtle focus:shadow-none focus:outline-none focus:ring-1 focus:ring-foreground-subtle focus:ring-offset-0",
     // Error state
-    error && "border-1.5 border-error focus:border-error focus:ring-error",
+    error && "border-error focus:border-error focus:ring-error",
     // Placeholder styling
     !selected && "text-foreground-subtle",
     "justify-start text-left",
@@ -194,11 +195,15 @@ export const DateTimeInput = ({
             aria-labelledby={ariaLabelledBy}
             aria-describedby={ariaDescribedBy}
           >
-            <CalendarIcon
+            <Icon
+              aria-hidden
+              icon={Calendar03Icon}
               data-slot="date-time-input-date-icon"
               className={cn("mr-2", size === "default" ? "h-4 w-4" : "h-3 w-3")}
             />
-            <Clock
+            <Icon
+              aria-hidden
+              icon={Clock01Icon}
               data-slot="date-time-input-time-icon"
               className={cn("mr-2", size === "default" ? "h-4 w-4" : "h-3 w-3")}
             />
@@ -207,7 +212,7 @@ export const DateTimeInput = ({
         </PopoverTrigger>
         <PopoverContent
           data-slot="date-time-input-popup"
-          className="w-auto p-0"
+          className="w-auto rounded-medium border-border-base p-0 text-foreground-base"
           sideOffset={6}
         >
           <div data-slot="date-time-input-popup-body" className="p-3">
@@ -225,11 +230,10 @@ export const DateTimeInput = ({
               data-slot="date-time-input-time"
               className="mt-3 border-t pt-3"
             >
-              {/* TODO(tokens): no role is gray-700 #374151. */}
               <label
                 data-slot="date-time-input-time-label"
                 htmlFor={timeInputId}
-                className="mb-2 block text-body font-medium leading-5 text-gray-700"
+                className="mb-2 block text-body leading-5 font-medium text-foreground-body"
               >
                 Time
               </label>
@@ -254,7 +258,7 @@ export const DateTimeInput = ({
           as="span"
           tone="error"
           className={cn(
-            "absolute left-0 top-full mt-1 transition-opacity duration-200",
+            "absolute top-full left-0 mt-1 transition-opacity duration-200",
             error ? "opacity-100" : "opacity-0",
           )}
         >

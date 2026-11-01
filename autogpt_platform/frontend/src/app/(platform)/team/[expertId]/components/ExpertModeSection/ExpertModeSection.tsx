@@ -52,16 +52,13 @@ function ExpertModeOptions({ expert }: Props) {
             <label
               key={option.value}
               className={cn(
-                // TODO(tokens): no fitting role for has-[:focus-visible]:outline-zinc-800 #3E3E43; #3E3E43 is foreground-emphasis (a text colour), action (a button fill)
-                "flex cursor-pointer items-start gap-3 rounded-xl p-3 text-left transition-colors has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-zinc-800",
+                "flex cursor-pointer items-start gap-3 rounded-xl p-3 text-left transition-colors has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-action",
                 isSelected
-                  ? // TODO(tokens): no fitting role for ring-zinc-800 #3E3E43; #3E3E43 is foreground-emphasis (a text colour), action (a button fill)
-                    "bg-surface ring-2 ring-inset ring-zinc-800"
-                  : "bg-surface-muted ring-1 ring-inset ring-border-base hover:bg-surface-hover",
+                  ? "bg-surface ring-2 ring-action ring-inset"
+                  : "bg-surface-muted ring-1 ring-border-base ring-inset hover:bg-surface-hover",
                 option.value === "unsupervised" &&
                   isSelected &&
-                  // TODO(tokens): no exact role: ring-amber-600 #D97706
-                  "bg-warning-surface ring-amber-600",
+                  "bg-warning-surface ring-warning-foreground",
               )}
             >
               <input
@@ -72,20 +69,17 @@ function ExpertModeOptions({ expert }: Props) {
                 onChange={() => selectMode(option.value)}
                 className="sr-only"
               />
-              <Icon
-                icon={option.icon}
-                size={18}
-                className="mt-0.5 shrink-0 text-foreground-body"
-                aria-hidden="true"
-              />
+              <span className="mt-0.5 inline-flex shrink-0 text-foreground-body">
+                <Icon icon={option.icon} size={18} aria-hidden="true" />
+              </span>
               <span className="flex flex-col gap-0.5">
-                <span className="text-sm font-medium text-foreground-strong">
+                <Text variant="body-md-medium" as="span" tone="primary">
                   {option.label}
                   {option.value === DEFAULT_AUTOPILOT_MODE ? " (default)" : ""}
-                </span>
-                <span className="text-xs text-foreground-tertiary">
+                </Text>
+                <Text variant="small-tight" as="span" tone="muted">
                   {option.description}
-                </span>
+                </Text>
               </span>
             </label>
           );

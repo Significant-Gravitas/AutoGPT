@@ -67,20 +67,16 @@ export function ChatGPTConnectExplainer() {
     data?.status === 200 ? chatgptModelsSentence(data.data.providers) : "";
 
   return (
-    <div
-      // TODO(tokens): no exact role for bg-[#FBFBFC]
-      className="divide-y divide-border-base rounded-2xl border border-border-base bg-[#FBFBFC]"
-    >
+    <div className="divide-y divide-border-base rounded-2xl border border-border-base bg-surface-muted">
       {POINTS.map((point) => (
         <div key={point.title} className="flex items-start gap-3 p-4">
           <span
             aria-hidden
-            // TODO(tokens): no exact role for bg-[#F1EBFF], text-[#7444E5]
-            className="mt-[2px] flex h-6 w-6 flex-none items-center justify-center rounded-lg bg-[#F1EBFF] text-[#7444E5]"
+            className="mt-[2px] flex h-6 w-6 flex-none items-center justify-center rounded-lg bg-accent-surface text-brand"
           >
             <Icon icon={point.icon} size={14} />
           </span>
-          <Text variant="small" className="text-foreground-body">
+          <Text variant="small" tone="body">
             <span className="font-medium text-foreground-base">
               {point.title}
             </span>{" "}

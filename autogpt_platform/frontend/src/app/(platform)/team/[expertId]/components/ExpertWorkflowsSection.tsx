@@ -68,6 +68,7 @@ export function ExpertWorkflowsSection({
             <Button
               variant="secondary"
               size="small"
+              textSize="body-md"
               leadingIcon={PlusSignIcon}
               onClick={onInstallWorkflow}
             >
@@ -75,12 +76,14 @@ export function ExpertWorkflowsSection({
             </Button>
           ) : null}
           <ToolbarSearch
+            textSize="body-md"
             id="expert-workflows-search"
             label="Search workflows"
             value={query}
             onChange={setQuery}
           />
           <PillFilterMenu
+            textSize="body-md"
             label="Filter workflows"
             value={filter}
             defaultValue="all"
@@ -93,27 +96,17 @@ export function ExpertWorkflowsSection({
       {workflows.length === 0 ? (
         <SectionEmptyState
           tiles={[
-            <Icon
-              key="flow"
-              icon={WorkflowSquare01Icon}
-              size={22}
-              // TODO(tokens): no exact role: text-sky-500 #0EA5E9
-              className="text-sky-500"
-            />,
-            <Icon
-              key="play"
-              icon={PlayIcon}
-              size={22}
-              // TODO(tokens): no exact role: text-orange-500 #FE8700
-              className="text-orange-500"
-            />,
-            <Icon
-              key="calendar"
-              icon={Calendar03Icon}
-              size={22}
-              // TODO(tokens): no exact role: text-violet-500 #8B5CF6
-              className="text-violet-500"
-            />,
+            // oxlint-disable-next-line design-system/no-raw-colors -- sky has no role; info blue would change the hue (deferred)
+            <span key="flow" className="inline-flex text-sky-500">
+              <Icon icon={WorkflowSquare01Icon} size={22} />
+            </span>,
+            // oxlint-disable-next-line design-system/no-raw-colors -- orange has no role; amber would change the hue (deferred)
+            <span key="play" className="inline-flex text-orange-500">
+              <Icon icon={PlayIcon} size={22} />
+            </span>,
+            <span key="calendar" className="inline-flex text-brand">
+              <Icon icon={Calendar03Icon} size={22} />
+            </span>,
           ]}
           title="No workflows yet"
           description={
@@ -125,6 +118,7 @@ export function ExpertWorkflowsSection({
             <Button
               variant="primary"
               size="small"
+              textSize="body-md"
               leadingIcon={PlusSignIcon}
               onClick={onInstallWorkflow}
             >
@@ -133,7 +127,7 @@ export function ExpertWorkflowsSection({
           ) : null}
         </SectionEmptyState>
       ) : visible.length === 0 ? (
-        <Text variant="body" tone="muted">
+        <Text variant="body-md" tone="muted">
           No workflows match.
         </Text>
       ) : view === "list" ? (

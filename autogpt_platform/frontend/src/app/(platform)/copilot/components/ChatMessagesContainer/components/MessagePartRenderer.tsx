@@ -76,7 +76,7 @@ function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
   }
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element
+    // eslint-disable-next-line @next/next/no-img-element -- a user or workspace image URL next/image cannot optimise
     <img
       src={src}
       alt={alt || "Image"}
@@ -200,7 +200,7 @@ export function MessagePartRenderer({
       const isActive = reasoningState === "streaming";
       return (
         <ReasoningCollapse key={key} isActive={isActive}>
-          <pre className="whitespace-pre-wrap text-sm text-foreground-body">
+          <pre className="text-sm whitespace-pre-wrap text-foreground-body">
             {reasoningText}
           </pre>
         </ReasoningCollapse>
@@ -233,8 +233,7 @@ export function MessagePartRenderer({
         return (
           <div
             key={key}
-            // TODO(tokens): no exact role for bg-neutral-100, text-neutral-600
-            className="my-2 rounded-lg bg-neutral-100 px-3 py-2 text-sm italic text-neutral-600"
+            className="my-2 rounded-lg bg-surface-hover px-3 py-2 text-sm text-foreground-secondary italic"
           >
             {markerText}
           </div>

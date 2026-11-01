@@ -1,5 +1,7 @@
+import { Resolver } from "node:dns/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AUTH_EMAILS_PER_IP } from "../auth-email-cooldown";
+import { UNDELIVERABLE_EMAIL_CODE } from "../undeliverable-email";
 
 // Runs the real Better Auth handler with this app's auth options (from
 // ../auth) on an in-memory database, so the HTTP behaviour of sign-up, sign-in
@@ -66,10 +68,22 @@ vi.mock("../provision-platform-user", () => ({
 const sentEmails = vi.hoisted(
   () => [] as Array<{ to: string; type: string; url: string }>,
 );
+// Addresses the mail provider refuses at send time, as sendAuthEmail reports it.
+const refusedAtSend = vi.hoisted(() => new Set<string>());
 vi.mock("../email", () => ({
   sendAuthEmail: vi.fn(async (email: (typeof sentEmails)[number]) => {
+    if (refusedAtSend.has(email.to)) {
+      const { undeliverableEmailError } = await import(
+        "../email-deliverability"
+      );
+      throw undeliverableEmailError();
+    }
     sentEmails.push(email);
   }),
+}));
+vi.mock("../service-token", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../service-token")>()),
+  mintServiceToken: vi.fn(async () => "service-token"),
 }));
 
 const baseURL = "http://localhost:3000";
@@ -212,6 +226,7 @@ function lastVerifyLink(to: string) {
 
 beforeEach(() => {
   sentEmails.length = 0;
+  refusedAtSend.clear();
   pendingAfterResponse.length = 0;
   provisionPlatformUser.mockClear();
   platformUsers.clear();
@@ -1280,4 +1295,115 @@ describe("change-email verification emails", () => {
 
     expect(sentEmails).toEqual([]);
   });
+});
+
+describe("an address the mailer won't deliver to", () => {
+  const undeliverable = {
+    code: UNDELIVERABLE_EMAIL_CODE,
+    message:
+      "We can't deliver email to this address. Check it, or use a different one.",
+  };
+  const suppressed = new Set<string>();
+  const lookup = vi.fn(async (_url: string, init?: RequestInit) => {
+    const { to } = JSON.parse(String(init?.body));
+    return Response.json({ suppressed: suppressed.has(to) });
+  });
+
+  beforeEach(() => {
+    suppressed.clear();
+    lookup.mockClear();
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+    vi.spyOn(Resolver.prototype, "resolveMx").mockResolvedValue([
+      { exchange: "mx.example.com", priority: 10 },
+    ]);
+    vi.stubGlobal("fetch", lookup);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.mocked(Resolver.prototype.resolveMx).mockRestore();
+  });
+
+  it("refuses the sign-up with the undeliverable copy and emails nothing", async () => {
+    const { handler, db } = await createAuthHandler(true);
+    suppressed.add("bounced@example.com");
+
+    const response = await signUp(handler, "bounced@example.com");
+    await emailsSent();
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject(undeliverable);
+    expect(db.UserAuthIdentity).toHaveLength(0);
+    expect(sentEmails).toEqual([]);
+    expect(String(lookup.mock.calls[0][0])).toMatch(
+      /\/api\/auth\/email\/suppression$/,
+    );
+  });
+
+  it("refuses Resend alike whether or not the address has an account", async () => {
+    const { handler } = await createAuthHandler(true);
+    await signUp(handler, "unverified@example.com");
+    await emailsSent();
+    suppressed.add("unverified@example.com");
+    suppressed.add("nobody@example.com");
+
+    const answers = await Promise.all(
+      ["unverified@example.com", "nobody@example.com"].map(async (email) => {
+        const response = await post(handler, "/send-verification-email", {
+          email,
+          callbackURL,
+        });
+        return { status: response.status, body: await response.json() };
+      }),
+    );
+
+    expect(answers[0]).toEqual(answers[1]);
+    expect(answers[0]).toMatchObject({ status: 400, body: undeliverable });
+  });
+
+  // Resend is the one route that awaits its send; the others send in the
+  // background, where a refusal is only logged.
+  it("shows Resend a refusal that comes back from the send itself", async () => {
+    const { handler } = await createAuthHandler(true);
+    await signUp(handler, "bounced-later@example.com");
+    await emailsSent();
+    refusedAtSend.add("bounced-later@example.com");
+
+    const response = await post(handler, "/send-verification-email", {
+      email: "bounced-later@example.com",
+      callbackURL,
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject(undeliverable);
+    expect(lookup).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ["the lookup errors", async () => new Response(null, { status: 500 })],
+    [
+      "the lookup gets no answer in time",
+      // Settles only when the lookup gives up on it.
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) =>
+          init?.signal?.addEventListener("abort", () =>
+            reject(init.signal?.reason),
+          ),
+        ),
+    ],
+  ])(
+    "lets the sign-up through when %s",
+    { timeout: 15_000 },
+    async (_, answer) => {
+      const { handler } = await createAuthHandler(true);
+      lookup.mockImplementationOnce(answer);
+      vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+      const response = await signUp(handler, "new@example.com");
+      await emailsSent();
+
+      expect(response.status).toBe(200);
+      expect(lastVerifyLink("new@example.com")).toBeDefined();
+    },
+  );
 });

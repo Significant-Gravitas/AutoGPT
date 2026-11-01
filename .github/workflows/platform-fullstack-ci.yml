@@ -545,9 +545,24 @@ jobs:
         env:
           NEXT_PUBLIC_PW_TEST: true
 
+      # A restored dump's check runs before the wait below, so it still overlaps the frontend build.
+      - name: Set up tests - Verify cached seed credentials with fresh encryption key
+        id: e2e-seed-verify-cached
+        if: steps.e2e-seed-restore.outputs.restored == 'true'
+        run: |
+          docker cp ../backend/test/e2e_test_data.py $(docker compose -f ../docker-compose.resolved.yml ps -q rest_server):/tmp/e2e_test_data.py
+          docker compose -f ../docker-compose.resolved.yml exec -T rest_server \
+            sh -c "cd /app/autogpt_platform && python /tmp/e2e_test_data.py --refresh-credentials-only"
+
+      # Seeding while the Next.js build runs can freeze the whole runner (OPEN-3734).
+      - name: Wait for frontend image build
+        wait: [platform-build-frontend]
+
       - name: Set up tests - Create E2E test data
         id: e2e-seed-create
         if: matrix.seed && steps.e2e-seed-restore.outputs.restored != 'true'
+        # Passing seeds take 2-4 min; this stays above the seed's own 900 s embedding deadline.
+        timeout-minutes: 20
         env:
           EMBEDDINGS: ${{ matrix.embeddings }}
         run: |
@@ -583,14 +598,11 @@ jobs:
 
       - name: Set up tests - Verify seeded credentials with fresh encryption key
         id: e2e-seed-verify
-        if: matrix.seed
+        if: matrix.seed && steps.e2e-seed-restore.outputs.restored != 'true'
         run: |
           docker cp ../backend/test/e2e_test_data.py $(docker compose -f ../docker-compose.resolved.yml ps -q rest_server):/tmp/e2e_test_data.py
           docker compose -f ../docker-compose.resolved.yml exec -T rest_server \
             sh -c "cd /app/autogpt_platform && python /tmp/e2e_test_data.py --refresh-credentials-only"
-
-      - name: Wait for frontend image build
-        wait: [platform-build-frontend]
 
       - name: Set up Platform - Start frontend
         run: |
