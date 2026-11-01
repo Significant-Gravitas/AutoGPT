@@ -1447,6 +1447,11 @@ def _prepare_skill(write: SkillWrite, origin: str) -> _PreparedSkill:
         origin=origin,
     )
     rendered = render_skill_markdown(parsed)
+    if parse_skill_markdown(rendered) is None:
+        raise ValueError(
+            skill_markdown_error(rendered)
+            or "The skill could not be written as a valid SKILL.md."
+        )
     if write.files is not None:
         # Whole-package validation before the first write, so a package that
         # breaks a cap leaves the stored skill exactly as it was.

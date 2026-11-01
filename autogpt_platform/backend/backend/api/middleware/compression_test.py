@@ -127,3 +127,42 @@ def test_a_small_response_is_sent_uncompressed(
 
     assert "content-encoding" not in response.headers
     assert sum(compressed_bytes) == 0
+
+
+def _declared_but_streamed(request: Request) -> StreamingResponse:
+    size, chunks = int(request.path_params["size"]), int(request.path_params["chunks"])
+
+    def body() -> Iterator[bytes]:
+        for _ in range(chunks):
+            yield b"a" * size
+
+    return StreamingResponse(
+        body(),
+        media_type="text/plain",
+        headers={"Content-Length": str(size * chunks)},
+    )
+
+
+def test_a_response_whose_declared_length_is_over_the_cap_is_sent_uncompressed(
+    compressed_bytes: list[int],
+) -> None:
+    app = Starlette(
+        routes=[Route("/declared/{size}/{chunks}", _declared_but_streamed)],
+        middleware=[_registered_gzip_middleware()],
+    )
+    with TestClient(app, headers={"Accept-Encoding": "gzip"}) as client:
+        response = client.get(f"/declared/{MIB}/6")
+
+    assert "content-encoding" not in response.headers
+    assert len(response.content) == 6 * MIB
+    assert sum(compressed_bytes) == 0
+
+
+def test_a_response_of_exactly_the_cap_is_still_compressed(
+    client: TestClient, compressed_bytes: list[int]
+) -> None:
+    response = client.get(f"/sized/{5 * MIB}")
+
+    assert response.headers["content-encoding"] == "gzip"
+    assert len(response.content) == 5 * MIB
+    assert sum(compressed_bytes) == 5 * MIB

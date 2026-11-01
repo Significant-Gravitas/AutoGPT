@@ -1,8 +1,6 @@
 """SKILL.md frontmatter is parsed within fixed limits."""
 
 import pytest
-import pytest_mock
-import yaml
 
 from backend.copilot.tools.skills import (
     ParsedSkill,
@@ -13,25 +11,6 @@ from backend.copilot.tools.skills import (
 
 def _skill_md(frontmatter: str) -> str:
     return f"---\n{frontmatter}\n---\n\n# Body\n"
-
-
-def _nested_alias_frontmatter(levels: int = 5, width: int = 10) -> str:
-    """Frontmatter whose name is built from nested aliases."""
-    lines = [f"l0: &l0 [{', '.join(['lol'] * width)}]"]
-    lines += [
-        f"l{i}: &l{i} [{', '.join([f'*l{i - 1}'] * width)}]" for i in range(1, levels)
-    ]
-    lines += [f"name: *l{levels - 1}", "description: d"]
-    return "\n".join(lines)
-
-
-def test_nested_aliases_are_refused_before_anything_is_built(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    construct = mocker.spy(yaml.constructor.BaseConstructor, "construct_document")
-
-    assert parse_skill_markdown(_skill_md(_nested_alias_frontmatter())) is None
-    assert construct.call_count == 0
 
 
 @pytest.mark.parametrize(
@@ -56,18 +35,18 @@ def test_ampersands_and_asterisks_inside_values_still_parse() -> None:
 
 
 def test_oversized_frontmatter_is_refused() -> None:
-    frontmatter = f"name: tidy\ndescription: {'x' * (64 * 1024)}"
+    frontmatter = f"name: tidy\ndescription: {'x' * (16 * 1024)}"
 
     assert parse_skill_markdown(_skill_md(frontmatter)) is None
 
 
 def test_frontmatter_under_the_size_cap_still_parses() -> None:
-    frontmatter = f"name: tidy\ndescription: d\nsource: {'x' * (60 * 1024)}"
+    frontmatter = f"name: tidy\ndescription: d\nsource: {'x' * (12 * 1024)}"
 
     parsed = parse_skill_markdown(_skill_md(frontmatter))
 
     assert parsed is not None
-    assert parsed.extra["source"] == "x" * (60 * 1024)
+    assert parsed.extra["source"] == "x" * (12 * 1024)
 
 
 def test_frontmatter_over_the_expanded_size_cap_is_refused(

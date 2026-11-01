@@ -1,0 +1,65 @@
+"""YAML is parsed with the safe loader within the limits a caller sets."""
+
+import pytest
+import yaml
+
+from backend.util.bounded_yaml import YAMLLimitError, load_bounded_yaml
+
+
+def _load(text: str, *, allow_anchors: bool = True, **limits: int):
+    return load_bounded_yaml(
+        text,
+        subject="Test YAML",
+        max_bytes=limits.get("max_bytes", 64 * 1024),
+        max_expanded_bytes=limits.get("max_expanded_bytes", 64 * 1024),
+        allow_anchors=allow_anchors,
+    )
+
+
+def test_an_ordinary_document_parses() -> None:
+    assert _load("name: tidy\ntags: [a, b]\nnested: {x: 1}") == {
+        "name": "tidy",
+        "tags": ["a", "b"],
+        "nested": {"x": 1},
+    }
+
+
+def test_an_empty_document_is_none() -> None:
+    assert _load("") is None
+
+
+def test_text_over_the_byte_limit_is_refused() -> None:
+    with pytest.raises(YAMLLimitError, match="Test YAML is larger than 1 KiB"):
+        _load(f"key: {'x' * 1024}", max_bytes=1024)
+
+
+def test_a_value_reused_through_an_alias_counts_each_time_it_is_used() -> None:
+    uses = ", ".join(["*b"] * 40)
+    reused = f"base: &b [xxxxxxxx, xxxxxxxx, xxxxxxxx]\nuses: [{uses}]"
+
+    assert len(_load(reused)["uses"]) == 40
+    with pytest.raises(YAMLLimitError, match="expands to more than 1 KiB"):
+        _load(reused, max_expanded_bytes=1024)
+
+
+def test_anchors_parse_when_allowed_and_are_refused_otherwise() -> None:
+    text = "base: &b {x: 1}\nuse: *b"
+
+    assert _load(text) == {"base": {"x": 1}, "use": {"x": 1}}
+    with pytest.raises(YAMLLimitError, match="cannot use YAML anchors"):
+        _load(text, allow_anchors=False)
+
+
+def test_a_document_that_refers_to_itself_is_refused() -> None:
+    with pytest.raises(YAMLLimitError, match="refers to itself"):
+        _load("a: &a [1, *a]")
+
+
+def test_a_deeply_nested_document_is_refused() -> None:
+    with pytest.raises(YAMLLimitError, match="nested too deeply"):
+        _load(f"{'[' * 5000}{']' * 5000}")
+
+
+def test_invalid_yaml_raises_a_yaml_error() -> None:
+    with pytest.raises(yaml.YAMLError):
+        _load("key: [unclosed")
