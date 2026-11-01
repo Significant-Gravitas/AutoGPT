@@ -1,5 +1,6 @@
 """Tests for the copilot-skills routes."""
 
+import asyncio
 from unittest.mock import AsyncMock
 
 import fastapi
@@ -310,6 +311,65 @@ def test_upload_copilot_skill_rejects_malformed_markdown() -> None:
         "/skills", json={"content": "just some text, no frontmatter"}
     )
     assert response.status_code == 400
+
+
+@pytest.mark.parametrize(
+    "frontmatter,reason",
+    [
+        ("name: &n oauth_flow\ndescription: d", "cannot use YAML anchors"),
+        (f"name: oauth_flow\ndescription: {'x' * 20_000}", "larger than 16 KiB"),
+    ],
+    ids=["anchor", "oversized"],
+)
+def test_upload_copilot_skill_says_which_frontmatter_limit_it_broke(
+    mocker: pytest_mock.MockFixture, frontmatter: str, reason: str
+) -> None:
+    store_mock = AsyncMock()
+    mocker.patch("backend.api.features.skills.routes.store_user_skill", store_mock)
+
+    response = client.post(
+        "/skills", json={"content": f"---\n{frontmatter}\n---\n\n# Body\n"}
+    )
+
+    assert response.status_code == 400
+    assert reason in response.json()["detail"]
+    store_mock.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "upload",
+    [
+        lambda: client.post("/skills", json={"content": _CANONICAL_SKILL_MD}),
+        lambda: client.post(
+            "/skills/package",
+            files={"file": ("pkg.zip", _package_zip(), "application/zip")},
+        ),
+    ],
+    ids=["skill_md", "package"],
+)
+def test_an_uploaded_skill_md_is_parsed_on_a_worker_thread(
+    mocker: pytest_mock.MockFixture, upload
+) -> None:
+    on_event_loop: list[bool] = []
+
+    def parse(text: str) -> ParsedSkill | None:
+        try:
+            asyncio.get_running_loop()
+            on_event_loop.append(True)
+        except RuntimeError:
+            on_event_loop.append(False)
+        return parse_skill_markdown(text)
+
+    mocker.patch("backend.api.features.skills.routes.parse_skill_markdown", parse)
+    mocker.patch(
+        "backend.api.features.skills.routes.store_user_skill",
+        AsyncMock(return_value=_PARSED_VALID_SKILL),
+    )
+
+    response = upload()
+
+    assert response.status_code == 201
+    assert on_event_loop == [False]
 
 
 def test_upload_copilot_skill_returns_409_when_at_cap(

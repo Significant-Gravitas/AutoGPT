@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 from uuid import UUID, uuid4
 
 import fastapi.exceptions
@@ -56,7 +56,7 @@ from backend.data.graph import (
     migrate_llm_models,
     validate_graph_execution_permissions,
 )
-from backend.data.model import SchemaField
+from backend.data.model import CredentialsFieldInfo, SchemaField
 from backend.data.user import DEFAULT_USER_ID
 from backend.usecases.sample import create_test_user
 from backend.util.exceptions import (
@@ -1327,6 +1327,63 @@ def test_credentials_input_schema_excludes_auto_creds():
         # Should include regular credential but NOT auto_credential
         assert "github_credentials" in field_names
         assert "google_credentials" not in field_names
+
+
+class _CountedProviders(frozenset):
+    """A provider set that counts how often it is compared with another."""
+
+    comparisons = 0
+
+    def __eq__(self, other: object) -> bool:
+        _CountedProviders.comparisons += 1
+        return frozenset.__eq__(self, other)
+
+    def __ne__(self, other: object) -> bool:
+        _CountedProviders.comparisons += 1
+        return frozenset.__ne__(self, other)
+
+    __hash__ = frozenset.__hash__
+
+
+def test_credentials_input_schema_groups_each_input_by_provider_once():
+    """Each credentials input is grouped by its provider once."""
+    count = 300
+    inputs = {
+        f"provider_{i}_credentials": (
+            CredentialsFieldInfo.model_validate(
+                {
+                    "credentials_provider": [f"provider_{i}"],
+                    "credentials_types": ["api_key"],
+                },
+                by_alias=True,
+            ).model_copy(update={"provider": _CountedProviders({f"provider_{i}"})}),
+            {(f"node-{i}", "credentials")},
+            True,
+        )
+        for i in range(count)
+    }
+    graph = GraphModel(
+        id="test-graph",
+        version=1,
+        name="Test",
+        description="Test",
+        user_id="test-user",
+        created_at=datetime.now(timezone.utc),
+        nodes=[],
+        links=[],
+    )
+    _CountedProviders.comparisons = 0
+
+    with patch.object(
+        type(graph),
+        "regular_credentials_inputs",
+        new_callable=PropertyMock,
+        return_value=inputs,
+    ):
+        schema = graph.credentials_input_schema
+
+    assert len(schema["properties"]) == count
+    assert _CountedProviders.comparisons <= count
 
 
 # ============================================================================
