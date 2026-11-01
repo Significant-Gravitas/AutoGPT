@@ -3,7 +3,6 @@
 from typing import Literal
 
 from moviepy import CompositeVideoClip, TextClip
-from moviepy.video.io.VideoFileClip import VideoFileClip
 
 from backend.blocks._base import (
     Block,
@@ -15,9 +14,9 @@ from backend.blocks._base import (
 )
 from backend.blocks.video._utils import (
     VideoMediaStorage,
-    check_video_frame_size,
     extract_source_name,
     get_video_codecs,
+    open_video_clip,
     strip_chapters_inplace,
 )
 from backend.data.execution import ExecutionContext
@@ -106,10 +105,9 @@ class VideoTextOverlayBlock(VideoMediaStorage, Block):
         txt_clip = None
         try:
             strip_chapters_inplace(video_abspath)
-            check_video_frame_size(
+            video = open_video_clip(
                 video_abspath, block_name=self.name, block_id=str(self.id)
             )
-            video = VideoFileClip(video_abspath)
 
             txt_clip = TextClip(
                 text=text,

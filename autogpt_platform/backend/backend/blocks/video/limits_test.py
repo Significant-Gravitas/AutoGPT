@@ -5,6 +5,7 @@ to check that a file over `MAX_VIDEO_FRAME_PIXELS` is refused before it is
 opened.
 """
 
+import ast
 import subprocess
 from contextlib import ExitStack
 from pathlib import Path
@@ -14,7 +15,7 @@ import imageio_ffmpeg
 import pytest
 
 from backend.blocks.elevenlabs._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
-from backend.blocks.video._utils import VideoMediaStorage
+from backend.blocks.video._utils import VideoMediaStorage, check_video_frame_size
 from backend.blocks.video.add_audio import AddAudioToVideoBlock
 from backend.blocks.video.clip import VideoClipBlock
 from backend.blocks.video.concat import MAX_CONCAT_INPUTS, VideoConcatBlock
@@ -29,17 +30,25 @@ SMALL = "small.mp4"
 PORTRAIT_AT_LIMIT = "portrait_at_limit.mp4"
 PORTRAIT_OVERSIZED = "portrait_oversized.mp4"
 OVERSIZED = "oversized.mp4"
+SECOND_STREAM_OVERSIZED = "second_stream_oversized.mp4"
+OVERSIZED_VIDEOS = [OVERSIZED, PORTRAIT_OVERSIZED]
+VIDEO_BLOCKS_DIR = Path(__file__).parent
 
 
-def _make_video(path: Path, size: str) -> None:
+def _make_video(path: Path, *sizes: str) -> None:
+    """Write a two-frame video with one video stream per size, in that order."""
+    inputs = []
+    for size in sizes:
+        inputs += ["-f", "lavfi", "-i", f"color=c=black:s={size}:r=25"]
+    maps = []
+    for i in range(len(sizes)):
+        maps += ["-map", str(i)]
     subprocess.run(
         [
             imageio_ffmpeg.get_ffmpeg_exe(),
             "-y",
-            "-f",
-            "lavfi",
-            "-i",
-            f"color=c=black:s={size}:r=25",
+            *inputs,
+            *maps,
             "-frames:v",
             "2",
             "-c:v",
@@ -64,6 +73,7 @@ def video_dir(tmp_path_factory) -> Path:
     _make_video(d / PORTRAIT_OVERSIZED, "2160x4096")
     # DCI 4K: 4096x2160 is just over the 3840x2160 limit
     _make_video(d / OVERSIZED, "4096x2160")
+    _make_video(d / SECOND_STREAM_OVERSIZED, "320x240", "4096x2160")
     return d
 
 
@@ -117,32 +127,83 @@ async def _assert_refused_before_open(
 ):
     with ExitStack() as stack:
         _patch_local_storage(stack, module, video_dir)
-        video_file_clip = stack.enter_context(patch(f"{module}.VideoFileClip"))
+        video_file_clip = stack.enter_context(
+            patch("backend.blocks.video._utils.VideoFileClip")
+        )
         with pytest.raises(BlockExecutionError, match="over the limit"):
             await _run(block, input_data, exec_ctx, **kwargs)
     video_file_clip.assert_not_called()
 
 
-async def test_media_duration_refuses_oversized_frame(video_dir, exec_ctx):
-    block = MediaDurationBlock()
+@pytest.mark.parametrize("video", OVERSIZED_VIDEOS)
+@pytest.mark.parametrize(
+    "module, block_cls, make_input",
+    [
+        (
+            "duration",
+            MediaDurationBlock,
+            lambda video: MediaDurationBlock.Input(media_in=video),
+        ),
+        (
+            "clip",
+            VideoClipBlock,
+            lambda video: VideoClipBlock.Input(
+                video_in=video, start_time=0.0, end_time=0.04
+            ),
+        ),
+        (
+            "loop",
+            LoopVideoBlock,
+            lambda video: LoopVideoBlock.Input(video_in=video, n_loops=2),
+        ),
+        (
+            "add_audio",
+            AddAudioToVideoBlock,
+            lambda video: AddAudioToVideoBlock.Input(video_in=video, audio_in=SMALL),
+        ),
+        (
+            "text_overlay",
+            VideoTextOverlayBlock,
+            lambda video: VideoTextOverlayBlock.Input(video_in=video, text="Hello"),
+        ),
+        (
+            "concat",
+            VideoConcatBlock,
+            lambda video: VideoConcatBlock.Input(videos=[SMALL, SMALL, video]),
+        ),
+    ],
+)
+async def test_block_refuses_oversized_frame(
+    video_dir, exec_ctx, module, block_cls, make_input, video
+):
     await _assert_refused_before_open(
-        "backend.blocks.video.duration",
-        block,
-        MediaDurationBlock.Input(media_in=OVERSIZED),
+        f"backend.blocks.video.{module}",
+        block_cls(),
+        make_input(video),
         exec_ctx,
         video_dir,
     )
 
 
-async def test_media_duration_refuses_oversized_portrait_frame(video_dir, exec_ctx):
-    block = MediaDurationBlock()
-    await _assert_refused_before_open(
-        "backend.blocks.video.duration",
-        block,
-        MediaDurationBlock.Input(media_in=PORTRAIT_OVERSIZED),
-        exec_ctx,
-        video_dir,
-    )
+@pytest.mark.parametrize("video", OVERSIZED_VIDEOS)
+async def test_narration_refuses_oversized_frame_before_tts(video_dir, exec_ctx, video):
+    block = VideoNarrationBlock()
+    with patch("backend.blocks.video.narration.ElevenLabs") as elevenlabs:
+        await _assert_refused_before_open(
+            "backend.blocks.video.narration",
+            block,
+            VideoNarrationBlock.Input.model_validate(
+                {
+                    "credentials": TEST_CREDENTIALS_INPUT,
+                    "video_in": video,
+                    "script": "Hello",
+                }
+            ),
+            exec_ctx,
+            video_dir,
+            credentials=TEST_CREDENTIALS,
+        )
+    elevenlabs.assert_not_called()
 
 
 @pytest.mark.parametrize("video", [SMALL, PORTRAIT_AT_LIMIT])
@@ -154,99 +215,24 @@ async def test_media_duration_reads_in_bounds_video(video_dir, exec_ctx, video):
     assert outputs["duration"] > 0
 
 
-async def test_clip_refuses_oversized_frame(video_dir, exec_ctx):
-    block = VideoClipBlock()
-    await _assert_refused_before_open(
-        "backend.blocks.video.clip",
-        block,
-        VideoClipBlock.Input(video_in=OVERSIZED, start_time=0.0, end_time=0.04),
-        exec_ctx,
-        video_dir,
-    )
-
-
-async def test_loop_refuses_oversized_frame(video_dir, exec_ctx):
-    block = LoopVideoBlock()
-    await _assert_refused_before_open(
-        "backend.blocks.video.loop",
-        block,
-        LoopVideoBlock.Input(video_in=OVERSIZED, n_loops=2),
-        exec_ctx,
-        video_dir,
-    )
-
-
-async def test_add_audio_refuses_oversized_frame(video_dir, exec_ctx):
-    block = AddAudioToVideoBlock()
-    await _assert_refused_before_open(
-        "backend.blocks.video.add_audio",
-        block,
-        AddAudioToVideoBlock.Input(video_in=OVERSIZED, audio_in=SMALL),
-        exec_ctx,
-        video_dir,
-    )
-
-
-async def test_narration_refuses_oversized_frame(video_dir, exec_ctx):
-    block = VideoNarrationBlock()
-    with patch.object(
-        VideoNarrationBlock, "_generate_narration_audio", return_value=b""
-    ):
-        await _assert_refused_before_open(
-            "backend.blocks.video.narration",
-            block,
-            VideoNarrationBlock.Input.model_validate(
-                {
-                    "credentials": TEST_CREDENTIALS_INPUT,
-                    "video_in": OVERSIZED,
-                    "script": "Hello",
-                }
-            ),
-            exec_ctx,
-            video_dir,
-            credentials=TEST_CREDENTIALS,
+def test_frame_size_check_reads_every_video_stream(video_dir):
+    with pytest.raises(BlockExecutionError, match="4096x2160 is over the limit"):
+        check_video_frame_size(
+            str(video_dir / SECOND_STREAM_OVERSIZED), block_name="b", block_id="id"
         )
 
 
-async def test_narration_refuses_oversized_frame_before_tts(video_dir, exec_ctx):
-    block = VideoNarrationBlock()
-    with patch("backend.blocks.video.narration.ElevenLabs") as elevenlabs:
-        await _assert_refused_before_open(
-            "backend.blocks.video.narration",
-            block,
-            VideoNarrationBlock.Input.model_validate(
-                {
-                    "credentials": TEST_CREDENTIALS_INPUT,
-                    "video_in": OVERSIZED,
-                    "script": "Hello",
-                }
-            ),
-            exec_ctx,
-            video_dir,
-            credentials=TEST_CREDENTIALS,
-        )
-    elevenlabs.assert_not_called()
-
-
-async def test_text_overlay_refuses_oversized_frame(video_dir, exec_ctx):
-    block = VideoTextOverlayBlock()
-    await _assert_refused_before_open(
-        "backend.blocks.video.text_overlay",
-        block,
-        VideoTextOverlayBlock.Input(video_in=OVERSIZED, text="Hello"),
-        exec_ctx,
-        video_dir,
-    )
-
-
-async def test_concat_checks_every_input(video_dir, exec_ctx):
-    block = VideoConcatBlock()
-    await _assert_refused_before_open(
-        "backend.blocks.video.concat",
-        block,
-        VideoConcatBlock.Input(videos=[SMALL, SMALL, OVERSIZED]),
-        exec_ctx,
-        video_dir,
+def test_video_blocks_open_videos_only_through_the_checked_helper():
+    direct_opens = []
+    for path in sorted(VIDEO_BLOCKS_DIR.glob("*.py")):
+        if path.name == "_utils.py" or path.name.endswith("_test.py"):
+            continue
+        for node in ast.walk(ast.parse(path.read_text())):
+            if isinstance(node, ast.Call) and "VideoFileClip" in ast.unparse(node.func):
+                direct_opens.append(f"{path.name}:{node.lineno}")
+    assert not direct_opens, (
+        "Open videos with _utils.open_video_clip, which checks the frame size "
+        f"first, not VideoFileClip directly: {direct_opens}"
     )
 
 
@@ -255,7 +241,7 @@ async def test_concat_refuses_more_than_max_inputs(video_dir, exec_ctx):
     store_input = AsyncMock(side_effect=lambda _ctx, file: file)
     with (
         patch.object(VideoConcatBlock, "_store_input_video", new=store_input),
-        patch("backend.blocks.video.concat.VideoFileClip") as video_file_clip,
+        patch("backend.blocks.video._utils.VideoFileClip") as video_file_clip,
         pytest.raises(BlockExecutionError, match=f"At most {MAX_CONCAT_INPUTS}"),
     ):
         await _run(

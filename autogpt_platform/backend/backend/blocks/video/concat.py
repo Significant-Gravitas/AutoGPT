@@ -4,7 +4,6 @@ from typing import Literal
 
 from moviepy import concatenate_videoclips
 from moviepy.video.fx import CrossFadeIn, CrossFadeOut, FadeIn, FadeOut
-from moviepy.video.io.VideoFileClip import VideoFileClip
 
 from backend.blocks._base import (
     Block,
@@ -19,6 +18,7 @@ from backend.blocks.video._utils import (
     check_video_frame_size,
     extract_source_name,
     get_video_codecs,
+    open_video_clip,
     strip_chapters_inplace,
 )
 from backend.data.execution import ExecutionContext
@@ -101,7 +101,9 @@ class VideoConcatBlock(VideoMediaStorage, Block):
 
             # Load clips
             for v in video_abspaths:
-                clips.append(VideoFileClip(v))
+                clips.append(
+                    open_video_clip(v, block_name=self.name, block_id=str(self.id))
+                )
 
             # Validate transition_duration against shortest clip
             if transition in {"crossfade", "fade_black"} and transition_duration > 0:

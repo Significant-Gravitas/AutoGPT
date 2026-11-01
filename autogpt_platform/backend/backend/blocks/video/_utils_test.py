@@ -36,30 +36,42 @@ async def test_storage_step_stores_in_its_return_format(method, return_format):
     )
 
 
+def _infos(*video_sizes: tuple[int, int]) -> dict:
+    """A parse result with one video stream per size, the first as moviepy's default."""
+    streams = [{"stream_type": "audio", "default": True}] + [
+        {"stream_type": "video", "size": list(size), "default": i == 0}
+        for i, size in enumerate(video_sizes)
+    ]
+    infos: dict = {"video_found": bool(video_sizes), "inputs": [{"streams": streams}]}
+    if video_sizes:
+        infos["video_size"] = list(video_sizes[0])
+    return infos
+
+
 @pytest.mark.parametrize(
-    "infos",
+    "sizes",
     [
-        {"video_found": True, "video_size": [3840, 2160]},
-        {"video_found": True, "video_size": [2160, 3840]},
-        {"video_found": True, "video_size": [3840, 2160], "video_rotation": 90},
-        {"video_found": True, "video_size": [2880, 2880]},
-        {"video_found": True, "video_size": [7680, 1080]},
-        {"video_found": True, "video_size": [1920, 1080]},
-        {"video_found": False},
+        [(3840, 2160)],
+        [(2160, 3840)],
+        [(2880, 2880)],
+        [(7680, 1080)],
+        [(1920, 1080)],
+        [(1920, 1080), (3840, 2160)],
+        [],
     ],
     ids=[
         "landscape_at_limit",
         "portrait_at_limit",
-        "rotated_at_limit",
         "square_at_limit",
         "ultrawide_at_limit",
         "under_limit",
+        "two_streams_at_limit",
         "no_video_stream",
     ],
 )
-def test_frame_size_check_accepts_frames_within_limit(infos):
+def test_frame_size_check_accepts_frames_within_limit(sizes):
     with patch(
-        "backend.blocks.video._utils.ffmpeg_parse_infos", return_value=infos
+        "backend.blocks.video._utils.ffmpeg_parse_infos", return_value=_infos(*sizes)
     ) as probe:
         check_video_frame_size("video.mp4", block_name="b", block_id="id")
 
@@ -67,23 +79,31 @@ def test_frame_size_check_accepts_frames_within_limit(infos):
 
 
 @pytest.mark.parametrize(
-    "infos, shown",
+    "sizes, shown",
     [
-        ({"video_size": [3841, 2160]}, "3841x2160"),
-        ({"video_size": [2160, 3841]}, "2160x3841"),
-        ({"video_size": [2881, 2880]}, "2881x2880"),
-        ({"video_size": [3841, 2160], "video_rotation": -90}, "2160x3841"),
-        ({"video_size": [6000, 6000]}, "6000x6000"),
+        ([(3841, 2160)], "3841x2160"),
+        ([(2160, 3841)], "2160x3841"),
+        ([(2881, 2880)], "2881x2880"),
+        ([(6000, 6000)], "6000x6000"),
+        ([(320, 240), (4096, 2160)], "4096x2160"),
+        ([(4096, 2160), (320, 240)], "4096x2160"),
     ],
-    ids=["landscape", "portrait", "square", "rotated", "large_square"],
+    ids=[
+        "landscape",
+        "portrait",
+        "square",
+        "large_square",
+        "second_stream_over",
+        "first_stream_over",
+    ],
 )
-def test_frame_size_check_refuses_frames_over_limit(infos, shown):
-    width, height = infos["video_size"]
+def test_frame_size_check_refuses_frames_over_limit(sizes, shown):
+    width, height = (int(n) for n in shown.split("x"))
     assert width * height > MAX_VIDEO_FRAME_PIXELS
     with (
         patch(
             "backend.blocks.video._utils.ffmpeg_parse_infos",
-            return_value={"video_found": True, **infos},
+            return_value=_infos(*sizes),
         ),
         pytest.raises(BlockExecutionError, match=f"{shown} is over the limit"),
     ):

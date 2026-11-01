@@ -2,8 +2,6 @@
 
 from typing import Literal
 
-from moviepy.video.io.VideoFileClip import VideoFileClip
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -14,9 +12,9 @@ from backend.blocks._base import (
 )
 from backend.blocks.video._utils import (
     VideoMediaStorage,
-    check_video_frame_size,
     extract_source_name,
     get_video_codecs,
+    open_video_clip,
     strip_chapters_inplace,
 )
 from backend.data.execution import ExecutionContext
@@ -77,10 +75,9 @@ class VideoClipBlock(VideoMediaStorage, Block):
         subclip = None
         try:
             strip_chapters_inplace(video_abspath)
-            check_video_frame_size(
+            clip = open_video_clip(
                 video_abspath, block_name=self.name, block_id=str(self.id)
             )
-            clip = VideoFileClip(video_abspath)
             subclip = clip.subclipped(start_time, end_time)
             video_codec, audio_codec = get_video_codecs(output_abspath)
             subclip.write_videofile(

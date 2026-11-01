@@ -14,8 +14,8 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.blocks.video._utils import (
-    check_video_frame_size,
     extract_source_name,
+    open_video_clip,
     strip_chapters_inplace,
 )
 from backend.data.execution import ExecutionContext
@@ -80,13 +80,12 @@ class LoopVideoBlock(Block):
 
         # 2) Load the clip
         strip_chapters_inplace(input_abspath)
-        check_video_frame_size(
-            input_abspath, block_name=self.name, block_id=str(self.id)
-        )
         clip = None
         looped_clip = None
         try:
-            clip = VideoFileClip(input_abspath)
+            clip = open_video_clip(
+                input_abspath, block_name=self.name, block_id=str(self.id)
+            )
 
             # 3) Apply the loop effect
             if input_data.duration:

@@ -6,7 +6,6 @@ from typing import Literal
 from elevenlabs import ElevenLabs
 from moviepy import CompositeAudioClip
 from moviepy.audio.io.AudioFileClip import AudioFileClip
-from moviepy.video.io.VideoFileClip import VideoFileClip
 
 from backend.blocks._base import (
     Block,
@@ -27,6 +26,7 @@ from backend.blocks.video._utils import (
     check_video_frame_size,
     extract_source_name,
     get_video_codecs,
+    open_video_clip,
     strip_chapters_inplace,
 )
 from backend.data.execution import ExecutionContext
@@ -167,7 +167,9 @@ class VideoNarrationBlock(VideoMediaStorage, Block):
         original = None
 
         try:
-            video = VideoFileClip(video_abspath)
+            video = open_video_clip(
+                video_abspath, block_name=self.name, block_id=str(self.id)
+            )
             narration_original = AudioFileClip(audio_abspath)
             narration_scaled = narration_original.with_volume_scaled(narration_volume)
             narration = narration_scaled

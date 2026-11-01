@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 
 from moviepy.video.io.ffmpeg_reader import ffmpeg_parse_infos
+from moviepy.video.io.VideoFileClip import VideoFileClip
 
 from backend.data.execution import ExecutionContext
 from backend.util.exceptions import BlockExecutionError
@@ -141,22 +142,17 @@ def strip_chapters_inplace(video_path: str) -> None:
 
 
 def check_video_frame_size(video_path: str, *, block_name: str, block_id: str) -> None:
-    """Raise if the video's frame has more than MAX_VIDEO_FRAME_PIXELS pixels.
-
-    The limit is on width * height only, so it holds the same for any
-    orientation or aspect ratio. The size comes from the container header,
-    read with moviepy's info parser (the one `VideoFileClip` uses) without
-    decoding any frames, and is turned for rotation metadata the way
-    `VideoFileClip` turns it. Call it after `strip_chapters_inplace` and before
-    `VideoFileClip`.
-    """
+    """Raise if any video stream's frame (width x height, from the header) is over MAX_VIDEO_FRAME_PIXELS."""
     infos = ffmpeg_parse_infos(video_path)
-    size = infos.get("video_size")
-    if not size:
+    sizes = [
+        stream["size"]
+        for input_file in infos.get("inputs", [])
+        for stream in input_file.get("streams", [])
+        if stream.get("stream_type") == "video" and stream.get("size")
+    ]
+    if not sizes:
         return
-    width, height = size
-    if abs(infos.get("video_rotation", 0)) in (90, 270):
-        width, height = height, width
+    width, height = max(sizes, key=lambda size: size[0] * size[1])
     if width * height > MAX_VIDEO_FRAME_PIXELS:
         raise BlockExecutionError(
             message=(
@@ -166,6 +162,14 @@ def check_video_frame_size(video_path: str, *, block_name: str, block_id: str) -
             block_name=block_name,
             block_id=block_id,
         )
+
+
+def open_video_clip(
+    video_path: str, *, block_name: str, block_id: str
+) -> VideoFileClip:
+    """Check the frame size, then open the video. Every video block opens videos through this."""
+    check_video_frame_size(video_path, block_name=block_name, block_id=block_id)
+    return VideoFileClip(video_path)
 
 
 class VideoMediaStorage:
