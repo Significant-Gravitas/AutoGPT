@@ -172,13 +172,19 @@ def _is_cross_origin(old_url: URL, new_url: URL) -> bool:
     )
 
 
-def _remove_insecure_headers(headers: dict, old_url: URL, new_url: URL) -> dict:
+def _remove_insecure_headers(
+    headers: dict,
+    old_url: URL,
+    new_url: URL,
+    sensitive_headers: Iterable[str] = (),
+) -> dict:
     """
-    Removes sensitive headers (Authorization, Proxy-Authorization, Cookie)
-    if the scheme/host/port of new_url differ from old_url.
+    Removes sensitive headers (Authorization, Proxy-Authorization, Cookie,
+    plus any names in *sensitive_headers*) if the scheme/host/port of new_url
+    differ from old_url.
     """
     if _is_cross_origin(old_url, new_url):
-        _drop_headers(headers, SENSITIVE_HEADERS)
+        _drop_headers(headers, [*SENSITIVE_HEADERS, *sensitive_headers])
     return headers
 
 
@@ -491,8 +497,12 @@ class Requests:
         retry_max_wait: float = 300.0,
         retry_max_attempts: int | None = None,
         max_response_bytes: int = DEFAULT_MAX_RESPONSE_BYTES,
+        sensitive_headers: Iterable[str] = (),
     ):
         self.max_response_bytes = max_response_bytes
+        # Headers bound to the request's origin, like ``Authorization``: a
+        # cross-origin redirect drops them along with ``SENSITIVE_HEADERS``.
+        self.sensitive_headers = frozenset(sensitive_headers)
         self.trusted_origins = []
         for url in trusted_origins or []:
             hostname = parse_url(url).netloc  # {host}[:{port}]
@@ -694,7 +704,10 @@ class Requests:
                     redirect_url = urlparse(urljoin(parsed_url.geturl(), location))
                     # Carry forward the same headers but update Host
                     new_headers = _remove_insecure_headers(
-                        dict(req_headers), parsed_url, redirect_url
+                        dict(req_headers),
+                        parsed_url,
+                        redirect_url,
+                        self.sensitive_headers,
                     )
 
                     # ``auth=`` and ``cookies=`` are not headers at this point

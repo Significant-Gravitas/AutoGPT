@@ -413,6 +413,7 @@ class AutoPilotBlock(Block):
         team_id: str | None = None,
         llm_auth_provider: Literal["platform", "codex"] = "platform",
         llm_credential_id: str | None = None,
+        expert_id: str | None = None,
     ) -> str:
         """Create a new chat session and return its ID (mockable for tests)."""
         from backend.copilot.model import create_chat_session  # avoid circular import
@@ -428,6 +429,8 @@ class AutoPilotBlock(Block):
             origin="automation",
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
+            # The run's expert scope: its grants and tools follow the session.
+            expert_id=expert_id,
         )
         return session.session_id
 
@@ -641,6 +644,7 @@ class AutoPilotBlock(Block):
                 team_id=execution_context.team_id,
                 llm_auth_provider=("codex" if use_codex else "platform"),
                 llm_credential_id=(codex_connection.id if use_codex else None),
+                expert_id=execution_context.expert_id,
             )
         else:
             # Validate on every resume, not just codex ones. Gating this on
@@ -678,6 +682,14 @@ class AutoPilotBlock(Block):
                 yield "error", (
                     "That AutoPilot session was started by a person, not by an "
                     "automation. Start a new session for this graph run."
+                )
+                return
+
+            if existing_session.expert_id != execution_context.expert_id:
+                yield "session_id", sid
+                yield "error", (
+                    "That AutoPilot session belongs to a different assistant "
+                    "than this graph run. Start a new session for this graph run."
                 )
                 return
 
