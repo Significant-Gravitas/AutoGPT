@@ -1,10 +1,8 @@
-"""A preset's stored inputs, and the listing that loads them back, are bounded.
+"""A preset's stored inputs, and its page size, are bounded.
 
 `LibraryAgentPreset` reads stored rows through `LibraryAgentPresetCreatable`,
-so the bound lives at the write rather than on that model. The listing is
-capped tighter than the generic route bound because each preset on the page
-brings all of its input rows, and it is capped in the database layer so every
-caller is covered rather than one route.
+so the bound lives at the write rather than on that model. The page size is
+capped in the database layer, so every caller is covered rather than one route.
 """
 
 import pytest

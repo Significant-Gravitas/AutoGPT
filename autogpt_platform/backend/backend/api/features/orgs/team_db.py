@@ -14,8 +14,7 @@ from .team_model import TeamMemberResponse, TeamResponse
 
 logger = logging.getLogger(__name__)
 
-# `GET /api/orgs/{org_id}/workspaces` lists every workspace of the org in one
-# unpaginated response, so the count is bounded at the create.
+# Bounded at the create, because the listing has no page to truncate.
 MAX_TEAMS_PER_ORG = 500
 
 

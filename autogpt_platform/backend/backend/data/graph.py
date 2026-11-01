@@ -257,9 +257,8 @@ def _holds_picked_file(annotation: Any) -> bool:
     )
 
 
-# Checked when a graph is saved rather than on the model, because `GraphMeta`
-# and `GraphModel` read stored rows through it: a bound here would make a row
-# already longer than it unreadable.
+# Checked at the save rather than on the model, because `GraphMeta` and
+# `GraphModel` read stored rows through it.
 GRAPH_TEXT_MAX_LENGTHS = {
     "name": MAX_LONG_NAME_LENGTH,
     "description": MAX_INSTRUCTIONS_LENGTH,
@@ -2275,9 +2274,8 @@ async def __create_graph(
 ):
     graphs = [graph] + graph.sub_graphs
 
-    # Bound the metadata text before anything is written, so no save path
-    # (route, fork, copy, copilot) can persist a value a later listing would
-    # have to load back whole.
+    # Bound the metadata before anything is written, so every save path
+    # (route, fork, copy, copilot) is covered by one check.
     for g in graphs:
         for field_name, max_length in GRAPH_TEXT_MAX_LENGTHS.items():
             if len(getattr(g, field_name) or "") > max_length:

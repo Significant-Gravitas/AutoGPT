@@ -41,7 +41,11 @@ from backend.copilot.sharing.models import (
 )
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.db import transaction
-from backend.data.includes import graph_execution_include
+from backend.data.execution import attach_nodes_to_executions
+from backend.data.includes import (
+    EXECUTION_RESULT_INCLUDE_WITHOUT_NODE,
+    graph_execution_include,
+)
 from backend.data.sharing.tokens import generate_share_token
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 from backend.util import type as type_utils
@@ -730,14 +734,16 @@ async def _build_shared_execution_file_allowlist(
     """
     node_rows = await AgentGraphExecution.prisma(tx).find_unique(
         where={"id": execution_id},
-        # The same bounded include the shared-run viewer reads through, so
-        # this scan cannot load more node executions than that page shows.
+        # The shared-run viewer's own filter and cap, with each node read once.
         include=graph_execution_include(
-            [*get_io_block_ids(), *get_webhook_block_ids()]
+            [*get_io_block_ids(), *get_webhook_block_ids()],
+            node_execution_include=EXECUTION_RESULT_INCLUDE_WITHOUT_NODE,
         ),
     )
     if node_rows is None or node_rows.NodeExecutions is None:
         return 0
+
+    await attach_nodes_to_executions(node_rows.NodeExecutions, tx)
 
     outputs = _collect_public_execution_outputs(node_rows)
     file_ids = extract_workspace_file_ids(outputs)

@@ -1,10 +1,8 @@
 """Length bounds for text a request stores.
 
-Every field here is written to an unbounded text column and read back whole by
-a listing, so its bound is what keeps that listing's size predictable. Put the
-bound on the request model where the model is request-only; where a response
-model inherits it, bound the write instead, or a row already longer than the
-bound becomes unreadable.
+Put the bound on the request model where the model is request-only; where a
+response model inherits it, bound the write instead, or a row already longer
+than the bound becomes unreadable.
 """
 
 from typing import Annotated
@@ -13,8 +11,8 @@ from pydantic import StringConstraints
 
 MAX_ID_LENGTH = 100
 MAX_NAME_LENGTH = 100
-# For a name a user may already have made long, where the bound is checked at
-# the write: a tighter one would refuse a re-save of a row already over it.
+# For a name checked at the write, where a tighter bound would refuse a
+# re-save of a row already over it.
 MAX_LONG_NAME_LENGTH = 500
 MAX_TITLE_LENGTH = 200
 MAX_CRON_LENGTH = 200
@@ -22,8 +20,7 @@ MAX_EMAIL_LENGTH = 320
 MAX_SUMMARY_LENGTH = 500
 MAX_DESCRIPTION_LENGTH = 2_000
 MAX_URL_LENGTH = 2_048
-# A token or key a caller hands us to store. Well under the per-item cap the
-# integrations store enforces, and far above any real credential.
+# A token or key a caller hands us to store.
 MAX_SECRET_LENGTH = 16_384
 MAX_INSTRUCTIONS_LENGTH = 20_000
 

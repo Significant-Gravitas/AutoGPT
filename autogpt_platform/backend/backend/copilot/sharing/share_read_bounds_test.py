@@ -1,9 +1,8 @@
 """The chat-share file allowlist reads the same bounded window as the viewer.
 
 `_build_shared_execution_file_allowlist` authorises exactly the files the
-shared-run page can show. It filtered the run's node executions in Python
-after loading all of them with their nodes and input rows, so its cost grew
-with the run while the page it serves stayed the same size.
+shared-run page can show, so it reads that page's window: output and input
+blocks, a bounded number of rows, and the node read once for the run.
 """
 
 from unittest.mock import AsyncMock, patch
@@ -43,5 +42,7 @@ async def test_the_allowlist_scan_is_bounded(execution_client):
     assert OUTPUT_BLOCK_ID in (
         node_execs["where"]["Node"]["is"]["AgentBlock"]["is"]["id"]["in"]
     )
-    # Still the rows the outputs are built from.
+    # Still the rows the outputs are built from, and the node read once for
+    # the whole run rather than joined to each row.
     assert "Input" in node_execs["include"]
+    assert "Node" not in node_execs["include"]

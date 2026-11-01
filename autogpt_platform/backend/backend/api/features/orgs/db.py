@@ -277,13 +277,13 @@ async def create_org(
     Raises:
         ValueError: If the slug is already taken by another org or alias.
     """
-    # `GET /api/orgs` returns every org of the caller in one unpaginated
-    # response, on every logged-in page load, so the count is bounded at the
-    # create rather than by truncating that listing.
-    owned = await prisma.orgmember.count(
+    # Bounded at the create, because the listing has no page to truncate.
+    # Counts memberships, which is what the listing returns; accepting an
+    # invitation is not capped.
+    memberships = await prisma.orgmember.count(
         where={"userId": user_id, "status": "ACTIVE", "Org": {"deletedAt": None}}
     )
-    if owned >= MAX_ORGS_PER_USER:
+    if memberships >= MAX_ORGS_PER_USER:
         raise ValueError(
             f"An account belongs to at most {MAX_ORGS_PER_USER} organizations"
         )

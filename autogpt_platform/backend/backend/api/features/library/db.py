@@ -2188,9 +2188,7 @@ async def list_presets(
             "Invalid pagination input: page=%d, page_size=%d", page, page_size
         )
         raise InvalidInputError("Invalid pagination parameters")
-    # Each preset on the page brings all of its input rows, so this listing is
-    # capped tighter than the generic route bound, and in the DB layer so every
-    # caller is covered rather than one route.
+    # Capped here rather than per route, so every caller is covered.
     if page_size > MAX_PRESETS_PER_PAGE:
         raise InvalidInputError(
             f"At most {MAX_PRESETS_PER_PAGE} presets per page, got {page_size}"
@@ -2537,11 +2535,9 @@ async def update_preset(
     return library_model.LibraryAgentPreset.from_db(updated)
 
 
-# A preset keeps one row per input and loads every one of them back on each
-# read, so the row count and the payload are bounded here rather than on
-# `LibraryAgentPresetCreatable`: `LibraryAgentPreset` reads stored rows through
-# that model, so a bound on it would make a row already over the bound
-# unreadable. The same reason puts the name and description check here.
+# Bounded here rather than on `LibraryAgentPresetCreatable`, because
+# `LibraryAgentPreset` reads stored rows through that model: a bound on it
+# would make a row already over the bound unreadable.
 MAX_PRESET_INPUTS = 500
 MAX_PRESET_INPUT_BYTES = 256 * 1024
 MAX_PRESETS_PER_PAGE = 100
@@ -2562,7 +2558,7 @@ def check_preset_text(name: Optional[str], description: Optional[str]) -> None:
 def preset_input_rows(
     data: Mapping[str, Any],
 ) -> list[prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput]:
-    """Build a preset's input rows, refusing more than one read can carry."""
+    """Build a preset's input rows, within `MAX_PRESET_INPUTS` and bytes."""
     if len(data) > MAX_PRESET_INPUTS:
         raise InvalidInputError(
             f"A preset holds at most {MAX_PRESET_INPUTS} inputs, got {len(data)}"

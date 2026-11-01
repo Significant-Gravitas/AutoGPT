@@ -35,6 +35,13 @@ EXECUTION_RESULT_INCLUDE: prisma.types.AgentNodeExecutionInclude = {
     "GraphExecution": True,
 }
 
+# For a caller that reads each node once for the run and attaches it itself.
+EXECUTION_RESULT_INCLUDE_WITHOUT_NODE: prisma.types.AgentNodeExecutionInclude = {
+    "Input": {"order_by": {"time": "asc"}, "take": MAX_NODE_INPUT_OUTPUT_FETCH},
+    "Output": {"order_by": {"time": "asc"}, "take": MAX_NODE_INPUT_OUTPUT_FETCH},
+    "GraphExecution": True,
+}
+
 MAX_NODE_EXECUTIONS_FETCH = 1000
 MAX_LIBRARY_AGENT_EXECUTIONS_FETCH = 10
 
@@ -55,12 +62,18 @@ GRAPH_EXECUTION_INCLUDE_WITH_NODES: prisma.types.AgentGraphExecutionInclude = {
 
 def graph_execution_include(
     include_block_ids: Sequence[str],
+    node_execution_include: prisma.types.AgentNodeExecutionInclude | None = None,
 ) -> prisma.types.AgentGraphExecutionInclude:
     return {
         "NodeExecutions": {
             **cast(
                 prisma.types.FindManyAgentNodeExecutionArgsFromAgentGraphExecution,
                 GRAPH_EXECUTION_INCLUDE_WITH_NODES["NodeExecutions"],  # type: ignore
+            ),
+            **(
+                {"include": node_execution_include}
+                if node_execution_include is not None
+                else {}
             ),
             "where": {
                 "Node": {

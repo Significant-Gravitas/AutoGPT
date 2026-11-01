@@ -1,9 +1,8 @@
 """A graph's metadata text is bounded when it is saved.
 
 `GraphMeta` and `GraphModel` read stored rows through `GraphBaseMeta`, so the
-bound cannot live on the model: it would make a row already longer than the
-bound unreadable. It lives in the one write every save path reaches, which is
-why a route, a fork, a copy and the copilot are all covered by one check.
+bound lives in the one write every save path reaches — a route, a fork, a copy
+and the copilot — rather than on the model.
 """
 
 import pytest

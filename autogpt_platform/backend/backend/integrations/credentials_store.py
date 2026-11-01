@@ -26,10 +26,8 @@ from backend.util.settings import Settings
 settings = Settings()
 logger = logging.getLogger(__name__)
 
-# Every read of a user's integrations decrypts and validates all of their
-# stored items, and every write rewrites all of them, so one account's share
-# of that work is bounded here, where every route ends up. A real credential
-# is a few KiB.
+# Per-account limits for stored credentials and pending sign-ins, set here
+# because every route reaches the store. A real credential is a few KiB.
 MAX_STORED_ITEM_BYTES = 64 * 1024
 MAX_CREDENTIALS_PER_USER = 100
 MAX_PENDING_OAUTH_STATES_PER_USER = 100
@@ -621,8 +619,7 @@ class IntegrationCredentialsStore:
         check_storable_size(state)
 
         async with self.edit_user_integrations(user_id) as user_integrations:
-            # The single writer of `oauth_states` for every flow, so expired
-            # ones are dropped here; nothing else ever removes them.
+            # The single writer of `oauth_states`, so expired ones go here.
             now = datetime.now(timezone.utc).timestamp()
             pending = [s for s in user_integrations.oauth_states if s.expires_at > now]
             if len(pending) >= MAX_PENDING_OAUTH_STATES_PER_USER:
@@ -779,7 +776,7 @@ class IntegrationCredentialsStore:
 
 
 def check_storable_size(item: Credentials | OAuthState) -> None:
-    """Refuse an item too large for every later read of this user to carry."""
+    """Refuse an item larger than `MAX_STORED_ITEM_BYTES`."""
     item_bytes = len(item.model_dump_json().encode())
     if item_bytes > MAX_STORED_ITEM_BYTES:
         raise InvalidInputError(

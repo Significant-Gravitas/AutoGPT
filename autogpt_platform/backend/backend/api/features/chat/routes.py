@@ -371,8 +371,7 @@ def _strip_injected_context(message: dict) -> dict:
 # ========== Request/Response Models ==========
 
 
-# {url: str, content: str}: the page the user attached, so each value is
-# bounded like `message` and the dict like the attachment lists below.
+# {url: str, content: str}: the page the user attached.
 MAX_CHAT_MESSAGE_LENGTH = 64_000
 MAX_CONTEXT_ENTRIES = 5
 ChatContext = dict[

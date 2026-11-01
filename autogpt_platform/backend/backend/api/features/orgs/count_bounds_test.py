@@ -1,9 +1,7 @@
 """How many orgs and workspaces one account can create is bounded.
 
-`GET /api/orgs` and `GET /api/orgs/{org_id}/workspaces` return every row in
-one unpaginated response — the first on every logged-in page load — so the
-count is bounded where the row is created. A `take` on those listings would
-instead hide rows from their owner.
+Bounded at the create, because `GET /api/orgs` and the workspace listing have
+no page to truncate: a `take` there would hide rows from their owner.
 """
 
 from unittest.mock import AsyncMock, MagicMock

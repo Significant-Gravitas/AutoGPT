@@ -53,8 +53,6 @@ async def create_invitation(
     # add_team_member re-validates (and silently skips failures), so
     # without this check a poisoned invitation would fail silently at
     # accept instead of loudly at create.
-    # Stored once each: the accept path walks the list, and the pending-
-    # invitation listings return it in full.
     team_ids = list(dict.fromkeys(request.team_ids))
     if team_ids:
         teams = await prisma.team.find_many(where={"id": {"in": team_ids}})

@@ -1,38 +1,79 @@
 """Every string a request stores carries a length bound.
 
-A text column written from a request body is read back whole by a listing, so
-its bound is what keeps that listing's size predictable. The bound belongs on
-the request model, which refuses the value before anything is parsed into the
-database layer and tells the generated client the limit.
-
-Where a response model inherits the request model, the bound goes on the write
-instead: a bound on the shared model would make a stored row already longer
-than it unreadable. Such a model is listed in ``BOUNDED_AT_THE_WRITE`` with the
+The bound belongs on the request model, which refuses the value before
+anything is parsed into the database layer and tells the generated client the
+limit. Where a response model inherits the request model, it goes on the write
+instead, because a bound on the shared model would make a stored row already
+over it unreadable; such a model is listed in ``BOUNDED_AT_THE_WRITE`` with the
 response model that reads through it, and this file checks that relationship
-still holds — so the exemption disappears by itself once it stops being true.
+still holds.
+
+This walks every module under ``backend.api``, so a request model in a new
+module is covered by default. It reads string lengths; a bound on how many
+entries a list or dict field takes is checked by that field's own test.
 """
 
 import importlib
 import inspect
-from collections.abc import Iterator
-from typing import Any
+import pkgutil
+from typing import Any, Iterator
 
 import pydantic
 import pytest
 
-# Modules whose request models are bounded. A module joins this list with the
-# change that bounds its models; it is never removed to make a new field pass.
-BOUNDED_MODULES = [
-    "backend.api.external.v2.models",
-    "backend.api.features.chat.routes",
-    "backend.api.features.library.model",
-    "backend.api.features.orgs.model",
-    "backend.api.features.orgs.team_model",
-    "backend.api.features.store.model",
-    "backend.api.features.store.skill_model",
-    "backend.api.features.transfers.model",
-    "backend.api.features.workspace.folder_routes",
-]
+import backend.api
+
+# Request models that still take unbounded text. The list only shrinks:
+# bounding one of these means deleting its line, which
+# ``test_the_allowlist_only_shrinks`` enforces.
+UNBOUNDED_REQUEST_MODELS = frozenset(
+    {
+        "backend.api.external.v1.integrations.CreateAPIKeyCredentialRequest",
+        "backend.api.external.v1.integrations.CreateHostScopedCredentialRequest",
+        "backend.api.external.v1.integrations.CreateUserPasswordCredentialRequest",
+        "backend.api.external.v1.integrations.OAuthCompleteRequest",
+        "backend.api.external.v1.integrations.OAuthInitiateRequest",
+        "backend.api.external.v1.tools.FindAgentRequest",
+        "backend.api.external.v1.tools.RunAgentRequest",
+        "backend.api.external.v2.pagination.PageRequest",
+        "backend.api.features.admin.diagnostics_admin_routes.ScheduleCleanupRequest",
+        "backend.api.features.admin.diagnostics_admin_routes.StopExecutionRequest",
+        "backend.api.features.admin.diagnostics_admin_routes.StopExecutionsRequest",
+        "backend.api.features.admin.execution_analytics_routes.AccuracyTrendsRequest",
+        "backend.api.features.admin.execution_analytics_routes.ExecutionAnalyticsRequest",
+        "backend.api.features.admin.impersonation_admin_routes.ImpersonationNotifyRequest",
+        "backend.api.features.admin.rate_limit_admin_routes.SetUserTierRequest",
+        "backend.api.features.api_keys.model.CreateAPIKeyRequest",
+        "backend.api.features.auth_email.routes.AuthEmailRequest",
+        "backend.api.features.auth_email.routes.AuthEmailSuppressionRequest",
+        "backend.api.features.billing.subscriptions.routes.SubscriptionTierRequest",
+        "backend.api.features.chat.speech.SpeechRequest",
+        "backend.api.features.experts.models.ExpertSkillsUpdate",
+        "backend.api.features.experts.routes.AssignPodRequest",
+        "backend.api.features.experts.routes.GrantCredentialsRequest",
+        "backend.api.features.experts.routes.HireRequest",
+        "backend.api.features.experts.routes.InstallWorkflowRequest",
+        "backend.api.features.integrations.router.DeviceAuthPollRequest",
+        "backend.api.features.mcp.routes.DiscoverToolsRequest",
+        "backend.api.features.mcp.routes.MCPOAuthCallbackRequest",
+        "backend.api.features.mcp.routes.MCPOAuthLoginRequest",
+        "backend.api.features.mcp.routes.MCPStoreTokenRequest",
+        "backend.api.features.oauth.AuthorizeRequest",
+        "backend.api.features.oauth.UpdateAppLogoRequest",
+        "backend.api.features.onboarding_dump.models.FinalizeRequest",
+        "backend.api.features.onboarding_dump.models.SuggestedTasksUpdate",
+        "backend.api.features.otto.models.ChatRequest",
+        "backend.api.features.platform_linking.routes.ConfirmLinkRequest",
+        "backend.api.features.schedules.model.ScheduleCreationRequest",
+        "backend.api.features.schedules.model.ScheduleUpdateRequest",
+        "backend.api.features.schedules.model.SetScheduledChatCadenceRequest",
+        "backend.api.features.skill_learning.models.EditSkillRequest",
+        "backend.api.features.skills.model.UploadCopilotSkillRequest",
+        "backend.api.features.subscription_trial_models.TrialCheckoutRequest",
+        "backend.api.model.WSSubscribeGraphExecutionRequest",
+        "backend.api.model.WSSubscribeGraphExecutionsRequest",
+    }
+)
 
 # Request model -> the response model that reads stored rows through it.
 BOUNDED_AT_THE_WRITE = {
@@ -50,15 +91,34 @@ _BOUNDED_FORMATS = frozenset({"date", "date-time", "time", "duration", "uuid"})
 
 def test_every_request_string_field_is_bounded():
     unbounded = [
-        f"{model.__module__}.{model.__qualname__}.{path}"
+        f"{_qualified(model)}.{path}"
         for model in _request_models()
         if _qualified(model) not in BOUNDED_AT_THE_WRITE
+        and _qualified(model) not in UNBOUNDED_REQUEST_MODELS
         for path in _unbounded_string_paths(model)
     ]
     assert not unbounded, (
         "These request fields store text with no length bound. Give each one a "
         "`max_length`, or bound it at the write and list its model in "
         "BOUNDED_AT_THE_WRITE:\n  " + "\n  ".join(sorted(unbounded))
+    )
+
+
+def test_the_allowlist_only_shrinks():
+    models = {_qualified(model): model for model in _request_models()}
+    gone = sorted(UNBOUNDED_REQUEST_MODELS - models.keys())
+    assert not gone, (
+        "These models are in UNBOUNDED_REQUEST_MODELS but no longer exist; "
+        "drop their lines:\n  " + "\n  ".join(gone)
+    )
+    bounded_now = sorted(
+        name
+        for name in UNBOUNDED_REQUEST_MODELS
+        if not list(_unbounded_string_paths(models[name]))
+    )
+    assert not bounded_now, (
+        "These models are bounded now, so they must come off "
+        "UNBOUNDED_REQUEST_MODELS:\n  " + "\n  ".join(bounded_now)
     )
 
 
@@ -71,59 +131,6 @@ def test_write_bounded_models_are_still_read_through_by_a_response():
             f"{request_path}, so that model can take field bounds now; "
             "bound its fields and drop the BOUNDED_AT_THE_WRITE entry"
         )
-
-
-@pytest.mark.parametrize(
-    "model_path, field_name, over_the_bound",
-    [
-        ("backend.api.features.orgs.model.CreateOrgRequest", "description", "x" * 2001),
-        (
-            "backend.api.features.orgs.model.CreateInvitationRequest",
-            "team_ids",
-            ["i"] * 101,
-        ),
-        (
-            "backend.api.features.chat.routes.UpdateSessionTitleRequest",
-            "title",
-            "x" * 201,
-        ),
-        (
-            "backend.api.features.store.model.ProfileUpdateRequest",
-            "links",
-            ["u" * 2049],
-        ),
-        (
-            "backend.api.features.transfers.model.CreateTransferRequest",
-            "reason",
-            "x" * 2001,
-        ),
-    ],
-)
-def test_the_declared_bounds_refuse_a_value_over_them(
-    model_path: str, field_name: str, over_the_bound: Any
-):
-    """The bounds validate, rather than only appearing in the schema."""
-    model = _import_attr(model_path)
-    fields = {
-        name: _placeholder(field)
-        for name, field in model.model_fields.items()
-        if field.is_required()
-    }
-    fields[field_name] = over_the_bound
-
-    with pytest.raises(pydantic.ValidationError):
-        model(**fields)
-
-
-def _placeholder(field) -> Any:
-    annotation = field.annotation
-    if annotation is bool:
-        return False
-    if annotation is int:
-        return 1
-    if getattr(annotation, "__origin__", None) is list:
-        return []
-    return "x"
 
 
 def test_the_check_fails_on_an_unbounded_string():
@@ -142,12 +149,14 @@ def test_the_check_fails_on_an_unbounded_string():
 
 
 def _request_models() -> Iterator[type[pydantic.BaseModel]]:
-    for module_path in BOUNDED_MODULES:
-        module = importlib.import_module(module_path)
-        for name, obj in vars(module).items():
+    for module in pkgutil.walk_packages(backend.api.__path__, "backend.api."):
+        if module.name.endswith("_test") or "_test." in module.name:
+            continue
+        imported = importlib.import_module(module.name)
+        for name, obj in vars(imported).items():
             if not (inspect.isclass(obj) and issubclass(obj, pydantic.BaseModel)):
                 continue
-            if obj.__module__ != module_path:
+            if obj.__module__ != module.name:
                 continue
             if name.endswith(_REQUEST_MODEL_SUFFIXES):
                 yield obj

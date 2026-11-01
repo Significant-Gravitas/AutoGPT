@@ -1,9 +1,7 @@
 """What one account may keep in the integrations store is bounded.
 
-Every read of a user's integrations decrypts and validates all of their stored
-items, and every write rewrites all of them, so the bound sits in the store,
-where the REST route, the external API, the MCP routes and the OAuth callbacks
-all end up.
+The bound sits in the store, which the REST route, the external API, the MCP
+routes and the OAuth callbacks all reach.
 """
 
 from datetime import UTC, datetime, timedelta
