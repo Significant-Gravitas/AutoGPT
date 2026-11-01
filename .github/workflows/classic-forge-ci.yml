@@ -32,8 +32,7 @@ jobs:
     permissions:
       contents: read
     timeout-minutes: 30
-    # Pinned: Playwright has no Chromium build for ubuntu-latest's 26.04 image.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
