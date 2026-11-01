@@ -191,6 +191,9 @@ ig*
 # And the copilot price card: an ignored module is untracked, and ruff
 # (force-exclude) and black skip it too, so it would ship unlinted.
 !autogpt_platform/backend/backend/copilot/price_card*.py
+# Same trap: `pri*` hid prisma_compat.py, so the P1017 shim would never
+# be committed and black/ruff would skip it.
+!autogpt_platform/backend/backend/data/prisma_compat*.py
 .github_access_token
 LICENSE.rtf
 autogpt_platform/backend/settings.py

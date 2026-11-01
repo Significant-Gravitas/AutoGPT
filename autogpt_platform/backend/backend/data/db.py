@@ -10,9 +10,11 @@ from dotenv import load_dotenv
 from prisma import Prisma
 from pydantic import BaseModel, Field, field_validator
 
+from backend.data.prisma_compat import patch_handle_response_errors
 from backend.util.retry import conn_retry
 
 load_dotenv()
+patch_handle_response_errors()
 
 PRISMA_SCHEMA = os.getenv("PRISMA_SCHEMA", "schema.prisma")
 os.environ["PRISMA_SCHEMA_PATH"] = PRISMA_SCHEMA
