@@ -22,6 +22,9 @@ MAX_EMAIL_LENGTH = 320
 MAX_SUMMARY_LENGTH = 500
 MAX_DESCRIPTION_LENGTH = 2_000
 MAX_URL_LENGTH = 2_048
+# A token or key a caller hands us to store. Well under the per-item cap the
+# integrations store enforces, and far above any real credential.
+MAX_SECRET_LENGTH = 16_384
 MAX_INSTRUCTIONS_LENGTH = 20_000
 
 # How many entries a stored list field may carry.
@@ -30,3 +33,4 @@ MAX_LIST_ENTRIES = 100
 IDText = Annotated[str, StringConstraints(max_length=MAX_ID_LENGTH)]
 NameText = Annotated[str, StringConstraints(max_length=MAX_NAME_LENGTH)]
 URLText = Annotated[str, StringConstraints(max_length=MAX_URL_LENGTH)]
+SecretText = Annotated[str, StringConstraints(max_length=MAX_SECRET_LENGTH)]

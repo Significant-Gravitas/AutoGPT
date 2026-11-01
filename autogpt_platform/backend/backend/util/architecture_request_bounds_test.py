@@ -23,6 +23,7 @@ import pytest
 # Modules whose request models are bounded. A module joins this list with the
 # change that bounds its models; it is never removed to make a new field pass.
 BOUNDED_MODULES = [
+    "backend.api.external.v2.models",
     "backend.api.features.chat.routes",
     "backend.api.features.library.model",
     "backend.api.features.orgs.model",
