@@ -2301,6 +2301,7 @@ async def create_preset(
     logger.debug(
         f"Creating preset ({repr(preset.name)}) for user #{user_id}",
     )
+    await check_preset_count(user_id)
     # A preset may only reference a graph the caller can access (owned, or in
     # their library and submitted); get_graph() enforces that, None if not.
     # The preset then inherits the graph's org/team (resource-follows-parent)
@@ -2528,6 +2529,9 @@ async def update_preset(
     return library_model.LibraryAgentPreset.from_db(updated)
 
 
+MAX_PRESETS_PER_USER = 1000
+
+
 def preset_input_rows(
     entries: Mapping[str, object],
 ) -> list[prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput]:
@@ -2547,6 +2551,18 @@ def check_preset_input_count(entries: Mapping[str, object]) -> None:
         raise InvalidInputError(
             f"A preset takes at most {MAX_NODE_INPUT_OUTPUT_FETCH} inputs and "
             f"credentials together; got {len(entries)}"
+        )
+
+
+async def check_preset_count(user_id: str) -> None:
+    """Refuse a new preset once the user holds `MAX_PRESETS_PER_USER`."""
+    held = await prisma.models.AgentPreset.prisma().count(
+        where={"userId": user_id, "isDeleted": False}
+    )
+    if held >= MAX_PRESETS_PER_USER:
+        raise InvalidInputError(
+            f"An account holds at most {MAX_PRESETS_PER_USER} presets; "
+            "delete one to save another"
         )
 
 

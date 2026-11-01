@@ -53,6 +53,12 @@ def _patches(*, graph, webhook=..., feedback=None, preset=None, graph_expert=Non
 
 
 @pytest.fixture(autouse=True)
+def _under_the_preset_cap():
+    with patch(f"{_PATH}.db.check_preset_count", new=AsyncMock()) as check:
+        yield check
+
+
+@pytest.fixture(autouse=True)
 def _user_belongs_to_the_graphs_org():
     """A trigger takes its graph's org/team when the user belongs to it.
     Tests of someone else's graph patch this to give the user's own."""
@@ -303,6 +309,26 @@ async def test_an_oversized_trigger_config_registers_no_webhook():
         pytest.raises(InvalidInputError, match="at most"),
     ):
         await _setup(trigger_config=oversized)
+    webhook_mock.assert_not_awaited()
+    create_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_account_at_the_preset_cap_registers_no_webhook(
+    _under_the_preset_cap,
+):
+    _under_the_preset_cap.side_effect = InvalidInputError("at most 1000 presets")
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook as webhook_mock,
+        p_create as create_mock,
+        pytest.raises(InvalidInputError, match="at most"),
+    ):
+        await _setup()
+    _under_the_preset_cap.assert_awaited_once_with(_USER)
     webhook_mock.assert_not_awaited()
     create_mock.assert_not_awaited()
 

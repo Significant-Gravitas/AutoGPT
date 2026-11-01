@@ -27,6 +27,12 @@ from ._add_to_library import restore_existing_library_agent
 from .exceptions import LibraryAgentInAnotherOrganizationError
 
 
+@pytest.fixture(autouse=True)
+def _under_the_preset_cap(mocker):
+    # The cap's query is proven against a real database in preset_count_test.py.
+    mocker.patch.object(db, "check_preset_count", new=AsyncMock())
+
+
 @pytest.mark.parametrize("expert_id", [None, "expert-1"])
 @pytest.mark.asyncio
 async def test_list_presets_filters_exact_expert_scope(mocker, expert_id):
