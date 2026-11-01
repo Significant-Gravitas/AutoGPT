@@ -76,7 +76,7 @@ async def test_a_run_over_the_input_budget_is_refused_before_it_is_built(
         await _validate(mocker, _inputs_named_x(7), {"x": value})
 
     construct.assert_not_awaited()
-    assert measure.call_count == 1
+    assert [call.args[0] for call in measure.call_args_list] == ["x", value]
 
 
 @pytest.mark.asyncio
@@ -131,6 +131,80 @@ async def test_node_input_overrides_count_toward_the_input_budget(
         )
 
     construct.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_each_starting_node_copy_of_its_overrides_counts_toward_the_budget(
+    mocker: MockerFixture, construct: AsyncMock
+):
+    # Stored once these come to about three fifths of the budget; each
+    # starting node's copy of its own overrides takes that over.
+    value = "a" * (utils.MAX_RUN_INPUT_BYTES // 5)
+    nodes_input_masks = {f"input-{i}": {"value": value} for i in range(3)}
+
+    with pytest.raises(InvalidInputError, match="too large"):
+        await _validate(
+            mocker, _inputs_named_x(3), {}, nodes_input_masks=nodes_input_masks
+        )
+
+    construct.assert_not_awaited()
+
+
+# A graph input stored as {"<key>":null}: braces, quotes, colon and null.
+_NULL_INPUT_OVERHEAD = 2 + 2 + 1 + 4
+
+
+@pytest.mark.asyncio
+async def test_a_large_input_key_at_the_input_budget_is_accepted(
+    mocker: MockerFixture, construct: AsyncMock
+):
+    key = "k" * (utils.MAX_RUN_INPUT_BYTES - _NULL_INPUT_OVERHEAD)
+
+    await _validate(mocker, _inputs_named_x(1), {key: None})
+
+    construct.assert_awaited_once()
+    assert sum(
+        utils._run_input_sizes(_inputs_named_x(1), {key: None}, {}, {})
+    ) == len(utils.json_dumps({key: None}))
+
+
+@pytest.mark.asyncio
+async def test_a_large_input_key_over_the_input_budget_is_refused(
+    mocker: MockerFixture, construct: AsyncMock
+):
+    key = "k" * (utils.MAX_RUN_INPUT_BYTES - _NULL_INPUT_OVERHEAD + 1)
+
+    with pytest.raises(InvalidInputError, match="too large"):
+        await _validate(mocker, _inputs_named_x(1), {key: None})
+
+    construct.assert_not_awaited()
+
+
+def test_the_input_budget_counts_every_key_of_what_the_run_stores():
+    graph_inputs = {"x": "value", "unused": None}
+    nodes_input_masks = {"node-1": {"value": 1}, "node-2": {}}
+    credentials = CredentialsMetaInput(
+        id="cred-1", provider=ProviderName("github"), type="api_key"
+    )
+    graph_credentials_inputs = {"github": credentials}
+
+    counted = sum(
+        utils._run_input_sizes(
+            _inputs_named_x(0),
+            graph_inputs,
+            nodes_input_masks,
+            graph_credentials_inputs,
+        )
+    )
+
+    assert counted == sum(
+        len(utils.json_dumps(mapping).encode("utf-8"))
+        for mapping in (
+            graph_inputs,
+            nodes_input_masks,
+            {"github": credentials.model_dump(mode="json", exclude_none=True)},
+        )
+    )
 
 
 def test_credentials_copied_into_nodes_get_a_short_title(mocker: MockerFixture):

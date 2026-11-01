@@ -5,7 +5,17 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future
-from typing import Any, Iterator, Literal, Mapping, Optional, cast, get_args
+from typing import (
+    Any,
+    Callable,
+    Iterator,
+    Literal,
+    Mapping,
+    Optional,
+    TypeVar,
+    cast,
+    get_args,
+)
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field, JsonValue, ValidationError
@@ -1041,24 +1051,55 @@ def _run_input_sizes(
     nodes_input_masks: NodesInputMasks,
     graph_credentials_inputs: Mapping[str, CredentialsMetaInput],
 ) -> Iterator[int]:
-    """The size of each graph input as stored on the run, and again for every
-    input block `_construct_starting_node_execution_input` copies it to, then
-    of each node's input overrides and of the credentials stored on the run.
-    Each graph input is measured only once."""
+    """The size of the graph inputs, node input overrides and credentials as
+    stored on the run, keys included, then of each starting node's copy of a
+    graph input value and of its own input overrides, which
+    `_construct_starting_node_execution_input` puts in that node's input.
+    Each value is measured only once."""
     input_sizes: dict[str, int] = {}
-    for input_name, value in graph_inputs.items():
+    mask_sizes: dict[str, int] = {}
+
+    def graph_input_size(input_name: str, value: Any) -> int:
         input_sizes[input_name] = _json_size(value)
-        yield input_sizes[input_name]
+        return input_sizes[input_name]
+
+    def node_input_mask_size(node_id: str, node_input_mask: Any) -> int:
+        mask_sizes[node_id] = _json_size(node_input_mask)
+        return mask_sizes[node_id]
+
+    yield from _json_mapping_sizes(graph_inputs, graph_input_size)
+    yield from _json_mapping_sizes(nodes_input_masks, node_input_mask_size)
+    yield from _json_mapping_sizes(
+        graph_credentials_inputs,
+        lambda _, credentials: _json_size(
+            credentials.model_dump(mode="json", exclude_none=True)
+        ),
+    )
     for node in graph.starting_nodes:
-        input_name = cast(str | None, node.input_default.get("name"))
-        if node.block.block_type != BlockType.INPUT:
+        if node.block.block_type == BlockType.NOTE:
             continue
-        if input_name and input_name in input_sizes:
+        input_name = cast(str | None, node.input_default.get("name"))
+        if (
+            node.block.block_type == BlockType.INPUT
+            and input_name
+            and input_name in input_sizes
+        ):
             yield input_sizes[input_name]
-    for node_input_mask in nodes_input_masks.values():
-        yield _json_size(node_input_mask)
-    for credentials in graph_credentials_inputs.values():
-        yield _json_size(credentials.model_dump(mode="json", exclude_none=True))
+        if node.id in mask_sizes:
+            yield mask_sizes[node.id]
+
+
+_V = TypeVar("_V")
+
+
+def _json_mapping_sizes(
+    mapping: Mapping[str, _V], value_size: Callable[[str, _V], int]
+) -> Iterator[int]:
+    """The size of `mapping` as compact JSON, in parts: its braces, then each
+    entry with its key, colon and comma."""
+    yield 2
+    for i, (key, value) in enumerate(mapping.items()):
+        yield (1 if i else 0) + _json_size(key) + 1 + value_size(key, value)
 
 
 def _json_size(value: Any) -> int:
