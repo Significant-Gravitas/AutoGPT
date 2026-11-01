@@ -1,3 +1,4 @@
+import codecs
 from unittest.mock import MagicMock
 from urllib.parse import urlparse
 
@@ -7,6 +8,7 @@ import pytest_mock
 from aiohttp import web
 
 from backend.util.request import (
+    ALLOWED_RESPONSE_CHARSETS,
     Requests,
     Response,
     ResponseTooLargeError,
@@ -985,7 +987,19 @@ def _response(body: bytes, content_type: str) -> Response:
     return Response(response=raw, url="https://example.com/", body=body)
 
 
-@pytest.mark.parametrize("charset", ["punycode", "unicode_escape", "no-such-codec"])
+@pytest.mark.parametrize(
+    "charset",
+    [
+        "punycode",
+        "unicode_escape",
+        "raw_unicode_escape",
+        "idna",
+        "utf-7",
+        "hz",
+        "undefined",
+        "no-such-codec",
+    ],
+)
 def test_response_text_decodes_an_unlisted_charset_as_utf8(charset: str):
     body = "abc-caf\\xe9-é".encode()
 
@@ -1000,3 +1014,29 @@ def test_response_text_decodes_an_unlisted_charset_as_utf8(charset: str):
 )
 def test_response_text_uses_a_listed_charset(content_type: str):
     assert _response(b"caf\xe9", content_type).text() == "café"
+
+
+@pytest.mark.parametrize(
+    "charset, body, expected",
+    [
+        ("TIS-620", b"\xa1", "\u0e01"),
+        ("CP874", b"\xa1", "\u0e01"),
+        ("cp950", b"\xa4\xa4\xf9\xd6", "\u4e2d\u7881"),
+        ("Shift_JIS", b"\x82\xa0", "\u3042"),
+        ("Shift_JIS_2004", b"\x82\xa0", "\u3042"),
+        ("ISO-2022-JP-2", b"\x1b$B$\"\x1b(B", "\u3042"),
+        ("MacCyrillic", b"\x80", "\u0410"),
+        ("KOI8-T", b"\xf0", "\u041f"),
+        ("johab", b"\x88\x61", "\uac00"),
+    ],
+)
+def test_response_text_decodes_a_listed_text_charset(
+    charset: str, body: bytes, expected: str
+):
+    assert _response(body, f"text/plain; charset={charset}").text() == expected
+
+
+def test_allowed_response_charsets_are_canonical_codec_names():
+    assert {codecs.lookup(name).name for name in ALLOWED_RESPONSE_CHARSETS} == (
+        ALLOWED_RESPONSE_CHARSETS
+    )

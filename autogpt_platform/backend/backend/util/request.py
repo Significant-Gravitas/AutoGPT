@@ -104,10 +104,12 @@ HOSTNAME_REGEX = re.compile(r"^[A-Za-z0-9.-]+$")  # Basic DNS-safe hostname patt
 # The longest name DNS allows, checked before IDNA encoding.
 MAX_HOSTNAME_LENGTH = 253
 
-# Charsets a remote server may name for a response body we decode, by their
-# canonical codec names. Anything else is decoded as UTF-8.
+# An allowlist of the text encodings a remote server may name for a response
+# body we decode, by their canonical codec names (``codecs.lookup(...).name``),
+# so any alias of a listed codec matches. Anything else is decoded as UTF-8.
 ALLOWED_RESPONSE_CHARSETS = frozenset(
     {
+        # Unicode
         "utf-8",
         "utf-8-sig",
         "utf-16",
@@ -117,23 +119,51 @@ ALLOWED_RESPONSE_CHARSETS = frozenset(
         "utf-32-le",
         "utf-32-be",
         "ascii",
+        # ISO-8859, Windows, KOI8 and Mac single-byte families
         *(f"iso8859-{n}" for n in (*range(1, 12), *range(13, 17))),
         *(f"cp{n}" for n in range(1250, 1259)),
-        "cp874",
-        "cp932",
-        "cp949",
         "koi8-r",
         "koi8-u",
+        "koi8-t",
+        "mac-arabic",
+        "mac-croatian",
+        "mac-cyrillic",
+        "mac-farsi",
+        "mac-greek",
+        "mac-iceland",
+        "mac-latin2",
         "mac-roman",
-        "shift_jis",
-        "euc_jp",
-        "iso2022_jp",
+        "mac-romanian",
+        "mac-turkish",
+        # Thai
+        "tis-620",
+        "cp874",
+        # Chinese
         "gb2312",
         "gbk",
         "gb18030",
         "big5",
         "big5hkscs",
+        "cp950",
+        # Japanese
+        "shift_jis",
+        "shift_jis_2004",
+        "shift_jisx0213",
+        "cp932",
+        "euc_jp",
+        "euc_jis_2004",
+        "euc_jisx0213",
+        "iso2022_jp",
+        "iso2022_jp_1",
+        "iso2022_jp_2",
+        "iso2022_jp_2004",
+        "iso2022_jp_3",
+        "iso2022_jp_ext",
+        # Korean
         "euc_kr",
+        "cp949",
+        "johab",
+        "iso2022_kr",
     }
 )
 
