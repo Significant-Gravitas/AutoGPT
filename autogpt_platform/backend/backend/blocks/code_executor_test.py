@@ -36,7 +36,10 @@ from backend.blocks.code_executor_helpers import (
 )
 from backend.data.execution import ExecutionContext
 from backend.integrations.credentials_store import e2b_credentials
-from backend.util.sandbox_output import OutputLimitedCodeSandbox
+from backend.util.sandbox_output import (
+    OutputLimitedCodeSandbox,
+    SandboxOutputLimitError,
+)
 
 # A credential with no key of its own: E2B opens the box on the operator's,
 # so a block must ask for the pause as it does for the platform's own.
@@ -545,6 +548,35 @@ class TestKeptSandbox:
         assert hold.await_args_list == ([call("sb")] if kept else [])
         assert release.await_args_list == (
             [call("sb", box, api_key="k")] if kept else []
+        )
+
+    @pytest.mark.parametrize(
+        "dispose_sandbox, outcome", [(True, "kill"), (False, "release")]
+    )
+    async def test_output_past_the_limit_still_kills_or_releases_the_box(
+        self, dispose_sandbox, outcome
+    ):
+        box = _executed_box("sb")
+        box.run_code = AsyncMock(side_effect=SandboxOutputLimitError("too much"))
+        m = "backend.blocks.code_executor"
+        kill, hold, release = AsyncMock(), AsyncMock(), AsyncMock()
+        with (
+            patch(f"{m}.create_sandbox", AsyncMock(return_value=box)),
+            patch(f"{m}.kill_sandbox", kill),
+            patch(f"{m}.hold_sandbox", hold),
+            patch(f"{m}.release_sandbox", release),
+            pytest.raises(SandboxOutputLimitError),
+        ):
+            await ExecuteCodeBlock().execute_code(
+                api_key="k",
+                code="print(1)",
+                language=ProgrammingLanguage.PYTHON,
+                dispose_sandbox=dispose_sandbox,
+                pause_when_kept=True,
+            )
+        assert kill.await_args_list == ([call(box)] if outcome == "kill" else [])
+        assert release.await_args_list == (
+            [call("sb", box, api_key="k")] if outcome == "release" else []
         )
 
     @pytest.mark.parametrize("connects", [True, False])
