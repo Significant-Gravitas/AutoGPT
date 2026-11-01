@@ -21,6 +21,10 @@ export interface TurnStats {
    *  "Queued" badge anchors on this row whenever the OWNING session's
    *  ``chat_status === "queued"`` (checked at render time). */
   isLatestUserMessage?: boolean;
+  /** The ``<session>-seq-N`` id a reload gives this bubble, once its rows are
+   *  saved. A live turn's bubble is keyed by the turn instead, and a rating
+   *  has to name the saved row. */
+  savedMessageId?: string | null;
 }
 
 export type TurnStatsMap = Map<string, TurnStats>;
@@ -728,6 +732,26 @@ export function createTurnLogRenderer(
     memo = next;
     return messages;
   };
+}
+
+/**
+ * The id a reload gives each assistant bubble of a turn: its last saved row's
+ * sequence, as ``convertChatSessionMessagesToUiMessages`` keys a merged bubble.
+ */
+export function savedTurnBubbleIds(
+  sessionId: string,
+  log: TurnLog,
+): Map<string, string> {
+  const ids = new Map<string, string>();
+  for (const group of groupTurnRows(log)) {
+    if (group.role !== "assistant") continue;
+    const sequence = group.rows
+      .map((i) => log.rows[i].sequence)
+      .findLast((s): s is number => s !== null);
+    if (sequence !== undefined)
+      ids.set(group.key, `${sessionId}-seq-${sequence}`);
+  }
+  return ids;
 }
 
 interface TurnGroup {

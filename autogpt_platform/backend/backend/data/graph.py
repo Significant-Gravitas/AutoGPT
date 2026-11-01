@@ -16,6 +16,7 @@ from typing import (
     get_args,
 )
 
+from prisma import Prisma
 from prisma.enums import SubmissionStatus
 from prisma.models import (
     AgentGraph,
@@ -47,6 +48,7 @@ from backend.util.exceptions import (
     GraphNotInLibraryError,
     GraphValidationError,
     NotAuthorizedError,
+    NotFoundError,
 )
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
@@ -54,8 +56,8 @@ from backend.util.request import parse_url
 from backend.util.text import split_camelcase
 
 from .block import BlockInput
-from .db import BaseDbModel, execute_raw_with_schema, query_raw_with_schema, transaction
-from .dynamic_fields import is_tool_pin, sanitize_pin_name
+from .db import BaseDbModel, execute_raw_with_schema, transaction
+from .dynamic_fields import assert_safe_pin_name, is_tool_pin, sanitize_pin_name
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE, MAX_GRAPH_VERSIONS_FETCH
 from .model import CredentialsFieldInfo, CredentialsMetaInput, is_credentials_field_name
 
@@ -1856,6 +1858,16 @@ async def get_graph_version_owners(graph_id: str) -> set[tuple[str, str | None]]
     return {(version.userId, version.organizationId) for version in versions}
 
 
+async def is_graph_version_owner(graph_id: str, version: int, user_id: str) -> bool:
+    """Whether *user_id* saved this version of the graph."""
+    return (
+        await AgentGraph.prisma().count(
+            where={"id": graph_id, "version": version, "userId": user_id}
+        )
+        > 0
+    )
+
+
 async def assert_graph_within(
     graph_id: str, user_id: str, organization_ids: Collection[str | None]
 ) -> None:
@@ -2247,27 +2259,34 @@ async def __create_graph(
 ):
     graphs = [graph] + graph.sub_graphs
 
-    # Auto-increment version for any graph entry (parent or sub-graph) whose
-    # (id, version) already exists.  This prevents UniqueViolationError when
-    # the copilot re-saves an agent that already exists at the requested version.
-    # NOTE: This issues one find_first query per graph entry (N+1 pattern).
-    # Sub-graph counts are typically small (< 5), so the overhead is negligible.
+    # Reject unsafe dynamic pin names before anything is written, so no save
+    # path (route, fork, copy, copilot) can persist one. The use-site guards in
+    # dynamic_fields stay the backstop for names already in the DB.
     for g in graphs:
-        existing = await AgentGraph.prisma(tx).find_first(
+        for node in g.nodes:
+            for pin_name in node.input_default:
+                assert_safe_pin_name(pin_name)
+        for link in g.links:
+            assert_safe_pin_name(link.source_name)
+            assert_safe_pin_name(link.sink_name)
+
+    # A graph ID has one owner: refuse anyone else's, and number the version
+    # after the latest stored one.
+    for g in graphs:
+        owner_id = await graph_owner_id(g.id, tx)
+        if owner_id is not None and owner_id != user_id:
+            raise NotFoundError(f"Workflow #{g.id} not found")
+
+        latest = await AgentGraph.prisma(tx).find_first(
             where={"id": g.id},
             order={"version": "desc"},
         )
-        if existing and existing.version >= g.version:
-            old_version = g.version
-            g.version = existing.version + 1
+        if latest and (next_version := latest.version + 1) != g.version:
             logger.warning(
-                "Auto-incremented graph %s version from %d to %d "
-                "(version %d already exists)",
-                g.id,
-                old_version,
-                g.version,
-                existing.version,
+                f"Saving graph {g.id} as v{next_version} rather than the "
+                f"requested v{g.version}: its latest version is v{latest.version}"
             )
+            g.version = next_version
 
     await AgentGraph.prisma(tx).create_many(
         data=[
@@ -2320,6 +2339,14 @@ async def __create_graph(
     )
 
 
+async def graph_owner_id(graph_id: str, tx: Prisma | None = None) -> str | None:
+    """The owner of the graph ID's first version, or None when it has none."""
+    first_version = await AgentGraph.prisma(tx).find_first(
+        where={"id": graph_id}, order={"version": "asc"}
+    )
+    return first_version.userId if first_version else None
+
+
 # ------------------------ UTILITIES ------------------------ #
 
 
@@ -2348,83 +2375,6 @@ def make_graph_model(creatable_graph: Graph, user_id: str) -> GraphModel:
             for creatable_node in creatable_graph.nodes
         ],
     )
-
-
-async def fix_llm_provider_credentials():
-    """Fix node credentials with provider `llm`"""
-    from backend.integrations.credentials_store import IntegrationCredentialsStore
-
-    from .user import get_user_integrations
-
-    store = IntegrationCredentialsStore()
-
-    broken_nodes = []
-    try:
-        broken_nodes = await query_raw_with_schema(
-            """
-            SELECT    graph."userId"       user_id,
-                  node.id              node_id,
-                  node."constantInput" node_preset_input
-            FROM      {schema_prefix}"AgentNode"  node
-            LEFT JOIN {schema_prefix}"AgentGraph" graph
-            ON        node."agentGraphId" = graph.id
-            WHERE     node."constantInput"::jsonb->'credentials'->>'provider' = 'llm'
-            ORDER BY  graph."userId";
-            """
-        )
-        logger.info(f"Fixing LLM credential inputs on {len(broken_nodes)} nodes")
-    except Exception as e:
-        logger.error(f"Error fixing LLM credential inputs: {e}")
-
-    user_id: str = ""
-    user_integrations = None
-    for node in broken_nodes:
-        if node["user_id"] != user_id:
-            # Save queries by only fetching once per user
-            user_id = node["user_id"]
-            user_integrations = await get_user_integrations(user_id)
-        elif not user_integrations:
-            raise RuntimeError(f"Impossible state while processing node {node}")
-
-        node_id: str = node["node_id"]
-        node_preset_input: dict = node["node_preset_input"]
-        credentials_meta: dict = node_preset_input["credentials"]
-
-        credentials = next(
-            (
-                c
-                for c in user_integrations.credentials
-                if c.id == credentials_meta["id"]
-            ),
-            None,
-        )
-        if not credentials:
-            continue
-        if credentials.type != "api_key":
-            logger.warning(
-                f"User {user_id} credentials {credentials.id} with provider 'llm' "
-                f"has invalid type '{credentials.type}'"
-            )
-            continue
-
-        api_key = credentials.api_key.get_secret_value()
-        if api_key.startswith("sk-ant-api03-"):
-            credentials.provider = credentials_meta["provider"] = "anthropic"
-        elif api_key.startswith("sk-"):
-            credentials.provider = credentials_meta["provider"] = "openai"
-        elif api_key.startswith("gsk_"):
-            credentials.provider = credentials_meta["provider"] = "groq"
-        else:
-            logger.warning(
-                f"Could not identify provider from key prefix {api_key[:13]}*****"
-            )
-            continue
-
-        await store.update_creds(user_id, credentials)
-        await AgentNode.prisma().update(
-            where={"id": node_id},
-            data={"constantInput": SafeJson(node_preset_input)},
-        )
 
 
 def _legacy_value_aliases(legacy_value: str, replacement: LLMModel) -> set[str]:

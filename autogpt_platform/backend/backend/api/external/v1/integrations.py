@@ -23,6 +23,7 @@ from backend.api.features.integrations.router import (
     to_meta_response,
 )
 from backend.data.auth.base import APIAuthorizationInfo
+from backend.data.credential_scope import scope_error
 from backend.data.model import (
     APIKeyCredentials,
     Credentials,
@@ -132,6 +133,12 @@ class CreateUserPasswordCredentialRequest(BaseModel):
     type: Literal["user_password"] = "user_password"
     username: str = Field(..., description="Username")
     password: str = Field(..., description="Password")
+    scope: str | None = Field(
+        None,
+        description="What this login may be used for, as a URI: "
+        "smtp://host[:port] for smtp, postgresql:// mysql:// or mssql:// "
+        "host[:port] for database; required for those providers",
+    )
     title: str = Field(..., description="A name for this credential")
 
 
@@ -569,10 +576,13 @@ async def create_credential(
             expires_at=request.expires_at,
         )
     elif request.type == "user_password":
+        if error := scope_error(provider, request.scope):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
         credentials = UserPasswordCredentials(
             provider=provider,
             username=SecretStr(request.username),
             password=SecretStr(request.password),
+            scope=request.scope,
             title=request.title,
         )
     elif request.type == "host_scoped":

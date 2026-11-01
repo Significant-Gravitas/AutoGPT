@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from prisma.errors import UniqueViolationError
 
 from backend.data.db import prisma, transaction
+from backend.data.org_credit import forget_personal_org_owner
 from backend.data.org_migration import (
     _sanitize_slug,
     _soft_delete_blocking_orphan,
@@ -247,6 +248,7 @@ async def _create_personal_org_for_user(
     user_id: str,
     slug_base: str,
     display_name: str,
+    replaces_org_id: str | None = None,
 ) -> OrgResponse:
     """Create a new personal org with all required records.
 
@@ -255,7 +257,9 @@ async def _create_personal_org_for_user(
     Used here by conversion (spawning a new personal org when the old one
     becomes a team org).
     """
-    org = await create_personal_org(user_id, slug_base, display_name)
+    org = await create_personal_org(
+        user_id, slug_base, display_name, replaces_org_id=replaces_org_id
+    )
     return OrgResponse.from_db(org, member_count=1)
 
 
@@ -463,10 +467,12 @@ async def convert_personal_org(org_id: str, user_id: str) -> OrgResponse:
     """Convert a personal org to a team org.
 
     Creates a new personal org for the user so they always have one.
-    Existing resources (agents, credits, store listings) stay in the
-    team org — that's the point of converting.
+    Existing resources (agents, store listings) stay in the team org —
+    that's the point of converting. The team org's balance starts at zero;
+    the user keeps their own credits.
 
-    If new personal org creation fails, the conversion is rolled back.
+    The old org becomes a team org in the transaction that creates the new
+    personal org, so a failure leaves it untouched.
     """
     org = await prisma.organization.find_unique(where={"id": org_id})
     if org is None:
@@ -474,35 +480,18 @@ async def convert_personal_org(org_id: str, user_id: str) -> OrgResponse:
     if not org.isPersonal:
         raise ValueError("Organization is already a team org")
 
-    # Step 1: Flip isPersonal on the old org
-    await prisma.organization.update(
-        where={"id": org_id},
-        data={"isPersonal": False},
+    slug_base = f"{_sanitize_slug(org.slug)}-personal-1"
+    user = await prisma.user.find_unique(where={"id": user_id})
+    display_name = user.name if user and user.name else org.name
+
+    await _create_personal_org_for_user(
+        user_id=user_id,
+        slug_base=slug_base,
+        display_name=display_name,
+        replaces_org_id=org_id,
     )
-
-    # Step 2: Create a new personal org for the user
-    try:
-        slug_base = f"{_sanitize_slug(org.slug)}-personal-1"
-        # Fetch user name for display
-        user = await prisma.user.find_unique(where={"id": user_id})
-        display_name = user.name if user and user.name else org.name
-
-        await _create_personal_org_for_user(
-            user_id=user_id,
-            slug_base=slug_base,
-            display_name=display_name,
-        )
-    except Exception:
-        # Roll back: restore isPersonal on the old org
-        logger.exception(
-            f"Failed to create new personal org for user {user_id} during "
-            f"conversion of org {org_id} — rolling back"
-        )
-        await prisma.organization.update(
-            where={"id": org_id},
-            data={"isPersonal": True},
-        )
-        raise
+    # New runs bill the team org's balance now, not after the cached minute.
+    forget_personal_org_owner(org_id)
 
     return await get_org(org_id)
 

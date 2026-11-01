@@ -262,7 +262,9 @@ async def _prune_dangling_webhook(user_id: str, webhook_id: str) -> None:
     try:
         webhook = await get_webhook(webhook_id)
         credentials = (
-            await credentials_manager.get(user_id, webhook.credentials_id)
+            await credentials_manager.get(
+                user_id, webhook.credentials_id, allow_sdk_default=True
+            )
             if webhook.credentials_id
             else None
         )

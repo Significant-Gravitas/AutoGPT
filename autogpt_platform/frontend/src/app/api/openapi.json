@@ -23465,6 +23465,11 @@
             "title": "Host",
             "description": "Host pattern for host-scoped or MCP server URL for MCP credentials"
           },
+          "scope": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Scope",
+            "description": "What a user/password login may be used for, e.g. smtp://host[:port]; null for a login saved before scopes existed"
+          },
           "mcp_auth_scheme": {
             "anyOf": [
               { "type": "string", "enum": ["basic", "bearer"] },
@@ -38971,6 +38976,11 @@
             "format": "password",
             "title": "Password",
             "writeOnly": true
+          },
+          "scope": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Scope",
+            "description": "What this login may be used for, as a URI whose meaning depends on the provider: smtp://host[:port] for SMTP, or the engine's scheme (postgresql://, mysql://, mssql://) and host[:port] for a database. None for a login saved before scopes existed."
           }
         },
         "type": "object",
