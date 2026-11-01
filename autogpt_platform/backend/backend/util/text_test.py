@@ -302,6 +302,9 @@ def test_star_sizes_within_the_cap_pass_after_a_literal_percent():
 # the one a value gets charged for after the fact.
 HUGE = "200000000"
 BIG_VALUE = "{% set a = 'x' * 10000 %}"
+# Five megabytes, built within the budget, so what multiplies it is
+# what the case is about
+MEGABYTES = "{% set a = 'x'|center(5000000) %}"
 BEFORE_IT_ALLOCATES = "would exceed"
 AFTER_IT_IS_BUILT = "rendering exceeded"
 
@@ -400,6 +403,38 @@ OVERSIZED_TEMPLATES = {
         "{% set l = [1] * 10000 %}" + "{{ l.extend(l) }}" * 25 + "{{ l|length }}",
         BEFORE_IT_ALLOCATES,
     ),
+    "batch filter's fill": (
+        "{{ [1]|batch(" + HUGE + ", 'x')|list|length }}",
+        BEFORE_IT_ALLOCATES,
+    ),
+    "slice filter's count": (
+        "{{ [1]|slice(" + HUGE + ")|list|length }}",
+        BEFORE_IT_ALLOCATES,
+    ),
+    "a container emitted whole": (
+        BIG_VALUE + "{% set l = [a] * 10000 %}{{ l }}",
+        AFTER_IT_IS_BUILT,
+    ),
+    "string filter on a container": (
+        BIG_VALUE + "{% set l = [a] * 10000 %}{{ l|string|length }}",
+        BEFORE_IT_ALLOCATES,
+    ),
+    "the % operator's arguments": (
+        MEGABYTES + "{{ ('%s' * 5000) % ((a,) * 5000) }}",
+        BEFORE_IT_ALLOCATES,
+    ),
+    "str.format's arguments": (
+        MEGABYTES + "{{ ('{}' * 5000).format(*((a,) * 5000)) }}",
+        BEFORE_IT_ALLOCATES,
+    ),
+    "a lazy join's separator": (
+        MEGABYTES + "{{ range(10000)|map('string')|join(a)|length }}",
+        BEFORE_IT_ALLOCATES,
+    ),
+    "round to a negative precision": (
+        "{{ (10**100)|round(-" + HUGE + ") }}",
+        "Integer too large",
+    ),
 }
 
 
@@ -426,6 +461,13 @@ WORKING_TEMPLATES = {
     "urlencode filter": ("{{ 'a b'|urlencode }}", {}, "a%20b"),
     "wordwrap filter": ("{{ 'aaa bbb'|wordwrap(3) }}", {}, "aaa\nbbb"),
     "filesizeformat filter": ("{{ 1000|filesizeformat }}", {}, "1.0 kB"),
+    "batch filter": ("{{ [1,2,3]|batch(2, 'x')|list|length }}", {}, "2"),
+    "slice filter": ("{{ [1,2,3]|slice(2)|list|length }}", {}, "2"),
+    "round filter": ("{{ 12345|round(-3) }}", {}, "12000"),
+    "round filter on a float": ("{{ 1.5|round(100000000) }}", {}, "1.5"),
+    "string filter": ("{{ [1,2]|string }}", {}, "[1, 2]"),
+    "a container emitted whole": ("{{ [1,'a'] }}", {}, "[1, 'a']"),
+    "a lazy join": ("{{ range(3)|map('string')|join('-') }}", {}, "0-1-2"),
     "center method": ("{{ 'x'.center(5) }}|", {}, "  x  |"),
     "zfill method": ("{{ '7'.zfill(3) }}", {}, "007"),
     "expandtabs method": ("{{ 'a\tb'.expandtabs(4) }}", {}, "a   b"),
@@ -480,7 +522,18 @@ NESTED_LOOPS_OVER_A_LIST = (
 )
 
 
-@pytest.mark.parametrize("template", [NESTED_LOOPS, NESTED_LOOPS_OVER_A_LIST])
+# A filter Jinja applies item by item runs inside one loop of its own, with
+# no body for a checkpoint to sit at the top of
+ITEM_BY_ITEM = (
+    "{% set l = [1] * 10000 %}"
+    + "{{ l.extend(l) or '' }}" * 7
+    + "{{ l|map('abs')|map('abs')|map('abs')|map('abs')|map('abs')|list|length }}"
+)
+
+
+@pytest.mark.parametrize(
+    "template", [NESTED_LOOPS, NESTED_LOOPS_OVER_A_LIST, ITEM_BY_ITEM]
+)
 @pytest.mark.asyncio
 async def test_a_render_past_its_deadline_is_refused(fmt: TextFormatter, template: str):
     with pytest.raises(ValueError, match="timed out"):
@@ -605,7 +658,6 @@ BOUNDED_FILTERS = frozenset(
     {
         "abs",
         "attr",
-        "batch",
         "capitalize",
         "count",
         "d",
@@ -631,13 +683,10 @@ BOUNDED_FILTERS = frozenset(
         "reject",
         "rejectattr",
         "reverse",
-        "round",
         "safe",
         "select",
         "selectattr",
-        "slice",
         "sort",
-        "string",
         "striptags",
         "sum",
         "title",
@@ -707,6 +756,7 @@ BOUNDED_METHODS = frozenset(
 
 def test_every_filter_is_classified(fmt: TextFormatter):
     assert set(fmt.env.filters) == set(SIZE_CHECKED_FILTERS | BOUNDED_FILTERS)
+    assert SIZE_CHECKED_FILTERS.isdisjoint(BOUNDED_FILTERS)
     assert REMOVED_FILTERS.isdisjoint(fmt.env.filters)
 
 

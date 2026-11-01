@@ -3,7 +3,7 @@ import inspect
 import logging
 import re
 import types
-from collections.abc import Callable, Collection, Iterable
+from collections.abc import AsyncIterable, AsyncIterator, Callable, Collection, Iterable
 from contextvars import ContextVar
 from functools import update_wrapper
 from time import monotonic
@@ -56,15 +56,20 @@ def format_filter_for_jinja2(value, format_string=None):
     return format_string % float(value)
 
 
-def _check_percent_format(format_string: str, args: Any = ()) -> None:
+def _check_percent_format(
+    format_string: str, args: Any = (), budget: "_RenderBudget | None" = None
+) -> None:
     """Refuse a %-style format string with a field over the size cap.
 
     A ``*`` width or precision takes its size from ``args``, in the order the
     % operator reads them; a size that isn't there is left for the operator
-    to reject.
+    to reject. Given a budget, the text every conversion would render is
+    checked as well, because the operator builds all of it in one step.
     """
     values = args if isinstance(args, tuple) else (args,)
+    mapping = args if isinstance(args, dict) else None
     position = 0
+    rendered = len(format_string)
     for key, width, precision, conversion in _percent_conversions(format_string):
         sizes: list[str | int | None] = []
         for size in (width, precision):
@@ -74,8 +79,15 @@ def _check_percent_format(format_string: str, args: Any = ()) -> None:
                 position += 1
             sizes.append(size if isinstance(size, (str, int)) else 0)
         if conversion != "%":
+            if mapping is not None:
+                # Without a "(key)" the whole mapping is what renders
+                rendered += _text_size(mapping.get(key) if key is not None else mapping)
+            elif position < len(values):
+                rendered += _text_size(values[position])
             position += 1
         _check_field_size(*sizes)
+    if budget is not None:
+        budget.check(rendered)
 
 
 def _percent_conversions(
@@ -161,6 +173,8 @@ class TextFormatter:
         a render that never suspends cannot be interrupted from outside.
         ``asyncio.wait_for`` stays as a backstop.
         """
+        # The deadline is wall-clock, so a render that gives the loop a turn
+        # is charged for the time other tasks take with it
         budget = _RenderBudget(
             MAX_RENDER_BYTES, None if timeout is None else monotonic() + timeout
         )
@@ -264,14 +278,51 @@ def _value_size(value: Any) -> int:
 _REFERENCE_BYTES = 8
 
 
+def _text_size(value: Any, depth: int = 2) -> int:
+    """About how many characters ``value`` renders as.
+
+    A container renders as its items' text, not as the references it holds,
+    which is what `_value_size` measures. The depth bound keeps a nested or
+    self-referential structure from being walked.
+    """
+    if isinstance(value, (str, bytes, bytearray)):
+        return len(value)
+    if isinstance(value, (list, tuple, set, frozenset, dict)):
+        if depth <= 0:
+            return _value_size(value)
+        items = value.items() if isinstance(value, dict) else value
+        return sum(_text_size(item, depth - 1) + 2 for item in items) + 2
+    if _is_plain_int(value):
+        return value.bit_length() // 3
+    return 0
+
+
+def _check_deadline() -> None:
+    """Refuse work that has run past the render's deadline.
+
+    `checkpoint` runs at the top of a body, so a filter Jinja applies item by
+    item inside one loop of its own never reaches another one.
+    """
+    budget = _render_budget.get()
+    if (
+        budget is not None
+        and budget.deadline is not None
+        and monotonic() > budget.deadline
+    ):
+        raise _RenderDeadlineExceeded()
+
+
 @pass_context
 def _charge_rendered_value(context: Context, value: Any) -> Any:
     """Count an expression the template renders against the budget.
 
+    Jinja calls `str()` on what this returns, so the charge is the text the
+    value renders as rather than the references it holds.
+
     Taking the context is also what stops Jinja finalizing — and so
     evaluating — an output expression while it compiles the template.
     """
-    _current_budget().spend(_value_size(value))
+    _current_budget().spend(_text_size(value))
     return value
 
 
@@ -356,7 +407,7 @@ class _RestrictedEnvironment(SandboxedEnvironment):
     ) -> str:
         """``~`` concatenation, refused before it allocates."""
         budget = _current_budget()
-        budget.check(sum(map(_value_size, pieces)))
+        budget.check(sum(map(_text_size, pieces)))
         return budget.charge(join(pieces), *pieces)
 
     def wrap_str_format(self, value: Any) -> Callable[..., str] | None:
@@ -414,9 +465,10 @@ class _RestrictedEnvironment(SandboxedEnvironment):
                     f"Base too large for exponentiation (max {MAX_EXPONENT})"
                 )
 
+        _check_deadline()
         budget = _current_budget()
         owner = _method_owner(__obj)
-        _check_method_size(owner, __obj, args, kwargs, budget)
+        args = _check_method_size(owner, __obj, args, kwargs, budget) or args
         if isinstance(owner, _MUTABLE_CONTAINERS):
             # A method that grows its own container answers with None, so the
             # container itself is what has to be measured
@@ -429,11 +481,12 @@ class _RestrictedEnvironment(SandboxedEnvironment):
         )
 
     def call_binop(self, context, operator, left, right):
+        budget = _current_budget()
         # Intercept %-style formatting, of bytes too: a template can make them
         if operator == "%" and isinstance(left, str):
-            _check_percent_format(left, right)
+            _check_percent_format(left, right, budget)
         if operator == "%" and isinstance(left, (bytes, bytearray)):
-            _check_percent_format(left.decode("latin-1"), right)
+            _check_percent_format(left.decode("latin-1"), right, budget)
         # Intercept the ** (power) operator
         if operator == "**":
             if isinstance(right, (int, float)) and abs(right) > MAX_EXPONENT:
@@ -442,7 +495,6 @@ class _RestrictedEnvironment(SandboxedEnvironment):
                 raise OverflowError(
                     f"Base too large for exponentiation (max {MAX_EXPONENT})"
                 )
-        budget = _current_budget()
         # Intercept sequence repetition via * (strings, bytes, lists, tuples)
         if operator == "*":
             if isinstance(left, _SEQUENCES) and isinstance(right, int):
@@ -492,13 +544,16 @@ def _check_method_size(
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
     budget: _RenderBudget,
-) -> None:
-    """Refuse a method call whose result size follows from its arguments."""
+) -> tuple[Any, ...] | None:
+    """Refuse a method call whose result size follows from its arguments.
+
+    A check answers with the arguments to call it with where it had to
+    replace one, as a lazy iterable has to be replaced to be bounded.
+    """
     if owner is None:
-        return
+        return None
     check = _METHOD_SIZE_CHECKS.get(obj.__name__)
-    if check is not None:
-        check(owner, args, kwargs, budget)
+    return check(owner, args, kwargs, budget) if check is not None else None
 
 
 def _budgeted_filter(name: str, filter_func: Callable[..., Any]) -> Callable[..., Any]:
@@ -512,10 +567,12 @@ def _budgeted_filter(name: str, filter_func: Callable[..., Any]) -> Callable[...
     check = _FILTER_SIZE_CHECKS.get(name)
 
     def wrapper(*args: Any, **kwargs: Any) -> Any:
+        _check_deadline()
         own = args[offset:]
         budget = _current_budget()
         if check is not None:
-            check(own, kwargs, budget)
+            own = check(own, kwargs, budget) or own
+            args = (*args[:offset], *own)
         result = filter_func(*args, **kwargs)
         if inspect.isawaitable(result):
             # The async variant of a filter answers with a coroutine, so the
@@ -550,8 +607,9 @@ def _check_expandtabs(
 
 def _check_str_join(
     owner: Any, args: tuple[Any, ...], kwargs: dict[str, Any], budget: _RenderBudget
-) -> None:
-    _check_join_sizes(args[0] if args else (), owner, budget)
+) -> tuple[Any, ...]:
+    items = args[0] if args else ()
+    return (_bounded_join_input(items, owner, budget), *args[1:])
 
 
 def _check_str_replace(
@@ -598,9 +656,47 @@ def _check_indent_filter(
 
 def _check_join_filter(
     own: tuple[Any, ...], kwargs: dict[str, Any], budget: _RenderBudget
+) -> tuple[Any, ...]:
+    separator = _own_arg(own, kwargs, 1, "d", "")
+    return (_bounded_join_input(own[0], separator, budget), *own[1:])
+
+
+def _check_string_filter(
+    own: tuple[Any, ...], kwargs: dict[str, Any], budget: _RenderBudget
 ) -> None:
-    value = own[0]
-    _check_join_sizes(value, _own_arg(own, kwargs, 1, "d", ""), budget)
+    """string renders its value as the text a container's items hold."""
+    budget.check(_text_size(own[0]))
+
+
+def _check_batch_filter(
+    own: tuple[Any, ...], kwargs: dict[str, Any], budget: _RenderBudget
+) -> None:
+    """batch pads its last row with as many references as a row is wide."""
+    if _own_arg(own, kwargs, 2, "fill_with", None) is not None:
+        budget.check(_int_arg(own, kwargs, 1, "linecount", 0) * _REFERENCE_BYTES)
+
+
+def _check_slice_filter(
+    own: tuple[Any, ...], kwargs: dict[str, Any], budget: _RenderBudget
+) -> None:
+    """slice builds one list per slice, however many the template asks for."""
+    budget.check(_int_arg(own, kwargs, 1, "slices", 0) * _REFERENCE_BYTES)
+
+
+def _check_round_filter(
+    own: tuple[Any, ...], kwargs: dict[str, Any], budget: _RenderBudget
+) -> None:
+    """Rounding an integer to a negative precision computes that power of ten."""
+    precision = _int_arg(own, kwargs, 1, "precision", 0)
+    if (
+        _is_plain_int(own[0])
+        and precision < 0
+        and -precision * _BITS_PER_DIGIT > MAX_RENDER_INT_BITS
+    ):
+        raise OverflowError(f"Integer too large (max {MAX_RENDER_INT_BITS} bits)")
+
+
+_BITS_PER_DIGIT = 4
 
 
 def _check_replace_filter(
@@ -614,16 +710,32 @@ def _check_replace_filter(
         _check_replace_sizes(value, old, new, count, budget)
 
 
-def _check_join_sizes(value: Any, separator: Any, budget: _RenderBudget) -> None:
-    """A join of a known set of items: its size is the items plus separators.
+def _bounded_join_input(value: Any, separator: Any, budget: _RenderBudget) -> Any:
+    """A join's items, with what joining them will cost accounted for.
 
-    A lazy iterable isn't measured here, because consuming it would empty it;
-    its items are charged by whatever filter or call produces each one.
+    A join copies every item and every separator into one string. A set of
+    items of known length can be measured before the join runs; a lazy
+    iterable's length is only known once it has been consumed, so its items
+    are handed over one at a time against a running total instead.
     """
+    if isinstance(value, AsyncIterable):
+        return _bounded_aiter(value, _text_size(separator), budget)
     if not isinstance(value, Collection):
-        return
-    items = sum(map(_value_size, value))
-    budget.check(items + _value_size(separator) * len(value))
+        # A sync iterable the join would consume anyway, so it can be listed
+        value = budget.charge(list(value))
+    separators = _text_size(separator) * len(value)
+    budget.check(sum(map(_text_size, value)) + separators)
+    return value
+
+
+async def _bounded_aiter(
+    items: AsyncIterable[Any], cost: int, budget: _RenderBudget
+) -> AsyncIterator[Any]:
+    total = 0
+    async for item in items:
+        total += cost + _text_size(item)
+        budget.check(total)
+        yield item
 
 
 def _check_replace_sizes(
@@ -657,7 +769,7 @@ def _own_arg(
 # is charged afterwards, in `call`. `format` and `format_map` never reach
 # `call`: Jinja wraps them where they are looked up, and `wrap_str_format`
 # above gives them `_SizeCheckedFormatter`.
-_METHOD_SIZE_CHECKS: dict[str, Callable[..., None]] = {
+_METHOD_SIZE_CHECKS: dict[str, Callable[..., Any]] = {
     "center": _check_padding,
     "expandtabs": _check_expandtabs,
     "extend": _check_container_extend,
@@ -672,11 +784,15 @@ _METHOD_SIZE_CHECKS: dict[str, Callable[..., None]] = {
 
 # The same for filters. `format` checks its own format string, in
 # `format_filter_for_jinja2`.
-_FILTER_SIZE_CHECKS: dict[str, Callable[..., None]] = {
+_FILTER_SIZE_CHECKS: dict[str, Callable[..., Any]] = {
+    "batch": _check_batch_filter,
     "center": _check_center_filter,
     "indent": _check_indent_filter,
     "join": _check_join_filter,
     "replace": _check_replace_filter,
+    "round": _check_round_filter,
+    "slice": _check_slice_filter,
+    "string": _check_string_filter,
 }
 SIZE_CHECKED_FILTERS = frozenset(_FILTER_SIZE_CHECKS) | {"format"}
 SIZE_CHECKED_METHODS = frozenset(_METHOD_SIZE_CHECKS) | {"format", "format_map"}
@@ -686,11 +802,18 @@ class _SizeCheckedFormatter(SandboxedFormatter):
     """A sandboxed str.format() that refuses a field over the size cap.
 
     Nested sizes such as ``{:{width}}`` are resolved before ``format_field``
-    runs, so the check sees the width that would apply.
+    runs, so the check sees the width that would apply, and the running total
+    of what the fields render to is checked as they are formatted.
     """
+
+    def __init__(self, env: Any, **kwargs: Any) -> None:
+        super().__init__(env, **kwargs)
+        self._rendered = 0
 
     def format_field(self, value: Any, format_spec: str) -> Any:
         _check_format_spec(format_spec)
+        self._rendered += _text_size(value)
+        _current_budget().check(self._rendered)
         return super().format_field(value, format_spec)
 
 
