@@ -15,7 +15,9 @@ class BoundedGZipMiddleware(GZipMiddleware):
 
     A response is left uncompressed when its ``Content-Length``, or its first
     body chunk, is over ``max_size``. A streamed response without a length is
-    compressed chunk by chunk, so each step's cost is bounded by its chunk.
+    held back until it ends or passes ``max_size``, so at most ``max_size``
+    bytes are buffered: one that ends within the cap is compressed chunk by
+    chunk, and one that passes it is sent uncompressed.
     """
 
     def __init__(
@@ -47,28 +49,55 @@ class _BoundedGZipResponder(GZipResponder):
         super().__init__(app, minimum_size, compresslevel=compresslevel)
         self.max_size = max_size
         self.passthrough = False
+        self.length_unknown = False
+        self.pending: list[Message] = []
+        self.pending_size = 0
 
     async def send_with_compression(self, message: Message) -> None:
         if self.passthrough:
             await self.send(message)
             return
-        if message["type"] == "http.response.start" and (
-            _declared_length(message) > self.max_size
-        ):
-            self.passthrough = True
-            await self.send(message)
+        if message["type"] == "http.response.start":
+            declared_length = _declared_length(message)
+            if declared_length > self.max_size:
+                self.passthrough = True
+                await self.send(message)
+                return
+            self.length_unknown = declared_length < 0
+            await super().send_with_compression(message)
             return
         if (
-            message["type"] == "http.response.body"
-            and not self.started
-            and len(message.get("body", b"")) > self.max_size
+            message["type"] != "http.response.body"
+            or self.started
+            or self.content_encoding_set
+            or self.content_type_is_excluded
         ):
-            self.passthrough = True
-            self.started = True
-            await self.send(self.initial_message)
-            await self.send(message)
+            await super().send_with_compression(message)
             return
-        await super().send_with_compression(message)
+        if not self.length_unknown:
+            if len(message.get("body", b"")) > self.max_size:
+                await self._send_uncompressed([message])
+                return
+            await super().send_with_compression(message)
+            return
+        self.pending.append(message)
+        self.pending_size += len(message.get("body", b""))
+        if self.pending_size > self.max_size:
+            await self._send_uncompressed(self.pending)
+            return
+        if message.get("more_body", False):
+            return
+        pending, self.pending = self.pending, []
+        for pending_message in pending:
+            await super().send_with_compression(pending_message)
+
+    async def _send_uncompressed(self, messages: list[Message]) -> None:
+        self.passthrough = True
+        self.started = True
+        self.pending = []
+        await self.send(self.initial_message)
+        for message in messages:
+            await self.send(message)
 
 
 def _declared_length(start_message: Message) -> int:

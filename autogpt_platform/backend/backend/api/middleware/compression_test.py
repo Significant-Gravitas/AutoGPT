@@ -99,6 +99,27 @@ def test_a_streamed_response_whose_first_chunk_is_over_the_cap_is_sent_uncompres
     assert sum(compressed_bytes) == 0
 
 
+def test_a_streamed_response_without_a_length_that_passes_the_cap_is_sent_uncompressed(
+    client: TestClient, compressed_bytes: list[int]
+) -> None:
+    response = client.get(f"/streamed/{MIB}/6")
+
+    assert "content-encoding" not in response.headers
+    assert response.content == b"a" * 6 * MIB
+    assert sum(compressed_bytes) == 0
+
+
+def test_a_streamed_response_without_a_length_within_the_cap_is_compressed(
+    client: TestClient, compressed_bytes: list[int]
+) -> None:
+    response = client.get(f"/streamed/{MIB}/4")
+
+    assert response.headers["content-encoding"] == "gzip"
+    assert response.content == b"a" * 4 * MIB
+    assert sum(compressed_bytes) == 4 * MIB
+    assert max(compressed_bytes) == MIB
+
+
 def test_a_mid_sized_response_is_compressed_at_a_cheap_level(
     client: TestClient, compressed_bytes: list[int], compress_levels: list[int]
 ) -> None:
