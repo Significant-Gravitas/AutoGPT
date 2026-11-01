@@ -784,7 +784,7 @@ async def generate_image(
         logger.info(f"Using existing image for agent graph {graph_id}")
         return ImageURLResponse(image_url=existing_url)
     # Generate agent image as JPEG
-    image = await store_image_gen.generate_agent_image(agent=graph)
+    image = await store_image_gen.generate_agent_image(agent=graph, user_id=user_id)
 
     # Create UploadFile with the correct filename and content_type
     image_file = fastapi.UploadFile(
