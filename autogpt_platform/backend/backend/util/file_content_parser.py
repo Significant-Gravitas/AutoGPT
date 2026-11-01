@@ -48,9 +48,13 @@ from backend.util.bounded_yaml import load_bounded_yaml
 
 logger = logging.getLogger(__name__)
 
-# Limits on a YAML file's text and on the document it expands to.
+# Limits on a YAML file's text and on the document it expands to. The
+# expanded budget is YAML_EXPANSION_FACTOR times the text's size, kept between
+# MIN_YAML_EXPANDED_BYTES and MAX_YAML_EXPANDED_BYTES.
 MAX_YAML_BYTES = 10 * 1024 * 1024
 MAX_YAML_EXPANDED_BYTES = 20 * 1024 * 1024
+MIN_YAML_EXPANDED_BYTES = 1024 * 1024
+YAML_EXPANSION_FACTOR = 8
 
 # ---------------------------------------------------------------------------
 # Extension / MIME → format label mapping
@@ -317,9 +321,14 @@ def _load_yaml(content: str) -> Any:
         content,
         subject="YAML file",
         max_bytes=MAX_YAML_BYTES,
-        max_expanded_bytes=MAX_YAML_EXPANDED_BYTES,
+        max_expanded_bytes=_yaml_expanded_budget(content),
         allow_anchors=True,
     )
+
+
+def _yaml_expanded_budget(content: str) -> int:
+    scaled = YAML_EXPANSION_FACTOR * len(content.encode("utf-8"))
+    return min(MAX_YAML_EXPANDED_BYTES, max(MIN_YAML_EXPANDED_BYTES, scaled))
 
 
 def _parse_toml(content: str) -> Any:

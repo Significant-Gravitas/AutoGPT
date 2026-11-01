@@ -3,7 +3,7 @@
 import pytest
 import yaml
 
-from backend.util.bounded_yaml import YAMLLimitError, load_bounded_yaml
+from backend.util.bounded_yaml import MAX_YAML_DEPTH, YAMLLimitError, load_bounded_yaml
 
 
 def _load(text: str, *, allow_anchors: bool = True, **limits: int):
@@ -55,9 +55,33 @@ def test_a_document_that_refers_to_itself_is_refused() -> None:
         _load("a: &a [1, *a]")
 
 
-def test_a_deeply_nested_document_is_refused() -> None:
-    with pytest.raises(YAMLLimitError, match="nested too deeply"):
-        _load(f"{'[' * 5000}{']' * 5000}")
+def _nested(levels: int) -> str:
+    return f"{'[' * levels}x{']' * levels}"
+
+
+def test_nesting_up_to_the_depth_limit_parses() -> None:
+    value = _load(_nested(MAX_YAML_DEPTH))
+    for _ in range(MAX_YAML_DEPTH):
+        value = value[0]
+    assert value == "x"
+
+
+def test_nesting_past_the_depth_limit_is_refused() -> None:
+    with pytest.raises(YAMLLimitError, match="nested more than 32 levels deep"):
+        _load(_nested(MAX_YAML_DEPTH + 1))
+
+
+def test_nesting_built_up_through_aliases_counts_toward_the_depth_limit() -> None:
+    lines = ["l0: &l0 x"]
+    lines += [f"l{i}: &l{i} {'[' * 15}*l{i - 1}{']' * 15}" for i in (1, 2, 3)]
+
+    with pytest.raises(YAMLLimitError, match="nested more than 32 levels deep"):
+        _load("\n".join(lines))
+
+
+def test_a_very_deeply_nested_document_is_refused() -> None:
+    with pytest.raises(YAMLLimitError, match="nested more than 32 levels deep"):
+        _load(_nested(5000))
 
 
 def test_invalid_yaml_raises_a_yaml_error() -> None:
