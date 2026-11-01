@@ -35,7 +35,7 @@ export function MessageImageThumbnail({ artifact, readOnly }: Props) {
       aria-label={`Open ${artifact.title}`}
       className={cn(
         FRAME,
-        "transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle",
+        "transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-foreground-subtle focus-visible:outline-none",
       )}
     >
       {/* eslint-disable-next-line @next/next/no-img-element -- a user or workspace image URL next/image cannot optimise */}

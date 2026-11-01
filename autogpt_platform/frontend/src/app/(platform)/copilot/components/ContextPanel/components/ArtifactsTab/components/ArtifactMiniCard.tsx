@@ -18,7 +18,7 @@ export function ArtifactMiniCard({ file, onOpen, onDownload }: Props) {
   const fileIcon = classifyArtifact(item.mime_type ?? null, item.name).icon;
 
   return (
-    <div className="group relative flex items-center gap-2.5 rounded-2xl bg-surface px-3.5 py-2.5 transition-transform duration-150 ease-out smooth-shadow-ring-sm hover:-translate-y-px motion-reduce:transition-none">
+    <div className="group relative flex items-center gap-2.5 rounded-2xl bg-surface px-3.5 py-2.5 smooth-shadow-ring-sm transition-transform duration-150 ease-out hover:-translate-y-px motion-reduce:transition-none">
       <button
         type="button"
         onClick={() => onOpen(file)}
@@ -54,7 +54,7 @@ export function ArtifactMiniCard({ file, onOpen, onDownload }: Props) {
         type="button"
         onClick={() => onDownload(file)}
         aria-label={`Download ${item.name}`}
-        className="shrink-0 rounded-full p-1 text-foreground-disabled opacity-0 transition-opacity duration-150 ease-out hover:text-foreground-secondary focus-visible:opacity-100 group-hover:opacity-100 motion-reduce:transition-none [@media(hover:none)]:opacity-100"
+        className="shrink-0 rounded-full p-1 text-foreground-disabled opacity-0 transition-opacity duration-150 ease-out group-hover:opacity-100 hover:text-foreground-secondary focus-visible:opacity-100 motion-reduce:transition-none [@media(hover:none)]:opacity-100"
       >
         <Icon icon={Download04Icon} size={16} />
       </button>

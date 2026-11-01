@@ -120,7 +120,7 @@ export function EmptySession({
     <div className="relative flex h-full flex-1 items-start justify-center overflow-y-auto px-0 py-5 md:px-6 md:py-10">
       {/* Which connection the new chat runs on, kept out of the composer and
           in the page corner, level with the inset header's controls. */}
-      <div className="absolute right-3 top-3 z-30 empty:hidden">
+      <div className="absolute top-3 right-3 z-30 empty:hidden">
         <ConnectionPicker className="ml-0" />
       </div>
       <motion.div

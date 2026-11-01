@@ -148,7 +148,12 @@ class SendWebRequestBlock(Block):
         return files_payload
 
     async def run(
-        self, input_data: Input, *, execution_context: ExecutionContext, **kwargs
+        self,
+        input_data: Input,
+        *,
+        execution_context: ExecutionContext,
+        sensitive_headers: frozenset[str] = frozenset(),
+        **kwargs,
     ) -> BlockOutput:
         # ─── Parse/normalise body ────────────────────────────────────
         body = input_data.body
@@ -195,6 +200,7 @@ class SendWebRequestBlock(Block):
         response = await Requests(
             raise_for_status=False,
             retry_max_attempts=1,  # allow callers to handle HTTP errors immediately
+            sensitive_headers=sensitive_headers,
         ).request(
             input_data.method.value,
             input_data.url,
@@ -289,8 +295,11 @@ class SendAuthenticatedWebRequestBlock(SendWebRequestBlock):
         # Merge with user-provided headers (user headers take precedence)
         base_input.headers = {**extra_headers, **input_data.headers}
 
-        # Use parent class run method
+        # Name the credential's headers so a cross-origin redirect drops them.
         async for output_name, output_data in super().run(
-            base_input, execution_context=execution_context, **kwargs
+            base_input,
+            execution_context=execution_context,
+            sensitive_headers=frozenset(extra_headers),
+            **kwargs,
         ):
             yield output_name, output_data

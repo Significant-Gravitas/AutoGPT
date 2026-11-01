@@ -125,7 +125,7 @@ export function IntegrationsList({
     <div className="flex w-full flex-col gap-3">
       <div
         className={cn(
-          "sticky top-0 z-10 -mx-1 px-1 pb-1 pt-1",
+          "sticky top-0 z-10 -mx-1 px-1 pt-1 pb-1",
           stickyClassName,
         )}
       >

@@ -139,7 +139,7 @@ export function StoreCard({
         </span>
       </div>
       {creatorSlug && agentSlug && agentGraphID && (
-        <div className="absolute bottom-4 right-4">
+        <div className="absolute right-4 bottom-4">
           <AddToLibraryButton
             creatorSlug={creatorSlug}
             agentSlug={agentSlug}

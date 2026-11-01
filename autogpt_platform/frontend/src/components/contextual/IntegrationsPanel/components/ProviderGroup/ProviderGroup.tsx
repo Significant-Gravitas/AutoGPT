@@ -40,15 +40,15 @@ export function ProviderGroup({
         <AccordionTrigger className="px-3 py-3 pr-5 hover:no-underline [&>svg]:text-foreground-base">
           <div className="flex items-center gap-3">
             <ProviderAvatar provider={provider} />
-            <span className="text-body-lg font-medium leading-6.5 tracking-title text-foreground-base">
+            <span className="text-body-lg leading-6.5 font-medium tracking-title text-foreground-base">
               {provider.name}
             </span>
-            <span className="inline-flex items-center justify-center rounded-lg bg-surface-hover px-2 py-0.5 text-body font-medium leading-5.5 text-foreground-base">
+            <span className="inline-flex items-center justify-center rounded-lg bg-surface-hover px-2 py-0.5 text-body leading-5.5 font-medium text-foreground-base">
               {count}
             </span>
           </div>
         </AccordionTrigger>
-        <AccordionContent className="px-0 pb-0 pt-0">
+        <AccordionContent className="px-0 pt-0 pb-0">
           <div className="flex flex-col divide-y divide-border-base border-t border-border-base">
             {provider.credentials.map((credential) => (
               <CredentialRow
@@ -75,7 +75,7 @@ function ProviderAvatar({ provider }: { provider: ProviderGroupView }) {
     return (
       <div
         aria-hidden="true"
-        className="flex size-6 items-center justify-center rounded-full bg-surface-active text-tiny font-semibold uppercase leading-inherit text-foreground-body"
+        className="flex size-6 items-center justify-center rounded-full bg-surface-active text-tiny leading-inherit font-semibold text-foreground-body uppercase"
         data-testid={`provider-avatar-${provider.id}`}
       >
         {provider.name?.charAt(0) ?? provider.id.charAt(0)}

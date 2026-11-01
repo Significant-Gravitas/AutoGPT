@@ -14,7 +14,7 @@ export function ActivationTimeline({ terms }: Props) {
     <ol data-slot="activation-timeline" className="space-y-4 text-sm">
       <li
         data-slot="activation-timeline-item"
-        className="relative grid grid-cols-[0.75rem_4.5rem_1fr] gap-x-3 before:absolute before:bottom-[-1rem] before:left-[5px] before:top-4 before:w-px before:bg-surface-active"
+        className="relative grid grid-cols-[0.75rem_4.5rem_1fr] gap-x-3 before:absolute before:top-4 before:bottom-[-1rem] before:left-[5px] before:w-px before:bg-surface-active"
       >
         <span
           aria-hidden="true"

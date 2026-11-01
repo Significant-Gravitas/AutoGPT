@@ -843,14 +843,7 @@ async def delete_store_submission_or_raise(
     if not version or not version.StoreListing:
         raise store_exceptions.SubmissionNotFoundError("Submission not found")
 
-    listing = version.StoreListing
-    if organization_id is not None:
-        allowed = listing.owningOrgId == organization_id or (
-            listing.owningOrgId is None and listing.owningUserId == user_id
-        )
-    else:
-        allowed = listing.owningUserId == user_id
-    if not allowed:
+    if not _owns_listing(version.StoreListing, user_id, organization_id):
         raise store_exceptions.SubmissionNotFoundError("Submission not found")
 
     # Prevent deletion of approved submissions
@@ -985,6 +978,15 @@ async def create_store_submission(
                     }
                 },
             )
+            # A listing belongs to its creator: never withdraw or extend another's.
+            if existing_listing and not _owns_listing(
+                existing_listing, user_id, organization_id
+            ):
+                raise PreconditionFailed(
+                    f"Workflow #{graph_id} is already listed in the Marketplace "
+                    "by another creator"
+                )
+
             next_version = 1
             graph_has_pending_submissions = False
             if existing_listing and existing_listing.Versions:
@@ -1139,21 +1141,8 @@ async def edit_store_submission(
                 f"Store listing version not found: {store_listing_version_id}"
             )
 
-        # Verify ownership. With an active org: the listing must belong to
-        # that org, or be a tenant-less (pre-backfill) listing the caller
-        # owns personally. Without org context: personal ownership only.
         listing = current_version.StoreListing
-        if not listing:
-            raise store_exceptions.UnauthorizedError(
-                f"User {user_id} does not own submission {store_listing_version_id}"
-            )
-        if organization_id is not None:
-            allowed = listing.owningOrgId == organization_id or (
-                listing.owningOrgId is None and listing.owningUserId == user_id
-            )
-        else:
-            allowed = listing.owningUserId == user_id
-        if not allowed:
+        if not listing or not _owns_listing(listing, user_id, organization_id):
             raise store_exceptions.UnauthorizedError(
                 f"User {user_id} does not own submission {store_listing_version_id}"
             )
@@ -1707,7 +1696,7 @@ async def review_store_submission(
             reviewed_submission
         )
 
-    except NotFoundError:
+    except (NotFoundError, PreconditionFailed):
         raise
     except Exception as e:
         logger.error(f"Could not create store submission review: {e}")
@@ -1886,6 +1875,13 @@ async def _approve_sub_agent(
         include={"Versions": True},
     )
 
+    # A listing belongs to its creator: never withdraw or extend another's.
+    if listing and not _owns_listing(listing, main_agent_user_id, None):
+        raise PreconditionFailed(
+            f"Sub-workflow #{sub_graph.id} is listed in the Marketplace by "
+            "another creator; it cannot be approved as part of this workflow"
+        )
+
     # Early return: Create new listing if none exists
     if not listing:
         await prisma.models.StoreListing.prisma(tx).create(
@@ -1945,6 +1941,18 @@ async def _approve_sub_agent(
     await prisma.models.StoreListing.prisma(tx).update(
         where={"id": listing.id}, data={"hasApprovedVersion": True}
     )
+
+
+def _owns_listing(
+    listing: prisma.models.StoreListing, user_id: str, organization_id: str | None
+) -> bool:
+    """With an active org, the listing is that org's or a tenant-less one the
+    user owns personally; without one, the user's own."""
+    if organization_id is not None:
+        return listing.owningOrgId == organization_id or (
+            listing.owningOrgId is None and listing.owningUserId == user_id
+        )
+    return listing.owningUserId == user_id
 
 
 def _create_sub_agent_version_data(

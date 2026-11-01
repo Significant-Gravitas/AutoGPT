@@ -61,7 +61,7 @@
   /* TODO(tokens): no exact text token: the family keeps its system-ui,
      sans-serif fallback, which font-poppins does not have. */
   font-family: var(--font-poppins), system-ui, sans-serif !important;
-  @apply text-body-lg! font-semibold! leading-6!;
+  @apply text-body-lg! leading-6! font-semibold!;
   color: rgb(var(--color-foreground-base)) !important;
 }
 
@@ -86,7 +86,7 @@
   /* TODO(tokens): no exact text token: the family keeps its system-ui,
      sans-serif fallback, which font-sans does not have. */
   font-family: var(--font-geist-sans), system-ui, sans-serif !important;
-  @apply text-body! font-medium! leading-5!;
+  @apply text-body! leading-5! font-medium!;
   transition: all 150ms ease !important;
   border-radius: 9999px !important; /* rounded-full */
   min-width: 5rem !important;

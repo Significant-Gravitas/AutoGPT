@@ -155,7 +155,7 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
                 token.trim() &&
                 submitCredential()
               }
-              className="flex-1 rounded-2xl bg-surface-muted px-3 py-2 text-sm text-foreground-emphasis ring-1 ring-separator transition-shadow placeholder:text-foreground-subtle focus:outline-none focus:ring-border-strong"
+              className="flex-1 rounded-2xl bg-surface-muted px-3 py-2 text-sm text-foreground-emphasis ring-1 ring-separator transition-shadow placeholder:text-foreground-subtle focus:ring-border-strong focus:outline-none"
             />
             <Button
               variant="secondary"

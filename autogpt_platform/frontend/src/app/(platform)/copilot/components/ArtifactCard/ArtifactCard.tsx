@@ -78,7 +78,7 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
         type="button"
         onClick={handleDownloadOnly}
         // oxlint-disable-next-line design-system/no-arbitrary-values -- duration-500 would also slow the hover colour transition
-        className="my-1 flex w-full min-w-0 items-center gap-3 rounded-2xl border border-border-base bg-surface px-3 py-2.5 text-left transition-colors animate-in fade-in slide-in-from-bottom-2 fill-mode-both [animation-duration:500ms] hover:bg-surface-muted"
+        className="my-1 flex w-full min-w-0 items-center gap-3 rounded-2xl border border-border-base bg-surface px-3 py-2.5 text-left transition-colors animate-in [animation-duration:500ms] fade-in fill-mode-both slide-in-from-bottom-2 hover:bg-surface-muted"
       >
         <Icon
           icon={classification.icon}
@@ -111,7 +111,7 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
       onClick={() => openArtifact(artifact)}
       className={cn(
         // oxlint-disable-next-line design-system/no-arbitrary-values -- duration-500 would also slow the hover colour transition
-        "my-1 flex w-full min-w-0 items-center gap-3 rounded-2xl border bg-surface px-3 py-2.5 text-left transition-colors animate-in fade-in slide-in-from-bottom-2 fill-mode-both [animation-duration:500ms] hover:bg-surface-muted",
+        "my-1 flex w-full min-w-0 items-center gap-3 rounded-2xl border bg-surface px-3 py-2.5 text-left transition-colors animate-in [animation-duration:500ms] fade-in fill-mode-both slide-in-from-bottom-2 hover:bg-surface-muted",
         isActive
           ? "border-brand/40 bg-accent-surface/50"
           : "border-border-base",

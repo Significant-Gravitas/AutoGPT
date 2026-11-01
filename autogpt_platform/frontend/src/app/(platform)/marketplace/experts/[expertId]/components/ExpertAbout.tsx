@@ -21,7 +21,7 @@ export function ExpertAbout({ text }: Props) {
     <ExpertSection title="About">
       <p
         className={cn(
-          "whitespace-pre-line text-base leading-7 text-foreground-secondary",
+          "text-base leading-7 whitespace-pre-line text-foreground-secondary",
           isClampable && !isExpanded && "line-clamp-6",
         )}
       >

@@ -10,7 +10,7 @@ export function ChangelogFallback() {
       href={CHANGELOG_BASE_URL}
       target="_blank"
       rel="noopener noreferrer"
-      className="group flex items-center gap-4 rounded-2xl bg-surface p-4 transition-colors duration-150 smooth-shadow-ring-sm hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info motion-reduce:transition-none"
+      className="group flex items-center gap-4 rounded-2xl bg-surface p-4 smooth-shadow-ring-sm transition-colors duration-150 hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-info focus-visible:outline-none motion-reduce:transition-none"
     >
       <span
         aria-hidden
@@ -29,7 +29,7 @@ export function ChangelogFallback() {
       </span>
       <span
         aria-hidden
-        className="shrink-0 text-foreground-tertiary transition-[color,transform] duration-150 group-hover:-translate-y-px group-hover:translate-x-px group-hover:text-foreground-strong motion-reduce:transition-none motion-reduce:group-hover:transform-none"
+        className="shrink-0 text-foreground-tertiary transition-[color,transform] duration-150 group-hover:translate-x-px group-hover:-translate-y-px group-hover:text-foreground-strong motion-reduce:transition-none motion-reduce:group-hover:transform-none"
       >
         <Icon icon={ArrowUpRight01Icon} size={16} />
       </span>

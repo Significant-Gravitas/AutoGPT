@@ -20,7 +20,7 @@ export function OnboardingReview({ steps, answers, labelId, onEdit }: Props) {
     <div className="flex flex-col gap-4">
       <span
         id={labelId}
-        className="text-base font-medium leading-snug text-foreground-strong sm:text-lg"
+        className="text-base leading-snug font-medium text-foreground-strong sm:text-lg"
       >
         Check your answers
       </span>
@@ -30,14 +30,14 @@ export function OnboardingReview({ steps, answers, labelId, onEdit }: Props) {
             <button
               type="button"
               onClick={() => onEdit(index)}
-              className="group flex w-full items-start gap-3 rounded-md bg-surface-muted px-3 py-2.5 text-left outline-none ring-1 ring-separator transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-foreground-subtle focus-visible:ring-offset-1 [@media(hover:none)]:min-h-11"
+              className="group flex w-full items-start gap-3 rounded-md bg-surface-muted px-3 py-2.5 text-left ring-1 ring-separator transition-colors outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-foreground-subtle focus-visible:ring-offset-1 [@media(hover:none)]:min-h-11"
             >
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="sr-only">Change your answer to </span>
                 <Text variant="body-tight" as="span" tone="muted">
                   {step.question}
                 </Text>
-                <span className="break-words text-base text-foreground-strong sm:text-body-md">
+                <span className="text-base break-words text-foreground-strong sm:text-body-md">
                   {getAnswerSummary(answers[step.keyword]) || "No answer yet"}
                 </span>
               </span>

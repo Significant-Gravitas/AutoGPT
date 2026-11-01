@@ -85,13 +85,13 @@ export class ArtifactErrorBoundary extends Component<Props, State> {
           <span className="font-mono">{this.props.artifactTitle}</span> threw an
           error while rendering. The chat and sidebar are still working.
         </Text>
-        <pre className="max-h-32 max-w-md overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-hover px-3 py-2 text-left text-xs text-foreground-body">
+        <pre className="max-h-32 max-w-md overflow-auto rounded-md bg-surface-hover px-3 py-2 text-left text-xs break-words whitespace-pre-wrap text-foreground-body">
           {message}
         </pre>
         <button
           type="button"
           onClick={this.handleCopy}
-          className="rounded-md border border-border-base bg-surface px-3 py-1.5 text-xs font-medium text-foreground-body shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+          className="rounded-md border border-border-base bg-surface px-3 py-1.5 text-xs font-medium text-foreground-body shadow-sm transition-colors hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:outline-none"
         >
           Copy error details
         </button>

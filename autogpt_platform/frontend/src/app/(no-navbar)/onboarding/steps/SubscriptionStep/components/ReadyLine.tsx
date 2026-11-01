@@ -16,7 +16,7 @@ export function ReadyLine({ experts }: Props) {
     <p
       // oxlint-disable-next-line design-system/no-inline-styles -- Otto's tint is mixed from the expert palette (ExpertAvatar/colors); no role has it
       style={{ backgroundColor: OTTO_TINT }}
-      className="inline-flex max-w-full items-center gap-2 rounded-2xl py-1 pl-1 pr-3 font-sans text-caption font-medium text-foreground-emphasis sm:rounded-full"
+      className="inline-flex max-w-full items-center gap-2 rounded-2xl py-1 pr-3 pl-1 font-sans text-caption font-medium text-foreground-emphasis sm:rounded-full"
     >
       <span aria-hidden className="flex shrink-0 -space-x-1">
         <span className="flex overflow-hidden rounded-full">

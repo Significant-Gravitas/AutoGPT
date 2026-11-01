@@ -26,7 +26,7 @@ function Section({ title, text }: SectionProps) {
   return (
     <section>
       <div className={LABEL}>{title}</div>
-      <p className="whitespace-pre-line text-sm leading-relaxed text-foreground-secondary">
+      <p className="text-sm leading-relaxed whitespace-pre-line text-foreground-secondary">
         {text}
       </p>
     </section>

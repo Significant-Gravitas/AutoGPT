@@ -42,7 +42,7 @@ export function CycleToggle({ value, onChange, disabled }: Props) {
                 Yearly{" "}
                 <span
                   // oxlint-disable-next-line design-system/no-raw-colors -- the green-to-teal "Save 15%" gradient has no role
-                  className="ml-1 bg-gradient-to-r from-green-500 via-success to-teal-500 bg-clip-text text-caption-sm font-semibold leading-inherit text-transparent"
+                  className="ml-1 bg-gradient-to-r from-green-500 via-success to-teal-500 bg-clip-text text-caption-sm leading-inherit font-semibold text-transparent"
                 >
                   Save 15%
                 </span>

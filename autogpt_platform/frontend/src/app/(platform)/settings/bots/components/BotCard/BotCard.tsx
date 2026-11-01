@@ -100,7 +100,7 @@ export function BotCard({ platform }: Props) {
           as="span"
           tone="muted"
           // oxlint-disable-next-line design-system/no-restyle -- section labels track at 0.025em; the eyebrow variant's 0.06em is wider than the visual limit
-          className="uppercase tracking-wide"
+          className="tracking-wide uppercase"
         >
           Direct messages
         </Text>
@@ -120,7 +120,7 @@ export function BotCard({ platform }: Props) {
           as="span"
           tone="muted"
           // oxlint-disable-next-line design-system/no-restyle -- section labels track at 0.025em; the eyebrow variant's 0.06em is wider than the visual limit
-          className="uppercase tracking-wide"
+          className="tracking-wide uppercase"
         >
           Linked {serverNoun}s
         </Text>

@@ -133,7 +133,7 @@ function CSVTable({
               >
                 <button
                   type="button"
-                  className="flex w-full cursor-pointer select-none items-center gap-1 hover:bg-surface-hover"
+                  className="flex w-full cursor-pointer items-center gap-1 select-none hover:bg-surface-hover"
                   onClick={() => handleSort(i)}
                 >
                   {header}

@@ -47,6 +47,8 @@ from backend.data.model import (
     CredentialsMetaInput,
     GraphInput,
     NodeExecutionStats,
+    is_refused_sdk_default,
+    sdk_default_refused_message,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.data.user import is_user_banned
@@ -546,6 +548,13 @@ async def _validate_node_input_credentials(
                 credential_errors[node.id][
                     field_name
                 ] = f"{CRED_ERR_INVALID_PREFIX} {e}"
+                continue
+
+            if is_refused_sdk_default(credentials_meta.id):
+                credential_errors[node.id][field_name] = (
+                    f"{CRED_ERR_NOT_AVAILABLE_PREFIX} "
+                    f"{sdk_default_refused_message(credentials_meta.id)}"
+                )
                 continue
 
             try:

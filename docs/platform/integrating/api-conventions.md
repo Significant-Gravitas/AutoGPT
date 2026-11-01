@@ -40,7 +40,7 @@ Every response from the API that is not `2xx` has the same body:
 | 405 | `method_not_allowed` | The path exists but not with this HTTP method. | No. |
 | 409 | `conflict` | The request clashes with the current state, e.g. a file or folder name already in use, stopping a run that already finished, or a run with the same `Idempotency-Key` still being created. | Only the idempotency case: retry the same run start, with the same key, after a second. |
 | 413 | `payload_too_large` | The request body, or an uploaded file, is over the size limit (see [Formats](#formats)). | No. |
-| 422 | `validation_error` | The body or query parameters failed validation (`details.errors` lists each failing field), or an `Idempotency-Key` was reused for a different request. | No. Fix the request, or use a new key. |
+| 422 | `validation_error` | The body or query parameters failed validation (`details.errors` lists up to 20 failing fields), or an `Idempotency-Key` was reused for a different request. | No. Fix the request, or use a new key. |
 | 428 | `precondition_required` | Something must be set up first; the message says what. | After doing it. |
 | 429 | `rate_limit_exceeded` | A rate limit was hit. | Yes, after `Retry-After` seconds. |
 | 500 | `internal_error` | Something failed on the server. The message names the operation but not the cause. | Yes, with backoff. Only retry a run start if you sent an `Idempotency-Key`. |
@@ -49,7 +49,7 @@ Every response from the API that is not `2xx` has the same body:
 
 ### Validation errors
 
-A `422` lists every field that failed in `details.errors`. `loc` is the path to the field:
+A `422` lists up to 20 failing fields in `details.errors`, each with `type`, `loc` and `msg`; if more failed, a last entry with `type` `too_many_errors` says how many were left out. `loc` is the path to the field:
 
 ```json
 {
@@ -61,8 +61,7 @@ A `422` lists every field that failed in `details.errors`. `loc` is the path to 
         {
           "type": "missing",
           "loc": ["body", "cron"],
-          "msg": "Field required",
-          "input": { "graph_id": "4b1f...", "name": "Daily" }
+          "msg": "Field required"
         }
       ]
     }

@@ -83,7 +83,7 @@ export function SidebarRunsList({
 
   if (loading) {
     return (
-      <div className="ml-6 mt-8 w-[20vw] space-y-4 px-4">
+      <div className="mt-8 ml-6 w-[20vw] space-y-4 px-4">
         <Skeleton className="h-12 w-full" />
         <Skeleton className="h-32 w-full" />
         <Skeleton className="h-24 w-full" />
@@ -118,7 +118,7 @@ export function SidebarRunsList({
       className="flex min-h-0 flex-1 flex-col overflow-hidden"
     >
       <div className="relative overflow-hidden">
-        <div className="pointer-events-none absolute right-0 top-0 z-10 h-[46px] w-12 bg-gradient-to-l from-background to-transparent" />
+        <div className="pointer-events-none absolute top-0 right-0 z-10 h-[46px] w-12 bg-gradient-to-l from-background to-transparent" />
         <div className="overflow-x-auto">
           <TabsLineList
             // oxlint-disable-next-line design-system/no-restyle -- the tab underline (border-b) spans this padding; a margin would shorten it
@@ -156,7 +156,7 @@ export function SidebarRunsList({
             isFetchingMore={isFetchingMoreRuns}
             onEndReached={fetchMoreRuns}
             // oxlint-disable-next-line design-system/no-restyle -- InfiniteList renders a bare div whose children are the list items, so the list layout and scrollbar can only be set here
-            className="flex min-h-0 flex-1 flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border-strong lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden"
+            className="scrollbar-thin flex min-h-0 flex-1 scrollbar-thumb-border-strong scrollbar-track-transparent flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pt-1 pb-4 lg:flex-col lg:gap-3 lg:overflow-x-hidden lg:overflow-y-auto"
             itemWrapperClassName="w-auto lg:w-full"
             getKey={(run) => run.id}
             renderItem={(run) => (
@@ -173,7 +173,7 @@ export function SidebarRunsList({
           value="scheduled"
           className="mx-4 mt-0 flex min-h-0 flex-1 flex-col"
         >
-          <div className="flex min-h-0 flex-1 flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border-strong lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
+          <div className="scrollbar-thin flex min-h-0 flex-1 scrollbar-thumb-border-strong scrollbar-track-transparent flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pt-1 pb-4 lg:flex-col lg:gap-3 lg:overflow-x-hidden lg:overflow-y-auto">
             {schedules.length > 0 ? (
               schedules.map((s: GraphExecutionJobInfo) => (
                 <div className="w-[15rem] lg:w-full" key={s.id}>
@@ -201,7 +201,7 @@ export function SidebarRunsList({
             value="triggers"
             className="mx-4 mt-0 flex min-h-0 flex-1 flex-col"
           >
-            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border-strong lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
+            <div className="scrollbar-thin flex min-h-0 flex-1 scrollbar-thumb-border-strong scrollbar-track-transparent flex-col gap-4 overflow-x-scroll px-1 pt-1 pb-4 lg:gap-3 lg:overflow-x-hidden lg:overflow-y-auto">
               {triggers.length > 0 && (
                 <div className="flex flex-col gap-2">
                   <Text variant="body-medium" tone="muted" className="mx-1">
@@ -274,7 +274,7 @@ export function SidebarRunsList({
           value="templates"
           className="mx-4 mt-0 flex min-h-0 flex-1 flex-col"
         >
-          <div className="flex min-h-0 flex-1 flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border-strong lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
+          <div className="scrollbar-thin flex min-h-0 flex-1 scrollbar-thumb-border-strong scrollbar-track-transparent flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pt-1 pb-4 lg:flex-col lg:gap-3 lg:overflow-x-hidden lg:overflow-y-auto">
             {templates.length > 0 ? (
               templates.map((template) => (
                 <div className="w-[15rem] lg:w-full" key={template.id}>

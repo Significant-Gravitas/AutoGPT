@@ -30,7 +30,7 @@ export function ModalHeader({ agent }: ModalHeaderProps) {
             previewLimit={400}
             variant="small"
             // oxlint-disable-next-line design-system/no-restyle -- ShowMoreText has no tone prop yet
-            className="mb-2 mt-4 !text-foreground-body"
+            className="mt-4 mb-2 !text-foreground-body"
           >
             {agent.description}
           </ShowMoreText>

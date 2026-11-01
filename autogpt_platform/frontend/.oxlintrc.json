@@ -117,7 +117,7 @@
         "design-system/no-legacy-button-variant": "error",
         "design-system/hugeicons-only": "error",
         "design-system/require-suppression-reason": "error",
-        "design-system/baseline-outdated": "warn"
+        "design-system/baseline-outdated": "error"
       }
     },
     {
@@ -128,13 +128,6 @@
       ],
       "rules": {
         "design-system/no-restyle": "off"
-      }
-    },
-    {
-      "files": ["src/components/atoms/Button/**"],
-      "rules": {
-        "design-system/no-legacy-import": "off",
-        "design-system/no-legacy-button-variant": "off"
       }
     },
     {

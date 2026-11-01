@@ -75,7 +75,7 @@ export function ActivityDropdown({
     <div className="overflow-hidden">
       {/* Header */}
       <div className="sticky top-0 z-10 px-4">
-        <div className="flex items-center justify-between pb-1 pt-3">
+        <div className="flex items-center justify-between pt-3 pb-1">
           {isSearchVisible && withSearch ? (
             <div
               className={`${styles.searchContainer} ${
@@ -98,7 +98,7 @@ export function ActivityDropdown({
                 />
                 <button
                   onClick={handleClearSearch}
-                  className="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center"
+                  className="absolute top-1/2 right-1 flex h-6 w-6 -translate-y-1/2 items-center justify-center"
                   aria-label="Clear search"
                 >
                   <Icon
@@ -111,7 +111,7 @@ export function ActivityDropdown({
             </div>
           ) : (
             <div className={`${styles.headerContainer} py-0.5`}>
-              <span className="text-xs font-medium uppercase text-foreground-tertiary">
+              <span className="text-xs font-medium text-foreground-tertiary uppercase">
                 Workflow Activity
               </span>
               {withSearch ? (
@@ -149,7 +149,7 @@ export function ActivityDropdown({
             style={{ width: "100%", height: listHeight }}
           />
         ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-5 pb-8 pt-6">
+          <div className="flex h-full flex-col items-center justify-center gap-5 pt-6 pb-8">
             <div className="mx-auto inline-flex flex-col items-center justify-center rounded-full bg-bgLightGrey p-6">
               <Icon
                 icon={BellIcon}
