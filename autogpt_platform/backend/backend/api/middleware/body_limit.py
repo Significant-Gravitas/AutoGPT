@@ -9,7 +9,7 @@ route's multipart body may carry a whole file, every other body is held to
 from collections.abc import Callable
 from typing import Any, TypeVar
 
-from fastapi import params
+from fastapi import HTTPException, params
 from fastapi.routing import APIRoute
 from starlette import status
 from starlette.datastructures import Headers
@@ -95,8 +95,15 @@ def mark_bounded_inside(scope: Scope) -> None:
     scope[_BOUNDED_INSIDE] = True
 
 
-class RequestBodyTooLarge(Exception):
-    """Raised into the app when the body it is reading crosses the limit."""
+class RequestBodyTooLarge(HTTPException):
+    """Raised into the app when the body it is reading crosses the limit.
+
+    An `HTTPException` so a route's own `except HTTPException: raise` (ahead
+    of a broader `except Exception`, as webhook signature checks use around
+    `request.body()`) passes it through instead of relabelling it."""
+
+    def __init__(self) -> None:
+        super().__init__(status_code=status.HTTP_413_CONTENT_TOO_LARGE)
 
 
 class BodyGuard:
