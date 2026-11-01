@@ -2164,6 +2164,12 @@ async def get_folder_agents_map(
                 )
         if page >= resp.pagination.total_pages:
             break
+    else:
+        logger.warning(
+            f"get_folder_agents_map for user {user_id} hit its "
+            f"{_FOLDER_AGENTS_MAX_PAGES}-page cap across {len(agents_map)} "
+            "folder(s); some folders' agents may be missing"
+        )
     return agents_map
 
 

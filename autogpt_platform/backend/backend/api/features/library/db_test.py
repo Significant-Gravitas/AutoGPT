@@ -1,4 +1,5 @@
 import json
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import cast
@@ -2741,6 +2742,41 @@ async def test_get_folder_agents_map_stops_at_its_page_cap(mocker):
     await db.get_folder_agents_map("test-user", ["folder-0"], "org-a")
 
     assert list_agents.await_count == db._FOLDER_AGENTS_MAX_PAGES
+
+
+@pytest.mark.asyncio
+async def test_get_folder_agents_map_warns_when_the_page_cap_truncates(mocker, caplog):
+    mocker.patch.object(
+        db,
+        "list_library_agents",
+        AsyncMock(
+            return_value=MagicMock(agents=[], pagination=MagicMock(total_pages=100))
+        ),
+    )
+
+    with caplog.at_level(logging.WARNING, logger="backend.api.features.library.db"):
+        await db.get_folder_agents_map("test-user", ["folder-0"], "org-a")
+
+    assert len(caplog.records) == 1
+    assert "cap" in caplog.records[0].getMessage()
+
+
+@pytest.mark.asyncio
+async def test_get_folder_agents_map_does_not_warn_when_it_finishes_within_the_cap(
+    mocker, caplog
+):
+    mocker.patch.object(
+        db,
+        "list_library_agents",
+        AsyncMock(
+            return_value=MagicMock(agents=[], pagination=MagicMock(total_pages=1))
+        ),
+    )
+
+    with caplog.at_level(logging.WARNING, logger="backend.api.features.library.db"):
+        await db.get_folder_agents_map("test-user", ["folder-0"], "org-a")
+
+    assert caplog.records == []
 
 
 @pytest.mark.asyncio
