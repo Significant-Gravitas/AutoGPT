@@ -170,6 +170,16 @@ export const VoiceModeEvent = {
   VOICE_MODE_ERROR: "voice_mode_error",
 } as const;
 
+// Dictation from the chat composer's mic, outside voice mode.
+export const DictationEvent = {
+  // The transcription API could not read a recording, so the composer offers
+  // "Record again" in place of Retry.
+  DICTATION_REJECTED: "dictation_rejected",
+  // A new recording started while that rejection was on screen. Against
+  // `dictation_rejected` this says how many users recover by speaking again.
+  DICTATION_RERECORDED: "dictation_rerecorded",
+} as const;
+
 export const CredentialConnectionFailureEvent = {
   // The provider is absent from the loaded provider map, so the card's row
   // for it never renders at all.
@@ -222,6 +232,7 @@ export const PostHogEvent = {
   ...FirstRunEvent,
   ...TabIntroEvent,
   ...VoiceModeEvent,
+  ...DictationEvent,
   ...CredentialConnectionFailureEvent,
   ...TrialEvent,
   ...TourEvent,

@@ -7,13 +7,17 @@ import {
   Alert02Icon,
   Cancel01Icon,
   Download04Icon,
+  Mic01Icon,
   RefreshIcon,
 } from "@hugeicons/core-free-icons";
 
 interface Props {
   message: string;
   isRetrying: boolean;
-  onRetry: () => void;
+  /** Absent when the same audio cannot work a second time. */
+  onRetry?: () => void;
+  /** Offered in place of Retry: a new recording is the only way on. */
+  onRecordAgain?: () => void;
   onDownload: () => void;
   onDismiss: () => void;
   className?: string;
@@ -21,13 +25,15 @@ interface Props {
 
 /**
  * The recording behind this message is still in memory, so the row stays put
- * until the user acts on it — retried, downloaded, or dismissed. Anything
+ * until the user acts on it — retried, recorded again, downloaded, or
+ * dismissed. Anything
  * that expires on its own takes the audio with it.
  */
 export function TranscriptionErrorBar({
   message,
   isRetrying,
   onRetry,
+  onRecordAgain,
   onDownload,
   onDismiss,
   className,
@@ -42,17 +48,30 @@ export function TranscriptionErrorBar({
     >
       <Icon icon={Alert02Icon} className="h-4 w-4 shrink-0" aria-hidden />
       <span className="min-w-0 flex-1 truncate">{message}</span>
-      <Button
-        type="button"
-        variant="ghost"
-        size="xs"
-        leadingIcon={RefreshIcon}
-        loading={isRetrying}
-        disabled={isRetrying}
-        onClick={onRetry}
-      >
-        Retry
-      </Button>
+      {onRetry && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          leadingIcon={RefreshIcon}
+          loading={isRetrying}
+          disabled={isRetrying}
+          onClick={onRetry}
+        >
+          Retry
+        </Button>
+      )}
+      {onRecordAgain && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          leadingIcon={Mic01Icon}
+          onClick={onRecordAgain}
+        >
+          Record again
+        </Button>
+      )}
       <Button
         type="button"
         variant="ghost"

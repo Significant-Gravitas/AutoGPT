@@ -396,6 +396,8 @@ merges the website pageviews into the new user:
 | `voice_recording_downloaded` | browser | live | `turn_index` | The audio is downloaded instead. |
 | `voice_mode_permission_denied` | browser | live | `stage` | Microphone permission is refused. |
 | `voice_mode_error` | browser | live | `stage` | The VAD, synthesis or send failed. |
+| `dictation_rejected` | browser | live | — | The transcription API cannot read a recording from the chat composer's mic, and the composer offers Record again in place of Retry. |
+| `dictation_rerecorded` | browser | live | — | A new composer recording starts while that rejection is on screen. |
 | `experts_section_viewed` | browser | live | — | The marketplace experts shelf renders with results. |
 | `expert_profile_opened` | browser | live | `template_id` | An expert profile page opens. |
 | `hire_started` | browser | live | `template_id`, `surface` (`onboarding`, `expert_page`) | A hire button is clicked, or once per expert of the hire step's batch. |
