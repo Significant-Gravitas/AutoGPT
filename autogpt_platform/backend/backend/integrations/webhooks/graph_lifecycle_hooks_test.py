@@ -117,6 +117,27 @@ async def test_before_graph_activate_clears_optional_unloadable_credentials():
 
 
 @pytest.mark.asyncio
+async def test_an_infrastructure_failure_keeps_an_optional_credential():
+    """A transient DB/Redis failure says nothing about the credential, so an
+    optional reference is kept and activation fails with a retry message."""
+    node = _make_node(required=False, optional_marker=True)
+    graph = MagicMock(nodes=[node])
+
+    async def failing_getter(_creds_id):
+        raise ConnectionError("Error connecting to redis-master.internal:6379")
+
+    with patch(
+        "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
+    ) as mgr:
+        mgr.cached_getter.return_value = failing_getter
+        with pytest.raises(GraphActivationError) as excinfo:
+            await _before_graph_activate(graph, "user-1")
+
+    assert "could not be loaded just now" in str(excinfo.value)
+    assert node.input_default["credentials"]["id"] == "cred-1"
+
+
+@pytest.mark.asyncio
 async def test_before_graph_activate_removes_deleted_optional_credentials():
     """A deleted credential on a field with a schema default is removed, so
     the node runs as if none had been picked."""

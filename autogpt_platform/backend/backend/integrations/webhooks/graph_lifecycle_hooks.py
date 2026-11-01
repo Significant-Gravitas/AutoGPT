@@ -181,12 +181,13 @@ def _apply_credential_result(
 
     # If the credential field is optional (has a default in the schema, or
     # node metadata marks it optional), clear the stale reference instead
-    # of blocking the save.
+    # of blocking the save. An infra failure says nothing about the
+    # credential, so keep the reference and fail below instead.
     creds_field_optional = (
         new_node.credentials_optional
         or creds_field_name not in block_input_schema.get_required_fields()
     )
-    if creds_field_optional:
+    if creds_field_optional and not unavailable:
         # Drop the key rather than writing `{}`: an id-less object fails the
         # field's nested credentials schema in `validate_exec`, so the node
         # would never be queued. An absent key means "not configured".
