@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
+from backend.blocks.mcp.block import MCPToolBlock
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.execution import ExecutionContext, NodeExecutionEntry
 from backend.data.model import (
@@ -414,6 +415,50 @@ async def test_credential_metadata_cannot_hide_authoritative_codex_provider():
     assert "credentials" not in captured
 
 
+@pytest.mark.asyncio
+async def test_mcp_node_takes_the_run_credentials_from_its_input_mask():
+    credentials = OAuth2Credentials(
+        id="run-cred",
+        provider="mcp",
+        access_token=SecretStr("run-token"),
+        scopes=[],
+        metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
+    )
+    lease = MagicMock(credentials=credentials)
+    lease.release = AsyncMock()
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock(return_value=lease)
+    block = MCPToolBlock()
+    node = _node(block)
+    node.input_default = {
+        "server_url": "https://mcp.example.com/mcp",
+        "selected_tool": "a_tool",
+        "tool_input_schema": {
+            "type": "object",
+            "properties": {"credentials": {"type": "string"}},
+        },
+        "credentials": {"id": "saved-cred", "provider": "mcp", "type": "oauth2"},
+    }
+    run_credentials = {"id": "run-cred", "provider": "mcp", "type": "oauth2"}
+
+    with patch.object(block, "_call_mcp_tool", new_callable=AsyncMock) as call_tool:
+        call_tool.return_value = "ok"
+        outputs = [
+            item
+            async for item in execute_node(
+                node,
+                _entry({"credentials": "a tool argument"}),
+                SimpleNamespace(creds_manager=manager),
+                nodes_input_masks={"node-1": {"credentials": run_credentials}},
+            )
+        ]
+
+    assert outputs == [("result", "ok")]
+    manager.acquire_lease.assert_awaited_once_with("user-1", "run-cred")
+    assert call_tool.await_args is not None
+    assert call_tool.await_args.kwargs["authorization"] == "Bearer run-token"
+
+
 def _block_with_credentials(
     credential_fields: dict[str, type[CodexCredentialsInput]],
     captured: dict[str, object],
@@ -452,14 +497,124 @@ def _block_with_credentials(
     return block
 
 
-def _node(block: MagicMock) -> MagicMock:
+def _node(block: MagicMock | MCPToolBlock) -> MagicMock:
     node = MagicMock()
     node.block = block
     node.input_default = {}
     return node
 
 
-def _entry(inputs: dict[str, object]) -> NodeExecutionEntry:
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("credentials_input", "credentials"),
+    [(CodexCredentialsInput, None), (OpenAIKeyInput, OPENAI_KEY)],
+    ids=["leased oauth", "api key"],
+)
+async def test_an_expert_run_refuses_a_credential_not_granted_to_it(
+    credentials_input: type[CredentialsMetaInput], credentials: Credentials | None
+):
+    # The grant is checked before any credential read or lease.
+    metadata = (
+        _metadata_of(credentials) if credentials else _credential_metadata("cred-1")
+    )
+    manager = MagicMock()
+    manager.get = AsyncMock(return_value=credentials)
+    manager.acquire_lease = AsyncMock()
+    db = MagicMock()
+    db.expert_allowed_credential_ids = AsyncMock(return_value=["cred-other"])
+    block = _block_with_credentials({"credentials": credentials_input}, {})
+
+    with (
+        patch("backend.executor.manager.experts_db", return_value=db),
+        pytest.raises(ValueError, match="not been granted to this expert"),
+    ):
+        await anext(
+            execute_node(
+                _node(block),
+                _entry({"credentials": metadata}, expert_id="expert-1"),
+                SimpleNamespace(creds_manager=manager),
+            )
+        )
+
+    db.expert_allowed_credential_ids.assert_awaited_once_with("user-1", "expert-1")
+    manager.get.assert_not_awaited()
+    manager.acquire_lease.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("expert_id", "granted", "system"),
+    [("expert-1", ["cred-1"], False), ("expert-1", [], True), (None, [], False)],
+    ids=["granted", "system credential", "personal run"],
+)
+async def test_a_granted_system_or_personal_credential_runs(
+    expert_id: str | None, granted: list[str], system: bool
+):
+    manager = MagicMock()
+    manager.get = AsyncMock(return_value=OPENAI_KEY)
+    db = MagicMock()
+    db.expert_allowed_credential_ids = AsyncMock(return_value=granted)
+    captured: dict[str, object] = {}
+    block = _block_with_credentials({"credentials": OpenAIKeyInput}, captured)
+
+    with (
+        patch("backend.executor.manager.experts_db", return_value=db),
+        patch(
+            "backend.executor.manager.is_system_credential",
+            lambda credentials_id: system,
+        ),
+    ):
+        outputs = [
+            item
+            async for item in execute_node(
+                _node(block),
+                _entry({"credentials": _metadata_of(OPENAI_KEY)}, expert_id=expert_id),
+                SimpleNamespace(creds_manager=manager),
+            )
+        ]
+
+    assert outputs == [("response", "ok")]
+    assert captured["credentials"] is OPENAI_KEY
+    if expert_id is None or system:
+        db.expert_allowed_credential_ids.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_expert_run_refuses_an_mcp_run_credential_not_granted_to_it():
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock()
+    db = MagicMock()
+    db.expert_allowed_credential_ids = AsyncMock(return_value=["cred-other"])
+    block = MCPToolBlock()
+    node = _node(block)
+    node.input_default = {
+        "server_url": "https://mcp.example.com/mcp",
+        "selected_tool": "a_tool",
+    }
+    run_credentials = {"id": "run-cred", "provider": "mcp", "type": "oauth2"}
+
+    with (
+        patch("backend.executor.manager.experts_db", return_value=db),
+        patch.object(block, "_call_mcp_tool", new_callable=AsyncMock) as call_tool,
+        pytest.raises(ValueError, match="not been granted to this expert"),
+    ):
+        await anext(
+            execute_node(
+                node,
+                _entry({"credentials": run_credentials}, expert_id="expert-1"),
+                SimpleNamespace(creds_manager=manager),
+                nodes_input_masks={"node-1": {"credentials": run_credentials}},
+            )
+        )
+
+    db.expert_allowed_credential_ids.assert_awaited_once_with("user-1", "expert-1")
+    manager.acquire_lease.assert_not_awaited()
+    call_tool.assert_not_awaited()
+
+
+def _entry(
+    inputs: dict[str, object], expert_id: str | None = None
+) -> NodeExecutionEntry:
     return NodeExecutionEntry(
         user_id="user-1",
         graph_exec_id="graph-exec-1",
@@ -469,7 +624,7 @@ def _entry(inputs: dict[str, object]) -> NodeExecutionEntry:
         node_id="node-1",
         block_id="block-1",
         inputs=inputs,
-        execution_context=ExecutionContext(),
+        execution_context=ExecutionContext(expert_id=expert_id),
     )
 
 

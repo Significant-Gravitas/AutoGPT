@@ -21,14 +21,23 @@ export interface DesktopStreamValue {
   requires_auth?: boolean;
 }
 
+const DESKTOP_PREVIEW_PATH = "/api/proxy/api/desktop-preview";
+
 function isStreamUrl(url: unknown): url is string {
   if (typeof url !== "string") return false;
-  // A root-relative path is our own proxy link; anything absolute must be
-  // https, or a javascript: URL would run in our origin under
-  // allow-scripts allow-same-origin.
-  if (url.startsWith("/") && !url.startsWith("//")) return true;
+  // The frame runs allow-scripts allow-same-origin, so on our own origin it may
+  // load only the desktop-preview route, and anywhere else only https.
+  if (url.startsWith("/") && !url.startsWith("//")) {
+    return (
+      new URL(url, "https://origin.invalid").pathname === DESKTOP_PREVIEW_PATH
+    );
+  }
   try {
-    return new URL(url).protocol === "https:";
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === "https:" &&
+      parsed.origin !== globalThis.location?.origin
+    );
   } catch {
     return false;
   }
