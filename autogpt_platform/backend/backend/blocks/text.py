@@ -23,7 +23,7 @@ formatter = text.TextFormatter()
 
 MAX_REGEX_PATTERN_LENGTH = 10_000
 MAX_REGEX_TEXT_LENGTH = 1_000_000
-MAX_REGEX_REPEAT = 1000  # Largest {m,n} count, with nested counts multiplied
+MAX_REGEX_REPEAT = 10_000  # Largest {m,n} count, with nested counts multiplied
 REGEX_TIMEOUT_SECONDS = 1.0
 MAX_MATCHES = 1000  # Maximum number of matches to prevent memory exhaustion
 MAX_MATCH_LENGTH = 10_000  # Maximum length per match
@@ -232,8 +232,11 @@ class ExtractTextInformationBlock(Block):
 
             yield "matched_results", matches
             yield "matched_count", len(matches)
+        except RegexRepeatLimitError:
+            # Reported as an error, not as empty results
+            raise
         except Exception:
-            # Return empty results on any regex error
+            # Return empty results on any other regex error
             yield "negative", input_data.text
             yield "matched_results", []
             yield "matched_count", 0
@@ -541,10 +544,14 @@ def _check_output_length(label: str, length: int) -> None:
         )
 
 
+class RegexRepeatLimitError(ValueError):
+    """A regex pattern repeats more than MAX_REGEX_REPEAT allows."""
+
+
 def _check_regex_repeats(pattern: str) -> None:
     # Compiling a pattern isn't covered by the regex timeout
     if largest_repeat_count(pattern, MAX_REGEX_REPEAT) > MAX_REGEX_REPEAT:
-        raise ValueError(
+        raise RegexRepeatLimitError(
             f"Regex pattern repeats too much to evaluate safely (maximum "
             f"{MAX_REGEX_REPEAT} repetitions, with nested repeats multiplied)."
         )

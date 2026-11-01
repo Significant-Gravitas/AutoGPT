@@ -1,6 +1,7 @@
 import pytest
 
 from backend.blocks.text import (
+    MAX_REGEX_PATTERN_LENGTH,
     MAX_REGEX_REPEAT,
     ExtractTextInformationBlock,
     MatchTextPatternBlock,
@@ -47,7 +48,7 @@ async def test_match_text_pattern_refuses_large_repeat_before_compiling(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("pattern", ["(a{100}){100}", "((a{10}){10}){11}"])
+@pytest.mark.parametrize("pattern", ["(a{100}){101}", "((a{10}){10}){101}"])
 async def test_match_text_pattern_refuses_large_nested_repeat_before_compiling(
     mocker, pattern
 ):
@@ -63,7 +64,7 @@ async def test_match_text_pattern_refuses_large_nested_repeat_before_compiling(
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "pattern",
-    [f"a{{{MAX_REGEX_REPEAT}}}", "((a{10}){10}){10}", f"a{{{MAX_REGEX_REPEAT},}}"],
+    [f"a{{{MAX_REGEX_REPEAT}}}", "((a{10}){10}){100}", f"a{{{MAX_REGEX_REPEAT},}}"],
 )
 async def test_match_text_pattern_allows_repeat_at_the_limit(pattern):
     block = MatchTextPatternBlock()
@@ -101,16 +102,34 @@ async def test_match_text_pattern_ordinary_repeats_unchanged(text, pattern, expe
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("pattern", ["a{30000000}", "(a{100}){100}"])
+@pytest.mark.parametrize(
+    "pattern", ["a{30000000}", "(a{100}){101}", f"a{{{MAX_REGEX_REPEAT + 1}}}"]
+)
 async def test_extract_text_information_refuses_large_repeat_before_compiling(
     mocker, pattern
 ):
     block = ExtractTextInformationBlock()
     finditer = mocker.patch("backend.blocks.text.regex.finditer")
     input_data = block.Input(text="order 42", pattern=pattern)
+    outputs = []
+
+    with pytest.raises(ValueError, match=LIMIT_MESSAGE):
+        async for output in block.run(input_data):
+            outputs.append(output)
+
+    assert outputs == []
+    finditer.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pattern", ["a" * (MAX_REGEX_PATTERN_LENGTH + 1), "(unclosed"])
+async def test_extract_text_information_other_pattern_errors_still_give_empty_results(
+    pattern,
+):
+    block = ExtractTextInformationBlock()
+    input_data = block.Input(text="order 42", pattern=pattern)
 
     assert await _outputs(block, input_data) == NO_MATCH_OUTPUTS
-    finditer.assert_not_called()
 
 
 @pytest.mark.asyncio
