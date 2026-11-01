@@ -115,8 +115,7 @@ class CodeExtractionBlock(Block):
         opener = re.compile(rf"```{re.escape(language)}[ \t]*\n", re.IGNORECASE)
         code_blocks = []
         position = 0
-        # Each closer is found with str.find, so the text is read once per alias;
-        # a fence with no closer ends the search, as no later fence can have one.
+        # A fence with no closer ends the search, as no later fence can have one.
         while opening := opener.search(text, position):
             closing = text.find("\n```", opening.end())
             if closing == -1:

@@ -281,21 +281,21 @@ def test_before_send_searches_no_more_than_its_budget(monkeypatch) -> None:
 
     monkeypatch.setattr(metrics, "_EMBEDDED_SECRET_ASSIGNMENT", _Recording())
     chunk = "x" * metrics._SENTRY_MAX_VALUE_LENGTH
+    crumbs = metrics._SENTRY_SCRUB_BUDGET // len(chunk) + 5
     event = _log_event("backend.api.rest_api", "api_key=FAKE-SECRET-1")
-    event["breadcrumbs"] = {"values": [{"message": chunk}] * 3}
-    event["extra"] = {"payload": {"items": [chunk] * 100}}
+    event["breadcrumbs"] = {"values": [{"message": chunk} for _ in range(crumbs)]}
+    frame = {"function": "handle_request", "vars": {"request": chunk}}
+    event["exception"] = {"values": [{"stacktrace": {"frames": [frame]}}]}
 
     scrubbed = _before_send(event, {})
 
     assert scrubbed is not None
     assert sum(searched) <= metrics._SENTRY_SCRUB_BUDGET
     assert scrubbed["logentry"]["formatted"] == "[Filtered]"
-    payload = scrubbed["extra"]["payload"]["items"]
-    assert set(payload) == {chunk, "[Filtered]"}
-    # Earlier log lines come last, so they never use up what the error needs.
-    assert [crumb["message"] for crumb in scrubbed["breadcrumbs"]["values"]] == [
-        "[Filtered]"
-    ] * 3
+    # A frame sits deeper than any breadcrumb, and is still searched first.
+    assert frame == {"function": "handle_request", "vars": {"request": chunk}}
+    messages = [crumb["message"] for crumb in scrubbed["breadcrumbs"]["values"]]
+    assert set(messages) == {chunk, "[Filtered]"}
 
 
 def test_before_send_keeps_untyped_balance_message() -> None:

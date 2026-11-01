@@ -871,12 +871,9 @@ def test_no_process_cached_loop_bound_clients():
 # Rule: a pattern that isn't a literal is compiled through compile_user_regex
 # ---------------------------------------------------------------------------
 #
-# Motivation: `regex`'s timeout covers matching, not compiling, and its module
-# functions keep every compiled pattern in a process-wide cache.
-# `backend.util.user_regex.compile_user_regex` bounds what a pattern may compile
-# to and skips the cache, so no other code hands `regex` a pattern it was given.
-# The stdlib `re` has no timeout at all, so a block never passes it a pattern
-# read from its input (`re.escape` of an input is fine).
+# Motivation: compile_user_regex bounds what a pattern compiles to and skips the
+# module cache, and a block never hands `re` its input as a pattern (re.escape of
+# an input is fine). Input copied to a local first is followed within one module.
 
 _REGEX_FUNCTIONS = frozenset(
     {
@@ -902,7 +899,7 @@ def test_patterns_from_input_go_through_compile_user_regex():
         if _is_test_file(rel) or rel.as_posix() == _USER_REGEX_MODULE:
             continue
         tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
-        for lineno, reason in _unbounded_pattern_calls(tree, rel.parts[0] == "blocks"):
+        for lineno, reason in _unchecked_pattern_calls(tree, rel.parts[0] == "blocks"):
             offenders.append(f"  backend/{rel}:{lineno} {reason}")
 
     assert not offenders, (
@@ -922,12 +919,16 @@ def test_patterns_from_input_go_through_compile_user_regex():
         ("import re\nre.compile(rf'{input_data.prefix}\\d')", True, True),
         ("import re\nre.search(re.escape(input_data.word), text)", True, False),
         ("import re\nre.search(input_data.pattern, text)", False, False),
+        ("import re\np = input_data.pattern\nre.search(p, text)", True, True),
+        ("import re\nre.search(pattern=input_data.pattern, string=t)", True, True),
+        ("import regex\nregex.compile(pattern=pattern)", False, True),
+        ("from regex import compile as c\nc(pattern)", False, True),
     ],
 )
-def test_unbounded_pattern_calls_reads_each_form(
+def test_unchecked_pattern_calls_reads_each_form(
     source: str, in_block: bool, flagged: bool
 ):
-    assert bool(_unbounded_pattern_calls(ast.parse(source), in_block)) is flagged
+    assert bool(_unchecked_pattern_calls(ast.parse(source), in_block)) is flagged
 
 
 def _is_test_file(rel: pathlib.PurePath) -> bool:
@@ -939,9 +940,9 @@ def _is_test_file(rel: pathlib.PurePath) -> bool:
     )
 
 
-def _unbounded_pattern_calls(tree: ast.Module, in_block: bool) -> list[tuple[int, str]]:
+def _unchecked_pattern_calls(tree: ast.Module, in_block: bool) -> list[tuple[int, str]]:
     modules: dict[str, str] = {}
-    functions: dict[str, str] = {}
+    functions: dict[str, tuple[str, str]] = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -950,43 +951,52 @@ def _unbounded_pattern_calls(tree: ast.Module, in_block: bool) -> list[tuple[int
         elif isinstance(node, ast.ImportFrom) and node.module in ("re", "regex"):
             for alias in node.names:
                 if alias.name in _REGEX_FUNCTIONS:
-                    functions[alias.asname or alias.name] = node.module
+                    functions[alias.asname or alias.name] = (node.module, alias.name)
+    inputs = _names_holding_input(tree)
 
     offenses: list[tuple[int, str]] = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call) or not node.args:
+        if not isinstance(node, ast.Call):
             continue
         func = node.func
         if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
-            module = modules.get(func.value.id)
-            name = func.attr
-        elif isinstance(func, ast.Name):
-            module = functions.get(func.id)
-            name = func.id
+            module, name = modules.get(func.value.id), func.attr
+        elif isinstance(func, ast.Name) and func.id in functions:
+            module, name = functions[func.id]
         else:
             continue
-        if module is None or name not in _REGEX_FUNCTIONS:
+        pattern = _argument(node, 0, "pattern")
+        if module is None or name not in _REGEX_FUNCTIONS or pattern is None:
             continue
-        pattern = node.args[0]
         if module == "regex" and not (
             isinstance(pattern, ast.Constant) and isinstance(pattern.value, str)
         ):
             offenses.append((node.lineno, f"passes `regex.{name}` a non-literal"))
-        elif module == "re" and in_block and _reads_input_unescaped(pattern):
+        elif module == "re" and in_block and _reads_input_unescaped(pattern, inputs):
             offenses.append((node.lineno, f"passes `re.{name}` the block's input"))
     return offenses
 
 
-def _reads_input_unescaped(node: ast.AST) -> bool:
+def _names_holding_input(tree: ast.Module) -> set[str]:
+    names = {"input_data"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and _reads_input_unescaped(node.value, names):
+            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
+    return names
+
+
+def _reads_input_unescaped(node: ast.AST, inputs: set[str]) -> bool:
     if (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
         and node.func.attr == "escape"
     ):
         return False
-    if isinstance(node, ast.Name) and node.id == "input_data":
+    if isinstance(node, ast.Name) and node.id in inputs:
         return True
-    return any(_reads_input_unescaped(child) for child in ast.iter_child_nodes(node))
+    return any(
+        _reads_input_unescaped(child, inputs) for child in ast.iter_child_nodes(node)
+    )
 
 
 # ---------------------------------------------------------------------------

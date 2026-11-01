@@ -139,8 +139,7 @@ _TITLE_CLOSE_RE = re.compile(r"</title>", re.IGNORECASE)
 
 
 def _extract_title(html: str) -> str | None:
-    # Each delimiter is searched for once, so this is linear in the page's length;
-    # a later <title can't have an end the first one lacks.
+    # A later <title can't have an end the first one lacks.
     opening = _TITLE_OPEN_RE.search(html)
     if not opening:
         return None

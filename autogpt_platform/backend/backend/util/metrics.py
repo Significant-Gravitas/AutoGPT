@@ -114,8 +114,7 @@ _EMBEDDED_SECRET_ASSIGNMENT = re.compile(
 )
 _TOKEN_SHAPED_VALUE = re.compile(
     r"(?i)(?:\b(?:bearer|basic)\s+[a-z0-9._~+/=-]{8,}|"
-    # Tried once per base64url run, from its start, committing to the run's first
-    # "eyJ", so a search stays linear in the text's length.
+    # Matches what \beyJ... matched, entered once from the start of each base64url run.
     r"(?<![a-z0-9_-])(?>[a-z0-9_-]*?\beyJ)"
     r"[a-z0-9_-]{5,}\.[a-z0-9_-]{5,}\.[a-z0-9_-]{5,}\b|"
     r"\b(?:sk-(?:proj-)?|gh[pousr]_|github_pat_|xox[baprs]-)[a-z0-9_-]{8,})"
@@ -136,18 +135,20 @@ def _scrub_sentry_event(event: dict) -> None:
     those here made the SDK drop the whole event as an internal error. ``_meta``
     is the SDK's own annotation tree and is left alone.
 
-    The scrub runs inside the logging call, so it searches at most
-    ``_SENTRY_SCRUB_BUDGET`` characters and filters any string beyond that rather
-    than send it unsearched. It walks breadth-first, so the message and the
-    frames' names are read before deeply nested locals, and the breadcrumbs last.
+    It searches at most ``_SENTRY_SCRUB_BUDGET`` characters per event and filters
+    any string beyond that rather than send it unsearched; it walks breadth-first,
+    and the breadcrumbs get only what the rest of the event left.
     """
     _redact_request_urls(event)
-    keys = [key for key in event if key != "_meta"]
-    keys.sort(key=lambda key: key == "breadcrumbs")
-    queue: deque[tuple[dict[Any, Any] | list[Any], Any]] = deque(
-        (event, key) for key in keys
-    )
-    budget = _SENTRY_SCRUB_BUDGET
+    keys = [key for key in event if key not in ("_meta", "breadcrumbs")]
+    budget = _scrub_breadth_first([(event, key) for key in keys], _SENTRY_SCRUB_BUDGET)
+    if "breadcrumbs" in event:
+        _scrub_breadth_first([(event, "breadcrumbs")], budget)
+
+
+def _scrub_breadth_first(roots: list[tuple[dict[Any, Any], Any]], budget: int) -> int:
+    """Scrub the values under ``roots`` and return the budget left over."""
+    queue: deque[tuple[dict[Any, Any] | list[Any], Any]] = deque(roots)
     while queue:
         parent, key = queue.popleft()
         value = parent[key]
@@ -171,6 +172,7 @@ def _scrub_sentry_event(event: dict) -> None:
                 value
             ):
                 parent[key] = _FILTERED_VALUE
+    return budget
 
 
 def _redact_request_urls(event: dict) -> None:

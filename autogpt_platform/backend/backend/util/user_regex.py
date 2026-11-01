@@ -1,10 +1,4 @@
-"""Compile a regular expression a user wrote, within bounds on what it costs.
-
-The ``timeout=`` that ``regex`` takes covers matching, not compiling, and what
-compiling costs grows with a pattern's repeat counts. So the size a pattern
-compiles to is counted on ``regex``'s own parse of it, and a pattern over the
-limit is refused before it is compiled.
-"""
+"""Compile a regular expression a user wrote, refusing one too large to compile."""
 
 import importlib
 from typing import Any
@@ -49,7 +43,7 @@ def _parse(pattern: str, flags: int) -> list[Any]:
             parsed = _regex_core._parse_pattern(source, info)
             break
         except _regex_core._UnscopedFlagSet:
-            # A global inline flag such as (?x) applies from the pattern's start.
+            # A global inline flag such as (?b) or (?V1) applies from the start.
             flags = info.global_flags
     if not info.flags & _regex_core._ALL_ENCODINGS:
         info.flags |= regex.UNICODE

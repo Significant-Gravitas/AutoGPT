@@ -11,6 +11,7 @@ OVER_THE_LIMIT = [
     f"(?:a{{{MAX_COMPILED_ITEMS // 2}}})+",
     f"(?:(?:a{{10}}){{10}}){{{MAX_COMPILED_ITEMS // 100}}}",
     f"(?x)a{{{' '.join(str(MAX_COMPILED_ITEMS))}}}",
+    f"a(?b)a{{{MAX_COMPILED_ITEMS}}}",
     f"(?i)[a-z]{{{MAX_COMPILED_ITEMS}}}",
     f"(?=a{{{MAX_COMPILED_ITEMS}}})",
 ]
