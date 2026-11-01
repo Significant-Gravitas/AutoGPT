@@ -8,7 +8,9 @@ import pytest
 from backend.util import text
 from backend.util.text import (
     MAX_FORMAT_FIELD_SIZE,
+    MAX_FORMAT_STRING_LENGTH,
     MAX_RENDER_BYTES,
+    MAX_TEMPLATE_LENGTH,
     REMOVED_FILTERS,
     RENDER_YIELD_INTERVAL,
     SIZE_CHECKED_FILTERS,
@@ -435,18 +437,39 @@ OVERSIZED_TEMPLATES = {
         "{{ (10**100)|round(-" + HUGE + ") }}",
         "Integer too large",
     ),
+    "a filter applied once per item": (
+        BIG_VALUE + "{% set l = [a] * 10000 %}{{ (l|map('lower')|list)|length }}",
+        AFTER_IT_IS_BUILT,
+    ),
+    "a filter over a caller's list": (
+        "{{ (l|map('lower')|list)|length }}",
+        AFTER_IT_IS_BUILT,
+    ),
+    "a long %-style format string": (
+        "{% set f = '%s' * 5000 %}{% set f = f ~ f %}{{ (f % ()) }}",
+        "Format string too long",
+    ),
 }
 
 
+# The one case whose list arrives from the caller rather than the template
+OVERSIZED_VALUES = {"a filter over a caller's list": {"l": ["x" * 10_000] * 6_000}}
+
+
 @pytest.mark.parametrize(
-    ("template", "refusal"), OVERSIZED_TEMPLATES.values(), ids=OVERSIZED_TEMPLATES
+    ("name", "template", "refusal"),
+    [(name, *case) for name, case in OVERSIZED_TEMPLATES.items()],
+    ids=OVERSIZED_TEMPLATES,
 )
 @pytest.mark.asyncio
 async def test_an_oversized_render_is_refused(
-    fmt: TextFormatter, template: str, refusal: str
+    fmt: TextFormatter, name: str, template: str, refusal: str
 ):
-    with pytest.raises(OverflowError, match=refusal):
-        await fmt.format_string(template)
+    # ValueError, not OverflowError: the app's global handlers answer a
+    # ValueError with 400 and anything else with 500 and a logged error, and
+    # an oversized template is the caller's
+    with pytest.raises(ValueError, match=refusal):
+        await fmt.format_string(template, OVERSIZED_VALUES.get(name))
 
 
 WORKING_TEMPLATES = {
@@ -563,7 +586,7 @@ async def test_another_task_runs_while_a_template_renders(fmt: TextFormatter):
 async def test_a_render_without_a_timeout_still_meets_its_size_budget(
     fmt: TextFormatter,
 ):
-    with pytest.raises(OverflowError):
+    with pytest.raises(ValueError, match=BEFORE_IT_ALLOCATES):
         await fmt.format_string(OVERSIZED_TEMPLATES["center filter"][0], timeout=None)
 
 
@@ -614,7 +637,7 @@ async def test_what_a_lazy_filter_builds_is_charged(
     fmt: TextFormatter, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.setattr(text, "MAX_RENDER_BYTES", 5_000)
-    with pytest.raises(OverflowError):
+    with pytest.raises(ValueError, match="exceed"):
         # `list` answers a render with a coroutine, so the list of 2,000
         # one-character strings is only there once that is awaited
         await fmt.format_string("{{ v|list|length }}", {"v": "x" * 2_000})
@@ -625,7 +648,7 @@ async def test_what_a_method_adds_to_its_own_container_is_charged(
     fmt: TextFormatter, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.setattr(text, "MAX_RENDER_BYTES", 5_000)
-    with pytest.raises(OverflowError):
+    with pytest.raises(ValueError, match="exceed"):
         await fmt.format_string(
             "{% set l = [] %}"
             "{% for i in range(10000) %}{{ l.append(i) or '' }}{% endfor %}"
@@ -645,8 +668,40 @@ async def test_the_limits_hold_for_an_autoescaping_formatter(oversized: str):
         await escaping.format_string("a<b{{ c }}{{ d ~ e }}", {"c": "<i>", "d": "&"})
         == "a<b&lt;i&gt;&amp;"
     )
-    with pytest.raises(OverflowError):
+    with pytest.raises(ValueError, match="exceed"):
         await escaping.format_string(OVERSIZED_TEMPLATES[oversized][0])
+
+
+@pytest.mark.asyncio
+async def test_a_template_longer_than_the_bound_is_refused(fmt: TextFormatter):
+    # Compiling happens before the budget and the deadline exist, and there is
+    # no checkpoint in it, so the template's length is its own bound
+    with pytest.raises(ValueError, match="Template too long"):
+        await fmt.format_string("x" * (MAX_TEMPLATE_LENGTH + 1))
+    assert await fmt.format_string("x" * MAX_TEMPLATE_LENGTH) == (
+        "x" * MAX_TEMPLATE_LENGTH
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_format_string_within_the_bound_still_works(fmt: TextFormatter):
+    within = "%s" * (MAX_FORMAT_STRING_LENGTH // 2)
+    assert (
+        await fmt.format_string(
+            "{{ f % v }}", {"f": within, "v": ("",) * (MAX_FORMAT_STRING_LENGTH // 2)}
+        )
+        == ""
+    )
+
+
+@pytest.mark.asyncio
+async def test_what_str_format_builds_is_charged(
+    fmt: TextFormatter, monkeypatch: pytest.MonkeyPatch
+):
+    # The field check bounds one field; this is the result the call returns
+    monkeypatch.setattr(text, "MAX_RENDER_BYTES", 5_000)
+    with pytest.raises(ValueError, match="exceed"):
+        await fmt.format_string("{{ '{}'.format(v) }}", {"v": "x" * 3_000})
 
 
 # --- A new way to build a value is classified, never allowed by omission ---

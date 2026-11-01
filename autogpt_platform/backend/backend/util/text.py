@@ -3,7 +3,14 @@ import inspect
 import logging
 import re
 import types
-from collections.abc import AsyncIterable, AsyncIterator, Callable, Collection, Iterable
+from collections.abc import (
+    AsyncIterable,
+    AsyncIterator,
+    Callable,
+    Collection,
+    Iterable,
+    Iterator,
+)
 from contextvars import ContextVar
 from functools import update_wrapper
 from time import monotonic
@@ -30,6 +37,8 @@ MAX_RANGE = 10_000  # Max items from range()
 MAX_SEQUENCE_REPEAT = 10_000  # Max length from sequence * int
 TEMPLATE_RENDER_TIMEOUT = 10  # Seconds before render is killed
 MAX_FORMAT_FIELD_SIZE = 1_000  # Max width or precision of a formatted field
+MAX_TEMPLATE_LENGTH = 100_000  # Max characters of template one render may compile
+MAX_FORMAT_STRING_LENGTH = 10_000  # Max characters of one %-style format string
 MAX_RENDER_BYTES = 50_000_000  # Max bytes of values one render may build
 MAX_RENDER_INT_BITS = 100_000  # Widest integer a template may compute
 RENDER_YIELD_INTERVAL = 0.005  # Max seconds a render may hold the event loop
@@ -66,6 +75,12 @@ def _check_percent_format(
     to reject. Given a budget, the text every conversion would render is
     checked as well, because the operator builds all of it in one step.
     """
+    # The walk below is one uninterruptible step, so the string it walks is
+    # bounded first; every format string a template writes is short
+    if len(format_string) > MAX_FORMAT_STRING_LENGTH:
+        raise OverflowError(
+            f"Format string too long (max {MAX_FORMAT_STRING_LENGTH} characters)"
+        )
     values = args if isinstance(args, tuple) else (args,)
     mapping = args if isinstance(args, dict) else None
     position = 0
@@ -92,13 +107,13 @@ def _check_percent_format(
 
 def _percent_conversions(
     format_string: str,
-) -> list[tuple[str | None, str, str, str]]:
+) -> Iterator[tuple[str | None, str, str, str]]:
     """Each %-style conversion as (key, width, precision, type).
 
     A "(key)" may hold balanced parentheses, as the % operator allows, so
-    it's scanned by depth rather than matched up to the first ")".
+    it's scanned by depth rather than matched up to the first ")". Yielded
+    one at a time, so a refusal costs one conversion and not the whole list.
     """
-    conversions = []
     position = format_string.find("%")
     while position != -1:
         position += 1
@@ -113,9 +128,9 @@ def _percent_conversions(
         rest = _PERCENT_CONVERSION.match(format_string, position)
         if rest is None:
             break
-        conversions.append((key, *rest.groups()))
+        width, precision, conversion = rest.groups()
+        yield key, width, precision, conversion
         position = format_string.find("%", rest.end())
-    return conversions
 
 
 def _check_format_spec(format_spec: str) -> None:
@@ -139,9 +154,8 @@ class TextFormatter:
             loader=BaseLoader(),
             autoescape=autoescape,
             enable_async=True,
-            # A wholly constant expression is otherwise evaluated while
-            # Jinja compiles, where no limit of ours can see it
-            optimized=False,
+            # Taking the context in `finalize` is what leaves an output
+            # expression to the render instead of to compilation
             finalize=_charge_rendered_value,
         )
         self.env.globals.clear()
@@ -168,11 +182,20 @@ class TextFormatter:
     ) -> str:
         """Render a Jinja2 template within one budget of size and time.
 
-        The budget is spent inside the render — at every operation that builds
-        a value, and at the top of every loop, macro and block body — because
-        a render that never suspends cannot be interrupted from outside.
-        ``asyncio.wait_for`` stays as a backstop.
+        The budget is spent inside the render, at every operation that builds
+        a value and at the top of every loop, macro and block body, which is
+        where the render also gives the event loop a turn;
+        ``asyncio.wait_for`` stays as a backstop. Compiling the template
+        happens before either of those exist, so its own bound is the
+        template's length.
+
+        Raises ``ValueError`` for anything the caller's template is refused
+        for, so the API answers 400 rather than 500.
         """
+        if len(template_str) > MAX_TEMPLATE_LENGTH:
+            raise ValueError(
+                f"Template too long (max {MAX_TEMPLATE_LENGTH} characters)"
+            )
         # The deadline is wall-clock, so a render that gives the loop a turn
         # is charged for the time other tasks take with it
         budget = _RenderBudget(
@@ -190,6 +213,8 @@ class TextFormatter:
                 f"Template rendering timed out after {timeout}s "
                 "(expression too complex)"
             )
+        except OverflowError as refused:
+            raise ValueError(str(refused)) from refused
         except TemplateError as e:
             raise ValueError(e) from e
         finally:
@@ -235,8 +260,15 @@ class _RenderBudget:
             raise OverflowError(f"Template rendering exceeded {MAX_RENDER_BYTES} bytes")
 
     def charge(self, result: Any, *inputs: Any) -> Any:
-        """Spend what ``result`` adds to the largest value it was built from."""
-        produced = _value_size(result) - max(map(_value_size, inputs), default=0)
+        """Spend what ``result`` costs, unless it IS one of its inputs.
+
+        An operation that hands its argument back costs nothing. One that
+        answers with a new value has allocated it, whatever its inputs were
+        worth, which is what an operation applied once per item does.
+        """
+        if any(result is value for value in inputs):
+            return result
+        produced = _value_size(result)
         if produced > 0:
             self.spend(produced)
         return result
@@ -300,8 +332,8 @@ def _text_size(value: Any, depth: int = 2) -> int:
 def _check_deadline() -> None:
     """Refuse work that has run past the render's deadline.
 
-    `checkpoint` runs at the top of a body, so a filter Jinja applies item by
-    item inside one loop of its own never reaches another one.
+    `checkpoint` runs at the top of a body; a filter Jinja applies item by
+    item inside one loop of its own reaches this instead.
     """
     budget = _render_budget.get()
     if (
@@ -369,10 +401,10 @@ class _RestrictedEnvironment(SandboxedEnvironment):
 
     Prevents resource-exhaustion attacks such as ``{{ 999999999**999999999 }}``
     or ``{{ range(999999999) | list }}`` by intercepting dangerous builtins.
-    What a template builds by any other means is refused before it allocates
+    Every other operation that builds a value is refused before it allocates
     where its size follows from the arguments, and charged to the render's
-    budget afterwards where it does not; the deadline is checked inside the
-    render, which is the only place that can stop one.
+    budget where it does not; the deadline is read inside the render, at the
+    seams below.
     """
 
     code_generator_class = _BudgetedCodeGenerator
@@ -383,9 +415,8 @@ class _RestrictedEnvironment(SandboxedEnvironment):
     async def checkpoint(self) -> None:
         """Enforce the deadline and give the event loop a turn.
 
-        Called at the top of every generated loop, macro and block body,
-        because a render that does no I/O is one uninterruptible step of the
-        event loop: a deadline outside it has nowhere to act.
+        Emitted at the top of every generated loop, macro and block body, so
+        that a render which does no I/O of its own still reaches both.
         """
         budget = _render_budget.get()
         if budget is None:
