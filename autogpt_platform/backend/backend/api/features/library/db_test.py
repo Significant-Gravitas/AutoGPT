@@ -1808,8 +1808,10 @@ async def test_new_inputs_need_credentials_alongside_which_may_be_empty(
 
     preset_client = AsyncMock()
     mocker.patch.object(prisma.models.AgentPreset, "prisma", return_value=preset_client)
+    row_client = AsyncMock()
+    row_client.count.return_value = 0
     mocker.patch.object(
-        prisma.models.AgentNodeExecutionInputOutput, "prisma", return_value=AsyncMock()
+        prisma.models.AgentNodeExecutionInputOutput, "prisma", return_value=row_client
     )
     mocker.patch.object(db, "transaction", fake_tx)
     mocker.patch.object(

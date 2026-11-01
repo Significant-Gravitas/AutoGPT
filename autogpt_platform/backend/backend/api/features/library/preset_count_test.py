@@ -1,5 +1,6 @@
 """An account holds at most `MAX_PRESETS_PER_USER` presets; real database."""
 
+import asyncio
 import uuid
 
 import prisma.models
@@ -34,6 +35,27 @@ async def test_an_account_at_the_cap_saves_no_preset_until_it_deletes_one(
 
     await library_db.delete_preset(user_id, saved[0].id)
     await _save(user_id, graph)
+    assert await _held(user_id) == _CAP
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_concurrent_creates_at_the_cap_save_only_one(
+    server: SpinTestServer, monkeypatch: pytest.MonkeyPatch
+):
+    """Two concurrent creates can't both pass the count check and both
+    insert — `pg_advisory_xact_lock` serializes them, so the second sees the
+    first's row before deciding."""
+    monkeypatch.setattr(library_db, "MAX_PRESETS_PER_USER", _CAP)
+    user_id, graph = await _user_with_graph(server)
+    for _ in range(_CAP - 1):
+        await _save(user_id, graph)
+
+    results = await asyncio.gather(
+        _save(user_id, graph), _save(user_id, graph), return_exceptions=True
+    )
+
+    assert sum(not isinstance(r, BaseException) for r in results) == 1
+    assert sum(isinstance(r, InvalidInputError) for r in results) == 1
     assert await _held(user_id) == _CAP
 
 

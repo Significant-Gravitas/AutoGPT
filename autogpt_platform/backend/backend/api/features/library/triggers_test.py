@@ -13,6 +13,7 @@ from backend.api.features.library.triggers import (
     update_triggered_preset,
 )
 from backend.data.includes import MAX_NODE_INPUT_OUTPUT_FETCH
+from backend.data.model import CredentialsMetaInput
 from backend.util.exceptions import InvalidInputError, MissingConfigError, NotFoundError
 
 _USER = "test-user-triggers"
@@ -331,6 +332,64 @@ async def test_an_account_at_the_preset_cap_registers_no_webhook(
     _under_the_preset_cap.assert_awaited_once_with(_USER)
     webhook_mock.assert_not_awaited()
     create_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_trigger_config_oversized_only_once_every_credential_is_counted_registers_no_webhook():
+    """The preflight has to count what create_preset will actually store —
+    the trigger config merged with EVERY agent credential, not only the
+    trigger node's — or a config oversized that way slips past it and
+    registers a webhook that create_preset then refuses."""
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    small_trigger_config = {"repo": "owner/repo"}
+    credentials_from_other_nodes = {
+        f"cred_{i}": CredentialsMetaInput(
+            id=f"cred-{i}", provider="github", type="api_key"
+        )
+        for i in range(MAX_NODE_INPUT_OUTPUT_FETCH)
+    }
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook as webhook_mock,
+        p_create as create_mock,
+        pytest.raises(InvalidInputError, match="at most"),
+    ):
+        await setup_triggered_preset(
+            user_id=_USER,
+            graph_id="graph-1",
+            graph_version=1,
+            name="My Trigger",
+            description="",
+            trigger_config=small_trigger_config,
+            agent_credentials=credentials_from_other_nodes,
+        )
+    webhook_mock.assert_not_awaited()
+    create_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_setup_prunes_the_webhook_when_create_preset_fails():
+    """create_preset can still fail after the webhook is registered (e.g. a
+    graph access change landing in between); the webhook just registered for
+    this setup must not be left dangling."""
+    p_graph, p_creds, p_webhook, _p_create, p_expert = _patches(graph=_graph())
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook as webhook_mock,
+        patch(
+            f"{_PATH}.db.create_preset",
+            new=AsyncMock(side_effect=RuntimeError("boom")),
+        ),
+        patch(f"{_PATH}._prune_dangling_webhook", new=AsyncMock()) as prune,
+        pytest.raises(RuntimeError, match="boom"),
+    ):
+        await _setup()
+    webhook_mock.assert_awaited_once()
+    prune.assert_awaited_once_with(_USER, "wh-1")
 
 
 @pytest.mark.asyncio

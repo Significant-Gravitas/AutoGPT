@@ -96,8 +96,13 @@ async def setup_triggered_preset(
             or {}
         ),
     }
-    # Before the webhook is registered, so a refused config registers none.
-    db.check_preset_input_count(trigger_config_with_credentials)
+    # The exact entries create_preset will store — its own inputs merged with
+    # every credential, not only the trigger node's — so this check and that
+    # write never disagree. Before the webhook is registered, so a refused
+    # config registers none.
+    db.check_preset_input_count(
+        {**trigger_config_with_credentials, **agent_credentials}
+    )
     await db.check_preset_count(user_id)
 
     if expert_id:
@@ -123,20 +128,25 @@ async def setup_triggered_preset(
     if not new_webhook:
         raise InvalidInputError(f"Could not set up webhook: {feedback}")
 
-    return await db.create_preset(
-        user_id=user_id,
-        preset=models.LibraryAgentPresetCreatable(
-            graph_id=graph.id,
-            graph_version=graph.version,
-            name=name,
-            description=description,
-            inputs=trigger_config_with_credentials,
-            credentials=agent_credentials,
-            is_active=True,
-        ),
-        webhook_id=new_webhook.id,
-        expert_id=expert_id,
-    )
+    try:
+        return await db.create_preset(
+            user_id=user_id,
+            preset=models.LibraryAgentPresetCreatable(
+                graph_id=graph.id,
+                graph_version=graph.version,
+                name=name,
+                description=description,
+                inputs=trigger_config_with_credentials,
+                credentials=agent_credentials,
+                is_active=True,
+            ),
+            webhook_id=new_webhook.id,
+            expert_id=expert_id,
+        )
+    except Exception:
+        # Until it is attached, a webhook registered for this setup is orphaned.
+        await _prune_dangling_webhook(user_id, new_webhook.id)
+        raise
 
 
 async def update_triggered_preset(

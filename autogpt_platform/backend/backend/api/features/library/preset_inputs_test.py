@@ -2,13 +2,16 @@
 
 import ast
 import logging
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
+import prisma.models
 import pytest
 
+from backend.api.features.library import db
 from backend.api.features.library.db import preset_input_rows
 from backend.api.features.library.model import LibraryAgentPreset
 from backend.data.includes import AGENT_PRESET_INCLUDE, MAX_NODE_INPUT_OUTPUT_FETCH
@@ -41,6 +44,80 @@ def test_a_read_brings_back_a_preset_at_the_write_bound_in_full():
     # with inputs missing.
     fetch_args = cast(dict, AGENT_PRESET_INCLUDE[_RELATION])
     assert fetch_args["take"] == MAX_NODE_INPUT_OUTPUT_FETCH
+
+
+@pytest.mark.asyncio
+async def test_update_refuses_to_replace_inputs_past_the_read_cap(mocker):
+    """A caller's view of InputPresets came from a read capped at
+    MAX_NODE_INPUT_OUTPUT_FETCH, so replacing it from that view would silently
+    drop whatever rows the read never surfaced."""
+    mocker.patch.object(
+        db, "get_preset", new=AsyncMock(return_value=MagicMock(expert_id=None))
+    )
+
+    @asynccontextmanager
+    async def fake_tx():
+        yield None
+
+    mocker.patch.object(db, "transaction", fake_tx)
+    mock_row_client = AsyncMock()
+    mock_row_client.count.return_value = MAX_NODE_INPUT_OUTPUT_FETCH
+    mocker.patch.object(
+        prisma.models.AgentNodeExecutionInputOutput,
+        "prisma",
+        return_value=mock_row_client,
+    )
+    mock_preset_client = AsyncMock()
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+
+    with pytest.raises(InvalidInputError, match="at or past what a read returns"):
+        await db.update_preset(
+            user_id="owner",
+            preset_id="preset-1",
+            inputs={"a": 1},
+            credentials={},
+        )
+
+    mock_row_client.delete_many.assert_not_called()
+    mock_preset_client.update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_replaces_inputs_under_the_read_cap(mocker):
+    mocker.patch.object(
+        db, "get_preset", new=AsyncMock(return_value=MagicMock(expert_id=None))
+    )
+
+    @asynccontextmanager
+    async def fake_tx():
+        yield None
+
+    mocker.patch.object(db, "transaction", fake_tx)
+    mock_row_client = AsyncMock()
+    mock_row_client.count.return_value = MAX_NODE_INPUT_OUTPUT_FETCH - 1
+    mocker.patch.object(
+        prisma.models.AgentNodeExecutionInputOutput,
+        "prisma",
+        return_value=mock_row_client,
+    )
+    mock_preset_client = AsyncMock()
+    mock_preset_client.update.return_value = MagicMock()
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+    mocker.patch.object(LibraryAgentPreset, "from_db", return_value=MagicMock())
+
+    await db.update_preset(
+        user_id="owner",
+        preset_id="preset-1",
+        inputs={"a": 1},
+        credentials={},
+    )
+
+    mock_row_client.delete_many.assert_awaited_once()
+    mock_preset_client.update.assert_awaited_once()
 
 
 def test_every_preset_input_row_is_built_by_the_bounded_builder():
