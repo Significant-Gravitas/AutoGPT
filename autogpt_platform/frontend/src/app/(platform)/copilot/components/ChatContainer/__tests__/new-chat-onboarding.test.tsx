@@ -1,15 +1,28 @@
+import { getGetV2GetCopilotUsageMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { getGetSubscriptionStatusMockHandler200 } from "@/app/api/__generated__/endpoints/credits/credits.msw";
 import { server } from "@/mocks/mock-server";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  fireEvent,
-  act,
-  render,
-  screen,
-  waitFor,
-} from "@/tests/integrations/test-utils";
+import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { http, HttpResponse } from "msw";
-import { describe, expect, test, vi } from "vitest";
+import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
+import type { ReactNode } from "react";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { ChatContainer, type ChatContainerProps } from "../ChatContainer";
+
+const voice = vi.hoisted(() => ({ isActive: false }));
+
+vi.mock("../../../voice/useVoiceMode", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../voice/useVoiceMode")>()),
+  useVoiceMode: () => ({
+    state: voice.isActive ? "listening" : "off",
+    isActive: voice.isActive,
+    isStarting: false,
+    statusLabel: "",
+    toggle: vi.fn(),
+    failure: null,
+    retryFailedUtterance: vi.fn(),
+    downloadFailedUtterance: vi.fn(),
+  }),
+}));
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
@@ -23,7 +36,7 @@ const props: ChatContainerProps = {
   messages: [],
   status: "ready",
   error: undefined,
-  sessionId: null,
+  sessionId: "empty-session",
   isLoadingSession: false,
   isCreatingSession: false,
   onCreateSession: vi.fn(),
@@ -39,86 +52,73 @@ const props: ChatContainerProps = {
   },
 };
 
-function mockOnboarding(completed = false) {
-  const request = vi.fn(() =>
-    HttpResponse.json(
-      completed
-        ? null
-        : {
-            type: "expert_onboarding",
-            expert_id: "expert-kepler",
-            greeting: "I'm Kepler.",
-            message: "What topic?",
-            steps: [
-              {
-                question: "What topic?",
-                keyword: "topic",
-                options: ["AI", "Energy"],
-              },
-            ],
-          },
-    ),
+// The chat locks on the AutoPilot budget, and onboarding stays hidden while it
+// does: pin a budget with room left instead of faker's random usage and tier.
+beforeEach(() => {
+  voice.isActive = false;
+  server.use(
+    getGetV2GetCopilotUsageMockHandler200({
+      tier: "PRO",
+      daily: null,
+      weekly: null,
+      reset_cost: 0,
+      state: "ok",
+      limiting_window: null,
+      resets_at: null,
+    }),
+    getGetSubscriptionStatusMockHandler200({
+      tier: "PRO",
+      monthly_cost: 0,
+      tier_costs: {},
+      proration_credit_cents: 0,
+    }),
   );
-  server.use(http.get("/api/proxy/api/experts/:expertId/onboarding", request));
-  return request;
-}
+});
 
 describe("new full-page expert chats", () => {
-  test("keeps draft answers when onboarding status refetches", async () => {
-    mockOnboarding();
-    const queryClient = new QueryClient();
-    render(
-      <QueryClientProvider client={queryClient}>
-        <ChatContainer {...props} />
-      </QueryClientProvider>,
-    );
-    fireEvent.click(await screen.findByRole("radio", { name: "AI" }));
-    await act(async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ["/api/experts/expert-kepler/onboarding"],
-      });
-    });
-    expect(
-      screen.getByRole("radio", { name: "AI" }).getAttribute("aria-checked"),
-    ).toBe("true");
+  test("an empty chat opens the chat whose setup questions still wait", async () => {
+    const request = mockOnboarding();
+    const urlUpdates = renderAt(<ChatContainer {...props} />, "empty-session");
+    await waitFor(() => expect(urlUpdates).toEqual(["kickoff-session"]));
+    expect(request).toHaveBeenCalledOnce();
   });
 
-  test.each([null, "empty-session"])(
-    "shows pending onboarding in chat %s",
-    async (sessionId) => {
-      mockOnboarding();
-      const onSend = vi.fn();
-      render(
-        <ChatContainer {...props} sessionId={sessionId} onSend={onSend} />,
-      );
-      expect(await screen.findByText("What topic?")).toBeDefined();
-      fireEvent.click(screen.getByRole("button", { name: "Skip" }));
-      await waitFor(() =>
-        expect(onSend).toHaveBeenCalledWith(
-          "Let's skip the setup questions for now.",
-        ),
-      );
-    },
-  );
-
-  test("sends completed answers through the new chat's send handler", async () => {
-    mockOnboarding();
-    const onSend = vi.fn();
-    render(<ChatContainer {...props} onSend={onSend} />);
-    fireEvent.click(await screen.findByRole("radio", { name: "AI" }));
-    fireEvent.click(screen.getByRole("button", { name: /Send answers/i }));
-    await waitFor(() =>
-      expect(onSend).toHaveBeenCalledWith(
-        "**Here are my answers:**\n\n> What topic?\n\nAI\n\nPlease proceed.",
-      ),
-    );
-  });
-
-  test("does not show completed or skipped onboarding", async () => {
+  test("stays in the empty chat once setup is answered or skipped", async () => {
     const request = mockOnboarding(true);
-    render(<ChatContainer {...props} />);
+    const urlUpdates = renderAt(<ChatContainer {...props} />, "empty-session");
     await waitFor(() => expect(request).toHaveBeenCalled());
-    expect(screen.queryByText("What topic?")).toBeNull();
+    expect(urlUpdates).toEqual([]);
+  });
+
+  test("stays in a new chat while its first message's files upload", async () => {
+    const request = mockOnboarding();
+    const urlUpdates = renderAt(
+      <ChatContainer
+        {...props}
+        isUploadingFiles
+        pendingSend={{ text: "Here's the brief", attachments: [] }}
+      />,
+      "empty-session",
+    );
+    expect(await screen.findByRole("textbox")).toBeDefined();
+    expect(request).not.toHaveBeenCalled();
+    expect(urlUpdates).toEqual([]);
+  });
+
+  test("stays in a new chat while voice mode runs in it", async () => {
+    voice.isActive = true;
+    const request = mockOnboarding();
+    const urlUpdates = renderAt(<ChatContainer {...props} />, "empty-session");
+    expect(await screen.findByRole("textbox")).toBeDefined();
+    expect(request).not.toHaveBeenCalled();
+    expect(urlUpdates).toEqual([]);
+  });
+
+  test("keeps the home hero when an expert is picked before a chat exists", async () => {
+    const request = mockOnboarding();
+    render(<ChatContainer {...props} sessionId={null} />);
+    expect(await screen.findByRole("textbox")).toBeDefined();
+    expect(request).not.toHaveBeenCalled();
   });
 
   test("does not request onboarding after the user sends a prompt", async () => {
@@ -138,6 +138,26 @@ describe("new full-page expert chats", () => {
     );
     expect(await screen.findByText("Research this company")).toBeDefined();
     expect(request).not.toHaveBeenCalled();
-    expect(screen.queryByText("What topic?")).toBeNull();
   });
 });
+
+function mockOnboarding(completed = false) {
+  const request = vi.fn(() =>
+    HttpResponse.json(completed ? null : { session_id: "kickoff-session" }),
+  );
+  server.use(http.get("/api/proxy/api/experts/:expertId/onboarding", request));
+  return request;
+}
+
+function renderAt(ui: ReactNode, sessionId: string) {
+  const urlUpdates: (string | null)[] = [];
+  const Wrapper = withNuqsTestingAdapter({
+    searchParams: `?sessionId=${sessionId}`,
+    hasMemory: true,
+    onUrlUpdate: (event) => {
+      urlUpdates.push(event.searchParams.get("sessionId"));
+    },
+  });
+  render(<Wrapper>{ui}</Wrapper>);
+  return urlUpdates;
+}

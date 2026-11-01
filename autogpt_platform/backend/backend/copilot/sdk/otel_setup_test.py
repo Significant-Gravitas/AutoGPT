@@ -21,6 +21,7 @@ class TestSetupLangfuseOtel:
                 "LANGSMITH_TRACING",
                 "OTEL_EXPORTER_OTLP_ENDPOINT",
                 "OTEL_EXPORTER_OTLP_HEADERS",
+                "OTEL_PYTHON_EXPORTER_OTLP_HTTP_TRACES_CREDENTIAL_PROVIDER",
             ]
             saved = {k: os.environ.pop(k, None) for k in env_keys}
             try:
@@ -36,7 +37,7 @@ class TestSetupLangfuseOtel:
         """OTEL env vars should be set when Langfuse credentials exist."""
         mock_settings = MagicMock()
         mock_settings.secrets.langfuse_public_key = "pk-test-123"
-        mock_settings.secrets.langfuse_secret_key = "sk-test-456"
+        mock_settings.secrets.langfuse_secret_key = "sk-test-456"  # pragma: allowlist secret  # noqa: E501; fmt: skip
         mock_settings.secrets.langfuse_host = "https://langfuse.example.com"
         mock_settings.secrets.langfuse_tracing_environment = "test"
 
@@ -46,6 +47,9 @@ class TestSetupLangfuseOtel:
                 return_value=True,
             ),
             patch("backend.copilot.sdk.service.Settings", return_value=mock_settings),
+            patch(
+                "backend.copilot.sdk.service.install_trace_redaction"
+            ) as mock_redaction,
             patch(
                 "backend.copilot.sdk.service.configure_claude_agent_sdk",
                 return_value=True,
@@ -60,6 +64,7 @@ class TestSetupLangfuseOtel:
                 "LANGSMITH_TRACING",
                 "OTEL_EXPORTER_OTLP_ENDPOINT",
                 "OTEL_EXPORTER_OTLP_HEADERS",
+                "OTEL_PYTHON_EXPORTER_OTLP_HTTP_TRACES_CREDENTIAL_PROVIDER",
                 "OTEL_RESOURCE_ATTRIBUTES",
             ]
             saved = {k: os.environ.pop(k, None) for k in env_keys}
@@ -75,11 +80,18 @@ class TestSetupLangfuseOtel:
                 )
                 assert "Authorization=Basic" in os.environ["OTEL_EXPORTER_OTLP_HEADERS"]
                 assert (
+                    os.environ[
+                        "OTEL_PYTHON_EXPORTER_OTLP_HTTP_TRACES_CREDENTIAL_PROVIDER"
+                    ]
+                    == "autogpt-copilot-traces"
+                )
+                assert (
                     os.environ["OTEL_RESOURCE_ATTRIBUTES"]
                     == "langfuse.environment=test"
                 )
 
                 mock_configure.assert_called_once_with(tags=["sdk"])
+                mock_redaction.assert_called_once_with()
             finally:
                 for k, v in saved.items():
                     if v is not None:
@@ -91,7 +103,7 @@ class TestSetupLangfuseOtel:
         """Explicit env-var overrides should not be clobbered."""
         mock_settings = MagicMock()
         mock_settings.secrets.langfuse_public_key = "pk-test"
-        mock_settings.secrets.langfuse_secret_key = "sk-test"
+        mock_settings.secrets.langfuse_secret_key = "sk-test"  # pragma: allowlist secret  # noqa: E501; fmt: skip
         mock_settings.secrets.langfuse_host = "https://langfuse.example.com"
 
         with (
@@ -100,6 +112,7 @@ class TestSetupLangfuseOtel:
                 return_value=True,
             ),
             patch("backend.copilot.sdk.service.Settings", return_value=mock_settings),
+            patch("backend.copilot.sdk.service.install_trace_redaction"),
             patch(
                 "backend.copilot.sdk.service.configure_claude_agent_sdk",
                 return_value=True,
@@ -107,19 +120,108 @@ class TestSetupLangfuseOtel:
         ):
             from backend.copilot.sdk.service import _setup_langfuse_otel
 
-            saved = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
+            env_keys = [
+                "OTEL_EXPORTER_OTLP_ENDPOINT",
+                "OTEL_PYTHON_EXPORTER_OTLP_HTTP_TRACES_CREDENTIAL_PROVIDER",
+            ]
+            saved = {key: os.environ.get(key) for key in env_keys}
             try:
                 os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = "https://custom.endpoint/v1"
+                os.environ[
+                    "OTEL_PYTHON_EXPORTER_OTLP_HTTP_TRACES_CREDENTIAL_PROVIDER"
+                ] = "custom-provider"
                 _setup_langfuse_otel()
                 assert (
                     os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"]
                     == "https://custom.endpoint/v1"
                 )
+                assert (
+                    os.environ[
+                        "OTEL_PYTHON_EXPORTER_OTLP_HTTP_TRACES_CREDENTIAL_PROVIDER"
+                    ]
+                    == "custom-provider"
+                )
             finally:
-                if saved is not None:
-                    os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = saved
-                elif "OTEL_EXPORTER_OTLP_ENDPOINT" in os.environ:
-                    del os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"]
+                for key, value in saved.items():
+                    if value is not None:
+                        os.environ[key] = value
+                    else:
+                        os.environ.pop(key, None)
+
+    def test_sdk_left_untraced_when_redaction_cannot_install(self):
+        """Tracing without the Google data redaction would export it."""
+        mock_settings = MagicMock()
+        mock_settings.secrets.langfuse_public_key = "pk-test"
+        mock_settings.secrets.langfuse_secret_key = "sk-test"
+        mock_settings.secrets.langfuse_host = "https://langfuse.example.com"
+        mock_settings.secrets.langfuse_tracing_environment = "test"
+
+        with (
+            patch(
+                "backend.copilot.sdk.service._is_langfuse_configured",
+                return_value=True,
+            ),
+            patch("backend.copilot.sdk.service.Settings", return_value=mock_settings),
+            patch(
+                "backend.copilot.sdk.service.install_trace_redaction",
+                side_effect=RuntimeError("no client"),
+            ),
+            patch(
+                "backend.copilot.sdk.service.configure_claude_agent_sdk"
+            ) as mock_configure,
+            patch.dict(os.environ, {}, clear=False),
+        ):
+            from backend.copilot.sdk.service import _setup_langfuse_otel
+
+            _setup_langfuse_otel()
+
+        mock_configure.assert_not_called()
+
+    def test_tracing_left_off_when_redaction_cannot_install(self):
+        """LangSmith reads these to decide whether to trace at all, so they
+        must not outlive a redaction that failed to install."""
+        mock_settings = MagicMock()
+        mock_settings.secrets.langfuse_public_key = "pk-test"
+        mock_settings.secrets.langfuse_secret_key = "sk-test"
+        mock_settings.secrets.langfuse_host = "https://langfuse.example.com"
+        mock_settings.secrets.langfuse_tracing_environment = "test"
+        keys = [
+            "LANGSMITH_OTEL_ENABLED",
+            "LANGSMITH_OTEL_ONLY",
+            "LANGSMITH_TRACING",
+            "OTEL_EXPORTER_OTLP_HEADERS",
+        ]
+        seen_at_install: dict[str, str | None] = {}
+
+        def failing_install():
+            seen_at_install.update({key: os.environ.get(key) for key in keys})
+            raise RuntimeError("no client")
+
+        with (
+            patch(
+                "backend.copilot.sdk.service._is_langfuse_configured",
+                return_value=True,
+            ),
+            patch("backend.copilot.sdk.service.Settings", return_value=mock_settings),
+            patch(
+                "backend.copilot.sdk.service.install_trace_redaction",
+                side_effect=failing_install,
+            ),
+            patch("backend.copilot.sdk.service.configure_claude_agent_sdk"),
+            patch.dict(os.environ, {"OTEL_EXPORTER_OTLP_ENDPOINT": "https://mine"}),
+        ):
+            for key in keys:
+                os.environ.pop(key, None)
+            from backend.copilot.sdk.service import _setup_langfuse_otel
+
+            _setup_langfuse_otel()
+
+            # The LangSmith client picks its OTEL mode up as it is built.
+            assert seen_at_install["LANGSMITH_OTEL_ONLY"] == "true"
+            assert seen_at_install["LANGSMITH_TRACING"] is None
+            for key in keys:
+                assert key not in os.environ, f"{key} outlived the failed install"
+            assert os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] == "https://mine"
 
     def test_graceful_failure_on_exception(self):
         """Setup should not raise even if internal code fails."""

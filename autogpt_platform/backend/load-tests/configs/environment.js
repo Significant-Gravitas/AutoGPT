@@ -1,61 +1,77 @@
-// Environment configuration for AutoGPT Platform load tests
-export const ENV_CONFIG = {
-  DEV: {
-    API_BASE_URL: "https://dev-server.agpt.co",
-    BUILDER_BASE_URL: "https://dev-builder.agpt.co",
-    WS_BASE_URL: "wss://dev-ws-server.agpt.co",
-    SUPABASE_URL: "https://adfjtextkuilwuhzdjpf.supabase.co",
-    SUPABASE_ANON_KEY:
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkZmp0ZXh0a3VpbHd1aHpkanBmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzAyNTE3MDIsImV4cCI6MjA0NTgyNzcwMn0.IuQNXsHEKJNxtS9nyFeqO0BGMYN8sPiObQhuJLSK9xk",
-  },
-  LOCAL: {
-    API_BASE_URL: "http://localhost:8006",
-    BUILDER_BASE_URL: "http://localhost:3000",
-    WS_BASE_URL: "ws://localhost:8001",
-    SUPABASE_URL: "http://localhost:8000",
-    SUPABASE_ANON_KEY:
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE",
-  },
-  PROD: {
-    API_BASE_URL: "https://api.agpt.co",
-    BUILDER_BASE_URL: "https://builder.agpt.co",
-    WS_BASE_URL: "wss://ws-server.agpt.co",
-    SUPABASE_URL: "https://supabase.agpt.co",
-    SUPABASE_ANON_KEY:
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJnd3B3ZHN4YmxyeWloaW51dGJ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzAyODYzMDUsImV4cCI6MjA0NTg2MjMwNX0.ISa2IofTdQIJmmX5JwKGGNajqjsD8bjaGBzK90SubE0",
-  },
-};
-
-// Get environment config based on K6_ENVIRONMENT variable (default: DEV)
-export function getEnvironmentConfig() {
-  const env = __ENV.K6_ENVIRONMENT || "DEV";
-  return ENV_CONFIG[env];
+// Targets for the AutoGPT Platform load tests, picked by K6_ENVIRONMENT
+// (default DEV). PREVIEW also needs PR_NUMBER.
+//
+// - BACKEND_URL: the backend's origin; /health lives here.
+// - API_BASE_URL: the backend's REST root (BACKEND_URL + /api).
+// - FRONTEND_URL: the Next.js app. Better Auth runs under /api/auth there,
+//   and the backend verifies tokens against its /api/auth/jwks.
+// - SIGNUP_ALLOWED: whether the authenticated tests may sign up throwaway
+//   accounts when LOAD_TEST_ACCOUNTS is unset (see lib/auth.js).
+function target(name, backendUrl, frontendUrl, signupAllowed) {
+  return {
+    NAME: name,
+    BACKEND_URL: backendUrl,
+    API_BASE_URL: `${backendUrl}/api`,
+    FRONTEND_URL: frontendUrl,
+    SIGNUP_ALLOWED: signupAllowed,
+  };
 }
 
-// Authentication configuration
-export const AUTH_CONFIG = {
-  // Test user credentials - REPLACE WITH ACTUAL TEST ACCOUNTS
-  TEST_USERS: [
-    {
-      email: "loadtest1@example.com",
-      password: "LoadTest123!",
-      user_id: "test-user-1",
-    },
-    {
-      email: "loadtest2@example.com",
-      password: "LoadTest123!",
-      user_id: "test-user-2",
-    },
-    {
-      email: "loadtest3@example.com",
-      password: "LoadTest123!",
-      user_id: "test-user-3",
-    },
-  ],
+export function getEnvironmentConfig() {
+  const env = (__ENV.K6_ENVIRONMENT || "DEV").toUpperCase();
+  switch (env) {
+    case "LOCAL": {
+      // k6.sh sets LOCAL_HOST so k6 inside Docker reaches the host's stack.
+      const host = __ENV.LOCAL_HOST || "localhost";
+      return target(
+        "LOCAL",
+        `http://${host}:8006`,
+        `http://${host}:3000`,
+        true,
+      );
+    }
+    case "DEV":
+      return target(
+        "DEV",
+        "https://dev-server.agpt.co",
+        "https://dev-builder.agpt.co",
+        false,
+      );
+    case "PREVIEW":
+      return getPreviewConfig(__ENV.PR_NUMBER);
+    case "PROD":
+      if (__ENV.K6_ALLOW_PROD !== "true") {
+        throw new Error(
+          "K6_ENVIRONMENT=PROD sends load at production; agree it with the team, then set K6_ALLOW_PROD=true",
+        );
+      }
+      return target(
+        "PROD",
+        "https://backend.agpt.co",
+        "https://platform.agpt.co",
+        false,
+      );
+    default:
+      throw new Error(
+        `Unknown K6_ENVIRONMENT "${env}": use PREVIEW, DEV, LOCAL or PROD`,
+      );
+  }
+}
 
-  // JWT token for API access (will be set during test execution)
-  JWT_TOKEN: null,
-};
+// K6_ENVIRONMENT=PREVIEW PR_NUMBER=<n> targets the `!deploy` preview of PR <n>.
+function getPreviewConfig(prNumber) {
+  if (!/^[1-9]\d{0,6}$/.test(prNumber || "")) {
+    throw new Error(
+      "K6_ENVIRONMENT=PREVIEW needs PR_NUMBER=<pull request number>",
+    );
+  }
+  return target(
+    `PREVIEW pr-${prNumber}`,
+    `https://pr-${prNumber}-server.agpt.co`,
+    `https://autogpt-pr-${prNumber}.vercel.app`,
+    true,
+  );
+}
 
 // Performance test configurations - Environment variable overrides supported
 export const PERFORMANCE_CONFIG = {
@@ -126,16 +142,3 @@ export function getLoadTestConfig(testType = "default") {
 
   return configs[testType] || configs.default;
 }
-
-// Grafana Cloud K6 configuration
-export const GRAFANA_CONFIG = {
-  PROJECT_ID: __ENV.K6_CLOUD_PROJECT_ID || "",
-  TOKEN: __ENV.K6_CLOUD_TOKEN || "",
-  // Tags for organizing test results
-  TEST_TAGS: {
-    team: "platform",
-    service: "autogpt-platform",
-    environment: __ENV.K6_ENVIRONMENT || "dev",
-    version: __ENV.GIT_COMMIT || "unknown",
-  },
-};

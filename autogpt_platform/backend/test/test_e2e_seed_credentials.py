@@ -118,9 +118,11 @@ async def test_command_routes_without_reseeding_cached_data(monkeypatch, refresh
     creator = SimpleNamespace(create_all_test_data=AsyncMock())
     factory = Mock(return_value=creator)
     refresh = AsyncMock()
+    client = SimpleNamespace(timeout=600.0)
     monkeypatch.setattr(e2e_test_data, "prisma", db)
     monkeypatch.setattr(e2e_test_data, "TestDataCreator", factory)
     monkeypatch.setattr(e2e_test_data, "refresh_seeded_credentials", refresh)
+    monkeypatch.setattr(e2e_test_data, "get_openai_client", lambda: client)
     args = ["e2e_test_data.py"]
     if refresh_only:
         args.append("--refresh-credentials-only")
@@ -131,9 +133,11 @@ async def test_command_routes_without_reseeding_cached_data(monkeypatch, refresh
     if refresh_only:
         refresh.assert_awaited_once()
         factory.assert_not_called()
+        assert client.timeout == 600.0
     else:
         creator.create_all_test_data.assert_awaited_once()
         refresh.assert_not_awaited()
+        assert client.timeout == e2e_test_data.EMBEDDING_REQUEST_TIMEOUT_SECONDS
 
 
 async def test_refresh_command_disconnects_and_propagates_failure(monkeypatch):

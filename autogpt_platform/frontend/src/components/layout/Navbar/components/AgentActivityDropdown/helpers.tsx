@@ -78,7 +78,7 @@ export function enrichExecutionWithAgentInfo(
 
   return {
     ...execution,
-    agent_name: agentInfo?.name ?? "Unknown Agent",
+    agent_name: agentInfo?.name ?? "Unknown Workflow",
     agent_description: agentInfo?.description ?? "",
     library_agent_id: agentInfo?.library_agent_id,
   };

@@ -9,11 +9,14 @@ sub is created in, and who may poll it afterwards.
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from backend.copilot.sdk.session_waiter import SessionResult
+from backend.copilot.active_turns import spawn_limit_message
+from backend.copilot.executor.utils import TurnPublishUnconfirmed
+from backend.copilot.sdk.session_waiter import SessionResult, TurnNotDispatched
 
 from .delegate_to_expert import DelegateToExpertTool
 from .expert_delegation import CALLER_NAME_LIMIT
@@ -26,6 +29,7 @@ def _session(
     session_id: str = "s1",
     expert_id: str | None = "expert-a",
     origin: str | None = "interactive",
+    source_platform: str | None = None,
 ) -> MagicMock:
     sess = MagicMock()
     sess.session_id = session_id
@@ -36,6 +40,8 @@ def _session(
     sess.metadata.llm_auth_provider = "platform"
     sess.metadata.llm_credential_id = None
     sess.metadata.delegated_by_session_id = None
+    sess.metadata.autopilot_mode = None
+    sess.metadata.source_platform = source_platform
     # Set explicitly: a bare MagicMock attribute is truthy, so an origin
     # assertion would pass even if the kwarg were dropped.
     sess.metadata.origin = origin
@@ -58,6 +64,7 @@ def _expert(
     expert.color = "violet"
     expert.is_archived = is_archived
     expert.schedules_paused_at = schedules_paused_at
+    expert.autopilot_mode = None
     return expert
 
 
@@ -112,6 +119,7 @@ def mock_sessions(monkeypatch):
         # Without this the MagicMock answers any origin assertion truthily, so
         # a test for origin propagation would pass with the kwarg dropped.
         sess.metadata.origin = kwargs.get("origin")
+        sess.metadata.autopilot_mode = kwargs.get("inherited_autopilot_mode")
         sess.metadata.handed_off_from_expert_id = kwargs.get(
             "handed_off_from_expert_id"
         )
@@ -184,6 +192,72 @@ class TestDelegatedSessionOrigin:
             prompt="hi",
         )
         assert mock_sessions[0].metadata.origin == "automation"
+
+
+class TestDelegatedSessionMode:
+    """A delegated thread is never looser than the chat that opened it, and
+    follows that chat when the teammate has no default of its own."""
+
+    @pytest.mark.asyncio
+    async def test_an_expert_without_a_default_follows_the_parent(
+        self, roster, mock_turn, mock_sessions
+    ):
+        parent = _session()
+        parent.metadata.autopilot_mode = "ask_first"
+        await DelegateToExpertTool()._execute(
+            user_id="alice", session=parent, expert_id="expert-b", prompt="hi"
+        )
+        assert mock_sessions[0].metadata.autopilot_mode == "ask_first"
+
+    @pytest.mark.asyncio
+    async def test_an_unsupervised_expert_cannot_loosen_an_ask_first_parent(
+        self, roster, mock_turn, mock_sessions
+    ):
+        roster["expert-b"].autopilot_mode = "unsupervised"
+        parent = _session()
+        parent.metadata.autopilot_mode = "ask_first"
+        await DelegateToExpertTool()._execute(
+            user_id="alice", session=parent, expert_id="expert-b", prompt="hi"
+        )
+        assert mock_sessions[0].metadata.autopilot_mode == "ask_first"
+
+    @pytest.mark.asyncio
+    async def test_a_stricter_expert_default_applies_to_its_thread(
+        self, roster, mock_turn, mock_sessions
+    ):
+        roster["expert-b"].autopilot_mode = "ask_first"
+        await DelegateToExpertTool()._execute(
+            user_id="alice", session=_session(), expert_id="expert-b", prompt="hi"
+        )
+        assert mock_sessions[0].metadata.autopilot_mode == "ask_first"
+
+    @pytest.mark.asyncio
+    async def test_a_thread_with_nothing_to_inherit_is_pinned_to_the_platform_default(
+        self, roster, mock_turn, mock_sessions
+    ):
+        """Pinned rather than left for the session layer to look up again:
+        a default written to the expert in between must not reach it."""
+        await DelegateToExpertTool()._execute(
+            user_id="alice", session=_session(), expert_id="expert-b", prompt="hi"
+        )
+        assert mock_sessions[0].metadata.autopilot_mode == "auto"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "expert_default, expected",
+        [(None, "auto"), ("unsupervised", "auto"), ("ask_first", "ask_first")],
+    )
+    async def test_a_linked_chat_hands_out_the_mode_its_gate_enforces(
+        self, roster, mock_turn, mock_sessions, expert_default, expected
+    ):
+        """A Slack chat runs on Auto whatever it has stored, so its thread does too."""
+        roster["expert-b"].autopilot_mode = expert_default
+        parent = _session(source_platform="slack")
+        parent.metadata.autopilot_mode = "unsupervised"
+        await DelegateToExpertTool()._execute(
+            user_id="alice", session=parent, expert_id="expert-b", prompt="hi"
+        )
+        assert mock_sessions[0].metadata.autopilot_mode == expected
 
 
 class TestValidation:
@@ -924,6 +998,26 @@ class TestRefusedDelegationCleanup:
         assert isinstance(result, ErrorResponse)
         assert "inner-1" not in result.model_dump_json()
 
+    async def test_a_delegation_refused_at_the_inflight_cap_says_to_wait(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        """The thread is discarded, but the model still learns the user is at
+        their task limit and to wait, as the other spawn tools say."""
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.delete_chat_session", AsyncMock()
+        )
+        mock_turn.return_value = ("rejected_concurrent_turn_cap", SessionResult())
+
+        result = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="expert-b",
+            prompt="draft the ops update",
+        )
+
+        assert isinstance(result, ErrorResponse)
+        assert result.message == spawn_limit_message()
+
     async def test_a_refused_resume_keeps_the_prior_thread(
         self, roster, mock_turn, mock_sessions, monkeypatch
     ):
@@ -949,4 +1043,98 @@ class TestRefusedDelegationCleanup:
             delegated_session_id="inner-1",
         )
 
+        deleted.assert_not_awaited()
+
+
+class TestAfterTheDispatch:
+    @pytest.mark.asyncio
+    async def test_a_failed_spawn_note_does_not_undo_a_dispatched_task(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        """The tree note is decoration on a task already queued. Raising there
+        would report a running delegation as a failure, and a caller that
+        retries on it would run the task twice (SECRT-3138 review)."""
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.build_spawn_state_note",
+            AsyncMock(side_effect=RuntimeError("redis blip")),
+        )
+        result = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(),
+            expert_id="expert-b",
+            prompt="hi",
+            wait_for_result=0,
+        )
+
+        assert isinstance(result, SubSessionStatusResponse)
+        assert result.status == "running"
+        assert result.sub_session_id == mock_sessions[0].session_id
+
+
+class TestASendThatFailed:
+    """A fresh delegation thread is removed only when the turn provably never
+    reached the queue (``TurnNotDispatched``). A cancellation, the user
+    pressing Stop, can land inside the publish, so like a publish that raised
+    it may have delivered the task, and that thread stays (Sentry)."""
+
+    def _failed_send(self, monkeypatch, error: BaseException):
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.run_copilot_turn_via_queue",
+            AsyncMock(side_effect=error),
+        )
+        deleted = AsyncMock()
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.delete_chat_session", deleted
+        )
+        return deleted
+
+    async def _delegate(self, **kwargs):
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(session_id="s1"),
+            expert_id="expert-b",
+            prompt="hi",
+            wait_for_result=0,
+            **kwargs,
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_thread_nothing_reached_is_removed(
+        self, roster, mock_sessions, monkeypatch
+    ):
+        deleted = self._failed_send(monkeypatch, TurnNotDispatched("redis down"))
+        with pytest.raises(TurnNotDispatched):
+            await self._delegate()
+        deleted.assert_awaited_once_with(mock_sessions[0].session_id, "alice")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "error",
+        [
+            pytest.param(asyncio.CancelledError(), id="stopped-mid-send"),
+            pytest.param(TurnPublishUnconfirmed("confirm lost"), id="publish"),
+            pytest.param(RuntimeError("unknown"), id="unknown"),
+        ],
+    )
+    async def test_a_thread_the_task_may_have_reached_is_kept(
+        self, roster, mock_sessions, monkeypatch, error
+    ):
+        deleted = self._failed_send(monkeypatch, error)
+        with pytest.raises(type(error)):
+            await self._delegate()
+        assert len(mock_sessions) == 1
+        deleted.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_thread_it_did_not_open_is_kept(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        await self._delegate()
+        mock_turn.side_effect = TurnNotDispatched("redis down")
+        deleted = AsyncMock()
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.delete_chat_session", deleted
+        )
+        with pytest.raises(TurnNotDispatched):
+            await self._delegate(delegated_session_id="inner-1")
         deleted.assert_not_awaited()

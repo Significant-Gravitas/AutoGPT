@@ -17,7 +17,7 @@ AutoGPT Platform is a monorepo containing:
 
 ## Key Concepts
 
-1. **Agent Graphs**: Workflow definitions stored as JSON, executed by the backend
+1. **Agent Graphs**: Workflow definitions stored as JSON, executed by the backend; identifiers, routes and API fields say agent or graph; any text a person reads says workflow (see "User-facing copy" in the root `AGENTS.md`)
 2. **Blocks**: Reusable components in `backend/backend/blocks/` that perform specific tasks
 3. **Integrations**: OAuth and API connections stored per user
 4. **Store**: Marketplace for sharing agent templates
@@ -69,7 +69,7 @@ setting to `BLANK_IN_ENV_DEFAULT` too.
 - All services use hardcoded defaults in docker-compose files (no `${VARIABLE}` substitutions)
 - The `env_file` directive loads variables INTO containers at runtime
 - Backend/Frontend services use YAML anchors for consistent configuration
-- Supabase services (`db/docker/docker-compose.yml`) follow the same pattern
+- PostgreSQL uses the pgvector image; the retired Supabase stack is not used.
 
 ### Branching Strategy
 
@@ -106,6 +106,14 @@ When fixing a bug or adding a feature, follow a test-first approach:
 3. **Remove the xfail marker** — once the test passes, remove the `xfail`/`.fixme` annotation and run the full test suite to confirm nothing else broke.
 
 This ensures every change is covered by a test and that the test actually validates the intended behavior.
+
+### Writing Tests That Don't Flake
+
+A test that fails and then passes on the same code ejects other people's PRs from the merge queue, so write it to pass on a slow, loaded CI runner. The rules for each stack are in `backend/AGENTS.md` and `frontend/AGENTS.md`.
+
+- **Assume the CI runner is several times slower than your machine and can pause for seconds** — a test that has to finish inside a product timer or a tight time bound passes locally and fails there.
+- **A test leaves nothing behind** — no open request, client, timer or patched global outlives it, or the next test, or the file's teardown, pays for it.
+- **Treat a flaky test as a bug to find, not a run to retry** — some turn out to be real races in the product code.
 
 ### Reviewing/Revising Pull Requests
 

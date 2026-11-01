@@ -67,19 +67,16 @@ export function OAuthAppsSection() {
         >
           {/* Header: Logo, Name, Status */}
           <div className="flex items-start gap-4">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-muted">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-muted text-foreground-tertiary">
               {app.logo_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
+                // eslint-disable-next-line @next/next/no-img-element -- the logo URL can be on any host
                 <img
                   src={app.logo_url}
                   alt={`${app.name} logo`}
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <Icon
-                  icon={Image01Icon}
-                  className="h-7 w-7 text-muted-foreground"
-                />
+                <Icon icon={Image01Icon} className="h-7 w-7" />
               )}
             </div>
             <div className="min-w-0 flex-1">

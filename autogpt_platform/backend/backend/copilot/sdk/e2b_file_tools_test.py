@@ -8,7 +8,7 @@ import hashlib
 import os
 import shutil
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -47,11 +47,15 @@ def _clear_edit_locks():
     _edit_locks.clear()
 
 
-def _expected_bridge_path(file_path: str, prefix: str = "/tmp") -> str:
+def _expected_bridge_path(
+    file_path: str, prefix: str = "/tmp", transformed: bool = False
+) -> str:
     """Compute the expected sandbox path for a bridged file."""
     expanded = os.path.realpath(os.path.expanduser(file_path))
     basename = os.path.basename(expanded)
-    source_id = hashlib.sha256(expanded.encode()).hexdigest()[:12]
+    source_id = hashlib.sha256(
+        (f"{expanded}:transformed" if transformed else expanded).encode()
+    ).hexdigest()[:12]
     return f"{prefix}/{source_id}-{basename}"
 
 
@@ -553,6 +557,23 @@ class TestBridgeToSandbox:
         sandbox.commands.run.assert_not_called()
         sandbox.files.write.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_content_is_written_instead_of_the_file(self, tmp_path):
+        """A caller that showed the model the unwrapped payload hands it to
+        bash too, under the file's sandbox path."""
+        f = tmp_path / "toolu_1.json"
+        f.write_text('[{"type": "text", "text": "envelope"}]')
+        payload = "page line\n" * 6_000
+        sandbox = _make_bridge_sandbox()
+
+        result = await bridge_to_sandbox(
+            sandbox, str(f), offset=0, limit=_DEFAULT_READ_LIMIT, content=payload
+        )
+
+        expected = _expected_bridge_path(str(f), prefix="/home/user", transformed=True)
+        assert result == expected
+        sandbox.files.write.assert_called_once_with(expected, payload)
+
 
 # ---------------------------------------------------------------------------
 # bridge_and_annotate — shared helper wrapping bridge_to_sandbox + annotation
@@ -924,14 +945,15 @@ class TestReadPathTraversal:
 
 class TestReadBinaryFile:
     @pytest.mark.asyncio
-    async def test_binary_file_rejected(self, sdk_cwd):
+    async def test_corrupt_image_rejected(self, sdk_cwd):
         path = os.path.join(sdk_cwd, "image.png")
         with open(path, "wb") as f:
             f.write(b"\x89PNG\r\n\x1a\n")
         result = await _handle_read_file({"file_path": "image.png"})
         assert result["isError"]
         text = result["content"][0]["text"]
-        assert "binary" in text.lower()
+        assert "Image not shown" in text
+        assert "corrupt" in text
 
     @pytest.mark.asyncio
     async def test_text_file_not_rejected_as_binary(self, sdk_cwd):
@@ -1007,6 +1029,26 @@ class TestEditToolSchema:
 
     def test_tool_name_is_edit(self):
         assert EDIT_TOOL_NAME == "Edit"
+
+
+@pytest.mark.asyncio
+async def test_an_edit_the_sandbox_refuses_to_check_is_an_error_not_a_crash(
+    monkeypatch,
+):
+    from backend.util.sandbox_login import LoginChainChanged
+
+    monkeypatch.setattr(
+        "backend.copilot.sdk.e2b_file_tools._get_sandbox", lambda: MagicMock()
+    )
+    monkeypatch.setattr(
+        "backend.copilot.sdk.e2b_file_tools.run_internal",
+        AsyncMock(side_effect=LoginChainChanged("/etc/profile changed")),
+    )
+    result = await _handle_edit_file(
+        {"file_path": "/home/user/a.txt", "old_string": "a", "new_string": "b"}
+    )
+    assert result["isError"] is True
+    assert "/etc/profile changed" in result["content"][0]["text"]
 
 
 class TestNormalEdit:
@@ -1322,3 +1364,19 @@ class TestReadFileE2BRouting:
         assert not result.get("isError"), result["content"][0]["text"]
         assert "sandbox result" in result["content"][0]["text"]
         sandbox.files.read.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_raw_bridge_does_not_replace_the_transformed_copy(tmp_path):
+    source = tmp_path / "toolu-result.json"
+    raw = "raw envelope " * 4_000
+    payload = "unwrapped content " * 4_000
+    source.write_text(raw)
+    sandbox = _make_bridge_sandbox()
+    transformed = await bridge_to_sandbox(
+        sandbox, str(source), 0, _DEFAULT_READ_LIMIT, content=payload
+    )
+    original = await bridge_to_sandbox(sandbox, str(source), 0, _DEFAULT_READ_LIMIT)
+    assert transformed != original
+    assert sandbox.files.write.await_args_list[0].args == (transformed, payload)
+    assert sandbox.files.write.await_args_list[1].args == (original, raw)

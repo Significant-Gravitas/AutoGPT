@@ -1,0 +1,900 @@
+{
+ "source": "https://backend.agpt.co/api/experts/templates (prod, public), fetched 2026-10-02: 33 templates, only the fields the expert capability entries index; skills are the bundled Skills Hub titles",
+ "templates": [
+  {
+   "id": "45e32e73-99da-4a31-ba81-a02557a007fd",
+   "name": "Alex",
+   "role": "Product",
+   "job_title": "Product Manager",
+   "tagline": "Scores the backlog, writes the spec, and never commits your team to a date without your yes.",
+   "categories": [
+    "development",
+    "research"
+   ],
+   "workflows": [],
+   "skills": [
+    "Getting started",
+    "Product metrics and instrumentation",
+    "Product experiment design",
+    "AI feature scoping and evals",
+    "Product launch plan",
+    "Product market and competitor read",
+    "Customer insight research",
+    "Product research synthesis",
+    "Product requirements writing",
+    "Product roadmap planning",
+    "Product strategy canvas",
+    "Product metrics dashboard design",
+    "Product assumption testing",
+    "Product stakeholder update",
+    "Competitor profiling"
+   ]
+  },
+  {
+   "id": "03aafc1f-3338-4ec7-ad62-c08c03901ace",
+   "name": "Anika",
+   "role": "Partnerships",
+   "job_title": "Partnerships Manager",
+   "tagline": "Sources partners, structures the deal, and runs the alliance from first touch to the P&L.",
+   "categories": [
+    "sales",
+    "operations"
+   ],
+   "workflows": [
+    "Lead Finder",
+    "Decision Maker Lead Finder",
+    "Email Scout - Contact Finder Assistant",
+    "Smart Meeting Prep"
+   ],
+   "skills": [
+    "Partnerships getting started",
+    "Define the partner ICP",
+    "Source and qualify partners",
+    "Partner first-touch outreach",
+    "Structure the partner agreement",
+    "Onboard and enable partners",
+    "Run the partner co-sell cadence",
+    "Track partner pipeline",
+    "Prep the partner QBR",
+    "Handle partner conflict and churn",
+    "Design the partner program",
+    "Map the partner ecosystem",
+    "Plan the multi-year partnership",
+    "Govern the strategic alliance",
+    "Model the partnership commercials",
+    "Scope the tech partnership",
+    "Run the partner marketing engine",
+    "Scale the partner channel",
+    "Run hyperscaler marketplace co-sell",
+    "Run partner strategy and operations",
+    "Assure partner-led delivery",
+    "Manage partner renewals and exits",
+    "Build partner academies at scale",
+    "Orchestrate multi-party partner bids",
+    "Run regulated partnership motions",
+    "Source partners via investor ecosystems",
+    "Build data and R&D alliances",
+    "Run creator and affiliate partner programs",
+    "Run brand, OEM, and supply partnerships",
+    "Set board-level alliance strategy",
+    "Own the alliance P&L",
+    "Run global partner executive councils",
+    "Drive alliance M&A and strategic investments",
+    "Build partner-led category creation",
+    "Partner co marketing",
+    "Sales enablement content"
+   ]
+  },
+  {
+   "id": "ec96d664-9d4b-40a4-95c5-e6b8d6fd2803",
+   "name": "Casey",
+   "role": "Code Review & QA",
+   "job_title": "QA Engineer",
+   "tagline": "Reviews pull requests, plans tests, and writes bug reports engineers can act on.",
+   "categories": [
+    "development"
+   ],
+   "workflows": [],
+   "skills": [
+    "Code quality getting started",
+    "Test plan draft",
+    "Flaky test triage",
+    "Regression risk review",
+    "Release readiness checklist",
+    "Code review quality",
+    "Software debugging",
+    "Software test planning",
+    "Verification before completion",
+    "Software incident response"
+   ]
+  },
+  {
+   "id": "36630f6c-6af7-44de-b5e7-f8d8812f2fbc",
+   "name": "Clip",
+   "role": "Motion Graphics and Video Creation",
+   "job_title": "Video Producer",
+   "tagline": "Builds showreel-grade video ads in code for software and AI products, from your website's real assets.",
+   "categories": [
+    "marketing",
+    "content"
+   ],
+   "workflows": [],
+   "skills": [
+    "Code motion ad 15s"
+   ]
+  },
+  {
+   "id": "ebbd8503-781c-42b1-b237-b18e7dc83eb2",
+   "name": "Daniel",
+   "role": "Finance",
+   "job_title": "Financial Analyst",
+   "tagline": "Keeps your numbers honest: budget pacing, variance with owners, 13-week cash, unit economics, and a board pack that ties out.",
+   "categories": [
+    "finance",
+    "research"
+   ],
+   "workflows": [],
+   "skills": [
+    "Getting started",
+    "Budget vs actuals and reforecast",
+    "Cash, treasury and FX",
+    "Unit economics and ROI",
+    "SaaS and GTM finance",
+    "Deal economics and pricing guardrails",
+    "Automate finance reporting",
+    "Portfolio company performance review",
+    "Financial statement preparation",
+    "Account reconciliation",
+    "Month end close management",
+    "Board deck builder"
+   ]
+  },
+  {
+   "id": "78684d78-6abc-42f0-8259-80cba86c42f1",
+   "name": "Devon",
+   "role": "Dependency & Security Hygiene",
+   "job_title": "Application Security Engineer",
+   "tagline": "Finds dependency risk, proves what affects your stack, and drafts safe upgrades.",
+   "categories": [
+    "development"
+   ],
+   "workflows": [],
+   "skills": [
+    "Dependency security getting started",
+    "Dependency inventory",
+    "Outdated dependency review",
+    "Vulnerability triage",
+    "CVE stack relevance",
+    "Dependency upgrade plan",
+    "Dependency upgrade PR",
+    "Dependency change risk review",
+    "Supply chain risk auditor",
+    "Code change security review"
+   ]
+  },
+  {
+   "id": "be944bfd-1a00-4c20-b4a3-bdcc3f027b41",
+   "name": "Ellis",
+   "role": "Contracts (Non-Advisory)",
+   "job_title": "Contract Manager",
+   "tagline": "Compares contracts with your playbook, extracts key terms, and sends every decision to counsel.",
+   "categories": [
+    "operations"
+   ],
+   "workflows": [],
+   "skills": [
+    "Contract operations getting started",
+    "NDA playbook review",
+    "MSA playbook review",
+    "Contract clause comparison",
+    "Contract key-term extraction",
+    "Contract deviation triage",
+    "Contract obligation tracker",
+    "Counsel escalation brief",
+    "Nda risk review",
+    "Contract amendment history"
+   ]
+  },
+  {
+   "id": "6288a1e2-5141-4ad9-b666-6bcdf546ec8d",
+   "name": "Frankie",
+   "role": "Ops",
+   "job_title": "Executive Assistant",
+   "tagline": "Starts your day briefed: meeting prep, support email, and a morning digest.",
+   "categories": [
+    "operations",
+    "support"
+   ],
+   "workflows": [
+    "Smart Meeting Prep",
+    "Automated Support Agent",
+    "Personal Newsletter"
+   ],
+   "skills": [
+    "Multi source research synthesis",
+    "Project status report",
+    "Operational risk assessment",
+    "Task list management",
+    "Workplace memory management",
+    "Productivity setup",
+    "Productivity task sync",
+    "Legal meeting briefing"
+   ]
+  },
+  {
+   "id": "2feadc1c-e25b-4466-97b7-a676f448e95c",
+   "name": "Harper",
+   "role": "Recruiting & Hiring",
+   "job_title": "Recruiter",
+   "tagline": "Turns an open role into a fair hiring process and drafts every candidate touchpoint.",
+   "categories": [
+    "operations"
+   ],
+   "workflows": [],
+   "skills": [
+    "Recruiting getting started",
+    "Role intake and job description",
+    "Hiring rubric design",
+    "Resume screening",
+    "Interview plan and scorecard",
+    "Candidate interview debrief",
+    "Candidate rejection email",
+    "Candidate offer draft",
+    "Candidate interview planning",
+    "Recruiting pipeline",
+    "Employment offer drafting"
+   ]
+  },
+  {
+   "id": "73694976-7bd6-4109-877a-b24c8e83c24b",
+   "name": "Ines",
+   "role": "People Ops & HR (Non-Advisory)",
+   "job_title": "People Operations Specialist",
+   "tagline": "Builds onboarding plans, policy drafts, and review prep, with HR and counsel handoffs.",
+   "categories": [
+    "operations"
+   ],
+   "workflows": [],
+   "skills": [
+    "People ops getting started",
+    "Handbook policy draft",
+    "One-to-one agenda",
+    "Performance review prep",
+    "Engagement survey readout",
+    "Offboarding checklist",
+    "HR escalation brief",
+    "Employee onboarding planning",
+    "Company policy lookup",
+    "Employee performance review",
+    "People analytics reporting"
+   ]
+  },
+  {
+   "id": "9747104e-4995-4a8e-b735-babb2e041c00",
+   "name": "James",
+   "role": "Operations",
+   "job_title": "Operations Manager",
+   "tagline": "Runs your operating rhythm, SOPs, vendors, capacity, and controls — and never changes a live process without your yes.",
+   "categories": [
+    "operations",
+    "finance"
+   ],
+   "workflows": [],
+   "skills": [
+    "Getting started",
+    "Run the operating rhythm",
+    "Build the ops scorecard",
+    "Write an SOP",
+    "Map and improve a process",
+    "Automate a workflow",
+    "Run vendor and procurement ops",
+    "Plan capacity and headcount",
+    "Run controls and escalations",
+    "Govern a program",
+    "Business process documentation",
+    "Business process optimization",
+    "Team capacity planning",
+    "Project status report",
+    "Operational risk assessment",
+    "Vendor evaluation",
+    "Operational runbook writing",
+    "Compliance evidence tracking"
+   ]
+  },
+  {
+   "id": "40f41fb9-59ef-4e2c-be64-cd39fdb673a9",
+   "name": "Jordan",
+   "role": "Deal Desk & Proposal Support",
+   "job_title": "Deal Desk Manager",
+   "tagline": "Turns deal evidence into proposals, SOW drafts, and approval-ready briefs.",
+   "categories": [
+    "sales"
+   ],
+   "workflows": [],
+   "skills": [
+    "Deal desk getting started",
+    "Deal risk review",
+    "Renewal negotiation brief",
+    "Pricing and terms approval brief",
+    "Proposal quality check",
+    "Sales pipeline review",
+    "Client proposal writing"
+   ]
+  },
+  {
+   "id": "6a2b2123-7a5e-49e4-89db-4f4916a514da",
+   "name": "Jules",
+   "role": "Social & Content Repurposing",
+   "job_title": "Social Media Manager",
+   "tagline": "Cuts one piece of work into posts that belong on each platform.",
+   "categories": [
+    "marketing",
+    "content"
+   ],
+   "workflows": [
+    "LinkedIn Post Generator",
+    "YouTube to LinkedIn Post Converter",
+    "AI Video Generator"
+   ],
+   "skills": [
+    "Product marketing context",
+    "Social media management",
+    "Marketing copy editing"
+   ]
+  },
+  {
+   "id": "e6358ec2-f539-4b58-a4c2-2388fa8a28e7",
+   "name": "Kai",
+   "role": "Executive Assistant",
+   "job_title": "Executive Assistant",
+   "tagline": "Sorts your inbox, preps your meetings, and keeps follow-ups from slipping.",
+   "categories": [
+    "support",
+    "operations"
+   ],
+   "workflows": [],
+   "skills": [
+    "Executive assistant getting started",
+    "Inbox triage",
+    "Reply draft in your voice",
+    "Meeting prep brief",
+    "Meeting follow-up draft",
+    "Calendar conflict review",
+    "Travel plan",
+    "Weekly priorities review",
+    "Productivity setup",
+    "Task list management",
+    "Workplace memory management",
+    "Productivity task sync",
+    "Multi source research synthesis"
+   ]
+  },
+  {
+   "id": "445d7b1b-e332-4e14-9f95-e76908fc9a0d",
+   "name": "Lena",
+   "role": "Privacy & Compliance (Non-Advisory)",
+   "job_title": "Compliance Operations Analyst",
+   "tagline": "Answers security questionnaires and keeps data maps current, with clear counsel handoffs.",
+   "categories": [
+    "operations"
+   ],
+   "workflows": [],
+   "skills": [
+    "Compliance ops getting started",
+    "Security questionnaire answers",
+    "Personal data map",
+    "Subprocessor register",
+    "DPA checklist review",
+    "Policy gap review",
+    "Data subject request draft",
+    "Compliance escalation brief",
+    "Compliance evidence tracking",
+    "Vendor contract status",
+    "Legal response drafting"
+   ]
+  },
+  {
+   "id": "573ffea3-6841-4440-b4a1-96a5f73b3952",
+   "name": "Marco",
+   "role": "Paid Ads & Performance",
+   "job_title": "Performance Marketer",
+   "tagline": "Plans campaigns, writes ad variants, and finds wasted spend in your ad accounts.",
+   "categories": [
+    "marketing"
+   ],
+   "workflows": [],
+   "skills": [
+    "Paid ads getting started",
+    "Campaign structure plan",
+    "Ad copy variants",
+    "Wasted spend audit",
+    "Budget pacing review",
+    "Creative test readout",
+    "Paid performance report",
+    "Conversion rate optimization"
+   ]
+  },
+  {
+   "id": "d91d9897-5c65-45c6-ba16-0dd5c24404ac",
+   "name": "Maria",
+   "role": "SEO & Content",
+   "job_title": "SEO Content Manager",
+   "tagline": "Takes a keyword from brief to article draft for review, and reworks page copy to rank.",
+   "categories": [
+    "marketing",
+    "content"
+   ],
+   "workflows": [
+    "Automated SEO Blog Writer",
+    "AI Webpage Copy Improver",
+    "YouTube Video to SEO Blog Writer"
+   ],
+   "skills": [
+    "SEO content brief",
+    "On-page SEO audit",
+    "Product marketing context",
+    "Marketing content strategy",
+    "Marketing copywriting",
+    "Marketing copy editing",
+    "Website seo audit",
+    "Seo report generation"
+   ]
+  },
+  {
+   "id": "7a25f32e-26e4-4a4e-9902-aed163e61c1d",
+   "name": "Max",
+   "role": "Sales",
+   "job_title": "Account Executive",
+   "tagline": "Researches prospects, drafts outreach, and helps coordinate deals through signature.",
+   "categories": [
+    "sales",
+    "operations"
+   ],
+   "workflows": [
+    "Lead Finder",
+    "Decision Maker Lead Finder",
+    "Email Scout - Contact Finder Assistant"
+   ],
+   "skills": [
+    "Sales getting started",
+    "Build the target list",
+    "Find the decision makers",
+    "Draft a first touch",
+    "Draft a follow up",
+    "Handle a reply",
+    "Discovery and qualification",
+    "Objection and negotiation",
+    "Next step and handoff",
+    "Multithread and stakeholder maps",
+    "Business case and ROI selling",
+    "Quarterback the deal team",
+    "Enterprise deal desk close plans",
+    "RFP and competitive bid response",
+    "Pipeline review and forecast",
+    "Territory and account planning",
+    "Renewal expansion and QBR",
+    "Signature to launch and account ops",
+    "Exec engagement and sponsorship",
+    "Sales team leadership",
+    "Sales ops coverage and quota",
+    "Enablement playbooks certification",
+    "Regional category GTM strategy",
+    "Partner and channel co-sell",
+    "Alliance co-commercialization",
+    "Voice of customer loop",
+    "Compliance gated deal execution",
+    "Cloud commit and marketplace selling",
+    "Marketplace partner revenue growth",
+    "Credit term sheet structuring",
+    "Industrial pursuit tender handover",
+    "Media plan measure optimize",
+    "Regulated access and clinical selling",
+    "Retail JBP trade and sellout",
+    "Showroom FI and internet BDC",
+    "Field call route discipline",
+    "Sales account research",
+    "Sales outreach drafting",
+    "Sales call preparation",
+    "Sales pipeline review",
+    "Sales enablement content",
+    "Client proposal writing",
+    "Customer insight research",
+    "Partner co marketing",
+    "Go to market strategy"
+   ]
+  },
+  {
+   "id": "5e338d7f-02f6-47ca-a284-2baca006cf5c",
+   "name": "Maya",
+   "role": "Marketing",
+   "job_title": "Marketing Manager",
+   "tagline": "Runs the marketing engine end to end — campaigns, content calendar, messaging, and the weekly read — all drafted for your yes.",
+   "categories": [
+    "marketing",
+    "content"
+   ],
+   "workflows": [
+    "Automated SEO Blog Writer",
+    "LinkedIn Post Generator",
+    "AI Webpage Copy Improver"
+   ],
+   "skills": [
+    "Marketing getting started",
+    "Messaging and tone matrix",
+    "Campaign brief and asset plan",
+    "Content brief writer handoff",
+    "Editorial calendar ops",
+    "Channel draft shapes",
+    "Nurture sequence build and readout",
+    "Weekly marketing read",
+    "Product marketing context",
+    "Marketing content strategy",
+    "Marketing copywriting",
+    "Lifecycle email marketing"
+   ]
+  },
+  {
+   "id": "d0fa2aaa-595f-4b3b-951b-711d07cec450",
+   "name": "Mina",
+   "role": "Finance, Invoicing & Bookkeeping",
+   "job_title": "Bookkeeper",
+   "tagline": "Keeps invoices, expenses, statements, and month-end records clear and review-ready.",
+   "categories": [
+    "finance",
+    "operations"
+   ],
+   "workflows": [],
+   "skills": [
+    "Bookkeeping getting started",
+    "Expense categorization",
+    "Invoice drafting and issue",
+    "Accounts receivable follow-up",
+    "Bookkeeping exception escalation",
+    "Account reconciliation",
+    "Month end close management",
+    "Financial statement preparation"
+   ]
+  },
+  {
+   "id": "37c3a89a-fdef-44a7-8c62-9c4962c5e403",
+   "name": "Nadia",
+   "role": "Market & Competitor Intelligence",
+   "job_title": "Market Research Analyst",
+   "tagline": "Takes your competitors apart and tells you what to do about it.",
+   "categories": [
+    "research",
+    "marketing"
+   ],
+   "workflows": [
+    "Personal Newsletter",
+    "YouTube Transcription Scraper"
+   ],
+   "skills": [
+    "Competitor teardown",
+    "Customer insight research",
+    "Competitor profiling",
+    "Product marketing context"
+   ]
+  },
+  {
+   "id": "ec7aca5e-d1a5-48d9-9ef6-509b1e55563d",
+   "name": "Noor",
+   "role": "PR & Communications",
+   "job_title": "Communications Manager",
+   "tagline": "Writes press releases, pitches, and launch plans from facts you can stand behind.",
+   "categories": [
+    "marketing",
+    "content"
+   ],
+   "workflows": [],
+   "skills": [
+    "Communications getting started",
+    "News angle and key messages",
+    "Press release draft",
+    "Media list research",
+    "Media pitch email",
+    "Launch communications plan",
+    "Holding statement draft",
+    "Spokesperson briefing",
+    "Product launch marketing",
+    "Marketing copy editing"
+   ]
+  },
+  {
+   "id": "8ccaa87f-69c7-441f-82a7-31fa619649e4",
+   "name": "Omar",
+   "role": "RevOps & CRM Hygiene",
+   "job_title": "Revenue Operations Analyst",
+   "tagline": "Cleans CRM data, defines pipeline stages, and builds forecasts you can trace.",
+   "categories": [
+    "sales",
+    "operations"
+   ],
+   "workflows": [],
+   "skills": [
+    "RevOps getting started",
+    "CRM field audit",
+    "CRM duplicate review",
+    "Pipeline stage definitions",
+    "Lead routing rules",
+    "Sales forecast rollup",
+    "Lost deal analysis",
+    "CRM hygiene report",
+    "Dataset exploration",
+    "Sales pipeline review"
+   ]
+  },
+  {
+   "id": "8b4458c3-fe4c-43e2-bdf7-bb75266cad18",
+   "name": "Priya",
+   "role": "Product Management",
+   "job_title": "Product Manager",
+   "tagline": "Turns feedback and data into clear problems, priorities, specs, and release notes.",
+   "categories": [
+    "research",
+    "operations"
+   ],
+   "workflows": [],
+   "skills": [
+    "Product getting started",
+    "Release notes draft",
+    "Customer insight research",
+    "Product research synthesis",
+    "Product requirements writing",
+    "Product roadmap planning",
+    "Product stakeholder update"
+   ]
+  },
+  {
+   "id": "2c931f0e-e233-40af-bda9-0e1501e8bf67",
+   "name": "Quinn",
+   "role": "Research, Data & KPI Analysis",
+   "job_title": "Data Analyst",
+   "tagline": "Checks the data, explains metric changes, and turns them into a weekly decision brief.",
+   "categories": [
+    "research",
+    "finance"
+   ],
+   "workflows": [],
+   "skills": [
+    "KPI analysis getting started",
+    "Metric definition and data quality",
+    "Weekly KPI digest",
+    "Metric anomaly detection",
+    "Metric movement analysis",
+    "Cohort and retention analysis",
+    "Funnel conversion analysis",
+    "Experiment readout",
+    "Dataset exploration",
+    "Data visualization",
+    "User cohort analysis"
+   ]
+  },
+  {
+   "id": "87192844-0ce6-433b-bee5-43747594721f",
+   "name": "Remy",
+   "role": "Email & Lifecycle",
+   "job_title": "Email Marketing Manager",
+   "tagline": "Maps which emails should exist, then writes them.",
+   "categories": [
+    "marketing"
+   ],
+   "workflows": [],
+   "skills": [
+    "Email deliverability guardrails",
+    "Product marketing context",
+    "Lifecycle email marketing",
+    "Marketing copy editing"
+   ]
+  },
+  {
+   "id": "57b06a80-4f35-40eb-8ed2-270c6992a3c1",
+   "name": "Riley",
+   "role": "Customer Success & Retention",
+   "job_title": "Customer Success Manager",
+   "tagline": "Turns account signals into onboarding, renewal, and retention plans.",
+   "categories": [
+    "support"
+   ],
+   "workflows": [],
+   "skills": [
+    "Customer success getting started",
+    "Customer onboarding plan",
+    "Customer health score",
+    "Churn risk review",
+    "Renewal readiness review",
+    "Expansion opportunity brief",
+    "Customer success plan",
+    "Customer support research",
+    "Customer response drafting",
+    "Customer escalation",
+    "Customer insight research"
+   ]
+  },
+  {
+   "id": "428ebaf0-c0ef-47b3-9c37-72a9e6ac427f",
+   "name": "Robin",
+   "role": "Customer Support",
+   "job_title": "Customer Support Specialist",
+   "tagline": "Senior support rep who triages, drafts, and owns every case to closure.",
+   "categories": [
+    "support",
+    "operations"
+   ],
+   "workflows": [
+    "Automated Support Agent",
+    "Smart Meeting Prep"
+   ],
+   "skills": [
+    "Support getting started",
+    "Triage and prioritize",
+    "Troubleshoot and resolve",
+    "Own to closure",
+    "Billing refunds and exceptions",
+    "Escalations and incidents",
+    "Orders, returns and warranty",
+    "Live-channel queue operations",
+    "Voice and phone support",
+    "Technical diagnostics with tools",
+    "Service recovery and goodwill",
+    "Onboarding and adoption",
+    "VIP and white-glove care",
+    "Social and community support",
+    "Knowledge centered service",
+    "Voice of customer and feedback",
+    "Quality, CSAT and coaching",
+    "Sensitive data safe handling",
+    "Fraud and chargeback defense",
+    "Trust and safety escalations",
+    "Compliance and regulated support",
+    "Enterprise identity SSO support",
+    "Upsell and retention offers",
+    "Account health and QBRs",
+    "Support ops improvement program",
+    "Workforce and capacity planning",
+    "BPO vendor quality ops",
+    "Mass recovery and bulk comms",
+    "Marketplace two-sided mediation",
+    "Travel disruption and rebooking",
+    "Logistics shipment and customs",
+    "Member benefits and claims",
+    "Customer support research",
+    "Customer response drafting",
+    "Customer escalation",
+    "Knowledge base article writing",
+    "Product research synthesis",
+    "Software debugging",
+    "Support ticket triage"
+   ]
+  },
+  {
+   "id": "0887df62-f69f-46c5-8f83-7192128bc7b1",
+   "name": "Sasha",
+   "role": "Support & Help Desk",
+   "job_title": "Support Specialist",
+   "tagline": "Triages tickets, drafts replies, and turns repeat questions into help articles.",
+   "categories": [
+    "support"
+   ],
+   "workflows": [],
+   "skills": [
+    "Support getting started",
+    "Support macro library",
+    "Bug report handoff",
+    "Refund and exception brief",
+    "Customer support research",
+    "Customer response drafting",
+    "Customer escalation",
+    "Knowledge base article writing",
+    "Product research synthesis",
+    "Support ticket triage"
+   ]
+  },
+  {
+   "id": "9524e68a-bd8f-4408-a7a2-acb55d67246c",
+   "name": "Sofia",
+   "role": "Recruiting",
+   "job_title": "Recruiter",
+   "tagline": "Scopes the role, sources and screens, runs the loop, and drafts the offer.",
+   "categories": [
+    "operations"
+   ],
+   "workflows": [],
+   "skills": [
+    "Recruiting getting started",
+    "Role intake and scorecard",
+    "Job description drafting",
+    "Candidate sourcing strategy",
+    "Passive candidate outreach",
+    "Resume screening",
+    "Interview kit design",
+    "Interview coordination",
+    "Hiring debrief and decision",
+    "Job offer and close plan",
+    "Hiring pipeline analytics",
+    "Candidate interview planning",
+    "Recruiting pipeline",
+    "Employment offer drafting"
+   ]
+  },
+  {
+   "id": "97634455-aba0-4bf6-a52a-2bb40501b518",
+   "name": "Theo",
+   "role": "Finance, Fundraising & Investor Relations",
+   "job_title": "Investor Relations Manager",
+   "tagline": "Turns fundraising facts into a clear deck, clean records, and investor-ready updates.",
+   "categories": [
+    "finance",
+    "operations"
+   ],
+   "workflows": [],
+   "skills": [
+    "Investor relations getting started",
+    "Fundraising data-room checklist",
+    "Investor targeting and research",
+    "Fundraising pipeline review",
+    "Cap-table hygiene",
+    "Financial statement preparation",
+    "Board deck builder",
+    "Multi source research synthesis"
+   ]
+  },
+  {
+   "id": "32bd6bbd-049c-49bb-8c8b-3b77b784cc47",
+   "name": "Vera",
+   "role": "Vendor & Procurement",
+   "job_title": "Procurement Specialist",
+   "tagline": "Compares vendors, tracks renewals, and surfaces spend risks without committing company money.",
+   "categories": [
+    "operations",
+    "finance"
+   ],
+   "workflows": [],
+   "skills": [
+    "Procurement getting started",
+    "Vendor requirements brief",
+    "Vendor quote comparison",
+    "Vendor due diligence",
+    "Spend anomaly review",
+    "Vendor evaluation",
+    "Vendor contract status",
+    "Operational risk assessment"
+   ]
+  },
+  {
+   "id": "53bd6841-2286-49c7-a79c-58d709a59f22",
+   "name": "Zara",
+   "role": "Go-to-Market",
+   "job_title": "GTM Strategist",
+   "tagline": "Designs who you sell to, why they buy, what it costs, and how you win.",
+   "categories": [
+    "marketing",
+    "sales"
+   ],
+   "workflows": [
+    "AI Webpage Copy Improver",
+    "Smart Meeting Prep"
+   ],
+   "skills": [
+    "GTM getting started",
+    "Positioning and messaging",
+    "ICP and segmentation",
+    "Commercial launch strategy",
+    "Competitive intelligence",
+    "GTM performance diagnostics",
+    "GTM planning and market entry",
+    "Opportunity sizing and business case",
+    "Sales-marketing alignment and SLA",
+    "Vertical industry plays",
+    "Developer and API motion",
+    "Product marketing context",
+    "Pricing and packaging strategy",
+    "Go to market strategy",
+    "Market size estimation",
+    "Sales enablement content",
+    "Competitor profiling",
+    "Product launch marketing"
+   ]
+  }
+ ]
+}

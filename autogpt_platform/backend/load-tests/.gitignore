@@ -1,8 +1,12 @@
-# Load testing credentials and sensitive data
+# Files that hold real credentials, so they are never committed:
+# configs/accounts.json keeps LOAD_TEST_ACCOUNTS between runs, and the other
+# two hold access tokens.
+configs/accounts.json
 configs/pre-authenticated-tokens.js
 configs/k6-credentials.env
+
+# Results
 results/
-k6-cloud-results.txt
 
 # Node.js
 node_modules/

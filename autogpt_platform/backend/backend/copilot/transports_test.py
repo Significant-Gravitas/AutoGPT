@@ -80,8 +80,10 @@ def transport_env(mocker: pytest_mock.MockerFixture):
     )
     mocker.patch.object(
         transports,
-        "get_user_default_chat_route",
-        new=AsyncMock(return_value=(None, None)),
+        "user_db",
+        return_value=MagicMock(
+            get_user_default_chat_route=AsyncMock(return_value=(None, None))
+        ),
     )
     mocker.patch.object(transports, "set_user_default_chat_route", new=AsyncMock())
 
@@ -93,7 +95,7 @@ def _connect(*credential_ids: str) -> None:
 
 
 def _saved(auth_provider: str | None, credential_id: str | None = None) -> None:
-    transports.get_user_default_chat_route.return_value = (
+    transports.user_db().get_user_default_chat_route.return_value = (
         auth_provider,
         credential_id,
     )
@@ -150,6 +152,37 @@ async def test_microsoft_365_copilot_is_a_secretless_user_connection() -> None:
     assert microsoft.credential_id == "cred-microsoft"
     assert microsoft.label == "Microsoft 365 Copilot"
     assert microsoft.default is True
+
+
+@pytest.mark.asyncio
+async def test_a_microsoft_work_connection_offers_copilot_without_a_second_sign_in() -> (
+    None
+):
+    def connection(account_type: str, credential_id: str) -> OAuth2Credentials:
+        credentials = _microsoft_credentials(credential_id)
+        credentials.provider = "microsoft"
+        credentials.metadata["microsoft_identity"] = {
+            "tenant_id": "tenant",
+            "account_id": credential_id,
+            "account_type": account_type,
+        }
+        return credentials
+
+    transports.credentials_manager.store.get_creds_by_provider.side_effect = (
+        lambda _user_id, provider: (
+            [connection("work", "work"), connection("personal", "personal")]
+            if provider == "microsoft"
+            else []
+        )
+    )
+
+    transport_list = await get_chat_transports(USER_ID)
+
+    assert [
+        transport.credential_id
+        for transport in transport_list
+        if transport.auth_provider == "microsoft_365_copilot"
+    ] == ["work"]
 
 
 @pytest.mark.asyncio

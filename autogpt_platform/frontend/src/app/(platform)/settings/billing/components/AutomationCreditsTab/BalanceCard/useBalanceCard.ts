@@ -7,6 +7,7 @@ import {
   usePostV1RequestCreditTopUp,
 } from "@/app/api/__generated__/endpoints/credits/credits";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 
 export function useBalanceCard() {
   const {
@@ -23,8 +24,10 @@ export function useBalanceCard() {
     },
   });
 
-  const { mutateAsync: requestTopUp, isPending: isAdding } =
+  const { mutateAsync: requestTopUp, isPending: isRequestingTopUp } =
     usePostV1RequestCreditTopUp();
+  const checkoutRedirect = useCheckoutRedirect();
+  const isAdding = isRequestingTopUp || checkoutRedirect.isRedirectingHere;
 
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");
@@ -38,10 +41,13 @@ export function useBalanceCard() {
     numericAmount >= 5;
 
   async function handleSubmit() {
-    if (!isValid) return;
+    if (!isValid || isAdding || checkoutRedirect.isRedirecting) return;
     try {
       const result = await requestTopUp({
-        data: { credit_amount: Math.round(numericAmount * 100) },
+        data: {
+          credit_amount: Math.round(numericAmount * 100),
+          surface: "billing",
+        },
       });
       const status = (result as { status?: number } | undefined)?.status;
       const body = result?.data as
@@ -63,8 +69,8 @@ export function useBalanceCard() {
 
       const url = body?.checkout_url;
       if (url) {
-        // Navigating away — don't touch React state on the unmounting tree.
         window.location.href = url;
+        checkoutRedirect.markRedirecting();
         return;
       }
 
@@ -94,6 +100,8 @@ export function useBalanceCard() {
     setAmount,
     isValid,
     isAdding,
+    // Any checkout on the page leaving for Stripe, not just this one.
+    isRedirecting: checkoutRedirect.isRedirecting,
     handleSubmit: () => void handleSubmit(),
   };
 }

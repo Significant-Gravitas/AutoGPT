@@ -73,6 +73,8 @@ class MessageSessionTool(BaseTool):
                 "session_id": {
                     "type": "string",
                     "description": "Target session id, from find_session.",
+                    "title": "Chat",
+                    "entity": "chat_session",
                 },
                 "message": {
                     "type": "string",

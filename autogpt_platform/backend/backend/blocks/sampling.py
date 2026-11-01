@@ -177,8 +177,22 @@ class DataSamplingBlock(Block):
             # Adjust sizes to ensure we get exactly sample_size samples
             while sum(stratum_sizes.values()) != input_data.sample_size:
                 if sum(stratum_sizes.values()) < input_data.sample_size:
+                    # Only top up strata that still have unsampled items, or
+                    # random.sample() below asks for more than the stratum has.
+                    # Prefer the one furthest below its proportional share.
+                    # Total capacity is data_size >= sample_size, so a
+                    # candidate always exists.
+                    candidates = [
+                        k for k in stratum_sizes if stratum_sizes[k] < len(strata[k])
+                    ]
                     stratum_sizes[
-                        max(stratum_sizes, key=lambda k: stratum_sizes[k])
+                        max(
+                            candidates,
+                            key=lambda k: len(strata[k])
+                            / data_size
+                            * input_data.sample_size
+                            - stratum_sizes[k],
+                        )
                     ] += 1
                 else:
                     stratum_sizes[

@@ -51,8 +51,8 @@ const meta: Meta<typeof ArtifactPanel> = {
     (Story) => (
       <TooltipProvider>
         <div className="flex h-[800px] w-full bg-sidebar">
-          <div className="flex-1 bg-zinc-50 p-8">
-            <p className="text-sm text-zinc-500">Chat area</p>
+          <div className="flex-1 bg-surface-muted p-8">
+            <p className="text-sm text-foreground-tertiary">Chat area</p>
           </div>
           <Story />
         </div>

@@ -590,6 +590,18 @@
       ]
     },
     {
+      "id": "expert-clip",
+      "name": "Clip",
+      "job_title": "Video Producer",
+      "categories": ["marketing", "content"],
+      "visual_category": "marketing",
+      "base_url": "/autogpt-characters/v2.2",
+      "revision": "2.2.0",
+      "png_max_pixels": 512,
+      "url": "/autogpt-characters/v2.2/expert-clip/neutral/128.webp",
+      "previous_urls": []
+    },
+    {
       "id": "expert-general-01",
       "name": "General",
       "job_title": "Custom AI Expert",

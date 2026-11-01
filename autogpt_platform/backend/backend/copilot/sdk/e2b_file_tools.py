@@ -15,6 +15,7 @@ by the separate ``Read`` MCP tool registered in ``tool_adapter.py``.
 import asyncio
 import base64
 import collections
+import functools
 import hashlib
 import itertools
 import json
@@ -32,8 +33,21 @@ from backend.copilot.context import (
     is_allowed_local_path,
     is_sdk_tool_path,
     is_within_allowed_dirs,
+    resolve_allowed_local_path,
     resolve_sandbox_path,
 )
+from backend.copilot.host_fs import open_no_follow
+from backend.copilot.sdk.sandbox_image_read import read_sandbox_image
+from backend.copilot.tool_image import (
+    BINARY_IMAGE_READ_GUIDANCE,
+    IMAGE_EXTENSIONS,
+    IMAGE_READ_DESCRIPTION,
+    IMAGE_TOO_LARGE_MESSAGE,
+    MAX_IMAGE_BYTES,
+    ImageReadError,
+    prepare_image,
+)
+from backend.util.sandbox_login import run_internal
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +116,15 @@ def _is_likely_binary(path: str) -> bool:
     return ext.lower() in _READ_BINARY_EXTENSIONS
 
 
+def _binary_read_guidance(path: str) -> str:
+    if os.path.splitext(path)[1].lower() in {".pdf", ".mp4", ".avi", ".mov", ".mkv"}:
+        return BINARY_IMAGE_READ_GUIDANCE
+    return (
+        "This binary file has not been viewed. "
+        "Use bash_exec with 'file' or 'xxd' to inspect it."
+    )
+
+
 _PARTIAL_TRUNCATION_MSG = (
     "Your Write call was truncated (file_path missing but content "
     "was present). The content was too large for a single tool call. "
@@ -144,14 +167,10 @@ def _resolve_and_validate(
     """Resolve *file_path* against *sdk_cwd* and validate it stays within bounds.
 
     Returns ``(resolved_path, None)`` on success, or ``(None, error_response)``
-    on failure.
+    on failure.  Open the result with ``open_no_follow``.
     """
-    if not os.path.isabs(file_path):
-        resolved = os.path.realpath(os.path.join(sdk_cwd, file_path))
-    else:
-        resolved = os.path.realpath(file_path)
-
-    if not is_allowed_local_path(resolved, sdk_cwd):
+    resolved = resolve_allowed_local_path(file_path, sdk_cwd)
+    if resolved is None:
         return None, _mcp(
             f"Path must be within the working directory: {os.path.basename(file_path)}",
             error=True,
@@ -176,7 +195,8 @@ async def _check_sandbox_symlink_escape(
     replaced between the two operations.  This is acceptable in the E2B
     sandbox model since the sandbox is single-user and ephemeral.
     """
-    canonical_res = await sandbox.commands.run(
+    canonical_res = await run_internal(
+        sandbox,
         f"readlink -f {shlex.quote(parent or E2B_WORKDIR)}",
         cwd=E2B_WORKDIR,
         timeout=5,
@@ -199,10 +219,23 @@ def _is_allowed_local(path: str) -> bool:
     return is_allowed_local_path(path, get_sdk_cwd())
 
 
-def _mcp(text: str, *, error: bool = False) -> dict[str, Any]:
+def _mcp(
+    text: str, *, error: bool = False, outside: tuple[str, ...] | None = None
+) -> dict[str, Any]:
     if error:
         text = json.dumps({"error": text, "type": "error"})
-    return {"content": [{"type": "text", "text": text}], "isError": error}
+    result = {"content": [{"type": "text", "text": text}], "isError": error}
+    return result if outside is None else DeclaredResult(result, outside=outside)
+
+
+class DeclaredResult(dict[str, Any]):
+    """An MCP result whose ``outside`` names what in it came from outside
+    AutoGPT (see ``ToolResponseBase.from_outside``). The wrapper reads it
+    before the cap, which builds a plain dict."""
+
+    def __init__(self, result: dict[str, Any], *, outside: tuple[str, ...]):
+        super().__init__(result)
+        self.outside = outside
 
 
 def _get_sandbox_and_path(
@@ -240,7 +273,8 @@ async def _sandbox_write(sandbox: Any, path: str, content: str | bytes) -> None:
     if path == "/tmp" or path.startswith("/tmp/"):
         raw = content.encode() if isinstance(content, str) else content
         encoded = base64.b64encode(raw).decode()
-        result = await sandbox.commands.run(
+        result = await run_internal(
+            sandbox,
             f"echo {shlex.quote(encoded)} | base64 -d > {shlex.quote(path)}",
             cwd=E2B_WORKDIR,
             timeout=10,
@@ -296,7 +330,9 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
         is_sdk_tool_path(file_path) if sandbox_active else _is_allowed_local(file_path)
     )
     if local_check:
-        result = _read_local(file_path, offset, limit)
+        result = await asyncio.to_thread(
+            _read_local, file_path, offset, limit if "limit" in args else None
+        )
         if not result.get("isError"):
             sandbox = _get_sandbox()
             if sandbox is not None:
@@ -316,7 +352,27 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
         sandbox, remote = result
 
         try:
-            raw: bytes = await sandbox.files.read(remote, format="bytes")
+            ext = os.path.splitext(remote)[1].lower()
+            if ext in IMAGE_EXTENSIONS:
+                info = await sandbox.files.get_info(remote)
+                if info.size > MAX_IMAGE_BYTES:
+                    return _mcp(
+                        IMAGE_TOO_LARGE_MESSAGE,
+                        error=True,
+                        outside=(),
+                    )
+            elif _is_likely_binary(remote):
+                return _mcp(
+                    _binary_read_guidance(remote),
+                    error=True,
+                    outside=(),
+                )
+            if ext in IMAGE_EXTENSIONS:
+                raw = await read_sandbox_image(sandbox, remote)
+                return await asyncio.to_thread(
+                    _image_result, raw, offset, args.get("limit")
+                )
+            raw = await sandbox.files.read(remote, format="bytes")
             content = raw.decode("utf-8", errors="replace")
         except Exception as exc:
             return _mcp(f"Failed to read {os.path.basename(remote)}: {exc}", error=True)
@@ -326,7 +382,7 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
         numbered = "".join(
             f"{i + offset + 1:>6}\t{line}" for i, line in enumerate(selected)
         )
-        return _mcp(numbered)
+        return _mcp(numbered, outside=(numbered,))
 
     # Non-E2B path — read from SDK working directory
     sdk_cwd = get_sdk_cwd()
@@ -338,15 +394,22 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
         return err
     assert resolved is not None
 
+    if os.path.splitext(resolved)[1].lower() in IMAGE_EXTENSIONS:
+        return await asyncio.to_thread(
+            _read_local_image, resolved, offset, args.get("limit")
+        )
+
     if _is_likely_binary(resolved):
         return _mcp(
-            f"Cannot read binary file: {os.path.basename(resolved)}. "
-            "Use bash_exec with 'xxd' or 'file' to inspect binary files.",
+            _binary_read_guidance(resolved),
             error=True,
+            outside=(),
         )
 
     try:
-        with open(resolved, encoding="utf-8", errors="replace") as f:
+        with open(
+            resolved, encoding="utf-8", errors="replace", opener=open_no_follow
+        ) as f:
             selected = list(itertools.islice(f, offset, offset + limit))
     except FileNotFoundError:
         return _mcp(f"File not found: {file_path}", error=True)
@@ -358,7 +421,7 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
     numbered = "".join(
         f"{i + offset + 1:>6}\t{line}" for i, line in enumerate(selected)
     )
-    return _mcp(numbered)
+    return _mcp(numbered, outside=(numbered,))
 
 
 async def _handle_write_file(args: dict[str, Any]) -> dict[str, Any]:
@@ -423,10 +486,12 @@ async def _handle_write_file(args: dict[str, Any]) -> dict[str, Any]:
     assert resolved is not None
 
     try:
-        parent = os.path.dirname(resolved)
-        if parent:
-            os.makedirs(parent, exist_ok=True)
-        with open(resolved, "w", encoding="utf-8") as f:
+        with open(
+            resolved,
+            "w",
+            encoding="utf-8",
+            opener=functools.partial(open_no_follow, make_parents=True),
+        ) as f:
             f.write(content)
     except Exception as exc:
         logger.error("Write failed for %s: %s", resolved, exc, exc_info=True)
@@ -488,7 +553,10 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
             return _mcp(str(exc), error=True)
 
         parent = os.path.dirname(remote)
-        canonical_parent = await _check_sandbox_symlink_escape(sandbox, parent)
+        try:
+            canonical_parent = await _check_sandbox_symlink_escape(sandbox, parent)
+        except Exception as exc:
+            return _mcp(f"Failed to edit {os.path.basename(remote)}: {exc}", error=True)
         if canonical_parent is None:
             return _mcp(
                 f"Path must be within {E2B_ALLOWED_DIRS_STR}: {os.path.basename(parent)}",
@@ -551,7 +619,7 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
     lock = _edit_locks[resolved]
     async with lock:
         try:
-            with open(resolved, encoding="utf-8") as f:
+            with open(resolved, encoding="utf-8", opener=open_no_follow) as f:
                 content = f.read()
         except FileNotFoundError:
             return _mcp(f"File not found: {file_path}", error=True)
@@ -582,7 +650,7 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
         await asyncio.sleep(0)
 
         try:
-            with open(resolved, "w", encoding="utf-8") as f:
+            with open(resolved, "w", encoding="utf-8", opener=open_no_follow) as f:
                 f.write(updated)
         except Exception as exc:
             return _mcp(f"Failed to write {file_path}: {exc}", error=True)
@@ -616,12 +684,12 @@ async def _handle_glob(args: dict[str, Any]) -> dict[str, Any]:
 
     cmd = f"find {shlex.quote(search_dir)} -name {shlex.quote(pattern)} -type f 2>/dev/null | head -500"
     try:
-        result = await sandbox.commands.run(cmd, cwd=E2B_WORKDIR, timeout=10)
+        result = await run_internal(sandbox, cmd, cwd=E2B_WORKDIR, timeout=10)
     except Exception as exc:
         return _mcp(f"Glob failed: {exc}", error=True)
 
     files = [line for line in (result.stdout or "").strip().splitlines() if line]
-    return _mcp(json.dumps(files, indent=2))
+    return _mcp(json.dumps(files, indent=2), outside=tuple(files))
 
 
 async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
@@ -656,12 +724,14 @@ async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
     cmd = " ".join(shlex.quote(p) for p in parts) + " 2>/dev/null | head -200"
 
     try:
-        result = await sandbox.commands.run(cmd, cwd=E2B_WORKDIR, timeout=15)
+        result = await run_internal(sandbox, cmd, cwd=E2B_WORKDIR, timeout=15)
     except Exception as exc:
         return _mcp(f"Grep failed: {exc}", error=True)
 
     output = (result.stdout or "").strip()
-    return _mcp(output if output else "No matches found.")
+    if not output:
+        return _mcp("No matches found.", outside=())
+    return _mcp(output, outside=(output,))
 
 
 # Bridging: copy SDK-internal files into E2B sandbox
@@ -676,7 +746,11 @@ _BRIDGE_SKIP_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
 async def bridge_to_sandbox(
-    sandbox: Any, file_path: str, offset: int, limit: int
+    sandbox: Any,
+    file_path: str,
+    offset: int,
+    limit: int,
+    content: str | None = None,
 ) -> str | None:
     """Best-effort copy of a host-side SDK file into the E2B sandbox.
 
@@ -686,6 +760,10 @@ async def bridge_to_sandbox(
 
     Only copies when offset=0 and limit is large enough to indicate the model
     wants the full file.  Errors are logged but never propagated.
+
+    *content*, when given, is written in place of the file's bytes, so a
+    caller that showed the model a transformed view of the file (e.g. an
+    unwrapped MCP envelope) can give bash the same text.
 
     Returns the sandbox path on success, or ``None`` on skip/failure.
 
@@ -705,27 +783,23 @@ async def bridge_to_sandbox(
     try:
         expanded = os.path.realpath(os.path.expanduser(file_path))
         basename = os.path.basename(expanded)
-        source_id = hashlib.sha256(expanded.encode()).hexdigest()[:12]
+        source = f"{expanded}:transformed" if content is not None else expanded
+        source_id = hashlib.sha256(source.encode()).hexdigest()[:12]
         unique_name = f"{source_id}-{basename}"
-        file_size = os.path.getsize(expanded)
-        if file_size > _BRIDGE_SKIP_BYTES:
+        read = (
+            await _read_host_file(expanded, _BRIDGE_SKIP_BYTES)
+            if content is None
+            else (content, len(content.encode("utf-8")))
+        )
+        if read is None or read[1] > _BRIDGE_SKIP_BYTES:
             logger.warning(
-                "[E2B] Skipping bridge for large file (%d bytes): %s",
-                file_size,
+                "[E2B] Skipping bridge for file over %d bytes: %s",
+                _BRIDGE_SKIP_BYTES,
                 basename,
             )
             return None
 
-        def _read_bytes() -> bytes:
-            with open(expanded, "rb") as fh:
-                return fh.read()
-
-        raw_content = await asyncio.to_thread(_read_bytes)
-        try:
-            text_content: str | None = raw_content.decode("utf-8")
-        except UnicodeDecodeError:
-            text_content = None
-        data: str | bytes = text_content if text_content is not None else raw_content
+        data, file_size = read
         if file_size <= _BRIDGE_SHELL_MAX_BYTES:
             sandbox_path = f"/tmp/{unique_name}"
             await _sandbox_write(sandbox, sandbox_path, data)
@@ -746,7 +820,11 @@ async def bridge_to_sandbox(
 
 
 async def bridge_and_annotate(
-    sandbox: Any, file_path: str, offset: int, limit: int
+    sandbox: Any,
+    file_path: str,
+    offset: int,
+    limit: int,
+    content: str | None = None,
 ) -> str | None:
     """Bridge a host file to the sandbox and return a newline-prefixed annotation.
 
@@ -755,31 +833,93 @@ async def bridge_and_annotate(
     ``"\\n[Sandbox copy available at /tmp/abc-file.txt]"`` on success, or
     ``None`` if bridging was skipped or failed.
     """
-    sandbox_path = await bridge_to_sandbox(sandbox, file_path, offset, limit)
+    sandbox_path = await bridge_to_sandbox(sandbox, file_path, offset, limit, content)
     if sandbox_path is None:
         return None
     return f"\n[Sandbox copy available at {sandbox_path}]"
 
 
+async def _read_host_file(path: str, limit: int) -> tuple[str | bytes, int] | None:
+    """The file as text when it decodes as UTF-8, else its raw bytes, with its
+    size; ``None`` when it holds more than *limit* bytes."""
+
+    def _read_bytes() -> bytes | None:
+        with open(path, "rb", opener=open_no_follow) as fh:
+            if os.fstat(fh.fileno()).st_size > limit:
+                return None
+            raw = fh.read(limit + 1)
+        return None if len(raw) > limit else raw
+
+    raw_content = await asyncio.to_thread(_read_bytes)
+    if raw_content is None:
+        return None
+    try:
+        return raw_content.decode("utf-8"), len(raw_content)
+    except UnicodeDecodeError:
+        return raw_content, len(raw_content)
+
+
 # Local read (for SDK-internal paths)
 
 
-def _read_local(file_path: str, offset: int, limit: int) -> dict[str, Any]:
+def _read_local(file_path: str, offset: int, limit: int | None) -> dict[str, Any]:
     """Read from the host filesystem (defence-in-depth path check)."""
-    if not _is_allowed_local(file_path):
+    expanded = resolve_allowed_local_path(file_path, get_sdk_cwd())
+    if expanded is None:
         return _mcp(f"Path not allowed: {file_path}", error=True)
-    expanded = os.path.realpath(os.path.expanduser(file_path))
+    if os.path.splitext(expanded)[1].lower() in IMAGE_EXTENSIONS:
+        return _read_local_image(expanded, offset, limit)
+    if _is_likely_binary(expanded):
+        return _mcp(
+            _binary_read_guidance(expanded),
+            error=True,
+            outside=(),
+        )
     try:
-        with open(expanded, encoding="utf-8", errors="replace") as fh:
+        limit = _DEFAULT_READ_LIMIT if limit is None else limit
+        with open(
+            expanded, encoding="utf-8", errors="replace", opener=open_no_follow
+        ) as fh:
             selected = list(itertools.islice(fh, offset, offset + limit))
         numbered = "".join(
             f"{i + offset + 1:>6}\t{line}" for i, line in enumerate(selected)
         )
-        return _mcp(numbered)
+        return _mcp(numbered, outside=(numbered,))
     except FileNotFoundError:
         return _mcp(f"File not found: {file_path}", error=True)
     except Exception as exc:
         return _mcp(f"Error reading {file_path}: {exc}", error=True)
+
+
+def _read_local_image(path: str, offset: int, limit: int | None) -> dict[str, Any]:
+    try:
+        with open(path, "rb", opener=open_no_follow) as file:
+            raw = file.read(MAX_IMAGE_BYTES + 1)
+    except OSError:
+        return _mcp(f"Could not read image: {os.path.basename(path)}.", error=True)
+    return _image_result(raw, offset, limit)
+
+
+def _image_result(raw: bytes, offset: int, limit: int | None) -> dict[str, Any]:
+    if offset or limit is not None:
+        return _mcp(
+            "Image not shown: offset/limit only apply to text. Read the whole image.",
+            error=True,
+            outside=(),
+        )
+    try:
+        image = prepare_image(raw)
+    except ImageReadError as exc:
+        return _mcp(str(exc), error=True, outside=())
+    except ValueError as exc:
+        return _mcp(str(exc), error=True)
+    return {
+        "content": [
+            {"type": "text", "text": "Viewed image (first frame only)."},
+            image.mcp(),
+        ],
+        "isError": False,
+    }
 
 
 # Tool descriptors (name, description, schema, handler)
@@ -788,7 +928,7 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
     (
         "read_file",
         "Read a file from the cloud sandbox (/home/user or /tmp). "
-        "Use offset and limit for large files.",
+        "Use offset and limit for large text files. " + IMAGE_READ_DESCRIPTION,
         {
             "type": "object",
             "properties": {
@@ -919,7 +1059,8 @@ WRITE_TOOL_SCHEMA: dict[str, Any] = {
 READ_TOOL_NAME = "read_file"
 READ_TOOL_DESCRIPTION = (
     "Read a file from the working directory. Returns content with line numbers "
-    "(cat -n format). Use offset and limit to read specific ranges for large files."
+    "(cat -n format). Use offset and limit to read specific ranges for large text files. "
+    + IMAGE_READ_DESCRIPTION
 )
 READ_TOOL_SCHEMA: dict[str, Any] = {
     "type": "object",

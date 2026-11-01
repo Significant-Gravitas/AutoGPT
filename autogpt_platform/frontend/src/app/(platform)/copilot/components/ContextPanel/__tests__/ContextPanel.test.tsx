@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import { getListWorkspaceFilesMockHandler200 } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
@@ -35,6 +35,10 @@ beforeEach(() => {
   }));
 });
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe("ContextPanel", () => {
   test("docks for the artifacts tab and renders the artifacts library", async () => {
     const { container } = render(<ContextPanel sessionId="session-1" />);
@@ -52,7 +56,8 @@ describe("ContextPanel", () => {
     await waitFor(() =>
       expect(container.querySelector("[data-context-panel]")).not.toBeNull(),
     );
-    expect(await screen.findByText("Nothing here yet.")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Files" })).toBeDefined();
+    expect(await screen.findByText("No files yet")).toBeDefined();
   });
 
   test("docks for the integrations tab with the expert's integrations", async () => {
@@ -63,7 +68,11 @@ describe("ContextPanel", () => {
     }));
     render(<ContextPanel sessionId="session-1" />);
 
-    expect(await screen.findByText("Maria's Integrations")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Integrations" })).toBeDefined();
+    expect(await screen.findByText("No integrations yet")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Add integration" }),
+    ).toBeDefined();
     expect(
       screen.getByRole("link", { name: "Open Maria's page" }),
     ).toBeDefined();
@@ -124,5 +133,22 @@ describe("ContextPanel", () => {
     render(<ContextPanel sessionId="session-1" mobile />);
     expect(await screen.findByRole("dialog")).toBeDefined();
     expect(screen.getByRole("heading", { name: "Artifacts" })).toBeDefined();
+  });
+
+  test("mobile: the sheet describes its tab to screen readers", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    useCopilotUIStore.setState((s) => ({
+      artifactPanel: { ...s.artifactPanel, activeTab: "files" },
+    }));
+    render(<ContextPanel sessionId="session-1" mobile />);
+
+    expect(
+      await screen.findByRole("dialog", {
+        description: "Files from this chat.",
+      }),
+    ).toBeDefined();
+    expect(warn).not.toHaveBeenCalledWith(
+      expect.stringContaining("Missing `Description`"),
+    );
   });
 });

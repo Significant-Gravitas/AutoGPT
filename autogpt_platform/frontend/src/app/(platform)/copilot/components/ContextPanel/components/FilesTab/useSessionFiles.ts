@@ -6,6 +6,7 @@ import {
 } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { ListFilesResponse } from "@/app/api/__generated__/models/listFilesResponse";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
+import { isHiddenWorkspaceFile } from "@/lib/workspace-files";
 import { useMemo } from "react";
 import { useCopilotStreamStore } from "../../../../copilotStreamStore";
 import { getMessageArtifacts } from "../../../ChatMessagesContainer/helpers";
@@ -20,6 +21,9 @@ export function useSessionFiles(sessionId: string | null) {
   const messages = useCopilotStreamStore((s) =>
     sessionId ? s.messageSnapshots[sessionId] : undefined,
   );
+  // Kept as a memo: the map is read again after the query hook below, and the
+  // compiler cannot cache a value across a hook call, so without this it would
+  // be rebuilt, and the file lists with it, on every render.
   const { documentCount, fileIdToMessageId } = useMemo(() => {
     const documentIds = new Set<string>();
     const fileIdToMessageId = new Map<string, string>();
@@ -28,7 +32,12 @@ export function useSessionFiles(sessionId: string | null) {
         if (!fileIdToMessageId.has(artifact.id)) {
           fileIdToMessageId.set(artifact.id, message.id);
         }
-        if (message.role === "assistant") documentIds.add(artifact.id);
+        if (
+          message.role === "assistant" &&
+          !isHiddenWorkspaceFile({ name: artifact.title })
+        ) {
+          documentIds.add(artifact.id);
+        }
       }
     }
     return { documentCount: documentIds.size, fileIdToMessageId };
@@ -44,25 +53,20 @@ export function useSessionFiles(sessionId: string | null) {
     },
   });
 
-  // The chip and the artifacts button both read this on every render, and
-  // `messageSnapshots` is rewritten with a fresh array per streamed token —
-  // so without memoising, scanning every message part (and compiling a
-  // RegExp per matched workspace URI) would run at token cadence.
-  const { uploaded, generated, deliverables, files } = useMemo(() => {
-    const files: SessionFile[] = (query.data?.files ?? []).map((item) => ({
+  // The chip and the artifacts button both read this on every render; the
+  // compiler caches the file lists, so they keep their identity until the
+  // files change.
+  const files: SessionFile[] = (query.data?.files ?? [])
+    .filter((item) => !isHiddenWorkspaceFile(item))
+    .map((item) => ({
       item,
       messageID: fileIdToMessageId.get(item.id) ?? null,
     }));
-
-    return {
-      files,
-      uploaded: files.filter((f) => isUploadedFile(f.item)),
-      generated: files.filter((f) => !isUploadedFile(f.item)),
-      deliverables: files.filter(
-        (f) => !isUploadedFile(f.item) && !isInternalToolOutput(f.item),
-      ),
-    };
-  }, [fileIdToMessageId, query.data]);
+  const uploaded = files.filter((f) => isUploadedFile(f.item));
+  const generated = files.filter((f) => !isUploadedFile(f.item));
+  const deliverables = files.filter(
+    (f) => !isUploadedFile(f.item) && !isInternalToolOutput(f.item),
+  );
 
   return {
     documentCount,

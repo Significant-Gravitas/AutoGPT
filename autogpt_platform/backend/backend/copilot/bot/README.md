@@ -55,7 +55,7 @@ bot/
 ├── turn_stream.py      # Streaming one batched turn: chunked sends, artifacts, renames
 ├── prompt.py           # Prompt + thread-name assembly
 ├── attachments.py      # Attachment upload + failure notes
-├── command_core.py     # Shared /setup + /unlink policy (adapters render it)
+├── command_core.py     # Shared /setup + /unlink + DM-link policy (adapters render it)
 ├── bot_backend.py     # Thin facade over PlatformLinkingManagerClient + stream_registry
 ├── text.py             # Text splitting + batch formatting
 ├── threads.py          # Redis-backed thread subscription tracking
@@ -80,7 +80,7 @@ bot/
     ├── telegram/       # WebhookAdapter — Telegram Bot API
     │   ├── adapter.py       # Inbound updates route, sends, chat-model mapping
     │   ├── api_client.py    # Thin httpx Bot API client (JSON + multipart + getFile)
-    │   ├── commands.py      # Bot commands (/setup, /help, /unlink)
+    │   ├── commands.py      # Bot commands (/start + /setup link a DM or group, /help, /unlink)
     │   ├── config.py        # BotFather token + webhook secret + platform limits
     │   └── text.py          # CommonMark → Telegram HTML
     └── teams/          # WebhookAdapter — Bot Framework Connector

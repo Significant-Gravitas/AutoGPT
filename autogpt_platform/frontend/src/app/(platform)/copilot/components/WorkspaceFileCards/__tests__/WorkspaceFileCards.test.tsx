@@ -148,6 +148,33 @@ describe("WorkspaceFileCards", () => {
     expect(screen.getByLabelText("Download all")).toBeDefined();
   });
 
+  it("leaves agent.json graph files out of the list", async () => {
+    const response = listResponse();
+    server.use(
+      getListWorkspaceFilesMockHandler200({
+        ...response,
+        files: [
+          ...response.files,
+          {
+            id: "cccccccc-0000-0000-0000-000000000003",
+            name: "agent.json",
+            path: "/sessions/session-1/agent.json",
+            mime_type: "application/json",
+            size_bytes: 4500,
+            metadata: { origin: "agent" },
+            origin: "generated",
+            created_at: "2026-05-20T12:00:00Z",
+          },
+        ],
+      }),
+    );
+    render(<WorkspaceFileCards sessionId={SESSION} />);
+
+    expect(await screen.findByText("result.csv")).toBeDefined();
+    expect(screen.queryByText("agent.json")).toBeNull();
+    expect(screen.getByText(/^Files in this chat \(2\)/)).toBeDefined();
+  });
+
   it("lists generated documents from all of the expert's chats", async () => {
     const expertRequests: URLSearchParams[] = [];
     server.use(

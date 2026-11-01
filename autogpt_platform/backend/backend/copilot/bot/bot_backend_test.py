@@ -3,18 +3,23 @@
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot import stream_registry
 from backend.copilot.response_model import (
     StreamError,
     StreamFinish,
     StreamTextDelta,
     StreamToolOutputAvailable,
+    StreamTurnPaused,
 )
+from backend.copilot.tools.models import ApprovalRequiredResponse
+from backend.copilot.turn_pause import TurnPause
 from backend.platform_linking.models import (
+    BotExpert,
     ChatTurnHandle,
     LinkTokenResponse,
     Platform,
@@ -66,6 +71,17 @@ class TestResolve:
         )
         result = await api.resolve_user("discord", "u1")
         assert result.linked is False
+        assert result.account_hint is None
+
+    @pytest.mark.asyncio
+    async def test_resolve_user_forwards_include_account(self, api: BotBackend):
+        api._client.resolve_user_link = AsyncMock(
+            return_value=ResolveResponse(linked=True, account_hint="b***@agpt.co")
+        )
+        result = await api.resolve_user("telegram", "u1", include_account=True)
+        assert result.linked is True
+        assert result.account_hint == "b***@agpt.co"
+        assert api._client.resolve_user_link.await_args.kwargs["include_account"]
 
 
 class TestListLinkedServerIds:
@@ -161,9 +177,9 @@ class TestStreamChat:
 
         queue: asyncio.Queue = asyncio.Queue()
         # Same block id — a continuous text stream, no separator inserted.
-        await queue.put(StreamTextDelta(id="1", delta="Hello "))
-        await queue.put(StreamTextDelta(id="1", delta="world"))
-        await queue.put(StreamFinish())
+        await queue.put((None, StreamTextDelta(id="1", delta="Hello ")))
+        await queue.put((None, StreamTextDelta(id="1", delta="world")))
+        await queue.put((None, StreamFinish()))
 
         captured_session_ids: list[str] = []
 
@@ -172,7 +188,7 @@ class TestStreamChat:
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
                 new=AsyncMock(return_value=queue),
             ),
             patch(
@@ -202,13 +218,13 @@ class TestStreamChat:
         api._client.start_chat_turn = AsyncMock(return_value=handle)
 
         queue: asyncio.Queue = asyncio.Queue()
-        await queue.put(StreamTextDelta(id="1", delta="first thought."))
-        await queue.put(StreamTextDelta(id="2", delta="second thought."))
-        await queue.put(StreamFinish())
+        await queue.put((None, StreamTextDelta(id="1", delta="first thought.")))
+        await queue.put((None, StreamTextDelta(id="2", delta="second thought.")))
+        await queue.put((None, StreamFinish()))
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
                 new=AsyncMock(return_value=queue),
             ),
             patch(
@@ -232,11 +248,13 @@ class TestStreamChat:
         api._client.start_chat_turn = AsyncMock(return_value=handle)
 
         queue: asyncio.Queue = asyncio.Queue()
-        await queue.put(StreamError(errorText="executor crashed"))
+        await queue.put(
+            (None, StreamError(errorText="executor crashed", code="sdk_error"))
+        )
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
                 new=AsyncMock(return_value=queue),
             ),
             patch(
@@ -251,6 +269,7 @@ class TestStreamChat:
                 pass
 
         assert excinfo.value.error_kind == "backend_stream_error"
+        assert excinfo.value.code == "sdk_error"
         assert "executor crashed" in str(excinfo.value)
 
     @pytest.mark.asyncio
@@ -260,14 +279,17 @@ class TestStreamChat:
 
         queue: asyncio.Queue = asyncio.Queue()
         await queue.put(
-            StreamToolOutputAvailable(
-                toolCallId="tool-1",
-                toolName="connect_integration",
-                output='{"type":"setup_requirements","message":"Connect GitHub"}',
+            (
+                None,
+                StreamToolOutputAvailable(
+                    toolCallId="tool-1",
+                    toolName="connect_integration",
+                    output='{"type":"setup_requirements","message":"Connect GitHub"}',
+                ),
             )
         )
-        await queue.put(StreamTextDelta(id="1", delta="After setup"))
-        await queue.put(StreamFinish())
+        await queue.put((None, StreamTextDelta(id="1", delta="After setup")))
+        await queue.put((None, StreamFinish()))
 
         setup_calls: list[tuple[str, dict, str | None]] = []
 
@@ -276,7 +298,7 @@ class TestStreamChat:
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
                 new=AsyncMock(return_value=queue),
             ),
             patch(
@@ -309,13 +331,16 @@ class TestStreamChat:
 
         queue: asyncio.Queue = asyncio.Queue()
         await queue.put(
-            StreamToolOutputAvailable(
-                toolCallId="tool-1",
-                toolName="connect_integration",
-                output='{"type":"setup_requirements","message":"Connect Goo',
+            (
+                None,
+                StreamToolOutputAvailable(
+                    toolCallId="tool-1",
+                    toolName="connect_integration",
+                    output='{"type":"setup_requirements","message":"Connect Goo',
+                ),
             )
         )
-        await queue.put(StreamFinish())
+        await queue.put((None, StreamFinish()))
 
         setup_calls: list[tuple[str, dict, str | None]] = []
         dropped_calls: list[tuple[str, str | None]] = []
@@ -328,7 +353,7 @@ class TestStreamChat:
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
                 new=AsyncMock(return_value=queue),
             ),
             patch(
@@ -364,20 +389,23 @@ class TestStreamChat:
         ]
         queue: asyncio.Queue = asyncio.Queue()
         await queue.put(
-            StreamToolOutputAvailable(
-                toolCallId="tool-1",
-                toolName="ask_question",
-                output=json.dumps(
-                    {
-                        "type": "agent_builder_clarification_needed",
-                        "message": "Which region?",
-                        "questions": questions,
-                    }
+            (
+                None,
+                StreamToolOutputAvailable(
+                    toolCallId="tool-1",
+                    toolName="ask_question",
+                    output=json.dumps(
+                        {
+                            "type": "agent_builder_clarification_needed",
+                            "message": "Which region?",
+                            "questions": questions,
+                        }
+                    ),
                 ),
             )
         )
-        await queue.put(StreamTextDelta(id="1", delta="After question"))
-        await queue.put(StreamFinish())
+        await queue.put((None, StreamTextDelta(id="1", delta="After question")))
+        await queue.put((None, StreamFinish()))
 
         clarification_calls: list[tuple[str, dict, str | None]] = []
 
@@ -388,7 +416,7 @@ class TestStreamChat:
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
                 new=AsyncMock(return_value=queue),
             ),
             patch(
@@ -411,6 +439,65 @@ class TestStreamChat:
         assert session_id == "sess"
         assert tool_name == "ask_question"
         assert output["questions"] == questions
+
+    @pytest.mark.asyncio
+    async def test_each_held_call_asks_for_its_card_once(self, api: BotBackend):
+        """A retried held call names its card again; the channel shows it once.
+        A review the gate did not raise is left to the web app."""
+        handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
+        api._client.start_chat_turn = AsyncMock(return_value=handle)
+
+        def held(review_id: str, tool: str = "post_to_chat_platform"):
+            return StreamToolOutputAvailable(
+                toolCallId=f"call-{review_id}",
+                toolName=tool,
+                output=ApprovalRequiredResponse(
+                    message="Held.",
+                    session_id="sess",
+                    tool_name=tool,
+                    reason="outward",
+                    review_id=review_id,
+                ).model_dump_json(),
+                success=False,
+            )
+
+        queue: asyncio.Queue = asyncio.Queue()
+        for chunk in (
+            held("r1"),
+            held("r1"),
+            held("r2"),
+            StreamToolOutputAvailable(
+                toolCallId="call-x",
+                toolName="run_capability",
+                output=json.dumps({"type": "review_required", "review_id": "legacy"}),
+            ),
+            StreamFinish(),
+        ):
+            await queue.put((None, chunk))
+        cards: list[tuple[str, str]] = []
+
+        async def on_approval(session_id: str, review_id: str) -> None:
+            cards.append((session_id, review_id))
+
+        with (
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
+                new=AsyncMock(return_value=queue),
+            ),
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
+                new=AsyncMock(),
+            ),
+        ):
+            async for _ in api.stream_chat(
+                platform="discord",
+                platform_user_id="u1",
+                message="hi",
+                on_approval_needed=on_approval,
+            ):
+                pass
+
+        assert cards == [("sess", "r1"), ("sess", "r2")]
 
     @pytest.mark.asyncio
     async def test_duplicate_message_propagates(self, api: BotBackend):
@@ -440,14 +527,20 @@ class TestStreamChat:
                 pass
 
     @pytest.mark.asyncio
-    async def test_subscribe_returns_none_raises(self, api: BotBackend):
+    @pytest.mark.parametrize(
+        "unavailable",
+        [stream_registry.TurnStreamGone(), stream_registry.TurnStreamTrimmed(None)],
+    )
+    async def test_a_turn_stream_gone_or_trimmed_raises(
+        self, api: BotBackend, unavailable: Exception
+    ):
         handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
         api._client.start_chat_turn = AsyncMock(return_value=handle)
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
-                new=AsyncMock(return_value=None),
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
+                new=AsyncMock(side_effect=unavailable),
             ),
             patch(
                 "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
@@ -461,6 +554,137 @@ class TestStreamChat:
                 pass
 
         assert excinfo.value.error_kind == "subscribe_failed"
+
+
+class TestPausedTurn:
+    """A turn at its budget or step limit now pauses instead of failing
+    (#15388). The web chat offers a Keep going button; a chat user has none,
+    so the reply has to say how to pick the task back up."""
+
+    async def _reply(self, api: BotBackend, *chunks) -> str:
+        handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
+        api._client.start_chat_turn = AsyncMock(return_value=handle)
+        queue: asyncio.Queue = asyncio.Queue()
+        for chunk in (*chunks, StreamFinish()):
+            await queue.put((None, chunk))
+
+        with (
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
+                new=AsyncMock(return_value=queue),
+            ),
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
+                new=AsyncMock(),
+            ),
+        ):
+            return "".join(
+                [
+                    chunk
+                    async for chunk in api.stream_chat(
+                        platform="discord", platform_user_id="u1", message="hi"
+                    )
+                ]
+            )
+
+    @pytest.mark.asyncio
+    async def test_a_step_check_in_follows_the_checkpoint_with_how_to_go_on(
+        self, api: BotBackend
+    ):
+        reply = await self._reply(
+            api,
+            StreamTextDelta(id="1", delta="Done 3 of 5 files. Next: the other 2."),
+            StreamTurnPaused(pause=TurnPause(reason="steps", steps=450).as_part()),
+        )
+
+        assert reply == (
+            "Done 3 of 5 files. Next: the other 2.\n\n"
+            'Paused: checking in after a long run. Reply "keep going" to pick it up.'
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_task_size_pause_says_to_keep_going(self, api: BotBackend):
+        reply = await self._reply(
+            api,
+            StreamTurnPaused(
+                pause=TurnPause(reason="task", checkpoint_saved=False).as_part()
+            ),
+        )
+
+        assert reply == (
+            "Paused: this task reached its size limit. "
+            'Reply "keep going" to pick it up.'
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_budget_pause_says_when_it_can_go_on(self, api: BotBackend):
+        resets_at = datetime(2026, 10, 16, 0, 0, tzinfo=UTC)
+
+        reply = await self._reply(
+            api,
+            StreamTurnPaused(
+                pause=TurnPause(reason="daily", resets_at=resets_at).as_part()
+            ),
+        )
+
+        assert reply == (
+            "Paused: this task is out of today's budget. "
+            'Reply "keep going" after it resets at 00:00 UTC on Oct 16.'
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_trial_pause_says_to_go_on_once_there_is_allowance(
+        self, api: BotBackend
+    ):
+        reply = await self._reply(
+            api, StreamTurnPaused(pause=TurnPause(reason="trial").as_part())
+        )
+
+        assert reply == (
+            "Paused: the trial allowance is used up. "
+            'Reply "keep going" once your plan has allowance again.'
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_turn_refused_at_start_says_when_it_can_go_on(
+        self, api: BotBackend
+    ):
+        # The executor refuses a turn the allowance can't cover (#15396).
+        resets_at = datetime(2026, 10, 16, 0, 0, tzinfo=UTC)
+
+        reply = await self._reply(
+            api,
+            StreamTurnPaused(
+                pause=TurnPause(
+                    reason="daily",
+                    resets_at=resets_at,
+                    checkpoint_saved=False,
+                    started=False,
+                ).as_part()
+            ),
+        )
+
+        assert reply == (
+            "Not started: out of today's budget. "
+            'Reply "keep going" after it resets at 00:00 UTC on Oct 16.'
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_budget_that_never_resets_points_at_the_plan(self, api: BotBackend):
+        # No plan behind the account: nothing refills, so no reset to wait for.
+        reply = await self._reply(
+            api,
+            StreamTurnPaused(
+                pause=TurnPause(
+                    reason="weekly", checkpoint_saved=False, started=False
+                ).as_part()
+            ),
+        )
+
+        assert reply == (
+            "Not started: out of this week's budget. "
+            'Reply "keep going" once your plan has allowance again.'
+        )
 
 
 class TestExtractSetupRequirements:
@@ -667,3 +891,58 @@ class TestStreamChatDenial:
                 pass
 
         assert exc_info.value.denial.reason == "paywalled"
+
+
+class TestStreamChatOptions:
+    @pytest.mark.asyncio
+    async def test_expert_and_model_reach_the_request_and_notice_goes_to_its_callback(
+        self, api: BotBackend
+    ):
+        handle = ChatTurnHandle(
+            session_id="sess", turn_id="turn", user_id="u1", notice="Fell back."
+        )
+        api._client.start_chat_turn = AsyncMock(return_value=handle)
+        queue: asyncio.Queue = asyncio.Queue()
+        await queue.put((None, StreamTextDelta(id="1", delta="Hi")))
+        await queue.put((None, StreamFinish()))
+
+        with (
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
+                new=AsyncMock(return_value=queue),
+            ),
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
+                new=AsyncMock(),
+            ),
+        ):
+            notices: list[str] = []
+
+            async def capture(notice: str) -> None:
+                notices.append(notice)
+
+            chunks = [
+                c
+                async for c in api.stream_chat(
+                    platform="discord",
+                    platform_user_id="u1",
+                    message="hi",
+                    expert_id="e1",
+                    model="advanced",
+                    on_notice=capture,
+                )
+            ]
+
+        request = api._client.start_chat_turn.await_args.kwargs["request"]
+        assert request.expert_id == "e1" and request.model == "advanced"
+        assert notices == ["Fell back."]
+        assert "".join(chunks) == "Hi"
+
+    @pytest.mark.asyncio
+    async def test_list_user_experts_passes_through(self, api: BotBackend):
+        experts = [BotExpert(id="e1", name="Bolt", role="Builder")]
+        api._client.list_user_experts = AsyncMock(return_value=experts)
+        assert await api.list_user_experts("telegram", "u1", None) == experts
+        api._client.list_user_experts.assert_awaited_once_with(
+            platform=Platform.TELEGRAM, platform_user_id="u1", platform_server_id=None
+        )

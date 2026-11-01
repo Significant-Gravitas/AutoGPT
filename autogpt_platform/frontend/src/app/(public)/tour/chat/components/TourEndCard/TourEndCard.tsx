@@ -16,21 +16,21 @@ export function TourEndCard() {
     useTourEndCard();
 
   return (
-    <div className="mx-auto w-full max-w-md rounded-2xl border border-zinc-200/70 bg-white p-5 shadow-sm duration-500 animate-in fade-in slide-in-from-bottom-2 sm:p-6">
+    <div className="mx-auto w-full max-w-md rounded-2xl border border-border-base/70 bg-surface p-5 shadow-sm duration-500 animate-in fade-in slide-in-from-bottom-2 sm:p-6">
       <div className="flex flex-col items-center gap-2 text-center">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1">
-          <Icon icon={Tick02Icon} className="size-3.5 text-emerald-700" />
-          <Text variant="small-medium" className="!text-emerald-700">
-            Agent built &amp; first run complete — {TOUR_DEMO_CLAIM_SECONDS}{" "}
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-success-surface px-3 py-1 text-success-foreground">
+          <Icon icon={Tick02Icon} className="size-3.5" />
+          <Text variant="small-medium" tone="inherit">
+            Workflow built &amp; first run complete — {TOUR_DEMO_CLAIM_SECONDS}{" "}
             seconds
           </Text>
         </span>
-        <Text variant="h4" as="h3" className="mt-1 text-zinc-900">
+        <Text variant="h4" as="h3" tone="primary" className="mt-1">
           That took {TOUR_DEMO_CLAIM_SECONDS} seconds.
           <br />
           Yours will too.
         </Text>
-        <Text variant="body" className="text-zinc-500">
+        <Text variant="body" tone="muted">
           Same chat, your real tasks — hosted and running for you.
         </Text>
       </div>
@@ -43,11 +43,14 @@ export function TourEndCard() {
           rel="noopener noreferrer"
           variant="primary"
           onClick={handlePricingClick}
-          className="h-auto w-full flex-col gap-0 py-2.5 shadow-[0_0_20px_-6px_rgba(124,58,237,0.6)]"
+          // oxlint-disable-next-line design-system/no-restyle, design-system/no-arbitrary-values -- the end card CTA's violet glow, no shadow token or Button variant
+          className="h-auto w-full shadow-[0_0_20px_-6px_rgba(124,58,237,0.6)]"
         >
-          <span className="font-medium">Make this agent yours</span>
-          <span className="text-xs font-normal opacity-80">
-            Start with Pro · $42.50/mo · cancel anytime
+          <span className="flex flex-col items-center">
+            <span className="font-medium">Make this workflow yours</span>
+            <span className="text-xs font-normal opacity-80">
+              Start with Pro · $42.50/mo · cancel anytime
+            </span>
           </span>
         </Button>
         <Button
@@ -63,7 +66,7 @@ export function TourEndCard() {
           target="_blank"
           rel="noopener noreferrer"
           onClick={handleSelfHostClick}
-          className="mt-1 text-center text-sm text-zinc-500 underline underline-offset-2 hover:text-zinc-700"
+          className="mt-1 text-center text-sm text-foreground-tertiary underline underline-offset-2 hover:text-foreground-body"
         >
           or self-host free
         </a>

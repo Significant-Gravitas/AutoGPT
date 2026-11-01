@@ -11,20 +11,23 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from prisma.enums import ReviewStatus
 
+from backend.copilot.capabilities.index import CapabilityIndex
 from backend.copilot.capabilities.mcp_review import COPILOT_MCP_NODE_PREFIX
 from backend.copilot.capabilities.ranking import ConnectionState
-from backend.copilot.capabilities.registry import get_registry
+from backend.copilot.capabilities.registry import build_entries, get_registry
 from backend.copilot.capabilities.sources import EAGER_CORE
 from backend.copilot.context import set_execution_context
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.prompting import SHARED_TOOL_NOTES
 from backend.copilot.tools import (
     DEFERRED_TOOL_NAMES,
+    TOOL_GROUPS,
     TOOL_REGISTRY,
     get_available_tools,
 )
 
 from ._test_data import make_session
+from .base import without_card_hints
 from .describe_capability import DescribeCapabilityTool
 from .find_capability import FindCapabilityTool
 from .models import (
@@ -59,6 +62,19 @@ def _clean_context():
     set_execution_context(USER, session)
     yield
     set_execution_context(None, None)
+
+
+@pytest.fixture(autouse=True)
+def _no_experts():
+    """Keep capability-only tests independent of the expert database."""
+    with patch(
+        "backend.copilot.tools.session_registry.experts_db",
+        return_value=MagicMock(
+            list_experts=AsyncMock(return_value=[]),
+            list_templates=AsyncMock(return_value=[]),
+        ),
+    ):
+        yield
 
 
 @pytest.fixture(autouse=True)
@@ -119,6 +135,16 @@ def test_start_desktop_stays_eager_because_the_prompt_names_it():
     tool called by name is refused, so the instruction only works eager."""
     assert "start_desktop" in EAGER_CORE
     assert "start_desktop" not in DEFERRED_TOOL_NAMES
+
+
+def test_list_workspace_files_stays_eager_because_the_model_calls_it_by_name():
+    """Asked where their files are, the model calls ``list_workspace_files``
+    directly; deferred, that call was refused and the model listed the
+    sandbox instead, a different store, and reported the files missing."""
+    assert "list_workspace_files" in EAGER_CORE
+    assert "list_workspace_files" not in DEFERRED_TOOL_NAMES
+    shown = {t["function"]["name"] for t in get_available_tools()}
+    assert "list_workspace_files" in shown
 
 
 def test_prompt_names_only_registry_tools():
@@ -339,6 +365,85 @@ async def test_find_capability_no_results_points_to_open_world():
     assert any("MCP server" in s for s in result.suggestions)
 
 
+# SECRT-2820: Gmail is a family of Google blocks, which a machine without
+# Google OAuth secrets disables; score against the whole catalogue.
+GOOGLE_STATE = ConnectionState(providers=frozenset({"google"}))
+SLACK_STATE = ConnectionState(providers=frozenset({"slack"}))
+
+
+@pytest.fixture(scope="module")
+def full_index() -> CapabilityIndex:
+    return CapabilityIndex(
+        build_entries(TOOL_REGISTRY, TOOL_GROUPS, include_disabled_blocks=True)
+    )
+
+
+async def _find(index: CapabilityIndex, state: ConnectionState, **kwargs):
+    with (
+        patch(
+            "backend.copilot.tools.find_capability.load_connection_state",
+            AsyncMock(return_value=state),
+        ),
+        patch(
+            "backend.copilot.tools.find_capability.session_registry",
+            AsyncMock(return_value=index),
+        ),
+    ):
+        return await FindCapabilityTool()._execute(USER, make_session(USER), **kwargs)
+
+
+async def test_find_capability_kind_tool_surfaces_the_connected_gmail_blocks(
+    full_index,
+):
+    """Dev trace 2901dcfb: kind="tool" with Google connected listed eight
+    unrelated tools, and the model web-searched for a Gmail MCP server."""
+    result = await _find(
+        full_index, GOOGLE_STATE, query="Gmail list recent emails", kind="tool"
+    )
+    assert isinstance(result, CapabilityListResponse)
+    assert all(c["kind"] == "tool" for c in result.capabilities)
+    gmail = [c for c in result.other_kinds if c["name"].startswith("Gmail")]
+    assert gmail and all(c["connected"] is True for c in gmail)
+    assert len(result.other_kinds) <= 3
+    assert "kind='tool' hid" in result.message
+    assert "search again without kind" in result.message
+    assert "MCP server" not in result.message
+
+
+async def test_find_capability_by_name_kind_lookup_gets_no_hint(full_index):
+    result = await _find(full_index, GOOGLE_STATE, query="web_fetch", kind="tool")
+    assert isinstance(result, CapabilityListResponse)
+    assert result.capabilities[0]["name"] == "web_fetch"
+    assert result.other_kinds == []
+    assert "without kind" not in result.message
+
+
+async def test_find_capability_kind_emptied_list_never_suggests_an_mcp_server(
+    full_index,
+):
+    """Prod Sep 30: kind="mcp_server" for "slack" came back empty and the
+    no-results reply sent the model to an off-catalog MCP server."""
+    result = await _find(full_index, SLACK_STATE, query="slack", kind="mcp_server")
+    assert isinstance(result, CapabilityListResponse)
+    assert result.capabilities == [] and result.count == 0
+    slack = [c for c in result.other_kinds if "Slack" in c["name"]]
+    assert slack and all(c["connected"] is True for c in slack)
+    assert "search again without kind" in result.message
+    assert "Call describe_capability" not in result.message
+    assert "MCP server" not in result.message
+
+    nothing = await _find(full_index, SLACK_STATE, query="zzqx", kind="mcp_server")
+    assert isinstance(nothing, NoResultsResponse)
+    assert not any("MCP server" in s for s in nothing.suggestions)
+    assert any("without kind" in s for s in nothing.suggestions)
+
+
+def test_find_capability_kind_description_says_usually_omit():
+    description = FindCapabilityTool().parameters["properties"]["kind"]["description"]
+    assert description.startswith("Usually omit")
+    assert "'tool' hides blocks" in description
+
+
 async def test_find_capability_returns_the_session_owner_s_skill(skills):
     skills.return_value = [TRIAGE]
     session = make_session(USER, expert_id="expert-1")
@@ -430,13 +535,13 @@ async def test_a_skill_id_never_resolves_to_the_platform_tool_of_that_name(skill
     assert isinstance(result, ErrorResponse)
 
 
-async def test_describe_tool_returns_parameters():
+async def test_describe_tool_returns_parameters_without_the_card_hints():
     result = await DescribeCapabilityTool()._execute(
-        USER, make_session(USER), id="tool:list_schedules"
+        USER, make_session(USER), id="tool:schedule_followup"
     )
     assert isinstance(result, CapabilityDetailsResponse)
-    assert result.capability["id"] == "tool:list_schedules"
-    assert result.parameters == TOOL_REGISTRY["list_schedules"].parameters
+    assert result.capability["id"] == "tool:schedule_followup"
+    assert result.parameters == TOOL_REGISTRY["schedule_followup"].model_parameters
 
 
 async def test_describe_block_collapses_large_enums_unless_expanded():
@@ -516,7 +621,11 @@ def _stub_tool(name: str) -> MagicMock:
     tool = MagicMock()
     tool.name = name
     tool.description = "stub"
-    tool.parameters = {"type": "object", "properties": {"x": {"type": "string"}}}
+    tool.parameters = {
+        "type": "object",
+        "properties": {"x": {"type": "string", "title": "X"}},
+    }
+    tool.model_parameters = without_card_hints(tool.parameters)
     tool._execute = AsyncMock(return_value=ErrorResponse(message="ran", session_id="s"))
     return tool
 
@@ -538,7 +647,10 @@ async def test_run_tool_describes_without_running():
             validate_only=True,
         )
     assert isinstance(result, CapabilityDetailsResponse)
-    assert result.parameters == stub.parameters
+    assert result.parameters == {
+        "type": "object",
+        "properties": {"x": {"type": "string"}},
+    }
     stub._execute.assert_not_awaited()
 
 

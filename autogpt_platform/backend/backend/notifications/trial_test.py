@@ -67,6 +67,33 @@ def urls() -> EmailUrls:
     )
 
 
+@pytest.mark.parametrize("cycle,cycle_noun", [("monthly", "month"), ("yearly", "year")])
+@pytest.mark.parametrize(
+    "currency,formatted_amount",
+    [
+        ("usd", "$20.00"),
+        ("eur", "€20.00"),
+        ("gbp", "£20.00"),
+        ("cad", "20.00 CAD"),
+        ("jpy", "2,000 JPY"),
+    ],
+)
+def test_trial_plan_uses_design_labels_and_unambiguous_prices(
+    trial, urls, cycle, cycle_noun, currency, formatted_amount
+):
+    trial.offer = trial.offer.model_copy(
+        update={"billing_cycle": cycle, "currency": currency}
+    )
+    data = notices.trial_notice_data(trial, "ending", "Sam")
+
+    assert data.plan.label == f"Pro · {cycle}"
+    assert data.plan.price_display == f"{formatted_amount} / {cycle_noun}"
+    email = render(NotificationType.TRIAL_UPDATE, data, "sam@example.com", urls)
+    for body in (email.html, email.text):
+        assert data.plan.label in body
+        assert data.plan.price_display in body
+
+
 @pytest.mark.parametrize(
     "kind",
     [
@@ -84,8 +111,11 @@ def test_all_trial_notices_render_exact_terms_and_billing_link(trial, urls, kind
     email = render(NotificationType.TRIAL_UPDATE, data, "sam@example.com", urls)
     assert email.subject and email.preheader
     for body in (email.html, email.text):
-        assert "$20.00 USD / month" in body
-        assert data.ends_label in body
+        assert "$20.00 / month" in body
+        if kind != "converted":
+            assert data.ends_label in body
+        else:
+            assert "Trial ends" not in body
         assert urls.billing in body
     if kind == "payment_failed":
         assert "paid access is paused" in email.text
@@ -141,7 +171,14 @@ async def test_notice_uses_shared_notification_queue(trial, outcome):
             "user_db",
             return_value=MagicMock(
                 get_user_by_id=AsyncMock(
-                    return_value=SimpleNamespace(name="Sam", email="sam@example.com")
+                    return_value=SimpleNamespace(
+                        id="user-1",
+                        # What email sign-up stores: the address's local part.
+                        name="sam.carter",
+                        email="sam.carter@example.com",
+                        marketing_opt_out_at=None,
+                        timezone="America/Chicago",
+                    )
                 )
             ),
         ),
@@ -165,22 +202,24 @@ async def test_notice_uses_shared_notification_queue(trial, outcome):
         assert event.type == NotificationType.TRIAL_UPDATE
         assert event.user_id == trial.user_id
         assert event.data.notice_key == notices.trial_notice_key(trial, "started")
+        assert event.data.user_name == "there"
     if outcome in ("publish_failed", "raised"):
         release.assert_awaited_once_with(notices.trial_notice_key(trial, "started"))
     else:
         release.assert_not_awaited()
     assert track.call_count == int(outcome == "sent")
     if outcome == "sent":
-        assert track.call_args.args[0] == "subscription_trial_started"
+        assert track.call_args.args[0] == "trial_started"
 
 
-def test_every_trial_notice_kind_keeps_its_event_name():
-    """The names used to be built as f"subscription_trial_{kind}"; the lookup
-    must cover every kind and send exactly those strings."""
+def test_every_trial_notice_kind_has_the_analytics_plan_event_name():
+    """Every kind maps to the analytics plan's ``trial_*`` name; a failed
+    conversion charge is the plan's ``payment_failed``."""
     kinds = get_args(notices.TrialNoticeKind)
     assert set(notices.TRIAL_NOTICE_EVENTS) == set(kinds)
     for kind in kinds:
-        assert notices.TRIAL_NOTICE_EVENTS[kind].value == f"subscription_trial_{kind}"
+        expected = "payment_failed" if kind == "payment_failed" else f"trial_{kind}"
+        assert notices.TRIAL_NOTICE_EVENTS[kind].value == expected
 
 
 def test_canceled_trial_suppresses_late_ending_reminder(trial):
@@ -200,6 +239,103 @@ def test_ending_reminder_waits_for_current_reminder_window(trial):
         "cancel_at_period_end": False,
     }
     assert not notices._notice_applies(trial, "ending", raw)
+
+
+def test_ending_reminder_sent_just_before_three_day_mark(trial):
+    """Stripe's trial_will_end lead time is three days. An event created or
+    processed a little before that mark is still the reminder."""
+    raw = {
+        "status": "trialing",
+        "trial_end": int((datetime.now(UTC) + timedelta(days=3, hours=1)).timestamp()),
+        "cancel_at_period_end": False,
+    }
+    assert notices._notice_applies(trial, "ending", raw)
+
+
+def test_ending_reminder_dropped_just_past_reminder_window(trial):
+    trial_end = datetime.now(UTC) + notices.TRIAL_REMINDER_WINDOW + timedelta(hours=1)
+    raw = {
+        "status": "trialing",
+        "trial_end": int(trial_end.timestamp()),
+        "cancel_at_period_end": False,
+    }
+    assert notices._notice_skip_reason(trial, "ending", raw) == (
+        "trial ends after the reminder window"
+    )
+
+
+def test_replayed_ending_reminder_for_ended_trial_names_the_real_reason(trial):
+    raw = {
+        "status": "canceled",
+        "trial_end": int((datetime.now(UTC) + timedelta(days=7)).timestamp()),
+        "cancel_at_period_end": False,
+    }
+    assert notices._notice_skip_reason(trial, "ending", raw) == (
+        "trial is no longer running"
+    )
+
+
+@pytest.mark.parametrize(
+    "kind, current, reason",
+    [
+        ("converted", {}, "subscription is unknown, not converted"),
+        (
+            "payment_failed",
+            {"status": "active"},
+            "subscription is active, not a failed conversion",
+        ),
+        (
+            "ended",
+            {"status": "trialing"},
+            "subscription is trialing, not an ended trial",
+        ),
+        ("canceled", {"status": "trialing"}, "cancellation is not scheduled"),
+    ],
+)
+def test_skip_reason_names_why_the_notice_no_longer_applies(
+    trial, kind, current, reason
+):
+    current = {**current, "trial_end": int(trial.ends_at.timestamp())}
+    assert notices._notice_skip_reason(trial, kind, current) == reason
+
+
+@pytest.mark.asyncio
+async def test_dropped_notice_is_logged_without_sending(trial, caplog):
+    raw = {
+        "id": trial.subscription_id,
+        "customer": trial.customer_id,
+        "status": "trialing",
+        "trial_end": int((datetime.now(UTC) + timedelta(days=7)).timestamp()),
+        "cancel_at_period_end": False,
+        "metadata": {
+            "trial_enrollment_id": trial.id,
+            "user_id": trial.user_id,
+            "trial_checkout_attempt": str(trial.checkout_attempt),
+        },
+    }
+    queue = AsyncMock()
+    with (
+        patch.object(notices, "stripe_call", AsyncMock(return_value=raw)),
+        patch.object(
+            notices,
+            "credit_db",
+            return_value=MagicMock(
+                get_subscription_trial=AsyncMock(return_value=trial)
+            ),
+        ),
+        patch.object(notices, "queue_notification_async", queue),
+        patch.object(notices, "_track_billing_event") as track,
+        caplog.at_level("INFO", logger=notices.logger.name),
+    ):
+        assert await notices.notify_trial(raw, "ending")
+    queue.assert_not_awaited()
+    track.assert_not_called()
+    [record] = [r for r in caplog.records if r.name == notices.logger.name]
+    assert record.levelname == "INFO"
+    message = record.getMessage()
+    assert "ending" in message
+    assert trial.user_id in message
+    assert "reminder window" in message
 
 
 def test_failed_conversion_suppresses_paid_confirmation(trial):

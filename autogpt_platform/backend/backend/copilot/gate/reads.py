@@ -6,34 +6,50 @@ user's approval releases exactly those bytes; a rejection leaves them out.
 
 Both seams hand this module the result AS CAPPED for the model, so the judge
 reads what the model would read and the stored bytes are what it would have got.
+A result whose producer declared its outside parts is judged on what of those
+parts the model reads; an undeclared one is judged whole.
 """
 
+import asyncio
 import base64
 import json
 import logging
 import posixpath
 import re
+from collections.abc import Mapping
 from contextvars import ContextVar
-from datetime import UTC, datetime
-from typing import Any, Callable
+from datetime import UTC, date, datetime, time
+from decimal import Decimal
+from enum import Enum
+from functools import partial
+from typing import Any, Callable, Literal
+from uuid import UUID
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, ConfigDict
 
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.copilot.constants import AUTOPILOT_NAME, COPILOT_NODE_PREFIX
+from backend.copilot.context import get_current_envelope
 from backend.copilot.model import ChatSession
+from backend.copilot.tool_image import parse_held_image
 from backend.copilot.tools.models import ApprovalRequiredResponse, ResponseType
+from backend.copilot.trial_cost_context import capture_cost_context
 from backend.data.db_accessors import experts_db
-from backend.data.workspace_scope import EXPERTS_ROOT, SKILLS_ROOT
+from backend.data.workspace_scope import is_skill_package_path
+from backend.util.feature_flag import Flag, get_flag_variant
 
-from . import active_mode, held
+from . import answerable, held, resolve_mode
 from . import review as review_store
-from .content import Image, judge_content
+from . import shadow
+from .content import ContentVerdict, Image, judge_content
 from .headline import Headline, named
 from .policy import DEFAULT_MODE
 
 logger = logging.getLogger(__name__)
+
+ScreenMode = Literal["enforce", "shadow", "off"]
+SHADOW = "shadow"
 
 # Every tool whose output is bytes AutoPilot did not author (plan A4). The
 # user's own memories are left out: a memory is content they already trust
@@ -65,6 +81,29 @@ JUDGED_READS: frozenset[str] = frozenset(
     }
 )
 
+# Where each judged read's bytes come from, for the shadow gate's events.
+_SOURCE_KINDS = {
+    "bash_exec": "shell",
+    "browser_act": "web",
+    "browser_navigate": "web",
+    "browser_screenshot": "web",
+    "delegate_to_expert": "chat",
+    "get_sub_session_result": "chat",
+    "read_expert_chat": "chat",
+    "run_sub_session": "chat",
+    "read_skill": "skill",
+    "read_workspace_file": "file",
+    "glob": "file",
+    "grep": "file",
+    "read_file": "file",
+    "read_tool_result": "file",
+    "run_agent": "workflow",
+    "view_agent_output": "workflow",
+    "search_feature_requests": "platform",
+    "web_fetch": "web",
+    "web_search": "web",
+}
+
 # The SDK engine caps a registry tool's text again after ``BaseTool.execute``
 # returns; it installs that cap here so the judge reads the same text.
 model_view: ContextVar[Callable[[str, bool], str] | None] = ContextVar(
@@ -87,6 +126,9 @@ _SOURCE_KEYS = (
     "session_id",
     "name",
 )
+# The judge's source line sits inside its fence of outside bytes, so it never
+# carries the model's own words (a command, a search query).
+_JUDGED_SOURCE_KEYS = ("url", "file_path", "path")
 _WAITING = (
     "This content is withheld while the user reviews it. Carry on with what "
     "does not depend on it; do not fetch it another way."
@@ -134,7 +176,9 @@ async def release_held_read(
     Checked before the tool runs, so a released read is the bytes the user
     approved and not a second fetch that might differ.
     """
-    if tool_name not in JUDGED_READS or await active_mode(user_id, session) is None:
+    if tool_name not in JUDGED_READS:
+        return None
+    if await screen_mode(user_id, session) != "enforce":
         return None
     assert user_id is not None
     review_id = read_review_id(session.session_id, user_id, tool_name, args)
@@ -155,6 +199,11 @@ async def release_held_read(
         # The late result took the approved bytes first.
         return Release(
             output=_stub(tool_name, source, _DELIVERED, session), success=False
+        )
+    approved_at = review.reviewed_at or review.updated_at or review.created_at
+    if datetime.now(UTC) - approved_at > review_store.APPROVAL_TTL:
+        return Release(
+            output=_stub(tool_name, source, _EXPIRED, session), success=False
         )
     return held_bytes(review)
 
@@ -205,34 +254,47 @@ async def screen_read(
     text: str,
     images: tuple[Image, ...] = (),
     tool_call_id: str = "",
+    outside: tuple[Any, ...] | None = None,
+    full: str = "",
 ) -> str | None:
     """A stub to hand the model in place of ``output``, or None to hand it over.
 
     ``output`` is what the model would receive; ``text`` and ``images`` are
-    what of it can be read. Any failure in here withholds the read.
+    what of it can be read. ``outside`` is what the producer declared came from
+    outside AutoGPT, placed in ``full``, the result before any cap; None judges
+    ``text`` whole. Any failure in here withholds the read.
     """
     if tool_name not in JUDGED_READS or trusted_read(tool_name, args, output):
         return None
-    if platform_setup_card(output):
-        return None
     source = source_of(tool_name, args)
     try:
-        mode = await active_mode(user_id, session)
-        if mode is None or mode == "unsupervised":
-            return None
-        # Bytes nobody can read are not instructions until something decodes
-        # them, and that later read is judged.
-        if not text.strip() and not images:
-            return None
-        verdict = await judge_content(source=source, text=text, images=images)
-        if not verdict.held:
+        screening = await screen_mode(user_id, session)
+        if screening == "off" or resolve_mode(session) == "unsupervised":
             return None
         assert user_id is not None
+        if screening == "shadow":
+            shadow.judge_later(
+                user_id,
+                session,
+                tool_name=tool_name,
+                tool_call_id=tool_call_id,
+                source_kind=_source_kind(tool_name, args),
+                judge=partial(
+                    _shadow_finding, tool_name, args, text, images, outside, full
+                ),
+            )
+            return None
+        judged = await _judge(tool_name, args, text, images, outside, full)
+        if judged is None or not judged[0].held:
+            return None
+        verdict, text = judged
         call = held.HeldCall(
             review_id=read_review_id(session.session_id, user_id, tool_name, args),
             tool_name=tool_name,
             tool_call_id=tool_call_id,
             args=args,
+            envelope=get_current_envelope(),
+            cost_context=await capture_cost_context(user_id),
         )
         return await _hold(
             call,
@@ -249,6 +311,62 @@ async def screen_read(
         return _stub(tool_name, source, _UNRECORDABLE, session)
 
 
+async def screen_mode(user_id: str | None, session: ChatSession) -> ScreenMode:
+    """``copilot-read-screen``: true or "enforce" holds a flagged read, "shadow"
+    judges and records without holding, anything else is off. It runs only
+    where a signed-in user can answer the card, as the action gate does."""
+    if not answerable(user_id, session):
+        return "off"
+    value = await get_flag_variant(Flag.COPILOT_READ_SCREEN, user_id)
+    if value is True or value == "enforce":
+        return "enforce"
+    return "shadow" if value == SHADOW else "off"
+
+
+async def _judge(
+    tool_name: str,
+    args: dict[str, Any],
+    text: str,
+    images: tuple[Image, ...],
+    outside: tuple[Any, ...] | None,
+    full: str,
+) -> tuple[ContentVerdict, str] | None:
+    """The verdict and the text it was reached on; None when nothing is readable."""
+    if outside is not None:
+        # AutoGPT writes no images, so a declaration narrows only the text.
+        text = await asyncio.to_thread(outside_view, outside, full, text, tool_name)
+    # Bytes nobody can read are not instructions until something decodes
+    # them, and that later read is judged.
+    if not text.strip() and not images:
+        return None
+    verdict = await judge_content(
+        source=judged_source(tool_name, args), text=text, images=images
+    )
+    return verdict, text
+
+
+async def _shadow_finding(
+    tool_name: str,
+    args: dict[str, Any],
+    text: str,
+    images: tuple[Image, ...],
+    outside: tuple[Any, ...] | None,
+    full: str,
+) -> shadow.Finding | None:
+    judged = await _judge(tool_name, args, text, images, outside, full)
+    return shadow.read_finding(judged[0]) if judged else None
+
+
+def _source_kind(tool_name: str, args: dict[str, Any]) -> str:
+    if tool_name in ("run_capability", "resume_capability"):
+        capability = str(args.get("id") or "")
+        if capability.startswith("https://"):
+            return "mcp"
+        prefix, colon, _ = capability.partition(":")
+        return prefix if colon and prefix in ("block", "mcp") else "capability"
+    return _SOURCE_KINDS.get(tool_name, "other")
+
+
 def trusted_read(tool_name: str, args: dict[str, Any], output: str) -> bool:
     """Whether the read is of an installed skill, which the user already
     chose to trust, marketplace installs included (Reinier, 2026-09-28)."""
@@ -263,29 +381,12 @@ def trusted_read(tool_name: str, args: dict[str, Any], output: str) -> bool:
     return False
 
 
-def platform_setup_card(output: str) -> bool:
-    """A sign-in or setup card the platform wrote: holding it would replace the
-    card with a stub. A provider's rejection text in it is outside, so judged."""
-    try:
-        data = json.loads(output)
-    except ValueError:
-        return False
-    return (
-        isinstance(data, dict)
-        and data.get("type") == ResponseType.SETUP_REQUIREMENTS
-        and not data.get("rejection")
-    )
-
-
 def is_skill_path(path: str | None) -> bool:
     """A workspace path under an installed-skill folder. Only the skills
     registry writes there; ``write_workspace_file`` refuses these roots."""
     if not path or posixpath.normpath(path) != path:
         return False
-    if path.startswith(SKILLS_ROOT):
-        return True
-    expert, _, rest = path.removeprefix(EXPERTS_ROOT).partition("/")
-    return path.startswith(EXPERTS_ROOT) and bool(expert) and rest.startswith("skills/")
+    return is_skill_package_path(path)
 
 
 def _opened_path(output: str) -> str | None:
@@ -293,7 +394,9 @@ def _opened_path(output: str) -> str | None:
     argument can be relative, or resolve under the session."""
     try:
         data = json.loads(output)
-    except ValueError:
+        if isinstance(data, dict) and data.get("type") == "held_tool_image":
+            data = json.loads(data.get("text", ""))
+    except (ValueError, TypeError):
         return None
     if not isinstance(data, dict) or data.get("type") not in _WORKSPACE_READS:
         return None
@@ -302,17 +405,17 @@ def _opened_path(output: str) -> str | None:
 
 
 def readable_parts(output: str) -> tuple[str, tuple[Image, ...]]:
-    """The text and images a model can read out of a registry tool's output.
-
-    A workspace read hands the model its file base64-encoded; the judge gets
-    the decoded text or image beside it, and nothing for a binary it cannot
-    read, so that result is not judged.
-    """
+    """The text and images a model can read out of a registry tool's output."""
     try:
         data = json.loads(output)
     except ValueError:
         return output, ()
-    if not isinstance(data, dict) or not isinstance(data.get("content_base64"), str):
+    if not isinstance(data, dict):
+        return output, ()
+    held_image = parse_held_image(data)
+    if held_image is not None:
+        return held_image.text, (Image(**held_image.image.model_dump()),)
+    if not isinstance(data.get("content_base64"), str):
         return output, ()
     mime = str(data.get("mime_type", ""))
     encoded = data["content_base64"]
@@ -327,13 +430,149 @@ def readable_parts(output: str) -> tuple[str, tuple[Image, ...]]:
     return f"{output}\n\n{decoded}", ()
 
 
-def source_of(tool_name: str, args: dict[str, Any]) -> str:
+def outside_view(
+    outside: tuple[Any, ...], full: str, text: str, tool_name: str = ""
+) -> str:
+    """What of the declared parts the model reads in ``text``, each as the caps
+    left it; ``text`` whole when a part is not in ``full``, so a mark that
+    misses the bytes it names fails closed."""
+    pieces: dict[str, None] = {}
+    budget = [_MAX_OUTSIDE_VALUES]
+    if not all(_locate(part, full, text, pieces, budget) for part in outside):
+        logger.warning(
+            f"Declared outside parts of {tool_name} not located; judged whole"
+        )
+        return text
+    return "\n".join(pieces)
+
+
+# Past this many values a declaration is judged whole: locating each is a scan
+# of the capped text.
+_MAX_OUTSIDE_VALUES = 5_000
+# A shorter fragment of a cut part is kept only beside the cap's marker, so a
+# stray match of a few characters elsewhere is not judged as the part.
+_MIN_FRAGMENT = 16
+_CUT = "\u2026"
+_OPAQUE = (int, float, bool, type(None), datetime, date, time, UUID, Decimal)
+
+
+def _locate(
+    value: Any, full: str, view: str, pieces: dict[str, None], budget: list[int]
+) -> bool:
+    """Add what of ``value`` shows in ``view``; False when it is not in ``full``."""
+    budget[0] -= 1
+    if budget[0] < 0:
+        return False
+    if isinstance(value, Enum):
+        value = value.value
+    if isinstance(value, BaseModel):
+        value = value.model_dump(mode="json")
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="replace")
+    if isinstance(value, str):
+        return _locate_text(value, full, view, pieces)
+    if isinstance(value, _OPAQUE):
+        return True
+    if isinstance(value, Mapping):
+        # The response is dumped with ``exclude_none``, which drops the key too.
+        children = [part for kv in value.items() if kv[1] is not None for part in kv]
+    elif isinstance(value, (list, tuple, set, frozenset)):
+        children = list(value)
+    else:
+        return False
+    for dumped in _dumps(value):
+        if dumped in view:
+            pieces[dumped] = None
+            return True
+    return all(_locate(child, full, view, pieces, budget) for child in children)
+
+
+def _locate_text(value: str, full: str, view: str, pieces: dict[str, None]) -> bool:
+    if not value.strip():
+        return True
+    encodings = list(dict.fromkeys(_encodings(value)))
+    if not any(encoded in full for encoded in encodings):
+        return False
+    for encoded in encodings:
+        if encoded in view:
+            pieces[encoded] = None
+            return True
+    kept = max((_fragments(encoded, view) for encoded in encodings), key=_coverage)
+    pieces.update(dict.fromkeys(kept))
+    return True
+
+
+def _encodings(value: str) -> tuple[str, str, str]:
+    """Raw in an MCP text block, escaped in the JSON a registry tool returns, and
+    ASCII-escaped in a digest's outline."""
+    return (
+        value,
+        json.dumps(value, ensure_ascii=False)[1:-1],
+        json.dumps(value)[1:-1],
+    )
+
+
+def _dumps(value: Any) -> list[str]:
+    """``value`` as the response's JSON serialises it, and as a preview re-dumps it."""
+    try:
+        return [
+            json.dumps(value, ensure_ascii=False, separators=(",", ":")),
+            json.dumps(value, ensure_ascii=False),
+        ]
+    except (TypeError, ValueError):
+        return []
+
+
+def _fragments(encoded: str, view: str) -> list[str]:
+    """The head and tail of a part a cap cut, as far as ``view`` still shows them."""
+    head = encoded[: _longest(encoded, view, head=True)]
+    tail = encoded[len(encoded) - _longest(encoded, view, head=False) :]
+    kept = []
+    if head and (len(head) >= _MIN_FRAGMENT or head + _CUT in view):
+        kept.append(head)
+    if tail and (len(tail) >= _MIN_FRAGMENT or _CUT + tail in view):
+        kept.append(tail)
+    return kept
+
+
+def _coverage(fragments: list[str]) -> int:
+    return sum(len(f) for f in fragments)
+
+
+def _longest(encoded: str, view: str, *, head: bool) -> int:
+    """The longest head (or tail) of ``encoded`` that occurs in ``view``; it is
+    known not to occur whole."""
+
+    def shown(k: int) -> bool:
+        return (encoded[:k] if head else encoded[-k:]) in view
+
+    low, high = 0, 1
+    while high < len(encoded) and shown(high):
+        low, high = high, high * 2
+    high = min(high, len(encoded))
+    while high - low > 1:
+        middle = (low + high) // 2
+        if shown(middle):
+            low = middle
+        else:
+            high = middle
+    return low
+
+
+def source_of(
+    tool_name: str, args: dict[str, Any], keys: tuple[str, ...] = _SOURCE_KEYS
+) -> str:
     """Where the bytes came from, for the stub and the card."""
-    for key in _SOURCE_KEYS:
+    for key in keys:
         value = args.get(key)
         if isinstance(value, str) and value:
             return f"{tool_name} {value[:200]}"
     return tool_name
+
+
+def judged_source(tool_name: str, args: dict[str, Any]) -> str:
+    """Where the bytes came from, for the judge: a URL or a path at most."""
+    return source_of(tool_name, args, _JUDGED_SOURCE_KEYS)
 
 
 def page_words(passage: str, text: str) -> str:

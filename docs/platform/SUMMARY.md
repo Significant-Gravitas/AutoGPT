@@ -12,8 +12,6 @@
 * [Scheduling & Triggers](scheduling-and-triggers.md)
 * [Templates](templates.md)
 * [Credits & Billing](credits-and-billing.md)
-* [Activation Metrics & Experiments](activation-metrics.md)
-* [PostHog Tracking Plan](tracking-plan.md)
 * [Integrations & Credentials](integrations-and-credentials.md)
 * [Data Flow & Execution](data-flow-and-execution.md)
 * [Sharing & Exporting Agents](sharing-and-exporting.md)
@@ -21,8 +19,8 @@
 ## Self-Hosting
 
 * [Setting Up AutoGPT (Self-Host)](getting-started.md)
+* [Run AutoGPT in One Docker Container](single-container.md)
 * [AutoGPT Platform Installer](installer.md)
-* [Run AutoGPT in One Docker Container (Experimental)](single-container.md)
 * [Advanced Setup](advanced_setup.md)
 
 ## Tutorials
@@ -44,12 +42,35 @@
 * [Using Google Gemini](gemini.md)
 * [Using Ollama](ollama.md)
 * [AutoPilot on a self-hosted LLM (no API keys)](copilot-local-llm.md)
+* [Nightly skill learning](skill-learning.md)
 * [Using AI/ML API](aimlapi.md)
 * [Using D-ID](d_id.md)
 
 ## API & Integrations
 
-* [API Introduction](integrating/api-guide.md)
+* [AutoGPT Platform API](integrating/api-guide.md)
+  * [Quickstart](integrating/quickstart.md)
+  * [Build with AI coding agents](integrating/ai-coding-agents.md)
+  * [Cloud and self-hosted](integrating/environments.md)
+  * [Authentication and permissions](integrating/authentication.md)
+  * [Run agents](integrating/running-agents.md)
+  * [Build agents](integrating/building-agents.md)
+  * [Errors, rate limits, and pagination](integrating/api-conventions.md)
+  * [MCP server](integrating/mcp-server.md)
+  * [Migrate from v1](integrating/migrate-from-v1.md)
+* [API reference](integrating/api-reference.md)
+  * ```yaml
+    props:
+      models: true
+      downloadLink: true
+      grouping: by-operation
+    type: builtin:openapi
+    dependencies:
+      spec:
+        ref:
+          kind: openapi
+          spec: autogpt-api-v2
+    ```
 * [OAuth & SSO](integrating/oauth-guide.md)
 
 ## Contributing
@@ -60,6 +81,13 @@
 ## Changelog
 
 * [What's New](changelog/README.md)
+  * [Expert pages with an Overview, an app that fits your phone, and a lighter login](changelog/october-23-2026.md)
+  * [A clearer wallet, a kinder trial, and shorter replies from Otto](changelog/october-8-october-14-2026.md)
+  * [A bigger roster, Clay & Rock avatars, folders in your workspace](changelog/september-24-september-30-2026.md)
+  * [Meet your Experts: hire a specialist and put it to work](changelog/september-19-2026.md)
+  * [A cleaner chat that shows its work, clickable answers, emails worth opening](changelog/august-21-september-4-2026.md)
+  * [Paste screenshots into chat, talk through onboarding, self-host in one container](changelog/july-29-august-13-2026.md)
+  * [A new sidebar, a smarter composer, and Otto on Telegram](changelog/july-15-july-22-2026.md)
   * [Organize files, share your work, connect Discord](changelog/june-18-july-9-2026.md)
   * [Smarter Automation, Fresher Design, Open for Business](changelog/may-7-june-10-2026.md)
   * [Artifacts, Briefings, and Builder Chat](changelog/april-10-may-1-2026.md)

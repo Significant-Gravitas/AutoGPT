@@ -52,8 +52,10 @@ async def sync_awaiting_review(
             cause_key = f"awaiting_review:{graph_id}"
         else:
             return
+        where["userId"] = user_id
+        where["status"] = ReviewStatus.WAITING
         waiting = await PendingHumanReview.prisma().find_many(
-            where={**where, "userId": user_id, "status": ReviewStatus.WAITING},
+            where=where,
             order={"createdAt": "asc"},
         )
         if not waiting:
@@ -67,13 +69,13 @@ async def sync_awaiting_review(
         else:
             assert graph_id
             metadata = await get_graph_metadata(graph_id=graph_id)
-            agent = metadata.name if metadata else f"Agent {graph_id[:8]}"
+            agent = metadata.name if metadata else f"Workflow {graph_id[:8]}"
             cta_path = f"/library/agents/{graph_id}/reviews"
         cause = AwaitingReviewCause(
             cta_path=cta_path,
             agent=agent,
             count=len(waiting),
-            since_label=f"{oldest.day} {oldest.strftime('%b')}, {oldest.strftime('%H:%M')}",
+            since_label=f"{oldest.day} {oldest.strftime('%b %Y')}, {oldest.strftime('%H:%M')} UTC",
         )
         await alerts_db.raise_alert_condition(
             user_id=user_id,

@@ -6,22 +6,31 @@ module dispatches to this one, so a back-import would be a cycle.
 
 import asyncio
 import functools
+import json
 import logging
 import threading
+import time
+import weakref
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from posthog import Posthog
 
+from backend.util.posthog_client import revision_properties
 from backend.util.settings import Settings
 
-from .definition_cache import get_flag_definition_cache, refresh_interval_seconds
+from .definition_cache import (
+    MemoryFlagDefinitionCache,
+    RedisFlagDefinitionCache,
+    get_flag_definition_cache,
+    refresh_interval_seconds,
+)
 
 logger = logging.getLogger(__name__)
 
 settings = Settings()
 
-# Without the personal key every read is a remote /flags call; on the default
+# Without the secret key every read is a remote /flags call; on the default
 # executor a burst of those starves every other `asyncio.to_thread` caller.
 FLAG_READ_WORKERS = 8
 _read_executor = ThreadPoolExecutor(
@@ -29,11 +38,25 @@ _read_executor = ThreadPoolExecutor(
 )
 
 _client: Posthog | None = None
+# The provider _client loads through; it alone sees which loads succeeded.
+_definition_cache: RedisFlagDefinitionCache | MemoryFlagDefinitionCache | None = None
 # The executor evaluates flags from two event loops on two threads; a second
 # client built by a racing first read would leak its poller thread.
 _client_lock = threading.Lock()
 _init_attempted = False
 _shut_down = False
+
+# The definitions a client polls leave out some flags PostHog still answers
+# over /flags (one in its newer config format, for instance), so a read of a
+# flag they lack asks /flags. Once /flags has had no answer for one either (a
+# flag nobody created), reads of it stop asking for this long: each ask is a
+# network round trip on the caller's path.
+UNANSWERED_RECHECK_SECONDS = 300
+# Per client: each flag its definitions lack that /flags had no answer for,
+# with when that was learned.
+_unanswered: weakref.WeakKeyDictionary[Posthog, dict[str, float]] = (
+    weakref.WeakKeyDictionary()
+)
 
 
 def is_configured() -> bool:
@@ -46,32 +69,38 @@ async def evaluate_flag(
     distinct_id: str,
     person_properties: dict[str, Any] | None = None,
     default: Any = None,
+    *,
+    exposure: bool = False,
 ) -> tuple[Any, bool]:
     """``(value, evaluated)`` for one raw flag read.
 
     ``evaluated`` is False whenever *default* is standing in for an answer
-    PostHog could not give. Unlike LaunchDarkly this needs no inference:
-    ``get_flag`` returns ``None`` exactly when the flag was not resolved, and
-    ``False`` when it conclusively matched no release condition.
+    PostHog could not give. Unlike LaunchDarkly this needs no inference: the
+    SDK returns no result exactly when the flag was not resolved, and a
+    disabled one when it conclusively matched no release condition.
 
     A flag carrying a payload resolves to that payload, mirroring how the
-    JSON-valued LaunchDarkly flags return their variation value.
+    JSON-valued LaunchDarkly flags return their variation value. Only an
+    *exposure* read sends the billed ``$feature_flag_called`` event.
     """
     client = get_flag_client()
     if client is None:
         logger.debug(f"PostHog not configured, using default={default} for {flag_key}")
         return default, False
+    if _known_unanswered(client, flag_key):
+        return default, False
 
     try:
-        # evaluate_flags does network I/O whenever the local-evaluation poller
-        # has no definition for the flag, so it cannot run on the event loop.
-        snapshot = await asyncio.get_running_loop().run_in_executor(
+        # The read does network I/O whenever the local-evaluation poller has
+        # no definition for the flag, so it cannot run on the event loop.
+        result = await asyncio.get_running_loop().run_in_executor(
             _read_executor,
             functools.partial(
-                client.evaluate_flags,
+                client.get_feature_flag_result,
+                flag_key,
                 distinct_id,
                 person_properties=person_properties or None,
-                flag_keys=[flag_key],
+                send_feature_flag_events=exposure,
             ),
         )
     except Exception as e:
@@ -80,33 +109,122 @@ async def evaluate_flag(
         )
         return default, False
 
-    value = snapshot.get_flag(flag_key)
-    if value is None:
+    if result is None:
         logger.debug(f"PostHog returned no answer for {flag_key}, using {default}")
+        _unanswered.setdefault(client, {})[flag_key] = time.monotonic()
         return default, False
 
     # A conclusive "off" is the answer. Serving a payload here instead would
     # turn it into a non-boolean, which every caller reads as "could not
     # evaluate" — the one distinction this evaluator exists to preserve.
-    if value is False:
+    if not result.enabled:
         return False, True
 
-    payload = snapshot.get_flag_payload(flag_key)
-    return (payload if payload is not None else value), True
+    return (result.payload if result.payload is not None else result.get_value()), True
+
+
+def evaluate_flags_in_memory(
+    flag_keys: list[str], distinct_id: str, person_properties: dict[str, Any]
+) -> dict[str, Any]:
+    """The flags the loaded definitions answer for *distinct_id*, on this thread.
+
+    Never fetches definitions, never asks ``/flags`` and fires no
+    ``$feature_flag_called``; a flag the definitions cannot decide is left out.
+    """
+    client = get_flag_client()
+    # With no definitions loaded the SDK would fetch them before evaluating.
+    if client is None or not client.feature_flags:
+        return {}
+    try:
+        result = client.get_all_flags_and_payloads(
+            distinct_id,
+            person_properties=person_properties,
+            only_evaluate_locally=True,
+            flag_keys_to_evaluate=flag_keys,
+        )
+    except Exception as e:
+        logger.warning(f"PostHog in-memory flag evaluation failed: {e}")
+        return {}
+    payloads = result.get("featureFlagPayloads") or {}
+    return {
+        key: value if value is False else _decoded(payloads.get(key), value)
+        for key, value in (result.get("featureFlags") or {}).items()
+    }
+
+
+def defined_flag_keys() -> frozenset[str] | None:
+    """Every flag the loaded definitions hold, or None while that is unknown."""
+    client = get_flag_client()
+    if client is None or client.feature_flags is None:
+        return None
+    # The SDK also empties its definitions on a rejected key or a quota limit;
+    # only a load that succeeded empty means the project has no flags.
+    if not client.feature_flags and not _loaded_empty():
+        return None
+    return frozenset(flag["key"] for flag in client.feature_flags)
+
+
+async def evaluate_variant(
+    flag_key: str,
+    distinct_id: str,
+    person_properties: dict[str, Any] | None = None,
+) -> str | None:
+    """The multivariate arm *distinct_id* falls in, or None when not enrolled.
+
+    Evaluated from the local definitions only and without an exposure event, so
+    the read sends PostHog nothing about the user; with no definitions loaded
+    (no ``POSTHOG_SECRET_KEY``) nobody is enrolled.
+    """
+    client = get_flag_client()
+    # With no definitions loaded the SDK would fetch them before evaluating.
+    if client is None or not client.feature_flags:
+        return None
+    try:
+        result = await asyncio.get_running_loop().run_in_executor(
+            _read_executor,
+            functools.partial(
+                client.get_feature_flag_result,
+                flag_key,
+                distinct_id,
+                person_properties=person_properties or None,
+                only_evaluate_locally=True,
+                # The browser reports the exposure, consent-gated (`useExperiment.ts`).
+                send_feature_flag_events=False,
+            ),
+        )
+    except Exception as e:
+        logger.warning(f"PostHog variant read failed for {flag_key}: {e}")
+        return None
+    return result.variant if result is not None and result.enabled else None
 
 
 def initialize_posthog_flags() -> None:
-    """Build the flag client eagerly so its definition poller is warm."""
+    """Build the flag client and load its definitions before any read needs them."""
     global _shut_down
     _shut_down = False
-    get_flag_client()
+    client = get_flag_client()
+    if client is None or not client.enable_local_evaluation:
+        return
+
+    # The SDK otherwise makes this same call on the first flag read, which then
+    # waits for it; going through it keeps the shared cache deciding who fetches.
+    try:
+        client.load_feature_flags()
+    except Exception as e:
+        logger.warning(f"Loading PostHog flag definitions at startup failed: {e}")
+    if client.feature_flags is None:
+        logger.warning(
+            "PostHog flag definitions did not load at startup; the first flag read "
+            "will retry"
+        )
 
 
 def shutdown_posthog_flags() -> None:
-    global _client, _init_attempted, _shut_down
+    global _client, _definition_cache, _init_attempted, _shut_down
     with _client_lock:
         client = _client
         _client = None
+        _definition_cache = None
         # Clear the "did we try" gate even when no client was built, or an
         # unconfigured first attempt latches it shut for the life of the process.
         _init_attempted = False
@@ -124,7 +242,7 @@ def get_flag_client() -> Posthog | None:
     """The flag client singleton, or None when PostHog is unconfigured.
 
     Separate from ``copilot.tracking``'s analytics client because only this
-    one carries the personal API key that enables local evaluation, and
+    one carries the secret key that enables local evaluation, and
     shutting one down must not silence the other.
     """
     global _client, _init_attempted
@@ -138,28 +256,55 @@ def get_flag_client() -> Posthog | None:
 
 
 def _build_client() -> Posthog | None:
-    global _client, _init_attempted
+    global _client, _definition_cache, _init_attempted
     if not is_configured():
         _init_attempted = True
         logger.warning("PostHog API key not configured; flag reads will not resolve")
         return None
 
-    personal_api_key = settings.secrets.posthog_personal_api_key
+    secret_key = settings.secrets.posthog_secret_key
     # One shared refresher, so the definitions bill stops scaling with replica
     # count. Without a provider the SDK polls PostHog once per process.
-    definition_cache = get_flag_definition_cache() if personal_api_key else None
+    definition_cache = get_flag_definition_cache() if secret_key else None
+    _definition_cache = definition_cache
     _client = Posthog(
         settings.secrets.posthog_api_key,
         host=settings.secrets.posthog_host,
-        personal_api_key=personal_api_key or None,
-        enable_local_evaluation=bool(personal_api_key),
+        secret_key=secret_key or None,
+        enable_local_evaluation=bool(secret_key),
         poll_interval=refresh_interval_seconds(),
         flag_definition_cache_provider=definition_cache,
+        super_properties=revision_properties(settings),
     )
     _init_attempted = True
     logger.info(
         "PostHog feature flag client initialized "
-        f"(local evaluation: {'on' if personal_api_key else 'off'}, "
+        f"(local evaluation: {'on' if secret_key else 'off'}, "
         f"definition cache: {type(definition_cache).__name__ if definition_cache else 'off'})"
     )
     return _client
+
+
+def _decoded(payload: Any, value: Any) -> Any:
+    """A matched flag's payload, which definitions hold as JSON text, else *value*."""
+    if not payload:
+        return value
+    try:
+        return json.loads(payload)
+    except (TypeError, ValueError):
+        return payload
+
+
+def _loaded_empty() -> bool:
+    last = _definition_cache.definitions if _definition_cache else None
+    return last is not None and not last.get("flags")
+
+
+def _known_unanswered(client: Posthog, flag_key: str) -> bool:
+    """Whether /flags recently had no answer for a flag the definitions lack."""
+    learned = _unanswered.get(client, {}).get(flag_key)
+    if learned is None or time.monotonic() - learned > UNANSWERED_RECHECK_SECONDS:
+        return False
+    # One created since is read from its definition from the next poll on.
+    defined = defined_flag_keys()
+    return defined is not None and flag_key not in defined

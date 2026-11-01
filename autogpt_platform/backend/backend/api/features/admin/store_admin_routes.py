@@ -180,7 +180,6 @@ async def admin_add_agent_to_library(
     "/skills/submissions",
     summary="Admin List Pending Skill Submissions",
     tags=["store", "admin"],
-    dependencies=[fastapi.Depends(skill_routes.require_skills_hub_flag)],
 )
 async def list_pending_skill_submissions() -> list[skill_model.SkillSubmission]:
     """Skill submissions awaiting review, oldest first."""
@@ -197,7 +196,6 @@ async def list_pending_skill_submissions() -> list[skill_model.SkillSubmission]:
         413: {"description": "File is too large to view"},
         415: {"description": "File is not text"},
     },
-    dependencies=[fastapi.Depends(skill_routes.require_skills_hub_flag)],
 )
 async def read_skill_submission_file(
     skill_listing_version_id: str,
@@ -217,7 +215,6 @@ async def read_skill_submission_file(
     summary="Review Skill Submission",
     tags=["store", "admin"],
     responses={404: {"description": "Submission not found"}},
-    dependencies=[fastapi.Depends(skill_routes.require_skills_hub_flag)],
 )
 async def review_skill_submission(
     skill_listing_version_id: str,
