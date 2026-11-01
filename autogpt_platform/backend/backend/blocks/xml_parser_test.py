@@ -274,7 +274,7 @@ async def test_run_refuses_input_over_one_mebibyte():
 
 
 @pytest.mark.asyncio
-async def test_run_hands_the_parser_one_text_token_per_element(mocker):
+async def test_run_joins_comment_split_text_into_one_token(mocker):
     parser_cls = mocker.patch(
         "backend.blocks.xml_parser.Parser", wraps=xml_parser.Parser
     )
@@ -294,7 +294,7 @@ async def test_run_hands_the_parser_one_text_token_per_element(mocker):
         ("<r><a   /></r>", "<r><a></a></r>"),
     ],
 )
-def test_tokenizer_precheck_writes_tags_without_padding(xml, expected):
+def test_tokenizer_precheck_writes_tags_in_canonical_form(xml, expected):
     assert XMLParserBlock._normalize_tokenizer_input(xml) == expected
 
 

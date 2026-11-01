@@ -75,8 +75,8 @@ def _tag_name(raw: str) -> str:
 def _merge_text_runs(tokens: list[Token]) -> list[Token]:
     """Join TEXT tokens that only comments separated into one token.
 
-    gravitasml appends each TEXT token to its element's value, which copies the
-    value every time; one token per element keeps that linear.
+    gravitasml builds an element's value from its TEXT tokens; this hands it
+    one token per element.
     """
     merged: list[Token] = []
     for is_text, run in groupby(tokens, key=lambda token: token.type == "TEXT"):
@@ -215,9 +215,8 @@ class XMLParserBlock(Block):
             if "=" in tag or '"' in tag or "'" in tag:
                 raise ValueError(f"XML attributes are not supported: <{tag}>")
 
-            # Tags are written back as "<name>" or "</name>" with no padding
-            # or stray "/", the only shapes gravitasml's tag patterns match
-            # without scanning back over the tag.
+            # Tags are written back in canonical form, "<name>" or "</name>",
+            # the form gravitasml's tag patterns read.
             pieces.append(xml[position:tag_start])
             if tag.startswith("/"):
                 depth -= 1

@@ -328,7 +328,7 @@ _FULL_UUID_RE = re.compile(
 _PARTIAL_UUID_RE = re.compile(r"^[0-9a-f]{8}$", re.IGNORECASE)
 
 # Most entries an allow- or deny-list of blocks may hold.
-MAX_BLOCK_IDENTIFIERS = 500
+MAX_BLOCK_IDENTIFIERS = 1_000
 
 
 # Tools that a blacklist entry must deny alongside the capability named.

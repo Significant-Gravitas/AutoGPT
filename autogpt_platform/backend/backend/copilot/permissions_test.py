@@ -370,16 +370,16 @@ def _mock_registry(mocker, count: int) -> list[str]:
 
 @pytest.mark.asyncio
 class TestValidateBlockIdentifiersLimits:
-    async def test_refuses_more_than_500_identifiers(self, mocker):
+    async def test_refuses_more_than_1000_identifiers(self, mocker):
         _mock_registry(mocker, 3)
-        with pytest.raises(ValueError, match="At most 500"):
-            await validate_block_identifiers(["Block 0"] * 501)
+        with pytest.raises(ValueError, match="At most 1000"):
+            await validate_block_identifiers(["Block 0"] * 1_001)
 
-    async def test_accepts_500_identifiers(self, mocker):
+    async def test_accepts_1000_identifiers(self, mocker):
         _mock_registry(mocker, 3)
-        assert await validate_block_identifiers(["block 1"] * 500) == []
+        assert await validate_block_identifiers(["block 1"] * 1_000) == []
 
-    async def test_resolves_each_identifier_without_scanning_the_registry(self, mocker):
+    async def test_resolves_each_identifier_by_lookup(self, mocker):
         _mock_registry(mocker, 300)
         matcher = mocker.patch(
             "backend.copilot.permissions._block_matches", wraps=_block_matches

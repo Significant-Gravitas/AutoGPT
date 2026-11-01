@@ -55,7 +55,7 @@ async def test_sample_larger_than_the_data_is_refused():
         await _sample(data=[{"g": 1}], sample_size=2)
 
 
-async def test_stratified_trim_over_many_strata_stays_linear(
+async def test_stratified_trim_reaches_the_sample_size_over_many_strata(
     mocker: pytest_mock.MockFixture,
 ):
     size = 3_000
@@ -76,7 +76,7 @@ async def test_stratified_trim_over_many_strata_stays_linear(
     assert scanned[0] <= 10 * size
 
 
-async def test_cluster_sampling_over_many_clusters_stays_linear(
+async def test_cluster_sampling_draws_each_cluster_once(
     mocker: pytest_mock.MockFixture,
 ):
     size = 2_000
@@ -124,6 +124,33 @@ async def test_cluster_sampling_takes_whole_clusters_until_full():
     assert len(set(indices)) == 6
     clusters = {data[i]["c"] for i in indices}
     assert all(sum(data[i]["c"] == c for i in indices) == 3 for c in clusters)
+
+
+async def test_cluster_sampling_takes_clusters_in_seeded_shuffle_order():
+    clusters = 10
+    data = [{"c": i // 2} for i in range(2 * clusters)]
+
+    async def first_cluster(seed: int) -> int:
+        out = await _sample(
+            data=data,
+            sample_size=2,
+            sampling_method=SamplingMethod.CLUSTER,
+            cluster_key="c",
+            random_seed=seed,
+        )
+        picked = {data[i]["c"] for i in out["sample_indices"]}
+        assert len(picked) == 1
+        return picked.pop()
+
+    for seed in (0, 7, 42):
+        random.seed(seed)
+        order = [str(c) for c in range(clusters)]
+        random.shuffle(order)
+        assert await first_cluster(seed) == int(order[0])
+        assert await first_cluster(seed) == await first_cluster(seed)
+
+    firsts = {await first_cluster(seed) for seed in range(300)}
+    assert firsts == set(range(clusters))
 
 
 def _reference_stratum_sizes(
