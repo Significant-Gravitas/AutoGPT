@@ -481,6 +481,32 @@ async def test_an_oversized_trigger_update_registers_no_webhook():
 
 
 @pytest.mark.asyncio
+async def test_an_update_oversized_only_once_every_credential_is_counted_registers_no_webhook():
+    """The preflight has to count what update_preset will actually store —
+    inputs merged with every credential, not only the trigger node's — or a
+    configuration oversized that way slips past it and registers a webhook
+    that update_preset then refuses."""
+    small_inputs = {"repo": "owner/repo"}
+    credentials_from_other_nodes = {
+        f"cred_{i}": CredentialsMetaInput(
+            id=f"cred-{i}", provider="github", type="api_key"
+        )
+        for i in range(MAX_NODE_INPUT_OUTPUT_FETCH)
+    }
+    with _update_patches(current=_preset(webhook_id="wh-old")) as m:
+        with pytest.raises(InvalidInputError, match="at most"):
+            await update_triggered_preset(
+                user_id=_USER,
+                preset_id="preset-1",
+                inputs=small_inputs,
+                credentials=credentials_from_other_nodes,
+            )
+    m["setup"].assert_not_awaited()
+    m["update"].assert_not_awaited()
+    m["prune"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_update_rename_only_skips_webhook():
     with _update_patches(current=_preset(webhook_id="wh-old")) as m:
         await update_triggered_preset(
