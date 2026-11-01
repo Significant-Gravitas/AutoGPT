@@ -222,3 +222,10 @@ async def test_leading_blank_line_does_not_steal_header():
     rows = await read_rows(contents="\na,b\n1,2")
 
     assert rows == [{"a": "1", "b": "2"}]
+
+
+@pytest.mark.asyncio
+async def test_leading_blank_line_counts_toward_skip_rows():
+    rows = await read_rows(contents="\na,b\n1,2\n3,4", skip_rows=1)
+
+    assert rows == [{"a": "1", "b": "2"}, {"a": "3", "b": "4"}]

@@ -201,19 +201,23 @@ class ReadSpreadsheetBlock(Block):
             escapechar=input_data.escapechar,
         )
 
+        # Leading blank lines skipped while finding the header count toward
+        # skip_rows, so the same data rows come out as before.
+        skip_rows = input_data.skip_rows
         header = None
         if input_data.has_header:
             # Empty input has no header row; don't let StopIteration escape
             # the async generator (it becomes a RuntimeError).
             header = next(reader, None)
             while header == []:
+                skip_rows = max(skip_rows - 1, 0)
                 header = next(reader, None)
             if header is not None:
                 if input_data.strip:
                     header = [h.strip() for h in header]
                 header = _unique_column_names(header)
 
-        for _ in range(input_data.skip_rows):
+        for _ in range(skip_rows):
             if next(reader, None) is None:
                 break
 
