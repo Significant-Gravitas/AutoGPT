@@ -76,115 +76,6 @@ WS_CLOSE_TRY_AGAIN_LATER = 1013
 Shard = tuple[str, int]
 
 
-class _ShardStream:
-    """One socket's SSUBSCRIBEs on one Redis shard, all over one connection."""
-
-    def __init__(self, on_lost: LostHandler) -> None:
-        # full channel → handler
-        self.handlers: dict[str, MessageHandler] = {}
-        self._on_lost = on_lost
-        self._client: AsyncRedis | None = None
-        self._pubsub: AsyncPubSub | None = None
-        self._task: asyncio.Task | None = None
-        # SUNSUBSCRIBEs sent per channel whose confirmation is still on its way
-        self._unsubscribing: Counter[str] = Counter()
-        self._stopping = False
-
-    async def add(self, channel: str, handler: MessageHandler) -> None:
-        _assert_no_wildcard(channel)
-        pubsub = self._pubsub or await asyncio.wait_for(
-            self._open(channel), _STREAM_OPEN_TIMEOUT_S
-        )
-        try:
-            await pubsub.ssubscribe(channel)
-        except BaseException:
-            if not self.handlers:
-                await self._close_quietly()
-            raise
-        self.handlers[channel] = handler
-        if self._task is None:
-            self._task = asyncio.create_task(self._pump(pubsub))
-
-    async def remove(self, channel: str) -> None:
-        if self.handlers.pop(channel, None) is None:
-            return
-        if not self.handlers:
-            await self.stop()
-            return
-        if self._pubsub is None:
-            return
-        self._unsubscribing[channel] += 1
-        try:
-            await self._pubsub.sunsubscribe(channel)
-        except Exception:
-            # No confirmation is coming; a stale count would hide a real drop.
-            self._unsubscribing[channel] -= 1
-            logger.warning(f"SUNSUBSCRIBE failed for {channel}", exc_info=True)
-
-    async def stop(self) -> None:
-        self._stopping = True
-        if self._task is not None:
-            self._task.cancel()
-            try:
-                await self._task
-            except (asyncio.CancelledError, Exception):
-                pass
-            self._task = None
-        # Closing the connection drops every SSUBSCRIBE it carried.
-        await self._close_quietly()
-
-    async def _open(self, channel: str) -> AsyncPubSub:
-        self._client = await redis.connect_sharded_pubsub_async(channel)
-        self._pubsub = self._client.pubsub()
-        return self._pubsub
-
-    async def _close_quietly(self) -> None:
-        if self._pubsub is not None:
-            try:
-                await self._pubsub.aclose()
-            except Exception:
-                pass
-            self._pubsub = None
-        if self._client is not None:
-            try:
-                await self._client.aclose()
-            except Exception:
-                pass
-            self._client = None
-
-    async def _pump(self, pubsub: AsyncPubSub) -> None:
-        try:
-            await self._forward(pubsub)
-        except asyncio.CancelledError:
-            raise
-        except (OSError, RedisError) as e:
-            logger.warning(f"Pubsub stream lost: {type(e).__name__}: {e}")
-        except Exception:
-            logger.exception("Pubsub pump crashed")
-        if not self._stopping:
-            await self._on_lost()
-
-    async def _forward(self, pubsub: AsyncPubSub) -> None:
-        async for message in pubsub.listen():
-            msg_type = message.get("type")
-            channel = message.get("channel")
-            if msg_type == "sunsubscribe":
-                if self._unsubscribing[channel] > 0:
-                    self._unsubscribing[channel] -= 1
-                    continue
-                # Not ours: the slot moved and Redis dropped the subscription.
-                return
-            if msg_type != "smessage":
-                continue
-            handler = self.handlers.get(channel) if channel else None
-            if handler is None:
-                continue
-            try:
-                await handler(message.get("data"))
-            except Exception:
-                logger.exception(f"Websocket message-handler failed for {channel}")
-
-
 class ConnectionManager:
     def __init__(self):
         self.active_connections: Set[WebSocket] = set()
@@ -500,6 +391,115 @@ class ConnectionManager:
                 user_id,
                 exc_info=True,
             )
+
+
+class _ShardStream:
+    """One socket's SSUBSCRIBEs on one Redis shard, all over one connection."""
+
+    def __init__(self, on_lost: LostHandler) -> None:
+        # full channel → handler
+        self.handlers: dict[str, MessageHandler] = {}
+        self._on_lost = on_lost
+        self._client: AsyncRedis | None = None
+        self._pubsub: AsyncPubSub | None = None
+        self._task: asyncio.Task | None = None
+        # SUNSUBSCRIBEs sent per channel whose confirmation is still on its way
+        self._unsubscribing: Counter[str] = Counter()
+        self._stopping = False
+
+    async def add(self, channel: str, handler: MessageHandler) -> None:
+        _assert_no_wildcard(channel)
+        pubsub = self._pubsub or await asyncio.wait_for(
+            self._open(channel), _STREAM_OPEN_TIMEOUT_S
+        )
+        try:
+            await pubsub.ssubscribe(channel)
+        except BaseException:
+            if not self.handlers:
+                await self._close_quietly()
+            raise
+        self.handlers[channel] = handler
+        if self._task is None:
+            self._task = asyncio.create_task(self._pump(pubsub))
+
+    async def remove(self, channel: str) -> None:
+        if self.handlers.pop(channel, None) is None:
+            return
+        if not self.handlers:
+            await self.stop()
+            return
+        if self._pubsub is None:
+            return
+        self._unsubscribing[channel] += 1
+        try:
+            await self._pubsub.sunsubscribe(channel)
+        except Exception:
+            # No confirmation is coming; a stale count would hide a real drop.
+            self._unsubscribing[channel] -= 1
+            logger.warning(f"SUNSUBSCRIBE failed for {channel}", exc_info=True)
+
+    async def stop(self) -> None:
+        self._stopping = True
+        if self._task is not None:
+            self._task.cancel()
+            try:
+                await self._task
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._task = None
+        # Closing the connection drops every SSUBSCRIBE it carried.
+        await self._close_quietly()
+
+    async def _open(self, channel: str) -> AsyncPubSub:
+        self._client = await redis.connect_sharded_pubsub_async(channel)
+        self._pubsub = self._client.pubsub()
+        return self._pubsub
+
+    async def _close_quietly(self) -> None:
+        if self._pubsub is not None:
+            try:
+                await self._pubsub.aclose()
+            except Exception:
+                pass
+            self._pubsub = None
+        if self._client is not None:
+            try:
+                await self._client.aclose()
+            except Exception:
+                pass
+            self._client = None
+
+    async def _pump(self, pubsub: AsyncPubSub) -> None:
+        try:
+            await self._forward(pubsub)
+        except asyncio.CancelledError:
+            raise
+        except (OSError, RedisError) as e:
+            logger.warning(f"Pubsub stream lost: {type(e).__name__}: {e}")
+        except Exception:
+            logger.exception("Pubsub pump crashed")
+        if not self._stopping:
+            await self._on_lost()
+
+    async def _forward(self, pubsub: AsyncPubSub) -> None:
+        async for message in pubsub.listen():
+            msg_type = message.get("type")
+            channel = message.get("channel")
+            if msg_type == "sunsubscribe":
+                if self._unsubscribing[channel] > 0:
+                    self._unsubscribing[channel] -= 1
+                    continue
+                # Not ours: the slot moved and Redis dropped the subscription.
+                return
+            if msg_type != "smessage":
+                continue
+            handler = self.handlers.get(channel) if channel else None
+            if handler is None:
+                continue
+            try:
+                await handler(message.get("data"))
+            except Exception:
+                logger.exception(f"Websocket message-handler failed for {channel}")
 
 
 def graph_exec_channel_key(user_id: str, *, graph_exec_id: str) -> str:
