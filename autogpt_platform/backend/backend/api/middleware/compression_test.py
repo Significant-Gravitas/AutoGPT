@@ -12,8 +12,8 @@ from starlette.middleware.gzip import GZipMiddleware
 from starlette.requests import Request
 from starlette.responses import Response, StreamingResponse
 from starlette.routing import Route
-from starlette.types import Message, Receive, Scope, Send
 from starlette.testclient import TestClient
+from starlette.types import Message, Receive, Scope, Send
 
 from backend.api.rest_api import app as rest_app
 
