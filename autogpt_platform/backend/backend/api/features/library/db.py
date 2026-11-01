@@ -2091,26 +2091,6 @@ def collect_tree_ids(
     return ids
 
 
-async def get_folder_agent_summaries(
-    user_id: str, folder_id: str, organization_id: Optional[str] = None
-) -> list[dict[str, str | None]]:
-    """Get a lightweight list of agents in a folder (id, name, description)."""
-    all_agents: list[library_model.LibraryAgent] = []
-    for page in itertools.count(1):
-        resp = await list_library_agents(
-            user_id=user_id,
-            folder_id=folder_id,
-            page=page,
-            organization_id=organization_id,
-        )
-        all_agents.extend(resp.agents)
-        if page >= resp.pagination.total_pages:
-            break
-    return [
-        {"id": a.id, "name": a.name, "description": a.description} for a in all_agents
-    ]
-
-
 async def get_root_agent_summaries(
     user_id: str,
     organization_id: Optional[str] = None,
@@ -2135,14 +2115,32 @@ async def get_root_agent_summaries(
 async def get_folder_agents_map(
     user_id: str, folder_ids: list[str], organization_id: Optional[str] = None
 ) -> dict[str, list[dict[str, str | None]]]:
-    """Get agent summaries for multiple folders concurrently."""
-    results = await asyncio.gather(
-        *(
-            get_folder_agent_summaries(user_id, fid, organization_id)
-            for fid in folder_ids
+    """Get a lightweight list of agents (id, name, description) per folder.
+
+    Pages through the user's library once and groups it by folder, so the
+    number of queries follows the number of agents, not of folders.
+    """
+    agents_map: dict[str, list[dict[str, str | None]]] = {
+        folder_id: [] for folder_id in folder_ids
+    }
+    if not agents_map:
+        return agents_map
+    for page in itertools.count(1):
+        resp = await list_library_agents(
+            user_id=user_id, page=page, organization_id=organization_id
         )
-    )
-    return dict(zip(folder_ids, results))
+        for agent in resp.agents:
+            if agent.folder_id in agents_map:
+                agents_map[agent.folder_id].append(
+                    {
+                        "id": agent.id,
+                        "name": agent.name,
+                        "description": agent.description,
+                    }
+                )
+        if page >= resp.pagination.total_pages:
+            break
+    return agents_map
 
 
 ##############################################

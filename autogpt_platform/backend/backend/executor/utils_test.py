@@ -1379,7 +1379,7 @@ async def test_validate_node_input_credentials_auto_creds_valid(
     mock_store = mocker.MagicMock()
     mock_creds = mocker.MagicMock()
     mock_creds.id = "valid-cred-id"
-    mock_store.get_creds_by_id = mocker.AsyncMock(return_value=mock_creds)
+    mock_store.get_all_creds = mocker.AsyncMock(return_value=[mock_creds])
     mocker.patch(
         "backend.executor.utils.get_integration_credentials_store",
         return_value=mock_store,
@@ -1434,7 +1434,7 @@ async def test_validate_node_input_credentials_auto_creds_missing(
 
     # Mock the credentials store to return None (cred not found for this user)
     mock_store = mocker.MagicMock()
-    mock_store.get_creds_by_id = mocker.AsyncMock(return_value=None)
+    mock_store.get_all_creds = mocker.AsyncMock(return_value=[])
     mocker.patch(
         "backend.executor.utils.get_integration_credentials_store",
         return_value=mock_store,
@@ -1514,14 +1514,9 @@ async def test_validate_node_input_credentials_both_regular_and_auto(
     mock_auto_creds = mocker.MagicMock()
     mock_auto_creds.id = "auto-cred-id"
 
-    def get_creds_side_effect(user_id, cred_id):
-        if cred_id == "regular-cred-id":
-            return mock_regular_creds
-        elif cred_id == "auto-cred-id":
-            return mock_auto_creds
-        return None
-
-    mock_store.get_creds_by_id = mocker.AsyncMock(side_effect=get_creds_side_effect)
+    mock_store.get_all_creds = mocker.AsyncMock(
+        return_value=[mock_regular_creds, mock_auto_creds]
+    )
     mocker.patch(
         "backend.executor.utils.get_integration_credentials_store",
         return_value=mock_store,
@@ -1573,7 +1568,7 @@ async def test_validate_node_input_credentials_auto_creds_optional_missing(
     mock_graph.nodes = [mock_node]
 
     mock_store = mocker.MagicMock()
-    mock_store.get_creds_by_id = mocker.AsyncMock(return_value=None)
+    mock_store.get_all_creds = mocker.AsyncMock(return_value=[])
     mocker.patch(
         "backend.executor.utils.get_integration_credentials_store",
         return_value=mock_store,

@@ -44,6 +44,7 @@ from backend.data.execution import (
 from backend.data.graph import GraphModel, Node
 from backend.data.model import (
     USER_TIMEZONE_NOT_SET,
+    Credentials,
     CredentialsMetaInput,
     GraphInput,
     NodeExecutionStats,
@@ -469,6 +470,7 @@ async def _validate_node_input_credentials(
     """
     credential_errors: dict[str, dict[str, str]] = defaultdict(dict)
     nodes_to_skip: set[str] = set()
+    user_credentials = _UserCredentialsById(user_id)
 
     for node in graph.nodes:
         block = node.block
@@ -559,9 +561,7 @@ async def _validate_node_input_credentials(
 
             try:
                 # Fetch the corresponding Credentials and perform sanity checks
-                credentials = await get_integration_credentials_store().get_creds_by_id(
-                    user_id, credentials_meta.id
-                )
+                credentials = await user_credentials.get(credentials_meta.id)
             except Exception as e:
                 # Handle any errors fetching credentials
                 # If credentials were explicitly configured but unavailable, it's an error
@@ -680,8 +680,7 @@ async def _validate_node_input_credentials(
                         )
                         continue
                     try:
-                        creds_store = get_integration_credentials_store()
-                        creds = await creds_store.get_creds_by_id(user_id, cred_id)
+                        creds = await user_credentials.get(cred_id)
                     except Exception as e:
                         if field_is_optional:
                             _mark_optional_skip()
@@ -719,6 +718,31 @@ async def _validate_node_input_credentials(
             nodes_to_skip.add(node.id)
 
     return credential_errors, nodes_to_skip
+
+
+class _UserCredentialsById:
+    """The user's credentials by id, loaded on the first lookup and reused for
+    the rest of one validation, however many nodes it checks."""
+
+    def __init__(self, user_id: str):
+        self._user_id = user_id
+        self._by_id: dict[str, Credentials] | None = None
+        self._load_error: Exception | None = None
+
+    async def get(self, credentials_id: str) -> Credentials | None:
+        if self._load_error is not None:
+            raise self._load_error
+        if self._by_id is None:
+            try:
+                loaded = await get_integration_credentials_store().get_all_creds(
+                    self._user_id
+                )
+            except Exception as e:
+                self._load_error = e
+                raise
+            # First match wins, as in CredentialsStore.get_creds_by_id.
+            self._by_id = {c.id: c for c in reversed(loaded)}
+        return self._by_id.get(credentials_id)
 
 
 def _is_optional_picker(input_schema: type[BlockSchema], field_name: str) -> bool:

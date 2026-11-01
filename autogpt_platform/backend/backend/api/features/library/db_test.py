@@ -2679,3 +2679,41 @@ async def test_an_external_save_cannot_version_a_graph_outside_its_organization(
         )
 
     create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_folder_agents_map_lists_the_library_once_however_many_folders(
+    mocker,
+):
+    def agent(agent_id: str, folder_id: str | None) -> MagicMock:
+        listed = MagicMock(id=agent_id, description=None, folder_id=folder_id)
+        listed.name = f"Agent {agent_id}"
+        return listed
+
+    def page(*agents: MagicMock) -> MagicMock:
+        return MagicMock(agents=list(agents), pagination=MagicMock(total_pages=2))
+
+    list_agents = mocker.patch.object(
+        db,
+        "list_library_agents",
+        AsyncMock(
+            side_effect=[
+                page(agent("a1", "folder-0"), agent("root", None)),
+                page(agent("a2", "folder-0"), agent("other", "not-asked")),
+            ]
+        ),
+    )
+    folder_ids = [f"folder-{i}" for i in range(1000)]
+
+    result = await db.get_folder_agents_map("test-user", folder_ids, "org-a")
+
+    assert list(result) == folder_ids
+    assert result["folder-0"] == [
+        {"id": "a1", "name": "Agent a1", "description": None},
+        {"id": "a2", "name": "Agent a2", "description": None},
+    ]
+    assert not any(result[folder_id] for folder_id in folder_ids[1:])
+    assert [call.kwargs for call in list_agents.await_args_list] == [
+        {"user_id": "test-user", "page": 1, "organization_id": "org-a"},
+        {"user_id": "test-user", "page": 2, "organization_id": "org-a"},
+    ]
