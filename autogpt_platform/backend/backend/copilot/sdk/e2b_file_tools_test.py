@@ -1418,6 +1418,50 @@ class TestLocalFileOverTheReadLimit:
         assert result["isError"]
         assert sum(consumed) == 0
 
+    @pytest.fixture
+    def size_reads_as_zero(self, monkeypatch):
+        real_fstat = os.fstat
+
+        class _Stat:
+            def __init__(self, fd: int):
+                self._real = real_fstat(fd)
+
+            st_size = 0
+
+            def __getattr__(self, name: str):
+                return getattr(self._real, name)
+
+        monkeypatch.setattr("backend.copilot.sdk.e2b_file_tools.os.fstat", _Stat)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "content", ["x" * 100, "x\n" * 50], ids=["one-line", "many-lines"]
+    )
+    async def test_read_refuses_it_when_its_size_reads_as_zero(
+        self, sdk_cwd, size_reads_as_zero, content
+    ):
+        Path(sdk_cwd, "big.log").write_text(content)
+
+        result = await _handle_read_file({"file_path": "big.log"})
+
+        assert result["isError"]
+        assert "big.log is larger than" in result["content"][0]["text"]
+
+    @pytest.mark.asyncio
+    async def test_edit_refuses_it_when_its_size_reads_as_zero(
+        self, big, size_reads_as_zero, monkeypatch
+    ):
+        consumed = self._count_reads(monkeypatch)
+
+        result = await _handle_edit_file(
+            {"file_path": "big.log", "old_string": "x", "new_string": "y"}
+        )
+
+        assert result["isError"]
+        assert "cannot be edited whole" in result["content"][0]["text"]
+        assert sum(consumed) <= 11
+        assert Path(big).read_text() == "x" * 100
+
     @pytest.mark.asyncio
     async def test_read_takes_only_the_lines_it_shows(self, sdk_cwd, monkeypatch):
         monkeypatch.setattr(
