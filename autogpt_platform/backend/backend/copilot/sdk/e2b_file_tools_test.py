@@ -1382,24 +1382,59 @@ class TestLocalFileOverTheReadLimit:
         assert result["isError"]
         assert "big.log is larger than" in result["content"][0]["text"]
 
-    @pytest.mark.asyncio
-    async def test_the_read_asks_for_one_byte_past_the_limit(self, big, monkeypatch):
-        asked: list[int] = []
+    @staticmethod
+    def _count_reads(monkeypatch) -> list[int]:
+        """Characters each read or readline handed back, by any open file."""
+        consumed: list[int] = []
         real_open = open
 
-        def spying_open(*args, **kwargs):
+        def counting(method):
+            def wrapped(size: int = -1):
+                out = method(size)
+                consumed.append(len(out))
+                return out
+
+            return wrapped
+
+        def counting_open(*args, **kwargs):
             fh = real_open(*args, **kwargs)
-            read = fh.read
-            fh.read = lambda size=-1: (asked.append(size), read(size))[1]
+            fh.read = counting(fh.read)
+            fh.readline = counting(fh.readline)
             return fh
 
         monkeypatch.setattr(
-            "backend.copilot.sdk.e2b_file_tools.open", spying_open, raising=False
+            "backend.copilot.sdk.e2b_file_tools.open", counting_open, raising=False
+        )
+        return consumed
+
+    @pytest.mark.asyncio
+    async def test_a_file_over_the_limit_is_refused_before_it_is_read(
+        self, big, monkeypatch
+    ):
+        consumed = self._count_reads(monkeypatch)
+
+        result = await _handle_read_file({"file_path": "big.log"})
+
+        assert result["isError"]
+        assert sum(consumed) == 0
+
+    @pytest.mark.asyncio
+    async def test_read_takes_only_the_lines_it_shows(self, sdk_cwd, monkeypatch):
+        monkeypatch.setattr(
+            "backend.copilot.sdk.e2b_file_tools._MAX_READ_BYTES", 1_000_000
+        )
+        with open(os.path.join(sdk_cwd, "long.log"), "w") as f:
+            f.write("".join(f"{i:09d}\n" for i in range(10_000)))
+        consumed = self._count_reads(monkeypatch)
+
+        result = await _handle_read_file(
+            {"file_path": "long.log", "offset": 2, "limit": 3}
         )
 
-        await _handle_read_file({"file_path": "big.log"})
-
-        assert asked == [11]
+        assert not result["isError"]
+        assert "000000004" in result["content"][0]["text"]
+        assert "000000005" not in result["content"][0]["text"]
+        assert sum(consumed) == 5 * 10
 
 
 class TestReadFileE2BRouting:

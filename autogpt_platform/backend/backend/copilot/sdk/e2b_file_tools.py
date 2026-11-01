@@ -17,7 +17,6 @@ import base64
 import collections
 import functools
 import hashlib
-import io
 import itertools
 import json
 import logging
@@ -132,14 +131,33 @@ def _binary_read_guidance(path: str) -> str:
 _MAX_READ_BYTES = Config().max_file_size_mb * 1024 * 1024
 
 
-def _read_capped_text(path: str, errors: str = "strict") -> str | None:
-    """A host file as text, its newlines read as ``open()`` reads them;
+def _read_capped_text(path: str) -> str | None:
+    """A host file as text; ``None`` past ``_MAX_READ_BYTES``."""
+    with open(path, encoding="utf-8", opener=open_no_follow) as fh:
+        if os.fstat(fh.fileno()).st_size > _MAX_READ_BYTES:
+            return None
+        text = fh.read(_MAX_READ_BYTES + 1)
+    return None if len(text) > _MAX_READ_BYTES else text
+
+
+def _read_capped_lines(path: str, offset: int, limit: int) -> list[str] | None:
+    """Lines ``offset`` to ``offset + limit`` of a host file, reading no further;
     ``None`` past ``_MAX_READ_BYTES``."""
-    with open(path, "rb", opener=open_no_follow) as fh:
-        raw = fh.read(_MAX_READ_BYTES + 1)
-    if len(raw) > _MAX_READ_BYTES:
-        return None
-    return io.StringIO(raw.decode("utf-8", errors=errors), newline=None).read()
+    with open(path, encoding="utf-8", errors="replace", opener=open_no_follow) as fh:
+        if os.fstat(fh.fileno()).st_size > _MAX_READ_BYTES:
+            return None
+        budget = _MAX_READ_BYTES
+        selected: list[str] = []
+        for index in range(offset + limit):
+            line = fh.readline(budget + 1)
+            if not line:
+                break
+            budget -= len(line)
+            if budget < 0:
+                return None
+            if index >= offset:
+                selected.append(line)
+    return selected
 
 
 def _too_large(path: str, done: str) -> str:
@@ -434,17 +452,16 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
         )
 
     try:
-        text = _read_capped_text(resolved, errors="replace")
+        selected = _read_capped_lines(resolved, offset, limit)
     except FileNotFoundError:
         return _mcp(f"File not found: {file_path}", error=True)
     except PermissionError:
         return _mcp(f"Permission denied: {file_path}", error=True)
     except Exception as exc:
         return _mcp(f"Failed to read {file_path}: {exc}", error=True)
-    if text is None:
+    if selected is None:
         return _mcp(_too_large(resolved, "read"), error=True)
 
-    selected = list(itertools.islice(io.StringIO(text), offset, offset + limit))
     numbered = "".join(
         f"{i + offset + 1:>6}\t{line}" for i, line in enumerate(selected)
     )
@@ -907,10 +924,9 @@ def _read_local(file_path: str, offset: int, limit: int | None) -> dict[str, Any
         )
     try:
         limit = _DEFAULT_READ_LIMIT if limit is None else limit
-        text = _read_capped_text(expanded, errors="replace")
-        if text is None:
+        selected = _read_capped_lines(expanded, offset, limit)
+        if selected is None:
             return _mcp(_too_large(expanded, "read"), error=True)
-        selected = list(itertools.islice(io.StringIO(text), offset, offset + limit))
         numbered = "".join(
             f"{i + offset + 1:>6}\t{line}" for i, line in enumerate(selected)
         )
