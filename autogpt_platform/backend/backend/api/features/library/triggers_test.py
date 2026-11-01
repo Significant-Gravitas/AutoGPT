@@ -24,7 +24,9 @@ from backend.blocks.github.triggers import GithubPullRequestTriggerBlock
 from backend.blocks.io import AgentNumberInputBlock
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.data.graph import Graph, GraphModel, Node, make_graph_model
+from backend.data.includes import MAX_NODE_INPUT_OUTPUT_FETCH
 from backend.data.integrations import WebhookWithRelations
+from backend.data.model import CredentialsMetaInput
 from backend.executor import utils as executor_utils
 from backend.util.exceptions import InvalidInputError, MissingConfigError, NotFoundError
 
@@ -81,6 +83,12 @@ def _patches(*, graph, webhook=..., feedback=None, preset=None, graph_expert=Non
 
 
 @pytest.fixture(autouse=True)
+def _under_the_preset_cap():
+    with patch(f"{_PATH}.db.check_preset_count", new=AsyncMock()) as check:
+        yield check
+
+
+@pytest.fixture(autouse=True)
 def _user_belongs_to_the_graphs_org():
     """A trigger takes its graph's org/team when the user belongs to it.
     Tests of someone else's graph patch this to give the user's own."""
@@ -98,15 +106,25 @@ def _not_a_member():
     )
 
 
-async def _setup(*, expert_id: str | None = None):
+async def _setup(
+    *,
+    expert_id: str | None = None,
+    trigger_config: dict | None = None,
+    constant_inputs: dict | None = None,
+    graph_id: str = "graph-1",
+    graph_version: int = 1,
+):
     return await setup_triggered_preset(
         user_id=_USER,
-        graph_id="graph-1",
-        graph_version=1,
+        graph_id=graph_id,
+        graph_version=graph_version,
         name="My Trigger",
         description="",
-        trigger_config={"repo": "owner/repo"},
+        trigger_config=(
+            {"repo": "owner/repo"} if trigger_config is None else trigger_config
+        ),
         agent_credentials={},
+        constant_inputs=constant_inputs,
         expert_id=expert_id,
     )
 
@@ -354,6 +372,86 @@ async def test_webhook_setup_rejected_raises():
 
 
 @pytest.mark.asyncio
+async def test_oversized_preset_inputs_register_no_webhook():
+    """One row per graph input, one for the whole nested trigger config: one
+    graph input more than the bound allows is refused before the webhook is
+    registered, so none is left to clean up."""
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    oversized = {f"input_{i}": i for i in range(MAX_NODE_INPUT_OUTPUT_FETCH)}
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook as webhook_mock,
+        p_create as create_mock,
+        pytest.raises(InvalidInputError, match="at most"),
+    ):
+        await _setup(constant_inputs=oversized)
+    webhook_mock.assert_not_awaited()
+    create_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_preset_inputs_filled_to_the_bound_are_stored():
+    """The boundary the writer allows stays writable: graph inputs plus the one
+    nested trigger config adding up to exactly the bound are stored in full."""
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    to_the_bound = {f"input_{i}": i for i in range(MAX_NODE_INPUT_OUTPUT_FETCH - 1)}
+    with p_graph, p_creds, p_webhook, p_expert, p_create as create_mock:
+        await _setup(constant_inputs=to_the_bound)
+    stored = create_mock.await_args.kwargs["preset"].inputs
+    assert len(stored) == MAX_NODE_INPUT_OUTPUT_FETCH
+    assert stored["_node_input_mask_trigger"] == {"repo": "owner/repo"}
+
+
+@pytest.mark.asyncio
+async def test_a_trigger_config_filled_to_the_bound_registers_no_webhook(
+    trigger_blocks_enabled,
+):
+    """A trigger config is one preset row however many names it holds, but at
+    run time each of them is an input on the trigger node, and webhook ingress
+    adds `payload`. Filled right to the bound it would leave that node one over
+    it, so the executor's validation refuses it before the webhook exists."""
+    graph = _trigger_graph(GithubPullRequestTriggerBlock().id)
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=graph)
+    at_the_bound = _pr_trigger_config_sized(MAX_NODE_INPUT_OUTPUT_FETCH)
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook as webhook_mock,
+        p_create as create_mock,
+        _real_execution_input_validator(graph),
+        pytest.raises(InvalidInputError, match="at most"),
+    ):
+        await _setup(trigger_config=at_the_bound, constant_inputs={"count": 3})
+    webhook_mock.assert_not_awaited()
+    create_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_trigger_config_at_the_bound_carrying_payload_is_accepted(
+    trigger_blocks_enabled,
+):
+    """The slot `payload` needs on the trigger node is its own, not an extra
+    one: a config already naming it fills the node to the bound and is stored."""
+    graph = _trigger_graph(GithubPullRequestTriggerBlock().id)
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=graph)
+    at_the_bound = _pr_trigger_config_sized(MAX_NODE_INPUT_OUTPUT_FETCH - 1)
+    at_the_bound["payload"] = None
+    with (
+        p_graph,
+        p_creds,
+        p_webhook,
+        p_expert,
+        p_create as create_mock,
+        _real_execution_input_validator(graph),
+    ):
+        await _setup(trigger_config=at_the_bound, constant_inputs={"count": 3})
+    create_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_invalid_inputs_rejected_before_webhook_setup():
     """Inputs the execution-input validator rejects fail the setup before any
     webhook is registered or preset created."""
@@ -380,6 +478,26 @@ async def test_invalid_inputs_rejected_before_webhook_setup():
                 agent_credentials={},
                 constant_inputs={"count": "not-a-number"},
             )
+    webhook_mock.assert_not_awaited()
+    create_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_account_at_the_preset_cap_registers_no_webhook(
+    _under_the_preset_cap,
+):
+    _under_the_preset_cap.side_effect = InvalidInputError("at most 1000 presets")
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook as webhook_mock,
+        p_create as create_mock,
+        pytest.raises(InvalidInputError, match="at most"),
+    ):
+        await _setup()
+    _under_the_preset_cap.assert_awaited_once_with(_USER)
     webhook_mock.assert_not_awaited()
     create_mock.assert_not_awaited()
 
@@ -542,6 +660,64 @@ async def test_stored_trigger_secret_still_guards_ingress(
 
 
 @pytest.mark.asyncio
+async def test_a_trigger_config_oversized_only_once_every_credential_is_counted_registers_no_webhook():
+    """The preflight has to count what create_preset will actually store —
+    the nested trigger config as one row plus EVERY agent credential, not
+    only the trigger node's — or a config oversized that way slips past it
+    and registers a webhook that create_preset then refuses."""
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    small_trigger_config = {"repo": "owner/repo"}
+    credentials_from_other_nodes = {
+        f"cred_{i}": CredentialsMetaInput(
+            id=f"cred-{i}", provider="github", type="api_key"
+        )
+        for i in range(MAX_NODE_INPUT_OUTPUT_FETCH)
+    }
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook as webhook_mock,
+        p_create as create_mock,
+        pytest.raises(InvalidInputError, match="at most"),
+    ):
+        await setup_triggered_preset(
+            user_id=_USER,
+            graph_id="graph-1",
+            graph_version=1,
+            name="My Trigger",
+            description="",
+            trigger_config=small_trigger_config,
+            agent_credentials=credentials_from_other_nodes,
+        )
+    webhook_mock.assert_not_awaited()
+    create_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_setup_prunes_the_webhook_when_create_preset_fails():
+    """create_preset can still fail after the webhook is registered (e.g. a
+    graph access change landing in between); the webhook just registered for
+    this setup must not be left dangling."""
+    p_graph, p_creds, p_webhook, _p_create, p_expert = _patches(graph=_graph())
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook as webhook_mock,
+        patch(
+            f"{_PATH}.db.create_preset",
+            new=AsyncMock(side_effect=RuntimeError("boom")),
+        ),
+        patch(f"{_PATH}._prune_dangling_webhook", new=AsyncMock()) as prune,
+        pytest.raises(RuntimeError, match="boom"),
+    ):
+        await _setup()
+    webhook_mock.assert_awaited_once()
+    prune.assert_awaited_once_with(_USER, "wh-1")
+
+
+@pytest.mark.asyncio
 async def test_a_trigger_on_someone_elses_workflow_stays_in_the_users_org():
     """The workflow can be in an org the user isn't in. A trigger they set up
     on it, and the runs it fires, stay in their own."""
@@ -611,6 +787,72 @@ def _update_patches(*, current, graph=..., webhook=..., feedback=None):
     }
     with contextlib.ExitStack() as stack:
         yield {k: stack.enter_context(p) for k, p in patchers.items()}
+
+
+@pytest.mark.asyncio
+async def test_an_oversized_trigger_update_registers_no_webhook():
+    """A nested update is one row for the trigger config and one per graph
+    input: one graph input past the bound is refused before the webhook is
+    registered, so none is left to prune."""
+    oversized = {f"input_{i}": i for i in range(MAX_NODE_INPUT_OUTPUT_FETCH)}
+    oversized["_node_input_mask_trigger"] = {"repo": "owner/repo"}
+    with _update_patches(current=_preset(webhook_id="wh-old")) as m:
+        with pytest.raises(InvalidInputError, match="at most"):
+            await update_triggered_preset(
+                user_id=_USER,
+                preset_id="preset-1",
+                inputs=oversized,
+                credentials={},
+            )
+    m["setup"].assert_not_awaited()
+    m["update"].assert_not_awaited()
+    m["prune"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_update_oversized_only_once_every_credential_is_counted_registers_no_webhook():
+    """The preflight has to count what update_preset will actually store —
+    the nested trigger config as one row plus EVERY credential, not only the
+    trigger node's — or a configuration oversized that way slips past it and
+    registers a webhook that update_preset then refuses."""
+    small_inputs = {"_node_input_mask_trigger": {"repo": "owner/repo"}}
+    credentials_from_other_nodes = {
+        f"cred_{i}": CredentialsMetaInput(
+            id=f"cred-{i}", provider="github", type="api_key"
+        )
+        for i in range(MAX_NODE_INPUT_OUTPUT_FETCH)
+    }
+    with _update_patches(current=_preset(webhook_id="wh-old")) as m:
+        with pytest.raises(InvalidInputError, match="at most"):
+            await update_triggered_preset(
+                user_id=_USER,
+                preset_id="preset-1",
+                inputs=small_inputs,
+                credentials=credentials_from_other_nodes,
+            )
+    m["setup"].assert_not_awaited()
+    m["update"].assert_not_awaited()
+    m["prune"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_update_filled_to_the_bound_is_stored():
+    """The boundary the writer allows stays writable on the update path too:
+    graph inputs plus the one nested trigger config adding up to exactly the
+    bound are re-registered and stored in full."""
+    to_the_bound = {f"input_{i}": i for i in range(MAX_NODE_INPUT_OUTPUT_FETCH - 1)}
+    to_the_bound["_node_input_mask_trigger"] = {"repo": "owner/repo"}
+    with _update_patches(current=_preset(webhook_id="wh-old")) as m:
+        await update_triggered_preset(
+            user_id=_USER,
+            preset_id="preset-1",
+            inputs=to_the_bound,
+            credentials={},
+        )
+    m["setup"].assert_awaited_once()
+    stored = m["update"].await_args.kwargs["inputs"]
+    assert len(stored) == MAX_NODE_INPUT_OUTPUT_FETCH
+    assert stored["_node_input_mask_trigger"] == {"repo": "owner/repo"}
 
 
 @pytest.mark.asyncio
@@ -1046,6 +1288,13 @@ def _trigger_graph(trigger_block_id: str, *other_nodes: Node) -> GraphModel:
         ),
         _USER,
     )
+
+
+def _pr_trigger_config_sized(total_names: int) -> dict:
+    """A valid PR-trigger config padded out to ``total_names`` names, so a test
+    can put the trigger node exactly on a bound."""
+    valid = {"repo": "owner/repo", "events": {"opened": True}}
+    return {**valid, **{f"pad_{i}": i for i in range(total_names - len(valid))}}
 
 
 @contextlib.contextmanager

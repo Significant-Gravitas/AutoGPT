@@ -49,6 +49,7 @@ from backend.util.exceptions import (
     DatabaseError,
     ExpertNotFoundError,
     GraphValidationError,
+    InvalidInputError,
     MissingConfigError,
     NotFoundError,
 )
@@ -539,13 +540,18 @@ class RunAgentTool(BaseTool):
             # after the run/schedule actually started, so a failed operation
             # (e.g. schedule validation, credential race) doesn't orphan a preset.
             if isinstance(result, ExecutionStartedResponse):
-                saved_preset_id = await self._maybe_save_preset(
-                    user_id=user_id,
-                    graph=graph,
-                    graph_credentials=graph_credentials,
-                    params=params,
-                    expert_id=session.expert_id,
-                )
+                try:
+                    saved_preset_id = await self._maybe_save_preset(
+                        user_id=user_id,
+                        graph=graph,
+                        graph_credentials=graph_credentials,
+                        params=params,
+                        expert_id=session.expert_id,
+                    )
+                except InvalidInputError as e:
+                    # The run has started; reporting an error would invite a rerun.
+                    result.message += f" The preset was not saved: {e}"
+                    saved_preset_id = None
                 if saved_preset_id:
                     result.saved_preset_id = saved_preset_id
             return result

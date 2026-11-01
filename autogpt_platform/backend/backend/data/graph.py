@@ -561,27 +561,7 @@ class GraphModel(Graph, GraphMeta):
             f"{graph_credentials_inputs}"
         )
 
-        # Warn if same-provider credentials inputs can't be combined (= bad UX)
-        graph_cred_fields = list(graph_credentials_inputs.values())
-        for i, (field, keys, _) in enumerate(graph_cred_fields):
-            for other_field, other_keys, _ in list(graph_cred_fields)[i + 1 :]:
-                if field.provider != other_field.provider:
-                    continue
-                if ProviderName.HTTP in field.provider:
-                    continue
-                # MCP credentials are intentionally split by server URL
-                if ProviderName.MCP in field.provider:
-                    continue
-
-                # If this happens, that means a block implementation probably needs
-                # to be updated.
-                logger.warning(
-                    "Multiple combined credentials fields "
-                    f"for provider {field.provider} "
-                    f"on graph #{self.id} ({self.name}); "
-                    f"fields: {field} <> {other_field};"
-                    f"keys: {keys} <> {other_keys}."
-                )
+        self._warn_uncombined_credentials_inputs(graph_credentials_inputs)
 
         # Build JSON schema directly to avoid expensive create_model + validation overhead
         properties = {}
@@ -663,6 +643,42 @@ class GraphModel(Graph, GraphMeta):
             "properties": properties,
             "required": required_fields,
         }
+
+    def _warn_uncombined_credentials_inputs(
+        self,
+        graph_credentials_inputs: dict[
+            str, tuple[CredentialsFieldInfo, set[tuple[str, str]], bool]
+        ],
+    ) -> None:
+        """Warn if same-provider credentials inputs can't be combined (= bad UX).
+
+        Inputs are grouped by provider, and each provider with more than one
+        input is warned about once.
+        """
+        by_provider: defaultdict[
+            frozenset, list[tuple[CredentialsFieldInfo, set[tuple[str, str]]]]
+        ] = defaultdict(list)
+        for field, keys, _ in graph_credentials_inputs.values():
+            by_provider[field.provider].append((field, keys))
+
+        for provider, fields in by_provider.items():
+            if len(fields) < 2:
+                continue
+            if ProviderName.HTTP in provider:
+                continue
+            # MCP credentials are intentionally split by server URL
+            if ProviderName.MCP in provider:
+                continue
+
+            # If this happens, that means a block implementation probably needs
+            # to be updated.
+            logger.warning(
+                "Multiple combined credentials fields "
+                f"for provider {provider} "
+                f"on graph #{self.id} ({self.name}); "
+                f"fields: {' <> '.join(str(field) for field, _ in fields)}; "
+                f"keys: {' <> '.join(str(keys) for _, keys in fields)}."
+            )
 
     def aggregate_credentials_inputs(
         self,

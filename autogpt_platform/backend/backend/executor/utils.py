@@ -51,6 +51,7 @@ from backend.data.execution import (
     GraphExecutionStats,
     GraphExecutionWithNodes,
     NodesInputMasks,
+    check_node_input_counts,
 )
 from backend.data.graph import GraphModel, Node
 from backend.data.model import (
@@ -516,6 +517,7 @@ async def _validate_node_input_credentials(
     """
     credential_errors: dict[str, dict[str, str]] = defaultdict(dict)
     nodes_to_skip: set[str] = set()
+    linked_inputs = _linked_inputs(graph)
     user_credentials = CredentialsSnapshot(
         lambda: get_integration_credentials_store().get_all_creds(user_id)
     )
@@ -642,7 +644,7 @@ async def _validate_node_input_credentials(
         if auto_credentials_fields:
             for _kwarg_name, info in auto_credentials_fields.items():
                 field_name = info["field_name"]
-                if _is_linked(graph, node, field_name):
+                if (node.id, field_name) in linked_inputs:
                     # An upstream block supplies the file at run time, so the
                     # stored value (possibly a leftover None) isn't what runs.
                     continue
@@ -781,12 +783,12 @@ def _is_optional_picker(input_schema: type[BlockSchema], field_name: str) -> boo
     return field is not None and type(None) in get_args(field.annotation)
 
 
-def _is_linked(graph: GraphModel, node: Node, field_name: str) -> bool:
-    """Whether a link supplies the whole input. A link into one attribute of
-    it (e.g. `spreadsheet_@_id`) can't bring the `_credentials_id`."""
-    return any(
-        link.sink_id == node.id and link.sink_name == field_name for link in graph.links
-    )
+def _linked_inputs(graph: GraphModel) -> set[tuple[str, str]]:
+    """The (node id, input name) pairs a link supplies as a whole input, built
+    once per validation so each lookup is constant time. A link into one
+    attribute of an input (e.g. `spreadsheet_@_id`) can't bring the
+    `_credentials_id`, so it doesn't count as the whole input."""
+    return {(link.sink_id, link.sink_name) for link in graph.links}
 
 
 def make_node_credentials_input_map(
@@ -1060,6 +1062,9 @@ async def validate_and_construct_node_execution_input(
         dry_run=dry_run,
         trigger_setup=trigger_setup,
     )
+    # Also enforced by create_graph_execution; here a schedule or a request is
+    # refused before anything is written.
+    check_node_input_counts(starting_nodes_input)
 
     return graph, starting_nodes_input, nodes_input_masks, nodes_to_skip
 

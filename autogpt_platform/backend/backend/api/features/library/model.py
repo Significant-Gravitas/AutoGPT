@@ -1,4 +1,5 @@
 import datetime
+import logging
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -7,6 +8,7 @@ import prisma.models
 import pydantic
 
 from backend.data.graph import GraphModel, GraphSettings, GraphTriggerInfo
+from backend.data.includes import MAX_NODE_INPUT_OUTPUT_FETCH
 from backend.data.model import (
     CredentialsMetaInput,
     GraphInput,
@@ -17,6 +19,8 @@ from backend.util.models import Pagination
 
 if TYPE_CHECKING:
     from backend.data.integrations import WebhookWithoutSecrets
+
+logger = logging.getLogger(__name__)
 
 
 NODE_INPUT_MASK_PREFIX = "_node_input_mask_"
@@ -651,6 +655,12 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
         if preset.webhookId and preset.Webhook is None:
             raise ValueError(
                 "Webhook must be included in AgentPreset query when webhookId is set"
+            )
+
+        if len(preset.InputPresets) >= MAX_NODE_INPUT_OUTPUT_FETCH:
+            logger.warning(
+                f"Preset {preset.id} InputPresets rows hit "
+                "MAX_NODE_INPUT_OUTPUT_FETCH cap; result may be truncated"
             )
 
         input_data: GraphInput = {}

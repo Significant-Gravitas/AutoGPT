@@ -101,6 +101,15 @@ async def setup_triggered_preset(
             or {}
         ),
     }
+    preset_inputs = dict(constant_inputs)
+    preset_inputs[node_input_mask_key(trigger_node.id)] = (
+        trigger_config_with_credentials
+    )
+
+    # What create_preset stores; `payload` is not a row — delivery adds it to
+    # the trigger node's mask, whose own count the validation below makes.
+    db.check_preset_input_count({**preset_inputs, **agent_credentials})
+    await db.check_preset_count(user_id)
 
     # Validate the preset's inputs the same way the executor will — regular
     # inputs as graph inputs, trigger config as the trigger node's mask — so an
@@ -155,25 +164,25 @@ async def setup_triggered_preset(
     if not new_webhook:
         raise InvalidInputError(f"Could not set up webhook: {feedback}")
 
-    preset_inputs = dict(constant_inputs)
-    preset_inputs[node_input_mask_key(trigger_node.id)] = (
-        trigger_config_with_credentials
-    )
-
-    return await db.create_preset(
-        user_id=user_id,
-        preset=models.LibraryAgentPresetCreatable(
-            graph_id=graph.id,
-            graph_version=graph.version,
-            name=name,
-            description=description,
-            inputs=preset_inputs,
-            credentials=agent_credentials,
-            is_active=True,
-        ),
-        webhook_id=new_webhook.id,
-        expert_id=expert_id,
-    )
+    try:
+        return await db.create_preset(
+            user_id=user_id,
+            preset=models.LibraryAgentPresetCreatable(
+                graph_id=graph.id,
+                graph_version=graph.version,
+                name=name,
+                description=description,
+                inputs=preset_inputs,
+                credentials=agent_credentials,
+                is_active=True,
+            ),
+            webhook_id=new_webhook.id,
+            expert_id=expert_id,
+        )
+    except Exception:
+        # Until it is attached, a webhook registered for this setup is orphaned.
+        await _prune_dangling_webhook(user_id, new_webhook.id)
+        raise
 
 
 async def update_triggered_preset(
@@ -240,6 +249,12 @@ async def update_triggered_preset(
                     or {}
                 ),
             }
+            # The stored mask overrides preset.credentials at execution, so it
+            # must carry the new credentials, not the ones the caller echoed back.
+            stored_inputs = {**graph_inputs, mask_key: trigger_config_with_credentials}
+            # What update_preset stores; `payload` is the trigger node's, not a
+            # stored row — see setup_triggered_preset.
+            db.check_preset_input_count({**stored_inputs, **credentials})
 
             # Validate as setup does, before the webhook is registered.
             try:
@@ -282,9 +297,7 @@ async def update_triggered_preset(
                 raise InvalidInputError(
                     f"Could not update trigger configuration: {feedback}"
                 )
-            # The stored mask overrides preset.credentials at execution, so it
-            # must carry the new credentials, not the ones the caller echoed back.
-            inputs = {**graph_inputs, mask_key: trigger_config_with_credentials}
+            inputs = stored_inputs
 
     try:
         updated = await db.update_preset(
