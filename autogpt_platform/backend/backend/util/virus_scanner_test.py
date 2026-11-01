@@ -461,6 +461,7 @@ async def _fake_clamd(
                         await reader.read()
                     assert held is not None
                     held.put_nowait(True)
+                    writer.close()
                     return
                 writer.write(
                     b"stream: Eicar-Test-Signature FOUND\n" if found_if else reply
