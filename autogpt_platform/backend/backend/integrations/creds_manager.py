@@ -18,6 +18,7 @@ from backend.data.model import (
 )
 from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.credentials_store import (
+    CredentialsSnapshot,
     IntegrationCredentialsStore,
     provider_matches,
 )
@@ -234,17 +235,12 @@ class IntegrationCredentialsManager:
     def cached_getter(
         self, user_id: str, allow_sdk_default: bool = False
     ) -> Callable[[str], "Coroutine[Any, Any, Credentials | None]"]:
-        all_credentials = None
+        snapshot = CredentialsSnapshot(lambda: self.store.get_all_creds(user_id))
 
         async def get_credentials(creds_id: str) -> "Credentials | None":
-            nonlocal all_credentials
             if not allow_sdk_default:
                 _refuse_sdk_default(creds_id)
-            if not all_credentials:
-                # Fetch credentials on first necessity
-                all_credentials = await self.store.get_all_creds(user_id)
-
-            credential = next((c for c in all_credentials if c.id == creds_id), None)
+            credential = await snapshot.get(creds_id)
             if not credential:
                 return None
             if (
