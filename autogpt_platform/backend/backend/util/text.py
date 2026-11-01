@@ -238,7 +238,7 @@ class TextFormatter:
                 f"Template rendering timed out after {timeout}s "
                 "(expression too complex)"
             )
-        except OverflowError as refused:
+        except (OverflowError, RecursionError) as refused:
             raise ValueError(str(refused)) from refused
         except TemplateError as e:
             raise ValueError(e) from e
@@ -253,12 +253,22 @@ def _longest_tag(template_str: str) -> int:
     is set where a model's prompt lives, so one tag could carry all of it. A
     tag that is never closed runs to the end, which is what Jinja's lexer
     reads before it gives up, so it is measured the same way.
+
+    One pass: the cursor skips an opening inside the tag just measured, so
+    no part of the template is searched twice, and the first unclosed
+    opening ends the walk. Searching from every opening instead costs one
+    scan of the tail per opening.
     """
     longest = 0
+    cursor = 0
     for opening in _JINJA_TAG.finditer(template_str):
+        if opening.start() < cursor:
+            continue
         closing = _JINJA_TAG_END.search(template_str, opening.end())
-        end = closing.end() if closing is not None else len(template_str)
-        longest = max(longest, end - opening.start())
+        if closing is None:
+            return max(longest, len(template_str) - opening.start())
+        cursor = closing.end()
+        longest = max(longest, cursor - opening.start())
     return longest
 
 

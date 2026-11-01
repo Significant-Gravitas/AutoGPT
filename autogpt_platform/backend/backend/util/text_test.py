@@ -817,6 +817,55 @@ async def test_a_filter_that_hands_its_value_back_costs_nothing(
     assert await fmt.format_string("{{ v|trim }}", {"v": "x" * 3_000}) == "x" * 3_000
 
 
+@pytest.mark.asyncio
+async def test_unclosed_tags_are_walked_once(
+    fmt: TextFormatter, monkeypatch: pytest.MonkeyPatch
+):
+    # Searching for a closing delimiter from every opening costs one scan of
+    # the tail per opening, which is quadratic in the template's size and is
+    # inside every cap. The walk stops at the first unclosed opening, so the
+    # number of searches does not grow with them; counting the searches says
+    # that without timing anything.
+    searches = 0
+    closing = text._JINJA_TAG_END
+
+    class CountingSearches:
+        def search(self, *args: object, **kwargs: object) -> object:
+            nonlocal searches
+            searches += 1
+            return closing.search(*args, **kwargs)
+
+    monkeypatch.setattr(text, "_JINJA_TAG_END", CountingSearches())
+    with pytest.raises(ValueError, match="tag too long"):
+        await fmt.format_string("{{" * 5_000 + "y" * 100_000)
+    assert searches == 1
+
+
+@pytest.mark.asyncio
+async def test_the_tag_walk_measures_what_it_did_before(fmt: TextFormatter):
+    # The cursor must not change any answer, only the work taken to reach it
+    assert text._longest_tag("") == 0
+    assert text._longest_tag("no tags here") == 0
+    assert text._longest_tag("{{ v }}") == 7
+    assert text._longest_tag("{{ v }}{% if v %}y{% endif %}") == len("{% endif %}")
+    assert text._longest_tag("a{# c #}b") == 7
+    # An opening inside the tag just measured belongs to that tag
+    assert text._longest_tag("{{ {{ v }}") == 10
+    # An unclosed opening runs to the end
+    assert text._longest_tag("ab{{ cde") == 6
+
+
+@pytest.mark.asyncio
+async def test_an_expression_too_deep_to_parse_is_the_callers_error(
+    fmt: TextFormatter,
+):
+    # Jinja's parser recurses per operator, so a nested expression inside one
+    # tag raises RecursionError while compiling. It is the caller's template,
+    # so it answers the way every other refusal does.
+    with pytest.raises(ValueError, match="recursion"):
+        await fmt.format_string("{{ " + "1+" * 2_000 + "1 }}")
+
+
 # --- A new way to build a value is classified, never allowed by omission ---
 
 # Reviewed as bounded by the length of what they are given, so the budget can
