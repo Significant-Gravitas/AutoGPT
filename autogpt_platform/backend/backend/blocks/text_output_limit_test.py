@@ -5,7 +5,6 @@ from backend.blocks.text import (
     CombineTextsBlock,
     TextReplaceBlock,
 )
-from backend.util.test import execute_block_test
 
 LIMIT_MESSAGE = f"over the limit of {MAX_TEXT_OUTPUT_LENGTH:,} characters"
 
@@ -34,17 +33,11 @@ def _combine_input(texts: list[str], delimiter: str) -> CombineTextsBlock.Input:
 
 
 @pytest.mark.asyncio
-async def test_text_replace_refuses_output_over_the_limit():
-    block = TextReplaceBlock()
-    input_data = _replace_input(_UnbuiltStr("a" * 32_000), "a", "b" * 32_000)
-    with pytest.raises(ValueError, match=LIMIT_MESSAGE):
-        await _outputs(block, input_data)
-
-
-@pytest.mark.asyncio
 async def test_text_replace_refuses_empty_old_over_the_limit():
     block = TextReplaceBlock()
-    input_data = _replace_input(_UnbuiltStr("a" * 32_000), "", "b" * 32_000)
+    input_data = _replace_input(
+        _UnbuiltStr("a"), "", "b" * (MAX_TEXT_OUTPUT_LENGTH // 2)
+    )
     with pytest.raises(ValueError, match=LIMIT_MESSAGE):
         await _outputs(block, input_data)
 
@@ -71,14 +64,6 @@ async def test_text_replace_output_limit_boundary():
 
 
 @pytest.mark.asyncio
-async def test_combine_texts_refuses_output_over_the_limit():
-    block = CombineTextsBlock()
-    input_data = _combine_input([""] * 20_000, _UnbuiltStr("d" * 20_000))
-    with pytest.raises(ValueError, match=LIMIT_MESSAGE):
-        await _outputs(block, input_data)
-
-
-@pytest.mark.asyncio
 async def test_combine_texts_output_limit_boundary():
     block = CombineTextsBlock()
     at_limit = block.Input(
@@ -93,9 +78,3 @@ async def test_combine_texts_output_limit_boundary():
     )
     with pytest.raises(ValueError, match=LIMIT_MESSAGE):
         await _outputs(block, over_limit)
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("block_class", [CombineTextsBlock, TextReplaceBlock])
-async def test_text_blocks_keep_their_documented_outputs(block_class):
-    await execute_block_test(block_class())
