@@ -631,8 +631,8 @@ class GraphModel(Graph, GraphMeta):
     ) -> None:
         """Warn if same-provider credentials inputs can't be combined (= bad UX).
 
-        Grouped by provider in one pass, so a graph with many credentials
-        inputs costs linear time, not one comparison per pair.
+        Inputs are grouped by provider, and each provider with more than one
+        input is warned about once.
         """
         by_provider: defaultdict[
             frozenset, list[tuple[CredentialsFieldInfo, set[tuple[str, str]]]]

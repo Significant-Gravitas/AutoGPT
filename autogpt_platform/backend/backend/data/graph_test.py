@@ -1314,9 +1314,8 @@ class _CountedProviders(frozenset):
     __hash__ = frozenset.__hash__
 
 
-def test_credentials_input_schema_compares_providers_linearly():
-    """Each credentials input is grouped by its provider once, not compared
-    with every other input."""
+def test_credentials_input_schema_groups_each_input_by_provider_once():
+    """Each credentials input is grouped by its provider once."""
     count = 300
     inputs = {
         f"provider_{i}_credentials": (

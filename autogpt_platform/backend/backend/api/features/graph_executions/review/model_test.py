@@ -66,8 +66,7 @@ class _CountedId(str):
 
 
 def test_duplicate_review_ids_are_found_in_one_pass():
-    """Finding the repeated id costs one look per review, not one scan of
-    the whole list per distinct id."""
+    """The repeated id is found with each review id looked at once."""
     count = 999
     ids = [_CountedId(f"exec-{i}") for i in range(count)] + [_CountedId("exec-0")]
     reviews = [ReviewItem.model_construct(node_exec_id=i, approved=True) for i in ids]

@@ -1956,9 +1956,8 @@ class _CountedLinks(list):
 async def test_validate_node_input_credentials_reads_each_link_once(
     mocker: MockerFixture,
 ):
-    """Whether a picker is fed by a link is looked up, not found by reading
-    every link again for each node, so validating a large graph stays linear
-    in its size."""
+    """Whether a picker is fed by a link is looked up in an index built
+    from the graph's links once."""
     from backend.executor.utils import _validate_node_input_credentials
 
     count = 300
