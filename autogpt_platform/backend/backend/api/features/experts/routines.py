@@ -39,7 +39,7 @@ import prisma.types
 from apscheduler.triggers.cron import CronTrigger
 from pydantic import ValidationError
 
-from backend.api.features.experts.models import ExpertRoutine
+from backend.api.features.experts.models import MAX_ROUTINE_CRONS, ExpertRoutine
 from backend.api.features.experts.routine_jobs import (
     create_routine_schedules,
     delete_routine_schedules,
@@ -232,10 +232,14 @@ async def enable_routine(
     # Resolved on every path, so an ``H`` that reaches here from the template
     # or straight back from the model never gets as far as APScheduler, which
     # has no idea what it means.
-    resolved_crons = [
-        spread_cron(cron, seed=f"{user_id}:{row.key or row.id}:{index}")
-        for index, cron in enumerate(source_crons)
-    ]
+    _check_cron_count(source_crons)
+    # Each distinct cron is one scheduler job; a repeated one adds a job, not a run.
+    resolved_crons = list(
+        dict.fromkeys(
+            spread_cron(cron, seed=f"{user_id}:{row.key or row.id}:{index}")
+            for index, cron in enumerate(source_crons)
+        )
+    )
     if bool(resolved_crons) == (resolved_run_at is not None):
         raise ValueError(
             "A routine runs either on a cadence or once at a time, not both "
@@ -382,6 +386,7 @@ async def create_routine(
         )
     if run_at is not None and run_at <= datetime.now(timezone.utc):
         raise ValueError("That time has already passed; give a future one.")
+    _check_cron_count(crons or [])
     mode = _session_mode(session_mode or "THREAD")
     data: prisma.types.ExpertRoutineCreateInput = {
         "title": title.strip(),
@@ -509,3 +514,10 @@ async def _owned_routine(
     if row is None:
         raise RoutineNotFoundError(routine_id)
     return row
+
+
+def _check_cron_count(crons: list[str]) -> None:
+    if len(crons) > MAX_ROUTINE_CRONS:
+        raise ValueError(
+            f"A routine can have at most {MAX_ROUTINE_CRONS} repeat times."
+        )

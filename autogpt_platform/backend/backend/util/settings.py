@@ -128,6 +128,16 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum number of workers to use for graph execution.",
     )
 
+    max_graph_workers_per_user: int = Field(
+        default=5,
+        ge=1,
+        le=1000,
+        description=(
+            "How many of an executor's graph workers one user's top-level runs "
+            "may hold at once; always kept below `num_graph_workers`."
+        ),
+    )
+
     requeue_by_republishing: bool = Field(
         default=True,
         description="Send rate-limited messages to back of queue by republishing instead of front requeue to prevent blocking other users.",
@@ -665,6 +675,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     scheduler_db_pool_size: int = Field(
         default=3,
         description="The pool size for the scheduler database connection pool",
+    )
+
+    max_schedules_per_user: int = Field(
+        default=200,
+        ge=1,
+        description="How many active schedules one user may hold on the scheduler.",
     )
 
     schedule_read_timeout_seconds: float = Field(

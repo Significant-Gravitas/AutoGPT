@@ -40,6 +40,7 @@ from backend.executor.scheduler import (
     _MAX_PLAN_LOOKUP_RETRIES,
     _MAX_USAGE_WAITS,
     _USAGE_WAIT_SPREAD_SECONDS,
+    MAX_CRON_LENGTH,
     CopilotTurnJobArgs,
     CopilotTurnJobInfo,
     GraphExecutionJobArgs,
@@ -143,6 +144,29 @@ def test_build_trigger_requires_exactly_one_of_cron_or_run_at():
 def test_build_trigger_cron_returns_crontrigger():
     trigger = _build_trigger(cron="0 9 * * 1", run_at=None, user_timezone="UTC")
     assert isinstance(trigger, CronTrigger)
+
+
+def test_build_trigger_accepts_the_rarest_cron_and_leaves_it_open_ended():
+    # Feb 29 on a Monday: decades between fires, but it does fire.
+    trigger = _build_trigger(cron="0 0 29 2 1", run_at=None, user_timezone="UTC")
+    assert isinstance(trigger, CronTrigger)
+    assert trigger.end_date is None
+
+
+@pytest.mark.parametrize("cron", ["0 0 30 2 *", "0 0 31 4,6,9,11 *"])
+def test_build_trigger_refuses_a_cron_that_never_fires(cron: str):
+    with pytest.raises(ValueError, match="never fires"):
+        _build_trigger(cron=cron, run_at=None, user_timezone="UTC")
+
+
+def test_build_trigger_refuses_an_overlong_cron_before_parsing_it():
+    cron = "0 9 * * *" + " " * MAX_CRON_LENGTH
+    with (
+        patch.object(CronTrigger, "from_crontab") as parse,
+        pytest.raises(ValueError, match="too long"),
+    ):
+        _build_trigger(cron=cron, run_at=None, user_timezone="UTC")
+    parse.assert_not_called()
 
 
 def test_build_trigger_run_at_returns_datetrigger():

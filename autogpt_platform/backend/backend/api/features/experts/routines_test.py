@@ -7,13 +7,20 @@ ship unattended standing work fails in a fast test rather than on someone's
 account.
 """
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import prisma.enums
+import pytest
 from apscheduler.triggers.cron import CronTrigger
 
+from backend.api.features.experts.models import MAX_ROUTINE_CRONS
 from backend.api.features.experts.routine_jobs import spread_cron
 from backend.api.features.experts.routines import (
     UNREADABLE_PIN,
     _credential_pins,
     _session_mode,
+    create_routine,
+    enable_routine,
 )
 from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.permissions import (
@@ -311,3 +318,82 @@ async def test_an_unreadable_pin_stops_the_step_instead_of_switching_accounts():
     assert usable == []
     assert error.error == "pinned_credential_missing"
     assert UNREADABLE_PIN.title in error.message
+
+
+def test_roster_routines_fit_the_repeat_limit(real_roster):
+    # enable_routine refuses more repeat times than this, so a roster routine
+    # over it could never be switched on.
+    for entry in real_roster:
+        for routine in entry["routines"]:
+            assert len(routine["crons"]) <= MAX_ROUTINE_CRONS, (
+                entry["name"],
+                routine["key"],
+            )
+
+
+async def test_create_routine_refuses_more_repeat_times_than_the_limit():
+    with patch(f"{_ROUTINES}._owned_owner", AsyncMock()):
+        with pytest.raises(ValueError, match="at most"):
+            await create_routine(
+                "user-1",
+                None,
+                title="Pulse",
+                prompt="Check in",
+                crons=["0 9 * * *"] * (MAX_ROUTINE_CRONS + 1),
+            )
+
+
+async def test_enable_routine_refuses_more_repeat_times_than_the_limit():
+    schedules = AsyncMock()
+    with (
+        patch(f"{_ROUTINES}._owned_routine", AsyncMock(return_value=_row())),
+        patch(f"{_ROUTINES}.get_user_by_id", AsyncMock(return_value=None)),
+        patch(f"{_ROUTINES}.create_routine_schedules", schedules),
+    ):
+        with pytest.raises(ValueError, match="at most"):
+            await enable_routine(
+                "user-1",
+                None,
+                "routine-1",
+                crons=[f"{minute} 9 * * *" for minute in range(MAX_ROUTINE_CRONS + 1)],
+            )
+    schedules.assert_not_awaited()
+
+
+async def test_enable_routine_schedules_each_distinct_cron_once():
+    schedules = AsyncMock(side_effect=_StopAfterScheduling)
+    with (
+        patch(f"{_ROUTINES}._owned_routine", AsyncMock(return_value=_row())),
+        patch(f"{_ROUTINES}.get_user_by_id", AsyncMock(return_value=None)),
+        patch(f"{_ROUTINES}.create_routine_schedules", schedules),
+    ):
+        with pytest.raises(_StopAfterScheduling):
+            await enable_routine(
+                "user-1",
+                None,
+                "routine-1",
+                crons=["0 9 * * *", "0 9 * * *", "0 13 * * *", "0 9 * * *"],
+            )
+    assert schedules.await_args.kwargs["crons"] == ["0 9 * * *", "0 13 * * *"]
+
+
+_ROUTINES = "backend.api.features.experts.routines"
+
+
+class _StopAfterScheduling(Exception):
+    pass
+
+
+def _row() -> MagicMock:
+    return MagicMock(
+        prompt="Check in",
+        asks=[],
+        customizedAt=None,
+        crons=[],
+        runAt=None,
+        key=None,
+        id="routine-1",
+        title="Pulse",
+        sessionMode=prisma.enums.ExpertRoutineSession.FRESH,
+        sessionId=None,
+    )

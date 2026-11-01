@@ -2764,6 +2764,11 @@ def _normalize_cron_day_of_week(cron: str) -> str:
     return " ".join(parts)
 
 
+MAX_CRON_LENGTH = 200
+# The rarest cron that fires at all (Feb 29 on one weekday) can go 40 years between runs.
+_MAX_CRON_FIRE_GAP = timedelta(days=50 * 366)
+
+
 def _build_trigger(
     *, cron: str | None, run_at: datetime | None, user_timezone: str
 ) -> Union[CronTrigger, DateTrigger]:
@@ -2771,13 +2776,34 @@ def _build_trigger(
         raise ValueError("Exactly one of `cron` or `run_at` must be provided")
     try:
         if cron is not None:
-            return CronTrigger.from_crontab(
-                _normalize_cron_day_of_week(cron), timezone=user_timezone
-            )
+            return _build_cron_trigger(cron, user_timezone)
         return DateTrigger(run_date=run_at, timezone=user_timezone)
     except ZoneInfoNotFoundError as e:
         # A KeyError, which the API would turn into a 500, not a 400.
         raise ValueError(f"Unknown timezone {user_timezone!r}") from e
+
+
+def _build_cron_trigger(cron: str, user_timezone: str) -> CronTrigger:
+    if len(cron) > MAX_CRON_LENGTH:
+        raise ValueError(
+            f"Cron expression is too long (max {MAX_CRON_LENGTH} characters)"
+        )
+    trigger = CronTrigger.from_crontab(
+        _normalize_cron_day_of_week(cron), timezone=user_timezone
+    )
+    # A cron with no fire time would be stored and never run.
+    if not _cron_fires_within(trigger, _MAX_CRON_FIRE_GAP):
+        raise ValueError(f"Cron expression {cron!r} never fires")
+    return trigger
+
+
+def _cron_fires_within(trigger: CronTrigger, horizon: timedelta) -> bool:
+    now = datetime.now(trigger.timezone)
+    trigger.end_date = now + horizon
+    try:
+        return trigger.get_next_fire_time(None, now) is not None
+    finally:
+        trigger.end_date = None
 
 
 def _updated_graph_job_args(
@@ -3330,6 +3356,7 @@ class Scheduler(AppService):
         ``id=schedule_id`` so the row is addressable by our generated UUID).
         """
         assert job_args.schedule_id is not None
+        self._check_schedule_capacity(job_args)
         job = self.scheduler.add_job(
             dispatch_func,
             kwargs=job_args.model_dump(mode="json"),
@@ -3348,6 +3375,45 @@ class Scheduler(AppService):
         # ``_JOBS_CACHE_TTL_S`` seconds for the cached list to expire.
         self._invalidate_jobs_cache()
         return job
+
+    def _check_schedule_capacity(
+        self, job_args: GraphExecutionJobArgs | CopilotTurnJobArgs
+    ) -> None:
+        """Refuse a new schedule once its owner holds the per-user limit.
+        Replacing a job under its own id adds nothing and is always allowed."""
+        assert job_args.schedule_id is not None
+        if (
+            self.scheduler.get_job(
+                job_args.schedule_id, jobstore=Jobstores.EXECUTION.value
+            )
+            is not None
+        ):
+            return
+        limit = config.max_schedules_per_user
+        held = self._active_schedule_count(job_args.user_id)
+        if held >= limit:
+            raise ValueError(
+                f"You already have {held} active schedules, the most one "
+                f"account can have ({limit}). Delete one to add another."
+            )
+
+    def _active_schedule_count(self, user_id: str) -> int:
+        if not self._persistent_jobstores:
+            # Not started through run_service, so there is no filtered scan.
+            jobs = [
+                job
+                for job in self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value)
+                if job.next_run_time is not None
+            ]
+        else:
+            jobs = self._get_schedule_jobs(
+                user_id=user_id,
+                graph_id=None,
+                session_id=None,
+                kind=None,
+                organization_id=None,
+            )
+        return sum(job.kwargs.get("user_id") == user_id for job in jobs)
 
     @expose
     def add_graph_execution_schedule(

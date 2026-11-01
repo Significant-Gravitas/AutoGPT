@@ -1809,6 +1809,8 @@ class ExecutionManager(AppProcess):
         super().__init__()
         self.pool_size = settings.config.num_graph_workers
         self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
+        # Owner of each active top-level run, for the per-user worker share.
+        self._root_run_owners: dict[str, str] = {}
         self.executor_id = str(uuid.uuid4())
 
         self._executor = None
@@ -2101,6 +2103,15 @@ class ExecutionManager(AppProcess):
             + (f", parent={parent_exec_id}" if parent_exec_id else "")
         )
 
+        is_root_run = root_exec_id is None or root_exec_id == graph_exec_id
+        if is_root_run and not self._has_worker_share_for(user_id):
+            logger.info(
+                f"[{self.service_name}] User {user_id} holds its share of workers; "
+                f"requeueing {graph_exec_id}"
+            )
+            _ack_message(reject=True, requeue=True)
+            return
+
         # Check if root execution is already terminated (prevents orphaned child executions)
         if root_exec_id and root_exec_id != graph_exec_id:
             parent_exec = get_db_client().get_graph_execution_meta(
@@ -2189,6 +2200,8 @@ class ExecutionManager(AppProcess):
                 execute_graph, graph_exec_entry, cancel_event, cluster_lock
             )
             self.active_graph_runs[graph_exec_id] = (future, cancel_event)
+            if is_root_run:
+                self._root_run_owners[graph_exec_id] = user_id
         except Exception as e:
             logger.warning(
                 f"[{self.service_name}] Failed to setup execution for {graph_exec_id}: {type(e).__name__}: {e}"
@@ -2237,9 +2250,22 @@ class ExecutionManager(AppProcess):
         for geid in completed_runs:
             logger.info(f"[{self.service_name}] ✅ Cleaned up completed run {geid}")
             self.active_graph_runs.pop(geid, None)
+            self._root_run_owners.pop(geid, None)
 
         self._update_prompt_metrics()
         return completed_runs
+
+    def _has_worker_share_for(self, user_id: str) -> bool:
+        """Whether *user_id* may start another top-level run on this executor.
+
+        Sub-runs are not counted: their parent holds a worker and waits on
+        them, so refusing one could leave the parent waiting for good.
+        """
+        share = max(
+            1, min(settings.config.max_graph_workers_per_user, self.pool_size - 1)
+        )
+        held = sum(owner == user_id for owner in self._root_run_owners.values())
+        return held < share
 
     def _update_prompt_metrics(self):
         active_count = len(self.active_graph_runs)
