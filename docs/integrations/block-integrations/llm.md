@@ -549,7 +549,7 @@ The block supports conversation continuation through three mechanisms:
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | The task or instruction for Claude Code to execute. Claude Code can create files, install packages, run commands, and perform complex coding tasks. | str | No |
-| timeout | Sandbox timeout in seconds. Claude Code tasks can take a while, so set this appropriately for your task complexity. Note: This only applies when creating a new sandbox. When reconnecting to an existing sandbox via sandbox_id, the original timeout is retained. | int | No |
+| timeout | Sandbox timeout in seconds. Claude Code tasks can take a while, so set this appropriately for your task complexity. When reconnecting via sandbox_id, the sandbox runs for at least this long. | int | No |
 | setup_commands | Optional shell commands to run before executing Claude Code. Useful for installing dependencies or setting up the environment. | List[str] | No |
 | working_directory | Working directory for Claude Code to operate in. | str | No |
 | session_id | Session ID to resume a previous conversation. Leave empty for a new conversation. Use the session_id from a previous run to continue that conversation. | str | No |

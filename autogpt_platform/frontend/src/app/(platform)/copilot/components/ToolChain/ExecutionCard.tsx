@@ -8,6 +8,7 @@ import {
 import Link from "next/link";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { CARD, HALF, StatusPill } from "./ResultCards";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   name: string;
@@ -34,9 +35,13 @@ export function ExecutionCard({ name, status, href, variant = "run" }: Props) {
           />
         )}
       </div>
-      <p className="min-w-0 flex-1 truncate text-body-sm font-medium leading-inherit text-foreground-emphasis">
+      <Text
+        variant="body-sm-medium-inherit"
+        tone="emphasis"
+        className="min-w-0 flex-1 truncate"
+      >
         {name}
-      </p>
+      </Text>
       {status && <StatusPill status={status} />}
       {href && (
         <Link

@@ -62,7 +62,7 @@ export function PaywallModal() {
               size="small"
               onClick={handleLogout}
               leftIcon={<Icon icon={Logout03Icon} size={16} />}
-              className="bg-white/90 text-zinc-500 hover:text-zinc-700"
+              className="bg-surface/90 text-foreground-tertiary hover:text-foreground-body"
             >
               Log out
             </Button>
@@ -82,14 +82,14 @@ export function PaywallModal() {
 
               <div className="relative mt-2 w-full">
                 {isLoading || trial.isLoading ? (
-                  <div className="grid w-full grid-cols-1 gap-4 px-[1rem] md:grid-cols-3 md:px-0">
+                  <div className="grid w-full grid-cols-1 gap-4 px-4 md:grid-cols-3 md:px-0">
                     <Skeleton className="h-[26rem] rounded-2xl" />
                     <Skeleton className="h-[26rem] rounded-2xl" />
                     <Skeleton className="h-[26rem] rounded-2xl" />
                   </div>
                 ) : plans.length === 0 ? (
                   <div className="flex flex-col items-center gap-3">
-                    <p className="text-center text-sm text-zinc-500">
+                    <p className="text-center text-sm text-foreground-tertiary">
                       Subscriptions are temporarily unavailable. Please try
                       again shortly.
                     </p>

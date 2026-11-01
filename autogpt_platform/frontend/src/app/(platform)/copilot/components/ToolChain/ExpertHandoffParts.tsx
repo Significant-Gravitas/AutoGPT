@@ -56,10 +56,10 @@ export function HandoffProposal({
       />
       <div className="min-w-0 flex-1">
         <div key={stepKey} className={stepClassName}>
-          <p className="text-body font-medium leading-snug text-foreground-emphasis [overflow-wrap:anywhere]">
+          <p className="text-body leading-snug font-medium [overflow-wrap:anywhere] text-foreground-emphasis">
             Hire {name} to take on {task.title}?
           </p>
-          <p className="mt-0.5 text-sm text-foreground-tertiary [overflow-wrap:anywhere]">
+          <p className="mt-0.5 text-sm [overflow-wrap:anywhere] text-foreground-tertiary">
             {role
               ? `${role} · works on it in their own chat`
               : "Works on it in their own chat"}
@@ -115,7 +115,7 @@ function HandoffDetails({ name, about, task, onShowProfile }: DetailsProps) {
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen(!open)}
-        className="inline-flex items-center gap-1 rounded text-xs font-medium text-foreground-secondary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus"
+        className="inline-flex items-center gap-1 rounded text-xs font-medium text-foreground-secondary underline-offset-2 hover:underline focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none"
       >
         What {name} will get
         <Icon
@@ -133,11 +133,11 @@ function HandoffDetails({ name, about, task, onShowProfile }: DetailsProps) {
         hidden={!open}
         className={cn("mt-2 flex-col gap-2", open ? "flex" : "hidden")}
       >
-        <p className="whitespace-pre-line rounded-2xl bg-surface-muted px-3 py-2.5 text-sm text-foreground-tertiary [overflow-wrap:anywhere]">
+        <p className="rounded-2xl bg-surface-muted px-3 py-2.5 text-sm [overflow-wrap:anywhere] whitespace-pre-line text-foreground-tertiary">
           {task.brief}
         </p>
         {about && (
-          <p className="text-xs text-foreground-subtle [overflow-wrap:anywhere]">
+          <p className="text-xs [overflow-wrap:anywhere] text-foreground-subtle">
             About {name}: {about}
           </p>
         )}
@@ -145,7 +145,7 @@ function HandoffDetails({ name, about, task, onShowProfile }: DetailsProps) {
           <button
             type="button"
             onClick={onShowProfile}
-            className="self-start rounded text-xs font-medium text-foreground-secondary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus"
+            className="self-start rounded text-xs font-medium text-foreground-secondary underline-offset-2 hover:underline focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none"
           >
             See {name}&apos;s full profile
           </button>

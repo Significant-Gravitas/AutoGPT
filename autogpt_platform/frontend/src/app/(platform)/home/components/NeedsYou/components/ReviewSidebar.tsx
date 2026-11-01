@@ -30,7 +30,7 @@ export function ReviewSidebar({ carousel, sheet = false }: Props) {
       aria-label={sheet ? "All held calls" : "Held calls"}
       className="flex min-h-0 w-full flex-col"
     >
-      <div className="flex items-baseline gap-2 px-4 pb-2 pt-4">
+      <div className="flex items-baseline gap-2 px-4 pt-4 pb-2">
         <Text variant="body-medium" as="h2">
           To review
         </Text>
@@ -54,7 +54,7 @@ export function ReviewSidebar({ carousel, sheet = false }: Props) {
                 aria-current={isCurrent ? "true" : undefined}
                 onClick={() => carousel.jump(item.id)}
                 className={cn(
-                  "flex w-full items-start gap-2.5 border-l-2 py-2 pl-3.5 pr-4 text-left text-sm hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-border-strong",
+                  "flex w-full items-start gap-2.5 border-l-2 py-2 pr-4 pl-3.5 text-left text-sm hover:bg-surface focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:outline-none focus-visible:ring-inset",
                   isCurrent
                     ? "border-action-hover bg-surface"
                     : "border-transparent",
@@ -73,6 +73,7 @@ export function ReviewSidebar({ carousel, sheet = false }: Props) {
                       <Icon
                         icon={outcome[0]}
                         size={14}
+                        // oxlint-disable-next-line design-system/require-static-classes -- the outcome map holds whole, static class strings
                         className={cn("shrink-0", outcome[1])}
                         aria-hidden
                       />
@@ -86,10 +87,7 @@ export function ReviewSidebar({ carousel, sheet = false }: Props) {
                   </span>
                 </span>
                 {carousel.isNew(item.id) ? (
-                  <span
-                    // TODO(tokens): no fitting role for text-blue-700 #1D4ED8; #1D4ED8 is sidebar-primary, a dark-theme sidebar fill (light #18181B)
-                    className="shrink-0 rounded bg-info-surface px-1.5 text-xs font-medium text-blue-700"
-                  >
+                  <span className="shrink-0 rounded bg-info-surface px-1.5 text-xs font-medium text-info-foreground">
                     new
                   </span>
                 ) : null}

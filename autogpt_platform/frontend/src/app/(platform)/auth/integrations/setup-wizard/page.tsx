@@ -252,7 +252,7 @@ export default function IntegrationSetupWizardPage() {
     <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
       <AuthCard title="Connect Your Accounts">
         <div className="flex w-full flex-col gap-6">
-          <Text variant="body" className="text-center text-slate-600">
+          <Text variant="body" tone="secondary" className="text-center">
             <strong>{appInfo.name}</strong> is requesting you to connect the
             following integrations to your AutoGPT account.
           </Text>
@@ -266,7 +266,7 @@ export default function IntegrationSetupWizardPage() {
               return (
                 <div
                   key={config.provider}
-                  className="relative rounded-xl border border-slate-200 bg-white p-4"
+                  className="relative rounded-xl border border-border-base bg-surface p-4"
                 >
                   <div className="mb-4 flex items-center gap-2">
                     <div className="relative size-8">
@@ -285,17 +285,17 @@ export default function IntegrationSetupWizardPage() {
                       <Icon
                         icon={Tick02Icon}
                         size={20}
-                        className="text-green-500"
+                        className="text-success"
                       />
                     ) : (
                       <Icon
                         icon={CircleIcon}
                         size={20}
-                        className="text-slate-300"
+                        className="text-foreground-disabled"
                       />
                     )}
                     {isSelected && (
-                      <Text variant="small" className="text-green-600">
+                      <Text variant="small" tone="success">
                         Connected
                       </Text>
                     )}
@@ -337,12 +337,12 @@ export default function IntegrationSetupWizardPage() {
           </div>
 
           {/* Link to integrations settings */}
-          <Text variant="small" className="text-center text-slate-500">
+          <Text variant="small" tone="secondary" className="text-center">
             You can view and manage all your integrations in your{" "}
             <Link
               href="/settings/integrations"
               target="_blank"
-              className="text-purple-600 underline hover:text-purple-800"
+              className="text-brand-hover underline hover:text-accent-strong"
             >
               integration settings
             </Link>

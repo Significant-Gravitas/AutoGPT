@@ -20,10 +20,7 @@ export default function ExternalWorkflowTab({
 }: ExternalWorkflowTabProps) {
   return (
     <TabsLineContent value="platform">
-      <p
-        // TODO(tokens): no exact role for text-neutral-500 (#737373)
-        className="mb-4 text-sm text-neutral-500"
-      >
+      <p className="mb-4 text-sm text-foreground-tertiary">
         Upload a workflow exported from n8n, Make.com, Zapier, or any other
         platform. Otto will convert it into an AutoGPT workflow for you.
       </p>
@@ -35,7 +32,7 @@ export default function ExternalWorkflowTab({
         placeholder="Workflow file (n8n, Make.com, Zapier, ...)"
         maxFileSize={10 * 1024 * 1024}
         showStorageNote={false}
-        className="mb-4 mt-2"
+        className="mt-2 mb-4"
       />
       <Button
         type="button"
@@ -46,7 +43,7 @@ export default function ExternalWorkflowTab({
       >
         {importWorkflow.submittingMode === "file" ? (
           <div className="flex items-center gap-2">
-            <LoadingSpinner size="small" className="text-action-foreground" />
+            <LoadingSpinner size="small" />
             <span>Importing...</span>
           </div>
         ) : (
@@ -55,20 +52,11 @@ export default function ExternalWorkflowTab({
       </Button>
 
       <div className="my-5 flex items-center gap-3">
-        <div
-          // TODO(tokens): no exact role for bg-neutral-200 (#E5E5E5)
-          className="h-px flex-1 bg-neutral-200"
-        />
-        <span
-          // TODO(tokens): no exact role for text-neutral-400 (#A3A3A3)
-          className="text-xs text-neutral-400"
-        >
+        <div className="h-px flex-1 bg-surface-active" />
+        <span className="text-xs text-foreground-subtle">
           or import from URL
         </span>
-        <div
-          // TODO(tokens): no exact role for bg-neutral-200 (#E5E5E5)
-          className="h-px flex-1 bg-neutral-200"
-        />
+        <div className="h-px flex-1 bg-surface-active" />
       </div>
 
       <div className="mb-3 flex flex-wrap gap-2">
@@ -78,8 +66,7 @@ export default function ExternalWorkflowTab({
             type="button"
             disabled={importWorkflow.isSubmitting}
             onClick={() => importWorkflow.setUrlValue(p.url)}
-            // TODO(tokens): no exact role for border-neutral-200 (#E5E5E5), text-neutral-600 (#525252), hover:border-purple-400 (#925CF7); no fitting role for hover:text-purple-600 #6C2EDF; #6C2EDF is brand-hover, a hover fill
-            className="rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-600 hover:border-purple-400 hover:text-purple-600 disabled:opacity-50"
+            className="rounded-full border border-border-base px-3 py-1 text-xs text-foreground-secondary hover:border-brand hover:text-brand-hover disabled:opacity-50"
           >
             {p.label}
           </button>
@@ -91,7 +78,7 @@ export default function ExternalWorkflowTab({
         onChange={(e) => importWorkflow.setUrlValue(e.target.value)}
         label="Workflow URL"
         placeholder="https://n8n.io/workflows/1234"
-        className="mb-4 w-full rounded-[10px]"
+        className="mb-4 w-full"
       />
       <Button
         type="button"
@@ -102,7 +89,7 @@ export default function ExternalWorkflowTab({
       >
         {importWorkflow.submittingMode === "url" ? (
           <div className="flex items-center gap-2">
-            <LoadingSpinner size="small" className="text-action-foreground" />
+            <LoadingSpinner size="small" />
             <span>Importing...</span>
           </div>
         ) : (

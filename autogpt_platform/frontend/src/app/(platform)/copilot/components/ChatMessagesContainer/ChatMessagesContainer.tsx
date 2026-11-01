@@ -18,6 +18,7 @@ import { UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useInsertionEffect, useLayoutEffect, useRef } from "react";
 import { useStickToBottomContext } from "use-stick-to-bottom";
 import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
+import { TurnEndAnnouncer } from "../JobStatsBar/TurnEndAnnouncer";
 import { useElapsedAnchor } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
@@ -70,6 +71,9 @@ interface Props {
   error: Error | undefined;
   isLoading: boolean;
   isRestoringActiveSession?: boolean;
+  /** The stream ended but the turn may not have: a reconnect is scheduled
+   *  or the follow-up turn check is still running. */
+  isTurnSettling?: boolean;
   restoreStatusMessage?: string | null;
   /** ISO start time of the active backend turn. Seeds the elapsed-time
    *  counter so restored turns show honest age instead of counting from
@@ -248,8 +252,7 @@ export function LoadMoreSentinel({
       {isLoading ? (
         <LoadingSpinner
           data-testid="load-more-spinner"
-          // TODO(tokens): no exact role for text-neutral-400
-          className="h-5 w-5 text-neutral-400"
+          className="h-5 w-5 text-foreground-subtle"
         />
       ) : (
         hasMore && (
@@ -272,6 +275,7 @@ export function ChatMessagesContainer({
   error,
   isLoading,
   isRestoringActiveSession,
+  isTurnSettling,
   restoreStatusMessage,
   activeStreamStartedAt,
   sessionID,
@@ -403,6 +407,12 @@ export function ChatMessagesContainer({
   })();
 
   const isActivelyStreaming = status === "streaming" || status === "submitted";
+  const isTurnBusy =
+    isActivelyStreaming || !!isRestoringActiveSession || !!isTurnSettling;
+  // A host that doesn't report reconnects and finish probes can't tell a
+  // settled turn from a pause between them, so it never claims "Done".
+  const isTurnSettled =
+    isTurnSettling !== undefined && !isTurnBusy && status !== "error" && !error;
   useCostReplyMoment({
     messages,
     isStreaming: isActivelyStreaming,
@@ -458,10 +468,7 @@ export function ChatMessagesContainer({
   function renderRow({ message, rowIndex }: TranscriptRow) {
     if (getRowHeldCallKind(message) === "answered") {
       return (
-        <Text
-          variant="small"
-          className="py-1 text-center text-foreground-tertiary"
-        >
+        <Text tone="muted" variant="small" className="py-1 text-center">
           {answeredLabel(renderRows, rowIndex)}
         </Text>
       );
@@ -488,6 +495,9 @@ export function ChatMessagesContainer({
         isLastAssistant={isLastAssistant}
         isCurrentlyStreaming={isCurrentlyStreaming}
         isLastInTurn={isLastInTurn}
+        isLatestTurn={isLastRow}
+        isTurnSettled={!isLastRow || isTurnSettled}
+        isTurnSettling={isLastRow && isTurnBusy}
         turnStat={turnStats?.get(message.id)}
         turnMessages={
           showsTurnStats
@@ -539,7 +549,7 @@ export function ChatMessagesContainer({
       >
         <ConversationContent
           className={cn(
-            "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-4 pb-4 pt-14 md:px-6",
+            "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-4 pt-14 pb-4 md:px-6",
             isCompact && "gap-4 px-4 pt-4",
             showThreadHeader && floatingControls && "max-lg:pt-20",
             !showThreadHeader && "pt-4",
@@ -563,10 +573,7 @@ export function ChatMessagesContainer({
             !isRestoringActiveSession &&
             !showPendingSend && (
               <div className="flex flex-1 items-center justify-center">
-                <LoadingSpinner
-                  // TODO(tokens): no exact role for text-neutral-600
-                  className="text-neutral-600"
-                />
+                <LoadingSpinner className="text-foreground-secondary" />
               </div>
             )}
           {transcriptRows.length > 0 && (
@@ -587,7 +594,7 @@ export function ChatMessagesContainer({
           {showIndicator && lastMessage?.role !== "assistant" && (
             <Message
               from="assistant"
-              className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+              className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
             >
               <MessageContent className="text-body-lg leading-relaxed">
                 {indicator}
@@ -596,36 +603,21 @@ export function ChatMessagesContainer({
           )}
           {!readOnly && isRestoringActiveSession && (
             <Message from="assistant">
-              <MessageContent
-                // TODO(tokens): no exact role for text-slate-900
-                className="text-body-lg leading-relaxed text-slate-900"
-              >
+              <MessageContent className="text-body-lg leading-relaxed text-foreground-strong">
                 {showRestoreFallback ? (
-                  <div
-                    // TODO(tokens): no exact role for text-slate-500
-                    className="flex flex-col gap-1 text-sm text-slate-500"
-                  >
+                  <div className="flex flex-col gap-1 text-sm text-foreground-tertiary">
                     <ThinkingIndicator
                       active
                       startedAtMs={restoreClock.startedAtMs}
                       statusMessage={restoreStatusMessage ?? "Reconnecting…"}
                     />
-                    <span
-                      // TODO(tokens): no exact role for text-slate-400
-                      className="pl-6 text-xs text-slate-400"
-                    >
+                    <span className="pl-6 text-xs text-foreground-subtle">
                       Still syncing the latest progress.
                     </span>
                   </div>
                 ) : (
-                  <div
-                    // TODO(tokens): no exact role for text-slate-500
-                    className="flex items-center gap-2 text-sm text-slate-500"
-                  >
-                    <LoadingSpinner
-                      // TODO(tokens): no exact role for text-neutral-500
-                      className="h-4 w-4 text-neutral-500"
-                    />
+                  <div className="flex items-center gap-2 text-sm text-foreground-tertiary">
+                    <LoadingSpinner className="h-4 w-4 text-foreground-tertiary" />
                     <span>Retrieving latest messages</span>
                   </div>
                 )}
@@ -658,18 +650,27 @@ export function ChatMessagesContainer({
                   <span>
                     <CredentialMentionText text={msg} />
                   </span>
-                  <span
-                    // TODO(tokens): no exact role for text-slate-500
-                    className="flex items-center gap-1 text-xs text-slate-500"
+                  <Text
+                    variant="small-tight"
+                    as="span"
+                    tone="muted"
+                    className="flex items-center gap-1"
                   >
                     <Icon icon={Clock01Icon} className="size-3" />
                     Queued
-                  </span>
+                  </Text>
                 </MessageContent>
               </Message>
             ))}
           {!readOnly && error && !lastAssistantHasErrorMarker && (
             <ChatErrorBanner error={error} />
+          )}
+          {!readOnly && (
+            <TurnEndAnnouncer
+              isBusy={isTurnBusy}
+              isSettled={isTurnSettled}
+              messages={messages}
+            />
           )}
           <TailSpacer
             messageID={lastUserMessageID}

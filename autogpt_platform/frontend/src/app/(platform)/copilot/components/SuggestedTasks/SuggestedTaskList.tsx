@@ -132,7 +132,7 @@ export function SuggestedTaskList({
                 aria-label={`Hide: ${task.title}`}
                 disabled={sendingId !== null}
                 onClick={() => onHide(task)}
-                className="mr-2 shrink-0 text-foreground-subtle opacity-0 transition-opacity duration-150 hover:text-foreground-body focus-visible:opacity-100 group-hover/row:opacity-100 [@media(hover:none)]:opacity-100"
+                className="mr-2 shrink-0 text-foreground-subtle opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 hover:text-foreground-body focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
               >
                 <Icon icon={Cancel01Icon} size={14} />
               </Button>

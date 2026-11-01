@@ -10,7 +10,12 @@ from typing import TYPE_CHECKING, Any, Callable, Coroutine
 from autogpt_libs.utils.synchronize import AsyncRedisKeyedMutex
 from redis.asyncio.lock import Lock as AsyncRedisLock
 
-from backend.data.model import Credentials, OAuth2Credentials
+from backend.data.model import (
+    Credentials,
+    OAuth2Credentials,
+    is_refused_sdk_default,
+    sdk_default_refused_message,
+)
 from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.credentials_store import (
     IntegrationCredentialsStore,
@@ -23,7 +28,7 @@ from backend.integrations.oauth import (
     HANDLERS_BY_NAME,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.exceptions import MissingConfigError
+from backend.util.exceptions import MissingConfigError, SharedCredentialsRefusedError
 from backend.util.settings import Settings
 
 if TYPE_CHECKING:
@@ -143,8 +148,21 @@ class IntegrationCredentialsManager:
         return (await self.store.get_creds_by_id(user_id, credentials_id)) is not None
 
     async def get(
-        self, user_id: str, credentials_id: str, lock: bool = True
+        self,
+        user_id: str,
+        credentials_id: str,
+        lock: bool = True,
+        allow_sdk_default: bool = False,
     ) -> Credentials | None:
+        """Load and refresh one of the user's credentials.
+
+        A refused SDK default (see ``is_refused_sdk_default``) raises
+        ``SharedCredentialsRefusedError``. Only housekeeping on a webhook that
+        was registered with that key earlier passes ``allow_sdk_default``, so
+        the webhook can still be checked and deregistered.
+        """
+        if not allow_sdk_default:
+            _refuse_sdk_default(credentials_id)
         credentials = await self.store.get_creds_by_id(user_id, credentials_id)
         if not credentials:
             return None
@@ -214,12 +232,14 @@ class IntegrationCredentialsManager:
         return lease
 
     def cached_getter(
-        self, user_id: str
+        self, user_id: str, allow_sdk_default: bool = False
     ) -> Callable[[str], "Coroutine[Any, Any, Credentials | None]"]:
         all_credentials = None
 
         async def get_credentials(creds_id: str) -> "Credentials | None":
             nonlocal all_credentials
+            if not allow_sdk_default:
+                _refuse_sdk_default(creds_id)
             if not all_credentials:
                 # Fetch credentials on first necessity
                 all_credentials = await self.store.get_all_creds(user_id)
@@ -568,6 +588,11 @@ class IntegrationCredentialsManager:
     async def release_all_locks(self):
         """Call this on process termination to ensure all locks are released"""
         await (await self.store.locks()).release_all_locks()
+
+
+def _refuse_sdk_default(credentials_id: str) -> None:
+    if is_refused_sdk_default(credentials_id):
+        raise SharedCredentialsRefusedError(sdk_default_refused_message(credentials_id))
 
 
 async def _get_provider_oauth_handler(provider_name_str: str) -> "BaseOAuthHandler":

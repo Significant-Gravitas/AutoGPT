@@ -114,15 +114,35 @@ def parse_dynamic_field(field_name: str) -> tuple[str, list[tuple[str, str]]] | 
     Split a field name into its base name and its `(delimiter, identifier)` path,
     e.g. "items_$_0_#_name" → ("items", [("_$_", "0"), ("_#_", "name")]).
 
-    A plain name has an empty path; malformed syntax returns None.
+    A plain name has an empty path; malformed syntax returns None, and a
+    path over the size caps raises ValueError.
     """
     delim, pos = _next_delim(field_name)
     if delim is None:
         return field_name, []
-    tokens = _tokenise(field_name[pos:])
+    tokens = _tokenise_bounded(field_name[pos:])
     if tokens is None:
         return None
     return field_name[:pos], tokens
+
+
+def assert_safe_pin_name(name: str) -> None:
+    """
+    Raise ValueError if a (possibly flattened) pin name encodes an unsafe
+    dynamic path. Called where a pin name is stored so one never persists, and
+    a backstop for the use-site guards in `_assign`/`parse_execution_output`.
+    """
+    delim, pos = _next_delim(name)
+    if delim is None:
+        return  # plain field name, nothing dynamic to check
+    tokens = _tokenise_bounded(name[pos:])
+    if tokens is None:
+        return  # not a valid dynamic path; stored/handled as a raw scalar key
+    for d, ident in tokens:
+        if d == OBJC_SPLIT and not is_safe_object_attribute(ident):
+            raise ValueError(f"unsafe object attribute in pin name {name!r}")
+        if d == LIST_SPLIT:
+            _parse_list_index(ident)
 
 
 def _next_delim(s: str) -> tuple[str | None, int]:
@@ -226,7 +246,10 @@ def parse_execution_output(
     if not path:
         return None  # nothing left to parse
 
-    tokens = _tokenise(path)
+    try:
+        tokens = _tokenise_bounded(path)
+    except ValueError:
+        return None
     if tokens is None:
         return None
 
@@ -238,7 +261,7 @@ def parse_execution_output(
                 idx = int(ident)
             except ValueError:
                 return None
-            if not isinstance(cur, list) or idx >= len(cur):
+            if idx < 0 or not isinstance(cur, list) or idx >= len(cur):
                 return None
             cur = cur[idx]
 
@@ -248,9 +271,11 @@ def parse_execution_output(
             cur = cur[ident]
 
         elif delim == OBJC_SPLIT:
-            if not hasattr(cur, ident):
+            # Instance data only: public names like `gi_frame` lead off the value.
+            attrs = getattr(cur, "__dict__", {})
+            if not is_safe_object_attribute(ident) or ident not in attrs:
                 return None
-            cur = getattr(cur, ident)
+            cur = attrs[ident]
 
         else:
             return None  # unreachable
@@ -258,7 +283,12 @@ def parse_execution_output(
     return cur
 
 
-def _assign(container: Any, tokens: list[tuple[str, str]], value: Any) -> Any:
+def _assign(
+    container: Any,
+    tokens: list[tuple[str, str]],
+    value: Any,
+    padding: "_PaddingBudget",
+) -> Any:
     """
     Recursive helper that *returns* the (possibly new) container with
     `value` assigned along the remaining `tokens` path.
@@ -271,19 +301,17 @@ def _assign(container: Any, tokens: list[tuple[str, str]], value: Any) -> Any:
 
     # ---------- list ----------
     if delim == LIST_SPLIT:
-        try:
-            idx = int(ident)
-        except ValueError:
-            raise ValueError("index must be an integer")
+        idx = _parse_list_index(ident)
 
         if container is None:
             container = []
         elif not isinstance(container, list):
             container = list(container) if hasattr(container, "__iter__") else []
 
+        padding.spend(idx + 1 - len(container))
         while len(container) <= idx:
             container.append(None)
-        container[idx] = _assign(container[idx], rest, value)
+        container[idx] = _assign(container[idx], rest, value, padding)
         return container
 
     # ---------- dict ----------
@@ -292,11 +320,13 @@ def _assign(container: Any, tokens: list[tuple[str, str]], value: Any) -> Any:
             container = {}
         elif not isinstance(container, dict):
             container = dict(container) if hasattr(container, "items") else {}
-        container[ident] = _assign(container.get(ident), rest, value)
+        container[ident] = _assign(container.get(ident), rest, value, padding)
         return container
 
     # ---------- object ----------
     if delim == OBJC_SPLIT:
+        if not is_safe_object_attribute(ident):
+            raise ValueError(f"unsafe object attribute {ident!r}")
         if container is None:
             container = MockObject()
         elif not hasattr(container, "__dict__"):
@@ -305,7 +335,7 @@ def _assign(container: Any, tokens: list[tuple[str, str]], value: Any) -> Any:
         setattr(
             container,
             ident,
-            _assign(getattr(container, ident, None), rest, value),
+            _assign(getattr(container, ident, None), rest, value, padding),
         )
         return container
 
@@ -316,7 +346,7 @@ def merge_execution_input(data: dict[str, Any]) -> dict[str, Any]:
     """
     Reconstruct nested objects from a *flattened* dict of key → value.
 
-    Raises ValueError on syntactically invalid list indices.
+    Raises ValueError on an unsafe or oversized dynamic path.
 
     Args:
         data: Dictionary with potentially flattened dynamic field keys
@@ -325,6 +355,7 @@ def merge_execution_input(data: dict[str, Any]) -> dict[str, Any]:
         Dictionary with nested objects reconstructed from flattened keys
     """
     merged: dict[str, Any] = {}
+    padding = _PaddingBudget()
 
     for key, value in data.items():
         parsed = parse_dynamic_field(key)
@@ -334,7 +365,64 @@ def merge_execution_input(data: dict[str, Any]) -> dict[str, Any]:
             continue
 
         base, tokens = parsed
-        merged[base] = _assign(merged.get(base), tokens, value)
+        merged[base] = _assign(merged.get(base), tokens, value, padding)
 
     data.update(merged)
     return data
+
+
+# An _@_ token is used directly as a setattr/getattr target, so it must be a
+# plain public identifier; a dunder or leading-underscore name would let a
+# flattened pin walk into an object's internals.
+def is_safe_object_attribute(ident: str) -> bool:
+    return ident.isidentifier() and not ident.startswith("_")
+
+
+# A _$_ token pads a list up to its index, so both one index and all the padding
+# one merge does are capped; no builder produces a legitimate pin near either.
+MAX_DYNAMIC_LIST_INDEX = 10_000
+MAX_DYNAMIC_LIST_PADDING = MAX_DYNAMIC_LIST_INDEX + 1
+
+# Tokenising is quadratic in the path's length and each token is a level of
+# recursion in _assign, so a path's size is capped before it is parsed.
+MAX_DYNAMIC_PATH_LENGTH = 1024
+MAX_DYNAMIC_PATH_TOKENS = 32
+
+
+def _parse_list_index(ident: str) -> int:
+    try:
+        idx = int(ident)
+    except ValueError:
+        raise ValueError("index must be an integer")
+    if idx < 0 or idx > MAX_DYNAMIC_LIST_INDEX:
+        raise ValueError(f"list index out of range (0..{MAX_DYNAMIC_LIST_INDEX})")
+    return idx
+
+
+def _tokenise_bounded(path: str) -> list[tuple[str, str]] | None:
+    if len(path) > MAX_DYNAMIC_PATH_LENGTH:
+        raise ValueError(
+            f"dynamic pin path longer than {MAX_DYNAMIC_PATH_LENGTH} characters"
+        )
+    tokens = _tokenise(path)
+    if tokens is not None and len(tokens) > MAX_DYNAMIC_PATH_TOKENS:
+        raise ValueError(
+            f"dynamic pin path deeper than {MAX_DYNAMIC_PATH_TOKENS} levels"
+        )
+    return tokens
+
+
+class _PaddingBudget:
+    """List slots one merge_execution_input call may still pad, across all keys."""
+
+    def __init__(self) -> None:
+        self.left = MAX_DYNAMIC_LIST_PADDING
+
+    def spend(self, slots: int) -> None:
+        if slots <= 0:
+            return
+        if slots > self.left:
+            raise ValueError(
+                f"dynamic list padding exceeds {MAX_DYNAMIC_LIST_PADDING} slots"
+            )
+        self.left -= slots

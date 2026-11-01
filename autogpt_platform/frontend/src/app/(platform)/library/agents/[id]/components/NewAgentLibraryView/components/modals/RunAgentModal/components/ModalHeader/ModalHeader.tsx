@@ -29,24 +29,23 @@ export function ModalHeader({ agent }: ModalHeaderProps) {
           <ShowMoreText
             previewLimit={400}
             variant="small"
-            className="mb-2 mt-4 !text-foreground-body"
+            // oxlint-disable-next-line design-system/no-restyle -- ShowMoreText has no tone prop yet
+            className="mt-4 mb-2 !text-foreground-body"
           >
             {agent.description}
           </ShowMoreText>
         ) : null}
 
         {agent.recommended_schedule_cron && !agent.has_external_trigger ? (
-          <div
-            // TODO(tokens): no exact role for border-blue-100 (#DBEAFE)
-            className="flex flex-col gap-4 rounded-medium border border-blue-100 bg-info-surface p-4"
-          >
-            <Text variant="lead-semibold" className="text-info-foreground">
+          <div className="flex flex-col gap-4 rounded-medium border border-info/30 bg-info-surface p-4">
+            <Text
+              variant="lead-semibold"
+              // oxlint-disable-next-line design-system/no-restyle -- no Text tone for info-foreground yet
+              className="text-info-foreground"
+            >
               Tip
             </Text>
-            <div
-              // TODO(tokens): no exact role for bg-blue-100 (#DBEAFE)
-              className="h-px w-full bg-blue-100"
-            />
+            <div className="h-px w-full bg-info/20" />
 
             <Text variant="body">
               For best results, run this workflow{" "}
@@ -58,22 +57,16 @@ export function ModalHeader({ agent }: ModalHeaderProps) {
         ) : null}
 
         {agent.instructions ? (
-          <div
-            // TODO(tokens): no exact role for border-purple-100 (#EFE8FE); no exact role for bg-[#f1ebfe80]
-            className="mt-4 flex flex-col gap-4 rounded-medium border border-purple-100 bg-[#f1ebfe80] p-4"
-          >
+          <div className="mt-4 flex flex-col gap-4 rounded-medium border border-accent-surface bg-accent-surface/50 p-4">
             <Text
-              // TODO(tokens): no fitting role for text-purple-600 #6C2EDF; #6C2EDF is brand-hover, a hover fill
               variant="lead-semibold"
-              className="text-purple-600"
+              // oxlint-disable-next-line design-system/no-restyle -- no Text tone for brand-hover yet
+              className="text-brand-hover"
             >
               Instructions
             </Text>
 
-            <div
-              // TODO(tokens): no exact role for bg-purple-100 (#EFE8FE)
-              className="h-px w-full bg-purple-100"
-            />
+            <div className="h-px w-full bg-brand/10" />
 
             <Text variant="body">{agent.instructions}</Text>
           </div>

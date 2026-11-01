@@ -3,8 +3,7 @@ import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/Autopilo
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 
 const AVATAR_CLASS =
-  // TODO(tokens): no exact role for border-[#e3e3e3] (#E3E3E3), ring-[#f9f9f9] (#F9F9F9)
-  "rounded-full border border-[#e3e3e3] ring-2 ring-[#f9f9f9]";
+  "rounded-full border border-border-base ring-2 ring-surface-muted";
 
 const FLANK = [
   {
@@ -33,7 +32,7 @@ export function TeamAvatars() {
           />
         </span>
       ))}
-      <span className="absolute left-1/2 top-0 z-10 -translate-x-1/2">
+      <span className="absolute top-0 left-1/2 z-10 -translate-x-1/2">
         <AutopilotAvatar size={52} className={AVATAR_CLASS} />
       </span>
     </div>

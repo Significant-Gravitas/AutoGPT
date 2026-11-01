@@ -12,9 +12,7 @@ export function Count({ className, children, ...rest }: CountProps) {
       data-slot="attention-card-count"
       variant="small"
       as="span"
-      // TODO(tokens): no role for Tailwind's default gray-600; the zinc roles
-      // are a different grey.
-      className={cn("leading-4 text-gray-600", className)}
+      className={cn("leading-4 text-foreground-secondary", className)}
       {...rest}
     >
       {children}

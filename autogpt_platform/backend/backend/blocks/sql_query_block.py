@@ -12,8 +12,10 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.blocks.helpers.host_bound_login import login_may_go_to
 from backend.blocks.sql_query_helpers import (
     _DATABASE_TYPE_DEFAULT_PORT,
+    _DATABASE_TYPE_SCOPE_SCHEME,
     _DATABASE_TYPE_TO_DRIVER,
     DatabaseType,
     _execute_query,
@@ -21,6 +23,7 @@ from backend.blocks.sql_query_helpers import (
     _validate_query_is_read_only,
     _validate_single_statement,
 )
+from backend.data.credential_scope import ServerTarget
 from backend.data.model import (
     CredentialsField,
     CredentialsMetaInput,
@@ -35,6 +38,7 @@ TEST_CREDENTIALS = UserPasswordCredentials(
     provider="database",
     username=SecretStr("test_user"),
     password=SecretStr("test_pass"),
+    scope="postgresql://localhost",
     title="Mock Database credentials",
 )
 
@@ -210,6 +214,9 @@ class SQLQueryBlock(Block):
         input_data: Input,
         *,
         credentials: DatabaseCredentials,
+        user_id: str | None = None,
+        graph_id: str | None = None,
+        graph_version: int | None = None,
         **_kwargs: Any,
     ) -> BlockOutput:
         # Validate query structure and read-only constraints.
@@ -226,6 +233,23 @@ class SQLQueryBlock(Block):
 
         # Build connection URL and execute.
         port = input_data.port or _DATABASE_TYPE_DEFAULT_PORT[input_data.database_type]
+
+        # A saved login is only sent to the host its scope names. The host is a
+        # secret input, so the error does not echo it.
+        if not await login_may_go_to(
+            credentials,
+            ServerTarget(
+                scheme=_DATABASE_TYPE_SCOPE_SCHEME[input_data.database_type],
+                host=host,
+                port=port,
+            ),
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_version=graph_version,
+        ):
+            yield "error", _refusal(credentials)
+            return
+
         username = credentials.username.get_secret_value()
         connection_url = URL.create(
             drivername=_DATABASE_TYPE_TO_DRIVER[input_data.database_type],
@@ -322,3 +346,18 @@ class SQLQueryBlock(Block):
         if "connect" in lower:
             return f"Failed to connect to database: {sanitized_msg}"
         return f"Database error: {sanitized_msg}"
+
+
+def _refusal(credentials: DatabaseCredentials) -> str:
+    if credentials.scope is None:
+        why = (
+            "were saved without a server, so they can only be used in workflows "
+            "you saved yourself"
+        )
+    else:
+        why = "are saved for a different database host or port than this workflow's"
+    return (
+        f"The selected database credentials {why}, so they were not sent. Each "
+        "saved login is only sent to the server it was saved for; check which "
+        "server your saved database logins are for."
+    )

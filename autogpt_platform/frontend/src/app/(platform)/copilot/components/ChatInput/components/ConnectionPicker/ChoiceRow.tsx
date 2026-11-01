@@ -6,6 +6,7 @@ import { LockIcon, Tick02Icon } from "@hugeicons/core-free-icons";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   /** The mark that identifies the row at a glance — a provider logo, a glyph. */
@@ -83,20 +84,17 @@ export function ChoiceRow({
         )}
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex items-center gap-1.5">
-            <span className="text-sm font-medium text-foreground-strong">
+            <Text variant="body-medium-tight" as="span" tone="primary">
               {title}
-            </span>
+            </Text>
             {badge && (
-              <span
-                // TODO(tokens): no exact role for bg-green-500/10
-                className="rounded-full bg-green-500/10 px-1.5 py-px text-tiny font-medium leading-inherit text-success-foreground"
-              >
+              <span className="rounded-full bg-success/10 px-1.5 py-px text-tiny leading-inherit font-medium text-success-foreground">
                 {badge}
               </span>
             )}
           </span>
           {subtitle && (
-            <span className="break-words text-sm leading-snug text-foreground-tertiary">
+            <span className="text-sm leading-snug break-words text-foreground-tertiary">
               {subtitle}
             </span>
           )}
@@ -146,11 +144,11 @@ function LockedRow({ title, subtitle, notes, lock }: LockedProps) {
         className="mt-[3px] flex-none text-foreground-subtle"
       />
       <span className="flex min-w-0 flex-col">
-        <span className="text-sm font-medium text-foreground-tertiary">
+        <Text variant="body-medium-tight" as="span" tone="muted">
           {title}
-        </span>
+        </Text>
         {subtitle && (
-          <span className="break-words text-sm leading-snug text-foreground-subtle">
+          <span className="text-sm leading-snug break-words text-foreground-subtle">
             {subtitle}
           </span>
         )}
@@ -168,7 +166,7 @@ function LockedRow({ title, subtitle, notes, lock }: LockedProps) {
         {lock.href && (
           <Link
             href={lock.href}
-            className="mt-1 w-fit text-caption-sm font-medium leading-inherit text-foreground-strong underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong"
+            className="mt-1 w-fit text-caption-sm leading-inherit font-medium text-foreground-strong underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:outline-none"
           >
             See plans
           </Link>

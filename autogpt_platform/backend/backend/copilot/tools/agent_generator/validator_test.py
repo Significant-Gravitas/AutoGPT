@@ -1512,6 +1512,8 @@ class TestListIndexLinks:
                 "values_$_first",
                 "List index 'first' after 'values' is not a whole number",
             ),
+            # The executor refuses a path past its depth cap, so it is reported.
+            ("values" + "_$_0" * 33, "dynamic pin path deeper than 32 levels"),
         ],
     )
     def test_invalid_list_item_sink_fails(self, sink_name: str, expected: str):

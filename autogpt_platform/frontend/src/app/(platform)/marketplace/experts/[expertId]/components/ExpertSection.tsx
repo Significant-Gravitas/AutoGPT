@@ -30,7 +30,7 @@ export function ExpertSection({
       >
         {title}
         {count !== undefined ? (
-          <span className="text-base font-normal tabular-nums text-foreground-subtle">
+          <span className="text-base font-normal text-foreground-subtle tabular-nums">
             {count}
           </span>
         ) : null}

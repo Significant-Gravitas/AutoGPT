@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { SwapFade } from "@/components/atoms/SwapFade/SwapFade";
 import type { ScreenState } from "../useBrainDumpStep";
 
@@ -55,13 +56,10 @@ function LinkButton({
   children: string;
 }) {
   return (
-    <Button
-      variant="ghost"
-      size="xs"
-      onClick={onClick}
-      className="underline underline-offset-4"
-    >
-      {children}
+    <Button variant="ghost" size="xs" onClick={onClick}>
+      <Text variant="small-medium-loose-underline" as="span">
+        {children}
+      </Text>
     </Button>
   );
 }

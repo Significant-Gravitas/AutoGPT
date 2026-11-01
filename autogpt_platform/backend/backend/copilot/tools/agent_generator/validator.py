@@ -1158,7 +1158,10 @@ def _check_nested_chain(props: dict[str, Any], field_name: str) -> str | None:
     remaining chain — the executor's dynamic field delivery resolves those
     at run time.
     """
-    parsed = parse_dynamic_field(field_name)
+    try:
+        parsed = parse_dynamic_field(field_name)
+    except ValueError as e:  # over the executor's path size caps
+        return f"'{field_name}' is not a valid field path: {e}"
     if parsed is None:
         return f"'{field_name}' is not a valid field path"
     base, steps = parsed

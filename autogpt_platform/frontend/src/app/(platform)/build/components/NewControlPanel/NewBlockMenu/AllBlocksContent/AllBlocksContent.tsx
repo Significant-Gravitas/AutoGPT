@@ -1,12 +1,12 @@
 import React, { Fragment } from "react";
 import { Block } from "../Block";
-import { Button } from "@/components/atoms/Button/Button";
+import { beautifyString, cn } from "@/lib/utils";
 import { Text } from "@/components/atoms/Text/Text";
 import { Separator } from "@/components/atoms/Separator/Separator";
-import { beautifyString } from "@/lib/utils";
+
 import { useAllBlockContent } from "./useAllBlockContent";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { blockMenuContainerStyle } from "../style";
+import { blockMenuButtonBase, blockMenuContainerStyle } from "../style";
 
 export const AllBlocksContent = () => {
   const {
@@ -54,10 +54,7 @@ export const AllBlocksContent = () => {
       {categories?.map((category, index) => (
         <Fragment key={category.name}>
           {index > 0 && (
-            <Separator
-              // TODO(tokens): no fitting role for text-zinc-300 #C5C5C9; #C5C5C9 is foreground-disabled (disabled text) and border-strong (a border colour), and this is a static divider (QUALITY 41(c))
-              className="h-[1px] w-full text-zinc-300"
-            />
+            <Separator className="h-[1px] w-full text-foreground-disabled" />
           )}
 
           {/* Category Section */}
@@ -70,8 +67,7 @@ export const AllBlocksContent = () => {
                 variant="body"
                 as="span"
                 tone="secondary"
-                // TODO(tokens): no fitting role for bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this fill is not a hover state (QUALITY 41)
-                className="rounded-full bg-zinc-100 px-[0.375rem]"
+                className="rounded-full bg-surface-hover px-1.5"
               >
                 {category.total_blocks}
               </Text>
@@ -107,9 +103,12 @@ export const AllBlocksContent = () => {
               )}
 
               {category.total_blocks > category.blocks.length && (
-                <Button
-                  variant={"legacy-link"}
-                  className="px-0 text-foreground-secondary hover:text-foreground-emphasis"
+                <button
+                  type="button"
+                  className={cn(
+                    blockMenuButtonBase,
+                    "h-9 py-2 text-foreground-secondary underline-offset-4 hover:text-foreground-emphasis hover:underline",
+                  )}
                   disabled={isLoadingMore(category.name)}
                   onClick={() => handleRefetchBlocks(category.name)}
                 >
@@ -121,7 +120,7 @@ export const AllBlocksContent = () => {
                   >
                     see all
                   </Text>
-                </Button>
+                </button>
               )}
             </div>
           </div>
