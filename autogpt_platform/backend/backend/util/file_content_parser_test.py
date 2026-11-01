@@ -549,6 +549,42 @@ class TestXlsxUnpackedSize:
         with pytest.raises(ValueError, match="archive unpacks to more than 1000"):
             parse_file_content(xlsx_bytes, "xlsx", strict=True)
 
+    def test_a_member_past_the_cap_is_reported_once(self, xlsx_bytes: bytes):
+        data = self._with_member(xlsx_bytes, _XLSX_MEMBER_CAP + 1)
+
+        with patch.object(file_content_parser.sentry_sdk, "capture_message") as report:
+            parse_file_content(data, "xlsx")
+
+        report.assert_called_once()
+        (message,), kwargs = report.call_args
+        assert message == "xlsx workbook over unpack limit"
+        assert kwargs["level"] == "warning"
+        assert kwargs["tags"] == {
+            "xlsx_limit": "MAX_XLSX_MEMBER_BYTES",
+            "xlsx_source": "file_content_parser",
+        }
+        assert kwargs["extras"]["limit_bytes"] == _XLSX_MEMBER_CAP
+        assert kwargs["extras"]["unpacked_bytes"] > _XLSX_MEMBER_CAP
+
+    def test_members_together_past_the_total_are_reported_once(
+        self, xlsx_bytes: bytes, monkeypatch
+    ):
+        monkeypatch.setattr(file_content_parser, "MAX_XLSX_TOTAL_BYTES", 1_000)
+
+        with patch.object(file_content_parser.sentry_sdk, "capture_message") as report:
+            parse_file_content(xlsx_bytes, "xlsx")
+
+        report.assert_called_once()
+        assert report.call_args.kwargs["tags"]["xlsx_limit"] == "MAX_XLSX_TOTAL_BYTES"
+        assert report.call_args.kwargs["extras"]["limit_bytes"] == 1_000
+        assert report.call_args.kwargs["extras"]["unpacked_bytes"] > 1_000
+
+    def test_a_workbook_within_the_caps_is_not_reported(self, xlsx_bytes: bytes):
+        with patch.object(file_content_parser.sentry_sdk, "capture_message") as report:
+            parse_file_content(xlsx_bytes, "xlsx", strict=True)
+
+        report.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # CSV sniffer fallback

@@ -13,7 +13,7 @@ can bound. Office files and ordinary zip tools use deflate.
 import os
 import zipfile
 from collections.abc import Iterator
-from typing import IO
+from typing import IO, Literal
 
 READ_CHUNK_BYTES = 64 * 1024
 _BOUNDED_METHODS = frozenset({zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED})
@@ -24,7 +24,24 @@ class ZipMemberError(ValueError):
 
 
 class ZipMemberTooLarge(ZipMemberError):
-    """A member, or the archive as a whole, unpacks past its cap."""
+    """A member, or the archive as a whole, unpacks past its cap.
+
+    ``cap`` says which: one member's, or the whole archive's. ``counted`` is
+    the bytes unpacked when the read stopped, and ``limit`` the cap passed.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        cap: Literal["member", "archive"],
+        counted: int,
+        limit: int,
+    ) -> None:
+        super().__init__(message)
+        self.cap: Literal["member", "archive"] = cap
+        self.counted = counted
+        self.limit = limit
 
 
 def iter_member(
@@ -42,7 +59,10 @@ def iter_member(
             produced += len(chunk)
             if produced > max_bytes:
                 raise ZipMemberTooLarge(
-                    f"'{info.filename[:120]}' unpacks to more than {max_bytes} bytes"
+                    f"'{info.filename[:120]}' unpacks to more than {max_bytes} bytes",
+                    cap="member",
+                    counted=produced,
+                    limit=max_bytes,
                 )
             yield chunk
 
@@ -70,5 +90,8 @@ def check_unpacked_size(
                 total += len(chunk)
                 if total > max_total_bytes:
                     raise ZipMemberTooLarge(
-                        f"archive unpacks to more than {max_total_bytes} bytes"
+                        f"archive unpacks to more than {max_total_bytes} bytes",
+                        cap="archive",
+                        counted=total,
+                        limit=max_total_bytes,
                     )

@@ -39,8 +39,9 @@ from collections.abc import Callable
 # posixpath.splitext handles forward-slash URI paths correctly on all platforms,
 # unlike os.path.splitext which uses platform-native separators.
 from posixpath import splitext
-from typing import IO, Any
+from typing import IO, Any, Literal
 
+import sentry_sdk
 import yaml
 
 from backend.util.zip_member import ZipMemberTooLarge, check_unpacked_size
@@ -345,17 +346,23 @@ def _parse_parquet(content: bytes) -> list[list[Any]]:
 def _parse_xlsx(content: bytes) -> list[list[Any]]:
     import pandas as pd
 
-    check_xlsx_unpacked_size(io.BytesIO(content))
+    check_xlsx_unpacked_size(io.BytesIO(content), source="file_content_parser")
     # Explicitly specify openpyxl engine; the default engine varies by pandas
     # version and does not support legacy .xls (which is excluded by our format map).
     df = pd.read_excel(io.BytesIO(content), engine="openpyxl")
     return _df_to_rows(df)
 
 
-def check_xlsx_unpacked_size(file: str | IO[bytes]) -> None:
+def check_xlsx_unpacked_size(
+    file: str | IO[bytes],
+    *,
+    source: Literal["spreadsheet_block", "file_content_parser"],
+) -> None:
     """Refuse a workbook whose members unpack past the .xlsx caps.
 
     Only a zip is read; anything else is left for the Excel reader to reject.
+    Each refusal is reported to Sentry, so how often workbooks reach the caps
+    shows whether larger ones need support.
     """
     if not zipfile.is_zipfile(file):
         return
@@ -366,7 +373,23 @@ def check_xlsx_unpacked_size(file: str | IO[bytes]) -> None:
             max_total_bytes=MAX_XLSX_TOTAL_BYTES,
         )
     except ZipMemberTooLarge as e:
-        raise ZipMemberTooLarge(f"File too large: {e}") from e
+        _report_xlsx_refusal(e, source)
+        raise ZipMemberTooLarge(
+            f"File too large: {e}", cap=e.cap, counted=e.counted, limit=e.limit
+        ) from e
+
+
+def _report_xlsx_refusal(error: ZipMemberTooLarge, source: str) -> None:
+    # Sizes and the call site only: never the file name or its content.
+    limit_name = (
+        "MAX_XLSX_MEMBER_BYTES" if error.cap == "member" else "MAX_XLSX_TOTAL_BYTES"
+    )
+    sentry_sdk.capture_message(
+        "xlsx workbook over unpack limit",
+        level="warning",
+        tags={"xlsx_limit": limit_name, "xlsx_source": source},
+        extras={"unpacked_bytes": error.counted, "limit_bytes": error.limit},
+    )
 
 
 def _df_to_rows(df: Any) -> list[list[Any]]:

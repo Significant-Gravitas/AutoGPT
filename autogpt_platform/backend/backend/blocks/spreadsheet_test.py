@@ -186,6 +186,33 @@ async def test_excel_member_at_the_cap_is_read(workbook_path):
 
 
 @pytest.mark.asyncio
+async def test_excel_member_past_the_cap_is_reported_once(workbook_path):
+    add_member(workbook_path, "xl/media/image1.png", XLSX_MEMBER_CAP + 1)
+
+    with (
+        patch("backend.util.file_content_parser.sentry_sdk.capture_message") as report,
+        pytest.raises(ValueError, match="File too large"),
+    ):
+        await read_rows(file_input=MediaFileType("book.xlsx"))
+
+    report.assert_called_once()
+    assert report.call_args.args == ("xlsx workbook over unpack limit",)
+    assert report.call_args.kwargs["level"] == "warning"
+    assert report.call_args.kwargs["tags"] == {
+        "xlsx_limit": "MAX_XLSX_MEMBER_BYTES",
+        "xlsx_source": "spreadsheet_block",
+    }
+
+
+@pytest.mark.asyncio
+async def test_excel_within_the_caps_is_not_reported(workbook_path):
+    with patch("backend.util.file_content_parser.sentry_sdk.capture_message") as report:
+        await read_rows(file_input=MediaFileType("book.xlsx"))
+
+    report.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_skip_columns_skips_by_positional_index():
     rows = await read_rows(contents="a,b,c\n1,2,3\n4,5,6", skip_columns=["0"])
 

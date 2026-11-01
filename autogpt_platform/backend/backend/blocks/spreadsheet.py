@@ -135,7 +135,7 @@ class ReadSpreadsheetBlock(Block):
                 try:
                     import pandas as pd
 
-                    check_xlsx_unpacked_size(file_path)
+                    check_xlsx_unpacked_size(file_path, source="spreadsheet_block")
                     # dtype=object and keep_default_na=False keep the sheet's own
                     # values: "N/A"/"NULL"/"NaN" stay text instead of being read as
                     # missing, and a gap in a numeric column no longer upcasts the
