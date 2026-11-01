@@ -2,7 +2,7 @@ import pytest
 
 from backend.util.regex_repeat import largest_repeat_count
 
-LIMIT = 10_000
+LIMIT = 1000
 
 
 @pytest.mark.parametrize(
@@ -19,7 +19,6 @@ LIMIT = 10_000
         ("(ab){20}", 20),
         ("(a{10}){20}", 200),
         ("((a{10}){10}){10}", 1000),
-        ("((a{10}){10}){100}", 10_000),
         ("(?:a{5}|b{50})c{2}", 50),
         (r"\d{3}-\d{4}", 4),
         (r"\p{L}{3}", 3),
@@ -40,15 +39,15 @@ def test_largest_repeat_count(pattern, expected):
 @pytest.mark.parametrize(
     "pattern",
     [
-        "a{10001}",
+        "a{1001}",
         "a{30000000}",
         "a{2,30000000}",
         "a{30000000,}",
-        "ok{2}then{50000}",
-        "(a{100}){101}",
-        "((a{10}){10}){101}",
-        "[ab]{50000}",
-        r"\p{L}{50000}",
+        "ok{2}then{5000}",
+        "(a{100}){100}",
+        "((a{10}){10}){11}",
+        "[ab]{5000}",
+        r"\p{L}{5000}",
         "a{" + "9" * 5000 + "}",
     ],
 )
