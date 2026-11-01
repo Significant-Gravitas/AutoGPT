@@ -384,6 +384,30 @@ async def test_streams_per_shard_are_capped_per_process(
 
 
 @pytest.mark.asyncio
+async def test_unsubscribing_a_streams_last_channel_frees_its_slot(
+    connection_manager: ConnectionManager,
+    mock_websocket: AsyncMock,
+    fake_redis: _FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("backend.api.conn_manager.MAX_STREAMS_PER_SHARD", 1)
+    other: AsyncMock = AsyncMock(spec=WebSocket)
+    with patch.object(
+        connection_manager, "_start_notification_subscription", AsyncMock()
+    ):
+        assert await connection_manager.connect_socket(mock_websocket, user_id="u-a")
+        await connection_manager.subscribe_graph_execs(
+            user_id="u-a", graph_id="g", websocket=mock_websocket
+        )
+        assert not await connection_manager.connect_socket(other, user_id="u-b")
+
+        await connection_manager.unsubscribe_graph_execs(
+            user_id="u-a", graph_id="g", websocket=mock_websocket
+        )
+        assert await connection_manager.connect_socket(other, user_id="u-b")
+
+
+@pytest.mark.asyncio
 async def test_a_refused_accept_frees_the_users_slot(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
