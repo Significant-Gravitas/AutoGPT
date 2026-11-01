@@ -3,7 +3,7 @@
 A skill is a directory, so upload and download carry it as an archive. The caps
 and the path rules live in :mod:`backend.copilot.tools.skills`; what is here is
 only what an archive can carry that a path check cannot see — a symlink, an
-encrypted member, a declared size that would unpack to gigabytes.
+encrypted member, a member that would unpack to gigabytes.
 
 Both entry points are CPU-bound and synchronous; callers run them off the event
 loop.
@@ -21,6 +21,7 @@ from backend.copilot.tools.skills import (
     SkillPackageError,
     validate_package,
 )
+from backend.util.zip_member import ZipMemberError, ZipMemberTooLarge, read_member
 
 ROOT_SKILL_MD = "SKILL.md"
 # A compressed archive already past the uncompressed cap cannot hold a package
@@ -32,8 +33,9 @@ def package_from_zip(data: bytes) -> SkillPackage:
     """Unpack an uploaded archive into a validated :class:`SkillPackage`.
 
     Every refusal is a :class:`SkillPackageError`, ``over_limit`` set where the
-    REST edge owes a 413. Sizes are checked from the central directory, so a
-    zip bomb is refused without a member being decompressed.
+    REST edge owes a 413. Sizes are checked from the central directory first,
+    so a zip bomb is refused without a member being decompressed, and again on
+    the bytes each member actually unpacks to as it is read.
     """
     try:
         archive = zipfile.ZipFile(io.BytesIO(data))
@@ -42,14 +44,15 @@ def package_from_zip(data: bytes) -> SkillPackage:
     with archive:
         members = _unwrapped(_checked_members(archive.infolist()))
         root = members.pop(ROOT_SKILL_MD)
+        reader = _BoundedReader(archive)
         # A member's CRC is verified as it decompresses, so a corrupt archive
         # opens cleanly and fails here.
         try:
-            skill_md = _decoded(archive.read(root))
+            skill_md = _decoded(reader.read(root))
             files = [
                 SkillFile(
                     relative_path=path,
-                    content=archive.read(info),
+                    content=reader.read(info),
                     is_executable=bool(_mode(info) & 0o111),
                 )
                 for path, info in members.items()
@@ -71,6 +74,38 @@ def zip_from_package(package: SkillPackage) -> bytes:
         for entry in package.files:
             _add(archive, entry.relative_path, entry.content, entry.is_executable)
     return buffer.getvalue()
+
+
+class _BoundedReader:
+    """Reads members against the package caps, counted on the bytes each one
+    actually unpacks to rather than the size the archive declares."""
+
+    def __init__(self, archive: zipfile.ZipFile) -> None:
+        self._archive = archive
+        self._total = 0
+
+    def read(self, info: zipfile.ZipInfo) -> bytes:
+        named = f"member '{info.filename[:120]}'"
+        try:
+            content = read_member(self._archive, info, max_bytes=MAX_PACKAGE_FILE_BYTES)
+        except ZipMemberTooLarge:
+            raise SkillPackageError(
+                f"{named} unpacks to more than the limit of "
+                f"{MAX_PACKAGE_FILE_BYTES} bytes",
+                over_limit=True,
+            )
+        except ZipMemberError:
+            raise SkillPackageError(
+                f"{named} uses an unsupported compression method; "
+                "zip it again with deflate"
+            )
+        self._total += len(content)
+        if self._total > MAX_PACKAGE_BYTES:
+            raise SkillPackageError(
+                f"archive unpacks to more than {MAX_PACKAGE_BYTES} bytes",
+                over_limit=True,
+            )
+        return content
 
 
 _ENCRYPTED_FLAG = 0x1

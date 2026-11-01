@@ -14,6 +14,7 @@ backend test suite has no binary fixtures, and building it makes the exact
 difference between a literal "N/A" cell and a genuinely empty one explicit.
 """
 
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -142,6 +143,46 @@ async def test_excel_cell_containing_the_delimiter_survives(tmp_path):
         target.unlink(missing_ok=True)
 
     assert rows == [{"name": "widget", "note": "a;b"}]
+
+
+# A workbook member is counted as it unpacks: 50 MiB each, 200 MiB in all.
+XLSX_MEMBER_CAP = 50 * 1024 * 1024
+
+
+def add_member(workbook: Path, name: str, size: int) -> None:
+    """Append a member of ``size`` zero bytes, written in pieces so the test
+    never holds it whole; deflate packs it to a few tens of KB."""
+    with (
+        zipfile.ZipFile(workbook, "a", zipfile.ZIP_DEFLATED) as archive,
+        archive.open(name, "w") as member,
+    ):
+        for start in range(0, size, 4 * 1024 * 1024):
+            member.write(b"\0" * min(4 * 1024 * 1024, size - start))
+
+
+@pytest.mark.asyncio
+async def test_excel_member_unpacking_past_the_cap_is_refused_unread(workbook_path):
+    add_member(workbook_path, "xl/media/image1.png", XLSX_MEMBER_CAP + 1)
+    assert workbook_path.stat().st_size < 1_000_000
+
+    with (
+        patch(
+            "pandas.read_excel",
+            side_effect=AssertionError("the workbook was read"),
+        ) as read_excel,
+        pytest.raises(ValueError, match="File too large"),
+    ):
+        await read_rows(file_input=MediaFileType("book.xlsx"))
+    read_excel.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_excel_member_at_the_cap_is_read(workbook_path):
+    add_member(workbook_path, "xl/media/image1.png", XLSX_MEMBER_CAP)
+
+    rows = await read_rows(file_input=MediaFileType("book.xlsx"))
+
+    assert rows[0]["status"] == "N/A"
 
 
 @pytest.mark.asyncio

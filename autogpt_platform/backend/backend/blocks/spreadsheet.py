@@ -11,6 +11,7 @@ from backend.blocks._base import (
 from backend.data.execution import ExecutionContext
 from backend.data.model import ContributorDetails, SchemaField
 from backend.util.file import get_exec_file_path, store_media_file
+from backend.util.file_content_parser import check_xlsx_unpacked_size
 from backend.util.type import MediaFileType
 
 
@@ -134,6 +135,7 @@ class ReadSpreadsheetBlock(Block):
                 try:
                     import pandas as pd
 
+                    check_xlsx_unpacked_size(file_path)
                     # dtype=object and keep_default_na=False keep the sheet's own
                     # values: "N/A"/"NULL"/"NaN" stay text instead of being read as
                     # missing, and a gap in a numeric column no longer upcasts the

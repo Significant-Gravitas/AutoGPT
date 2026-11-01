@@ -294,6 +294,60 @@ def _with_a_corrupt_member(data: bytes) -> bytes:
     return bytes(out)
 
 
+@pytest.mark.parametrize("method", [zipfile.ZIP_BZIP2, zipfile.ZIP_LZMA])
+def test_a_member_declaring_less_than_it_unpacks_to_is_refused_undecompressed(
+    method: int, monkeypatch
+):
+    """A bzip2 or LZMA member that declares a small size passes the central
+    directory check, so it is refused by its method before it unpacks."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("SKILL.md", SKILL_MD, zipfile.ZIP_DEFLATED)
+        archive.writestr("big.bin", b"\0" * (MAX_PACKAGE_FILE_BYTES + 1), method)
+    data = _declaring(buffer.getvalue(), "big.bin", 100)
+    assert zipfile.ZipFile(io.BytesIO(data)).getinfo("big.bin").file_size == 100
+
+    decompressor = zipfile._get_decompressor
+
+    def deflate_only(compress_type: int):
+        assert compress_type == zipfile.ZIP_DEFLATED, "big.bin was decompressed"
+        return decompressor(compress_type)
+
+    monkeypatch.setattr(zipfile, "_get_decompressor", deflate_only)
+
+    with pytest.raises(SkillPackageError, match="unsupported compression method"):
+        package_from_zip(data)
+
+
+def _declaring(data: bytes, name: str, size: int) -> bytes:
+    """Rewrite the size a member declares, in its local header and its central
+    directory entry, leaving its compressed stream as it was."""
+    out = bytearray(data)
+    header = zipfile.ZipFile(io.BytesIO(data)).getinfo(name).header_offset
+    struct.pack_into("<I", out, header + 22, size)
+    entry = out.find(b"PK\x01\x02")
+    while entry != -1:
+        (name_len,) = struct.unpack_from("<H", out, entry + 28)
+        if out[entry + 46 : entry + 46 + name_len] == name.encode():
+            struct.pack_into("<I", out, entry + 24, size)
+        entry = out.find(b"PK\x01\x02", entry + 4)
+    return bytes(out)
+
+
+def test_a_stored_package_is_read():
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_STORED) as archive:
+        archive.writestr("SKILL.md", SKILL_MD)
+        archive.writestr("references/API.md", "# API\n")
+
+    package = package_from_zip(buffer.getvalue())
+
+    assert package.skill_md == SKILL_MD
+    assert [(f.relative_path, f.content) for f in package.files] == [
+        ("references/API.md", b"# API\n")
+    ]
+
+
 def test_something_that_is_not_a_zip_is_refused():
     with pytest.raises(SkillPackageError, match="not a readable zip"):
         package_from_zip(b"---\nname: demo\n---\n")

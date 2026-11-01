@@ -31,6 +31,7 @@ from PIL import Image
 from backend.data.redis_client import get_redis_async
 from backend.data.workspace import WorkspaceFile
 from backend.util.workspace_storage import get_workspace_storage
+from backend.util.zip_member import ZipMemberTooLarge, read_member
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,9 @@ TEXT_PREVIEW_HEADERS = {
 PREVIEW_MAX_IMAGE_BYTES = 10_000_000
 PREVIEW_MAX_DOC_BYTES = 50_000_000
 PREVIEW_MAX_TEXT_BYTES = 50_000_000
+# The embedded thumbnail an Office file carries, counted as it unpacks; the
+# same ceiling as an image previewed on its own.
+MAX_EMBEDDED_THUMBNAIL_BYTES = 10_000_000
 
 OFFICE_MIMES = frozenset(
     {
@@ -338,5 +342,13 @@ def _extract_zip_thumbnail(content: bytes) -> Optional[bytes]:
         names = {name.lower(): name for name in archive.namelist()}
         for candidate in _EMBEDDED_THUMBNAILS:
             if candidate in names:
-                return archive.read(names[candidate])
+                info = archive.getinfo(names[candidate])
+                try:
+                    return read_member(
+                        archive, info, max_bytes=MAX_EMBEDDED_THUMBNAIL_BYTES
+                    )
+                except ZipMemberTooLarge as e:
+                    raise fastapi.HTTPException(
+                        status_code=413, detail="File too large to preview"
+                    ) from e
     return None

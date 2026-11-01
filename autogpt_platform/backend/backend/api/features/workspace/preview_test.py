@@ -436,6 +436,52 @@ def test_office_preview_declines_an_oversized_thumbnail(mocker):
     assert response.status_code == 413
 
 
+# The embedded thumbnail is counted as it unpacks: 10 MB, the image ceiling.
+_THUMBNAIL_CAP = 10_000_000
+
+
+def _office_with_thumbnail(thumbnail_bytes: int, method: int) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", method) as archive:
+        with archive.open("docProps/thumbnail.jpeg", "w") as member:
+            # Written in pieces so the test never holds the whole member.
+            for start in range(0, thumbnail_bytes, 1_000_000):
+                member.write(b"\0" * min(1_000_000, thumbnail_bytes - start))
+        archive.writestr("word/document.xml", "<w/>")
+    return buf.getvalue()
+
+
+def test_office_thumbnail_unpacking_past_the_cap_is_refused():
+    content = _office_with_thumbnail(_THUMBNAIL_CAP + 1, zipfile.ZIP_DEFLATED)
+    assert len(content) < 100_000
+
+    with pytest.raises(fastapi.HTTPException) as exc:
+        preview_module._extract_zip_thumbnail(content)
+    assert exc.value.status_code == 413
+
+
+def test_office_thumbnail_at_the_cap_is_read():
+    content = _office_with_thumbnail(_THUMBNAIL_CAP, zipfile.ZIP_DEFLATED)
+
+    thumbnail = preview_module._extract_zip_thumbnail(content)
+    assert thumbnail is not None and len(thumbnail) == _THUMBNAIL_CAP
+
+
+@pytest.mark.parametrize("method", [zipfile.ZIP_DEFLATED, zipfile.ZIP_BZIP2])
+def test_office_preview_declines_a_thumbnail_that_unpacks_past_the_cap(mocker, method):
+    _mock_lookups(mocker, _make_file(name="report.docx", path="/report.docx"))
+    _mock_storage(mocker, _office_with_thumbnail(_THUMBNAIL_CAP + 1, method))
+    _mock_redis(mocker)
+    resize = mocker.patch.object(
+        preview_module, "_resize_webp", return_value=b"RIFFfake-webp"
+    )
+
+    response = client.get("/files/file-001/preview")
+
+    assert response.status_code in (413, 415)
+    resize.assert_not_called()
+
+
 async def test_preview_render_concurrency_is_bounded(mocker):
     # Instrument the rasteriser (it runs in a worker thread) to record the peak
     # number of simultaneous renders, then fire more previews than the cap.

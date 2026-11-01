@@ -2,9 +2,12 @@
 
 import io
 import json
+import zipfile
+from unittest.mock import patch
 
 import pytest
 
+from backend.util import file_content_parser
 from backend.util.file_content_parser import (
     BINARY_FORMATS,
     infer_format_from_uri,
@@ -476,6 +479,75 @@ class TestBinaryFormats:
 class TestMimeMapping:
     def test_application_yaml(self):
         assert infer_format_from_uri("workspace://abc123#application/yaml") == "yaml"
+
+
+# ---------------------------------------------------------------------------
+# parse_file_content — Excel unpacked size
+# ---------------------------------------------------------------------------
+
+# A workbook member is counted as it unpacks: 50 MiB each, 200 MiB in all.
+_XLSX_MEMBER_CAP = 50 * 1024 * 1024
+
+
+class TestXlsxUnpackedSize:
+    @pytest.fixture
+    def xlsx_bytes(self) -> bytes:
+        from openpyxl import Workbook
+
+        workbook = Workbook()
+        sheet = workbook.active
+        assert sheet is not None
+        for row in (["Name", "Score"], ["Alice", 90], ["Bob", 85]):
+            sheet.append(row)
+        buf = io.BytesIO()
+        workbook.save(buf)
+        return buf.getvalue()
+
+    @staticmethod
+    def _with_member(xlsx: bytes, size: int) -> bytes:
+        """Append a member of ``size`` zero bytes, written in pieces so the test
+        never holds it whole; deflate packs it to a few tens of KB."""
+        buf = io.BytesIO(xlsx)
+        with (
+            zipfile.ZipFile(buf, "a", zipfile.ZIP_DEFLATED) as archive,
+            archive.open("xl/media/image1.png", "w") as member,
+        ):
+            for start in range(0, size, 4 * 1024 * 1024):
+                member.write(b"\0" * min(4 * 1024 * 1024, size - start))
+        return buf.getvalue()
+
+    def test_a_member_past_the_cap_is_refused_unread(self, xlsx_bytes: bytes):
+        data = self._with_member(xlsx_bytes, _XLSX_MEMBER_CAP + 1)
+        assert len(data) < 1_000_000
+
+        with (
+            patch(
+                "pandas.read_excel",
+                side_effect=AssertionError("the workbook was read"),
+            ) as read_excel,
+            pytest.raises(ValueError, match="File too large"),
+        ):
+            parse_file_content(data, "xlsx", strict=True)
+        read_excel.assert_not_called()
+
+    def test_a_member_past_the_cap_falls_back_to_the_raw_bytes(self, xlsx_bytes: bytes):
+        data = self._with_member(xlsx_bytes, _XLSX_MEMBER_CAP + 1)
+
+        assert parse_file_content(data, "xlsx") == data
+
+    def test_a_member_at_the_cap_is_read(self, xlsx_bytes: bytes):
+        data = self._with_member(xlsx_bytes, _XLSX_MEMBER_CAP)
+
+        result = parse_file_content(data, "xlsx", strict=True)
+        assert result == [["Name", "Score"], ["Alice", 90], ["Bob", 85]]
+
+    def test_members_together_past_the_total_are_refused(
+        self, xlsx_bytes: bytes, monkeypatch
+    ):
+        monkeypatch.setattr(file_content_parser, "MAX_XLSX_TOTAL_BYTES", 1_000)
+
+        with pytest.raises(ValueError, match="archive unpacks to more than 1000"):
+            parse_file_content(xlsx_bytes, "xlsx", strict=True)
 
 
 # ---------------------------------------------------------------------------

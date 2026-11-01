@@ -39,11 +39,18 @@ from collections.abc import Callable
 # posixpath.splitext handles forward-slash URI paths correctly on all platforms,
 # unlike os.path.splitext which uses platform-native separators.
 from posixpath import splitext
-from typing import Any
+from typing import IO, Any
 
 import yaml
 
+from backend.util.zip_member import ZipMemberTooLarge, check_unpacked_size
+
 logger = logging.getLogger(__name__)
+
+# An .xlsx is a zip whose sheets openpyxl reads whole, so the bytes its members
+# actually unpack to are counted before it is handed over.
+MAX_XLSX_MEMBER_BYTES = 50 * 1024 * 1024
+MAX_XLSX_TOTAL_BYTES = 200 * 1024 * 1024
 
 # ---------------------------------------------------------------------------
 # Extension / MIME → format label mapping
@@ -338,10 +345,28 @@ def _parse_parquet(content: bytes) -> list[list[Any]]:
 def _parse_xlsx(content: bytes) -> list[list[Any]]:
     import pandas as pd
 
+    check_xlsx_unpacked_size(io.BytesIO(content))
     # Explicitly specify openpyxl engine; the default engine varies by pandas
     # version and does not support legacy .xls (which is excluded by our format map).
     df = pd.read_excel(io.BytesIO(content), engine="openpyxl")
     return _df_to_rows(df)
+
+
+def check_xlsx_unpacked_size(file: str | IO[bytes]) -> None:
+    """Refuse a workbook whose members unpack past the .xlsx caps.
+
+    Only a zip is read; anything else is left for the Excel reader to reject.
+    """
+    if not zipfile.is_zipfile(file):
+        return
+    try:
+        check_unpacked_size(
+            file,
+            max_member_bytes=MAX_XLSX_MEMBER_BYTES,
+            max_total_bytes=MAX_XLSX_TOTAL_BYTES,
+        )
+    except ZipMemberTooLarge as e:
+        raise ZipMemberTooLarge(f"File too large: {e}") from e
 
 
 def _df_to_rows(df: Any) -> list[list[Any]]:
