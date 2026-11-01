@@ -84,6 +84,17 @@ def test_a_very_deeply_nested_document_is_refused() -> None:
         _load(_nested(5000))
 
 
+@pytest.mark.parametrize("allow_anchors", [True, False])
+def test_nesting_is_refused_once_it_passes_the_limit_before_the_rest_is_read(
+    allow_anchors: bool,
+) -> None:
+    # Never closed, so reading to the end of the document would be a syntax error.
+    unfinished = "[" * (MAX_YAML_DEPTH + 1) + "x"
+
+    with pytest.raises(YAMLLimitError, match="nested more than 32 levels deep"):
+        _load(unfinished, allow_anchors=allow_anchors)
+
+
 def test_invalid_yaml_raises_a_yaml_error() -> None:
     with pytest.raises(yaml.YAMLError):
         _load("key: [unclosed")

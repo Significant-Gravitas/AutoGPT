@@ -36,7 +36,8 @@ def load_bounded_yaml(
     """
     if len(text.encode("utf-8")) > max_bytes:
         raise YAMLLimitError(f"{subject} is larger than {_format_bytes(max_bytes)}.")
-    loader = yaml.SafeLoader(text) if allow_anchors else _NoAnchorLoader(text, subject)
+    loader_class = _DepthLimitedLoader if allow_anchors else _NoAnchorLoader
+    loader = loader_class(text, subject)
     try:
         node = loader.get_single_node()
         if node is None:
@@ -49,11 +50,32 @@ def load_bounded_yaml(
         loader.dispose()
 
 
-class _NoAnchorLoader(yaml.SafeLoader):
+class _DepthLimitedLoader(yaml.SafeLoader):
+    """Safe loader that stops composing once lists and mappings nest more
+    than :data:`MAX_YAML_DEPTH` levels deep, before reading any further.
+
+    Depth reached through aliases is checked after composing, in
+    :func:`_check_expanded_document`.
+    """
+
     def __init__(self, text: str, subject: str) -> None:
         super().__init__(text)
         self.subject = subject
+        self.collection_depth = 0
 
+    def compose_node(self, parent: yaml.Node | None, index: Any) -> yaml.Node | None:
+        if not self.check_event(yaml.SequenceStartEvent, yaml.MappingStartEvent):
+            return super().compose_node(parent, index)
+        if self.collection_depth >= MAX_YAML_DEPTH:
+            raise _too_deep(self.subject)
+        self.collection_depth += 1
+        try:
+            return super().compose_node(parent, index)
+        finally:
+            self.collection_depth -= 1
+
+
+class _NoAnchorLoader(_DepthLimitedLoader):
     def fetch_alias(self) -> NoReturn:
         raise YAMLLimitError(f"{self.subject} cannot use YAML aliases.")
 
