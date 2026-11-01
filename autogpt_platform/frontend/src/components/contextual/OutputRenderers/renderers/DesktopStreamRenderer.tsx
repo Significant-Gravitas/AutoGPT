@@ -21,7 +21,7 @@ export interface DesktopStreamValue {
   requires_auth?: boolean;
 }
 
-const DESKTOP_PREVIEW_PATH = "/api/proxy/api/desktop-preview";
+const DESKTOP_PREVIEW_PATH = "/api/proxy/api/internal/desktop-preview";
 
 function isStreamUrl(url: unknown): url is string {
   if (typeof url !== "string") return false;
