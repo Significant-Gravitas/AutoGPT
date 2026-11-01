@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import orjson
 import pytest
 
+from backend.api.features.library import db as library_db_module
 from backend.copilot.context import set_execution_context, set_turn_unattended
 from backend.copilot.tree import root_envelope
 from backend.data.execution import (
@@ -90,6 +91,33 @@ async def test_run_agent(setup_test_data):
     assert result_data["graph_id"] == graph.id
     assert "graph_name" in result_data
     assert result_data["graph_name"] == "Test Agent"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_refused_preset_save_still_reports_the_started_run(
+    setup_test_data, monkeypatch
+):
+    """An error here would read as a failed run, and invite a second one."""
+    monkeypatch.setattr(library_db_module, "MAX_PRESETS_PER_USER", 0)
+    user = setup_test_data["user"]
+    store_submission = setup_test_data["store_submission"]
+
+    response = await RunAgentTool().execute(
+        user_id=user.id,
+        session_id=str(uuid.uuid4()),
+        tool_call_id=str(uuid.uuid4()),
+        username_agent_slug=f"{user.email.split('@')[0]}/{store_submission.slug}",
+        inputs={"test_input": "Hello World"},
+        dry_run=False,
+        save_as_preset=True,
+        session=make_session(user_id=user.id),
+    )
+
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
+    assert result_data["execution_id"]
+    assert result_data.get("saved_preset_id") is None
+    assert "preset was not saved" in result_data["message"]
 
 
 @pytest.mark.asyncio(loop_scope="session")
