@@ -46,8 +46,7 @@ def test_a_read_brings_back_a_preset_at_the_write_bound_in_full():
 def test_every_preset_input_row_is_built_by_the_bounded_builder():
     """A second writer of these rows would skip the bound, so there is one.
 
-    Prisma takes the typed row constructor or a plain dict, so this counts both:
-    `create_graph_execution` writes its own node-input rows as dicts.
+    Prisma takes the typed row constructor or a plain dict, so this counts both.
     """
     unbounded = set()
     for path in sorted(_BACKEND_ROOT.rglob("*.py")):
@@ -120,6 +119,10 @@ def _relation_write_value(node: ast.AST) -> ast.expr | None:
             and target.slice.value == _RELATION
         ):
             return _create_entry(node.value)
+    if isinstance(node, ast.Dict):
+        for key, value in zip(node.keys, node.values):
+            if isinstance(key, ast.Constant) and key.value == _RELATION:
+                return _create_entry(value)
     return None
 
 
