@@ -19,6 +19,7 @@ from backend.api.features.workspace.preview_render_test import (
     allocating_renderer,
     hanging_renderer,
     interval_renderer,
+    memory_cap_above_child_baseline,
 )
 from backend.api.features.workspace.routes import router
 from backend.data.workspace import Workspace, WorkspaceFile
@@ -491,11 +492,21 @@ async def test_preview_render_concurrency_is_bounded(mocker):
 # ---------------------------------------------------------------------------
 
 
-def test_image_preview_past_the_render_timeout_is_not_available(mocker):
+@pytest.mark.parametrize(
+    "renderer, mime_type, content",
+    [
+        ("image_thumbnail", "image/png", _png_bytes),
+        ("pdf_thumbnail", "application/pdf", _pdf_bytes),
+        ("office_thumbnail", PPTX_MIME, lambda: _zip_bytes(with_thumbnail=True)),
+    ],
+)
+def test_preview_past_the_render_timeout_is_not_available(
+    mocker, renderer, mime_type, content
+):
     mocker.patch.object(preview_render, "RENDER_TIMEOUT_SECONDS", 1)
-    mocker.patch.object(preview_render, "image_thumbnail", hanging_renderer)
-    _mock_lookups(mocker, _make_file(mime_type="image/png"))
-    _mock_storage(mocker, _png_bytes())
+    mocker.patch.object(preview_render, renderer, hanging_renderer)
+    _mock_lookups(mocker, _make_file(mime_type=mime_type))
+    _mock_storage(mocker, content())
     redis = _mock_redis(mocker)
     started = time.monotonic()
 
@@ -508,7 +519,7 @@ def test_image_preview_past_the_render_timeout_is_not_available(mocker):
 
 
 def test_image_preview_over_the_render_memory_cap_is_too_large(mocker):
-    cap = 256 * 1024 * 1024
+    cap = asyncio.run(memory_cap_above_child_baseline())
     mocker.patch.object(preview_render, "RENDER_MAX_MEMORY_BYTES", cap)
     mocker.patch.object(preview_render, "image_thumbnail", allocating_renderer)
     _mock_lookups(mocker, _make_file(mime_type="image/png"))

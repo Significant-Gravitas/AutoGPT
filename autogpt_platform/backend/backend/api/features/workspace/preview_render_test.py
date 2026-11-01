@@ -10,6 +10,8 @@ from PIL import Image
 
 from backend.api.features.workspace import preview_render
 
+CHILD_MEMORY_MARGIN = 256 * 1024 * 1024
+
 # Stub renderers. The child process imports them from this module by name, so
 # they stay at module level and this module imports nothing heavy.
 
@@ -44,6 +46,25 @@ def crashing_renderer(_content: bytes, _width: int) -> bytes:
 def env_renderer(content: bytes, _width: int) -> bytes:
     # The content names a variable; answer with its value in the child.
     return os.environ.get(content.decode(), "<unset>").encode()
+
+
+def peak_memory_renderer(_content: bytes, _width: int) -> bytes:
+    # Answer with the child's peak address space, the figure RLIMIT_AS caps.
+    with open("/proc/self/status") as status:
+        for line in status:
+            if line.startswith("VmPeak:"):
+                return str(int(line.split()[1]) * 1024).encode()
+    raise RuntimeError("VmPeak not reported")
+
+
+async def memory_cap_above_child_baseline() -> int:
+    """A memory cap ``CHILD_MEMORY_MARGIN`` above an idle render child's peak.
+
+    The child's baseline (interpreter, PIL, pypdfium2) differs between hosts,
+    so a cap measured from it holds the same headroom on all of them.
+    """
+    baseline = await preview_render.render_in_child(peak_memory_renderer, b"", 16)
+    return int(baseline) + CHILD_MEMORY_MARGIN
 
 
 def interval_renderer(_content: bytes, _width: int) -> bytes:
@@ -138,7 +159,7 @@ async def test_render_past_the_timeout_is_killed(mocker, started_children):
 
 
 async def test_render_over_the_memory_cap_is_too_large(mocker):
-    cap = 256 * 1024 * 1024
+    cap = await memory_cap_above_child_baseline()
     mocker.patch.object(preview_render, "RENDER_MAX_MEMORY_BYTES", cap)
     parent_peak_before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
 
@@ -153,7 +174,7 @@ async def test_render_over_the_memory_cap_is_too_large(mocker):
 
 
 async def test_render_within_the_memory_cap_succeeds(mocker):
-    cap = 256 * 1024 * 1024
+    cap = await memory_cap_above_child_baseline()
     mocker.patch.object(preview_render, "RENDER_MAX_MEMORY_BYTES", cap)
 
     output = await preview_render.render_in_child(
