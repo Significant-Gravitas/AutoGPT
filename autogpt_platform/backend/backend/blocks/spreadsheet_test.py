@@ -176,6 +176,20 @@ async def test_excel_member_unpacking_past_the_cap_is_refused_unread(workbook_pa
 
 
 @pytest.mark.asyncio
+async def test_excel_is_read_from_the_bytes_that_were_checked(workbook_path):
+    import io
+
+    import pandas as pd
+
+    real_read_excel = pd.read_excel
+    with patch("pandas.read_excel", wraps=real_read_excel) as read_excel:
+        rows = await read_rows(file_input=MediaFileType("book.xlsx"))
+
+    assert isinstance(read_excel.call_args.args[0], io.BytesIO)
+    assert rows[0]["status"] == "N/A"
+
+
+@pytest.mark.asyncio
 async def test_excel_member_at_the_cap_is_read(workbook_path):
     add_member(workbook_path, "xl/media/image1.png", XLSX_MEMBER_CAP)
 
