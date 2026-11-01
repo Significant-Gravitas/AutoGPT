@@ -1,3 +1,4 @@
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -42,6 +43,14 @@ def test_extract_title_reads_the_first_title_whatever_its_case_and_attributes():
 )
 def test_extract_title_returns_none_without_a_complete_title(html: str):
     assert _extract_title(html) is None
+
+
+def test_extract_title_scans_unclosed_titles_in_linear_time():
+    html = "<title>" * 20_000
+    started = time.perf_counter()
+    assert _extract_title(html) is None
+    # A pattern that rescans from every <title takes over 10 s on this input.
+    assert time.perf_counter() - started < 1.0
 
 
 def test_is_client_rendered_shell_detects_root_div():

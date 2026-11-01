@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 
 import pytest
 import sentry_sdk
@@ -268,6 +269,16 @@ def test_before_send_filters_a_jwt_wherever_its_run_starts(
 
     assert scrubbed is not None
     assert (scrubbed["logentry"]["formatted"] == "[Filtered]") is filtered
+
+
+def test_before_send_scans_a_run_of_jwt_starts_in_linear_time() -> None:
+    message = "-eyJ" * 20_000
+    started = time.perf_counter()
+    scrubbed = _before_send(_log_event("backend.api.rest_api", message), {})
+    # A pattern entered at every eyJ takes about 10 s on this input.
+    assert time.perf_counter() - started < 1.0
+    assert scrubbed is not None
+    assert scrubbed["logentry"]["formatted"] == message
 
 
 def test_before_send_searches_no_more_than_its_budget(monkeypatch) -> None:

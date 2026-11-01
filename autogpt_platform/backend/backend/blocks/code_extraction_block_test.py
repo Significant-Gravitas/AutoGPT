@@ -1,3 +1,5 @@
+import time
+
 import pytest
 
 from backend.blocks.code_extraction_block import CodeExtractionBlock
@@ -18,3 +20,11 @@ from backend.blocks.code_extraction_block import CodeExtractionBlock
 )
 def test_extract_code_takes_each_closed_fence_of_the_language(text: str, code: str):
     assert CodeExtractionBlock().extract_code(text, "py") == code
+
+
+def test_extract_code_scans_unclosed_fences_in_linear_time():
+    text = "```py\nx" * 20_000
+    started = time.perf_counter()
+    assert CodeExtractionBlock().extract_code(text, "py") == ""
+    # A pattern that rescans from every fence takes over 10 s on this input.
+    assert time.perf_counter() - started < 1.0
