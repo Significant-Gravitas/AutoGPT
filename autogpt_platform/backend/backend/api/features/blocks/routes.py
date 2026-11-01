@@ -15,17 +15,25 @@ from fastapi import (
 )
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
-from starlette.status import HTTP_402_PAYMENT_REQUIRED, HTTP_504_GATEWAY_TIMEOUT
+from starlette.status import (
+    HTTP_402_PAYMENT_REQUIRED,
+    HTTP_429_TOO_MANY_REQUESTS,
+    HTTP_504_GATEWAY_TIMEOUT,
+)
 
 from backend.api.model import CloudStorageUploadResponse
 from backend.blocks import get_block, get_blocks
+from backend.blocks._base import AnyBlockSchema
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.execution import ExecutionContext
 from backend.data.user import get_user_by_id
 from backend.executor import utils as execution_utils
 from backend.executor.direct_block_execution import (
+    DirectBlockExecutionLimitError,
+    DirectBlockExecutionSlot,
     DirectBlockExecutionTimeoutError,
+    claim_direct_block_execution_slot,
     run_block_off_loop,
 )
 from backend.monitoring.instrumentation import record_block_execution
@@ -134,6 +142,22 @@ async def execute_graph_block(
         raise HTTPException(status_code=404, detail="User not found.")
 
     try:
+        slot = claim_direct_block_execution_slot(user_id)
+    except DirectBlockExecutionLimitError as e:
+        raise HTTPException(status_code=HTTP_429_TOO_MANY_REQUESTS, detail=str(e)) from e
+
+    with slot:
+        return await _run_direct_block(obj, data, user_id, user.timezone, slot)
+
+
+async def _run_direct_block(
+    obj: AnyBlockSchema,
+    data: BlockInput,
+    user_id: str,
+    user_timezone: str,
+    slot: DirectBlockExecutionSlot,
+) -> CompletedBlockOutput:
+    try:
         await execution_utils.charge_for_direct_block_execution(
             user_id=user_id, block=obj, input_data=data, source="internal"
         )
@@ -145,13 +169,14 @@ async def execute_graph_block(
     # those (e.g. time blocks) get correct data.
     execution_context = ExecutionContext(
         user_id=user_id,
-        user_timezone=get_user_timezone_or_utc(user.timezone),
+        user_timezone=get_user_timezone_or_utc(user_timezone),
     )
 
     start_time = time.time()
     try:
         output = await run_block_off_loop(
-            obj.execute(data, user_id=user_id, execution_context=execution_context)
+            obj.execute(data, user_id=user_id, execution_context=execution_context),
+            slot,
         )
 
         # Record successful block execution with duration

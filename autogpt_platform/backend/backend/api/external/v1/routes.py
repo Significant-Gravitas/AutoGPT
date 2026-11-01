@@ -11,6 +11,7 @@ import backend.api.features.store.cache as store_cache
 import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
 import backend.blocks
+from backend.blocks._base import AnyBlockSchema
 from backend.api.external.middleware import require_auth, require_permission
 from backend.copilot.rate_limit import UserPaywalledError, enforce_payment_paywall
 from backend.data import execution as execution_db
@@ -21,7 +22,10 @@ from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.execution import ExecutionContext, ExecutionTrigger
 from backend.executor.direct_block_execution import (
+    DirectBlockExecutionLimitError,
+    DirectBlockExecutionSlot,
     DirectBlockExecutionTimeoutError,
+    claim_direct_block_execution_slot,
     run_block_off_loop,
 )
 from backend.executor.utils import (
@@ -114,8 +118,26 @@ async def execute_graph_block(
         raise HTTPException(status_code=404, detail="User not found.")
 
     try:
+        slot = claim_direct_block_execution_slot(auth.user_id)
+    except DirectBlockExecutionLimitError as e:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e)
+        ) from e
+
+    with slot:
+        return await _run_direct_block(obj, data, auth.user_id, user.timezone, slot)
+
+
+async def _run_direct_block(
+    obj: AnyBlockSchema,
+    data: BlockInput,
+    user_id: str,
+    user_timezone: str,
+    slot: DirectBlockExecutionSlot,
+) -> CompletedBlockOutput:
+    try:
         await charge_for_direct_block_execution(
-            user_id=auth.user_id, block=obj, input_data=data, source="external"
+            user_id=user_id, block=obj, input_data=data, source="external"
         )
     except InsufficientBalanceError as e:
         raise HTTPException(
@@ -126,13 +148,13 @@ async def execute_graph_block(
     # carrying the caller's identity + timezone so blocks that depend on
     # those (e.g. time blocks) get correct data.
     execution_context = ExecutionContext(
-        user_id=auth.user_id,
-        user_timezone=get_user_timezone_or_utc(user.timezone),
+        user_id=user_id,
+        user_timezone=get_user_timezone_or_utc(user_timezone),
     )
 
     try:
         return await run_block_off_loop(
-            obj.execute(data, execution_context=execution_context)
+            obj.execute(data, execution_context=execution_context), slot
         )
     except DirectBlockExecutionTimeoutError as e:
         raise HTTPException(

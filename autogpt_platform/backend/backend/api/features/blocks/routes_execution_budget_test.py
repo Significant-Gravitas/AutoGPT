@@ -53,7 +53,7 @@ def _client() -> AsyncClient:
 
 
 @pytest.mark.asyncio
-async def test_block_holding_its_thread_does_not_hold_up_other_requests(
+async def test_server_answers_other_requests_while_a_block_runs(
     mocker: pytest_mock.MockFixture,
 ):
     started = threading.Event()
@@ -127,10 +127,40 @@ async def test_block_past_the_time_budget_gets_a_504_and_is_cancelled(
     _serve_block(mocker, never_finishes)
 
     async with _client() as client:
-        response = await client.post("/blocks/test-block/execute", json={})
+        response = await asyncio.wait_for(
+            client.post("/blocks/test-block/execute", json={}), timeout=10
+        )
         health = await client.get("/health")
 
     assert response.status_code == 504
     assert "did not finish within 0.5 seconds" in response.json()["detail"]
     assert health.status_code == 200
     assert await asyncio.to_thread(cancelled.wait, 10)
+
+
+@pytest.mark.asyncio
+async def test_user_over_the_run_cap_gets_a_429_before_any_charge(
+    mocker: pytest_mock.MockFixture,
+):
+    mocker.patch(
+        "backend.executor.direct_block_execution.DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER",
+        0,
+    )
+    executed: list[bool] = []
+
+    async def execute(*args, **kwargs):
+        executed.append(True)
+        yield "output", "done"
+
+    _serve_block(mocker, execute)
+    charge = mocker.patch(
+        "backend.api.features.blocks.routes.execution_utils.charge_for_direct_block_execution"
+    )
+
+    async with _client() as client:
+        response = await client.post("/blocks/test-block/execute", json={})
+
+    assert response.status_code == 429
+    assert "Wait for one to finish" in response.json()["detail"]
+    charge.assert_not_called()
+    assert executed == []
