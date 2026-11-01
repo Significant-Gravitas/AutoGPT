@@ -274,7 +274,7 @@ async def test_run_refuses_input_over_one_mebibyte():
 
 
 @pytest.mark.asyncio
-async def test_run_joins_comment_split_text_into_one_token(mocker):
+async def test_text_split_by_comments_parses_as_one_text_value(mocker):
     parser_cls = mocker.patch(
         "backend.blocks.xml_parser.Parser", wraps=xml_parser.Parser
     )
@@ -294,7 +294,7 @@ async def test_run_joins_comment_split_text_into_one_token(mocker):
         ("<r><a   /></r>", "<r><a></a></r>"),
     ],
 )
-def test_tokenizer_precheck_writes_tags_in_canonical_form(xml, expected):
+def test_tags_are_parsed_with_their_given_names(xml, expected):
     assert XMLParserBlock._normalize_tokenizer_input(xml) == expected
 
 
@@ -306,11 +306,11 @@ def test_tokenizer_precheck_writes_tags_in_canonical_form(xml, expected):
         "<r><a>1</a/b></r>",
     ],
 )
-def test_tokenizer_precheck_rejects_slash_inside_a_tag_name(xml):
+def test_a_tag_name_with_a_slash_is_refused(xml):
     with pytest.raises(ValueError, match="Invalid XML tag name"):
         XMLParserBlock._normalize_tokenizer_input(xml)
 
 
-def test_tokenizer_precheck_rejects_an_empty_closing_tag():
+def test_an_empty_closing_tag_is_refused():
     with pytest.raises(ValueError, match="Empty XML tag"):
         XMLParserBlock._normalize_tokenizer_input("<r>1</ ></r>")

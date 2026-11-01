@@ -276,7 +276,7 @@ def _balance_stratum_sizes(
 
     Each step adjusts the stratum that is furthest below its proportional
     share (top-up) or the largest one (trim), the earliest stratum winning a
-    tie. Heaps keep that to O(k log k) for k strata.
+    tie. Heaps pick that stratum at each step.
     """
     order = {key: position for position, key in enumerate(stratum_sizes)}
     total = sum(stratum_sizes.values())

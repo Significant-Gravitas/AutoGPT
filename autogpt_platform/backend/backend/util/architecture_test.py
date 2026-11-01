@@ -954,10 +954,10 @@ def test_only_cli_io_writes_to_the_cli_stdin():
 # ---------------------------------------------------------------------------
 #
 # Motivation: the API server's event loop serves every request in the
-# process. Block code can do synchronous work, so a route that iterates
-# ``block.execute(...)`` itself runs that work on the server's loop. Routes
-# hand the stream to ``backend.executor.direct_block_execution`` instead,
-# which runs it on a worker loop under a time budget and a per-user cap.
+# process, and block runs belong on the direct block execution workers. Routes
+# hand a block's ``execute()`` stream to
+# ``backend.executor.direct_block_execution``, which runs it on a worker loop
+# under a time budget and a per-user cap.
 
 _API_PACKAGE = BACKEND_ROOT / "api"
 

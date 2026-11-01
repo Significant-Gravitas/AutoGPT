@@ -17,8 +17,8 @@ async def _sample(**fields: Any) -> dict[str, Any]:
 
 
 def _count_max_work(mocker: pytest_mock.MockFixture, limit: int) -> list[int]:
-    """Spy on the module's ``max``: counts the values it compares and stops a
-    run that goes past *limit* instead of letting it spin."""
+    """Spy on the module's ``max``: counts the values it compares and fails the
+    test once they pass *limit*."""
     scanned = [0]
 
     def counting_max(*args, **kwargs):
