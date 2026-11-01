@@ -34,6 +34,16 @@ from backend.copilot.context import (
     is_within_allowed_dirs,
     resolve_sandbox_path,
 )
+from backend.copilot.sdk.sandbox_image_read import read_sandbox_image
+from backend.copilot.tool_image import (
+    BINARY_IMAGE_READ_GUIDANCE,
+    IMAGE_EXTENSIONS,
+    IMAGE_READ_DESCRIPTION,
+    IMAGE_TOO_LARGE_MESSAGE,
+    MAX_IMAGE_BYTES,
+    ImageReadError,
+    prepare_image,
+)
 from backend.util.sandbox_login import run_internal
 
 logger = logging.getLogger(__name__)
@@ -101,6 +111,15 @@ def _is_likely_binary(path: str) -> bool:
     """Heuristic check for binary files by extension."""
     _, ext = os.path.splitext(path)
     return ext.lower() in _READ_BINARY_EXTENSIONS
+
+
+def _binary_read_guidance(path: str) -> str:
+    if os.path.splitext(path)[1].lower() in {".pdf", ".mp4", ".avi", ".mov", ".mkv"}:
+        return BINARY_IMAGE_READ_GUIDANCE
+    return (
+        "This binary file has not been viewed. "
+        "Use bash_exec with 'file' or 'xxd' to inspect it."
+    )
 
 
 _PARTIAL_TRUNCATION_MSG = (
@@ -312,7 +331,9 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
         is_sdk_tool_path(file_path) if sandbox_active else _is_allowed_local(file_path)
     )
     if local_check:
-        result = _read_local(file_path, offset, limit)
+        result = await asyncio.to_thread(
+            _read_local, file_path, offset, limit if "limit" in args else None
+        )
         if not result.get("isError"):
             sandbox = _get_sandbox()
             if sandbox is not None:
@@ -332,7 +353,27 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
         sandbox, remote = result
 
         try:
-            raw: bytes = await sandbox.files.read(remote, format="bytes")
+            ext = os.path.splitext(remote)[1].lower()
+            if ext in IMAGE_EXTENSIONS:
+                info = await sandbox.files.get_info(remote)
+                if info.size > MAX_IMAGE_BYTES:
+                    return _mcp(
+                        IMAGE_TOO_LARGE_MESSAGE,
+                        error=True,
+                        outside=(),
+                    )
+            elif _is_likely_binary(remote):
+                return _mcp(
+                    _binary_read_guidance(remote),
+                    error=True,
+                    outside=(),
+                )
+            if ext in IMAGE_EXTENSIONS:
+                raw = await read_sandbox_image(sandbox, remote)
+                return await asyncio.to_thread(
+                    _image_result, raw, offset, args.get("limit")
+                )
+            raw = await sandbox.files.read(remote, format="bytes")
             content = raw.decode("utf-8", errors="replace")
         except Exception as exc:
             return _mcp(f"Failed to read {os.path.basename(remote)}: {exc}", error=True)
@@ -354,11 +395,16 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
         return err
     assert resolved is not None
 
+    if os.path.splitext(resolved)[1].lower() in IMAGE_EXTENSIONS:
+        return await asyncio.to_thread(
+            _read_local_image, resolved, offset, args.get("limit")
+        )
+
     if _is_likely_binary(resolved):
         return _mcp(
-            f"Cannot read binary file: {os.path.basename(resolved)}. "
-            "Use bash_exec with 'xxd' or 'file' to inspect binary files.",
+            _binary_read_guidance(resolved),
             error=True,
+            outside=(),
         )
 
     try:
@@ -697,7 +743,11 @@ _BRIDGE_SKIP_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
 async def bridge_to_sandbox(
-    sandbox: Any, file_path: str, offset: int, limit: int
+    sandbox: Any,
+    file_path: str,
+    offset: int,
+    limit: int,
+    content: str | None = None,
 ) -> str | None:
     """Best-effort copy of a host-side SDK file into the E2B sandbox.
 
@@ -707,6 +757,10 @@ async def bridge_to_sandbox(
 
     Only copies when offset=0 and limit is large enough to indicate the model
     wants the full file.  Errors are logged but never propagated.
+
+    *content*, when given, is written in place of the file's bytes, so a
+    caller that showed the model a transformed view of the file (e.g. an
+    unwrapped MCP envelope) can give bash the same text.
 
     Returns the sandbox path on success, or ``None`` on skip/failure.
 
@@ -726,9 +780,14 @@ async def bridge_to_sandbox(
     try:
         expanded = os.path.realpath(os.path.expanduser(file_path))
         basename = os.path.basename(expanded)
-        source_id = hashlib.sha256(expanded.encode()).hexdigest()[:12]
+        source = f"{expanded}:transformed" if content is not None else expanded
+        source_id = hashlib.sha256(source.encode()).hexdigest()[:12]
         unique_name = f"{source_id}-{basename}"
-        file_size = os.path.getsize(expanded)
+        file_size = (
+            os.path.getsize(expanded)
+            if content is None
+            else len(content.encode("utf-8"))
+        )
         if file_size > _BRIDGE_SKIP_BYTES:
             logger.warning(
                 "[E2B] Skipping bridge for large file (%d bytes): %s",
@@ -737,16 +796,7 @@ async def bridge_to_sandbox(
             )
             return None
 
-        def _read_bytes() -> bytes:
-            with open(expanded, "rb") as fh:
-                return fh.read()
-
-        raw_content = await asyncio.to_thread(_read_bytes)
-        try:
-            text_content: str | None = raw_content.decode("utf-8")
-        except UnicodeDecodeError:
-            text_content = None
-        data: str | bytes = text_content if text_content is not None else raw_content
+        data = content if content is not None else await _read_host_file(expanded)
         if file_size <= _BRIDGE_SHELL_MAX_BYTES:
             sandbox_path = f"/tmp/{unique_name}"
             await _sandbox_write(sandbox, sandbox_path, data)
@@ -767,7 +817,11 @@ async def bridge_to_sandbox(
 
 
 async def bridge_and_annotate(
-    sandbox: Any, file_path: str, offset: int, limit: int
+    sandbox: Any,
+    file_path: str,
+    offset: int,
+    limit: int,
+    content: str | None = None,
 ) -> str | None:
     """Bridge a host file to the sandbox and return a newline-prefixed annotation.
 
@@ -776,21 +830,47 @@ async def bridge_and_annotate(
     ``"\\n[Sandbox copy available at /tmp/abc-file.txt]"`` on success, or
     ``None`` if bridging was skipped or failed.
     """
-    sandbox_path = await bridge_to_sandbox(sandbox, file_path, offset, limit)
+    sandbox_path = await bridge_to_sandbox(sandbox, file_path, offset, limit, content)
     if sandbox_path is None:
         return None
     return f"\n[Sandbox copy available at {sandbox_path}]"
 
 
+async def _read_host_file(path: str) -> str | bytes:
+    """The file as text when it decodes as UTF-8, else its raw bytes."""
+
+    def _read_bytes() -> bytes:
+        with open(path, "rb") as fh:
+            return fh.read()
+
+    raw_content = await asyncio.to_thread(_read_bytes)
+    try:
+        return raw_content.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw_content
+
+
 # Local read (for SDK-internal paths)
 
 
-def _read_local(file_path: str, offset: int, limit: int) -> dict[str, Any]:
+def _read_local(file_path: str, offset: int, limit: int | None) -> dict[str, Any]:
     """Read from the host filesystem (defence-in-depth path check)."""
     if not _is_allowed_local(file_path):
         return _mcp(f"Path not allowed: {file_path}", error=True)
-    expanded = os.path.realpath(os.path.expanduser(file_path))
+    expanded = os.path.expanduser(file_path)
+    if not os.path.isabs(expanded):
+        expanded = os.path.join(get_sdk_cwd(), expanded)
+    expanded = os.path.realpath(expanded)
+    if os.path.splitext(expanded)[1].lower() in IMAGE_EXTENSIONS:
+        return _read_local_image(expanded, offset, limit)
+    if _is_likely_binary(expanded):
+        return _mcp(
+            _binary_read_guidance(expanded),
+            error=True,
+            outside=(),
+        )
     try:
+        limit = _DEFAULT_READ_LIMIT if limit is None else limit
         with open(expanded, encoding="utf-8", errors="replace") as fh:
             selected = list(itertools.islice(fh, offset, offset + limit))
         numbered = "".join(
@@ -803,13 +883,44 @@ def _read_local(file_path: str, offset: int, limit: int) -> dict[str, Any]:
         return _mcp(f"Error reading {file_path}: {exc}", error=True)
 
 
+def _read_local_image(path: str, offset: int, limit: int | None) -> dict[str, Any]:
+    try:
+        with open(path, "rb") as file:
+            raw = file.read(MAX_IMAGE_BYTES + 1)
+    except OSError:
+        return _mcp(f"Could not read image: {os.path.basename(path)}.", error=True)
+    return _image_result(raw, offset, limit)
+
+
+def _image_result(raw: bytes, offset: int, limit: int | None) -> dict[str, Any]:
+    if offset or limit is not None:
+        return _mcp(
+            "Image not shown: offset/limit only apply to text. Read the whole image.",
+            error=True,
+            outside=(),
+        )
+    try:
+        image = prepare_image(raw)
+    except ImageReadError as exc:
+        return _mcp(str(exc), error=True, outside=())
+    except ValueError as exc:
+        return _mcp(str(exc), error=True)
+    return {
+        "content": [
+            {"type": "text", "text": "Viewed image (first frame only)."},
+            image.mcp(),
+        ],
+        "isError": False,
+    }
+
+
 # Tool descriptors (name, description, schema, handler)
 
 E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
     (
         "read_file",
         "Read a file from the cloud sandbox (/home/user or /tmp). "
-        "Use offset and limit for large files.",
+        "Use offset and limit for large text files. " + IMAGE_READ_DESCRIPTION,
         {
             "type": "object",
             "properties": {
@@ -940,7 +1051,8 @@ WRITE_TOOL_SCHEMA: dict[str, Any] = {
 READ_TOOL_NAME = "read_file"
 READ_TOOL_DESCRIPTION = (
     "Read a file from the working directory. Returns content with line numbers "
-    "(cat -n format). Use offset and limit to read specific ranges for large files."
+    "(cat -n format). Use offset and limit to read specific ranges for large text files. "
+    + IMAGE_READ_DESCRIPTION
 )
 READ_TOOL_SCHEMA: dict[str, Any] = {
     "type": "object",

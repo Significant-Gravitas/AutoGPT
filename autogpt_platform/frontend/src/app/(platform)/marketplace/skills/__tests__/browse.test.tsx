@@ -5,12 +5,7 @@ import {
 } from "@/app/api/__generated__/endpoints/store/store.msw";
 import type { MarketplaceSkill } from "@/app/api/__generated__/models/marketplaceSkill";
 import { server } from "@/mocks/mock-server";
-import {
-  configure,
-  render,
-  screen,
-  waitFor,
-} from "@/tests/integrations/test-utils";
+import { configure, render, screen } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, test, vi } from "vitest";
@@ -25,7 +20,6 @@ const mockUseAuth = vi.hoisted(() => vi.fn());
 const mockPush = vi.hoisted(() => vi.fn());
 const mockNotFound = vi.hoisted(() => vi.fn());
 const searchParams = vi.hoisted(() => ({ value: "" }));
-const flag = vi.hoisted(() => ({ enabled: true, ready: true }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -43,14 +37,6 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({ useAuth: mockUseAuth }));
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return { ...actual, useFlagStatus: () => flag };
-});
 
 const brandVoice: MarketplaceSkill = {
   slug: "brand-voice-guide",
@@ -84,8 +70,7 @@ function listing(skills: MarketplaceSkill[]) {
 describe("Marketplace skills browse page", () => {
   beforeEach(() => {
     searchParams.value = "";
-    flag.enabled = true;
-    flag.ready = true;
+
     mockPush.mockClear();
     mockNotFound.mockClear();
     mockUseAuth.mockReturnValue({ user: { id: "user-1" }, isLoggedIn: true });
@@ -155,12 +140,14 @@ describe("Marketplace skills browse page", () => {
     ).toBeDefined();
   });
 
-  test("is not found when the skills-hub flag is off", async () => {
-    flag.enabled = false;
+  test("loads published skills without a rollout flag", async () => {
     server.use(listing([brandVoice]));
 
     render(<SkillsBrowsePage />);
 
-    await waitFor(() => expect(mockNotFound).toHaveBeenCalled());
+    expect(
+      await screen.findByRole("link", { name: /Brand voice guide/ }),
+    ).toBeDefined();
+    expect(mockNotFound).not.toHaveBeenCalled();
   });
 });

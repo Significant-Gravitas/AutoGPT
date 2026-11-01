@@ -20,13 +20,13 @@ export function FileRowActions({ file, onDownload, onRequestDelete }: Props) {
   const canDelete = !isUploadedFile(item);
 
   return (
-    <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+    <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
       <Button
         variant="ghost"
         size="icon"
         onClick={() => onDownload(file)}
         aria-label={`Download ${item.name}`}
-        className="size-7 rounded-lg !p-0 text-zinc-500"
+        className="size-7 rounded-lg !p-0 text-foreground-tertiary"
       >
         <Icon icon={Download01Icon} size={14} />
       </Button>
@@ -36,7 +36,7 @@ export function FileRowActions({ file, onDownload, onRequestDelete }: Props) {
           size="icon"
           onClick={() => onRequestDelete(file)}
           aria-label={`Delete ${item.name}`}
-          className="size-7 rounded-lg !p-0 text-zinc-500"
+          className="size-7 rounded-lg !p-0 text-foreground-tertiary"
         >
           <Icon icon={Delete02Icon} size={14} />
         </Button>

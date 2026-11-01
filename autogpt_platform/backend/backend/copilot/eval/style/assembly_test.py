@@ -126,10 +126,6 @@ async def test_user_prefix_is_the_production_first_turn_context():
     db.list_experts = AsyncMock(return_value=roster)
     with (
         patch("backend.copilot.expert_context.experts_db", MagicMock(return_value=db)),
-        patch(
-            "backend.copilot.expert_context.is_feature_enabled",
-            AsyncMock(return_value=True),
-        ),
     ):
         assert await build_expert_context("user", max_.id) == user_prefix(max_, roster)
         assert await build_expert_context("user", None) == user_prefix(None, roster)
@@ -168,9 +164,7 @@ def test_the_control_prompt_carries_autopilots_oversight_block():
 
 @requires_roster
 def test_the_baseline_records_which_delegation_state_it_measured():
-    """hire-experts off renders a different team rule, drops the delegation
-    supplement and hides the expert tools, so a score means nothing without
-    the state it was measured in."""
+    """Historical score files preserve the delegation state they measured."""
     assert load_baseline().delegation_enabled is DELEGATION_ENABLED
     experts, fixtures, rubric = roster_experts(), load_fixtures(), load_rubric()
     parts = fingerprint_parts(

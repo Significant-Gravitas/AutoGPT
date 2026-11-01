@@ -3,7 +3,6 @@
 import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
 
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
-import { NewChatOnboarding } from "@/app/(platform)/copilot/components/ExpertOnboardingCard/NewChatOnboarding";
 import { ChatMessagesContainer } from "@/app/(platform)/copilot/components/ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "@/app/(platform)/copilot/components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { Button } from "@/components/atoms/Button/Button";
@@ -81,7 +80,7 @@ export function ExpertChatDrawer({
             variant="ghost"
             size="icon-xs"
             leadingIcon={ArrowExpandIcon}
-            aria-label="Open in Copilot"
+            aria-label="Open in Chat"
           />
         </>
       }
@@ -117,9 +116,8 @@ function ChatPanelBody({ target, identity, chat }: BodyProps) {
     onActionSend,
     queuedMessages,
     isResolvingSession,
-    isLoadingSession,
     isCreating,
-    suppressOnboarding,
+    pendingSend,
   } = chat;
 
   const isStreaming = status === "streaming" || status === "submitted";
@@ -133,63 +131,54 @@ function ChatPanelBody({ target, identity, chat }: BodyProps) {
               Opening chat…
             </Text>
           </div>
-        ) : sessionId ? (
+        ) : sessionId || pendingSend ? (
           <div className="flex min-h-0 flex-1 flex-col">
-            <NewChatOnboarding
-              expertId={target.expertId}
-              enabled={
-                messages.length === 0 &&
-                !isLoadingSession &&
-                !suppressOnboarding &&
-                !isStreaming
-              }
-            >
-              <ChatMessagesContainer
-                messages={messages}
-                status={status}
-                error={error}
-                isLoading={false}
-                sessionID={sessionId}
-                queuedMessages={queuedMessages}
-                variant="compact"
-                showThreadHeader={false}
-              />
-            </NewChatOnboarding>
+            <ChatMessagesContainer
+              messages={messages}
+              status={status}
+              error={error}
+              isLoading={false}
+              sessionID={sessionId}
+              queuedMessages={queuedMessages}
+              pendingSend={pendingSend}
+              variant="compact"
+              showThreadHeader={false}
+            />
           </div>
         ) : (
-          <NewChatOnboarding
-            expertId={target.expertId}
-            enabled={!suppressOnboarding}
-          >
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-6 text-center">
-              <IdentityAvatar
-                identity={identity}
-                className="h-24 w-24"
-                imageSize={192}
-              />
-              <div className="space-y-0.5">
-                <Text variant="body-medium" tone="primary">
-                  What can I do for you?
-                </Text>
-                <Text variant="small" tone="muted">
-                  {target.name} · {getExpertRoleLabel(target.role)}
-                </Text>
-              </div>
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-6 text-center">
+            <IdentityAvatar
+              identity={identity}
+              className="h-24 w-24"
+              imageSize={192}
+            />
+            <div className="space-y-0.5">
+              <Text variant="body-medium" tone="primary">
+                What can I do for you?
+              </Text>
+              <Text variant="small" tone="muted">
+                {target.name} · {getExpertRoleLabel(target.role)}
+              </Text>
             </div>
-          </NewChatOnboarding>
+          </div>
         )}
-        <div className="shrink-0 px-3 pb-5 pt-2">
+        <div className="shrink-0 px-3 pt-2 pb-5">
           <ChatInput
             inputId="expert-chat-input"
             variant="compact"
             onSend={onSend}
             disabled={isResolvingSession || isCreating}
+            isUploadingFiles={!!pendingSend}
             isStreaming={isStreaming}
             isTurnStarting={status === "submitted"}
             onStop={stop}
             onEnqueue={onSend}
+            canAttachWhileStreaming
             placeholder={`Message ${target.name}…`}
             hasSession={!!sessionId}
+            expertId={target.expertId}
+            expertName={target.name}
+            assistantName={target.name}
           />
         </div>
       </div>

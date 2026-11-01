@@ -19,6 +19,7 @@ async def test_model_attempt_reservation_is_atomic_and_owned(server):
             source_revision=source.revision,
             policy_version=1,
             max_attempts=3,
+            live_seconds=0,
             expected_epoch=source.epoch,
         )
         assert (
@@ -70,6 +71,7 @@ async def test_model_attempt_reservation_is_atomic_and_owned(server):
             run_id="settled",
             disposition="skipped",
             reason="attempt limit reached",
+            live_seconds=0,
         )
         assert settled.cost_microdollars == 1000 and settled.input_tokens == 10
         assert settled.model_attempts == 3 and settled.replay is None
@@ -93,6 +95,7 @@ async def test_checkpoint_replay_is_bounded_and_does_not_create_another_paid_att
             source_revision=source.revision,
             policy_version=1,
             max_attempts=3,
+            live_seconds=0,
             expected_epoch=source.epoch,
         )
         first = await reviews.reserve_model_review(user, run_id="paid", **params)

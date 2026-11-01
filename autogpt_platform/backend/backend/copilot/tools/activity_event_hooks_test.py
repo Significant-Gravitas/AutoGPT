@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 
+from backend.blocks.airtable.schema import AirtableCreateTableBlock
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.models import BlockOutputResponse, ErrorResponse
 from backend.copilot.tools.run_block import RunBlockTool
@@ -25,11 +26,12 @@ def _make_session(expert_id: str | None = None) -> ChatSession:
     )
 
 
-def _write_response(path: str) -> WorkspaceWriteResponse:
+def _write_response(path: str, is_internal: bool = False) -> WorkspaceWriteResponse:
     return WorkspaceWriteResponse(
         message="File written",
         file_id="file-1",
         name="draft.md",
+        is_internal=is_internal,
         path=path,
         mime_type="text/markdown",
         size_bytes=42,
@@ -61,6 +63,18 @@ def test_write_with_overwrite_reports_update() -> None:
 
     assert draft is not None
     assert draft.event_type == "file.updated"
+
+
+def test_writing_a_working_file_is_not_reported() -> None:
+    result = _write_response("/sessions/s1/build_state.json", is_internal=True)
+
+    draft = WriteWorkspaceFileTool().activity_event(
+        session=_make_session(), result=result, filename="build_state.json"
+    )
+
+    assert draft is None
+    # The model and the client never see the flag.
+    assert "is_internal" not in result.model_dump()
 
 
 def test_error_response_reports_nothing() -> None:
@@ -110,3 +124,20 @@ def test_run_block_does_not_report_llm_credential_use() -> None:
     )
 
     assert tool.activity_event(session=session, result=model_call) is None
+
+
+def test_run_block_names_the_action_by_its_block() -> None:
+    block = AirtableCreateTableBlock()
+    result = BlockOutputResponse(
+        message="Block executed",
+        block_id=block.id,
+        block_name=block.name,
+        outputs={},
+        provider="airtable",
+        session_id="test-session",
+    )
+
+    draft = RunBlockTool().activity_event(session=_make_session(), result=result)
+
+    assert draft is not None
+    assert draft.title == "Airtable Create Table"

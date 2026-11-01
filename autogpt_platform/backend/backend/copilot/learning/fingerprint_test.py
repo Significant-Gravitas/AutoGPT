@@ -55,3 +55,12 @@ def test_empty_bullets_do_not_hide_a_prose_procedure() -> None:
     prose = "Validate record counts before importing."
     padded = "* " + " " * 100_000 + "\n" + prose
     assert behavior_tokens(padded) == behavior_tokens(prose)
+
+
+def test_two_procedures_of_only_stopwords_overlap_fully() -> None:
+    """A suppressed procedure whose steps are all stopwords must still match
+    itself; against real content it matches nothing."""
+    empty = behavior_tokens("1. Use the\n2. And then")
+    assert empty == []
+    assert token_overlap(empty, behavior_tokens("1. And then\n2. Use the")) == 1.0
+    assert token_overlap(empty, behavior_tokens("1. Validate the row count")) == 0.0

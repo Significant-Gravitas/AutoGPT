@@ -156,8 +156,8 @@ LIMITS = {"daily": 625000, "weekly": 3125000}
 MULTIPLIERS = {"MAX": 42.66, "PRO": 5}
 EXPORT = [
     _flag("AutoMod", [True, False], on=False),
-    _flag("artifacts-page", [True, False], fallthrough=0),
-    _flag("copilot-voice-mode", [True, False], rules=[([_in_segment("employee")], 0)]),
+    _flag("chat-workspace-files", [True, False], fallthrough=0),
+    _flag("copilot-auto-mode", [True, False], rules=[([_in_segment("employee")], 0)]),
     _flag(
         "chat-mode-option",
         [True, False],
@@ -167,7 +167,7 @@ EXPORT = [
         ],
     ),
     _flag(
-        "ai-agent-execution-summary",
+        "copilot-voice-mode",
         [True, False],
         targets=[{"values": [TARGETED], "variation": 0}],
         rules=[([_clause("email_domain", "in", "agpt.co")], 0)],
@@ -190,7 +190,7 @@ EXPORT = [
 ]
 ANONYMOUS_READS = [
     "AutoMod",
-    "artifacts-page",
+    "chat-workspace-files",
     "copilot-cost-limits",
     "copilot-tier-multipliers",
     "copilot-model-routing",
@@ -201,10 +201,10 @@ ANONYMOUS_READS = [
 # same could not pass for a port that ignores targeting.
 ANSWERS: dict[str, dict[str, Any]] = {
     "AutoMod": {"*": False},
-    "artifacts-page": {"*": True},
-    "copilot-voice-mode": {"*": False, "employee": True, "targeted": True},
+    "chat-workspace-files": {"*": True},
+    "copilot-auto-mode": {"*": False, "employee": True, "targeted": True},
     "chat-mode-option": {"*": False, "employee": True, "outsider": True},
-    "ai-agent-execution-summary": {"*": False, "employee": True, "targeted": True},
+    "copilot-voice-mode": {"*": False, "employee": True, "targeted": True},
     "copilot-cost-limits": {"*": LIMITS},
     "copilot-tier-multipliers": {"*": MULTIPLIERS, "employee": {}, "targeted": {}},
     "copilot-model-routing": {"*": {}},
@@ -276,11 +276,17 @@ def _posthog() -> Posthog:
     client.feature_flags = flags
     client.cohorts = {str(ids[p["name"]]): p["filters"]["properties"] for p in payloads}
     client._get_flags_decision = _no_remote_flags
+    # Each read reports a $feature_flag_called event, which would post to PostHog.
+    client.capture = _no_events
     return client
 
 
 def _no_remote_flags(*args, **kwargs):
     raise ConnectionError("only an in-process answer counts here")
+
+
+def _no_events(*args, **kwargs) -> None:
+    return None
 
 
 def _record_posthog_reads(monkeypatch) -> dict[str, tuple[Any, bool]]:

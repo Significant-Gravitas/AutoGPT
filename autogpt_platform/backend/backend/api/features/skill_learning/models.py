@@ -17,6 +17,7 @@ STATE_LABELS: dict[str, str] = {
     "archived": "Archived",
     "invalidated": "Archived (source unavailable)",
     "stale": "Archived (stale)",
+    "deleted": "Deleted",
 }
 
 DISPOSITION_LABELS: dict[str, str] = {

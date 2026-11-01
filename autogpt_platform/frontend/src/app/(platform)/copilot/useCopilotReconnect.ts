@@ -62,8 +62,9 @@ export function useCopilotReconnect({
   const reconnectAttemptsRef = useRef(0);
   const reconnectStartedAtRef = useRef<number | null>(null);
   const hasShownDisconnectToastRef = useRef(false);
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>();
-  const reconnectTimeoutTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const reconnectTimeoutTimerRef =
+    useRef<ReturnType<typeof setTimeout>>(undefined);
 
   function handleReconnect() {
     if (!sessionId) return;

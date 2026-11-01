@@ -111,7 +111,9 @@ it("keeps a paid-plan action and support available after rejection", async () =>
   );
   render(<SettingsBillingPage />);
   await screen.findByText("This introductory offer has already been used");
-  expect(await screen.findByRole("button", { name: "Get Pro" })).toBeDefined();
+  expect(
+    (await screen.findAllByRole("button", { name: "Start Pro" })).length,
+  ).toBeGreaterThan(0);
   expect(
     screen.getByRole("link", { name: "Contact support" }).getAttribute("href"),
   ).toBe("https://discord.gg/autogpt");

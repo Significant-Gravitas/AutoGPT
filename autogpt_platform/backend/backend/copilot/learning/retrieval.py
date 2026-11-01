@@ -29,12 +29,13 @@ ORIGIN_LABELS = {
     "edited": "Edited by owner",
     "restored": "Restored by owner",
     "imported": "Imported",
+    "deleted": "Deleted by owner",
 }
 
 
 def origin_label(origin: str, *, viewer_is_actor: bool = False) -> str:
     label = ORIGIN_LABELS.get(origin, origin.replace("_", " ").capitalize())
-    if viewer_is_actor and origin in ("requested", "edited", "restored"):
+    if viewer_is_actor and origin in ("requested", "edited", "restored", "deleted"):
         return label.replace("by user", "by you").replace("by owner", "by you")
     return label
 

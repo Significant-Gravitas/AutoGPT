@@ -34,6 +34,7 @@ from backend.copilot.tools.skills import (
     read_user_skill_files,
     read_user_skill_markdown,
     render_skill_markdown,
+    saved_skill_limit_reached,
     store_user_skill,
     validate_package,
 )
@@ -42,6 +43,7 @@ from backend.data.db_accessors import (
     skill_use_db,
     skill_versions_db,
 )
+from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT, SkillLimitError
 from backend.data.skill_content_approvals import SkillContentApproval
 from backend.data.skill_learning import owner_key_for
 from backend.data.skill_publication import ReviewStamp, VersionDraft
@@ -79,6 +81,11 @@ from .publication_validation import (
 )
 
 logger = logging.getLogger(__name__)
+
+SKILL_LIMIT_REASON = (
+    f"the skill limit is reached ({MAX_SKILLS_PER_EXPERT} saved skills); "
+    "delete a skill you no longer use to make room"
+)
 
 # ---------------------------------------------------------------------------
 # Automated publication (nightly / requested)
@@ -196,6 +203,14 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
     blocked = await _check_bundle(request, rendered, files, approvals)
     if blocked is not None:
         return blocked
+    if await saved_skill_limit_reached(
+        request.user_id, request.expert_id, request.skill_name
+    ):
+        # Checked before anything is written, so a skill that would need a
+        # saved slot the owner no longer has (a new one, or an installed copy
+        # an edit moves into the saved budget) leaves nothing behind. Nightly
+        # keeps the paid review for its next retry.
+        return PublishOutcome(status="paused", reason=SKILL_LIMIT_REASON)
 
     versions = skill_versions_db()
     head = await versions.ensure_head(
@@ -204,6 +219,12 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
     if request.create_only and head.current_version_id is not None:
         return PublishOutcome(
             status="conflict", reason="the target skill already has a version"
+        )
+    if head.deleted and current_text is not None:
+        # This run read the package before its owner deleted it; importing
+        # those bytes now would bring the deleted skill back.
+        return PublishOutcome(
+            status="conflict", reason="the skill was deleted after it was read"
         )
     if head.current_version_id is None and current is not None and current_text:
         await record_registry_write(
@@ -218,6 +239,7 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
             summary="Existing skill preserved before learning",
             keep_auto_improve=False,
             files=snapshot_files(current_files),
+            only_if_head_at=head.current_version,
         )
         head = await versions.ensure_head(
             request.user_id, request.expert_id, request.skill_name
@@ -582,6 +604,10 @@ async def write_committed_version(
             user_id, version_id=version.id, review_id=review_id, reason=reason
         )
         return PublishOutcome(status="conflict", reason=reason)
+    except SkillLimitError:
+        # The limit was reached after the precheck; the version stays pending
+        # and is written once the owner frees a slot.
+        return PublishOutcome(status="paused", reason=SKILL_LIMIT_REASON)
     except Exception as exc:
         logger.warning(
             "Skill workspace write failed for %s v%s (user %s); left pending",

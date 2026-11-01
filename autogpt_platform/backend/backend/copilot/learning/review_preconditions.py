@@ -1,9 +1,10 @@
-"""Reuse a known review target without billing while its owner pauses learning."""
+"""Reuse a known review target without billing while it waits for its owner."""
 
 from backend.data.db_accessors import skill_versions_db
 from backend.data.skill_reviews import LearningReviewRecord
 
 from .contract import LearningScope
+from .publication_state import current_version_withdrawn
 
 
 async def review_target_is_paused(
@@ -19,4 +20,8 @@ async def review_target_is_paused(
     head = await skill_versions_db().get_head(
         scope.user_id, scope.owner_key, review.skill_name
     )
-    return head is not None and head.learning_paused_at is not None
+    if head is None:
+        return False
+    return head.learning_paused_at is not None or await current_version_withdrawn(
+        scope.user_id, head
+    )

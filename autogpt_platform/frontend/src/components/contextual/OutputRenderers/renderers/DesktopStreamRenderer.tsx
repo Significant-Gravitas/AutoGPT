@@ -5,6 +5,7 @@ import {
   ComputerIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   OutputRenderer,
   OutputMetadata,
@@ -51,11 +52,14 @@ interface PreviewProps {
   /** False on a shared transcript: the owner-bound link would only answer
    *  the viewer with a 404, so the frame is replaced by a notice. */
   ownerView?: boolean;
+  /** `body-md` inside a profile tab, whose copy reads at 15px. */
+  textSize?: "body" | "body-md";
 }
 
 export function DesktopStreamPreview({
   value,
   ownerView = true,
+  textSize = "body",
 }: PreviewProps) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const ownerOnly = value.requires_auth === true && !ownerView;
@@ -65,13 +69,24 @@ export function DesktopStreamPreview({
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border border-zinc-200">
-      <div className="flex items-center justify-between border-b border-zinc-200 bg-zinc-50 px-3 py-2">
-        <div className="flex items-center gap-2 text-sm text-zinc-700">
+    <div className="overflow-hidden rounded-lg border border-border-base">
+      <div className="flex items-center justify-between border-b border-border-base bg-surface-muted px-3 py-2">
+        {/* The colour on the bar and the buttons is the icons' currentColor. */}
+        <div className="flex items-center gap-2 text-foreground-body">
           <Icon icon={ComputerIcon} size={16} />
-          <span className="font-medium">Interactive Desktop</span>
-          <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-xs uppercase text-zinc-600">
-            {value.provider}
+          <Text
+            variant={
+              textSize === "body-md" ? "body-md-medium" : "body-medium-tight"
+            }
+            as="span"
+            tone="body"
+          >
+            Interactive Desktop
+          </Text>
+          <span className="flex rounded bg-surface-active px-1.5 py-0.5">
+            <Text variant="small-uppercase-tight" as="span" tone="secondary">
+              {value.provider}
+            </Text>
           </span>
         </div>
         {!ownerOnly && (
@@ -79,27 +94,37 @@ export function DesktopStreamPreview({
             <button
               type="button"
               onClick={handleFullscreen}
-              className="flex items-center gap-1 rounded px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-200"
+              className="flex items-center gap-1 rounded px-2 py-1 text-foreground-secondary hover:bg-surface-active"
               aria-label="Fullscreen"
             >
               <Icon icon={ArrowExpandIcon} size={14} />
-              Fullscreen
+              <Text variant="small-tight" as="span" tone="secondary">
+                Fullscreen
+              </Text>
             </button>
             <a
               href={value.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1 rounded px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-200"
+              className="flex items-center gap-1 rounded px-2 py-1 text-foreground-secondary hover:bg-surface-active"
             >
               <Icon icon={ArrowUpRight01Icon} size={14} />
-              Open in new tab
+              <Text variant="small-tight" as="span" tone="secondary">
+                Open in new tab
+              </Text>
             </a>
           </div>
         )}
       </div>
       {ownerOnly ? (
-        <div className="flex aspect-video w-full items-center justify-center bg-zinc-900 px-6 text-center text-sm text-zinc-400">
-          The live desktop is only visible to the owner of this chat.
+        <div className="flex aspect-video w-full items-center justify-center bg-action-hover px-6">
+          <Text
+            variant={textSize === "body-md" ? "body-md" : "body-tight"}
+            tone="subtle"
+            className="text-center"
+          >
+            The live desktop is only visible to the owner of this chat.
+          </Text>
         </div>
       ) : (
         <iframe
@@ -107,17 +132,19 @@ export function DesktopStreamPreview({
           src={value.url}
           sandbox="allow-scripts allow-same-origin allow-popups"
           allow="clipboard-read; clipboard-write; fullscreen"
-          className="aspect-video w-full bg-zinc-900"
+          className="aspect-video w-full bg-action-hover"
           title={`Interactive desktop (${value.sandbox_id})`}
         />
       )}
-      <p className="border-t border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-700">
-        {value.requires_auth
-          ? "Only the owner of this chat can view the live desktop. "
-          : ""}
-        The AI works on this desktop with full access, so anything signed in
-        here is visible to it. Do not sign into personal accounts.
-      </p>
+      <div className="border-t border-border-base bg-surface-muted px-3 py-2">
+        <Text variant="small-medium-tight" tone="body">
+          {value.requires_auth
+            ? "Only the owner of this chat can view the live desktop. "
+            : ""}
+          The AI works on this desktop with full access, so anything signed in
+          here is visible to it. Do not sign into personal accounts.
+        </Text>
+      </div>
     </div>
   );
 }

@@ -135,16 +135,19 @@ def _convert_for_match(value: Any, target: Any) -> Any:
     if input_type in (Any, object):
         return value
     if issubclass(input_type, bool):
-        if isinstance(value, str) and value.strip().lower() in ("true", "false"):
-            return value.strip().lower() == "true"
+        # Preserve the boolean spellings accepted by convert().
+        if isinstance(value, str):
+            text = value.strip().lower()
+            if text in ("true", "1"):
+                return True
+            if text in ("false", "0"):
+                return False
         return value
     if issubclass(input_type, (int, float)):
         if isinstance(value, str):
             # Compare exact decimal values: float() would round, so that
             # "9007199254740993" matched 9007199254740992.
             text = value.strip()
-            if "_" in text:
-                return value
             try:
                 number = Decimal(text)
             except InvalidOperation:

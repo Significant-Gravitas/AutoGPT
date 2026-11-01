@@ -3,7 +3,10 @@ import type { BetterAuthOptions } from "better-auth";
 import { type AuthEmailContext, claimIPEmailSlot } from "./auth-email-cooldown";
 
 // Each of these can email an address that has no session yet.
-const IP_CAPPED_PATHS = new Set(["/sign-up/email", "/send-verification-email"]);
+export const IP_CAPPED_PATHS = new Set([
+  "/sign-up/email",
+  "/send-verification-email",
+]);
 
 interface Args {
   path: string | undefined;

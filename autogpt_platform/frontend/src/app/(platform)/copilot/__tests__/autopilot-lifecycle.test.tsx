@@ -83,15 +83,13 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
 
       await typeAndSend("hi");
 
-      expect(
-        await screen.findByRole("button", { name: /stop/i }),
-      ).toBeDefined();
+      expect(await screen.findByRole("button", { name: "Stop" })).toBeDefined();
 
       expect(
         await screen.findByText("Hi.", undefined, { timeout: 5000 }),
       ).toBeDefined();
       await waitFor(() => {
-        expect(screen.queryByRole("button", { name: /stop/i })).toBeNull();
+        expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
       });
     });
 
@@ -185,12 +183,10 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       );
       renderHost();
       const cancels = countCancels();
-      const user = userEvent.setup();
+      const tappedWhileDisarmed = tapStopWithin(150);
 
       await typeAndSend("hello");
-      const stop = await screen.findByRole("button", { name: /^stop$/i });
-      await sleep(150);
-      await user.click(stop);
+      expect(await tappedWhileDisarmed).toBe(true);
       await sleep(200);
       expect(cancels()).toBe(0);
 
@@ -253,4 +249,31 @@ function sendSlot() {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Taps Stop at most `ms` after it mounts. The timer starts before Stop can
+// mount, so it is always due before Stop's 1 s arm. Resolves to `disabled`.
+function tapStopWithin(ms: number) {
+  return new Promise<boolean>((resolve) => {
+    let isDue = false;
+    const observer = new MutationObserver(tap);
+    function tap() {
+      const stop = document.querySelector<HTMLButtonElement>(
+        'button[aria-label="Stop"]',
+      );
+      if (!isDue || !stop) return;
+      observer.disconnect();
+      resolve(stop.disabled);
+      stop.click();
+    }
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributeFilter: ["aria-label"],
+    });
+    setTimeout(() => {
+      isDue = true;
+      tap();
+    }, ms);
+  });
 }

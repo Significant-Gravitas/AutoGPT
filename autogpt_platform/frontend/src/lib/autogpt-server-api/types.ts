@@ -909,8 +909,15 @@ export type OnboardingStep =
   // No longer used but tracked
   | "BUILDER_OPEN"
   | "BUILDER_RUN_AGENT"
-  // Copilot home first-run: capability-cards modal completed or skipped
+  // Copilot home first-run: capability-cards modal completed or skipped.
+  // Replaced by FIRST_RUN_TOUR.
   | "CAPABILITY_CARDS"
+  // The guided first run over the real sidebar, finished or skipped
+  | "FIRST_RUN_TOUR"
+  // One-time contextual tips: a second chat, a cost, an expert proposal
+  | "CHATS_TIP"
+  | "COST_TIP"
+  | "EXPERT_TIP"
   // First-visit intro card for a tab, dismissed however the user chose
   | "AGENTS_TAB_INTRO"
   | "MARKETPLACE_TAB_INTRO"

@@ -32,6 +32,12 @@ beforeEach(() => {
   sent.length = 0;
 });
 
+function sentWithMessage(message: string) {
+  const event = sent.find((candidate) => candidate.message === message);
+  if (!event) throw new Error(`No Sentry event with message: ${message}`);
+  return event;
+}
+
 afterAll(() => {
   vi.restoreAllMocks();
 });
@@ -75,7 +81,17 @@ describe("feature-flag mismatch report", () => {
     });
     await Sentry.flush(2000);
 
-    const [first, flipped, other] = sent;
+    expect(sent).toHaveLength(3);
+    // Sentry may hand the events over in any order.
+    const first = sentWithMessage(
+      "Feature flag mismatch: enable-platform-payment (LaunchDarkly=true, PostHog=false)",
+    );
+    const flipped = sentWithMessage(
+      "Feature flag mismatch: enable-platform-payment (LaunchDarkly=false, PostHog=true)",
+    );
+    const other = sentWithMessage(
+      'Feature flag mismatch: copilot-models (LaunchDarkly={"default":"a"}, PostHog=null)',
+    );
     expect(first.fingerprint).toEqual([
       "feature-flag-mismatch",
       "enable-platform-payment",

@@ -992,11 +992,10 @@ export async function assertRunOutputContainsText(
   await openRunOutputTab(page);
 
   const outputCard = page
-    .locator("div")
+    .locator('[data-scrollable-tab-content][data-value="output"]')
     .filter({
       has: page.getByRole("button", { name: "Copy all text outputs" }),
-    })
-    .first();
+    });
   await expect(outputCard, "run output card should be visible").toBeVisible({
     timeout,
   });

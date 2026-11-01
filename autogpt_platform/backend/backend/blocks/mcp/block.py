@@ -196,7 +196,7 @@ class MCPToolBlock(Block):
                 f"{error_text or 'Unknown error'}"
             )
 
-        return parse_mcp_content(result.content)
+        return parse_mcp_content(result.content, result.structured_content)
 
     @staticmethod
     async def _auto_lookup_credential(

@@ -69,7 +69,9 @@ async def test_initial_message_id_works_as_the_after_cursor():
     turn = claude_turn(RECEIPT, 0, "Done")
     transcript = FakeTranscript([user_row(PROMPT_ROW, RECEIPT, 0), *turn])
 
-    outputs = await _get_session(transcript, after=RECEIPT, message_limit=20)
+    outputs = await _get_session(
+        transcript, after=RECEIPT, message_limit=20, include_messages=True
+    )
 
     assert [m["id"] for m in outputs["messages"]] == [r["id"] for r in turn]
     assert outputs["latest_reply"] == "Done"
@@ -87,7 +89,7 @@ async def test_after_receipt_with_no_reply_yet_returns_the_prompt_row_as_cursor(
         [user_row("row-0", OLD_TURN, 0), user_row(PROMPT_ROW, RECEIPT, 1)]
     )
 
-    outputs = await _get_session(transcript, after=RECEIPT)
+    outputs = await _get_session(transcript, after=RECEIPT, include_messages=True)
 
     assert outputs["messages"] == []
     assert outputs["has_more"] is False
@@ -107,7 +109,9 @@ async def test_after_receipt_is_found_beyond_the_newest_rows():
     ]
     transcript = FakeTranscript(rows)
 
-    outputs = await _get_session(transcript, after=RECEIPT, message_limit=3)
+    outputs = await _get_session(
+        transcript, after=RECEIPT, message_limit=3, include_messages=True
+    )
 
     assert [m["id"] for m in outputs["messages"]] == ["r-sys", "r-life", "r-think"]
     assert outputs["has_more"] is True
@@ -119,7 +123,9 @@ async def test_a_row_id_cursor_is_paged_without_a_lookup():
     rows = [user_row(PROMPT_ROW, RECEIPT, 0), *claude_turn(RECEIPT, 0, "Done")]
     transcript = FakeTranscript(rows)
 
-    outputs = await _get_session(transcript, after=PROMPT_ROW, message_limit=2)
+    outputs = await _get_session(
+        transcript, after=PROMPT_ROW, message_limit=2, include_messages=True
+    )
 
     assert [m["id"] for m in outputs["messages"]] == ["r-sys", "r-life"]
     assert transcript.calls == [{"after": PROMPT_ROW, "limit": 2, "offset": None}]
@@ -162,6 +168,7 @@ async def test_incremental_poll_preserves_cursor_without_a_new_row_id(messages: 
             "credentials": TEST_CREDENTIALS_INPUT,
             "session_id": "s1",
             "after": "last-seen-row",
+            "include_messages": True,
         },
     )
 
