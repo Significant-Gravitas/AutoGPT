@@ -2285,6 +2285,16 @@ def reconcile_stripe_tiers():
     run_async(_reconcile(), timeout=STRIPE_RECONCILE_TIMEOUT_SECONDS)
 
 
+def send_trial_last_calls():
+    """Queue the one-day reminder for trials set not to renew (SECRT-3324)."""
+
+    async def _send():
+        db = get_database_manager_async_client()
+        return await db.send_trial_last_calls()
+
+    run_async(_send())
+
+
 def sync_posthog_lifecycles():
     """Resend subscription status and lifecycle dates to PostHog (SECRT-2778).
 
@@ -3020,6 +3030,18 @@ class Scheduler(AppService):
                 replace_existing=True,
                 max_instances=1,
                 jobstore=Jobstores.WEEKLY_NOTIFICATIONS.value,
+            )
+
+            # TRIAL LAST CALL — hourly, so the one-day reminder goes out
+            # within an hour of a canceled trial's last day starting.
+            self.scheduler.add_job(
+                send_trial_last_calls,
+                CronTrigger.from_crontab("15 * * * *"),
+                id="send_trial_last_calls",
+                kwargs={},
+                replace_existing=True,
+                max_instances=1,
+                jobstore=Jobstores.EXECUTION.value,
             )
 
             # Notification LATE EXECUTIONS ALERT

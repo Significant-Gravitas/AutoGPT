@@ -192,6 +192,7 @@ from backend.data.push_subscription import (
 from backend.data.stripe_reconciliation import reconcile_all_stripe_tiers
 from backend.data.subscription_trial import (
     get_subscription_trial,
+    list_trials_ending_unrenewed,
     record_subscription_trial_cost,
 )
 from backend.data.understanding import (
@@ -316,6 +317,14 @@ async def _spend_org_credits(
     )
 
 
+async def send_trial_last_calls() -> int:
+    # Imported on call so loading the data layer never loads the notifications
+    # package.
+    from backend.notifications.trial import send_trial_last_calls as send
+
+    return await send()
+
+
 async def _get_org_credits(org_id: str) -> int:
     return await _get_org_credits_raw(org_id)
 
@@ -432,6 +441,7 @@ class DatabaseManager(AppService):
     get_user_subscription_tier = _(get_user_subscription_tier)
     get_usage_activation_state = _(get_usage_activation_state)
     get_subscription_trial = _(get_subscription_trial)
+    list_trials_ending_unrenewed = _(list_trials_ending_unrenewed)
     sync_subscription_from_stripe = _(sync_subscription_from_stripe)
     record_subscription_trial_cost = _(record_subscription_trial_cost)
     # Exposed so Prisma-less workers (scheduler, copilot-executor) can build a
@@ -601,6 +611,7 @@ class DatabaseManager(AppService):
     reconcile_stripe_tier_for_user = _(reconcile_stripe_tier_for_user)
     start_posthog_lifecycle_sweep = _(start_posthog_lifecycle_sweep)
     request_posthog_lifecycle_sync = _(request_posthog_lifecycle_sync)
+    send_trial_last_calls = _(send_trial_last_calls)
 
     # ============ Platform Linking ============ #
     # ============ Orgs ============ #
@@ -992,6 +1003,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_subscription_tier = d.get_user_subscription_tier
     get_usage_activation_state = d.get_usage_activation_state
     get_subscription_trial = d.get_subscription_trial
+    list_trials_ending_unrenewed = d.list_trials_ending_unrenewed
     sync_subscription_from_stripe = d.sync_subscription_from_stripe
     record_subscription_trial_cost = d.record_subscription_trial_cost
     get_auth_user_flag_fields = d.get_auth_user_flag_fields
@@ -1172,6 +1184,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     reconcile_stripe_tier_for_user = d.reconcile_stripe_tier_for_user
     start_posthog_lifecycle_sweep = d.start_posthog_lifecycle_sweep
     request_posthog_lifecycle_sync = d.request_posthog_lifecycle_sync
+    send_trial_last_calls = d.send_trial_last_calls
 
     # ============ Platform Linking ============ #
     find_server_link_owner = d.find_server_link_owner

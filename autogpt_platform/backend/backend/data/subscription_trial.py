@@ -87,6 +87,21 @@ async def get_subscription_trial(user_id: str) -> TrialState | None:
     return TrialState.from_db(row) if row else None
 
 
+async def list_trials_ending_unrenewed(
+    after: datetime, until: datetime
+) -> list[TrialState]:
+    """Running trials set not to renew whose end falls in (after, until]."""
+    rows = await SubscriptionTrial.prisma().find_many(
+        where={
+            "status": "trialing",
+            "cancelAtPeriodEnd": True,
+            "convertedAt": None,
+            "endsAt": {"gt": after, "lte": until},
+        }
+    )
+    return [TrialState.from_db(row) for row in rows]
+
+
 async def has_received_onboarding_credit(user_id: str) -> bool:
     return (
         await CreditTransaction.prisma().find_unique(

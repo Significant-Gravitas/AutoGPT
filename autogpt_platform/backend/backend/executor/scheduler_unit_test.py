@@ -65,6 +65,7 @@ from backend.executor.scheduler import (
     reconcile_memory_scope_crons,
     reconcile_stripe_tiers,
     refresh_near_expiry_credentials,
+    send_trial_last_calls,
 )
 from backend.util.exceptions import (
     ExpertNotFoundError,
@@ -1831,6 +1832,18 @@ def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance
     assert call.kwargs["max_instances"] == 1
     # 6 hours -> 6 * 3600 seconds, driven by the config setting.
     assert call.kwargs["seconds"] == 6 * 3600
+
+
+def test_trial_last_call_pass_registered_hourly_and_single_instance(monkeypatch):
+    """The last-call notice window is seven hours wide, so an hourly pass
+    reaches every canceled trial inside it at least once."""
+    calls = _registered_jobs(monkeypatch, interval_hours=6).add_job_calls
+
+    [call] = [c for c in calls if c.args and c.args[0] is send_trial_last_calls]
+    assert call.kwargs["id"] == "send_trial_last_calls"
+    assert call.kwargs["max_instances"] == 1
+    assert isinstance(call.args[1], CronTrigger)
+    assert str(call.args[1].fields[CronTrigger.FIELD_NAMES.index("minute")]) == "15"
 
 
 def test_memory_cron_reconcile_registered_after_start_on_its_interval(

@@ -1,7 +1,7 @@
 """The MailerLite trial group across a scheduled cancellation: each cancel or
 resume flip moves the group once, a pending cancellation that runs out leaves
-it, a trial ended by buying another plan still leaves the group, and no ending
-reminder goes out while it is pending. The status itself is the lifecycle
+it, a trial ended by buying another plan still leaves the group, and while it
+is pending the ending reminder is the not-renewing one, which moves no group. The status itself is the lifecycle
 sync's (`lifecycle_audience.py`)."""
 
 from datetime import UTC, datetime, timedelta
@@ -86,16 +86,20 @@ async def test_a_cancel_pending_trial_that_runs_out_leaves_the_group(trial):
 
 
 @pytest.mark.asyncio
-async def test_no_ending_reminder_while_the_cancellation_is_pending(trial):
+async def test_ending_event_while_cancellation_pending_sends_not_renewing_notice(
+    trial,
+):
     pending, raw = _state(
         trial.model_copy(update={"cancel_at_period_end": True}), "canceled"
     )
-    raw["trial_end"] = int((datetime.now(UTC) + timedelta(days=1)).timestamp())
+    raw["trial_end"] = int((datetime.now(UTC) + timedelta(days=3)).timestamp())
     claim = AsyncMock(return_value=True)
     got, notice, _ = await _notify(pending, raw, "ending", claim_once=claim)
     assert got == []
-    notice.assert_not_awaited()
-    claim.assert_not_awaited()
+    notice.assert_awaited_once()
+    assert notice.await_args.args[0].data.kind == "expiring"
+    [key] = [c.args[0] for c in claim.await_args_list]
+    assert key.startswith("trial:trial-1:expiring:")
 
 
 async def _end_under_another_plan(trial, pending: bool, **kwargs):

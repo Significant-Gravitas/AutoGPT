@@ -8,12 +8,12 @@
 {{ ui.page_open() }}
 {{ ui.masthead() }}
 {{ ui.hero_otto() }}
-{% if kind == 'payment_failed' %}{{ ui.strip_amber('NEEDS YOU · PAYMENT DECLINED') }}{% endif %}
+{% if kind == 'payment_failed' %}{{ ui.strip_amber('NEEDS YOU · PAYMENT DECLINED') }}{% elif kind == 'last_call' %}{{ ui.strip_amber('LAST DAY OF YOUR TRIAL') }}{% endif %}
 {{ ui.sheet_open() }}
-{% call ui.eyebrow(tone='confirmed' if kind in ['started', 'resumed', 'converted'] else 'needs_you' if kind == 'payment_failed' else 'neutral') %}YOUR AUTOGPT TRIAL{% endcall %}
+{% call ui.eyebrow(tone='confirmed' if kind in ['started', 'resumed', 'converted'] else 'needs_you' if kind in ['payment_failed', 'last_call'] else 'neutral') %}YOUR AUTOGPT TRIAL{% endcall %}
 {% call ui.headline() %}{{ subject }}{% endcall %}
 {% call ui.para() %}{{ copy.lede() }}{% endcall %}
-{% if kind == 'converted' %}{{ ui.kvpanel([('Plan', plan.label, false)] + ([('Started', started_label, true)] if started_label else []) + [('Price', plan.price_display, true)]) }}{% else %}{{ ui.kvpanel([('Plan', plan.label, false), ('Trial ended' if kind == 'ended' else 'Trial ends', ends_label, true), ('Paid price', plan.price_display, true)]) }}{% endif %}
+{% if kind == 'converted' %}{{ ui.kvpanel([('Plan', plan.label, false)] + ([('Started', started_label, true)] if started_label else []) + [('Price', plan.price_display, true)]) }}{% elif kind in ['expiring', 'last_call'] %}{{ ui.kvpanel([('Plan', plan.label, false), ('Access ends', ends_label, true), ('Auto-renew', 'Off', false), ('Price if you resume', plan.price_display, true)]) }}{% else %}{{ ui.kvpanel([('Plan', plan.label, false), ('Trial ended' if kind == 'ended' else 'Trial ends', ends_label, true), ('Paid price', plan.price_display, true)]) }}{% endif %}
 {% if copy.detail() | trim %}{% call ui.para() %}{{ copy.detail() }}{% endcall %}{% endif %}
 {% if kind == 'converted' %}
 {{ ui.cta('Open AutoGPT', urls.dashboard) }}
@@ -24,6 +24,8 @@
 ]) }}
 {% elif kind == 'ended' %}
 {{ ui.cta('Choose a plan', urls.billing) }}
+{% elif kind in ['expiring', 'last_call'] %}
+{{ ui.cta('Resume my trial', urls.billing) }}
 {% else %}
 {{ ui.cta('Update payment method' if kind == 'payment_failed' else 'Review your plan', urls.billing) }}
 {% endif %}
