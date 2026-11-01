@@ -58,6 +58,12 @@ _LOCK_RENEW_EVERY = 50
 # conversion's "-personal-1" can take the final slug to 116 characters.
 _MAX_SLUG_LENGTH = 100
 
+# A handful of per-account failures in a row (bad data, not the database) is
+# tolerated; this many consecutive ones reads as the database itself being
+# down, where retrying every remaining user is a doomed, logged call each —
+# raise and let the next start retry the whole backfill instead.
+_CONSECUTIVE_CREATE_FAILURE_LIMIT = 3
+
 
 def _sanitize_slug(raw: str) -> str:
     """Convert a string to a URL-safe slug: lowercase, alphanumeric + hyphens."""
@@ -329,6 +335,11 @@ async def create_orgs_for_existing_users(
     If the lock has been lost ``renew_lock`` raises, aborting the loop
     immediately so the next pod's fresh run is the sole writer.
 
+    A single account's creation failure is logged and skipped so it does not
+    cost every account after it; ``_CONSECUTIVE_CREATE_FAILURE_LIMIT`` of them
+    in a row is read as the database itself being unavailable and re-raised,
+    so the loop does not grind a doomed call through every remaining user.
+
     Returns the number of orgs created.
     """
     # Find users who are NOT yet an owner of any personal org
@@ -358,6 +369,7 @@ async def create_orgs_for_existing_users(
     )
 
     created = 0
+    consecutive_failures = 0
     for processed, row in enumerate(users_without_org, start=1):
         user_id: str = row["id"]
 
@@ -370,6 +382,7 @@ async def create_orgs_for_existing_users(
         # Re-check against the live table — the snapshot above can be stale by
         # the time we reach this user, so skip anyone bootstrapped since.
         if await _find_owned_personal_org(user_id) is not None:
+            consecutive_failures = 0
             continue
 
         # One account's failure must not hold back everyone after it; the
@@ -377,12 +390,16 @@ async def create_orgs_for_existing_users(
         try:
             if await _get_or_create_backfill_org(row):
                 created += 1
+            consecutive_failures = 0
         except Exception:
             logger.error(
                 f"Org migration: could not bootstrap a personal org for user "
                 f"{user_id}; skipping",
                 exc_info=True,
             )
+            consecutive_failures += 1
+            if consecutive_failures >= _CONSECUTIVE_CREATE_FAILURE_LIMIT:
+                raise
 
     logger.info(f"Org migration: created {created} personal orgs")
     return created

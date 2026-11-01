@@ -671,6 +671,28 @@ class TestBackfillHardening:
         assert mock_prisma.organization.create.await_count == 1
 
     @pytest.mark.asyncio
+    async def test_a_run_of_creation_failures_ends_the_loop_too(self, mock_prisma):
+        """A connectivity failure can surface on the creation call instead of
+        the re-check above — a run of them must end the loop the same way,
+        not get logged-and-skipped for every one of many remaining users."""
+        from backend.data.org_migration import _CONSECUTIVE_CREATE_FAILURE_LIMIT
+
+        mock_prisma.query_raw = AsyncMock(
+            return_value=[_backfill_row(f"user-{i}") for i in range(10)]
+        )
+        mock_prisma.organization.create = AsyncMock(
+            side_effect=ConnectionError("database gone")
+        )
+
+        with pytest.raises(ConnectionError):
+            await create_orgs_for_existing_users()
+
+        assert (
+            mock_prisma.organization.create.await_count
+            == _CONSECUTIVE_CREATE_FAILURE_LIMIT
+        )
+
+    @pytest.mark.asyncio
     async def test_find_owned_personal_org_is_ordered_oldest_first(self, mock_prisma):
         from backend.data.org_migration import _find_owned_personal_org
 
