@@ -48,9 +48,7 @@ async def stop_user_work(user_id: str) -> None:
 
     Residual gaps: a schedule fire or webhook delivery already under way can
     still add a run or turn; a turn dispatched but not yet picked up by an
-    executor misses its cancel; a turn already running from a chat platform
-    is not cancelled (it never takes a running slot, so it isn't listed; the
-    unlink only stops new ones); a run can start an AutoPilot turn (AutoPilot
+    executor misses its cancel; a run can start an AutoPilot turn (AutoPilot
     block) between steps 2 and 3; until the account is closed, a request
     from the user's own session can start work too; and a schedule or trigger
     whose removal failed is not retried here (the erasure reruns this). Once
