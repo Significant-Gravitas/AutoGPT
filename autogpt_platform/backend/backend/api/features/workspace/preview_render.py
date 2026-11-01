@@ -5,7 +5,8 @@ Each render of a file's bytes runs in a fresh interpreter started with
 ``python -m`` (never a fork of the threaded API process), is killed once it
 passes ``RENDER_TIMEOUT_SECONDS``, and is capped at ``RENDER_MAX_MEMORY_BYTES``
 of address space. The parent awaits it on the event loop, so a render never
-holds a thread of the default executor.
+holds a thread of the default executor. The child receives only the
+environment variables in ``CHILD_ENV_ALLOWLIST``.
 
 The module imports only what rendering needs, so a child starts in a fraction
 of a second. The child answers with an exit code and the raw thumbnail bytes,
@@ -18,6 +19,7 @@ import importlib
 import io
 import logging
 import math
+import os
 import sys
 import zipfile
 from collections.abc import Callable
@@ -50,6 +52,20 @@ _EMBEDDED_THUMBNAILS = (
     "docprops/thumbnail.jpeg",
     "docprops/thumbnail.jpg",
     "docprops/thumbnail.png",
+)
+
+# The only environment variables a render child receives: what the interpreter
+# needs to start, find the backend package and write temporary files. The
+# rest of the API process environment stays in the parent.
+CHILD_ENV_ALLOWLIST = (
+    "PATH",
+    "PYTHONPATH",
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "TMPDIR",
+    "SYSTEMROOT",
 )
 
 _CHILD_MODULE = "backend.api.features.workspace.preview_render"
@@ -106,7 +122,14 @@ async def _start_child(renderer: Renderer, width: int) -> asyncio.subprocess.Pro
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.DEVNULL,
+        env=_child_env(),
     )
+
+
+def _child_env() -> dict[str, str]:
+    return {
+        name: os.environ[name] for name in CHILD_ENV_ALLOWLIST if name in os.environ
+    }
 
 
 async def _exchange(process: asyncio.subprocess.Process, content: bytes) -> bytes:

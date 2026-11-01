@@ -1,10 +1,12 @@
 import asyncio
+import io
 import os
 import resource
 import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from PIL import Image
 
 from backend.api.features.workspace import preview_render
 
@@ -37,6 +39,11 @@ def failing_renderer(_content: bytes, _width: int) -> bytes:
 
 def crashing_renderer(_content: bytes, _width: int) -> bytes:
     os.abort()
+
+
+def env_renderer(content: bytes, _width: int) -> bytes:
+    # The content names a variable; answer with its value in the child.
+    return os.environ.get(content.decode(), "<unset>").encode()
 
 
 def interval_renderer(_content: bytes, _width: int) -> bytes:
@@ -72,6 +79,41 @@ async def test_render_returns_the_child_output():
     output = await preview_render.render_in_child(echo_renderer, b"bytes-", 64)
 
     assert output == b"bytes-64"
+
+
+async def test_render_child_receives_only_allowlisted_variables(monkeypatch):
+    monkeypatch.setenv("PREVIEW_RENDER_PARENT_SETTING", "parent-only")
+    monkeypatch.setenv("LANG", "C.UTF-8")
+
+    hidden = await preview_render.render_in_child(
+        env_renderer, b"PREVIEW_RENDER_PARENT_SETTING", 16
+    )
+    passed = await preview_render.render_in_child(env_renderer, b"LANG", 16)
+
+    assert hidden == b"<unset>"
+    assert passed == b"C.UTF-8"
+
+
+def _encoded(image_format: str) -> bytes:
+    out = io.BytesIO()
+    Image.new("RGB", (300, 200), (10, 20, 30)).save(out, format=image_format)
+    return out.getvalue()
+
+
+@pytest.mark.parametrize(
+    "renderer, image_format",
+    [
+        (preview_render.image_thumbnail, "PNG"),
+        (preview_render.image_thumbnail, "JPEG"),
+        (preview_render.pdf_thumbnail, "PDF"),
+    ],
+)
+async def test_render_child_renders_each_format(renderer, image_format):
+    output = await preview_render.render_in_child(renderer, _encoded(image_format), 128)
+
+    with Image.open(io.BytesIO(output)) as thumbnail:
+        assert thumbnail.format == "WEBP"
+        assert 0 < thumbnail.width <= 128
 
 
 async def test_render_runs_in_a_separate_process(started_children):
