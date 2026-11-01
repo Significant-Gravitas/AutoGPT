@@ -162,8 +162,7 @@ def _with_encryption_flag(data: bytes) -> bytes:
 
 
 def test_a_bomb_is_refused_without_a_member_being_read(monkeypatch):
-    """The declared sizes are the whole check: 22 MiB of zeros compresses to a
-    few KB, so reading first is how a bomb lands in memory."""
+    """22 MiB of zeros compresses to a few KB, so it is refused unread."""
     member = b"\0" * MAX_PACKAGE_FILE_BYTES
     data = _zip({"SKILL.md": SKILL_MD, **{f"f{i}.bin": member for i in range(11)}})
     assert len(data) < MAX_PACKAGE_BYTES
@@ -299,34 +298,18 @@ def test_a_bzip2_or_lzma_member_is_refused(method: int, monkeypatch):
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr("SKILL.md", SKILL_MD, zipfile.ZIP_DEFLATED)
-        archive.writestr("big.bin", b"\0" * (MAX_PACKAGE_FILE_BYTES + 1), method)
-    data = _with_file_size(buffer.getvalue(), "big.bin", 100)
-    assert zipfile.ZipFile(io.BytesIO(data)).getinfo("big.bin").file_size == 100
+        archive.writestr("a.bin", b"x", method)
 
     decompressor = zipfile._get_decompressor
 
     def deflate_only(compress_type: int):
-        assert compress_type == zipfile.ZIP_DEFLATED, "big.bin was decompressed"
+        assert compress_type == zipfile.ZIP_DEFLATED, "a.bin was decompressed"
         return decompressor(compress_type)
 
     monkeypatch.setattr(zipfile, "_get_decompressor", deflate_only)
 
     with pytest.raises(SkillPackageError, match="unsupported compression method"):
-        package_from_zip(data)
-
-
-def _with_file_size(data: bytes, name: str, size: int) -> bytes:
-    """Set a member's file size field in both of its headers."""
-    out = bytearray(data)
-    header = zipfile.ZipFile(io.BytesIO(data)).getinfo(name).header_offset
-    struct.pack_into("<I", out, header + 22, size)
-    entry = out.find(b"PK\x01\x02")
-    while entry != -1:
-        (name_len,) = struct.unpack_from("<H", out, entry + 28)
-        if out[entry + 46 : entry + 46 + name_len] == name.encode():
-            struct.pack_into("<I", out, entry + 24, size)
-        entry = out.find(b"PK\x01\x02", entry + 4)
-    return bytes(out)
+        package_from_zip(buffer.getvalue())
 
 
 def test_a_stored_package_is_read():
