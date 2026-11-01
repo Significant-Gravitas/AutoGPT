@@ -242,7 +242,7 @@ async def extract_sandbox_files(
                     )
                     continue
 
-                # The read holds the limit too, whatever stat said.
+                # The read is bounded by the same limit.
                 content = await read_sandbox_file(sandbox, file_path, limit)
                 if len(content) > limit:
                     logger.info(f"Skipping {file_path}: larger than {limit} bytes")

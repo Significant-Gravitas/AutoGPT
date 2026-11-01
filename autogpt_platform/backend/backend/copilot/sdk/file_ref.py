@@ -218,10 +218,7 @@ async def read_file_bytes(
             # so they surface as real bugs rather than being silently masked.
             raise
         if len(data) > _MAX_BARE_REF_BYTES:
-            raise ValueError(
-                f"File too large (>{_MAX_BARE_REF_BYTES} bytes, "
-                f"limit {_MAX_BARE_REF_BYTES})"
-            )
+            raise ValueError(f"File too large (limit {_MAX_BARE_REF_BYTES} bytes)")
         return data
 
     raise ValueError(

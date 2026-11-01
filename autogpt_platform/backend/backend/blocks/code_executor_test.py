@@ -32,6 +32,7 @@ from backend.blocks.code_executor_helpers import (
     build_variable_injection,
 )
 from backend.data.execution import ExecutionContext
+from backend.util.sandbox_output import OutputLimitedCodeSandbox
 
 
 def _b64_json(variables: dict) -> str:
@@ -248,8 +249,11 @@ class TestExecuteCodeBlockRun:
         )
         # process_execution_results parses E2B-specific result objects; patch it so
         # this test only exercises run()'s own output-forwarding branches.
-        with patch.object(block, "execute_code", mock), patch.object(
-            block, "process_execution_results", return_value=({"text": "42"}, [])
+        with (
+            patch.object(block, "execute_code", mock),
+            patch.object(
+                block, "process_execution_results", return_value=({"text": "42"}, [])
+            ),
         ):
             outputs = dict(
                 await _run(
@@ -320,6 +324,45 @@ class TestExecuteCodeWritesFiles:
         assert sandbox.run_code.await_args.kwargs["envs"] == {
             VARIABLES_FILE_ENV_KEY: VARIABLES_FILE_PATH
         }
+
+
+class TestCodeSandboxClass:
+    """``run_code`` is bounded only on ``OutputLimitedCodeSandbox``."""
+
+    @staticmethod
+    def _sandbox() -> MagicMock:
+        execution = MagicMock(error=None, results=[], text="")
+        execution.logs.stdout, execution.logs.stderr = [], []
+        sandbox = MagicMock(sandbox_id="sb")
+        sandbox.run_code = AsyncMock(return_value=execution)
+        return sandbox
+
+    async def test_a_new_sandbox_is_output_limited(self):
+        create = AsyncMock(return_value=self._sandbox())
+        with patch("backend.blocks.code_executor.create_sandbox", create):
+            await ExecuteCodeBlock().execute_code(
+                api_key="k", code="print(1)", language=ProgrammingLanguage.PYTHON
+            )
+
+        assert create.await_args.args[0] is OutputLimitedCodeSandbox
+
+    async def test_a_reconnected_sandbox_is_output_limited(self):
+        connect = AsyncMock(return_value=self._sandbox())
+        with (
+            patch("backend.blocks.code_executor.AsyncSandbox") as cls,
+            patch("backend.blocks.code_executor.owned_by_user", return_value=True),
+            patch("backend.blocks.code_executor.connect_sandbox", connect),
+        ):
+            cls.get_info = AsyncMock(return_value=MagicMock(metadata={}))
+            await ExecuteCodeBlock().execute_code(
+                api_key="k",
+                code="print(1)",
+                language=ProgrammingLanguage.PYTHON,
+                sandbox_id="sb-mine",
+                execution_context=ExecutionContext(user_id="user-a"),
+            )
+
+        assert connect.await_args.args[0] is OutputLimitedCodeSandbox
 
 
 class TestConnectToExistingSandbox:

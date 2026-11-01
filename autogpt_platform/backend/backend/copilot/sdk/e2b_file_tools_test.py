@@ -7,6 +7,7 @@ Pure unit tests with no external dependencies (no E2B, no sandbox).
 import hashlib
 import os
 import shutil
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -1336,6 +1337,69 @@ class TestSandboxFileOverTheReadLimit:
         assert result.get("isError")
         assert "cannot be edited whole" in result["content"][0]["text"]
         assert stream.sent == 12
+
+
+class TestLocalFileOverTheReadLimit:
+    """The host-side Read, Edit and tool-result read refuse a file past the
+    limit, reading no more than one byte past it."""
+
+    @pytest.fixture(autouse=True)
+    def small_limit(self, monkeypatch):
+        monkeypatch.setattr("backend.copilot.sdk.e2b_file_tools._MAX_READ_BYTES", 10)
+
+    @pytest.fixture
+    def big(self, sdk_cwd) -> str:
+        path = os.path.join(sdk_cwd, "big.log")
+        with open(path, "w") as f:
+            f.write("x" * 100)
+        return path
+
+    @pytest.mark.asyncio
+    async def test_read_refuses_it(self, big):
+        result = await _handle_read_file({"file_path": "big.log"})
+
+        assert result["isError"]
+        assert "big.log is larger than" in result["content"][0]["text"]
+
+    @pytest.mark.asyncio
+    async def test_edit_refuses_it_and_leaves_it_alone(self, big):
+        result = await _handle_edit_file(
+            {"file_path": "big.log", "old_string": "x", "new_string": "y"}
+        )
+
+        assert result["isError"]
+        assert "cannot be edited whole" in result["content"][0]["text"]
+        assert Path(big).read_text() == "x" * 100
+
+    def test_tool_result_read_refuses_it(self, big, monkeypatch):
+        monkeypatch.setattr(
+            "backend.copilot.sdk.e2b_file_tools.resolve_allowed_local_path",
+            lambda path, cwd: path,
+        )
+
+        result = _read_local(big, offset=0, limit=_DEFAULT_READ_LIMIT)
+
+        assert result["isError"]
+        assert "big.log is larger than" in result["content"][0]["text"]
+
+    @pytest.mark.asyncio
+    async def test_the_read_asks_for_one_byte_past_the_limit(self, big, monkeypatch):
+        asked: list[int] = []
+        real_open = open
+
+        def spying_open(*args, **kwargs):
+            fh = real_open(*args, **kwargs)
+            read = fh.read
+            fh.read = lambda size=-1: (asked.append(size), read(size))[1]
+            return fh
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.e2b_file_tools.open", spying_open, raising=False
+        )
+
+        await _handle_read_file({"file_path": "big.log"})
+
+        assert asked == [11]
 
 
 class TestReadFileE2BRouting:

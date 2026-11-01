@@ -957,7 +957,8 @@ def test_only_cli_io_writes_to_the_cli_stdin():
 # limit applied after reading bounds nothing. `files.read` is called with
 # format="stream" and stopped at the caller's limit (`read_sandbox_file`);
 # `commands.run` goes through `run_sandbox_command`, or, like bash_exec,
-# follows a background handle with callbacks that stop at a limit.
+# follows a background handle with callbacks that stop at a limit; a code
+# interpreter sandbox is created or connected as `OutputLimitedCodeSandbox`.
 
 _SANDBOX_COMMAND_RUNNERS = frozenset(
     {"util/sandbox_output.py", "copilot/tools/bash_exec.py"}
@@ -970,8 +971,9 @@ def test_sandbox_output_is_read_through_a_limit():
         for rel, lineno, what in _unbounded_sandbox_reads()
     ]
     assert not offenders, (
-        "Read sandbox files with backend.util.sandbox_output.read_sandbox_file "
-        "and run sandbox commands with run_sandbox_command:\n  "
+        "Read sandbox files with backend.util.sandbox_output.read_sandbox_file, "
+        "run sandbox commands with run_sandbox_command, and create code "
+        "interpreter sandboxes as OutputLimitedCodeSandbox:\n  "
         + "\n  ".join(offenders)
     )
 
@@ -987,6 +989,27 @@ def test_sandbox_output_is_read_through_a_limit():
         ("await s.files.read(p, format='stream')", []),
         ("await sandbox.commands.run('ls')", ["commands.run"]),
         ("await run_sandbox_command(sandbox, 'ls')", []),
+        (
+            (
+                "from e2b_code_interpreter import AsyncSandbox\n"
+                "await create_sandbox(AsyncSandbox, owner)"
+            ),
+            ["create_sandbox with the code interpreter's AsyncSandbox"],
+        ),
+        (
+            (
+                "from e2b_code_interpreter import AsyncSandbox as S\n"
+                "await connect_sandbox(S, sid, owner)"
+            ),
+            ["connect_sandbox with the code interpreter's AsyncSandbox"],
+        ),
+        (
+            (
+                "from e2b_code_interpreter import AsyncSandbox\n"
+                "await create_sandbox(OutputLimitedCodeSandbox, owner)"
+            ),
+            [],
+        ),
     ],
 )
 def test_sandbox_read_scan_reads_each_form(source: str, expected: list[str]):
@@ -1009,7 +1032,30 @@ def _unbounded_sandbox_reads() -> list[tuple[str, int, str]]:
 
 def _sandbox_reads_in(tree: ast.Module) -> list[tuple[int, str]]:
     found = []
+    # `run_code` is bounded only on OutputLimitedCodeSandbox.
+    code_sandboxes = {
+        alias.asname or alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and (node.module or "").split(".")[0] == "e2b_code_interpreter"
+        for alias in node.names
+        if alias.name == "AsyncSandbox"
+    }
     for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in ("create_sandbox", "connect_sandbox")
+            and node.args
+            and isinstance(node.args[0], ast.Name)
+            and node.args[0].id in code_sandboxes
+        ):
+            found.append(
+                (
+                    node.lineno,
+                    f"{node.func.id} with the code interpreter's AsyncSandbox",
+                )
+            )
         if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
             continue
         owner = node.func.value

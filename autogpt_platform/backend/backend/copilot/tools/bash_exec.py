@@ -22,6 +22,7 @@ limits.  Requires bubblewrap to be installed (Linux only).
 """
 
 import asyncio
+import contextlib
 import logging
 import shlex
 from typing import Any
@@ -508,8 +509,10 @@ async def _follow_command(
             return outcome(exit_code=exc.exit_code)
         except Exception as exc:
             if stdout.exceeded or stderr.exceeded:
-                # The handle keeps its own copy of every chunk while followed.
-                await handle.disconnect()
+                # The handle keeps its own copy of every chunk while followed;
+                # the kill still runs if detaching fails.
+                with contextlib.suppress(Exception):
+                    await handle.disconnect()
                 return outcome(output_exceeded=True, **await _kill(sandbox, pid))
             remaining = deadline - loop.time()
             if remaining <= _DEADLINE_SLACK_SECONDS:
@@ -625,7 +628,10 @@ def _run_response(
         if run.timed_out:
             note = f"Timed out after {timeout}s"
         else:
-            note = f"Printed more than {MAX_OUTPUT_SIZE:,} characters"
+            note = (
+                f"Printed more than {MAX_OUTPUT_SIZE:,} characters; redirect "
+                "output to a file and read parts of it"
+            )
         message = f"{note}; {fate}"
     elif run.ended_unseen:
         note = (

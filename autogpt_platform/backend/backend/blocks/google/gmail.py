@@ -1778,9 +1778,12 @@ To: {original_to}
         msg.attach(_make_mime_text(body, input_data.content_type))
 
         # Include original attachments if requested
+        total_size = 0
         if input_data.includeAttachments:
             attachments = await self._get_attachments(service, original)
             for attachment in attachments:
+                total_size += attachment.size
+                check_total_file_size(total_size)
                 # Download and attach each original attachment
                 attachment_data = await self.download_attachment(
                     service, input_data.messageId, attachment.attachment_id
@@ -1795,7 +1798,6 @@ To: {original_to}
                 msg.attach(part)
 
         # Add any additional attachments
-        total_size = 0
         for attach in input_data.additionalAttachments:
             local_path = await store_media_file(
                 file=attach,

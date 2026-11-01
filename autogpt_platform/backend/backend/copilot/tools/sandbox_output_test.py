@@ -7,14 +7,20 @@ from unittest.mock import patch
 
 import pytest
 
-from .sandbox import MAX_OUTPUT_SIZE, get_workspace_dir, run_sandboxed
+from .sandbox import get_workspace_dir, run_sandboxed
 
-_NOTE = f"Printed more than {MAX_OUTPUT_SIZE:,} bytes and was killed"
+# A small cap and a finite command, so a missing cap fails an assertion.
+_CAP = 1000
+_NOTE = (
+    f"Printed more than {_CAP:,} bytes and was killed; "
+    "redirect output to a file and read parts of it"
+)
 
 
 @pytest.fixture(autouse=True)
 def without_bwrap():
     with (
+        patch("backend.copilot.tools.sandbox.MAX_OUTPUT_SIZE", _CAP),
         patch("backend.copilot.tools.sandbox.has_full_sandbox", return_value=True),
         patch(
             "backend.copilot.tools.sandbox._build_bwrap_command",
@@ -34,9 +40,11 @@ async def _run(script: str, timeout: int) -> tuple[str, str, int, bool]:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("stream", ["stdout", "stderr"])
 async def test_command_that_keeps_printing_is_killed_at_the_cap(stream: str):
-    stdout, stderr, exit_code, timed_out = await _run(f"yes >/dev/{stream}", 20)
+    stdout, stderr, exit_code, timed_out = await _run(
+        f"yes | head -c 20000000 >/dev/{stream}", 20
+    )
 
-    kept = "y\n" * (MAX_OUTPUT_SIZE // 2)
+    kept = "y\n" * (_CAP // 2)
     if stream == "stdout":
         assert (stdout, stderr) == (kept, _NOTE)
     else:
@@ -47,16 +55,15 @@ async def test_command_that_keeps_printing_is_killed_at_the_cap(stream: str):
 @pytest.mark.asyncio
 async def test_output_up_to_the_cap_is_returned_whole():
     stdout, stderr, exit_code, timed_out = await _run(
-        f"yes | head -c {MAX_OUTPUT_SIZE}; echo done >&2; exit 3", 20
+        f"yes | head -c {_CAP}; echo done >&2; exit 3", 20
     )
 
-    assert stdout == "y\n" * (MAX_OUTPUT_SIZE // 2)
+    assert stdout == "y\n" * (_CAP // 2)
     assert (stderr, exit_code, timed_out) == ("done\n", 3, False)
 
 
 @pytest.mark.asyncio
 async def test_the_run_ends_at_its_timeout_with_a_background_process_running():
-    # A process outside the stopped group must not keep the run open.
     script = "setsid bash -c 'sleep 2; while :; do echo y; sleep 0.01; done' & sleep 60"
 
     stdout, stderr, exit_code, timed_out = await _run(script, 1)

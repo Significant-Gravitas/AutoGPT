@@ -309,7 +309,10 @@ async def _run_capped(
         return "", f"Execution timed out after {timeout}s", -1, True
     stdout, stderr = (o.decode("utf-8", errors="replace") for o in outputs)
     if outcome == "exceeded":
-        note = f"Printed more than {MAX_OUTPUT_SIZE:,} bytes and was killed"
+        note = (
+            f"Printed more than {MAX_OUTPUT_SIZE:,} bytes and was killed; "
+            "redirect output to a file and read parts of it"
+        )
         return stdout, f"{note}\n{stderr}".rstrip("\n"), -1, False
     return stdout, stderr, proc.returncode or 0, False
 
