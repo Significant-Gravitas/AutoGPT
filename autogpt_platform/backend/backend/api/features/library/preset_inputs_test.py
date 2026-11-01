@@ -50,7 +50,8 @@ def test_a_read_brings_back_a_preset_at_the_write_bound_in_full():
 async def test_update_refuses_to_replace_inputs_past_the_read_cap(mocker):
     """A caller's view of InputPresets came from a read capped at
     MAX_NODE_INPUT_OUTPUT_FETCH, so replacing it from that view would silently
-    drop whatever rows the read never surfaced."""
+    drop whatever rows the read never surfaced. Past the cap, not at it: the
+    read still returns every row of a preset sized exactly to it."""
     mocker.patch.object(
         db, "get_preset", new=AsyncMock(return_value=MagicMock(expert_id=None))
     )
@@ -61,7 +62,7 @@ async def test_update_refuses_to_replace_inputs_past_the_read_cap(mocker):
 
     mocker.patch.object(db, "transaction", fake_tx)
     mock_row_client = AsyncMock()
-    mock_row_client.count.return_value = MAX_NODE_INPUT_OUTPUT_FETCH
+    mock_row_client.count.return_value = MAX_NODE_INPUT_OUTPUT_FETCH + 1
     mocker.patch.object(
         prisma.models.AgentNodeExecutionInputOutput,
         "prisma",
@@ -72,7 +73,7 @@ async def test_update_refuses_to_replace_inputs_past_the_read_cap(mocker):
         prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
     )
 
-    with pytest.raises(InvalidInputError, match="at or past what a read returns"):
+    with pytest.raises(InvalidInputError, match="past what a read returns"):
         await db.update_preset(
             user_id="owner",
             preset_id="preset-1",
@@ -85,7 +86,17 @@ async def test_update_refuses_to_replace_inputs_past_the_read_cap(mocker):
 
 
 @pytest.mark.asyncio
-async def test_update_replaces_inputs_under_the_read_cap(mocker):
+@pytest.mark.parametrize(
+    "stored_row_count",
+    [MAX_NODE_INPUT_OUTPUT_FETCH - 1, MAX_NODE_INPUT_OUTPUT_FETCH],
+    ids=["under-the-cap", "at-the-cap"],
+)
+async def test_update_replaces_inputs_at_or_under_the_read_cap(
+    mocker, stored_row_count
+):
+    """A preset sized exactly to the cap is still fully returned by the read
+    (check_preset_input_count allows creating one that size), so it must
+    still be editable — not only a preset under it."""
     mocker.patch.object(
         db, "get_preset", new=AsyncMock(return_value=MagicMock(expert_id=None))
     )
@@ -96,7 +107,7 @@ async def test_update_replaces_inputs_under_the_read_cap(mocker):
 
     mocker.patch.object(db, "transaction", fake_tx)
     mock_row_client = AsyncMock()
-    mock_row_client.count.return_value = MAX_NODE_INPUT_OUTPUT_FETCH - 1
+    mock_row_client.count.return_value = stored_row_count
     mocker.patch.object(
         prisma.models.AgentNodeExecutionInputOutput,
         "prisma",

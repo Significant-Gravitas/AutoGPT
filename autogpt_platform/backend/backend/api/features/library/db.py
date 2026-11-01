@@ -2506,17 +2506,19 @@ async def update_preset(
                     "Preset inputs and credentials must be provided together"
                 )
             # A caller's view of InputPresets is capped at the read bound
-            # (AGENT_PRESET_INCLUDE), so a preset already past it can't be
+            # (AGENT_PRESET_INCLUDE), so a preset already PAST it can't be
             # replaced from that view — delete_many below would drop whatever
-            # the read never surfaced.
+            # the read never surfaced. At the bound exactly, the read still
+            # returns every row, so this matches check_preset_input_count's
+            # own ">" rather than refusing the boundary it allows writing.
             stored_row_count = await prisma.models.AgentNodeExecutionInputOutput.prisma(
                 tx
             ).count(where={"agentPresetId": preset_id})
-            if stored_row_count >= MAX_NODE_INPUT_OUTPUT_FETCH:
+            if stored_row_count > MAX_NODE_INPUT_OUTPUT_FETCH:
                 raise InvalidInputError(
                     f"Preset #{preset_id} holds {stored_row_count} inputs and "
-                    "credentials, at or past what a read returns; its inputs "
-                    "can't be replaced through this endpoint"
+                    "credentials, past what a read returns; its inputs can't "
+                    "be replaced through this endpoint"
                 )
             update_data["InputPresets"] = {
                 "create": preset_input_rows(
