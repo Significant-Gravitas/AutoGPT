@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import anthropic
 import httpx
+import openai
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestServer
@@ -31,12 +32,14 @@ from backend.util.llm.providers import (
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
     FAST_FAIL_TIMEOUT_SECONDS,
     NO_REASONING_MAX_TOKENS,
+    HttpAttemptLog,
     ProviderResponse,
     _anthropic_accepts_temperature,
     _is_temperature_deprecation_error,
     anthropic_accepts_forced_tool_choice,
     call_provider,
     call_provider_openai_compat_sync,
+    current_http_attempts,
     is_forced_tool_choice_rejection,
     request_timeout,
     small_call_reasoning,
@@ -1754,7 +1757,11 @@ class TestOllamaEgress:
                 ollama_host=providers_mod.settings.config.ollama_host,
             )
         assert ctor.call_args.kwargs["event_hooks"] == {
-            "request": [providers_mod._scope_ollama_key]
+            "request": [
+                providers_mod._scope_ollama_key,
+                providers_mod._record_http_request,
+            ],
+            "response": [providers_mod._record_http_response],
         }
 
 
@@ -3210,3 +3217,139 @@ class TestForcedToolChoiceCapability:
         )
         assert not is_forced_tool_choice_rejection(server_error)
         assert not is_forced_tool_choice_rejection(RuntimeError(text))
+
+
+# ---------------------------------------------------------------------------
+# HTTP attempt log (#16173)
+# ---------------------------------------------------------------------------
+
+_SDK_OK_BODIES = {
+    "openai": {
+        "id": "r",
+        "object": "response",
+        "created_at": 0,
+        "model": "gpt-4.1",
+        "status": "completed",
+        "parallel_tool_calls": True,
+        "tool_choice": "auto",
+        "tools": [],
+        "output": [
+            {
+                "type": "message",
+                "id": "m",
+                "status": "completed",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": "ok", "annotations": []}],
+            }
+        ],
+        "usage": {
+            "input_tokens": 1,
+            "output_tokens": 1,
+            "total_tokens": 2,
+            "input_tokens_details": {"cached_tokens": 0},
+            "output_tokens_details": {"reasoning_tokens": 0},
+        },
+    },
+    "anthropic": {
+        "id": "msg",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-sonnet-4-6",
+        "content": [{"type": "text", "text": "ok"}],
+        "stop_reason": "end_turn",
+        "stop_sequence": None,
+        "usage": {"input_tokens": 1, "output_tokens": 1},
+    },
+    "chat": {
+        "id": "c",
+        "object": "chat.completion",
+        "created": 0,
+        "model": "m",
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": "ok"},
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+    },
+}
+
+
+class TestHttpAttemptLog:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "provider, model, sdk_name, body",
+        [
+            ("openai", "gpt-4.1", "openai", "openai"),
+            ("open_router", "anthropic/claude-sonnet-4.6", "openai", "chat"),
+            ("anthropic", "claude-sonnet-4-6", "anthropic", "anthropic"),
+            ("groq", "llama-3.3-70b", "groq", "chat"),
+        ],
+    )
+    async def test_every_sdk_attempt_is_logged_and_the_client_closed(
+        self, monkeypatch, provider, model, sdk_name, body
+    ):
+        import groq
+
+        sdk = {"openai": openai, "anthropic": anthropic, "groq": groq}[sdk_name]
+        replies = [
+            # A 1 ms retry-after keeps the SDK's backoff out of the test's time.
+            httpx.Response(500, json={"error": {}}, headers={"retry-after-ms": "1"}),
+            httpx.Response(200, json=_SDK_OK_BODIES[body]),
+        ]
+        clients: list[httpx.AsyncClient] = []
+        real_factory = sdk.DefaultAsyncHttpxClient
+
+        def mocked_factory(**kwargs):
+            transport = httpx.MockTransport(lambda request: replies.pop(0))
+            clients.append(real_factory(**kwargs, transport=transport))
+            return clients[-1]
+
+        monkeypatch.setattr(sdk, "DefaultAsyncHttpxClient", mocked_factory)
+        ticks = iter(range(100))
+        log = HttpAttemptLog(clock=lambda: float(next(ticks)))
+        token = current_http_attempts.set(log)
+        try:
+            result = await call_provider(
+                provider=provider,
+                model=model,
+                api_key="sk-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+            )
+        finally:
+            current_http_attempts.reset(token)
+
+        assert isinstance(result, ProviderResponse) and result.content == "ok"
+        assert log.starts == [0.0, 1.0]
+        assert log.statuses == [500, 200]
+        assert len(clients) == 1 and clients[0].is_closed
+
+    @pytest.mark.asyncio
+    async def test_ollama_requests_are_logged(self, monkeypatch):
+        monkeypatch.setattr(
+            providers_mod.settings.config, "ollama_host", "http://ollama.example"
+        )
+        reply = {"model": "llama3", "message": {"role": "assistant", "content": "hi"}}
+        real_client = providers_mod.ollama.AsyncClient
+        monkeypatch.setattr(
+            providers_mod.ollama,
+            "AsyncClient",
+            lambda **kwargs: real_client(
+                **kwargs,
+                transport=httpx.MockTransport(
+                    lambda request: httpx.Response(200, json=reply)
+                ),
+            ),
+        )
+        log = HttpAttemptLog(clock=lambda: 7.0)
+        token = current_http_attempts.set(log)
+        try:
+            await _ollama_chat("http://ollama.example")
+        finally:
+            current_http_attempts.reset(token)
+
+        assert log.starts == [7.0]
+        assert log.statuses == [200]
