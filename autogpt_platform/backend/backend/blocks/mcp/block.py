@@ -32,7 +32,6 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.json import validate_with_jsonschema
 from backend.util.request import HTTPClientError
 
 logger = logging.getLogger(__name__)
@@ -123,12 +122,9 @@ class MCPToolBlock(Block):
 
         @classmethod
         def get_mismatch_error(cls, data: BlockInput) -> str | None:
-            """Validate tool_arguments against the tool's input schema."""
-            tool_schema = cls.get_input_schema(data)
-            if not tool_schema:
-                return None
-            tool_arguments = data.get("tool_arguments", {})
-            return validate_with_jsonschema(tool_schema, tool_arguments)
+            # `data` holds the flattened `tool_arguments` (see validate_exec), never
+            # the node's `tool_input_schema`; the MCP server validates its arguments.
+            return None
 
     class Output(BlockSchemaOutput):
         result: Any = SchemaField(description="The result returned by the MCP tool")

@@ -5,8 +5,12 @@ import pytest
 from prisma.enums import ReviewStatus
 from pytest_mock import MockerFixture
 
+from backend.blocks import get_blocks
+from backend.blocks._base import BlockSchema
+from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.google._drive import GoogleDriveFile
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
+from backend.blocks.mcp.block import MCPToolBlock
 from backend.data.dynamic_fields import merge_execution_input, parse_execution_output
 from backend.data.execution import (
     ExecutionContext,
@@ -14,6 +18,7 @@ from backend.data.execution import (
     ExecutionTrigger,
     GraphExecutionWithNodes,
 )
+from backend.data.graph import Node
 from backend.data.model import User
 from backend.executor.utils import (
     CRED_ERR_INVALID_PREFIX,
@@ -24,6 +29,7 @@ from backend.executor.utils import (
     _is_optional_picker,
     add_graph_execution,
     is_credential_validation_error_message,
+    validate_exec,
 )
 from backend.util.mock import MockObject
 
@@ -3885,3 +3891,43 @@ async def test_a_resumed_sub_graph_whose_parent_is_gone_names_no_chat(
     context = captured["execution_context"]
     assert context.approval_chat_id is None
     assert context.sensitive_action_safe_mode is True
+
+
+@pytest.mark.parametrize(
+    "block_cls, schema_key, values_key",
+    [
+        (MCPToolBlock, "tool_input_schema", "tool_arguments"),
+        (AgentExecutorBlock, "input_schema", "inputs"),
+    ],
+)
+def test_validate_exec_ignores_a_schema_among_a_blocks_dynamic_inputs(
+    block_cls: type, schema_key: str, values_key: str
+):
+    """validate_exec flattens the dynamic inputs into plain values, so one named
+    like the block's schema field must not be used to check the others."""
+    dynamic_inputs = {
+        schema_key: {"properties": {"x": {"type": "string", "pattern": "^b$"}}},
+        values_key: {"x": "a"},
+    }
+    node = Node(block_id=block_cls().id, input_default={values_key: dynamic_inputs})
+
+    data, _ = validate_exec(node, {})
+
+    assert data == dynamic_inputs
+
+
+def test_only_reviewed_blocks_override_the_input_check():
+    """get_mismatch_error and validate_data check a block's inputs against its class
+    schema; a block overriding either is reviewed and named here."""
+    overriders = {
+        (block_cls.__name__, hook)
+        for block_cls in get_blocks().values()
+        for hook in ("get_mismatch_error", "validate_data")
+        if getattr(block_cls().input_schema, hook).__func__
+        is not getattr(BlockSchema, hook).__func__
+    }
+    assert overriders == {
+        ("AgentExecutorBlock", "get_mismatch_error"),
+        ("MCPToolBlock", "get_mismatch_error"),
+        ("PerplexityBlock", "validate_data"),
+    }
