@@ -8,6 +8,7 @@ Covers:
 - EXTENDED_THINKING sends the CLI one string prompt
 """
 
+import asyncio
 from collections.abc import AsyncGenerator, AsyncIterable
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -464,3 +465,116 @@ async def test_sdk_mode_sends_a_history_entry_as_text() -> None:
     _options, prompt = seen
     assert isinstance(prompt, str), f"the CLI was sent a {type(prompt).__name__}"
     assert "not_a_user_turn" not in prompt
+
+
+# ---------------------------------------------------------------------------
+# Usage of a query cut off before its ResultMessage
+# ---------------------------------------------------------------------------
+
+
+class _HangingClient(_ClientRecorder):
+    """Takes the query, then never replies, like a model still thinking."""
+
+    replying = asyncio.Event()
+
+    async def receive_response(self) -> AsyncGenerator[ResultMessage, None]:
+        self.replying.set()
+        await asyncio.Event().wait()
+        return
+        yield  # pragma: no cover - makes this an async generator
+
+
+async def _sdk_mode_cut_off(cut_off) -> OrchestratorBlock:
+    """Run SDK mode against a model that never replies, end it with
+    ``cut_off(run)`` once the query is out, and return the block."""
+    block = OrchestratorBlock()
+    input_data = MagicMock(sys_prompt="", prompt="Plan a long trip. " * 50)
+    input_data.model.value = "claude-test"
+    credentials = APIKeyCredentials(
+        id="test-anthropic-id",
+        provider="anthropic",
+        api_key=SecretStr("mock-anthropic-key"),
+        title="Mock Anthropic key",
+        expires_at=None,
+    )
+
+    async def drive() -> None:
+        async for _ in block._execute_tools_sdk_mode(
+            input_data=input_data,
+            credentials=credentials,
+            tool_functions=[],
+            prompt=[{"role": "user", "content": input_data.prompt}],
+            execution_params=MagicMock(graph_exec_id="graph-exec-1"),
+            execution_processor=MagicMock(),
+        ):
+            pass
+
+    with (
+        patch.object(_HangingClient, "replying", asyncio.Event()) as replying,
+        patch.object(claude_agent_sdk, "ClaudeSDKClient", _HangingClient),
+        patch(
+            "backend.blocks.orchestrator.require_verbatim_prompts_cli",
+            MagicMock(return_value="/opt/claude/claude"),
+        ),
+    ):
+        run = asyncio.ensure_future(drive())
+        await asyncio.wait_for(replying.wait(), timeout=30)
+        await cut_off(run)
+    return block
+
+
+@pytest.mark.asyncio
+async def test_sdk_mode_cancelled_before_a_result_records_estimated_input() -> None:
+    """A stop before the ResultMessage leaves no reported usage, so the
+    prompt's estimated input tokens are recorded for it."""
+
+    async def stop(run: asyncio.Future) -> None:
+        run.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await run
+
+    block = await _sdk_mode_cut_off(stop)
+
+    assert block.execution_stats.abandoned_input_token_count > 100
+    assert block.execution_stats.input_token_count == 0
+
+
+@pytest.mark.asyncio
+async def test_built_in_mode_stopped_mid_call_records_estimated_input() -> None:
+    block = OrchestratorBlock()
+    input_data = MagicMock(
+        conversation_compaction=False,
+        model=LLMModel.CLAUDE_4_5_HAIKU,
+        max_tokens=100,
+        ollama_host="localhost:11434",
+        multiple_tool_calls=False,
+    )
+    credentials = APIKeyCredentials(
+        id="test-anthropic-id",
+        provider="anthropic",
+        api_key=SecretStr("mock-anthropic-key"),
+        title="Mock Anthropic key",
+        expires_at=None,
+    )
+    request_sent = asyncio.Event()
+
+    async def provider(**_: object) -> None:
+        request_sent.set()
+        await asyncio.Event().wait()
+
+    with patch("backend.util.llm.providers.call_provider", provider):
+        run = asyncio.ensure_future(
+            block._attempt_llm_call_with_validation(
+                credentials=credentials,
+                input_data=input_data,
+                current_prompt=[{"role": "user", "content": "Plan a long trip. " * 50}],
+                tool_functions=[],
+            )
+        )
+        await asyncio.wait_for(request_sent.wait(), timeout=30)
+        run.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await run
+
+    assert block.execution_stats.abandoned_input_token_count > 100
+    assert block.execution_stats.input_token_count == 0

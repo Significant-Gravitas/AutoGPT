@@ -7,9 +7,11 @@ from aiohttp import web
 from backend.util.request import (
     Requests,
     ResponseTooLargeError,
+    _is_cross_origin,
     _is_ip_blocked,
     _read_body,
     _remove_insecure_headers,
+    parse_url,
     pin_url,
     resolve_and_check_blocked,
     validate_url_host,
@@ -314,7 +316,7 @@ def test_sensitive_headers_are_stripped_regardless_of_case(
     headers = {header_name: "secret", "X-Keep": "kept"}
 
     result = _remove_insecure_headers(
-        headers, urlparse("https://example.com/a"), urlparse(new_url)
+        headers, _is_cross_origin(urlparse("https://example.com/a"), urlparse(new_url))
     )
 
     assert (header_name not in result) is expect_stripped
@@ -617,6 +619,174 @@ async def test_credentials_survive_a_same_origin_redirect():
     assert seen["cookie"] == "session=secret_session_value"
 
 
+# The four ways a credential rides a redirect hop: a name in
+# ``SENSITIVE_HEADERS``, the two kwargs aiohttp turns into headers downstream of
+# the strip, and a name the caller declared sensitive. One origin decision in
+# the redirect branch has to cover all four, in both directions.
+CREDENTIAL_CARRIERS = [
+    (
+        {},
+        {"headers": {"Authorization": "Bearer dft_secret_token"}},
+        "Authorization",
+        "Bearer dft_secret_token",
+    ),
+    ({}, {"auth": ("user", "pass")}, "Authorization", "Basic dXNlcjpwYXNz"),
+    (
+        {},
+        {"cookies": {"session": "secret_session_value"}},
+        "Cookie",
+        "session=secret_session_value",
+    ),
+    (
+        {"sensitive_headers": ["X-Custom-Credential"]},
+        {"headers": {"X-Custom-Credential": "credential-value"}},
+        "X-Custom-Credential",
+        "credential-value",
+    ),
+]
+CARRIER_IDS = ["header", "auth-kwarg", "cookies-kwarg", "caller-named-header"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "client_kwargs, call_kwargs, header, expected", CREDENTIAL_CARRIERS, ids=CARRIER_IDS
+)
+async def test_a_redirect_is_judged_by_the_host_the_next_hop_connects_to(
+    client_kwargs: dict, call_kwargs: dict, header: str, expected: str
+):
+    """Every carrier of a credential answers to that one origin decision.
+
+    ``parse_url`` and ``urlparse`` disagree about an authority holding a
+    backslash, and the next hop parses the target with the former, so the
+    comparison has to as well. A header, ``auth=`` and ``cookies=`` are each
+    covered here, because each leaves by a different route.
+    """
+    seen: dict[str, str | None] = {}
+
+    async def collect(request: web.Request) -> web.Response:
+        seen["elsewhere"] = request.headers.get(header)
+        return web.json_response({"ok": True})
+
+    elsewhere = web.Application()
+    # The hop lands on ``/@<origin host>/collect``, so match any path.
+    elsewhere.router.add_get("/{tail:.*}", collect)
+    elsewhere_runner = web.AppRunner(elsewhere)
+    await elsewhere_runner.setup()
+    await web.TCPSite(elsewhere_runner, "127.0.0.1", 0).start()
+    elsewhere_port = elsewhere_runner.addresses[0][1]
+
+    async def redirect(request: web.Request) -> web.Response:
+        # Pinned, so the test cannot pass by the credential never being applied.
+        seen["origin"] = request.headers.get(header)
+        # Raw header, not ``HTTPFound``: that percent-encodes the backslash,
+        # and ``%5C`` is read the same way by both parsers.
+        location = f"http://127.0.0.1:{elsewhere_port}\\@{request.host}/collect"
+        return web.Response(status=302, headers={"Location": location})
+
+    origin = web.Application()
+    origin.router.add_get("/start", redirect)
+    origin_runner = web.AppRunner(origin)
+    await origin_runner.setup()
+    await web.TCPSite(origin_runner, "127.0.0.1", 0).start()
+    origin_port = origin_runner.addresses[0][1]
+
+    try:
+        requests = Requests(trusted_origins=["127.0.0.1"], **client_kwargs)
+        await requests.get(f"http://127.0.0.1:{origin_port}/start", **call_kwargs)
+    finally:
+        await origin_runner.cleanup()
+        await elsewhere_runner.cleanup()
+
+    assert seen["origin"] == expected
+    assert seen["elsewhere"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "client_kwargs, call_kwargs, header, expected", CREDENTIAL_CARRIERS, ids=CARRIER_IDS
+)
+@pytest.mark.parametrize("shape", ["absolute", "path", "path-with-a-backslash"])
+async def test_a_credential_survives_a_hop_that_stays_on_the_origin(
+    shape: str, client_kwargs: dict, call_kwargs: dict, header: str, expected: str
+):
+    """The keep direction of that one decision, for the header carriers too.
+
+    Without this, a branch that stripped the credential headers on every hop
+    would pass the whole file: the other same-origin test carries its credential
+    as ``auth=``/``cookies=``, which aiohttp builds downstream of the strip, so
+    the header dance never sees them. A target whose own path holds a backslash
+    belongs here, because ``urljoin`` runs before the parse and the fold then
+    only moves the backslash further into the path.
+    """
+    seen: dict[str, str | None] = {}
+
+    async def final(request: web.Request) -> web.Response:
+        seen["final"] = request.headers.get(header)
+        return web.json_response({"ok": True})
+
+    async def redirect(request: web.Request) -> web.Response:
+        # Pinned, so the test cannot pass by the credential never being applied.
+        seen["origin"] = request.headers.get(header)
+        target = {
+            "absolute": f"http://{request.host}/final",
+            "path": "/final",
+            # Joins to ``/\final``, which the fold turns into ``//final``.
+            "path-with-a-backslash": "\\final",
+        }[shape]
+        return web.Response(status=302, headers={"Location": target})
+
+    app = web.Application()
+    app.router.add_get("/start", redirect)
+    app.router.add_get("/{tail:.*}", final)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    await web.TCPSite(runner, "127.0.0.1", 0).start()
+    port = runner.addresses[0][1]
+
+    try:
+        requests = Requests(trusted_origins=["127.0.0.1"], **client_kwargs)
+        await requests.get(f"http://127.0.0.1:{port}/start", **call_kwargs)
+    finally:
+        await runner.cleanup()
+
+    assert seen["origin"] == expected
+    assert seen["final"] == expected
+
+
+@pytest.mark.parametrize(
+    "target, by_urlparse, by_parse_url",
+    [
+        (
+            "http://elsewhere.example\\@origin.example/collect",
+            "origin.example",
+            "elsewhere.example",
+        ),
+        (
+            "http://elsewhere.example:8080\\@origin.example/c",
+            "origin.example",
+            "elsewhere.example",
+        ),
+        (
+            "HTTP://Elsewhere.Example\\@Origin.Example/C",
+            "origin.example",
+            "elsewhere.example",
+        ),
+    ],
+)
+def test_parse_url_names_the_host_a_backslashed_authority_resolves_to(
+    target: str, by_urlparse: str, by_parse_url: str
+):
+    """The two parsers are not interchangeable for such an authority.
+
+    The redirect branch parses the target once with ``parse_url`` and passes
+    ``geturl()`` of that same parse to the next hop, which parses it the same
+    way, so what it compares is what gets connected to. Reading the authority
+    with ``urlparse`` instead names a host the request never reaches.
+    """
+    assert urlparse(target).hostname == by_urlparse
+    assert parse_url(target).hostname == by_parse_url
+
+
 @pytest.mark.parametrize("header_name", ["X-Custom-Credential", "x-custom-credential"])
 @pytest.mark.parametrize(
     "new_url, expect_stripped",
@@ -633,8 +803,7 @@ def test_caller_sensitive_headers_are_stripped_cross_origin(
 
     result = _remove_insecure_headers(
         headers,
-        urlparse("https://example.com/a"),
-        urlparse(new_url),
+        _is_cross_origin(urlparse("https://example.com/a"), urlparse(new_url)),
         sensitive_headers=["X-CUSTOM-Credential"],
     )
 
