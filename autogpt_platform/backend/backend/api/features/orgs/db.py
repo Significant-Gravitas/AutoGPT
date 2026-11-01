@@ -278,8 +278,7 @@ async def create_org(
         ValueError: If the slug is already taken by another org or alias.
     """
     # Bounded at the create, because the listing has no page to truncate.
-    # Counts memberships, which is what the listing returns; accepting an
-    # invitation is not capped.
+    # Counts memberships, which is what the listing returns.
     memberships = await prisma.orgmember.count(
         where={"userId": user_id, "status": "ACTIVE", "Org": {"deletedAt": None}}
     )

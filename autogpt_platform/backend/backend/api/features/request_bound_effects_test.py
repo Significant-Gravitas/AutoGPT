@@ -13,7 +13,11 @@ import pydantic
 import pytest
 from autogpt_libs.auth.models import RequestContext
 
-from backend.api.features.chat.routes import MAX_CONTEXT_ENTRIES, StreamChatRequest
+from backend.api.features.chat.routes import (
+    MAX_CONTEXT_ENTRIES,
+    QueuePendingMessageRequest,
+    StreamChatRequest,
+)
 from backend.api.features.orgs.invitation_routes import create_invitation
 from backend.util.exceptions import InvalidInputError
 from backend.util.text_limits import MAX_NAME_LENGTH
@@ -117,18 +121,19 @@ async def test_an_invitation_stores_each_team_once(mocker):
     assert stored == [TEAM_ID]
 
 
-def test_a_chat_turn_refuses_more_context_entries_than_the_cap():
+@pytest.mark.parametrize("model", [StreamChatRequest, QueuePendingMessageRequest])
+def test_a_chat_turn_refuses_more_context_entries_than_the_cap(model):
     too_many = {
         f"https://example.com/{n}": "page" for n in range(MAX_CONTEXT_ENTRIES + 1)
     }
 
     with pytest.raises(pydantic.ValidationError):
-        StreamChatRequest(message="hello", context=too_many)
+        model(message="hello", context=too_many)
 
     at_the_cap = {
         f"https://example.com/{n}": "page" for n in range(MAX_CONTEXT_ENTRIES)
     }
-    assert StreamChatRequest(message="hello", context=at_the_cap).context == at_the_cap
+    assert model(message="hello", context=at_the_cap).context == at_the_cap
 
 
 def _api_key_credentials():
