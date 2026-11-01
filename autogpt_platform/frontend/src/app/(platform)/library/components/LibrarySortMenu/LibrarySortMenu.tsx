@@ -8,8 +8,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/atoms/Select/components/SelectPrimitives";
-// oxlint-disable-next-line design-system/hugeicons-only -- glyph swap is P11's
-import { ArrowDownNarrowWideIcon } from "lucide-react";
+import { SortByDown02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { useLibrarySortMenu } from "./useLibrarySortMenu";
 
 interface Props {
@@ -28,7 +28,11 @@ export function LibrarySortMenu({ setLibrarySort }: Props) {
           // oxlint-disable-next-line design-system/no-restyle -- Select has no inline link-style trigger variant
           className="!m-0 ml-1 w-fit space-x-1 border-none !bg-transparent px-4 text-sm underline underline-offset-4 !shadow-none !ring-offset-transparent"
         >
-          <ArrowDownNarrowWideIcon className="h-4 w-4 sm:hidden" />
+          <Icon
+            aria-hidden
+            icon={SortByDown02Icon}
+            className="h-4 w-4 sm:hidden"
+          />
           <SelectValue placeholder="Last Modified" />
         </SelectTrigger>
         <SelectContent>

@@ -320,6 +320,73 @@ class TestCreateCredentialNoSecretInResponse:
         mock_mgr.create.assert_not_called()
 
 
+class TestCreateScopedUserPasswordCredential:
+    """smtp and database logins are created with a valid scope for their
+    provider; other logins take none."""
+
+    @staticmethod
+    def _create(provider: str, **extra: str):
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.create = AsyncMock()
+            resp = client.post(
+                f"/{provider}/credentials",
+                json={
+                    "provider": provider,
+                    "type": "user_password",
+                    "title": "My login",
+                    "username": "user",
+                    "password": "pass",
+                    **extra,
+                },
+            )
+        return resp, mock_mgr.create
+
+    @pytest.mark.parametrize(
+        "provider,extra",
+        [
+            ("smtp", {}),
+            ("database", {}),
+            ("smtp", {"scope": ""}),
+            ("smtp", {"scope": "smtp.example.com:587"}),
+            ("database", {"scope": "smtp://db.example.com"}),
+            ("smtp", {"scope": "smtp://*.example.com"}),
+            ("webshare_proxy", {"scope": "smtp://smtp.example.com"}),
+        ],
+    )
+    def test_missing_empty_or_malformed_scope_rejected(
+        self, provider: str, extra: dict[str, str]
+    ):
+        resp, create = self._create(provider, **extra)
+        assert resp.status_code == 400
+        create.assert_not_called()
+
+    def test_out_of_range_port_refused_in_terms_of_the_server(self):
+        resp, create = self._create("smtp", scope="smtp://smtp.example.com:99999")
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == (
+            "Enter a valid server, like smtp.example.com or smtp.example.com:587 "
+            "(port 1-65535)"
+        )
+        create.assert_not_called()
+
+    def test_login_with_scope_stored_and_returned(self):
+        resp, create = self._create("database", scope="mysql://db.example.com:3306")
+
+        assert resp.status_code == 201
+        assert resp.json()["scope"] == "mysql://db.example.com:3306"
+        assert resp.json()["host"] is None
+        assert create.call_args.args[1].scope == "mysql://db.example.com:3306"
+
+    def test_fixed_host_provider_login_needs_no_scope(self):
+        resp, _ = self._create("webshare_proxy")
+
+        assert resp.status_code == 201
+        assert resp.json()["scope"] is None
+
+
 class TestManagedCredentials:
     """AutoGPT-managed credentials cannot be deleted by users."""
 

@@ -5,6 +5,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { CircleAlertGlyph } from "@/components/atoms/Icon/drawnIcons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import { reloadForChunkLoadError } from "@/lib/chunk-load-reload";
 import Link from "next/link";
 
 export default function Error({
@@ -16,6 +17,7 @@ export default function Error({
 }) {
   useEffect(() => {
     console.error(error);
+    reloadForChunkLoadError(error, "error_boundary");
   }, [error]);
 
   return (

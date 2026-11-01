@@ -79,7 +79,8 @@ describe("ArtifactContent", () => {
       vi.fn().mockResolvedValue({
         ok: true,
         text: () => Promise.resolve("file content here"),
-        blob: () => Promise.resolve(new Blob(["content"])),
+        blob: () =>
+          Promise.resolve(new Blob(["%PDF-1.7"], { type: "application/pdf" })),
       }),
     );
   });
@@ -425,7 +426,136 @@ describe("ArtifactContent", () => {
     });
   });
 
+  it.each([
+    { caseName: "application/octet-stream", type: "application/octet-stream" },
+    { caseName: "an empty content type", type: "" },
+  ])(
+    "previews a PDF served as $caseName once its signature checks out",
+    async ({ type }) => {
+      const createObjectURL = vi
+        .fn()
+        .mockReturnValue("blob:http://localhost/octet-pdf");
+      vi.stubGlobal(
+        "URL",
+        Object.assign(URL, {
+          createObjectURL,
+          revokeObjectURL: vi.fn(),
+        }),
+      );
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          blob: () => Promise.resolve(new Blob(["%PDF-1.7"], { type })),
+        }),
+      );
+
+      const artifact = makeArtifact({
+        id: "octet-stream-pdf",
+        title: "report.pdf",
+        mimeType: "application/pdf",
+      });
+
+      const { container } = render(
+        <ArtifactContent
+          artifact={artifact}
+          isSourceView={false}
+          classification={makeClassification({ type: "pdf" })}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(container.querySelector("iframe")?.getAttribute("src")).toBe(
+          "blob:http://localhost/octet-pdf",
+        );
+      });
+      expect(createObjectURL).toHaveBeenCalledTimes(1);
+      expect(createObjectURL.mock.calls[0][0].type).toBe("application/pdf");
+    },
+  );
+
   // ── Fetch error ───────────────────────────────────────────────────
+
+  it.each([
+    {
+      caseName: "HTML response",
+      blob: new Blob(
+        ["<script>window.parent.document.body.remove()</script>"],
+        {
+          type: "text/html",
+        },
+      ),
+    },
+    {
+      caseName: "invalid PDF signature",
+      blob: new Blob(
+        ["<script>window.parent.document.body.remove()</script>"],
+        {
+          type: "application/pdf",
+        },
+      ),
+    },
+    {
+      caseName: "octet-stream response without a PDF signature",
+      blob: new Blob(
+        ["<script>window.parent.document.body.remove()</script>"],
+        {
+          type: "application/octet-stream",
+        },
+      ),
+    },
+    {
+      caseName: "HTML response that starts with a PDF signature",
+      blob: new Blob(["%PDF-<script>alert(1)</script>"], {
+        type: "text/html",
+      }),
+    },
+  ])(
+    "rejects $caseName before creating a PDF preview URL",
+    async ({ blob }) => {
+      const createObjectURL = vi
+        .fn()
+        .mockReturnValue("blob:http://localhost/html");
+      vi.stubGlobal(
+        "URL",
+        Object.assign(URL, {
+          createObjectURL,
+          revokeObjectURL: vi.fn(),
+        }),
+      );
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          blob: () => Promise.resolve(blob),
+        }),
+      );
+
+      const artifact = makeArtifact({
+        id: "html-selected-as-pdf",
+        title: "report.pdf",
+        mimeType: "text/html",
+      });
+      const classification = classifyArtifact(
+        artifact.mimeType,
+        artifact.title,
+      );
+      expect(classification.type).toBe("pdf");
+
+      const { container } = render(
+        <ArtifactContent
+          artifact={artifact}
+          isSourceView={false}
+          classification={classification}
+        />,
+      );
+
+      await screen.findByText("Failed to load content");
+      expect(screen.getByText(/not a valid PDF/)).toBeTruthy();
+      expect(createObjectURL).not.toHaveBeenCalled();
+      expect(container.querySelector("iframe")).toBeNull();
+    },
+  );
 
   it("shows error state with retry button on fetch failure", async () => {
     vi.stubGlobal(

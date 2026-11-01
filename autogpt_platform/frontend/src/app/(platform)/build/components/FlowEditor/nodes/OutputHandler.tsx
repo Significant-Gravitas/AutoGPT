@@ -1,7 +1,9 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { RJSFSchema } from "@rjsf/utils";
-import { useState } from "react";
+import { useLayoutEffect, useState } from "react";
+import { useUpdateNodeInternals } from "@xyflow/react";
+import { useShallow } from "zustand/react/shallow";
 
 import { OutputNodeHandle } from "../handlers/NodeHandle";
 import {
@@ -12,6 +14,11 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { getTypeDisplayInfo } from "./helpers";
+import {
+  augmentOutputSchemaWithEdges,
+  getOutputProperties,
+  type OutputProperties,
+} from "./outputSchema";
 import { BlockUIType } from "../../types";
 import { cn } from "@/lib/utils";
 import { useBrokenOutputs } from "./useBrokenOutputs";
@@ -22,17 +29,28 @@ import {
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
-export const OutputHandler = ({
-  outputSchema,
-  nodeId,
-  uiType,
-}: {
+interface Props {
   outputSchema: RJSFSchema;
   nodeId: string;
   uiType: BlockUIType;
-}) => {
-  const { isOutputConnected } = useEdgeStore();
-  const properties = outputSchema?.properties || {};
+}
+
+export function OutputHandler({ outputSchema, nodeId, uiType }: Props) {
+  const isOutputConnected = useEdgeStore((state) => state.isOutputConnected);
+  const sourceHandles = useEdgeStore(
+    useShallow((state) =>
+      state.edges.flatMap((edge) =>
+        edge.source === nodeId && typeof edge.sourceHandle === "string"
+          ? [edge.sourceHandle]
+          : [],
+      ),
+    ),
+  );
+  const properties = augmentOutputSchemaWithEdges(
+    outputSchema,
+    nodeId,
+    sourceHandles.map((sourceHandle) => ({ source: nodeId, sourceHandle })),
+  );
   const [isOutputVisible, setIsOutputVisible] = useState(true);
   const brokenOutputs = useBrokenOutputs(nodeId);
   const [expandedObjects, setExpandedObjects] = useState<
@@ -40,136 +58,150 @@ export const OutputHandler = ({
   >({});
 
   const showHandles = uiType !== BlockUIType.OUTPUT;
+  const updateNodeInternals = useUpdateNodeInternals();
+
+  useLayoutEffect(() => {
+    updateNodeInternals(nodeId);
+  }, [
+    nodeId,
+    outputSchema,
+    sourceHandles,
+    isOutputVisible,
+    expandedObjects,
+    brokenOutputs,
+    showHandles,
+    updateNodeInternals,
+  ]);
 
   function toggleObjectExpanded(key: string) {
-    setExpandedObjects((prev) => ({ ...prev, [key]: !prev[key] }));
+    setExpandedObjects((prev) => ({
+      ...prev,
+      [key]: !(Object.hasOwn(prev, key) && prev[key]),
+    }));
   }
 
   function hasConnectedOrBrokenDescendant(
-    schema: RJSFSchema,
+    schema: OutputProperties,
     keyPrefix: string,
   ): boolean {
     if (!schema) return false;
-    return Object.entries(schema).some(
-      ([key, fieldSchema]: [string, RJSFSchema]) => {
-        const fullKey = keyPrefix ? `${keyPrefix}_#_${key}` : key;
-        if (isOutputConnected(nodeId, fullKey) || brokenOutputs.has(fullKey))
-          return true;
-        if (fieldSchema?.properties)
-          return hasConnectedOrBrokenDescendant(
-            fieldSchema.properties,
-            fullKey,
-          );
-        return false;
-      },
-    );
+    return Object.entries(schema).some(([key, fieldSchema]) => {
+      const fullKey = keyPrefix ? `${keyPrefix}_#_${key}` : key;
+      if (isOutputConnected(nodeId, fullKey) || brokenOutputs.has(fullKey))
+        return true;
+      const nestedProperties = getOutputProperties(fieldSchema);
+      if (Object.keys(nestedProperties).length)
+        return hasConnectedOrBrokenDescendant(nestedProperties, fullKey);
+      return false;
+    });
   }
 
-  const renderOutputHandles = (
-    schema: RJSFSchema,
+  function renderOutputHandles(
+    schema: OutputProperties,
     keyPrefix: string = "",
     titlePrefix: string = "",
     connectedOnly: boolean = false,
-  ): React.ReactNode[] => {
-    return Object.entries(schema).map(
-      ([key, fieldSchema]: [string, RJSFSchema]) => {
-        const fullKey = keyPrefix ? `${keyPrefix}_#_${key}` : key;
-        const fieldTitle = titlePrefix + (fieldSchema?.title || key);
+  ): React.ReactNode[] {
+    return Object.entries(schema).map(([key, definition]) => {
+      const fieldSchema =
+        typeof definition === "object" &&
+        definition !== null &&
+        !Array.isArray(definition)
+          ? definition
+          : {};
+      const fullKey = keyPrefix ? `${keyPrefix}_#_${key}` : key;
+      const fieldTitle = titlePrefix + (fieldSchema?.title || key);
 
-        const isConnected = isOutputConnected(nodeId, fullKey);
-        const isBroken = brokenOutputs.has(fullKey);
-        const hasNestedProperties = !!fieldSchema?.properties;
-        const selfIsRelevant = isConnected || isBroken;
-        const descendantIsRelevant =
-          hasNestedProperties &&
-          hasConnectedOrBrokenDescendant(fieldSchema.properties!, fullKey);
+      const isConnected = isOutputConnected(nodeId, fullKey);
+      const isBroken = brokenOutputs.has(fullKey);
+      const nestedProperties = getOutputProperties(fieldSchema);
+      const hasNestedProperties = Object.keys(nestedProperties).length > 0;
+      const selfIsRelevant = isConnected || isBroken;
+      const descendantIsRelevant =
+        hasNestedProperties &&
+        hasConnectedOrBrokenDescendant(nestedProperties, fullKey);
 
-        const shouldShow = connectedOnly
-          ? selfIsRelevant || descendantIsRelevant
-          : isOutputVisible || selfIsRelevant || descendantIsRelevant;
+      const shouldShow = connectedOnly
+        ? selfIsRelevant || descendantIsRelevant
+        : isOutputVisible || selfIsRelevant || descendantIsRelevant;
 
-        const { displayType, colorClass, hexColor } =
-          // oxlint-disable-next-line design-system/require-static-classes -- getTypeDisplayInfo returns whole, static class strings
-          getTypeDisplayInfo(fieldSchema);
-        const isExpanded = expandedObjects[fullKey] ?? false;
+      const { displayType, colorClass, hexColor } =
+        // oxlint-disable-next-line design-system/require-static-classes -- getTypeDisplayInfo returns whole, static class strings
+        getTypeDisplayInfo(fieldSchema);
+      const isExpanded =
+        Object.hasOwn(expandedObjects, fullKey) && expandedObjects[fullKey];
 
-        // User expanded → show all children; auto-expanded → filter to connected only
-        const shouldRenderChildren = isExpanded || descendantIsRelevant;
+      // User expanded → show all children; auto-expanded → filter to connected only
+      const shouldRenderChildren = isExpanded || descendantIsRelevant;
 
-        return shouldShow ? (
-          <div
-            key={fullKey}
-            className="flex flex-col items-end gap-2"
-            data-tutorial-id={`output-handler-${nodeId}-${fieldTitle}`}
-          >
-            <div className="relative flex items-center gap-2">
-              {hasNestedProperties && (
-                <button
-                  onClick={() => toggleObjectExpanded(fullKey)}
-                  className="flex items-center text-foreground-tertiary hover:text-foreground-body"
-                  aria-label={isExpanded ? "Collapse" : "Expand"}
-                >
-                  {isExpanded ? (
-                    <Icon icon={ArrowDown01Icon} size={12} />
-                  ) : (
-                    <Icon icon={ArrowRight01Icon} size={12} />
-                  )}
-                </button>
-              )}
-              {fieldSchema?.description && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span
-                        className="ml-1.5 cursor-pointer"
-                        aria-label="info"
-                        tabIndex={0}
-                      >
-                        <Icon icon={InformationCircleIcon} />
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent>{fieldSchema?.description}</TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
-              <Text
-                variant={isBroken ? "body-line-through" : "body"}
-                className={cn("text-foreground-body", isBroken && "text-error")}
+      return shouldShow ? (
+        <div
+          key={fullKey}
+          className="flex flex-col items-end gap-2"
+          data-tutorial-id={`output-handler-${nodeId}-${fieldTitle}`}
+        >
+          <div className="relative flex items-center gap-2">
+            {hasNestedProperties && (
+              <button
+                onClick={() => toggleObjectExpanded(fullKey)}
+                className="flex items-center text-foreground-tertiary hover:text-foreground-body"
+                aria-label={isExpanded ? "Collapse" : "Expand"}
               >
-                {fieldTitle}
-              </Text>
-              <Text
-                variant={isBroken ? "small-line-through" : "small"}
-                as="span"
-                className={cn(colorClass, isBroken && "!text-error")}
-              >
-                ({displayType})
-              </Text>
+                {isExpanded ? (
+                  <Icon icon={ArrowDown01Icon} size={12} />
+                ) : (
+                  <Icon icon={ArrowRight01Icon} size={12} />
+                )}
+              </button>
+            )}
+            {fieldSchema?.description && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      className="ml-1.5 cursor-pointer"
+                      aria-label="info"
+                      tabIndex={0}
+                    >
+                      <Icon icon={InformationCircleIcon} />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>{fieldSchema?.description}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            <Text
+              variant={isBroken ? "body-line-through" : "body"}
+              className={cn("text-foreground-body", isBroken && "text-error")}
+            >
+              {fieldTitle}
+            </Text>
+            <Text
+              variant={isBroken ? "small-line-through" : "small"}
+              as="span"
+              className={cn(colorClass, isBroken && "!text-error")}
+            >
+              ({displayType})
+            </Text>
 
-              {showHandles && (
-                <OutputNodeHandle
-                  isBroken={isBroken}
-                  field_name={fullKey}
-                  nodeId={nodeId}
-                  hexColor={hexColor}
-                />
-              )}
-            </div>
-
-            {/* Nested properties */}
-            {hasNestedProperties &&
-              shouldRenderChildren &&
-              renderOutputHandles(
-                fieldSchema.properties!,
-                fullKey,
-                "",
-                !isExpanded,
-              )}
+            {showHandles && (
+              <OutputNodeHandle
+                isBroken={isBroken}
+                field_name={fullKey}
+                nodeId={nodeId}
+                hexColor={hexColor}
+              />
+            )}
           </div>
-        ) : null;
-      },
-    );
-  };
+
+          {/* Nested properties */}
+          {hasNestedProperties &&
+            shouldRenderChildren &&
+            renderOutputHandles(nestedProperties, fullKey, "", !isExpanded)}
+        </div>
+      ) : null;
+    });
+  }
 
   return (
     <div className="flex flex-col items-end justify-between gap-2 rounded-b-xlarge border-t border-border-base bg-surface py-3.5">
@@ -197,4 +229,4 @@ export const OutputHandler = ({
       </div>
     </div>
   );
-};
+}
