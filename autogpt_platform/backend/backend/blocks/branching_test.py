@@ -1,4 +1,4 @@
-"""Behaviour tests for ConditionBlock and IfInputMatchesBlock."""
+"""Behaviour tests for ConditionBlock."""
 
 from __future__ import annotations
 
@@ -8,11 +8,11 @@ from backend.blocks import get_block
 from backend.blocks.branching import (
     ComparisonOperator,
     ConditionBlock,
-    IfInputMatchesBlock,
 )
 from backend.data.execution import ExecutionContext
 from backend.data.graph import Link, Node
 from backend.executor.utils import validate_exec
+from backend.util import json
 from backend.util.exceptions import BlockExecutionError
 
 
@@ -180,6 +180,8 @@ B1 = 9007199254740993  # 2**53 + 1, not representable as a float
         (str(B1), "==", B1, True),
         ("-9223372036854775808", "<", "-9223372036854775807", True),
         (" 3 ", "==", "3.0", True),
+        (str(B1), "==", f"{B1}.0", True),
+        (f"{B1}.0", ">", str(B0), True),
         ("3", "<", "3.5", True),
         ("1e3", "==", 1000, True),
         ("0.1", "==", "0.10000000000000001", True),
@@ -209,27 +211,17 @@ async def test_condition_passthrough_keeps_parsed_value1(value1: str, expected: 
     assert type(outputs["yes_output"]) is type(expected)
 
 
+@pytest.mark.parametrize("value1", [str(2**64), str(-(2**63) - 1), "1" * 400])
+async def test_condition_passthrough_of_out_of_range_int_is_serializable(
+    value1: str,
+):
+    outputs = await _run(value1=value1, operator="==", value2=value1)
+
+    assert outputs["result"] is True
+    assert outputs["yes_output"] == float(value1)
+    json.dumps(outputs)
+
+
 async def test_condition_string_vs_number_ordering_still_fails():
     with pytest.raises(BlockExecutionError, match="Comparison failed"):
         await _run(value1="abc", operator=">", value2=3)
-
-
-@pytest.mark.xfail(
-    reason="IfInputMatches converts through util.type.convert; exact once #16415 lands",
-    strict=False,
-)
-@pytest.mark.parametrize("input_value,result", [(B0, False), (B1, True)])
-async def test_if_input_matches_big_int_against_string(input_value: int, result: bool):
-    node = Node(
-        block_id=IfInputMatchesBlock().id,
-        input_default={
-            "input": input_value,
-            "value": str(B1),
-            "yes_value": "yes",
-            "no_value": "no",
-        },
-    )
-
-    outputs = await _execute_node(node, {})
-
-    assert outputs["result"] is result

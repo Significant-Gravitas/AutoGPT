@@ -1,3 +1,5 @@
+import math
+from decimal import Decimal
 from enum import Enum
 from typing import Any
 
@@ -32,9 +34,22 @@ def _normalize_operand(value: Any) -> Any:
     except ValueError:
         pass
     try:
-        return float(text)
+        number = float(text)
     except ValueError:
         return text
+    # A whole number past 2**53 ("9007199254740993.0") loses digits as a float.
+    if math.isfinite(number) and number.is_integer() and abs(number) >= 2**53:
+        return int(Decimal(text))
+    return number
+
+
+def _passthrough(raw: Any, value: Any) -> Any:
+    # Block outputs are serialized with orjson, which rejects ints outside
+    # the 64-bit range; emit the float such inputs produced before.
+    out_of_range = isinstance(value, int) and not -(2**63) <= value < 2**64
+    if isinstance(raw, str) and out_of_range:
+        return float(raw.strip())
+    return value
 
 
 class ConditionBlock(Block):
@@ -100,8 +115,13 @@ class ConditionBlock(Block):
         value1 = _normalize_operand(input_data.value1)
         value2 = _normalize_operand(input_data.value2)
 
-        yes_value = input_data.yes_value if input_data.yes_value is not None else value1
-        no_value = input_data.no_value if input_data.no_value is not None else value1
+        passthrough = _passthrough(input_data.value1, value1)
+        yes_value = (
+            input_data.yes_value if input_data.yes_value is not None else passthrough
+        )
+        no_value = (
+            input_data.no_value if input_data.no_value is not None else passthrough
+        )
 
         comparison_funcs = {
             ComparisonOperator.EQUAL: lambda a, b: a == b,
