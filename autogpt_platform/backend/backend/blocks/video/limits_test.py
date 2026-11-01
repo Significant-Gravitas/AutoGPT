@@ -33,6 +33,7 @@ OVERSIZED = "oversized.mp4"
 SECOND_STREAM_OVERSIZED = "second_stream_oversized.mp4"
 OVERSIZED_VIDEOS = [OVERSIZED, PORTRAIT_OVERSIZED]
 VIDEO_BLOCKS_DIR = Path(__file__).parent
+BACKEND_PACKAGE_DIR = VIDEO_BLOCKS_DIR.parents[1]
 
 
 def _make_video(path: Path, *sizes: str) -> None:
@@ -222,17 +223,39 @@ def test_frame_size_check_reads_every_video_stream(video_dir):
         )
 
 
-def test_video_blocks_open_videos_only_through_the_checked_helper():
-    direct_opens = []
-    for path in sorted(VIDEO_BLOCKS_DIR.glob("*.py")):
-        if path.name == "_utils.py" or path.name.endswith("_test.py"):
+def _video_file_clip_calls(tree: ast.AST) -> list[int]:
+    """Line numbers of calls to `VideoFileClip`, under its own name or an alias."""
+    names = {"VideoFileClip"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            names |= {
+                alias.asname
+                for alias in node.names
+                if alias.name == "VideoFileClip" and alias.asname
+            }
+    lines = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
             continue
-        for node in ast.walk(ast.parse(path.read_text())):
-            if isinstance(node, ast.Call) and "VideoFileClip" in ast.unparse(node.func):
-                direct_opens.append(f"{path.name}:{node.lineno}")
+        func = node.func
+        if (isinstance(func, ast.Name) and func.id in names) or (
+            isinstance(func, ast.Attribute) and func.attr == "VideoFileClip"
+        ):
+            lines.append(node.lineno)
+    return lines
+
+
+def test_video_blocks_open_videos_only_through_the_checked_helper():
+    allowed = VIDEO_BLOCKS_DIR / "_utils.py"
+    direct_opens = []
+    for path in sorted(BACKEND_PACKAGE_DIR.rglob("*.py")):
+        if path == allowed:
+            continue
+        for lineno in _video_file_clip_calls(ast.parse(path.read_text())):
+            direct_opens.append(f"{path.relative_to(BACKEND_PACKAGE_DIR)}:{lineno}")
     assert not direct_opens, (
-        "Open videos with _utils.open_video_clip, which checks the frame size "
-        f"first, not VideoFileClip directly: {direct_opens}"
+        "Open videos with backend.blocks.video._utils.open_video_clip, which "
+        f"checks the frame size first, not VideoFileClip directly: {direct_opens}"
     )
 
 
