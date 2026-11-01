@@ -552,9 +552,7 @@ class MoveAgentsToFolderTool(BaseTool):
                 "agent_ids": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": (
-                        "Library agent IDs to move (graph IDs are also accepted)."
-                    ),
+                    "description": "Library agent IDs to move (or graph IDs).",
                     "entity": "library_agent",
                 },
                 "folder_id": {
