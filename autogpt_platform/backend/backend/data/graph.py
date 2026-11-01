@@ -16,6 +16,7 @@ from typing import (
     get_args,
 )
 
+from prisma import Prisma
 from prisma.enums import SubmissionStatus
 from prisma.models import (
     AgentGraph,
@@ -47,6 +48,7 @@ from backend.util.exceptions import (
     GraphNotInLibraryError,
     GraphValidationError,
     NotAuthorizedError,
+    NotFoundError,
 )
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
@@ -1856,6 +1858,16 @@ async def get_graph_version_owners(graph_id: str) -> set[tuple[str, str | None]]
     return {(version.userId, version.organizationId) for version in versions}
 
 
+async def is_graph_version_owner(graph_id: str, version: int, user_id: str) -> bool:
+    """Whether *user_id* saved this version of the graph."""
+    return (
+        await AgentGraph.prisma().count(
+            where={"id": graph_id, "version": version, "userId": user_id}
+        )
+        > 0
+    )
+
+
 async def assert_graph_within(
     graph_id: str, user_id: str, organization_ids: Collection[str | None]
 ) -> None:
@@ -2258,27 +2270,23 @@ async def __create_graph(
             assert_safe_pin_name(link.source_name)
             assert_safe_pin_name(link.sink_name)
 
-    # Auto-increment version for any graph entry (parent or sub-graph) whose
-    # (id, version) already exists.  This prevents UniqueViolationError when
-    # the copilot re-saves an agent that already exists at the requested version.
-    # NOTE: This issues one find_first query per graph entry (N+1 pattern).
-    # Sub-graph counts are typically small (< 5), so the overhead is negligible.
+    # A graph ID has one owner: refuse anyone else's, and number the version
+    # after the latest stored one.
     for g in graphs:
-        existing = await AgentGraph.prisma(tx).find_first(
+        owner_id = await graph_owner_id(g.id, tx)
+        if owner_id is not None and owner_id != user_id:
+            raise NotFoundError(f"Workflow #{g.id} not found")
+
+        latest = await AgentGraph.prisma(tx).find_first(
             where={"id": g.id},
             order={"version": "desc"},
         )
-        if existing and existing.version >= g.version:
-            old_version = g.version
-            g.version = existing.version + 1
+        if latest and (next_version := latest.version + 1) != g.version:
             logger.warning(
-                "Auto-incremented graph %s version from %d to %d "
-                "(version %d already exists)",
-                g.id,
-                old_version,
-                g.version,
-                existing.version,
+                f"Saving graph {g.id} as v{next_version} rather than the "
+                f"requested v{g.version}: its latest version is v{latest.version}"
             )
+            g.version = next_version
 
     await AgentGraph.prisma(tx).create_many(
         data=[
@@ -2329,6 +2337,14 @@ async def __create_graph(
             for link in graph.links
         ]
     )
+
+
+async def graph_owner_id(graph_id: str, tx: Prisma | None = None) -> str | None:
+    """The owner of the graph ID's first version, or None when it has none."""
+    first_version = await AgentGraph.prisma(tx).find_first(
+        where={"id": graph_id}, order={"version": "asc"}
+    )
+    return first_version.userId if first_version else None
 
 
 # ------------------------ UTILITIES ------------------------ #

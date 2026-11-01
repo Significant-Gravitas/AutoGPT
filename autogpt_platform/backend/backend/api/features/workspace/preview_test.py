@@ -281,6 +281,24 @@ def test_markdown_preview_served_despite_non_text_mime(mocker):
     storage.retrieve_partial.assert_awaited_once()
 
 
+@pytest.mark.parametrize(
+    "mime_type",
+    ["text/csv", "application/json"],
+)
+def test_text_preview_is_plain_text_whatever_the_stored_type(mocker, mime_type):
+    _mock_lookups(mocker, _make_file(name="page.txt", mime_type=mime_type))
+    _mock_storage(mocker, b"hello")
+    _mock_redis(mocker)
+
+    response = client.get("/files/file-001/preview")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["content-security-policy"] == "sandbox"
+    assert response.content == b"hello"
+
+
 def test_preview_404_when_file_missing(mocker):
     mocker.patch(
         "backend.api.features.workspace.routes.get_workspace",

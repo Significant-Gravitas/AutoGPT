@@ -1,5 +1,5 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   desktopStreamRenderer,
   DesktopStreamPreview,
@@ -16,6 +16,7 @@ const streamValue = {
 describe("DesktopStreamRenderer", () => {
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
   });
 
   it("canRender matches desktop_stream objects only", () => {
@@ -28,13 +29,27 @@ describe("DesktopStreamRenderer", () => {
     ).toBe(false);
   });
 
-  it("refuses anything but an https URL or our own origin-relative link", () => {
+  it("refuses an absolute link to our own origin", () => {
+    vi.stubGlobal("location", new URL("https://app.test/copilot"));
+    expect(
+      desktopStreamRenderer.canRender({
+        ...streamValue,
+        url: "https://app.test/library",
+      }),
+    ).toBe(false);
+    expect(desktopStreamRenderer.canRender(streamValue)).toBe(true);
+  });
+
+  it("refuses anything but an https URL or the desktop-preview link", () => {
     for (const url of [
       "javascript:alert(document.cookie)",
       "http://6080-sandbox.e2b.app/vnc.html",
       "data:text/html,<script>1</script>",
       "not a url",
       "//evil.example/vnc.html",
+      "/api/proxy/api/v1/items",
+      "/api/proxy/api/desktop-preview/../v1/items",
+      "/library",
     ]) {
       expect(desktopStreamRenderer.canRender({ ...streamValue, url })).toBe(
         false,
