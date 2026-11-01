@@ -76,6 +76,10 @@ WS_CLOSE_TRY_AGAIN_LATER = 1013
 Shard = tuple[str, int]
 
 
+class _StreamCapacityError(ValueError):
+    """A shard had no room left for this user's stream."""
+
+
 class ConnectionManager:
     def __init__(self):
         self.active_connections: Set[WebSocket] = set()
@@ -110,7 +114,18 @@ class ConnectionManager:
             raise
         self.active_connections.add(websocket)
         self._ws_subs.setdefault(websocket, {})
-        await self._start_notification_subscription(websocket, user_id=user_id)
+        try:
+            await self._start_notification_subscription(websocket, user_id=user_id)
+        except _StreamCapacityError:
+            # Capacity moved between admission and here; don't hand back a
+            # socket that will never receive a notification.
+            try:
+                await websocket.close(
+                    code=WS_CLOSE_TRY_AGAIN_LATER, reason="Try again later"
+                )
+            finally:
+                await self.disconnect_socket(websocket, user_id=user_id)
+            return False
         return True
 
     async def disconnect_socket(self, websocket: WebSocket, *, user_id: str):
@@ -213,7 +228,7 @@ class ConnectionManager:
         stream = streams.get(shard)
         if stream is None:
             if not self._has_room(user_id, shard):
-                raise ValueError("Server busy, try again later")
+                raise _StreamCapacityError("Server busy, try again later")
 
             async def on_lost() -> None:
                 await self._close_for_lost_stream(websocket)
@@ -342,6 +357,8 @@ class ConnectionManager:
 
         try:
             await self._subscribe(user_id, websocket, full_channel, on_message)
+        except _StreamCapacityError:
+            raise
         except Exception:
             logger.exception(f"Failed to open notification SSUBSCRIBE for {user_id}")
             return
@@ -409,11 +426,10 @@ class _ShardStream:
 
     async def add(self, channel: str, handler: MessageHandler) -> None:
         _assert_no_wildcard(channel)
-        pubsub = self._pubsub or await asyncio.wait_for(
-            self._open(channel), _STREAM_OPEN_TIMEOUT_S
-        )
         try:
-            await pubsub.ssubscribe(channel)
+            pubsub = await asyncio.wait_for(
+                self._open_and_subscribe(channel), _STREAM_OPEN_TIMEOUT_S
+            )
         except BaseException:
             if not self.handlers:
                 await self._close_quietly()
@@ -421,6 +437,13 @@ class _ShardStream:
         self.handlers[channel] = handler
         if self._task is None:
             self._task = asyncio.create_task(self._pump(pubsub))
+
+    async def _open_and_subscribe(self, channel: str) -> AsyncPubSub:
+        """``asyncio.wait_for`` bounds this whole call, not just opening the
+        connection — SSUBSCRIBE has no socket timeout of its own."""
+        pubsub = self._pubsub or await self._open(channel)
+        await pubsub.ssubscribe(channel)
+        return pubsub
 
     async def remove(self, channel: str) -> None:
         if self.handlers.pop(channel, None) is None:

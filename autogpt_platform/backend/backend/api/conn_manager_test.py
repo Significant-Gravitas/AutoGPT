@@ -640,6 +640,40 @@ async def test_opening_a_stream_gives_up_when_redis_does_not_answer(
 
 
 @pytest.mark.asyncio
+async def test_a_stalled_ssubscribe_does_not_hang_past_the_open_timeout(
+    fake_redis: _FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The timeout around ``add`` must cover SSUBSCRIBE too, not just opening
+    the connection, or a stalled subscribe holds the stream slot forever."""
+    monkeypatch.setattr("backend.api.conn_manager._STREAM_OPEN_TIMEOUT_S", 0.05)
+    original_connect = fake_redis.connect
+
+    async def connect_then_stall(channel: str) -> MagicMock:
+        client = await original_connect(channel)
+
+        async def never_subscribes(*_args: Any, **_kwargs: Any) -> None:
+            await asyncio.Event().wait()
+
+        fake_redis.pubsubs[-1].ssubscribe.side_effect = never_subscribes
+        return client
+
+    stream = _ShardStream(on_lost=AsyncMock())
+    # The outer bound turns a missing subscribe timeout into a failure, not a hang.
+    async with asyncio.timeout(5):
+        with (
+            patch(
+                "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
+                side_effect=connect_then_stall,
+            ),
+            pytest.raises(TimeoutError),
+        ):
+            await stream.add("{u/g}/exec/a", AsyncMock())
+    assert stream.handlers == {}
+    fake_redis.clients[0].aclose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_removing_the_last_channel_closes_the_connection(
     fake_redis: _FakeRedis,
 ) -> None:
@@ -1126,6 +1160,30 @@ async def test_connect_socket_starts_notification_subscription(
     ) as mock_start:
         await connection_manager.connect_socket(mock_websocket, user_id="user-1")
     mock_start.assert_awaited_once_with(mock_websocket, user_id="user-1")
+
+
+@pytest.mark.asyncio
+async def test_connect_socket_closes_when_notifications_lose_a_capacity_race(
+    connection_manager: ConnectionManager,
+    mock_websocket: AsyncMock,
+    fake_redis: _FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Admission passes because the notification channel's shard isn't
+    tracked yet, but capacity is gone by the time the subscribe itself runs
+    (e.g. a concurrent subscriber took the last slot). The socket must be
+    torn down, not handed back silently missing its notifications."""
+    monkeypatch.setattr(
+        ConnectionManager, "_has_room", lambda self, user_id, shard: False
+    )
+
+    assert not await connection_manager.connect_socket(mock_websocket, user_id="user-1")
+
+    mock_websocket.accept.assert_awaited_once()
+    mock_websocket.close.assert_awaited_once()
+    assert mock_websocket.close.await_args.kwargs["code"] == WS_CLOSE_TRY_AGAIN_LATER
+    assert "user-1" not in connection_manager._user_sockets
+    assert mock_websocket not in connection_manager.active_connections
 
 
 def _execution_db(meta: GraphExecutionMeta | None) -> MagicMock:
