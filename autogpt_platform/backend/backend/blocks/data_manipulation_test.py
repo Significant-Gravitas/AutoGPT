@@ -168,6 +168,20 @@ async def test_zip_result_under_the_size_limit_is_built():
     assert outputs["zipped_list"][-1] == [49_999, 49_999, None]
 
 
+async def test_zip_pads_with_an_integer_past_64_bits():
+    fill = 2**64
+    outputs = [
+        output
+        async for output in ZipListsBlock().run(
+            ZipListsBlock.Input(
+                lists=[[1, 2], [3]], pad_to_longest=True, fill_value=fill
+            )
+        )
+    ]
+
+    assert outputs == [("zipped_list", [[1, 3], [2, fill]]), ("length", 2)]
+
+
 def test_added_bytes_match_the_serialized_result():
     lists = [list(range(300)), list(range(10)), []]
     fill = "x" * 50

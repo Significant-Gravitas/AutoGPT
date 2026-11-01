@@ -129,8 +129,8 @@ class DataSamplingBlock(Block):
                 else [input_data.data]
             )
 
-        if input_data.random_seed is not None:
-            random.seed(input_data.random_seed)
+        # Its own generator: runs on other threads cannot reseed it mid-sample.
+        rng = random.Random(input_data.random_seed)
 
         data_size = len(data_to_sample)
 
@@ -142,10 +142,10 @@ class DataSamplingBlock(Block):
         indices = []
 
         if input_data.sampling_method == SamplingMethod.RANDOM:
-            indices = random.sample(range(data_size), input_data.sample_size)
+            indices = rng.sample(range(data_size), input_data.sample_size)
         elif input_data.sampling_method == SamplingMethod.SYSTEMATIC:
             step = data_size // input_data.sample_size
-            start = random.randint(0, step - 1)
+            start = rng.randint(0, step - 1)
             indices = list(range(start, data_size, step))[: input_data.sample_size]
         elif input_data.sampling_method == SamplingMethod.TOP:
             indices = list(range(input_data.sample_size))
@@ -186,7 +186,7 @@ class DataSamplingBlock(Block):
             )
 
             for stratum, size in stratum_sizes.items():
-                indices.extend(random.sample(strata[stratum], size))
+                indices.extend(rng.sample(strata[stratum], size))
         elif input_data.sampling_method == SamplingMethod.WEIGHTED:
             if not input_data.weight_key:
                 raise ValueError("Weight key must be provided for weighted sampling.")
@@ -217,13 +217,13 @@ class DataSamplingBlock(Block):
                     f"No valid weights found using key '{input_data.weight_key}'"
                 )
 
-            indices = random.choices(
+            indices = rng.choices(
                 range(data_size), weights=weights, k=input_data.sample_size
             )
         elif input_data.sampling_method == SamplingMethod.RESERVOIR:
             indices = list(range(input_data.sample_size))
             for i in range(input_data.sample_size, data_size):
-                j = random.randint(0, i)
+                j = rng.randint(0, i)
                 if j < input_data.sample_size:
                     indices[j] = i
         elif input_data.sampling_method == SamplingMethod.CLUSTER:
@@ -244,7 +244,7 @@ class DataSamplingBlock(Block):
 
             # Take clusters in random order until we have enough samples
             cluster_order = list(clusters)
-            random.shuffle(cluster_order)
+            rng.shuffle(cluster_order)
             for cluster in cluster_order:
                 if len(indices) >= input_data.sample_size:
                     break
@@ -252,7 +252,7 @@ class DataSamplingBlock(Block):
 
             # If we have more samples than needed, randomly remove some
             if len(indices) > input_data.sample_size:
-                indices = random.sample(indices, input_data.sample_size)
+                indices = rng.sample(indices, input_data.sample_size)
         else:
             raise ValueError(f"Unknown sampling method: {input_data.sampling_method}")
 

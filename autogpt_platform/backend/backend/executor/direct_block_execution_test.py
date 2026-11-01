@@ -122,28 +122,30 @@ async def test_time_budget_starts_when_the_run_starts(
         direct_block_execution, "DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS", budget
     )
     worker = direct_block_execution._WorkerLoop(index=99)
-    mocker.patch.object(
-        direct_block_execution, "_least_busy_worker", return_value=worker
-    )
-    loop_held = threading.Event()
+    try:
+        mocker.patch.object(
+            direct_block_execution, "_least_busy_worker", return_value=worker
+        )
+        loop_held = threading.Event()
 
-    async def hold_the_loop():
-        loop_held.set()
-        # Synchronous wait: the run below cannot start until it ends.
-        time.sleep(budget * 0.8)
+        async def hold_the_loop():
+            loop_held.set()
+            # Synchronous wait: the run below cannot start until it ends.
+            time.sleep(budget * 0.8)
 
-    asyncio.run_coroutine_threadsafe(hold_the_loop(), worker.loop)
-    assert await asyncio.to_thread(loop_held.wait, 10)
+        asyncio.run_coroutine_threadsafe(hold_the_loop(), worker.loop)
+        assert await asyncio.to_thread(loop_held.wait, 10)
 
-    async def outputs():
-        await asyncio.sleep(budget * 0.6)
-        yield "done", True
+        async def outputs():
+            await asyncio.sleep(budget * 0.6)
+            yield "done", True
 
-    # Queued 0.8 budgets, then ran 0.6: 1.4 budgets after it was queued, but
-    # only 0.6 after it started.
-    result = await asyncio.wait_for(run_block_off_loop(outputs()), timeout=30)
-    assert result == {"done": [True]}
-    worker.loop.call_soon_threadsafe(worker.loop.stop)
+        # Queued 0.8 budgets, then ran 0.6: 1.4 budgets after it was queued,
+        # but only 0.6 after it started.
+        result = await asyncio.wait_for(run_block_off_loop(outputs()), timeout=30)
+        assert result == {"done": [True]}
+    finally:
+        worker.loop.call_soon_threadsafe(worker.loop.stop)
 
 
 @pytest.mark.asyncio
@@ -164,6 +166,16 @@ async def test_run_past_the_budget_is_cancelled(mocker: pytest_mock.MockFixture)
     with pytest.raises(DirectBlockExecutionTimeoutError):
         await asyncio.wait_for(run_block_off_loop(outputs()), timeout=10)
     assert await asyncio.to_thread(cancelled.wait, 10)
+
+
+@pytest.mark.asyncio
+async def test_timeout_raised_by_the_block_reaches_the_caller():
+    async def outputs():
+        raise TimeoutError("upstream request timed out")
+        yield "never", None
+
+    with pytest.raises(TimeoutError, match="upstream request timed out"):
+        await asyncio.wait_for(run_block_off_loop(outputs()), timeout=10)
 
 
 def test_each_user_has_a_cap_on_runs_in_flight():

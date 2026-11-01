@@ -1,3 +1,4 @@
+import json
 from typing import Any, List
 
 from backend.blocks._base import (
@@ -1336,9 +1337,19 @@ def _zipped_added_bytes(
     groups = max(lengths) if pad_to_longest else min(lengths)
     cells = groups * len(lengths)
     padded_cells = cells - sum(min(length, groups) for length in lengths)
-    fill_bytes = len(dumps(fill_value).encode()) if padded_cells else 0
+    fill_bytes = _json_bytes(fill_value) if padded_cells else 0
     # A "," after each cell, "[]," around each group.
     return padded_cells * fill_bytes + cells + groups * 3
+
+
+def _json_bytes(value: Any) -> int:
+    try:
+        return len(dumps(value).encode())
+    except TypeError:
+        # orjson stops at 64-bit integers; Python's json does not.
+        return len(
+            json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode()
+        )
 
 
 class ListDifferenceBlock(Block):

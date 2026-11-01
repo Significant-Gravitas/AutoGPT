@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 import pytest_mock
 
+from backend.blocks import sampling
 from backend.blocks.sampling import DataSamplingBlock, SamplingMethod
 
 
@@ -84,16 +85,16 @@ async def test_cluster_sampling_draws_each_cluster_once(
     picked_from = [0]
 
     def counting(method):
-        def wrapper(population, *args, **kwargs):
+        def wrapper(rng, population, *args, **kwargs):
             picked_from[0] += len(population)
             if picked_from[0] > limit:
                 raise AssertionError(f"picked from more than {limit} values")
-            return method(population, *args, **kwargs)
+            return method(rng, population, *args, **kwargs)
 
         return wrapper
 
     for name in ("choice", "shuffle", "sample"):
-        mocker.patch.object(random, name, counting(getattr(random, name)))
+        mocker.patch.object(random.Random, name, counting(getattr(random.Random, name)))
     data = [{"c": i} for i in range(size)]
 
     out = await _sample(
@@ -143,14 +144,49 @@ async def test_cluster_sampling_takes_clusters_in_seeded_shuffle_order():
         return picked.pop()
 
     for seed in (0, 7, 42):
-        random.seed(seed)
         order = [str(c) for c in range(clusters)]
-        random.shuffle(order)
+        random.Random(seed).shuffle(order)
         assert await first_cluster(seed) == int(order[0])
         assert await first_cluster(seed) == await first_cluster(seed)
 
     firsts = {await first_cluster(seed) for seed in range(300)}
     assert firsts == set(range(clusters))
+
+
+async def test_seeded_sample_is_kept_when_another_run_reseeds_mid_sample(
+    mocker: pytest_mock.MockFixture,
+):
+    data = [{"g": i % 4} for i in range(200)]
+    fields: dict[str, Any] = {
+        "data": data,
+        "sample_size": 40,
+        "sampling_method": SamplingMethod.STRATIFIED,
+        "stratify_key": "g",
+        "random_seed": 1,
+    }
+    balance = sampling._balance_stratum_sizes
+
+    def another_run_reseeds(*args: Any) -> None:
+        # What a seeded run on another worker thread does between this run's
+        # seeding and its draws.
+        random.seed(12345)
+        balance(*args)
+
+    state = random.getstate()
+    try:
+        expected = await _sample(**fields)
+        mocker.patch.object(sampling, "_balance_stratum_sizes", another_run_reseeds)
+        assert await _sample(**fields) == expected
+    finally:
+        random.setstate(state)
+
+
+async def test_seeded_sample_leaves_the_module_random_state_alone():
+    state = random.getstate()
+
+    await _sample(data=[{"v": i} for i in range(100)], sample_size=10, random_seed=3)
+
+    assert random.getstate() == state
 
 
 def _reference_stratum_sizes(

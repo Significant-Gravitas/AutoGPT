@@ -147,9 +147,10 @@ async def run_block_off_loop(
     worker = _least_busy_worker()
     finished = False
     stopped = threading.Event()
+    budget = asyncio.timeout(timeout)
 
     try:
-        async with asyncio.timeout(timeout) as budget:
+        async with budget:
 
             def start_budget() -> None:
                 if not finished and not budget.expired():
@@ -172,6 +173,8 @@ async def run_block_off_loop(
             finally:
                 finished = True
     except TimeoutError as e:
+        if not budget.expired():
+            raise  # The block raised it, within its budget.
         server_loop.call_later(
             DIRECT_BLOCK_EXECUTION_CANCEL_GRACE_SECONDS,
             _retire_unless_stopped,
