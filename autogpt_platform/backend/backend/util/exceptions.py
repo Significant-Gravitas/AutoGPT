@@ -344,6 +344,10 @@ class DuplicateChatMessageError(ValueError):
     """The same user message is already in flight for this chat session."""
 
 
+class SharedCredentialsRefusedError(ValueError):
+    """A block was asked to run on a platform-owned key it may not use."""
+
+
 class WebhookRegistrationError(Exception):
     """Registering a webhook with an external service failed."""
 
