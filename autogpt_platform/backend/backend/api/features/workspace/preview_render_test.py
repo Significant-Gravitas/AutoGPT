@@ -2,6 +2,9 @@ import asyncio
 import io
 import os
 import resource
+import subprocess
+import sys
+import textwrap
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -184,29 +187,36 @@ async def test_render_within_the_memory_cap_succeeds(mocker):
     assert output == b"\x00"
 
 
-async def test_render_without_a_memory_cap_does_not_run(mocker):
-    # setrlimit rejects a negative limit, so the child cannot cap itself.
-    mocker.patch.object(preview_render, "RENDER_MAX_MEMORY_BYTES", -2)
+def test_render_under_a_lower_hard_limit_warns_once_and_does_not_run():
+    # A child cannot raise its address-space limit above the hard limit it
+    # inherits, so under a hard limit below the cap it must not render. Lowering
+    # a hard limit cannot be undone, so the parent runs in its own process.
+    script = textwrap.dedent(
+        """
+        import asyncio, resource
+        from backend.api.features.workspace import preview_render
+        from backend.api.features.workspace.preview_render_test import echo_renderer
 
-    with pytest.raises(preview_render.RenderFailed):
-        await preview_render.render_in_child(echo_renderer, b"x", 16)
+        hard_limit = preview_render.RENDER_MAX_MEMORY_BYTES - 1
+        resource.setrlimit(resource.RLIMIT_AS, (hard_limit, hard_limit))
 
+        async def render():
+            try:
+                await preview_render.render_in_child(echo_renderer, b"x", 16)
+            except preview_render.RenderFailed:
+                return "failed"
+            return "rendered"
 
-def test_memory_cap_above_the_hard_limit_warns_once(mocker, caplog):
-    hard_limit = preview_render.RENDER_MAX_MEMORY_BYTES - 1
-    mocker.patch.object(
-        preview_render.resource, "getrlimit", return_value=(hard_limit, hard_limit)
+        print(asyncio.run(render()), asyncio.run(render()))
+        """
     )
-    preview_render._check_memory_cap.cache_clear()
-    try:
-        with caplog.at_level("WARNING", logger=preview_render.__name__):
-            preview_render._check_memory_cap()
-            preview_render._check_memory_cap()
-    finally:
-        preview_render._check_memory_cap.cache_clear()
 
-    (record,) = caplog.records
-    assert "previews will not render" in record.getMessage()
+    parent = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=60
+    )
+
+    assert parent.stdout.split() == ["failed", "failed"]
+    assert parent.stderr.count("previews will not render") == 1
 
 
 @pytest.mark.parametrize(
