@@ -39,6 +39,8 @@ from backend.copilot.computer import (
     open_desktop,
 )
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider, CopilotLLMModel
+from backend.copilot.cost_approval import CostApprovalSigningUnavailable
+from backend.copilot.cost_estimation import turn_cost_blocks_scheduling
 from backend.copilot.credential_selection import (
     credential_matches_selection,
     remember_selection,
@@ -423,6 +425,11 @@ class StreamChatRequest(BaseModel):
         default=None,
         description="The chat's approval mode from this turn on; None keeps "
         "the mode it already has.",
+    )
+    approval_token: str | None = Field(
+        default=None,
+        description="Short-lived token from the cost estimate. Required before "
+        "a turn at or above the confirmation threshold is scheduled.",
     )
 
 
@@ -1849,6 +1856,32 @@ def _empty_ui_message_stream_response(
     )
 
 
+async def _unapproved_cost_response(
+    session: ChatSessionInfo,
+    request: StreamChatRequest,
+    message: str,
+) -> JSONResponse | None:
+    """The estimate to show when this request must not be scheduled yet."""
+    try:
+        blocked = await turn_cost_blocks_scheduling(
+            session=session,
+            message=message,
+            is_user_message=request.is_user_message,
+            context=request.context,
+            file_ids=request.file_ids,
+            model=request.model,
+            approval_token=request.approval_token,
+        )
+    except CostApprovalSigningUnavailable as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Cost confirmation is unavailable",
+        ) from exc
+    if blocked is None:
+        return None
+    return JSONResponse(status_code=403, content=blocked.model_dump())
+
+
 @router.post(
     "/sessions/{session_id}/stream",
     responses={
@@ -1977,6 +2010,10 @@ async def stream_chat_post(
     # Untagged legacy sessions fall back to the request context.
     turn_org_id = session.organization_id or ctx.org_id
     turn_team_id = session.team_id if session.organization_id else ctx.team_id
+
+    unapproved = await _unapproved_cost_response(session, request, message)
+    if unapproved is not None:
+        return unapproved
 
     try:
         turn_in_flight = (

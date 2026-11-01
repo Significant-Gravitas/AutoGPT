@@ -1,5 +1,6 @@
 "use client";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
+import { CostConfirmationDialog } from "./components/CostConfirmationDialog/CostConfirmationDialog";
 import type { FloatingControls } from "./components/ChatMessagesContainer/components/ThreadHeader";
 import { ProviderLimitDialog } from "./components/ProviderLimitDialog/ProviderLimitDialog";
 import { RateLimitGate } from "./components/RateLimitResetDialog/RateLimitGate";
@@ -9,6 +10,11 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useUsageExperience } from "@/services/usageExperience/useUsageExperience";
 import { useRateLimitRefresh } from "./components/RateLimitResetDialog/useRateLimitRefresh";
+import {
+  cancelPendingCost,
+  confirmPendingCost,
+  usePendingCostEstimate,
+} from "./costConfirmation";
 
 interface Props {
   droppedFiles: File[];
@@ -75,6 +81,7 @@ function ChatHostView({
   usage: ReturnType<typeof useUsageExperience>;
   usageRefresh: ReturnType<typeof useRateLimitRefresh>;
 }) {
+  const pendingCostEstimate = usePendingCostEstimate();
   const {
     sessionId,
     messages,
@@ -194,6 +201,11 @@ function ChatHostView({
         failure={providerLimit}
         sessionId={sessionId}
         onDismiss={dismissProviderLimit}
+      />
+      <CostConfirmationDialog
+        estimate={pendingCostEstimate}
+        onConfirm={confirmPendingCost}
+        onCancel={cancelPendingCost}
       />
     </>
   );

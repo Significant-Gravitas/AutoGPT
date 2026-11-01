@@ -12,9 +12,13 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from backend.copilot.config import ChatConfig, CopilotLLMModel, CopilotMode
-from backend.copilot.cost_approval import HISTORY_MESSAGE_WINDOW
+from backend.copilot.cost_approval import (
+    HISTORY_MESSAGE_WINDOW,
+    generate_cost_approval_token,
+    validate_cost_approval_token,
+)
 from backend.copilot.engine import resolve_use_sdk
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatSession, ChatSessionInfo, get_chat_session
 from backend.copilot.model_router import ModelMode, ModelTier, resolve_model_route
 from backend.util.feature_flag import Flag, evaluate_feature_flag_value
 from backend.util.prompt import estimate_token_count, estimate_token_count_str
@@ -131,6 +135,138 @@ async def resolve_cost_confirmation_threshold(
     if not math.isfinite(threshold):
         return fallback, "default"
     return max(0.0, threshold), "launchdarkly"
+
+
+async def turn_cost_blocks_scheduling(
+    *,
+    session: ChatSessionInfo,
+    message: str,
+    is_user_message: bool,
+    context: dict[str, str] | None,
+    file_ids: list[str] | None,
+    model: CopilotLLMModel | None,
+    approval_token: str | None,
+) -> CoPilotTurnCostEstimate | None:
+    """Return the quote when the turn must not be scheduled yet.
+
+    ``None`` means the turn is under the threshold, or the token matches this
+    request and the current session length.
+    """
+    priced, estimate = await _priced_estimate(
+        session,
+        message=message,
+        is_user_message=is_user_message,
+        context=context,
+        file_ids=file_ids,
+        model=model,
+    )
+    if not estimate.requires_confirmation:
+        return None
+    if approval_token and await _approval_matches(
+        token=approval_token,
+        session=priced,
+        message=message,
+        is_user_message=is_user_message,
+        context=context,
+        file_ids=file_ids,
+        model=model,
+    ):
+        return None
+    return await _attach_approval_token(
+        priced,
+        estimate,
+        message=message,
+        is_user_message=is_user_message,
+        context=context,
+        file_ids=file_ids,
+        model=model,
+    )
+
+
+async def _priced_estimate(
+    session: ChatSessionInfo,
+    *,
+    message: str,
+    is_user_message: bool,
+    context: dict[str, str] | None,
+    file_ids: list[str] | None,
+    model: CopilotLLMModel | None,
+) -> tuple[ChatSession, CoPilotTurnCostEstimate]:
+    priced = await _session_for_pricing(session)
+    estimate = await estimate_copilot_turn_cost(
+        session_id=priced.session_id,
+        user_id=priced.user_id,
+        session=priced,
+        message=message,
+        is_user_message=is_user_message,
+        context=context,
+        file_ids=file_ids,
+        mode=None,
+        model=model,
+    )
+    return priced, estimate
+
+
+async def _session_for_pricing(session: ChatSessionInfo) -> ChatSession:
+    loaded = await get_chat_session(session.session_id, session.user_id)
+    if loaded is not None:
+        return loaded
+    data = session.model_dump()
+    data["messages"] = []
+    return ChatSession.model_validate(data)
+
+
+async def _attach_approval_token(
+    session: ChatSession,
+    estimate: CoPilotTurnCostEstimate,
+    *,
+    message: str,
+    is_user_message: bool,
+    context: dict[str, str] | None,
+    file_ids: list[str] | None,
+    model: CopilotLLMModel | None,
+) -> CoPilotTurnCostEstimate:
+    if not estimate.requires_confirmation:
+        return estimate
+    token = await generate_cost_approval_token(
+        user_id=session.user_id,
+        session_id=session.session_id,
+        message=message,
+        is_user_message=is_user_message,
+        context=context,
+        file_ids=file_ids,
+        mode=None,
+        model=model,
+        message_count=len(session.messages),
+        ttl_seconds=config.copilot_cost_approval_ttl_seconds,
+    )
+    return estimate.model_copy(update={"approval_token": token})
+
+
+async def _approval_matches(
+    *,
+    token: str,
+    session: ChatSession,
+    message: str,
+    is_user_message: bool,
+    context: dict[str, str] | None,
+    file_ids: list[str] | None,
+    model: CopilotLLMModel | None,
+) -> bool:
+    if not session.user_id:
+        return False
+    return await validate_cost_approval_token(
+        token=token,
+        user_id=session.user_id,
+        session_id=session.session_id,
+        message=message,
+        is_user_message=is_user_message,
+        context=context,
+        file_ids=file_ids,
+        mode=None,
+        model=model,
+        message_count=len(session.messages),
+    )
 
 
 async def _resolve_path_and_model(

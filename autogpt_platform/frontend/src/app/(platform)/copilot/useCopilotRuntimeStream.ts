@@ -13,6 +13,7 @@ import {
 } from "react";
 
 import { handleStreamError } from "./copilotStreamErrorHandlers";
+import { isCostConfirmationCancelled } from "./costConfirmation";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import {
   clearKickoffPending,
@@ -231,7 +232,18 @@ export function useCopilotRuntimeStream({
       lastSubmittedKickoffAttemptToken:
         getKickoffAttemptTokenFromMetadata(metadata),
     });
-    await runtime.send(input, copilotModel);
+    try {
+      await runtime.send(input, copilotModel);
+    } catch (error) {
+      if (!isCostConfirmationCancelled(error)) throw error;
+      useCopilotStreamStore.getState().updateCoord(sessionId, {
+        lastSubmittedMessageText: null,
+        lastSubmittedKickoffExpertId: null,
+        lastSubmittedKickoffAttemptToken: null,
+      });
+      const text = "text" in input ? input.text : textOf(input);
+      if (text.trim()) setInitialPrompt(text);
+    }
   }
 
   const stop = useCopilotStop({

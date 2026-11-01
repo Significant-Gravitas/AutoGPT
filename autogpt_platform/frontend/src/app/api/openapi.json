@@ -35640,6 +35640,11 @@
             ],
             "title": "Autopilot Mode",
             "description": "The chat's approval mode from this turn on; None keeps the mode it already has."
+          },
+          "approval_token": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Approval Token",
+            "description": "Short-lived token from the cost estimate. Required before a turn at or above the confirmation threshold is scheduled."
           }
         },
         "type": "object",

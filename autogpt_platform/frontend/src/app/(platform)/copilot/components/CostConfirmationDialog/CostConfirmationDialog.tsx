@@ -51,19 +51,19 @@ export function CostConfirmationDialog({
             </Text>
             .
           </Text>
-          <Text variant="small" className="text-neutral-600">
+          <Text variant="small" tone="secondary">
             Threshold: {formatUsd(estimate.confirmation_threshold_usd)}
           </Text>
-          <Text variant="small" className="text-neutral-600">
+          <Text variant="small" tone="secondary">
             Path: {estimate.resolved_path} - Model: {estimate.resolved_model}
           </Text>
-          <Text variant="small" className="text-neutral-600">
+          <Text variant="small" tone="secondary">
             Estimated model calls: {estimate.estimated_llm_calls}
           </Text>
-          <Text variant="small" className="text-neutral-600">
+          <Text variant="small" tone="secondary">
             {estimate.rationale}
           </Text>
-          <Text variant="small" className="text-neutral-500">
+          <Text variant="small" tone="muted">
             This is an estimate. Actual usage may vary based on tool calls and
             context.
           </Text>

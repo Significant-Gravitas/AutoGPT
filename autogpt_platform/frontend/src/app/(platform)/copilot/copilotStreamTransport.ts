@@ -6,6 +6,7 @@ import type { ChatTransport, FileUIPart, UIMessage } from "ai";
 import { v4 as uuidv4 } from "uuid";
 
 import { getAutopilotModeChoice } from "./autopilotModeStore";
+import { fetchWithCostApproval } from "./costConfirmation";
 import { createSmoothingTransform } from "./copilotStreamSmoothing";
 import { getKickoffExpertIdFromMetadata } from "./expertKickoff";
 import { getCopilotAuthHeaders } from "./helpers";
@@ -67,12 +68,14 @@ export function createCopilotTransport({
     api: baseUrl,
     // Tee the raw SSE into the stream converter's shadow, and in dev into the
     // token devtool, which reads the `: usage {...}` comments the SDK drops.
-    fetch: keepPaywallStatus(
-      createShadowFetch(
-        sessionId,
-        isTokenDevtoolEnabled()
-          ? createUsageCapturingFetch(sessionId)
-          : undefined,
+    fetch: fetchWithCostApproval(
+      keepPaywallStatus(
+        createShadowFetch(
+          sessionId,
+          isTokenDevtoolEnabled()
+            ? createUsageCapturingFetch(sessionId)
+            : undefined,
+        ),
       ),
     ),
     prepareSendMessagesRequest: async ({ messages }) => ({

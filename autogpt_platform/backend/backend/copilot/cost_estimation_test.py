@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 import pytest_mock
 
-from backend.copilot import cost_estimation
+from backend.copilot import cost_approval, cost_estimation
 from backend.copilot.model import ChatMessage, ChatSession
 
 
@@ -192,3 +192,145 @@ def test_longer_turns_and_history_raise_the_call_budget_without_exceeding_cap():
 
     assert short == 1
     assert short < tool_reply < long <= 12
+
+
+def _confirmation_quote(*, required: bool) -> cost_estimation.CoPilotTurnCostEstimate:
+    return cost_estimation.CoPilotTurnCostEstimate(
+        resolved_path="baseline",
+        resolved_model="claude-sonnet-4-5",
+        estimated_llm_calls=1,
+        estimated_prompt_tokens=10,
+        estimated_completion_tokens=10,
+        estimated_total_tokens=20,
+        estimated_cost_usd=2.0 if required else 0.01,
+        confirmation_threshold_usd=1.0,
+        threshold_source="default",
+        requires_confirmation=required,
+        rationale="baseline path estimated at 1 model calls",
+    )
+
+
+@pytest.fixture
+def _signing_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        (
+            cost_estimation.generate_cost_approval_token.__wrapped__
+            if False
+            else __import__(
+                "backend.copilot.cost_approval", fromlist=["settings"]
+            ).settings.secrets
+        ),
+        "cost_approval_signing_key",
+        "test-signing-key",
+    )
+
+
+def _patch_pricing(
+    mocker: pytest_mock.MockerFixture,
+    session: ChatSession,
+    *,
+    required: bool,
+) -> None:
+    mocker.patch.object(
+        cost_estimation,
+        "get_chat_session",
+        new=AsyncMock(return_value=session),
+    )
+    mocker.patch.object(
+        cost_estimation,
+        "estimate_copilot_turn_cost",
+        new=AsyncMock(return_value=_confirmation_quote(required=required)),
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_turn_under_the_threshold_can_be_scheduled(
+    mocker: pytest_mock.MockerFixture,
+    cost_session: ChatSession,
+) -> None:
+    _patch_pricing(mocker, cost_session, required=False)
+
+    blocked = await cost_estimation.turn_cost_blocks_scheduling(
+        session=cost_session,
+        message="Please analyze this task",
+        is_user_message=True,
+        context=None,
+        file_ids=None,
+        model="standard",
+        approval_token=None,
+    )
+
+    assert blocked is None
+
+
+@pytest.mark.asyncio
+async def test_an_over_threshold_turn_is_held_until_a_matching_token_arrives(
+    mocker: pytest_mock.MockerFixture,
+    cost_session: ChatSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        cost_approval.settings.secrets, "cost_approval_signing_key", "test-signing-key"
+    )
+    _patch_pricing(mocker, cost_session, required=True)
+
+    held = await cost_estimation.turn_cost_blocks_scheduling(
+        session=cost_session,
+        message="Please analyze this task",
+        is_user_message=True,
+        context=None,
+        file_ids=None,
+        model="standard",
+        approval_token=None,
+    )
+
+    assert held is not None
+    assert held.requires_confirmation is True
+    assert held.approval_token
+
+    allowed = await cost_estimation.turn_cost_blocks_scheduling(
+        session=cost_session,
+        message="Please analyze this task",
+        is_user_message=True,
+        context=None,
+        file_ids=None,
+        model="standard",
+        approval_token=held.approval_token,
+    )
+
+    assert allowed is None
+
+
+@pytest.mark.asyncio
+async def test_a_token_for_a_different_message_does_not_schedule_the_turn(
+    mocker: pytest_mock.MockerFixture,
+    cost_session: ChatSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        cost_approval.settings.secrets, "cost_approval_signing_key", "test-signing-key"
+    )
+    _patch_pricing(mocker, cost_session, required=True)
+    held = await cost_estimation.turn_cost_blocks_scheduling(
+        session=cost_session,
+        message="Please analyze this task",
+        is_user_message=True,
+        context=None,
+        file_ids=None,
+        model="standard",
+        approval_token=None,
+    )
+    assert held is not None and held.approval_token
+
+    blocked = await cost_estimation.turn_cost_blocks_scheduling(
+        session=cost_session,
+        message="A different task",
+        is_user_message=True,
+        context=None,
+        file_ids=None,
+        model="standard",
+        approval_token=held.approval_token,
+    )
+
+    assert blocked is not None
+    assert blocked.approval_token != held.approval_token

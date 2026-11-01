@@ -22,6 +22,7 @@ from backend.copilot import transports as chat_transports
 from backend.copilot.at_reset import cancel_resume_at_reset_in_background
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.continuation import KEEP_GOING_NOTE
+from backend.copilot.cost_estimation import CoPilotTurnCostEstimate
 from backend.copilot.model import AutopilotMode, ChatSession
 from backend.copilot.offers import EntitlementUnavailable
 from backend.copilot.rate_limit import SubscriptionTier, UserPaywalledError
@@ -357,6 +358,11 @@ def _mock_stream_internals(
         new_callable=AsyncMock,
         return_value="turn-id-mock",
     )
+    mocker.patch(
+        "backend.api.features.chat.routes.turn_cost_blocks_scheduling",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
     mocker.patch.object(
         chat_routes.stream_registry,
         "publish_chunk",
@@ -383,6 +389,39 @@ def _mock_stream_internals(
         cancel_resume=mock_cancel_resume,
         claims=claims,
     )
+
+
+def test_stream_chat_does_not_schedule_when_cost_confirmation_is_required(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    internals = _mock_stream_internals(mocker)
+    quote = CoPilotTurnCostEstimate(
+        resolved_path="sdk",
+        resolved_model="claude-opus-4-1",
+        estimated_llm_calls=2,
+        estimated_prompt_tokens=10,
+        estimated_completion_tokens=10,
+        estimated_total_tokens=20,
+        estimated_cost_usd=1.5,
+        confirmation_threshold_usd=1.0,
+        threshold_source="default",
+        requires_confirmation=True,
+        rationale="sdk path estimated at 2 model calls",
+        approval_token="signed-token",
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.turn_cost_blocks_scheduling",
+        new_callable=AsyncMock,
+        return_value=quote,
+    )
+
+    response = client.post("/sessions/sess-1/stream", json={"message": "hello"})
+
+    assert response.status_code == 403
+    body = response.json()
+    assert body["requires_confirmation"] is True
+    assert body["approval_token"] == "signed-token"
+    internals.enqueue.assert_not_called()
 
 
 def test_stream_chat_records_when_the_first_chunk_and_token_reached_the_client(

@@ -22,6 +22,7 @@ import {
   takeCopilotChatRuntime,
 } from "./copilotChatRegistry";
 import { handleStreamError } from "./copilotStreamErrorHandlers";
+import { isCostConfirmationCancelled } from "./costConfirmation";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import {
   clearKickoffPending,
@@ -315,6 +316,10 @@ export function useCopilotStream({
           });
         }
       };
+      if (isCostConfirmationCancelled(error)) {
+        restoreUnsentSend();
+        return;
+      }
       const failureForThisTurn = providerFailureRef.current;
       providerFailureRef.current = null;
       // Resuming keeps the send in flight, and a refused send's text is kept
