@@ -98,7 +98,6 @@ from backend.integrations.providers import ProviderName
 from backend.monitoring.instrumentation import instrument_fastapi, start_metrics_server
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
 from backend.util.process import freeze_startup_heap
-from backend.util.service import UnhealthyServiceError
 from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .external.fastapi_app import external_api
@@ -608,10 +607,31 @@ async def mcp_protected_resource_metadata() -> ProtectedResourceMetadata:
     return protected_resource_metadata()
 
 
+HEALTH_DB_TIMEOUT_SECONDS = 2.0
+
+
 @app.get(path="/health", tags=["health"], dependencies=[])
 async def health():
+    unhealthy = fastapi.responses.JSONResponse(
+        {"status": "unhealthy", "detail": "database unavailable"},
+        status_code=503,
+    )
     if not backend.data.db.is_connected():
-        raise UnhealthyServiceError("Database is not connected")
+        return unhealthy
+    try:
+        result = await asyncio.wait_for(
+            backend.data.db.query_raw_with_schema("SELECT 1 as health_check"),
+            timeout=HEALTH_DB_TIMEOUT_SECONDS,
+        )
+        if not result or result[0].get("health_check") != 1:
+            return unhealthy
+    except Exception:
+        return unhealthy
+    return {"status": "healthy"}
+
+
+@app.get(path="/health/live", tags=["health"], dependencies=[])
+async def health_live():
     return {"status": "healthy"}
 
 

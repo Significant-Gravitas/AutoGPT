@@ -36,6 +36,7 @@ def _http(path: str, *, parent_sampled: bool | None = None) -> dict:
         "/metrics",
         "/",
         "/health",
+        "/health/live",
         "/health_check",
         "/health_check_async",
         "/healthz",

@@ -50,6 +50,7 @@ _UNTRACED_PATHS = frozenset(
         "/metrics",
         # REST API and WebSocket server: Kubernetes probe, load balancer check.
         "/health",
+        "/health/live",
         # Every RPC service (AppService): Kubernetes probe.
         "/health_check",
         "/health_check_async",
