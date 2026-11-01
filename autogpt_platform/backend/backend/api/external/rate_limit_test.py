@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
@@ -18,65 +18,37 @@ from redis.exceptions import RedisClusterException
 
 from backend.api.external import rate_limit
 from backend.api.external.middleware import require_auth
+from backend.api.external.v1.routes import v1_router
 from backend.data import redis_client
 from backend.data.auth.api_key import APIKeyInfo
 from backend.data.auth.base import APIAuthorizationInfo
+from backend.data.auth.oauth import OAuthAccessTokenInfo
 from backend.data.redis_client import get_redis_async
 from backend.util.testing import is_tcp_port_reachable
 
 
 class FakeRedis:
-    """Minimal Redis stand-in that actually interprets the limiter's Lua.
-
-    Mirrors the approach in ``credits_rate_limit_test``: the script (the only
-    non-trivial logic in the module) runs against real state, so a regression
-    in the script fails a test.
-
-    ``EXPIRE`` is honoured for real (the entry is dropped once the deadline has
-    passed), because the script's whole job is to guarantee a key can never
-    linger without a TTL. A fake that counted in Python and ignored ``EXPIRE``
-    would stay green even if the script stopped expiring keys or re-armed the
-    window on every hit.
-    """
+    """In-memory counter fake; the live Redis test below validates the Lua."""
 
     def __init__(self) -> None:
         self.counters: dict[str, int] = {}
         self.expires_at: dict[str, float] = {}
         self._now = 0.0
 
-    def advance(self, seconds: float) -> None:
-        self._now += seconds
-
-    def _sweep(self) -> None:
-        """Drop keys whose expiry has passed, as Redis would."""
-        for key in [
-            k for k, deadline in self.expires_at.items() if deadline <= self._now
-        ]:
-            del self.counters[key]
-            del self.expires_at[key]
-
     async def eval(self, script: str, numkeys: int, key: str, ttl: str) -> int:
         assert script == rate_limit._INCR_OPEN_WINDOW
         assert numkeys == 1
-        self._sweep()
         count = self.counters.get(key, 0) + 1
         self.counters[key] = count
         if count == 1:
             self.expires_at[key] = self._now + int(ttl)
         return count
 
-    async def ttl(self, key: str) -> int:
-        self._sweep()
-        if key not in self.expires_at:
-            return -2
-        return max(0, int(self.expires_at[key] - self._now))
 
-    async def expire(self, key: str, seconds: int) -> bool:
-        self._sweep()
-        if key not in self.counters:
-            return False
-        self.expires_at[key] = self._now + seconds
-        return True
+@pytest.fixture(autouse=True)
+def fixed_window(mocker):
+    clock = mocker.patch.object(rate_limit, "datetime")
+    clock.now.return_value = datetime(2026, 10, 30, 12, 0, 30, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -103,12 +75,13 @@ def mock_redis(mocker):
 
 def _auth(user_id: str = "u1", key_id: str | None = "k1") -> APIAuthorizationInfo:
     if key_id is None:
-        # OAuth principals have no key id.
-        return APIAuthorizationInfo(
+        return OAuthAccessTokenInfo(
+            id=uuid.uuid4().hex,
+            application_id="test-app",
             user_id=user_id,
             scopes=list(APIKeyPermission),
-            type="oauth",
             created_at=datetime.now(UTC),
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
         )
     return APIKeyInfo(
         id=key_id,
@@ -248,8 +221,6 @@ async def test_cluster_exception_fails_open(mock_redis):
 def test_integration_429_via_route(mocker, mock_redis):
     """A real request through the router gets a 429 once the limit is hit."""
     app = fastapi.FastAPI()
-    from backend.api.external.v1.routes import v1_router
-
     app.include_router(v1_router, prefix="/v1")
 
     async def fake_require_auth() -> APIAuthorizationInfo:
@@ -258,8 +229,8 @@ def test_integration_429_via_route(mocker, mock_redis):
     app.dependency_overrides[require_auth] = fake_require_auth
     mock_redis.eval = AsyncMock(return_value=rate_limit.READ_MAX_REQUESTS + 1)
 
-    client = TestClient(app)
-    res = client.get("/v1/me")
+    with TestClient(app) as client:
+        res = client.get("/v1/me")
     assert res.status_code == 429
     assert res.headers["Retry-After"] is not None
     assert res.headers["X-RateLimit-Limit"] == str(rate_limit.READ_MAX_REQUESTS)
@@ -287,7 +258,7 @@ async def test_the_script_opens_a_window_once_on_real_redis():
 
 
 @pytest.mark.asyncio
-async def test_a_hung_redis_fails_open_within_the_deadline(mock_redis):
+async def test_a_hung_redis_fails_open_within_the_deadline(mocker, mock_redis):
     """A Redis that never answers must not park the request: the 0.25s
     deadline fires and the request is let through."""
 
@@ -295,7 +266,16 @@ async def test_a_hung_redis_fails_open_within_the_deadline(mock_redis):
         await asyncio.Event().wait()
 
     mock_redis.eval = hang
+    wait_for = mocker.spy(asyncio, "wait_for")
     ret, response = await asyncio.wait_for(_call_dependency(), timeout=2)
 
     assert ret is not None
     assert "X-RateLimit-Limit" not in response.headers
+    assert any(call.kwargs.get("timeout") == 0.25 for call in wait_for.call_args_list)
+
+
+@pytest.mark.asyncio
+async def test_request_cancellation_propagates(mock_redis):
+    mock_redis.eval.side_effect = asyncio.CancelledError
+    with pytest.raises(asyncio.CancelledError):
+        await _call_dependency()

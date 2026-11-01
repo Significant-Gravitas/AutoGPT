@@ -1,6 +1,5 @@
 "use client";
 import { okData } from "@/app/api/helpers";
-import { Separator } from "@/components/__legacy__/ui/separator";
 import { Button } from "@/components/atoms/Button/Button";
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
@@ -100,7 +99,6 @@ export function MainAgentPage({ params }: Props) {
           <div className="w-full lg:w-2/5">
             <AgentInfo
               user={user}
-              agentId={agentData.active_version_id ?? "–"}
               name={agentData.agent_name ?? ""}
               creator={agentData.creator ?? ""}
               creatorAvatar={agentData.creator_avatar ?? ""}
@@ -153,14 +151,14 @@ export function MainAgentPage({ params }: Props) {
             })()}
           />
         </div>
-        <Separator className="my-6 bg-transparent" />
+        <div className="my-6 h-px w-full shrink-0" />
         {otherAgents && (
           <AgentsSection
             agents={otherAgents.agents}
             sectionTitle={`Other AI workflows by ${agentData.creator ?? ""}`}
           />
         )}
-        <Separator className="mb-[25px] mt-[60px] bg-transparent" />
+        <div className="mt-[60px] mb-[25px] h-px w-full shrink-0" />
         {similarAgents && similarAgents.agents.length > 0 ? (
           <AgentsSection
             agents={similarAgents.agents}

@@ -6,13 +6,18 @@ long recording and a silently corrupted or wrongly rejected upload — are
 exercised against a fake hash rather than mocked away.
 """
 
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock
 
+import aiohttp
 import pytest
 from pytest_mock import MockerFixture
 from redis.cluster import key_slot
 
 from backend.api.features.onboarding_dump import storage
+from backend.util.gcs_utils_test import _URL_CONTAINING_404, _gcs_http_error
 
 USER_ID = "user-1"
 RECORDING_ID = "rec-1"
@@ -165,3 +170,141 @@ async def test_the_buffer_and_its_size_index_expire_and_are_dropped_together(
 
     assert redis.hashes == {}
     assert await storage.buffered_size(USER_ID, RECORDING_ID) == 0
+
+
+def _handler(mocker: MockerFixture, bucket: str = "private-bucket") -> MagicMock:
+    handler = MagicMock()
+    handler.config.gcs_bucket_name = bucket
+    handler.store_file = AsyncMock(return_value="gcs://private-bucket/x")
+    mocker.patch.object(
+        storage, "get_cloud_storage_handler", AsyncMock(return_value=handler)
+    )
+    return handler
+
+
+@pytest.mark.asyncio
+async def test_recordings_are_stored_marked_with_an_expiry(
+    mocker: MockerFixture,
+):
+    handler = _handler(mocker)
+
+    await storage.store_audio(USER_ID, b"audio", "brain-dump-rec-1.webm")
+
+    kwargs = handler.store_file.call_args.kwargs
+    # A day past the sweep, so the generic cleanup never races it.
+    assert kwargs["expiration_hours"] == 48 + 24
+    assert kwargs["delete_when_expired"] is True
+    assert kwargs["custom_metadata"] == {
+        storage.RECORDING_MARKER_KEY: storage.RECORDING_MARKER_VALUE
+    }
+    assert kwargs["user_id"] == USER_ID
+
+
+def test_a_recording_due_just_after_one_sweep_goes_within_48_hours():
+    """The sweep runs once per ``RECORDING_PURGE_INTERVAL``, so a recording
+    just short of the max age at one run goes at the next, and that run
+    gets half an hour to reach it."""
+    assert storage.audio_max_age() == timedelta(hours=46, minutes=30)
+
+    deleted_by = storage.audio_max_age() + storage.RECORDING_PURGE_INTERVAL
+
+    assert deleted_by + timedelta(minutes=30) <= timedelta(hours=48)
+
+
+NOW = datetime(2026, 10, 13, 12, 0, tzinfo=timezone.utc)
+AUDIO_PATH = "gcs://private-bucket/uploads/users/user-1/u/brain-dump-rec-1.webm"
+
+
+@pytest.mark.asyncio
+async def test_audio_available_checks_the_configured_bucket(mocker: MockerFixture):
+    _handler(mocker)
+    created = mocker.patch.object(
+        storage, "blob_created_at", AsyncMock(return_value=None)
+    )
+
+    assert await storage.audio_available(AUDIO_PATH, now=NOW) is False
+    created.assert_awaited_once_with(
+        "private-bucket", "uploads/users/user-1/u/brain-dump-rec-1.webm"
+    )
+
+
+@pytest.mark.asyncio
+async def test_audio_due_for_deletion_is_no_longer_served(mocker: MockerFixture):
+    """Still in the bucket until the next sweep, but already past the policy."""
+    _handler(mocker)
+    created = mocker.patch.object(storage, "blob_created_at", AsyncMock())
+
+    created.return_value = NOW - storage.audio_max_age() + timedelta(minutes=1)
+    assert await storage.audio_available(AUDIO_PATH, now=NOW) is True
+
+    created.return_value = NOW - storage.audio_max_age()
+    assert await storage.audio_available(AUDIO_PATH, now=NOW) is False
+
+
+@pytest.mark.asyncio
+async def test_audio_in_another_bucket_counts_as_gone(mocker: MockerFixture):
+    _handler(mocker)
+    created = mocker.patch.object(storage, "blob_created_at", AsyncMock())
+
+    path = "gcs://legacy-bucket/uploads/users/user-1/u/brain-dump-rec-1.webm"
+    assert await storage.audio_available(path) is False
+    created.assert_not_awaited()
+
+
+def _gcs_client(mocker: MockerFixture) -> MagicMock:
+    client = MagicMock()
+    client.delete = AsyncMock()
+
+    @asynccontextmanager
+    async def fresh_client():
+        yield client
+
+    mocker.patch.object(storage, "fresh_gcs_client", fresh_client)
+    return client
+
+
+@pytest.mark.asyncio
+async def test_delete_audio_removes_the_recording_from_the_bucket(
+    mocker: MockerFixture,
+):
+    _handler(mocker)
+    client = _gcs_client(mocker)
+
+    await storage.delete_audio(AUDIO_PATH)
+
+    client.delete.assert_awaited_once_with(
+        "private-bucket", "uploads/users/user-1/u/brain-dump-rec-1.webm"
+    )
+
+
+@pytest.mark.asyncio
+async def test_delete_audio_counts_a_missing_recording_as_deleted(
+    mocker: MockerFixture,
+):
+    _handler(mocker)
+    client = _gcs_client(mocker)
+    client.delete.side_effect = _gcs_http_error(404, _URL_CONTAINING_404)
+
+    await storage.delete_audio(AUDIO_PATH)
+
+
+@pytest.mark.asyncio
+async def test_delete_audio_raises_any_other_failure(mocker: MockerFixture):
+    """So the caller can log it and leave the file to the retention sweep."""
+    _handler(mocker)
+    client = _gcs_client(mocker)
+    client.delete.side_effect = _gcs_http_error(503, _URL_CONTAINING_404)
+
+    with pytest.raises(aiohttp.ClientResponseError):
+        await storage.delete_audio(AUDIO_PATH)
+
+
+@pytest.mark.asyncio
+async def test_delete_audio_never_touches_another_bucket(mocker: MockerFixture):
+    _handler(mocker)
+    client = _gcs_client(mocker)
+
+    path = "gcs://legacy-bucket/uploads/users/user-1/u/brain-dump-rec-1.webm"
+    with pytest.raises(ValueError):
+        await storage.delete_audio(path)
+    client.delete.assert_not_awaited()

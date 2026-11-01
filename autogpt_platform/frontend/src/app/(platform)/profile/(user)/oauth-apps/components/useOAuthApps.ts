@@ -1,5 +1,6 @@
 "use client";
 
+import { toastIfPlanRequired } from "@/components/contextual/PaywallToast/helpers";
 import { useState } from "react";
 import {
   useGetOauthListMyOauthApps,
@@ -74,6 +75,8 @@ export const useOAuthApps = () => {
         description: "Logo uploaded successfully",
       });
     } catch (error) {
+      if (toastIfPlanRequired(error, "Uploading a logo needs an active plan"))
+        return;
       console.error("Failed to upload logo:", error);
       const errorMessage =
         error instanceof Error ? error.message : "Failed to upload logo";

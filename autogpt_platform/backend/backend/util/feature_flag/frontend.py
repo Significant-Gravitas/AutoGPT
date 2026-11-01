@@ -39,23 +39,14 @@ class FrontendFlag(str, Enum):
 
     MARKETPLACE_SEARCH_TERMS = "marketplace-search-terms"
     ENABLE_PLATFORM_PAYMENT = Flag.ENABLE_PLATFORM_PAYMENT.value
-    ARTIFACTS_PAGE = "artifacts-page"
     CHAT_MODE_OPTION = Flag.CHAT_MODE_OPTION.value
     GENERIC_TRIGGER_AGENTS = Flag.GENERIC_TRIGGER_AGENTS.value
-    CHAT_SEARCH = "chat-search"
-    AUTOGPT_NEW_LAYOUT = "autogpt-new-layout"
     CHAT_WORKSPACE_FILES = "chat-workspace-files"
     CHAT_PINNING = "chat-pinning"
     TASK_PROGRESS_BAR = "task-progress-bar"
-    HIRE_EXPERTS = Flag.HIRE_EXPERTS.value
-    SKILLS_HUB = Flag.SKILLS_HUB.value
     # Until this is on for everyone, /profile/settings stays un-redirected
     # (`useNewSettingsRedirect`) so the toggles stay reachable: flip both together.
     SETTINGS_NOTIFICATIONS = "settings-notifications"
-    ONBOARDING_BRAIN_DUMP = Flag.ONBOARDING_BRAIN_DUMP.value
-    ONBOARDING_EXPERT_TEAM = Flag.ONBOARDING_EXPERT_TEAM.value
-    GRAPHITI_MEMORY = Flag.GRAPHITI_MEMORY.value
-    GRAPHITI_COMMUNITIES_ENABLED = Flag.GRAPHITI_COMMUNITIES_ENABLED.value
     DREAM_PASS_ENABLED = Flag.DREAM_PASS_ENABLED.value
     DREAM_PASS_INVALIDATE_ENTITY = Flag.DREAM_PASS_INVALIDATE_ENTITY.value
     DREAM_SKILL_LEARNING_ENABLED = Flag.DREAM_SKILL_LEARNING_ENABLED.value

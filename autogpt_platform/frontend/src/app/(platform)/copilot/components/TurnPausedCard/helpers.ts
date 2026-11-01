@@ -56,7 +56,7 @@ const BUDGET: Record<"daily" | "weekly", string> = {
 export function pauseTitle(pause: TurnPause): string {
   const lead = pause.started ? "Paused" : "Not started";
   // No plan behind it, so no window that will refill to name.
-  if (neverResets(pause)) return `${lead} · out of AutoPilot budget`;
+  if (neverResets(pause)) return `${lead} · out of budget`;
   if (isBudgetPause(pause)) return `${lead} · out of ${BUDGET[pause.reason]}`;
   if (pause.reason === "trial") return `${lead} · trial allowance used`;
   if (!pause.started) return lead;
@@ -111,7 +111,7 @@ function notStartedBody(
   }
   if (!isBudgetPause(pause)) return `${name} didn't start this.`;
   if (neverResets(pause)) {
-    return `${name} didn't start this because you're out of AutoPilot budget.`;
+    return `${name} didn't start this because you're out of budget.`;
   }
   const budget = BUDGET[pause.reason];
   if (budgetBack) {

@@ -1,5 +1,7 @@
 "use client";
 
+import { useStableCallback } from "@/hooks/useStableCallback";
+import { useMemo } from "react";
 import {
   CopilotChatActionsContext,
   type CopilotChatSurface,
@@ -25,17 +27,32 @@ export function CopilotChatActionsProvider({
   assistantName,
   children,
 }: Props) {
+  // The copilot page hands a new `onBackendTurn` every render (it only reads
+  // refs), which would change the actions on every streamed flush. Cards get
+  // one function that calls the latest; absent stays absent.
+  const followBackendTurn = useStableCallback(() => onBackendTurn?.());
+  const hasBackendTurn = Boolean(onBackendTurn);
+  const actions = useMemo(
+    () => ({
+      onSend,
+      onBackendTurn: hasBackendTurn ? followBackendTurn : undefined,
+      chatSurface,
+      getExecutionShareToken,
+      sessionId,
+      assistantName,
+    }),
+    [
+      onSend,
+      hasBackendTurn,
+      followBackendTurn,
+      chatSurface,
+      getExecutionShareToken,
+      sessionId,
+      assistantName,
+    ],
+  );
   return (
-    <CopilotChatActionsContext.Provider
-      value={{
-        onSend,
-        onBackendTurn,
-        chatSurface,
-        getExecutionShareToken,
-        sessionId,
-        assistantName,
-      }}
-    >
+    <CopilotChatActionsContext.Provider value={actions}>
       {children}
     </CopilotChatActionsContext.Provider>
   );

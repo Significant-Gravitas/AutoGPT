@@ -197,12 +197,44 @@ class FindInDictionaryBlock(Block):
         elif isinstance(obj, list) and isinstance(key, int) and 0 <= key < len(obj):
             yield "output", obj[key]
         elif isinstance(obj, list) and isinstance(key, str):
+            digits = key.strip().removeprefix("-")
+            is_index = digits.isascii() and digits.isdigit()
             if len(obj) == 0:
-                yield "output", []
-            elif isinstance(obj[0], dict) and key in obj[0]:
-                yield "output", [item[key] for item in obj if key in item]
+                # Any index into an empty list is out of range.
+                if is_index:
+                    yield "missing", input_data.input
+                else:
+                    yield "output", []
+            elif dicts := [item for item in obj if isinstance(item, dict)]:
+                # Pluck the key from every dict, whatever the first item holds;
+                # non-dict items are skipped.
+                found = [item[key] for item in dicts if key in item]
+                if found:
+                    yield "output", found
+                else:
+                    yield "missing", input_data.input
+            elif is_index:
+                # Builder inputs send `str | int` keys as strings by default,
+                # so treat a numeric string as a list index, with the same
+                # range rule as an int key (negatives are missing). isdigit()
+                # alone also accepts characters like "²" that int() rejects.
+                # Lists that contain dicts pluck by key instead (above).
+                try:
+                    index = int(key.strip())
+                except ValueError:
+                    # Python 3.11+ refuses to convert very long digit strings.
+                    yield "missing", input_data.input
+                    return
+                if 0 <= index < len(obj):
+                    yield "output", obj[index]
+                else:
+                    yield "missing", input_data.input
             else:
-                yield "output", [getattr(val, key) for val in obj if hasattr(val, key)]
+                found = [getattr(val, key) for val in obj if hasattr(val, key)]
+                if found:
+                    yield "output", found
+                else:
+                    yield "missing", input_data.input
         elif isinstance(obj, object) and isinstance(key, str) and hasattr(obj, key):
             yield "output", getattr(obj, key)
         else:
@@ -401,7 +433,10 @@ class CreateListBlock(Block):
             if (max_tokens and (cur_tokens + tokens > max_tokens)) or (
                 max_size and (cur_size + 1 > max_size)
             ):
-                yield "list", chunk
+                # A first value that alone exceeds the limit leaves nothing to
+                # flush; don't emit an empty list ahead of it.
+                if chunk:
+                    yield "list", chunk
                 chunk = [value]
                 cur_size, cur_tokens = 1, tokens
             else:
@@ -795,18 +830,27 @@ def _make_hashable(item: Any):
     """
     Create a hashable representation of any item for deduplication.
     Converts unhashable types (dicts, lists) into deterministic tuple structures.
+    Dicts, lists and bools are tagged with their kind, so values of different
+    kinds never share a key, whatever they contain (e.g. ``{}`` vs ``[]``,
+    ``True`` vs ``1``, ``{}`` vs ``["dict", []]``). Numbers aren't tagged, so
+    ``1`` and ``1.0`` still match.
     """
     if isinstance(item, dict):
-        return tuple(
-            sorted(
-                ((_make_hashable(k), _make_hashable(v)) for k, v in item.items()),
-                key=lambda x: (str(type(x[0])), str(x[0])),
-            )
+        return (
+            "dict",
+            tuple(
+                sorted(
+                    ((_make_hashable(k), _make_hashable(v)) for k, v in item.items()),
+                    key=lambda x: (str(type(x[0])), str(x[0])),
+                )
+            ),
         )
     if isinstance(item, (list, tuple)):
-        return tuple(_make_hashable(i) for i in item)
+        return ("list", tuple(_make_hashable(i) for i in item))
     if isinstance(item, set):
         return frozenset(_make_hashable(i) for i in item)
+    if isinstance(item, bool):
+        return ("bool", item)
     return item
 
 

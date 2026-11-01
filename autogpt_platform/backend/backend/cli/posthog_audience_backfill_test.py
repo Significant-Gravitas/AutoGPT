@@ -78,6 +78,7 @@ async def test_a_dry_run_reports_counts_and_sends_nothing(wired: AsyncMock, caps
     assert "Accounts: 3" in out
     assert "email_type: business=2, personal=1" in out
     assert "signin_method: none=2, google=1" in out
+    assert "is_internal true: 0" in out
     assert "Checkout openers (a Stripe Checkout Session): 1" in out
     assert "country_source: stripe=1" in out
     assert "exclude_de_at yes: 1" in out

@@ -11,6 +11,7 @@ import base64
 import json
 import shutil
 import uuid
+from collections.abc import AsyncGenerator
 from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,7 @@ from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from openai import AsyncOpenAI
 from pydantic import SecretStr
 
+from backend.copilot.budget_gate import AutoContinueGate
 from backend.copilot.config import ChatConfig
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk import env as sdk_env
@@ -70,12 +72,18 @@ class SdkTurns:
         # files from the same place.
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(self._config_dir))
-        # Where a direct-Anthropic CLI sends its requests; the key is never
-        # checked. OpenRouter and Codex turns override both.
+        # Where a direct-Anthropic CLI sends its requests, which that route
+        # carries over from this process; the key is never checked.
+        # OpenRouter and Codex turns override both.
         monkeypatch.setenv("ANTHROPIC_BASE_URL", f"{provider.url}/anthropic")
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-billing-e2e")
-        if cli_max_retries is not None:
-            monkeypatch.setenv("CLAUDE_CODE_MAX_RETRIES", str(cli_max_retries))
+        # The CLI keeps nothing else of this process's environment, so a
+        # setting for it goes in the launch's own.
+        self._cli_env = (
+            {"CLAUDE_CODE_MAX_RETRIES": str(cli_max_retries)}
+            if cli_max_retries is not None
+            else {}
+        )
         monkeypatch.setattr(sdk_env, "config", config)
         monkeypatch.setattr(
             openrouter_cost,
@@ -125,6 +133,7 @@ class SdkTurns:
             "upsert_chat_session": AsyncMock(return_value=session),
             "download_transcript": AsyncMock(side_effect=self._download),
             "upload_transcript": AsyncMock(side_effect=self._upload),
+            "delete_transcript": AsyncMock(side_effect=self._delete),
             "compact_transcript": AsyncMock(return_value=None),
             "get_redis_async": AsyncMock(),
             "propagate_attributes": MagicMock(),
@@ -147,7 +156,11 @@ class SdkTurns:
             "build_turn_budget_block": AsyncMock(return_value=""),
             "drain_pending_safe": AsyncMock(return_value=[]),
             "drain_pending_for_persist": AsyncMock(return_value=[]),
-            "resolve_answered": AsyncMock(return_value=[]),
+            # Nothing is queued mid-turn, so a finished turn simply ends.
+            "gate_auto_continue": AsyncMock(
+                return_value=AutoContinueGate(proceed=True)
+            ),
+            "resolve_answered": _no_answered_cards,
             "clear_pending_question": AsyncMock(),
         }
 
@@ -161,6 +174,7 @@ class SdkTurns:
         options.hooks = None
         options.allowed_tools = []
         options.disallowed_tools = []
+        options.env = {**options.env, **self._cli_env}
         return ClaudeSDKClient(*args, options=options, **kwargs)
 
     def _governor(self, **kwargs: Any) -> TurnGovernor:
@@ -185,6 +199,9 @@ class SdkTurns:
         self, user_id: str, session_id: str, *_: Any, **__: Any
     ) -> TranscriptDownload | None:
         return self._transcripts.get(session_id)
+
+    async def _delete(self, user_id: str, session_id: str) -> None:
+        self._transcripts.pop(session_id, None)
 
 
 def _lock(*_: Any, owner_id: str = "", **__: Any) -> MagicMock:
@@ -248,3 +265,8 @@ def _codex_credentials() -> OAuth2Credentials:
     return credentials_from_bundle(bundle).model_copy(
         update={"id": CODEX_CREDENTIAL_ID}
     )
+
+
+async def _no_answered_cards(*_: Any, **__: Any) -> AsyncGenerator[Any, None]:
+    return
+    yield

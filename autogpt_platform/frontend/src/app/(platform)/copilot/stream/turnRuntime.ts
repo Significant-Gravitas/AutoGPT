@@ -18,7 +18,7 @@ import { fetchSse, type SseFrame } from "./sseClient";
 import { TextReveal } from "./textReveal";
 import { applyEntry, type StreamEntry, type WireChunk } from "./turnConverter";
 import { seedTurnLog } from "./turnLog";
-import { diffRows, sha256Hex } from "./turnShadow";
+import { diffRows, formatDiffs, sha256Hex } from "./turnShadow";
 import {
   checkpointOf,
   closeBlocks,
@@ -712,7 +712,10 @@ export class TurnRuntime {
   // The banner tells the user we were notified of these.
   private reportIfUnexpected(end: Extract<ConnectionEnd, { kind: "refused" }>) {
     if (!isUnexpectedRefusal(end.status)) return;
-    this.deps.report("refused", { status: end.status, body: end.body });
+    this.deps.report("refused", {
+      status: end.status,
+      body: reportableBody(end.body),
+    });
   }
 
   /** A refusal no retry can change: end the turn where it stands and say why. */
@@ -1058,7 +1061,7 @@ export class TurnRuntime {
       this.deps.report("finish", {
         turnId: seg.log.turnId,
         cursor: seg.log.cursor,
-        diffs: drift,
+        diffs: formatDiffs(drift),
       });
     }
     this.updateTurn(seg.key, (s) => reconcileTurn(s, persisted));
@@ -1516,6 +1519,20 @@ export class SendRefusedError extends Error {
     super(message);
     this.name = "SendRefusedError";
   }
+}
+
+// Sentry flattens a 422's error objects to "[Object]"; keep each one's place and
+// reason as a line, and leave out its `input`, which can hold the user's message.
+function reportableBody(body: unknown) {
+  const detail = (body as { detail?: unknown } | null)?.detail;
+  if (!Array.isArray(detail)) return body;
+  return {
+    ...(body as object),
+    detail: detail.map(
+      (item: { loc?: unknown; msg?: unknown } | null) =>
+        `${Array.isArray(item?.loc) ? item.loc.join(".") : ""}: ${String(item?.msg)}`,
+    ),
+  };
 }
 
 // FastAPI's 422 for a message over the request model's max_length; the composer has no cap.

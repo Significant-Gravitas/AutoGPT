@@ -9,10 +9,13 @@ from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.execution import ExecutionContext, NodeExecutionEntry
 from backend.data.model import (
     APIKeyCredentials,
+    Credentials,
     CredentialsFieldInfo,
     CredentialsMetaInput,
+    HostScopedCredentials,
     NodeExecutionStats,
     OAuth2Credentials,
+    UserPasswordCredentials,
 )
 from backend.executor.manager import execute_node
 from backend.integrations.providers import ProviderName
@@ -24,6 +27,14 @@ MixedCredentialsInput = CredentialsMetaInput[
     Literal[ProviderName.OPENAI, ProviderName.CODEX],
     Literal["api_key", "oauth2"],
 ]
+OpenAIKeyInput = CredentialsMetaInput[Literal[ProviderName.OPENAI], Literal["api_key"]]
+SMTPLoginInput = CredentialsMetaInput[
+    Literal[ProviderName.SMTP], Literal["user_password"]
+]
+HTTPHeadersInput = CredentialsMetaInput[
+    Literal[ProviderName.HTTP], Literal["host_scoped"]
+]
+OPENAI_KEY = APIKeyCredentials(id="cred-1", provider="openai", api_key=SecretStr("k"))
 
 
 @pytest.mark.asyncio
@@ -53,36 +64,49 @@ async def test_execute_node_injects_and_releases_credential_lease():
 
 
 @pytest.mark.asyncio
-async def test_execute_node_does_not_inject_runtime_lease_for_api_key():
-    credentials = APIKeyCredentials(
-        id="cred-1",
-        provider="openai",
-        api_key=SecretStr("secret"),
-    )
-    lease = MagicMock(credentials=credentials)
-    lease.release = AsyncMock()
+@pytest.mark.parametrize(
+    ("credentials_input", "credentials"),
+    [
+        (OpenAIKeyInput, OPENAI_KEY),
+        (
+            SMTPLoginInput,
+            UserPasswordCredentials(
+                id="cred-1",
+                provider="smtp",
+                username=SecretStr("user"),
+                password=SecretStr("secret"),
+            ),
+        ),
+        (
+            HTTPHeadersInput,
+            HostScopedCredentials(
+                id="cred-1",
+                provider="http",
+                host="api.example.com",
+                headers={"Authorization": SecretStr("Bearer secret")},
+            ),
+        ),
+    ],
+    ids=["api_key", "user_password", "host_scoped"],
+)
+async def test_credentials_that_never_refresh_run_without_a_lease(
+    credentials_input: type[CredentialsMetaInput],
+    credentials: Credentials,
+):
+    # Nothing refreshes these while a block runs, so a lease would protect
+    # nothing; it would only make every other node on the same credential wait
+    # for this one, an Orchestrator's own tool calls included.
     manager = MagicMock()
-    manager.acquire_lease = AsyncMock(return_value=lease)
+    manager.get = AsyncMock(return_value=credentials)
+    manager.acquire_lease = AsyncMock()
     captured: dict[str, object] = {}
-    openai_credentials = CredentialsMetaInput[
-        Literal[ProviderName.OPENAI], Literal["api_key"]
-    ]
-    block = _block_with_credentials({"credentials": openai_credentials}, captured)
+    block = _block_with_credentials({"credentials": credentials_input}, captured)
 
     outputs = [
         item
         async for item in execute_node(
             _node(block),
-            _entry(
-                {
-                    "credentials": {
-                        "id": "cred-1",
-                        "provider": "openai",
-                        "type": "api_key",
-                        "title": None,
-                    }
-                }
-            ),
+            _entry({"credentials": _metadata_of(credentials)}),
             SimpleNamespace(creds_manager=manager),
         )
     ]
@@ -90,7 +114,57 @@ async def test_execute_node_does_not_inject_runtime_lease_for_api_key():
     assert outputs == [("response", "ok")]
     assert captured["credentials"] is credentials
     assert "credential_leases" not in captured
-    lease.release.assert_awaited_once()
+    manager.get.assert_awaited_once_with("user-1", "cred-1")
+    manager.acquire_lease.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_oauth_credential_labelled_as_an_api_key_is_refused():
+    manager = MagicMock()
+    manager.get = AsyncMock(return_value=_codex_credentials("cred-1"))
+    manager.acquire_lease = AsyncMock()
+    captured: dict[str, object] = {}
+    block = _block_with_credentials({"credentials": MixedCredentialsInput}, captured)
+    mislabelled = {**_credential_metadata("cred-1"), "type": "api_key"}
+
+    with pytest.raises(ValueError, match="Credentials #cred-1 .* not found"):
+        await anext(
+            execute_node(
+                _node(block),
+                _entry({"credentials": mislabelled}),
+                SimpleNamespace(creds_manager=manager),
+            )
+        )
+
+    manager.acquire_lease.assert_not_awaited()
+    assert "credentials" not in captured
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field_has_default", [False, True])
+async def test_missing_api_key_fails_the_node_unless_the_field_has_a_default(
+    field_has_default: bool,
+):
+    manager = MagicMock()
+    manager.get = AsyncMock(return_value=None)
+    captured: dict[str, object] = {}
+    block = _block_with_credentials({"credentials": OpenAIKeyInput}, captured)
+    block.input_schema.model_fields = {
+        "credentials": SimpleNamespace(default={} if field_has_default else None)
+    }
+    run = execute_node(
+        _node(block),
+        _entry({"credentials": _metadata_of(OPENAI_KEY)}),
+        SimpleNamespace(creds_manager=manager),
+    )
+
+    if not field_has_default:
+        with pytest.raises(ValueError, match="Credentials #cred-1 .* not found"):
+            await anext(run)
+        return
+    assert [item async for item in run] == [("response", "ok")]
+    assert captured["input_data"]["credentials"] is None
+    assert "credentials" not in captured
 
 
 @pytest.mark.asyncio
@@ -404,6 +478,15 @@ def _credential_metadata(credentials_id: str) -> dict[str, str | None]:
         "id": credentials_id,
         "provider": "codex",
         "type": "oauth2",
+        "title": None,
+    }
+
+
+def _metadata_of(credentials: Credentials) -> dict[str, str | None]:
+    return {
+        "id": credentials.id,
+        "provider": credentials.provider,
+        "type": credentials.type,
         "title": None,
     }
 

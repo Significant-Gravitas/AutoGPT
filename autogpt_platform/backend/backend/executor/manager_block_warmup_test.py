@@ -31,6 +31,10 @@ def test_run_loads_blocks_before_taking_runs() -> None:
 
     with (
         patch("backend.blocks.load_all_blocks", side_effect=load_blocks),
+        patch(
+            "backend.executor.manager.freeze_startup_heap",
+            side_effect=lambda: order.append("freeze_heap"),
+        ),
         patch("backend.executor.manager.start_http_server"),
         patch.object(ExecutionManager, "_update_prompt_metrics"),
         patch("backend.executor.manager.time.sleep", side_effect=_StopRunLoop),
@@ -38,4 +42,4 @@ def test_run_loads_blocks_before_taking_runs() -> None:
     ):
         manager.run()
 
-    assert order == ["load_blocks", "cancel_thread", "run_thread"]
+    assert order == ["load_blocks", "freeze_heap", "cancel_thread", "run_thread"]

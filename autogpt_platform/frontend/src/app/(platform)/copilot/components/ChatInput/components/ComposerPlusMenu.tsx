@@ -33,7 +33,7 @@ interface Props {
   isAtCap?: boolean;
   className?: string;
   /** Composer settings that live behind the + rather than as icons in the
-   *  tray (model tier, the dev token readout). */
+   *  tray (voice mode, model tier, the dev token readout). */
   extraItems?: ComposerMenuItem[];
 }
 
@@ -42,6 +42,7 @@ export interface ComposerMenuItem {
   label: string;
   icon: IconSvgElement;
   onSelect: () => void;
+  disabled?: boolean;
 }
 
 export function ComposerPlusMenu({
@@ -97,7 +98,7 @@ export function ComposerPlusMenu({
             data-testid="composer-plus-button"
             disabled={disabled}
             className={cn(
-              "border-transparent bg-transparent text-black shadow-none hover:border-transparent hover:bg-zinc-100 hover:text-black",
+              "border-transparent bg-transparent text-foreground-base shadow-none hover:border-transparent hover:bg-surface-hover hover:text-foreground-base",
               className,
               disabled && "opacity-40",
             )}
@@ -162,7 +163,11 @@ export function ComposerPlusMenu({
           </DropdownMenuItem>
           {extraItems.length > 0 && <DropdownMenuSeparator />}
           {extraItems.map((item) => (
-            <DropdownMenuItem key={item.key} onSelect={item.onSelect}>
+            <DropdownMenuItem
+              key={item.key}
+              disabled={item.disabled}
+              onSelect={item.onSelect}
+            >
               <Icon icon={item.icon} className="mr-2 h-4 w-4" />
               {item.label}
             </DropdownMenuItem>
@@ -175,7 +180,7 @@ export function ComposerPlusMenu({
 
 function CapLabel() {
   return (
-    <span className="ml-auto pl-3 text-xs text-zinc-500">
+    <span className="ml-auto pl-3 text-xs text-foreground-tertiary">
       {MAX_ATTACHMENTS} max
     </span>
   );

@@ -107,13 +107,17 @@ export function ToolIcon({
   isError?: boolean;
 }) {
   if (isError) {
-    return <Icon icon={AlertDiamondIcon} size={14} className="text-red-500" />;
+    return <Icon icon={AlertDiamondIcon} size={14} className="text-error" />;
   }
   if (isStreaming) {
     return <ScaleLoader size={14} />;
   }
   return (
-    <Icon icon={PencilEdit01Icon} size={14} className="text-neutral-400" />
+    <Icon
+      icon={PencilEdit01Icon}
+      size={14}
+      className="text-foreground-subtle"
+    />
   );
 }
 

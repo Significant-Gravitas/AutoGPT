@@ -37,7 +37,6 @@ from backend.data.credit import (
     get_proration_credit_cents,
     get_subscription_price_id,
     get_user_billing_cycle,
-    handle_subscription_payment_failure,
     handle_subscription_payment_success,
     modify_stripe_subscription_for_tier,
     release_pending_subscription_schedule,
@@ -53,6 +52,10 @@ from backend.data.stripe_authentication import requires_authentication
 from backend.data.stripe_client import stripe_call
 from backend.data.subscription_activation_events import recover_claimed_billing_event
 from backend.data.subscription_checkout import AnotherPlanLive
+from backend.data.subscription_payment_failure import (
+    PaymentFailureOutcome,
+    handle_subscription_payment_failure,
+)
 from backend.data.subscription_trial import TrialState
 from backend.data.subscription_trial_billing import (
     TRIAL_BILLING_EVENTS,
@@ -74,11 +77,15 @@ from backend.data.subscription_upgrade_models import (
     SubscriptionUpgradePreviewRequest,
     UpgradePreviewUnavailable,
 )
+from backend.data.subscription_wallet_payment import (
+    reconcile_wallet_payment_on_paid_invoice,
+)
 from backend.data.user import get_user_by_id
 from backend.notifications import lifecycle
 from backend.notifications.queue import queue_pass_work
 from backend.notifications.trial import notify_trial, on_trial_invoice
 from backend.util.cache import cached
+from backend.util.clients import get_scheduler_client
 from backend.util.feature_flag import Flag, evaluate_feature_flag
 from backend.util.product_analytics import track_checkout_started
 from backend.util.settings import Settings
@@ -149,6 +156,13 @@ class SubscriptionStatusResponse(BaseModel):
             "Unix timestamp of the active subscription's current_period_end. Used"
             " to show the date Stripe will issue the next invoice (with prorated"
             " upgrade charges, if any). None when no active sub."
+        ),
+    )
+    paused_workflow_schedules: int = Field(
+        default=0,
+        description=(
+            "Active workflow schedules that won't run until the user has a plan."
+            " Counted only for NO_TIER; 0 for every other tier."
         ),
     )
     pending_tier: Optional[Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS"]] = None
@@ -321,9 +335,14 @@ async def get_subscription_status(
         current_monthly_cost = tier_costs_yearly.get(tier.value, 0)
     else:
         current_monthly_cost = tier_costs.get(tier.value, 0)
-    proration_credit, current_period_end = await asyncio.gather(
+    (
+        proration_credit,
+        current_period_end,
+        paused_workflow_schedules,
+    ) = await asyncio.gather(
         get_proration_credit_cents(user_id, current_monthly_cost),
         get_active_subscription_period_end(user_id),
+        _count_paused_workflow_schedules(user_id, tier),
     )
 
     try:
@@ -350,6 +369,7 @@ async def get_subscription_status(
         proration_credit_cents=proration_credit,
         has_active_stripe_subscription=current_period_end is not None,
         current_period_end=current_period_end,
+        paused_workflow_schedules=paused_workflow_schedules,
     )
     if pending is not None:
         pending_tier_enum, pending_effective_at, pending_cycle = pending
@@ -364,6 +384,22 @@ async def get_subscription_status(
             response.pending_tier_effective_at = pending_effective_at
             response.pending_billing_cycle = pending_cycle
     return response
+
+
+async def _count_paused_workflow_schedules(user_id: str, tier: SubscriptionTier) -> int:
+    # Only workflow schedules wait for a plan: add_graph_execution skips them with
+    # UserPaywalledError, while a scheduled chat explains itself in its own chat.
+    if tier != SubscriptionTier.NO_TIER:
+        return 0
+    try:
+        schedules = await asyncio.wait_for(
+            get_scheduler_client().get_execution_schedules(user_id=user_id),
+            timeout=settings.config.schedule_read_timeout_seconds,
+        )
+    except Exception:
+        logger.warning(f"Could not count paused workflow schedules for user {user_id}")
+        return 0
+    return sum(schedule.kind == "graph" for schedule in schedules)
 
 
 @router.post(
@@ -1001,6 +1037,7 @@ async def stripe_webhook(request: Request):
             await sync_subscription_schedule_from_stripe(data_object)
 
         if event_type in ("invoice.payment_succeeded", "invoice.paid"):
+            await reconcile_wallet_payment_on_paid_invoice(data_object)
             await handle_subscription_payment_success(data_object)
             await on_trial_invoice(data_object, paid=True)
 
@@ -1009,9 +1046,12 @@ async def stripe_webhook(request: Request):
             await notify_trial(data_object, "ending")
 
         if event_type == "invoice.payment_failed":
-            await handle_subscription_payment_failure(data_object)
-            if not await on_trial_invoice(data_object, paid=False):
-                await lifecycle.on_payment_failed(data_object)
+            outcome = await handle_subscription_payment_failure(data_object)
+            if outcome == PaymentFailureOutcome.NEEDS_ACTION:
+                if not await on_trial_invoice(data_object, paid=False):
+                    await lifecycle.on_payment_failed(
+                        data_object, attempted_at=event.get("created")
+                    )
 
         # New Stripe API (≥2025-04-01) split the per-payment events off the
         # Invoice resource. data.object is an InvoicePayment, not an Invoice,
@@ -1026,12 +1066,16 @@ async def stripe_webhook(request: Request):
                 invoice = await stripe_call(stripe.Invoice.retrieve_async, invoice_id)
                 invoice_payload = cast(dict, invoice)
                 if event_type == "invoice_payment.paid":
+                    await reconcile_wallet_payment_on_paid_invoice(invoice_payload)
                     await handle_subscription_payment_success(invoice_payload)
                     await on_trial_invoice(invoice_payload, paid=True)
                 else:
-                    await handle_subscription_payment_failure(invoice_payload)
-                    if not await on_trial_invoice(invoice_payload, paid=False):
-                        await lifecycle.on_payment_failed(invoice_payload)
+                    outcome = await handle_subscription_payment_failure(invoice_payload)
+                    if outcome == PaymentFailureOutcome.NEEDS_ACTION:
+                        if not await on_trial_invoice(invoice_payload, paid=False):
+                            await lifecycle.on_payment_failed(
+                                invoice_payload, attempted_at=event.get("created")
+                            )
 
         # `handle_dispute` and `deduct_credits` expect Stripe SDK typed objects
         # (Dispute/Refund). The Stripe webhook payload's `data.object` is a

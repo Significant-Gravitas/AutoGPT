@@ -15,7 +15,7 @@ interface Props {
 
 export function SignupLegalLine({ optedOut, onToggle, disabled }: Props) {
   return (
-    <Text variant="body" className="mt-6 text-center !text-slate-500">
+    <Text variant="body" tone="muted" className="mt-6 text-center">
       By continuing you agree to our{" "}
       <Link href={TERMS_OF_USE_URL} variant="secondary" isExternal>
         Terms of Use
@@ -27,7 +27,7 @@ export function SignupLegalLine({ optedOut, onToggle, disabled }: Props) {
       .{" "}
       <span aria-live="polite">
         {optedOut ? (
-          <span className="text-slate-950">
+          <span className="text-foreground-base">
             You won&apos;t get marketing emails.
           </span>
         ) : (
@@ -41,7 +41,7 @@ export function SignupLegalLine({ optedOut, onToggle, disabled }: Props) {
         className={cn(
           linkBaseClasses,
           linkVariantClasses.secondary,
-          "rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2",
+          "rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-info focus-visible:ring-offset-2",
           "disabled:cursor-not-allowed disabled:opacity-50",
         )}
       >

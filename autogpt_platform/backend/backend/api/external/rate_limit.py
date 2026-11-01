@@ -4,7 +4,7 @@
 The external API authenticates with API keys / OAuth tokens, so one valid
 credential can hammer store endpoints or spam graph executions. This module
 provides an atomic fixed-window counter in Redis (Lua ``INCR`` + first-hit
-``EXPIRE``, mirroring ``backend/api/features/credits_rate_limit.py``) keyed
+``EXPIRE``, mirroring ``backend/api/features/billing/credits_rate_limit.py``) keyed
 per (user, scope), with per-scope tiers, returning HTTP 429 with
 ``Retry-After`` / ``X-RateLimit-*`` headers once the window counter is
 exhausted.
@@ -46,7 +46,7 @@ READ_WINDOW_SECONDS = 60
 EXECUTION_MAX_REQUESTS = 30
 EXECUTION_WINDOW_SECONDS = 60
 
-# Hard deadline on the whole Redis interaction. Without it "fail open" is not
+# Cancellation deadline on the Redis interaction. Without it "fail open" is not
 # "fail fast": a cold client runs redis-py's own connect retry ladder, so
 # during an outage a request would park an ASGI worker slot for minutes
 # instead of falling through.
@@ -124,9 +124,8 @@ def require_rate_limit(
     ) -> APIAuthorizationInfo:
         now = datetime.now(UTC)
         window_start = _window_start(now, window_seconds)
-        # The window start is part of the key so that the counter, the TTL and
-        # the reported reset time all refer to the same window: a request is
-        # never counted against a window it is told it can retry out of.
+        # A new key at the reported reset admits the next window immediately;
+        # the previous key's TTL only controls its eventual cleanup.
         key = f"{_rate_limit_key(auth, scope)}:{window_start}"
         try:
             count = await asyncio.wait_for(

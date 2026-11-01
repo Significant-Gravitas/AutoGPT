@@ -20,7 +20,7 @@ function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
-        <thead className="border-b text-xs uppercase text-muted-foreground">
+        <thead className="border-b text-xs text-muted-foreground uppercase">
           <tr>
             <th scope="col" className="px-4 py-3">
               Provider
@@ -62,7 +62,10 @@ function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
               className="px-4 py-3 text-right"
               title="Per-session only"
             >
-              Rate <span className="text-[10px] font-normal">(unsaved)</span>
+              {"Rate "}
+              <span className="text-tiny leading-inherit font-normal">
+                (unsaved)
+              </span>
             </th>
           </tr>
         </thead>
@@ -133,7 +136,7 @@ function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
                         }}
                       />
                       <span
-                        className="text-[10px] text-muted-foreground"
+                        className="text-tiny leading-inherit text-muted-foreground"
                         title={rateUnitLabel(tt)}
                       >
                         {rateUnitLabel(tt)}
