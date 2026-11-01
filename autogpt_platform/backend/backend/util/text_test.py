@@ -579,6 +579,23 @@ async def test_what_a_method_adds_to_its_own_container_is_charged(
         )
 
 
+@pytest.mark.parametrize(
+    "oversized",
+    ["tilde concatenation", "a loop's literal text", "center filter"],
+)
+@pytest.mark.asyncio
+async def test_the_limits_hold_for_an_autoescaping_formatter(oversized: str):
+    # `TextFormatter()` escapes by default, and Jinja joins and emits through
+    # a different pair of functions when it does
+    escaping = TextFormatter()
+    assert (
+        await escaping.format_string("a<b{{ c }}{{ d ~ e }}", {"c": "<i>", "d": "&"})
+        == "a<b&lt;i&gt;&amp;"
+    )
+    with pytest.raises(OverflowError):
+        await escaping.format_string(OVERSIZED_TEMPLATES[oversized][0])
+
+
 # --- A new way to build a value is classified, never allowed by omission ---
 
 # Reviewed as bounded by the length of what they are given, so the budget can
