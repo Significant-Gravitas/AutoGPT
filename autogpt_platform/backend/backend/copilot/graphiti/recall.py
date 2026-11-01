@@ -14,12 +14,15 @@ A fact (a ``RELATES_TO`` edge) is live while ``expired_at`` and
 an edge with no ``status`` predates the ``MemoryFact`` edge type and counts
 as ``active``. A forgotten fact (``forgotten_fact_predicate``) is never live:
 a forget stamps ``forgotten_at``, which only a forget writes
-(``recall_forget.py``, or the legacy-forget backfill for older ones), so no
-other writer's status or reason can make it look remembered again, nor make
-a fact look forgotten. An episode is recallable while no forget has stamped
+(``recall_forget.py`` and the cascade it runs on what the dream derived
+from the fact, or the legacy-forget backfill for older ones), so no other
+writer's status or reason can make it look remembered again, nor make a fact
+look forgotten. An episode is recallable while no forget has stamped
 ``redacted_at`` on it and none of the facts extracted from it is forgotten:
 one forgotten fact hides the whole text, since nothing records which
-sentence it came from. The episode's other facts stay live.
+sentence it came from. The episode's other facts stay live. Nor is an
+episode a dream write placed and is still writing (``write_pending``,
+``marked_write.py``): graphiti's save of it clears that.
 """
 
 import asyncio
@@ -100,6 +103,9 @@ def forgotten_fact_predicate(alias: str = "e") -> str:
     ``expiration_reason``: graphiti's attribute extraction fills both from an
     episode's text, and a dream demotion picks its reason, so neither may
     make a fact (and every episode and session it came from) look forgotten.
+
+    It is never null: it only asks whether properties are set, so ``NOT`` it
+    is the not-forgotten test on every edge, a live one included.
     """
     return f"({alias}.forgotten_at IS NOT NULL OR ({legacy_forget_predicate(alias)}))"
 
@@ -145,16 +151,22 @@ def recallable_episode_predicate(alias: str = "e", forgotten: str = "forgotten")
     ``alias``; the query must open with ``forgotten_facts_clause(forgotten)``."""
     return (
         f"{alias}.redacted_at IS NULL"
+        f" AND {alias}.write_pending IS NULL"
         f" AND none(x IN coalesce({alias}.entity_edges, []) WHERE x IN {forgotten})"
     )
 
 
 def is_recallable_episode(
-    entity_edges: list[str], forgotten: set[str], *, redacted: bool
+    entity_edges: list[str],
+    forgotten: set[str],
+    *,
+    redacted: bool,
+    write_pending: bool = False,
 ) -> bool:
-    """The recallable-episode test in Python: not ``redacted`` and citing no
-    uuid in ``forgotten`` among its ``entity_edges``."""
-    return not redacted and forgotten.isdisjoint(entity_edges)
+    """The recallable-episode test in Python: not ``redacted``, not still
+    being written, and citing no uuid in ``forgotten`` among its
+    ``entity_edges``."""
+    return not (redacted or write_pending) and forgotten.isdisjoint(entity_edges)
 
 
 async def search_facts(

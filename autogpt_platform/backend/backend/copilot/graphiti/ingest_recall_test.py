@@ -1,7 +1,8 @@
 """The ingestion worker hands graphiti's extraction only the earlier episodes
 the recall policy allows, writes each episode holding the graph's write lock,
-and puts back to ``active`` any edge the extraction gave ``retracted``,
-mocked at the graphiti boundary and on the in-memory Redis.
+puts back to ``active`` any edge the extraction gave ``retracted``, and
+promotes the tentative facts a user's chat turn states, mocked at the graphiti
+boundary and on the in-memory Redis.
 
 The live runs are ``ingest_recall_integration_test.py`` and
 ``recall_inflight_integration_test.py``.
@@ -27,6 +28,12 @@ _LOCK = write_lock_key("user_test")
 _STORED = [
     {"uuid": "ep-newest", "redacted": False, "entity_edges": ["kept"]},
     {"uuid": "ep-redacted", "redacted": True, "entity_edges": []},
+    {
+        "uuid": "ep-pending",
+        "redacted": False,
+        "entity_edges": [],
+        "write_pending": True,
+    },
     {"uuid": "ep-cites-a-forgotten-fact", "redacted": False, "entity_edges": ["gone"]},
     {"uuid": "ep-oldest", "redacted": False, "entity_edges": []},
 ]
@@ -40,7 +47,10 @@ async def _policy_filtered_store(query: str, **params: object):
         {"uuid": episode["uuid"]}
         for episode in _STORED
         if is_recallable_episode(
-            episode["entity_edges"], {"gone"}, redacted=episode["redacted"]
+            episode["entity_edges"],
+            {"gone"},
+            redacted=episode["redacted"],
+            write_pending=episode.get("write_pending", False),
         )
     ]
     return rows, [], None
@@ -328,3 +338,95 @@ class TestWriteLock:
 
         client.add_episode.assert_awaited_once()
         assert "write lock unavailable" in caplog.text
+
+
+def _promotions(client: MagicMock) -> list[str]:
+    """The edges the worker promoted (``ratification._promote_if_tentative``)."""
+    return [
+        str(call.kwargs["uuid"])
+        for call in client.driver.execute_query.await_args_list
+        if "e.ratified_at = $now" in call.args[0]
+    ]
+
+
+def _turn_result() -> SimpleNamespace:
+    """A chat turn graphiti wrote: a fact it merged the turn into, one it
+    created, and one it invalidated (the turn's episode not on it)."""
+    return SimpleNamespace(
+        episode=SimpleNamespace(uuid="ep-turn"),
+        edges=[
+            SimpleNamespace(uuid="merged", episodes=["ep-old", "ep-turn"]),
+            SimpleNamespace(uuid="created", episodes=["ep-turn"]),
+            SimpleNamespace(uuid="invalidated", episodes=["ep-old"]),
+        ],
+    )
+
+
+class TestAUsersRestatement:
+    @pytest.mark.asyncio
+    async def test_promotes_the_facts_the_turn_states_holding_the_lock(
+        self, lock_redis: FakeRedis, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Every fact whose episodes include the turn's, merged into or new;
+        the one graphiti invalidated is left alone, and so are the recall
+        stamps and hit counts (the promotion writes status and
+        ``ratified_at`` only)."""
+        client = _graphiti_client()
+        client.add_episode.return_value = _turn_result()
+        held: list[bool] = []
+
+        async def store(query: str, **params: object):
+            if "e.ratified_at = $now" in query:
+                held.append(_LOCK in lock_redis.values)
+                assert "recall" not in query
+                return [{"uuid": params["uuid"]}], [], None
+            return await _policy_filtered_store(query, **params)
+
+        client.driver.execute_query = AsyncMock(side_effect=store)
+
+        await _run_worker(client, monkeypatch, _payload(_restatement=True))
+
+        assert _promotions(client) == ["merged", "created"]
+        assert held == [True, True]
+        assert client.add_episode.await_args is not None
+        assert "_restatement" not in client.add_episode.await_args.kwargs
+
+    @pytest.mark.asyncio
+    async def test_an_episode_that_is_no_users_turn_promotes_nothing(
+        self, lock_redis: FakeRedis, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A dream write, an assistant's finding or a memory-store call: no
+        sidecar, so what they state stays as graphiti left it."""
+        client = _graphiti_client()
+        client.add_episode.return_value = _turn_result()
+
+        await _run_worker(client, monkeypatch, _payload())
+
+        assert _promotions(client) == []
+
+    @pytest.mark.asyncio
+    async def test_a_promotion_that_raises_leaves_the_episode_written(
+        self,
+        lock_redis: FakeRedis,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        client = _graphiti_client()
+        client.add_episode.return_value = _turn_result()
+        completion = ingest.IngestionCompletion()
+        completion.register()
+
+        async def store(query: str, **params: object):
+            if "e.ratified_at = $now" in query:
+                raise ConnectionError("falkordb down")
+            return await _policy_filtered_store(query, **params)
+
+        client.driver.execute_query = AsyncMock(side_effect=store)
+
+        await _run_worker(
+            client, monkeypatch, _payload(_restatement=True, _completion=completion)
+        )
+
+        assert _promotions(client) == ["merged", "created"], "each one tried"
+        assert (completion.written, completion.failed) == (1, 0)
+        assert "Graphiti ingestion failed" not in caplog.text

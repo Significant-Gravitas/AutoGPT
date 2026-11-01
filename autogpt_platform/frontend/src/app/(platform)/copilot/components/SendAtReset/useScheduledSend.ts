@@ -4,9 +4,11 @@ import {
   getGetV2GetCopilotUsageQueryKey,
   getGetV2ListTurnsAtBudgetResetQueryKey,
   getV2ListTurnsAtBudgetReset,
+  type postV2ScheduleTurnAtBudgetResetResponse,
   useDeleteV2CancelTurnAtBudgetReset,
   usePostV2ScheduleTurnAtBudgetReset,
 } from "@/app/api/__generated__/endpoints/chat/chat";
+import type { AtResetTurn } from "@/app/api/__generated__/models/atResetTurn";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { toastSendFailure } from "../../helpers/sendFailureToast";
@@ -39,6 +41,15 @@ interface Args {
   inputId?: string;
 }
 
+function scheduledJob(response: postV2ScheduleTurnAtBudgetResetResponse) {
+  if (response.status !== 200) throw new Error();
+  return response.data;
+}
+
+function findSend(jobs: AtResetTurn[]) {
+  return jobs.find((job) => job.kind === "send") ?? null;
+}
+
 export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
   const queryClient = useQueryClient();
   const { jobs, writeJobs } = useAtResetJobs(sessionId);
@@ -53,6 +64,41 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
   });
   const pending = jobs?.find((job) => job.kind === "send") ?? null;
 
+  /** The send as the server holds it now, since another tab or client may
+   *  have added to it after this one last read the list. A request of its
+   *  own: one the list's query is making is cancelled if the chat remounts,
+   *  which would read as the server being unreachable. It stays out of the
+   *  list's cache, where a change made while it was out is newer. */
+  async function readSend() {
+    if (!sessionId) return { send: pending, canHaveMissedAChange: false };
+    const canHaveMissedAChange = startSendRead(sessionId);
+    try {
+      const response = await getV2ListTurnsAtBudgetReset(sessionId);
+      if (response.status !== 200) return { error: response };
+      return {
+        send: findSend(response.data.jobs),
+        canHaveMissedAChange: canHaveMissedAChange(),
+      };
+    } catch (error) {
+      return { error };
+    }
+  }
+
+  function rereadList() {
+    if (!sessionId) return;
+    void queryClient.invalidateQueries({
+      queryKey: getGetV2ListTurnsAtBudgetResetQueryKey(sessionId),
+    });
+  }
+
+  function toastChangeFailure(error: unknown) {
+    toast({
+      title: "Couldn’t change your scheduled message",
+      description: describeSendFailure(error, "it still sends at the reset"),
+      variant: "destructive",
+    });
+  }
+
   /** `onAnswered` hears as soon as the server answers, before a send it
    *  says to make now instead streams its reply. */
   async function schedule(message: string, onAnswered?: () => void) {
@@ -66,8 +112,7 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
       // The client throws on error statuses. Any other answer without the
       // job leaves the message unset, so it fails the same way and the
       // message goes back to whoever cleared it.
-      if (response.status !== 200) throw new Error();
-      const job = response.data;
+      const job = scheduledJob(response);
       await writeJobs((all) => [...all.filter((j) => j.kind !== "send"), job]);
     } catch (error) {
       if (isJoinedSendTooLong(error)) {
@@ -143,41 +188,6 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
     if (!(await unschedule(send.message ?? ""))) return;
     draft.write((current) => returnToDraft(current, send.message ?? ""));
     if (inputId) document.getElementById(inputId)?.focus();
-  }
-
-  /** The send as the server holds it now, since another tab or client may
-   *  have added to it after this one last read the list. A request of its
-   *  own: one the list's query is making is cancelled if the chat remounts,
-   *  which would read as the server being unreachable. It stays out of the
-   *  list's cache, where a change made while it was out is newer. */
-  async function readSend() {
-    if (!sessionId) return { send: pending, canHaveMissedAChange: false };
-    const canHaveMissedAChange = startSendRead(sessionId);
-    try {
-      const response = await getV2ListTurnsAtBudgetReset(sessionId);
-      if (response.status !== 200) return { error: response };
-      return {
-        send: response.data.jobs.find((job) => job.kind === "send") ?? null,
-        canHaveMissedAChange: canHaveMissedAChange(),
-      };
-    } catch (error) {
-      return { error };
-    }
-  }
-
-  function rereadList() {
-    if (!sessionId) return;
-    void queryClient.invalidateQueries({
-      queryKey: getGetV2ListTurnsAtBudgetResetQueryKey(sessionId),
-    });
-  }
-
-  function toastChangeFailure(error: unknown) {
-    toast({
-      title: "Couldn’t change your scheduled message",
-      description: describeSendFailure(error, "it still sends at the reset"),
-      variant: "destructive",
-    });
   }
 
   /** For a message a page sent to be set at `sentAt` and then lost track

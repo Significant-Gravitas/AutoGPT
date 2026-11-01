@@ -146,10 +146,14 @@ class TestOpenPasses:
         assert update.not_updated_since == stale.updated_at
         assert update.owner_user_id is None
         assert update.completed_at is not None
-        assert update.error is not None
-        assert "no progress since" in update.error and run.pass_id in update.error
+        assert update.error == "expired: stalled"
         [record] = [r for r in caplog.records if "expired pass other" in r.getMessage()]
         assert record.levelno == logging.WARNING
+        message = record.getMessage()
+        assert f"Dream pass {run.pass_id} expired pass other as expired: stalled" in (
+            message
+        ), "the code and both passes are logged"
+        assert f"last written {stale.updated_at}" in message, "and when"
 
     async def test_a_lapsed_lease_is_stale_however_recently_written(self, db):
         leased = _row(
@@ -164,7 +168,7 @@ class TestOpenPasses:
         _, update = db.update_dream_pass.await_args.args
         assert update.status is DreamPassStatus.EXPIRED
         assert update.not_updated_since == leased.updated_at
-        assert update.error is not None and "lease lapsed" in update.error
+        assert update.error == "expired: lease_lapsed"
 
     async def test_a_stale_pass_that_moved_before_its_expiry_still_blocks(self, db):
         """The expiry is refused because the row was written after the guard
@@ -200,7 +204,7 @@ class TestOpenPasses:
         assert update.status is DreamPassStatus.EXPIRED
         assert update.bump_cancel_generation is True
         assert update.not_updated_since is None
-        assert update.error == f"forced by an admin-triggered dream pass {run.pass_id}"
+        assert update.error == "expired: forced"
 
     async def test_stale_passes_are_expired_before_a_fresh_one_skips(self, db):
         db.list_open_dream_passes.return_value = [

@@ -15,9 +15,20 @@ OpenRouter Broadcast sends every generation to PostHog LLM analytics as an
   the trace of the turn that spawned it (``ai_spans.trace_id_for``);
   ``ai_spans`` sends the trace's tool spans and root from the backend.
 - ``trace.generation_name`` becomes ``$ai_span_name``; every other ``trace``
-  key arrives as ``metadata_<key>`` (``metadata_environment``,
-  ``metadata_impersonated``, and ``metadata_revision``: the deployed build's
-  git sha from ``config.sentry_release``, left out when that is blank).
+  key arrives as ``metadata_<key>``:
+
+  - ``metadata_environment``: the app environment;
+  - ``metadata_impersonated``: whether an admin started the turn as the
+    user;
+  - ``metadata_turn_origin``: what started the turn that made the call
+    (``chat``, ``scheduled``, ``spawned``, ``automation`` or ``system``,
+    ``turn_tracing.turn_origin``), left out for a call made outside a turn.
+    A reply's own calls match its ``$ai_trace``'s ``turn_origin``; a
+    subtask's calls join the reply's trace but carry the subtask's origin,
+    as on its ``$ai_span``;
+  - ``metadata_revision``: the deployed build's git sha from
+    ``config.sentry_release``, left out when that is blank.
+
   Broadcast sends these events itself, not through our PostHog client, so
   they never get a property the client adds to every event it captures.
 
@@ -32,6 +43,7 @@ from typing import Any, Literal
 from autogpt_libs.auth.dependencies import IMPERSONATION_HEADER_NAME
 from fastapi import Request
 
+from backend.util import posthog_client
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -42,14 +54,14 @@ _MAX_ID_CHARS = 128
 
 GenerationName = Literal["copilot-title", "copilot-sdk", "copilot-baseline"]
 
-# Whether an admin impersonating the user started the running turn. The
-# executor sets it for every turn, so a value never carries over.
-_turn_impersonated: ContextVar[bool] = ContextVar("_turn_impersonated", default=False)
-
 # The running turn's trace, sent as the trace id of every call it makes. The
 # executor sets it for every turn, so a value never carries over; a call made
 # outside a turn sends none.
 _turn_trace_id: ContextVar[str | None] = ContextVar("_turn_trace_id", default=None)
+# What started the running turn (``turn_tracing.turn_origin``), so analytics
+# can tell a person's message from a schedule's. Set for every turn, like the
+# trace id; a call made outside a turn sends none.
+_turn_origin: ContextVar[str | None] = ContextVar("_turn_origin", default=None)
 
 
 def openrouter_attribution(
@@ -72,6 +84,9 @@ def openrouter_attribution(
     trace_id = turn_trace_id()
     if trace_id:
         body["trace"]["trace_id"] = trace_id[:_MAX_ID_CHARS]
+    origin = current_turn_origin()
+    if origin:
+        body["trace"]["turn_origin"] = origin
     if user_id:
         body["user"] = user_id[:_MAX_ID_CHARS]
     if session_id:
@@ -80,12 +95,16 @@ def openrouter_attribution(
 
 
 def set_turn_impersonated(impersonated: bool) -> None:
-    """Mark the running turn as started by an impersonating admin, or not."""
-    _turn_impersonated.set(impersonated)
+    """Mark the running turn as started by an impersonating admin, or not.
+
+    The mark is the PostHog client's, so every event the turn sends carries
+    it too. The executor sets it for every turn, so a value never carries
+    over."""
+    posthog_client.set_impersonated(impersonated)
 
 
 def is_turn_impersonated() -> bool:
-    return _turn_impersonated.get()
+    return posthog_client.is_impersonated()
 
 
 def set_turn_trace_id(trace_id: str | None) -> None:
@@ -95,6 +114,16 @@ def set_turn_trace_id(trace_id: str | None) -> None:
 
 def turn_trace_id() -> str | None:
     return _turn_trace_id.get()
+
+
+def set_turn_origin(origin: str | None) -> None:
+    """Make *origin* the turn origin every model call the running turn makes
+    reports."""
+    _turn_origin.set(origin or None)
+
+
+def current_turn_origin() -> str | None:
+    return _turn_origin.get()
 
 
 def is_impersonated_request(request: Request) -> bool:

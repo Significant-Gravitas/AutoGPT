@@ -51,6 +51,7 @@ from . import orchestrator as orchestrator_mod
 from .apply import INGESTION_DRAIN_TIMEOUT_SECONDS, LOCK_DRAIN_RENEWAL_SECONDS
 from .batch_callbacks import handle_dream_batch_result
 from .batch_submit import persist_input_bundle
+from .citations import fact_scopes
 from .fetch import DreamInput, EpisodeRow, FactRow
 from .locks import (
     BATCH_LOCK_TTL_SECONDS,
@@ -679,6 +680,7 @@ async def test_clamps_oversized_sanitizer_output(mocker):
         *,
         known_fact_uuids=None,
         known_episode_uuids=None,
+        fact_scopes=None,
         lock_handle=None,
         lease=None,
     ):
@@ -749,6 +751,7 @@ async def test_demotions_capped_at_five_percent_of_active_facts(mocker):
         *,
         known_fact_uuids=None,
         known_episode_uuids=None,
+        fact_scopes=None,
         lock_handle=None,
         lease=None,
     ):
@@ -864,6 +867,7 @@ async def test_sync_path_filters_hallucinated_demotion_before_cap(mocker):
         *,
         known_fact_uuids=None,
         known_episode_uuids=None,
+        fact_scopes=None,
         lock_handle=None,
         lease=None,
     ):
@@ -954,6 +958,10 @@ async def test_sync_path_passes_known_fact_uuids_to_apply(mocker):
         apply_mock.await_args.kwargs["known_episode_uuids"]
         == input_bundle.known_episode_uuids
     )
+    # Each fact's scope, which a write's fact citations must share
+    # (``citations.py``).
+    assert apply_mock.await_args.kwargs["fact_scopes"] == fact_scopes(input_bundle)
+    assert apply_mock.await_args.kwargs["fact_scopes"]
 
 
 @pytest.mark.asyncio
@@ -1146,9 +1154,7 @@ async def test_partial_failure_still_charges_completed_phases(
 
     result = await orchestrator_mod.execute_dream_pass("u")
 
-    assert result.error is not None
-    assert result.error.startswith(f"{failed_phase}:")
-    assert error in result.error
+    assert result.error == f"{failed_phase}: inference_failed"
     assert charge_spy.await_count == completed
     assert [c.args[0].job.phase for c in charge_spy.await_args_list] == (
         phases[:completed]
@@ -1189,7 +1195,11 @@ async def test_a_failed_phase_preserves_trace_usage_without_charging(mocker):
     mocker.patch.object(
         orchestrator_mod,
         "structured_complete",
-        AsyncMock(side_effect=InferenceError("LLM JSON did not match", billed)),
+        AsyncMock(
+            side_effect=InferenceError(
+                "LLM JSON did not match", billed, code="schema_mismatch"
+            )
+        ),
     )
     mocker.patch.object(
         orchestrator_mod, "record_phase_cost", billing_mod.record_phase_cost
@@ -1203,8 +1213,7 @@ async def test_a_failed_phase_preserves_trace_usage_without_charging(mocker):
 
     result = await orchestrator_mod.execute_dream_pass("u", expert_id="expert-1")
 
-    assert result.error is not None
-    assert result.error.startswith("consolidate: LLM JSON did not match")
+    assert result.error == "consolidate: schema_mismatch", "a code, never the answer"
     apply_mock.assert_not_awaited()
     persist.assert_not_awaited()
     (seen,) = traced
@@ -1226,7 +1235,11 @@ async def test_a_phase_that_got_no_answer_records_nothing(mocker):
     mocker.patch.object(
         orchestrator_mod,
         "structured_complete",
-        AsyncMock(side_effect=InferenceError("LLM call failed: TimeoutError: ")),
+        AsyncMock(
+            side_effect=InferenceError(
+                "LLM call failed: TimeoutError: ", code="call_failed"
+            )
+        ),
     )
     mocker.patch.object(
         orchestrator_mod, "record_phase_cost", billing_mod.record_phase_cost
@@ -1237,8 +1250,7 @@ async def test_a_phase_that_got_no_answer_records_nothing(mocker):
 
     result = await orchestrator_mod.execute_dream_pass("u")
 
-    assert result.error is not None
-    assert result.error.startswith("consolidate: LLM call failed")
+    assert result.error == "consolidate: call_failed"
     persist.assert_not_awaited()
     assert result.usage is not None and result.usage.phases == []
 
@@ -2029,6 +2041,30 @@ class TestNearDuplicateWriteDedup:
         # Survivor keeps its own uuids first, then the absorbed extras.
         assert kept[0].source_episode_uuids == ["ep-2", "ep-3", "ep-1"]
 
+    def test_survivor_absorbs_dropped_writes_fact_citations(self):
+        """A forget of a fact only the dropped duplicate cited must still
+        reach the survivor (``graphiti/recall_cascade.py``)."""
+        writes = [
+            ConsolidatedFact(
+                content="Nick uses Terminus on his iPhone for CLI work",
+                confidence=0.6,
+                source_fact_uuids=["f-1"],
+            ),
+            ConsolidatedFact(
+                content=(
+                    "Nick uses Terminus on his iPhone for CLI work and wants "
+                    "it to display more ASCII characters"
+                ),
+                confidence=0.7,
+                source_episode_uuids=["ep-3"],
+                source_fact_uuids=["f-2"],
+            ),
+        ]
+        kept, dropped = dedup_mod.dedupe_near_duplicate_writes(writes)
+        assert dropped == 1
+        assert kept[0].source_fact_uuids == ["f-2", "f-1"]
+        assert kept[0].source_episode_uuids == ["ep-3"]
+
     def test_word_order_permutation_is_not_merged(self):
         writes = [
             ConsolidatedFact(content="Alice introduced Bob to Carol", confidence=0.7),
@@ -2138,7 +2174,7 @@ async def test_batch_handoff_revokes_batch_when_lock_extend_fails(mocker):
     remove_pending.assert_awaited_once_with("batch-xyz")
     cleanup.assert_awaited_once_with(run.pass_id)
     handle.disown.assert_not_called()
-    assert result.error and "lock lost" in result.error
+    assert result.error == "submit: lock_lost"
 
 
 # ---------------------------------------------------------------------------
@@ -2292,7 +2328,7 @@ async def test_a_phase_failure_closes_the_row_errored_at_that_phase(
 
     result = await orchestrator_mod.execute_dream_pass("u")
 
-    assert result.error == "recombine: provider down"
+    assert result.error == "recombine: inference_failed"
     apply_mock.assert_not_awaited()
     assert fake_dream_db.statuses(result.pass_id) == [
         DreamPassStatus.RUNNING,
@@ -2311,9 +2347,13 @@ async def test_a_phase_failure_closes_the_row_errored_at_that_phase(
 
 
 @pytest.mark.asyncio
-async def test_a_store_outage_never_fails_the_pass(mocker, fake_dream_db, caplog):
+async def test_a_pass_whose_insert_is_not_confirmed_never_reads_the_graph(
+    mocker, fake_dream_db, caplog
+):
+    """A hard forget marks only passes whose rows it can read: a pass whose
+    insert failed or ran out of time stops before it gathers."""
     fake_dream_db.fail = True
-    mocker.patch.object(
+    gather = mocker.patch.object(
         orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
     )
     apply_mock = _stub_three_phases_and_apply(mocker)
@@ -2321,12 +2361,52 @@ async def test_a_store_outage_never_fails_the_pass(mocker, fake_dream_db, caplog
     with caplog.at_level(logging.WARNING):
         result = await orchestrator_mod.execute_dream_pass("u")
 
-    assert result.error is None and result.skipped is False
-    assert result.dream_session_id == "s"
-    apply_mock.assert_awaited_once()
+    assert result.error == "pass: record_unconfirmed" and result.skipped is False
+    gather.assert_not_awaited()
+    apply_mock.assert_not_awaited()
     assert fake_dream_db.writes == []
     assert "could not insert its record" in caplog.text
-    assert "could not record the outcome" in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("landed", [False, None], ids=["refused", "failed"])
+async def test_a_pass_whose_read_set_is_not_on_its_row_makes_no_model_call(
+    mocker, fake_dream_db, landed
+):
+    """What the pass read goes on its row with the gather, before the first
+    model call: a write the row refused (closed or gone, with no stop to
+    report) or that failed ends the pass there."""
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    mocker.patch.object(
+        orchestrator_mod, "record_gathered", AsyncMock(return_value=landed)
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+    consolidate = mocker.patch.object(orchestrator_mod, "_run_consolidate", AsyncMock())
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error == "gather: record_failed"
+    consolidate.assert_not_awaited()
+    apply_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_gather_records_every_fact_and_episode_it_read(mocker, fake_dream_db):
+    bundle = _build_input(episodes=2, facts=2).model_copy(
+        update={"known_fact_uuids": {"f0", "f1", "f9"}}
+    )
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=bundle)
+    )
+    _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is None
+    row = fake_dream_db.rows[result.pass_id]
+    assert row["read_uuids"] == ["e0", "e1", "f0", "f1", "f9"]
 
 
 def _batch_route(mocker, *, lock_extends: bool) -> MagicMock:
@@ -2412,7 +2492,7 @@ async def test_a_batch_handoff_that_lost_the_lock_is_recorded_errored(
 
     result = await orchestrator_mod.execute_dream_pass("u")
 
-    assert result.error and "lock lost" in result.error
+    assert result.error == "submit: lock_lost"
     assert fake_dream_db.statuses(result.pass_id) == [
         DreamPassStatus.RUNNING,
         DreamPassStatus.ERRORED,
@@ -2457,12 +2537,15 @@ def _three_billed_phases(mocker) -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "failure",
-    [RuntimeError("apply exploded"), DreamLockLostError("u")],
+    "failure, error",
+    [
+        (RuntimeError("apply exploded"), "pass: crashed"),
+        (DreamLockLostError("u"), "apply: lock_lost"),
+    ],
     ids=["apply_crash", "lock_lost"],
 )
 async def test_a_failure_after_the_phases_keeps_all_three_phases_usage(
-    mocker, fake_dream_db, failure
+    mocker, fake_dream_db, failure, error
 ):
     mocker.patch.object(
         orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
@@ -2474,7 +2557,7 @@ async def test_a_failure_after_the_phases_keeps_all_three_phases_usage(
 
     result = await orchestrator_mod.execute_dream_pass("u")
 
-    assert result.error == str(failure)
+    assert result.error == error, "no exception text is recorded"
     assert result.usage is not None
     assert [p.phase for p in result.usage.phases] == [
         "consolidate",
@@ -2560,8 +2643,8 @@ def _fail_the_charge(mocker, phase: str, failure: str) -> AsyncMock:
 @pytest.mark.parametrize(
     "answer, failure, error",
     [
-        ("parsed", "trial_cost", "trial cost database unavailable"),
-        ("parsed", "cost_log", "cost log scheduling failed after the charge"),
+        ("parsed", "trial_cost", "billing: charge_failed"),
+        ("parsed", "cost_log", "billing: charge_failed"),
     ],
     ids=["trial_cost", "cost_log"],
 )
@@ -2620,7 +2703,7 @@ async def test_failed_inference_is_absorbed_in_ledger_and_durable_pass(
     result = await orchestrator_mod.execute_dream_pass("u")
 
     completed = _PHASES.index(phase)
-    assert result.error == f"{phase}: answer did not parse"
+    assert result.error == f"{phase}: inference_failed"
     assert charges.await_count == completed
     apply_mock.assert_not_awaited()
     assert result.usage is not None
@@ -2787,13 +2870,12 @@ async def test_a_stalled_record_store_costs_each_write_only_its_deadline(
 
     result = await asyncio.wait_for(orchestrator_mod.execute_dream_pass("u"), 10)
 
-    assert result.error is None and result.dream_session_id == "s"
-    apply_mock.assert_awaited_once()
-    # The insert, the guard's read of the scope's open passes, six updates,
-    # the four stop checks and the four lease renewals (three phases, apply),
-    # each abandoned at the deadline; neither the guard nor a check nor a
-    # renewal held the pass on a store that did not answer.
-    assert (stalled_dream_db.started, stalled_dream_db.cancelled) == (16, 16)
+    assert result.error == "pass: record_unconfirmed"
+    apply_mock.assert_not_awaited()
+    # The insert, then the outcome that would close a row it left behind,
+    # each abandoned at the deadline: a pass whose row the store cannot
+    # confirm never reads the graph, and is not held by the store.
+    assert (stalled_dream_db.started, stalled_dream_db.cancelled) == (2, 2)
 
 
 @pytest.mark.asyncio
@@ -2820,7 +2902,8 @@ async def test_the_nightly_fan_out_reaches_ratification_past_a_stalled_store(
     result = await asyncio.wait_for(nightly_batch_mod.run_nightly_batch_submit("u"), 10)
 
     ratification.assert_awaited_once_with("u", expert_id=None)
-    assert result.dream is not None and result.dream.error is None
+    assert result.dream is not None
+    assert result.dream.error == "pass: record_unconfirmed"
 
 
 @pytest.mark.asyncio

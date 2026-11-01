@@ -9,8 +9,10 @@ blocks without results and leave the CLI session file unresumable.
 from unittest.mock import MagicMock
 
 import pytest
+from claude_agent_sdk import ClaudeAgentOptions
 
 from backend.copilot.model import ChatSession
+from backend.copilot.sdk.env import DISABLE_SLASH_COMMANDS_FLAG
 
 from .service import _graphiti_ingest_allowed, _ready_for_building_mode_restart
 
@@ -82,6 +84,7 @@ class TestApplyBuildingModeRestart:
         auto_mode_supplement: str = "",
         use_e2b: bool = False,
         expert_id: str | None = None,
+        sdk_options: ClaudeAgentOptions | MagicMock | None = None,
     ):
         from backend.copilot.sdk.service import (
             _BUILDING_MODE_CONTINUATION,
@@ -97,11 +100,10 @@ class TestApplyBuildingModeRestart:
         state = self._state(
             prior_emitted=prior_emitted, thinking_reprompted=thinking_reprompted
         )
-        sdk_options = MagicMock()
         status = await _apply_building_mode_restart(
             session=session,
             state=state,
-            sdk_options=sdk_options,
+            sdk_options=sdk_options or MagicMock(),
             base_system_prompt="BASE",
             delegation_supplement=delegation_supplement,
             oversight_supplement=oversight_supplement,
@@ -252,6 +254,19 @@ class TestApplyBuildingModeRestart:
         assert session.guide_in_system_prompt is True
         assert session.building_mode_requested is False
         assert state.query_message == _BUILDING_MODE_CONTINUATION
+
+    @pytest.mark.asyncio
+    async def test_relaunch_keeps_cli_text_as_text(self, mocker):
+        """The relaunch runs the rest of the user's turn, so its text must
+        still reach the model as written after it."""
+        options = ClaudeAgentOptions(
+            extra_args={DISABLE_SLASH_COMMANDS_FLAG: None}, verbatim_prompts=True
+        )
+        _, state, _, _ = await self._run(mocker, sdk_options=options)
+
+        assert state.options is not options
+        assert DISABLE_SLASH_COMMANDS_FLAG in state.options.extra_args
+        assert state.options.verbatim_prompts is True
 
     @pytest.mark.asyncio
     async def test_adapter_carry_over(self, mocker):

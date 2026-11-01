@@ -24,6 +24,7 @@ from backend.data.subscription_trial import TrialState
 from backend.notifications.dedupe import claim_once, release_claim
 from backend.notifications.lifecycle_plan import currency_symbol, format_amount
 from backend.notifications.queue import queue_notification_async
+from backend.notifications.recipient import first_name
 from backend.notifications.trial_audience import (
     join_paying_audience,
     leave_trial_group,
@@ -91,7 +92,9 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
     if kind == "ended" and await _another_plan_is_live(trial, current):
         await leave_trial_group(user)
         return True
-    data = trial_notice_data(trial, kind, user.name or "there", current)
+    data = trial_notice_data(
+        trial, kind, first_name(user.name, user.email) or "there", current
+    )
     claim = trial_notice_key(trial, kind)
     data.notice_key = claim
     if not await claim_once(claim):
@@ -209,7 +212,20 @@ def _notice_matches_current_terms(
         plan.label = expected.plan.label
     if plan.price_display == legacy_price:
         plan.price_display = expected.plan.price_display
-    return data.model_copy(update={"plan": plan, "notice_key": None}) == expected
+    return (
+        data.model_copy(
+            update={
+                "plan": plan,
+                "notice_key": None,
+                "started_label": (
+                    expected.started_label
+                    if data.started_label is None
+                    else data.started_label
+                ),
+            }
+        )
+        == expected
+    )
 
 
 def _owns_subscription(trial: TrialState, current: dict) -> bool:
@@ -285,6 +301,11 @@ def trial_notice_data(
             price_display=f"{amount} / {cycle_noun}",
         ),
         ends_label=trial.ends_at.astimezone(UTC).strftime("%d %b %Y at %H:%M UTC"),
+        started_label=(
+            trial.converted_at.astimezone(UTC).strftime("%d %b %Y at %H:%M UTC")
+            if kind == "converted" and trial.converted_at
+            else None
+        ),
         onboarding_credit_amount=trial.offer.onboarding_credit_amount,
         offer_version=trial.offer.version,
     )

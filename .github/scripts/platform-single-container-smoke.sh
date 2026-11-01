@@ -472,8 +472,7 @@ assert_pinned_topology_environment() {
     DATABASE_API_PORT=8005 AGENT_API_HOST=127.0.0.1 AGENT_API_PORT=8006 \
     NOTIFICATION_SERVICE_PORT=8007 COPILOT_EXECUTOR_PORT=8008 \
     PLATFORM_LINKING_SERVICE_PORT=8009 COPILOT_CHAT_BRIDGE_PORT=8010 \
-    BATCH_EXECUTOR_PORT=8011 SWAP_CREDENTIAL_SERVICE_PORT=8012 \
-    FORCE_FLAG_GRAPHITI_MEMORY=true; do
+    BATCH_EXECUTOR_PORT=8011 SWAP_CREDENTIAL_SERVICE_PORT=8012; do
     grep -Fxq "${expected}" <<<"${process_env}"
   done
 }
@@ -565,6 +564,7 @@ forbidden = {
     "DIRECT_URL",
     "ENCRYPTION_KEY",
     "GRAPHITI_FALKORDB_PASSWORD",
+    "INTERNAL_API_KEY",
     "POSTGRES_PASSWORD",
     "RABBITMQ_DEFAULT_PASS",
     "REDIS_PASSWORD",
@@ -1017,7 +1017,6 @@ assert_memory_contract() {
     --workdir /app/autogpt_platform/backend \
     "${CONTAINER_NAME}" \
     /app/autogpt_platform/backend/.venv/bin/python - "${action}" <<'PY'
-import asyncio
 import shlex
 import sys
 from pathlib import Path
@@ -1066,10 +1065,6 @@ result = graph.query(
     "MATCH (n:MemorySmoke {id: 'persistent-memory'}) RETURN count(n)"
 )
 assert int(result.result_set[0][0]) == 1, result.result_set
-
-from backend.copilot.graphiti.config import is_enabled_for_user
-
-assert asyncio.run(is_enabled_for_user("single-container-smoke")) is True
 
 if action == "cleanup":
     redis.execute_command("GRAPH.DELETE", graph.name)

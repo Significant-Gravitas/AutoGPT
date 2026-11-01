@@ -161,8 +161,8 @@ def baseline_io(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[ChatSession]]:
             model="anthropic/claude-sonnet-4-6", source="env"
         ),
         "_build_system_prompt": ("System prompt", None),
-        "is_enabled_for_user": False,
-        "is_feature_enabled": False,
+        "_fetch_graphiti_context": "",
+        "enqueue_conversation_turn": None,
         "persist_and_record_usage": None,
     }.items():
         monkeypatch.setattr(service, name, AsyncMock(return_value=value))

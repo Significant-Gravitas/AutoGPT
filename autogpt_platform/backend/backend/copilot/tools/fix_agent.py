@@ -5,16 +5,20 @@ import json
 import logging
 from typing import Any
 
+from prisma.enums import APIKeyPermission
+
 from backend.copilot.model import ChatSession
 
 from .agent_generator.validation import AgentFixer, AgentValidator, get_blocks_as_dicts
 from .agent_json_input import (
     AGENT_JSON_REF_SCHEMA,
     AGENT_JSON_SCHEMA,
+    reads_workspace_file,
     resolve_agent_json_or_error,
     write_agent_json_to_workspace,
 )
 from .base import BaseTool
+from .external_scope import error_detail
 from .helpers import require_guide_read
 from .models import ErrorResponse, FixResultResponse, ToolResponseBase
 
@@ -27,6 +31,18 @@ class FixAgentGraphTool(BaseTool):
     @property
     def name(self) -> str:
         return "fix_agent_graph"
+
+    @property
+    def allow_external_use(self):
+        return True, []
+
+    def external_permissions(self, args: dict[str, Any]) -> list[APIKeyPermission]:
+        # Reading the graph from, or writing the fix to, a workspace file
+        # touches the caller's files.
+        needed = [APIKeyPermission.READ_FILES] if reads_workspace_file(args) else []
+        if isinstance(args.get("write_to"), str) and args["write_to"].strip():
+            needed.append(APIKeyPermission.WRITE_FILES)
+        return needed
 
     @property
     def description(self) -> str:
@@ -112,7 +128,7 @@ class FixAgentGraphTool(BaseTool):
         except Exception as e:
             logger.error(f"Fixer error: {e}", exc_info=True)
             return ErrorResponse(
-                message=f"Auto-fix encountered an error: {str(e)}",
+                message=f"Auto-fix encountered an error: {error_detail(e, session)}",
                 error="fix_exception",
                 session_id=session_id,
             )
@@ -124,7 +140,9 @@ class FixAgentGraphTool(BaseTool):
             remaining_errors = validator.errors if not is_valid else []
         except Exception as e:
             logger.warning(f"Post-fix validation error: {e}", exc_info=True)
-            remaining_errors = [f"Post-fix validation failed: {str(e)}"]
+            remaining_errors = [
+                f"Post-fix validation failed: {error_detail(e, session)}"
+            ]
             is_valid = False
 
         if is_valid:

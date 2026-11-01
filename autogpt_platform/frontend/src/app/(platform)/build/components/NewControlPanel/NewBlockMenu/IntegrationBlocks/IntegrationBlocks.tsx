@@ -1,7 +1,9 @@
-import { Button } from "@/components/__legacy__/ui/button";
+import { cn } from "@/lib/utils";
+import { blockMenuButtonBase } from "../style";
+import { Text } from "@/components/atoms/Text/Text";
 import React, { Fragment } from "react";
 import { IntegrationBlock } from "../IntergrationBlock";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { useIntegrationBlocks } from "./useIntegrationBlocks";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
@@ -33,7 +35,7 @@ export const IntegrationBlocks = () => {
         {Array.from({ length: 3 }).map((_, blockIndex) => (
           <Fragment key={blockIndex}>
             {blockIndex > 0 && (
-              <Skeleton className="my-4 h-[1px] w-full text-zinc-100" />
+              <Skeleton className="my-4 h-[1px] w-full text-surface-hover" />
             )}
             {[0, 1, 2].map((index) => (
               <IntegrationBlock.Skeleton key={`${blockIndex}-${index}`} />
@@ -71,25 +73,35 @@ export const IntegrationBlocks = () => {
       <div className="space-y-2.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1">
-            <Button
-              variant={"link"}
-              className="p-0 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800"
+            <button
+              type="button"
+              className={cn(
+                blockMenuButtonBase,
+                "h-9 p-0 text-foreground-emphasis underline-offset-4 hover:underline",
+              )}
               onClick={() => {
                 setIntegration(undefined);
               }}
             >
-              Integrations
-            </Button>
-            <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
+              <Text variant="body-medium" as="span" tone="inherit">
+                Integrations
+              </Text>
+            </button>
+            <Text variant="body-medium" tone="emphasis">
               /
-            </p>
-            <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
+            </Text>
+            <Text variant="body-medium" tone="emphasis">
               {integration}
-            </p>
+            </Text>
           </div>
-          <span className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-[1.25rem] bg-[#f0f0f0] p-1.5 font-sans text-sm leading-[1.375rem] text-zinc-500 group-disabled:text-zinc-400">
+          <Text
+            variant="body"
+            as="span"
+            tone="muted"
+            className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-full bg-surface-hover p-1.5 group-disabled:text-foreground-subtle"
+          >
             {totalBlocks}
-          </span>
+          </Text>
         </div>
         <div className="space-y-3">
           {allBlocks.map((block) => (

@@ -32,7 +32,8 @@ export function FireExpertMenu({ expertName, onFire, testId }: Props) {
       <DropdownMenuContent align="end" sideOffset={6}>
         <DropdownMenuItem
           onSelect={onFire}
-          className="flex cursor-pointer items-center gap-2 text-red-600 focus:bg-red-50 focus:text-red-700"
+          // oxlint-disable-next-line design-system/no-restyle -- DropdownMenuItem has no destructive variant (src/components is P9's)
+          className="flex cursor-pointer items-center gap-2 text-error-foreground focus:bg-error-surface focus:text-error-foreground"
         >
           <Icon icon={Logout03Icon} size={14} />
           Fire {expertName}

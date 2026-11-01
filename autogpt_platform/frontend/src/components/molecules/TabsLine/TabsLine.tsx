@@ -6,7 +6,7 @@ import type { IconSvgElement } from "@hugeicons/react";
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 import * as React from "react";
 
-type TabsLineVariant = "default" | "compact";
+type TabsLineVariant = "default" | "compact" | "pill";
 
 interface TabsLineContextValue {
   variant: TabsLineVariant;
@@ -31,6 +31,8 @@ interface TabsLineProps
   /**
    * `compact` is the dense neutral style: flush, zinc underline, 14px
    * triggers with tighter padding. `default` keeps the purple accent.
+   * `pill` is a segmented control: triggers in a rounded grey track, the
+   * active one raised on a light chip, and no underline.
    */
   variant?: TabsLineVariant;
 }
@@ -43,7 +45,7 @@ function TabsLine({ variant = "default", ...props }: TabsLineProps) {
     <TabsLineContext.Provider
       value={{ variant, activeTabElement, setActiveTabElement }}
     >
-      <TabsPrimitive.Root {...props} />
+      <TabsPrimitive.Root data-slot="tabs" {...props} />
     </TabsLineContext.Provider>
   );
 }
@@ -71,18 +73,33 @@ const TabsLineList = React.forwardRef<
   const isCompact = variant === "compact";
   const isFlush = flush ?? isCompact;
 
+  if (variant === "pill") {
+    return (
+      <TabsPrimitive.List
+        ref={ref}
+        data-slot="tabs-list"
+        className={cn(
+          "inline-flex h-10 w-80 items-center justify-center rounded-3xl bg-surface-hover p-1 text-foreground-tertiary",
+          className,
+        )}
+        {...props}
+      />
+    );
+  }
+
   return (
-    <div className="relative">
+    <div data-slot="tabs-list-root" className="relative">
       <TabsPrimitive.List
         ref={(node) => {
           if (typeof ref === "function") ref(node);
           else if (ref) ref.current = node;
-          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment -- listRef is a read-only RefObject; the callback ref fills it
           // @ts-ignore
           listRef.current = node;
         }}
+        data-slot="tabs-list"
         className={cn(
-          "inline-flex w-full items-center justify-start border-b border-zinc-100",
+          "inline-flex w-full items-center justify-start border-b border-separator",
           isFlush && "[&>button:first-child]:!pl-0",
           className,
         )}
@@ -90,16 +107,18 @@ const TabsLineList = React.forwardRef<
       />
       {activeTabElement && (
         <div
+          data-slot="tabs-indicator"
           className={cn(
-            "transition-left transition-right absolute bottom-0 h-0.5 bg-purple-600 duration-200 ease-in-out",
-            isCompact && "bg-zinc-900",
+            "absolute bottom-0 left-[var(--tab-left)] h-0.5 w-[var(--tab-width)] bg-brand-hover duration-200 ease-in-out will-change-[left,width]",
+            isCompact && "bg-action-hover",
             indicatorClassName,
           )}
-          style={{
-            left: activeTabElement.offsetLeft,
-            width: activeTabElement.offsetWidth,
-            willChange: "left, width",
-          }}
+          style={
+            {
+              "--tab-left": `${activeTabElement.offsetLeft}px`,
+              "--tab-width": `${activeTabElement.offsetWidth}px`,
+            } as React.CSSProperties
+          }
         />
       )}
     </div>
@@ -145,20 +164,29 @@ const TabsLineTrigger = React.forwardRef<
       ref={(node) => {
         if (typeof ref === "function") ref(node);
         else if (ref) ref.current = node;
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment -- elementRef is a read-only RefObject; the callback ref fills it
         // @ts-ignore
         elementRef.current = node;
       }}
+      data-slot="tabs-trigger"
       className={cn(
-        "relative inline-flex items-center justify-center whitespace-nowrap px-3 py-3 font-sans text-[0.875rem] font-medium leading-[1.5rem] text-zinc-700 transition-all data-[state=active]:text-purple-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
-        icon && "gap-1.5",
+        variant === "pill" && [
+          "flex flex-1 items-start justify-center gap-2.5 rounded-2xl px-3 py-2 text-center font-sans text-caption leading-tight font-medium whitespace-nowrap text-foreground-tertiary ring-offset-surface transition-all",
+          "focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50",
+          "data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-subtle",
+        ],
+        variant !== "pill" &&
+          "relative inline-flex items-center justify-center px-3 py-3 font-sans text-body leading-6 font-medium whitespace-nowrap text-foreground-body transition-all focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:ring-offset-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-brand-hover",
+        icon && variant !== "pill" && "gap-1.5",
         variant === "compact" &&
-          "px-2.5 py-2 text-sm leading-5 text-zinc-600 data-[state=active]:text-zinc-900",
+          "px-2.5 py-2 text-body leading-5 text-foreground-secondary data-[state=active]:text-foreground-strong",
         className,
       )}
       {...props}
     >
-      {icon ? <Icon icon={icon} size={14} aria-hidden /> : null}
+      {icon ? (
+        <Icon data-slot="tabs-trigger-icon" icon={icon} size={14} aria-hidden />
+      ) : null}
       {children}
     </TabsPrimitive.Trigger>
   );
@@ -168,20 +196,28 @@ TabsLineTrigger.displayName = "TabsLineTrigger";
 const TabsLineContent = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.Content>
->(({ className, ...props }, ref) => (
-  <TabsPrimitive.Content
-    ref={ref}
-    className={cn(
+>(({ className, ...props }, ref) => {
+  const isPill = React.useContext(TabsLineContext)?.variant === "pill";
+
+  return (
+    <TabsPrimitive.Content
+      ref={ref}
+      data-slot="tabs-panel"
       // Radix marks inactive panels with the `hidden` attribute, but the UA
       // rule behind it is weaker than any author display utility — a panel
       // styled `flex`/`grid` stays laid out and keeps stealing space from the
-      // active one. The data-state variant is specific enough to win.
-      "mt-4 data-[state=inactive]:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2",
-      className,
-    )}
-    {...props}
-  />
-));
+      // active one. The data-state variant is specific enough to win. `pill`
+      // panels keep the UA rule, as the segmented control always has.
+      className={cn(
+        isPill
+          ? "mt-2 ring-offset-surface focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:outline-none"
+          : "mt-4 focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:ring-offset-2 focus-visible:outline-none data-[state=inactive]:hidden",
+        className,
+      )}
+      {...props}
+    />
+  );
+});
 TabsLineContent.displayName = "TabsLineContent";
 
 export { TabsLine, TabsLineContent, TabsLineList, TabsLineTrigger };

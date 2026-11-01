@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from backend.api.features.experts.models import Expert
+from backend.blocks.airtable.schema import AirtableCreateTableBlock
 from backend.data.activity_event import ActivityEvent, ActivityEventCategory
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 
@@ -330,3 +331,31 @@ def test_file_items_carry_file_id_and_mime_type() -> None:
     item = work.groups[0].items[0]
     assert item.file_id == "file-9"
     assert item.mime_type == "text/markdown"
+
+
+def test_an_older_integration_row_is_named_by_its_block() -> None:
+    block = AirtableCreateTableBlock()
+    events = [
+        _event(
+            event_id="e1",
+            category="INTEGRATION",
+            title=block.name,
+            provider="airtable",
+            object_id=block.id,
+        ),
+        # Not a block this platform knows: the stored title stands.
+        _event(
+            event_id="e2",
+            category="INTEGRATION",
+            title="RetiredBlock",
+            provider="airtable",
+            object_id="no-such-block",
+        ),
+    ]
+
+    work = _compose(events=events)
+
+    assert [item.title for item in work.groups[0].items] == [
+        "Airtable Create Table",
+        "RetiredBlock",
+    ]

@@ -35,9 +35,18 @@ export function TrialStatus({
     );
   const end = formatTrialEnd(trial.ends_at);
   return (
-    <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-3">
-      <div className="min-w-0 basis-full space-y-2 sm:flex-1 sm:basis-auto">
-        <div className="flex flex-wrap items-center gap-2.5">
+    <div
+      data-slot="trial-status"
+      className="flex flex-wrap items-center justify-between gap-x-5 gap-y-3"
+    >
+      <div
+        data-slot="trial-status-details"
+        className="min-w-0 basis-full space-y-2 sm:flex-1 sm:basis-auto"
+      >
+        <div
+          data-slot="trial-status-header"
+          className="flex flex-wrap items-center gap-2.5"
+        >
           <Text variant="large-semibold" as="h2">
             {trial.active ? "Your trial" : "Your trial has ended"}
           </Text>

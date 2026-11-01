@@ -11,6 +11,7 @@ from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from prisma.enums import SubscriptionTier
 
 from backend.data.pro_activation import UsageActivationState
+from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
 from .billing.credits_rate_limit import enforce_subscription_status_rate_limit
 from .billing.subscriptions import routes as subscription_routes
@@ -99,6 +100,17 @@ def _stub_cancel_pending_trial(mocker: pytest_mock.MockFixture) -> None:
         new_callable=AsyncMock,
         return_value=None,
     )
+
+
+@pytest.fixture(autouse=True)
+def scheduler_client(mocker: pytest_mock.MockFixture) -> Mock:
+    """No schedules by default, so the NO_TIER reads here never reach a scheduler."""
+    client = Mock()
+    client.get_execution_schedules = AsyncMock(return_value=[])
+    mocker.patch.object(
+        subscription_routes, "get_scheduler_client", return_value=client
+    )
+    return client
 
 
 @pytest.fixture(autouse=True)
@@ -452,6 +464,93 @@ def test_get_subscription_status_defaults_to_no_tier(
     assert data["monthly_cost"] == 0
     assert data["tier_costs"] == {}
     assert data["proration_credit_cents"] == 0
+
+
+def test_no_tier_counts_only_workflow_schedules_as_paused(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    scheduler_client: Mock,
+) -> None:
+    """A scheduled chat explains a lapsed plan in its own chat, so it adds nothing."""
+    _patch_user_tier(mocker, SubscriptionTier.NO_TIER)
+    scheduler_client.get_execution_schedules.return_value = [
+        _workflow_schedule("wf-1"),
+        _workflow_schedule("wf-2"),
+        _chat_schedule("chat-1"),
+    ]
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    assert response.json()["paused_workflow_schedules"] == 2
+    scheduler_client.get_execution_schedules.assert_awaited_once_with(
+        user_id=TEST_USER_ID
+    )
+
+
+def test_paying_tier_reads_no_schedules(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    scheduler_client: Mock,
+) -> None:
+    """Schedules run for a paying user, so nothing is paused and no read is spent."""
+    _patch_user_tier(mocker, SubscriptionTier.PRO)
+    scheduler_client.get_execution_schedules.return_value = [_workflow_schedule("wf-1")]
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    assert response.json()["paused_workflow_schedules"] == 0
+    scheduler_client.get_execution_schedules.assert_not_awaited()
+
+
+def test_a_failed_schedule_read_still_serves_the_status(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    scheduler_client: Mock,
+) -> None:
+    """The paywall reads this route to show its plans, so the count fails soft."""
+    _patch_user_tier(mocker, SubscriptionTier.NO_TIER)
+    scheduler_client.get_execution_schedules.side_effect = ConnectionError("down")
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    assert response.json()["paused_workflow_schedules"] == 0
+
+
+def _patch_user_tier(mocker: pytest_mock.MockFixture, tier: SubscriptionTier) -> None:
+    user = Mock()
+    user.subscription_tier = tier
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=user,
+    )
+
+
+def _workflow_schedule(job_id: str) -> GraphExecutionJobInfo:
+    return GraphExecutionJobInfo(
+        id=job_id,
+        name="Daily digest",
+        next_run_time="2026-10-25T09:00:00+00:00",
+        user_id=TEST_USER_ID,
+        graph_id="graph",
+        graph_version=1,
+        cron="0 9 * * *",
+        input_data={},
+    )
+
+
+def _chat_schedule(job_id: str) -> CopilotTurnJobInfo:
+    return CopilotTurnJobInfo(
+        id=job_id,
+        name="Follow up on the invoice",
+        next_run_time="2026-10-25T09:00:00+00:00",
+        user_id=TEST_USER_ID,
+        cron="0 9 * * *",
+        message="ping",
+    )
 
 
 def test_get_subscription_status_stripe_error_falls_back_to_zero(
@@ -1367,6 +1466,60 @@ def test_stripe_webhook_dispatches_invoice_payment_failed(
 
     assert response.status_code == 200
     failure_mock.assert_awaited_once_with(invoice_obj)
+
+
+@pytest.mark.parametrize(
+    "event_type", ["invoice.payment_succeeded", "invoice_payment.paid"]
+)
+def test_stripe_webhook_paid_invoice_reconciles_the_wallet_payment_first(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    event_type: str,
+) -> None:
+    """Both paid events settle or refund an unfinished wallet payment before
+    the success handler, whose credit grant reads the settled state."""
+    invoice_obj = {"id": "in_test", "customer": "cus_test", "amount_paid": 1999}
+    data_object = (
+        invoice_obj
+        if event_type == "invoice.payment_succeeded"
+        else {"object": "invoice_payment", "invoice": "in_test"}
+    )
+    event = {"type": event_type, "data": {"object": data_object}}
+    mocker.patch.object(
+        stripe.Invoice, "retrieve_async", AsyncMock(return_value=invoice_obj)
+    )
+
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.settings.secrets.stripe_webhook_secret",
+        new="whsec_test",
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.stripe.Webhook.construct_event",
+        return_value=event,
+    )
+    calls = Mock()
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.reconcile_wallet_payment_on_paid_invoice",
+        new=AsyncMock(side_effect=lambda inv: calls("refund", inv)),
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.handle_subscription_payment_success",
+        new=AsyncMock(side_effect=lambda inv: calls("success", inv)),
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.on_trial_invoice",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/credits/stripe_webhook",
+        content=b"{}",
+        headers={"stripe-signature": "t=1,v1=abc"},
+    )
+
+    assert response.status_code == 200
+    assert [c.args[0] for c in calls.call_args_list] == ["refund", "success"]
+    calls.assert_any_call("refund", invoice_obj)
 
 
 def test_update_subscription_tier_paid_to_paid_modifies_subscription(

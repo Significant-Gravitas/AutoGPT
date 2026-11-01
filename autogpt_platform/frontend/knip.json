@@ -6,7 +6,10 @@
     "scripts/seed-preview-accounts.ts",
     "scripts/perf/record.ts",
     "public/devtools/render-counter.js",
-    "scripts/perf/fixtures/generate.ts"
+    "scripts/perf/fixtures/generate.ts",
+    "scripts/codemod-tokens.ts",
+    "scripts/check-token-equivalence.ts",
+    "scripts/screenshot-pages.ts"
   ],
   "ignoreDependencies": [
     "@opentelemetry/instrumentation",

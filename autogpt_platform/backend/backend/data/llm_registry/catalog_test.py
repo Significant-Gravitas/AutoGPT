@@ -157,6 +157,27 @@ def test_kimi_k3_bills_at_authored_rates():
     }
 
 
+def test_kimi_k3_1_pro_bills_at_authored_rates():
+    """Kimi K3.1 Pro (OpenRouter, $2/$10 per 1M, $0.20/1M cached input) —
+    flat tier and per-1M projections must match the authored entry."""
+    k31 = LLMModel("moonshotai/kimi-k3.1-pro")
+    assert k31 is LLMModel.KIMI_K3_1_PRO
+    assert MODEL_COST[k31] == 9
+    assert TOKEN_COST[k31].model_dump() == {
+        "input": 300.0,
+        "output": 1500.0,
+        "cache_read": 30.0,
+        "cache_creation": 0.0,
+    }
+    entry = next(m for m in CATALOG.models if m.slug == "moonshotai/kimi-k3.1-pro")
+    assert entry.cost.provider_cache_read_usd_per_1m == 0.20
+    assert entry.price_tier == 3
+    assert entry.context_window == 1048576
+    assert entry.max_output_tokens == 943718
+    assert entry.supports_tools is True
+    assert entry.supports_reasoning is True
+
+
 def test_deepseek_chat_display_rate_tracks_openrouter():
     """SECRT-2701 regression pin: deepseek-chat's shown price had drifted to
     ~3x understated ($0.14/$0.28 displayed against a live $0.32/$0.89) and
@@ -316,6 +337,25 @@ def test_gpt6_1_sol_bills_at_authored_rates():
     sol_entry = next(m for m in CATALOG.models if m.slug == "gpt-6.1-sol")
     assert sol_entry.price_tier == 2
     assert sol_entry.context_window == 1050000
+
+
+def test_gpt6_1_terra_bills_at_authored_rates():
+    """GPT-6.1 Terra (OpenAI list price $1/$5 per 1M, $0.05/1M cached
+    input) — flat tier and per-1M projections must match the authored
+    catalog entry."""
+    terra = LLMModel("gpt-6.1-terra")
+    assert terra is LLMModel.GPT6_1_TERRA
+    assert MODEL_COST[terra] == 2
+    assert TOKEN_COST[terra].model_dump() == {
+        "input": 150.0,
+        "output": 750.0,
+        "cache_read": 7.5,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[terra].max_output_tokens == 128000
+    terra_entry = next(m for m in CATALOG.models if m.slug == "gpt-6.1-terra")
+    assert terra_entry.price_tier == 2
+    assert terra_entry.context_window == 1050000
 
 
 def test_gpt6_luna_bills_at_authored_rates():
@@ -746,14 +786,14 @@ def test_routing_cells_use_transport_ready_spellings():
 
 
 def test_mistral_large_4_bills_at_authored_rates():
-    """Mistral Large 4 (OpenRouter live rate $0.68/$2.09 per 1M, $0.07/1M
-    cached input as of 2026-10-06) — flat tier and per-1M projections must
+    """Mistral Large 4 (OpenRouter live rate $0.70/$2.10 per 1M, $0.07/1M
+    cached input as of 2026-10-29) — flat tier and per-1M projections must
     match the authored catalog entry."""
     large = LLMModel("mistralai/mistral-large-4-0")
     assert MODEL_COST[large] == 2
     assert TOKEN_COST[large].model_dump() == {
-        "input": 102.0,
-        "output": 313.5,
+        "input": 105.0,
+        "output": 315.0,
         "cache_read": 10.5,
         "cache_creation": 0.0,
     }
