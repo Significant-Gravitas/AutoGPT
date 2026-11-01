@@ -53,7 +53,10 @@ from backend.data.model import (
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.data.user import is_user_banned
-from backend.integrations.credentials_store import is_system_credential
+from backend.integrations.credentials_store import (
+    CredentialsSnapshot,
+    is_system_credential,
+)
 from backend.monitoring.instrumentation import record_graph_execution
 from backend.util import product_analytics
 from backend.util.clients import (
@@ -483,6 +486,9 @@ async def _validate_node_input_credentials(
     """
     credential_errors: dict[str, dict[str, str]] = defaultdict(dict)
     nodes_to_skip: set[str] = set()
+    user_credentials = CredentialsSnapshot(
+        lambda: get_integration_credentials_store().get_all_creds(user_id)
+    )
 
     for node in graph.nodes:
         block = node.block
@@ -573,9 +579,7 @@ async def _validate_node_input_credentials(
 
             try:
                 # Fetch the corresponding Credentials and perform sanity checks
-                credentials = await get_integration_credentials_store().get_creds_by_id(
-                    user_id, credentials_meta.id
-                )
+                credentials = await user_credentials.get(credentials_meta.id)
             except Exception as e:
                 # Handle any errors fetching credentials
                 # If credentials were explicitly configured but unavailable, it's an error
@@ -694,8 +698,7 @@ async def _validate_node_input_credentials(
                         )
                         continue
                     try:
-                        creds_store = get_integration_credentials_store()
-                        creds = await creds_store.get_creds_by_id(user_id, cred_id)
+                        creds = await user_credentials.get(cred_id)
                     except Exception as e:
                         if field_is_optional:
                             _mark_optional_skip()
