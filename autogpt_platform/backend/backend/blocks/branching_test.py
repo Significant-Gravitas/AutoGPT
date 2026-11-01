@@ -1,11 +1,15 @@
-"""ConditionBlock passes value1 through when a branch value is omitted."""
+"""Behaviour tests for ConditionBlock and IfInputMatchesBlock."""
 
 from __future__ import annotations
 
 import pytest
 
 from backend.blocks import get_block
-from backend.blocks.branching import ComparisonOperator, ConditionBlock
+from backend.blocks.branching import (
+    ComparisonOperator,
+    ConditionBlock,
+    IfInputMatchesBlock,
+)
 from backend.data.execution import ExecutionContext
 from backend.data.graph import Link, Node
 from backend.executor.utils import validate_exec
@@ -19,7 +23,7 @@ async def _run(**fields: object) -> dict[str, object]:
 
 async def _execute_node(node: Node, data: dict[str, object]) -> dict[str, object]:
     block = get_block(node.block_id)
-    assert type(block) is ConditionBlock
+    assert block is not None
     validated, error = validate_exec(node, data)
     assert validated is not None, error
     return {
@@ -69,7 +73,7 @@ async def test_explicit_false_value_is_kept():
 @pytest.mark.parametrize(
     "value1,value2,expected",
     [
-        (" 3 ", " 5 ", 3.0),
+        (" 3 ", " 5 ", 3),
         (" left ", "right", "left"),
         (False, True, False),
         (0, 1, 0),
@@ -159,3 +163,73 @@ def test_executor_rejects_invalid_inputs(fields: dict[str, object]):
 async def test_incomparable_values_raise_block_execution_error():
     with pytest.raises(BlockExecutionError, match="Comparison failed"):
         await _run(value1=[1], operator=">", value2=3)
+
+
+B0 = 9007199254740992  # 2**53
+B1 = 9007199254740993  # 2**53 + 1, not representable as a float
+
+
+@pytest.mark.parametrize(
+    "value1,operator,value2,result",
+    [
+        (str(B1), "==", str(B0), False),
+        (str(B1), "!=", str(B0), True),
+        (str(B1), ">", str(B0), True),
+        (str(B0), "<", str(B1), True),
+        (B1, "==", str(B1), True),
+        (str(B1), "==", B1, True),
+        ("-9223372036854775808", "<", "-9223372036854775807", True),
+        (" 3 ", "==", "3.0", True),
+        ("3", "<", "3.5", True),
+        ("1e3", "==", 1000, True),
+        ("0.1", "==", "0.10000000000000001", True),
+        ("nan", "==", "nan", False),
+        (" abc ", "==", "abc", True),
+        ("abc", "==", 3, False),
+    ],
+)
+async def test_condition_compares_numeric_strings_exactly(
+    value1: object, operator: str, value2: object, result: bool
+):
+    outputs = await _run(
+        value1=value1, operator=operator, value2=value2, yes_value="y", no_value="n"
+    )
+
+    assert outputs["result"] is result
+
+
+@pytest.mark.parametrize(
+    "value1,expected",
+    [(str(B1), B1), ("3", 3), (" 3.5 ", 3.5), (" abc ", "abc")],
+)
+async def test_condition_passthrough_keeps_parsed_value1(value1: str, expected: object):
+    outputs = await _run(value1=value1, operator="==", value2=value1)
+
+    assert outputs == {"result": True, "yes_output": expected}
+    assert type(outputs["yes_output"]) is type(expected)
+
+
+async def test_condition_string_vs_number_ordering_still_fails():
+    with pytest.raises(BlockExecutionError, match="Comparison failed"):
+        await _run(value1="abc", operator=">", value2=3)
+
+
+@pytest.mark.xfail(
+    reason="IfInputMatches converts through util.type.convert; exact once #16415 lands",
+    strict=False,
+)
+@pytest.mark.parametrize("input_value,result", [(B0, False), (B1, True)])
+async def test_if_input_matches_big_int_against_string(input_value: int, result: bool):
+    node = Node(
+        block_id=IfInputMatchesBlock().id,
+        input_default={
+            "input": input_value,
+            "value": str(B1),
+            "yes_value": "yes",
+            "no_value": "no",
+        },
+    )
+
+    outputs = await _execute_node(node, {})
+
+    assert outputs["result"] is result

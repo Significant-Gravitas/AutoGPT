@@ -22,6 +22,21 @@ class ComparisonOperator(Enum):
     LESS_THAN_OR_EQUAL = "<="
 
 
+def _normalize_operand(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    # int() first: float() keeps only 53 bits, so big integer strings would round.
+    try:
+        return int(text)
+    except ValueError:
+        pass
+    try:
+        return float(text)
+    except ValueError:
+        return text
+
+
 class ConditionBlock(Block):
     class Input(BlockSchemaInput):
         value1: Any = SchemaField(
@@ -82,19 +97,8 @@ class ConditionBlock(Block):
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         operator = input_data.operator
 
-        value1 = input_data.value1
-        if isinstance(value1, str):
-            try:
-                value1 = float(value1.strip())
-            except ValueError:
-                value1 = value1.strip()
-
-        value2 = input_data.value2
-        if isinstance(value2, str):
-            try:
-                value2 = float(value2.strip())
-            except ValueError:
-                value2 = value2.strip()
+        value1 = _normalize_operand(input_data.value1)
+        value2 = _normalize_operand(input_data.value2)
 
         yes_value = input_data.yes_value if input_data.yes_value is not None else value1
         no_value = input_data.no_value if input_data.no_value is not None else value1
