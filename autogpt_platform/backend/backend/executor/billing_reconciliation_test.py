@@ -299,6 +299,58 @@ async def test_positive_delta_survives_a_failing_personal_org_lookup(
     add_spend.assert_awaited_once_with("expert-1", 5)
 
 
+def test_a_run_queued_on_the_wallet_takes_its_pre_flight_charge_from_it(
+    tmp_block_costs_override,
+):
+    """The charge goes to the wallet the run was queued on."""
+    tmp_block_costs_override([BlockCost(cost_amount=7, cost_type=BlockCostType.RUN)])
+    exec_entry = _node_exec(SearchTheWebBlock().id)
+    exec_entry.execution_context.organization_id = "org-1"
+    exec_entry.execution_context.bills_own_wallet = True
+
+    db_client = MagicMock()
+    with (
+        patch("backend.executor.billing.get_db_client", return_value=db_client),
+        patch("backend.executor.billing.get_block", return_value=SearchTheWebBlock()),
+    ):
+        charge_usage(exec_entry, execution_count=0)
+
+    db_client.spend_org_credits.assert_not_called()
+    assert db_client.spend_credits.call_args.kwargs["user_id"] == exec_entry.user_id
+    assert db_client.spend_credits.call_args.kwargs["cost"] == 7
+
+
+@pytest.mark.asyncio
+async def test_a_run_queued_on_the_wallet_settles_its_post_flight_charge_on_it(
+    tmp_block_costs_override,
+):
+    tmp_block_costs_override(
+        [BlockCost(cost_amount=100, cost_type=BlockCostType.COST_USD)]
+    )
+    exec_entry = _node_exec(SearchTheWebBlock().id)
+    exec_entry.execution_context.organization_id = "org-1"
+    exec_entry.execution_context.bills_own_wallet = True
+    stats = NodeExecutionStats(provider_cost=0.05, provider_cost_type="cost_usd")
+
+    db_client = _async_db_client(spend_credits_return=42)
+    db_client.spend_org_credits = AsyncMock()
+    with (
+        patch(
+            "backend.executor.billing.get_database_manager_async_client",
+            return_value=db_client,
+        ),
+        patch("backend.executor.billing.get_db_client", return_value=MagicMock()),
+        patch("backend.executor.billing.handle_low_balance") as handle_lb,
+    ):
+        delta, remaining = await charge_reconciled_usage(exec_entry, stats)
+
+    assert (delta, remaining) == (5, 42)
+    db_client.spend_org_credits.assert_not_awaited()
+    assert db_client.spend_credits.await_args.kwargs["user_id"] == exec_entry.user_id
+    # The wallet paid, so the wallet's low-balance alert applies.
+    handle_lb.assert_called_once()
+
+
 @pytest.mark.asyncio
 async def test_positive_delta_passes_fail_insufficient_credits_false(
     tmp_block_costs_override,

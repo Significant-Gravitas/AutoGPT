@@ -9,7 +9,7 @@ from backend.blocks import get_block
 from backend.blocks._base import Block
 from backend.data import redis_client as redis
 from backend.data.credit import UsageTransactionMetadata
-from backend.data.execution import ExecutionStatus, NodeExecutionEntry
+from backend.data.execution import ExecutionContext, ExecutionStatus, NodeExecutionEntry
 from backend.data.expert_spend import add_weekly_spend, add_weekly_spend_sync
 from backend.data.model import NodeExecutionStats
 from backend.notifications.alert_causes import LowBalanceCause, ZeroBalanceCause
@@ -138,7 +138,7 @@ def charge_usage(
     if not block:
         return total_cost, 0, block_pre_flight
 
-    org_id = node_exec.execution_context.organization_id
+    org_id = billed_org_id(node_exec.execution_context)
     if cost > 0:
         block_metadata = UsageTransactionMetadata(
             graph_exec_id=node_exec.graph_exec_id,
@@ -224,6 +224,14 @@ def charge_usage(
         add_weekly_spend_sync(node_exec.execution_context.expert_id, total_cost)
 
     return total_cost, remaining_balance, block_pre_flight
+
+
+def billed_org_id(context: ExecutionContext) -> str | None:
+    """The org whose balance pays for the run, or None for its user's own wallet.
+
+    Read from the pin set when the run was queued.
+    """
+    return None if context.bills_own_wallet else context.organization_id
 
 
 def redispatch_reconcile_baseline(node_exec: NodeExecutionEntry) -> int | None:
@@ -324,7 +332,7 @@ async def charge_reconciled_usage(
                 f"actual={post_flight} credits, pre-flight={pre_flight}"
             ),
         )
-        org_id = node_exec.execution_context.organization_id
+        org_id = billed_org_id(node_exec.execution_context)
         if org_id:
             remaining_balance = await db_client.spend_org_credits(
                 org_id=org_id,

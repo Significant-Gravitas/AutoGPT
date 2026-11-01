@@ -2468,6 +2468,71 @@ async def test_autopilot_execution_keeps_explicit_tenancy(mocker: MockerFixture)
     assert create_kwargs["team_id"] == "shared-team"
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "owner, supplied, expected",
+    [
+        ("test-user-id", False, True),  # the runner's own personal org
+        (None, True, False),  # a team org, whatever the caller supplied
+    ],
+)
+async def test_the_ledger_a_run_bills_is_decided_when_it_is_queued(
+    mocker: MockerFixture, _orgs_are_not_personal, owner, supplied, expected
+):
+    """Billing reads the pin set when the run was queued."""
+    from backend.data.execution import ExecutionContext
+
+    mock_edb, _ = _mock_add_graph_execution_create_path(
+        mocker, org_id="org-1", team_id="team-1"
+    )
+    _orgs_are_not_personal.return_value.get_personal_org_owner.return_value = owner
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="test-user-id",
+        execution_context=ExecutionContext(bills_own_wallet=supplied),
+        organization_id="org-1",
+        team_id="team-1",
+    )
+
+    _orgs_are_not_personal.return_value.get_personal_org_owner.assert_awaited_once_with(
+        "org-1"
+    )
+    context = mock_edb.create_graph_execution.return_value.to_graph_execution_entry.call_args.kwargs[
+        "execution_context"
+    ]
+    assert context.bills_own_wallet is expected
+
+
+@pytest.mark.asyncio
+async def test_a_run_in_another_users_personal_org_is_not_queued(
+    mocker: MockerFixture, _orgs_are_not_personal
+):
+    from backend.util.exceptions import InsufficientBalanceError
+
+    mock_edb, _ = _mock_add_graph_execution_create_path(
+        mocker, org_id="org-1", team_id="team-1"
+    )
+    queue = mocker.patch("backend.executor.utils.get_async_execution_queue")
+    _orgs_are_not_personal.return_value.get_personal_org_owner.return_value = (
+        "someone-else"
+    )
+
+    with pytest.raises(InsufficientBalanceError):
+        await add_graph_execution(
+            graph_id="g",
+            user_id="test-user-id",
+            organization_id="org-1",
+            team_id="team-1",
+        )
+
+    queue.assert_not_called()
+    assert (
+        mock_edb.update_graph_execution_stats.await_args.kwargs["status"]
+        == ExecutionStatus.FAILED
+    )
+
+
 def _runner_is_not_in_the_given_org(mocker: MockerFixture):
     return mocker.patch(
         "backend.executor.utils.resolve_member_tenancy",

@@ -28,7 +28,7 @@ from backend.data.block_cost_config import BLOCK_COSTS, compute_token_credits
 from backend.data.block_preflight_estimates import get_preflight_estimate
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.db import prisma
-from backend.data.db_accessors import chat_db
+from backend.data.db_accessors import chat_db, credit_db
 from backend.data.db_accessors import experts_db as get_experts_db
 from backend.data.db_accessors import spend_approval_db
 from backend.data.dynamic_fields import merge_execution_input
@@ -66,6 +66,7 @@ from backend.util.exceptions import (
     ExpertPrivateTenancyNotFoundError,
     GraphNotFoundError,
     GraphValidationError,
+    InsufficientBalanceError,
     NotFoundError,
     UserBannedError,
 )
@@ -1811,9 +1812,13 @@ async def _add_graph_execution(
         )
     if pause_irreversible_actions:
         stamp["sensitive_action_safe_mode"] = True
-    execution_context = execution_context.model_copy(update=stamp)
 
     try:
+        # The ledger is decided here, once per run; a caller's value never stands.
+        stamp["bills_own_wallet"] = await _bills_own_wallet(
+            graph_exec.user_id, execution_context.organization_id
+        )
+        execution_context = execution_context.model_copy(update=stamp)
         graph_exec_entry = graph_exec.to_graph_execution_entry(
             compiled_nodes_input_masks=compiled_nodes_input_masks,
             nodes_to_skip=nodes_to_skip,
@@ -1944,6 +1949,24 @@ async def _started_from_attended_chat(chat_id: str | None) -> bool:
 
 async def _spend_approval_required(user_id: str, expert_id: str):
     return await spend_approval_db().spend_approval_required(user_id, expert_id)
+
+
+async def _bills_own_wallet(user_id: str, organization_id: str | None) -> bool:
+    """Whether the run's org is the user's own personal org, which bills their wallet.
+
+    Raises ``InsufficientBalanceError`` for another user's personal org.
+    """
+    if not organization_id:
+        return False
+    owner = await credit_db().get_personal_org_owner(organization_id)
+    if owner is not None and owner != user_id:
+        raise InsufficientBalanceError(
+            "A personal organization pays only for its owner's usage",
+            user_id=user_id,
+            balance=0,
+            amount=0,
+        )
+    return owner is not None
 
 
 async def _park_for_spend_approval(**kwargs) -> None:

@@ -232,16 +232,23 @@ async def bill_to_credits(
 
     Only the AutoPilot block's turns, and only when the balance covers the
     per-turn spend floor: the organization's balance in an organization's
-    run. None where credits are off, leaving no balance to bill, or where
-    the SDK engine that caps a turn's spend can't run. Raises
-    ``RateLimitUnavailable`` when the balance can't be read: like an
-    unreadable allowance, that fails the turn closed.
+    run. None where credits are off, leaving no balance to bill, in another
+    user's personal organization, or where the SDK engine that caps a turn's
+    spend can't run. Raises ``RateLimitUnavailable`` when the balance can't be
+    read: like an unreadable allowance, that fails the turn closed.
     """
     if user_id is None or tool_name != AUTOPILOT_BLOCK_TOOL_NAME:
         return None
     if not credits_can_pay_block_turns():
         return None
     try:
+        # The turn's ledger is decided once, here.
+        if organization_id:
+            owner = await credit_db().get_personal_org_owner(organization_id)
+            if owner == user_id:
+                organization_id = team_id = None
+            elif owner is not None:
+                return None  # another user's personal org bills nobody
         balance = await _balance(user_id, organization_id)
     except Exception as exc:
         raise RateLimitUnavailable("Credit balance unavailable") from exc

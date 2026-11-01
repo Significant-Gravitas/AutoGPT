@@ -145,7 +145,7 @@ def _get_execution_credit_balance(
     graph_exec: GraphExecutionEntry,
 ) -> int:
     """Return the balance for the wallet billed by this execution."""
-    organization_id = graph_exec.execution_context.organization_id
+    organization_id = billing.billed_org_id(graph_exec.execution_context)
     if organization_id:
         return db_client.get_org_credits(org_id=organization_id)
     return db_client.get_credits(graph_exec.user_id)
