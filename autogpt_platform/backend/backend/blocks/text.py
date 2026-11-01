@@ -16,14 +16,12 @@ from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util import json, text
 from backend.util.file import get_exec_file_path, store_media_file
-from backend.util.regex_repeat import largest_repeat_count
 from backend.util.type import MediaFileType
 
 formatter = text.TextFormatter()
 
 MAX_REGEX_PATTERN_LENGTH = 10_000
 MAX_REGEX_TEXT_LENGTH = 1_000_000
-MAX_REGEX_REPEAT = 1000  # Largest {m,n} count, with nested counts multiplied
 REGEX_TIMEOUT_SECONDS = 1.0
 MAX_MATCHES = 1000  # Maximum number of matches to prevent memory exhaustion
 MAX_MATCH_LENGTH = 10_000  # Maximum length per match
@@ -85,8 +83,6 @@ class MatchTextPatternBlock(Block):
                 f"({len(input_data.match)} characters; "
                 f"maximum {MAX_REGEX_PATTERN_LENGTH})."
             )
-
-        _check_regex_repeats(input_data.match)
 
         if len(text) > MAX_REGEX_TEXT_LENGTH:
             raise ValueError(
@@ -201,7 +197,6 @@ class ExtractTextInformationBlock(Block):
             # Compiling a pattern isn't covered by the timeout below
             if len(input_data.pattern) > MAX_REGEX_PATTERN_LENGTH:
                 raise ValueError("Regex pattern is too large to evaluate safely.")
-            _check_regex_repeats(input_data.pattern)
 
             matches = []
             match_count = 0
@@ -538,13 +533,4 @@ def _check_output_length(label: str, length: int) -> None:
         raise ValueError(
             f"{label} would be {length:,} characters, over the limit of "
             f"{MAX_TEXT_OUTPUT_LENGTH:,} characters."
-        )
-
-
-def _check_regex_repeats(pattern: str) -> None:
-    # Compiling a pattern isn't covered by the regex timeout
-    if largest_repeat_count(pattern, MAX_REGEX_REPEAT) > MAX_REGEX_REPEAT:
-        raise ValueError(
-            f"Regex pattern repeats too much to evaluate safely (maximum "
-            f"{MAX_REGEX_REPEAT} repetitions, with nested repeats multiplied)."
         )
