@@ -56,10 +56,11 @@ async def _validate(
 async def test_a_run_at_the_input_budget_is_accepted(
     mocker: MockerFixture, construct: AsyncMock
 ):
-    # Eight copies of a JSON string whose quotes make it exactly an eighth.
+    # The stored input and seven block copies of a JSON string whose quotes
+    # make it exactly an eighth.
     value = "a" * (utils.MAX_RUN_INPUT_BYTES // 8 - 2)
 
-    await _validate(mocker, _inputs_named_x(8), {"x": value})
+    await _validate(mocker, _inputs_named_x(7), {"x": value})
 
     construct.assert_awaited_once()
 
@@ -72,10 +73,47 @@ async def test_a_run_over_the_input_budget_is_refused_before_it_is_built(
     value = "a" * (utils.MAX_RUN_INPUT_BYTES // 8 - 1)
 
     with pytest.raises(InvalidInputError, match="too large"):
-        await _validate(mocker, _inputs_named_x(8), {"x": value})
+        await _validate(mocker, _inputs_named_x(7), {"x": value})
 
     construct.assert_not_awaited()
     assert measure.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_graph_inputs_without_an_input_block_count_toward_the_input_budget(
+    mocker: MockerFixture, construct: AsyncMock
+):
+    big = "a" * (utils.MAX_RUN_INPUT_BYTES // 2)
+
+    with pytest.raises(InvalidInputError, match="too large"):
+        await _validate(mocker, _inputs_named_x(1), {"y": big, "z": big})
+
+    construct.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_stored_credentials_count_toward_the_input_budget(
+    mocker: MockerFixture, construct: AsyncMock
+):
+    mocker.patch.object(
+        utils, "make_node_credentials_input_map", mocker.MagicMock(return_value={})
+    )
+    credentials = CredentialsMetaInput(
+        id="cred-1",
+        title="t" * utils.MAX_RUN_INPUT_BYTES,
+        provider=ProviderName("github"),
+        type="api_key",
+    )
+
+    with pytest.raises(InvalidInputError, match="too large"):
+        await _validate(
+            mocker,
+            _inputs_named_x(1),
+            {},
+            graph_credentials_inputs={"github": credentials},
+        )
+
+    construct.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -105,7 +143,7 @@ def test_credentials_copied_into_nodes_get_a_short_title(mocker: MockerFixture):
     graph.regular_credentials_inputs = {"github": (field_info, node_fields, True)}
     credentials = CredentialsMetaInput(
         id="cred-1",
-        title="t" * 100_000,
+        title="t" * (utils.MAX_CREDENTIALS_TITLE_LENGTH + 1),
         provider=ProviderName("github"),
         type="api_key",
     )

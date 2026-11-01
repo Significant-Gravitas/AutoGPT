@@ -76,8 +76,7 @@ from backend.util.type import coerce_inputs_to_schema
 config = Config()
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[GraphExecutorUtil]")
 
-# The most a run may hand to its blocks: each graph input once per input block
-# it is copied to, plus the node input overrides and credentials.
+# The most a run may store and hand to its blocks, counting every copy.
 MAX_RUN_INPUT_BYTES = 8 * 1024 * 1024
 # A credentials title is only a label; this is what a node gets of it.
 MAX_CREDENTIALS_TITLE_LENGTH = 256
@@ -988,7 +987,9 @@ async def validate_and_construct_node_execution_input(
         ),
         nodes_input_masks or {},
     )
-    _check_run_input_size(graph, graph_inputs, nodes_input_masks)
+    _check_run_input_size(
+        graph, graph_inputs, nodes_input_masks, graph_credentials_inputs or {}
+    )
 
     (
         starting_nodes_input,
@@ -1005,12 +1006,18 @@ async def validate_and_construct_node_execution_input(
 
 
 def _check_run_input_size(
-    graph: GraphModel, graph_inputs: GraphInput, nodes_input_masks: NodesInputMasks
+    graph: GraphModel,
+    graph_inputs: GraphInput,
+    nodes_input_masks: NodesInputMasks,
+    graph_credentials_inputs: Mapping[str, CredentialsMetaInput],
 ) -> None:
-    """Refuses a run that would hand its blocks more than `MAX_RUN_INPUT_BYTES`,
-    before any of it is built. Counting stops as soon as the total is over."""
+    """Refuses a run that would store and hand its blocks more than
+    `MAX_RUN_INPUT_BYTES`, before any of it is built. Counting stops as soon as
+    the total is over."""
     total = 0
-    for size in _run_input_sizes(graph, graph_inputs, nodes_input_masks):
+    for size in _run_input_sizes(
+        graph, graph_inputs, nodes_input_masks, graph_credentials_inputs
+    ):
         total += size
         if total > MAX_RUN_INPUT_BYTES:
             raise InvalidInputError(
@@ -1020,23 +1027,29 @@ def _check_run_input_size(
 
 
 def _run_input_sizes(
-    graph: GraphModel, graph_inputs: GraphInput, nodes_input_masks: NodesInputMasks
+    graph: GraphModel,
+    graph_inputs: GraphInput,
+    nodes_input_masks: NodesInputMasks,
+    graph_credentials_inputs: Mapping[str, CredentialsMetaInput],
 ) -> Iterator[int]:
-    """The size of each graph input as `_construct_starting_node_execution_input`
-    copies it, once for every input block with its name, then of each node's
-    input overrides. Each graph input is measured only once."""
+    """The size of each graph input as stored on the run, and again for every
+    input block `_construct_starting_node_execution_input` copies it to, then
+    of each node's input overrides and of the credentials stored on the run.
+    Each graph input is measured only once."""
     input_sizes: dict[str, int] = {}
+    for input_name, value in graph_inputs.items():
+        input_sizes[input_name] = _json_size(value)
+        yield input_sizes[input_name]
     for node in graph.starting_nodes:
         input_name = cast(str | None, node.input_default.get("name"))
         if node.block.block_type != BlockType.INPUT:
             continue
-        if not input_name or input_name not in graph_inputs:
-            continue
-        if input_name not in input_sizes:
-            input_sizes[input_name] = _json_size(graph_inputs[input_name])
-        yield input_sizes[input_name]
+        if input_name and input_name in input_sizes:
+            yield input_sizes[input_name]
     for node_input_mask in nodes_input_masks.values():
         yield _json_size(node_input_mask)
+    for credentials in graph_credentials_inputs.values():
+        yield _json_size(credentials.model_dump(mode="json", exclude_none=True))
 
 
 def _json_size(value: Any) -> int:
