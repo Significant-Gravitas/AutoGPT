@@ -18,6 +18,11 @@ from backend.api.features.workspace import preview_render
 
 CHILD_MEMORY_MARGIN = 256 * 1024 * 1024
 
+requires_proc_status = pytest.mark.skipif(
+    not os.path.exists("/proc/self/status"),
+    reason="Peak address space is read from /proc/self/status (Linux only)",
+)
+
 # Stub renderers. The child process imports them from this module by name, so
 # they stay at module level and this module imports nothing heavy.
 
@@ -182,6 +187,7 @@ async def test_render_past_the_timeout_is_killed(mocker, started_children):
     assert not _is_running(child.pid)
 
 
+@requires_proc_status
 async def test_render_over_the_memory_cap_is_too_large(mocker):
     cap = await memory_cap_above_child_baseline()
     mocker.patch.object(preview_render, "RENDER_MAX_MEMORY_BYTES", cap)
@@ -197,6 +203,7 @@ async def test_render_over_the_memory_cap_is_too_large(mocker):
     assert (parent_peak_after - parent_peak_before) * 1024 < cap
 
 
+@requires_proc_status
 async def test_render_within_the_memory_cap_succeeds(mocker):
     cap = await memory_cap_above_child_baseline()
     mocker.patch.object(preview_render, "RENDER_MAX_MEMORY_BYTES", cap)

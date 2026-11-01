@@ -20,6 +20,7 @@ from backend.api.features.workspace.preview_render_test import (
     hanging_renderer,
     interval_renderer,
     memory_cap_above_child_baseline,
+    requires_proc_status,
 )
 from backend.api.features.workspace.routes import router
 from backend.data.workspace import Workspace, WorkspaceFile
@@ -518,6 +519,7 @@ def test_preview_past_the_render_timeout_is_not_available(
     redis.set.assert_not_called()
 
 
+@requires_proc_status
 async def test_image_preview_over_the_render_memory_cap_is_too_large(mocker):
     cap = await memory_cap_above_child_baseline()
     mocker.patch.object(preview_render, "RENDER_MAX_MEMORY_BYTES", cap)
