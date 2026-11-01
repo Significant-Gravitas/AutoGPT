@@ -42,17 +42,17 @@ export function CsvPreview({ file, onError }: PreviewProps) {
 // (huge h1, etc.) would overflow without these overrides.
 const MARKDOWN_COMPONENTS: Components = {
   h1: ({ children }) => (
-    <p className="mb-1 text-caption-sm font-semibold leading-inherit text-foreground-strong">
+    <p className="mb-1 text-caption-sm leading-inherit font-semibold text-foreground-strong">
       {children}
     </p>
   ),
   h2: ({ children }) => (
-    <p className="mb-1 text-caption-sm font-semibold leading-inherit text-foreground-strong">
+    <p className="mb-1 text-caption-sm leading-inherit font-semibold text-foreground-strong">
       {children}
     </p>
   ),
   h3: ({ children }) => (
-    <p className="mb-0.5 text-tiny font-semibold leading-inherit text-foreground-emphasis">
+    <p className="mb-0.5 text-tiny leading-inherit font-semibold text-foreground-emphasis">
       {children}
     </p>
   ),

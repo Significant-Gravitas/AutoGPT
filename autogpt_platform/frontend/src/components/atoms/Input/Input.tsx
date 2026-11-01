@@ -285,7 +285,7 @@ const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
           type="button"
           onClick={handleTogglePassword}
           disabled={props.disabled}
-          className="absolute right-4 top-1/2 -translate-y-1/2 text-foreground-subtle transition-colors hover:text-foreground-secondary disabled:cursor-not-allowed disabled:opacity-50"
+          className="absolute top-1/2 right-4 -translate-y-1/2 text-foreground-subtle transition-colors hover:text-foreground-secondary disabled:cursor-not-allowed disabled:opacity-50"
           aria-label={showPassword ? "Hide password" : "Show password"}
           aria-pressed={showPassword}
           aria-controls={inputId}
@@ -320,7 +320,7 @@ const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
         as="span"
         tone="error"
         className={cn(
-          "absolute left-0 top-full mt-1 transition-opacity duration-200",
+          "absolute top-full left-0 mt-1 transition-opacity duration-200",
           error ? "opacity-100" : "opacity-0",
         )}
       >

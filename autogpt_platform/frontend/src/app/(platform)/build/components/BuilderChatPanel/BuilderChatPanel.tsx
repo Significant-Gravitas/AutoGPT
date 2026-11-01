@@ -28,6 +28,7 @@ export function BuilderChatPanel({ className }: Props) {
     stop,
     onSend,
     queuedMessages,
+    isTurnSettling,
     isBootstrapping,
     hasNoModel,
     revertTargetVersion,
@@ -58,7 +59,7 @@ export function BuilderChatPanel({ className }: Props) {
   return (
     <div
       className={cn(
-        "pointer-events-none fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2",
+        "pointer-events-none fixed right-4 bottom-4 z-50 flex flex-col items-end gap-2",
         className,
       )}
     >
@@ -96,7 +97,7 @@ export function BuilderChatPanel({ className }: Props) {
                   <button
                     type="button"
                     onClick={activeRetry}
-                    className="rounded-md border border-border-strong bg-surface px-3 py-1.5 text-foreground-body shadow-sm hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                    className="rounded-md border border-border-strong bg-surface px-3 py-1.5 text-foreground-body shadow-sm hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none"
                   >
                     <Text variant="body-medium-tight" as="span" tone="inherit">
                       Retry
@@ -122,9 +123,10 @@ export function BuilderChatPanel({ className }: Props) {
                       isLoading={false}
                       sessionID={sessionId}
                       queuedMessages={queuedMessages}
+                      isTurnSettling={isTurnSettling}
                     />
                   </div>
-                  <div className="relative shrink-0 border-t border-separator bg-surface px-3 pb-2 pt-2">
+                  <div className="relative shrink-0 border-t border-separator bg-surface px-3 pt-2 pb-2">
                     <ChatInput
                       inputId="builder-chat-input"
                       onSend={onSend}
@@ -160,7 +162,7 @@ export function BuilderChatPanel({ className }: Props) {
         aria-label={isOpen ? "Close chat" : "Chat with builder"}
         className={cn(
           "pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-colors",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2",
+          "focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:outline-none",
           isOpen
             ? "bg-action text-action-foreground hover:bg-foreground-body"
             : "border border-node-border bg-surface text-foreground-body hover:bg-surface-muted",

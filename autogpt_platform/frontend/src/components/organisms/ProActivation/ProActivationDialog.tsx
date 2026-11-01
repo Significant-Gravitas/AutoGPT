@@ -60,7 +60,7 @@ export function ProActivationDialog({ activation }: Props) {
           </Text>
           <span
             data-slot="pro-activation-dialog-title"
-            className="block text-heading font-semibold leading-tight tracking-heading text-foreground-strong"
+            className="block text-heading leading-tight font-semibold tracking-heading text-foreground-strong"
           >
             {title}
           </span>

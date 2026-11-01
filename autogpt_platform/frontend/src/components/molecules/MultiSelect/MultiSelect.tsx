@@ -10,7 +10,8 @@ import {
 } from "./components/Command";
 import { cn } from "@/lib/utils";
 import { Command as CommandPrimitive } from "cmdk";
-import { X as RemoveIcon, Check } from "lucide-react";
+import { Cancel01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import React, {
   KeyboardEvent,
   createContext,
@@ -211,9 +212,11 @@ const MultiSelectorTrigger = forwardRef<
             <span data-slot="multi-select-remove-label" className="sr-only">
               Remove {item} option
             </span>
-            <RemoveIcon
+            <Icon
+              aria-hidden
+              icon={Cancel01Icon}
               data-slot="multi-select-remove-icon"
-              className="h-4 w-4 hover:stroke-destructive"
+              className="h-4 w-4 hover:text-error"
             />
           </button>
         </Badge>
@@ -279,7 +282,7 @@ const MultiSelectorList = forwardRef<
       ref={ref}
       data-slot="multi-select-list"
       className={cn(
-        "absolute top-0 z-10 flex w-full flex-col gap-2 rounded-md border border-muted bg-background p-2 shadow-md transition-colors scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground scrollbar-thumb-rounded-lg",
+        "absolute top-0 z-10 scrollbar-thin flex w-full scrollbar-thumb-muted-foreground scrollbar-track-transparent flex-col gap-2 rounded-md border border-muted bg-background p-2 shadow-md transition-colors scrollbar-thumb-rounded-lg",
         className,
       )}
     >
@@ -340,7 +343,12 @@ const MultiSelectorItem = forwardRef<
         {children}
       </Text>
       {isIncluded && (
-        <Check data-slot="multi-select-item-check" className="h-4 w-4" />
+        <Icon
+          aria-hidden
+          icon={Tick02Icon}
+          data-slot="multi-select-item-check"
+          className="h-4 w-4"
+        />
       )}
     </CommandItem>
   );

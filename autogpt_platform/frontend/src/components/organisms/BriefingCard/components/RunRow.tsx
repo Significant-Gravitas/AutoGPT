@@ -39,7 +39,7 @@ export function RunRow({ item, isHidden = false }: Props) {
           {isFailed ? (
             <span
               data-slot="briefing-card-run-row-status"
-              className="shrink-0 rounded-full bg-error-surface px-2 py-0.5 text-caption-sm font-medium leading-inherit text-error-foreground"
+              className="shrink-0 rounded-full bg-error-surface px-2 py-0.5 text-caption-sm leading-inherit font-medium text-error-foreground"
             >
               Failed
             </span>

@@ -3,7 +3,7 @@
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -14,8 +14,10 @@ from backend.copilot.response_model import (
     StreamFinish,
     StreamTextDelta,
     StreamToolOutputAvailable,
+    StreamTurnPaused,
 )
 from backend.copilot.tools.models import ApprovalRequiredResponse
+from backend.copilot.turn_pause import TurnPause
 from backend.platform_linking.models import (
     BotExpert,
     ChatTurnHandle,
@@ -246,7 +248,9 @@ class TestStreamChat:
         api._client.start_chat_turn = AsyncMock(return_value=handle)
 
         queue: asyncio.Queue = asyncio.Queue()
-        await queue.put((None, StreamError(errorText="executor crashed")))
+        await queue.put(
+            (None, StreamError(errorText="executor crashed", code="sdk_error"))
+        )
 
         with (
             patch(
@@ -265,6 +269,7 @@ class TestStreamChat:
                 pass
 
         assert excinfo.value.error_kind == "backend_stream_error"
+        assert excinfo.value.code == "sdk_error"
         assert "executor crashed" in str(excinfo.value)
 
     @pytest.mark.asyncio
@@ -549,6 +554,137 @@ class TestStreamChat:
                 pass
 
         assert excinfo.value.error_kind == "subscribe_failed"
+
+
+class TestPausedTurn:
+    """A turn at its budget or step limit now pauses instead of failing
+    (#15388). The web chat offers a Keep going button; a chat user has none,
+    so the reply has to say how to pick the task back up."""
+
+    async def _reply(self, api: BotBackend, *chunks) -> str:
+        handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
+        api._client.start_chat_turn = AsyncMock(return_value=handle)
+        queue: asyncio.Queue = asyncio.Queue()
+        for chunk in (*chunks, StreamFinish()):
+            await queue.put((None, chunk))
+
+        with (
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
+                new=AsyncMock(return_value=queue),
+            ),
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
+                new=AsyncMock(),
+            ),
+        ):
+            return "".join(
+                [
+                    chunk
+                    async for chunk in api.stream_chat(
+                        platform="discord", platform_user_id="u1", message="hi"
+                    )
+                ]
+            )
+
+    @pytest.mark.asyncio
+    async def test_a_step_check_in_follows_the_checkpoint_with_how_to_go_on(
+        self, api: BotBackend
+    ):
+        reply = await self._reply(
+            api,
+            StreamTextDelta(id="1", delta="Done 3 of 5 files. Next: the other 2."),
+            StreamTurnPaused(pause=TurnPause(reason="steps", steps=450).as_part()),
+        )
+
+        assert reply == (
+            "Done 3 of 5 files. Next: the other 2.\n\n"
+            'Paused: checking in after a long run. Reply "keep going" to pick it up.'
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_task_size_pause_says_to_keep_going(self, api: BotBackend):
+        reply = await self._reply(
+            api,
+            StreamTurnPaused(
+                pause=TurnPause(reason="task", checkpoint_saved=False).as_part()
+            ),
+        )
+
+        assert reply == (
+            "Paused: this task reached its size limit. "
+            'Reply "keep going" to pick it up.'
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_budget_pause_says_when_it_can_go_on(self, api: BotBackend):
+        resets_at = datetime(2026, 10, 16, 0, 0, tzinfo=UTC)
+
+        reply = await self._reply(
+            api,
+            StreamTurnPaused(
+                pause=TurnPause(reason="daily", resets_at=resets_at).as_part()
+            ),
+        )
+
+        assert reply == (
+            "Paused: this task is out of today's budget. "
+            'Reply "keep going" after it resets at 00:00 UTC on Oct 16.'
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_trial_pause_says_to_go_on_once_there_is_allowance(
+        self, api: BotBackend
+    ):
+        reply = await self._reply(
+            api, StreamTurnPaused(pause=TurnPause(reason="trial").as_part())
+        )
+
+        assert reply == (
+            "Paused: the trial allowance is used up. "
+            'Reply "keep going" once your plan has allowance again.'
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_turn_refused_at_start_says_when_it_can_go_on(
+        self, api: BotBackend
+    ):
+        # The executor refuses a turn the allowance can't cover (#15396).
+        resets_at = datetime(2026, 10, 16, 0, 0, tzinfo=UTC)
+
+        reply = await self._reply(
+            api,
+            StreamTurnPaused(
+                pause=TurnPause(
+                    reason="daily",
+                    resets_at=resets_at,
+                    checkpoint_saved=False,
+                    started=False,
+                ).as_part()
+            ),
+        )
+
+        assert reply == (
+            "Not started: out of today's budget. "
+            'Reply "keep going" after it resets at 00:00 UTC on Oct 16.'
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_budget_that_never_resets_points_at_the_plan(self, api: BotBackend):
+        # No plan behind the account: nothing refills, so no reset to wait for.
+        reply = await self._reply(
+            api,
+            StreamTurnPaused(
+                pause=TurnPause(
+                    reason="weekly", checkpoint_saved=False, started=False
+                ).as_part()
+            ),
+        )
+
+        assert reply == (
+            "Not started: out of this week's budget. "
+            'Reply "keep going" once your plan has allowance again.'
+        )
 
 
 class TestExtractSetupRequirements:

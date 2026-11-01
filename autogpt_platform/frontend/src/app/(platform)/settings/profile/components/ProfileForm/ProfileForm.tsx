@@ -219,7 +219,7 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
           {formState.description.trim() ? (
             <div
               className={cn(
-                "max-w-none break-words text-sm leading-5.5 text-foreground-base",
+                "max-w-none text-sm leading-5.5 break-words text-foreground-base",
                 "[&_p]:my-2 [&_p]:first:mt-0 [&_p]:last:mb-0",
                 "[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5",
                 "[&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5",
@@ -259,7 +259,7 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
           error={errors.description}
           onChange={(e) => onChange("description", e.target.value)}
           // oxlint-disable-next-line design-system/no-restyle -- the bio textarea is a speech-bubble shape with a thin scrollbar
-          className="!rounded-3xl !rounded-tr-md scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-active hover:scrollbar-thumb-border-strong"
+          className="scrollbar-thin scrollbar-thumb-surface-active scrollbar-track-transparent !rounded-3xl !rounded-tr-md hover:scrollbar-thumb-border-strong"
         />
       )}
     </motion.div>

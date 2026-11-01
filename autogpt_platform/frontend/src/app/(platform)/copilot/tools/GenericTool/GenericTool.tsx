@@ -326,7 +326,7 @@ function getWebAccordionData(
       content: (
         <div className="space-y-3">
           {answer && (
-            <div className="whitespace-pre-wrap rounded-md bg-surface-muted p-3 text-sm text-foreground-body">
+            <div className="rounded-md bg-surface-muted p-3 text-sm whitespace-pre-wrap text-foreground-body">
               {answer}
             </div>
           )}
@@ -339,7 +339,7 @@ function getWebAccordionData(
             return (
               <div key={i} className="text-sm">
                 {citation !== null && (
-                  <span className="mr-1.5 text-xs tabular-nums text-foreground-tertiary">
+                  <span className="mr-1.5 text-xs text-foreground-tertiary tabular-nums">
                     [{citation}]
                   </span>
                 )}

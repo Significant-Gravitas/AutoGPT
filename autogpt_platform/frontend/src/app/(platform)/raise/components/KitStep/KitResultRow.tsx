@@ -32,7 +32,7 @@ export function KitResultRow({
       style={{ animationDelay: `${index * 60}ms` }}
       className={cn(
         "flex items-center gap-3 border-b border-border px-3.5 py-3 transition-colors duration-200 last:border-b-0 hover:bg-surface-muted",
-        "duration-300 animate-in fade-in slide-in-from-bottom-1 fill-mode-both motion-reduce:animate-none",
+        "duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-1 motion-reduce:animate-none",
       )}
     >
       <span

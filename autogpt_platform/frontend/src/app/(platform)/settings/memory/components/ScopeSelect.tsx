@@ -43,7 +43,7 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
           aria-label="Memory scope"
           className={cn(
             "flex w-full items-center gap-2.5 rounded-medium border border-border-base bg-surface px-3 py-2 text-sm font-medium text-foreground-base",
-            "transition-colors hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/70",
+            "transition-colors hover:border-border-strong focus-visible:ring-2 focus-visible:ring-brand/70 focus-visible:outline-none",
             "data-[state=open]:border-brand",
           )}
         >
@@ -90,7 +90,7 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
           <>
             <DropdownMenuSeparator />
             {/* oxlint-disable-next-line design-system/no-restyle -- the experts group label is an eyebrow, not a menu label */}
-            <DropdownMenuLabel className="px-2.5 pb-0.5 pt-1.5 text-tiny font-semibold uppercase leading-inherit tracking-caps text-foreground-subtle">
+            <DropdownMenuLabel className="px-2.5 pt-1.5 pb-0.5 text-tiny leading-inherit font-semibold tracking-caps text-foreground-subtle uppercase">
               Your experts
             </DropdownMenuLabel>
             {experts.map((expert) => (

@@ -42,7 +42,7 @@ export function TransactionRow({
   return (
     <>
       <tr className="border-b border-separator">
-        <td className="py-4 pl-3 pr-2 sm:pl-5">
+        <td className="py-4 pr-2 pl-3 sm:pl-5">
           <TransactionActivity transaction={transaction} />
         </td>
         <td className="p-0 sm:px-2 sm:py-4">

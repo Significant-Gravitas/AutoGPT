@@ -48,7 +48,7 @@ export function ButtonGroupText({
       tone="inherit"
       as="div"
       className={cn(
-        "flex items-center gap-2 rounded-md border border-border-base bg-surface-hover px-4 [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none",
+        "flex items-center gap-2 rounded-md border border-border-base bg-surface-hover px-4 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4",
         className,
       )}
       {...props}

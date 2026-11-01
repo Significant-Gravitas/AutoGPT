@@ -97,10 +97,10 @@ function EventCard({ event }: { event: IcsData }) {
     <div className="flex h-full w-full flex-col items-center justify-center gap-0.5 bg-surface p-3 text-center">
       {date ? (
         <>
-          <span className="text-sm font-bold uppercase leading-none tracking-wide text-error">
+          <span className="text-sm leading-none font-bold tracking-wide text-error uppercase">
             {weekdayLabel(date)}
           </span>
-          <span className="text-4xl font-bold leading-none text-foreground-strong">
+          <span className="text-4xl leading-none font-bold text-foreground-strong">
             {date.day}
           </span>
         </>

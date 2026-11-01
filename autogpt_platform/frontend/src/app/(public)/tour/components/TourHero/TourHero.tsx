@@ -10,7 +10,7 @@ export function TourHero() {
   return (
     <section className="relative flex flex-1 flex-col overflow-hidden border-b border-separator">
       <TourBackground />
-      <div className="relative z-10 flex flex-1 flex-col items-center overflow-y-auto px-6 pb-4 pt-16">
+      <div className="relative z-10 flex flex-1 flex-col items-center overflow-y-auto px-6 pt-16 pb-4">
         <div className="flex w-full max-w-2xl flex-1 flex-col items-center justify-center text-center">
           <AutoGPTLogo
             hideText
@@ -35,7 +35,7 @@ export function TourHero() {
             as="h1"
             variant="h1"
             // oxlint-disable-next-line design-system/no-restyle, design-system/no-arbitrary-values -- marketing hero size, awaiting product decision (SECRT-3152)
-            className="text-balance text-[4rem] leading-none"
+            className="text-[4rem] leading-none text-balance"
           >
             Build AI agents by just chatting
           </Text>

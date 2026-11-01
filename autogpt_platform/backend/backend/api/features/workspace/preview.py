@@ -50,6 +50,12 @@ MAX_CONCURRENT_RENDERS = 4
 MAX_RENDER_SCALE = 3
 _MIN_RENDER_SCALE = 0.01
 CACHE_HEADERS = {"Cache-Control": "private, max-age=86400"}
+# A text preview is always served as plain text.
+TEXT_PREVIEW_HEADERS = {
+    **CACHE_HEADERS,
+    "Content-Security-Policy": "sandbox",
+    "X-Content-Type-Options": "nosniff",
+}
 
 # Per-kind size ceilings. The frontend mirrors these exactly so it never
 # requests a preview for a file this big (it shows an illustration instead);
@@ -120,9 +126,7 @@ async def _dispatch_preview(
         _ensure_size(file, PREVIEW_MAX_TEXT_BYTES)
         content = await _text_preview(file, max_bytes)
         return Response(
-            content=content,
-            media_type=file.mime_type or "text/plain",
-            headers=CACHE_HEADERS,
+            content=content, media_type="text/plain", headers=TEXT_PREVIEW_HEADERS
         )
 
     raise fastapi.HTTPException(

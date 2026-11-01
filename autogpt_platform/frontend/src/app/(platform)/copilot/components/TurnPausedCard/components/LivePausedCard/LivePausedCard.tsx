@@ -29,7 +29,7 @@ export function LivePausedCard({ onStop, ...args }: Props) {
   return (
     <section
       aria-label={card.title}
-      className="my-2 overflow-hidden rounded-2xl border border-border-base bg-surface shadow-sm duration-500 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+      className="my-2 overflow-hidden rounded-2xl border border-border-base bg-surface shadow-sm duration-500 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
     >
       <div className="flex items-start gap-3 px-5 py-4">
         <span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-brand/50 bg-accent-surface text-brand-hover">

@@ -20,6 +20,7 @@ from backend.api.model import (
     WSSubscribeGraphExecutionsRequest,
 )
 from backend.api.utils.cors import build_cors_params
+from backend.api.utils.validation_errors import bounded_validation_errors
 from backend.data import redis_client
 from backend.data.user import is_user_banned
 from backend.monitoring.instrumentation import (
@@ -259,7 +260,7 @@ async def websocket_router(
                 logger.error(
                     "Invalid WebSocket message from user #%s: %s",
                     user_id,
-                    e,
+                    bounded_validation_errors(e),
                 )
                 await websocket.send_text(
                     WSMessage(
@@ -284,7 +285,7 @@ async def websocket_router(
                     "Validation error while handling '%s' for user #%s: %s",
                     message.method.value,
                     user_id,
-                    e,
+                    bounded_validation_errors(e),
                 )
                 await websocket.send_text(
                     WSMessage(

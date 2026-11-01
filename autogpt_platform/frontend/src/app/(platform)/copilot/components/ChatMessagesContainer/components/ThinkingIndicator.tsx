@@ -1,11 +1,9 @@
 import { useNowSecond } from "@/hooks/useNowSecond";
+import { SHOW_TIME_AFTER_SECONDS } from "../../JobStatsBar/constants";
 import { formatElapsed } from "../../JobStatsBar/formatElapsed";
 import { getElapsedSeconds } from "../../JobStatsBar/useElapsedTimer";
 import { DrawnLineLoader } from "../../DrawnLineLoader/DrawnLineLoader";
 import { SwapText } from "../../ToolChain/SwapText";
-
-/** Only show elapsed time after this many seconds. */
-const SHOW_TIME_AFTER_SECONDS = 20;
 
 interface Props {
   active: boolean;
@@ -52,7 +50,7 @@ export function ThinkingIndicator({
         className="text-sm"
       />
       {showTime && (
-        <span className="font-mono text-xs tabular-nums text-foreground-subtle">
+        <span className="font-mono text-xs text-foreground-subtle tabular-nums">
           {formatElapsed(seconds)}
         </span>
       )}

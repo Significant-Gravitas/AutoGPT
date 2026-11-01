@@ -41,7 +41,7 @@ export function DrawerWrap({
       aria-label="Close"
       onClick={handleClose}
       data-slot="drawer-close"
-      className="inline-flex h-9 items-center justify-center rounded-md text-foreground-strong transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus"
+      className="inline-flex h-9 items-center justify-center rounded-md text-foreground-strong transition-colors focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none"
     >
       <Icon
         data-slot="drawer-close-icon"
@@ -116,7 +116,7 @@ export function DrawerWrap({
           <div
             data-slot="drawer-viewport"
             className={cn(
-              "flex-1 overflow-y-auto overflow-x-hidden",
+              "flex-1 overflow-x-hidden overflow-y-auto",
               scrollbarStyles,
             )}
           >

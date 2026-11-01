@@ -164,7 +164,7 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
           {currentStep ? (
             <>
               <span className="flex flex-col gap-1">
-                <span className="flex gap-2 text-base font-medium leading-snug text-foreground-strong sm:text-lg">
+                <span className="flex gap-2 text-base leading-snug font-medium text-foreground-strong sm:text-lg">
                   <span
                     aria-hidden="true"
                     className="flex shrink-0 items-center gap-0.5 text-sm text-foreground-subtle"

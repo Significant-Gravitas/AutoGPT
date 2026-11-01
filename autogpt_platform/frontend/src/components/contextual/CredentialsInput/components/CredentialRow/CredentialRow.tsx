@@ -120,7 +120,7 @@ export function CredentialRow({
             {getCredentialDisplayName(credential, displayName)}
           </Text>
           {isRealCredentialType && (
-            <span className="shrink-0 rounded bg-surface-hover px-1.5 py-0.5 text-tiny font-medium leading-tight text-foreground-tertiary">
+            <span className="shrink-0 rounded bg-surface-hover px-1.5 py-0.5 text-tiny leading-tight font-medium text-foreground-tertiary">
               {getCredentialTypeLabel(credType)}
             </span>
           )}
@@ -129,7 +129,7 @@ export function CredentialRow({
           <Text
             variant="large"
             className={cn(
-              "absolute top-[65%] -translate-y-1/2 overflow-hidden whitespace-nowrap font-mono tracking-tight",
+              "absolute top-[65%] -translate-y-1/2 overflow-hidden font-mono tracking-tight whitespace-nowrap",
               asSelectTrigger ? "right-0" : "right-6",
             )}
           >

@@ -81,7 +81,7 @@ export function StatsOverview({ stats, index = 0 }: Props) {
       {stats.averageRating !== null ? (
         <div className="col-span-2 flex items-center justify-between gap-3 rounded-large border border-border-base bg-gradient-to-br from-warning-surface/60 to-surface px-4 py-4 shadow-message-table lg:col-span-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-warning/20 text-warning-foreground ring-1 ring-inset ring-warning-border">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-warning/20 text-warning-foreground ring-1 ring-warning-border ring-inset">
               <UIIcon icon={StarIcon} size={18} />
             </div>
             <div className="flex flex-col">
@@ -108,7 +108,7 @@ function StatTileCard({ tile }: { tile: StatTile }) {
   return (
     <div className="relative flex min-h-[120px] flex-col justify-between gap-2 rounded-large border border-border-base bg-surface px-4 py-5 shadow-message-table">
       <div
-        className={`absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full ring-1 ring-inset ${iconClass}`}
+        className={`absolute top-3 right-3 flex h-7 w-7 items-center justify-center rounded-full ring-1 ring-inset ${iconClass}`}
       >
         <UIIcon icon={tile.Icon} size={14} />
       </div>

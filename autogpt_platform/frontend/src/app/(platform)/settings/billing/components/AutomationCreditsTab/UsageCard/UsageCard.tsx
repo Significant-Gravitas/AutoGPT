@@ -142,7 +142,7 @@ function UsageBar({
               ? `${day.date}: $0.00, 0 runs`
               : `${day.date}: $${day.amount.toFixed(2)}, ${day.runs} runs`
           }
-          className="group flex h-full flex-1 flex-col justify-end focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle"
+          className="group flex h-full flex-1 flex-col justify-end focus-visible:ring-2 focus-visible:ring-foreground-subtle focus-visible:outline-none"
         >
           {isEmpty ? (
             <div className="h-px w-full bg-transparent" />
@@ -168,13 +168,13 @@ function UsageBar({
       </TooltipTrigger>
       <TooltipContent side="top">
         <div className="flex flex-col gap-0.5">
-          <span className="text-caption-sm font-medium uppercase leading-inherit tracking-eyebrow text-foreground-subtle">
+          <span className="text-caption-sm leading-inherit font-medium tracking-eyebrow text-foreground-subtle uppercase">
             {day.date}
           </span>
-          <span className="text-sm font-medium tabular-nums text-action-foreground">
+          <span className="text-sm font-medium text-action-foreground tabular-nums">
             ${day.amount.toFixed(2)}
           </span>
-          <span className="text-xs tabular-nums text-foreground-subtle">
+          <span className="text-xs text-foreground-subtle tabular-nums">
             {day.runs} runs
           </span>
         </div>

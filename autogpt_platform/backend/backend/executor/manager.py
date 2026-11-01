@@ -25,6 +25,7 @@ from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.data import redis_client as redis
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
+from backend.data.db_accessors import experts_db
 from backend.data.dynamic_fields import parse_execution_output
 from backend.data.execution import (
     ExecutionContext,
@@ -57,7 +58,10 @@ from backend.executor.cost_tracking import (
 )
 from backend.integrations.codex.access import enforce_codex_access
 from backend.integrations.credential_lease import CredentialLease
-from backend.integrations.credentials_store import provider_matches
+from backend.integrations.credentials_store import (
+    is_system_credential,
+    provider_matches,
+)
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.monitoring.instrumentation import record_graph_run_completion
 from backend.util import json, product_analytics, tracing
@@ -408,7 +412,14 @@ async def execute_node(
         _input_data.user_id = user_id
         input_data = _input_data.model_dump()
     elif isinstance(node_block, MCPToolBlock):
-        _mcp_data = MCPToolBlock.Input(**node.input_default)
+        _mcp_input = dict(node.input_default)
+        # Read from the per-node masks, not input_data: tool arguments share
+        # input_data's namespace and a tool may declare its own `credentials`.
+        if run_credentials := ((nodes_input_masks or {}).get(node_id) or {}).get(
+            "credentials"
+        ):
+            _mcp_input["credentials"] = run_credentials
+        _mcp_data = MCPToolBlock.Input(**_mcp_input)
         # Dynamic tool fields are flattened to top-level by validate_exec
         # (via get_input_defaults). Collect them back into tool_arguments.
         tool_schema = _mcp_data.tool_input_schema
@@ -468,6 +479,7 @@ async def execute_node(
     creds_locks: list[AsyncRedisLock] = []
     credential_leases: dict[str, CredentialLease] = {}
     runtime_credential_leases: dict[str, CredentialLease] = {}
+    expert_allowed_credentials: set[str] | None = None
     try:
         # Handle regular credentials fields
         for field_name, input_type in input_model.get_credentials_fields().items():
@@ -496,6 +508,22 @@ async def execute_node(
                 continue  # Block runs without credentials
 
             credentials_meta = input_type(**field_value)
+            # An expert run uses only the credentials granted to it.
+            if execution_context.expert_id is not None and not is_system_credential(
+                credentials_meta.id
+            ):
+                if expert_allowed_credentials is None:
+                    expert_allowed_credentials = set(
+                        await experts_db().expert_allowed_credential_ids(
+                            user_id, execution_context.expert_id
+                        )
+                    )
+                if credentials_meta.id not in expert_allowed_credentials:
+                    raise ValueError(
+                        f"Credentials #{credentials_meta.id} in field "
+                        f"'{field_name}' have not been granted to this expert. "
+                        f"Grant them on the expert's Integrations page."
+                    )
             # Write normalized values back so JSON schema validation also passes
             # (model_validator may have fixed legacy formats like "ProviderName.MCP")
             input_data[field_name] = credentials_meta.model_dump(mode="json")

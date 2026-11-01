@@ -378,7 +378,7 @@ async def test_items_cost_bills_zero_when_no_items_returned(tmp_block_costs_over
 
 @pytest.mark.asyncio
 async def test_cost_usd_with_larger_spend_bills_full_delta(tmp_block_costs_override):
-    """Exa deep-research: $0.20 provider spend × 100 credits/USD = 20 credits.
+    """A larger spend at a 100 credits/USD rate: $0.20 is 20 credits.
 
     Verifies ceil-semantics on fractional USD amounts and that the full
     post-flight charge lands (no refund / no clamping).

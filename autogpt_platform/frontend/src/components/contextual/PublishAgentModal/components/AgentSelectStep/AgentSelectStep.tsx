@@ -249,7 +249,7 @@ export function AgentSelectStep({
                           key={agent.id}
                           data-testid="agent-card"
                           className={cn(
-                            "group flex w-full cursor-pointer select-none items-center gap-3 rounded-xl border bg-surface p-3 text-left transition-[border-color,box-shadow] duration-150 hover:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2",
+                            "group flex w-full cursor-pointer items-center gap-3 rounded-xl border bg-surface p-3 text-left transition-[border-color,box-shadow] duration-150 select-none hover:border-brand focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:outline-none",
                             isSelected
                               ? // oxlint-disable-next-line design-system/no-arbitrary-values -- brand-tinted selection halo, no shadow token for it
                                 "border-brand bg-accent-surface/40 shadow-[0_0_0_3px_rgba(119,51,245,0.12)]"
@@ -273,7 +273,7 @@ export function AgentSelectStep({
                               >
                                 {agent.name}
                               </Text>
-                              <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm font-medium leading-inherit text-foreground-secondary">
+                              <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit font-medium text-foreground-secondary">
                                 v{agent.version}
                               </span>
                             </div>
@@ -365,7 +365,7 @@ function PaginationBar({
   const pages = buildPageRange(page, totalPages);
 
   return (
-    <div className="flex flex-col items-center justify-between gap-3 pb-3 pt-1 text-foreground-tertiary sm:flex-row">
+    <div className="flex flex-col items-center justify-between gap-3 pt-1 pb-3 text-foreground-tertiary sm:flex-row">
       <Text variant="small" tone="muted">
         {start}–{end} of {totalItems}
       </Text>
