@@ -32,6 +32,38 @@ export function isFormValid(
   schema: RJSFSchema,
   formData: Record<string, unknown>,
 ): boolean {
-  const { errors } = customValidator.validateFormData(formData, schema);
+  const { errors } = customValidator.validateFormData(
+    formData,
+    withIntegerStrings(schema),
+  );
   return errors.length === 0;
+}
+
+// Integer inputs past Number.MAX_SAFE_INTEGER hold digit strings
+// (see parseIntegerInput), so integer schemas must accept them.
+const DATA_KEYWORDS = new Set(["default", "const", "enum", "examples"]);
+const integerStringSchemas = new WeakMap<RJSFSchema, RJSFSchema>();
+
+function withIntegerStrings(schema: RJSFSchema): RJSFSchema {
+  let widened = integerStringSchemas.get(schema);
+  if (!widened) {
+    widened = widenIntegerTypes(schema) as RJSFSchema;
+    integerStringSchemas.set(schema, widened);
+  }
+  return widened;
+}
+
+function widenIntegerTypes(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(widenIntegerTypes);
+  if (!node || typeof node !== "object") return node;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node)) {
+    out[key] = DATA_KEYWORDS.has(key) ? value : widenIntegerTypes(value);
+  }
+  const types = [out.type].flat();
+  if (types.includes("integer") && !types.includes("string")) {
+    out.type = [...types, "string"];
+    out.pattern = "^-?\\d+$";
+  }
+  return out;
 }
