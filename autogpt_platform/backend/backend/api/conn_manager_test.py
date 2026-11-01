@@ -526,6 +526,26 @@ async def test_stream_keeps_flowing_after_its_own_sunsubscribe(
 
 
 @pytest.mark.asyncio
+async def test_a_failed_sunsubscribe_does_not_hide_a_later_drop(
+    fake_redis: _FakeRedis,
+) -> None:
+    on_lost = AsyncMock()
+    stream = _ShardStream(on_lost=on_lost)
+    try:
+        await stream.add("{u/g}/exec/a", AsyncMock())
+        await stream.add("{u/h}/exec/b", AsyncMock())
+        fake_redis.pubsubs[0].sunsubscribe.side_effect = RedisConnectionError("x")
+        await stream.remove("{u/g}/exec/a")
+        # Redis drops the channel itself later, e.g. after a slot move.
+        fake_redis.pubsubs[0].inbox.put_nowait(
+            {"type": "sunsubscribe", "channel": "{u/g}/exec/a"}
+        )
+        await _until(lambda: on_lost.await_count == 1)
+    finally:
+        await stream.stop()
+
+
+@pytest.mark.asyncio
 async def test_a_quick_resubscribe_is_not_read_as_a_lost_stream(
     fake_redis: _FakeRedis,
 ) -> None:

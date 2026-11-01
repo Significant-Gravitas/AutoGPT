@@ -114,6 +114,8 @@ class _ShardStream:
         try:
             await self._pubsub.sunsubscribe(channel)
         except Exception:
+            # No confirmation is coming; a stale count would hide a real drop.
+            self._unsubscribing[channel] -= 1
             logger.warning(f"SUNSUBSCRIBE failed for {channel}", exc_info=True)
 
     async def stop(self) -> None:
