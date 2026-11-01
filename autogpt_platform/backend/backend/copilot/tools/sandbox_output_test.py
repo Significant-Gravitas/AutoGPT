@@ -55,7 +55,7 @@ async def test_output_up_to_the_cap_is_returned_whole():
 
 
 @pytest.mark.asyncio
-async def test_a_process_the_kill_missed_cannot_hold_the_run_open():
+async def test_the_run_ends_at_its_timeout_with_a_background_process_running():
     # A process outside the stopped group must not keep the run open.
     script = "setsid bash -c 'sleep 2; while :; do echo y; sleep 0.01; done' & sleep 60"
 

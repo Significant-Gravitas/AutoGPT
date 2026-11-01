@@ -245,7 +245,7 @@ async def extract_sandbox_files(
                 # The read holds the limit too, whatever stat said.
                 content = await read_sandbox_file(sandbox, file_path, limit)
                 if len(content) > limit:
-                    logger.info(f"Skipping {file_path}: larger than stat reported")
+                    logger.info(f"Skipping {file_path}: larger than {limit} bytes")
                     continue
                 total_size += len(content)
 

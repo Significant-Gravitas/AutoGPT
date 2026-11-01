@@ -172,7 +172,7 @@ async def test_read_failure_skips_file_but_not_others():
 
 
 @pytest.mark.asyncio
-async def test_a_file_larger_than_stat_reported_is_skipped_unread():
+async def test_a_file_is_read_only_up_to_the_limit():
     big, small = f"{_WORKDIR}/big.log", f"{_WORKDIR}/small.log"
     sandbox = _sandbox(
         [big, small],
