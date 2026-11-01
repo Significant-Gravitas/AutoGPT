@@ -18,6 +18,7 @@ from backend.data.graph import (
     _sub_graph_refs,
     get_connected_output_nodes,
     get_graph,
+    get_node,
 )
 from backend.data.user import DEFAULT_USER_ID
 from backend.util.test import SpinTestServer
@@ -72,9 +73,7 @@ def test_from_db_keeps_one_link_per_pair_of_ends():
     assert [link.id for link in graph.links] == ["link-0"]
 
 
-def test_from_db_does_not_compare_links_pairwise():
-    """Loading `n` links with the same ends takes a number of link comparisons
-    that grows with `n`, not with `n` squared."""
+def test_from_db_reads_each_link_once():
     count = 300
     links = _link_rows(count)
     row = _graph_row([_node_row("a", Output=links), _node_row("b", Input=links)])
@@ -90,6 +89,31 @@ def test_from_db_does_not_compare_links_pairwise():
         GraphModel.from_db(row)
 
     assert comparisons <= 2 * count
+
+
+def test_from_db_keeps_one_node_link_per_pair_of_ends():
+    links = _link_rows(5)
+    row = _graph_row([_node_row("a", Output=links), _node_row("b", Input=links)])
+
+    graph = GraphModel.from_db(row)
+
+    nodes = {node.id: node for node in graph.nodes}
+    assert [link.id for link in nodes["a"].output_links] == ["link-0"]
+    assert [link.id for link in nodes["b"].input_links] == ["link-0"]
+
+
+@pytest.mark.asyncio
+async def test_get_node_keeps_one_link_per_pair_of_ends(mocker):
+    node_client = AsyncMock()
+    node_client.find_unique_or_raise.return_value = _node_row(
+        "b", Input=_link_rows(5), Output=_link_rows(3)
+    )
+    mocker.patch.object(prisma.models.AgentNode, "prisma", return_value=node_client)
+
+    node = await get_node("b")
+
+    assert [link.id for link in node.input_links] == ["link-0"]
+    assert [link.id for link in node.output_links] == ["link-0"]
 
 
 def test_sub_graph_refs_read_the_block_id_column():
