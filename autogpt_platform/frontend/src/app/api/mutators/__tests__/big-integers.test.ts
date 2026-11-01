@@ -63,6 +63,28 @@ describe("big integers in loaded block data", () => {
     );
   });
 
+  it("a bare integer review payload is approved as a JSON number", async () => {
+    serveJson(
+      "get",
+      "/api/review/pending",
+      `[{"node_exec_id": "n1", "payload": ${BIG}}]`,
+    );
+    const [review] = await load("/api/review/pending");
+    const sent = serveJson("post", "/api/review/action", "{}");
+
+    await customMutator("/api/review/action", {
+      method: "POST",
+      body: JSON.stringify({
+        reviews: [
+          { node_exec_id: review.node_exec_id, reviewed_data: review.payload },
+        ],
+      }),
+    });
+
+    expect(sent()).toContain(`"reviewed_data":${BIG}`);
+    expect(sent()).not.toContain(`"reviewed_data":"${BIG}"`);
+  });
+
   it("digits typed as a string are sent as a string", async () => {
     const sent = serveJson("post", "/api/review/action", "{}");
     await customMutator("/api/review/action", {

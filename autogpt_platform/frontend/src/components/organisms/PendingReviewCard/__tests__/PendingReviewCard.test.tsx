@@ -333,6 +333,23 @@ test("a JSON draft that doesn't parse is shown again when the card remounts", ()
   ).toBe(draft);
 });
 
+test("a loaded integer beyond 2^53 stays a number field", () => {
+  render(
+    <PendingReviewCard
+      review={makeReview({
+        payload: "9007199254740993" as unknown as ReviewPayload,
+      })}
+      onReviewDataChange={() => {}}
+    />,
+  );
+
+  expect(screen.getByRole("spinbutton")).toHaveProperty(
+    "value",
+    "9007199254740993",
+  );
+  expect(screen.queryByPlaceholderText("Enter text")).toBeNull();
+});
+
 test("edits a number beyond 2^53 without rounding it", () => {
   const onReviewDataChange = vi.fn();
   render(

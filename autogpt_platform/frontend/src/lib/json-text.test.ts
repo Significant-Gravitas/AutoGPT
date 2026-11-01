@@ -85,6 +85,13 @@ describe("parseJsonExact", () => {
   it("throws on invalid JSON like JSON.parse", () => {
     expect(() => parseJsonExact('{"a": 9007199254740993')).toThrow();
   });
+
+  it("rejects leading-zero numbers like JSON.parse", () => {
+    const text = "[09007199254740993]";
+    expect(() => JSON.parse(text)).toThrow();
+    expect(() => parseJsonExact(text)).toThrow();
+    expect(parseJsonExact("[0, -0, 0.5, 0e20]")).toEqual([0, -0, 0.5, 0]);
+  });
 });
 
 describe("restoreIntegerLiterals", () => {
@@ -101,6 +108,20 @@ describe("restoreIntegerLiterals", () => {
 
   it("keeps digits that were never read as a number a string", () => {
     const json = '{"value":"9007199254740997","note":"x 9007199254740995"}';
+    expect(restoreIntegerLiterals(json)).toBe(json);
+  });
+
+  it("writes a loaded payload integer back under reviewed_data", () => {
+    parseJsonExact(`{"payload": ${big}}`);
+    expect(restoreIntegerLiterals(`{"reviewed_data":"${big}"}`)).toBe(
+      `{"reviewed_data":${big}}`,
+    );
+  });
+
+  it("does not turn a payload that was a string into a number on review", () => {
+    const asString = "9007199254740998";
+    parseJsonExact(`{"payload":"${asString}"}`);
+    const json = `{"reviewed_data":"${asString}"}`;
     expect(restoreIntegerLiterals(json)).toBe(json);
   });
 });

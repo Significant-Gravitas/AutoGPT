@@ -20,7 +20,8 @@ export function isJsonTextFor(text: string, value: unknown): boolean {
   }
 }
 
-const JSON_TOKEN = /"(?:[^"\\]|\\.)*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g;
+const JSON_TOKEN =
+  /"(?:[^"\\]|\\.)*"|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/g;
 // The smallest unsafe integer, 2^53, has 16 digits.
 const LONG_DIGIT_RUN = /\d{16}/;
 
@@ -63,11 +64,19 @@ export function parseJsonExact(text: string): unknown {
 export function restoreIntegerLiterals(json: string): string {
   if (integerLiterals.size === 0 || !LONG_DIGIT_RUN.test(json)) return json;
   const marked = JSON.parse(json, (key, value) =>
-    typeof value === "string" && integerLiterals.has(key + MARK + value)
+    typeof value === "string" && isLoadedInteger(key, value)
       ? MARK + value
       : value,
   );
   return JSON.stringify(marked).replace(/"\\u0000(-?\d+)"/g, "$1");
+}
+
+// Review approval sends the loaded payload under reviewed_data.
+function isLoadedInteger(key: string, digits: string): boolean {
+  if (integerLiterals.has(key + MARK + digits)) return true;
+  return (
+    key === "reviewed_data" && integerLiterals.has("payload" + MARK + digits)
+  );
 }
 
 // A number too large to hold at all (1e400) parses to Infinity, which is
