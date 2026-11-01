@@ -125,22 +125,17 @@ def _error_handler(status_code: int, log_error: bool, server_error_detail: bool)
 async def _handle_validation_error(
     request: fastapi.Request, exc: Exception
 ) -> fastapi.responses.Response:
-    errors: Sequence | str
-    if isinstance(exc, (RequestValidationError, pydantic.ValidationError)):
-        # Each error's ``input`` is the value it failed on, which can be the
-        # whole request body, so it is neither logged nor sent back.
-        errors = [
-            {key: value for key, value in error.items() if key != "input"}
-            for error in exc.errors()
-        ]
-    else:
-        errors = str(exc)
     logger.error(
         "Validation failed for %s %s: %s. Fix the request payload and try again.",
         request.method,
         redact_url(request.url.path),
-        errors,
+        exc,
     )
+    errors: Sequence | str
+    if isinstance(exc, (RequestValidationError, pydantic.ValidationError)):
+        errors = exc.errors()
+    else:
+        errors = str(exc)
 
     response_content = {
         "message": f"Invalid data for {request.method} {request.url.path}",
