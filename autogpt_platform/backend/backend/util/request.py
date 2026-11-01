@@ -378,7 +378,7 @@ async def validate_url_host(
     if not parsed.hostname:
         raise ValueError(f"Invalid host/URL; no host in parse result: {url}")
 
-    if len(parsed.hostname) > MAX_HOSTNAME_LENGTH:
+    if len(parsed.hostname.removesuffix(".")) > MAX_HOSTNAME_LENGTH:
         raise ValueError(f"Hostname is longer than {MAX_HOSTNAME_LENGTH} characters")
 
     # IDNA encode to prevent Unicode domain attacks

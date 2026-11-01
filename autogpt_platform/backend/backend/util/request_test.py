@@ -1151,6 +1151,39 @@ async def test_validate_url_host_accepts_a_hostname_at_the_length_limit():
     assert url.hostname == hostname
 
 
+_MAX_LENGTH_HOSTNAME = ".".join(["a" * 63, "b" * 63, "c" * 63, "d" * 61])
+
+
+@pytest.mark.asyncio
+async def test_validate_url_host_accepts_a_hostname_at_the_limit_with_a_root_dot():
+    hostname = f"{_MAX_LENGTH_HOSTNAME}."
+    assert len(hostname) == _DNS_MAX_HOSTNAME + 1
+
+    url, trusted, _ = await validate_url_host(
+        f"https://{hostname}/", trusted_hostnames=[hostname]
+    )
+
+    assert trusted
+    assert url.hostname == hostname
+
+
+@pytest.mark.asyncio
+async def test_validate_url_host_refuses_one_character_over_the_limit_without_a_dot():
+    hostname = f"{_MAX_LENGTH_HOSTNAME}e"
+    assert len(hostname) == _DNS_MAX_HOSTNAME + 1
+
+    with pytest.raises(ValueError, match=f"longer than {_DNS_MAX_HOSTNAME}"):
+        await validate_url_host(f"https://{hostname}/")
+
+
+@pytest.mark.asyncio
+async def test_validate_url_host_refuses_a_double_trailing_dot_at_the_limit():
+    hostname = f"{_MAX_LENGTH_HOSTNAME}.."
+
+    with pytest.raises(ValueError):
+        await validate_url_host(f"https://{hostname}/", trusted_hostnames=[hostname])
+
+
 def _response(body: bytes, content_type: str) -> Response:
     raw = MagicMock(status=200, headers={"content-type": content_type}, reason="OK")
     return Response(response=raw, url="https://example.com/", body=body)
