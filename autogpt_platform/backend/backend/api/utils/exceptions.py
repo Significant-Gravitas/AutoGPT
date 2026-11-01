@@ -8,7 +8,8 @@ ensures that all mounted sub-apps (v1, v2, main) handle errors uniformly.
 
 import json
 import logging
-from typing import Sequence
+import reprlib
+from typing import Any, Sequence
 
 import fastapi
 import fastapi.responses
@@ -122,31 +123,47 @@ def _error_handler(status_code: int, log_error: bool, server_error_detail: bool)
     return handler
 
 
+# A validation error response and its log line name at most this many errors.
+MAX_VALIDATION_ERRORS_SHOWN = 50
+# Each named error shows the value it failed on as a preview of at most this
+# many characters.
+MAX_VALIDATION_INPUT_PREVIEW_CHARS = 200
+
+_input_preview = reprlib.Repr()
+_input_preview.maxlevel = 3
+_input_preview.maxstring = MAX_VALIDATION_INPUT_PREVIEW_CHARS
+_input_preview.maxother = MAX_VALIDATION_INPUT_PREVIEW_CHARS
+
+
 async def _handle_validation_error(
     request: fastapi.Request, exc: Exception
 ) -> fastapi.responses.Response:
     errors: Sequence | str
+    omitted = 0
     if isinstance(exc, (RequestValidationError, pydantic.ValidationError)):
-        # Each error's ``input`` is the value it failed on, which can be the
-        # whole request body, so it is neither logged nor sent back.
+        all_errors = exc.errors()
         errors = [
-            {key: value for key, value in error.items() if key != "input"}
-            for error in exc.errors()
+            _bounded_error(error)
+            for error in all_errors[:MAX_VALIDATION_ERRORS_SHOWN]
         ]
+        omitted = len(all_errors) - len(errors)
     else:
         errors = str(exc)
     logger.error(
-        "Validation failed for %s %s: %s. Fix the request payload and try again.",
+        "Validation failed for %s %s: %s%s. Fix the request payload and try again.",
         request.method,
         redact_url(request.url.path),
         errors,
+        f" (and {omitted} more errors)" if omitted else "",
     )
 
-    response_content = {
+    response_content: dict[str, Any] = {
         "message": f"Invalid data for {request.method} {request.url.path}",
         "detail": errors,
         "hint": "Ensure the request matches the API schema.",
     }
+    if omitted:
+        response_content["omitted_errors"] = omitted
 
     content_json = json.dumps(response_content, default=str)
 
@@ -155,3 +172,20 @@ async def _handle_validation_error(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         media_type="application/json",
     )
+
+
+def _bounded_error(error: Any) -> dict[str, Any]:
+    """An error's type, location and message, and a short preview of the
+    value it failed on."""
+    bounded = {key: error[key] for key in ("type", "loc", "msg") if key in error}
+    if "input" in error:
+        bounded["input"] = _preview(error["input"])
+    return bounded
+
+
+def _preview(value: Any) -> str:
+    try:
+        text = _input_preview.repr(value)
+    except ValueError:
+        text = f"<{type(value).__name__}>"
+    return text[:MAX_VALIDATION_INPUT_PREVIEW_CHARS]
