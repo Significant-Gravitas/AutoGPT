@@ -1,4 +1,5 @@
 import json
+from datetime import date
 from types import SimpleNamespace
 from typing import Any
 
@@ -170,6 +171,20 @@ async def test_zip_result_under_the_size_limit_is_built():
 
 async def test_zip_pads_with_an_integer_past_64_bits():
     fill = 2**64
+    outputs = [
+        output
+        async for output in ZipListsBlock().run(
+            ZipListsBlock.Input(
+                lists=[[1, 2], [3]], pad_to_longest=True, fill_value=fill
+            )
+        )
+    ]
+
+    assert outputs == [("zipped_list", [[1, 3], [2, fill]]), ("length", 2)]
+
+
+async def test_zip_pads_with_a_large_integer_beside_a_date():
+    fill = {"id": 2**64, "day": date(2026, 11, 1)}
     outputs = [
         output
         async for output in ZipListsBlock().run(

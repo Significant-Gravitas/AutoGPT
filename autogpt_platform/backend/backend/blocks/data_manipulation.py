@@ -1,6 +1,8 @@
 import json
 from typing import Any, List
 
+from fastapi.encoders import jsonable_encoder
+
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -1346,9 +1348,13 @@ def _json_bytes(value: Any) -> int:
     try:
         return len(dumps(value).encode())
     except TypeError:
-        # orjson stops at 64-bit integers; Python's json does not.
+        # orjson stops at 64-bit integers; Python's json does not. Normalise
+        # first, as dumps does, so dates and models beside such an integer
+        # still serialize.
         return len(
-            json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode()
+            json.dumps(
+                jsonable_encoder(value), separators=(",", ":"), ensure_ascii=False
+            ).encode()
         )
 
 
