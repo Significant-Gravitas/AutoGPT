@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import math
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -260,10 +261,72 @@ def redispatch_reconcile_baseline(node_exec: NodeExecutionEntry) -> int | None:
     return settled
 
 
+def bills_stop_estimate(status: ExecutionStatus, stopped: bool) -> bool:
+    """Whether a node's settlement adds the estimated input tokens of LLM
+    requests it cut off mid-call (``abandoned_input_token_count``) to the
+    usage the provider reported: when a stop request ended the run
+    (``stopped``) and with it the node. This is the one case billed on an
+    estimate; every other settlement bills the reported usage alone.
+    """
+    return stopped and status == ExecutionStatus.TERMINATED
+
+
+def _with_stop_estimate(
+    block: Block,
+    input_data: "dict[str, Any]",
+    stats: NodeExecutionStats,
+    post_flight: int,
+    pre_flight: int,
+) -> int:
+    """``post_flight`` plus the stop estimate (see ``bills_stop_estimate``),
+    priced at the model's input rate. Token-priced (TOKENS) and
+    provider-cost-priced (COST_USD) LLM entries bill it; a model with no
+    input rate keeps at least its pre-flight charge."""
+    from backend.blocks._base import BlockCostType
+    from backend.data.block_cost_config import (
+        _USD_PER_1M_DIVISOR,
+        BLOCK_COSTS,
+        TOKEN_COST,
+        _lookup_llm_model,
+    )
+
+    from .utils import _is_cost_filter_match, _with_schema_defaults
+
+    tokens = stats.abandoned_input_token_count
+    if tokens <= 0:
+        return post_flight
+    input_data = _with_schema_defaults(block, input_data)
+    block_cost = next(
+        (
+            bc
+            for bc in BLOCK_COSTS.get(type(block)) or []
+            if _is_cost_filter_match(bc.cost_filter, input_data)
+        ),
+        None,
+    )
+    if block_cost is None or block_cost.cost_type not in (
+        BlockCostType.TOKENS,
+        BlockCostType.COST_USD,
+    ):
+        return post_flight
+    model = _lookup_llm_model(input_data.get("model"))
+    rate = TOKEN_COST.get(model) if model else None
+    if rate is None:
+        return max(post_flight, pre_flight)
+    if block_cost.cost_type == BlockCostType.TOKENS:
+        return post_flight + math.ceil(tokens * rate.input / 1_000_000)
+    # COST_USD bills cost_amount credits per USD; TOKEN_COST rates are
+    # credits per 1M tokens at _USD_PER_1M_DIVISOR credits per USD.
+    return post_flight + math.ceil(
+        tokens * rate.input * block_cost.cost_amount / (_USD_PER_1M_DIVISOR * 1_000_000)
+    )
+
+
 async def charge_reconciled_usage(
     node_exec: NodeExecutionEntry,
     stats: NodeExecutionStats,
     pre_flight_charge: int | None = None,
+    bill_stop_estimate: bool = False,
 ) -> tuple[int, int]:
     """Charge the dynamic portion of a block's cost from its execution stats.
 
@@ -290,6 +353,9 @@ async def charge_reconciled_usage(
     the historical-average JSON. Without this, a hot-swap of
     ``block_preflight_estimates.json`` between charge and reconciliation
     would shift the baseline and skew the delta.
+
+    ``bill_stop_estimate`` (see ``bills_stop_estimate``) adds the estimated
+    input tokens of LLM requests a stop cut off mid-call.
     """
     try:
         db_client = get_database_manager_async_client()
@@ -304,6 +370,10 @@ async def charge_reconciled_usage(
         post_flight, matching_filter = block_usage_cost(
             block=block, input_data=node_exec.inputs, stats=stats
         )
+        if bill_stop_estimate:
+            post_flight = _with_stop_estimate(
+                block, node_exec.inputs, stats, post_flight, pre_flight
+            )
         delta = post_flight - pre_flight
         if delta == 0:
             return 0, 0

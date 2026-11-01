@@ -53,6 +53,7 @@ class TestLLMStatsTracking:
                 llm_model=llm.DEFAULT_LLM_MODEL,
                 prompt=[{"role": "user", "content": "Hello"}],
                 max_tokens=100,
+                on_abandoned=None,
             )
 
             assert isinstance(response, llm.LLMResponse)
@@ -101,6 +102,7 @@ class TestLLMStatsTracking:
                 llm_model=llm.LLMModel.CLAUDE_4_5_HAIKU,
                 prompt=[{"role": "user", "content": "Hello"}],
                 max_tokens=100,
+                on_abandoned=None,
             )
 
             assert isinstance(response, llm.LLMResponse)
@@ -1348,6 +1350,7 @@ class TestAnthropicCacheControl:
                     {"role": "user", "content": "Hello"},
                 ],
                 max_tokens=100,
+                on_abandoned=None,
             )
 
         system_arg = captured_kwargs.get("system")
@@ -1404,6 +1407,7 @@ class TestAnthropicCacheControl:
                 ],
                 max_tokens=100,
                 tools=tools,
+                on_abandoned=None,
             )
 
         an_tools = captured_kwargs.get("tools")
@@ -1442,6 +1446,7 @@ class TestAnthropicCacheControl:
                 ],
                 max_tokens=100,
                 tools=None,
+                on_abandoned=None,
             )
 
         import anthropic
@@ -1479,6 +1484,7 @@ class TestAnthropicCacheControl:
                 llm_model=llm.LLMModel.CLAUDE_4_6_SONNET,
                 prompt=[{"role": "user", "content": "Hi"}],
                 max_tokens=50,
+                on_abandoned=None,
             )
 
         assert (
@@ -1517,6 +1523,7 @@ class TestAnthropicCacheControl:
                     {"role": "user", "content": "Hi"},
                 ],
                 max_tokens=50,
+                on_abandoned=None,
             )
 
         assert (
@@ -1613,6 +1620,7 @@ class TestLLMRequestTimeout:
                     llm_model=llm.DEFAULT_LLM_MODEL,
                     prompt=[{"role": "user", "content": "Hello"}],
                     max_tokens=100,
+                    on_abandoned=None,
                 )
 
             msg = str(exc_info.value)
@@ -1645,6 +1653,7 @@ class TestLLMRequestTimeout:
                 llm_model=llm.DEFAULT_LLM_MODEL,
                 prompt=[{"role": "user", "content": "Hello"}],
                 max_tokens=100,
+                on_abandoned=None,
             )
 
         # The generation budget lands on the read phase; connect stays short so
@@ -2069,6 +2078,7 @@ class TestClaude5ModelThreading:
                 prompt=[{"role": "user", "content": "hi"}],
                 max_tokens=100,
                 compress_prompt_to_fit=True,
+                on_abandoned=None,
             )
 
         expected_model = llm.DEFAULT_LLM_MODEL.value
