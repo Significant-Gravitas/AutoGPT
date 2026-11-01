@@ -1,4 +1,5 @@
 import { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
+import { isLoadedInteger } from "@/app/api/mutators/integer-provenance";
 import { Text } from "@/components/atoms/Text/Text";
 import { Input } from "@/components/atoms/Input/Input";
 import { Switch } from "@/components/atoms/Switch/Switch";
@@ -72,11 +73,19 @@ export function PendingReviewCard({
 
   const renderDataInput = () => {
     const data = currentData;
-    // A number too large for JS is edited as its digits; it stays a number
-    // field rather than turning into a text box.
+    // A number too large for JS loads as its digits; it stays a number field
+    // rather than turning into a text box. A payload that was a string keeps
+    // its text box, even when it holds only digits.
     const isNumber =
       typeof data === "number" ||
-      (typeof data === "string" && isUnsafeIntegerText(data));
+      (typeof data === "string" &&
+        isUnsafeIntegerText(data) &&
+        (typeof review.payload === "number" ||
+          isLoadedInteger(
+            `review:${review.node_exec_id}`,
+            [],
+            review.payload,
+          )));
 
     if (isNumber) {
       return (

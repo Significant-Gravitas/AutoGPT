@@ -2,6 +2,7 @@ import { fireEvent } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
+import { recordIntegers } from "@/app/api/mutators/integer-provenance";
 import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { expectTypingKept } from "@/tests/integrations/typing";
@@ -334,6 +335,12 @@ test("a JSON draft that doesn't parse is shown again when the card remounts", ()
 });
 
 test("a loaded integer beyond 2^53 stays a number field", () => {
+  // How the client notes a review whose payload was the JSON number.
+  recordIntegers(
+    "/api/review/pending",
+    [{ node_exec_id: "ne-1", payload: "9007199254740993" }],
+    [{ path: ["0", "payload"], digits: "9007199254740993" }],
+  );
   render(
     <PendingReviewCard
       review={makeReview({
@@ -348,6 +355,29 @@ test("a loaded integer beyond 2^53 stays a number field", () => {
     "9007199254740993",
   );
   expect(screen.queryByPlaceholderText("Enter text")).toBeNull();
+});
+
+test("a payload that loaded as a digit string keeps a text field", () => {
+  const onReviewDataChange = vi.fn();
+  recordIntegers(
+    "/api/review/pending",
+    [{ node_exec_id: "ne-str", payload: "9007199254740995" }],
+    [],
+  );
+  render(
+    <PendingReviewCard
+      review={makeReview({
+        node_exec_id: "ne-str",
+        payload: "9007199254740995" as unknown as ReviewPayload,
+      })}
+      onReviewDataChange={onReviewDataChange}
+    />,
+  );
+
+  expect(screen.queryByRole("spinbutton")).toBeNull();
+  const field = screen.getByPlaceholderText("Enter text");
+  fireEvent.change(field, { target: { value: "42" } });
+  expect(onReviewDataChange).toHaveBeenLastCalledWith("ne-str", '"42"');
 });
 
 test("edits a number beyond 2^53 without rounding it", () => {

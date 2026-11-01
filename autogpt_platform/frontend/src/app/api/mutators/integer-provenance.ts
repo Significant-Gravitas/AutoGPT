@@ -4,8 +4,9 @@ import type { ExactInteger, JsonPath } from "@/lib/json-text";
  * parseJsonExact hands a big integer to the app as its digit string, since a
  * JS number would round it. Sent back as is, a block input typed "any" would
  * turn from a number into a string. So each big integer read from a JSON
- * number is noted against the entity it belongs to (a graph node, a review, a
- * preset, a schedule, a graph's run inputs) at its exact path, and only a
+ * number is noted against the entity it belongs to (a graph, a review, a
+ * preset, a schedule, a graph's run inputs) at its exact path (inside a graph,
+ * starting with the node id), and only a
  * write to that same entity puts it back as a number, only at that path, and
  * only while the value there is still those digits. A string holding the same
  * digits anywhere else is left alone.
@@ -23,14 +24,38 @@ interface ReadScope {
   prefix?: JsonPath;
 }
 
-/** Values under `at` in a request body may come from any of `entities`. */
+/**
+ * Values under `at` in a request body may come from any of `entities`, from
+ * the integers noted under `prefix` there.
+ */
 interface WriteScope {
   entities: string[];
   at: JsonPath;
+  prefix?: JsonPath;
 }
 
+// Counts entities, so a graph is one entry however many nodes it has. In
+// insertion order, oldest first; reading or writing an entity moves it last.
 const MAX_ENTITIES = 200;
 const integersByEntity = new Map<string, ExactInteger[]>();
+// The entity of each kind ("graph", "review", ...) read or written last, so
+// browsing other things never drops the graph or review that is open.
+const latestOfKind = new Map<string, string>();
+
+function touch(entity: string): void {
+  const integers = integersByEntity.get(entity);
+  integersByEntity.delete(entity);
+  if (integers) integersByEntity.set(entity, integers);
+  latestOfKind.set(entity.slice(0, entity.indexOf(":")), entity);
+}
+
+function evictOldest(): void {
+  const latest = new Set(latestOfKind.values());
+  for (const entity of integersByEntity.keys()) {
+    if (integersByEntity.size <= MAX_ENTITIES) return;
+    if (!latest.has(entity)) integersByEntity.delete(entity);
+  }
+}
 
 function isRecord(value: unknown): value is Json {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -58,8 +83,9 @@ function graphScopes(graph: unknown, at: JsonPath = []): ReadScope[] {
     return nodeId
       ? [
           {
-            entity: `node:${graphId}:${nodeId}`,
+            entity: `graph:${graphId}`,
             at: [...at, "nodes", String(i)],
+            prefix: [nodeId],
           },
         ]
       : [];
@@ -145,8 +171,9 @@ const WRITES: [string, RegExp, (body: Json, id: string) => WriteScope[]][] = [
     /^\/api\/graphs\/([^/]+)$/,
     (body, graphId) =>
       records(body.nodes).map((node, i) => ({
-        entities: [`node:${graphId}:${String(node.id)}`],
+        entities: [`graph:${graphId}`],
         at: ["nodes", String(i)],
+        prefix: [String(node.id)],
       })),
   ],
   [
@@ -157,8 +184,9 @@ const WRITES: [string, RegExp, (body: Json, id: string) => WriteScope[]][] = [
       const graphId = str(graph.id);
       if (!graphId) return [];
       return records(graph.nodes).map((node, i) => ({
-        entities: [`node:${graphId}:${String(node.id)}`],
+        entities: [`graph:${graphId}`],
         at: ["graph", "nodes", String(i)],
+        prefix: [String(node.id)],
       }));
     },
   ],
@@ -227,7 +255,10 @@ export function recordIntegers(
   const read = READS.find(([route]) => route.test(path));
   if (!read) return;
   const scopes = read[1](data);
-  for (const scope of scopes) integersByEntity.delete(scope.entity);
+  for (const scope of scopes) {
+    integersByEntity.delete(scope.entity);
+    touch(scope.entity);
+  }
   for (const { path: at, digits } of integers) {
     const scope = scopes.find((s) => startsWith(at, s.at));
     if (!scope) continue;
@@ -236,11 +267,24 @@ export function recordIntegers(
     list.push({ path: [...(scope.prefix ?? []), ...rest], digits });
     integersByEntity.set(scope.entity, list);
   }
-  // Oldest first, in insertion order.
-  for (const entity of integersByEntity.keys()) {
-    if (integersByEntity.size <= MAX_ENTITIES) break;
-    integersByEntity.delete(entity);
-  }
+  evictOldest();
+}
+
+/**
+ * True when `digits` at `path` inside `entity` were loaded as a JSON number,
+ * e.g. a review payload: `isLoadedInteger("review:<id>", [], payload)`.
+ */
+export function isLoadedInteger(
+  entity: string,
+  path: JsonPath,
+  digits: unknown,
+): boolean {
+  return (integersByEntity.get(entity) ?? []).some(
+    (integer) =>
+      integer.digits === digits &&
+      integer.path.length === path.length &&
+      startsWith(integer.path, path),
+  );
 }
 
 function get(root: unknown, path: JsonPath): unknown {
@@ -287,9 +331,12 @@ export function restoreIntegers(
   while (body.includes(mark)) mark += "~";
   let restored = false;
   for (const scope of scopesFor(parsed, found[1] ?? "")) {
+    const prefix = scope.prefix ?? [];
     for (const entity of scope.entities) {
+      if (integersByEntity.has(entity)) touch(entity);
       for (const { path: at, digits } of integersByEntity.get(entity) ?? []) {
-        const target = [...scope.at, ...at];
+        if (!startsWith(at, prefix)) continue;
+        const target = [...scope.at, ...at.slice(prefix.length)];
         if (target.length === 0 || get(parsed, target) !== digits) continue;
         set(parsed, target, mark + digits);
         restored = true;

@@ -279,4 +279,56 @@ describe("big integers sent back to where they were loaded from", () => {
     });
     expect(executed()).toBe(`{"inputs":{"seed":${BIG}}}`);
   });
+
+  it("a graph with 250 nodes saves every loaded number", async () => {
+    const nodes = Array.from(
+      { length: 250 },
+      (_, i) => `{"id": "n${i}", "input_default": {"value": ${BIG}}}`,
+    );
+    const graph = await loadGraph("g-wide", `[${nodes.join(",")}]`);
+    const sent = await save(graph);
+    expect(sent.split(`"value":${BIG}`)).toHaveLength(251);
+    expect(sent).not.toContain(`"${BIG}"`);
+  });
+
+  it("the open graph keeps its numbers after 250 other loads", async () => {
+    const graph = await loadGraph(
+      "g-open",
+      `[{"id": "n1", "input_default": {"value": ${BIG}}}]`,
+    );
+    const presets = Array.from(
+      { length: 250 },
+      (_, i) => `{"id": "p-many-${i}", "inputs": {"seed": ${BIG}}}`,
+    );
+    serveJson("get", "/api/library/presets", `{"presets": [${presets}]}`);
+    await load("/api/library/presets");
+    for (let i = 0; i < 210; i++) {
+      serveJson(
+        "get",
+        `/api/review/execution/e-many-${i}`,
+        `[{"node_exec_id": "r-many-${i}", "payload": ${BIG}}]`,
+      );
+      await load(`/api/review/execution/e-many-${i}`);
+    }
+    expect(await save(graph)).toContain(`"value":${BIG}`);
+  });
+
+  it("drops the oldest of many loaded presets, not the latest", async () => {
+    const presets = Array.from(
+      { length: 250 },
+      (_, i) => `{"id": "p-cap-${i}", "inputs": {"seed": ${BIG}}}`,
+    );
+    serveJson("get", "/api/library/presets", `{"presets": [${presets}]}`);
+    const { presets: loaded } = await load("/api/library/presets");
+    for (const [i, expected] of [
+      [0, `"${BIG}"`],
+      [249, `${BIG}`],
+    ] as const) {
+      const sent = serveJson("patch", `/api/library/presets/p-cap-${i}`, "{}");
+      await send("PATCH", `/api/library/presets/p-cap-${i}`, {
+        inputs: loaded[i].inputs,
+      });
+      expect(sent()).toBe(`{"inputs":{"seed":${expected}}}`);
+    }
+  });
 });
