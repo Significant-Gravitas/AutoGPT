@@ -589,7 +589,7 @@ async def add_generated_agent_image(
     try:
         if not (image_url := await store_media.check_media_exists(user_id, filename)):
             # Generate agent image as JPEG
-            image = await store_image_gen.generate_agent_image(graph)
+            image = await store_image_gen.generate_agent_image(graph, user_id)
 
             # Create UploadFile with the correct filename and content_type
             image_file = fastapi.UploadFile(
