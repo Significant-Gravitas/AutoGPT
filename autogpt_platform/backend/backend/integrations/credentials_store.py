@@ -20,10 +20,19 @@ from backend.data.model import (
 )
 from backend.data.redis_client import get_redis_async
 from backend.util.cache import thread_cached
+from backend.util.exceptions import InvalidInputError
 from backend.util.settings import Settings
 
 settings = Settings()
 logger = logging.getLogger(__name__)
+
+# Every read of a user's integrations decrypts and validates all of their
+# stored items, and every write rewrites all of them, so one account's share
+# of that work is bounded here, where every route ends up. A real credential
+# is a few KiB.
+MAX_STORED_ITEM_BYTES = 64 * 1024
+MAX_CREDENTIALS_PER_USER = 100
+MAX_PENDING_OAUTH_STATES_PER_USER = 100
 
 
 def canonical_provider(stored: str) -> str:
@@ -340,6 +349,7 @@ class IntegrationCredentialsStore:
         return list(await self.db_manager.get_user_credentials(user_id=user_id))
 
     async def add_creds(self, user_id: str, credentials: Credentials) -> None:
+        check_storable_size(credentials)
         async with await self.locked_user_integrations(user_id):
             # Check system/managed IDs without triggering provisioning
             if credentials.id in SYSTEM_CREDENTIAL_IDS:
@@ -352,6 +362,11 @@ class IntegrationCredentialsStore:
                 raise ValueError(
                     f"Can not re-create existing credentials #{credentials.id} "
                     f"for user #{user_id}"
+                )
+            if len(persisted) >= MAX_CREDENTIALS_PER_USER:
+                raise InvalidInputError(
+                    f"An account holds at most {MAX_CREDENTIALS_PER_USER} "
+                    "credentials; delete one before connecting another"
                 )
             await self._set_user_integration_creds(user_id, [*persisted, credentials])
 
@@ -443,6 +458,7 @@ class IntegrationCredentialsStore:
         return list(set(c.provider for c in credentials))
 
     async def update_creds(self, user_id: str, updated: Credentials) -> None:
+        check_storable_size(updated)
         if updated.id in SYSTEM_CREDENTIAL_IDS:
             raise ValueError(
                 f"System credential #{updated.id} cannot be updated directly"
@@ -489,6 +505,7 @@ class IntegrationCredentialsStore:
         user_id: str,
         credentials: Credentials,
     ) -> Credentials:
+        check_storable_size(credentials)
         if credentials.id in SYSTEM_CREDENTIAL_IDS or credentials.is_managed:
             raise ValueError("Single-provider upsert requires user-owned credentials")
 
@@ -601,9 +618,20 @@ class IntegrationCredentialsStore:
             state_metadata=state_metadata or {},
             initiated_by_api_key_id=initiated_by_api_key_id,
         )
+        check_storable_size(state)
 
         async with self.edit_user_integrations(user_id) as user_integrations:
-            user_integrations.oauth_states.append(state)
+            # The single writer of `oauth_states` for every flow, so expired
+            # ones are dropped here; nothing else ever removes them.
+            now = datetime.now(timezone.utc).timestamp()
+            pending = [s for s in user_integrations.oauth_states if s.expires_at > now]
+            if len(pending) >= MAX_PENDING_OAUTH_STATES_PER_USER:
+                raise InvalidInputError(
+                    f"An account holds at most "
+                    f"{MAX_PENDING_OAUTH_STATES_PER_USER} pending sign-ins; "
+                    "finish or abandon one before starting another"
+                )
+            user_integrations.oauth_states = [*pending, state]
 
         return token, code_challenge
 
@@ -748,3 +776,13 @@ class IntegrationCredentialsStore:
         key = (f"user:{user_id}", "integrations")
         locks = await self.locks()
         return locks.locked(key)
+
+
+def check_storable_size(item: Credentials | OAuthState) -> None:
+    """Refuse an item too large for every later read of this user to carry."""
+    item_bytes = len(item.model_dump_json().encode())
+    if item_bytes > MAX_STORED_ITEM_BYTES:
+        raise InvalidInputError(
+            f"{type(item).__name__} is too large: at most "
+            f"{MAX_STORED_ITEM_BYTES} bytes are allowed, got {item_bytes}"
+        )

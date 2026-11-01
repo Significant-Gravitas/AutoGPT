@@ -103,6 +103,7 @@ from backend.util.exceptions import (
     ExpertRunPausedError,
     GraphNotAccessibleError,
     GraphNotInLibraryError,
+    InvalidInputError,
     NeedConfirmation,
     NotFoundError,
 )
@@ -1178,6 +1179,8 @@ async def create_credentials(
     credentials.provider = provider
     try:
         await creds_manager.create(user_id, credentials)
+    except InvalidInputError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception:
         logger.exception("Failed to store credentials")
         raise HTTPException(

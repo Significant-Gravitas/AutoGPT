@@ -184,6 +184,8 @@ class TestOrgDbCreateOrg:
     @pytest.fixture(autouse=True)
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
+        self.prisma.orgmember.count = AsyncMock(return_value=0)
+        self.prisma.team.count = AsyncMock(return_value=0)
         self.prisma.organization.find_unique = AsyncMock(return_value=None)
         self.prisma.organizationalias.find_unique = AsyncMock(return_value=None)
         self.prisma.organization.create = AsyncMock(return_value=_make_org())
@@ -878,6 +880,7 @@ class TestWorkspaceDbCreate:
     @pytest.fixture(autouse=True)
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
+        self.prisma.team.count = AsyncMock(return_value=0)
         mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
 
     @pytest.mark.asyncio
@@ -2772,6 +2775,8 @@ class TestPRReviewBugs:
     @pytest.fixture(autouse=True)
     def setup(self, mocker):
         self.prisma = MagicMock()
+        self.prisma.orgmember.count = AsyncMock(return_value=0)
+        self.prisma.team.count = AsyncMock(return_value=0)
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
         mocker.patch("backend.api.features.orgs.invitation_routes.prisma", self.prisma)
         mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)

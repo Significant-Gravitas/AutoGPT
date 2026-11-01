@@ -25,7 +25,7 @@ from prisma.models import (
     UserWorkspaceFile,
 )
 
-from backend.blocks import get_block
+from backend.blocks import get_block, get_io_block_ids, get_webhook_block_ids
 from backend.blocks._base import BlockType
 from backend.copilot.db import get_chat_messages_paginated
 from backend.copilot.expert_kickoff import is_hidden_chat_message
@@ -41,6 +41,7 @@ from backend.copilot.sharing.models import (
 )
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.db import transaction
+from backend.data.includes import graph_execution_include
 from backend.data.sharing.tokens import generate_share_token
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 from backend.util import type as type_utils
@@ -729,14 +730,11 @@ async def _build_shared_execution_file_allowlist(
     """
     node_rows = await AgentGraphExecution.prisma(tx).find_unique(
         where={"id": execution_id},
-        include={
-            "NodeExecutions": {
-                "include": {
-                    "Input": True,
-                    "Node": {"include": {"AgentBlock": True}},
-                }
-            }
-        },
+        # The same bounded include the shared-run viewer reads through, so
+        # this scan cannot load more node executions than that page shows.
+        include=graph_execution_include(
+            [*get_io_block_ids(), *get_webhook_block_ids()]
+        ),
     )
     if node_rows is None or node_rows.NodeExecutions is None:
         return 0

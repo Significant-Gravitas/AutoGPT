@@ -1,7 +1,7 @@
 import asyncio
 import itertools
 import logging
-from typing import Literal, LiteralString, Optional, cast
+from typing import Any, Literal, LiteralString, Mapping, Optional, cast
 
 import fastapi
 import prisma.enums
@@ -48,9 +48,11 @@ from backend.util.exceptions import (
     NotFoundError,
 )
 from backend.util.json import SafeJson
+from backend.util.json import dumps as json_dumps
 from backend.util.models import Pagination
 from backend.util.product_analytics import track_listing_added_to_library
 from backend.util.settings import Config
+from backend.util.text_limits import MAX_DESCRIPTION_LENGTH, MAX_NAME_LENGTH
 
 from . import model as library_model
 from ._add_to_library import (
@@ -2156,6 +2158,13 @@ async def list_presets(
             "Invalid pagination input: page=%d, page_size=%d", page, page_size
         )
         raise InvalidInputError("Invalid pagination parameters")
+    # Each preset on the page brings all of its input rows, so this listing is
+    # capped tighter than the generic route bound, and in the DB layer so every
+    # caller is covered rather than one route.
+    if page_size > MAX_PRESETS_PER_PAGE:
+        raise InvalidInputError(
+            f"At most {MAX_PRESETS_PER_PAGE} presets per page, got {page_size}"
+        )
 
     query_filter: prisma.types.AgentPresetWhereInput = {
         "userId": user_id,
@@ -2269,6 +2278,7 @@ async def create_preset(
     logger.debug(
         f"Creating preset ({repr(preset.name)}) for user #{user_id}",
     )
+    check_preset_text(preset.name, preset.description)
     # A preset may only reference a graph the caller can access (owned, or in
     # their library and submitted); get_graph() enforces that, None if not.
     # The preset then inherits the graph's org/team (resource-follows-parent)
@@ -2315,15 +2325,7 @@ async def create_preset(
         isActive=preset.is_active,
         webhookId=webhook_id,
         InputPresets={
-            "create": [
-                prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
-                    name=name, data=SafeJson(data)
-                )
-                for name, data in {
-                    **preset.inputs,
-                    **preset.credentials,
-                }.items()
-            ]
+            "create": preset_input_rows({**preset.inputs, **preset.credentials})
         },
     )
     if organization_id:
@@ -2451,6 +2453,7 @@ async def update_preset(
     logger.debug(
         f"Updating preset #{preset_id} ({repr(current.name)}) for user #{user_id}",
     )
+    check_preset_text(name, description)
 
     expert_tenancy: tuple[str, str | None] | None = None
     if current.expert_id:
@@ -2479,18 +2482,15 @@ async def update_preset(
                     "Preset inputs and credentials must be provided together"
                 )
             update_data["InputPresets"] = {
-                "create": [
-                    prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
-                        name=name, data=SafeJson(data)
-                    )
-                    for name, data in {
+                "create": preset_input_rows(
+                    {
                         **inputs,
                         **{
                             key: creds_meta.model_dump(exclude_none=True)
                             for key, creds_meta in credentials.items()
                         },
-                    }.items()
-                ],
+                    }
+                )
             }
             # Existing InputPresets must be deleted, in a separate query
             await prisma.models.AgentNodeExecutionInputOutput.prisma(tx).delete_many(
@@ -2505,6 +2505,50 @@ async def update_preset(
     if not updated:
         raise RuntimeError(f"AgentPreset #{preset_id} vanished while updating")
     return library_model.LibraryAgentPreset.from_db(updated)
+
+
+# A preset keeps one row per input and loads every one of them back on each
+# read, so the row count and the payload are bounded here rather than on
+# `LibraryAgentPresetCreatable`: `LibraryAgentPreset` reads stored rows through
+# that model, so a bound on it would make a row already over the bound
+# unreadable. The same reason puts the name and description check here.
+MAX_PRESET_INPUTS = 500
+MAX_PRESET_INPUT_BYTES = 256 * 1024
+MAX_PRESETS_PER_PAGE = 100
+
+
+def check_preset_text(name: Optional[str], description: Optional[str]) -> None:
+    for field_name, value, max_length in (
+        ("name", name, MAX_NAME_LENGTH),
+        ("description", description, MAX_DESCRIPTION_LENGTH),
+    ):
+        if len(value or "") > max_length:
+            raise InvalidInputError(
+                f"Preset {field_name} is too long: "
+                f"at most {max_length} characters are allowed"
+            )
+
+
+def preset_input_rows(
+    data: Mapping[str, Any],
+) -> list[prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput]:
+    """Build a preset's input rows, refusing more than one read can carry."""
+    if len(data) > MAX_PRESET_INPUTS:
+        raise InvalidInputError(
+            f"A preset holds at most {MAX_PRESET_INPUTS} inputs, got {len(data)}"
+        )
+    payload_bytes = len(json_dumps(data).encode())
+    if payload_bytes > MAX_PRESET_INPUT_BYTES:
+        raise InvalidInputError(
+            f"A preset's inputs hold at most {MAX_PRESET_INPUT_BYTES} bytes, "
+            f"got {payload_bytes}"
+        )
+    return [
+        prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(
+            name=name, data=SafeJson(value)
+        )
+        for name, value in data.items()
+    ]
 
 
 async def set_preset_webhook(

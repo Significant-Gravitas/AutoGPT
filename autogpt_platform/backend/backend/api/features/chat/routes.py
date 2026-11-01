@@ -18,7 +18,7 @@ from fastapi import (
     Security,
 )
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 from backend.api.features.experts import experts_db
 from backend.blocks.desktop._api import DesktopStream
@@ -192,6 +192,7 @@ from backend.util.background import spawn_background_task
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import Settings
+from backend.util.text_limits import MAX_TITLE_LENGTH, MAX_URL_LENGTH, IDText
 
 settings = Settings()
 
@@ -370,22 +371,32 @@ def _strip_injected_context(message: dict) -> dict:
 # ========== Request/Response Models ==========
 
 
+# {url: str, content: str}: the page the user attached, so each value is
+# bounded like `message` and the dict like the attachment lists below.
+MAX_CHAT_MESSAGE_LENGTH = 64_000
+MAX_CONTEXT_ENTRIES = 5
+ChatContext = dict[
+    Annotated[str, StringConstraints(max_length=MAX_URL_LENGTH)],
+    Annotated[str, StringConstraints(max_length=MAX_CHAT_MESSAGE_LENGTH)],
+]
+
+
 class StreamChatRequest(BaseModel):
     """Request model for streaming chat with optional context."""
 
-    message: str = Field(max_length=64_000)
+    message: str = Field(max_length=MAX_CHAT_MESSAGE_LENGTH)
     is_user_message: bool = True
-    context: dict[str, str] | None = None  # {url: str, content: str}
+    context: ChatContext | None = Field(default=None, max_length=MAX_CONTEXT_ENTRIES)
     voice: bool = Field(
         default=False,
         description="Voice mode is waiting on speech. Adds one line asking the "
         "reply to open with a spoken acknowledgement before any tool call; "
         "text turns never pay for it.",
     )
-    file_ids: list[str] | None = Field(
+    file_ids: list[IDText] | None = Field(
         default=None, max_length=20
     )  # Workspace file IDs attached to this message
-    folder_ids: list[str] | None = Field(
+    folder_ids: list[IDText] | None = Field(
         default=None,
         max_length=5,
         description="Workspace folder IDs attached to this message. Named in "
@@ -429,10 +440,10 @@ class StreamChatRequest(BaseModel):
 class QueuePendingMessageRequest(BaseModel):
     """Request model for queueing a follow-up while a turn is running."""
 
-    message: str = Field(max_length=64_000)
-    context: dict[str, str] | None = None
-    file_ids: list[str] | None = Field(default=None, max_length=20)
-    folder_ids: list[str] | None = Field(default=None, max_length=5)
+    message: str = Field(max_length=MAX_CHAT_MESSAGE_LENGTH)
+    context: ChatContext | None = Field(default=None, max_length=MAX_CONTEXT_ENTRIES)
+    file_ids: list[IDText] | None = Field(default=None, max_length=20)
+    folder_ids: list[IDText] | None = Field(default=None, max_length=5)
     message_id: str | None = Field(
         default=None,
         max_length=64,
@@ -582,7 +593,7 @@ class CancelSessionResponse(BaseModel):
 class UpdateSessionTitleRequest(BaseModel):
     """Request model for updating a session's title."""
 
-    title: str
+    title: str = Field(max_length=MAX_TITLE_LENGTH)
 
     @field_validator("title")
     @classmethod
@@ -1166,7 +1177,7 @@ async def disconnect_session_stream(
 class CredentialSelectionRequest(BaseModel):
     """The credential the user picked for each provider on a connect card."""
 
-    selections: dict[str, str] = Field(
+    selections: dict[IDText, IDText] = Field(
         description="Provider slug to credential id.",  # gitleaks:allow (schema text)
         max_length=20,
     )

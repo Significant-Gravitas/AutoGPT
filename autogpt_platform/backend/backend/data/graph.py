@@ -52,6 +52,11 @@ from backend.util.json import SafeJson
 from backend.util.models import Pagination
 from backend.util.request import parse_url
 from backend.util.text import split_camelcase
+from backend.util.text_limits import (
+    MAX_CRON_LENGTH,
+    MAX_INSTRUCTIONS_LENGTH,
+    MAX_LONG_NAME_LENGTH,
+)
 
 from .block import BlockInput
 from .db import BaseDbModel, execute_raw_with_schema, query_raw_with_schema, transaction
@@ -248,6 +253,17 @@ def _holds_picked_file(annotation: Any) -> bool:
         )
         for candidate in (annotation, *get_args(annotation))
     )
+
+
+# Checked when a graph is saved rather than on the model, because `GraphMeta`
+# and `GraphModel` read stored rows through it: a bound here would make a row
+# already longer than it unreadable.
+GRAPH_TEXT_MAX_LENGTHS = {
+    "name": MAX_LONG_NAME_LENGTH,
+    "description": MAX_INSTRUCTIONS_LENGTH,
+    "instructions": MAX_INSTRUCTIONS_LENGTH,
+    "recommended_schedule_cron": MAX_CRON_LENGTH,
+}
 
 
 class GraphBaseMeta(BaseDbModel):
@@ -2246,6 +2262,17 @@ async def __create_graph(
     team_id: str | None = None,
 ):
     graphs = [graph] + graph.sub_graphs
+
+    # Bound the metadata text before anything is written, so no save path
+    # (route, fork, copy, copilot) can persist a value a later listing would
+    # have to load back whole.
+    for g in graphs:
+        for field_name, max_length in GRAPH_TEXT_MAX_LENGTHS.items():
+            if len(getattr(g, field_name) or "") > max_length:
+                raise ValueError(
+                    f"Graph {field_name} is too long: "
+                    f"at most {max_length} characters are allowed"
+                )
 
     # Reject unsafe dynamic pin names before anything is written, so no save
     # path (route, fork, copy, copilot) can persist one. The use-site guards in

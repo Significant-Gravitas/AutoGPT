@@ -1924,7 +1924,9 @@ async def get_graph_execution_by_share_token(
         where=live_execution_share(share_token),
         include={
             "AgentGraph": True,
-            **GRAPH_EXECUTION_INCLUDE_WITH_NODES,
+            # The same bounded include as the owner's read of these outputs,
+            # so this route loads no more than the page it serves.
+            **graph_execution_include([*get_io_block_ids(), *get_webhook_block_ids()]),
         },
     )
 

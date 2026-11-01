@@ -20,6 +20,7 @@ from backend.data.execution import (
     get_graph_execution,
     get_graph_execution_by_share_token,
 )
+from backend.data.includes import MAX_NODE_EXECUTIONS_FETCH
 
 OUTPUT_BLOCK_ID = AgentOutputBlock().id
 INPUT_BLOCK_ID = AgentInputBlock().id
@@ -186,7 +187,13 @@ async def test_shared_outputs_hide_moderated_original_value(exec_client):
 
 @pytest.mark.asyncio
 async def test_share_query_uses_owner_node_execution_window(exec_client):
-    await get_graph_execution("owner-1", "ge-1", include_node_executions=True)
+    """The share read's window is the owner's own read of the same outputs.
+
+    Not the owner's `include_node_executions=True` window, which is every node
+    execution of the run: this route serves one page of outputs, so that page
+    is what it loads.
+    """
+    await get_graph_execution("owner-1", "ge-1")
     owner_nodes = exec_client.find_first.call_args.kwargs["include"]["NodeExecutions"]
     await get_graph_execution_by_share_token("tok-1")
 
@@ -195,6 +202,15 @@ async def test_share_query_uses_owner_node_execution_window(exec_client):
     assert include["AgentGraph"] is True
     assert "Input" in node_execs["include"]
     assert node_execs == owner_nodes
+    # The window itself: a bounded number of rows, output blocks only, and
+    # nothing that never started.
+    assert node_execs["take"] == MAX_NODE_EXECUTIONS_FETCH
+    assert AgentExecutionStatus.INCOMPLETE in [
+        clause["executionStatus"] for clause in node_execs["where"]["NOT"]
+    ]
+    assert OUTPUT_BLOCK_ID in (
+        node_execs["where"]["Node"]["is"]["AgentBlock"]["is"]["id"]["in"]
+    )
 
 
 @pytest.mark.asyncio

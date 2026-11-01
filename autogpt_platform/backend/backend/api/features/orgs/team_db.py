@@ -14,6 +14,10 @@ from .team_model import TeamMemberResponse, TeamResponse
 
 logger = logging.getLogger(__name__)
 
+# `GET /api/orgs/{org_id}/workspaces` lists every workspace of the org in one
+# unpaginated response, so the count is bounded at the create.
+MAX_TEAMS_PER_ORG = 500
+
 
 async def create_team(
     org_id: str,
@@ -23,6 +27,12 @@ async def create_team(
     join_policy: str = "OPEN",
 ) -> TeamResponse:
     """Create a workspace and make the creator an admin."""
+    existing = await prisma.team.count(where={"orgId": org_id, "archivedAt": None})
+    if existing >= MAX_TEAMS_PER_ORG:
+        raise ValueError(
+            f"An organization holds at most {MAX_TEAMS_PER_ORG} workspaces"
+        )
+
     ws = await prisma.team.create(
         data={
             "name": name,

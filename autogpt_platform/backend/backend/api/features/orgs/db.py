@@ -18,6 +18,8 @@ from .model import OrgAliasResponse, OrgMemberResponse, OrgResponse, UpdateOrgDa
 
 logger = logging.getLogger(__name__)
 
+MAX_ORGS_PER_USER = 50
+
 
 # ---------------------------------------------------------------------------
 # Utilities
@@ -275,6 +277,17 @@ async def create_org(
     Raises:
         ValueError: If the slug is already taken by another org or alias.
     """
+    # `GET /api/orgs` returns every org of the caller in one unpaginated
+    # response, on every logged-in page load, so the count is bounded at the
+    # create rather than by truncating that listing.
+    owned = await prisma.orgmember.count(
+        where={"userId": user_id, "status": "ACTIVE", "Org": {"deletedAt": None}}
+    )
+    if owned >= MAX_ORGS_PER_USER:
+        raise ValueError(
+            f"An account belongs to at most {MAX_ORGS_PER_USER} organizations"
+        )
+
     existing_org = await prisma.organization.find_unique(where={"slug": slug})
     if existing_org:
         raise ValueError(f"Slug '{slug}' is already in use")
