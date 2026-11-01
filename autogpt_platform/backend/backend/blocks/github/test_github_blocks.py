@@ -17,6 +17,7 @@ from backend.blocks.github import (
     users,
 )
 from backend.blocks.github._api import (
+    _convert_to_api_url,
     convert_comment_url_to_api_endpoint,
     get_paginated,
 )
@@ -370,10 +371,19 @@ class TestCanonicalRepoUrl:
             "github.com/owner/repo",
             "http://www.github.com/owner/repo",
             "owner/repo",
+            "https://api.github.com/repos/owner/repo",
+            "https://api.github.com/repos/owner/repo/",
         ],
     )
     def test_variants_are_canonicalised(self, value):
         assert canonical_repo_url(value) == "https://github.com/owner/repo"
+
+    def test_api_url_maps_to_the_same_api_paths(self):
+        url = canonical_repo_url("https://api.github.com/repos/owner/repo")
+        assert (
+            _convert_to_api_url(f"{url}/issues")
+            == "https://api.github.com/repos/owner/repo/issues"
+        )
 
     @pytest.mark.parametrize(
         "value",
@@ -381,6 +391,8 @@ class TestCanonicalRepoUrl:
             "https://github.com/owner/repo/tree/main",
             "https://github.com/owner/repo/releases",
             "https://evil.example.com/owner/repo",
+            "https://api.github.com/repos/owner/repo/issues",
+            "https://api.github.com/users/owner/repo",
             "owner/../../x",
         ],
     )

@@ -41,5 +41,13 @@ def canonical_repo_url(repo_url: str) -> str:
     Normalise a repository reference to 'https://github.com/{owner}/{repo}',
     so callers can append API sub-paths to it. Raises ValueError like
     `normalize_repo_path`.
+
+    The API form 'https://api.github.com/repos/{owner}/{repo}' is accepted
+    too, since it worked before and maps to the same API paths.
     """
+    parsed = urlparse(repo_url.strip())
+    if (parsed.hostname or "").lower() == "api.github.com":
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) == 3 and parts[0] == "repos":
+            repo_url = f"{parts[1]}/{parts[2]}"
     return f"https://github.com/{normalize_repo_path(repo_url)}"
