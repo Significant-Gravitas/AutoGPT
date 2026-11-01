@@ -817,15 +817,18 @@ async def test_a_filter_that_hands_its_value_back_costs_nothing(
     assert await fmt.format_string("{{ v|trim }}", {"v": "x" * 3_000}) == "x" * 3_000
 
 
+# Two tails, because the walk has two reasons not to search twice and each
+# shape exercises one: with nothing to find, the first opening ends the walk;
+# with a closing at the far end, the cursor skips every opening inside the tag
+# that was just measured. Either way one search is all it takes.
+@pytest.mark.parametrize("closing_delimiter", ["", "}}"])
 @pytest.mark.asyncio
 async def test_unclosed_tags_are_walked_once(
-    fmt: TextFormatter, monkeypatch: pytest.MonkeyPatch
+    fmt: TextFormatter, monkeypatch: pytest.MonkeyPatch, closing_delimiter: str
 ):
     # Searching for a closing delimiter from every opening costs one scan of
     # the tail per opening, which is quadratic in the template's size and is
-    # inside every cap. The walk stops at the first unclosed opening, so the
-    # number of searches does not grow with them; counting the searches says
-    # that without timing anything.
+    # inside every cap. Counting the searches says so without timing anything.
     searches = 0
     closing = text._JINJA_TAG_END
 
@@ -836,8 +839,9 @@ async def test_unclosed_tags_are_walked_once(
             return closing.search(*args, **kwargs)
 
     monkeypatch.setattr(text, "_JINJA_TAG_END", CountingSearches())
+    template = "{{" * 5_000 + "y" * 100_000 + closing_delimiter
     with pytest.raises(ValueError, match="tag too long"):
-        await fmt.format_string("{{" * 5_000 + "y" * 100_000)
+        await fmt.format_string(template)
     assert searches == 1
 
 
