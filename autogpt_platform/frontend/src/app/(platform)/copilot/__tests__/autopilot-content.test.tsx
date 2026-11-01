@@ -263,14 +263,14 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
 
       await waitFor(
         () => {
-          expect(screen.queryByRole("button", { name: /stop/i })).toBeNull();
+          expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
           expect(
             screen.queryByRole("button", { name: /submit/i }),
           ).not.toBeNull();
         },
         { timeout: 5000 },
       );
-      expect(screen.queryByText(/encountered an error/i)).toBeNull();
+      expect(screen.queryByTestId("chat-error-banner")).toBeNull();
     });
 
     it("renders both assistant replies across two back-to-back turns in the same session", async () => {

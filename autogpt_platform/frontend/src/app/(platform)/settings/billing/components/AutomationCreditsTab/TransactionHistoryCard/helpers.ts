@@ -18,7 +18,7 @@ const transactionNames: Record<string, string> = {
 
 export function activityName(transaction: Transaction): string {
   if (transaction.activity_type === "agent_run")
-    return transaction.agent_name || "Agent unavailable";
+    return transaction.agent_name || "Workflow unavailable";
   if (transaction.activity_type === "copilot_tools") return "Expert tool use";
   if (transaction.activity_type === "block_usage") return "Direct block usage";
   if (transaction.transaction_type === "USAGE")
@@ -31,11 +31,11 @@ export function activityName(transaction: Transaction): string {
 export function activityDescription(transaction: Transaction): string {
   if (transaction.parent_agent_name)
     return `Part of ${transaction.parent_agent_name}`;
-  if (transaction.activity_type === "agent_run") return "Agent run";
+  if (transaction.activity_type === "agent_run") return "Workflow run";
   if (transaction.activity_type === "copilot_tools")
     return transaction.conversation_title || "Paid block tools";
   if (transaction.activity_type === "block_usage")
-    return "Outside an agent run";
+    return "Outside a workflow run";
   if (transaction.transaction_type === "TOP_UP") return "Credit purchase";
   if (transaction.transaction_type === "REFUND")
     return "Credit purchase refunded";
@@ -118,7 +118,7 @@ export function receiptNote(transaction: Transaction) {
   if (transaction.activity_type === "copilot_tools")
     return "Paid block tools across this conversation. Subscription usage is tracked separately.";
   if (transaction.activity_type === "block_usage")
-    return "A paid block call without an associated agent run.";
+    return "A paid block call without an associated workflow run.";
   if (transaction.transaction_type === "REFUND")
     return "Credits removed from your balance after the payment was refunded.";
   if (transaction.transaction_type === "SUBSCRIPTION")

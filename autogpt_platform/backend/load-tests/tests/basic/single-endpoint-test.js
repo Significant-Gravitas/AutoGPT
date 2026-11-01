@@ -2,7 +2,7 @@
 import http from "k6/http";
 import { check } from "k6";
 import { getEnvironmentConfig } from "../../configs/environment.js";
-import { getPreAuthenticatedHeaders } from "../../configs/pre-authenticated-tokens.js";
+import { authHeaders, authSetupTimeout, setupAuth } from "../../lib/auth.js";
 
 const config = getEnvironmentConfig();
 
@@ -21,29 +21,26 @@ export const options = {
     projectID: parseInt(__ENV.K6_CLOUD_PROJECT_ID) || 4254406,
     name: `AutoGPT Single Endpoint Test - ${__ENV.ENDPOINT || "credits"} API`,
   },
+  setupTimeout: authSetupTimeout(),
 };
 
-export default function () {
+export function setup() {
+  return setupAuth();
+}
+
+export default function (data) {
   const endpoint = __ENV.ENDPOINT || "credits"; // credits, graphs, blocks, executions
   const concurrentRequests = parseInt(__ENV.CONCURRENT_REQUESTS) || 1;
+  const headers = authHeaders(data);
 
   try {
-    const headers = getPreAuthenticatedHeaders(__VU);
-
-    if (!headers || !headers.Authorization) {
-      console.log(
-        `⚠️ VU ${__VU} has no valid pre-authentication token - skipping test`,
-      );
-      return;
-    }
-
     console.log(
       `🚀 VU ${__VU} testing /api/${endpoint} with ${concurrentRequests} concurrent requests`,
     );
 
     if (concurrentRequests === 1) {
       // Single request mode (original behavior)
-      const response = http.get(`${config.API_BASE_URL}/api/${endpoint}`, {
+      const response = http.get(`${config.API_BASE_URL}/${endpoint}`, {
         headers,
       });
 
@@ -68,7 +65,7 @@ export default function () {
       for (let i = 0; i < concurrentRequests; i++) {
         requests.push({
           method: "GET",
-          url: `${config.API_BASE_URL}/api/${endpoint}`,
+          url: `${config.API_BASE_URL}/${endpoint}`,
           params: { headers },
         });
       }

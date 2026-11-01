@@ -248,6 +248,10 @@ class ReviewRequest(BaseModel):
     reviews: List[ReviewItem] = Field(
         description="All reviews with their approval status, data, and messages"
     )
+    wait_for_other_cards: bool = Field(
+        False,
+        description="Set by a chat's own queue, which can continue: no turn starts while other cards in the chat still wait",
+    )
 
     @model_validator(mode="after")
     def validate_review_completeness(self):
@@ -271,6 +275,10 @@ class ReviewResponse(BaseModel):
     rejected_count: int = Field(description="Number of reviews successfully rejected")
     failed_count: int = Field(description="Number of reviews that failed processing")
     error: str | None = Field(None, description="Error message if operation failed")
+    awaiting_other_cards: bool = Field(
+        False,
+        description="The answers start no chat turn yet: other cards in the chat still wait",
+    )
 
 
 def _block_named(name: str | None):

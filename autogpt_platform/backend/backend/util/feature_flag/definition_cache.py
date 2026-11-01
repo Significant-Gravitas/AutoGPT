@@ -19,10 +19,7 @@ import time
 import uuid
 from typing import Any, Callable
 
-from posthog.flag_definition_cache import (
-    FlagDefinitionCacheData,
-    FlagDefinitionCacheProvider,
-)
+from posthog.flag_definition_cache import FlagDefinitionCacheData
 from prometheus_client import Counter
 
 from backend.data.redis_client import connect_once
@@ -72,7 +69,9 @@ return 0
 """
 
 
-def get_flag_definition_cache() -> FlagDefinitionCacheProvider | None:
+def get_flag_definition_cache() -> (
+    "RedisFlagDefinitionCache | MemoryFlagDefinitionCache | None"
+):
     """The provider the PostHog client shares its flag definitions through.
 
     None leaves the SDK polling PostHog once per process, which is what it does
@@ -118,6 +117,11 @@ class RedisFlagDefinitionCache:
         self._degraded_at = 0.0
         # What this process's SDK last installed, fetched or read.
         self._definitions: FlagDefinitionCacheData | None = None
+
+    @property
+    def definitions(self) -> FlagDefinitionCacheData | None:
+        """The definitions this process last loaded successfully, fetched or shared."""
+        return self._definitions
 
     def should_fetch_flag_definitions(self) -> bool:
         try:
@@ -256,6 +260,11 @@ class MemoryFlagDefinitionCache:
         self._data: FlagDefinitionCacheData | None = None
         self._fetched_at = 0.0
         self._lock = threading.Lock()
+
+    @property
+    def definitions(self) -> FlagDefinitionCacheData | None:
+        with self._lock:
+            return self._data
 
     def should_fetch_flag_definitions(self) -> bool:
         with self._lock:

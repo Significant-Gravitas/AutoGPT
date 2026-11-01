@@ -59,6 +59,8 @@ from backend.util import posthog_client
 from backend.util.posthog_events import PostHogEvent
 
 if TYPE_CHECKING:
+    from posthog import Posthog
+
     from backend.data.execution import GraphExecutionEntry, GraphExecutionMeta
     from backend.data.model import GraphExecutionStats
 
@@ -102,6 +104,7 @@ def track(
     properties: dict[str, Any] | None = None,
     *,
     dedup_key: str | None = None,
+    timestamp: datetime | None = None,
 ) -> None:
     """Send one event for *user_id*, dropping unset properties. Silently
     no-ops when analytics is off or there is no user."""
@@ -110,6 +113,7 @@ def track(
         event,
         {k: v for k, v in (properties or {}).items() if v is not None},
         dedup_key=dedup_key,
+        timestamp=timestamp,
     )
 
 
@@ -351,17 +355,23 @@ def track_onboarding_completed(*, user_id: str) -> None:
 
 
 def set_onboarding_role(
-    *, user_id: str, role: OnboardingRole, keep_existing: bool = False
-) -> None:
+    *,
+    user_id: str,
+    role: OnboardingRole,
+    keep_existing: bool = False,
+    client: "Posthog | None" = None,
+) -> bool:
     """The role picked in onboarding as person properties, so funnels and
     retention can be split by it. Other's text is cleared for any other pick.
-    `keep_existing` is for the backfill: a role PostHog already holds is the
-    newer pick, so it is left alone."""
+    `keep_existing` and `client` are for the backfill: a role PostHog already
+    holds is the newer pick, so it is left alone, and the run sends on a client
+    of its own (`posthog_client.send_each`). False when it wasn't queued."""
     person = {"onboarding_role": role.label, "onboarding_role_other": role.other}
-    posthog_client.capture(
+    return posthog_client.capture(
         user_id,
         PostHogEvent.SET_PERSON_PROPERTIES,
         {"$set_once" if keep_existing else "$set": person},
+        client=client,
     )
 
 

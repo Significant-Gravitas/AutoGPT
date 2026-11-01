@@ -70,12 +70,12 @@ class InstallExpertWorkflowTool(BaseTool):
                 "username_agent_slug": {
                     "type": "string",
                     "description": "Marketplace 'creator/slug'.",
-                    "title": "Marketplace agent",
+                    "title": "Marketplace workflow",
                 },
                 "store_listing_version_id": {
                     "type": "string",
                     "description": "Marketplace listing version.",
-                    "title": "Marketplace agent",
+                    "title": "Marketplace workflow",
                     "entity": "store_listing",
                 },
                 "expert_id": _EXPERT_ID_PARAM,
@@ -124,7 +124,7 @@ class InstallExpertWorkflowTool(BaseTool):
                 listing_id = await _listing_id_from_slug(username_agent_slug)
                 if listing_id is None:
                     return ErrorResponse(
-                        message=f"Marketplace agent '{username_agent_slug}' not found",
+                        message=f"Marketplace workflow '{username_agent_slug}' not found",
                         session_id=session_id,
                     )
             await settle_expert_grants(user_id, session)

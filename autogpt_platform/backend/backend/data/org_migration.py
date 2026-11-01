@@ -269,7 +269,7 @@ async def ensure_personal_org(user_id: str) -> bool:
     number of concurrent callers sees ``True`` for a given user.
 
     On ``UniqueViolationError`` there are two possibilities, distinguished by a
-    re-check (same pattern as ``data.user._ensure_user_profile``): a concurrent
+    re-check (same pattern as ``data.profile.ensure_profile``): a concurrent
     first-request already bootstrapped this user (done), or the resolved slug
     collided with a *different* user's org (loop and retry — ``_resolve_unique_slug``
     now sees the taken slug and picks a fresh suffix).

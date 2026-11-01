@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useBlockMenuStore } from "@/app/(platform)/build/stores/blockMenuStore";
+import { useShallow } from "zustand/react/shallow";
 import { useAddAgentToBuilder } from "../hooks/useAddAgentToBuilder";
 import {
   getPaginationNextPageNumber,
@@ -34,7 +35,17 @@ export const useBlockMenuSearchContent = () => {
     setCreatorsList,
     creators,
     setCategoryCounts,
-  } = useBlockMenuStore();
+  } = useBlockMenuStore(
+    useShallow((state) => ({
+      searchQuery: state.searchQuery,
+      searchId: state.searchId,
+      setSearchId: state.setSearchId,
+      filters: state.filters,
+      setCreatorsList: state.setCreatorsList,
+      creators: state.creators,
+      setCategoryCounts: state.setCategoryCounts,
+    })),
+  );
 
   const { toast } = useToast();
   const { addAgentToBuilder, addLibraryAgentToBuilder } =
@@ -89,7 +100,7 @@ export const useBlockMenuSearchContent = () => {
       onError: (error) => {
         Sentry.captureException(error);
         toast({
-          title: "Failed to add agent to library",
+          title: "Failed to add workflow to library",
           description:
             ((error as any).message as string) ||
             "An unexpected error occurred.",
@@ -133,9 +144,10 @@ export const useBlockMenuSearchContent = () => {
     }
   }, [resetSearchSession, searchId, searchQuery]);
 
-  const searchResults = searchQueryData
-    ? unpaginate(searchQueryData, "items")
-    : [];
+  const searchResults = useMemo(
+    () => (searchQueryData ? unpaginate(searchQueryData, "items") : []),
+    [searchQueryData],
+  );
 
   const handleAddLibraryAgent = async (agent: LibraryAgent) => {
     setAddingLibraryAgentId(agent.id);
@@ -181,13 +193,13 @@ export const useBlockMenuSearchContent = () => {
       addAgentToBuilder(libraryAgentDetails as LibraryAgent);
 
       toast({
-        title: "Agent Added",
-        description: "Agent has been added to your library and builder",
+        title: "Workflow Added",
+        description: "Workflow has been added to your library and builder",
       });
     } catch (error) {
       Sentry.captureException(error);
       toast({
-        title: "Failed to add agent to library",
+        title: "Failed to add workflow to library",
         description:
           ((error as any).message as string) || "An unexpected error occurred.",
         variant: "destructive",

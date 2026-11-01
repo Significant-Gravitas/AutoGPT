@@ -8,6 +8,9 @@ import re
 import subprocess
 from pathlib import Path
 
+from backend.data.execution import ExecutionContext
+from backend.util.file import MediaFileType, store_media_file
+
 logger = logging.getLogger(__name__)
 
 # Known operation tags added by video blocks
@@ -129,3 +132,25 @@ def strip_chapters_inplace(video_path: str) -> None:
     finally:
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
+
+
+class VideoMediaStorage:
+    """Storage steps shared by the video blocks, as methods so `test_mock` can replace them."""
+
+    async def _store_input_video(
+        self, execution_context: ExecutionContext, file: MediaFileType
+    ) -> MediaFileType:
+        return await store_media_file(
+            file=file,
+            execution_context=execution_context,
+            return_format="for_local_processing",
+        )
+
+    async def _store_output_video(
+        self, execution_context: ExecutionContext, file: MediaFileType
+    ) -> MediaFileType:
+        return await store_media_file(
+            file=file,
+            execution_context=execution_context,
+            return_format="for_block_output",
+        )

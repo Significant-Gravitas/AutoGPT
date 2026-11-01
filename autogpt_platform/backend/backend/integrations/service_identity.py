@@ -42,6 +42,9 @@ def catalog_slug(entry: MCPCatalogEntry) -> str:
 def service_for_provider(provider: str) -> ServiceIdentity:
     """A block provider is its own service; its logo is filed under its slug."""
     slug = canonical_provider(provider)
+    if slug == ProviderName.MICROSOFT_365_COPILOT.value:
+        # Copilot connections made before Microsoft's were combined into one.
+        return ServiceIdentity(service="microsoft", icon="microsoft")
     return ServiceIdentity(service=slug, icon=slug)
 
 

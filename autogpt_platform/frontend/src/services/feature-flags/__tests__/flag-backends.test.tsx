@@ -44,9 +44,13 @@ vi.mock("@posthog/react", () => ({
   usePostHog: () => postHogClient,
 }));
 
-const sentry = vi.hoisted(() => ({ addFeatureFlag: vi.fn() }));
+const sentry = vi.hoisted(() => ({
+  addFeatureFlag: vi.fn(),
+  captureMessage: vi.fn(),
+}));
 
 vi.mock("@sentry/nextjs", () => ({
+  captureMessage: sentry.captureMessage,
   getClient: () => ({
     getIntegrationByName: (name: string) =>
       name === "FeatureFlags"
@@ -65,14 +69,28 @@ vi.mock("@/services/environment", () => ({
   environment: { areFeatureFlagsEnabled: () => env.launchDarklyEnabled },
 }));
 
-const HIRE_EXPERTS = "hire-experts";
+const GENERIC_TRIGGER_AGENTS = "generic-trigger-agents";
 
-describe("launchdarkly is the default backend", () => {
+describe("the default backend", () => {
+  it.each([undefined, "", "launch-darkly"])(
+    "asks the server when the backend is %j",
+    async (backend) => {
+      await loadWithBackend(backend);
+      const { FLAG_BACKEND } = await import("../flag-backend");
+
+      expect(FLAG_BACKEND).toBe("server");
+    },
+  );
+});
+
+describe("launchdarkly backend", () => {
   it("reads the LaunchDarkly value and never touches PostHog", async () => {
-    const { Flag, useGetFlag } = await loadWithBackend(undefined);
-    launchDarkly.flags = { [HIRE_EXPERTS]: true };
+    const { Flag, useGetFlag } = await loadWithBackend("launchdarkly");
+    launchDarkly.flags = { [GENERIC_TRIGGER_AGENTS]: true };
 
-    const { result } = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+    const { result } = renderHook(() =>
+      useGetFlag(Flag.GENERIC_TRIGGER_AGENTS),
+    );
 
     expect(result.current).toBe(true);
     expect(postHog.enabled).not.toHaveBeenCalled();
@@ -80,10 +98,12 @@ describe("launchdarkly is the default backend", () => {
   });
 
   it("reports a flag LaunchDarkly has not answered for as not ready", async () => {
-    const { Flag, useFlagStatus } = await loadWithBackend(undefined);
+    const { Flag, useFlagStatus } = await loadWithBackend("launchdarkly");
     launchDarkly.flags = {};
 
-    const { result } = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
+    const { result } = renderHook(() =>
+      useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS),
+    );
 
     expect(result.current).toEqual({
       enabled: false,
@@ -98,7 +118,9 @@ describe("posthog backend", () => {
     const { Flag, useFlagStatus } = await loadWithBackend("posthog");
     postHog.enabled.mockReturnValue(true);
 
-    const { result } = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
+    const { result } = renderHook(() =>
+      useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS),
+    );
 
     expect(result.current).toEqual({
       enabled: true,
@@ -110,7 +132,7 @@ describe("posthog backend", () => {
   it("distinguishes a conclusive off from no answer yet", async () => {
     const { Flag, useFlagStatus } = await loadWithBackend("posthog");
     postHog.enabled.mockReturnValue(false);
-    const off = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
+    const off = renderHook(() => useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS));
     expect(off.result.current).toEqual({
       enabled: false,
       ready: true,
@@ -118,7 +140,9 @@ describe("posthog backend", () => {
     });
 
     postHog.loaded = false;
-    const unanswered = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
+    const unanswered = renderHook(() =>
+      useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS),
+    );
     expect(unanswered.result.current).toEqual({
       enabled: false,
       ready: false,
@@ -131,7 +155,9 @@ describe("posthog backend", () => {
     postHog.loaded = false;
     postHog.enabled.mockReturnValue(true);
 
-    const { result } = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
+    const { result } = renderHook(() =>
+      useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS),
+    );
 
     expect(result.current.answered).toBe(false);
   });
@@ -140,7 +166,9 @@ describe("posthog backend", () => {
     const { Flag, useFlagStatus } = await loadWithBackend("posthog");
     postHog.errorsLoading = true;
 
-    const { result } = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
+    const { result } = renderHook(() =>
+      useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS),
+    );
 
     expect(result.current.answered).toBe(false);
   });
@@ -149,7 +177,9 @@ describe("posthog backend", () => {
     const { Flag, useFlagStatus } = await loadWithBackend("posthog");
     postHog.enabled.mockReturnValue(undefined);
 
-    const { result } = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
+    const { result } = renderHook(() =>
+      useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS),
+    );
 
     expect(result.current).toEqual({
       enabled: false,
@@ -180,10 +210,12 @@ describe("posthog backend", () => {
 
   it("still honours a forced flag", async () => {
     const { Flag, useGetFlag } = await loadWithBackend("posthog");
-    process.env.NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS = "true";
+    process.env.NEXT_PUBLIC_FORCE_FLAG_GENERIC_TRIGGER_AGENTS = "true";
     postHog.enabled.mockReturnValue(false);
 
-    const { result } = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+    const { result } = renderHook(() =>
+      useGetFlag(Flag.GENERIC_TRIGGER_AGENTS),
+    );
 
     expect(result.current).toBe(true);
   });
@@ -196,15 +228,16 @@ describe("posthog backend", () => {
     const forced = await loadWithBackend("posthog");
     postHog.enabled.mockReturnValue(false);
     expect(
-      renderHook(() => forced.useFlagStatus(forced.Flag.HIRE_EXPERTS)).result
-        .current,
+      renderHook(() => forced.useFlagStatus(forced.Flag.GENERIC_TRIGGER_AGENTS))
+        .result.current,
     ).toEqual({ enabled: true, ready: true, answered: true });
 
     delete process.env.NEXT_PUBLIC_FORCE_ALL_FLAGS;
     const unforced = await loadWithBackend("posthog");
     expect(
-      renderHook(() => unforced.useFlagStatus(unforced.Flag.HIRE_EXPERTS))
-        .result.current,
+      renderHook(() =>
+        unforced.useFlagStatus(unforced.Flag.GENERIC_TRIGGER_AGENTS),
+      ).result.current,
     ).toEqual({ enabled: false, ready: true, answered: true });
   });
 });
@@ -212,36 +245,43 @@ describe("posthog backend", () => {
 describe("dual backend", () => {
   it("serves LaunchDarkly's answer when the two disagree", async () => {
     const { Flag, useGetFlag } = await loadWithBackend("dual");
-    launchDarkly.flags = { [HIRE_EXPERTS]: true };
+    launchDarkly.flags = { [GENERIC_TRIGGER_AGENTS]: true };
     postHog.enabled.mockReturnValue(false);
 
-    const { result } = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+    const { result } = renderHook(() =>
+      useGetFlag(Flag.GENERIC_TRIGGER_AGENTS),
+    );
 
     expect(result.current).toBe(true);
   });
 
-  it("reports the disagreement to PostHog and the console", async () => {
+  it("reports the disagreement to PostHog and Sentry", async () => {
     const { Flag, useGetFlag } = await loadWithBackend("dual");
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    launchDarkly.flags = { [HIRE_EXPERTS]: true };
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    launchDarkly.flags = { [GENERIC_TRIGGER_AGENTS]: true };
     postHog.enabled.mockReturnValue(false);
 
-    renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+    renderHook(() => useGetFlag(Flag.GENERIC_TRIGGER_AGENTS));
 
     expect(postHog.capture).toHaveBeenCalledWith("feature_flag_mismatched", {
-      flag: HIRE_EXPERTS,
+      flag: GENERIC_TRIGGER_AGENTS,
       launchdarkly: { value: true, resolved: true },
       posthog: { value: false, resolved: true },
     });
-    expect(warn).toHaveBeenCalled();
+    expect(sentry.captureMessage).toHaveBeenCalledExactlyOnceWith(
+      `Feature flag mismatch: ${GENERIC_TRIGGER_AGENTS} (LaunchDarkly=true, PostHog=false)`,
+      expect.objectContaining({
+        fingerprint: ["feature-flag-mismatch", GENERIC_TRIGGER_AGENTS],
+      }),
+    );
   });
 
   it("stays quiet when the two agree", async () => {
     const { Flag, useGetFlag } = await loadWithBackend("dual");
-    launchDarkly.flags = { [HIRE_EXPERTS]: true };
+    launchDarkly.flags = { [GENERIC_TRIGGER_AGENTS]: true };
     postHog.enabled.mockReturnValue(true);
 
-    renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+    renderHook(() => useGetFlag(Flag.GENERIC_TRIGGER_AGENTS));
 
     expect(postHog.capture).not.toHaveBeenCalled();
   });
@@ -261,7 +301,7 @@ describe("dual backend", () => {
 
   it("reports a JSON flag whose values really differ", async () => {
     const { Flag, useGetFlag } = await loadWithBackend("dual");
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "info").mockImplementation(() => {});
     launchDarkly.flags = {
       [Flag.COPILOT_BOT_PLATFORMS]: { slack: true, discord: false },
     };
@@ -273,16 +313,41 @@ describe("dual backend", () => {
     expect(postHog.capture).toHaveBeenCalledTimes(1);
   });
 
-  it("reports a flag LaunchDarkly has and PostHog has never heard of", async () => {
+  it("stays quiet when a flag PostHog has switched off is off in LaunchDarkly too", async () => {
+    // PostHog leaves an inactive flag out of its answer and LaunchDarkly says
+    // `false`: both serve the default, so no user sees a difference
+    // (BUILDER-94P).
     const { Flag, useGetFlag } = await loadWithBackend("dual");
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    launchDarkly.flags = { [HIRE_EXPERTS]: true };
+    launchDarkly.flags = { [Flag.CHAT_PINNING]: false };
     postHog.enabled.mockReturnValue(undefined);
 
-    renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+    const { result } = renderHook(() => useGetFlag(Flag.CHAT_PINNING));
+
+    expect(result.current).toBe(false);
+    expect(postHog.capture).not.toHaveBeenCalled();
+    expect(sentry.captureMessage).not.toHaveBeenCalled();
+  });
+
+  it("stays quiet when PostHog's bare toggle stands in for a JSON flag's default", async () => {
+    const { Flag, useGetFlag } = await loadWithBackend("dual");
+    launchDarkly.flags = { [Flag.COPILOT_BOT_PLATFORMS]: {} };
+    postHog.enabled.mockReturnValue(true);
+
+    renderHook(() => useGetFlag(Flag.COPILOT_BOT_PLATFORMS));
+
+    expect(postHog.capture).not.toHaveBeenCalled();
+  });
+
+  it("reports a flag LaunchDarkly has and PostHog has never heard of", async () => {
+    const { Flag, useGetFlag } = await loadWithBackend("dual");
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    launchDarkly.flags = { [GENERIC_TRIGGER_AGENTS]: true };
+    postHog.enabled.mockReturnValue(undefined);
+
+    renderHook(() => useGetFlag(Flag.GENERIC_TRIGGER_AGENTS));
 
     expect(postHog.capture).toHaveBeenCalledWith("feature_flag_mismatched", {
-      flag: HIRE_EXPERTS,
+      flag: GENERIC_TRIGGER_AGENTS,
       launchdarkly: { value: true, resolved: true },
       posthog: { value: null, resolved: true },
     });
@@ -292,17 +357,19 @@ describe("dual backend", () => {
     // The two never resolve on the same render, so comparing before both
     // have answered reports the load order rather than a disagreement.
     const { Flag, useGetFlag } = await loadWithBackend("dual");
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "info").mockImplementation(() => {});
     launchDarkly.flags = {};
     postHog.enabled.mockReturnValue(true);
 
-    const { rerender } = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+    const { rerender } = renderHook(() =>
+      useGetFlag(Flag.GENERIC_TRIGGER_AGENTS),
+    );
     rerender();
     expect(postHog.capture).not.toHaveBeenCalled();
 
-    launchDarkly.flags = { [HIRE_EXPERTS]: true };
+    launchDarkly.flags = { [GENERIC_TRIGGER_AGENTS]: true };
     postHog.loaded = false;
-    const pending = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+    const pending = renderHook(() => useGetFlag(Flag.GENERIC_TRIGGER_AGENTS));
     pending.rerender();
 
     expect(postHog.capture).not.toHaveBeenCalled();
@@ -310,12 +377,14 @@ describe("dual backend", () => {
 
   it("reports once LaunchDarkly catches up and still disagrees", async () => {
     const { Flag, useGetFlag } = await loadWithBackend("dual");
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "info").mockImplementation(() => {});
     postHog.enabled.mockReturnValue(true);
-    const { rerender } = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+    const { rerender } = renderHook(() =>
+      useGetFlag(Flag.GENERIC_TRIGGER_AGENTS),
+    );
     expect(postHog.capture).not.toHaveBeenCalled();
 
-    launchDarkly.flags = { [HIRE_EXPERTS]: false };
+    launchDarkly.flags = { [GENERIC_TRIGGER_AGENTS]: false };
     rerender();
 
     expect(postHog.capture).toHaveBeenCalledTimes(1);
@@ -329,7 +398,9 @@ describe("dual backend", () => {
     launchDarkly.flags = {};
     postHog.enabled.mockReturnValue(true);
 
-    const { result } = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
+    const { result } = renderHook(() =>
+      useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS),
+    );
 
     expect(result.current).toEqual({
       enabled: true,
@@ -343,7 +414,7 @@ describe("dual backend", () => {
     const { Flag, useGetFlag } = await loadWithBackend("dual");
     postHog.enabled.mockReturnValue(true);
 
-    renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+    renderHook(() => useGetFlag(Flag.GENERIC_TRIGGER_AGENTS));
 
     expect(postHog.capture).not.toHaveBeenCalled();
   });
@@ -351,30 +422,30 @@ describe("dual backend", () => {
 
 describe("Sentry's flag context", () => {
   it.each([
-    ["launchdarkly", undefined],
+    ["launchdarkly", "launchdarkly"],
     ["posthog", "posthog"],
     ["dual", "dual"],
   ])("records the served boolean in %s mode", async (_, backend) => {
     const { Flag, useFlagStatus } = await loadWithBackend(backend);
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    launchDarkly.flags = { [HIRE_EXPERTS]: true };
+    launchDarkly.flags = { [GENERIC_TRIGGER_AGENTS]: true };
     postHog.enabled.mockReturnValue(backend === "posthog");
 
-    renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
+    renderHook(() => useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS));
 
     expect(sentry.addFeatureFlag).toHaveBeenCalledExactlyOnceWith(
-      HIRE_EXPERTS,
+      GENERIC_TRIGGER_AGENTS,
       true,
     );
   });
 
   it("records a flag read by a component that throws in the same render", async () => {
-    const { Flag, useGetFlag } = await loadWithBackend(undefined);
+    const { Flag, useGetFlag } = await loadWithBackend("launchdarkly");
     vi.spyOn(console, "error").mockImplementation(() => {});
-    launchDarkly.flags = { [HIRE_EXPERTS]: true };
+    launchDarkly.flags = { [GENERIC_TRIGGER_AGENTS]: true };
     let recordedAtCatch: unknown[][] = [];
     function Reader(): ReactNode {
-      useGetFlag(Flag.HIRE_EXPERTS);
+      useGetFlag(Flag.GENERIC_TRIGGER_AGENTS);
       throw new Error("render failed");
     }
     class Boundary extends Component<{ children: ReactNode }> {
@@ -396,36 +467,38 @@ describe("Sentry's flag context", () => {
       </Boundary>,
     );
 
-    expect(recordedAtCatch).toContainEqual([HIRE_EXPERTS, true]);
+    expect(recordedAtCatch).toContainEqual([GENERIC_TRIGGER_AGENTS, true]);
   });
 
   it("records the default it serves while flags are disabled", async () => {
     env.launchDarklyEnabled = false;
-    const { Flag, useGetFlag } = await loadWithBackend(undefined);
-    launchDarkly.flags = { [HIRE_EXPERTS]: true };
+    const { Flag, useGetFlag } = await loadWithBackend("launchdarkly");
+    launchDarkly.flags = { [GENERIC_TRIGGER_AGENTS]: true };
 
-    const { result } = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+    const { result } = renderHook(() =>
+      useGetFlag(Flag.GENERIC_TRIGGER_AGENTS),
+    );
 
     expect(result.current).toBe(false);
     expect(sentry.addFeatureFlag).toHaveBeenCalledExactlyOnceWith(
-      HIRE_EXPERTS,
+      GENERIC_TRIGGER_AGENTS,
       false,
     );
   });
 
   it("records nothing for an env-forced flag", async () => {
     const { Flag, useFlagStatus, useGetFlag } =
-      await loadWithBackend(undefined);
-    process.env.NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS = "true";
+      await loadWithBackend("launchdarkly");
+    process.env.NEXT_PUBLIC_FORCE_FLAG_GENERIC_TRIGGER_AGENTS = "true";
 
-    renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
-    renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+    renderHook(() => useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS));
+    renderHook(() => useGetFlag(Flag.GENERIC_TRIGGER_AGENTS));
 
     expect(sentry.addFeatureFlag).not.toHaveBeenCalled();
   });
 
   it("records nothing for a JSON-valued flag", async () => {
-    const { Flag, useGetFlag } = await loadWithBackend(undefined);
+    const { Flag, useGetFlag } = await loadWithBackend("launchdarkly");
     launchDarkly.flags = { "copilot-bot-platforms": { slack: false } };
 
     renderHook(() => useGetFlag(Flag.COPILOT_BOT_PLATFORMS));
@@ -434,15 +507,17 @@ describe("Sentry's flag context", () => {
   });
 
   it("still serves the flag when recording throws", async () => {
-    const { Flag, useGetFlag } = await loadWithBackend(undefined);
+    const { Flag, useGetFlag } = await loadWithBackend("launchdarkly");
     sentry.addFeatureFlag.mockImplementation(() => {
       throw new Error("sentry down");
     });
-    launchDarkly.flags = { [HIRE_EXPERTS]: true };
+    launchDarkly.flags = { [GENERIC_TRIGGER_AGENTS]: true };
 
     const debug = vi.spyOn(console, "debug").mockImplementation(() => {});
 
-    const { result } = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+    const { result } = renderHook(() =>
+      useGetFlag(Flag.GENERIC_TRIGGER_AGENTS),
+    );
 
     expect(result.current).toBe(true);
     expect(debug).toHaveBeenCalledOnce();
@@ -455,7 +530,9 @@ describe("posthog flags follow the provider's gate", () => {
     const { Flag, useFlagStatus } = await loadWithBackend("posthog");
     postHog.enabled.mockReturnValue(true);
 
-    const { result } = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
+    const { result } = renderHook(() =>
+      useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS),
+    );
 
     expect(result.current).toEqual({
       enabled: false,
@@ -471,6 +548,7 @@ beforeEach(() => {
   postHog.payload.mockReturnValue(undefined);
   postHog.capture.mockClear();
   sentry.addFeatureFlag.mockReset();
+  sentry.captureMessage.mockClear();
   postHog.loaded = true;
   postHog.errorsLoading = false;
   Object.keys(process.env)

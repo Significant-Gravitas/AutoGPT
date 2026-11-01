@@ -33,16 +33,11 @@ export function SettingRow({
           htmlFor={switchId}
           className={disabled ? "cursor-not-allowed" : "cursor-pointer"}
         >
-          <Text variant="body-medium" as="span" className="text-textBlack">
+          <Text variant="body-medium" as="span">
             {label}
           </Text>
         </label>
-        <Text
-          id={descriptionId}
-          variant="small"
-          as="span"
-          className="text-zinc-500"
-        >
+        <Text id={descriptionId} variant="small" as="span" tone="muted">
           {description}
         </Text>
       </div>

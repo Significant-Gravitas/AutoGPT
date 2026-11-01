@@ -20,12 +20,7 @@ export function ShelfMoreButton({
   onToggle,
 }: Props) {
   return (
-    <Button
-      size="small"
-      aria-expanded={isExpanded}
-      onClick={onToggle}
-      unmask={false}
-    >
+    <Button size="small" aria-expanded={isExpanded} onClick={onToggle}>
       {isExpanded
         ? "Show fewer"
         : `Load ${isAll ? "all " : ""}${count.toLocaleString()} ${noun}`}

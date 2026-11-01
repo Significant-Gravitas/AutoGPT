@@ -3,10 +3,24 @@
 from datetime import datetime
 
 import stripe
+from prisma.enums import SubscriptionTier
 from pydantic import BaseModel, Field
 
 from backend.data.stripe_client import stripe_call
 from backend.data.subscription_trial_config import AcceptedTrialOffer
+
+# A trial that ends on a plan other than the accepted one is moved onto that
+# plan's price with these beside it; the reconcile grants no other price.
+CONVERSION_PRICE_KEY = "trial_conversion_price_id"
+CONVERSION_TIER_KEY = "trial_conversion_tier"
+_CHOSEN_TIERS = frozenset(
+    {
+        SubscriptionTier.BASIC,
+        SubscriptionTier.PRO,
+        SubscriptionTier.MAX,
+        SubscriptionTier.BUSINESS,
+    }
+)
 
 
 class Card(BaseModel):
@@ -67,11 +81,22 @@ class Invoice(BaseModel):
     id: str
     status: str | None = None
     created: int
+    customer: str | None = None
+    amount_due: int = 0
+    currency: str | None = None
     billing_reason: str | None = None
+    hosted_invoice_url: str | None = None
+
+
+class Recurring(BaseModel):
+    interval: str
 
 
 class SubscriptionPrice(BaseModel):
     id: str
+    unit_amount: int | None = None
+    currency: str | None = None
+    recurring: Recurring | None = None
 
 
 class SubscriptionItem(BaseModel):
@@ -88,11 +113,42 @@ class CancellationDetails(BaseModel):
     comment: str | None = None
 
 
-class SubscriptionSnapshot(BaseModel):
+class ChosenPlan(BaseModel):
+    tier: SubscriptionTier
+    price: SubscriptionPrice
+
+
+class SubscriptionPlanTerms(BaseModel):
+    """The plan a trial subscription carries."""
+
+    metadata: dict[str, str] = Field(default_factory=dict)
+    items: SubscriptionItems | None = None
+
+    def has_accepted_price(self, offer: AcceptedTrialOffer) -> bool:
+        price = self._sole_price()
+        return price is not None and price.id == offer.price_id
+
+    def chosen_plan(self) -> ChosenPlan | None:
+        """The plan the customer ended the trial on in place of the accepted
+        one, while the subscription carries exactly that plan's price."""
+        price = self._sole_price()
+        if price is None or price.id != self.metadata.get(CONVERSION_PRICE_KEY):
+            return None
+        tier = self.metadata.get(CONVERSION_TIER_KEY)
+        chosen = next((t for t in _CHOSEN_TIERS if t.value == tier), None)
+        return ChosenPlan(tier=chosen, price=price) if chosen else None
+
+    def _sole_price(self) -> SubscriptionPrice | None:
+        if not self.items or self.items.has_more or len(self.items.data) != 1:
+            return None
+        item = self.items.data[0]
+        return item.price if item.quantity == 1 else None
+
+
+class SubscriptionSnapshot(SubscriptionPlanTerms):
     id: str
     customer: str
     status: str
-    metadata: dict[str, str] = Field(default_factory=dict)
     trial_start: int | None = None
     trial_end: int | None = None
     ended_at: int | None = None
@@ -103,16 +159,6 @@ class SubscriptionSnapshot(BaseModel):
     customer_default_payment_method: PaymentMethod | None = None
     pending_setup_intent: str | dict | None = None
     latest_invoice: Invoice | None = None
-    items: SubscriptionItems | None = None
-
-    def has_accepted_price(self, offer: AcceptedTrialOffer) -> bool:
-        return bool(
-            self.items
-            and not self.items.has_more
-            and len(self.items.data) == 1
-            and self.items.data[0].price.id == offer.price_id
-            and self.items.data[0].quantity == 1
-        )
 
     def has_verified_card(self, now: datetime) -> bool:
         method = self.effective_payment_method()

@@ -8,31 +8,27 @@ import {
   okData,
   unpaginate,
 } from "@/app/api/helpers";
+import { useEffect } from "react";
 import {
   getAutopilotSkills,
   getAutopilotWorkflows,
   getHiredExperts,
   getTeamSchedules,
 } from "../helpers";
-import { useEffect } from "react";
 
-interface Args {
-  enabled: boolean;
-}
-
-export function useAutopilotPage({ enabled }: Args) {
+export function useAutopilotPage() {
   const expertsQuery = useListExperts({
-    query: { select: (res) => (okData(res) ?? []) as Expert[], enabled },
+    query: { select: (res) => (okData(res) ?? []) as Expert[] },
   });
   const schedulesQuery = useGetV1ListExecutionSchedulesForAUser({
-    query: { select: (res) => okData(res) ?? [], enabled },
+    query: { select: (res) => okData(res) ?? [] },
   });
   const libraryQuery = useGetV2ListLibraryAgentsInfinite(
     { page: 1, page_size: 100, is_hidden: false },
-    { query: { getNextPageParam: getPaginationNextPageNumber, enabled } },
+    { query: { getNextPageParam: getPaginationNextPageNumber } },
   );
   const skillsQuery = useListCopilotSkills(undefined, {
-    query: { select: (res) => okData(res) ?? [], enabled },
+    query: { select: (res) => okData(res) ?? [] },
   });
 
   // Otto owns every library workflow no expert has claimed, so the
@@ -66,11 +62,10 @@ export function useAutopilotPage({ enabled }: Args) {
     workflows,
     skills,
     isLoading:
-      enabled &&
-      (expertsQuery.isLoading ||
-        schedulesQuery.isLoading ||
-        libraryQuery.isLoading ||
-        skillsQuery.isLoading),
+      expertsQuery.isLoading ||
+      schedulesQuery.isLoading ||
+      libraryQuery.isLoading ||
+      skillsQuery.isLoading,
     isError: expertsQuery.isError || schedulesQuery.isError,
     refetch,
   };

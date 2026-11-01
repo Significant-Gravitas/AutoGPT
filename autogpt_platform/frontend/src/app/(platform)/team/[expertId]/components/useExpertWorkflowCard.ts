@@ -1,7 +1,6 @@
-import { useGetV2GetLibraryAgent } from "@/app/api/__generated__/endpoints/library/library";
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
-import { okData } from "@/app/api/helpers";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import {
   Alert01Icon,
   Calendar03Icon,
@@ -15,48 +14,45 @@ import { getWorkflowCredentialProviders } from "./WorkflowCredentialStack";
 const STATUS = {
   "needs-setup": {
     label: "Needs setup",
-    className: "bg-amber-50 text-amber-700",
+    className: "bg-warning-surface text-warning-foreground",
     icon: Alert01Icon,
-    iconClassName: "bg-amber-50 text-amber-600",
+    iconClassName: "bg-warning-surface text-warning-foreground",
   },
   scheduled: {
     label: "Scheduled",
-    className: "bg-white text-zinc-700",
+    className: "bg-surface text-foreground-body",
     icon: Calendar03Icon,
-    iconClassName: "bg-violet-50 text-violet-600",
+    iconClassName: "bg-accent-surface text-brand",
   },
   trigger: {
     label: "Triggered",
-    className: "bg-white text-zinc-700",
+    className: "bg-surface text-foreground-body",
     icon: FlashIcon,
+    // oxlint-disable-next-line design-system/no-raw-colors -- sky has no role; info blue would change the hue (deferred)
     iconClassName: "bg-sky-50 text-sky-600",
   },
   manual: {
     label: "Manual",
-    className: "bg-white text-zinc-500",
+    className: "bg-surface text-foreground-tertiary",
     icon: PlayIcon,
-    iconClassName: "bg-zinc-100 text-zinc-500",
+    iconClassName: "bg-surface-hover text-foreground-tertiary",
   },
 } as const;
 
 interface Args {
   workflow: ExpertWorkflowRef;
+  libraryAgent: LibraryAgent | undefined;
   expertId?: string;
 }
 
-export function useExpertWorkflowCard({ workflow, expertId }: Args) {
+export function useExpertWorkflowCard({
+  workflow,
+  libraryAgent,
+  expertId,
+}: Args) {
   const router = useRouter();
   const name = workflow.name ?? "Unnamed workflow";
   const needsSetup = workflowNeedsSetup(workflow);
-  const { data: libraryAgent } = useGetV2GetLibraryAgent(
-    workflow.library_agent_id ?? "",
-    {
-      query: {
-        select: okData,
-        enabled: Boolean(workflow.library_agent_id),
-      },
-    },
-  );
   const libraryHref = workflow.library_agent_id
     ? `/library/agents/${workflow.library_agent_id}`
     : null;
@@ -84,7 +80,6 @@ export function useExpertWorkflowCard({ workflow, expertId }: Args) {
   return {
     name,
     needsSetup,
-    libraryAgent,
     runCount: libraryAgent?.execution_count,
     isTriggerWorkflow,
     status: STATUS[statusKind],

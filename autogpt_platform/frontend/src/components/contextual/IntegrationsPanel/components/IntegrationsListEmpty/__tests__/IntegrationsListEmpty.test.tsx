@@ -10,7 +10,7 @@ describe("IntegrationsListEmpty", () => {
     expect(screen.getByText("No integration connected")).toBeDefined();
     expect(
       screen.getByText(
-        /Connect a service to let your agents use third-party tools/i,
+        /Connect a service to let your experts and workflows use third-party tools/i,
       ),
     ).toBeDefined();
   });

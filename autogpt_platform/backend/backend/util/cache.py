@@ -21,8 +21,10 @@ from dataclasses import dataclass
 from functools import cache, wraps
 from typing import Any, Callable, ParamSpec, Protocol, TypeVar, cast, runtime_checkable
 
+import sentry_sdk
 from redis.cluster import ClusterNode, RedisCluster
 
+from backend.util import tracing
 from backend.util.retry import conn_retry
 from backend.util.settings import Settings
 
@@ -218,6 +220,7 @@ def cached(
 
     def decorator(target_func: Callable[P, R]) -> CachedFunction[P, R]:
         func_name = target_func.__name__
+        signature = inspect.signature(target_func)
         cache_storage: dict[tuple, CachedValue] = {}
         _event_loop_locks: dict[Any, asyncio.Lock] = {}
 
@@ -304,7 +307,7 @@ def cached(
 
             @wraps(target_func)
             async def async_wrapper(*args: P.args, **kwargs: P.kwargs):
-                key = _make_hashable_key(args, kwargs)
+                key = _make_hashable_key(*_bind_arguments(signature, args, kwargs))
                 redis_key = _make_redis_key(key, func_name) if shared_cache else ""
 
                 # Fast path: check cache without lock
@@ -351,7 +354,7 @@ def cached(
 
             @wraps(target_func)
             def sync_wrapper(*args: P.args, **kwargs: P.kwargs):
-                key = _make_hashable_key(args, kwargs)
+                key = _make_hashable_key(*_bind_arguments(signature, args, kwargs))
                 redis_key = _make_redis_key(key, func_name) if shared_cache else ""
 
                 # Fast path: check cache without lock
@@ -404,11 +407,17 @@ def cached(
                     if pattern
                     else f"cache:{func_name}:*"
                 )
-                keys = list(
-                    _get_redis().scan_iter(
-                        match_pattern, target_nodes=RedisCluster.PRIMARIES
+                # One span for the whole sweep: a span per SCAN page fills the
+                # caller's transaction past the SDK's span limit.
+                with (
+                    sentry_sdk.start_span(op="db.redis", name="SCAN cache keys"),
+                    tracing.suppress_child_spans(),
+                ):
+                    keys = list(
+                        _get_redis().scan_iter(
+                            match_pattern, target_nodes=RedisCluster.PRIMARIES
+                        )
                     )
-                )
 
                 if keys:
                     pipeline = _get_redis().pipeline()
@@ -446,7 +455,7 @@ def cached(
 
         def cache_delete(*args, **kwargs) -> bool:
             """Delete a specific cache entry. Returns True if entry existed."""
-            key = _make_hashable_key(args, kwargs)
+            key = _make_hashable_key(*_bind_arguments(signature, args, kwargs))
             if shared_cache:
                 redis_key = _make_redis_key(key, func_name)
                 deleted_count = cast(int, _get_redis().delete(redis_key))
@@ -464,6 +473,17 @@ def cached(
         return cast(CachedFunction[P, R], wrapper)
 
     return decorator
+
+
+def _bind_arguments(
+    signature: inspect.Signature, args: tuple[Any, ...], kwargs: dict[str, Any]
+) -> tuple[tuple[Any, ...], dict[str, Any]]:
+    """Key a call by parameter name, so ``f("u1")``, ``f(user_id="u1")`` (how the
+    service RPC calls) and an omitted default all share one entry. A call that
+    doesn't bind raises its ``TypeError`` before any cache lookup."""
+    bound = signature.bind(*args, **kwargs)
+    bound.apply_defaults()
+    return (), dict(bound.arguments)
 
 
 def _sign_payload(data: bytes) -> bytes:

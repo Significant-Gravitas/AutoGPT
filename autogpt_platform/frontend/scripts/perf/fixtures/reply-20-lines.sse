@@ -1,0 +1,230 @@
+data: {"type":"start","messageId":"perf-reply-20-lines"}
+
+data: {"type":"start-step"}
+
+data: {"type":"text-start","id":"perf-text-1"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Sure. "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Here "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"is "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"a "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"quick "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"plan "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"for "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"launch "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"week.\n\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"## "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Goals\n\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"- "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Ship "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"new "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"onboarding "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"flow "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"to "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"every "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"new "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"account.\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"- "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Keep "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"support "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"queue "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"under "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"one "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"day "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"of "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"waiting "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"time.\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"- "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Collect "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"feedback "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"from "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"first "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"fifty "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"teams.\n\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"## "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Script "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"to "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"check "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"sign-ups\n\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"```ts\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"export "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"function "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"countSignups(events: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{ "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"type: "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"string "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}[]) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"{\n  "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"return "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"events.filter((event) "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"=> "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"event.type "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"=== "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"\"signup\").length;\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"}\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"```\n\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"1. "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Run "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"script "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"every "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"morning "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"and "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"post "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"number.\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"2. "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Flag "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"any "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"day "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"that "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"drops "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"more "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"than "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"ten "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"percent.\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"3. "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Share "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"a "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"short "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"summary "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"with "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"team "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"on "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Friday.\n"}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"Let "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"me "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"know "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"if "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"you "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"want "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"me "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"to "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"set "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"up "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"the "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"daily "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"check "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"for "}
+
+data: {"type":"text-delta","id":"perf-text-1","delta":"you."}
+
+data: {"type":"text-end","id":"perf-text-1"}
+
+data: {"type":"finish-step"}
+
+data: {"type":"finish"}
+
+data: [DONE]
+

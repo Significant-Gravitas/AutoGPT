@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 interface Props {
   label: string;
@@ -11,11 +11,11 @@ export function ColumnHeader({ label, filter, align = "left", width }: Props) {
   return (
     <th
       scope="col"
-      style={width ? { width } : undefined}
-      className={`px-4 py-3 ${align === "right" ? "text-right" : "text-left"}`}
+      style={width ? ({ "--column-width": width } as CSSProperties) : undefined}
+      className={`px-4 py-3 ${width ? "w-[var(--column-width)]" : ""} ${align === "right" ? "text-right" : "text-left"}`}
     >
       <div
-        className={`inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-zinc-700 ${
+        className={`inline-flex items-center gap-1.5 text-xs font-medium tracking-wide text-foreground-body uppercase ${
           align === "right" ? "flex-row-reverse" : ""
         }`}
       >

@@ -4,12 +4,15 @@ import { getInputPlaceholder } from "./helpers";
 
 interface Args {
   enabled: boolean;
+  /** The onboarding greeting on screen: "A" answers the user's brain dump. */
+  greetingPath?: string | null;
 }
 
 const TEAM_PLACEHOLDER =
   "What should the team work on? e.g. 'Follow up with yesterday's leads'";
+const AFTER_DUMP_PLACEHOLDER = "What should Otto take on first?";
 
-export function useHomeComposer({ enabled }: Args) {
+export function useHomeComposer({ enabled, greetingPath = null }: Args) {
   const { dashboard } = useHomePage({ enabled });
   const hasExistingWork = Boolean(
     enabled &&
@@ -43,6 +46,9 @@ export function useHomeComposer({ enabled }: Args) {
     };
   }, []);
 
+  if (greetingPath === "A") {
+    return { inputPlaceholder: AFTER_DUMP_PLACEHOLDER };
+  }
   return {
     inputPlaceholder: hasExistingWork ? TEAM_PLACEHOLDER : discoveryPlaceholder,
   };

@@ -5,7 +5,6 @@ export const REDACTED = "[redacted]";
 export const MAX_FIELDS = 6;
 export const CLAMP_LINES = 3;
 export const CLAMP_CHARS = 280;
-export const CODE_MAX_LINES = 12;
 export const ARRAY_SHOWN = 3;
 export const ARRAY_MAX = 5;
 

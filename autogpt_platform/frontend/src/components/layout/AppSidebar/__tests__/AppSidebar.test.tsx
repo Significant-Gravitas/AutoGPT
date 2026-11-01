@@ -7,7 +7,7 @@ import type { HomeAgentStatus } from "@/app/api/__generated__/models/homeAgentSt
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -61,7 +61,11 @@ vi.mock("next/navigation", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next/navigation")>();
   return {
     ...actual,
-    useRouter: () => ({ push: routerPush, prefetch: vi.fn() }),
+    useRouter: () => ({
+      push: routerPush,
+      replace: vi.fn(),
+      prefetch: vi.fn(),
+    }),
     usePathname: () => "/marketplace",
     useSearchParams: () => new URLSearchParams(),
   };
@@ -101,6 +105,17 @@ afterEach(() => {
 });
 
 describe("AppSidebar", () => {
+  it("marks chats, Team, Files and the Workspace group for the first-run walkthrough", () => {
+    const { container } = renderSidebar();
+    const target = (name: string) =>
+      container.querySelector(`[data-tour-target="${name}"]`);
+
+    expect(target("chats")?.textContent).toContain("Recent chats");
+    expect(target("team")?.textContent).toContain("Team");
+    expect(target("files")?.textContent).toContain("Files");
+    expect(target("workspace")?.textContent).toContain("Workspace");
+  });
+
   it("ignores a keydown with no key and preserves the new-task shortcut", () => {
     renderSidebar();
     const event = new KeyboardEvent("keydown", {
@@ -120,22 +135,22 @@ describe("AppSidebar", () => {
 
   it("renders the primary navigation links", () => {
     renderSidebar();
-    expect(screen.getByText("Agents")).toBeDefined();
+    expect(screen.queryByText("Workflows")).toBeNull();
     expect(screen.getByText("Marketplace")).toBeDefined();
     expect(screen.getByText("Build")).toBeDefined();
-    expect(screen.queryByText("Files")).toBeNull();
+    expect(screen.getByRole("link", { name: /files/i })).toBeDefined();
     expect(screen.getByText("Home")).toBeDefined();
   });
 
-  it("shows Team instead of Agents when the hire-experts flag is on", () => {
+  it("shows Team instead of Workflows for every signed-in user", () => {
     useGetFlagMock.mockReturnValue(true);
     renderSidebar();
     const teamLink = screen.getByRole("link", { name: /team/i });
     expect(teamLink.getAttribute("href")).toBe("/team");
-    expect(screen.queryByText("Agents")).toBeNull();
+    expect(screen.queryByText("Workflows")).toBeNull();
   });
 
-  it("keeps a Home link when the hire-experts flag is on", () => {
+  it("keeps a Home link for every signed-in user", () => {
     useGetFlagMock.mockReturnValue(true);
     renderSidebar();
     const homeLink = screen.getByRole("link", { name: /home/i });
@@ -156,27 +171,12 @@ describe("AppSidebar", () => {
     expect(screen.getByText("Recent chats")).toBeDefined();
   });
 
-  it.each([
-    [false, false],
-    [false, true],
-    [true, false],
-    [true, true],
-  ])(
-    "shows Workspace only for available destinations (Experts %s, Files %s)",
-    (experts, files) => {
-      useGetFlagMock.mockImplementation((flag) =>
-        flag === Flag.HIRE_EXPERTS
-          ? experts
-          : flag === Flag.ARTIFACTS_PAGE
-            ? files
-            : false,
-      );
-      renderSidebar();
-      expect(!!screen.queryByText("Workspace")).toBe(experts || files);
-      expect(!!screen.queryByRole("link", { name: /files/i })).toBe(files);
-      expect(screen.getByText("Recent chats")).toBeDefined();
-    },
-  );
+  it("always shows Team and Files when the flag provider returns false", () => {
+    renderSidebar();
+    expect(screen.getByText("Workspace")).toBeDefined();
+    expect(screen.getByRole("link", { name: /team/i })).toBeDefined();
+    expect(screen.getByRole("link", { name: /files/i })).toBeDefined();
+  });
 
   it("marks the active link based on the current pathname", () => {
     // global next/navigation mock resolves usePathname() to "/marketplace"

@@ -5,6 +5,7 @@ import { Input as DSInput } from "@/components/atoms/Input/Input";
 import { Select as DSSelect } from "@/components/atoms/Select/Select";
 import { MultiToggle } from "@/components/molecules/MultiToggle/MultiToggle";
 // Removed shadcn Select usage in favor of DS Select for time picker
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/atoms/Button/Button";
 import { FileInput } from "@/components/atoms/FileInput/FileInput";
 import { Switch } from "@/components/atoms/Switch/Switch";
@@ -16,9 +17,11 @@ import {
   BlockIOSubSchema,
   BlockIOTableSubSchema,
   DataType,
-  determineDataType,
+  GoogleDrivePickerSchema,
+  resolveDataType,
   TableRow,
 } from "@/lib/autogpt-server-api/types";
+import { getSelectOptions } from "./helpers";
 import { useRunAgentInputs } from "./useRunAgentInputs";
 import { Cancel01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -52,7 +55,15 @@ export function RunAgentInputs({
 }: Props & React.HTMLAttributes<HTMLElement>) {
   const { handleUploadFile, uploadProgress } = useRunAgentInputs();
 
-  const dataType = determineDataType(schema);
+  // Options and keys come from the schema the type was judged by: an optional
+  // field keeps them on its anyOf member, not on the field itself.
+  const { type, schema: valueSchema } = resolveDataType(schema);
+  const selectOptions = getSelectOptions(valueSchema);
+  // A select with nothing to pick from, like an empty enum, takes text.
+  const dataType =
+    type === DataType.SELECT && selectOptions.length === 0
+      ? DataType.SHORT_TEXT
+      : type;
 
   const baseId = String(schema.title ?? "input")
     .replace(/\s+/g, "-")
@@ -100,9 +111,9 @@ export function RunAgentInputs({
       break;
 
     case DataType.GOOGLE_DRIVE_PICKER: {
-      const pickerSchema = schema as any;
-      const config: import("@/lib/autogpt-server-api/types").GoogleDrivePickerConfig =
-        pickerSchema.google_drive_picker_config || {};
+      const config =
+        (valueSchema as GoogleDrivePickerSchema).google_drive_picker_config ??
+        {};
 
       innerInputElement = (
         <GoogleDrivePickerInput
@@ -119,7 +130,7 @@ export function RunAgentInputs({
     case DataType.BOOLEAN:
       innerInputElement = (
         <>
-          <span className="text-sm text-gray-500">
+          <span className="text-sm text-foreground-tertiary">
             {placeholder || (value ? "Enabled" : "Disabled")}
           </span>
           <Switch
@@ -208,29 +219,24 @@ export function RunAgentInputs({
       break;
 
     case DataType.SELECT:
-      if (
-        "enum" in schema &&
-        Array.isArray(schema.enum) &&
-        schema.enum.length > 0
-      ) {
-        innerInputElement = (
-          <DSSelect
-            id={`${baseId}-select`}
-            label={schema.title ?? placeholder ?? "Select"}
-            hideLabel
-            value={value ?? ""}
-            onValueChange={(val: string) => onChange(val)}
-            placeholder={placeholder || "Select an option"}
-            options={schema.enum
-              .filter((opt) => opt)
-              .map((opt) => ({ value: opt, label: String(opt) }))}
-          />
-        );
-        break;
-      }
+      innerInputElement = (
+        <DSSelect
+          id={`${baseId}-select`}
+          label={schema.title ?? placeholder ?? "Select"}
+          hideLabel
+          value={value ?? ""}
+          onValueChange={(val: string) => onChange(val)}
+          placeholder={placeholder || "Select an option"}
+          options={selectOptions.map((opt) => ({
+            value: opt,
+            label: String(opt),
+          }))}
+        />
+      );
+      break;
 
     case DataType.MULTI_SELECT: {
-      const _schema = schema as BlockIOObjectSubSchema;
+      const _schema = valueSchema as BlockIOObjectSubSchema;
       const allKeys = Object.keys(_schema.properties);
       const selectedValues = Object.entries(value || {})
         .filter(([_, v]) => v)
@@ -250,6 +256,7 @@ export function RunAgentInputs({
               ),
             )
           }
+          // oxlint-disable-next-line design-system/no-restyle -- nodrag is xyflow's marker, not a style: it stops a drag in the field from moving a node
           className="nodrag"
           aria-label={schema.title}
         />
@@ -259,7 +266,7 @@ export function RunAgentInputs({
 
     case DataType.TABLE: {
       // Render a simple table UI for the run modal
-      const tableSchema = schema as BlockIOTableSubSchema;
+      const tableSchema = valueSchema as BlockIOTableSubSchema;
       const headers = tableSchema.items?.properties
         ? Object.keys(tableSchema.items.properties)
         : ["Column 1", "Column 2", "Column 3"];
@@ -293,7 +300,7 @@ export function RunAgentInputs({
           <div className="overflow-hidden rounded-md border">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 dark:bg-gray-800">
+                <tr className="bg-surface-muted">
                   {headers.map((header) => (
                     <th
                       key={header}
@@ -307,7 +314,7 @@ export function RunAgentInputs({
               </thead>
               <tbody>
                 {tableData.map((row, rowIndex) => (
-                  <tr key={rowIndex} className="border-t dark:border-gray-700">
+                  <tr key={rowIndex} className="border-t">
                     {headers.map((header) => (
                       <td key={header} className="px-3 py-1">
                         <input
@@ -316,7 +323,7 @@ export function RunAgentInputs({
                           onChange={(e) =>
                             updateRow(rowIndex, header, e.target.value)
                           }
-                          className="w-full rounded border px-2 py-1 dark:border-gray-700 dark:bg-gray-900"
+                          className="w-full rounded border px-2 py-1"
                           placeholder={`Enter ${header}`}
                         />
                       </td>
@@ -327,6 +334,7 @@ export function RunAgentInputs({
                         variant="ghost"
                         size="small"
                         onClick={() => removeRow(rowIndex)}
+                        // oxlint-disable-next-line design-system/no-restyle -- a 32px round remove button; icon-sm would make its hover a rounded square
                         className="h-8 w-8 p-0"
                       >
                         <Icon icon={Cancel01Icon} className="h-4 w-4" />
@@ -370,13 +378,15 @@ export function RunAgentInputs({
 
   return (
     <div className="flex w-full flex-col gap-0 space-y-2">
-      <label className="large-medium flex items-center gap-1 font-medium">
+      <label className="flex items-center gap-1 font-medium">
         {schema.title || placeholder}
         <InformationTooltip description={schema.description} />
       </label>
       <div
-        className="no-drag relative flex w-full"
-        style={readOnly ? { pointerEvents: "none", opacity: 0.7 } : undefined}
+        className={cn(
+          "relative flex w-full",
+          readOnly && "pointer-events-none opacity-70",
+        )}
       >
         {innerInputElement}
       </div>

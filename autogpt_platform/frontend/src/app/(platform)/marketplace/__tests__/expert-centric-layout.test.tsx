@@ -48,24 +48,6 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({ useAuth: mockUseAuth }));
 
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useGetFlag: (flag: string) => {
-      if (flag === "skills-hub" || flag === "hire-experts") return true;
-      return actual.useGetFlag(flag as never);
-    },
-    useFlagStatus: (flag: string) => {
-      if (flag === "skills-hub") return { enabled: true, ready: true };
-      return actual.useFlagStatus(flag as never);
-    },
-  };
-});
-
 const outreach: MarketplaceSkill = {
   slug: "outreach-playbook",
   name: "outreach-playbook",
@@ -106,7 +88,7 @@ const agentsResponse = getGetV2ListStoreAgentsResponseMock({
   },
 });
 
-describe("Marketplace with hire-experts on", () => {
+describe("Marketplace", () => {
   beforeEach(() => {
     mockUseAuth.mockReturnValue({ user: { id: "user-1" }, isLoggedIn: true });
     server.use(
@@ -348,7 +330,7 @@ describe("Marketplace with hire-experts on", () => {
     render(<MainMarkeplacePage />);
 
     expect(
-      await screen.findByRole("button", { name: "Become a Creator" }),
+      await screen.findByRole("button", { name: "Publish your workflows" }),
     ).toBeDefined();
   });
 });

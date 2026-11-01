@@ -21,6 +21,8 @@ export interface ErrorCardProps {
   hint?: string;
   onRetry?: () => void;
   className?: string;
+  /** `body-md` inside a profile tab, whose copy reads at 15px. */
+  textSize?: "body" | "body-md";
 }
 
 export function ErrorCard({
@@ -32,6 +34,7 @@ export function ErrorCard({
   hint,
   onRetry,
   className = "",
+  textSize = "body",
 }: ErrorCardProps) {
   if (isSuccess && !responseError && !httpError) {
     return null;
@@ -52,12 +55,13 @@ export function ErrorCard({
 
   return (
     <CardWrapper className={className}>
-      <div className="relative space-y-4 p-6">
+      <div data-slot="error-card-content" className="relative space-y-4 p-6">
         <ErrorHeader />
         <ErrorMessage
           errorMessage={errorMessage}
           context={context}
           hint={hint}
+          textSize={textSize}
         />
         {isOurProblem && (
           <ActionButtons
@@ -65,6 +69,7 @@ export function ErrorCard({
             responseError={responseError}
             httpError={httpError}
             context={context}
+            textSize={textSize}
           />
         )}
       </div>
