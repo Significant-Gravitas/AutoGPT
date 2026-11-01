@@ -617,6 +617,85 @@ async def test_credentials_survive_a_same_origin_redirect():
     assert seen["cookie"] == "session=secret_session_value"
 
 
+@pytest.mark.parametrize("header_name", ["X-Custom-Credential", "x-custom-credential"])
+@pytest.mark.parametrize(
+    "new_url, expect_stripped",
+    [
+        ("https://example.com/b", False),
+        ("https://other.example.com/b", True),
+    ],
+)
+def test_caller_sensitive_headers_are_stripped_cross_origin(
+    header_name: str, new_url: str, expect_stripped: bool
+):
+    """Names passed as ``sensitive_headers`` join ``SENSITIVE_HEADERS``."""
+    headers = {header_name: "secret", "X-Keep": "kept"}
+
+    result = _remove_insecure_headers(
+        headers,
+        urlparse("https://example.com/a"),
+        urlparse(new_url),
+        sensitive_headers=["X-CUSTOM-Credential"],
+    )
+
+    assert (header_name not in result) is expect_stripped
+    assert result["X-Keep"] == "kept"
+
+
+@pytest.mark.asyncio
+async def test_sensitive_headers_are_not_replayed_across_a_cross_origin_redirect():
+    """``Requests(sensitive_headers=...)`` reaches the redirect branch's strip.
+
+    The unit test above covers ``_remove_insecure_headers``; this one fails if
+    the names are not stored or not handed to it on a redirect.
+    """
+    seen: dict[str, str | None] = {}
+
+    async def collect(request: web.Request) -> web.Response:
+        seen["credential"] = request.headers.get("X-Custom-Credential")
+        seen["accept"] = request.headers.get("Accept")
+        return web.json_response({"ok": True})
+
+    elsewhere = web.Application()
+    elsewhere.router.add_get("/collect", collect)
+    elsewhere_runner = web.AppRunner(elsewhere)
+    await elsewhere_runner.setup()
+    await web.TCPSite(elsewhere_runner, "127.0.0.1", 0).start()
+    elsewhere_port = elsewhere_runner.addresses[0][1]
+
+    async def redirect(request: web.Request) -> web.Response:
+        # Pinned, so the test cannot pass by the header never being sent.
+        seen["origin_credential"] = request.headers.get("X-Custom-Credential")
+        raise web.HTTPFound(f"http://127.0.0.1:{elsewhere_port}/collect")
+
+    origin = web.Application()
+    origin.router.add_get("/start", redirect)
+    origin_runner = web.AppRunner(origin)
+    await origin_runner.setup()
+    await web.TCPSite(origin_runner, "127.0.0.1", 0).start()
+    origin_port = origin_runner.addresses[0][1]
+
+    try:
+        requests = Requests(
+            trusted_origins=["127.0.0.1"],
+            sensitive_headers=["X-Custom-Credential"],
+        )
+        await requests.get(
+            f"http://127.0.0.1:{origin_port}/start",
+            headers={
+                "X-Custom-Credential": "credential-value",
+                "Accept": "application/json",
+            },
+        )
+    finally:
+        await origin_runner.cleanup()
+        await elsewhere_runner.cleanup()
+
+    assert seen["origin_credential"] == "credential-value"
+    assert seen["credential"] is None
+    assert seen["accept"] == "application/json"
+
+
 @pytest.mark.asyncio
 async def test_post_follows_redirect_to_trailing_slash_without_looping():
     from backend.util.request import Requests

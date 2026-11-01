@@ -889,7 +889,17 @@ async def update_graph_in_library(
     webhook presets.
     ``move_webhook_presets`` False leaves the user's webhook presets on the
     versions they run now.
+    A graph ID belonging to somebody else is saved as the caller's own copy.
     """
+    if await graph_db.graph_owner_id(graph.id) not in (None, user_id):
+        return await fork_graph_in_library(
+            graph,
+            user_id,
+            forked_from_version=graph.version,
+            organization_id=organization_id,
+            team_id=team_id,
+        )
+
     organization_ids = (
         await writable_organization_ids(user_id, organization_id)
         if organization_id is not None
@@ -959,6 +969,26 @@ async def update_graph_in_library(
             )
 
     return created_graph, library_agent
+
+
+async def fork_graph_in_library(
+    graph: graph_db.Graph,
+    user_id: str,
+    forked_from_version: int,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+) -> tuple[graph_db.GraphModel, library_model.LibraryAgent]:
+    """Save *graph* as a new graph in the user's library, forked from version
+    *forked_from_version* of the graph ID it carries."""
+    logger.info(
+        f"Saving graph {graph.id} v{forked_from_version} as a fork for user {user_id}"
+    )
+    graph.forked_from_id = graph.id
+    graph.forked_from_version = forked_from_version
+    graph.name = f"{graph.name} (copy)"
+    return await create_graph_in_library(
+        graph, user_id, organization_id=organization_id, team_id=team_id
+    )
 
 
 async def _assert_target_version(
