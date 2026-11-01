@@ -13,6 +13,7 @@ from json import JSONDecodeError
 from typing import TYPE_CHECKING, Any, Literal, Optional, cast, get_args
 
 import anthropic
+import groq
 import openai
 from anthropic.types import ToolParam
 from openai.types.chat import ChatCompletion as OpenAIChatCompletion
@@ -85,6 +86,14 @@ LLM_REQUEST_TIMEOUT_SECONDS: int = settings.config.llm_request_timeout_seconds
 # Only a cutoff that ate most of the budget was mid-inference; a fast fail burns
 # nothing, and paging on those during an outage would bury the ones that cost.
 _SPEND_BURNED_ELAPSED_FRACTION = 0.9
+
+# A retry gets only what is left of the shared deadline. Below this it would
+# almost surely be cut off mid-inference, billed and wasted, so stop instead.
+# Matches the lowest llm_request_timeout_seconds the settings allow.
+LLM_MIN_ATTEMPT_SECONDS = 30
+
+# One clock for the retry deadline and timeout classification; tests patch it.
+_now = time.monotonic
 
 # Stable, greppable Sentry title — never interpolate into it (see #14292).
 SPEND_BURNED_ALERT = "LLM call cut off mid-inference — provider billed, user refunded"
@@ -261,6 +270,12 @@ def get_parallel_tool_calls_param(
     return parallel_tool_calls
 
 
+def remaining_attempt_timeout(
+    deadline: float, per_attempt_timeout: float, now: float
+) -> float:
+    return min(deadline - now, per_attempt_timeout)
+
+
 async def llm_call(
     credentials: APIKeyCredentials | None,
     llm_model: LLMModel,
@@ -272,6 +287,7 @@ async def llm_call(
     parallel_tool_calls=None,
     compress_prompt_to_fit: bool = True,
     execution_context: "ExecutionContext | None" = None,
+    timeout_seconds: float | None = None,
 ) -> LLMResponse:
     """Block-side LLM entry point. Wraps the provider dispatch in a hard timeout
     so that no single request can park an executor thread indefinitely.
@@ -281,7 +297,10 @@ async def llm_call(
     the block retry loop. Copilot and dream call the provider layer directly and
     raise no spend alert; they carry no execution context to attribute one to.
     """
-    started = time.monotonic()
+    timeout = (
+        LLM_REQUEST_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
+    )
+    started = _now()
     with track_llm_call(
         graph_exec_id=execution_context.graph_exec_id if execution_context else None,
         provider=llm_model.metadata.provider,
@@ -303,23 +322,26 @@ async def llm_call(
                 # Same budget as the provider layer, but this one starts before
                 # prompt compression, so it always fires first for block callers;
                 # the provider deadline is there for callers that skip this seam.
-                timeout=LLM_REQUEST_TIMEOUT_SECONDS,
+                # Retry loops may pass a leftover shared-deadline slice.
+                timeout=timeout,
             )
-        # SDK-native timeouts never reach the wait_for, so both are caught here
+        # SDK-native timeouts never reach the wait_for, so they are caught here
         # to keep this the single place that reports burned spend.
         except (
             asyncio.TimeoutError,
             openai.APITimeoutError,
             anthropic.APITimeoutError,
+            groq.APITimeoutError,
         ) as e:
             _log_timeout_outcome(
-                elapsed=time.monotonic() - started,
+                elapsed=_now() - started,
+                timeout_seconds=timeout,
                 llm_model=llm_model,
                 execution_context=execution_context,
                 error=e,
             )
             if isinstance(e, asyncio.TimeoutError):
-                raise _block_timeout_error(llm_model, max_tokens) from e
+                raise _block_timeout_error(llm_model, max_tokens, timeout) from e
             raise
         except Exception as e:
             if is_provider_out_of_credits(e) and _is_platform_credential(credentials):
@@ -610,6 +632,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         tools: list[dict] | None = None,
         ollama_host: str = "localhost:11434",
         execution_context: "ExecutionContext | None" = None,
+        timeout_seconds: float | None = None,
     ) -> LLMResponse:
         """
         Test mocks work only on class functions, this wraps the llm_call function
@@ -626,6 +649,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             ollama_host=ollama_host,
             compress_prompt_to_fit=compress_prompt_to_fit,
             execution_context=execution_context,
+            timeout_seconds=timeout_seconds,
         )
 
     async def run(
@@ -681,8 +705,21 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         refusal: PromptRefusedError | None = None
         llm_model = input_data.model
         total_provider_cost: float | None = None
+        per_attempt_timeout = LLM_REQUEST_TIMEOUT_SECONDS
+        deadline = _now() + per_attempt_timeout
 
+        attempt_timeout = per_attempt_timeout
         for retry_count in range(input_data.retry):
+            if retry_count:
+                attempt_timeout = remaining_attempt_timeout(
+                    deadline, per_attempt_timeout, _now()
+                )
+                if attempt_timeout < LLM_MIN_ATTEMPT_SECONDS:
+                    error_feedback_message = (
+                        f"LLM retry budget of {per_attempt_timeout}s ran out after "
+                        f"{retry_count} attempt(s) without a valid response."
+                    )
+                    break
             logger.debug(f"LLM request: {prompt}")
             try:
                 llm_response = await self.llm_call(
@@ -697,6 +734,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     ollama_host=input_data.ollama_host,
                     max_tokens=input_data.max_tokens,
                     execution_context=kwargs.get("execution_context"),
+                    timeout_seconds=attempt_timeout,
                 )
                 response_text = llm_response.response
                 # Accumulate token counts and provider_cost for every attempt
@@ -843,7 +881,12 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 # connect/read timeout burns the full retry budget.
                 if isinstance(
                     e,
-                    (TimeoutError, openai.APITimeoutError, anthropic.APITimeoutError),
+                    (
+                        TimeoutError,
+                        openai.APITimeoutError,
+                        anthropic.APITimeoutError,
+                        groq.APITimeoutError,
+                    ),
                 ):
                     # Already classified and logged at the llm_call seam.
                     # A request that hung once will most likely hang again on
@@ -1013,6 +1056,7 @@ def trim_prompt(s: str) -> str:
 def _log_timeout_outcome(
     *,
     elapsed: float,
+    timeout_seconds: float,
     llm_model: LLMModel,
     execution_context: "ExecutionContext | None",
     error: BaseException,
@@ -1024,7 +1068,7 @@ def _log_timeout_outcome(
     a provider incident aggregates into one issue instead of thousands. Sentry
     is the only surface — see #14292 for the paging decision.
     """
-    budget = LLM_REQUEST_TIMEOUT_SECONDS
+    budget = timeout_seconds
     if elapsed < budget * _SPEND_BURNED_ELAPSED_FRACTION:
         logger.warning(
             f"LLM call timed out after {elapsed:.1f}s, below the "
@@ -1056,12 +1100,19 @@ def _log_timeout_outcome(
     )
 
 
-def _block_timeout_error(llm_model: LLMModel, max_tokens: int | None) -> TimeoutError:
+def _block_timeout_error(
+    llm_model: LLMModel,
+    max_tokens: int | None,
+    timeout_seconds: float | None = None,
+) -> TimeoutError:
     """Provider-agnostic timeout text plus the one remedy only blocks expose."""
     budget = max_tokens or llm_model.max_output_tokens
     hint = f" (currently {budget})" if budget else ""
+    timeout = (
+        LLM_REQUEST_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
+    )
     return TimeoutError(
-        f"{timeout_error(f'{llm_model.metadata.provider}/{llm_model.value}', LLM_REQUEST_TIMEOUT_SECONDS)}"
+        f"{timeout_error(f'{llm_model.metadata.provider}/{llm_model.value}', timeout)}"
         f" You can also lower the advanced Max Tokens setting{hint}."
     )
 
