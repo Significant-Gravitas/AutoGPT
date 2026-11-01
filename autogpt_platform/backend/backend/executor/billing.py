@@ -86,11 +86,12 @@ def _block_has_paid_cost_entry(block: Block, input_data: "dict[str, Any]") -> bo
     """
     from backend.data.block_cost_config import BLOCK_COSTS
 
-    from .utils import _is_cost_filter_match
+    from .utils import _is_cost_filter_match, _with_schema_defaults
 
     block_costs = BLOCK_COSTS.get(type(block))
     if not block_costs:
         return False
+    input_data = _with_schema_defaults(block, input_data)
     return any(
         not bc.is_free and _is_cost_filter_match(bc.cost_filter, input_data)
         for bc in block_costs

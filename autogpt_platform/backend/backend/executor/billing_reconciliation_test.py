@@ -7,6 +7,7 @@ import pytest
 
 from backend.blocks._base import BlockCost, BlockCostType
 from backend.blocks.jina.search import SearchTheWebBlock
+from backend.blocks.perplexity import PerplexityBlock
 from backend.blocks.typesafe.choice import JevChoiceBlock
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.execution import ExecutionContext, NodeExecutionEntry
@@ -17,7 +18,9 @@ from backend.executor.billing import (
     charge_reconciled_usage,
     charge_usage,
 )
+from backend.integrations.credentials_store import open_router_credentials
 from backend.sdk.cost_integration import sync_all_provider_costs
+from backend.util.exceptions import InsufficientBalanceError
 
 
 @pytest.fixture(autouse=True)
@@ -94,6 +97,29 @@ def test_dynamic_cost_block_with_zero_balance_raises_ibe_preflight(
 
     db_client.get_credits.assert_called_once_with(user_id=exec_entry.user_id)
     db_client.spend_credits.assert_not_called()
+
+
+def test_dynamic_cost_guard_matches_with_schema_defaults():
+    """The paid-entry check matches cost filters with schema defaults filled in."""
+    exec_entry = _node_exec(PerplexityBlock().id)
+    exec_entry.inputs = {
+        "prompt": "hi",
+        "credentials": {
+            "id": open_router_credentials.id,
+            "provider": open_router_credentials.provider,
+            "type": open_router_credentials.type,
+        },
+    }
+
+    db_client = MagicMock()
+    db_client.get_credits.return_value = 0  # empty wallet
+
+    with (
+        patch("backend.executor.billing.get_db_client", return_value=db_client),
+        patch("backend.executor.billing.get_block", return_value=PerplexityBlock()),
+        pytest.raises(InsufficientBalanceError),
+    ):
+        charge_usage(exec_entry, execution_count=0)
 
 
 def test_dynamic_cost_block_with_positive_balance_starts(tmp_block_costs_override):

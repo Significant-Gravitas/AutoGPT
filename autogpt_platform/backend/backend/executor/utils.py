@@ -169,6 +169,7 @@ def block_usage_cost(
     if not block_costs:
         return 0, {}
 
+    input_data = _with_schema_defaults(block, input_data)
     is_preflight = stats is None and run_time == 0 and use_preflight_estimate
 
     for block_cost in block_costs:
@@ -297,6 +298,17 @@ def _coerce_usd(stats: NodeExecutionStats | None) -> float:
     if stats.provider_cost_type and stats.provider_cost_type != "cost_usd":
         return 0.0
     return max(0.0, float(stats.provider_cost))
+
+
+def _with_schema_defaults(block: Block, input_data: BlockInput) -> BlockInput:
+    """The input `Block._execute` runs on: `None` values dropped, schema defaults
+    filled in. Cost filters are matched against this."""
+    defaults = {
+        name: field.get_default(call_default_factory=True)
+        for name, field in block.input_schema.model_fields.items()
+        if not field.is_required()
+    }
+    return {**defaults, **{k: v for k, v in input_data.items() if v is not None}}
 
 
 def _is_cost_filter_match(cost_filter: BlockInput, input_data: BlockInput) -> bool:
