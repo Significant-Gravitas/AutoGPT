@@ -95,6 +95,7 @@ async def create_personal_org(
     user_id: str,
     slug_base: str,
     display_name: str,
+    replaces_org_id: str | None = None,
 ) -> Organization:
     """Create a personal Organization for *user_id* with all baseline records.
 
@@ -112,13 +113,30 @@ async def create_personal_org(
     commits, by the time the loser sees ``UniqueViolationError`` the winner's
     org *and* member (same tx) are already visible.
 
+    *replaces_org_id* is the user's personal org being converted: it becomes a
+    team org with a zero balance in this same transaction.
+
     Raises:
         UniqueViolationError: if the resolved slug was taken concurrently. The
             caller decides whether that means "already bootstrapped" or "retry".
+        ValueError: if *replaces_org_id* is no longer a personal org.
     """
     slug = await _resolve_unique_slug(slug_base)
 
     async with transaction() as tx:
+        if replaces_org_id is not None:
+            # First: the old org holds the user's one-personal-org index slot.
+            flipped = await tx.organization.update_many(
+                where={"id": replaces_org_id, "isPersonal": True, "deletedAt": None},
+                data={"isPersonal": False},
+            )
+            if flipped != 1:
+                raise ValueError("Organization is already a team org")
+            # The team org starts at zero; the owner keeps their own wallet.
+            await tx.orgbalance.update_many(
+                where={"orgId": replaces_org_id}, data={"balance": 0}
+            )
+
         org = await tx.organization.create(
             data={
                 "name": display_name,
