@@ -11,6 +11,7 @@ from backend.util.text import (
     MAX_FORMAT_STRING_LENGTH,
     MAX_RENDER_BYTES,
     MAX_TEMPLATE_LENGTH,
+    MAX_TEMPLATE_TAG_LENGTH,
     MAX_TEMPLATE_TAGS,
     REMOVED_FILTERS,
     RENDER_YIELD_INTERVAL,
@@ -691,13 +692,53 @@ async def test_a_template_with_too_many_tags_is_refused(fmt: TextFormatter):
     assert await fmt.format_string("{{ v }}" * MAX_TEMPLATE_TAGS, {"v": ""}) == ""
 
 
+@pytest.mark.asyncio
+async def test_comments_count_towards_the_tag_cap(fmt: TextFormatter):
+    # A comment is a tag the lexer still walks, and it renders to nothing, so
+    # neither the tag count nor the output would otherwise see it
+    with pytest.raises(ValueError, match="too many tags"):
+        await fmt.format_string("{# c #}" * (MAX_TEMPLATE_TAGS + 1))
+    assert await fmt.format_string("a{# c #}b") == "ab"
+
+
+@pytest.mark.asyncio
+async def test_a_single_tag_longer_than_the_bound_is_refused(fmt: TextFormatter):
+    # The tag count says nothing about what one tag holds, and the length cap
+    # is set where a model's prompt lives, so one tag could carry all of it
+    one_long_tag = "{{ " + "1+" * (MAX_TEMPLATE_TAG_LENGTH // 2) + "1 }}"
+    with pytest.raises(ValueError, match="tag too long"):
+        await fmt.format_string(one_long_tag)
+    # A tag at the bound still compiles, as long as it is not what Jinja's
+    # own parser recurses on
+    flat = '{{ "' + "a" * (MAX_TEMPLATE_TAG_LENGTH - 100) + '"|length }}'
+    assert await fmt.format_string(flat) == str(MAX_TEMPLATE_TAG_LENGTH - 100)
+
+
+@pytest.mark.asyncio
+async def test_a_long_prompt_renders_wherever_its_tag_sits(fmt: TextFormatter):
+    # The bound measures a tag, not the distance to the next one, so text on
+    # either side of it is not what gets counted
+    for prompt in ("y" * 4_000_000 + "{{ v }}", "{{ v }}" + "y" * 4_000_000):
+        assert len(await fmt.format_string(prompt, {"v": "z"})) == 4_000_001
+
+
 @pytest.mark.parametrize(
     ("template", "expected"),
     [
         ("hello", "hello"),
-        # Jinja strips one trailing newline, and the shortcut has to agree
+        # Jinja's lexer splits on \r\n, \r and \n, drops one trailing
+        # newline of any of the three and rejoins on \n; the shortcut stands
+        # in for that lexer, so it has to answer the same way
         ("hello\n", "hello"),
         ("hello\n\n", "hello\n"),
+        ("hello\r\n", "hello"),
+        ("hello\r", "hello"),
+        ("a\r\nb", "a\nb"),
+        ("a\rb", "a\nb"),
+        ("a\r\nb\r\n", "a\nb"),
+        ("\r\n", ""),
+        ("a\n\r\n", "a\n"),
+        ("a\r\r\nb", "a\n\nb"),
         ("<b>&", "<b>&"),
         ("{ not a tag }", "{ not a tag }"),
     ],

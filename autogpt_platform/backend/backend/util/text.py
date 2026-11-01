@@ -38,7 +38,8 @@ MAX_SEQUENCE_REPEAT = 10_000  # Max length from sequence * int
 TEMPLATE_RENDER_TIMEOUT = 10  # Seconds before render is killed
 MAX_FORMAT_FIELD_SIZE = 1_000  # Max width or precision of a formatted field
 MAX_TEMPLATE_LENGTH = 8_000_000  # Max characters of template one render may compile
-MAX_TEMPLATE_TAGS = 10_000  # Max {{ }} and {% %} tags in one template
+MAX_TEMPLATE_TAGS = 10_000  # Max tags in one template
+MAX_TEMPLATE_TAG_LENGTH = 10_000  # Max characters of any one tag
 MAX_FORMAT_STRING_LENGTH = 10_000  # Max characters of one %-style format string
 MAX_RENDER_BYTES = 50_000_000  # Max bytes of values one render may build
 MAX_RENDER_INT_BITS = 100_000  # Widest integer a template may compute
@@ -59,6 +60,10 @@ _FORMAT_SPEC_SIZES = re.compile(
 )
 # What makes a string a template at all: an expression, a block or a comment
 _JINJA_TAG = re.compile(r"\{\{|\{%|\{#")
+_JINJA_TAG_END = re.compile(r"\}\}|%\}|#\}")
+# Jinja's lexer splits on these and rejoins on "\n" (jinja2/lexer.py), so a
+# template that skips the lexer has to normalise them itself
+_NEWLINE = re.compile(r"\r\n|\r")
 
 
 def format_filter_for_jinja2(value, format_string=None):
@@ -190,8 +195,9 @@ class TextFormatter:
         where the render also gives the event loop a turn;
         ``asyncio.wait_for`` stays as a backstop. Compiling the template
         happens before either of those exist, so it answers to bounds of its
-        own: a template with no tag is returned as it came, and one that has
-        tags is bounded by how many and by its length.
+        own: a template with no tag is returned as Jinja's lexer would have
+        left it, and one that has tags is bounded by how many there are, how
+        long the longest runs, and the length of the whole.
 
         Raises ``ValueError`` for anything the caller's template is refused
         for, so the API answers 400 rather than 500.
@@ -201,12 +207,20 @@ class TextFormatter:
                 f"Template too long (max {MAX_TEMPLATE_LENGTH} characters)"
             )
         if not _JINJA_TAG.search(template_str):
-            # Nothing to render. Jinja would only strip one trailing newline,
-            # which `keep_trailing_newline` leaves off by default
-            return template_str.removesuffix("\n")
-        tags = template_str.count("{{") + template_str.count("{%")
+            # Nothing to render, so answer with what Jinja's lexer would have
+            # made of it: newlines normalised, one trailing newline dropped
+            return _NEWLINE.sub("\n", template_str).removesuffix("\n")
+        tags = (
+            template_str.count("{{")
+            + template_str.count("{%")
+            + template_str.count("{#")
+        )
         if tags > MAX_TEMPLATE_TAGS:
             raise ValueError(f"Template has too many tags (max {MAX_TEMPLATE_TAGS})")
+        if _longest_tag(template_str) > MAX_TEMPLATE_TAG_LENGTH:
+            raise ValueError(
+                f"Template tag too long (max {MAX_TEMPLATE_TAG_LENGTH} characters)"
+            )
         # The deadline is wall-clock, so a render that gives the loop a turn
         # is charged for the time other tasks take with it
         budget = _RenderBudget(
@@ -230,6 +244,22 @@ class TextFormatter:
             raise ValueError(e) from e
         finally:
             _render_budget.reset(token)
+
+
+def _longest_tag(template_str: str) -> int:
+    """How many characters the longest tag in the template runs to.
+
+    The tag count says nothing about what one tag holds, and the length cap
+    is set where a model's prompt lives, so one tag could carry all of it. A
+    tag that is never closed runs to the end, which is what Jinja's lexer
+    reads before it gives up, so it is measured the same way.
+    """
+    longest = 0
+    for opening in _JINJA_TAG.finditer(template_str):
+        closing = _JINJA_TAG_END.search(template_str, opening.end())
+        end = closing.end() if closing is not None else len(template_str)
+        longest = max(longest, end - opening.start())
+    return longest
 
 
 def _safe_range(*args: int) -> range:
