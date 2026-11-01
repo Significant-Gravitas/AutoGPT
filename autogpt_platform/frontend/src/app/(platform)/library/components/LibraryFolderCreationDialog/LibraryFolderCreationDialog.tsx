@@ -110,13 +110,14 @@ export default function LibraryFolderCreationDialog() {
           size="small"
         >
           <Icon icon={Folder01Icon} width={18} height={18} />
-          <span className="create-folder">Create folder</span>
+          <span>Create folder</span>
         </Button>
       </Dialog.Trigger>
       <Dialog.Content>
         <Form
           form={form}
           onSubmit={(values) => onSubmit(values)}
+          // oxlint-disable-next-line design-system/no-restyle -- the folder form spaces its fields; Form has no gap or padding option
           className="flex flex-col justify-center gap-2 px-1"
         >
           <FormField
@@ -157,6 +158,7 @@ export default function LibraryFolderCreationDialog() {
                       icon: (
                         <div
                           className="h-4 w-4 rounded-full"
+                          // oxlint-disable-next-line design-system/no-inline-styles -- the swatch shows the folder colour, a runtime value
                           style={{ backgroundColor: color.value }}
                         />
                       ),
@@ -181,19 +183,12 @@ export default function LibraryFolderCreationDialog() {
             render={({ field }) => (
               <FormItem>
                 <div className="flex flex-col gap-2">
-                  <Text
-                    variant="large-medium"
-                    as="span"
-                    className="text-foreground-base"
-                  >
+                  <Text variant="large-medium" as="span">
                     Folder icon
                   </Text>
                   <div className="flex flex-col gap-3">
                     <div className="flex items-center gap-3">
-                      <Text
-                        variant="small"
-                        className="text-foreground-tertiary"
-                      >
+                      <Text variant="small" tone="muted">
                         Selected:
                       </Text>
                       <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border-base bg-surface-muted text-2xl">

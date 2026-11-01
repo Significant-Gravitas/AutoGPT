@@ -83,10 +83,7 @@ export function ResolutionModeBar({
               <Text variant="small-mono-tight" as="code" tone="inherit">
                 {m.name}
               </Text>
-              <span
-                // TODO(tokens): no fitting role for text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
-                className="text-gray-400"
-              >
+              <span className="text-foreground-subtle">
                 {" "}
                 ({m.oldType} → {m.newType})
               </span>
@@ -101,23 +98,10 @@ export function ResolutionModeBar({
   };
 
   return (
-    <div
-      // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:bg-amber-900/30 #78350F
-      className="flex items-center justify-between gap-2 rounded-t-xl bg-warning-surface px-3 py-2 dark:bg-amber-900/30"
-    >
+    <div className="flex items-center justify-between gap-2 rounded-t-xl bg-warning-surface px-3 py-2">
       <div className="flex items-center gap-2">
-        <Icon
-          icon={Alert01Icon}
-          // TODO(tokens): no exact role: text-amber-600 #D97706; dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-amber-400 #FBBF24
-          className="h-4 w-4 text-amber-600 dark:text-amber-400"
-        />
-        <Text
-          // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-amber-300 #FCD34D
-          className="dark:text-amber-300"
-          variant="body-tight"
-          tone="warning"
-          as="span"
-        >
+        <Icon icon={Alert01Icon} className="h-4 w-4 text-warning-foreground" />
+        <Text variant="body-tight" tone="warning" as="span">
           Remove incompatible connections
         </Text>
         <Tooltip>
@@ -138,11 +122,7 @@ export function ResolutionModeBar({
             <Text variant="small-tight" tone="inherit" as="div">
               {renderIncompatibilities()}
             </Text>
-            <Text
-              variant="small-tight"
-              // TODO(tokens): no fitting role for text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
-              className="mt-2 text-gray-400"
-            >
+            <Text variant="small-tight" tone="subtle" className="mt-2">
               {(incompatibilities?.newRequiredInputs.length ?? 0) > 0
                 ? "Replace / delete"
                 : "Delete"}{" "}

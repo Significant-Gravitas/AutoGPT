@@ -130,7 +130,7 @@ export function UseExistingCredentialsDialog({
                 <Icon icon={ArrowLeft02Icon} size={14} />
                 All connections
               </button>
-              <Text variant="body" tone="muted" className="leading-5">
+              <Text variant="body-tight" tone="muted">
                 You have {selected.credentials.length} {selected.provider.name}{" "}
                 connections. Choose which one {expertName} should use.
               </Text>
@@ -146,8 +146,7 @@ export function UseExistingCredentialsDialog({
                   return (
                     <li
                       key={credential.id}
-                      // TODO(tokens): no exact role: bg-neutral-100 #F5F5F5
-                      className="flex items-center gap-3 rounded-xl bg-neutral-100 px-3 py-2.5"
+                      className="flex items-center gap-3 rounded-xl bg-surface-hover px-3 py-2.5"
                     >
                       <IntegrationLogo
                         provider={serviceIcon(credential)}
@@ -177,7 +176,7 @@ export function UseExistingCredentialsDialog({
             </>
           ) : (
             <>
-              <Text variant="body" tone="muted" className="leading-5">
+              <Text variant="body-tight" tone="muted">
                 These connections are already set up on your account but{" "}
                 {expertName} can&apos;t use them yet. Choose one to give{" "}
                 {expertName} access. Nothing is re-authorised, and you can

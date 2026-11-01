@@ -22,12 +22,10 @@ import { FilePreviewCard } from "./FilePreviewCard";
 import { FileThumbnail } from "./FileThumbnail";
 import {
   ACTIONS_CELL_CLASS,
-  DATE_CELL_CLASS,
   NAME_BUTTON_CLASS,
   REDUCED_ROW_VARIANTS,
   ROW_GRID_CLASS,
   ROW_VARIANTS,
-  SIZE_CELL_CLASS,
 } from "./row-layout";
 
 interface Props {
@@ -87,8 +85,7 @@ export function FileRow({
           type="button"
           aria-label={`Select ${file.name}`}
           aria-pressed={isSelected}
-          // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle, a text colour
-          className="group/select relative my-2.5 mr-3 shrink-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+          className="group/select relative my-2.5 mr-3 shrink-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle"
           onClick={(e) => {
             e.stopPropagation();
             onToggleSelect(file);
@@ -118,7 +115,8 @@ export function FileRow({
               <Text
                 variant="body-medium"
                 as="span"
-                className="truncate text-foreground-strong"
+                tone="primary"
+                className="truncate"
               >
                 {file.name}
               </Text>
@@ -134,6 +132,7 @@ export function FileRow({
               align="center"
               sideOffset={16}
               collisionPadding={16}
+              // oxlint-disable-next-line design-system/no-restyle -- the hover preview is a card, which the tooltip atom has no variant for
               className="max-w-none rounded-2xl border border-border-base bg-surface p-0 text-sm text-foreground-strong shadow-xl shadow-black/10 outline-none"
             >
               <FilePreviewCard file={file} />
@@ -143,7 +142,7 @@ export function FileRow({
         <button
           type="button"
           aria-label={`Rename ${file.name}`}
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-foreground-subtle opacity-0 transition-opacity hover:bg-surface-hover hover:text-foreground-strong focus-visible:opacity-100 group-hover:opacity-100"
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-foreground-subtle opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface-hover hover:text-foreground-strong focus-visible:opacity-100"
           onClick={(e) => {
             e.stopPropagation();
             setIsRenameOpen(true);
@@ -156,7 +155,8 @@ export function FileRow({
       <Text
         variant="body"
         as="span"
-        className={cn(DATE_CELL_CLASS, "text-foreground-tertiary")}
+        tone="muted"
+        className="hidden truncate sm:block"
         title={formatFullDate(file.created_at)}
       >
         {formatDayLabel(file.created_at)}
@@ -164,14 +164,16 @@ export function FileRow({
       <Text
         variant="body"
         as="span"
-        className={cn(SIZE_CELL_CLASS, "text-foreground-tertiary")}
+        tone="muted"
+        // oxlint-disable-next-line design-system/no-restyle -- tabular figures keep the size column aligned; Text has no numeric variant
+        className="hidden tabular-nums md:block"
       >
         {formatFileSize(file.size_bytes)}
       </Text>
       <div
         className={cn(
           ACTIONS_CELL_CLASS,
-          "opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 has-[[data-state=open]]:opacity-100",
+          "opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 has-[[data-state=open]]:opacity-100",
         )}
         onClick={(e) => e.stopPropagation()}
       >

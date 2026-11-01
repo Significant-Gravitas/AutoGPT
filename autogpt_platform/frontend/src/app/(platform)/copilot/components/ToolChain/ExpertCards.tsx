@@ -32,6 +32,7 @@ import {
 } from "./expertHandoff";
 import { HandoffProposal, HandoffReceipt } from "./ExpertHandoffParts";
 import { HandoffStatus } from "./HandoffStatus";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   output: Record<string, unknown>;
@@ -352,9 +353,14 @@ export function ExpertChangeCard({
     <div className={SHELL}>
       <div className={HEADER}>
         <Icon icon={header.icon} size={18} className="text-foreground-subtle" />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground-strong">
+        <Text
+          variant="body-medium-tight"
+          as="span"
+          tone="primary"
+          className="min-w-0 flex-1 truncate"
+        >
           {header.title}
-        </span>
+        </Text>
       </div>
       <div className="px-4 py-3">
         <div
@@ -374,11 +380,17 @@ export function ExpertChangeCard({
             size={32}
           />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-body-sm font-medium leading-inherit text-foreground-emphasis">
+            <Text
+              variant="body-sm-medium-inherit"
+              tone="emphasis"
+              className="truncate"
+            >
               {name}
-            </p>
+            </Text>
             {role && (
-              <p className="truncate text-xs text-foreground-subtle">{role}</p>
+              <Text variant="small-tight" tone="subtle" className="truncate">
+                {role}
+              </Text>
             )}
           </div>
           {showDetails && (
@@ -398,7 +410,8 @@ export function ExpertChangeCard({
           <p
             key={`${artifactId ?? name}-summary`}
             className={cn(
-              "pl-[42px] pt-2 text-sm text-foreground-tertiary",
+              // oxlint-disable-next-line design-system/no-arbitrary-values -- aligns the details with the name after the 42px avatar column
+              "pt-2 pl-[42px] text-sm text-foreground-tertiary",
               stepDirection &&
                 "delay-75 duration-300 animate-in fade-in fill-mode-both motion-reduce:animate-none",
               stepDirection === "forward" && "slide-in-from-right-4",
@@ -409,14 +422,19 @@ export function ExpertChangeCard({
           </p>
         )}
         {hasCharter && !panelAvailable && showCharter && (
-          <div className="flex flex-col gap-1 pl-[42px] pt-1.5">
+          <div
+            // oxlint-disable-next-line design-system/no-arbitrary-values -- aligns the details with the name after the 42px avatar column
+            className="flex flex-col gap-1 pt-1.5 pl-[42px]"
+          >
             {tagline && about && (
-              <p className="text-sm text-foreground-tertiary">{about}</p>
+              <Text variant="body-tight" tone="muted">
+                {about}
+              </Text>
             )}
             {boundaries && (
-              <p className="text-sm text-foreground-subtle">
+              <Text variant="body-tight" tone="subtle">
                 Stops at: {boundaries}
-              </p>
+              </Text>
             )}
           </div>
         )}
@@ -462,23 +480,36 @@ function SoulChangeCard({
           size={18}
           className="text-foreground-subtle"
         />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground-strong">
+        <Text
+          variant="body-medium-tight"
+          as="span"
+          tone="primary"
+          className="min-w-0 flex-1 truncate"
+        >
           {output.applied === true ? "Soul updated" : "Update Soul"}
-        </span>
+        </Text>
       </div>
       <div className="flex flex-col gap-3 px-4 py-3">
         {soulChanges(output).map((change) => (
           <section key={change.field} className="flex flex-col gap-0.5">
-            <p className="text-xs font-medium text-foreground-body">
+            <Text variant="small-medium-tight" tone="body">
               {SOUL_LABELS[change.field] ?? change.field}
-            </p>
-            <p className="whitespace-pre-line text-sm text-foreground-body">
+            </Text>
+            <Text
+              variant="body-tight"
+              tone="body"
+              className="whitespace-pre-line"
+            >
               {change.after || "Empty"}
-            </p>
+            </Text>
             {change.before && (
-              <p className="line-clamp-2 text-xs text-foreground-subtle">
+              <Text
+                variant="small-tight"
+                tone="subtle"
+                className="line-clamp-2"
+              >
                 Was: {change.before}
-              </p>
+              </Text>
             )}
           </section>
         ))}
@@ -519,7 +550,9 @@ function DecisionFooter({
       <div className="min-w-0">{pager}</div>
       <div className="flex shrink-0 items-center gap-1.5">
         {chosen && (
-          <span className="text-xs text-foreground-tertiary">{chosen}</span>
+          <Text variant="small-tight" as="span" tone="muted">
+            {chosen}
+          </Text>
         )}
         {decision && onUndo && (
           <Button
@@ -593,9 +626,9 @@ export function ExpertChangeCardSkeleton() {
           size={18}
           className="text-foreground-subtle"
         />
-        <span className="text-sm font-medium text-foreground-strong">
+        <Text variant="body-medium-tight" as="span" tone="primary">
           Create an Expert
-        </span>
+        </Text>
       </div>
       <div className="px-4 py-3">
         <div className="flex items-center gap-2.5">
@@ -605,7 +638,10 @@ export function ExpertChangeCardSkeleton() {
             <Skeleton className="h-3 w-20" />
           </div>
         </div>
-        <div className="flex flex-col gap-1.5 pl-[42px] pt-2.5">
+        <div
+          // oxlint-disable-next-line design-system/no-arbitrary-values -- aligns the details with the name after the 42px avatar column
+          className="flex flex-col gap-1.5 pt-2.5 pl-[42px]"
+        >
           <Skeleton className="h-3 w-full" />
           <Skeleton className="h-3 w-4/5" />
         </div>
@@ -802,11 +838,9 @@ export function ExpertChangeGroup({
               "rounded-full transition-all duration-300",
               i === current ? "size-2.5 border-2" : "size-2 border",
               decisions[toolCallId] === "approved"
-                ? // TODO(tokens): no exact role for border-emerald-500, bg-emerald-500
-                  "border-emerald-500 bg-emerald-500"
+                ? "border-success bg-success"
                 : decisions[toolCallId] === "declined"
-                  ? // TODO(tokens): no exact role for border-red-400, bg-red-400
-                    "border-red-400 bg-red-400"
+                  ? "border-error bg-error"
                   : i === current
                     ? "border-action"
                     : "border-border-strong",
@@ -823,9 +857,9 @@ export function ExpertChangeGroup({
       >
         <Icon icon={ArrowRight01Icon} size={14} />
       </button>
-      <span className="text-xs text-foreground-subtle">
+      <Text variant="small-tight" as="span" tone="subtle">
         {current + 1} of {visible.length}
-      </span>
+      </Text>
     </div>
   );
 

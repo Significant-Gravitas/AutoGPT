@@ -87,7 +87,7 @@ export const Family: Story = {
       <div className="flex w-full max-w-5xl flex-col gap-6">
         {families.map((family) => (
           <div key={family}>
-            <p className="mb-2 text-sm font-medium capitalize text-foreground-tertiary">
+            <p className="mb-2 text-sm font-medium text-foreground-tertiary capitalize">
               {family}
             </p>
             <div className="flex flex-wrap gap-4">

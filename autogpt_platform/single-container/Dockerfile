@@ -4,7 +4,7 @@
 # be copied into the Debian appliance image. Browser-facing service URLs are
 # intentionally same-origin paths; the in-container reverse proxy decides
 # where they land at runtime.
-FROM node:24.22.1-bookworm-slim@sha256:1681862882da07ee5476fee047bcf34138833f1df42633bb25bcb0f438d5bf3d AS frontend
+FROM node:24.22.1-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS frontend
 
 WORKDIR /app
 RUN corepack enable
@@ -33,7 +33,7 @@ RUN pnpm run generate:api \
     && NODE_OPTIONS="--max-old-space-size=8192" pnpm build \
     && rm -f .env .env.local .env.production
 
-FROM node:24.22.1-bookworm-slim@sha256:1681862882da07ee5476fee047bcf34138833f1df42633bb25bcb0f438d5bf3d AS node-runtime
+FROM node:24.22.1-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS node-runtime
 
 ARG NPM_VERSION=12.0.2
 RUN npm install --global "npm@${NPM_VERSION}" \

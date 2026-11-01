@@ -22,7 +22,10 @@ import {
   getParts,
   saveMeta,
 } from "./recordingStore";
+import { promptSetNameForRole } from "./prompts";
 import { useBrainDumpRecorder } from "./useBrainDumpRecorder";
+import { useMicrophoneRetry } from "./useMicrophoneRetry";
+import { usePromptRotation } from "./usePromptRotation";
 
 // A skip whose discard and record are still on the wire. Module scope, so the
 // remount that Back from Hire causes waits for it before sending a new take,
@@ -41,9 +44,28 @@ export type ScreenState =
 export function useBrainDumpStep() {
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
   const setStepBusy = useOnboardingWizardStore((s) => s.setStepBusy);
-  const recorder = useBrainDumpRecorder();
+  // Picked on the step before; "Other" is matched as an id, not its free text.
+  const role = useOnboardingWizardStore((s) => s.role);
+  const recorder = useBrainDumpRecorder({
+    promptSet: promptSetNameForRole(role),
+  });
 
   const [screen, setScreen] = useState<ScreenState>("rest");
+  const prompt = usePromptRotation({ role, screen });
+  // For answers that arrive after the render that asked, like a permission
+  // prompt answered once the typed text is already on its way.
+  const screenRef = useRef(screen);
+  useEffect(() => {
+    screenRef.current = screen;
+  });
+  const microphone = useMicrophoneRetry({
+    recorder,
+    canRecord: () => screenRef.current === "typing" && !isSubmittingRef.current,
+    onRecording: () => setScreen("recording"),
+  });
+  // A refused microphone is one fallback to typing per visit, however many
+  // times the user then tries the microphone again.
+  const typedFallbackTrackedRef = useRef(false);
   // Which submission the quality gate last rejected — the recovery
   // screen's copy and primary action adapt to how the user got there.
   const [insufficientMode, setInsufficientMode] = useState<"voice" | "typed">(
@@ -98,13 +120,19 @@ export function useBrainDumpStep() {
 
   // Permission denial is never a dead end: the typing composer takes over
   // under the same headline.
+  // A retry refused while the typed text is on its way leaves the submission
+  // alone: reopening the composer would let it be sent a second time.
   useEffect(() => {
     if (!recorder.permissionDenied) return;
+    if (isSubmittingRef.current || screenRef.current === "processing") return;
     setScreen("typing");
+    if (typedFallbackTrackedRef.current) return;
+    typedFallbackTrackedRef.current = true;
     trackBrainDump("brain_dump_typed_fallback", {
       reason: "permission_denied",
+      prompt_set: prompt.promptSet,
     });
-  }, [recorder.permissionDenied]);
+  }, [recorder.permissionDenied, prompt.promptSet]);
 
   // Keyed on whether the mic has actually heard anything. It used to key
   // on `!isSavedLocally`, which flips as soon as the first chunk is
@@ -252,6 +280,7 @@ export function useBrainDumpStep() {
       duration_secs: Math.round(durationSecs),
       input_mode: "voice",
       finalize_latency_ms: finalizeLatencyMs,
+      ...promptProperties(),
     });
     await completeAndAdvance(recordingId, "A");
   }
@@ -301,11 +330,28 @@ export function useBrainDumpStep() {
 
   function handleShowTyping() {
     setScreen("typing");
-    trackBrainDump("brain_dump_typed_fallback", { reason: "chose_to_type" });
+    trackBrainDump("brain_dump_typed_fallback", {
+      reason: "chose_to_type",
+      prompt_set: prompt.promptSet,
+    });
   }
 
   function handleShowRecording() {
     setScreen("rest");
+  }
+
+  // With the microphone refused, going back to the orb would only refuse
+  // again, so "record instead" asks the browser once more from here.
+  function handleRecordInstead() {
+    if (microphone.isBlocked) void microphone.retry("record_instead");
+    else handleShowRecording();
+  }
+
+  function promptProperties() {
+    return {
+      prompt_set: prompt.promptSet,
+      prompts_seen: prompt.promptsSeen(),
+    };
   }
 
   function handleTypedTextChange(text: string) {
@@ -315,7 +361,7 @@ export function useBrainDumpStep() {
 
   async function handleSubmitTyped() {
     const text = typedText.trim();
-    if (!text) return;
+    if (!text || isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     setIsTypedTooLong(false);
     try {
@@ -364,6 +410,7 @@ export function useBrainDumpStep() {
     trackBrainDump("brain_dump_completed", {
       input_mode: "typed",
       chars: text.length,
+      ...promptProperties(),
     });
     await completeAndAdvance(recordingId, "A");
   }
@@ -373,7 +420,7 @@ export function useBrainDumpStep() {
     // another skip, would advance the wizard a second time, past Hire.
     if (isSubmittingRef.current) return;
     isSubmittingRef.current = true;
-    trackBrainDump("brain_dump_skipped");
+    trackBrainDump("brain_dump_skipped", promptProperties());
     const recordedId = recorder.recordingId;
     recorder.resetQueue();
     setIntroPath("B");
@@ -564,9 +611,12 @@ export function useBrainDumpStep() {
     handleDownloadRecording,
     showTyping: handleShowTyping,
     showRecording: handleShowRecording,
-    // Going back to the orb is a dead end when the browser already refused
-    // the microphone, so the way back is offered only when it can work.
-    isMicBlocked: recorder.permissionDenied,
+    handleRecordInstead,
+    handleRetryMicrophone: () => microphone.retry("retry_link"),
+    isMicBlocked: microphone.isBlocked,
+    micPermission: microphone.permissionState,
     isMicUnavailable: recorder.micUnavailable,
+    role,
+    prompt,
   };
 }

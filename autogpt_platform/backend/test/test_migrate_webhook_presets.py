@@ -33,6 +33,13 @@ def _make_test_ctx(user_id: str = "user-1") -> RequestContext:
 _PRISMA_PATCH_TARGET = "prisma.models.AgentPreset.prisma"
 
 
+@pytest.fixture(autouse=True)
+def caller_owns_every_graph_id(mocker):
+    mocker.patch(
+        "backend.data.graph.graph_owner_id", new=AsyncMock(return_value="user-1")
+    )
+
+
 @pytest.fixture
 def mock_prisma():
     with patch(_PRISMA_PATCH_TARGET) as mock:

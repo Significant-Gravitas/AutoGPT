@@ -21,6 +21,7 @@ import {
   type PendingQuestions,
 } from "./helpers";
 import { isKey } from "@/lib/keyboard";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface FormProps {
   dockId: string;
@@ -86,13 +87,13 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
 
   return (
     <div
-      // TODO(tokens): no exact role for shadow-[0_16px_40px_-24px_rgba(0,0,0,0.25)]
+      // oxlint-disable-next-line design-system/no-arbitrary-values -- the floating card lift shadow; no shadow token has it
       className="animate-fade-up rounded-2xl bg-surface p-3 shadow-[0_16px_40px_-24px_rgba(0,0,0,0.25)] ring-1 ring-border-base/70 motion-reduce:animate-none"
     >
       <div className="flex items-center justify-between px-0.5 pb-2">
-        <span className="text-xs font-medium text-foreground-tertiary">
+        <Text variant="small-medium-tight" as="span" tone="muted">
           {questions.length === 1 ? "Quick question" : "Quick questions"}
-        </span>
+        </Text>
         <button
           type="button"
           onClick={() => setDismissedId(dockId)}
@@ -149,8 +150,7 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
                 placeholder={
                   q.example ? `e.g. ${q.example}` : "Type your answer"
                 }
-                // TODO(tokens): no fitting role for focus:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
-                className="rounded-xl bg-surface-muted px-2.5 py-1.5 text-body-sm leading-inherit text-foreground-emphasis ring-1 ring-border-base/70 transition-shadow placeholder:text-foreground-subtle focus:outline-none focus:ring-zinc-400"
+                className="rounded-xl bg-surface-muted px-2.5 py-1.5 text-body-sm leading-inherit text-foreground-emphasis ring-1 ring-border-base/70 transition-shadow placeholder:text-foreground-subtle focus:ring-foreground-subtle focus:outline-none"
               />
             </label>
           ),
@@ -162,8 +162,7 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
             type="button"
             onClick={handleSubmit}
             aria-disabled={!allAnswered}
-            // TODO(tokens): no fitting role for hover:bg-zinc-700 #505057; #505057 is foreground-body (a text colour)
-            className="rounded-full bg-action-hover px-3.5 py-1.5 text-xs font-medium text-action-foreground transition-opacity hover:bg-zinc-700 aria-disabled:opacity-40"
+            className="rounded-full bg-action-hover px-3.5 py-1.5 text-xs font-medium text-action-foreground transition-opacity hover:bg-action aria-disabled:opacity-40"
           >
             Answer
           </button>

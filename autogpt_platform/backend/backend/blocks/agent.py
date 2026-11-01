@@ -17,7 +17,6 @@ from backend.data.execution import (
     NodesInputMasks,
 )
 from backend.data.model import NodeExecutionStats, SchemaField
-from backend.util.json import validate_with_jsonschema
 from backend.util.retry import func_retry
 
 if TYPE_CHECKING:
@@ -69,10 +68,9 @@ class AgentExecutorBlock(Block):
         def get_mismatch_error(
             cls, data: BlockInput, exclude_fields: set[str] | None = None
         ) -> str | None:
-            # exclude_fields names node-level fields, never the nested inputs.
-            return validate_with_jsonschema(
-                cls.get_input_schema(data), data.get("inputs", {})
-            )
+            # `data` holds the flattened `inputs` (see validate_exec), never the
+            # node's `input_schema`; the child graph validates its own inputs.
+            return None
 
     class Output(BlockSchema):
         # Use BlockSchema to avoid automatic error field that could clash with graph outputs

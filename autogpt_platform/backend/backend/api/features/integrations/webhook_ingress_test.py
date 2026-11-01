@@ -626,7 +626,9 @@ class TestVerificationOrder:
             creds_manager.get.assert_not_called()
             return
         assert resp.status_code == 200, resp.text
-        creds_manager.get.assert_awaited_once_with(USER_ID, "creds-1")
+        creds_manager.get.assert_awaited_once_with(
+            USER_ID, "creds-1", allow_sdk_default=True
+        )
         assert mock_manager.validate_payload.await_args.args[2] is credentials
 
     def test_a_banned_owners_credentials_are_not_loaded(self):

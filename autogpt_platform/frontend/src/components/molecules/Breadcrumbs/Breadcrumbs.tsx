@@ -23,14 +23,14 @@ export function Breadcrumbs({ items }: Props) {
             <Link
               href={item.link}
               data-slot="breadcrumbs-link"
-              className="text-body font-normal leading-5 text-foreground-secondary transition-colors hover:text-foreground-strong hover:no-underline"
+              className="text-body leading-5 font-normal text-foreground-secondary transition-colors hover:text-foreground-strong hover:no-underline"
             >
               {item.name}
             </Link>
           ) : (
             <span
               data-slot="breadcrumbs-current"
-              className="text-body font-normal leading-5 text-foreground-strong"
+              className="text-body leading-5 font-normal text-foreground-strong"
             >
               {item.name}
             </span>

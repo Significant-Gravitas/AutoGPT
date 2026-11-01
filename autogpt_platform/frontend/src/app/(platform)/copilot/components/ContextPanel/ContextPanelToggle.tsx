@@ -77,7 +77,7 @@ export function ContextPanelToggle({
   return (
     // The same translucent pill as the thread chip on the left (ThreadHeader),
     // level with it and as tall, so the two corners read as one header.
-    <div className="mr-4 mt-3 flex shrink-0 items-center gap-1 rounded-full border border-border-base/70 bg-surface/75 p-1.5 shadow-sm backdrop-blur-md max-lg:shadow-md">
+    <div className="mt-3 mr-4 flex shrink-0 items-center gap-1 rounded-full border border-border-base/70 bg-surface/75 p-1.5 shadow-sm backdrop-blur-md max-lg:shadow-md">
       {showIntegrations && expert && (
         <IntegrationsToggle expert={expert} className={toggleClass} />
       )}

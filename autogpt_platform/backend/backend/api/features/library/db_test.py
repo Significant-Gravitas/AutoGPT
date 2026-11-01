@@ -592,6 +592,10 @@ async def test_update_graph_in_library_allows_archived_library_agent(mocker):
     updated_library_agent = mocker.Mock()
 
     mocker.patch(
+        "backend.api.features.library.db.graph_db.graph_owner_id",
+        new=mocker.AsyncMock(return_value="test-user"),
+    )
+    mocker.patch(
         "backend.api.features.library.db.graph_db.get_graph_all_versions",
         new=mocker.AsyncMock(return_value=[existing_version]),
     )
@@ -650,6 +654,10 @@ async def test_update_graph_in_library_moves_webhook_presets_only_when_asked(
         AsyncMock(return_value=("org-fallback", "team-fallback")),
     )
     graph_model = mocker.Mock(is_active=True)
+    mocker.patch(
+        "backend.api.features.library.db.graph_db.graph_owner_id",
+        new=mocker.AsyncMock(return_value="test-user"),
+    )
     mocker.patch(
         "backend.api.features.library.db.graph_db.get_graph_all_versions",
         new=mocker.AsyncMock(return_value=[mocker.Mock(version=1, is_active=True)]),
@@ -878,6 +886,48 @@ async def test_list_favorite_library_agents(mocker):
     assert result.pagination.total_pages == 1
     assert result.pagination.current_page == 1
     assert result.pagination.page_size == 50
+
+    where = mock_library_agent.return_value.find_many.call_args.kwargs["where"]
+    assert where["userId"] == "test-user"
+    assert where["isFavorite"] is True
+    assert "OR" not in where
+    assert "isHidden" not in where
+    assert "AND" not in where
+
+
+@pytest.mark.asyncio
+async def test_list_favorite_library_agents_searches_on_the_server(mocker):
+    """A search reaches the query, so favorites that are not paged in yet
+    still match, the same way the main library list searches."""
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_many = mocker.AsyncMock(return_value=[])
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=12)
+    mocker.patch(
+        "backend.api.features.library.db._fetch_execution_counts",
+        new=mocker.AsyncMock(return_value={}),
+    )
+    mocker.patch(
+        "backend.api.features.library.db._fetch_schedule_info",
+        new=mocker.AsyncMock(return_value={}),
+    )
+
+    result = await db.list_favorite_library_agents(
+        "test-user", search_term="report", page=2, page_size=10
+    )
+
+    find_many = mock_library_agent.return_value.find_many.call_args.kwargs
+    where = find_many["where"]
+    assert where["userId"] == "test-user"
+    assert where["isFavorite"] is True
+    assert {"name": {"contains": "report", "mode": "insensitive"}} in where["OR"]
+    assert {
+        "AgentGraph": {"is": {"name": {"contains": "report", "mode": "insensitive"}}}
+    } in where["OR"]
+    assert find_many["skip"] == 10
+    assert find_many["take"] == 10
+    assert find_many["order"] == {"updatedAt": "desc"}
+    assert result.pagination.total_items == 12
+    assert result.pagination.total_pages == 2
 
 
 @pytest.mark.asyncio
@@ -2844,6 +2894,10 @@ async def test_an_external_save_cannot_version_a_graph_outside_its_organization(
     mocker.patch(
         "backend.api.features.library.db.writable_organization_ids",
         new=AsyncMock(return_value=frozenset({"org-a"})),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.graph_db.graph_owner_id",
+        new=mocker.AsyncMock(return_value="test-user"),
     )
     mocker.patch(
         "backend.data.graph.get_graph_version_owners",

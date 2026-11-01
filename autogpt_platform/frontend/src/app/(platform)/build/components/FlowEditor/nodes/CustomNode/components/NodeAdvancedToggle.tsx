@@ -38,9 +38,9 @@ export function NodeAdvancedToggle({
       >
         <Text
           variant="body-semibold"
+          tone="body"
           as="span"
-          // TODO(tokens): no exact role: text-slate-700 #475263
-          className="flex items-center gap-2 text-slate-700"
+          className="flex items-center gap-2"
         >
           Advanced{" "}
           <Icon

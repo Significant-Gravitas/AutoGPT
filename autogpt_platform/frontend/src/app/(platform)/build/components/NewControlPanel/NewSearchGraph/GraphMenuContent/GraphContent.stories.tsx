@@ -85,7 +85,7 @@ function GraphContentDemo({ nodes, initialQuery, onNodeSelect }: DemoProps) {
   }
 
   return (
-    <div className="h-[32rem] w-full max-w-[46.625rem] overflow-hidden rounded-[1rem] bg-white shadow-[0_2px_6px_0_rgba(0,0,0,0.05)]">
+    <div className="h-[32rem] w-full max-w-[46.625rem] overflow-hidden rounded-2xl bg-white shadow-[0_2px_6px_0_rgba(0,0,0,0.05)]">
       <GraphSearchContent
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}

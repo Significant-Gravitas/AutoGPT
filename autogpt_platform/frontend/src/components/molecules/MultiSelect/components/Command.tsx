@@ -14,9 +14,7 @@ const Command = React.forwardRef<
       ref={ref}
       data-slot="command"
       className={cn(
-        // TODO(tokens): text-neutral-950 #0A0A0A is the `focus` role, a ring
-        // colour, not a text colour (SECRT-3154).
-        "flex h-full w-full flex-col overflow-hidden rounded-md bg-surface text-neutral-950 dark:bg-neutral-950 dark:text-neutral-50",
+        "flex h-full w-full flex-col overflow-hidden rounded-md bg-surface text-foreground-base",
         className,
       )}
       {...props}
@@ -34,7 +32,7 @@ const CommandList = React.forwardRef<
       ref={ref}
       data-slot="command-list"
       className={cn(
-        "max-h-[300px] overflow-y-auto overflow-x-hidden",
+        "max-h-[300px] overflow-x-hidden overflow-y-auto",
         className,
       )}
       {...props}
@@ -67,9 +65,7 @@ const CommandItem = React.forwardRef<
       ref={ref}
       data-slot="command-item"
       className={cn(
-        // TODO(tokens): no exact role: data-[selected=true]:bg-neutral-100
-        // #F5F5F5, data-[selected=true]:text-neutral-900 #171717.
-        "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 outline-none data-[disabled=true]:pointer-events-none data-[selected=true]:bg-neutral-100 data-[selected=true]:text-neutral-900 data-[disabled=true]:opacity-50 dark:data-[selected=true]:bg-neutral-800 dark:data-[selected=true]:text-neutral-50",
+        "relative flex cursor-default items-center rounded-sm px-2 py-1.5 outline-none select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-surface-hover data-[selected=true]:text-foreground-strong",
         className,
       )}
       {...props}

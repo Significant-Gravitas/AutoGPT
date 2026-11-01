@@ -94,7 +94,7 @@ export function MobileSubmissionItem({
       className="flex flex-col gap-3 border-b border-separator px-3 py-3 last:border-b-0"
     >
       <div className="flex items-start gap-3">
-        <div className="relative aspect-video w-16 shrink-0 select-none overflow-hidden rounded-[8px] bg-surface-hover">
+        <div className="relative aspect-video w-16 shrink-0 overflow-hidden rounded-small bg-surface-hover select-none">
           {thumbnail ? (
             <Image
               src={thumbnail}
@@ -102,16 +102,15 @@ export function MobileSubmissionItem({
               alt={submission.name}
               fill
               sizes="64px"
-              style={{ objectFit: "cover" }}
               draggable={false}
-              className="pointer-events-none"
+              className="pointer-events-none object-cover"
             />
           ) : (
-            <div className="flex h-full w-full items-center justify-center">
+            <div className="flex h-full w-full items-center justify-center text-foreground-subtle">
               <UIIcon
                 icon={ImageNotFound01Icon}
                 size={18}
-                className="pointer-events-none text-foreground-subtle"
+                className="pointer-events-none"
               />
             </div>
           )}
@@ -124,36 +123,30 @@ export function MobileSubmissionItem({
                 href={marketplaceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex min-w-0 items-center gap-1 truncate text-textBlack hover:underline"
+                className="inline-flex min-w-0 items-center gap-1 truncate text-foreground-base hover:underline"
                 data-testid="submission-marketplace-link"
               >
-                <Text
-                  variant="body-medium"
-                  as="span"
-                  className="truncate text-textBlack"
-                >
+                <Text variant="body-medium" as="span" className="truncate">
                   {submission.name}
                 </Text>
                 <UIIcon
                   icon={LinkSquare01Icon}
                   size={14}
+                  // oxlint-disable-next-line design-system/no-restyle -- the link glyph is quieter than the name it sits beside
                   className="shrink-0 text-foreground-tertiary"
                   aria-hidden
                 />
               </Link>
             ) : (
-              <Text
-                variant="body-medium"
-                as="span"
-                className="truncate text-textBlack"
-              >
+              <Text variant="body-medium" as="span" className="truncate">
                 {submission.name}
               </Text>
             )}
             <Text
               variant="small"
               as="span"
-              className="shrink-0 text-foreground-secondary"
+              tone="secondary"
+              className="shrink-0"
             >
               v{submission.graph_version}
             </Text>
@@ -162,7 +155,8 @@ export function MobileSubmissionItem({
             <Text
               variant="small"
               as="span"
-              className="mt-0.5 line-clamp-2 break-words text-foreground-tertiary"
+              tone="muted"
+              className="mt-0.5 line-clamp-2 break-words"
             >
               {submission.description}
             </Text>
@@ -186,20 +180,18 @@ export function MobileSubmissionItem({
             className="min-w-[160px]"
           >
             {canModify ? (
-              <DropdownMenuItem
-                onSelect={handleEdit}
-                className="flex cursor-pointer items-center gap-2"
-              >
-                <UIIcon icon={PencilIcon} size={14} />
-                Edit details
+              <DropdownMenuItem onSelect={handleEdit}>
+                <span className="flex items-center gap-2">
+                  <UIIcon icon={PencilIcon} size={14} />
+                  Edit details
+                </span>
               </DropdownMenuItem>
             ) : (
-              <DropdownMenuItem
-                onSelect={handleView}
-                className="flex cursor-pointer items-center gap-2"
-              >
-                <UIIcon icon={EyeIcon} size={14} />
-                View submission
+              <DropdownMenuItem onSelect={handleView}>
+                <span className="flex items-center gap-2">
+                  <UIIcon icon={EyeIcon} size={14} />
+                  View submission
+                </span>
               </DropdownMenuItem>
             )}
             {marketplaceUrl ? (
@@ -221,11 +213,13 @@ export function MobileSubmissionItem({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onSelect={() => setConfirmDeleteOpen(true)}
-                  // TODO(tokens): no exact role (text-rose-600 #E11D48, focus:text-rose-700 #BE123C)
-                  className="flex cursor-pointer items-center gap-2 text-rose-600 focus:text-rose-700"
+                  // oxlint-disable-next-line design-system/no-raw-colors, design-system/no-restyle -- rose delete text kept until the rose -> error hue change is approved
+                  className="text-rose-600 focus:text-rose-700"
                 >
-                  <UIIcon icon={Delete02Icon} size={14} />
-                  Delete
+                  <span className="flex items-center gap-2">
+                    <UIIcon icon={Delete02Icon} size={14} />
+                    Delete
+                  </span>
                 </DropdownMenuItem>
               </>
             ) : null}
@@ -235,18 +229,18 @@ export function MobileSubmissionItem({
 
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
         <span
-          className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-caption-sm font-medium leading-inherit ${visual.pillClass}`}
+          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-caption-sm leading-inherit font-medium whitespace-nowrap ${visual.pillClass}`}
         >
           <UIIcon icon={visual.Icon} size={10} />
           {visual.label}
         </span>
-        <span className="whitespace-nowrap text-xs text-foreground-tertiary">
+        <span className="text-xs whitespace-nowrap text-foreground-tertiary">
           {formatSubmittedAt(submission.submitted_at)}
         </span>
         <span aria-hidden className="text-xs text-foreground-disabled">
           ·
         </span>
-        <span className="whitespace-nowrap text-xs tabular-nums text-foreground-tertiary">
+        <span className="text-xs whitespace-nowrap text-foreground-tertiary tabular-nums">
           {formatRuns(submission.run_count ?? 0)} runs
         </span>
         {hasRating ? (
@@ -254,8 +248,9 @@ export function MobileSubmissionItem({
             <span aria-hidden className="text-xs text-foreground-disabled">
               ·
             </span>
-            <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs tabular-nums text-foreground-tertiary">
+            <span className="inline-flex items-center gap-1 text-xs whitespace-nowrap text-foreground-tertiary tabular-nums">
               {submission.review_avg_rating!.toFixed(1)}
+              {/* oxlint-disable-next-line design-system/no-restyle -- the star is amber beside grey run counts */}
               <UIIcon icon={StarIcon} size={10} className="text-warning" />
             </span>
           </>
@@ -271,7 +266,7 @@ export function MobileSubmissionItem({
         }}
       >
         <Dialog.Content>
-          <Text variant="body" className="text-foreground-body">
+          <Text variant="body" tone="body">
             This will remove <strong>{submission.name}</strong> from the store.
             This action cannot be undone.
           </Text>

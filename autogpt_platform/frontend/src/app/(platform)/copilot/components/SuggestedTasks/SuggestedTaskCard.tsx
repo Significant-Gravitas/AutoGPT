@@ -80,7 +80,7 @@ export function SuggestedTaskCard({
         aria-label={`Hide: ${task.title}`}
         disabled={!canHide}
         onClick={() => onHide(task)}
-        className="absolute -right-2 -top-2 text-foreground-subtle opacity-0 transition-opacity duration-150 hover:text-foreground-body focus-visible:opacity-100 group-hover/card:opacity-100 [@media(hover:none)]:opacity-100"
+        className="absolute -top-2 -right-2 text-foreground-subtle opacity-0 transition-opacity duration-150 group-hover/card:opacity-100 hover:text-foreground-body focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
       >
         <Icon icon={Cancel01Icon} size={12} />
       </Button>

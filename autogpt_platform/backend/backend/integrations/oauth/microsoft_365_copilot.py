@@ -33,6 +33,20 @@ def _client_id() -> str:
     )
 
 
+def _token_client_fields() -> dict[str, str]:
+    """Client authentication for token requests.
+
+    A configured app with a secret is confidential, so Microsoft rejects its
+    device-code and refresh grants without the secret (AADSTS7000218). The
+    public fallback app never gets one.
+    """
+    secrets = Settings().secrets
+    fields = {"client_id": _client_id()}
+    if secrets.microsoft_client_id and secrets.microsoft_client_secret:
+        fields["client_secret"] = secrets.microsoft_client_secret
+    return fields
+
+
 class Microsoft365CopilotDeviceAuthHandler(BaseDeviceAuthHandler):
     PROVIDER_NAME: ClassVar[ProviderName | str] = ProviderName.MICROSOFT_365_COPILOT
     CHAT_SCOPES: ClassVar[list[str]] = [
@@ -75,7 +89,7 @@ class Microsoft365CopilotDeviceAuthHandler(BaseDeviceAuthHandler):
                 data={
                     "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
                     "device_code": device_code,
-                    "client_id": _client_id(),
+                    **_token_client_fields(),
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
@@ -142,7 +156,7 @@ class Microsoft365CopilotDeviceAuthHandler(BaseDeviceAuthHandler):
             response = await client.post(
                 MICROSOFT_TOKEN_URL,
                 data={
-                    "client_id": _client_id(),
+                    **_token_client_fields(),
                     "refresh_token": credentials.refresh_token.get_secret_value(),
                     "grant_type": "refresh_token",
                     "scope": " ".join(self._authorization_scopes(credentials.scopes)),

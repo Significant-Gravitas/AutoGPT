@@ -23,6 +23,12 @@ export const FeatureFlagEvent = {
   FEATURE_FLAG_MISMATCHED: "feature_flag_mismatched",
 } as const;
 
+// Ops signal, not a user action: a tab on an older build could not load code
+// on demand after a deploy, and reloaded to pick up the current build.
+export const DeploySkewEvent = {
+  CHUNK_RELOAD_TRIGGERED: "chunk_reload_triggered",
+} as const;
+
 // Marketing email refusals made in the app. `surface` says where; the
 // refusal itself is stored on the user (`marketingOptOutAt`).
 export const MarketingConsentEvent = {
@@ -70,6 +76,17 @@ export const BrainDumpEvent = {
   // browser's `error_name` (NotFoundError, NotReadableError, …).
   BRAIN_DUMP_MIC_FAILED: "brain_dump_mic_failed",
   BRAIN_DUMP_TYPED_FALLBACK: "brain_dump_typed_fallback",
+  // The "Otto might ask" prompt moved on, by its timer (`via: auto`) or
+  // "Another question" (`click`), with the `screen`, the `prompt_index` now
+  // shown and the role's `prompt_set`. Never sent for the first prompt.
+  BRAIN_DUMP_PROMPT_ADVANCED: "brain_dump_prompt_advanced",
+  // A way back to Talk after the microphone was refused: `result` is what
+  // the browser answered (`granted`, `denied`, or `unavailable` for any
+  // other mic error), `via` is the link used or `permission_change` when
+  // the user allowed the site in its settings. `permission_state` is the
+  // Permissions API state when the retry began, or the one it changed to
+  // for `permission_change`; `unknown` where the API is missing.
+  BRAIN_DUMP_PERMISSION_RETRIED: "brain_dump_permission_retried",
   // The first-run intro shown on the first copilot landing ended (finished
   // or skipped). Since SECRT-3149 that intro is the guided walkthrough
   // (first_run_tour_*); the name is kept so the funnel stays continuous.
@@ -197,6 +214,7 @@ export const MonetizationEvent = {
 export const PostHogEvent = {
   ...PageEvent,
   ...FeatureFlagEvent,
+  ...DeploySkewEvent,
   ...MarketingConsentEvent,
   ...ExpertsFunnelEvent,
   ...HireFlowEvent,
