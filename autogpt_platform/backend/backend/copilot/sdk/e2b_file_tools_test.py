@@ -1423,8 +1423,9 @@ class TestLocalFileOverTheReadLimit:
         monkeypatch.setattr(
             "backend.copilot.sdk.e2b_file_tools._MAX_READ_BYTES", 1_000_000
         )
-        with open(os.path.join(sdk_cwd, "long.log"), "w") as f:
-            f.write("".join(f"{i:09d}\n" for i in range(10_000)))
+        Path(sdk_cwd, "long.log").write_text(
+            "".join(f"{i:09d}\n" for i in range(10_000))
+        )
         consumed = self._count_reads(monkeypatch)
 
         result = await _handle_read_file(
