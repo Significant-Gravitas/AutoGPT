@@ -20,7 +20,6 @@ from backend.blocks._base import (
 )
 from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.blocks.mcp.helpers import (
-    auto_lookup_mcp_credential,
     mcp_authorization_header,
     normalize_mcp_url,
     parse_mcp_content,
@@ -34,6 +33,7 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util.json import validate_with_jsonschema
+from backend.util.request import HTTPClientError
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +44,7 @@ TEST_CREDENTIALS = OAuth2Credentials(
     refresh_token=SecretStr("mock-refresh"),
     scopes=[],
     title="Mock MCP credential",
+    metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
 )
 TEST_CREDENTIALS_INPUT = {
     "provider": TEST_CREDENTIALS.provider,
@@ -198,17 +199,6 @@ class MCPToolBlock(Block):
 
         return parse_mcp_content(result.content, result.structured_content)
 
-    @staticmethod
-    async def _auto_lookup_credential(
-        user_id: str, server_url: str
-    ) -> "OAuth2Credentials | None":
-        """Auto-lookup stored MCP credential for a server URL.
-
-        Delegates to :func:`~backend.blocks.mcp.helpers.auto_lookup_mcp_credential`.
-        The caller should pass a normalized URL.
-        """
-        return await auto_lookup_mcp_credential(user_id, server_url)
-
     async def run(
         self,
         input_data: Input,
@@ -242,13 +232,19 @@ class MCPToolBlock(Block):
                 )
                 return
 
-        # If no credentials were injected by the executor (e.g. legacy nodes
-        # that don't have the credentials field set), try to auto-lookup
-        # the stored MCP credential for this server URL.
-        if credentials is None:
-            credentials = await self._auto_lookup_credential(
-                user_id, normalize_mcp_url(input_data.server_url)
+        # Only the credential selected for this node or run is used, and only at
+        # the server it was connected for.
+        if credentials and normalize_mcp_url(
+            (credentials.metadata or {}).get("mcp_server_url") or ""
+        ) != normalize_mcp_url(input_data.server_url):
+            yield (
+                "error",
+                (
+                    "The selected credentials were connected for a different MCP "
+                    "server. Select credentials for this server and run again."
+                ),
             )
+            return
 
         authorization = mcp_authorization_header(credentials) if credentials else None
 
@@ -263,6 +259,18 @@ class MCPToolBlock(Block):
             yield "result", result
         except MCPClientError as e:
             yield "error", str(e)
+        except HTTPClientError as e:
+            if credentials is None and e.status_code in (401, 403):
+                yield (
+                    "error",
+                    (
+                        "This MCP server requires credentials. Select credentials "
+                        "for this server and run again."
+                    ),
+                )
+                return
+            logger.exception("MCP tool call failed")
+            yield "error", f"MCP tool call failed: {e}"
         except Exception as e:
             logger.exception(f"MCP tool call failed: {e}")
             yield "error", f"MCP tool call failed: {str(e)}"

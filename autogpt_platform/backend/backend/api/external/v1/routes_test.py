@@ -6,6 +6,7 @@ import fastapi.testclient
 import pytest
 from prisma.enums import APIKeyPermission
 
+import backend.api.external.v1.integrations as integrations_mod
 import backend.api.external.v1.routes as routes_mod
 from backend.api.external.middleware import require_auth
 from backend.api.external.v1.routes import v1_router
@@ -334,3 +335,62 @@ def test_execute_graph_block_paywall_propagates(monkeypatch: pytest.MonkeyPatch)
             "/blocks/00000000-0000-0000-0000-000000000001/execute",
             json={},
         )
+
+
+@pytest.mark.parametrize(
+    "provider, scope",
+    [
+        ("smtp", None),
+        ("smtp", ""),
+        ("smtp", "smtp.example.com"),
+        ("smtp", "smtp://*.example.com"),
+        ("smtp", "postgresql://smtp.example.com"),
+        ("database", None),
+        ("database", "db.example.com:5432"),
+        ("database", "smtp://db.example.com"),
+    ],
+)
+def test_create_login_without_a_valid_scope_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, provider: str, scope: str | None
+):
+    create = AsyncMock()
+    monkeypatch.setattr(integrations_mod.creds_manager, "create", create)
+    body = {"type": "user_password", "username": "u", "password": "p", "title": "t"}
+    if scope is not None:
+        body["scope"] = scope
+
+    response = client.post(f"/integrations/{provider}/credentials", json=body)
+
+    assert response.status_code == 400
+    create.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "provider, scope",
+    [
+        ("smtp", "smtp://smtp.example.com:587"),
+        ("database", "postgresql://db.example.com:5432"),
+        ("database", "mysql://db.example.com"),
+    ],
+)
+def test_create_login_with_a_scope_stores_it(
+    monkeypatch: pytest.MonkeyPatch, provider: str, scope: str
+):
+    create = AsyncMock()
+    monkeypatch.setattr(integrations_mod.creds_manager, "create", create)
+
+    response = client.post(
+        f"/integrations/{provider}/credentials",
+        json={
+            "type": "user_password",
+            "username": "u",
+            "password": "p",
+            "title": "t",
+            "scope": scope,
+        },
+    )
+
+    assert response.status_code == 201
+    stored = create.await_args.args[1]
+    assert stored.provider == provider
+    assert stored.scope == scope
