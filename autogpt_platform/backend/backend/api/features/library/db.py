@@ -2505,6 +2505,10 @@ async def update_preset(
                 raise ValueError(
                     "Preset inputs and credentials must be provided together"
                 )
+            # Locked so two concurrent replacements of the same preset can't
+            # both pass the count below, then each delete and insert without
+            # seeing the other's rows — leaving more than the cap.
+            await _lock_preset_row(tx, preset_id)
             # A caller's view of InputPresets is capped at the read bound
             # (AGENT_PRESET_INCLUDE), so a preset already PAST it can't be
             # replaced from that view — delete_many below would drop whatever
@@ -2593,6 +2597,20 @@ async def _lock_preset_creation(tx: prisma.Prisma, user_id: str) -> None:
     await tx.execute_raw(
         "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
         f"preset-creation:{user_id}",
+    )
+
+
+async def _lock_preset_row(tx: prisma.Prisma, preset_id: str) -> None:
+    """Row lock on the AgentPreset, held through update_preset's count,
+    delete and insert so two concurrent input replacements serialize."""
+    schema = get_database_schema()
+    schema_prefix = f'"{schema}".' if schema != "public" else ""
+    await tx.query_raw(
+        cast(
+            LiteralString,
+            f'SELECT "id" FROM {schema_prefix}"AgentPreset" WHERE "id" = $1 FOR UPDATE',
+        ),
+        preset_id,
     )
 
 

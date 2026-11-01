@@ -58,7 +58,7 @@ async def test_update_refuses_to_replace_inputs_past_the_read_cap(mocker):
 
     @asynccontextmanager
     async def fake_tx():
-        yield None
+        yield AsyncMock()
 
     mocker.patch.object(db, "transaction", fake_tx)
     mock_row_client = AsyncMock()
@@ -103,7 +103,7 @@ async def test_update_replaces_inputs_at_or_under_the_read_cap(
 
     @asynccontextmanager
     async def fake_tx():
-        yield None
+        yield AsyncMock()
 
     mocker.patch.object(db, "transaction", fake_tx)
     mock_row_client = AsyncMock()

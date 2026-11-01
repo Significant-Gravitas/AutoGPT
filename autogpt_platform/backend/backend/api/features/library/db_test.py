@@ -1804,7 +1804,7 @@ async def test_new_inputs_need_credentials_alongside_which_may_be_empty(
 
     @asynccontextmanager
     async def fake_tx():
-        yield None
+        yield AsyncMock()
 
     preset_client = AsyncMock()
     mocker.patch.object(prisma.models.AgentPreset, "prisma", return_value=preset_client)

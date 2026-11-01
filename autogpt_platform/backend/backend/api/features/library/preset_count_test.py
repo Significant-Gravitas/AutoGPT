@@ -3,6 +3,7 @@
 import asyncio
 import uuid
 
+import prisma.actions
 import prisma.models
 import pytest
 
@@ -57,6 +58,84 @@ async def test_concurrent_creates_at_the_cap_save_only_one(
     assert sum(not isinstance(r, BaseException) for r in results) == 1
     assert sum(isinstance(r, InvalidInputError) for r in results) == 1
     assert await _held(user_id) == _CAP
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_concurrent_input_replacements_on_one_preset_serialize(
+    server: SpinTestServer, monkeypatch: pytest.MonkeyPatch
+):
+    """Two concurrent replacements of one preset's inputs can't both pass
+    the stored-row count and then delete-and-insert without seeing each
+    other's rows, which would leave the preset holding more rows than any
+    single write is allowed to store.
+
+    Forced: both calls are made to reach the count at the same moment, which
+    they can only do unserialized. Correct code (the row lock on AgentPreset)
+    blocks the second call before it ever gets there, so its barrier wait
+    times out — that timeout is the expected, passing outcome, not a failure.
+    """
+    user_id, graph = await _user_with_graph(server)
+    width = 5
+    preset = await _save_with_inputs(user_id, graph, _entries("seed", width))
+
+    barrier = asyncio.Barrier(2)
+    real_count = prisma.actions.AgentNodeExecutionInputOutputActions.count
+
+    async def _count_then_wait_for_the_other_call(self, *args, **kwargs):
+        result = await real_count(self, *args, **kwargs)
+        try:
+            await asyncio.wait_for(barrier.wait(), timeout=2)
+        except (asyncio.TimeoutError, asyncio.BrokenBarrierError):
+            pass
+        return result
+
+    monkeypatch.setattr(
+        prisma.actions.AgentNodeExecutionInputOutputActions,
+        "count",
+        _count_then_wait_for_the_other_call,
+    )
+
+    await asyncio.gather(
+        library_db.update_preset(
+            user_id=user_id,
+            preset_id=preset.id,
+            inputs=_entries("x", width),
+            credentials={},
+        ),
+        library_db.update_preset(
+            user_id=user_id,
+            preset_id=preset.id,
+            inputs=_entries("y", width),
+            credentials={},
+        ),
+    )
+
+    assert await _held_rows(preset.id) == width
+
+
+def _entries(prefix: str, width: int) -> dict[str, int]:
+    return {f"{prefix}_{i}": i for i in range(width)}
+
+
+async def _save_with_inputs(user_id: str, graph, inputs: dict[str, int]):
+    return await library_db.create_preset(
+        user_id,
+        LibraryAgentPresetCreatable(
+            graph_id=graph.id,
+            graph_version=graph.version,
+            name="Preset",
+            description="",
+            inputs=inputs,
+            credentials={},
+            is_active=True,
+        ),
+    )
+
+
+async def _held_rows(preset_id: str) -> int:
+    return await prisma.models.AgentNodeExecutionInputOutput.prisma().count(
+        where={"agentPresetId": preset_id}
+    )
 
 
 async def _user_with_graph(server: SpinTestServer):
