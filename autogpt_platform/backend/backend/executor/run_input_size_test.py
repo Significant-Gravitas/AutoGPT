@@ -56,9 +56,9 @@ async def _validate(
 async def test_a_run_at_the_input_budget_is_accepted(
     mocker: MockerFixture, construct: AsyncMock
 ):
-    # The stored input and seven block copies of a JSON string whose quotes
-    # make it exactly an eighth.
-    value = "a" * (utils.MAX_RUN_INPUT_BYTES // 8 - 2)
+    # The stored inputs {"x":"aaa…"} and seven block copies of the value, with
+    # the empty overrides and credentials: as close to the budget as eighths get.
+    value = "a" * (utils.MAX_RUN_INPUT_BYTES // 8 - 4)
 
     await _validate(mocker, _inputs_named_x(7), {"x": value})
 
@@ -150,8 +150,9 @@ async def test_each_starting_node_copy_of_its_overrides_counts_toward_the_budget
     construct.assert_not_awaited()
 
 
-# A graph input stored as {"<key>":null}: braces, quotes, colon and null.
-_NULL_INPUT_OVERHEAD = 2 + 2 + 1 + 4
+# A graph input stored as {"<key>":null}: braces, quotes, colon and null, and
+# the empty overrides and credentials stored beside it as {}.
+_NULL_INPUT_OVERHEAD = 2 + 2 + 1 + 4 + 2 + 2
 
 
 @pytest.mark.asyncio
@@ -163,9 +164,9 @@ async def test_a_large_input_key_at_the_input_budget_is_accepted(
     await _validate(mocker, _inputs_named_x(1), {key: None})
 
     construct.assert_awaited_once()
-    assert sum(
-        utils._run_input_sizes(_inputs_named_x(1), {key: None}, {}, {})
-    ) == len(utils.json_dumps({key: None}))
+    counted = sum(utils._run_input_sizes(_inputs_named_x(1), {key: None}, {}, {}))
+    stored = len(utils.json_dumps({key: None})) + len("{}") + len("{}")
+    assert counted == stored == utils.MAX_RUN_INPUT_BYTES
 
 
 @pytest.mark.asyncio
