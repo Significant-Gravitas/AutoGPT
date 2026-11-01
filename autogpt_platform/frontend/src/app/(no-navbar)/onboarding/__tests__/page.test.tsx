@@ -251,7 +251,8 @@ function atPaywall() {
 
 describe("onboarding before payment", () => {
   it("starts a Microsoft sign-up on its Microsoft 365 connection", async () => {
-    // With the paywall on, the connection waits until after the plan.
+    // Paywall off, so the connection comes first. With it on, the connection
+    // waits until after the plan (store.test.ts).
     flags = {};
     server.use(
       http.get("*/api/auth/sign-in-providers", () =>

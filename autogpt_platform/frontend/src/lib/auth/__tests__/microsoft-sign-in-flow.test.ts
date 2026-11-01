@@ -315,6 +315,21 @@ describe("Continue with Microsoft", () => {
     expect(withoutAccount.db.UserAuthIdentity).toEqual([]);
   });
 
+  it("creates nothing for a Microsoft account that shares no email address", async () => {
+    const { handler, db } = await createAuthHandler();
+
+    const landing = await continueWithMicrosoft(handler, {
+      sub: "pairwise",
+      oid: "personal-id",
+      tid: PERSONAL_TENANT,
+    });
+
+    expect(landing).toBe("/login?error=email_not_found");
+    expect(db.UserAuthIdentity).toEqual([]);
+    expect(db.UserAuthAccount).toEqual([]);
+    expect(db.UserAuthSession).toEqual([]);
+  });
+
   it("keeps an AutoGPT team address to Google sign-up", async () => {
     const { handler, db } = await createAuthHandler();
 

@@ -178,8 +178,10 @@ function isGuest({ idp, tid }: MicrosoftProfile) {
 }
 
 function isMicrosoftMailbox(email: string | undefined) {
-  const domain = email?.slice(email.lastIndexOf("@") + 1).toLowerCase();
-  return !!domain && MICROSOFT_MAIL_DOMAINS.has(domain);
+  const at = email?.lastIndexOf("@") ?? -1;
+  // Without an @, the whole claim ("outlook.com") would read as the domain.
+  if (!email || at < 0) return false;
+  return MICROSOFT_MAIL_DOMAINS.has(email.slice(at + 1).toLowerCase());
 }
 
 export function microsoftProfileToUser(profile: MicrosoftProfile) {

@@ -119,6 +119,16 @@ describe("Continue with Microsoft", () => {
     },
   );
 
+  it("doesn't trust a claim without an @, even one naming a Microsoft domain", () => {
+    expect(
+      microsoftProfileToUser({
+        sub: "s",
+        tid: PERSONAL_TENANT,
+        email: "outlook.com",
+      }).emailVerified,
+    ).toBe(false);
+  });
+
   it("explains refused sign-ins in plain language", () => {
     expect(getSocialSignInError(null)).toBeNull();
     // One answer whether or not an account uses the address, so it doesn't
