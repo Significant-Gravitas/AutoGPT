@@ -162,12 +162,6 @@ class ChatSessionMetadata(BaseModel):
     # session, latest wins.
     pending_question: PendingQuestion | None = None
 
-    @property
-    def pauses_irreversible_actions(self) -> bool:
-        """Whether a workflow this chat starts pauses before irreversible blocks."""
-        # A legacy row cannot prove nobody is watching, so it pauses too.
-        return self.origin != "automation"
-
 
 def child_session_origin(parent: ChatSessionMetadata) -> ChatSessionOrigin:
     """Origin for a fresh session a tool opens on *parent*'s behalf.
@@ -180,6 +174,42 @@ def child_session_origin(parent: ChatSessionMetadata) -> ChatSessionOrigin:
     cannot prove a human drove it, the child must not claim one did.
     """
     return parent.origin or "automation"
+
+
+# Deeper than any delegation chain a session may build: past it, the chat the
+# work started in is treated as unknown.
+MAX_CHAT_OF_ORIGIN_HOPS = 16
+
+
+async def chat_of_origin(
+    metadata: ChatSessionMetadata,
+) -> ChatSessionMetadata | None:
+    """The chat the work in this session started in, or None when it cannot be
+    found (a parent session is gone).
+
+    A session a tool opened for its parent (``run_sub_session`` opens every
+    sub as an automation) takes its approval rules from the chat that
+    delegated to it, so rules that depend on ``origin`` read it here.
+    """
+    for _ in range(MAX_CHAT_OF_ORIGIN_HOPS):
+        if metadata.origin != "automation" or not metadata.delegated_by_session_id:
+            return metadata
+        parent = await chat_db().get_chat_session_metadata(
+            metadata.delegated_by_session_id
+        )
+        if parent is None:
+            return None
+        metadata = parent.metadata
+    return None
+
+
+async def pauses_irreversible_actions(metadata: ChatSessionMetadata) -> bool:
+    """Whether a workflow started from this session pauses before irreversible
+    blocks, decided by the chat the work started in. One that cannot be found
+    cannot prove nobody is watching, so the workflow pauses."""
+    origin = await chat_of_origin(metadata)
+    # A legacy row cannot prove nobody is watching, so it pauses too.
+    return origin is None or origin.origin != "automation"
 
 
 class ChatMessage(BaseModel):

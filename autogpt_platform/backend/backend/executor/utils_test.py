@@ -18,7 +18,7 @@ from backend.data.execution import (
     ExecutionTrigger,
     GraphExecutionWithNodes,
 )
-from backend.data.graph import Node
+from backend.data.graph import GraphSettings, Node
 from backend.data.model import User
 from backend.executor.utils import (
     CRED_ERR_INVALID_PREFIX,
@@ -3480,6 +3480,159 @@ async def test_resume_of_a_subgraph_follows_the_chat_of_the_run_that_nested_it(
         user_id="u", execution_id="parent-exec"
     )
     assert captured["execution_context"].sensitive_action_safe_mode is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "parent_origin, expected",
+    [("interactive", True), (None, True), ("automation", False), ("gone", True)],
+)
+async def test_resume_of_a_run_a_sub_session_started_follows_the_chat_it_came_from(
+    mocker: MockerFixture, parent_origin, expected: bool
+):
+    """A sub-session is opened as an automation whatever chat delegated to it;
+    the run it started pauses when that chat would have."""
+    from backend.copilot.model import ChatSessionMetadata
+    from backend.data.execution import ExecutionContext
+
+    graph_exec, _, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org", team_id="team"
+    )
+    graph_exec.trigger_source = ExecutionTrigger.COPILOT.value
+    graph_exec.trigger_ref = "sub-session"
+    sessions = {
+        "sub-session": ChatSessionMetadata(
+            origin="automation", delegated_by_session_id="parent-chat"
+        ),
+    }
+    if parent_origin != "gone":
+        sessions["parent-chat"] = ChatSessionMetadata(origin=parent_origin)
+
+    async def metadata(session_id):
+        found = sessions.get(session_id)
+        return None if found is None else mocker.MagicMock(metadata=found)
+
+    chat_store = mocker.MagicMock(
+        get_chat_session_metadata=mocker.AsyncMock(side_effect=metadata)
+    )
+    mocker.patch("backend.executor.utils.chat_db", return_value=chat_store)
+    mocker.patch("backend.copilot.model.chat_db", return_value=chat_store)
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="u",
+        graph_exec_id="existing-execution",
+        execution_context=ExecutionContext(sensitive_action_safe_mode=False),
+    )
+
+    assert captured["execution_context"].sensitive_action_safe_mode is expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "parent_sensitive, parent_hitl", [(True, False), (False, True), (True, True)]
+)
+async def test_resume_of_a_subgraph_keeps_the_safe_modes_of_the_run_that_nested_it(
+    mocker: MockerFixture, parent_sensitive: bool, parent_hitl: bool
+):
+    """A resumed sub-graph keeps the safe modes of the run that nested it."""
+    from backend.data.execution import ExecutionContext
+
+    graph_exec, execution_store, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org", team_id="team"
+    )
+    graph_exec.trigger_source = ExecutionTrigger.SUBGRAPH.value
+    graph_exec.trigger_ref = "parent-exec"
+    execution_store.get_graph_execution_meta = mocker.AsyncMock(
+        return_value=mocker.MagicMock(
+            graph_id="parent-graph",
+            graph_version=2,
+            trigger_source=ExecutionTrigger.MANUAL.value,
+            trigger_ref=None,
+        )
+    )
+
+    async def settings(user_id, graph_id, graph_version):
+        if graph_id == "parent-graph":
+            return GraphSettings(
+                human_in_the_loop_safe_mode=parent_hitl,
+                sensitive_action_safe_mode=parent_sensitive,
+            )
+        return GraphSettings(
+            human_in_the_loop_safe_mode=False, sensitive_action_safe_mode=False
+        )
+
+    mocker.patch("backend.executor.utils.graph_db").get_graph_settings = (
+        mocker.AsyncMock(side_effect=settings)
+    )
+
+    # As review resume builds it: from the sub-graph's own settings.
+    await add_graph_execution(
+        graph_id="g",
+        user_id="u",
+        graph_exec_id="existing-execution",
+        execution_context=ExecutionContext(
+            human_in_the_loop_safe_mode=False, sensitive_action_safe_mode=False
+        ),
+    )
+
+    context = captured["execution_context"]
+    assert context.sensitive_action_safe_mode is parent_sensitive
+    assert context.human_in_the_loop_safe_mode is parent_hitl
+    assert context.graph_sensitive_action_safe_mode is parent_sensitive
+
+
+@pytest.mark.asyncio
+async def test_resume_of_a_subgraph_whose_parent_is_gone_keeps_both_safe_modes(
+    mocker: MockerFixture,
+):
+    from backend.data.execution import ExecutionContext
+
+    graph_exec, execution_store, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org", team_id="team"
+    )
+    graph_exec.trigger_source = ExecutionTrigger.SUBGRAPH.value
+    graph_exec.trigger_ref = "deleted-parent"
+    execution_store.get_graph_execution_meta = mocker.AsyncMock(return_value=None)
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="u",
+        graph_exec_id="existing-execution",
+        execution_context=ExecutionContext(
+            human_in_the_loop_safe_mode=False, sensitive_action_safe_mode=False
+        ),
+    )
+
+    context = captured["execution_context"]
+    assert context.human_in_the_loop_safe_mode is True
+    assert context.sensitive_action_safe_mode is True
+
+
+@pytest.mark.asyncio
+async def test_resume_of_a_top_level_run_keeps_its_own_safe_modes(
+    mocker: MockerFixture,
+):
+    from backend.data.execution import ExecutionContext
+
+    _, execution_store, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org", team_id="team"
+    )
+    execution_store.get_graph_execution_meta = mocker.AsyncMock()
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="u",
+        graph_exec_id="existing-execution",
+        execution_context=ExecutionContext(
+            human_in_the_loop_safe_mode=False, sensitive_action_safe_mode=False
+        ),
+    )
+
+    context = captured["execution_context"]
+    assert context.human_in_the_loop_safe_mode is False
+    assert context.sensitive_action_safe_mode is False
+    execution_store.get_graph_execution_meta.assert_not_awaited()
 
 
 @pytest.mark.asyncio

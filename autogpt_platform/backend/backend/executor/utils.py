@@ -14,6 +14,7 @@ from backend.api.features.experts import scheduling as experts_scheduling
 from backend.api.features.orgs.db import resolve_member_tenancy
 from backend.blocks import get_block
 from backend.blocks._base import Block, BlockCostType, BlockSchema, BlockType
+from backend.copilot.model import pauses_irreversible_actions
 from backend.copilot.rate_limit import UserPaywalledError, is_user_paywalled
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
@@ -1451,6 +1452,7 @@ async def _add_graph_execution(
 
     is_new_execution = graph_exec_id is None
     tenancy_replaced = False
+    nesting: list[GraphExecutionMeta | None] = []
     context_expert_id = execution_context.expert_id if execution_context else None
     if expert_id is not None and context_expert_id not in (None, expert_id):
         raise ValueError(
@@ -1481,7 +1483,8 @@ async def _add_graph_execution(
         if not graph_exec:
             raise NotFoundError(f"Workflow run #{graph_exec_id} not found.")
 
-        approval_chat_id = await starting_chat(graph_exec, user_id, edb)
+        nesting = await nesting_runs(graph_exec, user_id, edb)
+        approval_chat_id = starting_chat(graph_exec, nesting)
         # A resume rebuilds its context from the graph settings, which would
         # drop the pause the chat that started this run asked for.
         pause_irreversible_actions = (
@@ -1798,6 +1801,11 @@ async def _add_graph_execution(
         }
     )
 
+    if nesting:
+        execution_context = await _keep_nesting_safe_modes(
+            execution_context, nesting, user_id, gdb
+        )
+
     stamp: dict[str, Any] = {
         "approval_chat_id": (
             None
@@ -1916,11 +1924,12 @@ async def _add_graph_execution(
 PARENT_GONE = ""
 
 
-async def starting_chat(
+async def nesting_runs(
     graph_exec: GraphExecutionMeta, user_id: str, edb
-) -> str | None:
-    """The chat that started this run, through its sub-graph parents: None when
-    no chat did, ``PARENT_GONE`` when a parent run no longer exists."""
+) -> list[GraphExecutionMeta | None]:
+    """The runs a sub-graph run is nested in, nearest first, ending in None
+    when a parent run no longer exists. Empty for a run nothing nested."""
+    runs: list[GraphExecutionMeta | None] = []
     while (
         graph_exec.trigger_source == ExecutionTrigger.SUBGRAPH
         and graph_exec.trigger_ref
@@ -1928,12 +1937,56 @@ async def starting_chat(
         parent = await edb.get_graph_execution_meta(
             user_id=user_id, execution_id=graph_exec.trigger_ref
         )
+        runs.append(parent)
         if parent is None:
-            return PARENT_GONE
+            break
         graph_exec = parent
-    if graph_exec.trigger_source != ExecutionTrigger.COPILOT:
+    return runs
+
+
+def starting_chat(
+    graph_exec: GraphExecutionMeta, nesting: list[GraphExecutionMeta | None]
+) -> str | None:
+    """The chat that started this run, through the runs it is nested in: None
+    when no chat did, ``PARENT_GONE`` when a parent run no longer exists."""
+    top = nesting[-1] if nesting else graph_exec
+    if top is None:
+        return PARENT_GONE
+    if top.trigger_source != ExecutionTrigger.COPILOT:
         return None
-    return graph_exec.trigger_ref or None
+    return top.trigger_ref or None
+
+
+async def _keep_nesting_safe_modes(
+    execution_context: ExecutionContext,
+    nesting: list[GraphExecutionMeta | None],
+    user_id: str,
+    gdb,
+) -> ExecutionContext:
+    """A sub-graph run starts under the safe modes of the run that nested it,
+    so a resumed one keeps the nesting runs' modes as a floor over its own
+    graph's settings. When a parent run is gone, both modes stay on."""
+    hitl = execution_context.human_in_the_loop_safe_mode
+    sensitive = execution_context.sensitive_action_safe_mode
+    for parent in nesting:
+        if hitl and sensitive:
+            break
+        if parent is None:
+            hitl = sensitive = True
+            break
+        settings = await gdb.get_graph_settings(
+            user_id=user_id,
+            graph_id=parent.graph_id,
+            graph_version=parent.graph_version,
+        )
+        hitl = hitl or settings.human_in_the_loop_safe_mode
+        sensitive = sensitive or settings.sensitive_action_safe_mode
+    return execution_context.model_copy(
+        update={
+            "human_in_the_loop_safe_mode": hitl,
+            "sensitive_action_safe_mode": sensitive,
+        }
+    )
 
 
 async def _started_from_attended_chat(chat_id: str | None) -> bool:
@@ -1944,7 +1997,7 @@ async def _started_from_attended_chat(chat_id: str | None) -> bool:
     if chat_id == PARENT_GONE:
         return True
     session = await chat_db().get_chat_session_metadata(chat_id)
-    return session is None or session.metadata.pauses_irreversible_actions
+    return session is None or await pauses_irreversible_actions(session.metadata)
 
 
 async def _spend_approval_required(user_id: str, expert_id: str):

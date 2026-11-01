@@ -870,12 +870,14 @@ async def test_resume_mcp_review_replays_the_approved_call():
     )
     db = MagicMock()
     db.get_reviews_by_node_exec_ids = AsyncMock(return_value={review_id: review})
+    db.claim_approved_review = AsyncMock(return_value=True)
     db.delete_review_by_node_exec_id = AsyncMock()
     out = MCPToolOutputResponse(
         message="done", server_url="u", tool_name="delete_thing"
     )
     with (
         patch("backend.copilot.tools.resume_capability.review_db", return_value=db),
+        patch("backend.copilot.tools.continue_run_block.review_db", return_value=db),
         patch(
             "backend.copilot.tools.resume_capability.RunMCPToolTool._execute",
             AsyncMock(return_value=out),
