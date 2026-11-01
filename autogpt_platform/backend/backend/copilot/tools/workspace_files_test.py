@@ -151,6 +151,35 @@ class TestResolveWriteContent:
         result = await _resolve_write_content(None, None, str(target), "s1")
         assert result == b"file content"
 
+    async def test_source_path_is_read_only_past_the_size_limit(self, ephemeral_dir):
+        # The caller refuses it; reading all of it first would hold it whole.
+        big = ephemeral_dir / "big.bin"
+        with open(big, "wb") as f:
+            f.truncate(3 * 1024 * 1024)
+        with patch("backend.copilot.tools.workspace_files._MAX_FILE_SIZE_MB", 1):
+            result = await _resolve_write_content(None, None, str(big), "s1")
+        assert isinstance(result, bytes)
+        assert len(result) == 1024 * 1024 + 1
+
+    async def test_sandbox_source_path_is_read_only_past_the_size_limit(self):
+        sandbox = MagicMock()
+        read = AsyncMock(return_value=b"x")
+        with (
+            patch("backend.copilot.tools.workspace_files._MAX_FILE_SIZE_MB", 1),
+            patch(
+                "backend.copilot.tools.workspace_files.get_current_sandbox",
+                return_value=sandbox,
+            ),
+            patch(
+                "backend.copilot.tools.workspace_files.resolve_sandbox_path_or_error",
+                return_value="/home/user/big.bin",
+            ),
+            patch("backend.copilot.tools.workspace_files.read_sandbox_file", read),
+        ):
+            result = await _resolve_write_content(None, None, "big.bin", "s1")
+        assert result == b"x"
+        read.assert_awaited_once_with(sandbox, "/home/user/big.bin", 1024 * 1024)
+
     async def test_source_path_not_found(self, ephemeral_dir):
         from backend.copilot.tools.models import ErrorResponse
 

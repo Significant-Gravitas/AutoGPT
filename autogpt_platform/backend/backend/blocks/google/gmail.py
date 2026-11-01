@@ -26,6 +26,7 @@ from backend.blocks._base import (
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
+from backend.util.html_to_text import BoundedHTML2Text
 from backend.util.settings import Settings
 
 from ._auth import (
@@ -41,6 +42,9 @@ settings = Settings()
 
 # No-wrap policy for plain text emails to prevent 78-char hard-wrap
 NO_WRAP_POLICY = SMTP.clone(max_line_length=0)
+
+# An HTML body converts to at most this many times its own length of text.
+_MAX_BODY_EXPANSION = 10
 
 
 def serialize_email_recipients(recipients: list[str]) -> str:
@@ -283,9 +287,7 @@ class GmailBase(Block, ABC):
             html_content = self._decode_base64(body["data"])
             if html_content:
                 try:
-                    import html2text
-
-                    h = html2text.HTML2Text()
+                    h = BoundedHTML2Text(_MAX_BODY_EXPANSION * len(html_content))
                     h.ignore_links = False
                     h.ignore_images = True
                     return h.handle(html_content)

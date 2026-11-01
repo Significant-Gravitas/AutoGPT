@@ -86,7 +86,7 @@ class TestGmailReadBlock:
             },
         }
 
-        with patch("html2text.HTML2Text") as mock_html2text:
+        with patch("backend.blocks.google.gmail.BoundedHTML2Text") as mock_html2text:
             mock_converter = Mock()
             mock_converter.handle.return_value = "Hello World\n\nThis is HTML content."
             mock_html2text.return_value = mock_converter
@@ -108,7 +108,7 @@ class TestGmailReadBlock:
             },
         }
 
-        with patch("html2text.HTML2Text") as mock_html2text:
+        with patch("backend.blocks.google.gmail.BoundedHTML2Text") as mock_html2text:
             mock_converter = Mock()
             mock_converter.handle.side_effect = ValueError("conversion failed")
             mock_html2text.return_value = mock_converter
@@ -129,9 +129,28 @@ class TestGmailReadBlock:
             },
         }
 
-        with patch("html2text.HTML2Text", side_effect=ImportError):
+        with patch(
+            "backend.blocks.google.gmail.BoundedHTML2Text", side_effect=ImportError
+        ):
             result = await self.gmail_block._get_email_body(msg, self.mock_service)
             assert result == html_text
+
+    @pytest.mark.asyncio
+    async def test_html_that_expands_when_converted_is_bounded(self):
+        """html2text indents every <pre> line once per open list."""
+        html_text = "<p>first words</p>" + "<ul>" * 20_000 + "<pre>" + "\n" * 80_000
+
+        msg = {
+            "id": "test_msg_expanding",
+            "payload": {
+                "mimeType": "text/html",
+                "body": {"data": self._encode_base64(html_text)},
+            },
+        }
+
+        result = await self.gmail_block._get_email_body(msg, self.mock_service)
+        assert result.startswith("first words")
+        assert len(result) <= 10 * len(html_text)
 
     @pytest.mark.asyncio
     async def test_nested_multipart_structure(self):

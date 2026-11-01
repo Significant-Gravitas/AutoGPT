@@ -291,7 +291,7 @@ class TestExecuteCodeWritesFiles:
         async def write(*_):
             calls.append("write")
 
-        async def command(*_):
+        async def command(*_, **__):
             calls.append("setup")
 
         async def run_code(*_, **__):

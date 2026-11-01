@@ -34,6 +34,7 @@ from backend.util.sandbox_files import (
     extract_and_store_sandbox_files,
 )
 from backend.util.sandbox_metadata import SandboxMetadata, owned_by_user
+from backend.util.sandbox_output import OutputLimitedCodeSandbox, run_sandbox_command
 
 if TYPE_CHECKING:
     from backend.executor.utils import ExecutionContext
@@ -172,12 +173,15 @@ class BaseE2BExecutorMixin:
                         f"Sandbox {sandbox_id} does not belong to this user"
                     )
                 sandbox = await connect_sandbox(
-                    AsyncSandbox, sandbox_id, egress_owner, api_key=api_key
+                    OutputLimitedCodeSandbox,
+                    sandbox_id,
+                    egress_owner,
+                    api_key=api_key,
                 )
             else:
                 # Create new sandbox (ExecuteCodeBlock/InstantiateCodeSandboxBlock case)
                 sandbox = await create_sandbox(
-                    AsyncSandbox,
+                    OutputLimitedCodeSandbox,
                     egress_owner,
                     api_key=api_key,
                     template=template_id,
@@ -186,7 +190,7 @@ class BaseE2BExecutorMixin:
                 )
                 if setup_commands:
                     for cmd in setup_commands:
-                        await sandbox.commands.run(cmd)
+                        await run_sandbox_command(sandbox, cmd)
 
             for path, data in (input_files or {}).items():
                 await sandbox.files.write(path, data)
@@ -194,7 +198,9 @@ class BaseE2BExecutorMixin:
             # Capture timestamp before execution to scope file extraction
             start_timestamp = None
             if extract_files:
-                ts_result = await sandbox.commands.run("date -u +%Y-%m-%dT%H:%M:%S")
+                ts_result = await run_sandbox_command(
+                    sandbox, "date -u +%Y-%m-%dT%H:%M:%S"
+                )
                 start_timestamp = ts_result.stdout.strip() if ts_result.stdout else None
 
             # Execute the code

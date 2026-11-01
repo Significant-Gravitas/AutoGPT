@@ -48,6 +48,8 @@ from backend.copilot.tool_image import (
     prepare_image,
 )
 from backend.util.sandbox_login import run_internal
+from backend.util.sandbox_output import read_sandbox_file
+from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +124,18 @@ def _binary_read_guidance(path: str) -> str:
     return (
         "This binary file has not been viewed. "
         "Use bash_exec with 'file' or 'xxd' to inspect it."
+    )
+
+
+# Read and Edit hold a sandbox file whole; past this they refuse it.
+_MAX_READ_BYTES = Config().max_file_size_mb * 1024 * 1024
+
+
+def _too_large(path: str, done: str) -> str:
+    return (
+        f"{os.path.basename(path)} is larger than {_MAX_READ_BYTES // 2**20} MB "
+        f"and cannot be {done} whole. Use bash_exec with head, tail, "
+        "sed -n or split to work on parts of it."
     )
 
 
@@ -372,10 +386,12 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
                 return await asyncio.to_thread(
                     _image_result, raw, offset, args.get("limit")
                 )
-            raw = await sandbox.files.read(remote, format="bytes")
+            raw = await read_sandbox_file(sandbox, remote, _MAX_READ_BYTES)
             content = raw.decode("utf-8", errors="replace")
         except Exception as exc:
             return _mcp(f"Failed to read {os.path.basename(remote)}: {exc}", error=True)
+        if len(raw) > _MAX_READ_BYTES:
+            return _mcp(_too_large(remote, "read"), error=True)
 
         lines = content.splitlines(keepends=True)
         selected = list(itertools.islice(lines, offset, offset + limit))
@@ -565,10 +581,12 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
         remote = os.path.join(canonical_parent, os.path.basename(remote))
 
         try:
-            raw = bytes(await sandbox.files.read(remote, format="bytes"))
+            raw = await read_sandbox_file(sandbox, remote, _MAX_READ_BYTES)
             content = raw.decode("utf-8", errors="replace")
         except Exception as exc:
             return _mcp(f"Failed to read {os.path.basename(remote)}: {exc}", error=True)
+        if len(raw) > _MAX_READ_BYTES:
+            return _mcp(_too_large(remote, "edited"), error=True)
 
         count = content.count(old_string)
         if count == 0:

@@ -1278,6 +1278,66 @@ class TestConcurrentEditLocking:
 # ---------------------------------------------------------------------------
 
 
+class _FileStream:
+    """``files.read(format="stream")`` over *data*, counting what it sent."""
+
+    def __init__(self, data: bytes, chunk: int = 4):
+        self._data = data
+        self._chunk = chunk
+        self.sent = 0
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return None
+
+    async def __aiter__(self):
+        for start in range(0, len(self._data), self._chunk):
+            self.sent += self._chunk
+            yield self._data[start : start + self._chunk]
+
+
+class TestSandboxFileOverTheReadLimit:
+    """Read and Edit hold the file whole, so one past the limit is refused
+    without being downloaded."""
+
+    @pytest.fixture
+    def stream(self, monkeypatch):
+        stream = _FileStream(b"0123456789abcdef" * 8)
+        sandbox = SimpleNamespace(
+            files=SimpleNamespace(read=AsyncMock(return_value=stream)),
+            commands=SimpleNamespace(run=AsyncMock()),
+        )
+        monkeypatch.setattr(
+            "backend.copilot.sdk.e2b_file_tools._get_sandbox", lambda: sandbox
+        )
+        monkeypatch.setattr(
+            "backend.copilot.sdk.e2b_file_tools._check_sandbox_symlink_escape",
+            AsyncMock(side_effect=lambda _sandbox, parent: parent),
+        )
+        monkeypatch.setattr("backend.copilot.sdk.e2b_file_tools._MAX_READ_BYTES", 10)
+        return stream
+
+    @pytest.mark.asyncio
+    async def test_read_refuses_it(self, stream):
+        result = await _handle_read_file({"file_path": "big.log"})
+
+        assert result.get("isError")
+        assert "big.log is larger than" in result["content"][0]["text"]
+        assert stream.sent == 12
+
+    @pytest.mark.asyncio
+    async def test_edit_refuses_it(self, stream):
+        result = await _handle_edit_file(
+            {"file_path": "big.log", "old_string": "0", "new_string": "1"}
+        )
+
+        assert result.get("isError")
+        assert "cannot be edited whole" in result["content"][0]["text"]
+        assert stream.sent == 12
+
+
 class TestReadFileE2BRouting:
     """Verify that _handle_read_file routes correctly in E2B mode.
 
@@ -1310,7 +1370,7 @@ class TestReadFileE2BRouting:
         # Create a sandbox mock that returns "sandbox content"
         sandbox = SimpleNamespace(
             files=SimpleNamespace(
-                read=AsyncMock(return_value=b"sandbox content\n"),
+                read=AsyncMock(return_value=_FileStream(b"sandbox content\n")),
                 make_dir=AsyncMock(),
             ),
             commands=SimpleNamespace(run=AsyncMock()),
@@ -1350,7 +1410,7 @@ class TestReadFileE2BRouting:
 
         sandbox = SimpleNamespace(
             files=SimpleNamespace(
-                read=AsyncMock(return_value=b"sandbox result\n"),
+                read=AsyncMock(return_value=_FileStream(b"sandbox result\n")),
                 make_dir=AsyncMock(),
             ),
             commands=SimpleNamespace(run=AsyncMock()),

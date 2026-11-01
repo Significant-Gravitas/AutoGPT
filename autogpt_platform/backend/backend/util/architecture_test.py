@@ -947,3 +947,81 @@ def test_only_cli_io_writes_to_the_cli_stdin():
         "Offenders:\n  " + "\n  ".join(offenders) + "\n\n"
         "Fix: call cli_io.send_user_text() or cli_io.send_user_blocks()."
     )
+
+
+# ---------------------------------------------------------------------------
+# Rule: what an E2B sandbox sends back is read through a limit
+# ---------------------------------------------------------------------------
+#
+# Motivation: whatever runs in a sandbox decides how much it prints and how
+# large its files are, and the SDK holds all of it in this process before any
+# size check could run. `files.read` is called with format="stream" and stopped
+# at the caller's limit (`read_sandbox_file`); `commands.run` goes through
+# `run_sandbox_command`, or, like bash_exec, follows a background handle with
+# callbacks that stop at a limit.
+
+_SANDBOX_COMMAND_RUNNERS = frozenset(
+    {"util/sandbox_output.py", "copilot/tools/bash_exec.py"}
+)
+
+
+def test_sandbox_output_is_read_through_a_limit():
+    offenders = [
+        f"backend/{rel}:{lineno} {what}"
+        for rel, lineno, what in _unbounded_sandbox_reads()
+    ]
+    assert not offenders, (
+        "Read sandbox files with backend.util.sandbox_output.read_sandbox_file "
+        "and run sandbox commands with run_sandbox_command:\n  "
+        + "\n  ".join(offenders)
+    )
+
+
+@pytest.mark.parametrize(
+    "source, expected",
+    [
+        ("await sandbox.files.read(p)", ["files.read without format='stream'"]),
+        (
+            "await s.files.read(p, format='bytes')",
+            ["files.read without format='stream'"],
+        ),
+        ("await s.files.read(p, format='stream')", []),
+        ("await sandbox.commands.run('ls')", ["commands.run"]),
+        ("await run_sandbox_command(sandbox, 'ls')", []),
+    ],
+)
+def test_sandbox_read_scan_reads_each_form(source: str, expected: list[str]):
+    assert [what for _, what in _sandbox_reads_in(ast.parse(source))] == expected
+
+
+def _unbounded_sandbox_reads() -> list[tuple[str, int, str]]:
+    found = []
+    for py in _iter_backend_py_files():
+        rel = py.relative_to(BACKEND_ROOT).as_posix()
+        if py.name.endswith("_test.py"):
+            continue
+        tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+        for lineno, what in _sandbox_reads_in(tree):
+            if what == "commands.run" and rel in _SANDBOX_COMMAND_RUNNERS:
+                continue
+            found.append((rel, lineno, what))
+    return found
+
+
+def _sandbox_reads_in(tree: ast.Module) -> list[tuple[int, str]]:
+    found = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+            continue
+        owner = node.func.value
+        if not (
+            isinstance(owner, ast.Attribute) and owner.attr in ("files", "commands")
+        ):
+            continue
+        if owner.attr == "files" and node.func.attr == "read":
+            fmt = next((k.value for k in node.keywords if k.arg == "format"), None)
+            if not (isinstance(fmt, ast.Constant) and fmt.value == "stream"):
+                found.append((node.lineno, "files.read without format='stream'"))
+        elif owner.attr == "commands" and node.func.attr == "run":
+            found.append((node.lineno, "commands.run"))
+    return found
