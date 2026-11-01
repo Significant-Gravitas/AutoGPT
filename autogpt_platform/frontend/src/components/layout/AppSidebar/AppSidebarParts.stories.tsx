@@ -150,7 +150,7 @@ function PartFrame({ label, collapsed = false, testID, children }: FrameProps) {
         data-side="left"
         className={cn(
           "group relative flex flex-col rounded-medium border border-separator bg-sidebar text-sidebar-foreground",
-          collapsed ? "w-[--sidebar-width-icon]" : "w-72",
+          collapsed ? "w-[--sidebar-width-icon]" : "w-64",
         )}
       >
         {children}

@@ -80,7 +80,7 @@ export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
       <SidebarProvider
         persistState
         defaultOpen={!isBuilderRoute && openOutsideBuilder}
-        style={{ "--sidebar-width": "18.25rem" } as CSSProperties}
+        style={{ "--sidebar-width": "16rem" } as CSSProperties}
       >
         <BuilderSidebarAutoClose openOutsideBuilder={openOutsideBuilder} />
         <ArtifactsPanelNavCollapse />
