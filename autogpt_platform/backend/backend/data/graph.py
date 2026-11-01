@@ -1710,11 +1710,24 @@ async def get_store_listed_graphs(graph_ids: list[str]) -> dict[str, GraphModel]
     return graphs
 
 
+async def get_graph_at_version(
+    graph_id: str, version: int, *, client: Prisma | None
+) -> GraphModel | None:
+    """The graph at exactly *version*, with no access check: `get_graph` with
+    `skip_access_check=True`, on *client*. Not exposed over RPC."""
+    graph = await AgentGraph.prisma(client).find_first(
+        where={"id": graph_id, "version": version},
+        include=AGENT_GRAPH_INCLUDE,
+    )
+    return GraphModel.from_db(graph) if graph else None
+
+
 async def get_graph_as_admin(
     graph_id: str,
     version: int | None = None,
     user_id: str | None = None,
     for_export: bool = False,
+    client: Prisma | None = None,
 ) -> GraphModel | None:
     """
     Intentionally parallels the get_graph but should only be used for admin tasks, because can return any graph that's been submitted
@@ -1731,7 +1744,7 @@ async def get_graph_as_admin(
     if version is not None:
         where_clause["version"] = version
 
-    graph = await AgentGraph.prisma().find_first(
+    graph = await AgentGraph.prisma(client).find_first(
         where=where_clause,
         include=AGENT_GRAPH_INCLUDE,
         order={"version": "desc"},
@@ -1743,7 +1756,7 @@ async def get_graph_as_admin(
         return None
 
     if for_export:
-        sub_graphs = await get_sub_graphs(graph)
+        sub_graphs = await get_sub_graphs(graph, client=client)
         return GraphModel.from_db(
             graph=graph,
             sub_graphs=sub_graphs,
@@ -1753,14 +1766,16 @@ async def get_graph_as_admin(
     return GraphModel.from_db(graph, for_export)
 
 
-async def get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
+async def get_sub_graphs(
+    graph: AgentGraph, client: Prisma | None = None
+) -> list[AgentGraph]:
     """All sub-graphs of a given graph, recursively, flattened into a list."""
-    [sub_graphs] = await get_sub_graphs_of_each([graph])
+    [sub_graphs] = await get_sub_graphs_of_each([graph], client=client)
     return sub_graphs
 
 
 async def get_sub_graphs_of_each(
-    graphs: Sequence[AgentGraph],
+    graphs: Sequence[AgentGraph], client: Prisma | None = None
 ) -> list[list[AgentGraph]]:
     """
     Each graph's sub-graphs, recursively, flattened, in the order of `graphs`.
@@ -1784,7 +1799,7 @@ async def get_sub_graphs_of_each(
         ]
         if missing := {ref for level in refs for ref in level} - fetched.keys():
             fetched.update(dict.fromkeys(missing))
-            rows = await AgentGraph.prisma().find_many(
+            rows = await AgentGraph.prisma(client).find_many(
                 where={
                     "OR": [
                         {"id": graph_id, "version": graph_version, "userId": user_id}
