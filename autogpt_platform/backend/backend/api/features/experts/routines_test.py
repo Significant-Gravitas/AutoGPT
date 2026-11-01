@@ -377,6 +377,22 @@ async def test_enable_routine_schedules_each_distinct_cron_once():
     assert schedules.await_args.kwargs["crons"] == ["0 9 * * *", "0 13 * * *"]
 
 
+async def test_enable_routine_names_the_jobs_its_new_times_replace():
+    # The replacements are created before the old jobs are deleted, so without
+    # this the owner would be at the schedule limit against itself.
+    row = _row()
+    row.scheduleIds = ["old-1", "old-2"]
+    schedules = AsyncMock(side_effect=_StopAfterScheduling)
+    with (
+        patch(f"{_ROUTINES}._owned_routine", AsyncMock(return_value=row)),
+        patch(f"{_ROUTINES}.get_user_by_id", AsyncMock(return_value=None)),
+        patch(f"{_ROUTINES}.create_routine_schedules", schedules),
+    ):
+        with pytest.raises(_StopAfterScheduling):
+            await enable_routine("user-1", None, "routine-1", crons=["0 9 * * *"])
+    assert schedules.await_args.kwargs["replaces"] == ["old-1", "old-2"]
+
+
 _ROUTINES = "backend.api.features.experts.routines"
 
 

@@ -284,6 +284,7 @@ async def enable_routine(
         run_at=resolved_run_at,
         session_id=pinned,
         user_timezone=user_timezone,
+        replaces=list(row.scheduleIds),
     )
     now = datetime.now(timezone.utc)
     data: prisma.types.ExpertRoutineUpdateInput = {

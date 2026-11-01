@@ -8,16 +8,33 @@ import pytest
 from backend.data.execution import ExecutionContext, GraphExecutionEntry
 from backend.executor import manager as manager_module
 from backend.executor.manager import ExecutionManager
+from backend.executor.utils import GRAPH_EXECUTION_DELAY_ROUTING_KEY
 
 
 @pytest.fixture
 def manager(monkeypatch: pytest.MonkeyPatch):
     """A four-worker executor whose users may each hold two, with every
     submitted run left in flight until its future is resolved."""
-    monkeypatch.setattr(manager_module.settings.config, "num_graph_workers", 4)
-    monkeypatch.setattr(manager_module.settings.config, "max_graph_workers_per_user", 2)
+    yield from _manager(monkeypatch, workers=4, share=2)
+
+
+@pytest.fixture
+def small_manager(monkeypatch: pytest.MonkeyPatch):
+    """A three-worker executor whose configured share exceeds its pool."""
+    yield from _manager(monkeypatch, workers=3, share=5)
+
+
+def _manager(monkeypatch: pytest.MonkeyPatch, *, workers: int, share: int):
+    monkeypatch.setattr(manager_module.settings.config, "num_graph_workers", workers)
+    monkeypatch.setattr(
+        manager_module.settings.config, "max_graph_workers_per_user", share
+    )
     manager = ExecutionManager()
     manager._run_client = MagicMock()
+    # The broker runs these on its connection thread; run them here, so a
+    # requeue reaches publish_message where the test can read it.
+    channel = manager._run_client.get_channel.return_value
+    channel.connection.add_callback_threadsafe.side_effect = lambda callback: callback()
     manager._executor = MagicMock()
     manager._executor.submit.side_effect = lambda *_: Future()
     lock = MagicMock()
@@ -40,8 +57,7 @@ def test_a_users_runs_past_their_share_wait_while_others_still_start(manager):
     assert set(manager.active_graph_runs) == {"a1", "a2", "b1"}
 
 
-def test_a_sub_run_starts_even_when_its_user_holds_their_share(manager):
-    # Its parent holds a worker and waits on it; refusing it would deadlock.
+def test_a_sub_run_starts_while_its_parent_holds_a_worker(manager):
     for run in ("a1", "a2"):
         _deliver(manager, user="alice", run=run)
     _deliver(manager, user="alice", run="a1-child", root="a1")
@@ -56,6 +72,30 @@ def test_a_finished_run_frees_its_users_share(manager):
     _deliver(manager, user="alice", run="a3")
 
     assert set(manager.active_graph_runs) == {"a2", "a3"}
+
+
+def test_one_account_cannot_hold_every_worker_of_a_small_pool(small_manager):
+    for run in ("a1", "a2", "a3"):
+        _deliver(small_manager, user="alice", run=run)
+
+    assert set(small_manager.active_graph_runs) == {"a1", "a2"}
+
+
+def test_a_run_refused_for_want_of_a_worker_waits_in_the_delay_queue(manager):
+    for run in ("a1", "a2", "a3"):
+        _deliver(manager, user="alice", run=run)
+
+    # Republished to the delay queue, which nothing consumes, with the TTL
+    # after which the broker dead-letters it back onto the run queue.
+    (published,) = manager.run_client.publish_message.call_args_list
+    assert published.kwargs["routing_key"] == GRAPH_EXECUTION_DELAY_ROUTING_KEY
+    assert published.kwargs["properties"].expiration == str(
+        manager_module.settings.config.graph_run_requeue_delay_seconds * 1000
+    )
+    assert "a3" in published.kwargs["message"]
+    channel = manager.run_client.get_channel.return_value
+    channel.basic_nack.assert_called_once()
+    assert channel.basic_nack.call_args.kwargs["requeue"] is False
 
 
 def _deliver(

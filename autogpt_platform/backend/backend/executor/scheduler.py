@@ -3347,6 +3347,7 @@ class Scheduler(AppService):
         job_args: GraphExecutionJobArgs | CopilotTurnJobArgs,
         trigger,
         name: str | None,
+        replaces: list[str] | None = None,
     ) -> JobObj:
         """Register *job_args* with APScheduler.
 
@@ -3356,7 +3357,7 @@ class Scheduler(AppService):
         ``id=schedule_id`` so the row is addressable by our generated UUID).
         """
         assert job_args.schedule_id is not None
-        self._check_schedule_capacity(job_args)
+        self._check_schedule_capacity(job_args, replaces=replaces)
         job = self.scheduler.add_job(
             dispatch_func,
             kwargs=job_args.model_dump(mode="json"),
@@ -3377,10 +3378,13 @@ class Scheduler(AppService):
         return job
 
     def _check_schedule_capacity(
-        self, job_args: GraphExecutionJobArgs | CopilotTurnJobArgs
+        self,
+        job_args: GraphExecutionJobArgs | CopilotTurnJobArgs,
+        replaces: list[str] | None = None,
     ) -> None:
         """Refuse a new schedule once its owner holds the per-user limit.
-        Replacing a job under its own id adds nothing and is always allowed."""
+        A job that replaces one under its own id, or takes the place of the
+        jobs named in *replaces*, adds nothing and is always allowed."""
         assert job_args.schedule_id is not None
         if (
             self.scheduler.get_job(
@@ -3390,21 +3394,23 @@ class Scheduler(AppService):
         ):
             return
         limit = config.max_schedules_per_user
-        held = self._active_schedule_count(job_args.user_id)
+        held = self._schedule_count(job_args.user_id, replaces=replaces)
         if held >= limit:
             raise ValueError(
-                f"You already have {held} active schedules, the most one "
-                f"account can have ({limit}). Delete one to add another."
+                f"You already have {held} schedules, the most one account "
+                f"can have ({limit}). Delete one to add another."
             )
 
-    def _active_schedule_count(self, user_id: str) -> int:
+    def _schedule_count(self, user_id: str, replaces: list[str] | None = None) -> int:
+        """How many schedules *user_id* holds, paused ones included.
+
+        A pause clears ``next_run_time`` without giving up the schedule, so a
+        paused one still counts; a spent one-shot is removed rather than
+        cleared, so nothing dead does.
+        """
         if not self._persistent_jobstores:
             # Not started through run_service, so there is no filtered scan.
-            jobs = [
-                job
-                for job in self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value)
-                if job.next_run_time is not None
-            ]
+            jobs = self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value)
         else:
             jobs = self._get_schedule_jobs(
                 user_id=user_id,
@@ -3412,8 +3418,13 @@ class Scheduler(AppService):
                 session_id=None,
                 kind=None,
                 organization_id=None,
+                include_paused=True,
             )
-        return sum(job.kwargs.get("user_id") == user_id for job in jobs)
+        replaced = set(replaces or ())
+        return sum(
+            job.kwargs.get("user_id") == user_id and job.id not in replaced
+            for job in jobs
+        )
 
     @expose
     def add_graph_execution_schedule(
@@ -3502,6 +3513,7 @@ class Scheduler(AppService):
         purpose: Literal["followup", "resume", "send"] = "followup",
         schedule_id: str | None = None,
         created_at: datetime | None = None,
+        replaces_schedule_ids: list[str] | None = None,
     ) -> CopilotTurnJobInfo:
         """Schedule a copilot turn at a future time.
 
@@ -3520,6 +3532,9 @@ class Scheduler(AppService):
         it was first set; a job put back after the user set a newer one
         under the same id while it ran doesn't overwrite that one (see
         ``_put_back_onto``).
+
+        *replaces_schedule_ids* names jobs this one takes the place of, so a
+        routine given a new cadence is not refused for its own current jobs.
         """
         # Mirror add_graph_execution_schedule: validate the expert scope at
         # creation (active, owned, PRIVATE) and pin the schedule to the
@@ -3573,6 +3588,7 @@ class Scheduler(AppService):
             job_args=job_args,
             trigger=trigger,
             name=name or default_name,
+            replaces=replaces_schedule_ids,
         )
         session_label = session_id[:12] if session_id else "<new>"
         logger.info(

@@ -143,6 +143,16 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Send rate-limited messages to back of queue by republishing instead of front requeue to prevent blocking other users.",
     )
 
+    graph_run_requeue_delay_seconds: int = Field(
+        default=30,
+        ge=1,
+        le=3600,
+        description=(
+            "How long a run refused for want of a worker waits in the delay "
+            "queue before it is offered to an executor again."
+        ),
+    )
+
     # FastAPI Thread Pool Configuration
     # IMPORTANT: FastAPI automatically offloads ALL sync functions to a thread pool:
     # - Sync endpoint functions (def instead of async def)
@@ -680,7 +690,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     max_schedules_per_user: int = Field(
         default=200,
         ge=1,
-        description="How many active schedules one user may hold on the scheduler.",
+        description="How many schedules one user may hold on the scheduler.",
     )
 
     schedule_read_timeout_seconds: float = Field(
