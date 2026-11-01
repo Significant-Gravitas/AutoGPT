@@ -3,7 +3,7 @@ from unittest.mock import Mock
 import pytest
 
 from backend.blocks import xml_parser
-from backend.blocks.xml_parser import MAX_XML_DEPTH, XMLParserBlock
+from backend.blocks.xml_parser import MAX_XML_DEPTH, MAX_XML_SIZE, XMLParserBlock
 
 
 def test_tokenizer_precheck_rejects_repeated_open_delimiters():
@@ -268,6 +268,15 @@ async def test_run_backslash_before_opening_tag_is_mixed_content():
 @pytest.mark.asyncio
 async def test_run_refuses_input_over_one_mebibyte():
     xml = "<a>" + "x" * (1024 * 1024) + "</a>"
+
+    with pytest.raises(ValueError, match="XML too large"):
+        await _parse(xml)
+
+
+@pytest.mark.asyncio
+async def test_run_measures_input_size_in_utf8_bytes():
+    xml = "<a>" + "é" * (MAX_XML_SIZE // 2) + "</a>"
+    assert len(xml) < MAX_XML_SIZE < len(xml.encode("utf-8"))
 
     with pytest.raises(ValueError, match="XML too large"):
         await _parse(xml)

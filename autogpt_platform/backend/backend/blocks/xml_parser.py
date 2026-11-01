@@ -237,10 +237,9 @@ class XMLParserBlock(Block):
             position = tag_end + 1
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        if len(input_data.input_xml) > MAX_XML_SIZE:
-            raise ValueError(
-                f"XML too large: {len(input_data.input_xml)} bytes > {MAX_XML_SIZE} bytes"
-            )
+        size = len(input_data.input_xml.encode("utf-8"))
+        if size > MAX_XML_SIZE:
+            raise ValueError(f"XML too large: {size} bytes > {MAX_XML_SIZE} bytes")
 
         try:
             xml = self._normalize_tokenizer_input(input_data.input_xml)
