@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 from pytest_mock import MockerFixture
 
+from backend.blocks.basic import StoreValueBlock
 from backend.blocks.io import AgentInputBlock
 from backend.data.graph import Graph, GraphModel, Node, make_graph_model
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
@@ -145,6 +146,30 @@ async def test_each_starting_node_copy_of_its_overrides_counts_toward_the_budget
     with pytest.raises(InvalidInputError, match="too large"):
         await _validate(
             mocker, _inputs_named_x(3), {}, nodes_input_masks=nodes_input_masks
+        )
+
+    construct.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_non_input_starting_node_copy_of_its_overrides_counts(
+    mocker: MockerFixture, construct: AsyncMock
+):
+    # Stored once the override is three fifths of the budget; the starting
+    # node's copy of it takes that over.
+    graph = make_graph_model(
+        Graph(
+            name="Store",
+            description="",
+            nodes=[Node(id="store-0", block_id=StoreValueBlock().id)],
+        ),
+        user_id="owner",
+    )
+    value = "a" * (utils.MAX_RUN_INPUT_BYTES * 3 // 5)
+
+    with pytest.raises(InvalidInputError, match="too large"):
+        await _validate(
+            mocker, graph, {}, nodes_input_masks={"store-0": {"input": value}}
         )
 
     construct.assert_not_awaited()
