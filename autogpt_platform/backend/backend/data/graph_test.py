@@ -46,6 +46,7 @@ from backend.data.graph import (
     fork_graph,
     get_graph,
     get_graph_all_versions,
+    get_graph_at_version,
     get_graph_settings,
     get_store_listed_graphs,
     graph_in_library_filter,
@@ -1166,6 +1167,36 @@ async def test_an_edit_that_unnames_an_output_keeps_the_saved_version(
     }
     versions = await get_graph_all_versions(created.id, user_id=DEFAULT_USER_ID)
     assert [version.version for version in versions] == [created.version]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_graph_at_version_reads_the_version_asked_for(
+    server: SpinTestServer,
+):
+    created = await server.agent_server.test_create_graph(
+        CreateGraph(graph=_value_to_output_graph({"name": "first"})),
+        DEFAULT_USER_ID,
+    )
+    value_node, output_node = sorted(
+        created.nodes, key=lambda node: node.block_id != StoreValueBlock().id
+    )
+    edited = _value_to_output_graph({"name": "second"}, value_node.id, output_node.id)
+    edited.id = created.id
+    await graphs_routes.update_graph(
+        created.id, edited, DEFAULT_USER_ID, _owner_context(DEFAULT_USER_ID)
+    )
+    versions = sorted(
+        v.version
+        for v in await get_graph_all_versions(created.id, user_id=DEFAULT_USER_ID)
+    )
+    assert len(versions) == 2
+
+    read = [await get_graph_at_version(created.id, v, client=None) for v in versions]
+
+    assert [(g.version, list(g.output_schema["properties"])) for g in read if g] == [
+        (versions[0], ["first"]),
+        (versions[1], ["second"]),
+    ]
 
 
 def _owner_context(user_id: str) -> RequestContext:

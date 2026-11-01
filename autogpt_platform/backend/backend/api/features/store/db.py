@@ -1560,6 +1560,7 @@ async def review_store_submission(
 
         # If approving, update the listing to indicate it has an approved version
         if is_approved:
+            sub_graphs = await get_sub_graphs(submission.AgentGraph)
             async with transaction() as tx:
                 # Handle sub-agent approvals in transaction
                 await asyncio.gather(
@@ -1571,7 +1572,7 @@ async def review_store_submission(
                             submission.agentGraphVersion,
                             creator_user_id,
                         )
-                        for sub_graph in await get_sub_graphs(submission.AgentGraph)
+                        for sub_graph in sub_graphs
                     ]
                 )
 
