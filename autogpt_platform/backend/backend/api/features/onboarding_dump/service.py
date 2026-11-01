@@ -44,6 +44,7 @@ from backend.api.features.onboarding_dump.models import (
 from backend.api.features.onboarding_dump.rate_limit import (
     enforce_personalization_budget,
 )
+from backend.api.utils.validation_errors import bounded_validation_errors
 from backend.copilot.db import user_has_any_session
 from backend.data.onboarding import (
     format_brain_dump_for_extraction,
@@ -684,7 +685,9 @@ def _saved_wizard_answers(stored: object) -> tuple[str, list[str]] | None:
     try:
         progress = OnboardingWizardProgress.model_validate(stored) if stored else None
     except ValidationError as e:
-        logger.warning(f"Brain dump team: wizard progress unreadable: {e}")
+        logger.warning(
+            f"Brain dump team: wizard progress unusable: {bounded_validation_errors(e)}"
+        )
         return None
     if progress is None:
         return None
@@ -739,7 +742,9 @@ async def team_for_dump(
     try:
         team = ExpertRecommendations.model_validate(stored)
     except ValidationError as e:
-        logger.warning("Brain dump team: stored value unusable: %s", e)
+        logger.warning(
+            f"Brain dump team: stored value unusable: {bounded_validation_errors(e)}"
+        )
         return await _fallback_team(user_id), False
     if team.source == "disabled":
         # Legacy rows written before team recommendations were available.

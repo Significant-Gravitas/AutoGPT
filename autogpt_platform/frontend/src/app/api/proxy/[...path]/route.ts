@@ -23,6 +23,7 @@ import {
   getSafePrivateMediaRange,
   shouldBufferPrivateMedia,
   getWorkspaceDownloadErrorMessage,
+  hardenRelayedResponseHeaders,
   isPrivateStoreMediaRequest,
   isPrivateStoreVideoRequest,
   isStoreSearchRequest,
@@ -331,6 +332,7 @@ async function handler(
     }
 
     const responseHeaders = filterResponseHeaders(backendResponse.headers);
+    hardenRelayedResponseHeaders(path, responseHeaders);
     if (isPrivateMedia) {
       hardenPrivateMediaResponseHeaders(responseHeaders);
       // Vercel silently drops the tail of large streamed binary bodies, so
