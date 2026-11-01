@@ -70,8 +70,6 @@ UNBOUNDED_REQUEST_MODELS = frozenset(
         "backend.api.features.skill_learning.models.EditSkillRequest",
         "backend.api.features.skills.model.UploadCopilotSkillRequest",
         "backend.api.features.subscription_trial_models.TrialCheckoutRequest",
-        "backend.api.model.WSSubscribeGraphExecutionRequest",
-        "backend.api.model.WSSubscribeGraphExecutionsRequest",
     }
 )
 

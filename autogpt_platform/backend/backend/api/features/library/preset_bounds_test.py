@@ -6,14 +6,14 @@ capped in the database layer, so every caller is covered rather than one route.
 """
 
 from contextlib import asynccontextmanager
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock
 
+import prisma.models
 import pytest
 
 from backend.api.features.library.db import (
     MAX_PRESET_DESCRIPTION_LENGTH,
     MAX_PRESET_INPUT_BYTES,
-    MAX_PRESET_INPUTS,
     MAX_PRESET_NAME_LENGTH,
     MAX_PRESETS_PER_PAGE,
     check_preset_text,
@@ -24,18 +24,8 @@ from backend.api.features.library.db import (
 )
 from backend.api.features.library.model import LibraryAgentPresetCreatable
 from backend.data.graph import GRAPH_TEXT_MAX_LENGTHS
+from backend.data.includes import MAX_NODE_INPUT_OUTPUT_FETCH
 from backend.util.exceptions import InvalidInputError
-
-
-def test_inputs_at_the_count_bound_are_accepted():
-    rows = preset_input_rows({f"in_{i}": i for i in range(MAX_PRESET_INPUTS)})
-
-    assert len(rows) == MAX_PRESET_INPUTS
-
-
-def test_inputs_over_the_count_bound_are_refused():
-    with pytest.raises(InvalidInputError, match="at most 500 inputs"):
-        preset_input_rows({f"in_{i}": i for i in range(MAX_PRESET_INPUTS + 1)})
 
 
 def test_inputs_over_the_payload_bound_are_refused():
@@ -132,7 +122,10 @@ async def test_creating_a_preset_named_after_a_long_graph_is_accepted():
 @pytest.mark.parametrize(
     "inputs, expected",
     [
-        ({f"in_{i}": i for i in range(MAX_PRESET_INPUTS + 1)}, "inputs, got"),
+        (
+            {f"in_{i}": i for i in range(MAX_NODE_INPUT_OUTPUT_FETCH + 1)},
+            "inputs and credentials together",
+        ),
         ({"essay": "x" * (MAX_PRESET_INPUT_BYTES + 1)}, "inputs hold at most"),
     ],
     ids=["too many", "too large"],
@@ -148,11 +141,21 @@ async def test_updating_a_preset_refuses_oversized_inputs(
         ),
     )
     mocker.patch("backend.api.features.library.db.transaction", new=_fake_transaction())
+    # The stored-row count the merged update path reads under its row lock,
+    # before it builds the new rows; under the read cap, so the refusal below
+    # is the input bound rather than that check.
+    row_client = mocker.AsyncMock()
+    row_client.count.return_value = 1
+    mocker.patch.object(
+        prisma.models.AgentNodeExecutionInputOutput, "prisma", return_value=row_client
+    )
 
     with pytest.raises(InvalidInputError, match=expected):
         await update_preset(
             user_id="user-1", preset_id="p-1", inputs=inputs, credentials={}
         )
+
+    row_client.delete_many.assert_not_called()
 
 
 def _fake_transaction():
@@ -161,7 +164,7 @@ def _fake_transaction():
 
     @asynccontextmanager
     async def _tx():
-        yield MagicMock()
+        yield AsyncMock()
 
     return _tx
 
