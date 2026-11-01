@@ -133,7 +133,6 @@ export function useVoiceRecording({
       }
       setTranscriptionError(null);
       setFailedRecording(null);
-      setIsRecordingUnreadable(false);
     }
 
     await transcribe()
