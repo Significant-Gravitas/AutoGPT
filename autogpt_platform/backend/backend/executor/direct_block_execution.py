@@ -12,7 +12,8 @@ from the moment it starts on its worker loop. A run that is still running
 in synchronous code, or ignoring cancellation) has its worker retired: a fresh
 worker takes its place in the pool and its waiting runs, and the old thread
 ends once its runs stop. While ``DIRECT_BLOCK_EXECUTION_MAX_RETIRED_WORKERS``
-retired workers are still running, new runs are refused.
+retired workers are still running, new runs are refused, since only a restart
+may free them.
 
 Worker threads do not use the server's Prisma client (it reports itself
 disconnected there, see ``backend.data.db``), so block code reaches the
@@ -61,11 +62,16 @@ class DirectBlockExecutionLimitError(Exception):
 
 
 class DirectBlockExecutionBusyError(DirectBlockExecutionLimitError):
-    """Too many retired workers are still running in this process."""
+    """Too many retired workers are still running in this process.
+
+    Unlike a user's own cap, it can last until the process restarts, so the
+    routes answer it with a 503 rather than a 429.
+    """
 
     def __init__(self) -> None:
         Exception.__init__(
-            self, "Too many blocks are running right now. Try again in a few minutes."
+            self,
+            "Block execution is temporarily unavailable; please try again later.",
         )
 
 
@@ -144,6 +150,9 @@ async def run_block_off_loop(
     """
     timeout = DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS
     server_loop = asyncio.get_running_loop()
+    # The worker is picked and the run submitted under two acquisitions of
+    # _workers_lock. That is safe only because nothing yields in between:
+    # retirement runs on this loop, so it cannot retire the worker meanwhile.
     worker = _least_busy_worker()
     finished = False
     stopped = threading.Event()
@@ -162,12 +171,16 @@ async def run_block_off_loop(
                 stopped.set()
                 release()
 
-            future = worker.submit(
-                outputs,
-                contextvars.copy_context(),
-                on_start=lambda: server_loop.call_soon_threadsafe(start_budget),
-                on_finish=on_finish,
-            )
+            try:
+                future = worker.submit(
+                    outputs,
+                    contextvars.copy_context(),
+                    on_start=lambda: server_loop.call_soon_threadsafe(start_budget),
+                    on_finish=on_finish,
+                )
+            except BaseException:
+                release()  # The run never reached the worker.
+                raise
             try:
                 return await asyncio.wrap_future(future)
             finally:
@@ -213,7 +226,8 @@ class _WorkerLoop:
         self.loop = asyncio.new_event_loop()
         self.active = 0
         self.retired = False
-        self._waiting: set[_Run] = set()
+        # Insertion-ordered, so runs moved to a replacement keep their order.
+        self._waiting: dict[_Run, None] = {}
         self._thread = threading.Thread(
             target=self._serve,
             name=f"direct-block-execution-{index}",
@@ -252,8 +266,15 @@ class _WorkerLoop:
     def queue(self, run: _Run) -> None:
         with _workers_lock:
             self.active += 1
-            self._waiting.add(run)
-        self.loop.call_soon_threadsafe(self._start, run)
+            self._waiting[run] = None
+        try:
+            self.loop.call_soon_threadsafe(self._start, run)
+        except BaseException:
+            with _workers_lock:
+                if run in self._waiting:
+                    del self._waiting[run]
+                    self.active -= 1
+            raise
 
     def take_waiting_runs(self) -> list[_Run]:
         """Retire this worker and hand back the runs it has not started.
@@ -272,7 +293,7 @@ class _WorkerLoop:
         with _workers_lock:
             if run not in self._waiting:
                 return  # Moved to the worker that replaced this one.
-            self._waiting.discard(run)
+            self._waiting.pop(run, None)
         if run.future.cancelled():
             self._finish(run, None)
             return
@@ -333,13 +354,13 @@ def _retire_unless_stopped(worker: _WorkerLoop, stopped: threading.Event) -> Non
     if replacement is None:
         logger.warning(
             "Direct block execution worker %s is still running a run past its "
-            "time budget, and %d retired workers are still running; keeping it",
+            "time budget, and %s retired workers are still running; keeping it",
             worker.name,
             retired,
         )
         return
     logger.warning(
-        "Direct block execution worker %s is still running a run %gs past its "
+        "Direct block execution worker %s is still running a run %ss past its "
         "time budget; retired it and started %s",
         worker.name,
         DIRECT_BLOCK_EXECUTION_CANCEL_GRACE_SECONDS,

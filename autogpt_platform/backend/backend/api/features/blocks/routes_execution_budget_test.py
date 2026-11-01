@@ -164,3 +164,31 @@ async def test_user_over_the_run_cap_gets_a_429_before_any_charge(
     assert "Wait for one to finish" in response.json()["detail"]
     charge.assert_not_called()
     assert executed == []
+
+
+@pytest.mark.asyncio
+async def test_retired_worker_cap_gets_a_503_before_any_charge(
+    mocker: pytest_mock.MockFixture,
+):
+    mocker.patch(
+        "backend.executor.direct_block_execution.DIRECT_BLOCK_EXECUTION_MAX_RETIRED_WORKERS",
+        0,
+    )
+    executed: list[bool] = []
+
+    async def execute(*args, **kwargs):
+        executed.append(True)
+        yield "output", "done"
+
+    _serve_block(mocker, execute)
+    charge = mocker.patch(
+        "backend.api.features.blocks.routes.execution_utils.charge_for_direct_block_execution"
+    )
+
+    async with _client() as client:
+        response = await client.post("/blocks/test-block/execute", json={})
+
+    assert response.status_code == 503
+    assert "temporarily unavailable" in response.json()["detail"]
+    charge.assert_not_called()
+    assert executed == []

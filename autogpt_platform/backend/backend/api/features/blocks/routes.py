@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from starlette.status import (
     HTTP_402_PAYMENT_REQUIRED,
     HTTP_429_TOO_MANY_REQUESTS,
+    HTTP_503_SERVICE_UNAVAILABLE,
     HTTP_504_GATEWAY_TIMEOUT,
 )
 
@@ -30,6 +31,7 @@ from backend.data.execution import ExecutionContext
 from backend.data.user import get_user_by_id
 from backend.executor import utils as execution_utils
 from backend.executor.direct_block_execution import (
+    DirectBlockExecutionBusyError,
     DirectBlockExecutionLimitError,
     DirectBlockExecutionSlot,
     DirectBlockExecutionTimeoutError,
@@ -143,6 +145,10 @@ async def execute_graph_block(
 
     try:
         slot = claim_direct_block_execution_slot(user_id)
+    except DirectBlockExecutionBusyError as e:
+        raise HTTPException(
+            status_code=HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
+        ) from e
     except DirectBlockExecutionLimitError as e:
         raise HTTPException(
             status_code=HTTP_429_TOO_MANY_REQUESTS, detail=str(e)

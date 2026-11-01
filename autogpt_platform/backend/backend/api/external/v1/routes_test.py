@@ -238,6 +238,27 @@ def test_execute_block_over_the_run_cap_returns_429_before_charging(
     charge.assert_not_awaited()
 
 
+def test_execute_block_at_the_retired_worker_cap_returns_503_before_charging(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        "backend.executor.direct_block_execution.DIRECT_BLOCK_EXECUTION_MAX_RETIRED_WORKERS",
+        0,
+    )
+    block = _stub_block(name="UnavailableBlock")
+    monkeypatch.setattr("backend.blocks.get_block", lambda _: block)
+    charge = AsyncMock()
+    monkeypatch.setattr(
+        "backend.api.external.v1.routes.charge_for_direct_block_execution", charge
+    )
+
+    response = client.post(f"/blocks/{block.id}/execute", json={})
+
+    assert response.status_code == 503, f"got {response.status_code}: {response.text}"
+    assert "temporarily unavailable" in response.json()["detail"]
+    charge.assert_not_awaited()
+
+
 def test_disabled_block_still_403(monkeypatch: pytest.MonkeyPatch):
     """Pre-existing behavior: disabled blocks return 403, not bypassed by new gates."""
     block = _stub_block(name="DisabledBlock", disabled=True)

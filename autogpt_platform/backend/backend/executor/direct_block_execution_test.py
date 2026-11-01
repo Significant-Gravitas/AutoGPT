@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 import threading
 import time
 
@@ -9,8 +10,10 @@ from prisma import Prisma
 from backend.data import db, db_accessors
 from backend.executor import direct_block_execution
 from backend.executor.direct_block_execution import (
+    DIRECT_BLOCK_EXECUTION_MAX_RETIRED_WORKERS,
     DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER,
     DIRECT_BLOCK_EXECUTION_WORKERS,
+    DirectBlockExecutionBusyError,
     DirectBlockExecutionLimitError,
     DirectBlockExecutionTimeoutError,
     claim_direct_block_execution_slot,
@@ -233,19 +236,54 @@ async def test_slot_is_held_until_the_block_stops(mocker: pytest_mock.MockFixtur
 
 
 @pytest.fixture
-def short_budget_pool(mocker: pytest_mock.MockFixture) -> None:
-    """A worker pool of the test's own, with a short budget and grace."""
-    mocker.patch.object(direct_block_execution, "_pool", [], create=True)
-    mocker.patch.object(direct_block_execution, "_retired_workers", set(), create=True)
+def short_budget_pool(mocker: pytest_mock.MockFixture):
+    """A worker pool of the test's own, with a short budget and grace.
+
+    Every worker it started, retired or not, has ended by teardown.
+    """
+    pool: list[direct_block_execution._WorkerLoop] = []
+    retired: set[direct_block_execution._WorkerLoop] = set()
+    mocker.patch.object(direct_block_execution, "_pool", pool)
+    mocker.patch.object(direct_block_execution, "_retired_workers", retired)
     mocker.patch.object(
         direct_block_execution, "DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS", 0.3
     )
     mocker.patch.object(
-        direct_block_execution,
-        "DIRECT_BLOCK_EXECUTION_CANCEL_GRACE_SECONDS",
-        0.2,
-        create=True,
+        direct_block_execution, "DIRECT_BLOCK_EXECUTION_CANCEL_GRACE_SECONDS", 0.2
     )
+    yield
+    with direct_block_execution._workers_lock:
+        workers = [*pool, *retired]
+    for worker in workers:
+        _stop(worker)
+    for worker in workers:
+        worker._thread.join(10)
+        assert not worker._thread.is_alive(), f"{worker.name} outlived its test"
+
+
+def _stop(worker: direct_block_execution._WorkerLoop) -> None:
+    try:
+        worker.loop.call_soon_threadsafe(worker.loop.stop)
+    except RuntimeError:
+        pass  # Its loop has already stopped and closed.
+
+
+def _generous_budget(mocker: pytest_mock.MockFixture) -> None:
+    """Raise the budget once the runs meant to time out have, so later runs
+    do not race the short one on a slow runner."""
+    mocker.patch.object(
+        direct_block_execution, "DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS", 60
+    )
+
+
+def _pool_worker() -> direct_block_execution._WorkerLoop:
+    """A worker of the test's pool, for tests that drive one directly."""
+    worker = direct_block_execution._WorkerLoop(
+        next(direct_block_execution._worker_numbers)
+    )
+    with direct_block_execution._workers_lock:
+        direct_block_execution._pool.append(worker)
+    return worker
 
 
 class _BlocksItsThread:
@@ -275,7 +313,7 @@ async def _eventually(check, timeout: float = 10) -> None:
 
 
 def _retired_worker_count() -> int:
-    return len(getattr(direct_block_execution, "_retired_workers", ()))
+    return len(direct_block_execution._retired_workers)
 
 
 async def _thread_name():
@@ -284,7 +322,9 @@ async def _thread_name():
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("short_budget_pool")
-async def test_worker_held_past_the_budget_is_replaced():
+async def test_worker_held_past_the_budget_is_replaced(
+    mocker: pytest_mock.MockFixture,
+):
     blocked = _BlocksItsThread()
     try:
         runs = [
@@ -295,6 +335,7 @@ async def test_worker_held_past_the_budget_is_replaced():
             with pytest.raises(DirectBlockExecutionTimeoutError):
                 await asyncio.wait_for(run, timeout=10)
         assert len(blocked.thread_names) == DIRECT_BLOCK_EXECUTION_WORKERS
+        _generous_budget(mocker)
 
         # Every original worker is still held, yet a new run starts promptly.
         result = await asyncio.wait_for(run_block_off_loop(_thread_name()), 5)
@@ -307,7 +348,7 @@ async def test_worker_held_past_the_budget_is_replaced():
         barrier = threading.Barrier(DIRECT_BLOCK_EXECUTION_WORKERS)
 
         async def holds_a_thread():
-            barrier.wait(timeout=5)
+            barrier.wait(timeout=20)
             yield "thread", threading.current_thread().name
 
         results = await asyncio.wait_for(
@@ -317,7 +358,7 @@ async def test_worker_held_past_the_budget_is_replaced():
                     for _ in range(DIRECT_BLOCK_EXECUTION_WORKERS)
                 )
             ),
-            timeout=10,
+            timeout=30,
         )
         threads = {result["thread"][0] for result in results}
         assert len(threads) == DIRECT_BLOCK_EXECUTION_WORKERS
@@ -358,17 +399,42 @@ async def test_slot_on_a_retired_worker_is_released_when_the_block_stops(
     await _eventually(lambda: "user-a" not in direct_block_execution._runs_per_user)
     await asyncio.to_thread(blocked.threads[0].join, 10)
     assert not blocked.threads[0].is_alive()
+    _generous_budget(mocker)
     with claim_direct_block_execution_slot("user-a") as slot:
         result = await asyncio.wait_for(run_block_off_loop(_thread_name(), slot), 5)
     assert result["thread"][0] not in blocked.thread_names
     assert "user-a" not in direct_block_execution._runs_per_user
 
 
-def test_one_user_cannot_fill_the_retired_worker_cap():
-    assert (
-        direct_block_execution.DIRECT_BLOCK_EXECUTION_MAX_RETIRED_WORKERS
-        >= 2 * DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER
-    )
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("short_budget_pool")
+async def test_one_user_cannot_fill_the_retired_worker_cap():
+    limit = DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER
+    blocked = _BlocksItsThread()
+
+    async def held_run() -> None:
+        with claim_direct_block_execution_slot("user-a") as slot:
+            await run_block_off_loop(blocked.outputs(), slot)
+
+    try:
+        results = await asyncio.wait_for(
+            asyncio.gather(*(held_run() for _ in range(limit)), return_exceptions=True),
+            timeout=10,
+        )
+        assert all(isinstance(r, DirectBlockExecutionTimeoutError) for r in results)
+        await _eventually(lambda: _retired_worker_count() == limit)
+
+        # Each held run keeps its user's slot, so the user is refused by their
+        # own cap while retired workers are still below the shared one.
+        with pytest.raises(DirectBlockExecutionLimitError, match=f"{limit} blocks"):
+            claim_direct_block_execution_slot("user-a")
+        assert _retired_worker_count() < DIRECT_BLOCK_EXECUTION_MAX_RETIRED_WORKERS
+        claim_direct_block_execution_slot("user-b").release()
+    finally:
+        blocked.release.set()
+
+    await _eventually(lambda: _retired_worker_count() == 0)
+    await _eventually(lambda: "user-a" not in direct_block_execution._runs_per_user)
 
 
 @pytest.mark.asyncio
@@ -377,10 +443,7 @@ async def test_runs_are_refused_while_retired_workers_are_at_the_cap(
     mocker: pytest_mock.MockFixture, caplog: pytest.LogCaptureFixture
 ):
     mocker.patch.object(
-        direct_block_execution,
-        "DIRECT_BLOCK_EXECUTION_MAX_RETIRED_WORKERS",
-        1,
-        create=True,
+        direct_block_execution, "DIRECT_BLOCK_EXECUTION_MAX_RETIRED_WORKERS", 1
     )
     threads_before = set(threading.enumerate())
     blocked = _BlocksItsThread()
@@ -393,7 +456,9 @@ async def test_runs_are_refused_while_retired_workers_are_at_the_cap(
                 await asyncio.wait_for(run, timeout=10)
         await _eventually(lambda: "retired workers are still running" in caplog.text)
 
-        with pytest.raises(DirectBlockExecutionLimitError, match="right now"):
+        with pytest.raises(
+            DirectBlockExecutionBusyError, match="temporarily unavailable"
+        ):
             claim_direct_block_execution_slot("user-a")
         # One worker was replaced; the second held worker was kept.
         new_threads = [
@@ -414,3 +479,125 @@ async def test_runs_are_refused_while_retired_workers_are_at_the_cap(
         return True
 
     await _eventually(accepts_runs)
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("short_budget_pool")
+async def test_runs_moved_to_a_replacement_start_there_once_and_in_order():
+    worker = _pool_worker()
+    on_the_thread = threading.Barrier(2)
+    release = threading.Event()
+
+    async def holds_the_thread():
+        on_the_thread.wait(timeout=10)
+        release.wait(timeout=30)
+        yield "done", True
+
+    held = worker.submit(
+        holds_the_thread(), contextvars.copy_context(), _nothing, _nothing
+    )
+    try:
+        await asyncio.to_thread(on_the_thread.wait, 10)
+        # The worker's thread is held, so these runs wait in its queue, with
+        # their start callbacks queued on its loop behind the held run.
+        starts: list[int] = []
+        moved = [
+            worker.submit(
+                _thread_name(),
+                contextvars.copy_context(),
+                on_start=lambda i=i: starts.append(i),
+                on_finish=_nothing,
+            )
+            for i in range(5)
+        ]
+        direct_block_execution._retire_unless_stopped(worker, threading.Event())
+        (replacement,) = direct_block_execution._pool
+
+        results = await asyncio.wait_for(
+            asyncio.gather(*(asyncio.wrap_future(future) for future in moved)), 10
+        )
+        assert {result["thread"][0] for result in results} == {replacement.name}
+        assert starts == list(range(5))
+    finally:
+        release.set()
+
+    # The retired worker's queued start callbacks now run, and must skip the
+    # runs it handed over: none starts twice, and the worker still drains.
+    assert await asyncio.wait_for(asyncio.wrap_future(held), 10) == {"done": [True]}
+    await asyncio.to_thread(worker._thread.join, 10)
+    assert not worker._thread.is_alive()
+    assert starts == list(range(5))
+    assert worker.active == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("short_budget_pool")
+async def test_worker_retired_after_its_run_stopped_still_ends():
+    # The retire check can see the run as running just as it stops, and so
+    # retire a worker that has nothing left to run. Nothing will finish on it
+    # again, so retiring it must stop its loop.
+    worker = _pool_worker()
+    direct_block_execution._retire_unless_stopped(worker, threading.Event())
+
+    assert worker not in direct_block_execution._pool
+    await asyncio.to_thread(worker._thread.join, 10)
+    assert not worker._thread.is_alive()
+    assert _retired_worker_count() == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("short_budget_pool")
+async def test_run_that_stops_after_its_timeout_keeps_its_worker(
+    mocker: pytest_mock.MockFixture,
+):
+    retire_unless_stopped = direct_block_execution._retire_unless_stopped
+    checked = threading.Event()
+
+    def retire_once_stopped(worker, stopped: threading.Event) -> None:
+        # Forces the order under test: the run has stopped before the check.
+        assert stopped.wait(10)
+        retire_unless_stopped(worker, stopped)
+        checked.set()
+
+    mocker.patch.object(
+        direct_block_execution, "_retire_unless_stopped", retire_once_stopped
+    )
+
+    async def stops_when_cancelled():
+        await asyncio.Event().wait()
+        yield "never", None
+
+    with pytest.raises(DirectBlockExecutionTimeoutError):
+        await asyncio.wait_for(run_block_off_loop(stops_when_cancelled()), 10)
+    pool = list(direct_block_execution._pool)
+    assert await asyncio.to_thread(checked.wait, 10)
+
+    assert direct_block_execution._pool == pool
+    assert _retired_worker_count() == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("short_budget_pool")
+async def test_slot_is_released_when_the_run_cannot_reach_its_worker(
+    mocker: pytest_mock.MockFixture,
+):
+    closed = direct_block_execution._WorkerLoop(
+        next(direct_block_execution._worker_numbers)
+    )
+    _stop(closed)
+    await asyncio.to_thread(closed._thread.join, 10)
+    assert closed.loop.is_closed()
+    mocker.patch.object(
+        direct_block_execution, "_least_busy_worker", return_value=closed
+    )
+
+    with claim_direct_block_execution_slot("user-a") as slot:
+        with pytest.raises(RuntimeError, match="closed"):
+            await run_block_off_loop(_thread_name(), slot)
+
+    assert "user-a" not in direct_block_execution._runs_per_user
+    assert closed.active == 0
+
+
+def _nothing() -> None:
+    pass

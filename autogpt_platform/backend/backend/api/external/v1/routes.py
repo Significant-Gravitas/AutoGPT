@@ -23,6 +23,7 @@ from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.execution import ExecutionContext, ExecutionTrigger
 from backend.executor.direct_block_execution import (
+    DirectBlockExecutionBusyError,
     DirectBlockExecutionLimitError,
     DirectBlockExecutionSlot,
     DirectBlockExecutionTimeoutError,
@@ -127,6 +128,10 @@ async def execute_graph_block(
 
     try:
         slot = claim_direct_block_execution_slot(auth.user_id)
+    except DirectBlockExecutionBusyError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
+        ) from e
     except DirectBlockExecutionLimitError as e:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e)
