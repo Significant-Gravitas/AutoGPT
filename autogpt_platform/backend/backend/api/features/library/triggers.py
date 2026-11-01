@@ -96,12 +96,11 @@ async def setup_triggered_preset(
             or {}
         ),
     }
-    # The exact entries create_preset will store — its own inputs merged with
-    # every credential, not only the trigger node's — so this check and that
-    # write never disagree. Before the webhook is registered, so a refused
-    # config registers none.
+    # What create_preset stores — this config merged with EVERY credential, not
+    # only the trigger node's — plus the `payload` webhook ingress adds to the
+    # trigger node, so a preset saved at the bound can still start a run.
     db.check_preset_input_count(
-        {**trigger_config_with_credentials, **agent_credentials}
+        {**trigger_config_with_credentials, **agent_credentials, "payload": None}
     )
     await db.check_preset_count(user_id)
 
@@ -205,9 +204,10 @@ async def update_triggered_preset(
                     or {}
                 ),
             }
-            # What update_preset stores: inputs plus EVERY credential, not
-            # only the trigger node's, so check and write never disagree.
-            db.check_preset_input_count({**inputs, **credentials})
+            # What update_preset stores — inputs plus EVERY credential, not
+            # only the trigger node's — plus webhook ingress's `payload`, so a
+            # preset saved at the bound can still start a run.
+            db.check_preset_input_count({**inputs, **credentials, "payload": None})
             new_webhook, feedback = await setup_webhook_for_block(
                 user_id=user_id,
                 trigger_block=trigger_node.block,

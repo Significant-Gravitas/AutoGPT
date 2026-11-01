@@ -315,6 +315,38 @@ async def test_an_oversized_trigger_config_registers_no_webhook():
 
 
 @pytest.mark.asyncio
+async def test_a_trigger_config_filled_to_the_bound_registers_no_webhook():
+    """Webhook ingress adds `payload` to the trigger node, so a configuration
+    filled right up to the bound would put one name more than the bound on that
+    node and its runs could never start. Refused when it is saved instead."""
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    at_the_bound = {f"field_{i}": i for i in range(MAX_NODE_INPUT_OUTPUT_FETCH)}
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook as webhook_mock,
+        p_create as create_mock,
+        pytest.raises(InvalidInputError, match="at most"),
+    ):
+        await _setup(trigger_config=at_the_bound)
+    webhook_mock.assert_not_awaited()
+    create_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_trigger_config_at_the_bound_carrying_payload_is_accepted():
+    """The reserved slot is `payload`'s own, not an extra one: a configuration
+    already naming it is stored at the bound, as the writer allows."""
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    at_the_bound = {f"field_{i}": i for i in range(MAX_NODE_INPUT_OUTPUT_FETCH - 1)}
+    at_the_bound["payload"] = None
+    with p_graph, p_creds, p_expert, p_webhook, p_create as create_mock:
+        await _setup(trigger_config=at_the_bound)
+    create_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_an_account_at_the_preset_cap_registers_no_webhook(
     _under_the_preset_cap,
 ):
@@ -500,6 +532,24 @@ async def test_an_update_oversized_only_once_every_credential_is_counted_registe
                 preset_id="preset-1",
                 inputs=small_inputs,
                 credentials=credentials_from_other_nodes,
+            )
+    m["setup"].assert_not_awaited()
+    m["update"].assert_not_awaited()
+    m["prune"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_update_filled_to_the_bound_registers_no_webhook():
+    """Same reserved `payload` slot on the update path: inputs filled right up
+    to the bound would leave the trigger node one over it at run time."""
+    at_the_bound = {f"field_{i}": i for i in range(MAX_NODE_INPUT_OUTPUT_FETCH)}
+    with _update_patches(current=_preset(webhook_id="wh-old")) as m:
+        with pytest.raises(InvalidInputError, match="at most"):
+            await update_triggered_preset(
+                user_id=_USER,
+                preset_id="preset-1",
+                inputs=at_the_bound,
+                credentials={},
             )
     m["setup"].assert_not_awaited()
     m["update"].assert_not_awaited()
