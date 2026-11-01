@@ -11,6 +11,7 @@ from backend.util.text import (
     MAX_FORMAT_STRING_LENGTH,
     MAX_RENDER_BYTES,
     MAX_TEMPLATE_LENGTH,
+    MAX_TEMPLATE_TAGS,
     REMOVED_FILTERS,
     RENDER_YIELD_INTERVAL,
     SIZE_CHECKED_FILTERS,
@@ -674,13 +675,58 @@ async def test_the_limits_hold_for_an_autoescaping_formatter(oversized: str):
 
 @pytest.mark.asyncio
 async def test_a_template_longer_than_the_bound_is_refused(fmt: TextFormatter):
-    # Compiling happens before the budget and the deadline exist, and there is
-    # no checkpoint in it, so the template's length is its own bound
     with pytest.raises(ValueError, match="Template too long"):
         await fmt.format_string("x" * (MAX_TEMPLATE_LENGTH + 1))
     assert await fmt.format_string("x" * MAX_TEMPLATE_LENGTH) == (
         "x" * MAX_TEMPLATE_LENGTH
     )
+
+
+@pytest.mark.asyncio
+async def test_a_template_with_too_many_tags_is_refused(fmt: TextFormatter):
+    # Compiling happens before the budget and the deadline exist, and what it
+    # costs follows from the number of tags rather than the length
+    with pytest.raises(ValueError, match="too many tags"):
+        await fmt.format_string("{{ v }}" * (MAX_TEMPLATE_TAGS + 1), {"v": ""})
+    assert await fmt.format_string("{{ v }}" * MAX_TEMPLATE_TAGS, {"v": ""}) == ""
+
+
+@pytest.mark.parametrize(
+    ("template", "expected"),
+    [
+        ("hello", "hello"),
+        # Jinja strips one trailing newline, and the shortcut has to agree
+        ("hello\n", "hello"),
+        ("hello\n\n", "hello\n"),
+        ("<b>&", "<b>&"),
+        ("{ not a tag }", "{ not a tag }"),
+    ],
+)
+@pytest.mark.parametrize("autoescape", [False, True])
+@pytest.mark.asyncio
+async def test_a_template_with_no_tag_comes_back_as_it_came(
+    template: str, expected: str, autoescape: bool
+):
+    assert await TextFormatter(autoescape).format_string(template) == expected
+
+
+@pytest.mark.asyncio
+async def test_a_template_with_no_tag_costs_no_budget(
+    fmt: TextFormatter, monkeypatch: pytest.MonkeyPatch
+):
+    # Nothing is built and nothing is emitted: the answer is the string that
+    # came in, so compiling it and charging its text would both be waste
+    monkeypatch.setattr(text, "MAX_RENDER_BYTES", 5_000)
+    assert await fmt.format_string("y" * 10_000) == "y" * 10_000
+
+
+@pytest.mark.asyncio
+async def test_a_long_prompt_with_one_tag_still_renders(fmt: TextFormatter):
+    # The caller `llm.py` renders a prompt before the model call can compress
+    # it, and a model window reaches millions of characters, so length alone
+    # must not be what refuses one
+    prompt = "y" * 4_000_000 + "{{ v }}"
+    assert len(await fmt.format_string(prompt, {"v": "z"})) == 4_000_001
 
 
 @pytest.mark.asyncio
@@ -702,6 +748,32 @@ async def test_what_str_format_builds_is_charged(
     monkeypatch.setattr(text, "MAX_RENDER_BYTES", 5_000)
     with pytest.raises(ValueError, match="exceed"):
         await fmt.format_string("{{ '{}'.format(v) }}", {"v": "x" * 3_000})
+
+
+@pytest.mark.asyncio
+async def test_a_bound_format_method_is_charged_per_call(
+    fmt: TextFormatter, monkeypatch: pytest.MonkeyPatch
+):
+    # Jinja builds one formatter per lookup, so a method bound once and called
+    # many times shares one. Each call renders a single character here, and a
+    # running total that spanned the calls would refuse the render for 60,000
+    # characters that never exist at one time.
+    monkeypatch.setattr(text, "MAX_RENDER_BYTES", 50_000)
+    bound_once = (
+        "{% set s = '{:.1}' %}{% set g = s.format %}"
+        "{% for i in range(20) %}{{ g(v) }}{% endfor %}"
+    )
+    assert await fmt.format_string(bound_once, {"v": "x" * 3_000}) == "x" * 20
+
+
+@pytest.mark.asyncio
+async def test_a_filter_that_hands_its_value_back_costs_nothing(
+    fmt: TextFormatter, monkeypatch: pytest.MonkeyPatch
+):
+    # `str.strip()` answers with the same object when it changes nothing, so
+    # the budget pays for the value once, at the output, and not again here
+    monkeypatch.setattr(text, "MAX_RENDER_BYTES", 5_000)
+    assert await fmt.format_string("{{ v|trim }}", {"v": "x" * 3_000}) == "x" * 3_000
 
 
 # --- A new way to build a value is classified, never allowed by omission ---

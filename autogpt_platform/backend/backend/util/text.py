@@ -37,7 +37,8 @@ MAX_RANGE = 10_000  # Max items from range()
 MAX_SEQUENCE_REPEAT = 10_000  # Max length from sequence * int
 TEMPLATE_RENDER_TIMEOUT = 10  # Seconds before render is killed
 MAX_FORMAT_FIELD_SIZE = 1_000  # Max width or precision of a formatted field
-MAX_TEMPLATE_LENGTH = 100_000  # Max characters of template one render may compile
+MAX_TEMPLATE_LENGTH = 8_000_000  # Max characters of template one render may compile
+MAX_TEMPLATE_TAGS = 10_000  # Max {{ }} and {% %} tags in one template
 MAX_FORMAT_STRING_LENGTH = 10_000  # Max characters of one %-style format string
 MAX_RENDER_BYTES = 50_000_000  # Max bytes of values one render may build
 MAX_RENDER_INT_BITS = 100_000  # Widest integer a template may compute
@@ -56,6 +57,8 @@ _PERCENT_CONVERSION = re.compile(r"[-+ #0]*(\*|\d*)(?:\.(\*|\d*))?[hlL]?([\s\S])
 _FORMAT_SPEC_SIZES = re.compile(
     r"^(?:[\s\S]?[<>=^])?[-+ ]?z?#?0?(\d*)[,_]?(?:\.(\d+))?[a-zA-Z%]?$"
 )
+# What makes a string a template at all: an expression, a block or a comment
+_JINJA_TAG = re.compile(r"\{\{|\{%|\{#")
 
 
 def format_filter_for_jinja2(value, format_string=None):
@@ -186,8 +189,9 @@ class TextFormatter:
         a value and at the top of every loop, macro and block body, which is
         where the render also gives the event loop a turn;
         ``asyncio.wait_for`` stays as a backstop. Compiling the template
-        happens before either of those exist, so its own bound is the
-        template's length.
+        happens before either of those exist, so it answers to bounds of its
+        own: a template with no tag is returned as it came, and one that has
+        tags is bounded by how many and by its length.
 
         Raises ``ValueError`` for anything the caller's template is refused
         for, so the API answers 400 rather than 500.
@@ -196,6 +200,13 @@ class TextFormatter:
             raise ValueError(
                 f"Template too long (max {MAX_TEMPLATE_LENGTH} characters)"
             )
+        if not _JINJA_TAG.search(template_str):
+            # Nothing to render. Jinja would only strip one trailing newline,
+            # which `keep_trailing_newline` leaves off by default
+            return template_str.removesuffix("\n")
+        tags = template_str.count("{{") + template_str.count("{%")
+        if tags > MAX_TEMPLATE_TAGS:
+            raise ValueError(f"Template has too many tags (max {MAX_TEMPLATE_TAGS})")
         # The deadline is wall-clock, so a render that gives the loop a turn
         # is charged for the time other tasks take with it
         budget = _RenderBudget(
@@ -464,6 +475,9 @@ class _RestrictedEnvironment(SandboxedEnvironment):
         vformat = formatter.vformat
 
         def wrapper(*args: Any, **kwargs: Any) -> str:
+            # Jinja builds one formatter per lookup, so a method bound once
+            # and called many times would otherwise share a running total
+            formatter.rendered = 0
             if is_format_map:
                 if kwargs:
                     raise TypeError("format_map() takes no keyword arguments")
@@ -839,12 +853,12 @@ class _SizeCheckedFormatter(SandboxedFormatter):
 
     def __init__(self, env: Any, **kwargs: Any) -> None:
         super().__init__(env, **kwargs)
-        self._rendered = 0
+        self.rendered = 0
 
     def format_field(self, value: Any, format_spec: str) -> Any:
         _check_format_spec(format_spec)
-        self._rendered += _text_size(value)
-        _current_budget().check(self._rendered)
+        self.rendered += _text_size(value)
+        _current_budget().check(self.rendered)
         return super().format_field(value, format_spec)
 
 
