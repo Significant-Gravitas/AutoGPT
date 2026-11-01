@@ -30,6 +30,17 @@ interface FunnelEventProperties {
     action: "approve" | "decline";
   };
   [ExpertsFunnelEvent.HOME_TEAM_MEMBER_CLICKED]: { expert_id: string };
+  [ExpertsFunnelEvent.HOME_SUGGESTION_CLICKED]: {
+    position: number;
+    surface: "intro" | "home";
+    remaining: number;
+  };
+  [ExpertsFunnelEvent.HOME_SUGGESTION_DISMISSED]: {
+    position: number | null;
+    surface: "intro" | "home";
+    remaining: number;
+    scope: "one" | "all";
+  };
 }
 
 type FunnelEvent = FunnelViewEvent | keyof FunnelEventProperties;

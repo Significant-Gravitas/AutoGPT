@@ -5,7 +5,10 @@ import {
   PopoverContent,
 } from "@/components/molecules/Popover/Popover";
 import { TopUpDialog } from "@/components/layout/TopUpPrompt/TopUpDialog/TopUpDialog";
+import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
 import { cn } from "@/lib/utils";
+import { UsageCreditsDialog } from "@/components/organisms/UsageCreditsDialog/UsageCreditsDialog";
+import { useId } from "react";
 import { WalletCompactPanel } from "./components/WalletCompactPanel";
 import { WalletFullPanel } from "./components/WalletFullPanel";
 import { useWallet } from "./useWallet";
@@ -16,6 +19,7 @@ interface Props {
 }
 
 export function Wallet({ compact = false }: Props) {
+  const isBillingEnabled = useIsBillingEnabled();
   const {
     state,
     groups,
@@ -31,10 +35,14 @@ export function Wallet({ compact = false }: Props) {
     topUpOpen,
     onAddCredits,
     onTopUpClose,
+    explainerOpen,
+    onOpenExplainer,
+    onExplainerOpenChange,
   } = useWallet();
+  const trialNoteID = useId();
 
   // Do not render until we have both credits and onboarding data
-  if (credits === null || !state) return null;
+  if (!isBillingEnabled || credits === null || !state) return null;
 
   return (
     <>
@@ -49,19 +57,21 @@ export function Wallet({ compact = false }: Props) {
           completedCount={completedCount}
           totalCount={totalCount}
           flash={flash}
+          unseen={!state.walletShown}
         />
         <PopoverContent
           side={compact ? "top" : "bottom"}
           align={compact ? "start" : "end"}
           collisionPadding={16}
           onCloseAutoFocus={(event) => {
-            if (topUpOpen) event.preventDefault();
+            if (topUpOpen || explainerOpen) event.preventDefault();
           }}
           aria-label={compact ? "Usage and credits" : "Automation credits"}
+          aria-describedby={compact ? trialNoteID : undefined}
           className={cn(
             "z-50",
             compact
-              ? "max-h-[var(--radix-popover-content-available-height)] w-[22rem] max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain !rounded-2xlarge p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200"
+              ? "scrollbar-thin max-h-[var(--radix-popover-content-available-height)] w-[22rem] max-w-[calc(100vw-2rem)] scrollbar-thumb-surface-active scrollbar-track-transparent overflow-y-auto overscroll-contain !rounded-2xlarge p-0"
               : "relative -top-12 w-[28.5rem] px-4 py-4",
           )}
         >
@@ -70,7 +80,10 @@ export function Wallet({ compact = false }: Props) {
               groups={groups}
               completedSteps={state.completedSteps}
               formattedCredits={formatCredits(credits)}
+              trialNoteID={trialNoteID}
               onAddCredits={onAddCredits}
+              onOpenExplainer={onOpenExplainer}
+              onNavigate={() => setWalletOpen(false)}
             />
           ) : (
             <WalletFullPanel
@@ -81,11 +94,17 @@ export function Wallet({ compact = false }: Props) {
         </PopoverContent>
       </Popover>
       {compact && (
-        <TopUpDialog
-          isOpen={topUpOpen}
-          onClose={onTopUpClose}
-          variant="add-credits"
-        />
+        <>
+          <TopUpDialog
+            isOpen={topUpOpen}
+            onClose={onTopUpClose}
+            variant="add-credits"
+          />
+          <UsageCreditsDialog
+            isOpen={explainerOpen}
+            onOpenChange={onExplainerOpenChange}
+          />
+        </>
       )}
     </>
   );

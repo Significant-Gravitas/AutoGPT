@@ -1,5 +1,6 @@
-import { Button } from "@/components/__legacy__/ui/button";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Text } from "@/components/atoms/Text/Text";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { blockMenuButtonBase } from "./style";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";
@@ -36,16 +37,18 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
   const { showImage, handleImageError } = useImageFallback(image_url);
 
   return (
-    <Button
+    <button
+      type="button"
       className={cn(
-        "group flex h-[4.375rem] w-full min-w-[7.5rem] items-center justify-start gap-3 whitespace-normal rounded-[0.75rem] bg-zinc-50 p-[0.625rem] pr-[0.875rem] text-start shadow-none",
-        "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:cursor-not-allowed",
+        blockMenuButtonBase,
+        "group flex h-[4.375rem] w-full min-w-[7.5rem] items-center justify-start gap-3 rounded-xl bg-surface-muted p-2.5 pr-3.5 text-start whitespace-normal",
+        "hover:cursor-default hover:bg-surface-hover active:bg-surface-hover active:ring-1 active:ring-border-strong disabled:cursor-not-allowed",
         className,
       )}
       {...rest}
     >
       {showImage && image_url && (
-        <div className="relative h-[3.125rem] w-[5.625rem] overflow-hidden rounded-[0.375rem] bg-white">
+        <div className="relative h-[3.125rem] w-[5.625rem] overflow-hidden rounded-md bg-surface">
           <Image
             src={image_url}
             unoptimized={isLocalStoreMediaUrl(image_url)}
@@ -59,63 +62,71 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
       )}
       <div className="flex flex-1 flex-col items-start gap-0.5">
         {title && (
-          <span
-            className={cn(
-              "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
-            )}
+          <Text
+            variant="body-medium"
+            as="span"
+            tone="emphasis"
+            className={cn("line-clamp-1 group-disabled:text-foreground-subtle")}
           >
             {highlightText(title, highlightedText)}
-          </span>
+          </Text>
         )}
         <div className="flex items-center space-x-1.5">
           {edited_time && (
-            <span
+            <Text
+              variant="small-loose"
+              as="span"
+              tone="muted"
               className={cn(
-                "line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
+                "line-clamp-1 group-disabled:text-foreground-subtle",
               )}
             >
               Edited {formatTimeAgo(edited_time.toISOString())}
-            </span>
+            </Text>
           )}
 
-          <span className="font-sans text-zinc-400">•</span>
+          <Text variant="body-medium-tight" as="span" tone="subtle">
+            •
+          </Text>
 
-          <span
-            className={cn(
-              "line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
-            )}
+          <Text
+            variant="small-loose"
+            as="span"
+            tone="muted"
+            className={cn("line-clamp-1 group-disabled:text-foreground-subtle")}
           >
             Version {version}
-          </span>
+          </Text>
 
-          <span
-            className={cn(
-              "rounded-[0.75rem] bg-zinc-200 px-[0.5rem] font-sans text-xs leading-[1.25rem] text-zinc-500",
-            )}
+          <Text
+            variant="small-medium-loose"
+            as="span"
+            tone="muted"
+            className={cn("rounded-xl bg-surface-active px-2")}
           >
-            Your Agent
-          </span>
+            Your Workflow
+          </Text>
         </div>
       </div>
       <div
         className={cn(
-          "flex h-7 w-7 items-center justify-center rounded-[0.5rem] bg-zinc-700 group-disabled:bg-zinc-400",
+          "flex h-7 w-7 items-center justify-center rounded-lg bg-foreground-body group-disabled:bg-foreground-subtle",
         )}
       >
         {isLoading ? (
           <Icon
             icon={Loading03Icon}
-            className="h-5 w-5 animate-spin text-zinc-50"
+            className="h-5 w-5 animate-spin text-action-foreground"
           />
         ) : (
           <Icon
             icon={PlusSignIcon}
-            className="h-5 w-5 text-zinc-50"
+            className="h-5 w-5 text-action-foreground"
             strokeWidth={2}
           />
         )}
       </div>
-    </Button>
+    </button>
   );
 };
 
@@ -125,19 +136,19 @@ const UGCAgentBlockSkeleton: React.FC<{ className?: string }> = ({
   return (
     <Skeleton
       className={cn(
-        "flex h-[4.375rem] w-full min-w-[7.5rem] animate-pulse items-center justify-start gap-3 rounded-[0.75rem] bg-zinc-100 p-[0.625rem] pr-[0.875rem]",
+        "flex h-[4.375rem] w-full min-w-[7.5rem] animate-pulse items-center justify-start gap-3 rounded-xl bg-surface-hover p-2.5 pr-3.5",
         className,
       )}
     >
-      <Skeleton className="h-[3.125rem] w-[5.625rem] rounded-[0.375rem] bg-zinc-200" />
+      <Skeleton className="h-[3.125rem] w-[5.625rem] rounded-md bg-surface-active" />
       <div className="flex flex-1 flex-col items-start gap-0.5">
-        <Skeleton className="h-[1.375rem] w-24 rounded bg-zinc-200" />
+        <Skeleton className="h-[1.375rem] w-24 rounded bg-surface-active" />
         <div className="flex items-center gap-1">
-          <Skeleton className="h-5 w-16 rounded bg-zinc-200" />
-          <Skeleton className="h-5 w-16 rounded bg-zinc-200" />
+          <Skeleton className="h-5 w-16 rounded bg-surface-active" />
+          <Skeleton className="h-5 w-16 rounded bg-surface-active" />
         </div>
       </div>
-      <Skeleton className="h-7 w-7 rounded-[0.5rem] bg-zinc-200" />
+      <Skeleton className="h-7 w-7 rounded-lg bg-surface-active" />
     </Skeleton>
   );
 };

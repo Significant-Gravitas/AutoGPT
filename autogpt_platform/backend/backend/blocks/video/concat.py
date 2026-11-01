@@ -9,11 +9,13 @@ from moviepy.video.io.VideoFileClip import VideoFileClip
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
 )
 from backend.blocks.video._utils import (
+    VideoMediaStorage,
     extract_source_name,
     get_video_codecs,
     strip_chapters_inplace,
@@ -21,10 +23,10 @@ from backend.blocks.video._utils import (
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.exceptions import BlockExecutionError
-from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
+from backend.util.file import MediaFileType, get_exec_file_path
 
 
-class VideoConcatBlock(Block):
+class VideoConcatBlock(VideoMediaStorage, Block):
     """Merge multiple video clips into one continuous video."""
 
     class Input(BlockSchemaInput):
@@ -69,26 +71,7 @@ class VideoConcatBlock(Block):
                 "_store_input_video": lambda *args, **kwargs: "test.mp4",
                 "_store_output_video": lambda *args, **kwargs: "concat_test.mp4",
             },
-        )
-
-    async def _store_input_video(
-        self, execution_context: ExecutionContext, file: MediaFileType
-    ) -> MediaFileType:
-        """Store input video. Extracted for testability."""
-        return await store_media_file(
-            file=file,
-            execution_context=execution_context,
-            return_format="for_local_processing",
-        )
-
-    async def _store_output_video(
-        self, execution_context: ExecutionContext, file: MediaFileType
-    ) -> MediaFileType:
-        """Store output video. Extracted for testability."""
-        return await store_media_file(
-            file=file,
-            execution_context=execution_context,
-            return_format="for_block_output",
+            effect=BlockEffect.WORKSPACE,
         )
 
     def _concat_videos(

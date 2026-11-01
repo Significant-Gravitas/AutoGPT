@@ -16,6 +16,7 @@ from exa_py.websets.types import CreateImportResponse
 from exa_py.websets.types import Import as SdkImport
 from pydantic import BaseModel
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -218,6 +219,7 @@ class ExaCreateImportBlock(Block):
             ],
             test_credentials=TEST_CREDENTIALS,
             test_mock=self._create_test_mock(),
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -261,6 +263,7 @@ class ExaCreateImportBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         aexa = self._get_client(credentials.api_key.get_secret_value())
 
         csv_reader = csv.reader(StringIO(input_data.csv_data))
@@ -355,12 +358,14 @@ class ExaGetImportBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=ExaGetImportBlock.Input,
             output_schema=ExaGetImportBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         # Use AsyncExa SDK
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         sdk_import = await aexa.websets.imports.get(import_id=input_data.import_id)
@@ -429,6 +434,7 @@ class ExaListImportsBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         # Use AsyncExa SDK
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         response = await aexa.websets.imports.list(
@@ -480,6 +486,7 @@ class ExaDeleteImportBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         # Use AsyncExa SDK
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         deleted_import = await aexa.websets.imports.delete(
@@ -558,6 +565,7 @@ class ExaExportWebsetBlock(Block):
             ],
             test_credentials=TEST_CREDENTIALS,
             test_mock=self._create_test_mock(),
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -603,6 +611,7 @@ class ExaExportWebsetBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         # Use AsyncExa SDK
+        refuse_platform_credentials(self, credentials)
         aexa = self._get_client(credentials.api_key.get_secret_value())
 
         try:

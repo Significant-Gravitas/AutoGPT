@@ -70,7 +70,7 @@ describe("SubSessionLive", () => {
   afterEach(cleanup);
 
   it.each([
-    ["run_agent", "Daily briefing", "Running agent", "Daily briefing"],
+    ["run_agent", "Daily briefing", "Running workflow", "Daily briefing"],
     [
       "run_block",
       "FillTextTemplateBlock",
@@ -155,8 +155,10 @@ describe("SubSessionLive", () => {
         output={{ status: "running", sub_session_id: "sub-1" }}
       />,
     );
-    expect(await screen.findByText('Ran agent "First workflow"')).toBeDefined();
-    expect(screen.getByText('Ran agent "Second workflow"')).toBeDefined();
+    expect(
+      await screen.findByText('Ran workflow "First workflow"'),
+    ).toBeDefined();
+    expect(screen.getByText('Ran workflow "Second workflow"')).toBeDefined();
   });
 
   it("streams the delegate's recent tools and latest words while running", async () => {
@@ -427,6 +429,17 @@ describe("SubSessionLive", () => {
 
     expect(screen.getByText("All done")).toBeDefined();
     expect(screen.queryByText("Looking for the right agent now.")).toBeNull();
+  });
+
+  it("shows a queued delegation as running once its session runs", async () => {
+    server.use(subSession([], { chat_status: "running", active_stream: null }));
+
+    render(
+      <SubSessionCard output={{ status: "queued", sub_session_id: "sub-1" }} />,
+    );
+
+    expect(await screen.findByText("running")).toBeDefined();
+    expect(screen.queryByText("queued")).toBeNull();
   });
 
   it("says live updates failed instead of spinning on running forever", async () => {

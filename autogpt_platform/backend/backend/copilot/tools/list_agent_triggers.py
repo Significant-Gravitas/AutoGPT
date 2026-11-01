@@ -4,6 +4,7 @@ import asyncio
 import logging
 from typing import Any, Literal
 
+from prisma.enums import APIKeyPermission
 from pydantic import BaseModel
 
 from backend.copilot.model import ChatSession
@@ -11,6 +12,7 @@ from backend.data.db_accessors import library_db
 from backend.util.exceptions import NotFoundError
 
 from .base import BaseTool
+from .external_scope import external_tenant, in_tenant
 from .models import ErrorResponse, ResponseType, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -68,6 +70,10 @@ class ListAgentTriggersTool(BaseTool):
         return "list_agent_triggers"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_LIBRARY]
+
+    @property
     def description(self) -> str:
         return (
             "List triggers (agents + webhook presets) for a library agent. "
@@ -118,7 +124,7 @@ class ListAgentTriggersTool(BaseTool):
             parent = await ldb.get_library_agent(id=library_agent_id, user_id=user_id)
         except NotFoundError as e:
             return ErrorResponse(
-                message=f"Library agent not found: {e}",
+                message=f"Library workflow not found: {e}",
                 error="library_agent_not_found",
                 session_id=session_id,
             )
@@ -143,6 +149,7 @@ class ListAgentTriggersTool(BaseTool):
                 graph_id=parent.graph_id,
                 expert_id=session.expert_id if session else None,
                 filter_by_expert=True,
+                organization_id=external_tenant(session),
             ),
         )
         webhook_presets = [
@@ -160,6 +167,7 @@ class ListAgentTriggersTool(BaseTool):
                 next_scheduled_run=ta.next_scheduled_run,
             )
             for ta in trigger_agents
+            if in_tenant(ta.organization_id, external_tenant(session))
         ] + [
             AgentTriggerInfo(
                 kind="webhook",
@@ -175,7 +183,7 @@ class ListAgentTriggersTool(BaseTool):
         ]
 
         message = (
-            f"Found {len(triggers)} trigger(s) for this agent."
+            f"Found {len(triggers)} trigger(s) for this workflow."
             if triggers
             else "No triggers configured."
         )

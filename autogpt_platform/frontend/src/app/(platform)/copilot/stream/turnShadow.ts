@@ -135,6 +135,11 @@ export function diffRows(
   return diffs;
 }
 
+// Sentry flattens arrays nested this deep in `extra` to "[Array]"; a string survives.
+export function formatDiffs(diffs: ReturnType<typeof diffRows>) {
+  return diffs.map(({ index, fields }) => `${index}: ${fields.join(", ")}`);
+}
+
 interface SessionView {
   messages?: readonly unknown[] | null;
   active_stream?: { turn_id: string } | null;
@@ -226,7 +231,8 @@ function compareTurn(shadow: ShadowTurn, session: SessionView) {
     .slice(0, last.rows)
     .map(logRowFromPersisted);
   const diffs = diffRows(log.rows, turnRows);
-  if (diffs.length > 0) reportDrift("finish", log, { diffs });
+  if (diffs.length > 0)
+    reportDrift("finish", log, { diffs: formatDiffs(diffs) });
 }
 
 // A replay that opens past the turn's `start` (a trimmed stream) is a tail,
@@ -269,6 +275,10 @@ function rowDifferences(a: LogRow | undefined, b: LogRow | undefined) {
     }
   } else if (a.content !== b.content) {
     fields.push("content");
+  }
+  // A drained row's metadata decides how it renders (a held call's result is hidden).
+  if (a.role === "user" && !jsonEqual(a.metadata, b.metadata)) {
+    fields.push("metadata");
   }
   const sameCalls =
     a.toolCalls.length === b.toolCalls.length &&

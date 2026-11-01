@@ -265,6 +265,54 @@ describe("the converter table", () => {
     expect(log.rows).toHaveLength(1);
   });
 
+  it.each([
+    [
+      { reason: "daily", started: true },
+      "Paused: this task is out of today's budget.",
+    ],
+    [
+      { reason: "weekly", started: false },
+      "Not started: out of this week's budget.",
+    ],
+    [{ reason: "steps", steps: 450 }, "Paused: checking in after a long run."],
+  ])(
+    "a pause %j appends the marker row the server stores, carrying it",
+    (pause, summary) => {
+      const log = fold([
+        ...text("a", "Checkpoint."),
+        { type: "data-turn-paused", data: pause },
+        { type: "finish" },
+      ]);
+      expect(rowsOf(log)).toEqual([
+        { role: "assistant", content: "Checkpoint.", calls: [] },
+        {
+          role: "assistant",
+          content: `[__COPILOT_SYSTEM_e3b0__] ${summary}`,
+          calls: [],
+        },
+      ]);
+      expect(log.rows[1].metadata).toEqual({
+        turn_paused: expect.objectContaining(pause),
+      });
+      expect(log.overlay).toEqual([]);
+      expect(log.status).toBe("finished");
+    },
+  );
+
+  it("a pause after a marker adds nothing, and an unknown one is reported", () => {
+    const afterError = fold([
+      { type: "error", errorText: "Boom" },
+      { type: "data-turn-paused", data: { reason: "daily" } },
+    ]);
+    expect(afterError.rows).toHaveLength(1);
+
+    const unknown = fold([
+      { type: "data-turn-paused", data: { reason: "lunch" } },
+    ]);
+    expect(unknown.rows).toEqual([]);
+    expect(reasons(unknown)).toEqual(["data-turn-paused: unknown pause"]);
+  });
+
   it("finish closes the turn and nothing else", () => {
     const log = fold([...call("c1"), { type: "finish" }]);
     expect(log.status).toBe("finished");

@@ -7,13 +7,16 @@ import autogpt_libs.auth
 import fastapi
 import fastapi.responses
 import prisma.enums
-from fastapi import Query, Security
+from fastapi import Depends, Query, Security
 from pydantic import BaseModel
 from starlette.datastructures import Headers
 
 import backend.data.graph
 import backend.util.json
 from backend.api.features.search import hybrid_search as search_engine
+from backend.api.features.search.rate_limit import enforce_public_search_rate_limit
+from backend.api.utils.client_ip import ClientIP
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
 from backend.util.product_analytics import track_listing_downloaded
@@ -34,6 +37,9 @@ router = fastapi.APIRouter()
 SubmissionSortKey = Literal["submitted", "runs"]
 SubmissionSortDir = Literal["asc", "desc"]
 
+# Same bound as global search: caps what one query can cost to embed.
+MAX_SEARCH_QUERY_LENGTH = 512
+
 
 ##############################################
 ############### Profile Endpoints ############
@@ -49,8 +55,9 @@ SubmissionSortDir = Literal["asc", "desc"]
 async def get_profile(
     user_id: str = Security(autogpt_libs.auth.get_user_id),
 ) -> store_model.ProfileDetails:
-    """Get the profile details for the authenticated user."""
-    profile = await store_db.get_user_profile(user_id)
+    """Get the profile details for the authenticated user, creating their
+    default profile if account setup hasn't yet."""
+    profile = await store_db.get_or_create_user_profile(user_id)
     if profile is None:
         raise NotFoundError("User does not have a profile yet")
     return profile
@@ -63,7 +70,7 @@ async def get_profile(
     dependencies=[Security(autogpt_libs.auth.requires_user)],
 )
 async def update_or_create_profile(
-    profile: store_model.Profile,
+    profile: store_model.ProfileUpdateRequest,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
 ) -> store_model.ProfileDetails:
     """Update the store profile for the authenticated user."""
@@ -82,7 +89,8 @@ async def update_or_create_profile(
     tags=["store", "public"],
 )
 async def unified_search(
-    query: str,
+    client: ClientIP,
+    query: str = Query(max_length=MAX_SEARCH_QUERY_LENGTH),
     content_types: list[prisma.enums.ContentType] | None = Query(
         default=None,
         description="Content types to search. If not specified, searches all.",
@@ -99,6 +107,7 @@ async def unified_search(
 
     Combines semantic (embedding-based) and lexical (text-based) search for best results.
     """
+    await enforce_public_search_rate_limit(client, user_id=user_id)
 
     # Perform unified hybrid search
     results, total = await search_engine.unified_hybrid_search(
@@ -107,6 +116,7 @@ async def unified_search(
         user_id=user_id,
         page=page,
         page_size=page_size,
+        public_search=True,
     )
 
     # Convert results to response model
@@ -148,6 +158,7 @@ async def unified_search(
     tags=["store", "public"],
 )
 async def get_agents(
+    client: ClientIP,
     featured: bool = Query(
         default=False, description="Filter to only show featured agents"
     ),
@@ -156,7 +167,9 @@ async def get_agents(
     ),
     category: str | None = Query(default=None, description="Filter agents by category"),
     search_query: str | None = Query(
-        default=None, description="Literal + semantic search on names and descriptions"
+        default=None,
+        max_length=MAX_SEARCH_QUERY_LENGTH,
+        description="Literal + semantic search on names and descriptions",
     ),
     sorted_by: store_db.StoreAgentsSortOptions | None = Query(
         default=None,
@@ -164,6 +177,9 @@ async def get_agents(
     ),
     page: int = Query(ge=1, default=1),
     page_size: int = Query(ge=1, default=20),
+    user_id: str | None = Security(
+        autogpt_libs.auth.get_optional_user_id, use_cache=False
+    ),
 ) -> store_model.StoreAgentsResponse:
     """
     Get a paginated list of agents from the marketplace,
@@ -177,7 +193,9 @@ async def get_agents(
     - Agent Details - Similar Agents
     - Creator Details - Agents By Creator
     """
-    agents = await store_cache._get_cached_store_agents(
+    if search_query and search_query.strip():
+        await enforce_public_search_rate_limit(client, user_id=user_id)
+    agents = await store_cache.get_public_store_agents(
         featured=featured,
         creator=creator,
         sorted_by=sorted_by,
@@ -220,7 +238,7 @@ async def get_agent_by_name(
     username = urllib.parse.unquote(username).lower()
     # URL decode the agent name since it comes from the URL path
     agent_name = urllib.parse.unquote(agent_name).lower()
-    agent = await store_cache._get_cached_agent_details(
+    agent = await store_cache.get_cached_agent_details(
         username=username, agent_name=agent_name, include_changelog=include_changelog
     )
     return agent
@@ -230,7 +248,10 @@ async def get_agent_by_name(
     "/agents/{username}/{agent_name}/review",
     summary="Create agent review",
     tags=["store"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def post_user_review_for_agent(
     username: str,
@@ -276,7 +297,8 @@ async def get_graph_meta_by_store_listing_version_id(
 ) -> backend.data.graph.GraphModelWithoutNodes:
     """Get outline of graph belonging to a specific marketplace listing version"""
     graph = await store_db.get_available_graph(store_listing_version_id)
-    return graph
+    # Public outline: it names the workflow, not the account that published it.
+    return graph.shared_copy()
 
 
 @router.get(
@@ -325,10 +347,10 @@ async def get_creators(
     ),
     sorted_by: store_db.StoreCreatorsSortOptions | None = None,
     page: int = Query(ge=1, default=1),
-    page_size: int = Query(ge=1, default=20),
+    page_size: int = Query(ge=1, le=100, default=20),
 ) -> store_model.CreatorsResponse:
     """List or search marketplace creators"""
-    creators = await store_cache._get_cached_store_creators(
+    creators = await store_cache.get_cached_store_creators(
         featured=featured,
         search_query=search_query,
         sorted_by=sorted_by,
@@ -346,7 +368,7 @@ async def get_creators(
 async def get_creator(username: str) -> store_model.CreatorDetails:
     """Get details on a marketplace creator"""
     username = urllib.parse.unquote(username).lower()
-    creator = await store_cache._get_cached_creator_details(username=username)
+    creator = await store_cache.get_cached_creator_details(username=username)
     return creator
 
 
@@ -397,7 +419,7 @@ async def delete_submission(
     """Delete a marketplace listing submission"""
     result = await store_db.delete_store_submission(
         user_id=user_id,
-        submission_id=submission_id,
+        store_listing_version_id=submission_id,
         organization_id=getattr(ctx, "org_id", None),
     )
     return result
@@ -461,7 +483,10 @@ def _parse_status_filter(
     "/submissions",
     summary="Create store submission",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def create_submission(
     submission_request: store_model.StoreSubmissionRequest,
@@ -500,7 +525,10 @@ async def create_submission(
     "/submissions/{store_listing_version_id}",
     summary="Edit store submission",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def edit_submission(
     store_listing_version_id: str,
@@ -566,7 +594,10 @@ def get_store_media(
     "/submissions/media",
     summary="Upload submission media",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def upload_submission_media(
     file: fastapi.UploadFile,
@@ -722,7 +753,10 @@ class ImageURLResponse(BaseModel):
     "/submissions/generate_image",
     summary="Generate submission image",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def generate_image(
     graph_id: str,
@@ -806,10 +840,10 @@ async def get_cache_metrics():
         )
 
     # Add metrics for each cache
-    add_cache_metrics("store_agents", store_cache._get_cached_store_agents)
-    add_cache_metrics("agent_details", store_cache._get_cached_agent_details)
-    add_cache_metrics("store_creators", store_cache._get_cached_store_creators)
-    add_cache_metrics("creator_details", store_cache._get_cached_creator_details)
+    add_cache_metrics("store_agents", store_cache.get_cached_store_agents)
+    add_cache_metrics("agent_details", store_cache.get_cached_agent_details)
+    add_cache_metrics("store_creators", store_cache.get_cached_store_creators)
+    add_cache_metrics("creator_details", store_cache.get_cached_creator_details)
 
     # Add metadata/help text at the beginning
     prometheus_output = [

@@ -7,7 +7,9 @@
 """
 
 import logging
-from typing import TYPE_CHECKING, Any
+import time
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -20,9 +22,11 @@ from backend.copilot.active_turns import (
     get_inflight_turn_limit,
     inflight_turn_limit_message,
 )
+from backend.copilot.ai_spans import current_span_id
 from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.context import get_current_envelope
 from backend.copilot.credential_selection import CredentialPins
+from backend.copilot.llm_attribution import turn_trace_id
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tree import (
     SpawnRequest,
@@ -35,7 +39,9 @@ from backend.copilot.tree import (
     release_turn,
     root_envelope,
 )
+from backend.copilot.trial_cost_context import TrialCostContext, capture_cost_context
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
+from backend.util import tracing
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
 
@@ -269,6 +275,10 @@ class ScheduledTurnOrigin(BaseModel):
     schedule_id: str | None = None
     routine_id: str | None = None
     cron: str | None = None
+    # A scheduled chat its owner set up, or a chat's own turn resumed or
+    # sent at its budget reset. Both alert; only a scheduled chat has a
+    # failure streak to count toward.
+    purpose: Literal["followup", "resume", "send"] = "followup"
 
 
 class CoPilotExecutionEntry(BaseModel):
@@ -333,6 +343,11 @@ class CoPilotExecutionEntry(BaseModel):
     is the user's own. Tools then never hand a question back to the user
     (SECRT-2804); see ``set_turn_unattended``."""
 
+    impersonated: bool = False
+    """An admin impersonating the user sent the message that started this
+    turn. Marks the turn's LLM analytics rather than dropping them; see
+    ``llm_attribution.set_turn_impersonated``."""
+
     credential_pins: CredentialPins = Field(default_factory=dict)
     """``{provider: pin}``: the accounts the schedule that fired this turn was
     set up to run on. They win over the chat's own picks, and a pinned account
@@ -348,9 +363,24 @@ class CoPilotExecutionEntry(BaseModel):
     queue messages written before this field existed (they sort as "all
     pending before current" — the pre-fix behaviour)."""
 
+    cost_context: TrialCostContext | None = None
+
     scheduled: ScheduledTurnOrigin | None = None
     """Set when the scheduler fired this turn. ``None`` for every other
     caller, and for entries queued before the field existed."""
+
+    tool_name: str | None = None
+    """What started the turn, as registered with the stream registry
+    (``"autopilot_block"`` for the AutoPilot block, whose turns may run on the
+    credit balance once the plan's allowance is used up). ``None`` for entries
+    queued before the field existed."""
+    trace_headers: dict[str, str] = Field(default_factory=dict)
+    """``sentry-trace``/``baggage`` of the transaction that dispatched the turn,
+    which the turn's own transaction continues. Empty when the dispatcher was
+    not traced or is not the turn's cause, e.g. a promotion from the queue."""
+
+    enqueued_at: float = 0.0
+    """Unix-epoch seconds when the turn was published, for its queue wait."""
 
 
 class CancelCoPilotEvent(BaseModel):
@@ -361,6 +391,16 @@ class CancelCoPilotEvent(BaseModel):
 
 
 # ============ Queue Publishing Helpers ============ #
+
+
+class TurnPublishUnconfirmed(Exception):
+    """Publishing a turn raised, so the broker may hold it or not.
+
+    A publish can fail after the broker took the message (a lost confirm),
+    so unlike any failure before it, this one does not prove the turn was
+    never sent. A caller deciding whether to send a task again must treat it
+    as possibly running. The original error is the ``__cause__``.
+    """
 
 
 async def enqueue_copilot_turn(
@@ -382,8 +422,11 @@ async def enqueue_copilot_turn(
     *,
     envelope: TurnEnvelope,
     unattended: bool = False,
+    impersonated: bool = False,
     credential_pins: CredentialPins | None = None,
     scheduled: ScheduledTurnOrigin | None = None,
+    tool_name: str | None = None,
+    trace_headers: Mapping[str, str] | None = None,
 ) -> None:
     """Enqueue a CoPilot task for processing by the executor service.
 
@@ -395,6 +438,9 @@ async def enqueue_copilot_turn(
     ``CoPilotExecutionEntry.envelope`` stays optional so a message enqueued by
     an older worker still decodes.
 
+    The turn continues the Sentry trace in ``trace_headers``, by default that
+    of the transaction this is called in.
+
     Args:
         session_id: Chat session ID (also used for dedup/locking)
         user_id: User ID (may be None for anonymous users)
@@ -403,7 +449,6 @@ async def enqueue_copilot_turn(
         is_user_message: Whether the message is from the user (vs system/assistant)
         context: Optional context for the message (e.g., {url: str, content: str})
         file_ids: Optional workspace file IDs attached to the user's message
-        mode: Otto mode override ('fast' or 'extended_thinking'). None = server default.
         model: Per-request model tier ('standard' or 'advanced'). None = server default.
         permissions: Capability filter inherited from a parent run (sub-Otto).
             None = no filter.
@@ -428,16 +473,30 @@ async def enqueue_copilot_turn(
         message_metadata=message_metadata,
         envelope=envelope,
         unattended=unattended,
+        impersonated=impersonated,
         credential_pins=credential_pins or {},
         scheduled=scheduled,
+        trace_headers=(
+            dict(trace_headers)
+            if trace_headers is not None
+            else tracing.trace_propagation_headers()
+        ),
+        enqueued_at=time.time(),
+        cost_context=await capture_cost_context(user_id),
+        tool_name=tool_name,
     )
 
     queue_client = await get_async_copilot_queue()
-    await queue_client.publish_message(
-        routing_key=COPILOT_EXECUTION_ROUTING_KEY,
-        message=entry.model_dump_json(),
-        exchange=COPILOT_EXECUTION_EXCHANGE,
-    )
+    try:
+        await queue_client.publish_message(
+            routing_key=COPILOT_EXECUTION_ROUTING_KEY,
+            message=entry.model_dump_json(),
+            exchange=COPILOT_EXECUTION_EXCHANGE,
+        )
+    except Exception as e:
+        raise TurnPublishUnconfirmed(
+            f"The turn's publish raised; it may or may not be queued: {e}"
+        ) from e
 
 
 async def schedule_turn(
@@ -464,6 +523,7 @@ async def schedule_turn(
     credential_pins: CredentialPins | None = None,
     scheduled: ScheduledTurnOrigin | None = None,
     delegated: bool = False,
+    impersonated: bool = False,
 ) -> None:
     """End-to-end "start a copilot turn": reserve a per-user concurrency
     slot, register the session in the stream registry, then publish the
@@ -535,6 +595,7 @@ async def schedule_turn(
             unattended=unattended,
             credential_pins=credential_pins,
             scheduled=scheduled,
+            impersonated=impersonated,
         )
 
 
@@ -564,6 +625,7 @@ async def dispatch_turn(
     scheduled: ScheduledTurnOrigin | None = None,
     root: bool = False,
     envelope: TurnEnvelope | None = None,
+    impersonated: bool = False,
 ) -> None:
     """Within an already-held turn slot, register the session in the
     stream registry, publish the work to the executor queue, and
@@ -590,12 +652,18 @@ async def dispatch_turn(
     ``envelope`` was admitted before (an approval wake carries the one its
     call was held under): it is re-checked instead, narrowed by today's
     ``permissions``, and its node is not released if dispatch fails.
+
+    The same rule decides the turn's Sentry trace: it continues the caller's
+    only when it derives its envelope from the caller's context, because a
+    root or a re-admitted turn was caused by something other than the code
+    dispatching it.
     """
     # Local import: stream_registry imports executor.utils (the
     # COPILOT_CONSUMER_TIMEOUT_SECONDS constant) → top-level circular.
     from backend.copilot import stream_registry
 
     admitted_here = envelope is None
+    trace_headers = None if admitted_here and not root else {}
     if envelope is None:
         envelope = await _admitted_turn_envelope(
             turn_id, session_id, user_id, permissions, spawn, root=root
@@ -647,15 +715,25 @@ async def dispatch_turn(
             message_metadata=message_metadata,
             envelope=envelope,
             unattended=unattended,
+            impersonated=impersonated,
             credential_pins=credential_pins,
             scheduled=scheduled,
+            tool_name=tool_name,
+            trace_headers=trace_headers,
         )
         slot.keep()
         committed = True
     finally:
         if not committed:
             if admitted_here:
-                await release_turn(envelope)
+                try:
+                    await release_turn(envelope)
+                except BaseException:
+                    # Same rule as the meta cleanup below: never mask the
+                    # original error, and never skip the rest of the cleanup.
+                    logger.exception(
+                        f"dispatch_turn: tree release failed for session={session_id}"
+                    )
             try:
                 await stream_registry.delete_session_meta(session_id)
             except BaseException:
@@ -679,6 +757,7 @@ async def queue_spawned_turn(
     permissions: CopilotPermissions | None,
     spawn: SpawnRequest | None,
     message_metadata: dict[str, Any] | None,
+    impersonated: bool = False,
 ) -> None:
     """Queue a turn another session started, to begin when a slot frees.
 
@@ -711,6 +790,7 @@ async def queue_spawned_turn(
             tool_call_id=tool_call_id,
             tool_name=tool_name,
             only_if_idle=True,
+            impersonated=impersonated,
         )
     except BaseException:
         await release_turn(envelope)
@@ -749,8 +829,15 @@ async def _admitted_turn_envelope(
     if spawner is None:
         envelope = root_envelope(turn_id, session_id=session_id)
     else:
+        # Same rule as the Sentry trace: a child derived from the caller's
+        # context joins the caller's PostHog trace, under its running tool.
         envelope = derive_child_envelope(
             spawner, spawn or SpawnRequest(), spawner_permissions=permissions
+        ).model_copy(
+            update={
+                "ai_trace_id": turn_trace_id(),
+                "ai_parent_span_id": current_span_id(),
+            }
         )
     await admit_turn(envelope, user_id=user_id)
     return envelope
@@ -759,14 +846,15 @@ async def _admitted_turn_envelope(
 def _narrow_permissions(
     permissions: CopilotPermissions | None, envelope: TurnEnvelope
 ) -> CopilotPermissions | None:
-    """The envelope's tool set as the turn's whitelist, keeping any block
-    filter the caller passed. Hides the tools from the model; the refusal
+    """The envelope's tool set as the turn's whitelist, keeping any block and
+    provider filter the caller passed. Hides the tools from the model; the refusal
     itself lives in ``BaseTool.execute``."""
     narrowed = envelope.as_permissions()
     if narrowed is None:
         return permissions
     if permissions is None:
         return narrowed
+    providers, providers_exclude = permissions.flattened_providers()
     # The caller's ``_parent`` is dropped on purpose: it belongs to the
     # spawner's turn, and the envelope is already the narrower bound.
     #
@@ -779,6 +867,10 @@ def _narrow_permissions(
         tools_exclude=narrowed.tools_exclude,
         blocks=permissions.blocks,
         blocks_exclude=permissions.blocks_exclude,
+        # The effective ceiling, parents included: this instance crosses the
+        # queue, where ``_parent`` does not.
+        providers=providers,
+        providers_exclude=providers_exclude,
     )
 
 
@@ -790,6 +882,8 @@ async def schedule_chat_turn(
     message_id: str | None = None,
     message_metadata: dict[str, Any] | None = None,
     message_already_persisted: bool = False,
+    require_fresh_slot: bool = False,
+    dedupe_content: bool = True,
     is_user_message: bool = True,
     expert_id: str | None = None,
     session_origin: str | None = None,
@@ -804,6 +898,7 @@ async def schedule_chat_turn(
     llm_credential_id: str | None = None,
     permissions: CopilotPermissions | None = None,
     request_arrival_at: float = 0.0,
+    impersonated: bool = False,
 ) -> str | None:
     """HTTP-chat-flavoured :func:`schedule_turn`: acquires the user's
     concurrency slot, persists the user message *inside* the slot, then
@@ -814,6 +909,9 @@ async def schedule_chat_turn(
     subscribe to the existing in-flight turn's stream instead of opening
     a new one). ``message_already_persisted`` re-dispatches an orphaned
     kickoff row only when this caller atomically admits the idle session.
+    ``require_fresh_slot`` applies the same rule to a new message: when
+    another turn already holds the session, return ``None`` before anything
+    is saved. ``dedupe_content`` is passed to :func:`append_and_save_message`.
 
     Raises :class:`backend.copilot.active_turns.ConcurrentTurnLimitError`
     when the user is at the configured cap. Caller maps that to HTTP 429.
@@ -844,7 +942,7 @@ async def schedule_chat_turn(
         message = VOICE_TURN_PREFIX + strip_server_injected_tags(message)
 
     async with acquire_turn_slot(user_id, session_id) as slot:
-        if message_already_persisted and not slot.admitted:
+        if (message_already_persisted or require_fresh_slot) and not slot.admitted:
             return None
         is_duplicate = False
         if message and not message_already_persisted:
@@ -854,8 +952,14 @@ async def schedule_chat_turn(
                 content=message,
                 metadata=message_metadata,
             )
+            # A refreshed slot means a turn already runs for this chat, so the
+            # same text again is a double send, whatever id it carries.
             is_duplicate = (
-                await append_and_save_message(session_id, chat_message)
+                await append_and_save_message(
+                    session_id,
+                    chat_message,
+                    dedupe_content=dedupe_content or not slot.admitted,
+                )
             ) is None
             if not is_duplicate and is_user_message:
                 track_user_message(
@@ -887,6 +991,7 @@ async def schedule_chat_turn(
             llm_credential_id=llm_credential_id,
             permissions=permissions,
             request_arrival_at=request_arrival_at,
+            impersonated=impersonated,
         )
         return turn_id
 

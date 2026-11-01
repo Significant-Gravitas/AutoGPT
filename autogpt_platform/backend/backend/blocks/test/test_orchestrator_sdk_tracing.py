@@ -45,7 +45,7 @@ class _ScriptedClient:
     async def __aexit__(self, *_: object) -> None:
         return None
 
-    async def query(self, prompt: str) -> None:
+    async def query(self, prompt: str, session_id: str = "default") -> None:
         return None
 
     async def receive_response(self) -> AsyncGenerator[Any, None]:
@@ -113,6 +113,10 @@ async def test_sdk_mode_replies_get_assistant_turn_runs(
 
     with (
         patch.object(claude_agent_sdk, "ClaudeSDKClient", traced_client),
+        patch(
+            "backend.blocks.orchestrator.require_verbatim_prompts_cli",
+            return_value="claude",
+        ),
         tracing_context(enabled=True),
     ):
         outputs = [

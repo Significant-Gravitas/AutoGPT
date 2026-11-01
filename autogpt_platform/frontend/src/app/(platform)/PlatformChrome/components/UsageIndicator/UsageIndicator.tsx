@@ -17,9 +17,9 @@ export function UsageIndicator() {
         <button
           type="button"
           aria-label={label}
-          className="relative flex size-8 items-center justify-center rounded-lg p-0 transition-colors hover:bg-zinc-100"
+          className="relative flex size-8 items-center justify-center rounded-lg p-0 transition-colors hover:bg-surface-hover"
         >
-          <Icon icon={GaugeIcon} className="size-5 text-black" />
+          <Icon icon={GaugeIcon} className="size-5 text-foreground-base" />
 
           {percent ? (
             <svg
@@ -38,7 +38,7 @@ export function UsageIndicator() {
                 strokeDasharray={`${percent} 100`}
                 strokeLinecap="round"
                 strokeWidth={2}
-                className="stroke-purple-600"
+                className="stroke-brand-hover"
               />
             </svg>
           ) : null}

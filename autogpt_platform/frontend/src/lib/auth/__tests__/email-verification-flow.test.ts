@@ -1,5 +1,8 @@
+import { Resolver } from "node:dns/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { isWaitlistError } from "@/app/api/auth/utils";
 import { AUTH_EMAILS_PER_IP } from "../auth-email-cooldown";
+import { UNDELIVERABLE_EMAIL_CODE } from "../undeliverable-email";
 
 // Runs the real Better Auth handler with this app's auth options (from
 // ../auth) on an in-memory database, so the HTTP behaviour of sign-up, sign-in
@@ -66,14 +69,26 @@ vi.mock("../provision-platform-user", () => ({
 const sentEmails = vi.hoisted(
   () => [] as Array<{ to: string; type: string; url: string }>,
 );
+// Addresses the mail provider refuses at send time, as sendAuthEmail reports it.
+const refusedAtSend = vi.hoisted(() => new Set<string>());
 vi.mock("../email", () => ({
   sendAuthEmail: vi.fn(async (email: (typeof sentEmails)[number]) => {
+    if (refusedAtSend.has(email.to)) {
+      const { undeliverableEmailError } = await import(
+        "../email-deliverability"
+      );
+      throw undeliverableEmailError();
+    }
     sentEmails.push(email);
   }),
 }));
+vi.mock("../service-token", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../service-token")>()),
+  mintServiceToken: vi.fn(async () => "service-token"),
+}));
 
 const baseURL = "http://localhost:3000";
-const password = "a-long-enough-password";
+const password = "a-long-enough-password"; // pragma: allowlist secret
 const callbackURL = "/auth/callback?method=email";
 
 type Handler = (request: Request) => Promise<Response>;
@@ -112,6 +127,11 @@ function expireCooldowns(db: TestDB) {
       row.expiresAt = new Date(Date.now() - 1000);
     }
   }
+}
+
+function pinRateLimitWindow() {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-01-01T00:05:00.000Z"));
 }
 
 // A send can queue another (the repeat sign-up's reset email), so drain until
@@ -207,6 +227,7 @@ function lastVerifyLink(to: string) {
 
 beforeEach(() => {
   sentEmails.length = 0;
+  refusedAtSend.clear();
   pendingAfterResponse.length = 0;
   provisionPlatformUser.mockClear();
   platformUsers.clear();
@@ -214,6 +235,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllEnvs();
 });
 
@@ -257,7 +279,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
 
     const response = await post(handler, "/sign-in/email", {
       email: "existing@example.com",
-      password: "not-the-password",
+      password: "not-the-password", // pragma: allowlist secret
     });
 
     expect(response.status).toBe(401);
@@ -370,7 +392,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
 
     const reset = await post(handler, "/reset-password", {
       token: lastResetToken("owner@example.com"),
-      newPassword: "the-owners-new-password",
+      newPassword: "the-owners-new-password", // pragma: allowlist secret
     });
 
     expect(reset.status).toBe(200);
@@ -410,7 +432,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
 
     const reset = await post(handler, "/reset-password", {
       token: lastResetToken("unverified@example.com", "reset_password"),
-      newPassword: "a-new-long-enough-password",
+      newPassword: "a-new-long-enough-password", // pragma: allowlist secret
     });
 
     expect(updateUser).toHaveBeenCalled();
@@ -608,7 +630,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     expect(sentEmails.map((sent) => sent.type)).toEqual(["set_password"]);
     const reset = await post(handler, "/reset-password", {
       token: lastResetToken("owner@example.com"),
-      newPassword: "the-owners-new-password",
+      newPassword: "the-owners-new-password", // pragma: allowlist secret
     });
     expect(reset.status).toBe(200);
     const asFirst = await signIn(
@@ -725,6 +747,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
   });
 
   it("lets one IP have only a few addresses emailed through the sign-up page", async () => {
+    pinRateLimitWindow();
     const { api } = await createAuthHandler(true);
 
     // The page's server action calls auth.api, which Better Auth's own per-IP
@@ -763,6 +786,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
   });
 
   it("counts the resend button against the same per-IP cap", async () => {
+    pinRateLimitWindow();
     const { handler } = await createAuthHandler(true);
     await signUp(handler, "resends@example.com");
 
@@ -782,6 +806,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
   });
 
   it("emails an unverified address once per cooldown however often it signs in", async () => {
+    pinRateLimitWindow();
     const { handler, db } = await createAuthHandler(true);
     await signUp(handler, "signs-in@example.com");
     await emailsSent();
@@ -795,6 +820,8 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     expect(sentEmails.map((sent) => sent.type)).toEqual(["verify_email"]);
 
     expireCooldowns(db);
+    // Past the per-IP sign-in window too (attempt-limits.ts).
+    vi.setSystemTime(Date.now() + 10_000);
     await signIn(handler, "signs-in@example.com");
     await emailsSent();
     expect(sentEmails.map((sent) => sent.type)).toEqual([
@@ -839,7 +866,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
 
     const reset = await post(handler, "/reset-password", {
       token: lastResetToken("verified@example.com", "reset_password"),
-      newPassword: "a-new-long-enough-password",
+      newPassword: "a-new-long-enough-password", // pragma: allowlist secret
     });
 
     expect(reset.status).toBe(200);
@@ -978,7 +1005,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION off", () => {
     });
 
     const response = await post(handler, "/reset-password", {
-      newPassword: "a-new-long-enough-password",
+      newPassword: "a-new-long-enough-password", // pragma: allowlist secret
       token,
     });
 
@@ -1005,6 +1032,35 @@ describe("team addresses", () => {
       expect(db.UserAuthIdentity).toEqual([]);
     },
   );
+});
+
+describe("the sign-up allowlist", () => {
+  it.each([true, false])(
+    "refuses an address that isn't on it (verification %s)",
+    async (requireVerification) => {
+      vi.stubEnv("AUTH_SIGNUP_ALLOWLIST", "invited@example.com");
+      const { handler, db } = await createAuthHandler(requireVerification);
+
+      const response = await signUp(handler, "uninvited@example.com");
+
+      expect(response.status).toBe(403);
+      expect(isWaitlistError(null, (await response.json()).message)).toBe(true);
+      expect(db.UserAuthIdentity).toEqual([]);
+    },
+  );
+
+  it("answers an address that isn't on it alike with or without an account", async () => {
+    const { handler } = await createAuthHandler(true);
+    await signUp(handler, "early@example.com");
+    vi.stubEnv("AUTH_SIGNUP_ALLOWLIST", "invited@example.com");
+
+    const existing = await signUp(handler, "early@example.com");
+    const fresh = await signUp(handler, "uninvited@example.com");
+
+    expect(existing.status).toBe(403);
+    expect(fresh.status).toBe(403);
+    expect(await existing.json()).toEqual(await fresh.json());
+  });
 });
 
 // Signed up with verification off, so the account has a session.
@@ -1065,7 +1121,7 @@ describe("password reset links", () => {
       });
       await post(handler, "/reset-password", {
         token,
-        newPassword: "the-attackers-new-password",
+        newPassword: "the-attackers-new-password", // pragma: allowlist secret
       });
 
       expect(db.UserAuthIdentity).toEqual([
@@ -1093,7 +1149,7 @@ describe("password reset links", () => {
     });
     const reset = await post(handler, "/reset-password", {
       token,
-      newPassword: "a-new-long-enough-password",
+      newPassword: "a-new-long-enough-password", // pragma: allowlist secret
     });
 
     expect(reset.status).toBe(400);
@@ -1134,7 +1190,7 @@ describe("password reset links", () => {
 
     const reset = await post(handler, "/reset-password", {
       token,
-      newPassword: "a-new-long-enough-password",
+      newPassword: "a-new-long-enough-password", // pragma: allowlist secret
     });
 
     expect(reset.status).toBe(400);
@@ -1155,7 +1211,7 @@ describe("password reset links", () => {
 
     const reset = await post(handler, "/reset-password", {
       token: lastResetToken("first@example.com", "reset_password"),
-      newPassword: "a-new-long-enough-password",
+      newPassword: "a-new-long-enough-password", // pragma: allowlist secret
     });
 
     expect(reset.status).toBe(200);
@@ -1175,7 +1231,7 @@ describe("password reset links", () => {
 
       const reset = await post(handler, "/reset-password", {
         token: lastResetToken("owner@example.com", "reset_password"),
-        newPassword: "a-new-long-enough-password",
+        newPassword: "a-new-long-enough-password", // pragma: allowlist secret
       });
 
       expect(reset.status).toBe(200);
@@ -1204,7 +1260,7 @@ describe("password reset links", () => {
     await api.updateUser({ body: { name: "New name" }, headers: session });
     const reset = await post(handler, "/reset-password", {
       token: lastResetToken("owner@example.com", "reset_password"),
-      newPassword: "a-new-long-enough-password",
+      newPassword: "a-new-long-enough-password", // pragma: allowlist secret
     });
 
     expect(reset.status).toBe(200);
@@ -1225,7 +1281,7 @@ describe("password reset links", () => {
     ]);
     const reset = await post(handler, "/reset-password", {
       token: lastResetToken("owner@example.com", "reset_password"),
-      newPassword: "a-new-long-enough-password",
+      newPassword: "a-new-long-enough-password", // pragma: allowlist secret
     });
 
     expect(reset.status).toBe(200);
@@ -1272,4 +1328,115 @@ describe("change-email verification emails", () => {
 
     expect(sentEmails).toEqual([]);
   });
+});
+
+describe("an address the mailer won't deliver to", () => {
+  const undeliverable = {
+    code: UNDELIVERABLE_EMAIL_CODE,
+    message:
+      "We can't deliver email to this address. Check it, or use a different one.",
+  };
+  const suppressed = new Set<string>();
+  const lookup = vi.fn(async (_url: string, init?: RequestInit) => {
+    const { to } = JSON.parse(String(init?.body));
+    return Response.json({ suppressed: suppressed.has(to) });
+  });
+
+  beforeEach(() => {
+    suppressed.clear();
+    lookup.mockClear();
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+    vi.spyOn(Resolver.prototype, "resolveMx").mockResolvedValue([
+      { exchange: "mx.example.com", priority: 10 },
+    ]);
+    vi.stubGlobal("fetch", lookup);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.mocked(Resolver.prototype.resolveMx).mockRestore();
+  });
+
+  it("refuses the sign-up with the undeliverable copy and emails nothing", async () => {
+    const { handler, db } = await createAuthHandler(true);
+    suppressed.add("bounced@example.com");
+
+    const response = await signUp(handler, "bounced@example.com");
+    await emailsSent();
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject(undeliverable);
+    expect(db.UserAuthIdentity).toHaveLength(0);
+    expect(sentEmails).toEqual([]);
+    expect(String(lookup.mock.calls[0][0])).toMatch(
+      /\/api\/auth\/email\/suppression$/,
+    );
+  });
+
+  it("refuses Resend alike whether or not the address has an account", async () => {
+    const { handler } = await createAuthHandler(true);
+    await signUp(handler, "unverified@example.com");
+    await emailsSent();
+    suppressed.add("unverified@example.com");
+    suppressed.add("nobody@example.com");
+
+    const answers = await Promise.all(
+      ["unverified@example.com", "nobody@example.com"].map(async (email) => {
+        const response = await post(handler, "/send-verification-email", {
+          email,
+          callbackURL,
+        });
+        return { status: response.status, body: await response.json() };
+      }),
+    );
+
+    expect(answers[0]).toEqual(answers[1]);
+    expect(answers[0]).toMatchObject({ status: 400, body: undeliverable });
+  });
+
+  // Resend is the one route that awaits its send; the others send in the
+  // background, where a refusal is only logged.
+  it("shows Resend a refusal that comes back from the send itself", async () => {
+    const { handler } = await createAuthHandler(true);
+    await signUp(handler, "bounced-later@example.com");
+    await emailsSent();
+    refusedAtSend.add("bounced-later@example.com");
+
+    const response = await post(handler, "/send-verification-email", {
+      email: "bounced-later@example.com",
+      callbackURL,
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject(undeliverable);
+    expect(lookup).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ["the lookup errors", async () => new Response(null, { status: 500 })],
+    [
+      "the lookup gets no answer in time",
+      // Settles only when the lookup gives up on it.
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) =>
+          init?.signal?.addEventListener("abort", () =>
+            reject(init.signal?.reason),
+          ),
+        ),
+    ],
+  ])(
+    "lets the sign-up through when %s",
+    { timeout: 15_000 },
+    async (_, answer) => {
+      const { handler } = await createAuthHandler(true);
+      lookup.mockImplementationOnce(answer);
+      vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+      const response = await signUp(handler, "new@example.com");
+      await emailsSent();
+
+      expect(response.status).toBe(200);
+      expect(lastVerifyLink("new@example.com")).toBeDefined();
+    },
+  );
 });

@@ -1,10 +1,16 @@
-from datetime import datetime
-from typing import cast
+from collections.abc import Callable, Iterator
+from typing import Any, cast
 
 import tweepy
 from tweepy.client import Response
 
-from backend.blocks._base import Block, BlockCategory, BlockOutput, BlockSchemaOutput
+from backend.blocks._base import (
+    Block,
+    BlockCategory,
+    BlockEffect,
+    BlockOutput,
+    BlockSchemaOutput,
+)
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -21,16 +27,7 @@ from backend.blocks.twitter._serializer import (
     IncludesSerializer,
     ResponseDataSerializer,
 )
-from backend.blocks.twitter._types import (
-    ExpansionFilter,
-    TweetExpansionInputs,
-    TweetFieldsFilter,
-    TweetMediaFieldsFilter,
-    TweetPlaceFieldsFilter,
-    TweetPollFieldsFilter,
-    TweetTimeWindowInputs,
-    TweetUserFieldsFilter,
-)
+from backend.blocks.twitter._types import TweetExpansionInputs, TweetTimeWindowInputs
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 from backend.data.model import SchemaField
 
@@ -138,100 +135,17 @@ class TwitterGetUserMentionsBlock(Block):
                     None,
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
-    def get_mentions(
-        credentials: TwitterCredentials,
-        user_id: str,
-        max_results: int | None,
-        start_time: datetime | None,
-        end_time: datetime | None,
-        since_id: str | None,
-        until_id: str | None,
-        sort_order: str | None,
-        pagination: str | None,
-        expansions: ExpansionFilter | None,
-        media_fields: TweetMediaFieldsFilter | None,
-        place_fields: TweetPlaceFieldsFilter | None,
-        poll_fields: TweetPollFieldsFilter | None,
-        tweet_fields: TweetFieldsFilter | None,
-        user_fields: TweetUserFieldsFilter | None,
-    ):
-        try:
-            client = tweepy.Client(
-                bearer_token=credentials.access_token.get_secret_value()
-            )
-
-            params = {
-                "id": user_id,
-                "max_results": max_results,
-                "pagination_token": None if pagination == "" else pagination,
-                "user_auth": False,
-            }
-
-            # Adding expansions to params If required by the user
-            params = (
-                TweetExpansionsBuilder(params)
-                .add_expansions(expansions)
-                .add_media_fields(media_fields)
-                .add_place_fields(place_fields)
-                .add_poll_fields(poll_fields)
-                .add_tweet_fields(tweet_fields)
-                .add_user_fields(user_fields)
-                .build()
-            )
-
-            # Adding time window to params If required by the user
-            params = (
-                TweetDurationBuilder(params)
-                .add_start_time(start_time)
-                .add_end_time(end_time)
-                .add_since_id(since_id)
-                .add_until_id(until_id)
-                .add_sort_order(sort_order)
-                .build()
-            )
-
-            response = cast(
-                Response,
-                client.get_users_mentions(**params),
-            )
-
-            if not response.data and not response.meta:
-                raise Exception("No tweets found")
-
-            included = IncludesSerializer.serialize(response.includes)
-            data = ResponseDataSerializer.serialize_list(response.data)
-            meta = response.meta or {}
-            next_token = meta.get("next_token", "")
-
-            tweet_ids = []
-            tweet_texts = []
-            user_ids = []
-            user_names = []
-
-            if response.data:
-                tweet_ids = [str(tweet.id) for tweet in response.data]
-                tweet_texts = [tweet.text for tweet in response.data]
-
-            if "users" in included:
-                user_ids = [str(user["id"]) for user in included["users"]]
-                user_names = [user["username"] for user in included["users"]]
-
-            return (
-                tweet_ids,
-                tweet_texts,
-                user_ids,
-                user_names,
-                data,
-                included,
-                meta,
-                next_token,
-            )
-
-        except tweepy.TweepyException:
-            raise
+    def get_mentions(credentials: TwitterCredentials, input_data: Input):
+        return _get_tweets(
+            credentials,
+            tweepy.Client.get_users_mentions,
+            input_data,
+            id=input_data.user_id,
+        )
 
     async def run(
         self,
@@ -241,42 +155,8 @@ class TwitterGetUserMentionsBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            ids, texts, user_ids, user_names, data, included, meta, next_token = (
-                self.get_mentions(
-                    credentials,
-                    input_data.user_id,
-                    input_data.max_results,
-                    input_data.start_time,
-                    input_data.end_time,
-                    input_data.since_id,
-                    input_data.until_id,
-                    input_data.sort_order,
-                    input_data.pagination_token,
-                    input_data.expansions,
-                    input_data.media_fields,
-                    input_data.place_fields,
-                    input_data.poll_fields,
-                    input_data.tweet_fields,
-                    input_data.user_fields,
-                )
-            )
-            if ids:
-                yield "ids", ids
-            if texts:
-                yield "texts", texts
-            if user_ids:
-                yield "userIds", user_ids
-            if user_names:
-                yield "userNames", user_names
-            if next_token:
-                yield "next_token", next_token
-            if data:
-                yield "data", data
-            if included:
-                yield "included", included
-            if meta:
-                yield "meta", meta
-
+            for output in _tweet_outputs(self.get_mentions(credentials, input_data)):
+                yield output
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
 
@@ -372,98 +252,16 @@ class TwitterGetHomeTimelineBlock(Block):
                     None,
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
-    def get_timeline(
-        credentials: TwitterCredentials,
-        max_results: int | None,
-        start_time: datetime | None,
-        end_time: datetime | None,
-        since_id: str | None,
-        until_id: str | None,
-        sort_order: str | None,
-        pagination: str | None,
-        expansions: ExpansionFilter | None,
-        media_fields: TweetMediaFieldsFilter | None,
-        place_fields: TweetPlaceFieldsFilter | None,
-        poll_fields: TweetPollFieldsFilter | None,
-        tweet_fields: TweetFieldsFilter | None,
-        user_fields: TweetUserFieldsFilter | None,
-    ):
-        try:
-            client = tweepy.Client(
-                bearer_token=credentials.access_token.get_secret_value()
-            )
-
-            params = {
-                "max_results": max_results,
-                "pagination_token": None if pagination == "" else pagination,
-                "user_auth": False,
-            }
-
-            # Adding expansions to params If required by the user
-            params = (
-                TweetExpansionsBuilder(params)
-                .add_expansions(expansions)
-                .add_media_fields(media_fields)
-                .add_place_fields(place_fields)
-                .add_poll_fields(poll_fields)
-                .add_tweet_fields(tweet_fields)
-                .add_user_fields(user_fields)
-                .build()
-            )
-
-            # Adding time window to params If required by the user
-            params = (
-                TweetDurationBuilder(params)
-                .add_start_time(start_time)
-                .add_end_time(end_time)
-                .add_since_id(since_id)
-                .add_until_id(until_id)
-                .add_sort_order(sort_order)
-                .build()
-            )
-
-            response = cast(
-                Response,
-                client.get_home_timeline(**params),
-            )
-
-            if not response.data and not response.meta:
-                raise Exception("No tweets found")
-
-            included = IncludesSerializer.serialize(response.includes)
-            data = ResponseDataSerializer.serialize_list(response.data)
-            meta = response.meta or {}
-            next_token = meta.get("next_token", "")
-
-            tweet_ids = []
-            tweet_texts = []
-            user_ids = []
-            user_names = []
-
-            if response.data:
-                tweet_ids = [str(tweet.id) for tweet in response.data]
-                tweet_texts = [tweet.text for tweet in response.data]
-
-            if "users" in included:
-                user_ids = [str(user["id"]) for user in included["users"]]
-                user_names = [user["username"] for user in included["users"]]
-
-            return (
-                tweet_ids,
-                tweet_texts,
-                user_ids,
-                user_names,
-                data,
-                included,
-                meta,
-                next_token,
-            )
-
-        except tweepy.TweepyException:
-            raise
+    def get_timeline(credentials: TwitterCredentials, input_data: Input):
+        return _get_tweets(
+            credentials,
+            tweepy.Client.get_home_timeline,
+            input_data,
+        )
 
     async def run(
         self,
@@ -473,41 +271,8 @@ class TwitterGetHomeTimelineBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            ids, texts, user_ids, user_names, data, included, meta, next_token = (
-                self.get_timeline(
-                    credentials,
-                    input_data.max_results,
-                    input_data.start_time,
-                    input_data.end_time,
-                    input_data.since_id,
-                    input_data.until_id,
-                    input_data.sort_order,
-                    input_data.pagination_token,
-                    input_data.expansions,
-                    input_data.media_fields,
-                    input_data.place_fields,
-                    input_data.poll_fields,
-                    input_data.tweet_fields,
-                    input_data.user_fields,
-                )
-            )
-            if ids:
-                yield "ids", ids
-            if texts:
-                yield "texts", texts
-            if user_ids:
-                yield "userIds", user_ids
-            if user_names:
-                yield "userNames", user_names
-            if next_token:
-                yield "next_token", next_token
-            if data:
-                yield "data", data
-            if included:
-                yield "included", included
-            if meta:
-                yield "meta", meta
-
+            for output in _tweet_outputs(self.get_timeline(credentials, input_data)):
+                yield output
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
 
@@ -615,100 +380,17 @@ class TwitterGetUserTweetsBlock(Block):
                     None,
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
-    def get_user_tweets(
-        credentials: TwitterCredentials,
-        user_id: str,
-        max_results: int | None,
-        start_time: datetime | None,
-        end_time: datetime | None,
-        since_id: str | None,
-        until_id: str | None,
-        sort_order: str | None,
-        pagination: str | None,
-        expansions: ExpansionFilter | None,
-        media_fields: TweetMediaFieldsFilter | None,
-        place_fields: TweetPlaceFieldsFilter | None,
-        poll_fields: TweetPollFieldsFilter | None,
-        tweet_fields: TweetFieldsFilter | None,
-        user_fields: TweetUserFieldsFilter | None,
-    ):
-        try:
-            client = tweepy.Client(
-                bearer_token=credentials.access_token.get_secret_value()
-            )
-
-            params = {
-                "id": user_id,
-                "max_results": max_results,
-                "pagination_token": None if pagination == "" else pagination,
-                "user_auth": False,
-            }
-
-            # Adding expansions to params If required by the user
-            params = (
-                TweetExpansionsBuilder(params)
-                .add_expansions(expansions)
-                .add_media_fields(media_fields)
-                .add_place_fields(place_fields)
-                .add_poll_fields(poll_fields)
-                .add_tweet_fields(tweet_fields)
-                .add_user_fields(user_fields)
-                .build()
-            )
-
-            # Adding time window to params If required by the user
-            params = (
-                TweetDurationBuilder(params)
-                .add_start_time(start_time)
-                .add_end_time(end_time)
-                .add_since_id(since_id)
-                .add_until_id(until_id)
-                .add_sort_order(sort_order)
-                .build()
-            )
-
-            response = cast(
-                Response,
-                client.get_users_tweets(**params),
-            )
-
-            if not response.data and not response.meta:
-                raise Exception("No tweets found")
-
-            included = IncludesSerializer.serialize(response.includes)
-            data = ResponseDataSerializer.serialize_list(response.data)
-            meta = response.meta or {}
-            next_token = meta.get("next_token", "")
-
-            tweet_ids = []
-            tweet_texts = []
-            user_ids = []
-            user_names = []
-
-            if response.data:
-                tweet_ids = [str(tweet.id) for tweet in response.data]
-                tweet_texts = [tweet.text for tweet in response.data]
-
-            if "users" in included:
-                user_ids = [str(user["id"]) for user in included["users"]]
-                user_names = [user["username"] for user in included["users"]]
-
-            return (
-                tweet_ids,
-                tweet_texts,
-                user_ids,
-                user_names,
-                data,
-                included,
-                meta,
-                next_token,
-            )
-
-        except tweepy.TweepyException:
-            raise
+    def get_user_tweets(credentials: TwitterCredentials, input_data: Input):
+        return _get_tweets(
+            credentials,
+            tweepy.Client.get_users_tweets,
+            input_data,
+            id=input_data.user_id,
+        )
 
     async def run(
         self,
@@ -718,41 +400,98 @@ class TwitterGetUserTweetsBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            ids, texts, user_ids, user_names, data, included, meta, next_token = (
-                self.get_user_tweets(
-                    credentials,
-                    input_data.user_id,
-                    input_data.max_results,
-                    input_data.start_time,
-                    input_data.end_time,
-                    input_data.since_id,
-                    input_data.until_id,
-                    input_data.sort_order,
-                    input_data.pagination_token,
-                    input_data.expansions,
-                    input_data.media_fields,
-                    input_data.place_fields,
-                    input_data.poll_fields,
-                    input_data.tweet_fields,
-                    input_data.user_fields,
-                )
-            )
-            if ids:
-                yield "ids", ids
-            if texts:
-                yield "texts", texts
-            if user_ids:
-                yield "userIds", user_ids
-            if user_names:
-                yield "userNames", user_names
-            if next_token:
-                yield "next_token", next_token
-            if data:
-                yield "data", data
-            if included:
-                yield "included", included
-            if meta:
-                yield "meta", meta
-
+            for output in _tweet_outputs(self.get_user_tweets(credentials, input_data)):
+                yield output
         except Exception as e:
             yield "error", handle_tweepy_exception(e)
+
+
+def _get_tweets(
+    credentials: TwitterCredentials,
+    fetch: Callable[..., Any],
+    input_data: "TwitterGetUserMentionsBlock.Input | TwitterGetHomeTimelineBlock.Input | TwitterGetUserTweetsBlock.Input",
+    **id_param: str,
+):
+    client = tweepy.Client(bearer_token=credentials.access_token.get_secret_value())
+
+    params = {
+        **id_param,
+        "max_results": input_data.max_results,
+        "pagination_token": (
+            None if input_data.pagination_token == "" else input_data.pagination_token
+        ),
+        "user_auth": False,
+    }
+    params = (
+        TweetExpansionsBuilder(params)
+        .add_expansions(input_data.expansions)
+        .add_media_fields(input_data.media_fields)
+        .add_place_fields(input_data.place_fields)
+        .add_poll_fields(input_data.poll_fields)
+        .add_tweet_fields(input_data.tweet_fields)
+        .add_user_fields(input_data.user_fields)
+        .build()
+    )
+    params = (
+        TweetDurationBuilder(params)
+        .add_start_time(input_data.start_time)
+        .add_end_time(input_data.end_time)
+        .add_since_id(input_data.since_id)
+        .add_until_id(input_data.until_id)
+        .add_sort_order(input_data.sort_order)
+        .build()
+    )
+
+    response = cast(Response, fetch(client, **params))
+
+    if not response.data and not response.meta:
+        raise Exception("No tweets found")
+
+    included = IncludesSerializer.serialize(response.includes)
+    data = ResponseDataSerializer.serialize_list(response.data)
+    meta = response.meta or {}
+    next_token = meta.get("next_token", "")
+
+    tweet_ids = []
+    tweet_texts = []
+    user_ids = []
+    user_names = []
+
+    if response.data:
+        tweet_ids = [str(tweet.id) for tweet in response.data]
+        tweet_texts = [tweet.text for tweet in response.data]
+
+    if "users" in included:
+        user_ids = [str(user["id"]) for user in included["users"]]
+        user_names = [user["username"] for user in included["users"]]
+
+    return (
+        tweet_ids,
+        tweet_texts,
+        user_ids,
+        user_names,
+        data,
+        included,
+        meta,
+        next_token,
+    )
+
+
+def _tweet_outputs(result: tuple) -> Iterator[tuple[str, Any]]:
+    ids, texts, user_ids, user_names, data, included, meta, next_token = result
+    if ids:
+        yield "ids", ids
+    if texts:
+        yield "texts", texts
+    if user_ids:
+        yield "userIds", user_ids
+    if user_names:
+        yield "userNames", user_names
+    if next_token:
+        yield "next_token", next_token
+    if data:
+        yield "data", data
+    if included:
+        yield "included", included
+    if meta:
+        yield "meta", meta

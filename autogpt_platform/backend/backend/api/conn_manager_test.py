@@ -72,8 +72,8 @@ async def test_subscribe(
     fake_sub.stop = AsyncMock()
     with (
         patch(
-            "backend.api.conn_manager.get_graph_execution_meta",
-            AsyncMock(return_value=_meta()),
+            "backend.api.conn_manager.execution_db",
+            return_value=_execution_db(_meta()),
         ),
         patch("backend.api.conn_manager._Subscription", return_value=fake_sub),
     ):
@@ -588,8 +588,8 @@ async def test_subscribe_graph_exec_raises_when_meta_missing(
 ) -> None:
     """If graph_id can't be resolved, subscribe must reject — no silent SSUBSCRIBE."""
     with patch(
-        "backend.api.conn_manager.get_graph_execution_meta",
-        AsyncMock(return_value=None),
+        "backend.api.conn_manager.execution_db",
+        return_value=_execution_db(None),
     ):
         with pytest.raises(ValueError):
             await connection_manager.subscribe_graph_exec(
@@ -610,8 +610,8 @@ async def test_subscribe_graph_exec_reuses_existing_subscription(
 
     with (
         patch(
-            "backend.api.conn_manager.get_graph_execution_meta",
-            AsyncMock(return_value=_meta()),
+            "backend.api.conn_manager.execution_db",
+            return_value=_execution_db(_meta()),
         ),
         patch("backend.api.conn_manager._Subscription", return_value=fake_sub),
     ):
@@ -743,8 +743,8 @@ async def test_two_connections_get_independent_subscriptions(
 
     with (
         patch(
-            "backend.api.conn_manager.get_graph_execution_meta",
-            AsyncMock(return_value=_meta()),
+            "backend.api.conn_manager.execution_db",
+            return_value=_execution_db(_meta()),
         ),
         patch("backend.api.conn_manager._Subscription", side_effect=_factory),
     ):
@@ -1059,3 +1059,7 @@ async def test_connect_socket_starts_notification_subscription(
     ) as mock_start:
         await connection_manager.connect_socket(mock_websocket, user_id="user-1")
     mock_start.assert_awaited_once_with(mock_websocket, user_id="user-1")
+
+
+def _execution_db(meta: GraphExecutionMeta | None) -> MagicMock:
+    return MagicMock(get_graph_execution_meta=AsyncMock(return_value=meta))
