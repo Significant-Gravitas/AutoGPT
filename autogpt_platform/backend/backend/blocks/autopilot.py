@@ -31,6 +31,7 @@ from backend.copilot.constants import (
 from backend.copilot.credit_billing import credits_can_pay_block_turns
 from backend.copilot.permissions import (
     DISABLED_LEGACY_TOOL_NAMES,
+    MAX_BLOCK_IDENTIFIERS,
     CopilotPermissions,
     ToolName,
     all_known_tool_names,
@@ -257,6 +258,7 @@ class AutoPilotBlock(Block):
             ),
             default=[],
             advanced=True,
+            max_length=MAX_BLOCK_IDENTIFIERS,
         )
 
         blocks_exclude: bool = SchemaField(
@@ -862,6 +864,11 @@ async def _build_and_validate_permissions(
     # Tool names are validated by Pydantic via the ToolName Literal type
     # at model construction time — no runtime check needed here.
     # Validate block identifiers against live block registry.
+    if len(input_data.blocks) > MAX_BLOCK_IDENTIFIERS:
+        return (
+            f"'blocks' can list at most {MAX_BLOCK_IDENTIFIERS} block "
+            f"identifiers, got {len(input_data.blocks)}."
+        )
     if input_data.blocks:
         invalid_blocks = await validate_block_identifiers(input_data.blocks)
         if invalid_blocks:
