@@ -110,6 +110,11 @@ async def setup_triggered_preset(
             user_id, graph.organization_id, graph.team_id
         )
 
+    # What the preset write would refuse is refused before anything is
+    # registered with the provider; the rollback below covers the rest.
+    db.check_preset_text(name, description)
+    db.check_preset_inputs({**trigger_config_with_credentials, **agent_credentials})
+
     new_webhook, feedback = await setup_webhook_for_block(
         user_id=user_id,
         trigger_block=trigger_node.block,
@@ -120,20 +125,25 @@ async def setup_triggered_preset(
     if not new_webhook:
         raise InvalidInputError(f"Could not set up webhook: {feedback}")
 
-    return await db.create_preset(
-        user_id=user_id,
-        preset=models.LibraryAgentPresetCreatable(
-            graph_id=graph.id,
-            graph_version=graph.version,
-            name=name,
-            description=description,
-            inputs=trigger_config_with_credentials,
-            credentials=agent_credentials,
-            is_active=True,
-        ),
-        webhook_id=new_webhook.id,
-        expert_id=expert_id,
-    )
+    try:
+        return await db.create_preset(
+            user_id=user_id,
+            preset=models.LibraryAgentPresetCreatable(
+                graph_id=graph.id,
+                graph_version=graph.version,
+                name=name,
+                description=description,
+                inputs=trigger_config_with_credentials,
+                credentials=agent_credentials,
+                is_active=True,
+            ),
+            webhook_id=new_webhook.id,
+            expert_id=expert_id,
+        )
+    except Exception:
+        # Until it is attached to a preset, this webhook is orphaned.
+        await _prune_dangling_webhook(user_id, new_webhook.id)
+        raise
 
 
 async def update_triggered_preset(

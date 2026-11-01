@@ -456,7 +456,6 @@ class IntegrationCredentialsStore:
         return list(set(c.provider for c in credentials))
 
     async def update_creds(self, user_id: str, updated: Credentials) -> None:
-        check_storable_size(updated)
         if updated.id in SYSTEM_CREDENTIAL_IDS:
             raise ValueError(
                 f"System credential #{updated.id} cannot be updated directly"
@@ -473,6 +472,10 @@ class IntegrationCredentialsStore:
                 raise ValueError(
                     f"AutoGPT-managed credential #{updated.id} cannot be updated"
                 )
+            # Measured against what is already stored, so a token refresh of
+            # an item saved before this bound existed still goes through as
+            # long as it does not grow.
+            check_storable_size(updated, allowance=stored_size(current))
             if type(current) is not type(updated):
                 raise TypeError(
                     f"Can not update credentials with ID {updated.id} "
@@ -775,11 +778,22 @@ class IntegrationCredentialsStore:
         return locks.locked(key)
 
 
-def check_storable_size(item: Credentials | OAuthState) -> None:
-    """Refuse an item larger than `MAX_STORED_ITEM_BYTES`."""
-    item_bytes = len(item.model_dump_json().encode())
-    if item_bytes > MAX_STORED_ITEM_BYTES:
+def check_storable_size(item: Credentials | OAuthState, *, allowance: int = 0) -> None:
+    """Refuse an item larger than `MAX_STORED_ITEM_BYTES`.
+
+    `allowance` is the size the item being replaced already occupies: a
+    rewrite that does not grow an item stored before this bound existed is not
+    what the bound is for, and refusing it would strand a token refresh.
+    """
+    limit = max(MAX_STORED_ITEM_BYTES, allowance)
+    item_bytes = stored_size(item)
+    if item_bytes > limit:
         raise InvalidInputError(
             f"{type(item).__name__} is too large: at most "
-            f"{MAX_STORED_ITEM_BYTES} bytes are allowed, got {item_bytes}"
+            f"{limit} bytes are allowed, got {item_bytes}"
         )
+
+
+def stored_size(item: Credentials | OAuthState) -> int:
+    """How many bytes this item takes in the user's stored integrations."""
+    return len(item.model_dump_json().encode())

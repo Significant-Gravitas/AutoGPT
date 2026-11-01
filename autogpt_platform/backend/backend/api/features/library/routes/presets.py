@@ -36,7 +36,7 @@ router = APIRouter(
 async def list_presets(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=10, ge=1),
+    page_size: int = Query(default=10, ge=1, le=db.MAX_PRESETS_PER_PAGE),
     graph_id: Optional[str] = Query(
         description="Allows to filter presets by a specific agent graph"
     ),

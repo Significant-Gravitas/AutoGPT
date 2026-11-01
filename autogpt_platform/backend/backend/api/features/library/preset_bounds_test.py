@@ -5,20 +5,26 @@ so the bound lives at the write rather than on that model. The page size is
 capped in the database layer, so every caller is covered rather than one route.
 """
 
+from contextlib import asynccontextmanager
+from unittest.mock import MagicMock
+
 import pytest
 
 from backend.api.features.library.db import (
+    MAX_PRESET_DESCRIPTION_LENGTH,
     MAX_PRESET_INPUT_BYTES,
     MAX_PRESET_INPUTS,
+    MAX_PRESET_NAME_LENGTH,
     MAX_PRESETS_PER_PAGE,
     check_preset_text,
     create_preset,
     list_presets,
     preset_input_rows,
+    update_preset,
 )
 from backend.api.features.library.model import LibraryAgentPresetCreatable
+from backend.data.graph import GRAPH_TEXT_MAX_LENGTHS
 from backend.util.exceptions import InvalidInputError
-from backend.util.text_limits import MAX_DESCRIPTION_LENGTH, MAX_NAME_LENGTH
 
 
 def test_inputs_at_the_count_bound_are_accepted():
@@ -45,7 +51,10 @@ def test_one_input_under_the_payload_bound_is_accepted():
 
 @pytest.mark.parametrize(
     "field_name, max_length",
-    [("name", MAX_NAME_LENGTH), ("description", MAX_DESCRIPTION_LENGTH)],
+    [
+        ("name", MAX_PRESET_NAME_LENGTH),
+        ("description", MAX_PRESET_DESCRIPTION_LENGTH),
+    ],
 )
 def test_preset_text_over_the_bound_is_refused(field_name: str, max_length: int):
     over = {field_name: "x" * (max_length + 1)}
@@ -60,6 +69,28 @@ def test_preset_text_may_be_absent():
     check_preset_text(None, None)
 
 
+@pytest.mark.parametrize(
+    "preset_field, graph_field",
+    [("name", "name"), ("description", "description")],
+)
+def test_a_preset_accepts_whatever_its_graph_can_carry(
+    preset_field: str, graph_field: str
+):
+    """`save_as_preset` and the legacy-trigger migration name a preset after
+    its graph, so a bound below the graph's would refuse a graph that saves."""
+    preset_bound = {
+        "name": MAX_PRESET_NAME_LENGTH,
+        "description": MAX_PRESET_DESCRIPTION_LENGTH,
+    }[preset_field]
+    graph_bound = GRAPH_TEXT_MAX_LENGTHS[graph_field]
+
+    assert preset_bound >= graph_bound
+    at_the_graph_bound = {preset_field: "x" * graph_bound}
+    check_preset_text(
+        at_the_graph_bound.get("name"), at_the_graph_bound.get("description")
+    )
+
+
 @pytest.mark.asyncio
 async def test_creating_a_preset_refuses_an_oversized_name():
     """The check is at the write, not only in the helper it calls."""
@@ -68,7 +99,7 @@ async def test_creating_a_preset_refuses_an_oversized_name():
         graph_version=1,
         inputs={},
         credentials={},
-        name="x" * (MAX_NAME_LENGTH + 1),
+        name="x" * (MAX_PRESET_NAME_LENGTH + 1),
         description="",
     )
 
@@ -76,6 +107,63 @@ async def test_creating_a_preset_refuses_an_oversized_name():
     # database on any caller's path.
     with pytest.raises(InvalidInputError, match="Preset name is too long"):
         await create_preset("user-1", preset)
+
+
+@pytest.mark.asyncio
+async def test_creating_a_preset_named_after_a_long_graph_is_accepted():
+    preset = LibraryAgentPresetCreatable(
+        graph_id="g-1",
+        graph_version=1,
+        inputs={},
+        credentials={},
+        name="x" * GRAPH_TEXT_MAX_LENGTHS["name"],
+        description="y" * GRAPH_TEXT_MAX_LENGTHS["description"],
+    )
+
+    # Past the text check it reaches the first query, which is how this test
+    # tells "accepted" from "refused".
+    with pytest.raises(Exception) as caught:
+        await create_preset("user-1", preset)
+
+    assert "too long" not in str(caught.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "inputs, expected",
+    [
+        ({f"in_{i}": i for i in range(MAX_PRESET_INPUTS + 1)}, "inputs, got"),
+        ({"essay": "x" * (MAX_PRESET_INPUT_BYTES + 1)}, "inputs hold at most"),
+    ],
+    ids=["too many", "too large"],
+)
+async def test_updating_a_preset_refuses_oversized_inputs(
+    mocker, inputs: dict, expected: str
+):
+    """The update path writes the same rows, so it carries the same bound."""
+    mocker.patch(
+        "backend.api.features.library.db.get_preset",
+        new=mocker.AsyncMock(
+            return_value=mocker.MagicMock(name="preset", expert_id=None)
+        ),
+    )
+    mocker.patch("backend.api.features.library.db.transaction", new=_fake_transaction())
+
+    with pytest.raises(InvalidInputError, match=expected):
+        await update_preset(
+            user_id="user-1", preset_id="p-1", inputs=inputs, credentials={}
+        )
+
+
+def _fake_transaction():
+    """`update_preset` wraps its writes in `transaction()`; this keeps the test
+    off a real connection, which would poison the pool for later tests."""
+
+    @asynccontextmanager
+    async def _tx():
+        yield MagicMock()
+
+    return _tx
 
 
 @pytest.mark.asyncio

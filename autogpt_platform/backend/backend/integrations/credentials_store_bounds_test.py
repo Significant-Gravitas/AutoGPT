@@ -101,9 +101,7 @@ async def test_a_user_below_the_count_bound_can_add_one(store, mocker):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "method_name", ["add_creds", "update_creds", "upsert_single_provider_creds"]
-)
+@pytest.mark.parametrize("method_name", ["add_creds", "upsert_single_provider_creds"])
 async def test_every_credential_write_refuses_an_oversized_item(
     store, mocker, method_name: str
 ):
@@ -117,6 +115,69 @@ async def test_every_credential_write_refuses_an_oversized_item(
 
     with pytest.raises(InvalidInputError, match="is too large"):
         await getattr(store, method_name)("user-1", padded)
+    store._set_user_integration_creds.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_updating_a_credential_to_an_oversized_one_is_refused(store, mocker):
+    """`update_creds` measures against what is already stored, so its check
+    runs once the current item is known rather than on the way in."""
+    held = _credentials(id="held")
+    mocker.patch.object(
+        store,
+        "_get_persisted_user_creds_unlocked",
+        mocker.AsyncMock(return_value=[held]),
+    )
+    grown = held.model_copy(
+        update={"api_key": SecretStr("y" * (MAX_STORED_ITEM_BYTES + 10))}
+    )
+
+    with pytest.raises(InvalidInputError, match="is too large"):
+        await store.update_creds("user-1", grown)
+    store._set_user_integration_creds.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_oversized_credential_can_still_be_refreshed(store, mocker):
+    """A token refresh goes through `update_creds`.
+
+    An item stored before this bound existed would otherwise be stuck: the
+    refresh could never be written, and the credential would stop working.
+    """
+    held = _credentials(
+        id="held", api_key=SecretStr("x" * (MAX_STORED_ITEM_BYTES + 10))
+    )
+    mocker.patch.object(
+        store,
+        "_get_persisted_user_creds_unlocked",
+        mocker.AsyncMock(return_value=[held]),
+    )
+    refreshed = held.model_copy(
+        update={"api_key": SecretStr("y" * (MAX_STORED_ITEM_BYTES + 10))}
+    )
+
+    await store.update_creds("user-1", refreshed)
+
+    written = store._set_user_integration_creds.await_args.args[1]
+    assert written[0].api_key.get_secret_value().startswith("y")
+
+
+@pytest.mark.asyncio
+async def test_an_oversized_credential_cannot_grow_further(store, mocker):
+    held = _credentials(
+        id="held", api_key=SecretStr("x" * (MAX_STORED_ITEM_BYTES + 10))
+    )
+    mocker.patch.object(
+        store,
+        "_get_persisted_user_creds_unlocked",
+        mocker.AsyncMock(return_value=[held]),
+    )
+    grown = held.model_copy(
+        update={"api_key": SecretStr("y" * (MAX_STORED_ITEM_BYTES + 2000))}
+    )
+
+    with pytest.raises(InvalidInputError, match="is too large"):
+        await store.update_creds("user-1", grown)
     store._set_user_integration_creds.assert_not_awaited()
 
 
