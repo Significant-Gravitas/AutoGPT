@@ -174,16 +174,18 @@ def _is_cross_origin(old_url: URL, new_url: URL) -> bool:
 
 def _remove_insecure_headers(
     headers: dict,
-    old_url: URL,
-    new_url: URL,
+    cross_origin: bool,
     sensitive_headers: Iterable[str] = (),
 ) -> dict:
     """
     Removes sensitive headers (Authorization, Proxy-Authorization, Cookie,
-    plus any names in *sensitive_headers*) if the scheme/host/port of new_url
-    differ from old_url.
+    plus any names in *sensitive_headers*) when *cross_origin*.
+
+    The caller decides, so that one origin decision covers every carrier of a
+    credential: these headers, and the ``auth=``/``cookies=`` kwargs aiohttp
+    turns into headers of its own downstream of this call.
     """
-    if _is_cross_origin(old_url, new_url):
+    if cross_origin:
         _drop_headers(headers, [*SENSITIVE_HEADERS, *sensitive_headers])
     return headers
 
@@ -699,14 +701,18 @@ class Requests:
                             ),
                         )
 
-                    # The base URL is the pinned_url we just used
-                    # so that relative redirects resolve correctly.
-                    redirect_url = urlparse(urljoin(parsed_url.geturl(), location))
+                    # Joined onto the URL just requested, so a relative
+                    # redirect resolves; parsed with ``parse_url`` because the
+                    # hop below parses it that way, and only that folds a
+                    # backslash in the authority into a slash, naming the host
+                    # that is connected to.
+                    redirect_url = parse_url(urljoin(parsed_url.geturl(), location))
+                    # Decided once, for every carrier of the credential below.
+                    cross_origin = _is_cross_origin(parsed_url, redirect_url)
                     # Carry forward the same headers but update Host
                     new_headers = _remove_insecure_headers(
                         dict(req_headers),
-                        parsed_url,
-                        redirect_url,
+                        cross_origin,
                         self.sensitive_headers,
                     )
 
@@ -720,7 +726,7 @@ class Requests:
                     # there too, and an authenticated same-origin redirect is
                     # a normal flow.
                     redirect_kwargs = dict(kwargs)
-                    if _is_cross_origin(parsed_url, redirect_url):
+                    if cross_origin:
                         redirect_kwargs.pop("auth", None)
                         redirect_kwargs.pop("cookies", None)
 
