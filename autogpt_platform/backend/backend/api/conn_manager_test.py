@@ -384,6 +384,33 @@ async def test_streams_per_shard_are_capped_per_process(
 
 
 @pytest.mark.asyncio
+async def test_a_user_past_their_share_cannot_fill_a_shard(
+    connection_manager: ConnectionManager,
+    fake_redis: _FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("backend.api.conn_manager.MAX_STREAMS_PER_SHARD", 4)
+    monkeypatch.setattr("backend.api.conn_manager.STREAMS_PER_USER_SHARE", 1)
+    heavy = [AsyncMock(spec=WebSocket) for _ in range(4)]
+    for ws in heavy[:3]:
+        assert await connection_manager.connect_socket(ws, user_id="u-a")
+    # The shard's last stream is kept for users still within their share.
+    assert not await connection_manager.connect_socket(heavy[3], user_id="u-a")
+    assert await connection_manager.connect_socket(
+        AsyncMock(spec=WebSocket), user_id="u-b"
+    )
+
+    # Disconnecting gives the heavy user its share back.
+    for ws in heavy[:3]:
+        await connection_manager.disconnect_socket(ws, user_id="u-a")
+    for _ in range(2):
+        assert await connection_manager.connect_socket(
+            AsyncMock(spec=WebSocket), user_id="u-c"
+        )
+    assert await connection_manager.connect_socket(heavy[3], user_id="u-a")
+
+
+@pytest.mark.asyncio
 async def test_unsubscribing_a_streams_last_channel_frees_its_slot(
     connection_manager: ConnectionManager,
     mock_websocket: AsyncMock,

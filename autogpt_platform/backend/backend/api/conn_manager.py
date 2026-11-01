@@ -63,6 +63,9 @@ MAX_SOCKETS_PER_USER = 32
 # Shard streams (Redis connections) this process may hold per shard, over all
 # its sockets; while a shard is at it, new sockets are refused.
 MAX_STREAMS_PER_SHARD = 300
+# Streams one user may open on a shard while it has room; beyond this share a
+# user may not take the shard's last quarter, so heavy users can't fill it.
+STREAMS_PER_USER_SHARE = 8
 # Opening a shard connection retries for minutes while Redis is down; give up
 # sooner so the handler answers and the router reads the socket again.
 _STREAM_OPEN_TIMEOUT_S = 15.0
@@ -197,13 +200,15 @@ class ConnectionManager:
         self._user_sockets: dict[str, set[WebSocket]] = {}
         # shard → shard streams open to it from this process
         self._streams_per_shard: Counter[Shard] = Counter()
+        # (user_id, shard) → that user's streams open to it
+        self._user_streams: Counter[tuple[str, Shard]] = Counter()
 
     async def connect_socket(self, websocket: WebSocket, *, user_id: str) -> bool:
         """Accept the socket, or close it with 1013 and return False when the
-        user holds ``MAX_SOCKETS_PER_USER`` here or a shard is at
-        ``MAX_STREAMS_PER_SHARD``."""
+        user holds ``MAX_SOCKETS_PER_USER`` here or a shard has no room left
+        for the user's streams."""
         held = len(self._user_sockets.get(user_id, ()))
-        if held >= MAX_SOCKETS_PER_USER or self._a_shard_is_full():
+        if held >= MAX_SOCKETS_PER_USER or self._a_shard_is_full(user_id):
             await self._refuse(websocket, user_id)
             return False
         self._user_sockets.setdefault(user_id, set()).add(websocket)
@@ -223,7 +228,7 @@ class ConnectionManager:
         # Stop the shard streams before dropping bookkeeping to avoid leaks.
         for shard, stream in self._ws_streams.pop(websocket, {}).items():
             await stream.stop()
-            self._release_stream(shard)
+            self._release_stream(user_id, shard)
         self._ws_notifications.pop(websocket, None)
         for channel_key in self._ws_subs.pop(websocket, {}):
             subscribers = self.subscriptions.get(channel_key)
@@ -248,7 +253,7 @@ class ConnectionManager:
         full_channel = event_bus_channel(
             exec_channel(user_id, meta.graph_id, graph_exec_id)
         )
-        await self._open_subscription(websocket, channel_key, full_channel)
+        await self._open_subscription(user_id, websocket, channel_key, full_channel)
         return channel_key
 
     async def subscribe_graph_execs(
@@ -256,23 +261,23 @@ class ConnectionManager:
     ) -> str:
         channel_key = _graph_execs_channel_key(user_id, graph_id=graph_id)
         full_channel = event_bus_channel(graph_all_channel(user_id, graph_id))
-        await self._open_subscription(websocket, channel_key, full_channel)
+        await self._open_subscription(user_id, websocket, channel_key, full_channel)
         return channel_key
 
     async def unsubscribe_graph_exec(
         self, *, user_id: str, graph_exec_id: str, websocket: WebSocket
     ) -> str | None:
         channel_key = graph_exec_channel_key(user_id, graph_exec_id=graph_exec_id)
-        return await self._close_subscription(websocket, channel_key)
+        return await self._close_subscription(user_id, websocket, channel_key)
 
     async def unsubscribe_graph_execs(
         self, *, user_id: str, graph_id: str, websocket: WebSocket
     ) -> str | None:
         channel_key = _graph_execs_channel_key(user_id, graph_id=graph_id)
-        return await self._close_subscription(websocket, channel_key)
+        return await self._close_subscription(user_id, websocket, channel_key)
 
     async def _open_subscription(
-        self, websocket: WebSocket, channel_key: str, full_channel: str
+        self, user_id: str, websocket: WebSocket, channel_key: str, full_channel: str
     ) -> None:
         per_ws = self._ws_subs.setdefault(websocket, {})
         if channel_key not in per_ws:
@@ -285,12 +290,12 @@ class ConnectionManager:
             async def on_message(data: Optional[bytes | str]) -> None:
                 await self._forward_exec_event(websocket, channel_key, data)
 
-            await self._subscribe(websocket, full_channel, on_message)
+            await self._subscribe(user_id, websocket, full_channel, on_message)
             per_ws[channel_key] = full_channel
         self.subscriptions.setdefault(channel_key, set()).add(websocket)
 
     async def _close_subscription(
-        self, websocket: WebSocket, channel_key: str
+        self, user_id: str, websocket: WebSocket, channel_key: str
     ) -> str | None:
         subscribers = self.subscriptions.get(channel_key)
         if subscribers is None:
@@ -300,11 +305,15 @@ class ConnectionManager:
             self.subscriptions.pop(channel_key, None)
         full_channel = self._ws_subs.get(websocket, {}).pop(channel_key, None)
         if full_channel is not None:
-            await self._unsubscribe(websocket, full_channel)
+            await self._unsubscribe(user_id, websocket, full_channel)
         return channel_key
 
     async def _subscribe(
-        self, websocket: WebSocket, full_channel: str, handler: MessageHandler
+        self,
+        user_id: str,
+        websocket: WebSocket,
+        full_channel: str,
+        handler: MessageHandler,
     ) -> None:
         """SSUBSCRIBE on the socket's stream for the channel's shard, opening
         that stream if this is the socket's first channel there."""
@@ -312,7 +321,7 @@ class ConnectionManager:
         streams = self._ws_streams.setdefault(websocket, {})
         stream = streams.get(shard)
         if stream is None:
-            if self._streams_per_shard[shard] >= MAX_STREAMS_PER_SHARD:
+            if not self._has_room(user_id, shard):
                 raise ValueError("Server busy, try again later")
 
             async def on_lost() -> None:
@@ -320,14 +329,17 @@ class ConnectionManager:
 
             stream = streams[shard] = _ShardStream(on_lost)
             self._streams_per_shard[shard] += 1
+            self._user_streams[(user_id, shard)] += 1
         try:
             await stream.add(full_channel, handler)
         except BaseException:
             if not stream.handlers and streams.pop(shard, None) is not None:
-                self._release_stream(shard)
+                self._release_stream(user_id, shard)
             raise
 
-    async def _unsubscribe(self, websocket: WebSocket, full_channel: str) -> None:
+    async def _unsubscribe(
+        self, user_id: str, websocket: WebSocket, full_channel: str
+    ) -> None:
         streams = self._ws_streams.get(websocket, {})
         for shard, stream in list(streams.items()):
             if full_channel not in stream.handlers:
@@ -335,7 +347,7 @@ class ConnectionManager:
             await stream.remove(full_channel)
             if not stream.handlers:
                 streams.pop(shard, None)
-                self._release_stream(shard)
+                self._release_stream(user_id, shard)
             return
 
     async def _close_for_lost_stream(self, websocket: WebSocket) -> None:
@@ -362,13 +374,22 @@ class ConnectionManager:
             if not _is_ws_close_race(e, websocket):
                 logger.warning("Failed to refuse WebSocket", exc_info=True)
 
-    def _a_shard_is_full(self) -> bool:
-        return any(n >= MAX_STREAMS_PER_SHARD for n in self._streams_per_shard.values())
+    def _a_shard_is_full(self, user_id: str) -> bool:
+        return any(not self._has_room(user_id, s) for s in self._streams_per_shard)
 
-    def _release_stream(self, shard: Shard) -> None:
+    def _has_room(self, user_id: str, shard: Shard) -> bool:
+        held = self._streams_per_shard[shard]
+        if self._user_streams[(user_id, shard)] < STREAMS_PER_USER_SHARE:
+            return held < MAX_STREAMS_PER_SHARD
+        return held < MAX_STREAMS_PER_SHARD - MAX_STREAMS_PER_SHARD // 4
+
+    def _release_stream(self, user_id: str, shard: Shard) -> None:
         self._streams_per_shard[shard] -= 1
         if self._streams_per_shard[shard] <= 0:
             del self._streams_per_shard[shard]
+        self._user_streams[(user_id, shard)] -= 1
+        if self._user_streams[(user_id, shard)] <= 0:
+            del self._user_streams[(user_id, shard)]
 
     def _release_user_socket(self, user_id: str, websocket: WebSocket) -> None:
         sockets = self._user_sockets.get(user_id)
@@ -429,7 +450,7 @@ class ConnectionManager:
             await self._forward_notification(websocket, user_id, data)
 
         try:
-            await self._subscribe(websocket, full_channel, on_message)
+            await self._subscribe(user_id, websocket, full_channel, on_message)
         except Exception:
             logger.exception(f"Failed to open notification SSUBSCRIBE for {user_id}")
             return
