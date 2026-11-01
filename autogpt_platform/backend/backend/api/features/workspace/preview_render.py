@@ -4,7 +4,7 @@ Thumbnail renderers for workspace previews, run in a short-lived child process.
 Each render of a file's bytes runs in a fresh interpreter started with
 ``python -m`` (never a fork of the threaded API process), is killed once it
 passes ``RENDER_TIMEOUT_SECONDS``, and is capped at ``RENDER_MAX_MEMORY_BYTES``
-of address space. The parent awaits it on the event loop, so a render never
+of address space; a child that cannot set the cap does not render. The parent awaits it on the event loop, so a render never
 holds a thread of the default executor. The child receives only the
 environment variables in ``CHILD_ENV_ALLOWLIST``.
 
@@ -72,6 +72,7 @@ _CHILD_MODULE = "backend.api.features.workspace.preview_render"
 _EXIT_OK = 0
 _EXIT_TOO_LARGE = 3
 _EXIT_NO_THUMBNAIL = 4
+_EXIT_NO_MEMORY_CAP = 5
 
 Renderer = Callable[[bytes, int], bytes]
 
@@ -110,8 +111,7 @@ async def render_in_child(renderer: Renderer, content: bytes, width: int) -> byt
 
 
 async def _start_child(renderer: Renderer, width: int) -> asyncio.subprocess.Process:
-    if sys.platform == "win32":
-        _warn_no_memory_cap()
+    _check_memory_cap()
     return await asyncio.create_subprocess_exec(
         sys.executable,
         "-m",
@@ -176,11 +176,28 @@ def _result(returncode: int | None, stdout: bytes) -> bytes:
 
 
 @functools.cache
-def _warn_no_memory_cap() -> None:
-    logger.warning(
-        "RLIMIT_AS is not available on this platform; preview renders run "
-        "without a memory cap"
-    )
+def _check_memory_cap() -> None:
+    """Warn once when a child cannot apply the memory cap.
+
+    On Windows the child renders without one. Elsewhere a child that cannot
+    set it exits without rendering, so every preview is "not available".
+    """
+    if sys.platform == "win32":
+        logger.warning(
+            "RLIMIT_AS is not available on this platform; preview renders run "
+            "without a memory cap"
+        )
+        return
+    try:
+        _, hard_limit = resource.getrlimit(resource.RLIMIT_AS)
+    except (ValueError, OSError) as e:
+        logger.warning(f"RLIMIT_AS is not available ({e}); previews will not render")
+        return
+    if hard_limit != resource.RLIM_INFINITY and hard_limit < RENDER_MAX_MEMORY_BYTES:
+        logger.warning(
+            f"RLIMIT_AS hard limit {hard_limit} is below the preview memory cap "
+            f"{RENDER_MAX_MEMORY_BYTES}; previews will not render"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +207,8 @@ def _warn_no_memory_cap() -> None:
 
 def _child_main(argv: list[str]) -> int:
     target, width, max_memory = argv
-    _limit_memory(int(max_memory))
+    if not _limit_memory(int(max_memory)):
+        return _EXIT_NO_MEMORY_CAP
     module_name, _, attr = target.partition(":")
     renderer: Renderer = getattr(importlib.import_module(module_name), attr)
     content = sys.stdin.buffer.read()
@@ -205,13 +223,14 @@ def _child_main(argv: list[str]) -> int:
     return _EXIT_OK
 
 
-def _limit_memory(max_bytes: int) -> None:
+def _limit_memory(max_bytes: int) -> bool:
     if sys.platform == "win32":
-        return
+        return True
     try:
         resource.setrlimit(resource.RLIMIT_AS, (max_bytes, max_bytes))
     except (ValueError, OSError):
-        pass
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------------

@@ -184,6 +184,31 @@ async def test_render_within_the_memory_cap_succeeds(mocker):
     assert output == b"\x00"
 
 
+async def test_render_without_a_memory_cap_does_not_run(mocker):
+    # setrlimit rejects a negative limit, so the child cannot cap itself.
+    mocker.patch.object(preview_render, "RENDER_MAX_MEMORY_BYTES", -2)
+
+    with pytest.raises(preview_render.RenderFailed):
+        await preview_render.render_in_child(echo_renderer, b"x", 16)
+
+
+def test_memory_cap_above_the_hard_limit_warns_once(mocker, caplog):
+    hard_limit = preview_render.RENDER_MAX_MEMORY_BYTES - 1
+    mocker.patch.object(
+        preview_render.resource, "getrlimit", return_value=(hard_limit, hard_limit)
+    )
+    preview_render._check_memory_cap.cache_clear()
+    try:
+        with caplog.at_level("WARNING", logger=preview_render.__name__):
+            preview_render._check_memory_cap()
+            preview_render._check_memory_cap()
+    finally:
+        preview_render._check_memory_cap.cache_clear()
+
+    (record,) = caplog.records
+    assert "previews will not render" in record.getMessage()
+
+
 @pytest.mark.parametrize(
     "renderer, error",
     [
