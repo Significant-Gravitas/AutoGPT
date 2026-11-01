@@ -18,9 +18,9 @@ from backend.api.features.chat.routes import (
     QueuePendingMessageRequest,
     StreamChatRequest,
 )
+from backend.api.features.library.db import MAX_PRESET_NAME_LENGTH
 from backend.api.features.orgs.invitation_routes import create_invitation
 from backend.util.exceptions import InvalidInputError
-from backend.util.text_limits import MAX_NAME_LENGTH
 
 ORG_ID = "org-1"
 TEAM_ID = "team-1"
@@ -41,7 +41,7 @@ async def test_updating_a_preset_refuses_an_oversized_name(mocker):
         await library_db.update_preset(
             user_id=USER_ID,
             preset_id="preset-1",
-            name="x" * (MAX_NAME_LENGTH + 1),
+            name="x" * (MAX_PRESET_NAME_LENGTH + 1),
         )
 
 
