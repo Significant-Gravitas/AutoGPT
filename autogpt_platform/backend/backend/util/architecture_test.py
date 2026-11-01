@@ -996,6 +996,9 @@ def test_zip_members_and_workbooks_are_read_through_the_capped_readers():
         ("with zipfile.ZipFile(f) as z:\n    z.read('a')", ["ZipFile.read"]),
         ("with ZipFile(f) as z:\n    z.open('a').read()", ["ZipFile.open"]),
         ("z = zipfile.ZipFile(f)\nz.extractall(d)", ["ZipFile.extractall"]),
+        ("z: zipfile.ZipFile = zipfile.ZipFile(f)\nz.read('a')", ["ZipFile.read"]),
+        ("z: ZipFile = ZipFile(f)\nz.extractall(d)", ["ZipFile.extractall"]),
+        ("with zipfile.ZipFile(f) as archive:\n    archive.read('a')", ["ZipFile.read"]),
         ("zipfile.ZipFile(f).read('a')", ["ZipFile.read"]),
         ("def f(z: zipfile.ZipFile):\n    z.read('a')", ["ZipFile.read"]),
         ("def f(z: 'zipfile.ZipFile'):\n    z.extract('a')", ["ZipFile.extract"]),
@@ -1039,7 +1042,7 @@ def _uncapped_archive_reads(tree: ast.Module) -> list[tuple[str, int]]:
 
 def _zip_file_names(tree: ast.Module) -> set[str]:
     """Names bound to a ``ZipFile``: by ``with``, by assignment, or by an
-    annotated parameter."""
+    annotated parameter or assignment."""
     names: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, (ast.With, ast.AsyncWith)):
@@ -1050,6 +1053,13 @@ def _zip_file_names(tree: ast.Module) -> set[str]:
                     names.add(item.optional_vars.id)
         elif isinstance(node, ast.Assign) and _is_zip_file_call(node.value):
             names.update(t.id for t in node.targets if isinstance(t, ast.Name))
+        elif (
+            isinstance(node, ast.AnnAssign)
+            and node.value is not None
+            and _is_zip_file_call(node.value)
+            and isinstance(node.target, ast.Name)
+        ):
+            names.add(node.target.id)
         elif isinstance(node, ast.arg) and "ZipFile" in _annotation_names(
             node.annotation
         ):
