@@ -166,6 +166,12 @@ class _DuplicateSubmission(_GatewayState):
     replay_key: str
 
 
+class _Relaunch(_GatewayState):
+    """A request from the attempt that replaced the one holding these records."""
+
+    fingerprint: str
+
+
 class _ToolCallRecord(_GatewayState):
     gateway_call_id: str
     raw_call_id: str
@@ -237,6 +243,10 @@ class CodexAnthropicGateway:
         self._auth_token = secrets.token_urlsafe(32)
         self._conversations: dict[str, _Conversation] = {}
         self._tool_calls: dict[str, _ToolCallRecord] = {}
+        # The conversation each relaunch opened, by its fingerprint. Nothing
+        # claimable is left behind a relaunch, so this is the only thing that
+        # can answer its resend.
+        self._relaunches: dict[str, _Conversation] = {}
         self._results: list[CodexInvocationResult] = []
         self._closed = False
         self._close_lock = asyncio.Lock()
@@ -435,14 +445,21 @@ class CodexAnthropicGateway:
         streamed = payload.get("stream") is True
         if isinstance(continuation, _DuplicateSubmission):
             return await self._duplicate_response(request, continuation, streamed)
-        if continuation is None:
-            try:
-                conversation, replay_key = self._start_conversation(payload), None
-            except (TypeError, ValueError) as exc:
-                return self._refuse(400, "invalid_request_error", str(exc))
-        else:
+        if isinstance(continuation, _Continuation):
             conversation = continuation.conversation
             replay_key = continuation.replay_key
+        else:
+            try:
+                conversation = self._start_conversation(payload)
+            except (TypeError, ValueError) as exc:
+                return self._refuse(400, "invalid_request_error", str(exc))
+            replay_key = None
+            if isinstance(continuation, _Relaunch):
+                # Registered before the answer is written, so a resend that
+                # arrives meanwhile waits on this conversation's lock and
+                # replays that answer instead of invoking Codex again.
+                replay_key = continuation.fingerprint
+                self._relaunches[replay_key] = conversation
 
         input_tokens = _estimate_input_tokens(payload)
         if streamed:
@@ -493,7 +510,7 @@ class CodexAnthropicGateway:
     def _continue_conversation(
         self,
         payload: dict[str, object],
-    ) -> _Continuation | _DuplicateSubmission | None:
+    ) -> _Continuation | _DuplicateSubmission | _Relaunch | None:
         tool_results = _extract_tool_results(payload.get("messages"))
         known = [
             (self._tool_calls[call_id], result)
@@ -526,13 +543,21 @@ class CodexAnthropicGateway:
                     conversation=claimed_by[0].conversation,
                     replay_key=fingerprint,
                 )
+            relaunched = self._relaunches.get(fingerprint)
+            if relaunched is not None:
+                # The CLI resends a relaunch verbatim too, and each resend
+                # would otherwise cost another subscription invocation.
+                return _DuplicateSubmission(
+                    conversation=relaunched,
+                    replay_key=fingerprint,
+                )
             # Nothing is waiting for these results, so there is no
             # conversation left to continue. The attempt that made the calls
             # was abandoned, and the one replacing it resumes the CLI session,
             # so it replays them with a message appended and can never match a
             # claim. /v1/messages is stateless: answer it as a new
             # conversation, because refusing it killed the whole turn.
-            return None
+            return _Relaunch(fingerprint=fingerprint)
 
         conversation = claimable[0][0].conversation
         if any(record.conversation is not conversation for record, _ in claimable):

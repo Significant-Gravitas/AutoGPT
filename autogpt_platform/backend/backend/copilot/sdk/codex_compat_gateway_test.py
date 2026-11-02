@@ -935,6 +935,66 @@ async def test_a_relaunched_attempt_starts_a_new_conversation() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_resent_relaunch_is_replayed_without_a_second_invocation() -> None:
+    """A relaunch is resent verbatim like any other request, and costs quota.
+
+    Nothing claimable is left behind a relaunch, so its fingerprint is the
+    only thing that can answer its own resend: unregistered, every CLI retry
+    opens another Codex invocation and leaves it waiting on tools.
+    """
+    agent_session = _FakeAgentSession(use_tool=True)
+    transport = _FakeTransport(agent_session)
+    async with CodexAnthropicGateway(
+        credential_lease=_lease(),
+        model="gpt-5.6-terra",
+        transport=transport,
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run"),
+            )
+            abandoned_call_id = _tool_use_id(await first.json())
+            answered = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_result_request(abandoned_call_id, "one result"),
+            )
+            assert answered.status == 200
+            await answered.read()
+
+            relaunch = _tool_result_request(abandoned_call_id, "one result")
+            relaunch_messages = relaunch["messages"]
+            assert isinstance(relaunch_messages, list)
+            relaunch_messages.append(
+                {"role": "user", "content": "Building mode is now active"}
+            )
+            relaunch["tools"] = _tool_request("run")["tools"]
+            resumed = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=relaunch,
+            )
+            assert resumed.status == 200
+            resumed_body = await resumed.json()
+
+            # What the CLI sends when it times out or disconnects waiting on
+            # the relaunch: the same bytes again.
+            resent = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=relaunch,
+            )
+            assert resent.status == 200
+            resent_body = await resent.json()
+
+    assert resent_body == resumed_body
+    assert gateway.last_refusal is None
+    assert len(agent_session.requests) == 2
+
+
+@pytest.mark.asyncio
 async def test_two_results_for_one_call_are_refused_and_remembered() -> None:
     """The guard a relaunch must not cost: one call, one answer.
 
