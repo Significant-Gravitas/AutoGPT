@@ -14,7 +14,7 @@ This page explains where the backend and the frontend each get a caller's IP add
 
 The backend's API server uses the address of the connection it receives. It takes the address from the `X-Forwarded-For` header instead only when the connection comes from an address listed in `FORWARDED_ALLOW_IPS`, a setting of the server (uvicorn) that defaults to `127.0.0.1,::1`.
 
-If a reverse proxy sits in front of the backend, set `FORWARDED_ALLOW_IPS` on the backend to the proxy's address.
+If a reverse proxy sits in front of the backend, set `FORWARDED_ALLOW_IPS` on the backend to the address it connects from — not necessarily the proxy's own address. A proxy on the host that reaches the backend through its published port (`8006` by default under Docker Compose) connects from the Docker network's gateway, not from `127.0.0.1`. Find it with `docker network inspect app-network --format '{{(index .IPAM.Config 0).Gateway}}'` (it varies per install; Docker assigns the subnet). A proxy running in its own container on the same network connects with its own container address instead.
 
 ## The frontend
 
@@ -33,7 +33,7 @@ Browsers reach the backend through the frontend's server, so the backend sees th
 
 Signing in uses the visitor's address in two ways:
 
-- **The authentication API's [rate limits](rate-limits.md#the-authentication-api)** count per IP address. Better Auth, the frontend's sign-in library, keeps them.
+- **The authentication API's [rate limits](rate-limits.md#the-authentication-api)** count per IP address. Better Auth, the frontend's sign-in library, reads `X-Forwarded-For` itself, separately from `TRUST_X_FORWARDED_FOR` below. It only finds an address when the header carries exactly one: behind a proxy that replaces it (Caddy by default, or nginx with `proxy_set_header X-Forwarded-For $remote_addr;`). Behind one that appends — nginx's default `$proxy_add_x_forwarded_for`, or a second proxy in the chain — the header carries more than one address, Better Auth finds none, logs a warning, and these limits fall back to one shared bucket for every caller.
 - **The sign-in history and IP blocks** follow [the frontend](#the-frontend) rule above: they use the address only on Vercel or with `TRUST_X_FORWARDED_FOR=true`. Without it, no sign-in address is recorded and IP blocks have no address to match. Blocks on an email domain still apply.
 
 Behind a proxy that overwrites `X-Forwarded-For` with the visitor's address, set `TRUST_X_FORWARDED_FOR=true` on the frontend.
@@ -42,11 +42,11 @@ The backend deletes the sign-in history of an account after 90 days, or after th
 
 ## What to set
 
-| Your install                                              | On the frontend                                                                                  | On the backend                                                                      |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| AutoGPT Cloud                                             | Nothing                                                                                          | Nothing                                                                             |
-| Single-container image                                    | Nothing                                                                                          | Nothing                                                                             |
-| Docker Compose, browsers connect to the frontend directly | Leave `TRUST_X_FORWARDED_FOR` unset                                                              | Nothing                                                                             |
-| Behind a reverse proxy                                    | `TRUST_X_FORWARDED_FOR=true`, if the proxy sets `X-Forwarded-For` to the visitor's address alone | `FORWARDED_ALLOW_IPS=<proxy address>`, if the proxy is also in front of the backend |
+| Your install                                              | On the frontend                                                                                  | On the backend                                                                                     |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| AutoGPT Cloud                                             | Nothing                                                                                          | Nothing                                                                                            |
+| Single-container image                                    | Nothing                                                                                          | Nothing                                                                                            |
+| Docker Compose, browsers connect to the frontend directly | Leave `TRUST_X_FORWARDED_FOR` unset                                                              | Nothing                                                                                            |
+| Behind a reverse proxy                                    | `TRUST_X_FORWARDED_FOR=true`, if the proxy sets `X-Forwarded-For` to the visitor's address alone | `FORWARDED_ALLOW_IPS=<the address it connects from>`, if the proxy is also in front of the backend |
 
 On any install that serves the public, put the frontend behind a reverse proxy that sets `X-Forwarded-For` to the visitor's address alone, replacing any value the request arrived with.
