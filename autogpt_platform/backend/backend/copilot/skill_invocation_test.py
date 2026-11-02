@@ -156,11 +156,6 @@ def owned(mocker: pytest_mock.MockFixture) -> dict[str, ParsedSkill]:
     mocker.patch.object(si, "resolve_skill_scope", AsyncMock(return_value=None))
     mocker.patch.object(
         si,
-        "read_user_skill_with_body",
-        AsyncMock(side_effect=lambda user_id, name, **_: skills.get(name)),
-    )
-    mocker.patch.object(
-        si,
         "list_user_skills",
         AsyncMock(
             side_effect=lambda *_, **__: [
@@ -379,5 +374,4 @@ def test_persisted_invocation_recovery_is_limited_to_the_current_saved_row(case)
 async def test_unmatched_command_reads_no_skill_bodies(owned, name):
     owned["fix-issue"] = _skill()
     assert await resolve_invocable_skill("user", None, name) is None
-    si.read_user_skill_with_body.assert_not_awaited()
     si.skill_registry.read_skill_for_load.assert_not_awaited()

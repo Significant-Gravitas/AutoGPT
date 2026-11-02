@@ -39,7 +39,6 @@ from backend.copilot.tools.skills import (
     get_default_skill_with_body,
     is_skills_feature_enabled,
     list_user_skills,
-    read_user_skill_with_body,
     resolve_skill_scope,
     skill_folder,
 )
@@ -191,11 +190,7 @@ async def resolve_invocable_skill(
     if selected is None and found is None:
         selected = next((entry for entry in owned if wanted in entry.aliases), None)
     if selected is not None:
-        skill = await read_user_skill_with_body(
-            user_id, selected.name, expert_id=expert_id, scope=scope
-        )
-        if skill is not None:
-            found = InvocableSkill(skill=skill, is_default=False)
+        found = InvocableSkill(skill=selected, is_default=False)
     if found is None or found.skill.extra.get("user-invocable") is False:
         return None
     if not found.is_default:

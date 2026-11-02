@@ -18,7 +18,6 @@ def command_load(mocker):
     manager = mocker.Mock()
     manager.read_file = AsyncMock(return_value=text.encode())
     mocker.patch.object(si, "resolve_skill_scope", AsyncMock(return_value=None))
-    mocker.patch.object(si, "read_user_skill_with_body", AsyncMock(return_value=parsed))
     mocker.patch.object(si, "list_user_skills", AsyncMock(return_value=[parsed]))
     mocker.patch.object(si, "is_skills_feature_enabled", AsyncMock(return_value=True))
     mocker.patch.object(
@@ -91,3 +90,46 @@ async def test_command_logs_unexpected_load_errors(command_load, mocker, caplog)
     assert any(
         record.levelno >= logging.ERROR and record.exc_info for record in caplog.records
     )
+
+
+@pytest.mark.parametrize("command", ["report", "team:report"])
+async def test_selected_skill_is_read_once_after_reconcile(
+    command_load, mocker, command
+):
+    _, _, loads, reconcile = command_load
+    events = []
+    manager = skills._get_user_skill_manager.return_value
+    content = manager.read_file.return_value
+
+    async def read(path):
+        events.append("read")
+        return content
+
+    manager.read_file.side_effect = read
+    reconcile.side_effect = lambda *args: events.append("reconcile")
+    loads.side_effect = lambda *args, **kwargs: events.append("record")
+    original_resolve = skills.resolve_loaded_skill_version
+
+    async def resolve(*args, **kwargs):
+        events.append("resolve")
+        return await original_resolve(*args, **kwargs)
+
+    mocker.patch.object(skills, "resolve_loaded_skill_version", side_effect=resolve)
+    mocker.patch.object(
+        si,
+        "list_user_skills",
+        AsyncMock(
+            return_value=[
+                skills.ParsedSkill(
+                    name="report",
+                    description="Report",
+                    body="",
+                    aliases=("team:report",),
+                )
+            ]
+        ),
+    )
+    result = await si.resolve_invocable_skill("user", None, command, "session")
+    assert result is not None and result.skill.body.strip() == "Write $ARGUMENTS"
+    assert events == ["reconcile", "read", "resolve", "record"]
+    manager.read_file.assert_awaited_once_with("/skills/report/SKILL.md")
