@@ -1,4 +1,4 @@
-import { APIError, getIp } from "better-auth/api";
+import { APIError, getIP } from "better-auth/api";
 import type { BetterAuthOptions } from "better-auth";
 import { type AuthEmailContext, claimIPEmailSlot } from "./auth-email-cooldown";
 
@@ -23,7 +23,7 @@ interface Args {
  */
 export async function capAuthEmailsPerIP({ path, headers, context }: Args) {
   if (!path || !IP_CAPPED_PATHS.has(path) || !headers) return;
-  const ip = getIp(headers, context.options);
+  const ip = getIP(headers, context.options);
   if (!ip) return;
   const claimed = await claimIPEmailSlot(context, ip).catch(
     (error: unknown) => {

@@ -428,6 +428,28 @@ def test_sentry_init_sends_no_trace_headers_to_third_parties(monkeypatch) -> Non
     assert calls[0]["trace_propagation_targets"] == []
 
 
+def test_a_large_frame_local_reaches_the_event_truncated(monkeypatch) -> None:
+    """A failed virus scan's traceback holds the upload in several frames, and the
+    SDK's full repr of each took seconds and a gigabyte for a 90 MB file."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    metrics.sentry_init()
+
+    def write_file(content: bytes) -> None:
+        raise RuntimeError("Virus scanning failed")
+
+    try:
+        write_file(b"x" * 5_000_000)
+    except RuntimeError:
+        event, _ = event_from_exception(
+            sys.exc_info(), client_options={**DEFAULT_OPTIONS, **calls[0]}
+        )
+
+    raising_frame = event["exception"]["values"][0]["stacktrace"]["frames"][-1]
+    assert len(raising_frame["vars"]["content"]) < 2_000
+
+
 def test_sentry_init_skipped_in_subprocess_spawned_by_pytest(monkeypatch) -> None:
     """A spawned service subprocess does not inherit sys.modules, but does
     inherit PYTEST_CURRENT_TEST from the environment."""

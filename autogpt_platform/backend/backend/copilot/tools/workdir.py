@@ -7,6 +7,7 @@ live here so every tool that puts a file where the model can reach it —
 materialisation — resolves and validates the destination the same way.
 """
 
+import functools
 import logging
 import os
 import shlex
@@ -16,6 +17,7 @@ from backend.copilot.context import (
     get_current_sandbox,
     resolve_sandbox_path,
 )
+from backend.copilot.host_fs import open_no_follow, unlink_no_follow
 from backend.copilot.tools.sandbox import make_session_path
 from backend.util.sandbox_login import run_internal
 
@@ -59,10 +61,9 @@ async def save_to_workdir(
     if isinstance(validated, ErrorResponse):
         return validated
     try:
-        dir_path = os.path.dirname(validated)
-        if dir_path:
-            os.makedirs(dir_path, exist_ok=True)
-        with open(validated, "wb") as f:
+        with open(
+            validated, "wb", opener=functools.partial(open_no_follow, make_parents=True)
+        ) as f:
             f.write(content)
     except Exception as exc:
         return ErrorResponse(
@@ -88,7 +89,7 @@ async def read_workdir_bytes(path: str, session_id: str) -> bytes | None:
         )
         if isinstance(validated, ErrorResponse):
             return None
-        with open(validated, "rb") as f:
+        with open(validated, "rb", opener=open_no_follow) as f:
             return f.read()
     except Exception:
         return None
@@ -121,7 +122,7 @@ async def remove_from_workdir(paths: list[str], session_id: str) -> list[str]:
     failed: list[str] = []
     for path in paths:
         try:
-            os.remove(path)
+            unlink_no_follow(_ephemeral_parent_or_raise(path, session_id))
         except FileNotFoundError:
             pass
         except Exception:
@@ -167,8 +168,17 @@ async def set_executable(
     failed: list[str] = []
     for path in paths:
         try:
-            mode = os.stat(path).st_mode
-            os.chmod(path, mode | 0o111 if executable else mode & ~0o111)
+            validated = validate_ephemeral_path(
+                path, param_name="path", session_id=session_id
+            )
+            if isinstance(validated, ErrorResponse):
+                raise PermissionError(validated.message)
+            fd = open_no_follow(validated, os.O_RDONLY)
+            try:
+                mode = os.fstat(fd).st_mode
+                os.fchmod(fd, mode | 0o111 if executable else mode & ~0o111)
+            finally:
+                os.close(fd)
         except Exception:
             logger.warning(
                 "[workdir] failed to set executable=%s on %s in session %s",
@@ -207,16 +217,34 @@ def validate_ephemeral_path(
     rather than the bare prefix, so ``/tmp/copilot-evil/...`` is rejected.
 
     Returns the resolved real path on success, or an ``ErrorResponse`` when the
-    path escapes the session directory.
+    path escapes the session directory.  Act on the result through ``host_fs``.
     """
-    session_dir = os.path.realpath(make_session_path(session_id)) + os.sep
     real = os.path.realpath(path)
-    if not real.startswith(session_dir):
+    if not _inside_session_dir(real, session_id):
         return ErrorResponse(
-            message=(
-                f"{param_name} must be within the ephemeral working "
-                f"directory ({make_session_path(session_id)})"
-            ),
-            session_id=session_id,
+            message=_outside_message(param_name, session_id), session_id=session_id
         )
     return real
+
+
+def _ephemeral_parent_or_raise(path: str, session_id: str) -> str:
+    """*path* with only its parent resolved, so a link it names is what goes."""
+    parent = os.path.realpath(os.path.dirname(path))
+    name = os.path.basename(path)
+    if name in ("", ".", "..") or not _inside_session_dir(
+        parent, session_id, or_equal=True
+    ):
+        raise PermissionError(_outside_message("path", session_id))
+    return os.path.join(parent, name)
+
+
+def _inside_session_dir(real: str, session_id: str, *, or_equal: bool = False) -> bool:
+    session_dir = os.path.realpath(make_session_path(session_id))
+    return real.startswith(session_dir + os.sep) or (or_equal and real == session_dir)
+
+
+def _outside_message(param_name: str, session_id: str) -> str:
+    return (
+        f"{param_name} must be within the ephemeral working "
+        f"directory ({make_session_path(session_id)})"
+    )

@@ -15,6 +15,8 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.blocks.helpers.host_bound_login import login_may_go_to
+from backend.data.credential_scope import ServerTarget
 from backend.data.model import (
     CredentialsField,
     CredentialsMetaInput,
@@ -29,6 +31,7 @@ TEST_CREDENTIALS = UserPasswordCredentials(
     provider="smtp",
     username=SecretStr("mock-smtp-username"),
     password=SecretStr("mock-smtp-password"),
+    scope="smtp://smtp.gmail.com",
     title="Mock SMTP credentials",
 )
 
@@ -131,7 +134,14 @@ class SendEmailBlock(Block):
         return "Email sent successfully"
 
     async def run(
-        self, input_data: Input, *, credentials: SMTPCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: SMTPCredentials,
+        user_id: str | None = None,
+        graph_id: str | None = None,
+        graph_version: int | None = None,
+        **kwargs,
     ) -> BlockOutput:
         try:
             # --- SSRF Protection ---
@@ -140,6 +150,22 @@ class SendEmailBlock(Block):
                 yield "error", (
                     f"SMTP port {smtp_port} is not allowed. "
                     f"Allowed ports: {sorted(self.ALLOWED_SMTP_PORTS)}"
+                )
+                return
+
+            # A saved login is only sent to the server its scope names.
+            if not await login_may_go_to(
+                credentials,
+                ServerTarget(
+                    scheme="smtp", host=input_data.config.smtp_server, port=smtp_port
+                ),
+                user_id=user_id,
+                graph_id=graph_id,
+                graph_version=graph_version,
+            ):
+                yield "error", _refusal(
+                    credentials,
+                    f"'{input_data.config.smtp_server}' on port {smtp_port}",
                 )
                 return
 
@@ -212,3 +238,18 @@ class SendEmailBlock(Block):
             yield "error", str(e)
         except Exception as e:
             raise e
+
+
+def _refusal(credentials: SMTPCredentials, server: str) -> str:
+    if credentials.scope is None:
+        why = (
+            "were saved without a server, so they can only be used in workflows "
+            "you saved yourself"
+        )
+    else:
+        why = f"are saved for a different server than this workflow's ({server})"
+    return (
+        f"The selected SMTP credentials {why}, so they were not sent. Each saved "
+        "login is only sent to the server it was saved for; check which server "
+        "your saved SMTP logins are for."
+    )

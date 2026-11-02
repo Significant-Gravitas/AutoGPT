@@ -45,7 +45,7 @@ class _ScriptedClient:
     async def __aexit__(self, *_: object) -> None:
         return None
 
-    async def query(self, prompt: str) -> None:
+    async def query(self, prompt: str, session_id: str = "default") -> None:
         return None
 
     async def receive_response(self) -> AsyncGenerator[Any, None]:

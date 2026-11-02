@@ -45,6 +45,7 @@ from backend.copilot.gate.policy import Effect
 from backend.copilot.gate.shell_write import workspace_write_target
 from backend.copilot.gate.subject import Subject
 from backend.copilot.integration_creds import (
+    expert_allowed_ids,
     get_github_user_git_identity,
     get_integration_env_vars,
     grant_to_box,
@@ -374,6 +375,10 @@ class BashExecTool(BaseTool):
         secret_values: list[str] = []
         if user_id is not None:
             selected = await selected_credentials(session_id)
+            # An expert's box gets only what the expert was granted.
+            allowed_ids = await expert_allowed_ids(
+                user_id, owner.id if owner is not None and owner.is_expert else None
+            )
             # The run's ceiling on connected accounts.  Without the proxy,
             # leaving a provider's token out is what keeps it from the box.
             # Behind it, a provider outside the ceiling gets no grant (and so
@@ -382,7 +387,11 @@ class BashExecTool(BaseTool):
             providers = allowed_providers(get_current_permissions())
             if proxy_address() is not None:
                 grants = await placeholder_grants(
-                    user_id, required_scopes, selected, providers
+                    user_id,
+                    required_scopes,
+                    selected,
+                    providers,
+                    allowed_ids=allowed_ids,
                 )
                 try:
                     # Before the command runs: its placeholders resolve only
@@ -399,7 +408,11 @@ class BashExecTool(BaseTool):
                 envs.update(placeholder_env(grants))
             else:
                 integration_env = await get_integration_env_vars(
-                    user_id, required_scopes, selected, providers
+                    user_id,
+                    required_scopes,
+                    selected,
+                    providers,
+                    allowed_ids=allowed_ids,
                 )
                 secret_values = [v for v in integration_env.values() if v]
                 envs.update(integration_env)
@@ -409,7 +422,7 @@ class BashExecTool(BaseTool):
             # a run whose ceiling leaves GitHub out, which may not use it.
             if providers is None or "github" in providers:
                 git_identity = await get_github_user_git_identity(
-                    user_id, selected.get("github")
+                    user_id, selected.get("github"), allowed_ids=allowed_ids
                 )
                 if git_identity:
                     envs.update(git_identity)
