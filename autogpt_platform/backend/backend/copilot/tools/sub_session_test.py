@@ -167,9 +167,11 @@ def mock_model(monkeypatch):
         origin: str = "interactive",
         delegated_by_expert_id: str | None = None,
         delegated_by_session_id: str | None = None,
+        inherited_autopilot_mode: str | None = None,
     ):
         sess = MagicMock()
         sess.session_id = f"inner-{len(created) + 1}"
+        sess.inherited_autopilot_mode = inherited_autopilot_mode
         sess.metadata.origin = origin
         sess.metadata.delegated_by_expert_id = delegated_by_expert_id
         sess.metadata.delegated_by_session_id = delegated_by_session_id
@@ -303,6 +305,35 @@ class TestRunSubSession:
         )
         assert mock_model["created"], "create_chat_session was never awaited"
         assert mock_model["created"][0].metadata.origin == "automation"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "parent_mode, source_platform, expected",
+        [
+            ("ask_first", None, "ask_first"),
+            ("unsupervised", None, "unsupervised"),
+            (None, None, "auto"),
+            # A linked chat's gate runs in auto, whatever it stored.
+            ("ask_first", "telegram", "auto"),
+        ],
+    )
+    async def test_fresh_sub_starts_in_the_mode_its_parent_s_gate_enforces(
+        self,
+        parent_mode,
+        source_platform,
+        expected,
+        mock_queue,
+        mock_waiter,
+        mock_model,
+    ):
+        """A sub starts in the mode its parent's gate enforces."""
+        parent = _session("alice")
+        parent.metadata.autopilot_mode = parent_mode
+        parent.metadata.source_platform = source_platform
+        await RunSubSessionTool()._execute(
+            user_id="alice", session=parent, prompt="hi", wait_for_result=0
+        )
+        assert mock_model["created"][0].inherited_autopilot_mode == expected
 
     @pytest.mark.asyncio
     async def test_fresh_sub_inherits_expert_scope(

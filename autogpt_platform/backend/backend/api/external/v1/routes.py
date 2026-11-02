@@ -1,6 +1,5 @@
 import logging
 import urllib.parse
-from collections import defaultdict
 from typing import Annotated, Any, Optional, Sequence
 
 from fastapi import APIRouter, Body, HTTPException, Security, status
@@ -13,6 +12,8 @@ import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
 import backend.blocks
 from backend.api.external.middleware import require_auth, require_permission
+from backend.blocks._base import AnyBlockSchema
+from backend.copilot.capabilities.block_meta import is_graph_only_block
 from backend.copilot.rate_limit import UserPaywalledError, enforce_payment_paywall
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
@@ -21,6 +22,14 @@ from backend.data.auth.api_key import APIKeyInfo
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.execution import ExecutionContext, ExecutionTrigger
+from backend.executor.direct_block_execution import (
+    DirectBlockExecutionBusyError,
+    DirectBlockExecutionLimitError,
+    DirectBlockExecutionSlot,
+    DirectBlockExecutionTimeoutError,
+    claim_direct_block_execution_slot,
+    run_block_off_loop,
+)
 from backend.executor.utils import (
     add_graph_execution,
     charge_for_direct_block_execution,
@@ -105,11 +114,40 @@ async def execute_graph_block(
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
     if obj.disabled:
         raise HTTPException(status_code=403, detail=f"Block #{block_id} is disabled.")
+    # The blocks CoPilot won't run standalone need a workflow around them here too;
+    # one shared predicate keeps the two boundaries from drifting apart.
+    if is_graph_only_block(obj):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Block #{block_id} can only run inside a workflow.",
+        )
 
     user = await user_db.get_user_by_id(auth.user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 
+    try:
+        slot = claim_direct_block_execution_slot(auth.user_id)
+    except DirectBlockExecutionBusyError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
+        ) from e
+    except DirectBlockExecutionLimitError as e:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e)
+        ) from e
+
+    with slot:
+        return await _run_direct_block(obj, data, auth, user.timezone, slot)
+
+
+async def _run_direct_block(
+    obj: AnyBlockSchema,
+    data: BlockInput,
+    auth: APIAuthorizationInfo,
+    user_timezone: str,
+    slot: DirectBlockExecutionSlot,
+) -> CompletedBlockOutput:
     try:
         await charge_for_direct_block_execution(
             user_id=auth.user_id, block=obj, input_data=data, source="external"
@@ -120,17 +158,23 @@ async def execute_graph_block(
         ) from e
 
     # Direct block execution has no graph; build a minimal ExecutionContext
-    # carrying the caller's identity + timezone so blocks that depend on
-    # those (e.g. time blocks) get correct data.
+    # carrying the caller's identity, the key's org/team scope and the
+    # timezone, so blocks that depend on those get correct data.
     execution_context = ExecutionContext(
         user_id=auth.user_id,
-        user_timezone=get_user_timezone_or_utc(user.timezone),
+        user_timezone=get_user_timezone_or_utc(user_timezone),
+        organization_id=auth.organization_id,
+        team_id=auth.team_id_restriction,
     )
 
-    output = defaultdict(list)
-    async for name, data in obj.execute(data, execution_context=execution_context):
-        output[name].append(data)
-    return output
+    try:
+        return await run_block_off_loop(
+            obj.execute(data, execution_context=execution_context), slot
+        )
+    except DirectBlockExecutionTimeoutError as e:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(e)
+        ) from e
 
 
 @v1_router.post(

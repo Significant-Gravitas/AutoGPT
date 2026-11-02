@@ -29,7 +29,8 @@ import type {
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import { useReadEveryRender } from "@/hooks/useReadEveryRender";
 import type { LinkSafetyModalProps } from "streamdown";
-import { Streamdown } from "streamdown";
+import { defaultRemarkPlugins, Streamdown } from "streamdown";
+import { remarkAppLinks } from "./app-links";
 import {
   createComponentsMerger,
   type StreamdownComponents,
@@ -415,6 +416,10 @@ function renderExternalLinkModal(modalProps: LinkSafetyModalProps) {
 
 const STREAMDOWN_PLUGINS = { code, mermaid, math, cjk };
 
+// Streamdown memoises every block on the identity of this list, so it is built
+// once here.
+const REMARK_PLUGINS = [...Object.values(defaultRemarkPlugins), remarkAppLinks];
+
 const LINK_SAFETY = {
   enabled: true,
   onLinkCheck: isSameOriginLink,
@@ -475,6 +480,7 @@ export const MessageResponse = memo(function MessageResponse({
       )}
       components={mergedComponents}
       plugins={STREAMDOWN_PLUGINS}
+      remarkPlugins={REMARK_PLUGINS}
       linkSafety={LINK_SAFETY}
       {...props}
     >
