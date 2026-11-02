@@ -269,7 +269,10 @@ class TestEnsureTemplate:
         async def state(*_args):
             if asyncio.get_running_loop() is loops["a"]:
                 a_checking.set()
-                b_done.wait(timeout=10)
+                # A timeout here means B never raced _inflight while A's
+                # check was still open, so returning READY regardless would
+                # let this test pass on the old template-only key too.
+                assert b_done.wait(timeout=10), "b never finished"
             return TemplateState.READY
 
         def turn(name: str) -> None:
@@ -292,7 +295,9 @@ class TestEnsureTemplate:
             b.start()
             b.join(timeout=10)
             a.join(timeout=10)
-        assert not a.is_alive() and not b.is_alive()
+            # Both must be finished before the patch comes off, or a thread
+            # still running would fall through to the real, unmocked check.
+            assert not a.is_alive() and not b.is_alive()
         assert errors == {"a": None, "b": None}
         assert e2b_template._scoped_key(DESKTOP_IMAGE, _KEY) in e2b_template._ready
         assert not e2b_template._inflight
