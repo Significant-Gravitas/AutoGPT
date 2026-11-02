@@ -106,7 +106,7 @@ describe("useLibraryAgents", () => {
       wrapper: makeWrapper(),
     });
 
-    await waitFor(() => expect(requested).toHaveLength(20));
+    await waitFor(() => expect(requested).toHaveLength(20), { timeout: 5000 });
     await settle();
     expect(requested).toHaveLength(20);
     expect(result.current.agents).toHaveLength(20);

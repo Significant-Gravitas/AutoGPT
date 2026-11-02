@@ -41,12 +41,8 @@ export function useLibraryAgents() {
     hasNextPage && loadedPages < MAX_PAGES && !isFetchNextPageError;
 
   useEffect(() => {
-    // isFetching (not only isFetchingNextPage) so this never races the first
-    // load or a background refetch. loadedPages is a dependency so every page
-    // that lands requests the next one, even when React batches away the
-    // in-between isFetching render. Several components mount this hook;
-    // cancelRefetch: false makes a second caller join the in-flight request
-    // instead of cancelling and re-sending it.
+    // loadedPages keeps paging when React batches away the isFetching render;
+    // cancelRefetch: false lets a second mounted caller join the request.
     if (morePagesPending && !isFetching) {
       void fetchNextPage({ cancelRefetch: false });
     }
@@ -59,11 +55,7 @@ export function useLibraryAgents() {
     [agentsQueryData],
   );
 
-  // Use agents.length as dependency to avoid recreating map unnecessarily
-  const agentInfoMap = useMemo(
-    () => buildAgentInfoMap(agents),
-    [agents.length, agents.map((a) => a.id).join(",")],
-  );
+  const agentInfoMap = useMemo(() => buildAgentInfoMap(agents), [agents]);
 
   return { agents, agentInfoMap, isRefreshing, lastUpdatedAt: undefined };
 }

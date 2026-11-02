@@ -47,11 +47,13 @@ export function useAgentActivityDropdown() {
   );
 
   // Process initial execution state when data loads
-  // Use a ref to track if we've already processed to avoid infinite loops
+  // Use a ref to track if we've already processed to avoid infinite loops.
+  // The library loads page by page, so the key includes the map size: each
+  // page that lands re-labels runs of workflows that were not loaded yet.
   const processedExecutionsRef = useRef<string | null>(null);
   useEffect(() => {
     const executionKey = executions
-      ? `${executions.length}-${executionsSuccess}`
+      ? `${executions.length}-${executionsSuccess}-${agentInfoMap.size}`
       : null;
 
     if (
