@@ -1133,7 +1133,7 @@ class AgentValidator:
             logger.info("Agent validation successful.")
             return True, None
         else:
-            error_message = "Agent validation failed with the following errors:\n\n"
+            error_message = "Workflow validation failed with the following errors:\n\n"
             for i, error in enumerate(self.errors, 1):
                 error_message += f"{i}. {error}\n"
 

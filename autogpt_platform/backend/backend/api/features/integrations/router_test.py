@@ -1,6 +1,7 @@
 """Tests for credentials API security: no secret leakage, SDK defaults filtered."""
 
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fastapi
@@ -8,13 +9,17 @@ import fastapi.testclient
 import pytest
 from pydantic import SecretStr
 
-from backend.api.features.integrations.router import router
+from backend.api.features.integrations.router import _get_provider_oauth_handler, router
 from backend.data.integrations import Webhook
 from backend.data.model import (
     APIKeyCredentials,
     HostScopedCredentials,
     OAuth2Credentials,
     UserPasswordCredentials,
+)
+from backend.integrations.managed_providers.ayrshare import (
+    AyrshareNotConfiguredError,
+    AyrshareProvisioningError,
 )
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
@@ -315,6 +320,73 @@ class TestCreateCredentialNoSecretInResponse:
         mock_mgr.create.assert_not_called()
 
 
+class TestCreateScopedUserPasswordCredential:
+    """smtp and database logins are created with a valid scope for their
+    provider; other logins take none."""
+
+    @staticmethod
+    def _create(provider: str, **extra: str):
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.create = AsyncMock()
+            resp = client.post(
+                f"/{provider}/credentials",
+                json={
+                    "provider": provider,
+                    "type": "user_password",
+                    "title": "My login",
+                    "username": "user",
+                    "password": "pass",
+                    **extra,
+                },
+            )
+        return resp, mock_mgr.create
+
+    @pytest.mark.parametrize(
+        "provider,extra",
+        [
+            ("smtp", {}),
+            ("database", {}),
+            ("smtp", {"scope": ""}),
+            ("smtp", {"scope": "smtp.example.com:587"}),
+            ("database", {"scope": "smtp://db.example.com"}),
+            ("smtp", {"scope": "smtp://*.example.com"}),
+            ("webshare_proxy", {"scope": "smtp://smtp.example.com"}),
+        ],
+    )
+    def test_missing_empty_or_malformed_scope_rejected(
+        self, provider: str, extra: dict[str, str]
+    ):
+        resp, create = self._create(provider, **extra)
+        assert resp.status_code == 400
+        create.assert_not_called()
+
+    def test_out_of_range_port_refused_in_terms_of_the_server(self):
+        resp, create = self._create("smtp", scope="smtp://smtp.example.com:99999")
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == (
+            "Enter a valid server, like smtp.example.com or smtp.example.com:587 "
+            "(port 1-65535)"
+        )
+        create.assert_not_called()
+
+    def test_login_with_scope_stored_and_returned(self):
+        resp, create = self._create("database", scope="mysql://db.example.com:3306")
+
+        assert resp.status_code == 201
+        assert resp.json()["scope"] == "mysql://db.example.com:3306"
+        assert resp.json()["host"] is None
+        assert create.call_args.args[1].scope == "mysql://db.example.com:3306"
+
+    def test_fixed_host_provider_login_needs_no_scope(self):
+        resp, _ = self._create("webshare_proxy")
+
+        assert resp.status_code == 201
+        assert resp.json()["scope"] is None
+
+
 class TestManagedCredentials:
     """AutoGPT-managed credentials cannot be deleted by users."""
 
@@ -361,6 +433,35 @@ class TestManagedCredentials:
         regular_cred = next(c for c in data if c["id"] == "regular-1")
         assert managed_cred["is_managed"] is True
         assert regular_cred["is_managed"] is False
+
+    def test_list_credentials_carries_the_service_identity(self):
+        from backend.integrations.mcp_catalog import get_mcp_catalog
+
+        linear = next(e for e in get_mcp_catalog() if e.name == "mcp_linear")
+        api_key = APIKeyCredentials(
+            id="key-1", provider="openai", title="My Key", api_key=SecretStr("sk")
+        )
+        mcp = OAuth2Credentials(
+            id="mcp-1",
+            provider="mcp",
+            title="MCP: mcp.linear.app",
+            access_token=SecretStr("t"),
+            scopes=[],
+            metadata={"mcp_server_url": linear.mcp_server.server_url},
+        )
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.store.get_all_creds = AsyncMock(return_value=[api_key, mcp])
+            resp = client.get("/credentials")
+
+        assert resp.status_code == 200
+        by_id = {c["id"]: c for c in resp.json()}
+        assert by_id["key-1"]["service"] == "openai"
+        assert by_id["key-1"]["service_icon"] == "openai"
+        assert by_id["mcp-1"]["service"] == "linear"
+        assert by_id["mcp-1"]["service_name"] == "Linear"
+        assert by_id["mcp-1"]["service_icon"] == linear.mcp_server.icon_id
 
 
 # ---------------------------------------------------------------------------
@@ -856,6 +957,65 @@ class TestWebhookPingOwnership:
         webhook_manager.trigger_ping.assert_awaited_once()
 
 
+class TestOAuthHandlerResolutionForDeviceProviders:
+    """A device-code provider has no OAuth handler, but it is not unknown.
+
+    `_get_provider_oauth_handler` must point the caller at the device-auth
+    endpoint (400) rather than reporting "does not support OAuth" (404).
+    """
+
+    # Synthetic keys so both patches are load-bearing. `HANDLERS_BY_NAME` is an
+    # `SDKAwareHandlersDict` whose `__contains__` reads the module-level
+    # `_handlers_dict` and the SDK registry, never its own storage, so
+    # `patch.dict` on the facade is inert: patch the backing dict instead.
+    DEVICE_ONLY_PROVIDER = "test_device_only_provider"
+    UNREGISTERED_PROVIDER = "test_unregistered_provider"
+
+    def test_a_device_code_provider_is_pointed_at_the_device_endpoint(self):
+        with (
+            patch.dict(
+                "backend.integrations.oauth._handlers_dict",
+                {},
+                clear=True,
+            ),
+            patch.dict(
+                "backend.api.features.integrations.router.DEVICE_HANDLERS_BY_NAME",
+                {self.DEVICE_ONLY_PROVIDER: MagicMock()},
+                clear=True,
+            ),
+            pytest.raises(fastapi.HTTPException) as exc,
+        ):
+            _get_provider_oauth_handler(MagicMock(), self.DEVICE_ONLY_PROVIDER)
+
+        assert exc.value.status_code == 400
+        assert "device code" in exc.value.detail
+        # The detail reaches the user verbatim, so the path must be the mounted
+        # one: the router lives under /api/integrations.
+        assert (
+            f"/api/integrations/{self.DEVICE_ONLY_PROVIDER}/device-auth/initiate"
+            in exc.value.detail
+        )
+
+    def test_an_unknown_provider_still_reports_no_oauth_support(self):
+        with (
+            patch.dict(
+                "backend.integrations.oauth._handlers_dict",
+                {},
+                clear=True,
+            ),
+            patch.dict(
+                "backend.api.features.integrations.router.DEVICE_HANDLERS_BY_NAME",
+                {},
+                clear=True,
+            ),
+            pytest.raises(fastapi.HTTPException) as exc,
+        ):
+            _get_provider_oauth_handler(MagicMock(), self.UNREGISTERED_PROVIDER)
+
+        assert exc.value.status_code == 404
+        assert "does not support OAuth" in exc.value.detail
+
+
 class TestDeviceAuthEndpoints:
     """POST /{provider}/device-auth/{initiate,poll}.
 
@@ -964,6 +1124,49 @@ class TestDeviceAuthEndpoints:
         assert kwargs["expires_in_seconds"] > 600
         assert kwargs["state_metadata"]["device_code"] == "dev-code-secret"
 
+    def test_initiate_binds_the_code_to_the_connection_it_upgrades(self):
+        """A code that adds permissions to a connection must come back to it.
+
+        Without the binding, whoever signs in on the code's page becomes a
+        separate connection, which the panel then switches to.
+        """
+        handler = MagicMock()
+        handler.handle_default_scopes.side_effect = lambda scopes: scopes
+        handler.initiate_device_auth = AsyncMock(return_value=self._initiation())
+        mock_mgr = MagicMock()
+        mock_mgr.store.store_state_token = AsyncMock(
+            return_value=("state-token", "verifier")
+        )
+        upgrade = AsyncMock(return_value=["userinfo:read", "already:granted"])
+
+        p1, p2, p3, p4 = self._patched(handler, mock_mgr)
+        with (
+            p1,
+            p2,
+            p3,
+            p4,
+            patch(
+                "backend.api.features.integrations.router._prepare_scope_upgrade",
+                upgrade,
+            ),
+        ):
+            response = client.post(
+                f"/{self.PROVIDER}/device-auth/initiate"
+                "?scopes=userinfo:read&credential_id=cred-1"
+            )
+
+        assert response.status_code == 200
+        assert upgrade.await_args.args[1:] == (
+            ProviderName(self.PROVIDER),
+            "cred-1",
+            ["userinfo:read"],
+        )
+        handler.initiate_device_auth.assert_awaited_once_with(
+            ["userinfo:read", "already:granted"]
+        )
+        kwargs = mock_mgr.store.store_state_token.await_args.kwargs
+        assert kwargs["credential_id"] == "cred-1"
+
     def test_initiate_does_not_leak_upstream_error_text(self):
         handler = MagicMock()
         handler.handle_default_scopes.return_value = []
@@ -1032,7 +1235,9 @@ class TestDeviceAuthEndpoints:
 
         mock_mgr.store.consume_state_token.assert_not_awaited()
 
-    def test_poll_race_loser_does_not_create_a_second_credential(self):
+    def test_poll_race_loser_does_not_create_a_second_credential(
+        self, resume_after_reconnect: MagicMock
+    ):
         """Two polls can both see an approval; only the one that consumes wins.
 
         `consume_state_token` returning None means another poll already handled
@@ -1091,6 +1296,7 @@ class TestDeviceAuthEndpoints:
         assert response.json()["status"] == "approved"
         assert response.json()["credentials"] is None
         mock_merge.assert_not_awaited()
+        resume_after_reconnect.assert_not_called()
 
     def test_poll_does_not_leak_upstream_error_text(self):
         handler = MagicMock()
@@ -1111,7 +1317,9 @@ class TestDeviceAuthEndpoints:
         assert response.status_code == 502
         assert "internal-host-1" not in response.text
 
-    def test_poll_stores_the_credential_on_the_winning_approval(self):
+    def test_poll_stores_the_credential_on_the_winning_approval(
+        self, resume_after_reconnect: MagicMock
+    ):
         """The primary success path: consume wins, credential is stored.
 
         Every other approved-status test here makes `consume_state_token`
@@ -1171,6 +1379,8 @@ class TestDeviceAuthEndpoints:
         assert stored.scopes == ["userinfo:read", "payment_methods.agentic"]
         # And no secret rides along in the response.
         assert "do-not-leak" not in response.text
+        # Only the winner resumes the scheduled chats this connect fixes.
+        resume_after_reconnect.assert_called_once_with(JWT_USER_ID, "stripe_link")
 
     def test_poll_maps_a_missing_user_row_to_an_invalid_token(self):
         """A caller with no backend User row raises a Prisma RecordNotFound in
@@ -1431,3 +1641,38 @@ class TestDeviceAuthEndpoints:
         )
         # And never the "newest for this provider" shortcut.
         mock_mgr.store.get_creds_by_provider.assert_not_called()
+
+
+class TestAyrshareSSOURL:
+    """The builder's connect button, now on the shared provisioning path."""
+
+    def test_returns_the_link(self):
+        link = MagicMock(url="https://sso", expires_at=datetime.now(timezone.utc))
+        with patch(
+            "backend.api.features.integrations.router.get_ayrshare_sso_link",
+            AsyncMock(return_value=link),
+        ) as get_link:
+            response = client.get("/ayrshare/sso_url")
+
+        assert response.status_code == 200
+        assert response.json()["sso_url"] == "https://sso"
+        assert get_link.await_args.args[0] == JWT_USER_ID
+
+    def test_not_configured_is_500(self):
+        with patch(
+            "backend.api.features.integrations.router.get_ayrshare_sso_link",
+            AsyncMock(side_effect=AyrshareNotConfiguredError("not configured")),
+        ):
+            response = client.get("/ayrshare/sso_url")
+
+        assert response.status_code == 500
+
+    def test_failed_provisioning_is_502(self):
+        with patch(
+            "backend.api.features.integrations.router.get_ayrshare_sso_link",
+            AsyncMock(side_effect=AyrshareProvisioningError("Failed to generate JWT")),
+        ):
+            response = client.get("/ayrshare/sso_url")
+
+        assert response.status_code == 502
+        assert response.json()["detail"] == "Failed to generate JWT"

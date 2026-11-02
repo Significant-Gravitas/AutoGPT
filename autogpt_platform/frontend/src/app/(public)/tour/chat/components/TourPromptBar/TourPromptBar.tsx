@@ -6,6 +6,7 @@ import { useRef } from "react";
 import { useTextReveal } from "../../useTextReveal";
 import { ArrowUp02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { isKey } from "@/lib/keyboard";
 
 interface Props {
   prompt: string | null;
@@ -33,7 +34,7 @@ export function TourPromptBar({ prompt, isStreaming, onSend }: Props) {
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
-    if (event.key === "Enter" || event.key === " ") {
+    if (isKey(event, "Enter", " ")) {
       event.preventDefault();
       send();
     }
@@ -46,25 +47,26 @@ export function TourPromptBar({ prompt, isStreaming, onSend }: Props) {
       ref={ref}
       role="button"
       tabIndex={isDisabled ? -1 : 0}
-      aria-label={prompt ? `Send: ${prompt}` : "Autopilot is working"}
+      aria-label={prompt ? `Send: ${prompt}` : "Otto is working"}
       aria-disabled={isDisabled}
       onKeyDown={handleKeyDown}
       onClick={send}
       className={cn(
-        "flex cursor-pointer items-center gap-3 rounded-xl border border-zinc-200 bg-white px-5 py-3.5 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(99,102,241,0.4)] outline-none transition-shadow focus-visible:border-zinc-300 focus-visible:shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_44px_-2px_rgba(99,102,241,0.55)]",
+        // oxlint-disable-next-line design-system/no-arbitrary-values -- the prompt bar's indigo glow, no shadow token
+        "flex cursor-pointer items-center gap-3 rounded-xl border border-border-base bg-surface px-5 py-3.5 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(99,102,241,0.4)] transition-shadow outline-none focus-visible:border-border-strong focus-visible:shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_44px_-2px_rgba(99,102,241,0.55)]",
         isDisabled && "cursor-default opacity-60",
       )}
     >
-      <span className="min-h-6 flex-1 truncate text-base text-zinc-700">
+      <span className="min-h-6 flex-1 truncate text-base text-foreground-body">
         {visibleText}
         {prompt && !isTyped && (
-          <span className="ml-0.5 inline-block h-4 w-2 animate-pulse rounded-sm bg-zinc-300 align-middle" />
+          <span className="ml-0.5 inline-block h-4 w-2 animate-pulse rounded-sm bg-surface-active align-middle" />
         )}
       </span>
       {!isDisabled && isTyped && (
-        <span className="hidden shrink-0 items-center gap-1 text-xs text-zinc-400 sm:flex">
+        <span className="hidden shrink-0 items-center gap-1 text-xs text-foreground-subtle sm:flex">
           Press
-          <kbd className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 font-sans text-[0.7rem] text-zinc-500">
+          <kbd className="rounded border border-border-base bg-surface-muted px-1.5 py-0.5 font-sans text-caption-sm text-foreground-tertiary">
             Enter
           </kbd>
         </span>
@@ -72,8 +74,8 @@ export function TourPromptBar({ prompt, isStreaming, onSend }: Props) {
       <span
         aria-hidden="true"
         className={cn(
-          "flex size-10 shrink-0 items-center justify-center rounded-full text-white transition-colors",
-          isDisabled ? "bg-zinc-200" : "bg-zinc-800",
+          "flex size-10 shrink-0 items-center justify-center rounded-full text-action-foreground transition-colors",
+          isDisabled ? "bg-surface-active" : "bg-action",
         )}
       >
         <Icon icon={ArrowUp02Icon} className="size-4" />

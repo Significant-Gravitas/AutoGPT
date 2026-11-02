@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
-import { http } from "msw";
+import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resetCopilotChatRegistry } from "@/app/(platform)/copilot/copilotChatRegistry";
@@ -53,18 +53,15 @@ vi.mock("@/app/(platform)/copilot/helpers", async (importActual) => {
 
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
-    GRAPHITI_MEMORY: "graphiti-memory",
-    HIRE_EXPERTS: "hire-experts",
-    ARTIFACTS: "artifacts",
+    DREAM_SKILL_LEARNING_ENABLED: "dream-skill-learning-enabled",
     CHAT_MODE_OPTION: "chat-mode-option",
     ENABLE_PLATFORM_PAYMENT: "enable-platform-payment",
   },
-  useGetFlag: (flag: string) =>
-    flag === "graphiti-memory" || flag === "hire-experts",
-}));
-
-vi.mock("@/services/feature-flags/with-feature-flag", () => ({
-  withFeatureFlag: (Component: React.ComponentType) => Component,
+  useGetFlag: () => false,
+  useFlagStatus: () => ({
+    enabled: false,
+    answered: true,
+  }),
 }));
 
 import SettingsMemoryPage from "../page";
@@ -108,10 +105,11 @@ function mockHappyPath() {
 
 beforeEach(() => {
   resetCopilotChatRegistry();
+  window.history.replaceState({}, "", "/settings/memory");
 });
 
 describe("Settings memory page", () => {
-  it("renders recent memories for the AutoPilot scope", async () => {
+  it("renders recent memories for the Otto scope", async () => {
     mockHappyPath();
     render(<SettingsMemoryPage />);
 
@@ -185,7 +183,7 @@ describe("Settings memory page", () => {
     expect(confirm.hasAttribute("disabled")).toBe(true);
     expect(screen.getByText(/214 memories/)).toBeDefined();
 
-    await user.type(screen.getByPlaceholderText("AutoPilot"), "AutoPilot");
+    await user.type(screen.getByPlaceholderText("Otto"), "Otto");
     await waitFor(() => expect(confirm.hasAttribute("disabled")).toBe(false));
 
     await user.click(confirm);
@@ -254,6 +252,84 @@ describe("Settings memory page", () => {
     expect(screen.getByText(/Erase Maria's memory/)).toBeDefined();
   });
 
+  it("opens on an expert's scope when linked with ?expert=", async () => {
+    const maria = {
+      ...getListExpertsResponseMock200()[0],
+      id: "expert-maria",
+      name: "Maria",
+      role: "Growth Marketer",
+      avatar_url: null,
+      is_archived: false,
+    };
+    const expertFactRequests: string[] = [];
+    server.use(
+      getListExpertsMockHandler200([maria]),
+      getListMyMemoryFactsMockHandler200(FACTS),
+      getGetMyExpertMemoryOverviewMockHandler200({
+        expert_id: "expert-maria",
+        facts: 12,
+        entities: 8,
+        episodes: 3,
+      }),
+      getListMyExpertMemoryFactsMockHandler200((info) => {
+        expertFactRequests.push(String(info.params.expertId));
+        return {
+          expert_id: "expert-maria",
+          items: [
+            {
+              uuid: "edge-m1",
+              fact: "Q4 campaign brief is due Friday",
+              name: "due",
+              source: "Campaign",
+              target: "Friday",
+              created_at: "2026-08-17T00:00:00Z",
+            },
+          ],
+        };
+      }),
+    );
+    window.history.replaceState({}, "", "/settings/memory?expert=expert-maria");
+
+    render(<SettingsMemoryPage />);
+
+    expect(
+      await screen.findByText("Q4 campaign brief is due Friday"),
+    ).toBeDefined();
+    expect(expertFactRequests).toEqual(["expert-maria"]);
+    expect(screen.getByText(/Erase Maria's memory/)).toBeDefined();
+  });
+
+  it.each([
+    ["an expert the caller no longer has", "expert-gone"],
+    ["an empty value", ""],
+  ])(
+    "falls back to AutoPilot when ?expert= is %s",
+    async (_case, expertParam) => {
+      mockHappyPath();
+      server.use(
+        http.get(
+          /\/api\/proxy\/api\/memory\/experts\/expert-gone\/(?:facts|overview)/,
+          () =>
+            HttpResponse.json({ detail: "Expert not found" }, { status: 404 }),
+        ),
+      );
+      window.history.replaceState(
+        {},
+        "",
+        `/settings/memory?expert=${expertParam}`,
+      );
+
+      render(<SettingsMemoryPage />);
+
+      expect(
+        await screen.findByText("Runs a DTC candle brand called Emberline"),
+      ).toBeDefined();
+      expect(
+        screen.getByRole("button", { name: "View my summary" }),
+      ).toBeDefined();
+    },
+  );
+
   it("opens the summary chat in-pane and auto-sends the seeded prompt", async () => {
     mockHappyPath();
     const createBodies: unknown[] = [];
@@ -287,7 +363,7 @@ describe("Settings memory page", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "View my summary" }));
 
-    expect(await screen.findByText("AutoPilot's memory")).toBeDefined();
+    expect(await screen.findByText("Otto's memory")).toBeDefined();
     await waitFor(() => expect(createBodies.length).toBe(1));
     await waitFor(() => expect(streamBodies.length).toBe(1));
     expect(streamBodies[0]).toContain(

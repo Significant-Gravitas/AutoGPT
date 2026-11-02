@@ -42,10 +42,10 @@ export function ExpertSummaryCard({
     >
       <section
         aria-label={`${expert.name} activity`}
-        className="flex flex-col gap-2 rounded-xl border border-zinc-200 bg-white p-4"
+        className="flex flex-col gap-2 rounded-2xl bg-surface p-4 smooth-shadow-ring-sm"
       >
         <div className="flex items-center justify-between gap-2">
-          <Text variant="large-medium" className="text-base text-zinc-700">
+          <Text variant="body-md-medium" tone="primary">
             Activity
           </Text>
           {summary ? <ActivityStatus isActive={summary.isActive} /> : null}
@@ -53,7 +53,7 @@ export function ExpertSummaryCard({
         {isActivityLoading ? (
           <Skeleton className="h-[5.25rem] w-full rounded-lg" />
         ) : isActivityError ? (
-          <Text variant="small" className="text-zinc-500">
+          <Text variant="small" tone="muted">
             Activity unavailable
           </Text>
         ) : visibleActivityDays && summary ? (
@@ -62,7 +62,7 @@ export function ExpertSummaryCard({
               days={visibleActivityDays}
               color={expert.color}
             />
-            <Text variant="small" className="text-zinc-500">
+            <Text variant="small" tone="muted">
               {summary.totalsLabel} · {summary.rangeLabel}
             </Text>
           </>
@@ -71,26 +71,24 @@ export function ExpertSummaryCard({
 
       <section
         aria-label={`${expert.name} activity streak`}
-        className="flex flex-col rounded-xl border border-zinc-200 bg-white p-4"
+        className="flex flex-col rounded-2xl bg-surface p-4 smooth-shadow-ring-sm"
       >
         {isActivityLoading ? (
           <Skeleton className="h-16 w-full rounded-lg" />
         ) : isActivityError ? (
-          <Text variant="small" className="text-zinc-500">
+          <Text variant="small" tone="muted">
             Streak unavailable
           </Text>
         ) : (
           <div className="flex items-center justify-center gap-3 text-center">
-            <Icon
-              icon={FireIcon}
-              size={40}
-              className="shrink-0 text-zinc-400"
-            />
-            <div className="min-w-0">
-              <Text variant="h4" className="tabular-nums text-zinc-900">
+            <span className="inline-flex shrink-0 text-foreground-subtle">
+              <Icon icon={FireIcon} size={40} />
+            </span>
+            <div className="min-w-0 tabular-nums">
+              <Text variant="h4" tone="primary">
                 {streak ?? 0}
               </Text>
-              <Text variant="small" className="text-sm text-zinc-500">
+              <Text variant="body-md" tone="muted">
                 day streak
               </Text>
             </div>
@@ -112,10 +110,10 @@ function ActivityStatus({ isActive }: ActivityStatusProps) {
         aria-hidden
         className={cn(
           "size-2 rounded-full",
-          isActive ? "bg-emerald-500" : "bg-zinc-300",
+          isActive ? "bg-success" : "bg-border-strong",
         )}
       />
-      <Text variant="small" className="text-zinc-500">
+      <Text variant="small" tone="muted">
         {isActive ? "Active this week" : "Quiet lately"}
       </Text>
     </span>

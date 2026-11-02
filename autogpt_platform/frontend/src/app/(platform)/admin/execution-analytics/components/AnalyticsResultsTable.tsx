@@ -23,7 +23,7 @@ export function AnalyticsResultsTable({ results }: Props) {
 
   const createCopyableId = (value: string, label: string) => (
     <div
-      className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-gray-500 hover:text-gray-700"
+      className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-foreground-tertiary hover:text-foreground-body"
       onClick={() => {
         navigator.clipboard.writeText(value);
         toast({
@@ -34,10 +34,9 @@ export function AnalyticsResultsTable({ results }: Props) {
       title={`Click to copy ${label.toLowerCase()}`}
     >
       {value.substring(0, 8)}...
-      <Icon
-        icon={Copy01Icon}
-        className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100"
-      />
+      <span className="block opacity-0 transition-opacity group-hover:opacity-100">
+        <Icon icon={Copy01Icon} className="h-3 w-3" />
+      </span>
     </div>
   );
 
@@ -118,10 +117,12 @@ export function AnalyticsResultsTable({ results }: Props) {
     const percentage = Math.round(score * 100);
     let colorClass = "";
 
-    if (score >= 0.8) colorClass = "text-green-600";
+    if (score >= 0.8) colorClass = "text-success";
+    // oxlint-disable-next-line design-system/no-raw-colors -- yellow has no role; amber would change the hue (deferred)
     else if (score >= 0.6) colorClass = "text-yellow-600";
+    // oxlint-disable-next-line design-system/no-raw-colors -- orange has no role; amber would change the hue (deferred)
     else if (score >= 0.4) colorClass = "text-orange-600";
-    else colorClass = "text-red-600";
+    else colorClass = "text-error-foreground";
 
     return <span className={colorClass}>{percentage}%</span>;
   };
@@ -129,50 +130,50 @@ export function AnalyticsResultsTable({ results }: Props) {
   return (
     <div className="space-y-4">
       {/* Summary Stats */}
-      <div className="rounded-lg bg-gray-50 p-4">
+      <div className="rounded-lg bg-surface-muted p-4">
         <Text variant="h3" className="mb-3">
           Analytics Summary
         </Text>
         <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-5">
           <div>
-            <Text variant="body" className="text-gray-600">
+            <Text variant="body" tone="secondary">
               Total Executions:
             </Text>
-            <Text variant="h4" className="font-semibold">
+            <h4 className="font-poppins text-heading-sm font-semibold text-foreground-base">
               {results.total_executions}
-            </Text>
+            </h4>
           </div>
           <div>
-            <Text variant="body" className="text-gray-600">
+            <Text variant="body" tone="secondary">
               Processed:
             </Text>
-            <Text variant="h4" className="font-semibold">
+            <h4 className="font-poppins text-heading-sm font-semibold text-foreground-base">
               {results.processed_executions}
-            </Text>
+            </h4>
           </div>
           <div>
-            <Text variant="body" className="text-gray-600">
+            <Text variant="body" tone="secondary">
               Successful:
             </Text>
-            <Text variant="h4" className="font-semibold text-green-600">
+            <h4 className="font-poppins text-heading-sm font-semibold text-success">
               {results.successful_analytics}
-            </Text>
+            </h4>
           </div>
           <div>
-            <Text variant="body" className="text-gray-600">
+            <Text variant="body" tone="secondary">
               Failed:
             </Text>
-            <Text variant="h4" className="font-semibold text-red-600">
+            <h4 className="font-poppins text-heading-sm font-semibold text-error-foreground">
               {results.failed_analytics}
-            </Text>
+            </h4>
           </div>
           <div>
-            <Text variant="body" className="text-gray-600">
+            <Text variant="body" tone="secondary">
               Skipped:
             </Text>
-            <Text variant="h4" className="font-semibold text-gray-600">
+            <h4 className="font-poppins text-heading-sm font-semibold text-foreground-secondary">
               {results.skipped_executions}
-            </Text>
+            </h4>
           </div>
         </div>
       </div>
@@ -194,49 +195,49 @@ export function AnalyticsResultsTable({ results }: Props) {
         <div className="overflow-hidden rounded-lg border">
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50">
+              <thead className="bg-surface-muted">
                 <tr>
                   <th className="px-4 py-3 text-left">
-                    <Text variant="body" className="font-medium text-gray-600">
+                    <Text variant="body-medium" tone="secondary">
                       Agent ID
                     </Text>
                   </th>
                   <th className="px-4 py-3 text-left">
-                    <Text variant="body" className="font-medium text-gray-600">
+                    <Text variant="body-medium" tone="secondary">
                       Version
                     </Text>
                   </th>
                   <th className="px-4 py-3 text-left">
-                    <Text variant="body" className="font-medium text-gray-600">
+                    <Text variant="body-medium" tone="secondary">
                       User ID
                     </Text>
                   </th>
                   <th className="px-4 py-3 text-left">
-                    <Text variant="body" className="font-medium text-gray-600">
+                    <Text variant="body-medium" tone="secondary">
                       Execution ID
                     </Text>
                   </th>
                   <th className="px-4 py-3 text-left">
-                    <Text variant="body" className="font-medium text-gray-600">
+                    <Text variant="body-medium" tone="secondary">
                       Status
                     </Text>
                   </th>
                   <th className="px-4 py-3 text-left">
-                    <Text variant="body" className="font-medium text-gray-600">
+                    <Text variant="body-medium" tone="secondary">
                       Score
                     </Text>
                   </th>
                   <th className="px-4 py-3 text-left">
-                    <Text variant="body" className="font-medium text-gray-600">
+                    <Text variant="body-medium" tone="secondary">
                       Actions
                     </Text>
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-border-base">
                 {results.results.map((result) => (
                   <React.Fragment key={result.exec_id}>
-                    <tr className="hover:bg-gray-50">
+                    <tr className="hover:bg-surface-muted">
                       <td className="px-4 py-3">
                         {createCopyableId(result.agent_id, "Agent ID")}
                       </td>
@@ -272,21 +273,18 @@ export function AnalyticsResultsTable({ results }: Props) {
 
                     {expandedRows.has(result.exec_id) && (
                       <tr>
-                        <td colSpan={7} className="bg-gray-50 px-4 py-3">
+                        <td colSpan={7} className="bg-surface-muted px-4 py-3">
                           <div className="space-y-3">
                             {/* Timestamps section */}
-                            <div className="grid grid-cols-2 gap-4 border-b border-gray-200 pb-3">
+                            <div className="grid grid-cols-2 gap-4 border-b border-border-base pb-3">
                               <div>
                                 <Text
-                                  variant="body"
-                                  className="text-xs font-medium text-gray-600"
+                                  variant="small-medium-tight"
+                                  tone="secondary"
                                 >
                                   Started At:
                                 </Text>
-                                <Text
-                                  variant="body"
-                                  className="text-sm text-gray-700"
-                                >
+                                <Text variant="body-tight" tone="body">
                                   {result.started_at
                                     ? new Date(
                                         result.started_at,
@@ -296,15 +294,12 @@ export function AnalyticsResultsTable({ results }: Props) {
                               </div>
                               <div>
                                 <Text
-                                  variant="body"
-                                  className="text-xs font-medium text-gray-600"
+                                  variant="small-medium-tight"
+                                  tone="secondary"
                                 >
                                   Ended At:
                                 </Text>
-                                <Text
-                                  variant="body"
-                                  className="text-sm text-gray-700"
-                                >
+                                <Text variant="body-tight" tone="body">
                                   {result.ended_at
                                     ? new Date(result.ended_at).toLocaleString()
                                     : "—"}
@@ -315,15 +310,13 @@ export function AnalyticsResultsTable({ results }: Props) {
                             {result.summary_text && (
                               <div>
                                 <Text
-                                  variant="body"
-                                  className="mb-1 font-medium text-gray-700"
+                                  variant="body-medium"
+                                  tone="body"
+                                  className="mb-1"
                                 >
                                   Summary:
                                 </Text>
-                                <Text
-                                  variant="body"
-                                  className="leading-relaxed text-gray-600"
-                                >
+                                <Text variant="body" tone="secondary">
                                   {result.summary_text}
                                 </Text>
                               </div>
@@ -332,15 +325,13 @@ export function AnalyticsResultsTable({ results }: Props) {
                             {result.error_message && (
                               <div>
                                 <Text
-                                  variant="body"
-                                  className="mb-1 font-medium text-red-700"
+                                  variant="body-medium"
+                                  tone="danger"
+                                  className="mb-1"
                                 >
                                   Error:
                                 </Text>
-                                <Text
-                                  variant="body"
-                                  className="leading-relaxed text-red-600"
-                                >
+                                <Text variant="body" tone="danger">
                                   {result.error_message}
                                 </Text>
                               </div>
@@ -357,7 +348,7 @@ export function AnalyticsResultsTable({ results }: Props) {
         </div>
       ) : (
         <div className="py-8 text-center">
-          <Text variant="body" className="text-gray-500">
+          <Text variant="body" tone="muted">
             No executions were processed.
           </Text>
         </div>

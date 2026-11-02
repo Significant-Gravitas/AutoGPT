@@ -1,28 +1,18 @@
 "use client";
 
-import { useMountEffect } from "@/hooks/useMountEffect";
-import { consent, type ConsentPreferences } from "@/services/consent/cookies";
-import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { isConsentManagerConfigured } from "@/services/consent/consent";
+import { useConsent } from "@/services/consent/useConsent";
+import { useEffect } from "react";
 import { environment } from "../environment";
 import { resolveAnalyticsLoading } from "./loading-policy";
 
 export function useSetupAnalytics(host: string) {
-  // Stored consent is only readable in the browser; the tag waits for it so
-  // the init script can replay the visitor's answer through Consent Mode.
-  const [preferences, setPreferences] = useState<ConsentPreferences | null>(
-    null,
-  );
-  useMountEffect(() => {
-    setPreferences(consent.load());
-  });
-
-  const pathname = usePathname();
+  const consent = useConsent();
   const { googleTag, dataFast } = resolveAnalyticsLoading({
     host,
-    pathname,
     isLocal: environment.isLocal(),
-    preferences,
+    isConsentManaged: isConsentManagerConfigured(),
+    consent,
   });
 
   useEffect(() => {
@@ -37,7 +27,6 @@ export function useSetupAnalytics(host: string) {
   }, [googleTag]);
 
   return {
-    preferences,
     googleTagEnabled: googleTag,
     dataFastEnabled: dataFast,
   };

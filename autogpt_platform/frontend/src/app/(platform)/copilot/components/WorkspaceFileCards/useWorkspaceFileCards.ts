@@ -24,7 +24,7 @@ export function useWorkspaceFileCards(sessionId: string | null) {
   // Session-scoped on purpose: the card is this chat's drawer — only files
   // uploaded to or created in this session. The artifacts side panel carries
   // the workspace-wide library.
-  const { uploaded, generated, isLoading, isError } =
+  const { uploaded, generated, documentCount, isLoading, isError } =
     useSessionFiles(sessionId);
   const [pendingDelete, setPendingDelete] = useState<SessionFile | null>(null);
   const [isZipping, setIsZipping] = useState(false);
@@ -62,9 +62,8 @@ export function useWorkspaceFileCards(sessionId: string | null) {
       await deleteFile({ fileId: pendingDelete.item.id });
     } catch {
       // onError already toasted; swallow so the dialog closes either way.
-    } finally {
-      setPendingDelete(null);
     }
+    setPendingDelete(null);
   }
 
   async function handleDownloadAll() {
@@ -76,13 +75,13 @@ export function useWorkspaceFileCards(sessionId: string | null) {
       );
     } catch {
       toast({ title: "Download all failed", variant: "destructive" });
-    } finally {
-      setIsZipping(false);
     }
+    setIsZipping(false);
   }
 
   return {
     files,
+    documentCount,
     isLoading,
     isError,
     isDeleting,

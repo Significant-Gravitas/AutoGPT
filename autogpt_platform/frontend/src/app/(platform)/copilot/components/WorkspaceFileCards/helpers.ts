@@ -1,10 +1,13 @@
-import type { UIMessage } from "ai";
+import type { ToolUIPart, UIMessage } from "ai";
 import { asObject, str } from "../ToolChain/resultHelpers";
+import {
+  getAgentDisplayName,
+  withToolDisplayNames,
+} from "../../helpers/toolDisplay";
 
 export interface SessionRun {
   executionId: string;
-  /** Null while a run is in flight and was started by library-agent id — the
-   *  tool input carries no name, so the row resolves one itself. */
+  /** Null without a resolved name; the row looks up libraryAgentId when present. */
   name: string | null;
   libraryAgentId: string | null;
   status: string | null;
@@ -42,7 +45,7 @@ export function getSessionActivity(messages: UIMessage[]): {
   const deletedScheduleIds = new Set<string>();
 
   for (const message of messages) {
-    for (const part of message.parts) {
+    for (const part of withToolDisplayNames(message.parts)) {
       if (!part.type.startsWith("tool-")) continue;
       const output = asObject((part as { output?: unknown }).output);
       const toolInput = asObject((part as { input?: unknown }).input);
@@ -59,13 +62,9 @@ export function getSessionActivity(messages: UIMessage[]): {
         const key =
           (part as { toolCallId?: string }).toolCallId ??
           `pending-${runs.size}`;
-        // ``run_agent`` takes a slug or a library-agent id, never a name.
-        // The slug's trailing segment is the agent, so it reads fine once
-        // de-slugified; an id-launched run has to be looked up by the row.
-        const slug = input ? str(input, "username_agent_slug") : null;
         runs.set(key, {
           executionId: key,
-          name: slug ? deslugify(slug) : null,
+          name: getAgentDisplayName((part as ToolUIPart).title),
           libraryAgentId: input ? str(input, "library_agent_id") : null,
           status: "RUNNING",
           startedAt: null,
@@ -76,7 +75,7 @@ export function getSessionActivity(messages: UIMessage[]): {
       if (!output) continue;
 
       if (RUN_TOOLS.has(part.type)) {
-        const name = str(output, "graph_name", "agent_name");
+        const name = getAgentDisplayName((part as ToolUIPart).title, output);
         // Async runs answer with an execution_started envelope
         // (execution_id at the top level); synchronous waited runs answer
         // with agent_output, nesting the id under `execution`.
@@ -161,10 +160,4 @@ export function getSessionActivity(messages: UIMessage[]): {
     runs: [...runs.values()].reverse(),
     schedules: [...schedules.values()].reverse(),
   };
-}
-
-/** "creator/daily-digest" → "daily digest". */
-function deslugify(slug: string): string {
-  const agent = slug.split("/").pop() ?? slug;
-  return agent.replace(/[-_]+/g, " ").trim();
 }

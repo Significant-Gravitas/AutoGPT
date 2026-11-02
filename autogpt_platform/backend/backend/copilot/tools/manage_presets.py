@@ -10,6 +10,7 @@ copilot worker reuses the exact route logic.
 import logging
 from typing import Any
 
+from prisma.enums import APIKeyPermission
 from pydantic import BaseModel
 
 from backend.api.features.library.model import LibraryAgentPreset
@@ -23,6 +24,7 @@ from backend.util.exceptions import (
 )
 
 from .base import BaseTool
+from .external_scope import external_tenant
 from .models import ErrorResponse, ResponseType, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -61,6 +63,7 @@ async def _list_scoped_presets(
         graph_id=graph_id,
         expert_id=session.expert_id,
         filter_by_expert=True,
+        organization_id=external_tenant(session),
     )
     scoped = [
         preset for preset in response.presets if _is_in_session_scope(preset, session)
@@ -124,11 +127,15 @@ class ListPresetsTool(BaseTool):
         return "list_presets"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_LIBRARY]
+
+    @property
     def description(self) -> str:
         return (
             "List the user's presets (saved run configurations and webhook "
             "triggers). Optionally filter by library_agent_id or graph_id. Use "
-            "before update_preset/delete_preset to find a preset_id."
+            "before tool:update_preset / tool:delete_preset to find a preset_id."
         )
 
     @property
@@ -205,7 +212,7 @@ class ListPresetsTool(BaseTool):
                 )
             except NotFoundError as e:
                 return ErrorResponse(
-                    message=f"Library agent not found: {e}",
+                    message=f"Library workflow not found: {e}",
                     error="library_agent_not_found",
                     session_id=session_id,
                 )
@@ -261,13 +268,26 @@ class UpdatePresetTool(BaseTool):
         return "update_preset"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
+
+    def external_permissions(self, args: dict[str, Any]) -> list[APIKeyPermission]:
+        # An active trigger starts runs, so turning one on, or giving one new
+        # inputs (re-registering its webhook), is a run. The graph isn't known
+        # here, so any new inputs count unless they also turn the preset off.
+        is_active = args.get("is_active")
+        if is_active is True or (args.get("inputs") and is_active is not False):
+            return [APIKeyPermission.RUN_AGENT]
+        return []
+
+    @property
     def description(self) -> str:
         return (
             "Update a preset by preset_id: rename, change description, pause or "
             "resume it (is_active=false/true), or reconfigure its inputs. For a "
             "webhook trigger, 'inputs' is the trigger block's config (e.g. repo, "
             "events) and changing it re-registers the webhook with the preset's "
-            "existing credentials. Find preset_id via list_presets."
+            "existing credentials. Find preset_id via tool:list_presets."
         )
 
     @property
@@ -282,6 +302,7 @@ class UpdatePresetTool(BaseTool):
                 "preset_id": {
                     "type": "string",
                     "description": "ID of the preset to update.",
+                    "entity": "preset",
                 },
                 "name": {"type": "string", "description": "New name."},
                 "description": {
@@ -291,6 +312,7 @@ class UpdatePresetTool(BaseTool):
                 "is_active": {
                     "type": "boolean",
                     "description": "Set false to pause the trigger, true to resume.",
+                    "title": "Active",
                 },
                 "inputs": {
                     "type": "object",
@@ -386,10 +408,14 @@ class DeletePresetTool(BaseTool):
         return "delete_preset"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
+
+    @property
     def description(self) -> str:
         return (
             "Delete a preset by preset_id. If it's a webhook trigger, its webhook "
-            "is deregistered and cleaned up. Find preset_id via list_presets."
+            "is deregistered and cleaned up. Find preset_id via tool:list_presets."
         )
 
     @property
@@ -404,6 +430,7 @@ class DeletePresetTool(BaseTool):
                 "preset_id": {
                     "type": "string",
                     "description": "ID of the preset to delete.",
+                    "entity": "preset",
                 },
             },
             "required": ["preset_id"],

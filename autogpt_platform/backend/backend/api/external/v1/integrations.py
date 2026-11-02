@@ -1,7 +1,7 @@
 """
 External API endpoints for integrations and credentials.
 
-This module provides endpoints for external applications (like Autopilot) to:
+This module provides endpoints for external applications (like Otto) to:
 - Initiate OAuth flows with custom callback URLs
 - Complete OAuth flows by exchanging authorization codes
 - Create API key, user/password, and host-scoped credentials
@@ -23,6 +23,7 @@ from backend.api.features.integrations.router import (
     to_meta_response,
 )
 from backend.data.auth.base import APIAuthorizationInfo
+from backend.data.credential_scope import scope_error
 from backend.data.model import (
     APIKeyCredentials,
     Credentials,
@@ -38,6 +39,7 @@ from backend.integrations.credentials_store import (
 )
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
+from backend.integrations.oauth.microsoft_identity import MICROSOFT_PROVIDERS
 from backend.integrations.providers import ProviderName
 from backend.util.settings import Settings
 
@@ -131,6 +133,12 @@ class CreateUserPasswordCredentialRequest(BaseModel):
     type: Literal["user_password"] = "user_password"
     username: str = Field(..., description="Username")
     password: str = Field(..., description="Password")
+    scope: str | None = Field(
+        None,
+        description="What this login may be used for, as a URI: "
+        "smtp://host[:port] for smtp, postgresql:// mysql:// or mssql:// "
+        "host[:port] for database; required for those providers",
+    )
     title: str = Field(..., description="A name for this credential")
 
 
@@ -205,6 +213,14 @@ def _get_oauth_handler_for_external(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Provider '{provider_name}' does not support OAuth",
+        )
+
+    if provider_name in MICROSOFT_PROVIDERS:
+        # Microsoft only redirects to AutoGPT's own callback, and its
+        # connections are matched to their Microsoft account when stored there.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Connect Microsoft in AutoGPT's Settings, under Integrations.",
         )
 
     # Check if this provider has custom OAuth credentials
@@ -560,10 +576,13 @@ async def create_credential(
             expires_at=request.expires_at,
         )
     elif request.type == "user_password":
+        if error := scope_error(provider, request.scope):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
         credentials = UserPasswordCredentials(
             provider=provider,
             username=SecretStr(request.username),
             password=SecretStr(request.password),
+            scope=request.scope,
             title=request.title,
         )
     elif request.type == "host_scoped":

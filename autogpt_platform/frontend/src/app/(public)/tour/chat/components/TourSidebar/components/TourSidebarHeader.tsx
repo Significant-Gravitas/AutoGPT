@@ -1,14 +1,15 @@
 "use client";
 
 import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
-import { SidebarHeader, useSidebar } from "@/components/ui/sidebar";
+import {
+  SidebarHeader,
+  useSidebar,
+} from "@/components/molecules/Sidebar/Sidebar";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
-// Mirror of AppSidebarHeader, with the logo pointing back at the tour
-// instead of the (auth-gated) copilot home.
 export function TourSidebarHeader() {
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
@@ -19,18 +20,19 @@ export function TourSidebarHeader() {
       aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
       onClick={toggleSidebar}
       className={cn(
-        "size-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-zinc-200",
+        "size-8 shrink-0 items-center justify-center rounded-md text-sidebar-foreground transition-colors hover:bg-surface-active",
         isCollapsed
           ? "absolute inset-0 hidden group-focus-within:flex group-hover:flex"
           : "flex",
       )}
     >
-      <Icon icon={SidebarLeftIcon} className="size-5 text-sidebar-foreground" />
+      <Icon icon={SidebarLeftIcon} className="size-5" />
     </button>
   );
 
   return (
-    <SidebarHeader className="flex animate-fade-in flex-row items-center justify-between gap-2 p-2 group-data-[collapsible=icon]:flex-col">
+    // oxlint-disable-next-line design-system/no-restyle -- one-off mount fade; SidebarHeader has no motion variant
+    <SidebarHeader className="flex animate-fade-in flex-row items-center justify-between group-data-[collapsible=icon]:flex-col">
       <div
         className={cn(
           "relative flex items-center",
@@ -38,7 +40,7 @@ export function TourSidebarHeader() {
         )}
       >
         <Link
-          href="/tour"
+          href="/marketplace"
           aria-label="AutoGPT"
           className={cn(
             "flex items-center",

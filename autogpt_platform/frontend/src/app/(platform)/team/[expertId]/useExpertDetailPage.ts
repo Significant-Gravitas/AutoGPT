@@ -14,22 +14,21 @@ import { getExpertSchedules } from "../helpers";
 
 interface Args {
   expertId: string;
-  enabled: boolean;
 }
 
-export function useExpertDetailPage({ expertId, enabled }: Args) {
+export function useExpertDetailPage({ expertId }: Args) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   const expertQuery = useGetExpert(expertId, {
-    query: { select: (res) => okData(res) ?? null, enabled },
+    query: { select: (res) => okData(res) ?? null },
   });
   const schedulesQuery = useGetV1ListExecutionSchedulesForAUser({
-    query: { select: (res) => okData(res) ?? [], enabled },
+    query: { select: (res) => okData(res) ?? [] },
   });
   const activityQuery = useGetExpertActivity(expertId, {
-    query: { select: (res) => okData(res) ?? null, enabled },
+    query: { select: (res) => okData(res) ?? null },
   });
 
   const expert = expertQuery.data ?? null;
@@ -40,6 +39,9 @@ export function useExpertDetailPage({ expertId, enabled }: Args) {
   const [isFireOpen, setIsFireOpen] = useState(false);
   const [isSoulOpen, setIsSoulOpen] = useState(false);
   const [soulDrawerKey, setSoulDrawerKey] = useState(0);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatDrawerKey, setChatDrawerKey] = useState(0);
+  const [chatSeed, setChatSeed] = useState<string | null>(null);
 
   const { mutate: resumeSchedules, isPending: isResuming } =
     useResumeExpertSchedules({
@@ -80,6 +82,7 @@ export function useExpertDetailPage({ expertId, enabled }: Args) {
       setIsSoulOpen(false);
       return;
     }
+    setIsChatOpen(false);
     setIsSoulOpen(true);
     setSoulDrawerKey((current) => current + 1);
   }
@@ -88,9 +91,31 @@ export function useExpertDetailPage({ expertId, enabled }: Args) {
     setIsSoulOpen(false);
   }
 
+  function toggleChat() {
+    if (isChatOpen) {
+      setIsChatOpen(false);
+      return;
+    }
+    setIsSoulOpen(false);
+    setIsChatOpen(true);
+    setChatSeed(null);
+    setChatDrawerKey((current) => current + 1);
+  }
+
+  function openChatWithPrompt(prompt: string) {
+    setIsSoulOpen(false);
+    setIsChatOpen(true);
+    setChatSeed(prompt);
+    setChatDrawerKey((current) => current + 1);
+  }
+
+  function closeChat() {
+    setIsChatOpen(false);
+  }
+
   return {
     expert,
-    isLoading: enabled && (expertQuery.isLoading || schedulesQuery.isLoading),
+    isLoading: expertQuery.isLoading || schedulesQuery.isLoading,
     isError:
       expertQuery.isError ||
       schedulesQuery.isError ||
@@ -98,7 +123,7 @@ export function useExpertDetailPage({ expertId, enabled }: Args) {
     refetch,
     schedules,
     activity: activityQuery.data ?? null,
-    isActivityLoading: enabled && activityQuery.isLoading,
+    isActivityLoading: activityQuery.isLoading,
     isActivityError: activityQuery.isError,
     isPickerOpen,
     openPicker: () => setIsPickerOpen(true),
@@ -112,5 +137,11 @@ export function useExpertDetailPage({ expertId, enabled }: Args) {
     soulDrawerKey,
     toggleSoul,
     closeSoul,
+    isChatOpen,
+    chatDrawerKey,
+    chatSeed,
+    toggleChat,
+    openChatWithPrompt,
+    closeChat,
   };
 }

@@ -33,7 +33,7 @@ describe("getSessionActivity", () => {
     expect(getSessionActivity(messages)).toEqual({ runs: [], schedules: [] });
   });
 
-  it("surfaces an in-flight run from the tool input, deslugifying the name", () => {
+  it("keeps an unresolved slug-launched run unnamed", () => {
     const messages = messageOf(
       toolPart({
         output: undefined,
@@ -44,7 +44,7 @@ describe("getSessionActivity", () => {
     const { runs } = getSessionActivity(messages);
     expect(runs).toHaveLength(1);
     expect(runs[0]).toMatchObject({
-      name: "daily digest",
+      name: null,
       status: "RUNNING",
       libraryAgentId: null,
       startedAt: null,

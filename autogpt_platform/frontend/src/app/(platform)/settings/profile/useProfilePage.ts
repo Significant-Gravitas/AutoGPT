@@ -1,5 +1,6 @@
 "use client";
 
+import { toastIfPlanRequired } from "@/components/contextual/PaywallToast/helpers";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -167,6 +168,8 @@ export function useProfilePage() {
       patchField("avatar_url", url);
       return url;
     } catch (err) {
+      if (toastIfPlanRequired(err, "Uploading a photo needs an active plan"))
+        return null;
       toast({
         title: "Failed to upload photo",
         description: err instanceof Error ? err.message : undefined,

@@ -2,10 +2,11 @@
 
 import { ExpertCredentialRef } from "@/app/api/__generated__/models/expertCredentialRef";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   formatCredentialName,
-  formatCredentialSource,
-  formatProviderName,
+  groupServiceIdentity,
+  serviceKey,
 } from "@/components/contextual/IntegrationsPanel/helpers";
 import {
   Accordion,
@@ -17,7 +18,7 @@ import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/Integrat
 import { Delete02Icon, Loading03Icon } from "@hugeicons/core-free-icons";
 import { motion, useReducedMotion, type Variants } from "framer-motion";
 
-const TYPE_LABELS: Record<string, string> = {
+export const TYPE_LABELS: Record<string, string> = {
   api_key: "API Key",
   oauth2: "OAuth",
   user_password: "Username & password",
@@ -32,11 +33,6 @@ const CONNECTION_LABELS: Record<string, string> = {
   host_scoped: "Host configured",
   device_code: "Connected via device auth",
 };
-
-function formatConnection(integration: ExpertCredentialRef): string {
-  if (integration.provider === "mcp") return formatCredentialSource("mcp");
-  return CONNECTION_LABELS[integration.type] ?? "Configured";
-}
 
 const CONTAINER_VARIANTS: Variants = {
   hidden: {},
@@ -58,22 +54,22 @@ const REDUCED_ITEM_VARIANTS: Variants = {
 interface Group {
   id: string;
   name: string;
+  icon: string;
   integrations: ExpertCredentialRef[];
 }
 
 export function groupExpertIntegrations(
   integrations: ExpertCredentialRef[],
 ): Group[] {
-  const byProvider = new Map<string, ExpertCredentialRef[]>();
+  const byService = new Map<string, ExpertCredentialRef[]>();
   for (const integration of integrations) {
-    const id =
-      integration.provider === "codex" ? "openai" : integration.provider;
-    byProvider.set(id, [...(byProvider.get(id) ?? []), integration]);
+    const id = serviceKey(integration);
+    byService.set(id, [...(byService.get(id) ?? []), integration]);
   }
-  return [...byProvider.entries()]
+  return [...byService.entries()]
     .map(([id, list]) => ({
       id,
-      name: formatProviderName(id),
+      ...groupServiceIdentity(list),
       integrations: list,
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -95,7 +91,7 @@ export function ExpertIntegrationGroups({
 
   return (
     <motion.div
-      className="flex flex-col gap-3"
+      className="flex flex-col gap-2.5"
       variants={CONTAINER_VARIANTS}
       initial="hidden"
       animate="show"
@@ -104,32 +100,42 @@ export function ExpertIntegrationGroups({
         <motion.div
           key={group.id}
           variants={reduceMotion ? REDUCED_ITEM_VARIANTS : ITEM_VARIANTS}
+          // ui/accordion's content wrapper sets text-sm, which the profile tab
+          // ran at 15px/1.5rem; its slot takes the same size here.
+          className="overflow-hidden rounded-2xl bg-surface smooth-shadow-ring-sm [&_[data-slot=accordion-panel]]:text-body-md"
         >
           <Accordion
             type="single"
             collapsible
             defaultValue={group.id}
-            className="w-full overflow-hidden rounded-xl border border-[#DADADC] bg-white"
+            className="w-full"
           >
+            {/* oxlint-disable-next-line design-system/no-restyle -- AccordionItem has no borderless variant (src/components is P9's) */}
             <AccordionItem value={group.id} className="border-b-0">
-              <AccordionTrigger className="px-3 py-3 pr-5 hover:no-underline [&>svg]:text-[#1F1F20]">
-                <div className="flex items-center gap-3">
-                  <IntegrationLogo
-                    provider={group.id}
-                    alt={`${group.name} logo`}
-                    size={24}
-                    className="rounded-full bg-white"
-                  />
-                  <span className="text-[16px] font-medium leading-[26px] tracking-[-0.08px] text-black">
-                    {group.name}
+              <AccordionTrigger
+                textSize="body-md"
+                // oxlint-disable-next-line design-system/no-restyle -- AccordionTrigger has no compact card variant (src/components is P9's)
+                className="px-3 py-2.5 pr-4 hover:no-underline [&>svg]:size-4 [&>svg]:text-foreground-tertiary"
+              >
+                <div className="flex items-center gap-2.5">
+                  <span className="inline-flex shrink-0 overflow-hidden rounded-full bg-surface">
+                    <IntegrationLogo
+                      provider={group.icon}
+                      alt={`${group.name} logo`}
+                      size={20}
+                    />
                   </span>
-                  <span className="inline-flex items-center justify-center rounded-md bg-[#EFF1F4] px-2 py-[2px] text-[14px] font-medium leading-[22px] text-black">
+                  <Text variant="body-md-medium" as="span" tone="primary">
+                    {group.name}
+                  </Text>
+                  <span className="inline-flex items-center justify-center rounded-md bg-surface-hover px-1.5 py-0.5 font-sans text-caption font-medium text-foreground-secondary tabular-nums">
                     {group.integrations.length}
                   </span>
                 </div>
               </AccordionTrigger>
-              <AccordionContent className="px-0 pb-0 pt-0">
-                <div className="flex flex-col divide-y divide-[#DADADC] border-t border-[#DADADC]">
+              {/* oxlint-disable-next-line design-system/no-restyle -- AccordionContent has no flush variant (src/components is P9's) */}
+              <AccordionContent className="px-0 pt-0 pb-0">
+                <div className="flex flex-col divide-y divide-separator border-t border-border-base">
                   {group.integrations.map((integration) => (
                     <ExpertIntegrationRow
                       key={integration.credential_id}
@@ -158,38 +164,40 @@ function ExpertIntegrationRow({ integration, isRemoving, onRemove }: RowProps) {
   const name = formatCredentialName(integration.title, integration.provider);
   return (
     <div
-      className="flex w-full items-center justify-between py-3 pl-4 pr-5"
+      className="flex w-full items-center justify-between py-2.5 pr-4 pl-3"
       data-testid="expert-integration-row"
     >
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center gap-3">
-          <span className="text-[14px] font-medium leading-[22px] text-[#1F1F20]">
+      <div className="flex flex-col gap-0.5">
+        <div className="flex items-center gap-2">
+          <Text variant="body-md-medium" as="span" tone="primary">
             {name}
-          </span>
-          <span className="inline-flex items-center justify-center rounded-md bg-[#EFF1F4] px-2 py-[2px] text-[12px] font-medium leading-[20px] text-[#505057]">
+          </Text>
+          <span className="inline-flex items-center justify-center rounded-md bg-surface-hover px-1.5 py-0.5 font-sans text-caption leading-4 text-foreground-secondary">
             {TYPE_LABELS[integration.type] ?? integration.type}
           </span>
         </div>
-        <span className="text-[11px] font-medium uppercase tracking-[1.1px] text-[#505057]">
-          {formatConnection(integration)}
-        </span>
+        <Text variant="body-md" as="span" tone="muted">
+          {CONNECTION_LABELS[integration.type] ?? "Configured"}
+        </Text>
       </div>
-      <div className="flex items-center gap-4">
-        <span className="text-[11px] font-medium uppercase tracking-[1.1px] text-emerald-600">
+      <div className="flex items-center gap-3">
+        <Text variant="eyebrow" tone="success">
           Ready
-        </span>
+        </Text>
         <button
           type="button"
           onClick={onRemove}
           disabled={isRemoving}
           aria-busy={isRemoving}
           aria-label={`Remove ${name}`}
-          className="inline-flex size-5 items-center justify-center text-[#1F1F20] transition-colors hover:text-red-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex size-7 items-center justify-center rounded-md text-foreground-tertiary transition-colors hover:bg-surface-hover hover:text-error focus-visible:ring-1 focus-visible:ring-foreground-subtle focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isRemoving ? (
-            <Icon icon={Loading03Icon} size={20} className="animate-spin" />
+            <span className="inline-flex animate-spin">
+              <Icon icon={Loading03Icon} size={16} />
+            </span>
           ) : (
-            <Icon icon={Delete02Icon} size={20} />
+            <Icon icon={Delete02Icon} size={16} />
           )}
         </button>
       </div>

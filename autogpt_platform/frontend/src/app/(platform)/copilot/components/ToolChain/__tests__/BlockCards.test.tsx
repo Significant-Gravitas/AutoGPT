@@ -64,10 +64,11 @@ describe("BlockListCard", () => {
     expect(screen.getByAltText("github")).toBeDefined();
   });
 
-  it("falls back to inline JSON for unnamed blocks", () => {
-    render(<BlockListCard blocks={[{ enabled: true }]} />);
+  it("keeps unnamed blocks generic", () => {
+    render(<BlockListCard blocks={[{ id: "block-9", enabled: true }]} />);
 
-    expect(screen.getByText('{"enabled":true}')).toBeDefined();
+    expect(screen.getByText("Block")).toBeDefined();
+    expect(screen.queryByText(/block-9/)).toBeNull();
   });
 });
 
@@ -91,11 +92,12 @@ describe("BlockOutputCard", () => {
     expect(screen.getByText('["a","b"]')).toBeDefined();
   });
 
-  it("falls back to the block id without outputs", () => {
+  it("keeps unnamed block outputs generic", () => {
     render(
       <BlockOutputCard output={{ block_id: "block-9", success: false }} />,
     );
 
-    expect(screen.getByText("block-9")).toBeDefined();
+    expect(screen.getByText("Block")).toBeDefined();
+    expect(screen.queryByText("block-9")).toBeNull();
   });
 });

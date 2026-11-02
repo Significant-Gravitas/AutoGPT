@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from backend.api.features.experts.models import Expert
+from backend.blocks.airtable.schema import AirtableCreateTableBlock
 from backend.data.activity_event import ActivityEvent, ActivityEventCategory
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 
@@ -9,7 +10,11 @@ from .recent_work import _MAX_ITEMS_PER_GROUP, _MAX_RUNS_PER_GROUP, compose_rece
 
 NOW = datetime(2026, 8, 28, 9, 0, tzinfo=timezone.utc)
 AGENTS = {
-    "graph-notes": AgentRef(name="Release Note Generator", library_agent_id="lib-1")
+    "graph-notes": AgentRef(
+        name="Release Note Generator",
+        library_agent_id="lib-1",
+        image_url="https://example.com/release-notes.png",
+    )
 }
 
 
@@ -42,6 +47,8 @@ def _execution(
     status: ExecutionStatus = ExecutionStatus.COMPLETED,
     minutes_ago: int = 0,
     expert_id: str | None = None,
+    schedule_id: str | None = None,
+    webhook_id: str | None = None,
     activity_status: str | None = "I generated release notes.",
 ) -> GraphExecutionMeta:
     ended_at = NOW - timedelta(minutes=minutes_ago)
@@ -58,6 +65,8 @@ def _execution(
         started_at=ended_at - timedelta(minutes=1),
         ended_at=ended_at,
         expert_id=expert_id,
+        schedule_id=schedule_id,
+        webhook_id=webhook_id,
         stats=GraphExecutionMeta.Stats(
             activity_status=activity_status, error=None, duration=60.0, cost=7
         ),
@@ -141,6 +150,7 @@ def test_groups_runs_and_deliverables_under_the_actor_that_did_them() -> None:
     assert maria_group.items[0].link == "/copilot?sessionId=s1"
 
     assert notes_group.actor.kind == "workflow"
+    assert notes_group.actor.image_url == "https://example.com/release-notes.png"
     assert notes_group.actor.link == "/library/agents/lib-1"
     assert [run.id for run in notes_group.runs] == ["run-notes"]
     assert [item.id for item in notes_group.items] == ["e2"]
@@ -189,7 +199,10 @@ def test_events_from_unfetched_runs_stay_apart() -> None:
 
     assert len(work.groups) == 2
     assert all(group.actor.kind == "workflow" for group in work.groups)
-    assert [group.actor.name for group in work.groups] == ["Agent task", "Agent task"]
+    assert [group.actor.name for group in work.groups] == [
+        "Workflow task",
+        "Workflow task",
+    ]
 
 
 def test_thread_work_without_an_expert_is_autopilots() -> None:
@@ -197,7 +210,7 @@ def test_thread_work_without_an_expert_is_autopilots() -> None:
 
     group = work.groups[0]
     assert group.actor.kind == "autopilot"
-    assert group.actor.name == "Autopilot"
+    assert group.actor.name == "Otto"
     assert group.actor.link == "/copilot"
     assert group.items[0].link == "/copilot?sessionId=s2"
 
@@ -271,6 +284,22 @@ def test_counts_the_weeks_runs_and_orders_groups_by_latest_activity() -> None:
     assert [run.id for run in work.groups[1].runs] == ["failed", "done"]
 
 
+def test_a_run_says_what_started_it() -> None:
+    executions = [
+        _execution(exec_id="cron", schedule_id="sched-1", minutes_ago=5),
+        _execution(exec_id="hook", webhook_id="hook-1", minutes_ago=8),
+        _execution(exec_id="hand", minutes_ago=10),
+    ]
+
+    work = _compose(executions)
+
+    assert {run.id: run.trigger for run in work.groups[0].runs} == {
+        "cron": "schedule",
+        "hook": "webhook",
+        "hand": "manual",
+    }
+
+
 def test_deliverables_older_than_the_window_are_left_out() -> None:
     events = [
         _event(event_id="fresh", session_id="s1", minutes_ago=60),
@@ -302,3 +331,31 @@ def test_file_items_carry_file_id_and_mime_type() -> None:
     item = work.groups[0].items[0]
     assert item.file_id == "file-9"
     assert item.mime_type == "text/markdown"
+
+
+def test_an_older_integration_row_is_named_by_its_block() -> None:
+    block = AirtableCreateTableBlock()
+    events = [
+        _event(
+            event_id="e1",
+            category="INTEGRATION",
+            title=block.name,
+            provider="airtable",
+            object_id=block.id,
+        ),
+        # Not a block this platform knows: the stored title stands.
+        _event(
+            event_id="e2",
+            category="INTEGRATION",
+            title="RetiredBlock",
+            provider="airtable",
+            object_id="no-such-block",
+        ),
+    ]
+
+    work = _compose(events=events)
+
+    assert [item.title for item in work.groups[0].items] == [
+        "Airtable Create Table",
+        "RetiredBlock",
+    ]

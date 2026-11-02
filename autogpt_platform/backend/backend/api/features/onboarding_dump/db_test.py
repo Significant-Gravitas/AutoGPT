@@ -101,7 +101,7 @@ async def test_a_new_recording_id_always_claims_the_row(
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "status",
-    [BrainDumpStatus.recording_uploaded, BrainDumpStatus.completed],
+    [BrainDumpStatus.recording_uploaded, BrainDumpStatus.extracting],
 )
 async def test_a_delayed_typed_finalize_cannot_replace_an_active_take(
     mocker: MockerFixture, upsert: AsyncMock, status: BrainDumpStatus
@@ -123,9 +123,9 @@ async def test_a_new_recording_id_clears_every_column_the_last_take_owned(
 
     There is one row per user, so anything left behind here is served as
     if it belonged to the new recording: ``/recording`` hands back the
-    previous audio, ``/intro`` its greeting and transcript, and
-    ``/recommended-providers`` its picks — for a take that may never get
-    past its first part.
+    previous audio, ``/intro`` its greeting and transcript,
+    ``/recommended-providers`` its picks and ``/recommended-experts`` its
+    team — for a take that may never get past its first part.
     """
     mocker.patch.object(
         db,
@@ -144,6 +144,7 @@ async def test_a_new_recording_id_clears_every_column_the_last_take_owned(
     assert update["transcriptLang"] is None
     assert update["greeting"] is None
     assert update["recommendedProviders"] == Json(None)
+    assert update["recommendedExperts"] == Json(None)
     # Non-nullable with a ``[]`` default, so it is emptied, not nulled.
     assert update["suggestedPrompts"] == Json([])
 
@@ -166,7 +167,14 @@ async def test_retrying_the_same_take_keeps_what_that_take_produced(
     create = upsert.await_args.kwargs["data"]["create"]
     update = upsert.await_args.kwargs["data"]["update"]
     assert create["recommendedProviders"] == Json(None)
-    assert set(update) == {"recordingId", "status", "inputMode", "errorCode"}
+    assert create["recommendedExperts"] == Json(None)
+    assert set(update) == {
+        "recordingId",
+        "status",
+        "inputMode",
+        "errorCode",
+        "errorReason",
+    }
 
 
 @pytest.mark.asyncio
@@ -177,6 +185,7 @@ async def test_greeting_only_create_sets_recommended_providers(
 
     create = upsert.await_args.kwargs["data"]["create"]
     assert create["recommendedProviders"] == Json(None)
+    assert create["recommendedExperts"] == Json(None)
     assert create["greetingSeen"] is True
 
 
@@ -236,3 +245,40 @@ async def test_a_first_take_creates_the_row(mocker: MockerFixture, upsert: Async
     await db.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
 
     upsert.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_clear_audio_paths_nulls_only_the_audio_in_batches(
+    mocker: MockerFixture,
+):
+    update_many = AsyncMock(side_effect=lambda **_: 1)
+    mocker.patch.object(
+        OnboardingBrainDump,
+        "prisma",
+        MagicMock(return_value=MagicMock(update_many=update_many)),
+    )
+    paths = [
+        f"gcs://bucket/uploads/users/u{i}/x/brain-dump-r.webm" for i in range(1001)
+    ]
+
+    cleared = await db.clear_audio_paths(paths)
+
+    assert cleared == 2
+    batches = [call.kwargs for call in update_many.await_args_list]
+    assert [len(b["where"]["audioPath"]["in"]) for b in batches] == [1000, 1]
+    assert all(b["data"] == {"audioPath": None} for b in batches)
+
+
+@pytest.mark.asyncio
+async def test_clear_audio_paths_with_nothing_to_clear_skips_the_query(
+    mocker: MockerFixture,
+):
+    update_many = AsyncMock()
+    mocker.patch.object(
+        OnboardingBrainDump,
+        "prisma",
+        MagicMock(return_value=MagicMock(update_many=update_many)),
+    )
+
+    assert await db.clear_audio_paths([]) == 0
+    update_many.assert_not_awaited()

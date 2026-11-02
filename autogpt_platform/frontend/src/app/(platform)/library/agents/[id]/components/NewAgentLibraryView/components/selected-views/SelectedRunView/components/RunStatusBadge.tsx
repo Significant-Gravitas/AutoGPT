@@ -1,8 +1,10 @@
+import { getRunStatusInfo } from "@/components/molecules/RunStatusBadge/RunStatusBadge";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import {
   Alert01Icon,
+  Alert02Icon,
   AlertCircleIcon,
   CancelCircleIcon,
   CheckmarkCircle02Icon,
@@ -14,68 +16,71 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 
 type StatusIconMap = {
   icon: React.ReactNode;
-  bgColor: string;
-  textColor: string;
+  colors: string;
 };
+
+// oxlint-disable-next-line design-system/no-raw-colors -- yellow-700 #AE8800 has no role; mustard to orange-brown change deferred (see PR)
+const PENDING_COLORS = "bg-warning-surface text-yellow-700";
 
 const statusIconMap: Record<AgentExecutionStatus, StatusIconMap> = {
   INCOMPLETE: {
-    icon: <Icon icon={AlertCircleIcon} size={16} className="text-red-700" />,
-    bgColor: "bg-red-50",
-    textColor: "!text-red-700",
+    icon: <Icon icon={AlertCircleIcon} size={16} />,
+    colors: "bg-error-surface text-error-foreground",
   },
   QUEUED: {
-    icon: <Icon icon={Clock01Icon} size={16} className="text-yellow-700" />,
-    bgColor: "bg-yellow-50",
-    textColor: "!text-yellow-700",
+    icon: <Icon icon={Clock01Icon} size={16} />,
+    colors: PENDING_COLORS,
   },
   RUNNING: {
-    icon: <Icon icon={PauseCircleIcon} size={16} className="text-yellow-700" />,
-    bgColor: "bg-yellow-50",
-    textColor: "!text-yellow-700",
+    icon: <Icon icon={PauseCircleIcon} size={16} />,
+    colors: PENDING_COLORS,
   },
   REVIEW: {
-    icon: <Icon icon={Alert01Icon} size={16} className="text-yellow-700" />,
-    bgColor: "bg-yellow-50",
-    textColor: "!text-yellow-700",
+    icon: <Icon icon={Alert01Icon} size={16} />,
+    colors: PENDING_COLORS,
   },
   COMPLETED: {
-    icon: (
-      <Icon icon={CheckmarkCircle02Icon} size={16} className="text-green-700" />
-    ),
-    bgColor: "bg-green-50",
-    textColor: "!text-green-700",
+    icon: <Icon icon={CheckmarkCircle02Icon} size={16} />,
+    colors: "bg-success-surface text-success-foreground",
   },
   TERMINATED: {
-    icon: <Icon icon={StopCircleIcon} size={16} className="text-slate-700" />,
-    bgColor: "bg-slate-50",
-    textColor: "!text-slate-700",
+    icon: <Icon icon={StopCircleIcon} size={16} />,
+    colors: "bg-surface-muted text-foreground-body",
   },
   FAILED: {
-    icon: <Icon icon={CancelCircleIcon} size={16} className="text-red-700" />,
-    bgColor: "bg-red-50",
-    textColor: "!text-red-700",
+    icon: <Icon icon={CancelCircleIcon} size={16} />,
+    colors: "bg-error-surface text-error-foreground",
   },
+};
+
+const completedWithErrorsStyle: StatusIconMap = {
+  icon: <Icon icon={Alert02Icon} size={16} />,
+  colors: "bg-warning-surface text-warning-foreground",
 };
 
 type Props = {
   status: AgentExecutionStatus;
+  completedWithErrors?: boolean;
 };
 
-export function RunStatusBadge({ status }: Props) {
+export function RunStatusBadge({ status, completedWithErrors = false }: Props) {
+  const style = completedWithErrors
+    ? completedWithErrorsStyle
+    : statusIconMap[status];
+  const label = completedWithErrors
+    ? "Completed with errors"
+    : getRunStatusInfo(status).label;
+
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-1 rounded-md p-1",
-        statusIconMap[status].bgColor,
+        "inline-flex items-center gap-1 rounded-md p-1 capitalize",
+        style.colors,
       )}
     >
-      {statusIconMap[status].icon}
-      <Text
-        variant="small-medium"
-        className={cn(statusIconMap[status].textColor, "capitalize")}
-      >
-        {status.toLowerCase()}
+      {style.icon}
+      <Text variant="small-medium" tone="inherit">
+        {label}
       </Text>
     </div>
   );

@@ -15,7 +15,7 @@ const ROW_CLASS = "flex items-center gap-2";
 export function WorkItemRow({ item, timezone }: Props) {
   const content = (
     <>
-      <span className="flex size-[18px] shrink-0 items-center justify-center text-zinc-400">
+      <span className="flex size-[18px] shrink-0 items-center justify-center text-foreground-subtle">
         <Icon
           icon={getWorkItemIcon(item.category)}
           size={13}
@@ -23,15 +23,21 @@ export function WorkItemRow({ item, timezone }: Props) {
         />
       </span>
       <Text
-        variant="small"
-        className="min-w-0 flex-1 truncate text-[13px] leading-5 text-zinc-700"
+        variant="body"
+        tone="secondary"
+        className="min-w-0 flex-1 truncate leading-5"
       >
         {item.title}
       </Text>
-      <span className="shrink-0 text-[11px] tabular-nums text-zinc-400">
+      <Text
+        variant="small"
+        as="span"
+        tone="muted"
+        className="shrink-0 tabular-nums"
+      >
         {item.provider ? `${item.provider} · ` : ""}
         {formatWorkTime(item.occurred_at, timezone)}
-      </span>
+      </Text>
     </>
   );
 
@@ -44,7 +50,7 @@ export function WorkItemRow({ item, timezone }: Props) {
       title={item.session_title ?? undefined}
       className={cn(
         ROW_CLASS,
-        "-mx-1 rounded px-1 outline-none transition-colors hover:bg-zinc-50 focus-visible:bg-zinc-50",
+        "-mx-1 rounded px-1 transition-colors outline-none hover:bg-surface-muted focus-visible:bg-surface-muted",
       )}
     >
       {content}

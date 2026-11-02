@@ -16,21 +16,21 @@ export function CardPreview({ file }: Props) {
   const kind = getPreviewKind(file.mime_type, file.size_bytes, file.name);
 
   return (
-    <div className="relative aspect-[16/10] overflow-hidden border-b border-zinc-200 bg-zinc-100">
-      <div className="absolute inset-x-6 bottom-0 top-6 origin-bottom overflow-hidden rounded-t-2xl bg-white shadow-md shadow-black/[0.08] ring-1 ring-black/5 transition-transform duration-300 ease-out group-hover:scale-[1.04] motion-reduce:transition-none motion-reduce:group-hover:scale-100">
+    <div className="relative aspect-[16/10] overflow-hidden border-b border-border-base bg-surface-hover">
+      <div className="absolute inset-x-6 top-6 bottom-0 origin-bottom overflow-hidden rounded-t-2xl bg-surface shadow-md ring-1 shadow-black/[0.08] ring-black/5 transition-transform duration-300 ease-out group-hover:scale-[1.04] motion-reduce:transition-none motion-reduce:group-hover:scale-100">
         <PreviewBody file={file} kind={kind} />
       </div>
     </div>
   );
 }
 
-function PreviewBody({
-  file,
-  kind,
-}: {
+interface PreviewBodyProps {
   file: WorkspaceFileItem;
   kind: PreviewKind;
-}) {
+  imageWidth?: number;
+}
+
+export function PreviewBody({ file, kind, imageWidth }: PreviewBodyProps) {
   const [hasError, setHasError] = useState(false);
   const handleError = useCallback(() => setHasError(true), []);
 
@@ -40,7 +40,9 @@ function PreviewBody({
     case "image":
     case "pdf":
     case "office":
-      return <ImagePreview file={file} onError={handleError} />;
+      return (
+        <ImagePreview file={file} width={imageWidth} onError={handleError} />
+      );
     case "video":
       return <VideoPreview file={file} onError={handleError} />;
     case "csv":

@@ -16,6 +16,11 @@ from prisma.models import PlatformLink, PlatformLinkToken, PlatformUserLink
 from backend.copilot.db import get_chat_session_metadata
 from backend.data.db import transaction
 from backend.data.workspace import get_workspace, get_workspace_file
+from backend.data.workspace_scope import (
+    WorkspaceAccessDeniedError,
+    WorkspaceScope,
+    resolve_expert_workspace_scope,
+)
 from backend.util.exceptions import (
     LinkAlreadyExistsError,
     LinkFlowMismatchError,
@@ -83,9 +88,35 @@ async def resolve_server_link(
     return ResolveResponse(linked=owner is not None)
 
 
-async def resolve_user_link(platform: str, platform_user_id: str) -> ResolveResponse:
-    owner = await find_user_link_owner(platform, platform_user_id)
-    return ResolveResponse(linked=owner is not None)
+async def resolve_user_link(
+    platform: str, platform_user_id: str, include_account: bool = False
+) -> ResolveResponse:
+    if not include_account:
+        owner = await find_user_link_owner(platform, platform_user_id)
+        return ResolveResponse(linked=owner is not None)
+    link = await PlatformUserLink.prisma().find_unique(
+        where={
+            "platform_platformUserId": {
+                "platform": platform,
+                "platformUserId": platform_user_id,
+            }
+        },
+        include={"User": True},
+    )
+    if not link:
+        return ResolveResponse(linked=False)
+    email = link.User.email if link.User else None
+    return ResolveResponse(linked=True, account_hint=mask_email(email))
+
+
+def mask_email(email: str | None) -> str | None:
+    """Mask an email for showing to its owner: 'bently@agpt.co' -> 'b***@agpt.co'."""
+    if not email or "@" not in email:
+        return None
+    local, domain = email.rsplit("@", 1)
+    if not local or not domain:
+        return None
+    return f"{local[0]}***@{domain}"
 
 
 # ── Token creation ────────────────────────────────────────────────────
@@ -514,7 +545,9 @@ async def fetch_workspace_artifact(
     The session→user→workspace→file chain is load-bearing: the LLM emits
     arbitrary ``workspace://`` URIs in the chat stream, so we must never
     serve a file just because the bot claimed an ID — only files owned by
-    the same user the session belongs to are returned.
+    the same user the session belongs to are returned. An expert session is
+    further confined to that expert's file scope, exactly like the copilot
+    tools; a file outside it is treated as not found.
     """
     session = await get_chat_session_metadata(session_id)
     if session is None:
@@ -545,11 +578,26 @@ async def fetch_workspace_artifact(
         )
         return None
 
+    scope: WorkspaceScope | None = None
+    if session.expert_id is not None:
+        scope = await resolve_expert_workspace_scope(session.user_id, session.expert_id)
+        scope = scope.with_session(session_id)
     manager = WorkspaceManager(
-        user_id=session.user_id, workspace_id=workspace.id, session_id=session_id
+        user_id=session.user_id,
+        workspace_id=workspace.id,
+        session_id=session_id,
+        scope=scope,
     )
     try:
         content = await manager.read_file_by_id(file_id)
+    except WorkspaceAccessDeniedError:
+        logger.warning(
+            "fetch_workspace_artifact: file %s is outside the scope of expert "
+            "session %s",
+            file_id,
+            session_id,
+        )
+        return None
     except FileNotFoundError:
         # DB row exists but the storage blob is gone — genuinely unexpected,
         # so keep this one at warning level.

@@ -6,12 +6,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import Link from "next/link";
 
 export function CopilotLibrarySummary() {
-  // Discoverability is already gated by AGENT_BRIEFING at the parent
-  // panel — this pill renders only inside AgentBriefingPanel, which is
-  // itself flag-gated.  No second flag here because the count-based
-  // hide below already keeps the pill quiet for users who don't use
-  // the feature.
-  const { data: skillsRes } = useListCopilotSkills({
+  const { data: skillsRes } = useListCopilotSkills(undefined, {
     query: { staleTime: 30_000 },
   });
   const { data: followupsRes } = useListCopilotFollowupSchedules({
@@ -23,7 +18,7 @@ export function CopilotLibrarySummary() {
   // Count only copilot follow-ups here — graph schedules (recurring
   // agent runs) are already surfaced by the briefing's own "Scheduled"
   // tab above, so folding them into this pill would double-count and
-  // confuse the "Autopilot library" framing.  The pill's link still
+  // confuse the "Skills and follow-ups" framing.  The pill's link still
   // goes to the unified `/library/followups` page, where both kinds
   // are listed together.
   const followupCount =
@@ -44,27 +39,28 @@ export function CopilotLibrarySummary() {
 
   return (
     <div
-      className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-zinc-100 pt-3"
+      className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-separator pt-3"
       data-testid="copilot-library-summary"
     >
-      <Text variant="small" className="!text-zinc-500">
-        Autopilot library
+      <Text variant="small" tone="muted">
+        Skills and follow-ups
       </Text>
       {showSkills ? (
         <Link
           href="/library/skills"
-          className="text-sm text-violet-700 hover:underline"
+          className="text-sm text-accent-strong hover:underline"
           data-testid="copilot-library-skills-link"
         >
           {skillsCount} skill{skillsCount === 1 ? "" : "s"}
         </Link>
       ) : null}
       {showSkills && showFollowups ? (
-        <span className="text-zinc-300">•</span>
+        <span className="text-foreground-disabled">•</span>
       ) : null}
       {showFollowups ? (
         <Link
           href="/library/followups"
+          // oxlint-disable-next-line design-system/no-raw-colors -- yellow-700 #AE8800 has no role; mustard to orange-brown change deferred (see PR)
           className="text-sm text-yellow-700 hover:underline"
           data-testid="copilot-library-followups-link"
         >

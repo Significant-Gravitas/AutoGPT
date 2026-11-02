@@ -1,4 +1,4 @@
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { ChatInput } from "../ChatInput/ChatInput";
 import { TaskProgressBar } from "./TaskProgressBar";
@@ -38,7 +38,7 @@ const meta: Meta<typeof TaskProgressBar> = {
       // Mirrors ChatContainer: the bar sits just above the chat input inside the
       // #fafafa chat column. ChatInput is shown for placement reference only.
       <TooltipProvider>
-        <div className="mx-auto flex w-full max-w-3xl flex-col bg-[#fafafa] px-3 pb-2 pt-2">
+        <div className="mx-auto flex w-full max-w-3xl flex-col bg-[#fafafa] px-3 pt-2 pb-2">
           <div className="relative z-10">
             <Story />
           </div>
@@ -155,7 +155,7 @@ export const Empty: Story = {
     docs: {
       description: {
         story:
-          "With no tasks the component returns null so the above-input area stays clean until Autopilot populates a list.",
+          "With no tasks the component returns null so the above-input area stays clean until a task list is created.",
       },
     },
   },

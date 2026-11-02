@@ -1,13 +1,21 @@
 import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/auth";
 import { getOnboardingStatus } from "@/app/api/helpers";
 import { sanitizeAuthNext } from "@/lib/auth-redirect";
+import {
+  EMAIL_VERIFICATION_NOTICE_PARAM,
+  type EmailVerificationNotice,
+  hasMarketingOptOutParam,
+} from "@/lib/auth/email-verification";
 import { getServerSession } from "@/lib/auth/server/getServerSession";
+import { recordSignupConsent } from "@/lib/auth/server/recordSignupConsent";
 import { rollbackSession } from "@/lib/auth/server/rollbackSession";
+import { type SignupMethod } from "@/services/analytics/account-created-cookie";
 import { markAccountCreated } from "@/services/analytics/account-created-server";
 import {
   scheduleAccountCreatedGoal,
   wasAccountCreated,
 } from "@/services/analytics/datafast-server";
+import { takeMarketingOptOutFlag } from "@/services/analytics/marketing-opt-out-server";
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
@@ -16,6 +24,10 @@ import { NextResponse } from "next/server";
 // cookie, then redirects here because this is the `callbackURL` we hand it in
 // /api/auth/login/with-provider. So by the time we run, the session already
 // exists and we only provision the backend user and decide where to send them.
+//
+// An email verification link lands here too (`?method=email`, see
+// lib/auth/email-verification.ts) after /api/auth/verify-email has signed the
+// user in, so a verified email sign-up is provisioned and counted here, once.
 function getPublicOrigin(requestOrigin: string) {
   const configuredURL =
     process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_FRONTEND_BASE_URL;
@@ -31,9 +43,30 @@ function getPublicOrigin(requestOrigin: string) {
   }
 }
 
+function getSignupMethod(searchParams: URLSearchParams): SignupMethod {
+  return searchParams.get("method") === "email" ? "email" : "google";
+}
+
+// Better Auth redirects here without a session when the link is expired,
+// invalid or already used (`?error=`), and when the address was already
+// verified. Either way the user can log in: an unverified account is sent a
+// fresh link from the login form.
+function getEmailVerificationLoginPath(searchParams: URLSearchParams) {
+  const notice: EmailVerificationNotice = searchParams.get("error")
+    ? "expired"
+    : "verified";
+  const params = new URLSearchParams({
+    [EMAIL_VERIFICATION_NOTICE_PARAM]: notice,
+  });
+  const next = sanitizeAuthNext(searchParams.get("next"));
+  if (next) params.set("next", next);
+  return `/login?${params.toString()}`;
+}
+
 export async function GET(request: Request) {
   const { searchParams, origin: requestOrigin } = new URL(request.url);
   const publicOrigin = getPublicOrigin(requestOrigin);
+  const signupMethod = getSignupMethod(searchParams);
 
   let next = "/copilot";
 
@@ -42,9 +75,33 @@ export async function GET(request: Request) {
   if (session?.user) {
     try {
       const createUserResponse = await postV1GetOrCreateUser();
-      if (wasAccountCreated(createUserResponse)) {
-        await scheduleAccountCreatedGoal("google");
-        await markAccountCreated("google");
+      // Consumed once the user exists, new or returning, so it applies to
+      // this sign-in only. Not taken before provisioning succeeds: a failure
+      // redirects to /error and the retry must still carry the refusal.
+      // Never throws, so it can't reach the rollback below.
+      const cookieOptOut = await takeMarketingOptOutFlag();
+      const accountCreated = wasAccountCreated(createUserResponse);
+      // An email sign-up's refusal comes in its verification link. Only the
+      // account the link creates takes it, so a crafted link can't change an
+      // existing account.
+      const marketingOptOut =
+        cookieOptOut ||
+        (accountCreated &&
+          signupMethod === "email" &&
+          hasMarketingOptOutParam(searchParams));
+      if (accountCreated) {
+        await scheduleAccountCreatedGoal(signupMethod);
+        await markAccountCreated(signupMethod);
+      }
+      // A returning account that opted out on /signup before continuing with
+      // Google records the refusal too: the page has already told them they
+      // won't get marketing emails. Never throws, so a failed consent write
+      // can't reach the rollback below or change where the user lands.
+      if (accountCreated || marketingOptOut) {
+        await recordSignupConsent({
+          userID: session.user.id,
+          marketingOptOut,
+        });
       }
 
       const { shouldShowOnboarding } = await getOnboardingStatus();
@@ -109,6 +166,12 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.redirect(`${publicOrigin}${next}`);
+  }
+
+  if (signupMethod === "email") {
+    return NextResponse.redirect(
+      `${publicOrigin}${getEmailVerificationLoginPath(searchParams)}`,
+    );
   }
 
   // return the user to an error page with instructions

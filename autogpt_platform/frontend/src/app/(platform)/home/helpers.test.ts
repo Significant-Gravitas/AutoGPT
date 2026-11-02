@@ -25,8 +25,21 @@ describe("getHomeStatusLine", () => {
 
   it("leads with decisions and active work", () => {
     expect(getHomeStatusLine(dashboard)).toBe(
-      "2 decisions waiting · 1 agent is working now",
+      "2 decisions waiting · 1 workflow is running now",
     );
+  });
+
+  it("says how many workflows are running when nothing needs you", () => {
+    expect(getHomeStatusLine({ ...dashboard, attention: [] })).toBe(
+      "All clear · 1 workflow is running now",
+    );
+    expect(
+      getHomeStatusLine({
+        ...dashboard,
+        attention: [],
+        active_tasks: [...dashboard.active_tasks, ...dashboard.active_tasks],
+      }),
+    ).toBe("All clear · 2 workflows are running now");
   });
 
   it("reports an all-clear state", () => {

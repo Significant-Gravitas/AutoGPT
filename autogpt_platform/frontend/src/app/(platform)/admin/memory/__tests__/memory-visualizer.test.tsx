@@ -9,6 +9,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import {
@@ -170,6 +171,43 @@ function MemoryVisualizerWithRefetch() {
   );
 }
 
+function completedDreamStatus(jobID: string) {
+  return {
+    ...getGetV2GetDreamPassStatusResponseMock200(),
+    job_id: jobID,
+    kind: "dream_pass",
+    state: "complete",
+    current_phase: null,
+    error: null,
+    result: {
+      pass_id: "pass-5792380f",
+      operations: {
+        writes: [],
+        proposals: [],
+        demotions: [],
+        entity_invalidations: [],
+      },
+      usage: {
+        phases: [],
+        total_input_tokens: 9264,
+        total_output_tokens: 3344,
+        total_cache_read_tokens: 0,
+        total_cache_creation_tokens: 0,
+        total_cost_usd: 0.064624,
+        discount_applied: 0,
+      },
+    },
+  };
+}
+
+async function waitForIdleDreamButton() {
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: /dream pass/i }).textContent?.trim(),
+    ).toBe("Dream pass"),
+  );
+}
+
 const PERSISTENT_GRAPH_PARAMS = {
   include_episodes: true,
   include_communities: true,
@@ -294,7 +332,7 @@ describe("MemoryVisualizer — memory scope", () => {
     expect(
       (await screen.findByRole("combobox", { name: "Memory scope" }))
         .textContent,
-    ).toContain("AutoPilot");
+    ).toContain("Otto");
     await screen.findByText("12");
     await waitFor(() => {
       expect(overviewScopes).toEqual([null]);
@@ -365,7 +403,7 @@ describe("MemoryVisualizer — memory scope", () => {
     ).toBeDefined();
   });
 
-  test("scope switches preserve in-flight AutoPilot job tracking", async () => {
+  test("scope switches preserve in-flight Otto job tracking", async () => {
     setupBaseHandlers([makeExpert("expert-ada", "Ada")]);
     let dreamRequests = 0;
     server.use(
@@ -403,7 +441,7 @@ describe("MemoryVisualizer — memory scope", () => {
     await screen.findByText("Expert memory is read-only.");
 
     fireEvent.click(selector);
-    fireEvent.click(await screen.findByRole("option", { name: /AutoPilot/i }));
+    fireEvent.click(await screen.findByRole("option", { name: /Otto/i }));
 
     const activeButton = await screen.findByRole("button", {
       name: /consolidate…/i,
@@ -434,7 +472,7 @@ describe("MemoryVisualizer — memory scope", () => {
     );
   });
 
-  test("expert-list errors keep AutoPilot memory available", async () => {
+  test("expert-list errors keep Otto memory available", async () => {
     setupBaseHandlers();
     server.use(
       http.get("*/api/experts", () =>
@@ -447,11 +485,11 @@ describe("MemoryVisualizer — memory scope", () => {
     await screen.findByText("Failed to load experts.");
     const selector = screen.getByRole("combobox", { name: "Memory scope" });
     expect((selector as HTMLButtonElement).disabled).toBe(false);
-    expect(selector.textContent).toContain("AutoPilot");
+    expect(selector.textContent).toContain("Otto");
     await screen.findByText("12");
   });
 
-  test("removed experts reset the selected scope to AutoPilot", async () => {
+  test("removed experts reset the selected scope to Otto", async () => {
     let experts = [makeExpert("expert-ada", "Ada")];
     setupBaseHandlers();
     server.use(http.get("*/api/experts", () => HttpResponse.json(experts)));
@@ -474,11 +512,11 @@ describe("MemoryVisualizer — memory scope", () => {
       screen.getByRole("button", { name: "Refetch experts" }),
     );
 
-    await waitFor(() => expect(selector.textContent).toContain("AutoPilot"));
+    await waitFor(() => expect(selector.textContent).toContain("Otto"));
     expect(screen.queryByText("Expert memory is read-only.")).toBeNull();
     expect(toastMock).toHaveBeenCalledWith({
       title: "Expert no longer available",
-      description: "Showing AutoPilot account memory instead.",
+      description: "Showing Otto account memory instead.",
     });
   });
 
@@ -518,7 +556,7 @@ describe("MemoryVisualizer — memory scope", () => {
     expect(toastMock).not.toHaveBeenCalled();
   });
 
-  test("empty and error scope states are announced without blocking AutoPilot", async () => {
+  test("empty and error scope states are announced without blocking Otto", async () => {
     setupBaseHandlers();
     render(<MemoryVisualizer />);
 
@@ -637,7 +675,7 @@ describe("MemoryVisualizer — memory scope", () => {
     ).toBeNull();
 
     fireEvent.click(selector);
-    fireEvent.click(await screen.findByRole("option", { name: /AutoPilot/i }));
+    fireEvent.click(await screen.findByRole("option", { name: /Otto/i }));
 
     await screen.findByRole("button", { name: "AutoPilotFact (1)" });
     expect(
@@ -680,7 +718,7 @@ describe("MemoryVisualizer — memory scope", () => {
     expect(screen.queryByText("dream: running (consolidate)")).toBeNull();
 
     fireEvent.click(selector);
-    fireEvent.click(await screen.findByRole("option", { name: /AutoPilot/i }));
+    fireEvent.click(await screen.findByRole("option", { name: /Otto/i }));
 
     await screen.findByText("dream: running (consolidate)");
   });
@@ -811,7 +849,82 @@ describe("MemoryVisualizer — 202 + polling contract", () => {
     });
   });
 
-  test("job completion refreshes every AutoPilot cache without invalidating expert memory", async () => {
+  test("a finished dream pass keeps its result panel until the admin dismisses it", async () => {
+    setupBaseHandlers();
+    server.use(
+      getPostV2TriggerDreamPassMockHandler202({
+        ...getPostV2TriggerDreamPassResponseMock202(),
+        job_id: "job-dream-done",
+        state: "queued",
+      }),
+      http.get("*/api/admin/memory/:userId/dream/:jobId", () =>
+        HttpResponse.json(completedDreamStatus("job-dream-done")),
+      ),
+    );
+    render(<MemoryVisualizer />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /dream pass/i }),
+    );
+    await screen.findByTestId("dream-result-panel");
+
+    // The job has ended and stopped polling; its record stays on screen.
+    await waitForIdleDreamButton();
+    const panel = screen.getByTestId("dream-result-panel");
+    expect(within(panel).getByText("Operations")).toBeDefined();
+    expect(within(panel).getByText("Token usage")).toBeDefined();
+    expect(within(panel).getByText(/pass-5792380f/)).toBeDefined();
+
+    await userEvent.click(
+      within(panel).getByRole("button", { name: "Dismiss" }),
+    );
+    expect(screen.queryByTestId("dream-result-panel")).toBeNull();
+  });
+
+  test("starting another dream pass clears the previous result", async () => {
+    setupBaseHandlers();
+    let triggers = 0;
+    server.use(
+      http.post("*/api/admin/memory/:userId/dream", () => {
+        triggers += 1;
+        return HttpResponse.json(
+          {
+            ...getPostV2TriggerDreamPassResponseMock202(),
+            job_id: `job-dream-${triggers}`,
+            state: "queued",
+          },
+          { status: 202 },
+        );
+      }),
+      http.get("*/api/admin/memory/:userId/dream/:jobId", ({ params }) =>
+        HttpResponse.json(
+          params.jobId === "job-dream-1"
+            ? completedDreamStatus("job-dream-1")
+            : {
+                ...getGetV2GetDreamPassStatusResponseMock200(),
+                job_id: String(params.jobId),
+                kind: "dream_pass",
+                state: "running",
+                current_phase: "consolidate",
+              },
+        ),
+      ),
+    );
+    render(<MemoryVisualizer />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /dream pass/i }),
+    );
+    await screen.findByTestId("dream-result-panel");
+    await waitForIdleDreamButton();
+    expect(screen.getByTestId("dream-result-panel")).toBeDefined();
+
+    await userEvent.click(screen.getByRole("button", { name: /dream pass/i }));
+    await screen.findByRole("button", { name: /consolidate…/i });
+    expect(screen.queryByTestId("dream-result-panel")).toBeNull();
+  });
+
+  test("job completion refreshes every Otto cache without invalidating expert memory", async () => {
     setupBaseHandlers([makeExpert("expert-ada", "Ada")]);
     const graphRequests = new Map<string, number>();
     server.use(
@@ -894,7 +1007,7 @@ describe("MemoryVisualizer — 202 + polling contract", () => {
     );
 
     fireEvent.click(selector);
-    fireEvent.click(await screen.findByRole("option", { name: /AutoPilot/i }));
+    fireEvent.click(await screen.findByRole("option", { name: /Otto/i }));
     await userEvent.click(episodes);
     await userEvent.click(
       await screen.findByRole("button", { name: /dream pass/i }),

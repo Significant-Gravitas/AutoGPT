@@ -1,4 +1,5 @@
 "use client";
+import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { FileInput } from "@/components/atoms/FileInput/FileInput";
 import { Input } from "@/components/atoms/Input/Input";
@@ -20,13 +21,13 @@ type AgentUploadTabProps = {
 export default function AgentUploadTab({ upload }: AgentUploadTabProps) {
   return (
     <TabsLineContent value="agent">
-      <p className="mb-4 text-sm text-neutral-500">
-        Upload a previously exported AutoGPT agent file (.json).
-      </p>
+      <Text variant="body-tight" tone="muted" className="mb-4">
+        Upload a previously exported AutoGPT workflow file (.json).
+      </Text>
       <Form
         form={upload.form}
         onSubmit={upload.onSubmit}
-        className="flex flex-col justify-center gap-0 px-1"
+        className="mx-1 flex flex-col justify-center"
       >
         <FormField
           control={upload.form.control}
@@ -37,8 +38,8 @@ export default function AgentUploadTab({ upload }: AgentUploadTabProps) {
                 <Input
                   {...field}
                   id={field.name}
-                  label="Agent name"
-                  className="w-full rounded-[10px]"
+                  label="Workflow name"
+                  className="w-full"
                 />
               </FormControl>
               <FormMessage />
@@ -54,9 +55,9 @@ export default function AgentUploadTab({ upload }: AgentUploadTabProps) {
                 <Input
                   {...field}
                   id={field.name}
-                  label="Agent description"
+                  label="Workflow description"
                   type="textarea"
-                  className="w-full rounded-[10px]"
+                  className="w-full"
                 />
               </FormControl>
               <FormMessage />
@@ -74,10 +75,10 @@ export default function AgentUploadTab({ upload }: AgentUploadTabProps) {
                   value={field.value}
                   onChange={field.onChange}
                   accept=".json,application/json"
-                  placeholder="Agent file"
+                  placeholder="Workflow file"
                   maxFileSize={10 * 1024 * 1024}
                   showStorageNote={false}
-                  className="mb-8 mt-4"
+                  className="mt-4 mb-8"
                 />
               </FormControl>
               <FormMessage />
@@ -92,7 +93,7 @@ export default function AgentUploadTab({ upload }: AgentUploadTabProps) {
         >
           {upload.isUploading ? (
             <div className="flex items-center gap-2">
-              <LoadingSpinner size="small" className="text-white" />
+              <LoadingSpinner size="small" />
               <span>Uploading...</span>
             </div>
           ) : (

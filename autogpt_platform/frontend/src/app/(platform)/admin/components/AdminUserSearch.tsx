@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Input } from "@/components/__legacy__/ui/input";
+import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { Button } from "@/components/atoms/Button/Button";
 import { Search01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { isKey } from "@/lib/keyboard";
 
 export interface AdminUserSearchProps {
   /** Current search query value (controlled). Falls back to internal state if omitted. */
@@ -50,12 +51,12 @@ export function AdminUserSearch({
 
   return (
     <div className="flex w-full items-center gap-2">
-      <Input
+      <BaseInput
         placeholder={placeholder}
         aria-label={placeholder}
         value={currentValue}
         onChange={(e) => handleChange(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+        onKeyDown={(e) => isKey(e, "Enter") && handleSearch()}
         disabled={isLoading}
       />
       <Button

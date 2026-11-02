@@ -31,6 +31,7 @@ export function CreateScheduleDialog({
 
   return (
     <Dialog
+      variant="compact"
       controlled={{
         isOpen: open,
         set: (next) => {
@@ -43,7 +44,7 @@ export function CreateScheduleDialog({
       <Dialog.Content>
         <div className="flex flex-col">
           {schedulable.length === 0 ? (
-            <Text variant="body" className="text-zinc-600">
+            <Text variant="body" tone="secondary">
               Install a workflow first, then schedule it here.
             </Text>
           ) : (
@@ -88,28 +89,34 @@ function ScheduleWorkflowRow({ workflow, onScheduleCreated }: RowProps) {
     <button
       type="button"
       disabled={!agent}
-      className="flex w-full items-center gap-3 rounded-2xl border border-zinc-200 px-4 py-3 text-left transition-colors hover:bg-zinc-50 disabled:opacity-60"
+      className="flex w-full items-center gap-3 rounded-2xl border border-border-base px-4 py-3 text-left transition-colors hover:bg-surface-muted disabled:opacity-60"
     >
-      <Icon
-        icon={Calendar03Icon}
-        size={18}
-        className="shrink-0 text-zinc-500"
-      />
+      <span className="inline-flex shrink-0 text-foreground-tertiary">
+        <Icon icon={Calendar03Icon} size={18} />
+      </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-zinc-900">
+        <Text
+          variant="body-medium"
+          as="span"
+          tone="primary"
+          className="block truncate"
+        >
           {name}
-        </span>
+        </Text>
         {workflow.description ? (
-          <span className="block truncate text-xs text-zinc-500">
+          <Text
+            variant="small"
+            as="span"
+            tone="muted"
+            className="block truncate"
+          >
             {workflow.description}
-          </span>
+          </Text>
         ) : null}
       </span>
-      <Icon
-        icon={ArrowRight01Icon}
-        size={16}
-        className="shrink-0 text-zinc-400"
-      />
+      <span className="inline-flex shrink-0 text-foreground-subtle">
+        <Icon icon={ArrowRight01Icon} size={16} />
+      </span>
     </button>
   );
 

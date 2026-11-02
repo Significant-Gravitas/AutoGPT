@@ -12,10 +12,12 @@ from exa_py import AsyncExa
 from exa_py.websets.types import WebsetSearch as SdkWebsetSearch
 from pydantic import BaseModel
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -240,11 +242,13 @@ class ExaCreateWebsetSearchBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaCreateWebsetSearchBlock.Input,
             output_schema=ExaCreateWebsetSearchBlock.Output,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         import time
 
         # Build the payload
@@ -437,12 +441,14 @@ class ExaGetWebsetSearchBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaGetWebsetSearchBlock.Input,
             output_schema=ExaGetWebsetSearchBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         # Use AsyncExa SDK
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         sdk_search = await aexa.websets.searches.get(
@@ -519,12 +525,14 @@ class ExaCancelWebsetSearchBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaCancelWebsetSearchBlock.Input,
             output_schema=ExaCancelWebsetSearchBlock.Output,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         # Use AsyncExa SDK
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         canceled_search = await aexa.websets.searches.cancel(
@@ -600,12 +608,14 @@ class ExaFindOrCreateSearchBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaFindOrCreateSearchBlock.Input,
             output_schema=ExaFindOrCreateSearchBlock.Output,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         # Use AsyncExa SDK
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         # Get webset to check existing searches

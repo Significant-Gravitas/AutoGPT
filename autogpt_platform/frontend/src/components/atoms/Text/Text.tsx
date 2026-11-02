@@ -1,17 +1,23 @@
 import React from "react";
 import { cn } from "@/lib/utils";
-import { As, Variant, variantElementMap, variants } from "./helpers";
+import {
+  As,
+  Tone,
+  tones,
+  Variant,
+  variantElementMap,
+  variants,
+} from "./helpers";
 
 type CustomProps = {
   variant: Variant;
   as?: As;
   size?: Variant;
+  /** Semantic colour role; see `tones` in helpers.ts for each value. */
+  tone?: Tone;
   className?: string;
-  /**
-   * Adds the sentry-unmask class for static text visibility in replays.
-   * Disable when rendering user-provided or dynamic content.
-   */
-  unmask?: boolean;
+  /** With `as="label"`: the id of the control the label names. */
+  htmlFor?: string;
 };
 
 export type TextProps = React.PropsWithChildren<
@@ -23,21 +29,18 @@ export function Text({
   variant,
   as: outerAs,
   size,
+  tone,
   className = "",
-  unmask = true,
   ...rest
 }: TextProps) {
   const variantClasses = variants[size || variant] || variants.body;
   const Element = outerAs || variantElementMap[variant];
-  const combinedClassName = cn(
-    variantClasses,
-    unmask && "sentry-unmask",
-    className,
-  );
+  const combinedClassName = cn(variantClasses, tone && tones[tone], className);
 
   return React.createElement(
     Element,
     {
+      "data-slot": "text",
       className: combinedClassName,
       ...rest,
     },
@@ -47,4 +50,5 @@ export function Text({
 
 // Export variant names for use in stories
 export const textVariants = Object.keys(variants) as Variant[];
+export const textTones = Object.keys(tones) as Tone[];
 export type TextVariant = Variant;

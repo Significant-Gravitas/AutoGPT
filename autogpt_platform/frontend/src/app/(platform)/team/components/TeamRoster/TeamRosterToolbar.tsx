@@ -1,6 +1,6 @@
-import { Select } from "@/components/atoms/Select/Select";
-import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
 import { TeamFilter } from "../../helpers";
+import { ToolbarSearch } from "../ToolbarSearch";
+import { TeamFilterMenu } from "./TeamFilterMenu";
 
 interface Props {
   query: string;
@@ -9,13 +9,8 @@ interface Props {
   onFilterChange: (next: TeamFilter) => void;
 }
 
-const FILTER_OPTIONS = [
-  { value: "all", label: "All experts" },
-  { value: "scheduled", label: "Scheduled" },
-  { value: "needs-setup", label: "Needs setup" },
-  { value: "paused", label: "Paused" },
-];
-
+/** Search and filter for the roster: the Files page's rounded Input and a
+ *  pill filter menu. */
 export function TeamRosterToolbar({
   query,
   onQueryChange,
@@ -23,28 +18,15 @@ export function TeamRosterToolbar({
   onFilterChange,
 }: Props) {
   return (
-    <div className="flex flex-wrap items-center justify-center gap-2">
-      <SearchInput
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+      <ToolbarSearch
+        id="team-roster-search"
+        label="Search experts"
         value={query}
         onChange={onQueryChange}
-        size="xsmall"
-        placeholder="Search experts"
-        aria-label="Search experts"
-        className="w-full sm:w-48"
+        className="sm:w-72"
       />
-      <Select
-        id="team-filter"
-        label="Filter"
-        hideLabel
-        size="small"
-        className="h-7 rounded-md px-2.5 text-xs"
-        value={filter}
-        onValueChange={(next) => onFilterChange(next as TeamFilter)}
-        options={FILTER_OPTIONS}
-        // The hidden-label Select reserves `mb-6` for error text it never
-        // shows, which pushes its trigger off the toolbar's centre line.
-        wrapperClassName="w-36 !mb-0"
-      />
+      <TeamFilterMenu value={filter} onChange={onFilterChange} />
     </div>
   );
 }

@@ -38,7 +38,7 @@ export class MarketplacePage extends BasePage {
 
   async getMarketplaceTitle(page: Page) {
     const { getText } = getSelectors(page);
-    return getText("Explore AI agents", { exact: false });
+    return getText("Explore AI workflows", { exact: false });
   }
 
   async getCreatorsSection(page: Page) {
@@ -225,13 +225,17 @@ export class MarketplacePage extends BasePage {
     agentSlug: string;
   }> {
     await this.page.goto("/marketplace");
-    await this.page.getByRole("button", { name: "Become a Creator" }).click();
+    await this.page
+      .getByRole("button", {
+        name: "Publish your workflows",
+      })
+      .click();
 
     const publishAgentModal = this.page.getByTestId("publish-agent-modal");
     await expect(publishAgentModal).toBeVisible();
     await expect(
       publishAgentModal.getByText(
-        "Pick the saved agent version you want to send to marketplace review.",
+        "Pick the saved workflow version you want to send to marketplace review.",
       ),
     ).toBeVisible();
 
@@ -246,7 +250,7 @@ export class MarketplacePage extends BasePage {
       .click();
 
     await expect(
-      publishAgentModal.getByText("Write a bit of details about your agent"),
+      publishAgentModal.getByText("Write a bit of details about your workflow"),
     ).toBeVisible();
 
     const suffix = Date.now().toString().slice(-6);
@@ -255,12 +259,12 @@ export class MarketplacePage extends BasePage {
 
     await publishAgentModal.getByLabel("Title").fill(agentTitle);
     await publishAgentModal
-      .getByLabel("Subheader")
-      .fill("A deterministic marketplace submission");
+      .getByLabel("Tagline")
+      .fill("Publish a deterministic marketplace submission");
     await publishAgentModal.getByLabel("Slug").fill(agentSlug);
 
     await publishAgentModal.getByRole("combobox", { name: "Category" }).click();
-    await this.page.getByRole("option", { name: "Other" }).click();
+    await this.page.getByRole("option", { name: "Operations" }).click();
 
     // Stub the GCS-backed media upload so the flow is hermetic in CI, then
     // select a file to trigger it. This satisfies the "at least one image is

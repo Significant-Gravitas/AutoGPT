@@ -1,7 +1,7 @@
 "use client";
 
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
-import { ConnectProviderRow } from "@/app/(platform)/copilot/components/OnboardingWelcomeDialog/ConnectProviderRow";
+import { ConnectProviderRow } from "@/app/(platform)/copilot/components/ConnectToolsDialog/ConnectProviderRow";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
@@ -16,7 +16,10 @@ import { Plug01Icon } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useBottomScrollShadow } from "../../../components/SoulDrawer/useBottomScrollShadow";
 import { useFitListToDialog } from "../useFitListToDialog";
-import { useExpertConnectServiceDialog } from "./useExpertConnectServiceDialog";
+import {
+  SERVICE_FILTERS,
+  useExpertConnectServiceDialog,
+} from "./useExpertConnectServiceDialog";
 
 const STEP_TRANSITION = { duration: 0.15, ease: [0, 0, 0.2, 1] as const };
 const HEIGHT_TRANSITION = { duration: 0.2, ease: [0, 0, 0.2, 1] as const };
@@ -36,6 +39,8 @@ const reducedVariants = {
 interface Props {
   open: boolean;
   expertName: string;
+  /** Open straight on this provider's connect step instead of the picker. */
+  initialProviderId?: string | null;
   onClose: () => void;
   onConnected: (credential: CredentialsMetaResponse) => void;
 }
@@ -46,21 +51,27 @@ interface Props {
 export function ExpertConnectServiceDialog({
   open,
   expertName,
+  initialProviderId,
   onClose,
   onConnected,
 }: Props) {
   const {
     query,
     setQuery,
+    filter,
+    setFilter,
     providers,
     isLoading,
     isError,
     refetch,
     selectedProvider,
     direction,
-    connectedProviders,
+    connectedServices,
     selectedMethod,
     setSelectedMethod,
+    showNative,
+    setShowNative,
+    isMcpStep,
     apiKeyForm,
     handleApiKeySubmit,
     showContinue,
@@ -70,7 +81,7 @@ export function ExpertConnectServiceDialog({
     handleBackToList,
     handleContinue,
     handleSuccess,
-  } = useExpertConnectServiceDialog({ open, onConnected });
+  } = useExpertConnectServiceDialog({ open, initialProviderId, onConnected });
   const reduceMotion = useReducedMotion();
   const variants = reduceMotion ? reducedVariants : stepVariants;
   const [contentRef, contentHeight] = useMeasuredHeight<HTMLDivElement>();
@@ -79,7 +90,8 @@ export function ExpertConnectServiceDialog({
 
   return (
     <Dialog
-      styling={{ maxWidth: "40rem", maxHeight: "60vh" }}
+      variant="compact"
+      styling={{ maxWidth: "40rem", maxHeight: "85vh" }}
       controlled={{
         isOpen: open,
         set: (next) => {
@@ -90,11 +102,11 @@ export function ExpertConnectServiceDialog({
       <Dialog.Content>
         <div className="flex flex-col gap-4">
           <motion.div
-            className="relative overflow-hidden"
+            className="relative -m-1 overflow-hidden"
             animate={{ height: contentHeight ?? "auto" }}
             transition={reduceMotion ? { duration: 0 } : HEIGHT_TRANSITION}
           >
-            <div ref={contentRef}>
+            <div ref={contentRef} className="p-1">
               <AnimatePresence mode="wait" initial={false} custom={direction}>
                 {selectedProvider ? (
                   <motion.div
@@ -112,7 +124,12 @@ export function ExpertConnectServiceDialog({
                       onSelectMethod={setSelectedMethod}
                       apiKeyForm={apiKeyForm}
                       onApiKeySubmit={handleApiKeySubmit}
-                      onDeviceAuthSuccess={handleSuccess}
+                      onInlineConnectSuccess={handleSuccess}
+                      mcpSignIn={{
+                        showNative,
+                        onShowNativeChange: setShowNative,
+                        onBack: handleBackToList,
+                      }}
                     />
                   </motion.div>
                 ) : (
@@ -127,13 +144,10 @@ export function ExpertConnectServiceDialog({
                     className="flex flex-col gap-4"
                   >
                     <div className="flex flex-col gap-1">
-                      <Text
-                        variant="h3"
-                        className="!text-[1.25rem] text-zinc-900"
-                      >
+                      <Text variant="lead-medium" as="h3" tone="primary">
                         Connect a service for {expertName}
                       </Text>
-                      <Text variant="small" className="!text-zinc-500">
+                      <Text variant="small" tone="muted">
                         Pick a service to connect. {expertName} will be able to
                         use it on your behalf.
                       </Text>
@@ -156,22 +170,41 @@ export function ExpertConnectServiceDialog({
                     ) : (
                       <div className="flex flex-col gap-3">
                         <SearchInput
+                          size="small"
                           value={query}
                           onChange={setQuery}
                           placeholder="Search services..."
                           aria-label="Search services"
                         />
+                        <div
+                          role="group"
+                          aria-label="Filter services"
+                          className="flex items-center gap-1"
+                        >
+                          {SERVICE_FILTERS.map((option) => (
+                            <Button
+                              key={option.value}
+                              type="button"
+                              variant="toggle"
+                              size="small"
+                              aria-pressed={filter === option.value}
+                              onClick={() => setFilter(option.value)}
+                            >
+                              {option.label}
+                            </Button>
+                          ))}
+                        </div>
                         {providers.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-[#DADADC] py-8 text-center">
-                            <Icon
-                              icon={Plug01Icon}
-                              size={24}
-                              className="text-[#83838C]"
-                            />
-                            <Text variant="body" className="text-[#505057]">
+                          <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border-base py-8 text-center">
+                            <span className="inline-flex text-foreground-tertiary">
+                              <Icon icon={Plug01Icon} size={24} />
+                            </span>
+                            <Text variant="body" tone="secondary">
                               {query.trim()
                                 ? `No services match "${query.trim()}"`
-                                : "No services available."}
+                                : filter === "connected"
+                                  ? "No services connected yet."
+                                  : "No services available."}
                             </Text>
                           </div>
                         ) : (
@@ -185,9 +218,10 @@ export function ExpertConnectServiceDialog({
                                 <li key={provider.id}>
                                   <ConnectProviderRow
                                     provider={provider}
+                                    className="rounded-lg"
                                     onSelect={handleSelect}
-                                    isConnected={connectedProviders.has(
-                                      provider.id,
+                                    isConnected={connectedServices.has(
+                                      provider.serviceId,
                                     )}
                                   />
                                 </li>
@@ -197,7 +231,7 @@ export function ExpertConnectServiceDialog({
                             <div
                               aria-hidden="true"
                               className={cn(
-                                "pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white to-transparent transition-opacity duration-200",
+                                "pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-surface to-transparent transition-opacity duration-200",
 
                                 hasMoreBelow ? "opacity-100" : "opacity-0",
                               )}
@@ -212,34 +246,36 @@ export function ExpertConnectServiceDialog({
             </div>
           </motion.div>
 
-          <div className="flex items-center justify-end gap-3">
-            {selectedProvider ? (
-              <>
-                <Button
-                  variant="secondary"
-                  size="small"
-                  onClick={handleBackToList}
-                >
-                  Back
-                </Button>
-                {showContinue ? (
+          {isMcpStep ? null : (
+            <div className="flex items-center justify-end gap-3">
+              {selectedProvider ? (
+                <>
                   <Button
-                    variant="primary"
+                    variant="secondary"
                     size="small"
-                    disabled={isContinueDisabled}
-                    loading={isConnecting}
-                    onClick={handleContinue}
+                    onClick={handleBackToList}
                   >
-                    {isConnecting ? "Connecting…" : "Continue"}
+                    Back
                   </Button>
-                ) : null}
-              </>
-            ) : (
-              <Button variant="secondary" size="small" onClick={onClose}>
-                Cancel
-              </Button>
-            )}
-          </div>
+                  {showContinue ? (
+                    <Button
+                      variant="primary"
+                      size="small"
+                      disabled={isContinueDisabled}
+                      loading={isConnecting}
+                      onClick={handleContinue}
+                    >
+                      {isConnecting ? "Connecting…" : "Continue"}
+                    </Button>
+                  ) : null}
+                </>
+              ) : (
+                <Button variant="secondary" size="small" onClick={onClose}>
+                  Cancel
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       </Dialog.Content>
     </Dialog>

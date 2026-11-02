@@ -1,10 +1,11 @@
 from datetime import datetime
 
-from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts.models import Expert
+from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.api.features.library.model import LibraryAgentRef
 from backend.copilot.briefing.models import BriefingContent
 from backend.copilot.model import ChatSessionInfo
+from backend.copilot.scheduled_chats.service import PausedScheduledChat
 from backend.data.activity_event import ActivityEvent
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.data.execution_cost_summary import UserExecutionCostSummary
@@ -14,7 +15,12 @@ from .activity import compose_active_tasks, compose_upcoming_tasks, compose_week
 from .agents import compose_agent_statuses, compose_team_summary
 from .attention import compose_attention_items
 from .briefing import compose_briefing
-from .helpers import agent_refs_by_graph, experts_by_schedule, next_runs_by_expert
+from .helpers import (
+    agent_refs_by_graph,
+    experts_by_graph,
+    experts_by_schedule,
+    next_runs_by_expert,
+)
 from .models import HomeDashboardResponse
 from .recent_work import compose_recent_work
 
@@ -34,6 +40,7 @@ def compose_home_dashboard(
     persisted_briefing: BriefingContent | None = None,
     work_events: list[ActivityEvent] | None = None,
     session_titles: dict[str, str | None] | None = None,
+    paused_chats: list[PausedScheduledChat] | None = None,
 ) -> HomeDashboardResponse:
     hired = [
         expert
@@ -41,12 +48,12 @@ def compose_home_dashboard(
         if not expert.is_template and not expert.is_archived
     ]
     expert_by_id = {expert.id: expert for expert in hired}
-    agent_by_graph = agent_refs_by_graph(hired, library_refs)
     graph_schedules = [
         schedule
         for schedule in schedules
         if isinstance(schedule, GraphExecutionJobInfo)
     ]
+    agent_by_graph = agent_refs_by_graph(hired, library_refs, graph_schedules)
     expert_by_schedule = experts_by_schedule(hired, graph_schedules)
     running_expert_ids = {
         execution.expert_id
@@ -73,6 +80,7 @@ def compose_home_dashboard(
             schedules=schedules,
             credits_balance=credits_balance,
             questions=questions,
+            paused_chats=paused_chats,
         ),
         briefing=compose_briefing(
             now=now,
@@ -81,8 +89,12 @@ def compose_home_dashboard(
             agent_by_graph=agent_by_graph,
             persisted=persisted_briefing,
         ),
-        active_tasks=compose_active_tasks(executions, expert_by_id, agent_by_graph),
-        upcoming_tasks=compose_upcoming_tasks(schedules, expert_by_schedule),
+        active_tasks=compose_active_tasks(
+            executions, expert_by_id, agent_by_graph, experts_by_graph(hired)
+        ),
+        upcoming_tasks=compose_upcoming_tasks(
+            schedules, expert_by_schedule, agent_by_graph
+        ),
         team=compose_team_summary(agents),
         agents=agents,
         week=compose_week_summary(cost_summary, credits_balance),

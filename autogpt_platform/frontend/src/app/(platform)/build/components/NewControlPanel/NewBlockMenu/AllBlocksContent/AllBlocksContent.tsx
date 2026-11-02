@@ -1,12 +1,12 @@
 import React, { Fragment } from "react";
 import { Block } from "../Block";
-import { Button } from "@/components/__legacy__/ui/button";
-import { Separator } from "@/components/__legacy__/ui/separator";
-import { beautifyString } from "@/lib/utils";
+import { beautifyString, cn } from "@/lib/utils";
+import { Text } from "@/components/atoms/Text/Text";
+import { Separator } from "@/components/atoms/Separator/Separator";
+
 import { useAllBlockContent } from "./useAllBlockContent";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { blockMenuContainerStyle } from "../style";
-import { useNodeStore } from "../../../../stores/nodeStore";
+import { blockMenuButtonBase, blockMenuContainerStyle } from "../style";
 
 export const AllBlocksContent = () => {
   const {
@@ -18,8 +18,6 @@ export const AllBlocksContent = () => {
     isLoadingMore,
     isErrorOnLoadingMore,
   } = useAllBlockContent();
-
-  const addBlock = useNodeStore((state) => state.addBlock);
 
   if (isLoading) {
     return (
@@ -55,17 +53,24 @@ export const AllBlocksContent = () => {
     <div className={blockMenuContainerStyle}>
       {categories?.map((category, index) => (
         <Fragment key={category.name}>
-          {index > 0 && <Separator className="h-[1px] w-full text-zinc-300" />}
+          {index > 0 && (
+            <Separator className="h-[1px] w-full text-foreground-disabled" />
+          )}
 
           {/* Category Section */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
-              <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
+              <Text variant="body-medium" tone="emphasis">
                 {category.name && beautifyString(category.name)}
-              </p>
-              <span className="rounded-full bg-zinc-100 px-[0.375rem] font-sans text-sm leading-[1.375rem] text-zinc-600">
+              </Text>
+              <Text
+                variant="body"
+                as="span"
+                tone="secondary"
+                className="rounded-full bg-surface-hover px-1.5"
+              >
                 {category.total_blocks}
-              </span>
+              </Text>
             </div>
 
             <div className="space-y-2">
@@ -74,7 +79,6 @@ export const AllBlocksContent = () => {
                   key={`${category.name}-${block.id}`}
                   title={block.name as string}
                   description={block.name as string}
-                  onClick={() => addBlock(block)}
                   blockData={block}
                 />
               ))}
@@ -99,14 +103,24 @@ export const AllBlocksContent = () => {
               )}
 
               {category.total_blocks > category.blocks.length && (
-                <Button
-                  variant={"link"}
-                  className="px-0 font-sans text-sm leading-[1.375rem] text-zinc-600 underline hover:text-zinc-800"
+                <button
+                  type="button"
+                  className={cn(
+                    blockMenuButtonBase,
+                    "h-9 py-2 text-foreground-secondary underline-offset-4 hover:text-foreground-emphasis hover:underline",
+                  )}
                   disabled={isLoadingMore(category.name)}
                   onClick={() => handleRefetchBlocks(category.name)}
                 >
-                  see all
-                </Button>
+                  <Text
+                    variant="body-medium"
+                    as="span"
+                    tone="inherit"
+                    className="underline"
+                  >
+                    see all
+                  </Text>
+                </button>
               )}
             </div>
           </div>
