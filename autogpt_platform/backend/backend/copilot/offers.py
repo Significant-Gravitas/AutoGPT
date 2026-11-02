@@ -39,7 +39,7 @@ class ConnectionTier(BaseModel):
     """One quality level on a connection.
 
     ``display_model`` is the model this tier resolves to, run through the
-    same router the turn will use — LaunchDarkly cell, then registry, then
+    same router the turn will use — feature-flag cell, then registry, then
     config — so it cannot drift from what actually answers.
 
     On a ChatGPT connection it is the model the catalog pins for that cell,
@@ -341,7 +341,7 @@ def _limitations(transport: ChatTransportResponse) -> list[str]:
     if transport.auth_provider in {"codex", "microsoft_365_copilot"}:
         # Stated because it is a real edge a user can hit, not a policy note:
         # the builder panel rejects a codex route outright.
-        limitations.append("The agent builder's chat panel always runs on AutoGPT.")
+        limitations.append("The workflow builder's chat panel always runs on AutoGPT.")
     if transport.auth_provider == "microsoft_365_copilot":
         limitations.extend(
             [

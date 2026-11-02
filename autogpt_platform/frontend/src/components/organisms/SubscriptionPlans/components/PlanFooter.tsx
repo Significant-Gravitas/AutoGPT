@@ -7,12 +7,16 @@ interface Props {
 
 export function PlanFooter({ onCompare }: Props) {
   return (
-    <footer className="mt-3 flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+    <footer
+      data-slot="plan-footer"
+      className="mt-3 flex flex-wrap items-center justify-center gap-x-5 gap-y-2"
+    >
       <Text variant="small" tone="muted">
         Need something custom?{" "}
         <a
           href="mailto:sales@agpt.co"
-          className="font-medium text-purple-500 no-underline hover:text-purple-600"
+          data-slot="plan-footer-sales-link"
+          className="font-medium text-brand no-underline hover:text-brand-hover"
         >
           Talk to sales.
         </a>
@@ -20,7 +24,7 @@ export function PlanFooter({ onCompare }: Props) {
       <Button
         type="button"
         variant="link"
-        className="h-auto min-w-0 p-0 text-xs text-zinc-500"
+        className="h-auto min-w-0 p-0 text-xs text-foreground-tertiary"
         onClick={onCompare}
       >
         Compare plans

@@ -1,23 +1,31 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import type { ExpertAvatarRequestCategory } from "@/app/api/__generated__/models/expertAvatarRequestCategory";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
-import { bubbleClassFor } from "../ColorStep/helpers";
 import { ExpertAvatarPicker } from "@/components/molecules/ExpertAvatarPicker/ExpertAvatarPicker";
+import { cn } from "@/lib/utils";
+import { bubbleClassFor } from "../ColorStep/helpers";
 
 interface Props {
   name: string;
+  category: ExpertAvatarRequestCategory;
   color: string | null;
   avatarUrl: string | null;
-  onPick: (avatarUrl: string, colorId: string) => void;
+  onPick: (avatarUrl: string) => void;
 }
 
-export function AvatarStep({ name, color, avatarUrl, onPick }: Props) {
+export function AvatarStep({
+  name,
+  category,
+  color,
+  avatarUrl,
+  onPick,
+}: Props) {
   if (avatarUrl) {
     return (
       <div
         className={cn(
-          "ml-auto flex w-fit items-center gap-3 rounded-full border py-2 pl-2 pr-5",
+          "ml-auto flex w-fit items-center gap-3 rounded-full border py-2 pr-5 pl-2",
           bubbleClassFor(color) ?? "border-accent bg-accent/5",
         )}
       >
@@ -33,5 +41,5 @@ export function AvatarStep({ name, color, avatarUrl, onPick }: Props) {
     );
   }
 
-  return <ExpertAvatarPicker name={name} color={color} onPick={onPick} />;
+  return <ExpertAvatarPicker name={name} category={category} onPick={onPick} />;
 }

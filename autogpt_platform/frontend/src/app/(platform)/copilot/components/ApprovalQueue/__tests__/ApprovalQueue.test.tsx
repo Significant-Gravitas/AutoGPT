@@ -1,6 +1,6 @@
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { getPostV2ProcessReviewActionMockHandler200 } from "@/app/api/__generated__/endpoints/executions/executions.msw";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
 import { server } from "@/mocks/mock-server";
@@ -12,6 +12,9 @@ import {
 } from "@/tests/integrations/test-utils";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { CopilotPendingReviews } from "../../CopilotPendingReviews/CopilotPendingReviews";
+import type { MessagePart } from "../../ChatMessagesContainer/helpers";
+import { ToolChain } from "../../ToolChain/ToolChain";
+import { useHeldAnswersStore } from "../heldAnswersStore";
 import {
   deleteFolder,
   folder,
@@ -41,6 +44,34 @@ function serve(reviews: PendingHumanReviewModel[], status = 200) {
 function renderQueue() {
   return render(
     <CopilotChatActionsProvider onSend={vi.fn()} onBackendTurn={vi.fn()}>
+      <CopilotPendingReviews chatSessionId={CHAT_SESSION} />
+    </CopilotChatActionsProvider>,
+  );
+}
+
+afterEach(() => {
+  useHeldAnswersStore.setState({ answers: {} });
+});
+
+// The held call's row in the chain, for the card folder("a", "Q3 reports").
+const HELD_ROW = {
+  type: "tool-create_folder",
+  state: "output-available",
+  toolCallId: "call-a",
+  input: { name: "Q3 reports" },
+  output: {
+    type: "approval_required",
+    tool_name: "create_folder",
+    review_id: "copilot-node-gate-create_folder:a",
+    ask: "Create library folder",
+    object: "Q3 reports",
+  },
+} as MessagePart;
+
+function renderQueueAndRow() {
+  return render(
+    <CopilotChatActionsProvider onSend={vi.fn()} onBackendTurn={vi.fn()}>
+      <ToolChain parts={[HELD_ROW]} isStreaming={false} />
       <CopilotPendingReviews chatSessionId={CHAT_SESSION} />
     </CopilotChatActionsProvider>,
   );
@@ -277,4 +308,31 @@ test("a folder delete, which moves its agents to the root, stays unmarked", asyn
 
   expect(await screen.findByText("f-111")).toBeDefined();
   expect(screen.queryByText("Can't be undone")).toBeNull();
+});
+
+test("approving a card flips its chain row to Approved at once", async () => {
+  serve([folder("a", "Q3 reports")]);
+  renderQueueAndRow();
+  const region = await queue();
+  expect(screen.getAllByText("Waiting for you").length).toBeGreaterThan(1);
+
+  await userEvent.click(
+    await within(region).findByRole("button", { name: "Approve" }),
+  );
+
+  expect(await screen.findByText("Approved")).toBeDefined();
+});
+
+test("a failed send leaves the chain row waiting", async () => {
+  serve([folder("a", "Q3 reports")], 500);
+  renderQueueAndRow();
+  const region = await queue();
+
+  await userEvent.click(
+    await within(region).findByRole("button", { name: "Approve" }),
+  );
+
+  await screen.findByRole("alert");
+  expect(useHeldAnswersStore.getState().answers).toEqual({});
+  expect(screen.queryByText("Approved")).toBeNull();
 });

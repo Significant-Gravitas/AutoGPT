@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { within } from "@testing-library/react";
-import { render, screen } from "@/tests/integrations/test-utils";
+import { http, HttpResponse } from "msw";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import {
   getGetV2ListLibraryAgentsMockHandler,
@@ -16,11 +22,16 @@ import {
   getGetV1ListAllExecutionsMockHandler,
   getGetV1UserCostSummaryMockHandler,
 } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
+import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import LibraryPage from "../page";
 
 afterEach(() => {
   vi.useRealTimers();
+  flags.paymentsOn = true;
 });
+
+// Payments on is a billed install; off is a self-hosted one without billing.
+const flags = vi.hoisted(() => ({ paymentsOn: true }));
 
 vi.mock("@/services/feature-flags/use-get-flag", async () => {
   const actual = await vi.importActual<
@@ -28,24 +39,36 @@ vi.mock("@/services/feature-flags/use-get-flag", async () => {
   >("@/services/feature-flags/use-get-flag");
   return {
     ...actual,
-    useGetFlag: () => false,
+    useGetFlag: (flag: string) =>
+      flag === actual.Flag.ENABLE_PLATFORM_PAYMENT && flags.paymentsOn,
   };
 });
 
-function setupHandlers({ totalCents }: { totalCents: number }) {
-  const agents = [
+function setupHandlers({
+  totalCents,
+  agents = [
     { ...getGetV2ListLibraryAgentsResponseMock().agents[0], graph_id: "g-1" },
-  ];
+  ],
+}: {
+  totalCents: number;
+  agents?: LibraryAgent[];
+}) {
   server.use(
-    getGetV2ListLibraryAgentsMockHandler({
-      ...getGetV2ListLibraryAgentsResponseMock(),
-      agents,
-      pagination: {
-        total_items: 1,
-        total_pages: 1,
-        current_page: 1,
-        page_size: 20,
-      },
+    // Pages like the backend: honours `page` and `page_size`.
+    getGetV2ListLibraryAgentsMockHandler(({ request }) => {
+      const params = new URL(request.url).searchParams;
+      const page = Number(params.get("page") ?? 1);
+      const pageSize = Number(params.get("page_size") ?? 15);
+      const start = (page - 1) * pageSize;
+      return {
+        agents: agents.slice(start, start + pageSize),
+        pagination: {
+          total_items: agents.length,
+          total_pages: Math.ceil(agents.length / pageSize),
+          current_page: page,
+          page_size: pageSize,
+        },
+      };
     }),
     getGetV2ListFavoriteLibraryAgentsMockHandler({
       ...getGetV2ListFavoriteLibraryAgentsResponseMock(),
@@ -111,5 +134,69 @@ describe("LibraryPage — AgentBriefingPanel 'Spent this month' tile", () => {
       throw new Error("Spent this month tile should render inside a button");
     }
     expect(within(tile).getByText("$0.00")).toBeDefined();
+  });
+});
+
+describe("LibraryPage — AgentBriefingPanel without billing (self-hosted)", () => {
+  test("shows no spend, no costs breakdown, and never asks for spend", async () => {
+    flags.paymentsOn = false;
+    setupHandlers({ totalCents: 825 });
+    let costSummaryRequests = 0;
+    server.use(
+      http.get("/api/proxy/api/executions/cost-summary", () => {
+        costSummaryRequests += 1;
+        return HttpResponse.json({}, { status: 500 });
+      }),
+    );
+
+    render(<LibraryPage />);
+
+    const runningTile = (await screen.findByText("Running now")).closest(
+      "button",
+    );
+    expect(runningTile).not.toBeNull();
+    expect(screen.queryByText("Spent this month")).toBeNull();
+    expect(screen.queryByText(/costs breakdown/i)).toBeNull();
+    expect(screen.queryByText("$8.25")).toBeNull();
+    expect(costSummaryRequests).toBe(0);
+  });
+
+  test("a second click on the active tile goes back to the overview", async () => {
+    flags.paymentsOn = false;
+    setupHandlers({ totalCents: 0 });
+
+    render(<LibraryPage />);
+
+    const idle = await screen.findByRole("button", { name: /^Idle\b/ });
+    fireEvent.click(idle);
+    expect(idle.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(idle);
+    expect(idle.getAttribute("aria-pressed")).toBe("false");
+    expect(
+      screen
+        .getByRole("button", { name: /^Running now\b/ })
+        .getAttribute("aria-pressed"),
+    ).toBe("false");
+  });
+});
+
+describe("LibraryPage — AgentBriefingPanel status tiles", () => {
+  test("counts every library agent, not only the first page of 100", async () => {
+    const template = getGetV2ListLibraryAgentsResponseMock().agents[0];
+    // All idle (no trigger, no schedule, no executions), so the Idle tile
+    // alone has to account for every agent across both pages.
+    const agents = Array.from({ length: 150 }, (_, i) => ({
+      ...template,
+      id: `la-${i}`,
+      graph_id: `g-${i}`,
+      has_external_trigger: false,
+      is_scheduled: false,
+    }));
+    setupHandlers({ totalCents: 0, agents });
+
+    render(<LibraryPage />);
+
+    const idle = await screen.findByRole("button", { name: /^Idle\b/ });
+    await waitFor(() => expect(within(idle).getByText("150")).toBeDefined());
   });
 });

@@ -200,7 +200,7 @@ class TestAdminExportUserHistory:
 
     @pytest.mark.asyncio
     async def test_rejects_when_fetched_rowset_exceeds_cap(self):
-        oversize = [_make_tx() for _ in range(CREDIT_EXPORT_MAX_ROWS + 1)]
+        oversize = [_make_tx()] * (CREDIT_EXPORT_MAX_ROWS + 1)
         with patch("backend.data.credit.CreditTransaction") as ct, patch(
             "backend.data.credit.get_user_email_by_id",
             new_callable=AsyncMock,

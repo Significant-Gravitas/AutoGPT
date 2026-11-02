@@ -5,8 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot.prompting import NO_REPLY
+from backend.platform_linking.models import ChannelCard
 
 from .adapters.base import ChannelType, MessageContext, StreamDraftOutcome
+from .options import TurnOptions
+from .prompt import PendingMessage
 from .turn_stream import DraftStreamer, TurnStreamer, _send_clarification
 
 _MODULE = "backend.copilot.bot.turn_stream"
@@ -150,7 +153,10 @@ class TestStreamBatchDrafts:
         api = _api(["Hello", " world"])
         with _patch_redis():
             await TurnStreamer(api).stream_batch(
-                [("Bently", "user-1", "hi")], _ctx(), adapter, "42"
+                [PendingMessage(username="Bently", user_id="user-1", text="hi")],
+                _ctx(),
+                adapter,
+                "42",
             )
         assert adapter.send_stream_draft.await_count >= 1
         first = adapter.send_stream_draft.await_args_list[0]
@@ -166,7 +172,10 @@ class TestStreamBatchDrafts:
         api = _api(["Hello", " world"])
         with _patch_redis():
             await TurnStreamer(api).stream_batch(
-                [("Bently", "user-1", "hi")], _ctx(), adapter, "42"
+                [PendingMessage(username="Bently", user_id="user-1", text="hi")],
+                _ctx(),
+                adapter,
+                "42",
             )
         adapter.send_stream_draft.assert_not_awaited()
         adapter.send_message.assert_awaited_once()
@@ -187,7 +196,10 @@ class TestNoReply:
         api = _api([NO_REPLY])
         with _patch_redis():
             await TurnStreamer(api).stream_batch(
-                [("Bently", "user-1", "thanks!")], _ctx(), adapter, "42"
+                [PendingMessage(username="Bently", user_id="user-1", text="thanks!")],
+                _ctx(),
+                adapter,
+                "42",
             )
         adapter.send_message.assert_not_awaited()
         adapter.send_link.assert_not_awaited()
@@ -205,7 +217,10 @@ class TestNoReply:
         api = _api(["\n  ", NO_REPLY, "\n"])
         with _patch_redis():
             await TurnStreamer(api).stream_batch(
-                [("Bently", "user-1", "ok")], _ctx(), adapter, "42"
+                [PendingMessage(username="Bently", user_id="user-1", text="ok")],
+                _ctx(),
+                adapter,
+                "42",
             )
         adapter.send_message.assert_not_awaited()
 
@@ -215,10 +230,32 @@ class TestNoReply:
         api = _api(["NO", "_RE", "PLY"])
         with _patch_redis():
             await TurnStreamer(api).stream_batch(
-                [("Bently", "user-1", "ok")], _ctx(), adapter, "42"
+                [PendingMessage(username="Bently", user_id="user-1", text="ok")],
+                _ctx(),
+                adapter,
+                "42",
             )
         adapter.send_message.assert_not_awaited()
         adapter.send_stream_draft.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_fallback_notice_is_sent_alone_and_no_reply_still_suppressed(self):
+        adapter = _adapter()
+        api = MagicMock()
+
+        async def _stream(*args, on_notice, **kwargs):
+            await on_notice("Fell back.")
+            yield NO_REPLY
+
+        api.stream_chat = _stream
+        with _patch_redis():
+            await TurnStreamer(api).stream_batch(
+                [PendingMessage(username="Bently", user_id="user-1", text="ok")],
+                _ctx(),
+                adapter,
+                "42",
+            )
+        adapter.send_message.assert_awaited_once_with("42", "Fell back.")
 
     @pytest.mark.asyncio
     async def test_a_reply_that_merely_contains_the_word_is_delivered(self):
@@ -228,7 +265,10 @@ class TestNoReply:
         api = _api([text])
         with _patch_redis():
             await TurnStreamer(api).stream_batch(
-                [("Bently", "user-1", "hi")], _ctx(), adapter, "42"
+                [PendingMessage(username="Bently", user_id="user-1", text="hi")],
+                _ctx(),
+                adapter,
+                "42",
             )
         adapter.send_message.assert_awaited_once()
         assert adapter.send_message.await_args.args[1] == text
@@ -239,7 +279,10 @@ class TestNoReply:
         api = _api(["no_reply"])
         with _patch_redis():
             await TurnStreamer(api).stream_batch(
-                [("Bently", "user-1", "hi")], _ctx(), adapter, "42"
+                [PendingMessage(username="Bently", user_id="user-1", text="hi")],
+                _ctx(),
+                adapter,
+                "42",
             )
         adapter.send_message.assert_awaited_once()
         assert adapter.send_message.await_args.args[1] == "no_reply"
@@ -253,7 +296,10 @@ class TestNoReply:
         api = _api(["a paragraph long enough to flush.\n\n", NO_REPLY])
         with _patch_redis():
             await TurnStreamer(api).stream_batch(
-                [("Bently", "user-1", "hi")], _ctx(), adapter, "42"
+                [PendingMessage(username="Bently", user_id="user-1", text="hi")],
+                _ctx(),
+                adapter,
+                "42",
             )
         sent = [c.args[1] for c in adapter.send_message.await_args_list]
         assert any(NO_REPLY in s for s in sent)
@@ -265,7 +311,10 @@ class TestNoReply:
         api = _api([])
         with _patch_redis():
             await TurnStreamer(api).stream_batch(
-                [("Bently", "user-1", "hi")], _ctx(), adapter, "42"
+                [PendingMessage(username="Bently", user_id="user-1", text="hi")],
+                _ctx(),
+                adapter,
+                "42",
             )
         adapter.send_message.assert_awaited_once()
         assert "didn't produce a response" in adapter.send_message.await_args.args[1]
@@ -532,3 +581,123 @@ class TestNativeChoices:
         cleared = {c.args[1] for c in choices_mock.clear_choice.await_args_list}
         assert cleared == {"tok-1", "tok-2"}
         adapter.send_message.assert_awaited()
+
+
+def _card_api(chunks_before: list[str]) -> MagicMock:
+    api = MagicMock()
+    api.open_card = AsyncMock(
+        return_value=ChannelCard(
+            token="tok", text="⏸️ **Post a message**", options=["Approve", "Reject"]
+        )
+    )
+
+    async def _stream(*args, on_approval_needed=None, **kwargs):
+        for chunk in chunks_before:
+            yield chunk
+        await on_approval_needed("sess", "review-1")
+
+    api.stream_chat = _stream
+    return api
+
+
+class TestApprovalCards:
+    @pytest.mark.asyncio
+    async def test_a_held_call_posts_its_card_after_the_words_before_it(self):
+        adapter = _choice_adapter()
+        api = _card_api(["I'll post it."])
+        ctx = _ctx("channel")
+
+        with _patch_redis():
+            await TurnStreamer(api).stream_batch(
+                [PendingMessage(username="Bently", user_id="user-1", text="post")],
+                ctx,
+                adapter,
+                "42",
+            )
+
+        api.open_card.assert_awaited_once_with(
+            "telegram", None, "user-1", "sess", "review-1"
+        )
+        assert adapter.send_message.await_args_list[0].args[1] == "I'll post it."
+        adapter.send_choice_buttons.assert_awaited_once_with(
+            "42", "⏸️ **Post a message**", ["Approve", "Reject"], "tok", kind="appr"
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_channel_that_cannot_show_buttons_gets_a_link_to_answer(self):
+        adapter = _choice_adapter()
+        adapter.send_choice_buttons = AsyncMock(side_effect=RuntimeError("down"))
+
+        with (
+            _patch_redis(),
+            patch(f"{_MODULE}.copilot_session_url", return_value="https://x/c"),
+        ):
+            await TurnStreamer(_card_api([])).stream_batch(
+                [PendingMessage(username="Bently", user_id="user-1", text="post")],
+                _ctx(),
+                adapter,
+                "42",
+            )
+
+        adapter.send_link.assert_awaited_once()
+        assert adapter.send_link.await_args.kwargs["link_label"] == "Answer in AutoGPT"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "opened",
+        [AsyncMock(return_value=None), AsyncMock(side_effect=RuntimeError("down"))],
+        ids=["no card", "raised"],
+    )
+    async def test_a_card_that_cannot_open_still_posts_the_link_to_answer_it(
+        self, opened
+    ):
+        adapter = _choice_adapter()
+        api = _card_api(["I'll post it."])
+        api.open_card = opened
+
+        with (
+            _patch_redis(),
+            patch(f"{_MODULE}.copilot_session_url", return_value="https://x/c"),
+        ):
+            await TurnStreamer(api).stream_batch(
+                [PendingMessage(username="Bently", user_id="user-1", text="post")],
+                _ctx(),
+                adapter,
+                "42",
+            )
+
+        adapter.send_choice_buttons.assert_not_awaited()
+        adapter.send_link.assert_awaited_once()
+        link = adapter.send_link.await_args
+        assert link.args[1] == "⏸️ An action is waiting for approval."
+        assert link.kwargs["link_url"] == "https://x/c"
+
+
+class TestTurnOptionsReachStreamChat:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "options,expert_id,model",
+        [
+            (None, None, None),
+            (TurnOptions(expert_id="e1", model="advanced"), "e1", "advanced"),
+        ],
+    )
+    async def test_options_forwarded(self, options, expert_id, model):
+        seen: dict = {}
+        api = MagicMock()
+
+        async def _stream(**kwargs):
+            seen.update(kwargs)
+            yield "ok"
+
+        api.stream_chat = _stream
+        with _patch_redis():
+            await TurnStreamer(api).stream_batch(
+                [PendingMessage(username="Bently", user_id="user-1", text="hi")],
+                _ctx(),
+                _adapter(),
+                "42",
+                options=options,
+            )
+        assert seen["expert_id"] == expert_id
+        assert seen["model"] == model

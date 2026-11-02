@@ -11,10 +11,13 @@ import {
   AlertCircleIcon,
   Folder01Icon,
   Loading03Icon,
+  PlugSocketIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import type { IntegrationMention, SkillCommand } from "../helpers";
 import type { MentionOption, MentionTrigger } from "../useChatMentions";
+
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   /** "/" lists skills; "@" lists integrations, folders and files. */
@@ -47,11 +50,14 @@ export function MentionDropdown({
   onSelect,
   onHighlight,
 }: Props) {
-  const showEmpty = !isLoading && !isError && options.length === 0;
+  const resultCount = options.filter(
+    (option) => option.kind !== "connect",
+  ).length;
+  const showEmpty = !isLoading && !isError && resultCount === 0;
   const integrationCount = options.filter(
     (option) => option.kind === "integration",
   ).length;
-  const workspaceCount = options.length - integrationCount;
+  const workspaceCount = resultCount - integrationCount;
   // Headings only earn their space when both kinds can appear together.
   const showHeadings = showFiles && integrationCount > 0;
   const showFilesHeading =
@@ -81,7 +87,9 @@ export function MentionDropdown({
         onMouseEnter={() => onHighlight(index)}
         className={cn(
           "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm",
-          isHighlighted ? "bg-zinc-100 text-zinc-900" : "text-zinc-700",
+          isHighlighted
+            ? "bg-surface-hover text-foreground-strong"
+            : "text-foreground-body",
         )}
       >
         {children}
@@ -130,57 +138,98 @@ export function MentionDropdown({
       // non-interactive areas (padding, empty/loading/error states) so the
       // textarea's onBlur doesn't close the dropdown before a selection.
       onMouseDown={(e) => e.preventDefault()}
-      className="absolute bottom-full left-0 z-50 mb-2 max-h-80 w-80 max-w-full overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-md"
+      className="absolute bottom-full left-0 z-50 mb-2 flex max-h-96 w-80 max-w-full flex-col overflow-hidden rounded-2xl border border-border-base bg-surface shadow-md"
     >
-      {showHeadings && <SectionHeading label="Integrations" />}
-      {options.map((option, index) =>
-        option.kind === "integration"
-          ? renderOption(
+      <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
+        {showHeadings && <SectionHeading label="Integrations" />}
+        {options.map((option, index) =>
+          option.kind === "integration"
+            ? renderOption(
+                option,
+                index,
+                <IntegrationOption integration={option.integration} />,
+              )
+            : null,
+        )}
+        {showFilesHeading && <SectionHeading label="Files" />}
+        {options.map((option, index) => {
+          if (option.kind === "folder") {
+            const count = folderSummary(
+              option.folder.file_count ?? 0,
+              option.subfolderCount,
+            );
+            return renderOption(
               option,
               index,
-              <IntegrationOption integration={option.integration} />,
-            )
-          : null,
-      )}
-      {showFilesHeading && <SectionHeading label="Files" />}
-      {options.map((option, index) => {
-        if (option.kind === "folder") {
-          const count = folderSummary(
-            option.folder.file_count ?? 0,
-            option.subfolderCount,
-          );
-          return renderOption(
-            option,
-            index,
-            <FolderOption folder={option.folder} count={count} />,
-            `Folder ${option.folder.name}, ${count}`,
-          );
-        }
-        if (option.kind === "file") {
-          return renderOption(option, index, <FileOption file={option.file} />);
-        }
-        return null;
-      })}
-      {isError ? (
-        <p className="flex items-center gap-2 px-3 py-2 text-sm text-red-600">
-          <Icon icon={AlertCircleIcon} className="h-4 w-4 shrink-0" />
-          Couldn&apos;t load files. Try again.
-        </p>
-      ) : isLoading ? (
-        <p className="flex items-center gap-2 px-3 py-2 text-sm text-zinc-500">
-          <Icon
-            icon={Loading03Icon}
-            className="h-4 w-4 shrink-0 animate-spin"
-          />
-          Searching files…
-        </p>
-      ) : null}
-      {showEmpty && (
-        <p className="px-3 py-2 text-sm text-zinc-500">
-          {emptyMessage(showFiles, hasIntegrations)}
-        </p>
+              <FolderOption folder={option.folder} count={count} />,
+              `Folder ${option.folder.name}, ${count}`,
+            );
+          }
+          if (option.kind === "file") {
+            return renderOption(
+              option,
+              index,
+              <FileOption file={option.file} />,
+            );
+          }
+          return null;
+        })}
+        {isError ? (
+          <p className="flex items-center gap-2 px-3 py-2 text-sm text-error-foreground">
+            <Icon icon={AlertCircleIcon} className="h-4 w-4 shrink-0" />
+            Couldn&apos;t load files. Try again.
+          </p>
+        ) : isLoading ? (
+          <p className="flex items-center gap-2 px-3 py-2 text-sm text-foreground-tertiary">
+            <Icon
+              icon={Loading03Icon}
+              className="h-4 w-4 shrink-0 animate-spin"
+            />
+            Searching files…
+          </p>
+        ) : null}
+        {showEmpty && (
+          <p className="px-3 py-2 text-sm text-foreground-tertiary">
+            {emptyMessage(showFiles, hasIntegrations)}
+          </p>
+        )}
+      </div>
+      {/* Pinned below the scrolling results, so connecting another
+          integration is always one step away however long the list. */}
+      {options.map((option, index) =>
+        option.kind === "connect" ? (
+          <div key="connect" className="border-t border-border-base p-1.5">
+            {renderOption(
+              option,
+              index,
+              <ConnectOption query={option.query} />,
+            )}
+          </div>
+        ) : null,
       )}
     </div>
+  );
+}
+
+function ConnectOption({ query }: { query: string }) {
+  const search = query.trim();
+  return (
+    <>
+      <Icon
+        icon={PlugSocketIcon}
+        className="h-4 w-4 shrink-0 text-foreground-strong"
+      />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium">
+          Connect an integration
+        </span>
+        {search && (
+          <span className="block truncate text-xs text-foreground-tertiary">
+            Search services for “{search}”
+          </span>
+        )}
+      </span>
+    </>
   );
 }
 
@@ -203,10 +252,15 @@ function IntegrationOption({
         <span className="block truncate font-medium" title={integration.name}>
           {integration.name}
         </span>
-        <span className="block truncate text-xs text-zinc-500">
+        <Text
+          variant="small-tight"
+          as="span"
+          tone="muted"
+          className="block truncate"
+        >
           {integration.providerName}
           {integration.username ? ` · ${integration.username}` : ""}
-        </span>
+        </Text>
       </span>
     </>
   );
@@ -242,9 +296,14 @@ function FolderOption({
 }) {
   return (
     <>
-      <Icon icon={Folder01Icon} className="h-4 w-4 shrink-0 text-zinc-900" />
+      <Icon
+        icon={Folder01Icon}
+        className="h-4 w-4 shrink-0 text-foreground-strong"
+      />
       <span className="min-w-0 flex-1 truncate">{folder.name}</span>
-      <span className="shrink-0 text-xs text-zinc-500">{count}</span>
+      <Text variant="small-tight" as="span" tone="muted" className="shrink-0">
+        {count}
+      </Text>
     </>
   );
 }
@@ -254,7 +313,7 @@ function FileOption({ file }: { file: WorkspaceFileItem }) {
     <>
       <Icon
         icon={getFileTypeIcon(file.mime_type)}
-        className="h-4 w-4 shrink-0 text-zinc-900"
+        className="h-4 w-4 shrink-0 text-foreground-strong"
       />
       <span className="min-w-0 flex-1 truncate">{file.name}</span>
     </>
@@ -265,7 +324,7 @@ function SectionHeading({ label }: { label: string }) {
   return (
     <p
       role="presentation"
-      className="px-3 pb-1 pt-2 text-left text-xs font-medium uppercase tracking-wide text-zinc-400"
+      className="px-3 pt-2 pb-1 text-left text-xs font-medium tracking-wide text-foreground-subtle uppercase"
     >
       {label}
     </p>
@@ -276,6 +335,7 @@ function mentionOptionKey(option: MentionOption): string {
   if (option.kind === "file") return `file:${option.file.id}`;
   if (option.kind === "folder") return `folder:${option.folder.id}`;
   if (option.kind === "skill") return `skill:${option.skill.name}`;
+  if (option.kind === "connect") return "connect";
   return `integration:${option.integration.credentialId}`;
 }
 

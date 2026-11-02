@@ -23,8 +23,9 @@ import asyncio
 import logging
 import re
 import shlex
-from dataclasses import dataclass
 from typing import Any, Mapping
+
+from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.model import ChatMessage
 from backend.copilot.service import (
@@ -62,9 +63,10 @@ _PLACEHOLDER = re.compile(
 )
 
 
-@dataclass(frozen=True)
-class SkillInvocation:
+class SkillInvocation(BaseModel):
     """A message that asks to run a skill by name."""
+
+    model_config = ConfigDict(frozen=True)
 
     name: str
     arguments: str
@@ -173,8 +175,9 @@ def skill_aliases(skill: ParsedSkill) -> set[str]:
     return aliases
 
 
-@dataclass(frozen=True)
-class InvocableSkill:
+class InvocableSkill(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     skill: ParsedSkill
     # Built-in skills have no workspace folder to point the model at.
     is_default: bool
@@ -196,9 +199,9 @@ async def resolve_invocable_skill(
         if skill := await read_user_skill_with_body(
             user_id, wanted, expert_id=expert_id, scope=scope
         ):
-            found = InvocableSkill(skill, is_default=False)
+            found = InvocableSkill(skill=skill, is_default=False)
         elif skill := get_default_skill_with_body(wanted):
-            found = InvocableSkill(skill, is_default=True)
+            found = InvocableSkill(skill=skill, is_default=True)
     if found is None:
         owned = await list_user_skills(user_id, expert_id, scope)
         candidates = await asyncio.gather(
@@ -211,7 +214,7 @@ async def resolve_invocable_skill(
         )
         for skill in candidates:
             if skill is not None and wanted in skill_aliases(skill):
-                found = InvocableSkill(skill, is_default=False)
+                found = InvocableSkill(skill=skill, is_default=False)
                 break
     if found is None or found.skill.extra.get("user-invocable") is False:
         return None
@@ -258,8 +261,8 @@ async def inject_skill_invocation(
     that text and the result is persisted as the turn's user row, so the
     skill stays in context and the chat still shows what the user typed.
 
-    Returns the new message, or None when there is nothing to expand. Never
-    raises: a failed lookup leaves the message as the user wrote it.
+    Returns the new message, or None when there is nothing to expand. A failed lookup
+    leaves the message unchanged; persistence failures raise before sending.
     """
     if not user_id:
         return None
@@ -283,5 +286,9 @@ async def inject_skill_invocation(
         f"</{SKILL_INVOCATION_TAG}>\n\n"
     )
     return await persist_current_user_message(
-        session_id, session_messages, prefix + block + text, "inject_skill_invocation"
+        session_id,
+        session_messages,
+        prefix + block + text,
+        "inject_skill_invocation",
+        require_persistence=True,
     )

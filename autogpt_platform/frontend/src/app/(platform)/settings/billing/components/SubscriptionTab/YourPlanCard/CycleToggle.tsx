@@ -15,7 +15,7 @@ export function CycleToggle({ value, onChange, disabled }: Props) {
     <div
       role="radiogroup"
       aria-label="Billing cycle"
-      className="inline-flex rounded-full border border-[#d8d8d8] bg-zinc-100 p-[3px]"
+      className="inline-flex rounded-full border border-border-base bg-surface-hover p-0.5"
     >
       {CYCLES.map((cycle) => {
         const selected = value === cycle;
@@ -30,8 +30,8 @@ export function CycleToggle({ value, onChange, disabled }: Props) {
             className={cn(
               "rounded-full border-none px-3 py-1 text-xs font-medium transition-all",
               selected
-                ? "bg-white text-zinc-900 shadow-sm"
-                : "bg-transparent text-zinc-500 hover:text-zinc-700",
+                ? "bg-surface text-foreground-strong shadow-sm"
+                : "bg-transparent text-foreground-tertiary hover:text-foreground-body",
               disabled && "cursor-not-allowed opacity-60",
             )}
           >
@@ -40,7 +40,10 @@ export function CycleToggle({ value, onChange, disabled }: Props) {
             ) : (
               <>
                 Yearly{" "}
-                <span className="ml-1 bg-gradient-to-r from-green-500 via-emerald-500 to-teal-500 bg-clip-text text-[11px] font-semibold text-transparent">
+                <span
+                  // oxlint-disable-next-line design-system/no-raw-colors -- the green-to-teal "Save 15%" gradient has no role
+                  className="ml-1 bg-gradient-to-r from-green-500 via-success to-teal-500 bg-clip-text text-caption-sm leading-inherit font-semibold text-transparent"
+                >
                   Save 15%
                 </span>
               </>

@@ -82,6 +82,14 @@
       ],
       "source": "expert-design-system expert-family-v2.1: the v2 baseline registry masters plus the promoted sculptural masters for Jules, Remy, Maya, Zara, Marco, Noor and Frankie",
       "note": "PNG fallbacks stop at 512 px; the 1024 px tile ships as WebP only (the 2x source for the unused 512 logical size), which keeps every added file under the repository 500 KB limit."
+    },
+    "v2.2": {
+      "baseUrl": "/autogpt-characters/v2.2",
+      "assetVersion": "2.2.0",
+      "identities": [
+        "expert-clip"
+      ],
+      "source": "Clip's appearance from the Expert it was raised as on the platform, promoted into the managed library when Clip joined the roster; re-framed to the library's tile and exported with the v2.1 size ladder. Not from expert-family-v2.1."
     }
   },
   "identities": {
@@ -533,8 +541,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-jules/neutral/24.png",
-          "bytes": 1110,
-          "sha256": "c9c4f3e5687a6ae0357d17209f4055b46987d32cefb8152952d3e021832f32c4"
+          "bytes": 697,
+          "sha256": "5676a03c2e46220790d68491670eca6d0cdf84b84fa12a5489fcdaeede8d5b18"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-jules/neutral/24.webp",
@@ -543,8 +551,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-jules/neutral/32.png",
-          "bytes": 1675,
-          "sha256": "9623458a9f1912719660911f6e77297450170e0bf0e73d4bf70de6cca66f163a"
+          "bytes": 948,
+          "sha256": "8cd41a142ca0f699442264d3745e1ce1899e1c8e4e522075853801e00eb18255"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-jules/neutral/32.webp",
@@ -553,8 +561,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-jules/neutral/40.png",
-          "bytes": 2327,
-          "sha256": "fa0fb2de42c0177077206df706ab8e368e680632ad14085636516d8ef015e222"
+          "bytes": 1267,
+          "sha256": "7472c9e853e19063883b47c76537d814153cf6f93d66e618474fad174813acb4"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-jules/neutral/40.webp",
@@ -563,8 +571,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-jules/neutral/48.png",
-          "bytes": 3056,
-          "sha256": "264b7c55e520251a9bc1f4b192df551fd03ae51ac900708131781691177e2de8"
+          "bytes": 1583,
+          "sha256": "0b8c5b1cfb84c2c332f322041d2a2db262df0d36ff32f33cfb5d4ae1cf3fa06f"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-jules/neutral/48.webp",
@@ -573,8 +581,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-jules/neutral/64.png",
-          "bytes": 4790,
-          "sha256": "f7f020a1e03aac5bd60e80c16bb059900e86f83780d114c183f585837e686fb7"
+          "bytes": 2203,
+          "sha256": "86e500fbcec61dcc022a3205343551a2a55a25b6a91a7dcf5fda10c5abec8d96"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-jules/neutral/64.webp",
@@ -583,8 +591,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-jules/neutral/80.png",
-          "bytes": 6872,
-          "sha256": "161313ac06836ca0870332ed15b749e2e54a88d83f9d73a49502c0abf3aa9ebd"
+          "bytes": 2872,
+          "sha256": "7ed59be14132c2194e60f4ebca3456d94dc202ef94d4f2afb14a6333af10ae1c"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-jules/neutral/80.webp",
@@ -593,8 +601,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-jules/neutral/96.png",
-          "bytes": 9332,
-          "sha256": "87934f563be0235a5e4c08f72ec08597010b5b687029436d657991c80b0903f9"
+          "bytes": 3538,
+          "sha256": "19181b227a2c83daacf62ed893d57cb5318fec3ddd1b3760e78efa5110afc5ef"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-jules/neutral/96.webp",
@@ -603,8 +611,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-jules/neutral/128.png",
-          "bytes": 15415,
-          "sha256": "619a35ff14ba101a22f9779b7db7ed21667f184a99dc006ed092eb2f75b0f176"
+          "bytes": 5871,
+          "sha256": "a1bd728fad4632d45cea0cf71e8a155ad9bab7c661b71431e4a7d9e9044a4417"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-jules/neutral/128.webp",
@@ -613,8 +621,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-jules/neutral/192.png",
-          "bytes": 31366,
-          "sha256": "74eca07480b1642d63b9333d5766e8e2c0b0b414aa1a3e501b3036711aad3bc7"
+          "bytes": 11576,
+          "sha256": "3a1035b19f6ef54c4649e0136a3f5934224e1fe1da6d3dc4cbf3a25c4176d99e"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-jules/neutral/192.webp",
@@ -623,8 +631,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-jules/neutral/256.png",
-          "bytes": 53129,
-          "sha256": "025e3a3bd4c73cfe8ffba16bfa242441de2e59be072555cdf35f28a53d7b6c18"
+          "bytes": 21038,
+          "sha256": "a3ba4da6c689d8f13162bb694d4d221cf9806243312677c49791445e32d89076"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-jules/neutral/256.webp",
@@ -633,8 +641,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-jules/neutral/512.png",
-          "bytes": 217264,
-          "sha256": "37dd06108f4a997c48750139040133448ad9bedba6756b179a89bf680b08afff"
+          "bytes": 75083,
+          "sha256": "a2fe933424dbd83b3de2e0ad9b0a9a86b558050336f02172000b0a2a89adc0a7"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-jules/neutral/512.webp",
@@ -683,8 +691,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-nadia/neutral/24.png",
-          "bytes": 994,
-          "sha256": "52e29c614c61f8755fcd64e0c8c4e366369892b07c2aa930a330ce4ab248752c"
+          "bytes": 546,
+          "sha256": "f22a5f2046f7b46726f6766b7b8a0e025b404ce1064e16fe42ff5a93ac26d0bd"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-nadia/neutral/24.webp",
@@ -693,8 +701,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-nadia/neutral/32.png",
-          "bytes": 1500,
-          "sha256": "b32b7d809c79728a5c90532897a4e9e14070c847c512a3b31f63d4ceee24bd3d"
+          "bytes": 732,
+          "sha256": "9db7a5e49180d05cf920b4538020775b9d151074b3e8b0d4c115f170caaf2294"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-nadia/neutral/32.webp",
@@ -703,8 +711,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-nadia/neutral/40.png",
-          "bytes": 2110,
-          "sha256": "21e658265c1b6b7d5dd2d1939bb76e8de1b6db36b242b221e979906d46f57057"
+          "bytes": 864,
+          "sha256": "ee99c72d0ba6ca9545a39d1649518359e7e0149f69357d52a89df8dadda3eeed"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-nadia/neutral/40.webp",
@@ -713,8 +721,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-nadia/neutral/48.png",
-          "bytes": 2818,
-          "sha256": "809f84af0e5c290cc782ac1a97f47ccfa1cac6fdfa03161993cfabcb439c0215"
+          "bytes": 1106,
+          "sha256": "d05d31fc736ed5e703e0c7bfc557309adb4ac2342cd7259c03e751c9f9a527c9"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-nadia/neutral/48.webp",
@@ -723,8 +731,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-nadia/neutral/64.png",
-          "bytes": 4430,
-          "sha256": "5b88e3b631869e9d1f929928ed2a881c91336be9934c59875f2e927828ebaa76"
+          "bytes": 1821,
+          "sha256": "835fb3cbdefa79144170c727743e863840c8929a57dd5afcbeedc95733758d42"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-nadia/neutral/64.webp",
@@ -733,8 +741,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-nadia/neutral/80.png",
-          "bytes": 6385,
-          "sha256": "f8e8338658483fa71b9adf2389d1db9d1e3d7d98eb6f88168035b7c6cff9e0f7"
+          "bytes": 2149,
+          "sha256": "0013ec9636dbf40fbfcf4cf03e32ae798f6eb3937644f300ba8135f7813108ea"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-nadia/neutral/80.webp",
@@ -743,8 +751,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-nadia/neutral/96.png",
-          "bytes": 8571,
-          "sha256": "d992cde6e93566df2d5634bc8b6096f847ee11220f87f69d8b55e928cd1c2165"
+          "bytes": 2768,
+          "sha256": "ee77dde90c232b384c513ce3ed5b84fab2a57987dc1f372fb460216b3178d378"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-nadia/neutral/96.webp",
@@ -753,8 +761,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-nadia/neutral/128.png",
-          "bytes": 14308,
-          "sha256": "a6bed6d284dc3c816d6c494313e2497e6ca55579ce3aefd6db08f544872ea7c7"
+          "bytes": 4874,
+          "sha256": "05db8e695f4ef6a3d8264899a44131e13c169105e23a82dbfa21b025022b7899"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-nadia/neutral/128.webp",
@@ -763,8 +771,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-nadia/neutral/192.png",
-          "bytes": 30511,
-          "sha256": "b98ec36a83ec9754d056ca3023f81054248878ca4f5631ad455b2b1de079c3a3"
+          "bytes": 9981,
+          "sha256": "25cb80b83d5f80919cf48e6e9d197828fa2794e2a1c65139994728547f5d389d"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-nadia/neutral/192.webp",
@@ -773,8 +781,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-nadia/neutral/256.png",
-          "bytes": 54487,
-          "sha256": "6083d381ccdcb607271e602dbb49d95affe9afd15a40bf88d2388e2696a4af3f"
+          "bytes": 16600,
+          "sha256": "53cd986b917c82a629c35fc930d0a654cab0781a1675eec23225c84ab0f5c4ba"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-nadia/neutral/256.webp",
@@ -783,8 +791,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-nadia/neutral/512.png",
-          "bytes": 240893,
-          "sha256": "7905d47e7ba0d7a15d7f6b978427ef8cff80c7e03646e6eaaee2331adc30ce34"
+          "bytes": 80364,
+          "sha256": "5f5ff9ca0b68150266860f342344a6686ecc94d0cecf5318e2c4cb766a89295e"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-nadia/neutral/512.webp",
@@ -833,8 +841,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-remy/neutral/24.png",
-          "bytes": 1081,
-          "sha256": "63b0a6694f40cee238b6a7d9227ee1c7428923d890056b07df07411016114f45"
+          "bytes": 659,
+          "sha256": "c0775809334220a507f7fd5e4fe6e2950cfc220e8d9be5a4a27bb93ca62cdc1a"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-remy/neutral/24.webp",
@@ -843,8 +851,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-remy/neutral/32.png",
-          "bytes": 1610,
-          "sha256": "12d9f184ab2a5dc09f5392778871d33184a3deb87a75c1a26519b73eaef58e92"
+          "bytes": 905,
+          "sha256": "30d5f08bd9ad0f4e68be76cb17b85421b0389d8e9520f9c7d59f70f7b0ba8e95"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-remy/neutral/32.webp",
@@ -853,8 +861,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-remy/neutral/40.png",
-          "bytes": 2216,
-          "sha256": "cb6b6fb1d542293731ce93dedcf729eaac76c8bf812d55509e23ae914bc1db2a"
+          "bytes": 1228,
+          "sha256": "8a06c4464c689ba304d2b6a282f82fa5ae635b3aaa12ed51879a9bc35c17f02c"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-remy/neutral/40.webp",
@@ -863,8 +871,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-remy/neutral/48.png",
-          "bytes": 2878,
-          "sha256": "1266384c26606ddb0f870fe1e490649ddcc4cfa81376dcce699700062f4e6438"
+          "bytes": 1445,
+          "sha256": "52970a8bae3261eb78c18a017cd6cdd9ca44ee076fab7121ab226e70b68be828"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-remy/neutral/48.webp",
@@ -873,8 +881,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-remy/neutral/64.png",
-          "bytes": 4442,
-          "sha256": "e65d0291386493857f9ae277e7792bc187cc45e06fa37409bb97e6c9231b035e"
+          "bytes": 1961,
+          "sha256": "9847cb34c26185a9dafa115464cf919dc8bd411006f930847cf753c999561826"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-remy/neutral/64.webp",
@@ -883,8 +891,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-remy/neutral/80.png",
-          "bytes": 6306,
-          "sha256": "8c819a54052716842c554136557c4df7373a8580bb6c8a3db1a54749c7287afc"
+          "bytes": 2583,
+          "sha256": "7eede178eb6dbf06c06b4ae157262baabd15af158f27b3fa1680071f1c668d84"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-remy/neutral/80.webp",
@@ -893,8 +901,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-remy/neutral/96.png",
-          "bytes": 8477,
-          "sha256": "c31ab0d21f3864e8aacb4ba4cb47ca39eaaf4670bd027b1878ba3b3355edd104"
+          "bytes": 3254,
+          "sha256": "6a10be30b161041aa042109181999182c69b0e843829c47d02614c3ea561cfc6"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-remy/neutral/96.webp",
@@ -903,8 +911,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-remy/neutral/128.png",
-          "bytes": 13649,
-          "sha256": "78573e1935609a715017cf9e86f8fbb26928d68d5159dde73586528365520423"
+          "bytes": 5165,
+          "sha256": "36cb642cb129b7e250e0b68d12e44a6ceb0e357292b65a927776ed478e390402"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-remy/neutral/128.webp",
@@ -913,8 +921,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-remy/neutral/192.png",
-          "bytes": 27287,
-          "sha256": "7ce6b1d44fb2059d820c23c5568669354e7d0ea8de7df191740c122c40f726d4"
+          "bytes": 10809,
+          "sha256": "362098daeb9e2ceec9df504397b60594847c9c5fb93784f824a8326f943a6ebe"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-remy/neutral/192.webp",
@@ -923,8 +931,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-remy/neutral/256.png",
-          "bytes": 46028,
-          "sha256": "708bae3570aab7b236dfb5ba42cbdaf4ac4189fa9e8fd346b4f2b964be763704"
+          "bytes": 17372,
+          "sha256": "596446b0c3a70738ee6798a04f468607c902ba54a71523095430d46962a814ef"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-remy/neutral/256.webp",
@@ -933,8 +941,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-remy/neutral/512.png",
-          "bytes": 187964,
-          "sha256": "ff9804be4d830c26bb91f5a8c2bfe7dc6ad6ec34047b8d1a5ff146206805024d"
+          "bytes": 61704,
+          "sha256": "de6234234a9d3a7f151486595ee6858117021ee2c3953b57312ba6f7fa8861c5"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-remy/neutral/512.webp",
@@ -983,8 +991,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-theo/neutral/24.png",
-          "bytes": 1014,
-          "sha256": "6325db7a4daec6e785b31ce20a6ed60a33238d29a3c786328f758c1983fa94fa"
+          "bytes": 555,
+          "sha256": "557da234f817f98e3b762dbbd4d51749687ee312f81ad482490b3fb08ffcb069"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-theo/neutral/24.webp",
@@ -993,8 +1001,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-theo/neutral/32.png",
-          "bytes": 1494,
-          "sha256": "73dd16c2796c1beee493f264a92f0986ccd1bb1b1f2ac923ad50423f3392bfef"
+          "bytes": 737,
+          "sha256": "0567bbde8e82c3b0df528d296a687e9650d3abfce4ccd08f95ebf23c0534f26f"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-theo/neutral/32.webp",
@@ -1003,8 +1011,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-theo/neutral/40.png",
-          "bytes": 2072,
-          "sha256": "a397da71e71fc3f50e2f8fcdc448c32097edc53c927d6c0f1c9b2adc04372453"
+          "bytes": 1003,
+          "sha256": "8e1757f41a605fc4690bb448abc0be263cc2e8a07823a882c5c4ca279ac39535"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-theo/neutral/40.webp",
@@ -1013,8 +1021,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-theo/neutral/48.png",
-          "bytes": 2823,
-          "sha256": "b19d8392465a8b7f48dbe7ab6c1376e82c8714c9d9b2131df30ab3ac6e754cfc"
+          "bytes": 1252,
+          "sha256": "4ceb9aa8fba0a6c2e8b9f9ddf38b609af2070ba58c9a279b005a8383b93bcbf6"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-theo/neutral/48.webp",
@@ -1023,8 +1031,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-theo/neutral/64.png",
-          "bytes": 4532,
-          "sha256": "b38d8cfdb40923b273e92a82f7e0412a4af4bd85ba3a73358ecba00eb4678e9a"
+          "bytes": 1897,
+          "sha256": "a4de85a4a6091448173d0e222ffb66ed1356e69a6b0d3270874fb54dab289d2c"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-theo/neutral/64.webp",
@@ -1033,8 +1041,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-theo/neutral/80.png",
-          "bytes": 6630,
-          "sha256": "a41ecfca23f1b94ead27542fe52bf31f0e505b54fa84cce551cc3ca6394dfe70"
+          "bytes": 2480,
+          "sha256": "39ba0837ada76663e765303fe2f1b907e53b49bcfd8d5254080d8c319ecde5c8"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-theo/neutral/80.webp",
@@ -1043,8 +1051,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-theo/neutral/96.png",
-          "bytes": 9012,
-          "sha256": "306059cb464b8b1224827d9b3e8b7ab0f7d8763feb27a12e662e0022642dc13b"
+          "bytes": 3390,
+          "sha256": "c3c2731e8661e3bf43da2d0aeca4911f1381ce79d33c33affefba1ba051318ea"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-theo/neutral/96.webp",
@@ -1053,8 +1061,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-theo/neutral/128.png",
-          "bytes": 15033,
-          "sha256": "7a3e09f4cb3d656dbc23a9ab110b9ca1613e7b54c8314f011bea94579040c556"
+          "bytes": 5157,
+          "sha256": "9366ce30940c5a3ac8c72731a4a060dc83183ff6659d17b917ad9e2652dad2c0"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-theo/neutral/128.webp",
@@ -1063,8 +1071,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-theo/neutral/192.png",
-          "bytes": 31341,
-          "sha256": "d9dd1e98f35d35fdff66c3ee9a8623e66ba6853e47aa405c7c4f36626796fe4c"
+          "bytes": 10910,
+          "sha256": "d5b6a7773ef1a7cd27457de616cb38b7617c14fdedf9d27827c7a3029203311f"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-theo/neutral/192.webp",
@@ -1073,8 +1081,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-theo/neutral/256.png",
-          "bytes": 54787,
-          "sha256": "71aa38ff435c2135853e2e4bdb8321d8863d6f995765fdab91e6351f35b71bdf"
+          "bytes": 19471,
+          "sha256": "b914a366974b450419d5c14afe2155b90a02364f1187ecbd1823e7cd87885911"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-theo/neutral/256.webp",
@@ -1083,8 +1091,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-theo/neutral/512.png",
-          "bytes": 234847,
-          "sha256": "0a18c40c935a2e7c08c43ca3532ae03f01f15faf2a935bfa99bd4a3d002c4c3f"
+          "bytes": 75372,
+          "sha256": "a59730c9ddc8f9feb196468f4259e1dea0c19a320e5ca6e286bb9c0c90c4909c"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-theo/neutral/512.webp",
@@ -1133,8 +1141,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-quinn/neutral/24.png",
-          "bytes": 1039,
-          "sha256": "b3b1cef5e98b19fc9d427c29665465472355b2037050e2deed7a1cacd6bca800"
+          "bytes": 533,
+          "sha256": "6d1ef3da74047ebef170384f34705d3051bb00d86758b06631dcbb57da6f1b7d"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-quinn/neutral/24.webp",
@@ -1143,8 +1151,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-quinn/neutral/32.png",
-          "bytes": 1607,
-          "sha256": "4c2716af07c427c557fd785fe53ea59db93495de98c9bbe127621e457f1eee5b"
+          "bytes": 688,
+          "sha256": "fd81d4a28c2c403080ad5cf8e127c4d77ba665533bf66fbc4375f019c4f5d6dc"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-quinn/neutral/32.webp",
@@ -1153,8 +1161,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-quinn/neutral/40.png",
-          "bytes": 2262,
-          "sha256": "9c2602f4acd0fee0bb69b15ea0366ca677dd7b7978d0adeb20fa37c5b14e54f2"
+          "bytes": 963,
+          "sha256": "25add2c53d3cdf9c9b68d8ac5b65b1135c47c0722db23a9680943fca47644bf7"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-quinn/neutral/40.webp",
@@ -1163,8 +1171,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-quinn/neutral/48.png",
-          "bytes": 2990,
-          "sha256": "4d27e2ebd2b3e9e9ccdd3aeed2a805c1d63f0e5e37f0564f7205db0bb3dffd8c"
+          "bytes": 1309,
+          "sha256": "2fb0fd262932e4cf439006261406988b28e2f3bb49302c8df307903b8859bd88"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-quinn/neutral/48.webp",
@@ -1173,8 +1181,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-quinn/neutral/64.png",
-          "bytes": 4676,
-          "sha256": "62c6adf03c73800da3e548dea76e7b893abe1481e02253b7abf1441a069ea15f"
+          "bytes": 1781,
+          "sha256": "460bfcbfe4a31ce4e7a1907ddb9f001aef2a98cd45a798dc70e33e209cfd743b"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-quinn/neutral/64.webp",
@@ -1183,8 +1191,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-quinn/neutral/80.png",
-          "bytes": 6785,
-          "sha256": "507bf4430eab241ef2a7186ee0c445e7d5a11f7950ade19dc00ea10e392f5a58"
+          "bytes": 2349,
+          "sha256": "e1c2f58700a3032470c39bb1dde84dfd7b7030011835c47654df0c837bd53605"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-quinn/neutral/80.webp",
@@ -1193,8 +1201,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-quinn/neutral/96.png",
-          "bytes": 9205,
-          "sha256": "acce870947181469d142e0db28afd1da0b51ec76ac074710718deb581e7f8461"
+          "bytes": 3505,
+          "sha256": "11415637817b57b431f62c27c6985daaa99d4f1dfe824080ab99065565b4beb6"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-quinn/neutral/96.webp",
@@ -1203,8 +1211,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-quinn/neutral/128.png",
-          "bytes": 15029,
-          "sha256": "9b7502bb58e48f0406ed4cabc50758847b9eda0c1dec271311e82d92f3ede836"
+          "bytes": 5239,
+          "sha256": "6ca6e3baf5fdd2d58e591ecac1cf414a07aa02e623929cf5656847cfb0f6aabd"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-quinn/neutral/128.webp",
@@ -1213,8 +1221,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-quinn/neutral/192.png",
-          "bytes": 31494,
-          "sha256": "230cebc576a25d67bda7781561708b290718f89820af903fab3f7cf3e731871e"
+          "bytes": 10403,
+          "sha256": "585f1c9264735b12d7c849b3d2bfac03ddabe4be1c99848e13388771a98a8cca"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-quinn/neutral/192.webp",
@@ -1223,8 +1231,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-quinn/neutral/256.png",
-          "bytes": 55523,
-          "sha256": "83ddd06ecd4bcd84fe65779e074cef6dca162bd3a251f7939ac3b779b3e3780c"
+          "bytes": 17071,
+          "sha256": "373ecd7e864e67fcd71ae15574a5753f44a2ffb2211e1e0a163bfa0bd1dea2ec"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-quinn/neutral/256.webp",
@@ -1233,8 +1241,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-quinn/neutral/512.png",
-          "bytes": 241696,
-          "sha256": "fbce83c9e3c137db1f649e7d3b7643d31a08cc4322398d669519fe2300d8a8e4"
+          "bytes": 68764,
+          "sha256": "7ac5c918b35608f0c15ce341a511afeb3d1f209fc0906c26e45eb4973a47b747"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-quinn/neutral/512.webp",
@@ -1283,8 +1291,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-max/neutral/24.png",
-          "bytes": 948,
-          "sha256": "5a7f5c2405e1483fc38868cd9554011184ed2676dfa2c85f6b393ce6be39825f"
+          "bytes": 596,
+          "sha256": "7faa86fc6e26134ff64ea4144e33f904c71a078e686a9316e77a8f660433af82"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-max/neutral/24.webp",
@@ -1293,8 +1301,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-max/neutral/32.png",
-          "bytes": 1451,
-          "sha256": "60b182b90dd6c96de13ee6422d2e303c089ff425f0f617991daf598bcd9e16c2"
+          "bytes": 890,
+          "sha256": "2e07fd80ac6ab16041641864182711ef24fb98eaf9554db13e4c1055ae69db6a"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-max/neutral/32.webp",
@@ -1303,8 +1311,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-max/neutral/40.png",
-          "bytes": 2017,
-          "sha256": "8d0d6f5e6effb1d09cce37359e52de7962c396c3dd89121072670831e3311573"
+          "bytes": 1047,
+          "sha256": "303d302fd18e755df50bc03720ee413eab460da869b0321089348da9ab8fac32"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-max/neutral/40.webp",
@@ -1313,8 +1321,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-max/neutral/48.png",
-          "bytes": 2655,
-          "sha256": "89e05ca41363c6999c6bf9479f905be5f0ac53a0853b76ffb1e08ef3f9c46986"
+          "bytes": 1236,
+          "sha256": "fa98d419cc42b1cb6da9a9a74db40bea28323cec642a29d09eebda9b05719aff"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-max/neutral/48.webp",
@@ -1323,8 +1331,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-max/neutral/64.png",
-          "bytes": 4243,
-          "sha256": "3ef4337ba068403289a73621d79bc6fe69fa686211c5d3e6c1d957da790da092"
+          "bytes": 2096,
+          "sha256": "f21200d7e187e92769d2c30ac5ec021856327c0f82dab1179c4b74e130c1021e"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-max/neutral/64.webp",
@@ -1333,8 +1341,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-max/neutral/80.png",
-          "bytes": 6158,
-          "sha256": "545dc28e344db71cabe91eba4bd2571f1f8a0af3458c97c94bda4b8fe0a39f8c"
+          "bytes": 2960,
+          "sha256": "105e5cca61b3a9ede629f5eeef50da5be7ddc34b76173d3b30e941ddecda5efa"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-max/neutral/80.webp",
@@ -1343,8 +1351,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-max/neutral/96.png",
-          "bytes": 8464,
-          "sha256": "82845b31a72ba50eb97448e1871db5daa2a2c418d5843aa23aae3fefc596837c"
+          "bytes": 3934,
+          "sha256": "2e065a59a43f40f69ec8ec53fad9359d49c89c1533edbdf4626daa162def1bb0"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-max/neutral/96.webp",
@@ -1353,8 +1361,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-max/neutral/128.png",
-          "bytes": 14270,
-          "sha256": "3306c2eb02be7427c0d15d01ca5141a4d07b209544d4eb457cd00e8dea4180a1"
+          "bytes": 6267,
+          "sha256": "0765c4ebd89549863a7a59c6bbaec50d7ebd64739ea08a847c3e0af4439688ef"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-max/neutral/128.webp",
@@ -1363,8 +1371,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-max/neutral/192.png",
-          "bytes": 30630,
-          "sha256": "ce8f0d894c63cace096e4c351c47de0d1973afbe437e0163c1963c810ecddb7c"
+          "bytes": 13717,
+          "sha256": "02a2511be8141606999cd0a3439c3525f53787694b589feb20821f35bf20fc48"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-max/neutral/192.webp",
@@ -1373,8 +1381,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-max/neutral/256.png",
-          "bytes": 55079,
-          "sha256": "94885d2f1443c9ea9d48a35c2050434bec1bf77dfeec4a2bc956834c29b3f320"
+          "bytes": 24656,
+          "sha256": "54e5f4469db86474e68d5493853f8334e52c1d5d7fa8b5dd9485ecdd16653bcf"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-max/neutral/256.webp",
@@ -1383,8 +1391,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-max/neutral/512.png",
-          "bytes": 242462,
-          "sha256": "9832c11abd343faf436781a57712716a18cfb3b6aeed6c42cf554c92e7250b44"
+          "bytes": 91458,
+          "sha256": "b7e5455a245a486ddedd225d5064f0794ef0136b7193864f82cfc645b9d81508"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-max/neutral/512.webp",
@@ -1433,8 +1441,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-devon/neutral/24.png",
-          "bytes": 1034,
-          "sha256": "388e38ecf3d12985820fe9d556e61d6e36221019b10a4de8535698505384ebe1"
+          "bytes": 469,
+          "sha256": "80955434ee131968c324f4b31717e6aa7ab73c46d1ac10783527f45159c1c33a"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-devon/neutral/24.webp",
@@ -1443,8 +1451,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-devon/neutral/32.png",
-          "bytes": 1577,
-          "sha256": "8f8c167d0817729f05fa444340da67abca09aab05a0c419198b6107f43138b89"
+          "bytes": 682,
+          "sha256": "e25afef962b149cd57686c7096992ec2272f39ff3bf6c2dad5d6a9e5fda41059"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-devon/neutral/32.webp",
@@ -1453,8 +1461,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-devon/neutral/40.png",
-          "bytes": 2232,
-          "sha256": "28652ba70ca7175981deb57b07f4a3c1ee03e830228805b07ad4c8f0dd7db563"
+          "bytes": 920,
+          "sha256": "fe417d8a3ee7be232437e5d8cc4b20ec53f16cce1ab371d586b8845658680f78"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-devon/neutral/40.webp",
@@ -1463,8 +1471,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-devon/neutral/48.png",
-          "bytes": 2952,
-          "sha256": "306e95a947294596d83c813004b6d5006bdb922bd0cb53714456670ed7278ace"
+          "bytes": 906,
+          "sha256": "1e52e4c8433816b1b6feba96cb34f5e8f2a5d9af6aa42005e6ac53b996d857a8"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-devon/neutral/48.webp",
@@ -1473,8 +1481,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-devon/neutral/64.png",
-          "bytes": 4622,
-          "sha256": "5ba3db05dfb853e4710ba48d88d902c237f455a3157996ff9332671b14264ebb"
+          "bytes": 1616,
+          "sha256": "b94077a1827ad2a2fbd9df1a11713213055423ed49dfdcb9fbacb4107bf15b19"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-devon/neutral/64.webp",
@@ -1483,8 +1491,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-devon/neutral/80.png",
-          "bytes": 6627,
-          "sha256": "7ebd1a3bfcced28a95f8cc9ce6907db888f86124154a5103b1d1fdeecfb8aefd"
+          "bytes": 2104,
+          "sha256": "cc62687965e47b0512475b04ea48c11e11066ed7aeea264ed4cfa44becd7e82d"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-devon/neutral/80.webp",
@@ -1493,8 +1501,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-devon/neutral/96.png",
-          "bytes": 9085,
-          "sha256": "c99d0910f2597769326b031a7f1c259c7aca6a4d9aa36890409ac5dffb693e07"
+          "bytes": 3172,
+          "sha256": "9475ae38c22cc8cf01215f90e5c78f86cbe4e555389a34e6ddf03c714e5f99d9"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-devon/neutral/96.webp",
@@ -1503,8 +1511,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-devon/neutral/128.png",
-          "bytes": 15040,
-          "sha256": "b204c8d3c384458941b00a37ebb7e23deb57b2d234faa82242b07adbf3dd8e61"
+          "bytes": 4807,
+          "sha256": "9a2db728671532ab72918f70fc90e4cdeca6e9846c7a3519789f1e0e7782161a"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-devon/neutral/128.webp",
@@ -1513,8 +1521,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-devon/neutral/192.png",
-          "bytes": 31611,
-          "sha256": "85368597cb115411cd6ee22a8ea548563dacae25a75124b5ebef0d624be7a77e"
+          "bytes": 9947,
+          "sha256": "b0afefcda4d7cd841127353e74f697f03b372cfaa27797a1a6ea5a9cb6328701"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-devon/neutral/192.webp",
@@ -1523,8 +1531,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-devon/neutral/256.png",
-          "bytes": 55503,
-          "sha256": "9e5f717925c3a5c2db6e26f7a7033af44441f36d7465f2d880f27ec9c77ae3c3"
+          "bytes": 13013,
+          "sha256": "86a8595148cd0c0e7f26a4c8ac88ff4d1f2c552e7c041d1e7bc5df760b36cc3b"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-devon/neutral/256.webp",
@@ -1533,8 +1541,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-devon/neutral/512.png",
-          "bytes": 244519,
-          "sha256": "74b101561dace2555812da6fa2dcebfaa713a725fcbcff2a24d8ffbef02fb500"
+          "bytes": 53755,
+          "sha256": "4fe6240a59012395a8caa34023234fe5c245ecbf9a9d985e0d56e66c22898f9f"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-devon/neutral/512.webp",
@@ -1583,8 +1591,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-riley/neutral/24.png",
-          "bytes": 1047,
-          "sha256": "1de3180c7769434cdce9d46beaa8855c1c0c8b287ea394ff4260eed9b1ab3acc"
+          "bytes": 646,
+          "sha256": "f5a54a1d5c16115149ff5a613ec9506e276cd10b9f5a975cc53702a0d32c0d95"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-riley/neutral/24.webp",
@@ -1593,8 +1601,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-riley/neutral/32.png",
-          "bytes": 1611,
-          "sha256": "274bc10c74c1ab3ac3a082ead811bb52c2ee41a2af3de00a19011ada762d06d6"
+          "bytes": 866,
+          "sha256": "035bbfd3f3172db944925243b1d3180bc4f9dd256747cb0d58fd917306464924"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-riley/neutral/32.webp",
@@ -1603,8 +1611,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-riley/neutral/40.png",
-          "bytes": 2287,
-          "sha256": "89c7dc6a7db2bb04925954067b136cb23b49eccd39b0479cb2888aac32ff154c"
+          "bytes": 1158,
+          "sha256": "a4aa2ed4bdab7f0a412845abd357f53081dea7235c3a4254624738fcdc8efb41"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-riley/neutral/40.webp",
@@ -1613,8 +1621,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-riley/neutral/48.png",
-          "bytes": 3049,
-          "sha256": "0846718986a19340be0b5deadac4198f1f62987aaf86a9043ec941e23106e841"
+          "bytes": 1392,
+          "sha256": "2a8c95e937fc730e98bdb181bab1f66483df29ca2c1eba0020b0cc0743f9bf5c"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-riley/neutral/48.webp",
@@ -1623,8 +1631,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-riley/neutral/64.png",
-          "bytes": 4863,
-          "sha256": "013150ec12dccba539e15af9f1669e31100f4957ea73ffc99737fd514945c271"
+          "bytes": 2078,
+          "sha256": "60de5a7158e8291dfd250abf30a6c557738c73bdc1c97a2e68f2a1fbd87f3bb8"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-riley/neutral/64.webp",
@@ -1633,8 +1641,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-riley/neutral/80.png",
-          "bytes": 7132,
-          "sha256": "cdff6d0c573016d72dd154c385eb557c7665e1cb40fb84f6db55b2fb8892e1d4"
+          "bytes": 2860,
+          "sha256": "b63cf8d1e79044d689447542069823aef6e37b3699d308157c4c72718655065d"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-riley/neutral/80.webp",
@@ -1643,8 +1651,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-riley/neutral/96.png",
-          "bytes": 9789,
-          "sha256": "37b3ac309266784040660cf41e4145fb47be4c1c1c45fefb16c3f3eb2f2aafd1"
+          "bytes": 3935,
+          "sha256": "53e981f17d818e9d3f00d273aecc50d6ae8c783fcfdf21540c926dcbde6bec46"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-riley/neutral/96.webp",
@@ -1653,8 +1661,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-riley/neutral/128.png",
-          "bytes": 16123,
-          "sha256": "2ddbb4afdce37354bacc5c405ab9018425818e7e2e719f5ad7867679f8c22c0a"
+          "bytes": 5906,
+          "sha256": "7e7fe0928a3efa163248e9ff6ecfc7a5db8f5ab26f70494848b8967dac710f55"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-riley/neutral/128.webp",
@@ -1663,8 +1671,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-riley/neutral/192.png",
-          "bytes": 32916,
-          "sha256": "1d95ef14c865b0102875a21306bb515aac84f9b28243286ac3c2971fd0601626"
+          "bytes": 11857,
+          "sha256": "4fe2fcf457ff4a5ec173455159cc8806797c25826a8de106f26f025794d238bc"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-riley/neutral/192.webp",
@@ -1673,8 +1681,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-riley/neutral/256.png",
-          "bytes": 56468,
-          "sha256": "20ba7e5ee3eff20b2a7a9be6cd97e98d1fc466d762875d695ce21655b82e3e73"
+          "bytes": 20687,
+          "sha256": "fc8068975ddccf813dbb210bb2153c0064639ada4e1a2ddf3361c0be3027d6e6"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-riley/neutral/256.webp",
@@ -1683,8 +1691,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-riley/neutral/512.png",
-          "bytes": 237487,
-          "sha256": "b5f5b22cdd760b0a0eb92b3bb58ed1f99923b4c0f0ae5eef4f63117b73cd4cd4"
+          "bytes": 83350,
+          "sha256": "386d7e45fdd5d84ac92cad152b52e01091053a2cd1bccce9d78653c335746e12"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-riley/neutral/512.webp",
@@ -1733,8 +1741,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-jordan/neutral/24.png",
-          "bytes": 1044,
-          "sha256": "03b6254be0e00dbe573c7a94dd165ddcd53cff3de2406b86022c4b5859a47946"
+          "bytes": 625,
+          "sha256": "38c7edc50cc747614a9065f1f780d5b4a22be25587a26e3b52ba6cc35aa0a980"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-jordan/neutral/24.webp",
@@ -1743,8 +1751,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-jordan/neutral/32.png",
-          "bytes": 1577,
-          "sha256": "b1f33320ca2f26cde959fd9fed9fe40b8a719470ffc1a7f96707a6957937661d"
+          "bytes": 810,
+          "sha256": "055ecf426d9de5e862a32d6af593b2b7204993dbe3db8db84490bd5d14fe961a"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-jordan/neutral/32.webp",
@@ -1753,8 +1761,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-jordan/neutral/40.png",
-          "bytes": 2189,
-          "sha256": "b12e920edf429dc099a1b8623b39e114e0546a595daaec3eca9f9867a0c31070"
+          "bytes": 1001,
+          "sha256": "027cf6f02bd1632a5b52a55d6e6746bcf2fac7e60173c7ff570682aedd5d47c7"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-jordan/neutral/40.webp",
@@ -1763,8 +1771,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-jordan/neutral/48.png",
-          "bytes": 2906,
-          "sha256": "11288b5ceae7a6fb72e8b4b6380dbb7a434146414ddd30eee3968db2227afdf7"
+          "bytes": 1444,
+          "sha256": "d219756879f52c6cf71d013ac7646a2bb7c38bcbeac844d101308983ead436e0"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-jordan/neutral/48.webp",
@@ -1773,8 +1781,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-jordan/neutral/64.png",
-          "bytes": 4598,
-          "sha256": "1b6b2d7d7e10a78b251d813d731a70de8f9198e465ac7bd330a409e43563f765"
+          "bytes": 1877,
+          "sha256": "021d03ecae6f83c610bcdfb21c50d2c2ae677109a5b0bedc3e8afcb04d7ca7cd"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-jordan/neutral/64.webp",
@@ -1783,8 +1791,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-jordan/neutral/80.png",
-          "bytes": 6698,
-          "sha256": "5182476e34a1c51be861d0343b5830779252b797f21a7321bd4106314d5e0033"
+          "bytes": 2981,
+          "sha256": "7361a3784f0bf63e6e2904262266237f5a79480a928c366b359227a14e43df66"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-jordan/neutral/80.webp",
@@ -1793,8 +1801,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-jordan/neutral/96.png",
-          "bytes": 9152,
-          "sha256": "bd7761326cef6cf3db6262691d978138a2ed36f56082d6ecd35d17e11754675e"
+          "bytes": 3826,
+          "sha256": "06a6174913f518d0aa4320c06d4071041c56a553b82728b0a9d67c773b6b6ebd"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-jordan/neutral/96.webp",
@@ -1803,8 +1811,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-jordan/neutral/128.png",
-          "bytes": 15166,
-          "sha256": "260aafa63ef929baf56e5a56db8059fc7f9f2b2ef46ee75b48329627610732e8"
+          "bytes": 6082,
+          "sha256": "ad7134b45ff9814158cc655486e56c2d4c64ce7633cd2d32a329b885339e5ac6"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-jordan/neutral/128.webp",
@@ -1813,8 +1821,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-jordan/neutral/192.png",
-          "bytes": 31530,
-          "sha256": "e51d44ffb2a734d74b5320f6ca4b068bf5b91b2d2391abad1cb9be08cf4f2e6e"
+          "bytes": 11424,
+          "sha256": "0f581d33ac61774a9f40499069c283253a1839ae7366b4faf86b39ea17ee522c"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-jordan/neutral/192.webp",
@@ -1823,8 +1831,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-jordan/neutral/256.png",
-          "bytes": 55122,
-          "sha256": "0b04db2a9123f76ff930004c69fe2e2d50e46fd0d9709b0d2257efb48dfbb5ba"
+          "bytes": 20587,
+          "sha256": "7399bca6ef537c74c55cce39003606cf557efe385db40d2280120d331f5977aa"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-jordan/neutral/256.webp",
@@ -1833,8 +1841,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-jordan/neutral/512.png",
-          "bytes": 237265,
-          "sha256": "cd13570ebe8934f4b836fdce451513f2e08ebb0a5c61dcdddd8d8503ccba4088"
+          "bytes": 76176,
+          "sha256": "8868cc6e4af770969f621aee0411b3e96fddfc5593247189726afeffa5868f27"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-jordan/neutral/512.webp",
@@ -1883,8 +1891,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-frankie/neutral/24.png",
-          "bytes": 1056,
-          "sha256": "9f4d253c6981abc02cc3dfdd8b0b8564ae0a7186647cea216bd305ac862e33fc"
+          "bytes": 598,
+          "sha256": "a847e92fc3a07fbd1d64e7d2e8e0d73f75eeacfd699ac963dc4886e86691518b"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-frankie/neutral/24.webp",
@@ -1893,8 +1901,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-frankie/neutral/32.png",
-          "bytes": 1579,
-          "sha256": "66412d90ec2e9a3b4f8c8e17bafa5de3ecc7dd520d6f0e79c9159d1d899f1753"
+          "bytes": 846,
+          "sha256": "d768f45cfbeedff35cf7cf3fabb1dde4d09ecc6b44a7010de7eaec625e38a66c"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-frankie/neutral/32.webp",
@@ -1903,8 +1911,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-frankie/neutral/40.png",
-          "bytes": 2169,
-          "sha256": "1415dbd64e356b768d10860ea26af9aab826abe2ff59d2de487284c165272f4b"
+          "bytes": 1136,
+          "sha256": "ffd8dd4b92fde91b13ff6f283154d390c37823d44077d00536abab219be306b3"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-frankie/neutral/40.webp",
@@ -1913,8 +1921,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-frankie/neutral/48.png",
-          "bytes": 2839,
-          "sha256": "e39ff0cdf6ce3d1fa56587ef6ef09705ef28bb1aa4c784136e54d1ead9a6da9a"
+          "bytes": 1446,
+          "sha256": "e9c29bd52c18e4f67f8f9c67e2fea93774a3a41576d5fa5e7f49f533ff6b8501"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-frankie/neutral/48.webp",
@@ -1923,8 +1931,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-frankie/neutral/64.png",
-          "bytes": 4388,
-          "sha256": "ac695af2ffa341b417e1b99912cf62190142dc61d2a96340aab49c4a4c69ce44"
+          "bytes": 2099,
+          "sha256": "8f4aad67de1b5b25a5cb534d70fd48a510a5bf54b4b9d69f93b81022216a3443"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-frankie/neutral/64.webp",
@@ -1933,8 +1941,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-frankie/neutral/80.png",
-          "bytes": 6218,
-          "sha256": "0a742b02bfa88ef67776c8a48a55db78b04402c3b94259ffbc2006ebcdcc8abb"
+          "bytes": 2588,
+          "sha256": "8127cc17e0b3ef877a6eb15fda23576be993a5e0aac7609344ad739fead81349"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-frankie/neutral/80.webp",
@@ -1943,8 +1951,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-frankie/neutral/96.png",
-          "bytes": 8366,
-          "sha256": "f13222b52bb2ce791a05b34784c8b3ba3b58082276be8a5ea092422080ae21c9"
+          "bytes": 3353,
+          "sha256": "70694e0280f3bba9b186a2ce0388becae5a6ee3d23e3d68b27e621d7f878bb65"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-frankie/neutral/96.webp",
@@ -1953,8 +1961,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-frankie/neutral/128.png",
-          "bytes": 13730,
-          "sha256": "bd12c061c010002f924e07b278447627331e56454ae47a62da0009fcbaa4250d"
+          "bytes": 5806,
+          "sha256": "aa080f6a8fdba6e1abb60b5c3f52220c5928e969da52f616c5efca05166ec189"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-frankie/neutral/128.webp",
@@ -1963,8 +1971,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-frankie/neutral/192.png",
-          "bytes": 28592,
-          "sha256": "ad85593691262a08382a9412e7cc92b4c7e7b9d504d993e0590601b9ac16a10c"
+          "bytes": 10595,
+          "sha256": "ad242414cd3947a55583e7847b39feac76ba5d9366e9a146890ebc8fbd7495e0"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-frankie/neutral/192.webp",
@@ -1973,8 +1981,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-frankie/neutral/256.png",
-          "bytes": 49952,
-          "sha256": "d9e7a0d8d8585d591819ae2fcf8b9f914a5917fc0c2dc89de5b51a4571236afb"
+          "bytes": 18095,
+          "sha256": "70e886c000bfe5ca094271ed5c69114748cc5534389d3d9fb0858180fbcf6a3f"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-frankie/neutral/256.webp",
@@ -1983,8 +1991,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-frankie/neutral/512.png",
-          "bytes": 215630,
-          "sha256": "a717a8fc7cabaa88f9bbc17a31dc742481d87cbab823a066ddb3a76a7f373582"
+          "bytes": 76438,
+          "sha256": "6d716c9b1ff79fb44fa5d67ede04f43ec7ab103583f4393c3fc3ee1baa7e5134"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-frankie/neutral/512.webp",
@@ -2033,8 +2041,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-harper/neutral/24.png",
-          "bytes": 1018,
-          "sha256": "0262122efba822af226622df1850b4a59ba3968d3917b006b79c30ac40e13dd3"
+          "bytes": 609,
+          "sha256": "edbf64105ed37f3d3c7b20fa66fc2c2bfef6aa6c40cb1de225127446762cb065"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-harper/neutral/24.webp",
@@ -2043,8 +2051,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-harper/neutral/32.png",
-          "bytes": 1567,
-          "sha256": "af7f8564b14771cd955582e4325bae283c4cf6becde0dbaee1062f432ce1d3d1"
+          "bytes": 777,
+          "sha256": "617f6b74f0b38fc8e3069f36790ba8333b9449da59509dd3b170ccb9332b491e"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-harper/neutral/32.webp",
@@ -2053,8 +2061,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-harper/neutral/40.png",
-          "bytes": 2223,
-          "sha256": "e6c25c1c8d64d32daf2af83ec25954acbd2b2169ebdbeffea24d67aa15647adc"
+          "bytes": 989,
+          "sha256": "ed3f7bf2f94a1702217518786498ae403a7b5be973894baec59060f1f259d57a"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-harper/neutral/40.webp",
@@ -2063,8 +2071,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-harper/neutral/48.png",
-          "bytes": 2918,
-          "sha256": "5aa89724a570ec1f199efdffc83dbcf10a137a3d1bc56c02f7582d5148e5a6c0"
+          "bytes": 1187,
+          "sha256": "9a975045c716331243e2344e93734cad7269d4dc9ce104c4fdef69d2baa8d8fe"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-harper/neutral/48.webp",
@@ -2073,8 +2081,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-harper/neutral/64.png",
-          "bytes": 4676,
-          "sha256": "825fd154dd182d18760fa29cfe6e248472d882a0b30c0fed21a341104f4a7df6"
+          "bytes": 1968,
+          "sha256": "5aef71332b973bc8daab5e35c05c48bfb769206a9306ab3e87f3b9c1cf28e1d3"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-harper/neutral/64.webp",
@@ -2083,8 +2091,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-harper/neutral/80.png",
-          "bytes": 6720,
-          "sha256": "721aa489c435f70f384bdf9f1ad113de2e0cd08b03130f38053cf4aabf8173ca"
+          "bytes": 2776,
+          "sha256": "cbd364b3d8fd6cd0c73218cef8bf132ecadaac388bdee55431a84aa69bcbb747"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-harper/neutral/80.webp",
@@ -2093,8 +2101,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-harper/neutral/96.png",
-          "bytes": 9120,
-          "sha256": "a10169a787d952aef9412c23daf6550d3a0e109d0a00167b4b22c30cc1654586"
+          "bytes": 3295,
+          "sha256": "7c7f0e934a84e225a1ccbace630351269bd507455dba838449cb0e6d76043c19"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-harper/neutral/96.webp",
@@ -2103,8 +2111,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-harper/neutral/128.png",
-          "bytes": 15091,
-          "sha256": "f2cdb9afc47de7f492cb5d3fc561e7ac5a105d61515ec26a9dd8338c072ce0b4"
+          "bytes": 6006,
+          "sha256": "3178bbdea5ea52a650a659801cc699de4ce31ad916eb6dc29c57990cb334e3eb"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-harper/neutral/128.webp",
@@ -2113,8 +2121,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-harper/neutral/192.png",
-          "bytes": 31613,
-          "sha256": "72d2a33fe9a6cdf4fe280c36f0f1fa3bec72d8db8954280e1a661d1ede590cfa"
+          "bytes": 9472,
+          "sha256": "c08e4736aa8c376627e47d561a1da06ec35beadd3957632c36733e4ea7f61cbd"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-harper/neutral/192.webp",
@@ -2123,8 +2131,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-harper/neutral/256.png",
-          "bytes": 55758,
-          "sha256": "3254112a68cbdf1632c7fefd61ab4b9485ac4d22733057830ac85fc208f21804"
+          "bytes": 19593,
+          "sha256": "021fb53cf75f146802712e25f72e1cf1867a59707f54de13bf70dc4301d5d27b"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-harper/neutral/256.webp",
@@ -2133,8 +2141,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-harper/neutral/512.png",
-          "bytes": 243030,
-          "sha256": "601e9fd89e509833b37712a9723ee1ddebd4b5e37543c7a0250b1ce2d914023e"
+          "bytes": 74528,
+          "sha256": "81386cb8d174ed153b8b0b673d9a0618b7137ce5bc4a8f6307a64e7cbe054e71"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-harper/neutral/512.webp",
@@ -2183,8 +2191,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-vera/neutral/24.png",
-          "bytes": 986,
-          "sha256": "aac1a7dbf363ab1aa350ba6f1e609604d3570fc591dece4d64cef5929f8f1e59"
+          "bytes": 602,
+          "sha256": "52dc5df6046bdc8398a25a6886afd76ba203c41f2dd4fe496eecc9b524ead0c8"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-vera/neutral/24.webp",
@@ -2193,8 +2201,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-vera/neutral/32.png",
-          "bytes": 1494,
-          "sha256": "f2c62ce2ad4e9877ce7d275c3bb106813c2a8b8022c8b6bdbd7d202c3ebabe4e"
+          "bytes": 811,
+          "sha256": "50718fe9f951d3d8916f07f58004ac07a05be7dd34a289c4524275d2bab0679d"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-vera/neutral/32.webp",
@@ -2203,8 +2211,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-vera/neutral/40.png",
-          "bytes": 2123,
-          "sha256": "e63dfdf111dc67a7b86eb39afb318df77e076bb4bf2f58c74a98ddb9285a73df"
+          "bytes": 1154,
+          "sha256": "a4192ac0426b261f39b98a2fe2c91dcbbcdce31bafdadb2c09e9a0926f29c507"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-vera/neutral/40.webp",
@@ -2213,8 +2221,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-vera/neutral/48.png",
-          "bytes": 2819,
-          "sha256": "c6b5e1dab8550cc5e1f1c6942579fd10b507bcd8ca298c2d5b39bad9ea4ae159"
+          "bytes": 1247,
+          "sha256": "e457539c9708fa9df4dab6930f9ba979fa822e324f990625c47f221697749cb8"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-vera/neutral/48.webp",
@@ -2223,8 +2231,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-vera/neutral/64.png",
-          "bytes": 4465,
-          "sha256": "6d3e0243dd6a88ea0eb1c02d276e75f51944624e487adf4091e0536d75617b63"
+          "bytes": 1927,
+          "sha256": "f2900b0cc6a2d90bd04dafc66acf6656d5d7bc94411d90331906c18ce5cdafd4"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-vera/neutral/64.webp",
@@ -2233,8 +2241,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-vera/neutral/80.png",
-          "bytes": 6487,
-          "sha256": "bf9ba309ba5816c1d1bb2a187ca285fbf663a960634c8589d3d5050eaf3282c3"
+          "bytes": 2448,
+          "sha256": "ab74c00e39fd1210c25c4806c544e71ffeccbe720e42c0a7794bef15781e05df"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-vera/neutral/80.webp",
@@ -2243,8 +2251,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-vera/neutral/96.png",
-          "bytes": 8823,
-          "sha256": "fbf18e15d0c1a56fd38e070934c56456591af1f46e839b0dce1945396eb3e5bc"
+          "bytes": 3606,
+          "sha256": "6c6754c7d2a61d22fd091f2ddfa6fd2fb0f2ddbbf32757efc1e0673df2554907"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-vera/neutral/96.webp",
@@ -2253,8 +2261,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-vera/neutral/128.png",
-          "bytes": 14721,
-          "sha256": "5eb16f56ea3d979692b6830458f13c7d41076894b6af36912a3fbd6ace898dd0"
+          "bytes": 5454,
+          "sha256": "4b3b96774815cb4b80bf50d4d8768d5ac9160333da26114e70c6e4455ad4cfc7"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-vera/neutral/128.webp",
@@ -2263,8 +2271,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-vera/neutral/192.png",
-          "bytes": 31207,
-          "sha256": "c1b10c667e414bcac8532622fa34667075ad2b872cb5024f35191e3e8eec432e"
+          "bytes": 12308,
+          "sha256": "ad2f54cfc1dbf16c9221f3c2b5b5519da7bcf1a4b3eb682b0381a239aa6aff8b"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-vera/neutral/192.webp",
@@ -2273,8 +2281,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-vera/neutral/256.png",
-          "bytes": 55595,
-          "sha256": "d43017c08651beda6a3aca9384eac120566e059db8279a4a51526ecef76e9d79"
+          "bytes": 20445,
+          "sha256": "7cebb2fbad95da7ee70faac2e40e9d626070b7dee4d454473be69d8350a41cac"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-vera/neutral/256.webp",
@@ -2283,8 +2291,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-vera/neutral/512.png",
-          "bytes": 240986,
-          "sha256": "80b29a3f147f59c0ddd370c5cb14b6193671809dcbf76467dab5945c17c7007f"
+          "bytes": 73064,
+          "sha256": "612a75db5c51871d80cb70e8644851438149256ac23cbbcbab292371aa632f3d"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-vera/neutral/512.webp",
@@ -2333,8 +2341,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-ellis/neutral/24.png",
-          "bytes": 1011,
-          "sha256": "7c27a5d8b23488e0d22b50183b31ad1b198d730a108324a76a44d925524243bb"
+          "bytes": 614,
+          "sha256": "0d5998bc03739103604a84aacd9286e04aa43308d2cafd3d6a2124846756b38c"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-ellis/neutral/24.webp",
@@ -2343,8 +2351,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-ellis/neutral/32.png",
-          "bytes": 1575,
-          "sha256": "0ba559b31eb3cf4e7895d068a7b58e4b76754c2f62c0001e9948ab7d3c56e69c"
+          "bytes": 781,
+          "sha256": "064b3903dc82be6f2038707725b3bdb3e8cf7ce686e817f56aabb8c4824b001e"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-ellis/neutral/32.webp",
@@ -2353,8 +2361,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-ellis/neutral/40.png",
-          "bytes": 2237,
-          "sha256": "49660f806cb807190d4003ddb18f31f132eaac3da7bed8c8377db12f83119a22"
+          "bytes": 1206,
+          "sha256": "c3ce0edbe114375346c7ac601d058b10ea46d349e7c629d651f6da8632bb105c"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-ellis/neutral/40.webp",
@@ -2363,8 +2371,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-ellis/neutral/48.png",
-          "bytes": 2950,
-          "sha256": "36b08902d4098ebd92139bcd0a23a0081f76046af2ca521f9fd49e57a60312f5"
+          "bytes": 1345,
+          "sha256": "7c28e8e94f899d4fa33f66be65b2e8e695fbfde58dc152f0933ee27add2ff137"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-ellis/neutral/48.webp",
@@ -2373,8 +2381,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-ellis/neutral/64.png",
-          "bytes": 4656,
-          "sha256": "2fec83e4326ebf5a6280fe813b6303180b38ebeb85b3486bb36cab19c5338db1"
+          "bytes": 1970,
+          "sha256": "a48b62d7dbe87c736d698178d148841cb0056805ca43287f02f2525a60916405"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-ellis/neutral/64.webp",
@@ -2383,8 +2391,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-ellis/neutral/80.png",
-          "bytes": 6646,
-          "sha256": "271729b9d7a6c3d465415c8e87908c23594724538577578b723d59a36ccad2fc"
+          "bytes": 2828,
+          "sha256": "443c532a093e98cd733881652b1f855dc526dc019a6e8efd579623c11c54deb0"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-ellis/neutral/80.webp",
@@ -2393,8 +2401,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-ellis/neutral/96.png",
-          "bytes": 9019,
-          "sha256": "2c611b59da80e493a7e2b660c948991577b792b9f2f15262d589fb2d0b074400"
+          "bytes": 3593,
+          "sha256": "e27a879acc6242ded1c5e83105deef189e57ae361545328c0e98eefb5c8882f9"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-ellis/neutral/96.webp",
@@ -2403,8 +2411,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-ellis/neutral/128.png",
-          "bytes": 14675,
-          "sha256": "4dc2f1585bbcba7f347002d311342c56caf103fe7a69f6c695f3ca0f8b3ccd30"
+          "bytes": 6035,
+          "sha256": "c7f918a25d9d0c7f46eefaaa02910411b8c8109725ddc5ab6ab91276d94c1c06"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-ellis/neutral/128.webp",
@@ -2413,8 +2421,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-ellis/neutral/192.png",
-          "bytes": 30768,
-          "sha256": "c4716bdaccf2d89a9dd2d2dd026b6959d851f681420b4fb0d3818d0e9a436381"
+          "bytes": 10853,
+          "sha256": "1d96d9c177713b9ad8d35c4f1ed72951b7bb3032f85fa28b56ecf7f2b5e9dcac"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-ellis/neutral/192.webp",
@@ -2423,8 +2431,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-ellis/neutral/256.png",
-          "bytes": 54383,
-          "sha256": "e3ff3f8446e87ca1aac02ff24fa4083fd7ac623553ded2becd3b7a19347992c4"
+          "bytes": 19574,
+          "sha256": "1af4f5c189684d68ac29817e0d0028f629617ed9a9da0b3643ce3b22078ebb85"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-ellis/neutral/256.webp",
@@ -2433,8 +2441,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-ellis/neutral/512.png",
-          "bytes": 235924,
-          "sha256": "8d633fbdfa3a3a432e20394f3bd03c0ee4710d5013d405ffcd0e6dfc659f42be"
+          "bytes": 66399,
+          "sha256": "90969893cbbf991615083349c67d72f5b23831504f11255ff108e59602cd4a3c"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-ellis/neutral/512.webp",
@@ -2483,8 +2491,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-robin/neutral/24.png",
-          "bytes": 1004,
-          "sha256": "3c582035f6dcefb148d6fd2324abefaa0525f573d87ba5f49ab8552e59d94ffb"
+          "bytes": 628,
+          "sha256": "2af2fdc6e8457610da6a586fd7c3c455bb9a3c6c660be89bb00aadda99e970b4"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-robin/neutral/24.webp",
@@ -2493,8 +2501,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-robin/neutral/32.png",
-          "bytes": 1582,
-          "sha256": "6d4ed2f6a09cd6dfe0336e2a132f59ff6bdbd0c9abd92e11d23b876f3fd49ce9"
+          "bytes": 901,
+          "sha256": "3d986f68669067fc3065b6556802ad8591adcedf0cf7e76f27a80c20f647e73f"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-robin/neutral/32.webp",
@@ -2503,8 +2511,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-robin/neutral/40.png",
-          "bytes": 2210,
-          "sha256": "01001a6ffbba5ccf83d718aff80f87f74425c7e396d3a13960ebf16ead56bf20"
+          "bytes": 1226,
+          "sha256": "f4706989b1b140fe83a9ea4ecf69627605d2442b102d569f7c0368e9f761c281"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-robin/neutral/40.webp",
@@ -2513,8 +2521,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-robin/neutral/48.png",
-          "bytes": 2936,
-          "sha256": "d5903312416dd71113e38c1a93d47aa0a472989d3e6d7b91d98a9ad2c1faa8cc"
+          "bytes": 1429,
+          "sha256": "9a68b17b21f763f377109bb879de995a542c90fce5f2fcd9a5fc686d0672a754"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-robin/neutral/48.webp",
@@ -2523,8 +2531,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-robin/neutral/64.png",
-          "bytes": 4668,
-          "sha256": "574a6df4c78d8612005ccfcfe706622077fcb6602a520ef40ffce8fad8bea5a3"
+          "bytes": 2053,
+          "sha256": "b68d51caed7d44b67a078f3134dab2f443090e002484129ac197160f615ed01d"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-robin/neutral/64.webp",
@@ -2533,8 +2541,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-robin/neutral/80.png",
-          "bytes": 6726,
-          "sha256": "421692d2a08506b5b27e3b73f9d74aac384e0c627352bc249561935f3d115782"
+          "bytes": 2899,
+          "sha256": "8a623df079ba2e43ab4aca64857acb875f07eb71bb1c1e592a650823bbe09b7d"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-robin/neutral/80.webp",
@@ -2543,8 +2551,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-robin/neutral/96.png",
-          "bytes": 9133,
-          "sha256": "8b628dd45dabd99dfd4ec7b0c2185d1f79d6f08a18f44d1aae1ee4cdf310f6af"
+          "bytes": 3795,
+          "sha256": "d3a484e541b45dfc5aacd2de613d04410eb3e249531c89e9ea65ed741f685b8c"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-robin/neutral/96.webp",
@@ -2553,8 +2561,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-robin/neutral/128.png",
-          "bytes": 15185,
-          "sha256": "7ee846fdd8cf77fe62c9ac633ea495a7451d7880f097997510c2b79dd7f4a0bf"
+          "bytes": 6080,
+          "sha256": "8d99866495bb47a464ae649804d1343a60e31233cfb3b7fd5096e25e55a75729"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-robin/neutral/128.webp",
@@ -2563,8 +2571,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-robin/neutral/192.png",
-          "bytes": 31534,
-          "sha256": "c586f220ecf94cbc645d62c12c29f7abbbabe6c92b96eb44694f3b654001800b"
+          "bytes": 11793,
+          "sha256": "f97dff74a3613c3ab3c120310bc398a70c5d092e4c300fbb21ead50a7c9f38d0"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-robin/neutral/192.webp",
@@ -2573,8 +2581,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-robin/neutral/256.png",
-          "bytes": 54930,
-          "sha256": "1846e6f61b76ee15efd932448768b92403a19c05dc076e6e0265b399e1355c92"
+          "bytes": 19892,
+          "sha256": "edfdae5986969ad1db44e9442330e9a7c11cde8567b2f96bacb5a1d7153addb9"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-robin/neutral/256.webp",
@@ -2583,8 +2591,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-robin/neutral/512.png",
-          "bytes": 233457,
-          "sha256": "5762e6826596606788270127aa08a1e1ddbbf56403630589986886d51c77add4"
+          "bytes": 63897,
+          "sha256": "8f5ffd7f9c652b2a236a1f3c24ee587bc81d51737d266de7fefdde54518ae8da"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-robin/neutral/512.webp",
@@ -2633,8 +2641,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-anika/neutral/24.png",
-          "bytes": 1011,
-          "sha256": "5c1ba4eab3552ee8b01f1f6e9d41cda693330c5a3df5f5c44c5e857c0c3ad49d"
+          "bytes": 640,
+          "sha256": "3fe1b1bde7be668ccc58f69dadc79716215e08ec8d4065fbd5d44a3a33f0cc5f"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-anika/neutral/24.webp",
@@ -2643,8 +2651,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-anika/neutral/32.png",
-          "bytes": 1525,
-          "sha256": "2f7ef7a53fcd8b70f66b0ce763748bb196e5ddd58045cf4e4cfe4a8bdcc32046"
+          "bytes": 867,
+          "sha256": "22a850e326b8904702589ceb27d7c0fbfdc3a8b6e6ed8b0ab2baffd59292a043"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-anika/neutral/32.webp",
@@ -2653,8 +2661,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-anika/neutral/40.png",
-          "bytes": 2151,
-          "sha256": "75ffd0e11334792aa4752b19a35bfa9974c5108030a008aeb26b47998d1230d0"
+          "bytes": 1063,
+          "sha256": "3f5eb2fb32d44737b36fb48a0d07e68a9d2d33c239036fd5a0d7dcb917022410"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-anika/neutral/40.webp",
@@ -2663,8 +2671,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-anika/neutral/48.png",
-          "bytes": 2890,
-          "sha256": "1aa7fb7619729924651ee0cab8fbe1278aa5d04e9fdf68b51699c48cc66f6211"
+          "bytes": 1302,
+          "sha256": "b40cbf69722f3892646ab3dc7b4cdd15116f443ecb2aadd48445010a839140a9"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-anika/neutral/48.webp",
@@ -2673,8 +2681,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-anika/neutral/64.png",
-          "bytes": 4629,
-          "sha256": "1fc2dc556a90392850311048cb8e0cb9a6dc4b340b39aca6bf063c2c3978ffeb"
+          "bytes": 1946,
+          "sha256": "17b0c72f77f27e06d562abfad70888fbd115fcbd8f205d43d9fa350d9406ec81"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-anika/neutral/64.webp",
@@ -2683,8 +2691,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-anika/neutral/80.png",
-          "bytes": 6733,
-          "sha256": "5e5776efa8af2c12829844334424151a81ab22776a9ac41fc6d566f5af574934"
+          "bytes": 2652,
+          "sha256": "5e3860b530749cd1e9013c11caba48031aa29685ec5b56f4ef7b8c1573e9a488"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-anika/neutral/80.webp",
@@ -2693,8 +2701,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-anika/neutral/96.png",
-          "bytes": 9191,
-          "sha256": "3845807b250f425f7d7243003a791aa9be71f77a47a4b40c2a17a3f82071c133"
+          "bytes": 3924,
+          "sha256": "317913df4c9428f7fd97bf884cdfc803ddb3a250c499d1d06f32ddf1e87fae01"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-anika/neutral/96.webp",
@@ -2703,8 +2711,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-anika/neutral/128.png",
-          "bytes": 15351,
-          "sha256": "ff527aa074b01d369c5891b7d3ee0ab5e539f11e28019734435cf22a5082ebdf"
+          "bytes": 6118,
+          "sha256": "5c2990fe0b7625493b6358ab27b719a1cca6c80d9b8859a64f76785604c94cbe"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-anika/neutral/128.webp",
@@ -2713,8 +2721,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-anika/neutral/192.png",
-          "bytes": 32008,
-          "sha256": "fd1f875f6ec48a45a0ecad71013c055dcae1c208c7d770f19d87ed82b2448362"
+          "bytes": 11735,
+          "sha256": "c64298987d054c045095d56bb9c64ba9b21e3ff33dd2900bad1422feeb2b52ee"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-anika/neutral/192.webp",
@@ -2723,8 +2731,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-anika/neutral/256.png",
-          "bytes": 56128,
-          "sha256": "9810118349b9c4e0cfe8cc0407a176fc2b4e40e64b661aaafa1fb7d01b269d0d"
+          "bytes": 20432,
+          "sha256": "a7303f81bd2b0c002febe64b4c84b12e58f8521d1e08ac6e109243860313fdc5"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-anika/neutral/256.webp",
@@ -2733,8 +2741,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-anika/neutral/512.png",
-          "bytes": 239965,
-          "sha256": "2569a74d1fe7ebe37164a720124434a005cecbfce0c0dd2a51a126ba05d7de13"
+          "bytes": 82352,
+          "sha256": "fb884308623c1783a03237c40acc837338a683bc15d675c65d5098bb889c4805"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-anika/neutral/512.webp",
@@ -2783,8 +2791,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-alex/neutral/24.png",
-          "bytes": 1032,
-          "sha256": "41125d28e4925512980dc987baf2c462635bda65cb52395c66d23e8a90c68f0e"
+          "bytes": 472,
+          "sha256": "10b0165933e508e47331e42c81e8d4c1c7f07a30bb61f6c9ef262cda0986da30"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-alex/neutral/24.webp",
@@ -2793,8 +2801,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-alex/neutral/32.png",
-          "bytes": 1555,
-          "sha256": "76c04b0e0cf9d3cabea7907204f65904d941b4dc2469dc8148a2dbf82a7765e0"
+          "bytes": 723,
+          "sha256": "14d5d4f350ab6cf3c28bd022b38b93c4aa9c43e42dbdd597f330ec4687d8ad38"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-alex/neutral/32.webp",
@@ -2803,8 +2811,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-alex/neutral/40.png",
-          "bytes": 2182,
-          "sha256": "adece64146c5044abe4c359b59ea956606715a776e0b469d7f86d2d83949914e"
+          "bytes": 953,
+          "sha256": "e4fac9485b591244da7bb607998d553ab45292e99bc31e4655b242041ff77809"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-alex/neutral/40.webp",
@@ -2813,8 +2821,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-alex/neutral/48.png",
-          "bytes": 2868,
-          "sha256": "0614b66a6ff050480f2c5f3edddd7186f4605fd4f15060e7acb2a3314b612845"
+          "bytes": 1045,
+          "sha256": "0c37fff571bfaebe902b82282365a33524ae668b101cb05906068a7453595709"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-alex/neutral/48.webp",
@@ -2823,8 +2831,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-alex/neutral/64.png",
-          "bytes": 4514,
-          "sha256": "79dda725295e1cc3f50d0bf4aadf3f6bd067cb3ee2a8dc6c164e594215dd4496"
+          "bytes": 1509,
+          "sha256": "a31882517e137d9d4490565932a8001746b6fdbbf56376f53406543c95cd47bc"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-alex/neutral/64.webp",
@@ -2833,8 +2841,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-alex/neutral/80.png",
-          "bytes": 6510,
-          "sha256": "6651548795521aeafdef5978cc2752225a8150a1e58dce4f0254f832e0cc778b"
+          "bytes": 2142,
+          "sha256": "a7af2b8d990b2cd6402739f06648ad457aea45ca19c0d194092ecf10f31a5e56"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-alex/neutral/80.webp",
@@ -2843,8 +2851,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-alex/neutral/96.png",
-          "bytes": 8936,
-          "sha256": "7104c13b4898c8cea51731de881f4610302b10eca22400bbed418a5e891c5c62"
+          "bytes": 2915,
+          "sha256": "8398d7dddfdca507670001043af9d16d25f49309a46aae605e1515d37066d558"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-alex/neutral/96.webp",
@@ -2853,8 +2861,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-alex/neutral/128.png",
-          "bytes": 14541,
-          "sha256": "5ce65530ac8f1e4c1be9696f232b66548c47008c30c22c7e0793e8bce5c3f738"
+          "bytes": 3395,
+          "sha256": "dc827a905b011ee02ce3c3978a5b3eb45ed729c889eabb129ae1db333a65a0f8"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-alex/neutral/128.webp",
@@ -2863,8 +2871,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-alex/neutral/192.png",
-          "bytes": 30537,
-          "sha256": "d8da62ff1b45fdb02281e0d8e4e4abe65bf82a09421a3bb3db48e713245ad88d"
+          "bytes": 9582,
+          "sha256": "054e883ac8d7e6439d41f1d1f69bbc736047dd94863d27aece970d349500444a"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-alex/neutral/192.webp",
@@ -2873,8 +2881,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-alex/neutral/256.png",
-          "bytes": 54110,
-          "sha256": "a83ca2bb2495d585476273e3e57536016040ea2900a8ffa37bbd899026f1d480"
+          "bytes": 16971,
+          "sha256": "37a82f860f713f39cbded587b03791b18019cb257771c9431118537d3674a325"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-alex/neutral/256.webp",
@@ -2883,8 +2891,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-alex/neutral/512.png",
-          "bytes": 237918,
-          "sha256": "93c5d79231e1cd2b075d45c383939e8fa1cf6c0a42661681daffe0a7735622be"
+          "bytes": 61325,
+          "sha256": "f143ec3791e35991e4b1e588f047534f1a4e1fc6c702c63380531ba8c4537edf"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-alex/neutral/512.webp",
@@ -2933,8 +2941,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-daniel/neutral/24.png",
-          "bytes": 982,
-          "sha256": "ff7571212e825390b13b9c756dff86b20b2ff4fe6208457ff1cde6ef2532a270"
+          "bytes": 498,
+          "sha256": "e32bf22be194ec177f8e352afacef72c4a3549ad1a22e461e365bae360ec606f"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-daniel/neutral/24.webp",
@@ -2943,8 +2951,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-daniel/neutral/32.png",
-          "bytes": 1493,
-          "sha256": "51bfa44e1dbf4e8d07ba635f1062bd33d0834b90f89758595a01392e680465c4"
+          "bytes": 682,
+          "sha256": "8d7cef37f162e96de40f65374d483d31735667186e65223cb43cf66cfac46a61"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-daniel/neutral/32.webp",
@@ -2953,8 +2961,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-daniel/neutral/40.png",
-          "bytes": 2121,
-          "sha256": "b848d9c51a58201cb6c90337dfd46897155d52b91cd1fc029ad952a4e765d94e"
+          "bytes": 1031,
+          "sha256": "f9c16f7a37b5117860fe2e32ba421ec9c2a4624625188875aac182b5c737aee6"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-daniel/neutral/40.webp",
@@ -2963,8 +2971,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-daniel/neutral/48.png",
-          "bytes": 2804,
-          "sha256": "83322255775a9b78bc44d71ee82a5312932c17e2b8c9659c9aa660e71ad939a4"
+          "bytes": 1111,
+          "sha256": "1656d69a4d1d474be5db4bee847cafd1d77236d8b621f53fc2acbe5250819988"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-daniel/neutral/48.webp",
@@ -2973,8 +2981,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-daniel/neutral/64.png",
-          "bytes": 4408,
-          "sha256": "dd85f957905483b4a574d79eb1c4efbe832f3a835b1a1b4ee8b7ce1cc6a3a6c6"
+          "bytes": 1579,
+          "sha256": "f4d488dfd9eb969bdf366fe736b6777d2b36cf5afe98049cd99ac14f188d11da"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-daniel/neutral/64.webp",
@@ -2983,8 +2991,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-daniel/neutral/80.png",
-          "bytes": 6323,
-          "sha256": "653429dc5b882076ad33ff1a33cbe27c4f7db107172f2ac9a1620251a77082a0"
+          "bytes": 2387,
+          "sha256": "ff2d1388ecab19d945b937bff96a2cda66eadbad4d048c5d1dc4d3bda8308f2b"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-daniel/neutral/80.webp",
@@ -2993,8 +3001,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-daniel/neutral/96.png",
-          "bytes": 8685,
-          "sha256": "22594d13f93c7c641fc290c537963edf492cc6a79b1f9945c6432fff1e22c7e4"
+          "bytes": 2898,
+          "sha256": "ddc6581b3fe174aaf7690fd70b4ca18a6411b4c4555d7eafff5aa133fffe4cc0"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-daniel/neutral/96.webp",
@@ -3003,8 +3011,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-daniel/neutral/128.png",
-          "bytes": 14398,
-          "sha256": "402dc9010047647c4c2c8bd8ef350e7e4343c9f1bdc6505af64f251bbc9258cd"
+          "bytes": 4580,
+          "sha256": "db06452bc23b0111cc363b062e125e6f655d01aa6fdbfba5e83e277a7af8c2a2"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-daniel/neutral/128.webp",
@@ -3013,8 +3021,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-daniel/neutral/192.png",
-          "bytes": 30730,
-          "sha256": "5e5887a6558a56c3dfc6925d705a5cfe79d1c621c4ffc5b7e65c6b08afd7fc5f"
+          "bytes": 10841,
+          "sha256": "de62885f3d38dd85c9594bb23654e2f73d566a0cfddf39e822f33c93407964a8"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-daniel/neutral/192.webp",
@@ -3023,8 +3031,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-daniel/neutral/256.png",
-          "bytes": 54669,
-          "sha256": "19bebc4bef6137ad10b42998c291fe2f3babbd77dffd41eae99c811c4999e953"
+          "bytes": 21505,
+          "sha256": "2b19dbdf6032d1cd1c65f439b8ef46c9dc73a5a89ed745a982e485f811b17056"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-daniel/neutral/256.webp",
@@ -3033,8 +3041,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-daniel/neutral/512.png",
-          "bytes": 237342,
-          "sha256": "23f49fdd287db4c37f7a089a3465beb8457235465b31af602dbad190e7bbdcf0"
+          "bytes": 49379,
+          "sha256": "669537b98e1aabe2db2945f1c9425bfb00cd6916201e5353b46abb2daedd58b5"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-daniel/neutral/512.webp",
@@ -3083,8 +3091,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-sofia/neutral/24.png",
-          "bytes": 1027,
-          "sha256": "2b2d5859cbeb712685729001e716c1a240233787c2aaebceffbbd4f967355b1c"
+          "bytes": 604,
+          "sha256": "9c78f49254c4f881069579f8108974e3e87ae6c3ba0848de71dcc6c35897cb20"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-sofia/neutral/24.webp",
@@ -3093,8 +3101,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-sofia/neutral/32.png",
-          "bytes": 1576,
-          "sha256": "1687cc80ab0ff1597f30c31586da787da6fe9f03866e189ed63bc1763ff96712"
+          "bytes": 867,
+          "sha256": "04e8abb67523d2cde9046de855e1096f95e97473ae893336b2058223607cd950"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-sofia/neutral/32.webp",
@@ -3103,8 +3111,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-sofia/neutral/40.png",
-          "bytes": 2213,
-          "sha256": "bde3fbe65f53d4568156097bb53c550814a3ad060fe7bef3058c382c5e3e4014"
+          "bytes": 1010,
+          "sha256": "431f91124256acb33dbd115954a40d4adf2a7e26a47ef4cb2eb4c99c6b2d67a6"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-sofia/neutral/40.webp",
@@ -3113,8 +3121,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-sofia/neutral/48.png",
-          "bytes": 2913,
-          "sha256": "279696f99755b366c78eb3b78498f7d01d26eadd3f8aa22cca9cef5e1f457457"
+          "bytes": 1449,
+          "sha256": "94574565d9320e82684ebb51f2787adbb49d94af24aa8c80eb072d7026c11b20"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-sofia/neutral/48.webp",
@@ -3123,8 +3131,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-sofia/neutral/64.png",
-          "bytes": 4606,
-          "sha256": "5f774e30b9e0135dae5f47d22058480d651a0464a6f72280b7720e4e25ca4b57"
+          "bytes": 1904,
+          "sha256": "9dbe18fb17ea920a42cb4b57812a3e2f20c6d450942c9ca8cfd7593646108815"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-sofia/neutral/64.webp",
@@ -3133,8 +3141,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-sofia/neutral/80.png",
-          "bytes": 6625,
-          "sha256": "de90850b213989937610c89aa64c506b46ba85d883db131d8d7b1ef5d571169a"
+          "bytes": 2623,
+          "sha256": "f1e6a6301560d0facfb5c2bbed3befb352bef387f2b03a66d39f2b974a9e8ba8"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-sofia/neutral/80.webp",
@@ -3143,8 +3151,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-sofia/neutral/96.png",
-          "bytes": 8976,
-          "sha256": "f05ffaac681e8ac43f4c597f62f834fac4f70a92b4654652ec5348786af0600f"
+          "bytes": 3418,
+          "sha256": "8512450472b82875e34d93c6bf80b9131a8660eacf85d36909454c3388d6fa6a"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-sofia/neutral/96.webp",
@@ -3153,8 +3161,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-sofia/neutral/128.png",
-          "bytes": 14831,
-          "sha256": "dae1066d5c90bec047f52f85707426e626c440e59a501da0d8e3befa8b0f1862"
+          "bytes": 5335,
+          "sha256": "8f7e0522decfa56a7a5e97150eb810abe0e2d80de41e0efa59c05fbd3dd70575"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-sofia/neutral/128.webp",
@@ -3163,8 +3171,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-sofia/neutral/192.png",
-          "bytes": 30932,
-          "sha256": "0bb49074cf5da9a0ca5d953f60bcb50b29ee66137cba15a7dc2ce41e05275d61"
+          "bytes": 11970,
+          "sha256": "d50b4778d2517b65ec035db18fa93ffe9780f509d56633f048106bfbf2ebafad"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-sofia/neutral/192.webp",
@@ -3173,8 +3181,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-sofia/neutral/256.png",
-          "bytes": 54563,
-          "sha256": "f9d76b196e13a66f1199e7a0bda367bbbc97bb0ece4032d82343f958efe38d34"
+          "bytes": 18959,
+          "sha256": "4aae7937500a59f9f51ec46566bd49624a89bc542e9bcef4125caf97db150e3b"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-sofia/neutral/256.webp",
@@ -3183,8 +3191,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-sofia/neutral/512.png",
-          "bytes": 237957,
-          "sha256": "61e09812f302969268cf43073f3105eb594297f1f3071cfcb75b96dd313664ae"
+          "bytes": 86150,
+          "sha256": "07302c7f7b28d5af0cdd2f99aaba7327b9ca19130ac1971e1652f74f3bd125e2"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-sofia/neutral/512.webp",
@@ -3233,8 +3241,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-maya/neutral/24.png",
-          "bytes": 1106,
-          "sha256": "b66923183fe9651526d2b2ea015261ed26f2debb11c96578c71b7e3a443232a4"
+          "bytes": 672,
+          "sha256": "0da368411c0991239670d2af2da6f491c81d35c00408d245aec5daa3424ffcc9"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-maya/neutral/24.webp",
@@ -3243,8 +3251,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-maya/neutral/32.png",
-          "bytes": 1639,
-          "sha256": "6c256decc23f9ca2ea40e8790c7727be45d30721cf665dfa57203854ddc2260d"
+          "bytes": 926,
+          "sha256": "189820658b42f72765ad7e8ebda7e9203dcd26103eccc86b5461293fd4e0136f"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-maya/neutral/32.webp",
@@ -3253,8 +3261,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-maya/neutral/40.png",
-          "bytes": 2247,
-          "sha256": "dea39268d77f7cc2ccd709c8d8b08696a41246f3c0dec6445080a59a1503a4d7"
+          "bytes": 1213,
+          "sha256": "5ff527a96e12bd9b2c7c105a086f034045a6489b298da28adff8b9f5406e1be3"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-maya/neutral/40.webp",
@@ -3263,8 +3271,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-maya/neutral/48.png",
-          "bytes": 2971,
-          "sha256": "9f382d2e983430034a394a2e675ff1a55a3d1d9ac8105667d35eb13f3ce3699a"
+          "bytes": 1567,
+          "sha256": "af347af7070256d0b994058744bc9701c2c29160958f643d3a2a404e9d11ec3b"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-maya/neutral/48.webp",
@@ -3273,8 +3281,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-maya/neutral/64.png",
-          "bytes": 4548,
-          "sha256": "5ca1a26bc59b64db131c09036dee74f2d2ba2dc061d8ddd28a40db97e273c9db"
+          "bytes": 2044,
+          "sha256": "fddbec11be5241f8b0164a10dc6d572cd2aacfc70ffdfc408cba7e40d44f33f9"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-maya/neutral/64.webp",
@@ -3283,8 +3291,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-maya/neutral/80.png",
-          "bytes": 6542,
-          "sha256": "53645d1299caad403b624cc76f25b1bb197e9eb726158caa06037d8e11a43099"
+          "bytes": 2684,
+          "sha256": "b8b5243f6f95c05d675abf5be1639c6e1e7785df02a103220c078ae2d890f915"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-maya/neutral/80.webp",
@@ -3293,8 +3301,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-maya/neutral/96.png",
-          "bytes": 8792,
-          "sha256": "640843b0355fcc5d38e8833e2a34202ba5aeb5b5f2eb805e234dc69ee666d6ba"
+          "bytes": 3412,
+          "sha256": "06d15890d068acaec32bee964885f12b62182b0a169544bd91acf47600a3cc39"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-maya/neutral/96.webp",
@@ -3303,8 +3311,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-maya/neutral/128.png",
-          "bytes": 14352,
-          "sha256": "e5ee67f1b7b142885113d1c5c28e4107b120c762b0befe5e6e4fa1dd122edb81"
+          "bytes": 5444,
+          "sha256": "977a0ec7e542fc960c0f85e433883ae6f41b3e90c96cafb6ed3b13bfe1821626"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-maya/neutral/128.webp",
@@ -3313,8 +3321,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-maya/neutral/192.png",
-          "bytes": 29232,
-          "sha256": "58a22b744a267760b972438e80b0e5ca36c6a834ef635cb40030f0f78b1cbbaa"
+          "bytes": 10921,
+          "sha256": "361272f7600f9adcb13df17e2c2747bced0c592cb4c32d589536bf1a5ed3b57b"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-maya/neutral/192.webp",
@@ -3323,8 +3331,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-maya/neutral/256.png",
-          "bytes": 50041,
-          "sha256": "0d2e8c16699a915f5ce0aace8af3e12512207a0941f9f24e21b78664298e30dc"
+          "bytes": 19214,
+          "sha256": "0e9bb536fe08d9d4700ec169cdbaad1e7e955cffcc4700e6351cadfc0ede5a46"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-maya/neutral/256.webp",
@@ -3333,8 +3341,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-maya/neutral/512.png",
-          "bytes": 202938,
-          "sha256": "8cb6883784932ecd92da62cff7117f161ed4b3e54f581689f6deed5b9ec2334e"
+          "bytes": 67125,
+          "sha256": "8df15b032fb4b17c8e8f0f1f3225d6d40c5bd0aa03cc402d1591a1d96e56c84f"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-maya/neutral/512.webp",
@@ -3383,8 +3391,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-james/neutral/24.png",
-          "bytes": 1020,
-          "sha256": "69340ee189698d18e06265497542489122b009aec12b1fa8d26226f80acad40d"
+          "bytes": 623,
+          "sha256": "4cb9d61ba271b8f9686330e3a91bf82155d0a43fc5d7fffe55b77e00287f6f83"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-james/neutral/24.webp",
@@ -3393,8 +3401,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-james/neutral/32.png",
-          "bytes": 1572,
-          "sha256": "76252d42b1b9b9a636c777bc9e33c571304eb4ddd8a8f202a037c28495526db1"
+          "bytes": 749,
+          "sha256": "133809ac12e7ac73ee0b8e78ccf530695b54f1795e7712ed2d5d25f8140c9f58"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-james/neutral/32.webp",
@@ -3403,8 +3411,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-james/neutral/40.png",
-          "bytes": 2209,
-          "sha256": "2c82cae1184c66fb12cd8cb545b5f694074f0b7576586d059b9717bc6fcd737c"
+          "bytes": 921,
+          "sha256": "a811391a9e52e55249f313880861ea4aea75c0961635daddef93babd825c15a3"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-james/neutral/40.webp",
@@ -3413,8 +3421,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-james/neutral/48.png",
-          "bytes": 2952,
-          "sha256": "36a5bc698ccb331d86680935b1762a98de4d572e89ee9c9961355a89fadc4210"
+          "bytes": 1305,
+          "sha256": "567e1bd8b0bceaa5a2d934dce4e8d67202de606254b9c2c8f82f4f64c007c09e"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-james/neutral/48.webp",
@@ -3423,8 +3431,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-james/neutral/64.png",
-          "bytes": 4633,
-          "sha256": "5eddad1dfeefb63ca1faffcd78b93f90e0d2b1ffdf814b1df7d895cf2b9638e0"
+          "bytes": 1740,
+          "sha256": "7b5632c8b1b31af4275f502b6ae5b95e0f0fdaaa1120f592bf3ea034aa30b793"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-james/neutral/64.webp",
@@ -3433,8 +3441,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-james/neutral/80.png",
-          "bytes": 6727,
-          "sha256": "468256206279b47c221b2bf7e923616c44934ac3e46211afd9c53dfe0547b355"
+          "bytes": 2330,
+          "sha256": "8ae41c7731108365cbc9afc1e9b3ee014184d7aa9f30b214be469d435a635546"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-james/neutral/80.webp",
@@ -3443,8 +3451,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-james/neutral/96.png",
-          "bytes": 9182,
-          "sha256": "964b2cbea6c7f826cfaf547dda61fd2f2a60bf094f9cbc9ed18f4e9727c099e9"
+          "bytes": 3694,
+          "sha256": "bc4d79425e852b83b8e5edb8e691409e7ff5346fc92fc205ebf843a0ae8d788b"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-james/neutral/96.webp",
@@ -3453,8 +3461,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-james/neutral/128.png",
-          "bytes": 15258,
-          "sha256": "ed540bf4edfecacce1d25c14eb973a05ef7094a226a7d26561df5cbb4724aeee"
+          "bytes": 6164,
+          "sha256": "c1edb6fabb3b384b786a60849fe462a7fd4180e348d6e1cd0d598688a17f5159"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-james/neutral/128.webp",
@@ -3463,8 +3471,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-james/neutral/192.png",
-          "bytes": 31807,
-          "sha256": "bbd2375e7c64e3d7b3e9f2d234cf952e322b8b155782d91be8a59382af94b462"
+          "bytes": 9338,
+          "sha256": "e38f4ad3d8f3d42c44da6c8a25e3278a46695b218e4c526ac81028560ba5a6b5"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-james/neutral/192.webp",
@@ -3473,8 +3481,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-james/neutral/256.png",
-          "bytes": 56108,
-          "sha256": "d11d3a1034c3ebc0932c4d2c55d264e78d8abb595e697a41a5f72e1889548d66"
+          "bytes": 19411,
+          "sha256": "efa83d86457d3c7be7d08914b44594216bd2f521a0fed39d6f480db8d887e9e5"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-james/neutral/256.webp",
@@ -3483,8 +3491,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-james/neutral/512.png",
-          "bytes": 242244,
-          "sha256": "476f6059d811821b2e99287c2f2b21d3c80b826dc78d3df8228f01b813698eab"
+          "bytes": 71330,
+          "sha256": "97f56b77709faf5511ffbea7ff01acc491a198b7fb28aaea0a3ba626a6fe8bbf"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-james/neutral/512.webp",
@@ -3533,8 +3541,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-zara/neutral/24.png",
-          "bytes": 929,
-          "sha256": "0f2df6a2d3b0b69379b3d30d0ce021221366faa1095027511a96cf9c31afbbce"
+          "bytes": 591,
+          "sha256": "2f119e7ac2f55821de9bab04b74113f72bb80b4e90ded753268805ee56b65c4b"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-zara/neutral/24.webp",
@@ -3543,8 +3551,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-zara/neutral/32.png",
-          "bytes": 1359,
-          "sha256": "a58d14d274417db9cf1bdd8279c3db4ab3c91dd71aa85a7929be4f51c286315c"
+          "bytes": 786,
+          "sha256": "03da8d952d4c4e58cf42741b3bbdbf5af8727c07ab9892fc71bfe2f3d76d007d"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-zara/neutral/32.webp",
@@ -3553,8 +3561,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-zara/neutral/40.png",
-          "bytes": 1893,
-          "sha256": "d7e47f4b154a6163878fceae2d00d9718c12f4563527a65a395b2086890bb161"
+          "bytes": 960,
+          "sha256": "b92f5777051036c90434df4ec482ddd294023a4f8011008127c96617c9b935fe"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-zara/neutral/40.webp",
@@ -3563,8 +3571,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-zara/neutral/48.png",
-          "bytes": 2413,
-          "sha256": "3d88beb278d80786752263e0a3df40c54feeb5e94f973abeabf5b58e0125a27f"
+          "bytes": 1205,
+          "sha256": "0c9362d61a1fb237ce3c4254c9ee2cb29bdf5e938303a650ea432807f9fa27ba"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-zara/neutral/48.webp",
@@ -3573,8 +3581,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-zara/neutral/64.png",
-          "bytes": 3643,
-          "sha256": "b99771b8e680b96e60b2594d1d92bc8c3ddf46284eb7a9203cbc583d28e16700"
+          "bytes": 1668,
+          "sha256": "3da49ee433e93fa3f594dd1eb190ce0adbeb295d916d0bfb9bf0b872d0e00c8a"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-zara/neutral/64.webp",
@@ -3583,8 +3591,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-zara/neutral/80.png",
-          "bytes": 5140,
-          "sha256": "b45ff60e8de685fbfd2a082fba867badb1e4fccefa2c9aa8ad838290942ee77a"
+          "bytes": 2205,
+          "sha256": "57dce4530d9ee58b313831a17db8cd43c61c3b8580a548b5818b51b3ddbf8688"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-zara/neutral/80.webp",
@@ -3593,8 +3601,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-zara/neutral/96.png",
-          "bytes": 6849,
-          "sha256": "72373839a87342ce16de753c29ca1c157e94288db6a45fe73a490061f9b99d68"
+          "bytes": 2738,
+          "sha256": "2ac56abd305597846f65eaa88f49c1eaf17f75b9f768b37322a38db5c7c9f37a"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-zara/neutral/96.webp",
@@ -3603,8 +3611,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-zara/neutral/128.png",
-          "bytes": 11096,
-          "sha256": "5cb73deaa9e6df551b5742275f22fbbc5aef97dbc53f33dc8035642cb9fbe2f8"
+          "bytes": 4245,
+          "sha256": "475deb1349e5695f851bc954647fee050f7fa7352e9d1599e9ba444ff9f29569"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-zara/neutral/128.webp",
@@ -3613,8 +3621,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-zara/neutral/192.png",
-          "bytes": 22183,
-          "sha256": "8f23f14b91cd1e14f945a98dab29b1ffe92736231a14b7304b2b359a3aaaf61f"
+          "bytes": 8070,
+          "sha256": "04cf2193768209e018775c5a3f712e7b0e845e627059fe4cd19e7e21e285edfd"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-zara/neutral/192.webp",
@@ -3623,8 +3631,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-zara/neutral/256.png",
-          "bytes": 37055,
-          "sha256": "2582173efcc7f40afa7aca6e3cdaad4e0101daa8433e55c34a415a93ffa5e850"
+          "bytes": 13815,
+          "sha256": "fa6f50d4f92e1c59bc0a9a315b495bdcfc24ef4d3b8a01af411973d622b3e35a"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-zara/neutral/256.webp",
@@ -3633,8 +3641,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-zara/neutral/512.png",
-          "bytes": 144068,
-          "sha256": "a11c65f7a8cbf9e42be7ca2dcb758e5ca0fce97c3d21c218662ca4e7b2fbdda7"
+          "bytes": 48056,
+          "sha256": "6a4e00caa5bec323e742e1faeee2285d3e7f1b52db1944c38922c7471c084b7c"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-zara/neutral/512.webp",
@@ -3683,8 +3691,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-sasha/neutral/24.png",
-          "bytes": 1049,
-          "sha256": "312cefc3d98ced66b0726e2213782fd59a5b693c7df2a910234999092ad229b1"
+          "bytes": 636,
+          "sha256": "536ccbfdbfd54298f92f740c8fa7f6afc4df5360514956eb4605e865b37e6a14"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-sasha/neutral/24.webp",
@@ -3693,8 +3701,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-sasha/neutral/32.png",
-          "bytes": 1628,
-          "sha256": "f6ca595fec8308bfa187c0e7e1e468c253a96312c777d3e64af0e7c0e444f1a4"
+          "bytes": 862,
+          "sha256": "2a68c6e1fbfa4edb29a678a0be64a491f12cf331db5f08ac1529691c8a02ae00"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-sasha/neutral/32.webp",
@@ -3703,8 +3711,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-sasha/neutral/40.png",
-          "bytes": 2275,
-          "sha256": "02b7e0f56555d583422a4a2fd1ebdc9cd4f22fb48f4d69847a6f4f40aa513455"
+          "bytes": 1180,
+          "sha256": "4814b27f5f1bdef22d1ae3c7eab83ef4ddeba69748d8911def565e1c669f3578"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-sasha/neutral/40.webp",
@@ -3713,8 +3721,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-sasha/neutral/48.png",
-          "bytes": 3007,
-          "sha256": "66e026a39f95f3ae2c815120beeecc7d4277069c4d1ef1b69a0ed6f6f113fed0"
+          "bytes": 1379,
+          "sha256": "53b42be8300d26e7ef3173fd8f953ca89eefb79227472dfcca131eec2d40d68f"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-sasha/neutral/48.webp",
@@ -3723,8 +3731,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-sasha/neutral/64.png",
-          "bytes": 4730,
-          "sha256": "4fd7da90b056cea7f0fa5dbda9ee544faf2824438c426902825d7b6ce50a64e0"
+          "bytes": 2048,
+          "sha256": "bf2d880d5397b7a3d4e84f8dbae41ad914d219866221b2f401368e91ab510895"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-sasha/neutral/64.webp",
@@ -3733,8 +3741,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-sasha/neutral/80.png",
-          "bytes": 6890,
-          "sha256": "8a977ef220a0434a036c17112b3c9cd9ebba5d2ff3fbc7edd357d289c8f81944"
+          "bytes": 2864,
+          "sha256": "5ff85f7ebb7c35d34b9c0fa07e545f17b19b93783870dc985c140396e36009d4"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-sasha/neutral/80.webp",
@@ -3743,8 +3751,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-sasha/neutral/96.png",
-          "bytes": 9354,
-          "sha256": "1670adee8ee54b3f18bb93d84e88f690f1d6bc845fa317df7e1c7f5d497d7969"
+          "bytes": 3582,
+          "sha256": "94a75440c7e04fbba515f00dff4d3a87aeede81d46f38ee7d5ccaf1f8eebe7ab"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-sasha/neutral/96.webp",
@@ -3753,8 +3761,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-sasha/neutral/128.png",
-          "bytes": 15193,
-          "sha256": "478f3239891946e2ab4fd7184360a2216cb0791588e885ae4c17e9c36d1cde52"
+          "bytes": 5706,
+          "sha256": "d7959d6361c9f2a7f3e9874d5312bd8417a3c7577cfb167151641a6ffbab135b"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-sasha/neutral/128.webp",
@@ -3763,8 +3771,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-sasha/neutral/192.png",
-          "bytes": 31078,
-          "sha256": "e99e9858f20404710bb8481eac46a110b488ac3eefcfce79d51a229839ffc5fd"
+          "bytes": 12532,
+          "sha256": "19478176c1370e63d861ee505eaf67d8c30385e21e07e5869d594c13a436a6f5"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-sasha/neutral/192.webp",
@@ -3773,8 +3781,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-sasha/neutral/256.png",
-          "bytes": 53078,
-          "sha256": "27401053116f998dde20be5ba5a20bbbbfd01a2182c68e90fc6b7ed1980ee463"
+          "bytes": 18462,
+          "sha256": "a515faaa5cc6a5dce5362a6822c7022680d46c08afcc3e0593b6958eb34faa85"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-sasha/neutral/256.webp",
@@ -3783,8 +3791,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-sasha/neutral/512.png",
-          "bytes": 224265,
-          "sha256": "27b59b532d0787cc1c2e9fd67c329f8507da05353c381a50038c0f4cdd06481a"
+          "bytes": 68772,
+          "sha256": "ee7fd47f05d253815bc605c5462e64059688e5d2e36b00d305fb8e4cf71bb8a1"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-sasha/neutral/512.webp",
@@ -3833,8 +3841,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-priya/neutral/24.png",
-          "bytes": 1011,
-          "sha256": "f3228ea43cde484609dab24fc90d04b5b3f719395974d92011531c2a85423623"
+          "bytes": 547,
+          "sha256": "5f3f8d31eb3c5689a32439487758bf720f72d5235508120d41a7608dcd89a501"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-priya/neutral/24.webp",
@@ -3843,8 +3851,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-priya/neutral/32.png",
-          "bytes": 1556,
-          "sha256": "c68836bbb3e19d18ddef43e75f1299a725fe3e6643504b4462fe6a5403196edc"
+          "bytes": 742,
+          "sha256": "fda0a6dfc89c6aa3bc2784b1c7bc1e67ec77130a300707432a7c7d3c4b184f75"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-priya/neutral/32.webp",
@@ -3853,8 +3861,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-priya/neutral/40.png",
-          "bytes": 2172,
-          "sha256": "e6151302088550dfa8dde1e1719cba91de88b0c788e1da8894b8be2741857dc4"
+          "bytes": 893,
+          "sha256": "8d5cb873297a641d8036c4089dc4fa311ad6f945316260ca9242fee82038f7b0"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-priya/neutral/40.webp",
@@ -3863,8 +3871,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-priya/neutral/48.png",
-          "bytes": 2872,
-          "sha256": "acc5f0127019d4dfe0f807994930998287f8cff56c9eeb00b0393189ae6bf892"
+          "bytes": 1358,
+          "sha256": "cbf917a19a0410d877b80be906222cfa6213a71eb2fca9662f556a73ae8e57d2"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-priya/neutral/48.webp",
@@ -3873,8 +3881,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-priya/neutral/64.png",
-          "bytes": 4492,
-          "sha256": "bb7a0e856d638a3354b807d6346f82fcbcdbf8210268349f9c051826f57a8971"
+          "bytes": 1884,
+          "sha256": "596a137233df9264fc69ed876de0d0f1659c037e0d05e8ae91fcf8c94a759d33"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-priya/neutral/64.webp",
@@ -3883,8 +3891,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-priya/neutral/80.png",
-          "bytes": 6448,
-          "sha256": "555f09bc36b3f0d69d98602bff923516d1674967b4ddde4465da1bec3e004365"
+          "bytes": 2277,
+          "sha256": "cf30bd4baa0b15fbc185f0e1f2cac3488ed7ca4a959807d9029664d773ec3d94"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-priya/neutral/80.webp",
@@ -3893,8 +3901,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-priya/neutral/96.png",
-          "bytes": 8762,
-          "sha256": "4447f392cc76205a33c38bedd410865946d9145ff141ae1a031fc67f2aa84e2a"
+          "bytes": 3549,
+          "sha256": "36a5ebaa47eade4b7ecbe284ecc8b30ca982048aded8b752e86576800e3b3979"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-priya/neutral/96.webp",
@@ -3903,8 +3911,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-priya/neutral/128.png",
-          "bytes": 14393,
-          "sha256": "aefc9606f330b409a5a3cd6938b8ba9ecfbf0d06f118784071b45458730c9ce8"
+          "bytes": 4761,
+          "sha256": "106e5f6b8f963ad4514a4f63abcb61a1bbf2b8accacdcbe865f4c9d732cb5e94"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-priya/neutral/128.webp",
@@ -3913,8 +3921,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-priya/neutral/192.png",
-          "bytes": 30275,
-          "sha256": "47bb5f25ce77ad301acc1fd41ea2deaa497d56bdde363e96a79bfec15a80e8ab"
+          "bytes": 8518,
+          "sha256": "49f797190f02f5704ce62b982850ca5d2c6a76e1e932f07389b9cabe16008539"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-priya/neutral/192.webp",
@@ -3923,8 +3931,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-priya/neutral/256.png",
-          "bytes": 54005,
-          "sha256": "b8565972bd9002be923c83d16d743e7e5be37ccf665c3a8990f9b8549c458430"
+          "bytes": 14739,
+          "sha256": "2eb95531d727dbd81980b5e3ede98706a5ac8d2ada284557f859897678100fb3"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-priya/neutral/256.webp",
@@ -3933,8 +3941,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-priya/neutral/512.png",
-          "bytes": 241544,
-          "sha256": "8c0f0c06176f65d31f304026d15505ab731e6eed4cc4b6fc92a4225c1da7ad68"
+          "bytes": 70028,
+          "sha256": "b8611eba44670420469576daa254e0d1b0f84e10b9fbd1d998c58cb636c43dbf"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-priya/neutral/512.webp",
@@ -3983,8 +3991,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-marco/neutral/24.png",
-          "bytes": 1092,
-          "sha256": "e296102d803123ffc37e5db18b70807a1d39a089d96c2900d7d0208820d60e32"
+          "bytes": 724,
+          "sha256": "9a5b54ed96e0d82b9502e57e133d71507ca0948416e6a892bf465e6e1160f098"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-marco/neutral/24.webp",
@@ -3993,8 +4001,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-marco/neutral/32.png",
-          "bytes": 1674,
-          "sha256": "be621a9c049400a0af1eebdf8325194dbe1736c3b16cb78debeafdc2b4f29adf"
+          "bytes": 1039,
+          "sha256": "3246128249a2dfc5203cc0347b65ed7648f6f73a06dd759ac9a5912425dad7f4"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-marco/neutral/32.webp",
@@ -4003,8 +4011,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-marco/neutral/40.png",
-          "bytes": 2337,
-          "sha256": "9390ede0fd26cb75f8cce29fa67e74aeb3026b9855dbb3fd42417c7c4a28c17e"
+          "bytes": 1281,
+          "sha256": "f67e428ce979eb87d3d616a1467b2b2a26eea79330932a0e19fdbdf41d627597"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-marco/neutral/40.webp",
@@ -4013,8 +4021,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-marco/neutral/48.png",
-          "bytes": 3041,
-          "sha256": "9c4a8b39dd7a7f6bf482694fa492daa6f45c16f65248e1b157e742236f93ea22"
+          "bytes": 1627,
+          "sha256": "76b98d3c26e0238d901f1ad3bc243d486d106ac99fdc450abb1803115b550db8"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-marco/neutral/48.webp",
@@ -4023,8 +4031,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-marco/neutral/64.png",
-          "bytes": 4733,
-          "sha256": "a4a35d879640e2d1e0edd49f1aa5da3671eed76daf300789c55ae4e0b8f155e2"
+          "bytes": 2415,
+          "sha256": "9724bbed27eeb11920df5ae1392f23ae76e1adcf088df95a18f781bf06e60848"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-marco/neutral/64.webp",
@@ -4033,8 +4041,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-marco/neutral/80.png",
-          "bytes": 6797,
-          "sha256": "58c46f11ad87c5a9c3d16b043da46a612682c08087efdd2741a8f8ff9fd78fba"
+          "bytes": 3130,
+          "sha256": "6917d732c7cd6c9a84589c1aa55e87caab47d202479794874f2cd09d43c0cc39"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-marco/neutral/80.webp",
@@ -4043,8 +4051,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-marco/neutral/96.png",
-          "bytes": 9200,
-          "sha256": "72f5deecef80605bfa9c6792ee2c37f2ff2761fae6058a9b22bccb528af8bb97"
+          "bytes": 3857,
+          "sha256": "fd4e50f59d60630d740d727b59336dd7c3006f71888de7fcc03c4a9f21557a87"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-marco/neutral/96.webp",
@@ -4053,8 +4061,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-marco/neutral/128.png",
-          "bytes": 15150,
-          "sha256": "9ad10cf27f741eb4b2b477714e46a293682304d4424b5592104545c03511c6ec"
+          "bytes": 6112,
+          "sha256": "960bd65260f17a83f35aa316cb793e49178219b33ba4766460e779b13dabff0e"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-marco/neutral/128.webp",
@@ -4063,8 +4071,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-marco/neutral/192.png",
-          "bytes": 30907,
-          "sha256": "fd81116707cf0da79f3e50ca7e1f71c029dd123bc54c1b5e1c04f09f00a65366"
+          "bytes": 11595,
+          "sha256": "dd23c8db3ad6cc05bd35b0f5c48b1454de129a296067b41145827fa44b95ec11"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-marco/neutral/192.webp",
@@ -4073,8 +4081,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-marco/neutral/256.png",
-          "bytes": 52811,
-          "sha256": "a7ce93aca0105073fc3ff026530dafbdb6b192129b09eafd7ebb1381a3dc3746"
+          "bytes": 20216,
+          "sha256": "a3f90f13fe6385168b3f9e08ada2576ca9679ea956c5e65ebf405e8ff3362547"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-marco/neutral/256.webp",
@@ -4083,8 +4091,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-marco/neutral/512.png",
-          "bytes": 217890,
-          "sha256": "fb82213a64e7041b1a811ecf073d55a16130741a38a443786e5a831a3e2b92e3"
+          "bytes": 71542,
+          "sha256": "64cf0884c672dcbb0559dfdab1600acc1aec76d56b94043cf71cae85b6dd55e8"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-marco/neutral/512.webp",
@@ -4133,8 +4141,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-noor/neutral/24.png",
-          "bytes": 1105,
-          "sha256": "7f3fac6c86af4dc02a8a111543a2d9dd77a4f4edb4491666d85ba600ef55fda2"
+          "bytes": 661,
+          "sha256": "540aa0f1fe25a59cd0b76a9337dedaf4f5041e356e1c633223f91002d8f9eeda"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-noor/neutral/24.webp",
@@ -4143,8 +4151,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-noor/neutral/32.png",
-          "bytes": 1659,
-          "sha256": "af2f6df17e633a051671b9a94d78eaeda0d2282c6db76a127116954dc9dbffbf"
+          "bytes": 971,
+          "sha256": "d413a76eab8297aa88d4acde483247052abfe68121606ad3e905bc73d8a4d61f"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-noor/neutral/32.webp",
@@ -4153,8 +4161,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-noor/neutral/40.png",
-          "bytes": 2256,
-          "sha256": "aab612715cbb4d02296ff314001ddc00906735db34aacb977c4cdbd944c598fb"
+          "bytes": 1249,
+          "sha256": "485450acb4f2fc04ab34a106bff74130998212d5571b50c916e0eb945844c7fd"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-noor/neutral/40.webp",
@@ -4163,8 +4171,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-noor/neutral/48.png",
-          "bytes": 2983,
-          "sha256": "1966cf50b855e4f821be06c65ad3184379912131270732d212b827d6943cf3a7"
+          "bytes": 1502,
+          "sha256": "443febe3671de5c5c3375bfa3572845c4c89e72e648d6cdf9bd42548e8444589"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-noor/neutral/48.webp",
@@ -4173,8 +4181,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-noor/neutral/64.png",
-          "bytes": 4527,
-          "sha256": "3ef347b5b8e76b8f3c64c004576d78eae774412949b04f3368e05b8e02a110e2"
+          "bytes": 2013,
+          "sha256": "17edf51dbeff57fbbaeb61fdbe65627877d694dc140d883c04e9e69fea1a5681"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-noor/neutral/64.webp",
@@ -4183,8 +4191,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-noor/neutral/80.png",
-          "bytes": 6409,
-          "sha256": "9e00522a4da9eff70f93e6b2333f5ce91bd6eb719c99242f5d0da8e72247e502"
+          "bytes": 2864,
+          "sha256": "c76b08c63377e75278d7f87e58959423be5cbf9711c75225839a65f2dffca22c"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-noor/neutral/80.webp",
@@ -4193,8 +4201,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-noor/neutral/96.png",
-          "bytes": 8577,
-          "sha256": "e01f7dd642acb66a9326d0defdd65c8f027f9d4e91e58f72b6767914e0302583"
+          "bytes": 3572,
+          "sha256": "95415d8c1b18e0548a68125c699107d946a1d7830d69850627332527ce39677e"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-noor/neutral/96.webp",
@@ -4203,8 +4211,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-noor/neutral/128.png",
-          "bytes": 14153,
-          "sha256": "d379c73002929b574aca36dcf5c8e9de581f2dcfa12437ad5df5e25b9e4de671"
+          "bytes": 5843,
+          "sha256": "abb9fa01f59373dbbbbe030bf6c79b7e14cb6575382cfc33c3cbcde39f053539"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-noor/neutral/128.webp",
@@ -4213,8 +4221,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-noor/neutral/192.png",
-          "bytes": 28853,
-          "sha256": "e14c5fcb5104318afcd1adc1c35238461118267b4bda10c324f068807cc3781f"
+          "bytes": 10808,
+          "sha256": "4d8d3f4d73d1eaa01d4f5c99247ed2a4dccc307af7ec7e2b17ae5ff26d898acd"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-noor/neutral/192.webp",
@@ -4223,8 +4231,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-noor/neutral/256.png",
-          "bytes": 49105,
-          "sha256": "8666a161cea510d7629d061609a71ce60aa0d192d2b77f0afa97d224711a5356"
+          "bytes": 18610,
+          "sha256": "2650c3eaa3ef591beb0160b3610e892db8cba68d007b4b31cec61a3a4c7267a4"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-noor/neutral/256.webp",
@@ -4233,8 +4241,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-noor/neutral/512.png",
-          "bytes": 199805,
-          "sha256": "f3737d0f7071b21a7f07fee2615e6a2e8ff1f5403d99bcdc2a2695559b22cf80"
+          "bytes": 63403,
+          "sha256": "608e3fca633b77c49b8a399b280e75a5533c882f467e0464540a83433b785a2e"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-noor/neutral/512.webp",
@@ -4283,8 +4291,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-casey/neutral/24.png",
-          "bytes": 997,
-          "sha256": "6c274f58707eebab57144a2a00ac0ed4089e2be75f0c4b7d837fb0e010124767"
+          "bytes": 544,
+          "sha256": "5e01e25306aa80a4141c99a3782ced930ddcbf2e1f4ffabcc93c9cc5c54f18f7"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-casey/neutral/24.webp",
@@ -4293,8 +4301,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-casey/neutral/32.png",
-          "bytes": 1555,
-          "sha256": "d9233619687927795a7a647316984efb8306cace928e612cd772e73a843d19c6"
+          "bytes": 630,
+          "sha256": "e472978ff49b9401f6726420dadebbb73f2d228eb3eb0020c84e111937dd3acf"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-casey/neutral/32.webp",
@@ -4303,8 +4311,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-casey/neutral/40.png",
-          "bytes": 2176,
-          "sha256": "84702644fea8ad35209d44882535d20f79e5824f2b2ab71a7495ee4be7c257af"
+          "bytes": 831,
+          "sha256": "fbf1380655cecdf074e876b2b53d147b8ff87928167915f138aed1b2f1a6083f"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-casey/neutral/40.webp",
@@ -4313,8 +4321,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-casey/neutral/48.png",
-          "bytes": 2837,
-          "sha256": "375098164b51ad0964e3b91b6dda026a1b9f5713d673a2861404f725f45cdafd"
+          "bytes": 996,
+          "sha256": "a53e5526d1a8ff835d4e729fc7e5a67fe1a393fa639d858af1faccab7a61790d"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-casey/neutral/48.webp",
@@ -4323,8 +4331,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-casey/neutral/64.png",
-          "bytes": 4531,
-          "sha256": "6e63e5fdd6cd3ca5b9b42e563d532aaa46cab05d7a6c6e74c18e766c00038465"
+          "bytes": 1499,
+          "sha256": "0816a74c2fc9b63e94ce5c90ca078bc507b775ee5ffb422848f0f006d6f64600"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-casey/neutral/64.webp",
@@ -4333,8 +4341,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-casey/neutral/80.png",
-          "bytes": 6618,
-          "sha256": "a8c042d93dd1fd0362ca3258c675aeb3301e09c2e63b5887a6050d788f396609"
+          "bytes": 2140,
+          "sha256": "9f305bc12d73c6c21ed377ed96f421dc232a63513c712f69c54ec81c051b70fd"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-casey/neutral/80.webp",
@@ -4343,8 +4351,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-casey/neutral/96.png",
-          "bytes": 9083,
-          "sha256": "a7ee427523a713e15146a0ca80880a6606e5e3f986b590b96f18ec46249089ac"
+          "bytes": 2955,
+          "sha256": "02df968a6a96e8b574fea16fefdf3565f0e80e3d86874b0f73e58b559e5c6de2"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-casey/neutral/96.webp",
@@ -4353,8 +4361,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-casey/neutral/128.png",
-          "bytes": 14987,
-          "sha256": "fadea98437b03938f0871e98562fdff32790c5794ffef0bcc9440be826196716"
+          "bytes": 4453,
+          "sha256": "9d86fe92c9fdca067f2eb7d0c839dcf163e42e3146f1433b6ae04c73cfd67268"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-casey/neutral/128.webp",
@@ -4363,8 +4371,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-casey/neutral/192.png",
-          "bytes": 31508,
-          "sha256": "7370a87f8bbef65b51ef0b3a179f6fc52a34e188e85c7400be237872b64925f3"
+          "bytes": 9636,
+          "sha256": "545bb780078a3d1290b333e9fca35b8cf3a48cadc816d3c6e7b387c8ff833b69"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-casey/neutral/192.webp",
@@ -4373,8 +4381,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-casey/neutral/256.png",
-          "bytes": 56030,
-          "sha256": "ecdf92fe0f098671a1f9582c70117a591f613c8c01a448581a746a10f0179f4c"
+          "bytes": 15717,
+          "sha256": "ef315edc27c094c60be5ad5544f7dd23a2b9ff2dc333d9013fe5731609da1608"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-casey/neutral/256.webp",
@@ -4383,8 +4391,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-casey/neutral/512.png",
-          "bytes": 249137,
-          "sha256": "dc59751c55b1b6dc87b5b2969f335e7279de7d839b2fb308e95c98e608551f53"
+          "bytes": 72231,
+          "sha256": "ed0c3b68a4bb7b35a11bff5e64522b6e7c399e39a5c3fb2b174bf8fcd7050caf"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-casey/neutral/512.webp",
@@ -4433,8 +4441,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-ines/neutral/24.png",
-          "bytes": 965,
-          "sha256": "de6f6d01e1985f3b2cbadfe1cd33c84e1e5a72ba05de85e795ff4bf0ea4b9fb3"
+          "bytes": 566,
+          "sha256": "0a0f789e7e8e302611948a04e9daeedc3a3602219138c78fe68be9690ff2e98d"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-ines/neutral/24.webp",
@@ -4443,8 +4451,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-ines/neutral/32.png",
-          "bytes": 1477,
-          "sha256": "2ad3a517a0fce823e401182f5a70db19a74f99a88f1217e9f2c8635d42cfbb0a"
+          "bytes": 823,
+          "sha256": "bbedd9193f7a9b0131a5c0a6eb05395a3cca52ebd44d84c47946bd50799eaa83"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-ines/neutral/32.webp",
@@ -4453,8 +4461,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-ines/neutral/40.png",
-          "bytes": 2081,
-          "sha256": "fbf2d25e212a7e7149acc57fb0030347ac25dfa9bd07d6e4f24216d995cb97b3"
+          "bytes": 1094,
+          "sha256": "a9bf67baef3d70a7f33ac28e8ef200de63be7e2996ad6ba5b828ea99f43066d9"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-ines/neutral/40.webp",
@@ -4463,8 +4471,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-ines/neutral/48.png",
-          "bytes": 2740,
-          "sha256": "aa1ce87e92015b62ecbcb64f1282ae37a7af1b6c3b3a97cdc406658cb451030c"
+          "bytes": 1272,
+          "sha256": "27022a73a819062e031dd852927ac292d235cbe2c5852ec96492fdc13bebec81"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-ines/neutral/48.webp",
@@ -4473,8 +4481,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-ines/neutral/64.png",
-          "bytes": 4358,
-          "sha256": "ba2bdf52bd2835a1e5fb6359ac851ff31cb349cdd92fc490ae2386d826b64ed7"
+          "bytes": 1751,
+          "sha256": "19c9d55b604fd74d00b171b25ccc63be430ed689c4846222226148077a2dee20"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-ines/neutral/64.webp",
@@ -4483,8 +4491,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-ines/neutral/80.png",
-          "bytes": 6398,
-          "sha256": "5f683cef815df50148542729ed0b69a6551e6bd535fd5e0dd772a4d7b9995167"
+          "bytes": 2299,
+          "sha256": "c3d0dd14f38b60c0a4aa7fb5618c32e5c274ec2c787ae128b4f0f30935e3d058"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-ines/neutral/80.webp",
@@ -4493,8 +4501,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-ines/neutral/96.png",
-          "bytes": 8778,
-          "sha256": "15fbb370f19b3344bffccd2f1a27a670a20d9cc77fdce52bf2f2ffadf6e58f3e"
+          "bytes": 2938,
+          "sha256": "14b62d80044bbe87d78a1c711c9c143fe67c76fb44aad39826c4077f7142b8b0"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-ines/neutral/96.webp",
@@ -4503,8 +4511,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-ines/neutral/128.png",
-          "bytes": 14482,
-          "sha256": "426524ea7b5586beefbb53d3dff58f57b7d9612a63bfd01a9701ad2cd70ba5a2"
+          "bytes": 5713,
+          "sha256": "c2c15945882b6562e6f978fa2855fceb5105c54888606e06fd20b9ac11c81e74"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-ines/neutral/128.webp",
@@ -4513,8 +4521,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-ines/neutral/192.png",
-          "bytes": 30584,
-          "sha256": "5a8408f30c87d5ffbc45e767a9b57e4d4ef944e797050ded96429e68fb1aed57"
+          "bytes": 9994,
+          "sha256": "f0d9e27b537ff27a35e468355325984d3e77eb9adc2359b8f08db8b2f8c62cf3"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-ines/neutral/192.webp",
@@ -4523,8 +4531,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-ines/neutral/256.png",
-          "bytes": 54063,
-          "sha256": "723a1e45b39dd06469739f9838b8bba54648a280bc495efbbcd11db0eab1d01d"
+          "bytes": 17195,
+          "sha256": "4083d06fb6df4545184ba6ef1f91d919d40cc49b7b611523d08d4bd3ef58e51b"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-ines/neutral/256.webp",
@@ -4533,8 +4541,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-ines/neutral/512.png",
-          "bytes": 235209,
-          "sha256": "c363ea1a6dccb513b4c128a2a395e45dea661937da78f85ec32f52bdf6a5ae95"
+          "bytes": 67595,
+          "sha256": "cb4779b62e6143210b21a2644723d02a19deed7bfd506ba8ddb9f253c378d5f9"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-ines/neutral/512.webp",
@@ -4583,8 +4591,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-omar/neutral/24.png",
-          "bytes": 1018,
-          "sha256": "48d4c90fb305a5e5894335bddb50cf53c29e434e92404d255e2cd52822cb2119"
+          "bytes": 652,
+          "sha256": "d03140dcde7fa4a6cb6545efcf13935fcb07e49d4691c2c6d04ed2c917da7197"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-omar/neutral/24.webp",
@@ -4593,8 +4601,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-omar/neutral/32.png",
-          "bytes": 1553,
-          "sha256": "3c3ef06e2dc99ca26e287bee69a8227176bff3625e46c7bbbf29cadd9ebd6df5"
+          "bytes": 824,
+          "sha256": "1081258cdd389e067d3437f93ab6ffe347dadbd6ae148690019277adb4fd7b81"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-omar/neutral/32.webp",
@@ -4603,8 +4611,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-omar/neutral/40.png",
-          "bytes": 2191,
-          "sha256": "422b369d719532700f1ca4afcecb503e294713b22295e8a9d523b5a5d6517435"
+          "bytes": 1065,
+          "sha256": "b8234788636883dc8debe2056c002258dac9b97da42d2a251f0c0a7098aec918"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-omar/neutral/40.webp",
@@ -4613,8 +4621,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-omar/neutral/48.png",
-          "bytes": 2892,
-          "sha256": "bbb9af307e304debb09846623f8fefa7396134a3d0daa2c91289134cd8f6a253"
+          "bytes": 1438,
+          "sha256": "5a704a7b6653decf25a1b017a64e270d390b873cfaaa424fa1669dc796eb8983"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-omar/neutral/48.webp",
@@ -4623,8 +4631,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-omar/neutral/64.png",
-          "bytes": 4511,
-          "sha256": "62a299916d1017d83ef617fcada1a16bb4d254ff7fda73c4ac42fe0ba9948afa"
+          "bytes": 2126,
+          "sha256": "b2b4758150f0563d18d9dad21a567da10a2042897a42f84002afe14033e111c8"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-omar/neutral/64.webp",
@@ -4633,8 +4641,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-omar/neutral/80.png",
-          "bytes": 6480,
-          "sha256": "3f6a33fe5f13fcec895ef223d6d474b5050f9184fd255cbb96149629351b41f2"
+          "bytes": 3070,
+          "sha256": "f7ee1c4fb9263bf591803bdafdff375b72a6e3c43cc08509bf5eb3c95127e153"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-omar/neutral/80.webp",
@@ -4643,8 +4651,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-omar/neutral/96.png",
-          "bytes": 8725,
-          "sha256": "8c845b8ef2cf23e67c660033e161005086bfcca2afd661c13495e3d4454b5d44"
+          "bytes": 3931,
+          "sha256": "023e908f2a8d0b38988824752f7c5002719f4b2dd37ef83235b58b34f7a0124f"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-omar/neutral/96.webp",
@@ -4653,8 +4661,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-omar/neutral/128.png",
-          "bytes": 14551,
-          "sha256": "3482564c397194b490d4fe91360b593f1def2c45b9b64fa3277034f838e1cb53"
+          "bytes": 6098,
+          "sha256": "1702a6ca93caeb0911fd945b2c7c1f2dfcd41ee8bff80e15057472616cc806a1"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-omar/neutral/128.webp",
@@ -4663,8 +4671,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-omar/neutral/192.png",
-          "bytes": 30673,
-          "sha256": "f1b90618d72c73e2835a187ce6f15654f495e20994a4c2212aa465fc576ece35"
+          "bytes": 12161,
+          "sha256": "885345b12c74c8f873108d417dc5fa6665dc8642aaa13ca3214c888937a8d7dd"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-omar/neutral/192.webp",
@@ -4673,8 +4681,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-omar/neutral/256.png",
-          "bytes": 54589,
-          "sha256": "3e775049510e4b959ae805c678c6f7db83c82b77309e7f500152eb1e927abd9b"
+          "bytes": 19939,
+          "sha256": "3803aad8fa4491657349c4c50ad57f307f0baecbaba400514797e6b81d069307"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-omar/neutral/256.webp",
@@ -4683,8 +4691,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-omar/neutral/512.png",
-          "bytes": 240322,
-          "sha256": "99695e7ea51ec40cd8786734d3a199917788317f4b78c1af0ff4f7d5606527c2"
+          "bytes": 81514,
+          "sha256": "d470f1de3269bca235f78fd320e9e78fe0d13ba46b6563a2a325209cbfef74d9"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-omar/neutral/512.webp",
@@ -4733,8 +4741,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-lena/neutral/24.png",
-          "bytes": 928,
-          "sha256": "cd3de0d12d0196abddb74e70154246f1153623ba037a5b49eac9cabbbb18e359"
+          "bytes": 603,
+          "sha256": "39d36eb04cf738562bb01072f2f72a8510706521f861c78087c351ae6eac5ff7"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-lena/neutral/24.webp",
@@ -4743,8 +4751,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-lena/neutral/32.png",
-          "bytes": 1417,
-          "sha256": "aae14e4222f63ef965e6568bb9f4c9bb52fa57b686c6dbdf26ee6c87229d08ec"
+          "bytes": 824,
+          "sha256": "08970b16db7184e9321f558735a653317298cd05c227ce6f2b8a13c51c1d2789"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-lena/neutral/32.webp",
@@ -4753,8 +4761,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-lena/neutral/40.png",
-          "bytes": 1998,
-          "sha256": "9f7a147de372cef2a8e0a6d8a400fe12ff3c965541d751fab0dcb717343a8a51"
+          "bytes": 1004,
+          "sha256": "ce01f464960afa1b311b2bee65b10ba2a5c6f2e41ea76d7f8f17bb381fda7880"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-lena/neutral/40.webp",
@@ -4763,8 +4771,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-lena/neutral/48.png",
-          "bytes": 2682,
-          "sha256": "2a8a896a4b87e16fe18390a38879002d82ed8f3805d330be4b45f0cacf22d8ed"
+          "bytes": 1289,
+          "sha256": "3f6def0c0c42848996bf541e373e51ea4ea6c45e03fdd6ba08cff7faa6c5fff8"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-lena/neutral/48.webp",
@@ -4773,8 +4781,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-lena/neutral/64.png",
-          "bytes": 4309,
-          "sha256": "5130f73441355d5e4ccc6682ffed1c0b56b85a7a4799a8002210b92c76c8695b"
+          "bytes": 1892,
+          "sha256": "2b76e7ff041a85cb75a6cd628b432f48adaaff3c5bd83e43e52244488612a0ae"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-lena/neutral/64.webp",
@@ -4783,8 +4791,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-lena/neutral/80.png",
-          "bytes": 6323,
-          "sha256": "4de43e2f35ccca5f6103896d8b9969d1eb31ed6fa34851483f052b10a63d71e8"
+          "bytes": 2353,
+          "sha256": "5112d223746e414ed80f8db9f545c1197b59764242ec6992333e60f279a63c28"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-lena/neutral/80.webp",
@@ -4793,8 +4801,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-lena/neutral/96.png",
-          "bytes": 8672,
-          "sha256": "51b426b6904b716862dea55d6855ef284592195fd57775bfb4f1b714c42fcac5"
+          "bytes": 3566,
+          "sha256": "1f5886c56a6be058ba84f9083cdd4d9191a1b06a188f5b13cd5aff871a0b0c4f"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-lena/neutral/96.webp",
@@ -4803,8 +4811,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-lena/neutral/128.png",
-          "bytes": 14380,
-          "sha256": "1cb7fc47a613ab2515930c6140ae27645f4fe21c6db67c3d15d50648810e3014"
+          "bytes": 5588,
+          "sha256": "418da96404088edf07be4bb44edf210cdc7283ee8178083164845818aaae547c"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-lena/neutral/128.webp",
@@ -4813,8 +4821,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-lena/neutral/192.png",
-          "bytes": 30739,
-          "sha256": "943dc9efdde667ee105c406c47984f31f7c0accf17db33e6c0123546d497c6e0"
+          "bytes": 10860,
+          "sha256": "b3167eaade235741dc07aa2b8eed88c37b9c39381c23a7a3f7b15136203ae5e4"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-lena/neutral/192.webp",
@@ -4823,8 +4831,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-lena/neutral/256.png",
-          "bytes": 54661,
-          "sha256": "0b13292ab12abde80341691306254696da2947cd6ae35167128909fbe0be94e5"
+          "bytes": 17325,
+          "sha256": "27e187d8f00d6194218be23d16cda279d7f26e395f330f148426ab905bb60336"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-lena/neutral/256.webp",
@@ -4833,8 +4841,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-lena/neutral/512.png",
-          "bytes": 242430,
-          "sha256": "8b2ae5fb6f1a8e29175d3830edcd56f46502f9cf17e01bae60e2acf9a5e96aa8"
+          "bytes": 76004,
+          "sha256": "1123bad3f6983954e61aa1dcc6c568d3b92f4d4b12c25c60412a54c8beac615b"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-lena/neutral/512.webp",
@@ -4883,8 +4891,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-kai/neutral/24.png",
-          "bytes": 1024,
-          "sha256": "95916e3d401cd7defb4b6263564089ea74d9a74c0ccbc5020f416084eb17e6bc"
+          "bytes": 598,
+          "sha256": "26a3c6825790d28dbabc8d1cdc20707b439dd8a55f77f98a74183f712eec35c7"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-kai/neutral/24.webp",
@@ -4893,8 +4901,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-kai/neutral/32.png",
-          "bytes": 1586,
-          "sha256": "dee350d23539f944e1268fe9d9ef2d495d8a21efd71b371b1656fb7e3d223d0d"
+          "bytes": 827,
+          "sha256": "d0180e7752e3361b6117efa27a68b5577685e8df68885418bd68b9500c06052a"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-kai/neutral/32.webp",
@@ -4903,8 +4911,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-kai/neutral/40.png",
-          "bytes": 2256,
-          "sha256": "d98688be4acacad1e45f6b7a609ed8c4de9d631ba05f9056616d3830ed1f252a"
+          "bytes": 1178,
+          "sha256": "232f7a10683ea23fd967ead236119d07ac00d8214af9f9ff973ca955c3970f2a"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-kai/neutral/40.webp",
@@ -4913,8 +4921,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-kai/neutral/48.png",
-          "bytes": 2979,
-          "sha256": "6f18b3d226a9f458032cddb892a2ef2f236a7fc3671e13b914a10d42fb893116"
+          "bytes": 1495,
+          "sha256": "4df2ed3cce1517362446629928756be457c6af303490657e9688a3c4e3453257"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-kai/neutral/48.webp",
@@ -4923,8 +4931,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-kai/neutral/64.png",
-          "bytes": 4731,
-          "sha256": "2399c48e65b8fd0a1a2ccb6dc9be9090722d3eba5039de95335cb8bfaf2fcabd"
+          "bytes": 2202,
+          "sha256": "d2e3e7261cc98031aa68ddb6c005cfbe3f9e706248c739b276aaf8555079b252"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-kai/neutral/64.webp",
@@ -4933,8 +4941,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-kai/neutral/80.png",
-          "bytes": 6805,
-          "sha256": "6b39b3109f17a8ffbde0a5096b244e824ea96cdc4430ca40caa7a28a0990cc56"
+          "bytes": 3016,
+          "sha256": "39806255000ddbd8a41ad752395af31b687a7c34aac1100b6f4b9a6f2f34ef2f"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-kai/neutral/80.webp",
@@ -4943,8 +4951,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-kai/neutral/96.png",
-          "bytes": 9229,
-          "sha256": "05f71f2110a50b735bde97b4da4131b2d0db7a797fe9b870e0a555cc2f25348a"
+          "bytes": 4134,
+          "sha256": "cc36fd909eca10a8da120e83c42639295cc981c409731f8b1b6f0355a6d7f8a5"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-kai/neutral/96.webp",
@@ -4953,8 +4961,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-kai/neutral/128.png",
-          "bytes": 15233,
-          "sha256": "e62779a545f29edfb877a214f467c8b0b935d0d91c68facc0a5c9708f4260141"
+          "bytes": 5918,
+          "sha256": "3decb8e5ad85ce3fe5041fe17d21fc43d3a77e40c716beb26b2acc9433cbe884"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-kai/neutral/128.webp",
@@ -4963,8 +4971,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-kai/neutral/192.png",
-          "bytes": 32022,
-          "sha256": "920824a9aa64a1f8be09eb0d5c777a41fe983da3aad965ef523b9a2bd11082f5"
+          "bytes": 11152,
+          "sha256": "6f5f6c23238aa91fcdeb4781f00ecdb15eabd87d523110d19bd92c238313b313"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-kai/neutral/192.webp",
@@ -4973,8 +4981,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-kai/neutral/256.png",
-          "bytes": 56270,
-          "sha256": "7a7a99c398e62c53ff003719fe26e22043f14b3780401e088f35d59e39bfceea"
+          "bytes": 19252,
+          "sha256": "c71eebf8e68cfeec1234e9224e9fc3adaa894dd5da26c63937445f62c0d16848"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-kai/neutral/256.webp",
@@ -4983,8 +4991,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-kai/neutral/512.png",
-          "bytes": 241519,
-          "sha256": "49258c009fb6e380b723cbde817b3f02195ca03733c18ee1dd1f591346ac6a32"
+          "bytes": 90407,
+          "sha256": "d77e2b1a854ab98b783b7265b2315febef5a41dfa94de0c99d677ce8e0227138"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-kai/neutral/512.webp",
@@ -5011,6 +5019,157 @@
         512
       ]
     },
+    "expert-clip": {
+      "displayName": "Clip",
+      "role": "Video Producer",
+      "visualCategory": "marketing",
+      "palette": "Terracotta",
+      "paletteHex": "#C47F5C",
+      "baseUrl": "/autogpt-characters/v2.2",
+      "revision": "2.2.0",
+      "expressions": [
+        "neutral"
+      ],
+      "master": null,
+      "masterSha256": "6b2db41572d86ba9d3d8ce9e12528b4d8b7f42a48421400733760b92a4084f73",
+      "nativePixels": [
+        1254,
+        1254
+      ],
+      "background": "opaque-warm-studio",
+      "crop": "full-square-studio",
+      "sourceNote": "Master is the raised Expert's 1254 px avatar (not in expert-design-system), shifted up 34 px to the library's vertical framing.",
+      "pngPixelSizes": [
+        24,
+        32,
+        40,
+        48,
+        64,
+        80,
+        96,
+        128,
+        192,
+        256,
+        512
+      ],
+      "files": {
+        "24.png": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/24.png",
+          "bytes": 1412,
+          "sha256": "e2aa3949661dcd6a66a1a209634ceead45229e77a45d87d3733c07d9adfce1b5"
+        },
+        "24.webp": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/24.webp",
+          "bytes": 360,
+          "sha256": "d28c089bc592af204470cdb1572c375af933f8a07645841e5b731a942c8cdf64"
+        },
+        "32.png": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/32.png",
+          "bytes": 1777,
+          "sha256": "518f3a1bf62e61d2a895c3941230c436b848c5e01c41ef03c8976e5352e52afb"
+        },
+        "32.webp": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/32.webp",
+          "bytes": 454,
+          "sha256": "1fb00dadbc09f4fce246df9f80a4df5efc0ae94559a5f386f209fc2a0a85a8b8"
+        },
+        "40.png": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/40.png",
+          "bytes": 2202,
+          "sha256": "64e2461c5de2ce0fc1191a0441fefdedde26b23c52cfbe7407dc2b3c33326836"
+        },
+        "40.webp": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/40.webp",
+          "bytes": 596,
+          "sha256": "0afd0f688fb489f0cee4f0af0b295e3b204a2554480e3493d5e9a67b440fab00"
+        },
+        "48.png": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/48.png",
+          "bytes": 2669,
+          "sha256": "af90f69d5bbd77d93e38369c361be9fe691de0c0d0cc0a3c49126a9831503515"
+        },
+        "48.webp": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/48.webp",
+          "bytes": 700,
+          "sha256": "1617b00a82700e8664faa487257c91992c46168e5d9f984ed4fb41506008d689"
+        },
+        "64.png": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/64.png",
+          "bytes": 3858,
+          "sha256": "63c8fb8e54c89a1b68f74aab24ea397349c9af3502a48d86c24f17dc723ca86f"
+        },
+        "64.webp": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/64.webp",
+          "bytes": 910,
+          "sha256": "8916d4cd7fbfe4ff6dfa842fbc66ce53a86df2b8ae4a3ef27361f857c6df9cac"
+        },
+        "80.png": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/80.png",
+          "bytes": 5200,
+          "sha256": "777fe55930965a741afe366feab92633a3bf342669dcc07b21a6098f9ed3feaf"
+        },
+        "80.webp": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/80.webp",
+          "bytes": 1194,
+          "sha256": "34fc1dcac2edba17e7597938877b63d70cff037abd15288f1c05714f599c6509"
+        },
+        "96.png": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/96.png",
+          "bytes": 6814,
+          "sha256": "06ad4997750a5f94476dc84339d7a51c202fb926b8bbbc37eae4fbd1a2f87865"
+        },
+        "96.webp": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/96.webp",
+          "bytes": 1394,
+          "sha256": "7a0249bdb98c5d57d1112f787994d6b10a2237bdf5ead966b66b3bda1a7e56eb"
+        },
+        "128.png": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/128.png",
+          "bytes": 10676,
+          "sha256": "021754dffc9c47cad95012abb360e6ab28efb59209ab07afff7c1db9f091d08d"
+        },
+        "128.webp": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/128.webp",
+          "bytes": 1950,
+          "sha256": "9fefa4f35d8b529cd21bb58a61dd360c50c2098df62ca367ed5f784ac432d8df"
+        },
+        "192.png": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/192.png",
+          "bytes": 21404,
+          "sha256": "9e9f59a0a683f620a6f18aac3bad89af31f2fd07ccb2a6a2f88c982b8b3e1ba6"
+        },
+        "192.webp": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/192.webp",
+          "bytes": 3060,
+          "sha256": "58c6bc34fe30a0150a43eae3b369f1543b22fb71ba0521b40bd94a157079032c"
+        },
+        "256.png": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/256.png",
+          "bytes": 36775,
+          "sha256": "851ec9851145428c7ed1acc182830582f81a9e8c59d63933b9059545da35cc37"
+        },
+        "256.webp": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/256.webp",
+          "bytes": 4412,
+          "sha256": "60f4bfebda4bdd209109234cf6b5f2ee39166710c55145cdf23c00eedfadeaed"
+        },
+        "512.png": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/512.png",
+          "bytes": 155133,
+          "sha256": "fc887821a83641780c9534efc42c5779b0d618b909edf10414654cd535158b83"
+        },
+        "512.webp": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/512.webp",
+          "bytes": 10960,
+          "sha256": "c78c131d04440ee66c03774b96cdeb5f9573fcafad9f424f70f95205cbe73734"
+        },
+        "1024.webp": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/1024.webp",
+          "bytes": 48524,
+          "sha256": "44ef4444b2a7b1f7cab6b6f384c31a84744aa8fbd98bb84f2bbefb315a0671f3"
+        }
+      }
+    },
     "expert-general-01": {
       "displayName": "General",
       "role": "Custom AI Expert",
@@ -5033,8 +5192,8 @@
       "files": {
         "24.png": {
           "path": "public/autogpt-characters/v2.1/expert-general-01/neutral/24.png",
-          "bytes": 1002,
-          "sha256": "17afb609c41d7b1d9604bb6f5c28f1f8c9078bf6e36da9ee8acbca49c1f8a238"
+          "bytes": 467,
+          "sha256": "3a442fe5c7592d01e1f9d062c47310e055a46a760ef814fd8d0019df88c70039"
         },
         "24.webp": {
           "path": "public/autogpt-characters/v2.1/expert-general-01/neutral/24.webp",
@@ -5043,8 +5202,8 @@
         },
         "32.png": {
           "path": "public/autogpt-characters/v2.1/expert-general-01/neutral/32.png",
-          "bytes": 1544,
-          "sha256": "57f9c8bf1cae798e101c499e585cbbe1bf557b9a99206423ece9b87221fe65b8"
+          "bytes": 709,
+          "sha256": "9a5b66ef9af03cc4cb423872d57eab75bc80da5f3af3a4657874a3cad3d220b5"
         },
         "32.webp": {
           "path": "public/autogpt-characters/v2.1/expert-general-01/neutral/32.webp",
@@ -5053,8 +5212,8 @@
         },
         "40.png": {
           "path": "public/autogpt-characters/v2.1/expert-general-01/neutral/40.png",
-          "bytes": 2151,
-          "sha256": "81fddac3341def39524257f1a1adcfe92fa97ee07a99150b75ad7a0be61312b9"
+          "bytes": 693,
+          "sha256": "9837de1ecc74f1c63aef6f47e638b4354483be022a8e935e4dbdde13f8f80935"
         },
         "40.webp": {
           "path": "public/autogpt-characters/v2.1/expert-general-01/neutral/40.webp",
@@ -5063,8 +5222,8 @@
         },
         "48.png": {
           "path": "public/autogpt-characters/v2.1/expert-general-01/neutral/48.png",
-          "bytes": 2835,
-          "sha256": "e1784e9937358be9f114c9e991694d257f5119e47e013392db45ce181aa59e68"
+          "bytes": 1065,
+          "sha256": "fd55d8d355fbc30ee48818b0b04f5d468d3ef216f8fbcd3c3910a0f1907c7114"
         },
         "48.webp": {
           "path": "public/autogpt-characters/v2.1/expert-general-01/neutral/48.webp",
@@ -5073,8 +5232,8 @@
         },
         "64.png": {
           "path": "public/autogpt-characters/v2.1/expert-general-01/neutral/64.png",
-          "bytes": 4553,
-          "sha256": "92c2bcecc76f1b2b830d3d75a9828fb6eded1ed09df3da4399de4447e75c5d57"
+          "bytes": 1798,
+          "sha256": "a4a44df6e8ce7a0a5291d8306fd78766ef77b9ed18647aaa0ee5c489da194c0e"
         },
         "64.webp": {
           "path": "public/autogpt-characters/v2.1/expert-general-01/neutral/64.webp",
@@ -5083,8 +5242,8 @@
         },
         "80.png": {
           "path": "public/autogpt-characters/v2.1/expert-general-01/neutral/80.png",
-          "bytes": 6625,
-          "sha256": "518524b9e341fad925f1ec12e2df9f987e207938ff5de7f7b3482c4aa934053e"
+          "bytes": 2376,
+          "sha256": "148b73c612677c543e88f4ccd13798fc7ab3c257ac0f2a2bc05e94ae8fa53ab2"
         },
         "80.webp": {
           "path": "public/autogpt-characters/v2.1/expert-general-01/neutral/80.webp",
@@ -5093,8 +5252,8 @@
         },
         "96.png": {
           "path": "public/autogpt-characters/v2.1/expert-general-01/neutral/96.png",
-          "bytes": 9061,
-          "sha256": "9ec7773f1b13071d5ec539fc5b4a9e3fd369d95ac28bbd85d303535df8d76c2b"
+          "bytes": 3107,
+          "sha256": "ef40af441580f12d19b25baed97738659db09fa1336d37034fc158cc2d0fe10b"
         },
         "96.webp": {
           "path": "public/autogpt-characters/v2.1/expert-general-01/neutral/96.webp",
@@ -5103,8 +5262,8 @@
         },
         "128.png": {
           "path": "public/autogpt-characters/v2.1/expert-general-01/neutral/128.png",
-          "bytes": 15045,
-          "sha256": "b5f08c93b493dc36bfc27dba1607b310cb6f38c29cac528cf4cf75c2c7f7d17b"
+          "bytes": 5008,
+          "sha256": "d5b68fa83867c2ba56aa19f1051aea46ed009a47293e0c296f8bc6815e431e4e"
         },
         "128.webp": {
           "path": "public/autogpt-characters/v2.1/expert-general-01/neutral/128.webp",
@@ -5113,8 +5272,8 @@
         },
         "192.png": {
           "path": "public/autogpt-characters/v2.1/expert-general-01/neutral/192.png",
-          "bytes": 31430,
-          "sha256": "e42333e39f250fd920eb787d03a057139944021a837b616b94ab202b9f43e832"
+          "bytes": 10018,
+          "sha256": "73b840cb3392640de91635de31f2bf71504ff4f774df7c695d5647ab4d15e1c5"
         },
         "192.webp": {
           "path": "public/autogpt-characters/v2.1/expert-general-01/neutral/192.webp",
@@ -5123,8 +5282,8 @@
         },
         "256.png": {
           "path": "public/autogpt-characters/v2.1/expert-general-01/neutral/256.png",
-          "bytes": 55523,
-          "sha256": "ebc426e33940fb5cae39650feb7011c2df85577d11f250dd32500eb6d0812159"
+          "bytes": 17403,
+          "sha256": "b40f5620342c78c7334c470c310f023612c236b6f975e51ac40ffdf82f1d10fb"
         },
         "256.webp": {
           "path": "public/autogpt-characters/v2.1/expert-general-01/neutral/256.webp",
@@ -5133,8 +5292,8 @@
         },
         "512.png": {
           "path": "public/autogpt-characters/v2.1/expert-general-01/neutral/512.png",
-          "bytes": 242352,
-          "sha256": "58b5528b3940fc71fa9d68aabeb9e084de67870c8014f2e60a81b167cea80242"
+          "bytes": 60547,
+          "sha256": "83f14e7b8b378c45be4abe67a3b74fb0ab52e7dc403c034705b3c35eb1615fc2"
         },
         "512.webp": {
           "path": "public/autogpt-characters/v2.1/expert-general-01/neutral/512.webp",
@@ -5163,7 +5322,7 @@
     }
   },
   "scope": {
-    "applicationIdentities": 34,
+    "applicationIdentities": 35,
     "referenceExpressions": 9,
     "productionAnimation": false,
     "transparentCutouts": false,

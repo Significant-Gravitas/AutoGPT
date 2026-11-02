@@ -66,9 +66,8 @@ def test_an_index_entry_reads_the_picker_fields_back():
     }
 
 
-def test_an_index_entry_from_before_the_picker_has_no_fields():
+def test_an_index_entry_from_before_the_picker_requires_a_file_read():
     entry = _index_entry_from_metadata(
         "fix-issue", {"kind": "copilot_skill", "description": "Fix an issue"}
     )
-    assert entry is not None
-    assert dict(entry.extra) == {}
+    assert entry is None

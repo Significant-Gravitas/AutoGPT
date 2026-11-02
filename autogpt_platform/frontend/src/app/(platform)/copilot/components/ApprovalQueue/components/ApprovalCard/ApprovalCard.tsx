@@ -1,12 +1,13 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Button } from "@/components/atoms/Button/Button";
-import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import { ApprovalFields } from "@/components/organisms/ApprovalFields/ApprovalFields";
 import {
   type ApprovalItem,
   type ChatRule,
   type RuleScope,
+  hiddenFieldKeys,
   isBare,
   isHeldRead,
   reasonLine,
@@ -14,9 +15,11 @@ import {
 } from "../../helpers";
 import { ApprovalHeadline } from "../ApprovalHeadline";
 import { ApproveSplitButton } from "./ApproveSplitButton";
+import { ChangePreview } from "./ChangePreview";
 import { HeldPassage } from "./HeldPassage";
 import { MoneyBlock } from "./MoneyBlock";
 import { useApprovalFields } from "./useApprovalFields";
+import { Text } from "@/components/atoms/Text/Text";
 
 export type CardStatus = "idle" | "approving" | "rejecting";
 
@@ -27,6 +30,10 @@ interface Props {
   expertName: string | null;
   onApprove: (rule?: ChatRule, scope?: RuleScope) => void;
   onReject: () => void;
+  // Outside the chat: why a mode-held call asks.
+  note?: string | null;
+  // Home's dialog pins them in its own footer.
+  hideActions?: boolean;
 }
 
 export function ApprovalCard({
@@ -36,16 +43,100 @@ export function ApprovalCard({
   expertName,
   onApprove,
   onReject,
+  note = null,
+  hideActions = false,
 }: Props) {
   const fields = useApprovalFields(item);
-  const reason = reasonLine(item);
+  const reason = reasonLine(item) ?? note;
   const read = isHeldRead(item);
   const busy = status !== "idle";
 
-  const actions = (
+  const actions = hideActions ? null : (
+    <ApprovalActions
+      item={item}
+      status={status}
+      expertName={expertName}
+      onApprove={onApprove}
+      onReject={onReject}
+    />
+  );
+
+  // Nothing to read beyond the headline: the card is one row, as a list line is.
+  if (isBare(item) && !failed && !reason) {
+    return (
+      <article
+        aria-busy={busy}
+        className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-3"
+      >
+        <div className="min-w-0 flex-1">
+          <ApprovalHeadline item={item} />
+        </div>
+        {actions}
+      </article>
+    );
+  }
+
+  return (
+    <article aria-busy={busy} className="flex flex-col gap-2 px-4 py-3">
+      <ApprovalHeadline item={item} />
+      <div
+        // oxlint-disable-next-line design-system/no-arbitrary-values -- aligns the body with the headline text after its 38px icon column
+        className="flex flex-col gap-3 sm:pl-[38px]"
+      >
+        {failed && (
+          <p role="alert" className="text-sm text-error-foreground">
+            Couldn&apos;t send your answer. Nothing ran. Try again.
+          </p>
+        )}
+        {reason && (
+          <Text variant="body-tight" tone="muted" className="-mt-1">
+            {reason}
+          </Text>
+        )}
+        {item.spend && <MoneyBlock spend={item.spend} />}
+        {item.preview && <ChangePreview tables={item.preview.tables} />}
+        {read ? (
+          item.passage && <HeldPassage passage={item.passage} />
+        ) : (
+          <ApprovalFields
+            fields={fields.labels}
+            values={fields.values}
+            clipped={item.clipped}
+            hiddenKeys={hiddenFieldKeys(item)}
+            idsWhenAlone={!item.headline.object}
+            references={item.blockId ? [] : item.references}
+            referenceTotals={item.referenceTotals}
+          />
+        )}
+        {actions}
+      </div>
+    </article>
+  );
+}
+
+interface ActionsProps {
+  item: ApprovalItem;
+  status: CardStatus;
+  expertName: string | null;
+  onApprove: (rule?: ChatRule, scope?: RuleScope) => void;
+  onReject: () => void;
+  aside?: ReactNode;
+}
+
+export function ApprovalActions({
+  item,
+  status,
+  expertName,
+  onApprove,
+  onReject,
+  aside = null,
+}: ActionsProps) {
+  const read = isHeldRead(item);
+  const busy = status !== "idle";
+  return (
     <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0 sm:flex-wrap">
       <ApproveSplitButton
-        label={read ? `Release to ${AUTOPILOT_NAME}` : "Approve"}
+        label={read ? `Release to ${item.reader}` : "Approve"}
         subjectName={ruleSubjectName(item.subject)}
         expertName={expertName}
         rules={read || item.spend ? [] : item.chatRulesAllowed}
@@ -67,50 +158,11 @@ export function ApprovalCard({
             ? "Keep it out"
             : "Reject"}
       </Button>
-    </div>
-  );
-
-  // Nothing to read beyond the headline: the card is one row, as a list line is.
-  if (isBare(item) && !failed) {
-    return (
-      <article
-        aria-busy={busy}
-        className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-3"
-      >
-        <div className="min-w-0 flex-1">
-          <ApprovalHeadline item={item} />
+      {aside && (
+        <div className="col-span-2 flex justify-end sm:ml-auto sm:self-center">
+          {aside}
         </div>
-        {actions}
-      </article>
-    );
-  }
-
-  return (
-    <article aria-busy={busy} className="flex flex-col gap-2 px-4 py-3">
-      <ApprovalHeadline item={item} />
-      <div className="flex flex-col gap-3 sm:pl-[38px]">
-        {failed && (
-          <p role="alert" className="text-sm text-red-600">
-            Couldn&apos;t send your answer. Nothing ran. Try again.
-          </p>
-        )}
-        {reason && <p className="-mt-1 text-sm text-zinc-500">{reason}</p>}
-        {item.spend && <MoneyBlock spend={item.spend} />}
-        {read ? (
-          item.passage && <HeldPassage passage={item.passage} />
-        ) : (
-          <ApprovalFields
-            fields={fields.labels}
-            values={fields.values}
-            clipped={item.clipped}
-            hiddenKeys={item.headlineKeys}
-            idsWhenAlone={!item.headline.object}
-            references={item.blockId ? [] : item.references}
-            referenceTotals={item.referenceTotals}
-          />
-        )}
-        {actions}
-      </div>
-    </article>
+      )}
+    </div>
   );
 }

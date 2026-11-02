@@ -139,7 +139,6 @@ async def test_run_agent_from_expert_chat_is_parked_and_says_so(mocker, parked) 
         AsyncMock(return_value=library_agent),
     )
     mocker.patch.object(run_agent_mod, "emit_tool_display_name")
-    mocker.patch.object(run_agent_mod, "track_agent_run_success")
     mocker.patch.object(run_agent_mod, "_safe_link_to_chat_share", AsyncMock())
     session = make_session(user_id="owner", expert_id="expert-1")
 

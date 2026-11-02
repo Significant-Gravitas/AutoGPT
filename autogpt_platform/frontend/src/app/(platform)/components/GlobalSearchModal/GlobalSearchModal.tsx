@@ -85,7 +85,7 @@ export function GlobalSearchModal({ isOpen, onClose, onSelectItem }: Props) {
       buckets={buckets}
       isLoading={isFetching}
       isError={isError}
-      placeholder="Search agents, files, chats..."
+      placeholder="Search workflows, files, chats..."
       inputAriaLabel="Global search"
       idleEmptyLabel="No recent items"
       searchingEmptyLabel="No results found"

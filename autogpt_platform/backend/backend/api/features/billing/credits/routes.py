@@ -11,9 +11,12 @@ from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction
 from fastapi import APIRouter, Header, HTTPException, Query, Response, Security
 
+from backend.api.features.billing.client_country import ClientCountry
 from backend.api.model import RequestTopUp
+from backend.data.checkout_audience import schedule_checkout_opened
 from backend.data.credit import (
     AutoTopUpConfig,
+    CardDeclinedError,
     InvoiceListItem,
     RefundRequest,
     TransactionHistory,
@@ -21,6 +24,7 @@ from backend.data.credit import (
     get_credit_model,
     set_auto_top_up,
 )
+from backend.util.product_analytics import track_checkout_started
 
 # All nine routes carry tags=["credits"] and only Security(requires_user), so
 # both live at the mount and the router rather than on each route.
@@ -67,6 +71,7 @@ async def request_top_up(
     x_datafast_session_id: Annotated[
         str | None, Header(include_in_schema=False)
     ] = None,
+    country: ClientCountry = None,
 ):
     credit_model = await get_credit_model(user_id, ctx.org_id)
     checkout_url = await credit_model.top_up_intent(
@@ -75,6 +80,11 @@ async def request_top_up(
         datafast_visitor_id=x_datafast_visitor_id,
         datafast_session_id=x_datafast_session_id,
     )
+    if checkout_url:
+        await track_checkout_started(
+            user_id=user_id, checkout_kind="top_up", surface=request.surface
+        )
+        schedule_checkout_opened(user_id, ip_country=country)
     return {"checkout_url": checkout_url}
 
 
@@ -134,13 +144,34 @@ async def configure_user_auto_top_up(
     current_balance = await credit_model.get_credits(user_id)
 
     try:
-        if current_balance < request.threshold:
+        # An amount of 0 turns auto top-up off: nothing to charge or check.
+        if request.amount and current_balance < request.threshold:
             await credit_model.top_up_credits(user_id, request.amount)
-        else:
+        elif request.amount:
             await credit_model.top_up_credits(user_id, 0)
     except NotImplementedError as e:
         raise HTTPException(
             status_code=501, detail="Auto top-up is not available in this context"
+        ) from e
+    except CardDeclinedError as e:
+        # The card's answer, not a fault on our side: 402 with Stripe's reason,
+        # as the subscription upgrade route does. Nothing was charged or saved,
+        # and _top_up_credits has already logged each declined card.
+        if e.needs_authentication:
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    f"{e} Your bank wants to approve each charge, which automatic"
+                    " top-ups can't do. Your auto top-up settings were not saved;"
+                    " please add a different card or contact support."
+                ),
+            ) from e
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"{e} Your auto top-up settings were not saved; please update"
+                " your payment method and try again."
+            ),
         ) from e
     except ValueError as e:
         known_messages = (

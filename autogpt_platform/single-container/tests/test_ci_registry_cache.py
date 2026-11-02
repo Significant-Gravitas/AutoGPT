@@ -1,4 +1,5 @@
 import importlib.util
+import re
 import unittest
 from pathlib import Path
 
@@ -16,8 +17,33 @@ class RegistryCacheTests(unittest.TestCase):
     def settings(self, event, ref="refs/heads/dev", arch="amd64"):
         return cache.cache_settings(event, ref, IMAGE, arch)
 
-    def test_pull_requests_never_read_or_write_registry_cache(self):
-        self.assertEqual(self.settings("pull_request"), [])
+    def test_pull_requests_read_but_never_write_registry_cache(self):
+        self.assertEqual(
+            self.settings("pull_request", "refs/pull/1/merge"),
+            [
+                f"{target}.cache-from=type=registry,ref={IMAGE}:v4-amd64"
+                for target in (
+                    "backend-server-base",
+                    "backend-server",
+                    "single-container",
+                )
+            ],
+        )
+        self.assertFalse(
+            any("cache-to" in s for s in self.settings("pull_request", arch="arm64"))
+        )
+
+    def test_only_pull_requests_tolerate_a_failed_cache_login(self):
+        workflow = (
+            SCRIPT.parents[1] / "workflows/platform-single-container-docker.yml"
+        ).read_text(encoding="utf-8")
+        login = workflow.split("      - name: Authenticate to GHCR build cache\n", 1)[
+            1
+        ].split("      - name:", 1)[0]
+        self.assertIn(
+            "continue-on-error: ${{ github.event_name == 'pull_request' }}", login
+        )
+        self.assertNotIn("if:", login)
 
     def test_only_dev_push_writes_the_shared_validation_cache(self):
         settings = self.settings("push")
@@ -46,6 +72,18 @@ class RegistryCacheTests(unittest.TestCase):
             self.settings("workflow_dispatch", "refs/heads/one"),
             self.settings("workflow_dispatch", "refs/heads/two"),
         )
+
+    def test_every_bake_target_reads_the_validation_cache(self):
+        bake = (
+            SCRIPT.parents[2] / "autogpt_platform/single-container/docker-bake.hcl"
+        ).read_text(encoding="utf-8")
+        targets = re.findall(r'^target "([^"]+)"', bake, re.MULTILINE)
+        self.assertIn("backend-server-base", targets)
+        settings = self.settings("push")
+        for target in targets:
+            self.assertIn(
+                f"{target}.cache-from=type=registry,ref={IMAGE}:v4-amd64", settings
+            )
 
     def test_validation_cache_reads_are_architecture_scoped(self):
         settings = self.settings("release", "refs/tags/v1")

@@ -29,17 +29,20 @@ from backend.copilot.tools.skills import ParsedSkill
 @pytest.mark.parametrize(
     "message, expected",
     [
-        ("/fix-issue 123", SkillInvocation("fix-issue", "123")),
-        ("  /fix-issue  ", SkillInvocation("fix-issue", "")),
+        ("/fix-issue 123", SkillInvocation(name="fix-issue", arguments="123")),
+        ("  /fix-issue  ", SkillInvocation(name="fix-issue", arguments="")),
         (
             "/commercial-legal:amendment-history --provision indemnity",
             SkillInvocation(
-                "commercial-legal:amendment-history", "--provision indemnity"
+                name="commercial-legal:amendment-history",
+                arguments="--provision indemnity",
             ),
         ),
         (
             "/incident-response SEV2\ncheckout is down",
-            SkillInvocation("incident-response", "SEV2\ncheckout is down"),
+            SkillInvocation(
+                name="incident-response", arguments="SEV2\ncheckout is down"
+            ),
         ),
     ],
 )
@@ -172,7 +175,9 @@ def owned(mocker: pytest_mock.MockFixture) -> dict[str, ParsedSkill]:
     mocker.patch.object(
         si,
         "persist_current_user_message",
-        AsyncMock(side_effect=lambda session_id, messages, content, label: content),
+        AsyncMock(
+            side_effect=lambda session_id, messages, content, label, **kwargs: content
+        ),
     )
     return skills
 
@@ -226,15 +231,17 @@ async def test_a_command_falls_back_to_the_built_in_skills(
         lambda name: guide if name == "agent_building_guide" else None,
     )
     found = await resolve_invocable_skill("user", None, "agent_building_guide")
-    assert found == InvocableSkill(guide, is_default=True)
+    assert found == InvocableSkill(skill=guide, is_default=True)
 
 
 def test_the_rendered_skill_points_the_model_at_its_files():
     found = InvocableSkill(
-        _skill(body="Fix issue $0; see ${CLAUDE_SKILL_DIR}/notes.md."),
+        skill=_skill(body="Fix issue $0; see ${CLAUDE_SKILL_DIR}/notes.md."),
         is_default=False,
     )
-    rendered = render_invocation(found, SkillInvocation("fix-issue", "42"), None)
+    rendered = render_invocation(
+        found, SkillInvocation(name="fix-issue", arguments="42"), None
+    )
     assert rendered.startswith("The user ran /fix-issue, which loads the 'fix-issue'")
     assert "Its other files are in /skills/fix-issue;" in rendered
     assert rendered.endswith("Fix issue 42; see /skills/fix-issue/notes.md.")
@@ -301,3 +308,22 @@ def test_split_stops_at_the_first_block_the_server_did_not_write():
     context = "<user_context>\nA bakery.\n</user_context>\n\n"
     rest = "<notes>\nmine\n</notes>\n\n/fix-issue 1"
     assert split_leading_server_blocks(context + rest) == (context, rest)
+
+
+@pytest.mark.parametrize("sequence", [1, None])
+async def test_failed_persistence_keeps_command_retryable(owned, mocker, sequence):
+    from backend.copilot import service
+    from backend.copilot.model import ChatMessage
+
+    owned["fix-issue"] = _skill()
+    mocker.patch.object(
+        si, "persist_current_user_message", service.persist_current_user_message
+    )
+    db = mocker.patch.object(service, "chat_db").return_value
+    db.update_message_content_by_sequence = AsyncMock(return_value=False)
+    row = ChatMessage(role="user", content="/fix-issue 42", sequence=sequence)
+    with pytest.raises(RuntimeError, match="persist"):
+        await inject_skill_invocation(
+            row.content, "session", [row], user_id="user", expert_id=None
+        )
+    assert row.content == "/fix-issue 42"

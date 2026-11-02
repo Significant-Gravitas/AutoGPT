@@ -1,0 +1,24 @@
+{
+  "description": "A first answer slow enough to queue a follow-up while it streams, then the answer to that follow-up. copilot-follow-up-journey.spec.ts follows it.",
+  "title": "Follow-up",
+  "turns": [
+    {
+      "text": "Here is the first answer, which takes a few seconds to arrive so that there is time to queue a follow-up question while it streams.",
+      "usage": {
+        "input_tokens": 2600,
+        "output_tokens": 30,
+        "cache_read_input_tokens": 24000
+      },
+      "stream": { "chunk_words": 1, "delay_ms": 200 }
+    },
+    {
+      "expect_user_text": "What about tomorrow?",
+      "text": "And here is the answer to your follow-up about tomorrow.",
+      "usage": {
+        "input_tokens": 2700,
+        "output_tokens": 14,
+        "cache_read_input_tokens": 24300
+      }
+    }
+  ]
+}

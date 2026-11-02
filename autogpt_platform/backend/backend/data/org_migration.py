@@ -54,11 +54,22 @@ _RenewLock = Callable[[], Awaitable[None]]
 # spam Redis. If the lock has been lost the renewal raises and the loop aborts.
 _LOCK_RENEW_EVERY = 50
 
+# Caps the derived base at CreateOrgRequest.slug's limit; a collision suffix and
+# conversion's "-personal-1" can take the final slug to 116 characters.
+_MAX_SLUG_LENGTH = 100
+
+# A handful of per-account failures in a row (bad data, not the database) is
+# tolerated; this many consecutive ones reads as the database itself being
+# down, where retrying every remaining user is a doomed, logged call each —
+# raise and let the next start retry the whole backfill instead.
+_CONSECUTIVE_CREATE_FAILURE_LIMIT = 3
+
 
 def _sanitize_slug(raw: str) -> str:
     """Convert a string to a URL-safe slug: lowercase, alphanumeric + hyphens."""
     slug = re.sub(r"[^a-z0-9-]", "-", raw.lower().strip())
     slug = re.sub(r"-+", "-", slug).strip("-")
+    slug = slug[:_MAX_SLUG_LENGTH].rstrip("-")
     return slug or "user"
 
 
@@ -95,6 +106,7 @@ async def create_personal_org(
     user_id: str,
     slug_base: str,
     display_name: str,
+    replaces_org_id: str | None = None,
 ) -> Organization:
     """Create a personal Organization for *user_id* with all baseline records.
 
@@ -112,13 +124,30 @@ async def create_personal_org(
     commits, by the time the loser sees ``UniqueViolationError`` the winner's
     org *and* member (same tx) are already visible.
 
+    *replaces_org_id* is the user's personal org being converted: it becomes a
+    team org with a zero balance in this same transaction.
+
     Raises:
         UniqueViolationError: if the resolved slug was taken concurrently. The
             caller decides whether that means "already bootstrapped" or "retry".
+        ValueError: if *replaces_org_id* is no longer a personal org.
     """
     slug = await _resolve_unique_slug(slug_base)
 
     async with transaction() as tx:
+        if replaces_org_id is not None:
+            # First: the old org holds the user's one-personal-org index slot.
+            flipped = await tx.organization.update_many(
+                where={"id": replaces_org_id, "isPersonal": True, "deletedAt": None},
+                data={"isPersonal": False},
+            )
+            if flipped != 1:
+                raise ValueError("Organization is already a team org")
+            # The team org starts at zero; the owner keeps their own wallet.
+            await tx.orgbalance.update_many(
+                where={"orgId": replaces_org_id}, data={"balance": 0}
+            )
+
         org = await tx.organization.create(
             data={
                 "name": display_name,
@@ -259,14 +288,17 @@ async def _find_owned_personal_org(user_id: str):
     )
 
 
-async def ensure_personal_org(user_id: str) -> None:
+async def ensure_personal_org(user_id: str) -> bool:
     """Ensure *user_id* owns a personal Organization; create one if missing.
 
     Idempotent and race-safe. If the user already owns a personal org this is a
     no-op. Otherwise it bootstraps one via ``create_personal_org``.
 
+    Returns ``True`` only when this call created the org, so exactly one of any
+    number of concurrent callers sees ``True`` for a given user.
+
     On ``UniqueViolationError`` there are two possibilities, distinguished by a
-    re-check (same pattern as ``data.user._ensure_user_profile``): a concurrent
+    re-check (same pattern as ``data.profile.ensure_profile``): a concurrent
     first-request already bootstrapped this user (done), or the resolved slug
     collided with a *different* user's org (loop and retry — ``_resolve_unique_slug``
     now sees the taken slug and picks a fresh suffix).
@@ -276,20 +308,20 @@ async def ensure_personal_org(user_id: str) -> None:
     propagates and fails the request loudly rather than bricking the account.
     """
     if await _find_owned_personal_org(user_id) is not None:
-        return
+        return False
 
     slug_base, display_name = await _derive_personal_org_identity(user_id)
 
     for _ in range(3):
         try:
             await create_personal_org(user_id, slug_base, display_name)
-            return
+            return True
         except UniqueViolationError:
             existing = await _find_owned_personal_org(user_id)
             if existing is not None:
                 # A concurrent request bootstrapped this user first.
                 logger.debug("Personal org for user %s created concurrently", user_id)
-                return
+                return False
             # A legacy orphan holding this user's index slot blocks every
             # retry — clear it so the next attempt can succeed. Otherwise
             # the slug collided with a *different* user; retry either way.
@@ -321,6 +353,11 @@ async def create_orgs_for_existing_users(
     If the lock has been lost ``renew_lock`` raises, aborting the loop
     immediately so the next pod's fresh run is the sole writer.
 
+    A single account's creation failure is logged and skipped so it does not
+    cost every account after it; ``_CONSECUTIVE_CREATE_FAILURE_LIMIT`` of them
+    in a row is read as the database itself being unavailable and re-raised,
+    so the loop does not grind a doomed call through every remaining user.
+
     Returns the number of orgs created.
     """
     # Find users who are NOT yet an owner of any personal org
@@ -350,6 +387,7 @@ async def create_orgs_for_existing_users(
     )
 
     created = 0
+    consecutive_failures = 0
     for processed, row in enumerate(users_without_org, start=1):
         user_id: str = row["id"]
 
@@ -362,10 +400,24 @@ async def create_orgs_for_existing_users(
         # Re-check against the live table — the snapshot above can be stale by
         # the time we reach this user, so skip anyone bootstrapped since.
         if await _find_owned_personal_org(user_id) is not None:
+            consecutive_failures = 0
             continue
 
-        if await _get_or_create_backfill_org(row):
-            created += 1
+        # One account's failure must not hold back everyone after it; the
+        # account gets its org on its next request, or on the next start.
+        try:
+            if await _get_or_create_backfill_org(row):
+                created += 1
+            consecutive_failures = 0
+        except Exception:
+            logger.error(
+                f"Org migration: could not bootstrap a personal org for user "
+                f"{user_id}; skipping",
+                exc_info=True,
+            )
+            consecutive_failures += 1
+            if consecutive_failures >= _CONSECUTIVE_CREATE_FAILURE_LIMIT:
+                raise
 
     logger.info(f"Org migration: created {created} personal orgs")
     return created
@@ -377,8 +429,8 @@ async def _get_or_create_backfill_org(row: dict) -> bool:
     Mirrors ``ensure_personal_org``'s race handling: on ``UniqueViolationError``
     re-check whether the user now owns a personal org — a concurrent writer won
     (skip, return False) — versus a slug clash with a *different* user (retry
-    with a fresh suffix). Raises if creation keeps failing, so a genuinely
-    stuck user fails loud rather than silently missing an org.
+    with a fresh suffix). Raises if creation keeps failing, so the caller can
+    report the stuck user.
     """
     user_id: str = row["id"]
     for _ in range(3):

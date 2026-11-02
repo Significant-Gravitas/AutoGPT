@@ -180,6 +180,9 @@ async def test_hint_lists_owned_but_ungranted_credentials(experts):
     assert "spare-cred" in hint and "GH spare" in hint
     assert "granted-cred" not in hint and "other-cred" not in hint
     assert "grant_expert_credential" in hint
+    assert "request_credential_grant" in hint
+    assert "Grant button" in hint
+    assert "Do not ask the user to sign in" in hint
     assert none == "" and personal == ""
 
 

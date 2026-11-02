@@ -6,6 +6,7 @@ raise are the ones production runs.
 """
 
 import logging
+from contextlib import nullcontext
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import cast
@@ -43,10 +44,12 @@ from backend.copilot.tree import (
     root_envelope,
 )
 from backend.copilot.tree_test import BrokenRedis, FakeRedis
+from backend.copilot.trial_cost_context import TrialCostContext
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.execution import ExecutionStatus
 from backend.data.model import CredentialsMetaInput
 from backend.data.redis_client import AsyncRedisClient
+from backend.util.exceptions import InsufficientBalanceError
 
 _GATE = "backend.copilot.gate"
 _RUN = "backend.copilot.tools.run_agent"
@@ -119,6 +122,10 @@ def gate(redis):
         consume=AsyncMock(return_value=True),
     )
     with (
+        patch(
+            f"{_GATE}.capture_cost_context",
+            AsyncMock(return_value=TrialCostContext(user_id="user-1", trial_id=None)),
+        ),
         patch(f"{_GATE}.is_feature_enabled", AsyncMock(return_value=True)),
         patch.object(tree, "is_feature_enabled", AsyncMock(return_value=True)),
         patch(f"{_GATE}.review_store.find_review", store.find_review),
@@ -306,18 +313,42 @@ async def test_a_block_run_charges_the_chat_even_when_expert_metering_fails(gate
     assert (await chat.snapshot(_ledger_id()))["spent"] == 70_000
 
 
-@pytest.mark.parametrize("charge_fails", [False, True])
-async def test_only_a_failed_charge_is_logged_as_a_billing_leak(ledger, charge_fails):
-    """Kills: a failed flag lookup after a paid charge logged as BILLING_LEAK."""
+_DEBIT_ERRORS = {
+    "refused": InsufficientBalanceError("Low balance", "user-1", 0, 7),
+    "debit": RuntimeError("db down"),
+}
+
+
+@pytest.mark.parametrize("fails", ["nothing", "refused", "debit", "metering"])
+async def test_only_metering_that_fails_after_the_debit_is_logged(ledger, fails):
+    """Kills: a failed flag lookup after a paid charge logged as a metering
+    miss. A refused or failed debit raises, so the block never runs; only
+    spend metering that fails after the debit landed is logged, as
+    SPEND_METERING_MISSED."""
     lines: list[str] = []
     handler = logging.Handler()
     handler.emit = lambda record: lines.append(record.getMessage())
     helpers_logger = logging.getLogger("backend.copilot.tools.helpers")
     helpers_logger.addHandler(handler)
-    spend = AsyncMock(side_effect=RuntimeError("db down") if charge_fails else None)
+    spend = AsyncMock(side_effect=_DEBIT_ERRORS.get(fails))
+    metering = AsyncMock(
+        side_effect=RuntimeError("ledger down") if fails == "metering" else None
+    )
     try:
-        with patch.object(
-            tree, "is_feature_enabled", AsyncMock(side_effect=RuntimeError("flags"))
+        with (
+            patch.object(
+                tree, "is_feature_enabled", AsyncMock(side_effect=RuntimeError("flags"))
+            ),
+            (
+                patch("backend.copilot.tools.helpers.charge_credits", metering)
+                if fails == "metering"
+                else nullcontext()
+            ),
+            (
+                pytest.raises(type(_DEBIT_ERRORS[fails]))
+                if fails in _DEBIT_ERRORS
+                else nullcontext()
+            ),
         ):
             await _charge_block_credits(
                 SimpleNamespace(spend_credits=spend),
@@ -331,7 +362,9 @@ async def test_only_a_failed_charge_is_logged_as_a_billing_leak(ledger, charge_f
             )
     finally:
         helpers_logger.removeHandler(handler)
-    assert any("BILLING_LEAK" in line for line in lines) is charge_fails
+    assert any("SPEND_METERING_MISSED" in line for line in lines) is (
+        fails == "metering"
+    )
 
 
 async def test_a_workflow_run_charges_its_pre_flight_estimate(gate, chat):
@@ -346,17 +379,19 @@ async def test_a_workflow_run_charges_its_pre_flight_estimate(gate, chat):
     )
     agent = SimpleNamespace(id="lib-1", graph_id="main", name="Digest")
     execution = SimpleNamespace(id="exec-1", status=ExecutionStatus.RUNNING)
+    session = _session()
+    session.organization_id = "org-1"
+    session.team_id = "team-1"
     with (
         patch(f"{_RUN}.get_or_create_library_agent", AsyncMock(return_value=agent)),
         patch(
             f"{_RUN}.execution_utils.add_graph_execution",
             AsyncMock(return_value=execution),
         ),
-        patch(f"{_RUN}.track_agent_run_success"),
+        patch(f"{_RUN}.track_chat_outcome"),
+        patch(f"{_RUN}._safe_link_to_chat_share", AsyncMock()),
     ):
-        await RunAgentTool()._run_agent(
-            "user-1", _session(), graph, {}, {}, dry_run=False
-        )
+        await RunAgentTool()._run_agent("user-1", session, graph, {}, {}, dry_run=False)
     assert (await chat.snapshot(_ledger_id()))["spent"] == 20_000
 
 

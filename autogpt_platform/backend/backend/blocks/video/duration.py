@@ -1,16 +1,16 @@
 """MediaDurationBlock - Get the duration of a media file."""
 
 from moviepy.audio.io.AudioFileClip import AudioFileClip
-from moviepy.video.io.VideoFileClip import VideoFileClip
 
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.blocks.video._utils import strip_chapters_inplace
+from backend.blocks.video._utils import open_video_clip, strip_chapters_inplace
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
@@ -40,6 +40,7 @@ class MediaDurationBlock(Block):
             categories={BlockCategory.MULTIMEDIA},
             input_schema=MediaDurationBlock.Input,
             output_schema=MediaDurationBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -65,7 +66,9 @@ class MediaDurationBlock(Block):
         clip = None
         try:
             if input_data.is_video:
-                clip = VideoFileClip(media_abspath)
+                clip = open_video_clip(
+                    media_abspath, block_name=self.name, block_id=str(self.id)
+                )
             else:
                 clip = AudioFileClip(media_abspath)
 
