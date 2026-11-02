@@ -46,7 +46,8 @@ Notes
   change, pass --recreate: it drops the selected views and creates them
   again in the same transaction. List every view that reads from them in
   --only too; if one is missing, Postgres refuses the drop and nothing
-  changes.
+  changes. Views are created in file-name order, so a view must sort
+  after the views it reads.
 - Looker, PostHog Data Warehouse, and Supabase MCP all read from the
   same analytics.* views — no raw tables exposed.
 """
@@ -145,6 +146,16 @@ def run_sql(db_url: str, statements: list[tuple[str, str]]) -> None:
     except Exception as e:
         conn.rollback()
         print(f"\n✗ Error: {e}", file=sys.stderr)
+        message = str(e)
+        if (
+            "cannot drop columns from view" in message
+            or "cannot change name of view column" in message
+        ):
+            print(
+                "A column was removed or renamed: rerun with --recreate, listing "
+                "that view and every view that reads from it in --only.",
+                file=sys.stderr,
+            )
         sys.exit(1)
     finally:
         cur.close()
@@ -223,7 +234,12 @@ def cmd_views(args: argparse.Namespace) -> None:
     view_count = len(views)
     if args.recreate:
         names = [label.removeprefix(f"view {SCHEMA}.") for label, _ in views]
-        views = [("drop views to recreate", build_drop_sql(names))] + views
+        # Fail fast instead of queueing every reader behind a drop that waits
+        # on a long BI query.
+        views = [
+            ("lock timeout", "SET LOCAL lock_timeout = '30s';\n"),
+            ("drop views to recreate", build_drop_sql(names)),
+        ] + views
 
     if args.dry_run:
         print(f"-- {view_count} views\n")

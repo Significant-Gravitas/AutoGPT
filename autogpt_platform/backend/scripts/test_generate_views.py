@@ -1,6 +1,7 @@
 """Tests for the analytics view generator (no database needed)."""
 
 import argparse
+import re
 
 import pytest
 
@@ -31,6 +32,7 @@ def test_recreate_drops_the_selected_views_before_creating_them(
         "analytics.user_lifecycle_funnel_weekly;"
     )
     assert "CASCADE" not in out
+    assert out.index("SET LOCAL lock_timeout") < drop
     assert drop < out.index("CREATE OR REPLACE VIEW analytics.user_lifecycle ")
     assert out.index("CREATE OR REPLACE VIEW analytics.user_lifecycle ") < out.index(
         "CREATE OR REPLACE VIEW analytics.user_lifecycle_funnel_weekly "
@@ -47,4 +49,5 @@ def test_without_recreate_nothing_is_dropped(
 
 def test_no_view_exposes_user_email() -> None:
     for path in sorted(generate_views.QUERIES_DIR.glob("*.sql")):
-        assert '"email"' not in path.read_text(), path.name
+        sql = re.sub(r"--[^\n]*", "", path.read_text())
+        assert not re.search(r"\bemail\b", sql, re.IGNORECASE), path.name

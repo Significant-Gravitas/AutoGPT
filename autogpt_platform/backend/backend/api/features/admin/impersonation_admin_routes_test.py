@@ -10,7 +10,6 @@ from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
 from backend.util.metrics import DiscordChannel
 
-from .impersonation_admin_routes import _send_impersonation_alert
 from .impersonation_admin_routes import router as impersonation_router
 
 app = fastapi.FastAPI()
@@ -203,9 +202,13 @@ def test_notify_names_target_by_id_not_email(
 
 
 def test_notify_admin_lookup_failure_is_non_fatal(
-    mocker: pytest_mock.MockerFixture,
+    mocker: pytest_mock.MockerFixture, admin_user_id: str
 ) -> None:
-    """A failed admin email lookup degrades to 'unknown' but still delivers (200)."""
+    """A JWT without an email and a failed lookup degrade to 'unknown' (200)."""
+    app.dependency_overrides[get_jwt_payload] = lambda: {
+        "sub": admin_user_id,
+        "role": "admin",
+    }
     _set_token(mocker, "fake-token")
     mocker.patch(
         f"{_MOCK_MODULE}.get_user_email_by_id",
@@ -214,11 +217,14 @@ def test_notify_admin_lookup_failure_is_non_fatal(
     )
     mock_alert = _patch_alert(mocker, return_value="Message sent")
 
-    admin = SimpleNamespace(user_id="admin-user-id", email=None)
-    asyncio.run(_send_impersonation_alert(admin, _TARGET_USER_ID))  # type: ignore[arg-type]
+    response = client.post(
+        "/admin/impersonation/notify", json={"target_user_id": _TARGET_USER_ID}
+    )
 
+    assert response.status_code == 200
+    assert response.json() == {"alerted": True}
     content = mock_alert.await_args.args[0]
-    assert "Admin: unknown (`admin-user-id`)" in content
+    assert f"Admin: unknown (`{admin_user_id}`)" in content
 
 
 def test_notify_admin_email_comes_from_jwt_without_db_lookup(
