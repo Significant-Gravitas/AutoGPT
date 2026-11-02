@@ -26,6 +26,9 @@ def work_calls(monkeypatch):
     scheduler.get_execution_schedules = AsyncMock(
         return_value=[SimpleNamespace(id="s1"), SimpleNamespace(id="s2")]
     )
+    scheduler.remove_scope_memory_jobs = AsyncMock(
+        side_effect=lambda scope: [f"job_{scope.scope_key}"]
+    )
     monkeypatch.setattr(work, "get_scheduler_client", lambda: scheduler)
     runs = AsyncMock(return_value=[SimpleNamespace(id="e1")])
     monkeypatch.setattr(work.execution_db, "get_graph_executions", runs)
@@ -53,6 +56,44 @@ async def test_the_apply_reruns_the_close_steps_work_stop(work_calls):
 
     work_calls.stop.assert_awaited_once_with(USER_ID)
     assert report.status == StepStatus.DONE
+
+
+@pytest.mark.asyncio
+async def test_the_apply_removes_the_memory_crons_of_the_account_and_its_experts(
+    work_calls,
+):
+    """Closing leaves them registered so they resume if the account is kept;
+    once it is erased nothing would ever remove them."""
+    with_experts = SUBJECT.model_copy(update={"expert_ids": ["x1", "x2"]})
+
+    report = await work.stop_work(with_experts, dry_run=False)
+
+    scopes = [
+        call.kwargs["scope"]
+        for call in work_calls.scheduler.remove_scope_memory_jobs.await_args_list
+    ]
+    assert [(s.owner_user_id, s.expert_id) for s in scopes] == [
+        (USER_ID, None),
+        (USER_ID, "x1"),
+        (USER_ID, "x2"),
+    ]
+    assert report.counts == {"memory_crons": 3}
+
+
+@pytest.mark.asyncio
+async def test_an_unreachable_scheduler_fails_the_work_step(work_calls):
+    """The erasure stops while the expert IDs naming the crons are known."""
+    work_calls.scheduler.remove_scope_memory_jobs.side_effect = ConnectionError()
+
+    with pytest.raises(ConnectionError):
+        await work.stop_work(SUBJECT, dry_run=False)
+
+
+@pytest.mark.asyncio
+async def test_a_work_dry_run_removes_no_cron(work_calls):
+    await work.stop_work(SUBJECT, dry_run=True)
+
+    work_calls.scheduler.remove_scope_memory_jobs.assert_not_awaited()
 
 
 @pytest.fixture
