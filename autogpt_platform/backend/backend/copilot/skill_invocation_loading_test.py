@@ -1,3 +1,4 @@
+import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -46,7 +47,7 @@ def command_load(mocker):
 
 
 @pytest.mark.parametrize("state", ["paused", "pending"])
-async def test_command_refuses_unavailable_skill(command_load, state):
+async def test_command_refuses_unavailable_skill(command_load, state, caplog):
     head, current, loads, _ = command_load
     if state == "paused":
         head.use_paused_at = "paused"
@@ -59,6 +60,7 @@ async def test_command_refuses_unavailable_skill(command_load, state):
         is None
     )
     loads.assert_not_awaited()
+    assert not [record for record in caplog.records if record.levelno >= logging.ERROR]
 
 
 async def test_command_records_the_reconciled_loaded_version(command_load):
@@ -70,4 +72,21 @@ async def test_command_records_the_reconciled_loaded_version(command_load):
     reconcile.assert_awaited_once_with("user", None, "report")
     loads.assert_awaited_once_with(
         "user", None, "report", version_id="v1", session_id="session"
+    )
+
+
+async def test_command_logs_unexpected_load_errors(command_load, mocker, caplog):
+    mocker.patch.object(
+        skills,
+        "resolve_loaded_skill_version",
+        AsyncMock(side_effect=RuntimeError("registry unavailable")),
+    )
+    assert (
+        await si.inject_skill_invocation(
+            "/report weekly", "session", [], user_id="user", expert_id=None
+        )
+        is None
+    )
+    assert any(
+        record.levelno >= logging.ERROR and record.exc_info for record in caplog.records
     )

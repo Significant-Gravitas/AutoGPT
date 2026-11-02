@@ -231,9 +231,12 @@ async def resolve_invocable_skill(
         )
         if parsed is None or parsed.extra.get("user-invocable") is False:
             return None
-        loaded = await skill_registry.resolve_loaded_skill_version(
-            user_id, expert_id, found.skill.name, text, manager=manager
-        )
+        try:
+            loaded = await skill_registry.resolve_loaded_skill_version(
+                user_id, expert_id, found.skill.name, text, manager=manager
+            )
+        except (skill_registry.SkillUsePausedError, skill_registry.SkillWriteLockError):
+            return None
         await skill_registry.record_skill_loaded(
             user_id,
             expert_id,
