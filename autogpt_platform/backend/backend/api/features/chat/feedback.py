@@ -7,7 +7,7 @@ logic lives in ``backend.copilot.feedback``.
 from typing import Annotated
 
 from autogpt_libs import auth
-from fastapi import APIRouter, HTTPException, Security
+from fastapi import APIRouter, HTTPException, Request, Security
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.copilot.feedback import (
@@ -17,6 +17,7 @@ from backend.copilot.feedback import (
     MessageFeedbackResponse,
     record_message_feedback,
 )
+from backend.copilot.llm_attribution import is_impersonated_request
 
 router = APIRouter(tags=["chat"])
 
@@ -71,14 +72,13 @@ async def submit_message_feedback(
     session_id: str,
     request: MessageFeedbackRequest,
     user_id: Annotated[str, Security(auth.get_user_id)],
+    http_request: Request,
 ) -> MessageFeedbackResponse:
     """Rate a reply in one of the caller's chats.
 
     Saves the rating, one per reply and score name so rating again
-    overwrites it, and scores it in Langfuse on the trace of the turn that
-    wrote the reply, or on the chat's Langfuse session when that trace is
-    not known. Langfuse being down does not fail the request; the response
-    says where the score went.
+    overwrites it, and sends it to PostHog LLM analytics as an
+    ``$ai_metric`` event. PostHog being down does not fail the request.
     """
     feedback = await record_message_feedback(
         user_id=user_id,
@@ -87,6 +87,7 @@ async def submit_message_feedback(
         score_name=request.score_name,
         score_value=request.score_value,
         comment=request.comment,
+        impersonated=is_impersonated_request(http_request),
     )
     if feedback is None:
         raise HTTPException(

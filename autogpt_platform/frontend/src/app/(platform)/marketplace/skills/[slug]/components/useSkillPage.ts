@@ -20,7 +20,6 @@ import { okData } from "@/app/api/helpers";
 import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -31,7 +30,7 @@ export function useSkillPage(slug: string) {
   const queryClient = useQueryClient();
   const { isLoggedIn, isUserLoading } = useAuth();
   const { toast } = useToast();
-  const flag = useFlagStatus(Flag.SKILLS_HUB);
+
   const [isConnectOpen, setIsConnectOpen] = useState(false);
   // Page state rather than the list's: a relative link in the body opens the
   // same viewer the package list does.
@@ -122,15 +121,12 @@ export function useSkillPage(slug: string) {
     isError: query.isError,
     isNotFound: (query.error as { status?: number } | null)?.status === 404,
     refetch: query.refetch,
-    // Nothing renders before auth, the flag, the user's own skills and the
+    // Nothing renders before auth, the user's own skills and the
     // roster have all answered, so the button never flashes into "Added" nor
     // grows its dropdown half under the pointer.
     isReady:
       !isUserLoading &&
-      flag.ready &&
       (!isLoggedIn || (!installedSkills.isLoading && !expertsQuery.isLoading)),
-    flagEnabled: flag.enabled,
-    flagReady: flag.ready,
     isAdded,
     isAdding,
     experts,

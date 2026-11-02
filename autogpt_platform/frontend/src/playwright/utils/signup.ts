@@ -2,7 +2,8 @@ import { TestUser } from "./auth";
 import { getSelectors } from "./selectors";
 import { isVisible } from "./assertion";
 import { BuildPage } from "../pages/build.page";
-import { skipOnboardingIfPresent } from "./onboarding";
+import { NavBar } from "../pages/navbar.page";
+import { dismissTabIntrosViaAPI, skipOnboardingIfPresent } from "./onboarding";
 import { expect } from "@playwright/test";
 
 export function isAuthenticatedAppURL(currentURL: string) {
@@ -23,7 +24,7 @@ export async function signupTestUser(
   const userEmail = email || faker.internet.email();
   const userPassword = password || faker.internet.password({ length: 12 });
 
-  const { getText, getField, getRole, getButton, getId } = getSelectors(page);
+  const { getText, getField, getButton, getId } = getSelectors(page);
 
   try {
     // Navigate to signup page
@@ -41,10 +42,6 @@ export async function signupTestUser(
     const confirmPasswordInput = page.locator("#confirmPassword");
     await confirmPasswordInput.fill(userPassword);
 
-    // Agree to terms and submit. Scope to the Terms checkbox by accessible
-    // name — in dev/local the AgentationDevtool renders extra checkboxes
-    // globally, so a bare getByRole("checkbox") trips Playwright strict mode.
-    await getRole("checkbox", /agree to the terms/i).click();
     const signupButton = getButton("Sign up");
     await signupButton.click();
 
@@ -81,7 +78,7 @@ export async function signupTestUser(
     } else if (ignoreOnboarding || currentUrl.includes("/marketplace")) {
       await page
         .getByText(
-          "Bringing you AI agents designed by thinkers from around the world",
+          "Bringing you AI workflows designed by thinkers from around the world",
         )
         .first()
         .waitFor({ state: "visible", timeout: 10000 });
@@ -91,10 +88,16 @@ export async function signupTestUser(
         .waitFor({ state: "visible", timeout: 10000 });
     }
 
+    // skipOnboardingIfPresent covers /onboarding, where an open wizard must not
+    // race these writes; the reload makes the open page read them.
+    if (!currentUrl.includes("/onboarding")) {
+      await dismissTabIntrosViaAPI(page);
+      await page.reload();
+    }
+
     if (withAgent) {
       // Create a dummy agent for each new user
-      const buildLink = getId("navbar-link-build");
-      await buildLink.click();
+      await new NavBar(page).clickBuildLink();
 
       const blocksBtn = getId("blocks-control-blocks-button");
       await isVisible(blocksBtn);
@@ -114,54 +117,6 @@ export async function signupTestUser(
     console.error(`❌ Error creating test user ${userEmail}:`, error);
     throw error;
   }
-}
-
-export async function signupAndNavigateToMarketplace(
-  page: any,
-  email?: string,
-  password?: string,
-): Promise<TestUser> {
-  console.log("🧪 Creating user and navigating to marketplace...");
-
-  // Create the user via signup and automatically navigate to marketplace
-  const testUser = await signupTestUser(page, email, password, true);
-
-  console.log("✅ User successfully created and authenticated in marketplace");
-  return testUser;
-}
-
-export async function validateSignupForm(page: any): Promise<void> {
-  console.log("🧪 Validating signup form...");
-
-  await page.goto("/signup");
-
-  // Test empty form submission
-  console.log("❌ Testing empty form submission...");
-  const signupButton = page.getByRole("button", { name: "Sign up" });
-  await signupButton.click();
-
-  // Should still be on signup page
-  const currentUrl = page.url();
-  if (currentUrl.includes("/signup")) {
-    console.log("✅ Empty form correctly blocked");
-  } else {
-    console.log("⚠️ Empty form was not blocked as expected");
-  }
-
-  // Test invalid email
-  console.log("❌ Testing invalid email...");
-  await page.getByLabel("Email").fill("invalid-email");
-  await signupButton.click();
-
-  // Should still be on signup page
-  const currentUrl2 = page.url();
-  if (currentUrl2.includes("/signup")) {
-    console.log("✅ Invalid email correctly blocked");
-  } else {
-    console.log("⚠️ Invalid email was not blocked as expected");
-  }
-
-  console.log("✅ Signup form validation completed");
 }
 
 export function generateTestEmail(): string {

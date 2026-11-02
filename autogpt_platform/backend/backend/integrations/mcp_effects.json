@@ -531,5 +531,16 @@
     "external": [
       "create_base"
     ]
+  },
+  "mcp_cloudflare": {
+    "source": "https://github.com/cloudflare/mcp/blob/main/README.md",
+    "read": [
+      "docs",
+      "search",
+      "whoami"
+    ],
+    "external": [
+      "execute"
+    ]
   }
 }

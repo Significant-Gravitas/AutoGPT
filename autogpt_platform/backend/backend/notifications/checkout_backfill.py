@@ -4,7 +4,8 @@ fields GTM segments on (`audience_enrichment`).
 
 Only accounts with at least one Stripe Checkout Session are openers. Nobody
 else is written, so the accounts that never reached checkout stay out of
-MailerLite.
+MailerLite. An opener who opted out of marketing, or whom a signal places in
+Iran or Russia, stays out too (`consent.py`): they are counted, never planned.
 
 Each person is written with one subscriber upsert, one at a time and paced,
 never a /batch: MailerLite processes an upsert-only batch as an import, and
@@ -28,22 +29,19 @@ from pydantic import BaseModel
 
 from backend.data.notifications import SubscriberField
 from backend.notifications.audience_enrichment import checkout_fields, merge_with_held
+from backend.notifications.consent import KeptOut, marketing_allowed
 from backend.notifications.mailerlite import (
     API_BASE,
     _client,
     _find_subscriber,
     _headers,
     _payload,
+    held_value,
 )
-from backend.notifications.mailerlite_backfill import (
-    BatchAnswer,
-    Subscription,
-    _refusal,
-)
+from backend.notifications.mailerlite_backfill import BatchAnswer, _refusal
 from backend.notifications.mailerlite_field_backfill import (
     Current,
     Person,
-    _normalise,
     _valid,
     desired,
 )
@@ -82,6 +80,10 @@ class OpenerPlan(BaseModel):
     openers: int
     # Addresses MailerLite would refuse, such as a reserved domain.
     invalid: int
+    # Openers who refused marketing, left out of the plan and the tallies.
+    opted_out: int
+    # Openers a signal places in Iran or Russia, left out the same way.
+    excluded_country: int
     # What the openers end up with, for the report.
     country_sources: dict[str, int]
     countries: dict[str, int]
@@ -110,14 +112,20 @@ def plan(
     openers: list[Opener], current: Current, members: Mapping[str, str]
 ) -> OpenerPlan:
     changes: list[OpenerChange] = []
-    invalid = 0
+    invalid = opted_out = excluded_country = 0
     sources: Counter[str] = Counter()
     countries: Counter[str] = Counter()
     email_types: Counter[str] = Counter()
     methods: Counter[str] = Counter()
     exclude = 0
     for opener in openers:
+        if not marketing_allowed(opener.person):
+            opted_out += 1
+            continue
         email = opener.person.email
+        if opener.person.placed_in_excluded_country(opener.stripe_country):
+            excluded_country += 1
+            continue
         if not _valid(email):
             invalid += 1
             continue
@@ -142,6 +150,8 @@ def plan(
         changes=changes,
         openers=len(openers),
         invalid=invalid,
+        opted_out=opted_out,
+        excluded_country=excluded_country,
         country_sources=dict(sources),
         countries=dict(countries),
         email_types=dict(email_types),
@@ -162,7 +172,7 @@ def _changed(fields: Fields, held: Mapping[str, object] | None) -> Fields:
     return {
         field: value
         for field, value in fields.items()
-        if held is None or _normalise(field, held.get(field.value)) != value
+        if held is None or held_value(field, held.get(field.value)) != value
     }
 
 
@@ -171,16 +181,21 @@ async def apply(
     group_id: str,
     on_progress: Callable[[int, int], None] | None = None,
     *,
-    refresh: Callable[[str], Awaitable[list[Subscription]]] | None = None,
+    refresh: Callable[[Person], Awaitable[Person]] | None = None,
+    kept_out: KeptOut | None = None,
 ) -> tuple[int, int, int]:
-    """Visit each planned opener: read them again from MailerLite and, with
-    `refresh`, their subscriptions again from Stripe, and write what they
-    still need as one subscriber upsert into the group. The status the plan
-    took from Stripe hours earlier is never written over a newer one.
+    """Visit each planned opener: with `kept_out`, check they may still enter
+    MailerLite, since they may have opted out or been seen in Iran or Russia
+    since the plan; read them again from MailerLite and, with `refresh`,
+    their subscriptions from Stripe and their trial row again, since the
+    status reads both (a trial that converted since the plan needs both
+    fresh, or it reads as still in trial); and write what they still need as
+    one subscriber upsert into the group. The status the plan took from
+    Stripe hours earlier is never written over a newer one.
 
     Returns (succeeded, failed, skipped); a failure is logged with
     MailerLite's reason and left for the next run, and someone who needs
-    nothing any more is skipped."""
+    nothing any more, or may no longer be written, is skipped."""
     succeeded = failed = skipped = 0
     for index, change in enumerate(changes):
         if index:
@@ -190,13 +205,13 @@ async def apply(
         email = change.opener.person.email
         opener = change.opener
         try:
+            if kept_out and await kept_out(opener.person.user_id):
+                skipped += 1
+                continue
             if refresh and opener.person.stripe_customer_id:
-                person = opener.person.model_copy(
-                    update={
-                        "subscriptions": await refresh(opener.person.stripe_customer_id)
-                    }
+                opener = opener.model_copy(
+                    update={"person": await refresh(opener.person)}
                 )
-                opener = opener.model_copy(update={"person": person})
             subscriber = await _find_subscriber(email)
         except Exception:
             failed += 1

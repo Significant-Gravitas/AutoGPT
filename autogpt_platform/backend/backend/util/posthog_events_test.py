@@ -23,11 +23,13 @@ LIVE_EVENT_NAMES = {
     "writing_style_added",
     "workflow_installed_on_expert",
     "expert_fired",
+    "expert_mode_set_unsupervised",
     "briefing_generated",
     "briefing_delivered",
     "chat_tool_called",
     "chat_outcome",
     "chat_library_check_outcome",
+    "chat_read_screen_shadow_decision",
     "topup_completed",
     "subscription_cancellation_scheduled",
     "subscription_changed",
@@ -41,16 +43,23 @@ LIVE_EVENT_NAMES = {
     "trial_converted",
     "payment_failed",
     "$set",
-}
-
-PLANNED_EVENT_NAMES = {
+    "$ai_metric",
+    "$ai_trace",
+    "$ai_span",
     "signup_completed",
     "onboarding_completed",
     "checkout_started",
     "subscription_ended",
     "listing_added_to_library",
     "listing_downloaded",
+    "email_delivered",
+    "email_opened",
+    "email_clicked",
+    "email_bounced",
+    "email_complained",
 }
+
+PLANNED_EVENT_NAMES: set[str] = set()
 
 # No longer sent, or renamed (SECRT-2722). The names stay reserved: reusing one would
 # splice a different action onto the history PostHog already holds for it.

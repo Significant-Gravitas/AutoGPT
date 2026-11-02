@@ -13,11 +13,15 @@ from unittest.mock import AsyncMock
 import pytest
 
 from backend.copilot import pending_messages as pm_module
+from backend.copilot.gate.held import HeldResult
 from backend.copilot.pending_messages import (
     MAX_PENDING_MESSAGES,
     PendingMessage,
     PendingMessageContext,
+    accept_client_message,
+    claim_client_message,
     clear_pending_messages_unsafe,
+    client_message_state,
     drain_and_format_for_injection,
     drain_pending_for_persist,
     drain_pending_messages,
@@ -26,8 +30,10 @@ from backend.copilot.pending_messages import (
     peek_pending_count,
     peek_pending_messages,
     push_pending_message,
+    release_client_message,
     stash_pending_for_persist,
 )
+from backend.copilot.tool_image import ToolImage
 
 # ── Fake Redis ──────────────────────────────────────────────────────
 
@@ -38,6 +44,8 @@ class _FakeRedis:
         # bytes when ``decode_responses=False``; the drain path must
         # handle both and our tests exercise both.
         self.lists: dict[str, list[str | bytes]] = {}
+        self.strings: dict[str, str] = {}
+        self.ttls: dict[str, int | None] = {}
         self.published: list[tuple[str, str]] = []
 
     async def rpush(self, key: str, *values: Any) -> int:
@@ -93,7 +101,48 @@ class _FakeRedis:
         if key in self.lists:
             del self.lists[key]
             return 1
-        return 0
+        return int(self.strings.pop(key, None) is not None)
+
+    async def set(
+        self, key: str, value: str, nx: bool = False, ex: int | None = None
+    ) -> bool | None:
+        if nx and key in self.strings:
+            return None
+        self.strings[key] = value
+        self.ttls[key] = ex
+        return True
+
+    async def get(self, key: str) -> str | None:
+        return self.strings.get(key)
+
+    async def eval(
+        self,
+        script: str,
+        numkeys: int,
+        key: str,
+        *args: Any,
+    ) -> int | list[str | bytes]:
+        if "LRANGE" in script:
+            current = self.lists.get(key, [])[: len(args)]
+            decoded = [
+                item.decode() if isinstance(item, bytes) else item for item in current
+            ]
+            if decoded != list(args):
+                return []
+            return await self.lpop(key, len(args)) or []
+        expected, new, ttl_seconds, or_missing = args
+        current = self.strings.get(key)
+        if current != expected and not (current is None and or_missing == "1"):
+            return 0
+        if new:
+            self.strings[key] = new
+            self.ttls[key] = int(ttl_seconds)
+        else:
+            self.strings.pop(key, None)
+        return 1
+
+    async def exists(self, key: str) -> int:
+        return int(key in self.strings or key in self.lists)
 
     def pipeline(self, transaction: bool = True) -> "_FakePipeline":
         # Returns a fake pipeline that records ops and replays them in
@@ -161,16 +210,6 @@ def fake_redis(monkeypatch: pytest.MonkeyPatch) -> _FakeRedis:
         return redis
 
     monkeypatch.setattr(pm_module, "get_redis_async", _get_redis_async)
-
-    # Isolate the mid-turn drain hint: by default there's no live turn, so
-    # ``drain_pending_messages`` must not reach the real stream registry.
-    # Stub the lookup to "no active turn" so the emit is a no-op; the
-    # dedicated emit tests below override these to assert the SSE hint.
-    async def _no_active_session(_session_id: str) -> None:
-        return None
-
-    monkeypatch.setattr(pm_module, "get_session", _no_active_session)
-    monkeypatch.setattr(pm_module, "publish_chunk", AsyncMock())
     return redis
 
 
@@ -213,6 +252,22 @@ def test_pending_message_metadata_survives_json() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_long_held_result_requeued_into_the_buffer_drains_whole(
+    fake_redis: _FakeRedis,
+) -> None:
+    """A rolled-back save re-queues held results here; one past a typed
+    follow-up's 32,000 characters must still drain, as its action already ran."""
+    result = HeldResult(content="x" * 40_000, metadata={"held_call": {"r": "1"}})
+    await push_pending_message("sess-held", result)
+
+    drained = await drain_pending_messages("sess-held")
+
+    assert len(drained) == 1
+    assert isinstance(drained[0], HeldResult)
+    assert drained[0].content == result.content
+
+
+@pytest.mark.asyncio
 async def test_push_and_drain_preserves_order(fake_redis: _FakeRedis) -> None:
     for i in range(3):
         await push_pending_message("sess2", PendingMessage(content=f"msg {i}"))
@@ -239,81 +294,6 @@ async def test_drain_defaults_id_for_legacy_entries(fake_redis: _FakeRedis) -> N
 
     assert [m.content for m in drained] == ["queued before the deploy"]
     assert drained[0].id
-
-
-# ── Mid-turn drain SSE hint ─────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_drain_emits_pending_drained_hint(
-    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A mid-turn drain pushes a ``data-pending-drained`` hint onto the
-    active turn's stream so the client promotes chips immediately instead
-    of waiting for its backstop poll."""
-    from backend.copilot.response_model import StreamPendingDrained
-    from backend.copilot.stream_registry import ActiveSession
-
-    queued = PendingMessage(content="hi")
-    await push_pending_message("sessHint", queued)
-
-    active = ActiveSession(
-        session_id="sessHint",
-        user_id="u1",
-        tool_call_id="chat_stream",
-        tool_name="chat",
-        turn_id="turn-xyz",
-        status="running",
-    )
-
-    async def _get_session(_session_id: str) -> ActiveSession:
-        return active
-
-    publish = AsyncMock()
-    monkeypatch.setattr(pm_module, "get_session", _get_session)
-    monkeypatch.setattr(pm_module, "publish_chunk", publish)
-
-    drained = await drain_pending_messages("sessHint")
-    assert len(drained) == 1
-
-    publish.assert_awaited_once()
-    args, kwargs = publish.call_args
-    assert args[0] == "turn-xyz"
-    assert isinstance(args[1], StreamPendingDrained)
-    assert args[1].drainedCount == 1
-    # The hint carries the drained text + a stable id so the client can render
-    # the follow-up bubble at the drain point instead of guessing its content.
-    assert [(m.id, m.content) for m in args[1].messages] == [(queued.id, "hi")]
-    assert kwargs["session_id"] == "sessHint"
-
-
-@pytest.mark.asyncio
-async def test_drain_empty_does_not_emit_hint(
-    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """No drain → no hint: an empty buffer must not emit a stream chunk."""
-    publish = AsyncMock()
-    monkeypatch.setattr(pm_module, "publish_chunk", publish)
-
-    assert await drain_pending_messages("emptySess") == []
-    publish.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_drain_hint_failure_does_not_break_drain(
-    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The hint is best-effort: a stream-registry hiccup while emitting it
-    must not lose the drained messages."""
-    await push_pending_message("sessBoom", PendingMessage(content="hi"))
-
-    async def _boom(_session_id: str) -> None:
-        raise RuntimeError("registry down")
-
-    monkeypatch.setattr(pm_module, "get_session", _boom)
-
-    drained = await drain_pending_messages("sessBoom")
-    assert [m.content for m in drained] == ["hi"]
 
 
 # ── Buffer cap ──────────────────────────────────────────────────────
@@ -419,6 +399,15 @@ def test_format_followup_single_message() -> None:
     assert "<user_follow_up>" in out
     assert "</user_follow_up>" in out
     assert "Message 1:\nhello" in out
+
+
+def test_format_followup_escapes_the_tags_a_message_quotes() -> None:
+    out = format_pending_as_followup(
+        [PendingMessage(content="keep <user_follow_up> and </user_follow_up> rows")]
+    )
+    assert out.count("<user_follow_up>") == 1
+    assert out.count("</user_follow_up>") == 1
+    assert "keep &lt;user_follow_up&gt; and &lt;/user_follow_up&gt; rows" in out
 
 
 def test_format_followup_total_cap_drops_overflow() -> None:
@@ -748,6 +737,80 @@ async def test_drain_and_format_for_injection_missing_session_id() -> None:
     assert await drain_and_format_for_injection("", log_prefix="[TEST]") == ""
 
 
+async def test_text_hook_leaves_image_and_later_messages_in_order(fake_redis):
+    image = PendingMessage(
+        content="Approved image",
+        model_image=ToolImage(mime_type="image/png", data_base64="cGl4ZWxz"),
+    )
+    for message in [
+        PendingMessage(content="before"),
+        image,
+        PendingMessage(content="after"),
+    ]:
+        await push_pending_message("images", message)
+    result = await drain_and_format_for_injection("images", log_prefix="test")
+    assert "before" in result and "after" not in result
+    assert await drain_and_format_for_injection("images", log_prefix="test") == ""
+    remaining = await drain_pending_messages("images")
+    assert [message.content for message in remaining] == ["Approved image", "after"]
+    assert remaining[0].model_image == image.model_image
+
+
+@pytest.mark.parametrize("malformed", ["not JSON", '{"model_image":"invalid"}'])
+async def test_text_hook_drops_corrupt_prefix_without_consuming_images(
+    fake_redis, malformed
+):
+    image = PendingMessage(
+        content="Approved image",
+        model_image=ToolImage(mime_type="image/png", data_base64="cGl4ZWxz"),
+    )
+    before = PendingMessage(content="before")
+    after = PendingMessage(content="after")
+    await fake_redis.rpush(
+        pm_module._buffer_key("images"),
+        malformed,
+        before.model_dump_json(),
+        image.model_dump_json(),
+        after.model_dump_json(),
+    )
+
+    result = await drain_and_format_for_injection("images", log_prefix="test")
+    assert "before" in result and "after" not in result
+    assert await peek_pending_count("images") == 2
+    assert await drain_pending_for_persist("images") == [before]
+    assert await drain_and_format_for_injection("images", log_prefix="test") == ""
+    assert await drain_pending_messages("images") == [image, after]
+
+
+async def test_text_hook_redis_error_does_not_drop_the_queue(fake_redis, monkeypatch):
+    await push_pending_message("images", PendingMessage(content="before"))
+    monkeypatch.setattr(
+        fake_redis, "eval", AsyncMock(side_effect=ConnectionError("offline"))
+    )
+    assert await drain_and_format_for_injection("images", log_prefix="test") == ""
+    assert [message.content for message in await drain_pending_messages("images")] == [
+        "before"
+    ]
+
+
+async def test_text_hook_does_not_pop_a_prefix_another_consumer_changed(
+    fake_redis, monkeypatch
+):
+    await push_pending_message("images", PendingMessage(content="before"))
+    original_eval = fake_redis.eval
+
+    async def concurrent_drain(script, numkeys, key, *args):
+        await fake_redis.lpop(key, 1)
+        await push_pending_message("images", PendingMessage(content="new"))
+        return await original_eval(script, numkeys, key, *args)
+
+    monkeypatch.setattr(fake_redis, "eval", concurrent_drain)
+    assert await drain_and_format_for_injection("images", log_prefix="test") == ""
+    assert [message.content for message in await drain_pending_messages("images")] == [
+        "new"
+    ]
+
+
 # ── Cluster-slot colocation regression ───────────────────────────────
 # The gated-rpush Lua script in `capped_rpush_if_hash_field` touches both
 # the session-meta hash (`stream_registry._get_session_meta_key`) and the
@@ -802,3 +865,203 @@ def test_buffer_and_session_meta_keys_share_cluster_slot() -> None:
             f"CROSSSLOT regression: {buf!r} (slot {_redis_keyslot(buf)}) "
             f"!= {meta!r} (slot {_redis_keyslot(meta)})"
         )
+
+
+# ── Client message claims (SECRT-2695) ──────────────────────────────
+
+
+@pytest.fixture()
+def short_claim_wait(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(pm_module, "_CLIENT_MESSAGE_WAIT_SECONDS", 0.05)
+    monkeypatch.setattr(pm_module, "_CLIENT_MESSAGE_POLL_SECONDS", 0.01)
+
+
+@pytest.mark.asyncio
+async def test_client_message_claim_is_granted_once(fake_redis: _FakeRedis) -> None:
+    """A retransmit of an accepted send must find the id already taken."""
+    assert await claim_client_message("sess-1", "msg-a", "first") == "claimed"
+    await accept_client_message("sess-1", "msg-a", "first")
+    assert await claim_client_message("sess-1", "msg-a", "copy") == "accepted"
+    assert await client_message_state("sess-1", "msg-a") == "accepted"
+
+
+@pytest.mark.asyncio
+async def test_client_message_reservation_is_short_and_acceptance_long(
+    fake_redis: _FakeRedis,
+) -> None:
+    """A request that dies before settling its send must not block the id
+    for the hour an accepted send is remembered."""
+    key = pm_module._client_message_key("sess-1", "msg-a")
+
+    await claim_client_message("sess-1", "msg-a", "first")
+    assert fake_redis.ttls[key] == pm_module._CLIENT_MESSAGE_RESERVE_TTL_SECONDS
+    await accept_client_message("sess-1", "msg-a", "first")
+    assert fake_redis.ttls[key] == pm_module._PENDING_TTL_SECONDS
+
+
+@pytest.mark.asyncio
+async def test_client_message_claims_are_per_id_and_session(
+    fake_redis: _FakeRedis,
+) -> None:
+    assert await claim_client_message("sess-1", "msg-a", "o1") == "claimed"
+    assert await claim_client_message("sess-1", "msg-b", "o2") == "claimed"
+    assert await claim_client_message("sess-2", "msg-a", "o3") == "claimed"
+
+
+@pytest.mark.asyncio
+async def test_released_client_message_can_be_claimed_again(
+    fake_redis: _FakeRedis,
+) -> None:
+    """A refused send drops its claim so the same id can land on retry."""
+    assert await claim_client_message("sess-1", "msg-a", "first") == "claimed"
+    await release_client_message("sess-1", "msg-a", "first")
+    assert await client_message_state("sess-1", "msg-a") is None
+    assert await claim_client_message("sess-1", "msg-a", "retry") == "claimed"
+
+
+@pytest.mark.asyncio
+async def test_lapsed_claimant_cannot_settle_its_successors_claim(
+    fake_redis: _FakeRedis,
+) -> None:
+    """The first request outlived its reservation and another took the id
+    over: the first can neither release nor accept the successor's claim."""
+    key = pm_module._client_message_key("sess-1", "msg-a")
+    assert await claim_client_message("sess-1", "msg-a", "first") == "claimed"
+    del fake_redis.strings[key]  # the reservation expired
+    assert await claim_client_message("sess-1", "msg-a", "successor") == "claimed"
+
+    await release_client_message("sess-1", "msg-a", "first")
+    await accept_client_message("sess-1", "msg-a", "first")
+
+    assert fake_redis.strings[key] == "reserved:successor"
+
+
+@pytest.mark.asyncio
+async def test_lapsed_claimant_still_records_its_accepted_send(
+    fake_redis: _FakeRedis,
+) -> None:
+    """Nobody took the id over, so the send is marked accepted anyway."""
+    key = pm_module._client_message_key("sess-1", "msg-a")
+    assert await claim_client_message("sess-1", "msg-a", "first") == "claimed"
+    del fake_redis.strings[key]  # the reservation expired
+
+    await accept_client_message("sess-1", "msg-a", "first")
+
+    assert await client_message_state("sess-1", "msg-a") == "accepted"
+
+
+@pytest.mark.asyncio
+async def test_accepting_a_claim_finishes_when_the_request_is_cancelled(
+    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The send already landed, so a cancelled request must still record it:
+    a reservation left to lapse would let a retry send it again."""
+    key = pm_module._client_message_key("sess-1", "msg-a")
+    assert await claim_client_message("sess-1", "msg-a", "first") == "claimed"
+    accepting = asyncio.Event()
+    finish = asyncio.Event()
+    settle = fake_redis.eval
+
+    async def slow_eval(*args: Any) -> int:
+        accepting.set()
+        await finish.wait()
+        return await settle(*args)
+
+    monkeypatch.setattr(fake_redis, "eval", slow_eval)
+    request = asyncio.create_task(accept_client_message("sess-1", "msg-a", "first"))
+    await accepting.wait()
+
+    request.cancel()
+    await asyncio.sleep(0)
+    finish.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await request
+    assert fake_redis.strings[key] == "accepted"
+
+
+@pytest.mark.asyncio
+async def test_accepting_a_claim_finishes_when_the_request_is_cancelled_twice(
+    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A second cancellation while the accept is finishing must not cut it
+    short either, or the reservation is left to lapse."""
+    key = pm_module._client_message_key("sess-1", "msg-a")
+    assert await claim_client_message("sess-1", "msg-a", "first") == "claimed"
+    accepting = asyncio.Event()
+    finish = asyncio.Event()
+    settle = fake_redis.eval
+
+    async def slow_eval(*args: Any) -> int:
+        accepting.set()
+        await finish.wait()
+        return await settle(*args)
+
+    monkeypatch.setattr(fake_redis, "eval", slow_eval)
+    request = asyncio.create_task(accept_client_message("sess-1", "msg-a", "first"))
+    await accepting.wait()
+
+    request.cancel()
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    request.cancel()
+    await asyncio.sleep(0)
+    finish.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await request
+    assert fake_redis.strings[key] == "accepted"
+
+
+@pytest.mark.asyncio
+async def test_copy_during_reservation_waits_for_acceptance(
+    fake_redis: _FakeRedis, short_claim_wait: None
+) -> None:
+    """A copy is not told the send was taken until it has been."""
+    assert await claim_client_message("sess-1", "msg-a", "first") == "claimed"
+    copy = asyncio.create_task(claim_client_message("sess-1", "msg-a", "copy"))
+    await asyncio.sleep(0.02)
+    assert not copy.done()
+
+    await accept_client_message("sess-1", "msg-a", "first")
+
+    assert await copy == "accepted"
+
+
+@pytest.mark.asyncio
+async def test_copy_during_reservation_takes_the_id_when_the_first_is_refused(
+    fake_redis: _FakeRedis, short_claim_wait: None
+) -> None:
+    """The first copy was refused, so the send was never taken: the copy
+    carries it instead of being answered as a duplicate."""
+    assert await claim_client_message("sess-1", "msg-a", "first") == "claimed"
+    copy = asyncio.create_task(claim_client_message("sess-1", "msg-a", "copy"))
+    await asyncio.sleep(0.02)
+
+    await release_client_message("sess-1", "msg-a", "first")
+
+    assert await copy == "claimed"
+
+
+@pytest.mark.asyncio
+async def test_copy_gives_up_when_the_reservation_outlasts_the_wait(
+    fake_redis: _FakeRedis, short_claim_wait: None
+) -> None:
+    assert await claim_client_message("sess-1", "msg-a", "first") == "claimed"
+
+    assert await claim_client_message("sess-1", "msg-a", "copy") == "reserved"
+    assert await client_message_state("sess-1", "msg-a") == "reserved"
+
+
+@pytest.mark.asyncio
+async def test_client_message_claims_fail_open_on_redis_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dedup is best effort: a Redis blip must never block a send."""
+    monkeypatch.setattr(
+        pm_module, "get_redis_async", AsyncMock(side_effect=ConnectionError("down"))
+    )
+    assert await claim_client_message("sess-1", "msg-a", "first") == "claimed"
+    assert await client_message_state("sess-1", "msg-a") is None
+    await accept_client_message("sess-1", "msg-a", "first")
+    await release_client_message("sess-1", "msg-a", "first")

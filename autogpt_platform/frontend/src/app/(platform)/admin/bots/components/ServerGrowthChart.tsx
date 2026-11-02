@@ -1,3 +1,8 @@
+// TODO(tokens): chart and canvas colours, which have no tokens yet: #6366F1,
+// #EF4444.
+// The axis fontSize={12} props are Recharts' own API (a number, not a
+// class); 12px is the text-caption size, so they move with the chart tokens.
+
 import {
   Area,
   AreaChart,
@@ -40,7 +45,9 @@ export function ServerGrowthChart({ data }: Props) {
         >
           <defs>
             <linearGradient id="serverFill" x1="0" y1="0" x2="0" y2="1">
+              {/* oxlint-disable-next-line design-system/no-raw-colors -- indigo chart series has no role; info or brand would change the hue (deferred) */}
               <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+              {/* oxlint-disable-next-line design-system/no-raw-colors -- indigo chart series has no role; info or brand would change the hue (deferred) */}
               <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
             </linearGradient>
           </defs>

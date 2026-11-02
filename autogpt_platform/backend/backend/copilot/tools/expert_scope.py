@@ -8,6 +8,7 @@ expert's resources.
 """
 
 import logging
+from collections.abc import Iterable
 from enum import Enum
 from typing import Any, cast
 
@@ -313,17 +314,29 @@ def _satisfies_requirement(credential: Credentials, entry: dict[str, Any]) -> bo
 
 
 async def ungranted_credential_hint(
-    user_id: str, expert_id: str | None, providers: set[str]
+    user_id: str,
+    expert_id: str | None,
+    providers: set[str],
+    requirements: Iterable[dict[str, Any]] | None = None,
 ) -> str:
     """Point at credentials the account already has but the expert lacks.
 
     Appended to a missing-credentials message in expert chats so the user is
     asked to grant an existing integration instead of connecting a duplicate
-    the expert still could not use.
+    the expert still could not use. With *requirements* (the missing entries),
+    only a credential one of them would accept is named: granting one of the
+    wrong type or without the scopes would not let the next run through.
     """
     if expert_id is None or not providers:
         return ""
     candidates = await _ungranted_credentials(user_id, expert_id, providers)
+    if requirements is not None:
+        entries = list(requirements)
+        candidates = [
+            c
+            for c in candidates
+            if any(_satisfies_requirement(c, entry) for entry in entries)
+        ]
     if not candidates:
         return ""
     lines = "\n".join(

@@ -66,6 +66,8 @@ _UNINSTALL_EVENTS = {"app_uninstalled", "tokens_revoked"}
 
 # Matches both `<@U123>` and `<@U123|displayname>` mention forms.
 _USER_MENTION_RE = re.compile(r"<@(U[A-Z0-9]+)(?:\|[^>]+)?>")
+# A user (``<@U…>``/``<@W…>``) or user-group (``<!subteam^S…>``) mention.
+_ADDRESSEE_RE = re.compile(r"<@[UW][A-Z0-9]+(?:\|[^>]+)?>|<!subteam\^[A-Z0-9]+")
 
 # Slack channel/group/DM IDs — C/G/D + uppercase alphanumerics. Channel *names*
 # are lowercase-with-hyphens, so they never match; used by the proactive-post
@@ -130,7 +132,8 @@ class SlackAdapter(WebhookAdapter):
         return config.TYPING_REFRESH_SECONDS
 
     def looks_like_channel_id(self, ref: str) -> bool:
-        return bool(_CHANNEL_ID_RE.match(ref))
+        _, channel, _ = _decode_target(ref)
+        return bool(_CHANNEL_ID_RE.match(channel))
 
     def localize_markup(self, text: str) -> str:
         return to_mrkdwn(text)
@@ -273,7 +276,7 @@ class SlackAdapter(WebhookAdapter):
             # Keyed as the context keys it: a DM ("D…") bills to the user.
             None if channel_id.startswith("D") else team_id,
         )
-        if answer.reply is None:
+        if not answer.answered:
             if client and channel_id:
                 await client.chat_postEphemeral(
                     channel=channel_id, user=clicker_id, text=answer.text
@@ -302,8 +305,9 @@ class SlackAdapter(WebhookAdapter):
                 )
         if self._on_message_callback is None:
             return
-        ctx = await self._context_from_block_action(payload, answer.reply)
+        ctx = await self._context_from_block_action(payload, answer.reply or "")
         if ctx is not None:
+            ctx.follow = answer.follow
             await self._on_message_callback(ctx, self)
 
     async def _context_from_block_action(
@@ -447,6 +451,14 @@ class SlackAdapter(WebhookAdapter):
             username=await self._user_display_name(team, user),
             text=await self._strip_mentions(team, text),
             bot_mentioned=bot_mentioned,
+            # Our own mention routes through app_mention (bot_mentioned=True),
+            # so any user or user-group token left here names someone else.
+            addressed_to_others=(
+                not bot_mentioned and bool(_ADDRESSEE_RE.search(text))
+            ),
+            public_channel_id=None if is_dm else channel,
+            public_thread_id=None if is_dm else thread_ts,
+            post_channel_id=None if is_dm else target_channel_id,
             thread_history=thread_history,
             mentionable_users=await self._collect_mentionable_users(team, text, user),
             attachments=attachments,

@@ -255,7 +255,7 @@ class TeamsAdapter(WebhookAdapter):
         answer = await choices.answer_button(
             self._api, "teams", kind, token, index, ctx.user_id, ctx.server_id
         )
-        if answer.reply is None:
+        if not answer.answered:
             await self._post(conversation_id, {"type": "message", "text": answer.text})
             return
         # The token is already consumed, so the answer exists only here. The
@@ -276,7 +276,8 @@ class TeamsAdapter(WebhookAdapter):
         # from the activity yields False, and in a *channel* the turn is then
         # dropped by the handler's `if not ctx.bot_mentioned: return` — after
         # the ack above has already told the user their answer was accepted.
-        ctx.text = answer.reply
+        ctx.text = answer.reply or ""
+        ctx.follow = answer.follow
         ctx.bot_mentioned = True
         await self._on_message_callback(ctx, self)
 

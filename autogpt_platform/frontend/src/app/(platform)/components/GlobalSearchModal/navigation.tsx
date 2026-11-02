@@ -42,7 +42,7 @@ const NAV_TARGETS: NavTarget[] = [
     id: "nav:library",
     title: "Library",
     href: "/library",
-    keywords: ["agents", "my agents"],
+    keywords: ["agents", "my agents", "workflows", "my workflows"],
     icon: createIconComponent(Layers01Icon),
   },
   {
@@ -127,6 +127,7 @@ function matchesQuery(target: NavTarget, query: string): boolean {
 export function buildNavigationBucket(
   query: string,
   currentPath: string | null,
+  isBillingEnabled = true,
 ): {
   bucket: SearchCommandBucket | null;
   isExactMatch: boolean;
@@ -134,7 +135,9 @@ export function buildNavigationBucket(
   const normalized = query.trim().toLocaleLowerCase();
 
   const available = NAV_TARGETS.filter(
-    (target) => !isCurrentDestination(target, currentPath),
+    (target) =>
+      !isCurrentDestination(target, currentPath) &&
+      (isBillingEnabled || target.id !== "nav:billing"),
   );
   const matches = normalized
     ? available.filter((target) => matchesQuery(target, normalized))

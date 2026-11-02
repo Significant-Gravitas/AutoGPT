@@ -1,9 +1,11 @@
 "use client";
 
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { useGrantExpertCredentials } from "@/app/api/__generated__/endpoints/experts/experts";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useAyrshareConnect } from "@/components/contextual/CredentialsInput/components/AyrshareConnectButton/useAyrshareConnect";
 import { ConnectCredentialDialog } from "@/components/contextual/CredentialsInput/components/ConnectCredentialDialog/ConnectCredentialDialog";
 import { findSavedUserCredentialByProviderAndType } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
 import { filterSystemCredentials } from "@/components/contextual/CredentialsInput/helpers";
@@ -11,6 +13,7 @@ import { ProviderAvatar } from "@/components/contextual/IntegrationsPanel/compon
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import {
+  CredentialsActionsContext,
   CredentialsProvidersContext,
   type CredentialsProviderData,
   type CredentialsProvidersContextType,
@@ -20,6 +23,7 @@ import { useContext, useEffect, useRef, useState } from "react";
 import type { ConnectorRow as Row } from "./helpers";
 import { useExpertCredentialSelection } from "./useExpertCredentialSelection";
 import type { ExpertGrant } from "../SetupRequirementsCard/helpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   row: Row;
@@ -28,13 +32,19 @@ interface Props {
 type Grantable = ExpertGrant["credentials"][number];
 type SavedCredential = CredentialsProviderData["savedCredentials"][number];
 
+const AYRSHARE = "ayrshare";
 const UNUSABLE_ACCOUNT_ERROR =
   "That account is missing the access this needs. Try connecting again.";
 const GRANT_FAILED_ERROR = "Couldn't grant access. Try again.";
 
 export function ConnectorRow({ row }: Props) {
   const [isDialogOpen, setDialogOpen] = useState(false);
-  const [awaitingGrant, setAwaitingGrant] = useState(false);
+  // A sign-in finished without reporting its credential, so the account it
+  // added is found by diffing the provider list against `knownIds`.
+  const [awaitingNewAccount, setAwaitingNewAccount] = useState(false);
+  const [pendingCredentialId, setPendingCredentialId] = useState<string | null>(
+    null,
+  );
   const [grantError, setGrantError] = useState<string | null>(null);
   // A credential connected from this row while an expert is asking. It stays
   // here until its grant succeeds, so a failed grant is retried from the
@@ -45,17 +55,41 @@ export function ConnectorRow({ row }: Props) {
   // `null` while the provider's accounts were still loading, where a diff
   // would call every account the user already had new.
   const knownIds = useRef<Set<string> | null>(null);
+  // Credentials the user signed in with from this row, latest last. A re-auth
+  // updates the account in place and keeps its id, so the id alone cannot tell
+  // a renewed credential from the one the provider refused.
+  const [renewedIds, setRenewedIds] = useState<string[]>([]);
   const allProviders = useContext(CredentialsProvidersContext);
+  const credentialsActions = useContext(CredentialsActionsContext);
   const { mutateAsync: grantCredentials, isPending: isGranting } =
     useGrantExpertCredentials();
   const expertGrant = row.expertGrant;
   const grantedCredentials = useExpertCredentialSelection(row, allProviders);
+  const ayrshare = useAyrshareConnect();
+
+  const rejectedIds = row.rejectedCredentialIds.filter(
+    (id) => !renewedIds.includes(id),
+  );
+  // Still on file, but refused: never one to select or offer as usable.
+  const usableProviders = withoutCredentials(allProviders, rejectedIds);
+  // Only this provider's own refused account makes the row a Reconnect. A
+  // card's rejection reaches every row it asks for, and the account may have
+  // been deleted since. While one is on file nothing is picked for the user,
+  // not even after a sign-in whose account the list has yet to show: quietly
+  // running on another of their accounts could post as someone else.
+  const onFile = (ids: string[]) =>
+    !expertGrant &&
+    (allProviders?.[row.provider]?.savedCredentials ?? []).some((saved) =>
+      ids.includes(saved.id),
+    );
+  const hasRefusedAccount = onFile(row.rejectedCredentialIds);
+  const awaitingReconnect = onFile(rejectedIds);
 
   const savedCredential = findSavedUserCredentialByProviderAndType(
     row.schema.credentials_provider ?? [],
     row.schema.credentials_types ?? [],
     row.schema.credentials_scopes,
-    allProviders,
+    usableProviders,
     row.schema.discriminator_values,
   );
 
@@ -103,18 +137,58 @@ export function ConnectorRow({ row }: Props) {
     return true;
   }
 
-  useEffect(() => {
+  // Several saved accounts can satisfy one row. Nothing picks between them for
+  // the user: the row offers them, and the backend runs on exactly that one.
+  const pickable = expertGrant
+    ? []
+    : filterSystemCredentials(
+        usableProviders?.[row.provider]?.savedCredentials ?? [],
+      ).flatMap((saved) => grantableAmong(row, [saved]) ?? []);
+  // The selected credential itself must still fit: that another account
+  // does is no reason to keep this one and call it Connected.
+  const selectedStillFits = pickable.some(
+    (credential) => credential.id === row.selected?.id,
+  );
+
+  const syncSelection = useStableCallback(() => {
     if (expertGrant) {
-      if (!awaitingGrant || row.selected || !knownIds.current) return;
+      if (!awaitingNewAccount || row.selected || !knownIds.current) return;
       const fresh = newlyConnectedCredential(
         row,
         allProviders,
         knownIds.current,
       );
       if (!fresh) return;
-      setAwaitingGrant(false);
+      setAwaitingNewAccount(false);
       setConnected(fresh.grantable);
       void grant(fresh.grantable, fresh.account);
+      return;
+    }
+    if (awaitingNewAccount && knownIds.current) {
+      const fresh = newlyConnectedCredential(
+        row,
+        allProviders,
+        knownIds.current,
+      );
+      if (fresh) {
+        setAwaitingNewAccount(false);
+        setRenewedIds((ids) => [...ids, fresh.grantable.id]);
+        setPendingCredentialId(fresh.grantable.id);
+        return;
+      }
+      return;
+    }
+    if (pendingCredentialId) {
+      const signedIn = pickable.find((c) => c.id === pendingCredentialId);
+      if (!signedIn) return;
+      row.select({
+        id: signedIn.id,
+        provider: row.provider,
+        type: signedIn.type as CredentialsMetaInput["type"],
+        title: signedIn.title,
+      });
+      setPendingCredentialId(null);
+      row.onConnected(signedIn.id);
       return;
     }
     // Cards stream in one commit at a time, so a row's schema can widen after
@@ -122,40 +196,55 @@ export function ConnectorRow({ row }: Props) {
     // the row reads Connected while Proceed sends a credential missing the
     // scopes the later card asked for. `null` is the provider context's
     // "still loading" sentinel, where every lookup misses — clearing then
-    // would drop a good selection on every mount.
+    // would drop a good selection on every mount. A refused credential never
+    // fits, which is what turns a row holding one back into a Reconnect.
     if (allProviders && row.selected && !selectedStillFits) {
       row.select(undefined);
       return;
     }
-    if (row.selected || !savedCredential) return;
+    if (row.selected) return;
+    // The account just signed in with wins over the others that also fit.
+    // It is picked once the provider list has it, so it is judged on the
+    // scopes the backend stored rather than on what the sign-in reported.
+    const signedIn = pickable.find((c) => c.id === renewedIds.at(-1));
+    if (signedIn) {
+      row.select({
+        id: signedIn.id,
+        provider: row.provider,
+        type: signedIn.type as CredentialsMetaInput["type"],
+        title: signedIn.title,
+      });
+      return;
+    }
+    if (!savedCredential || hasRefusedAccount) return;
     row.select({
       id: savedCredential.id,
       provider: savedCredential.provider,
       type: savedCredential.type as CredentialsMetaInput["type"],
       title: savedCredential.title ?? undefined,
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- row.select is rebuilt each render by the card
+  });
+  // row.select is rebuilt each render by the card, so only these decide.
+  const rejectedKey = rejectedIds.join();
+  const renewedKey = renewedIds.join();
+  useEffect(() => {
+    syncSelection();
   }, [
     savedCredential?.id,
     row.selected,
     allProviders,
-    awaitingGrant,
+    awaitingNewAccount,
+    pendingCredentialId,
     expertGrant?.expertId,
+    rejectedKey,
+    renewedKey,
+    hasRefusedAccount,
   ]);
 
-  // Several saved accounts can satisfy one row. Nothing picks between them for
-  // the user: the row offers them, and the backend runs on exactly that one.
-  const pickable = expertGrant
-    ? []
-    : filterSystemCredentials(
-        allProviders?.[row.provider]?.savedCredentials ?? [],
-      ).flatMap((saved) => grantableAmong(row, [saved]) ?? []);
-  // The selected credential itself must still fit: that another account
-  // does is no reason to keep this one and call it Connected.
-  const selectedStillFits = pickable.some(
-    (credential) => credential.id === row.selected?.id,
-  );
-  const hasChoice = !expertGrant && !row.selected && pickable.length > 1;
+  const hasChoice =
+    !expertGrant &&
+    !row.selected &&
+    pickable.length > (hasRefusedAccount ? 0 : 1);
   // No saved account fits, and there are several that a fresh sign-in could
   // widen. Signing in without naming one requests only this card's scopes,
   // which the backend cannot merge into an account that holds others, so it
@@ -193,7 +282,16 @@ export function ConnectorRow({ row }: Props) {
     !row.hasUnansweredTarget &&
     (expertGrant
       ? grantedCredentials.isSelectionGranted
-      : Boolean(row.selected));
+      : !!row.selected && !rejectedIds.includes(row.selected.id));
+
+  // AutoGPT holds the Ayrshare account, so there is no key to ask for: the
+  // user links their networks on Ayrshare's own page. Having the managed
+  // profile says nothing about which networks are linked, so the row keeps
+  // offering that page once it is satisfied. Only an expert still waiting for
+  // its grant goes through the dialog.
+  const linksOnAyrshare =
+    row.provider === AYRSHARE &&
+    !(expertGrant && !isSatisfied && grantableOptions.length > 0);
 
   function openDialog() {
     knownIds.current = allProviders
@@ -202,42 +300,89 @@ export function ConnectorRow({ row }: Props) {
         )
       : null;
     setGrantError(null);
-    setAwaitingGrant(false);
+    setAwaitingNewAccount(false);
+    setPendingCredentialId(null);
     setDialogOpen(true);
   }
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2.5">
-      <span className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-zinc-100 bg-white p-1.5">
-        <ProviderAvatar id={row.provider} name={row.displayName} />
+    <div className="flex flex-wrap items-center gap-3 border-b border-separator px-4 py-5 last:border-b-0">
+      <span className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-separator bg-surface p-1.5">
+        <ProviderAvatar
+          id={row.iconId ?? row.provider}
+          name={row.displayName}
+        />
       </span>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm font-medium text-zinc-900">
+      <div className="flex min-w-32 flex-1 flex-col gap-1">
+        <Text
+          variant="body-medium-tight"
+          as="span"
+          tone="primary"
+          className="truncate"
+        >
           {row.displayName}
-        </span>
+        </Text>
         {grantError && !isDialogOpen ? (
-          <span className="truncate text-xs text-red-600">{grantError}</span>
+          <span className="truncate text-xs text-error-foreground">
+            {grantError}
+          </span>
         ) : expertGrant && !isSatisfied ? (
-          <span className="truncate text-xs text-zinc-500">
+          <Text
+            variant="small-tight"
+            as="span"
+            tone="muted"
+            className="truncate"
+          >
             {grantableOptions.length > 0
               ? "Needs this expert's access"
               : "This expert needs its own access"}
-          </span>
+          </Text>
         ) : (
           row.description && (
-            <span className="truncate text-xs text-zinc-500">
+            <Text
+              variant="small-tight"
+              as="span"
+              tone="muted"
+              className="truncate"
+            >
               {row.description}
-            </span>
+            </Text>
           )
+        )}
+        {isSatisfied && row.selected?.title && (
+          <Text
+            variant="small-tight"
+            as="span"
+            tone="muted"
+            className="break-words"
+          >
+            {row.selected.title}
+          </Text>
+        )}
+        {awaitingReconnect && (
+          <span className="text-xs text-error-foreground">
+            Access needs attention. Connect this account again.
+          </span>
         )}
       </div>
 
-      {isSatisfied ? (
-        <span className="flex shrink-0 items-center gap-1.5 text-sm font-medium text-zinc-500">
-          <Icon icon={CheckmarkCircle02Icon} size={16} />
-          {expertGrant ? "Granted" : "Connected"}
-        </span>
+      {isSatisfied && !linksOnAyrshare ? (
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <span className="flex items-center gap-1.5 text-sm font-medium text-foreground-tertiary">
+            <Icon icon={CheckmarkCircle02Icon} size={16} />
+            {expertGrant ? "Granted" : "Connected"}
+          </span>
+          {!expertGrant && (
+            <button
+              type="button"
+              onClick={openDialog}
+              className="text-xs text-foreground-tertiary underline underline-offset-2"
+            >
+              Change account
+            </button>
+          )}
+        </div>
       ) : (
         <Button
           variant="primary"
@@ -245,17 +390,20 @@ export function ConnectorRow({ row }: Props) {
           className="shrink-0"
           disabled={
             isGranting ||
+            ayrshare.isLoading ||
             Boolean(
               expertGrant && (grantedCredentials.isPending || !allProviders),
             )
           }
-          onClick={openDialog}
+          onClick={linksOnAyrshare ? ayrshare.connect : openDialog}
         >
-          {grantableOptions.length > 0
-            ? "Grant access"
-            : hasChoice
-              ? "Choose account"
-              : "Connect"}
+          {linksOnAyrshare
+            ? "Connect"
+            : buttonLabel({
+                canGrant: grantableOptions.length > 0,
+                awaitingReconnect,
+                hasChoice,
+              })}
         </Button>
       )}
 
@@ -272,7 +420,7 @@ export function ConnectorRow({ row }: Props) {
                 isPending: isGranting,
                 error: grantError,
               }
-            : hasChoice
+            : hasChoice || (isSatisfied && pickable.length > 0)
               ? {
                   credentials: pickable,
                   onUse: pick,
@@ -295,13 +443,25 @@ export function ConnectorRow({ row }: Props) {
         onClose={() => setDialogOpen(false)}
         onConnected={(credential) => {
           if (!expertGrant) {
-            row.onConnected();
+            // Without a reported credential nothing is known to be renewed,
+            // so every refused account stays refused until the diff finds
+            // the one this sign-in added.
+            row.select(undefined);
+            if (credential?.id) {
+              if (!grantableAmong(row, [toSavedCredential(credential)])) {
+                setGrantError(UNUSABLE_ACCOUNT_ERROR);
+                return;
+              }
+              credentialsActions?.upsert(row.provider, credential);
+              setRenewedIds((ids) => [...ids, credential.id]);
+              setPendingCredentialId(credential.id);
+            } else setAwaitingNewAccount(true);
             return;
           }
           // A flow that does not report its credential leaves the refresh to
           // find the new account.
           if (!credential) {
-            setAwaitingGrant(true);
+            setAwaitingNewAccount(true);
             return;
           }
           // Grant the reported credential directly: a re-auth that upgraded
@@ -344,6 +504,43 @@ function grantableAmong(
   return match
     ? { id: match.id, title: match.title ?? row.displayName, type: match.type }
     : null;
+}
+
+/** A refused account is named as such even when other accounts are offered
+ *  beside it: the dialog lists them and its Add new signs in again. */
+function buttonLabel({
+  canGrant,
+  awaitingReconnect,
+  hasChoice,
+}: {
+  canGrant: boolean;
+  awaitingReconnect: boolean;
+  hasChoice: boolean;
+}) {
+  if (canGrant) return "Grant access";
+  if (awaitingReconnect) return "Reconnect";
+  if (hasChoice) return "Choose account";
+  return "Connect";
+}
+
+/** `allProviders` without the credentials in `ids`. Keeps the `null` loading
+ *  sentinel, and the list itself when there is nothing to drop. */
+function withoutCredentials(
+  allProviders: CredentialsProvidersContextType | null,
+  ids: string[],
+): CredentialsProvidersContextType | null {
+  if (!allProviders || ids.length === 0) return allProviders;
+  return Object.fromEntries(
+    Object.entries(allProviders).map(([name, data]) => [
+      name,
+      data && {
+        ...data,
+        savedCredentials: data.savedCredentials.filter(
+          (credential) => !ids.includes(credential.id),
+        ),
+      },
+    ]),
+  );
 }
 
 /** The API reports absent fields as null; the provider list omits them. */

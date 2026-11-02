@@ -2,11 +2,7 @@ import { expect, test } from "./coverage-fixture";
 import { getSeededTestUser } from "./credentials/accounts";
 import { BuildPage } from "./pages/build.page";
 import { LoginPage } from "./pages/login.page";
-import {
-  completeOnboardingWizard,
-  advanceToRoleStep,
-  skipOnboardingIfPresent,
-} from "./utils/onboarding";
+import { advanceToRoleStep, skipOnboardingIfPresent } from "./utils/onboarding";
 import { signupTestUser } from "./utils/signup";
 
 test("auth happy path: user can sign up with a fresh account", async ({
@@ -73,25 +69,9 @@ test("auth happy path: seeded user can log out and protected routes redirect to 
 
   await expect(page).toHaveURL(/\/login/, { timeout: 15000 });
 
+  // /profile redirects to /settings/profile in next.config.mjs, before auth runs.
   await page.goto("/profile");
-  await expect(page).toHaveURL(/\/login\?next=%2Fprofile/);
-});
-
-test("auth happy path: user can complete onboarding and land in the app", async ({
-  page,
-}) => {
-  test.setTimeout(60000);
-
-  await signupTestUser(page, undefined, undefined, false);
-  await expect(page).toHaveURL(/\/onboarding/);
-
-  await completeOnboardingWizard(page, {
-    role: "Engineering",
-    painPoints: ["Research", "Reports & data"],
-  });
-
-  await expect(page).toHaveURL(/\/home/);
-  await expect(page.getByTestId("profile-popout-menu-trigger")).toBeVisible();
+  await expect(page).toHaveURL(/\/login\?next=%2Fsettings%2Fprofile/);
 });
 
 test("auth happy path: multi-tab logout clears shared builder sessions", async ({

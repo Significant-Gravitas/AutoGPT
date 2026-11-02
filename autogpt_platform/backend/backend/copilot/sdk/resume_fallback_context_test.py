@@ -1,6 +1,6 @@
 """Later model calls keep the first-turn context when the first message is gone.
 
-The skills index, memory, expert/team workflows and user context are injected
+The skills index, expert/team workflows and user context are injected
 into the first user message only; later turns rely on ``--resume`` to carry
 them. Two things take that message away (SECRT-2801):
 
@@ -117,7 +117,7 @@ def _context_patches(*, resume_hit: bool) -> list[tuple[str, dict]]:
             f"{_SVC}.build_session_context",
             dict(return_value=f"session_id: {_SESSION_ID}"),
         ),
-        (f"{_SVC}.is_enabled_for_user", dict(return_value=True)),
+        (f"{_SVC}._graphiti_enabled", dict(return_value=False)),
         (f"{_SVC}.fetch_warm_context", dict(return_value=_MEMORY)),
         # The ingest runs as a background task that outlives these patches.
         (f"{_SVC}._graphiti_ingest_allowed", dict(return_value=False)),
@@ -182,7 +182,6 @@ async def _run_turn(session: ChatSession, client_factory, *, resume_hit: bool) -
 
 _FIRST_TURN_BLOCKS = (
     _SKILLS_INDEX,
-    f"<memory_context>\n{_MEMORY}\n</memory_context>",
     "<team_context>\nMax owns the weekly-report workflow.",
     f"<user_context>\n{_UNDERSTANDING}\nPlan: PRO\n</user_context>",
 )

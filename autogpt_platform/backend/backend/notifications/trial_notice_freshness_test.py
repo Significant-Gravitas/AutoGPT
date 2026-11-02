@@ -1,8 +1,10 @@
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.data.notifications import NotificationResult
 from backend.notifications import trial as notices
 from backend.notifications import trial_test as fixtures
 
@@ -123,6 +125,75 @@ async def test_current_notice_survives_authoritative_refresh(trial, kind, change
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "plan_changes,data_changes,expected",
+    [
+        ({}, {}, "current"),
+        ({"label": "Pro · monthly"}, {}, "current"),
+        ({"price_display": "$20.00 / month"}, {}, "current"),
+        ({"price_display": "$30.00 USD / month"}, {}, "obsolete"),
+        (
+            {"cycle": "yearly", "cycle_noun": "year", "label": "Pro — yearly"},
+            {},
+            "obsolete",
+        ),
+        ({"name": "Max", "label": "Max — monthly"}, {}, "obsolete"),
+        ({}, {"ends_label": "Obsolete end date"}, "obsolete"),
+    ],
+)
+async def test_predeploy_trial_format_preserves_freshness_checks(
+    trial, plan_changes, data_changes, expected
+):
+    data = notices.trial_notice_data(trial, "started", "Sam")
+    data.notice_key = notices.trial_notice_key(trial, "started")
+    data.plan = data.plan.model_copy(
+        update={
+            "label": "Pro — monthly",
+            "price_display": "$20.00 USD / month",
+            **plan_changes,
+        }
+    )
+    data = data.model_copy(update=data_changes)
+    original = data.model_copy(deep=True)
+    database = MagicMock(
+        get_subscription_trial=AsyncMock(return_value=trial),
+        sync_subscription_from_stripe=AsyncMock(),
+    )
+    with (
+        patch.object(notices, "credit_db", return_value=database),
+        patch.object(
+            notices, "stripe_call", AsyncMock(return_value=subscription(trial))
+        ),
+    ):
+        assert await notices.trial_notice_disposition(trial.user_id, data) == expected
+    assert data == original
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "currency,price", [("cad", "20.00 CAD / month"), ("jpy", "2,000 JPY / month")]
+)
+async def test_predeploy_trial_currency_code_remains_current(trial, currency, price):
+    trial.offer = trial.offer.model_copy(update={"currency": currency})
+    data = notices.trial_notice_data(trial, "started", "Sam")
+    data.notice_key = notices.trial_notice_key(trial, "started")
+    data.plan = data.plan.model_copy(
+        update={"label": "Pro — monthly", "price_display": price}
+    )
+    database = MagicMock(
+        get_subscription_trial=AsyncMock(return_value=trial),
+        sync_subscription_from_stripe=AsyncMock(),
+    )
+    with (
+        patch.object(notices, "credit_db", return_value=database),
+        patch.object(
+            notices, "stripe_call", AsyncMock(return_value=subscription(trial))
+        ),
+    ):
+        assert await notices.trial_notice_disposition(trial.user_id, data) == "current"
+
+
+@pytest.mark.asyncio
 async def test_unidentified_legacy_payload_cannot_bypass_freshness_check(trial):
     data = notices.trial_notice_data(trial, "started", "Sam")
     with patch.object(notices, "credit_db") as database:
@@ -166,3 +237,101 @@ async def test_delivery_marks_changed_terms_obsolete_without_sending(trial):
         ),
     ):
         assert await notices.trial_notice_disposition(trial.user_id, data) == "obsolete"
+
+
+async def _notify_ended(trial, others: dict[str, list[str]]):
+    """`others` maps a Stripe status to the customer's subscription ids in it;
+    the list double honours the status filter the way Stripe does."""
+    raw = subscription(trial)
+
+    async def stripe_call(fn, *args, **kwargs):
+        if fn != notices.stripe.Subscription.list_async:
+            return raw
+        assert kwargs["customer"] == trial.customer_id
+        status = kwargs["status"]
+        ids = [
+            sub_id
+            for key, subs in others.items()
+            if status in (key, "all")
+            for sub_id in subs
+        ]
+        return SimpleNamespace(
+            data=[SimpleNamespace(id=sub_id) for sub_id in ids], has_more=False
+        )
+
+    user = SimpleNamespace(id=trial.user_id, name="Sam", email="sam@example.com")
+    with (
+        patch.object(notices, "stripe_call", AsyncMock(side_effect=stripe_call)),
+        patch.object(
+            notices,
+            "credit_db",
+            return_value=MagicMock(
+                get_subscription_trial=AsyncMock(return_value=trial)
+            ),
+        ),
+        patch.object(
+            notices,
+            "user_db",
+            return_value=MagicMock(get_user_by_id=AsyncMock(return_value=user)),
+        ),
+        patch.object(notices, "claim_once", AsyncMock(return_value=True)) as claim,
+        patch.object(notices, "queue_trial_audience_change", AsyncMock()) as audience,
+        patch.object(notices, "leave_trial_group", AsyncMock()) as leave,
+        patch.object(
+            notices,
+            "queue_notification_async",
+            AsyncMock(return_value=NotificationResult(success=True)),
+        ) as queue,
+        patch.object(notices, "_track_billing_event") as track,
+    ):
+        handled = await notices.notify_trial(raw, "ended")
+    return handled, SimpleNamespace(
+        claim=claim, audience=audience, leave=leave, queue=queue, track=track, user=user
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "others",
+    [{"active": ["sub_max"]}, {"trialing": ["sub_other"]}],
+    ids=["active-plan", "trialing-plan"],
+)
+async def test_a_trial_ended_by_buying_another_plan_sends_nothing(trial, others):
+    """Buying another plan while cancel-pending ends the trial subscription.
+    No "trial ended" email, no trial_canceled overwrite of the new plan's
+    MailerLite status, no trial_ended event. The person still leaves the
+    MailerLite trial group."""
+    trial.status = "canceled"
+    trial.cancel_at_period_end = True
+    handled, sent = await _notify_ended(trial, others)
+    assert handled
+    sent.leave.assert_awaited_once_with(sent.user)
+    sent.claim.assert_not_awaited()
+    sent.audience.assert_not_awaited()
+    sent.queue.assert_not_awaited()
+    sent.track.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "others",
+    [
+        {},
+        {"active": ["sub_1"], "trialing": ["sub_1"]},
+        {"canceled": ["sub_old"], "past_due": ["sub_due"]},
+    ],
+    ids=["no-other-plan", "only-itself", "none-live"],
+)
+async def test_a_cancel_pending_trial_reaching_its_end_sends_the_ended_notice(
+    trial, others
+):
+    trial.status = "canceled"
+    trial.cancel_at_period_end = True
+    handled, sent = await _notify_ended(trial, others)
+    assert handled
+    sent.leave.assert_not_awaited()
+    sent.audience.assert_awaited_once()
+    assert sent.audience.await_args.args[0] == "ended"
+    sent.queue.assert_awaited_once()
+    assert sent.queue.await_args.args[0].data.kind == "ended"
+    assert sent.track.call_args.args[0] == "trial_ended"

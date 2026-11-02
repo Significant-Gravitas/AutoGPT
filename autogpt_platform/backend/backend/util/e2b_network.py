@@ -1,8 +1,9 @@
 """One door for every E2B box: where its egress is pinned.
 
 Every ``AsyncSandbox.create`` and ``.connect`` in the backend goes through
-``create_sandbox`` / ``connect_sandbox`` here; ``e2b_network_test`` fails on
-any that does not.  That is the chokepoint at which a box's network is set:
+``create_sandbox`` / ``connect_sandbox`` here, and a reattach to a running
+command through ``reattach_command``; ``e2b_network_test`` fails on any that
+does not.  That is the chokepoint at which a box's network is set:
 the credential swap proxy (SECRT-2651) that every box will egress through,
 so that the model never holds a real credential and nothing dials out
 around the proxy.
@@ -38,9 +39,10 @@ import hashlib
 import json
 import logging
 import secrets
-from typing import Any, Literal, Optional, TypeVar, cast
+from typing import Any, Awaitable, Callable, Literal, Optional, TypeVar, cast
 
-from e2b import AsyncSandbox
+from e2b import AsyncCommandHandle, AsyncSandbox
+from e2b.exceptions import NotFoundException
 from e2b.sandbox.sandbox_api import (
     SandboxEgressProxyOpts,
     SandboxNetworkOpts,
@@ -48,13 +50,22 @@ from e2b.sandbox.sandbox_api import (
 )
 from pydantic import BaseModel, ConfigDict
 
+from backend.data.model import APIKeyCredentials
 from backend.data.redis_client import get_redis_async
+from backend.integrations.credentials_store import is_system_credential
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
+# One JSON line per pin: which box, for whom, and which of the user's accounts
+# its requests may be given.  Never a value; the proxy's own audit has the
+# requests themselves.
+audit_logger = logging.getLogger("backend.egress_audit")
 
 _CREDENTIAL_KEY_PREFIX = "e2b:egress:cred:"
 _BOX_KEY_PREFIX = "e2b:egress:box:"
+# The box's provider ceiling, apart from its credential: a pause revokes the
+# credential, and the ceiling must outlive it (see ``recorded_providers``).
+_CEILING_KEY_PREFIX = "e2b:egress:ceiling:"
 # A credential lives as long as a paused box can (E2B's paused-sandbox
 # lifetime); every reconnect replaces it anyway.
 _CREDENTIAL_TTL = 48 * 3600
@@ -64,6 +75,23 @@ _LOCK_KEY_PREFIX = "e2b:egress:lock:"
 # the holder dies mid-way.
 _ROTATION_LOCK_TTL = 60
 _ROTATION_LOCK_WAIT = 30
+# Block runs in flight on one kept box: two nodes can be fed one sandbox_id.
+_HOLDERS_KEY_PREFIX = "e2b:egress:holders:"
+# Past E2B's 24 h cap on a box's running time, so it never lapses mid-run. Every
+# hold re-arms it: a count a killed run leaves behind lapses only this long unused.
+_HOLDERS_TTL = 24 * 3600 + 15 * 60
+# One script each, so a count is never left without its expiry and a hold
+# landing between the decrement and the delete is never wiped.
+_HOLD_SCRIPT = (
+    'local n = redis.call("incr", KEYS[1]) '
+    'redis.call("expire", KEYS[1], ARGV[1]) '
+    "return n"
+)
+_RELEASE_SCRIPT = (
+    'local n = redis.call("decr", KEYS[1]) '
+    'if n <= 0 then redis.call("del", KEYS[1]) return 0 end '
+    "return n"
+)
 
 S = TypeVar("S", bound=AsyncSandbox)
 
@@ -77,6 +105,11 @@ class EgressOwner(BaseModel):
     (``swaps``): a block runs a graph someone else may have written, and a
     marketplace agent must not get to act with the GitHub account of whoever
     runs it.
+
+    *providers* is the ceiling on which of the user's providers the box may
+    use (the turn's ``CopilotPermissions``); ``None`` means every one.  It is
+    recorded with the credential, and the backend's swap service refuses a
+    value for any provider outside it.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -84,6 +117,7 @@ class EgressOwner(BaseModel):
     kind: Literal["session", "expert", "block"]
     id: str
     user_id: Optional[str] = None
+    providers: Optional[tuple[str, ...]] = None
 
     @property
     def label(self) -> str:
@@ -145,7 +179,7 @@ async def create_sandbox(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any
         raise
     try:
         await _remember(credential, owner, sandbox_id=sandbox.sandbox_id)
-        await _bind(sandbox.sandbox_id, credential.username)
+        await _bind(sandbox.sandbox_id, credential.username, owner)
     except BaseException:
         # The box is on the meter and its handle is about to be lost: kill
         # it rather than leak it, and take its credential with it.
@@ -159,6 +193,7 @@ async def create_sandbox(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any
         sandbox.sandbox_id,
         owner.label,
     )
+    _audit_pin("created", sandbox.sandbox_id, owner)
     return sandbox
 
 
@@ -168,6 +203,7 @@ async def connect_sandbox(
     owner: EgressOwner,
     *,
     apply_network: bool = True,
+    owner_at_pin: Optional[Callable[[EgressOwner], Awaitable[EgressOwner]]] = None,
     **kwargs: Any,
 ) -> S:
     """Reconnect to a box, re-pinning its egress under a fresh credential.
@@ -190,6 +226,10 @@ async def connect_sandbox(
     if address is None or not apply_network:
         return sandbox
     async with _rotation_lock(sandbox_id):
+        if owner_at_pin is not None:
+            # Decided under the lock, so concurrent pins of one box apply in
+            # the order they were decided: a later one sees every earlier one.
+            owner = await owner_at_pin(owner)
         credential = _mint()
         await _remember(credential, owner, sandbox_id=sandbox_id)
         try:
@@ -208,11 +248,133 @@ async def connect_sandbox(
                         sandbox.pause(), timeout=_KILL_TIMEOUT_SECONDS
                     )
             raise
-        await _bind(sandbox_id, credential.username)
+        await _bind(sandbox_id, credential.username, owner)
     logger.info(
         "[E2B] Reconnected %.12s for %s, egress re-pinned", sandbox_id, owner.label
     )
+    _audit_pin("reconnected", sandbox_id, owner)
     return sandbox
+
+
+async def reattach_command(
+    sandbox: AsyncSandbox, pid: int, **kwargs: Any
+) -> AsyncCommandHandle:
+    """Reattach to a process still running on a box the caller already holds.
+
+    Not a box connect: it opens one more stream to the box's own process
+    service, like ``commands.run`` does, on a box that ``create_sandbox`` or
+    ``connect_sandbox`` has already pinned.  It creates nothing and changes no
+    network: the box keeps the egress that create or connect pinned, and
+    there is no credential to rotate.  Every other keyword goes to
+    ``commands.connect``.
+    """
+    return await sandbox.commands.connect(pid, **kwargs)
+
+
+def uses_platform_e2b_key(credentials: APIKeyCredentials) -> bool:
+    """Whether a run's boxes are created on the operator's E2B key, and so
+    must be paused when kept.  A credential with no key is one, because the
+    SDK reads ``api_key or $E2B_API_KEY``; a blank one counts to fail safe."""
+    return (
+        is_system_credential(credentials.id)
+        or not credentials.api_key.get_secret_value().strip()
+    )
+
+
+async def hold_sandbox(sandbox_id: str) -> None:
+    """Count a block run on a box it keeps, before the run connects to it, so
+    another run's ``release_sandbox`` leaves the box running under this one.
+    Under the box's rotation lock, so it waits out a pause already decided."""
+    async with contextlib.AsyncExitStack() as locked:
+        await _lock_if_possible(locked, sandbox_id)
+        try:
+            redis = await get_redis_async()
+            await redis.eval(
+                _HOLD_SCRIPT, 1, _HOLDERS_KEY_PREFIX + sandbox_id, _HOLDERS_TTL
+            )
+        except Exception:
+            # Uncounted, this run still pauses the box when it releases it.
+            logger.warning(
+                f"[E2B] Could not count a run on {sandbox_id:.12}", exc_info=True
+            )
+
+
+async def release_sandbox(
+    sandbox_id: str, sandbox: Optional[AsyncSandbox], **opts: Any
+) -> None:
+    """Uncount a block run and pause the box unless another run still holds
+    it, under the box's rotation lock.  Without a handle (the run's connect
+    failed) the box is paused by id, with *opts* as the SDK's API options.  A
+    count that cannot be read pauses the box too.  Never raises: a block
+    awaits this in its ``finally``."""
+    async with contextlib.AsyncExitStack() as locked:
+        await _lock_if_possible(locked, sandbox_id)
+        try:
+            redis = await get_redis_async()
+            remaining = int(
+                await redis.eval(_RELEASE_SCRIPT, 1, _HOLDERS_KEY_PREFIX + sandbox_id)
+            )
+        except Exception:
+            # A kept box must not stay running, even at the cost of pausing
+            # one another run is still executing on.
+            logger.warning(
+                f"[E2B] Could not uncount a run on {sandbox_id:.12}, pausing it",
+                exc_info=True,
+            )
+            remaining = 0
+        if remaining > 0:
+            logger.info(
+                f"[E2B] {sandbox_id:.12} is still held by {remaining} run(s), "
+                "leaving it running"
+            )
+            return
+        # Awaited from a block's ``finally``: raising here would replace the
+        # run's own result with this failure, and lose it.
+        try:
+            if sandbox is not None:
+                await pause_sandbox(sandbox)
+            else:
+                with contextlib.suppress(Exception):
+                    await asyncio.wait_for(
+                        AsyncSandbox.pause(sandbox_id, **opts),
+                        timeout=_KILL_TIMEOUT_SECONDS,
+                    )
+                await forget_sandbox(sandbox_id)
+        except Exception:
+            logger.exception(
+                f"[E2B] Could not stop {sandbox_id:.12} after its last run"
+            )
+
+
+async def _lock_if_possible(stack: contextlib.AsyncExitStack, sandbox_id: str) -> None:
+    """Hold the box's rotation lock until *stack* closes.  Without it the
+    caller goes on unlocked: a count kept unlocked beats one dropped."""
+    try:
+        await stack.enter_async_context(_rotation_lock(sandbox_id))
+    except Exception:
+        logger.warning(
+            f"[E2B] Could not lock {sandbox_id:.12}, going on unlocked",
+            exc_info=True,
+        )
+
+
+async def pause_sandbox(sandbox: AsyncSandbox) -> None:
+    """Pause a box and revoke its proxy credential; ``connect_sandbox`` resumes
+    it under a fresh one.  A box that will not pause is killed instead, and one
+    that is already gone is only revoked."""
+    try:
+        await asyncio.wait_for(sandbox.pause(), timeout=_KILL_TIMEOUT_SECONDS)
+    except NotFoundException:
+        pass
+    except Exception:
+        logger.warning(
+            f"[E2B] Could not pause {sandbox.sandbox_id:.12}, killing it",
+            exc_info=True,
+        )
+        await kill_sandbox(sandbox)
+        return
+    # Unlike a kill, the provider ceiling stays for the box's next re-pin.
+    await forget_sandbox(sandbox.sandbox_id)
 
 
 async def kill_sandbox(sandbox: AsyncSandbox) -> None:
@@ -221,6 +383,10 @@ async def kill_sandbox(sandbox: AsyncSandbox) -> None:
     since the box may still be running."""
     await sandbox.kill()
     await forget_sandbox(sandbox.sandbox_id)
+    # Nothing will re-pin a killed box; its ceiling would only wait out its TTL.
+    with contextlib.suppress(Exception):
+        redis = await get_redis_async()
+        await redis.delete(_CEILING_KEY_PREFIX + sandbox.sandbox_id)
 
 
 async def forget_sandbox(sandbox_id: str) -> None:
@@ -228,7 +394,8 @@ async def forget_sandbox(sandbox_id: str) -> None:
 
     Nothing will present it again (a resume mints a fresh one), and until its
     TTL it would keep naming this owner to the proxy.  Best effort: a failure
-    here must not fail the pause or kill it follows.
+    here must not fail the pause or kill it follows.  The box's provider
+    ceiling stays: the next re-pin of a paused box keeps it.
     """
     # Not skipped while no proxy is configured: a box pinned before the
     # address was removed still has a credential on record.
@@ -253,6 +420,53 @@ async def credential_record(username: str) -> Optional[dict[str, Any]]:
     if not raw:
         return None
     return json.loads(raw.decode() if isinstance(raw, bytes) else raw)
+
+
+async def recorded_providers(sandbox_id: str) -> Optional[tuple[str, ...]]:
+    """The provider ceiling the box was last pinned with: what a re-pin that
+    has no ceiling of its own to give keeps, so that it never widens one.
+
+    Read from its own key, not the credential record, because a pause revokes
+    the credential and the box's ceiling must survive that.  With the proxy on,
+    every box is pinned when it is created, so a missing record has expired (a
+    box paused longer than its TTL) or cannot be read: either way no provider,
+    the safe side, until the next turn pins the box with its own.
+    """
+    try:
+        redis = await get_redis_async()
+        raw = await redis.get(_CEILING_KEY_PREFIX + sandbox_id)
+    except Exception:
+        logger.warning(
+            "[E2B] Could not read the ceiling of %.12s; keeping none",
+            sandbox_id,
+            exc_info=True,
+        )
+        return ()
+    if not raw:
+        return ()
+    providers = json.loads(raw.decode() if isinstance(raw, bytes) else raw)
+    return None if providers is None else tuple(providers)
+
+
+def _audit_pin(event: str, sandbox_id: str, owner: EgressOwner) -> None:
+    """Record whose credentials a box's requests may be given from now on:
+    the per-box half of the audit trail, the proxy's lines being the
+    per-request half."""
+    audit_logger.info(
+        json.dumps(
+            {
+                "event": event,
+                "sandbox_id": sandbox_id,
+                "owner": owner.label,
+                "user_id": owner.user_id,
+                "swaps": owner.swaps,
+                "providers": (
+                    sorted(owner.providers) if owner.providers is not None else "all"
+                ),
+            },
+            sort_keys=True,
+        )
+    )
 
 
 def _mint() -> ProxyCredential:
@@ -287,6 +501,8 @@ async def _remember(
         "user_id": owner.user_id,
         # Absent or false means the proxy swaps nothing for this box.
         "swaps": owner.swaps,
+        # None: every provider.  Read by the backend, never by the box.
+        "providers": list(owner.providers) if owner.providers is not None else None,
         "sandbox_id": sandbox_id,
         "secret_sha256": secret_digest(credential.secret),
     }
@@ -334,11 +550,16 @@ async def _rotation_lock(sandbox_id: str):
         await lock.release()
 
 
-async def _bind(sandbox_id: str, username: str) -> None:
-    """Make *username* the box's current credential and forget its previous one."""
+async def _bind(sandbox_id: str, username: str, owner: EgressOwner) -> None:
+    """Make *username* the box's current credential and forget its previous
+    one, and record the ceiling it was pinned with."""
     redis = await get_redis_async()
     key = _BOX_KEY_PREFIX + sandbox_id
     previous = await _bound_username(sandbox_id)
     await redis.set(key, username, ex=_CREDENTIAL_TTL)
+    providers = list(owner.providers) if owner.providers is not None else None
+    await redis.set(
+        _CEILING_KEY_PREFIX + sandbox_id, json.dumps(providers), ex=_CREDENTIAL_TTL
+    )
     if previous and previous != username:
         await redis.delete(_CREDENTIAL_KEY_PREFIX + previous)

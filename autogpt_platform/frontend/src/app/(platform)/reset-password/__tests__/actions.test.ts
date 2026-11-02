@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const requestPasswordResetMock = vi.fn();
 const resetPasswordMock = vi.fn();
 const redirectMock = vi.fn();
+const requestHeaders = new Headers({ "x-forwarded-for": "203.0.113.7" });
 
 vi.mock("@/lib/auth/auth", () => ({
   auth: {
@@ -21,6 +22,10 @@ vi.mock("@sentry/nextjs", () => ({
     _options: object,
     fn: () => unknown,
   ) => fn(),
+}));
+
+vi.mock("next/headers", () => ({
+  headers: vi.fn(async () => requestHeaders),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -54,6 +59,7 @@ describe("sendResetEmail", () => {
         email: "user@example.com",
         redirectTo: "https://runtime.agpt.test/reset-password",
       },
+      headers: requestHeaders,
     });
     expect(result).toBeUndefined();
   });
@@ -70,6 +76,7 @@ describe("sendResetEmail", () => {
         email: "user@example.com",
         redirectTo: "https://build.agpt.test/reset-password",
       },
+      headers: requestHeaders,
     });
   });
 
@@ -85,6 +92,7 @@ describe("sendResetEmail", () => {
         email: "user@example.com",
         redirectTo: "http://localhost:3000/reset-password",
       },
+      headers: requestHeaders,
     });
   });
 
