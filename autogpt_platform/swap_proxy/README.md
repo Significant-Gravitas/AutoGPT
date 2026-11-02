@@ -115,8 +115,10 @@ for gigabytes cost the proxy no more than 20 MiB and are then turned away:
 Brotli (`br`) is never decoded: a box can send a `br` body to any host, and
 nothing it needs sends one, so the proxy does not run a Brotli decoder on a
 box's bytes. So that responses still arrive readable, a box that gets swaps has
-`br` taken out of its `Accept-Encoding` (and `br;q=0` added); servers answer in
-gzip or uncompressed instead.
+`br` taken out of its `Accept-Encoding` (and `br;q=0` added) on requests to a
+host a credential is bound to, whose responses are scrubbed (and on every
+request while the bindings cannot be read); those servers answer in gzip or
+uncompressed instead. Other hosts get the header as the box sent it.
 
 A request body the proxy will not decode may or may not name a credential;
 nobody can say without decoding it. It goes out untouched, which is the safe

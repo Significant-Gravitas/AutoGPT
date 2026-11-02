@@ -51,7 +51,8 @@ first, for any body not known to fit:
   ``.content``.  Past that, or in an encoding that cannot be decoded within a
   bound, a response is refused like one too large to scrub, and a request
   body goes out as it is, audited as not swapped.  Brotli is never decoded,
-  so a box that gets swaps asks servers not to send it (``refuse_brotli``).
+  so a box that gets swaps asks a bound host not to send it
+  (``refuse_brotli``).
 
 The audit records a swap only for bytes that have not left yet.
 
@@ -453,7 +454,7 @@ class SwapProxyAddon:
             self._audit(owner, request.pretty_host, "refused-request", reason="no-sni")
             flow.kill()
             return
-        if owner.swap_user_id is not None:
+        if owner.swap_user_id is not None and await self._may_scrub(flow):
             refuse_brotli(request.headers)
         size = known_size(request, None)
         if size is not None and size <= MAX_BODY_BYTES:
@@ -726,6 +727,21 @@ class SwapProxyAddon:
             credentials += lookup.credentials.values()
         swapped: dict[str, Credential] = flow.metadata.get(_SWAPPED, {})
         return [*credentials, *swapped.values()]
+
+    async def _may_scrub(self, flow: http.HTTPFlow) -> bool:
+        """Could this flow's response be scrubbed: is a credential bound to the
+        host it names or the one its connection named?  Yes when the bindings
+        cannot be read, as the scrub then refuses rather than passes."""
+        hosts = {flow.request.pretty_host.lower()}
+        if flow.server_conn.sni:
+            hosts.add(flow.server_conn.sni.lower())
+        try:
+            for host in hosts:
+                if await self._source.bound_names(host):
+                    return True
+        except SourceUnavailable:
+            return True
+        return False
 
     async def _quota_verdict(
         self, flow: http.HTTPFlow, owner: Owner, host: str, swap: RequestSwap

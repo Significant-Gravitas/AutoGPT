@@ -810,6 +810,35 @@ async def test_only_a_box_that_gets_swaps_asks_for_no_brotli(swaps, sent):
     assert flow.request.headers["accept-encoding"] == sent
 
 
+@pytest.mark.parametrize(
+    "bindings_down, sent", [(False, "br, identity;q=0"), (True, "identity;q=0, br;q=0")]
+)
+async def test_a_host_with_nothing_bound_gets_the_codings_the_box_offered(
+    bindings_down, sent
+):
+    """Its response is never scrubbed, so nothing is refused for being
+    Brotli.  While the bindings cannot be read the scrub refuses, so the
+    header is rewritten then."""
+    source = Source()
+    source.bindings_down = bindings_down
+    flow = tflow.tflow()
+    addon = addon_for(flow, source=source)
+    flow.request.host = flow.request.headers["host"] = "example.com"
+    flow.server_conn.sni = "example.com"
+    flow.request.headers["accept-encoding"] = "br, identity;q=0"
+    await addon.requestheaders(flow)
+    assert flow.request.headers["accept-encoding"] == sent
+
+
+async def test_a_bound_sni_is_enough_to_ask_for_no_brotli():
+    flow = tflow.tflow()
+    addon = addon_for(flow)
+    flow.request.host = flow.request.headers["host"] = "example.com"
+    flow.request.headers["accept-encoding"] = "gzip, br"
+    await addon.requestheaders(flow)
+    assert flow.request.headers["accept-encoding"] == "gzip, br;q=0"
+
+
 async def test_a_brotli_request_body_goes_out_as_it_is(caplog, no_brotli_decoder):
     """Not decoded, so not swapped; the head still is."""
     body = brotli.compress(b'{"token": "hsurr:github"}')
