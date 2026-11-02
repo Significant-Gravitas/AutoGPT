@@ -312,7 +312,7 @@ async def unsubscribe(email: str, fields: Fields | None = None) -> None:
 async def find_subscriber_id(email: str) -> str | None:
     """The subscriber's MailerLite ID, None when MailerLite has nobody by it."""
     _require_token()
-    return await _find_subscriber_id(email)
+    return await _find_subscriber_id(email, _erasure_client())
 
 
 async def forget_subscriber(email: str) -> bool:
@@ -325,7 +325,7 @@ async def forget_subscriber(email: str) -> bool:
     subscriber_id = await find_subscriber_id(email)
     if subscriber_id is None:
         return False
-    response = await _client().post(
+    response = await _erasure_client().post(
         f"{API_BASE}/subscribers/{subscriber_id}/forget", headers=_headers()
     )
     # 404: removed since the lookup, which is the state we want.
@@ -456,12 +456,12 @@ def _payload(fields: Fields) -> dict[str, str | None]:
     return {SubscriberField(key).value: value for key, value in fields.items()}
 
 
-async def _find_subscriber_id(email: str) -> str | None:
-    return (await _find_subscriber(email) or {}).get("id")
+async def _find_subscriber_id(email: str, client: Requests | None = None) -> str | None:
+    return (await _find_subscriber(email, client) or {}).get("id")
 
 
-async def _find_subscriber(email: str) -> dict | None:
-    response = await _client().get(
+async def _find_subscriber(email: str, client: Requests | None = None) -> dict | None:
+    response = await (client or _client()).get(
         f"{API_BASE}/subscribers/{email}", headers=_headers()
     )
     if response.status == 404:
@@ -476,8 +476,14 @@ async def _find_subscriber(email: str) -> dict | None:
 
 def _client() -> Requests:
     # Statuses are inspected rather than raised on, because "already gone" is a
-    # success for a removal. Retries are bounded so an outage answering 5xx
-    # ends in an error instead of retrying forever.
+    # success for a removal.
+    return Requests(trusted_origins=[API_BASE], raise_for_status=False)
+
+
+def _erasure_client() -> Requests:
+    # Account erasure bounds its retries so an outage answering 5xx fails the
+    # step instead of holding the erasure. Everything else keeps the shared
+    # client, which waits out rate limits.
     return Requests(
         trusted_origins=[API_BASE], raise_for_status=False, retry_max_attempts=3
     )

@@ -12,6 +12,8 @@ its own (`LEASE_TTL_SECONDS`), so the next run can resume.
 
 import uuid
 
+from redis.exceptions import RedisError
+
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 
@@ -28,12 +30,16 @@ async def acquire_erasure_lease(user_id: str) -> AsyncClusterLock | None:
     """The lease, or None while another run holds it. Raises
     `ErasureLeaseUnavailable` when Redis can't answer: erasing without
     knowing is what the lease prevents."""
-    lock = AsyncClusterLock(
-        redis=await get_redis_async(),
-        key=f"{LEASE_KEY_PREFIX}{user_id}",
-        owner_id=uuid.uuid4().hex,
-        timeout=LEASE_TTL_SECONDS,
-    )
+    try:
+        lock = AsyncClusterLock(
+            redis=await get_redis_async(),
+            key=f"{LEASE_KEY_PREFIX}{user_id}",
+            owner_id=uuid.uuid4().hex,
+            timeout=LEASE_TTL_SECONDS,
+        )
+    except (RedisError, OSError) as e:
+        # A client not connected yet connects here, and raises if it can't.
+        raise ErasureLeaseUnavailable("account erasure lease unavailable") from e
     owner = await lock.try_acquire()
     if owner is None:
         raise ErasureLeaseUnavailable("account erasure lease unavailable")

@@ -39,7 +39,7 @@ def _client(held: dict | None, post_status: int = 200) -> MagicMock:
 @pytest.mark.asyncio
 async def test_a_subscriber_is_forgotten_by_id():
     client = _client({"id": "ml_1", "status": "active"})
-    with patch.object(mailerlite, "_client", return_value=client):
+    with patch.object(mailerlite, "_erasure_client", return_value=client):
         assert await mailerlite.forget_subscriber(EMAIL) is True
 
     client.post.assert_awaited_once()
@@ -50,7 +50,7 @@ async def test_a_subscriber_is_forgotten_by_id():
 @pytest.mark.asyncio
 async def test_nobody_to_forget_is_a_no_op():
     client = _client(None)
-    with patch.object(mailerlite, "_client", return_value=client):
+    with patch.object(mailerlite, "_erasure_client", return_value=client):
         assert await mailerlite.forget_subscriber(EMAIL) is False
 
     client.post.assert_not_awaited()
@@ -59,14 +59,14 @@ async def test_nobody_to_forget_is_a_no_op():
 @pytest.mark.asyncio
 async def test_a_subscriber_gone_since_the_lookup_counts_as_gone():
     client = _client({"id": "ml_1"}, post_status=404)
-    with patch.object(mailerlite, "_client", return_value=client):
+    with patch.object(mailerlite, "_erasure_client", return_value=client):
         assert await mailerlite.forget_subscriber(EMAIL) is False
 
 
 @pytest.mark.asyncio
 async def test_a_failed_forget_raises_without_the_address():
     client = _client({"id": "ml_1"}, post_status=500)
-    with patch.object(mailerlite, "_client", return_value=client):
+    with patch.object(mailerlite, "_erasure_client", return_value=client):
         with pytest.raises(mailerlite.MailerLiteError) as raised:
             await mailerlite.forget_subscriber(EMAIL)
 
@@ -84,6 +84,26 @@ async def test_forgetting_needs_a_token(monkeypatch):
         await mailerlite.forget_subscriber(EMAIL)
 
 
-def test_mailerlite_retries_are_bounded():
-    """An outage answering 5xx ends in an error instead of retrying forever."""
-    assert mailerlite._client().retry_max_attempts == 3
+def test_only_the_erasure_bounds_its_retries():
+    """An outage answering 5xx fails the erasure step instead of retrying
+    forever, while the shared client still waits out rate limits for the
+    backfills and the audience consumer."""
+    assert mailerlite._erasure_client().retry_max_attempts == 3
+    assert mailerlite._client().retry_max_attempts is None
+
+
+@pytest.mark.asyncio
+async def test_the_erasure_lookup_uses_the_bounded_client():
+    bounded = _client({"id": "ml_1"})
+    shared = _client({"id": "ml_1"})
+    with (
+        patch.object(mailerlite, "_erasure_client", return_value=bounded),
+        patch.object(mailerlite, "_client", return_value=shared),
+    ):
+        assert await mailerlite.find_subscriber_id(EMAIL) == "ml_1"
+        await mailerlite.forget_subscriber(EMAIL)
+
+    shared.get.assert_not_awaited()
+    shared.post.assert_not_awaited()
+    assert bounded.get.await_count == 2
+    bounded.post.assert_awaited_once()

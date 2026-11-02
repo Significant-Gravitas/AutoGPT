@@ -81,21 +81,38 @@ async def purge_expired_ban_records(*, now: datetime | None = None) -> int:
 
 async def _create_once(digest: str, now: datetime, delete_after: datetime) -> None:
     try:
-        await AccountBanRecord.prisma().create(
-            data={
-                "emailHash": digest,
-                "category": AccountBanCategory.ADMIN,
-                "recordedAt": now,
-                "deleteAfter": delete_after,
-            }
-        )
+        await _create(digest, now, delete_after)
     except UniqueViolationError:
         # Kept from an earlier run: left as it is. One that ran out but was
         # not purged yet starts over, for this ban.
-        await AccountBanRecord.prisma().update_many(
+        restarted = await AccountBanRecord.prisma().update_many(
             where={"emailHash": digest, "deleteAfter": {"lte": now}},
             data={"recordedAt": now, "deleteAfter": delete_after},
         )
+        if restarted or await _kept(digest, now):
+            return
+        # The purge took the expired record in between: create it again, and
+        # a second conflict fails the step rather than report a record that
+        # is not there.
+        await _create(digest, now, delete_after)
+
+
+async def _create(digest: str, now: datetime, delete_after: datetime) -> None:
+    await AccountBanRecord.prisma().create(
+        data={
+            "emailHash": digest,
+            "category": AccountBanCategory.ADMIN,
+            "recordedAt": now,
+            "deleteAfter": delete_after,
+        }
+    )
+
+
+async def _kept(digest: str, now: datetime) -> bool:
+    record = await AccountBanRecord.prisma().find_first(
+        where={"emailHash": digest, "deleteAfter": {"gt": now}}
+    )
+    return record is not None
 
 
 def email_hash(email: str) -> str | None:

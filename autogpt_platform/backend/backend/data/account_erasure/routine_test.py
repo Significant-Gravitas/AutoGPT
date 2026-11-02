@@ -354,3 +354,20 @@ async def test_a_failure_logs_no_traceback_for_steps_that_handle_the_address(
     (record,) = caplog.records
     assert not record.exc_info
     assert "sam@example.com" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_traced_step_logs_its_trace_as_text_without_frame_locals(
+    monkeypatch, account, caplog
+):
+    """Sentry attaches frame locals to a record with exc_info, and the step's
+    subject holds the account's address."""
+    Steps(monkeypatch, failing="files")
+
+    with caplog.at_level("ERROR", logger=routine.logger.name):
+        await routine.erase_account(USER_ID, dry_run=False)
+
+    (record,) = caplog.records
+    assert not record.exc_info
+    assert "Traceback" in record.getMessage()
+    assert "RuntimeError" in record.getMessage()

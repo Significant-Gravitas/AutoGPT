@@ -163,8 +163,8 @@ def _clear_store_caches() -> None:
     nobody."""
     try:
         clear_store_caches()
-    except Exception:
-        logger.warning("Could not clear the store caches", exc_info=True)
+    except Exception as e:
+        logger.warning(f"Could not clear the store caches: {type(e).__name__}")
 
 
 async def _transfer(subject: Subject) -> None:

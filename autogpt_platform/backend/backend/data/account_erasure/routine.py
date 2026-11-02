@@ -20,6 +20,7 @@ finish; a rerun of a finished erasure finds nothing and changes nothing.
 """
 
 import logging
+import traceback
 from collections.abc import Awaitable, Callable
 from functools import partial
 
@@ -63,9 +64,11 @@ logger = logging.getLogger(__name__)
 Step = Callable[..., Awaitable[StepReport]]
 KeepAlive = Callable[[], Awaitable[bool]]
 
-# Steps whose exceptions can't quote the account's address, so their
-# tracebacks are logged. The rest (the confirmation email, the MailerLite
-# lookup by address) log the exception type only.
+# Steps whose exception messages can't quote the account's address, so their
+# tracebacks are logged as text. The rest (the confirmation email, the
+# MailerLite lookup by address) log the exception type only. No step logs with
+# exc_info: Sentry would attach the frame locals, and `subject` holds the
+# address.
 _TRACEBACK_STEPS = {
     "stop_work",
     "org_subscriptions",
@@ -209,10 +212,14 @@ async def _run_step(
     try:
         return await step(subject, dry_run=dry_run)
     except Exception as e:
+        trace = (
+            "\n" + "".join(traceback.format_exception(e))
+            if name in _TRACEBACK_STEPS
+            else ""
+        )
         logger.error(
             f"Account erasure step {name} failed for {subject.user_id}: "
-            f"{type(e).__name__}",
-            exc_info=name in _TRACEBACK_STEPS,
+            f"{type(e).__name__}{trace}"
         )
         return StepReport(
             name=name,

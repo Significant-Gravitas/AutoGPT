@@ -167,6 +167,8 @@ async def _run_pending(*, apply: bool, yes: bool):
         click.echo("Dry run: nothing was changed. Re-run with --apply.")
         return
     if not ready:
+        # The purge is the sweep's too, and does not wait on the blockers.
+        click.echo(f"Purged {await purge_ban_records()} expired ban record(s).")
         raise click.ClickException("Every one is blocked: resolve the blockers.")
     if not yes:
         click.confirm(f"\nErase {len(ready)} accounts for good?", abort=True)

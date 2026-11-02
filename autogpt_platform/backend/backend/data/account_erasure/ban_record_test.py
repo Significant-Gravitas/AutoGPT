@@ -123,9 +123,8 @@ async def test_without_a_key_the_step_fails_so_the_ban_is_not_lost(
 async def test_a_rerun_keeps_the_first_record_and_its_end(records):
     """A retry must not push the record's end out; only a record that ran out
     and was not purged yet starts over."""
-    records.create.side_effect = UniqueViolationError(
-        {"user_facing_error": {"message": "Unique constraint failed"}}
-    )
+    records.create.side_effect = _conflict()
+    records.find_first.return_value = MagicMock()
 
     report = await ban_record.keep_ban_record(BANNED, dry_run=False)
 
@@ -133,6 +132,33 @@ async def test_a_rerun_keeps_the_first_record_and_its_end(records):
     where = records.update_many.await_args.kwargs["where"]
     assert where["emailHash"] == ban_record.email_hash(EMAIL)
     assert "lte" in where["deleteAfter"]
+    records.create.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_record_purged_in_between_is_created_again(records):
+    """The expired record went between the conflict and the restart, so the
+    restart touched nothing and nothing is kept: the record is created again."""
+    records.create.side_effect = [_conflict(), None]
+
+    report = await ban_record.keep_ban_record(BANNED, dry_run=False)
+
+    assert report.status == StepStatus.DONE
+    assert records.create.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_a_second_conflict_fails_rather_than_report_a_record(records):
+    records.create.side_effect = [_conflict(), _conflict()]
+
+    with pytest.raises(UniqueViolationError):
+        await ban_record.keep_ban_record(BANNED, dry_run=False)
+
+
+def _conflict() -> UniqueViolationError:
+    return UniqueViolationError(
+        {"user_facing_error": {"message": "Unique constraint failed"}}
+    )
 
 
 @pytest.mark.asyncio

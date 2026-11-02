@@ -33,10 +33,10 @@ The database manager runs every step, so **the database manager pod needs every 
 - **PostHog**: `POSTHOG_PERSONAL_API_KEY` (a personal API key with the `person:write` scope), `POSTHOG_PROJECT_ID`, and `POSTHOG_APP_HOST` if the project is not in the EU cloud. Without them the PostHog step is skipped.
 - **MailerLite**: `MAILERLITE_API_TOKEN`. Without it the MailerLite step is skipped.
 - **Stripe**: `STRIPE_API_KEY`, for the subscriptions of orgs that go with the account.
-- **`ENCRYPTION_KEY`**, the same value the backend pods have: the ban record's hash is keyed with a key derived from it, and sign-up (on the REST API pods) checks the hash with the same key. Without it the ban record step fails and the erasure stops before the rows go; set it and run again.
+- **`ENCRYPTION_KEY`**, the same value the backend pods have: the ban record's hash is keyed with a key derived from it, and sign-up (on the REST API pods) checks the hash with the same key. Without it the ban record step fails for an account with a ban in force, and that erasure stops before the rows go; set it and run again. An account with no ban in force needs no record, and its erasure goes through without the key.
 - It also reaches the scheduler and the notification manager over RPC, and Redis and RabbitMQ (the work stop), as the other services do.
 
-A skipped step does not stop the erasure: the request is still marked done, and the sweep logs a warning naming the skipped steps. Check the database manager's logs after the first runs; a skip there means a setting is missing. (Whether a skipped step should instead stop the erasure before the rows go is an open decision.) The files step sweeps every configured bucket, and also the pod's local data directory whenever the private bucket is unset, since workspace files are kept on disk then. PostHog and MailerLite calls make at most three attempts on a 5xx, 429 or 408, then fail the step.
+A skipped step does not stop the erasure: the request is still marked done, and the sweep logs a warning naming the skipped steps. Check the database manager's logs after the first runs; a skip there means a setting is missing. (Whether a skipped step should instead stop the erasure before the rows go is an open decision.) The files step sweeps every configured bucket, and also the pod's local data directory whenever the private bucket is unset, since workspace files are kept on disk then. The erasure's PostHog and MailerLite calls make at most three attempts on a 5xx, 429 or 408, then fail the step.
 
 ## Who runs the CLI, and where
 

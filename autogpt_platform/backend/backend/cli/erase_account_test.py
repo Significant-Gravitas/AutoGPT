@@ -297,6 +297,17 @@ def test_pending_purges_even_with_nothing_to_erase(run, pending):
     pending.purge.assert_awaited_once_with()
 
 
+def test_pending_purges_even_when_every_account_is_blocked(run, pending):
+    pending.plans.return_value = [_report(dry_run=True, user_id="b", blocked=True)]
+
+    result = run.invoke("--pending", "--apply", "--yes")
+
+    assert result.exit_code == 1
+    assert "Every one is blocked" in result.output
+    pending.purge.assert_awaited_once_with()
+    pending.each.assert_not_awaited()
+
+
 @pytest.fixture
 def accounts(monkeypatch):
     users = AsyncMock(return_value=None)
