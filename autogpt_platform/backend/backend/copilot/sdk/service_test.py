@@ -1729,14 +1729,22 @@ class TestConsumeSdkUntilDone:
         assert acc.stream_completed is True
         assert loop_state.ended_with_stream_error is False
 
+    @pytest.mark.parametrize(
+        "preceding_text",
+        ["", "a line the model wrote before the error happened. " * 20],
+        ids=["error-alone", "error-behind-a-long-block"],
+    )
     @pytest.mark.asyncio
-    async def test_a_refusal_from_our_own_gateway_fails_the_turn(self):
+    async def test_a_refusal_from_our_own_gateway_fails_the_turn(self, preceding_text):
         """The CLI reports a 4xx of ours as an assistant message with an error.
 
         Forwarded, it becomes the turn's reply: a user read "API Error: 409
         This tool-result request refers to a completed model call" off a turn
         that ended as a success with no output (SECRT-3333). It must fail the
         turn instead, so the chat bot can say why.
+
+        The second case puts the error behind a block long enough to push it
+        out of the 500-character ``repr`` preview the surrounding checks use.
         """
         from aiohttp import ClientSession
         from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
@@ -1773,8 +1781,11 @@ class TestConsumeSdkUntilDone:
             loop_state = self._loop_state()
 
             async def fake_iter(client, wake=None, tool_display_wake=None):
+                blocks = [TextBlock(text=reported)]
+                if preceding_text:
+                    blocks.insert(0, TextBlock(text=preceding_text))
                 yield AssistantMessage(
-                    content=[TextBlock(text=reported)],
+                    content=blocks,
                     model="test",
                     error="unknown",
                 )

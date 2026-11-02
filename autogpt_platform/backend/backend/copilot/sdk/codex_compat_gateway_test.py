@@ -82,6 +82,37 @@ class _FailingAgentSession(_FakeAgentSession):
         raise self.error
 
 
+class _FailingOnTheRelaunchSession(_FakeAgentSession):
+    """A tool call, then an attempt that dies, then one that works."""
+
+    def __init__(self) -> None:
+        super().__init__(use_tool=True)
+
+    async def invoke(
+        self,
+        request,
+        dynamic_tools,
+        tool_handler,
+        event_handler=None,
+    ) -> CodexInvocationResult:
+        self.requests.append(request)
+        self.tools.append(dynamic_tools)
+        if len(self.requests) == 1:
+            self.tool_result = await tool_handler(
+                CodexDynamicToolCall(
+                    thread_id="thread-1",
+                    turn_id="turn-1",
+                    call_id="call-1",
+                    tool=dynamic_tools[0].name,
+                    arguments={"query": "status"},
+                )
+            )
+            return _result("done")
+        if len(self.requests) == 2:
+            raise RuntimeError("codex transport blew up")
+        return _result("recovered")
+
+
 class _FinalWithoutDeltaSession:
     async def invoke(
         self,
@@ -992,6 +1023,63 @@ async def test_a_resent_relaunch_is_replayed_without_a_second_invocation() -> No
     assert resent_body == resumed_body
     assert gateway.last_refusal is None
     assert len(agent_session.requests) == 2
+
+
+@pytest.mark.asyncio
+async def test_a_retry_after_a_failed_relaunch_opens_a_new_attempt() -> None:
+    """A relaunch that dies leaves nothing to replay, so its retry must run.
+
+    Holding the fingerprint past a failure would answer the CLI's retry with
+    409 "already accepted" -- the refusal that killed the turn in SECRT-3333,
+    reintroduced one layer down.
+    """
+    agent_session = _FailingOnTheRelaunchSession()
+    transport = _FakeTransport(agent_session)
+    async with CodexAnthropicGateway(
+        credential_lease=_lease(),
+        model="gpt-5.6-terra",
+        transport=transport,
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run"),
+            )
+            abandoned_call_id = _tool_use_id(await first.json())
+            answered = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_result_request(abandoned_call_id, "one result"),
+            )
+            assert answered.status == 200
+            await answered.read()
+
+            relaunch = _tool_result_request(abandoned_call_id, "one result")
+            relaunch_messages = relaunch["messages"]
+            assert isinstance(relaunch_messages, list)
+            relaunch_messages.append(
+                {"role": "user", "content": "Building mode is now active"}
+            )
+            relaunch["tools"] = _tool_request("run")["tools"]
+            failed = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=relaunch,
+            )
+            assert failed.status >= 500
+            await failed.read()
+
+            retried = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=relaunch,
+            )
+            assert retried.status == 200
+            recovered = await retried.json()
+
+    assert recovered["content"][0]["text"] == "recovered"
+    assert len(agent_session.requests) == 3
 
 
 @pytest.mark.asyncio

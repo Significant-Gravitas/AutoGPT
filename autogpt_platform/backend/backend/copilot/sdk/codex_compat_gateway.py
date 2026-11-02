@@ -443,6 +443,7 @@ class CodexAnthropicGateway:
             )
 
         streamed = payload.get("stream") is True
+        relaunch_key: str | None = None
         if isinstance(continuation, _DuplicateSubmission):
             return await self._duplicate_response(request, continuation, streamed)
         if isinstance(continuation, _Continuation):
@@ -458,22 +459,31 @@ class CodexAnthropicGateway:
                 # Registered before the answer is written, so a resend that
                 # arrives meanwhile waits on this conversation's lock and
                 # replays that answer instead of invoking Codex again.
-                replay_key = continuation.fingerprint
-                self._relaunches[replay_key] = conversation
+                relaunch_key = replay_key = continuation.fingerprint
+                self._relaunches[relaunch_key] = conversation
 
         input_tokens = _estimate_input_tokens(payload)
         if streamed:
-            return await self._streaming_response(
+            response = await self._streaming_response(
                 request,
                 conversation,
                 input_tokens,
                 replay_key,
             )
-        return await self._nonstreaming_response(
-            conversation,
-            input_tokens,
-            replay_key,
-        )
+        else:
+            response = await self._nonstreaming_response(
+                conversation,
+                input_tokens,
+                replay_key,
+            )
+        if relaunch_key is not None and relaunch_key not in conversation.replays:
+            # The attempt answered with nothing replayable -- it failed before
+            # its first event, or its answer was too large to keep -- so the
+            # registration would turn the CLI's next retry into the very 409
+            # this branch exists to avoid. Let that retry open an attempt of
+            # its own, as it did before any of this was registered.
+            self._relaunches.pop(relaunch_key, None)
+        return response
 
     async def _duplicate_response(
         self,

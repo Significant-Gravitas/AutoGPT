@@ -631,7 +631,13 @@ async def _consume_sdk_until_done(
                 if ctx.codex_gateway is not None
                 else None
             )
-            if refusal is not None and refusal in error_preview:
+            # The preview is a truncated ``repr`` of the block list, so a
+            # refusal behind a long block, or carrying an escaped quote, is
+            # not in it: read the blocks' own text.
+            refusal_text = "".join(
+                block.text for block in sdk_msg.content if isinstance(block, TextBlock)
+            )
+            if refusal is not None and refusal in refusal_text:
                 logger.error(
                     f"{ctx.log_prefix} Codex gateway refused the request — "
                     f"failing the turn: {refusal}"
