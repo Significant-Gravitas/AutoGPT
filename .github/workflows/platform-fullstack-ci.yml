@@ -470,7 +470,11 @@ jobs:
           for image in $images; do
             bash "$GITHUB_WORKSPACE/.github/scripts/docker-pull-with-retry.sh" "$image"
           done
-          docker compose -f ../docker-compose.resolved.yml up -d db --no-build
+          # --no-deps: db depends_on rabbitmq (startup-ordering only, see
+          # docker-compose.yml), so without it this would start rabbitmq here
+          # too, overlapping the frontend build. "Start (all other services)"
+          # brings rabbitmq up with everything else once the build is done.
+          docker compose -f ../docker-compose.resolved.yml up -d db --no-build --no-deps
           echo "Waiting for database to be ready..."
           timeout 60 sh -c 'until docker compose -f ../docker-compose.resolved.yml exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done'
 
