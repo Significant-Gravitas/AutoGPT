@@ -247,10 +247,9 @@ def refuse_brotli(headers: http.Headers) -> None:
     ``br;q=0`` (which also overrides a ``*``).  ``decode.py`` does not decode
     Brotli, so a ``br`` answer from a host whose responses are scrubbed would
     be refused; servers answer in gzip or uncompressed instead.  A request
-    that offers no codings is left as it is."""
+    with no ``Accept-Encoding`` accepts any coding, so it gets ``br;q=0``
+    alone, which leaves it uncompressed, as such a client expects."""
     offered = headers.get_all("accept-encoding")
-    if not offered:
-        return
     kept = [
         coding.strip()
         for value in offered

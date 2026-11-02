@@ -795,10 +795,11 @@ def no_brotli_decoder(monkeypatch):
     monkeypatch.setattr(brotli, "decompress", decoder)
 
 
-def test_a_request_that_offers_no_codings_is_left_as_it_is():
+def test_a_request_that_offers_no_codings_is_asked_for_no_brotli():
+    """No header means any coding; ``br;q=0`` alone leaves only identity."""
     headers = http.Headers()
     refuse_brotli(headers)
-    assert "accept-encoding" not in headers
+    assert headers.get_all("accept-encoding") == ["br;q=0"]
 
 
 @pytest.mark.parametrize("swaps, sent", [(True, "gzip, br;q=0"), (False, "gzip, br")])

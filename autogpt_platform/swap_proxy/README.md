@@ -118,7 +118,9 @@ box's bytes. So that responses still arrive readable, a box that gets swaps has
 `br` taken out of its `Accept-Encoding` (and `br;q=0` added) on requests to a
 host a credential is bound to, whose responses are scrubbed (and on every
 request while the bindings cannot be read); those servers answer in gzip or
-uncompressed instead. Other hosts get the header as the box sent it.
+uncompressed instead. A request to such a host with no `Accept-Encoding`
+(which accepts any coding) gets `br;q=0` alone, so it is answered uncompressed.
+Other hosts get the header as the box sent it.
 
 A request body the proxy will not decode may or may not name a credential;
 nobody can say without decoding it. It goes out untouched, which is the safe
