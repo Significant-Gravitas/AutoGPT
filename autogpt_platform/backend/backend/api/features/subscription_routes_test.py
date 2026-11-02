@@ -588,31 +588,6 @@ def test_get_subscription_status_stripe_error_falls_back_to_zero(
     assert data["tier_costs"]["PRO"] == 0
 
 
-def test_update_subscription_tier_no_tier_no_payment(
-    client: fastapi.testclient.TestClient,
-    mocker: pytest_mock.MockFixture,
-) -> None:
-    """POST /credits/subscription to NO_TIER (cancel) when payment disabled skips Stripe."""
-    mock_user = Mock()
-    mock_user.subscription_tier = SubscriptionTier.PRO
-
-    mocker.patch(
-        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
-        new_callable=AsyncMock,
-        return_value=mock_user,
-    )
-    mock_set_tier = mocker.patch(
-        "backend.api.features.billing.subscriptions.routes.set_subscription_tier",
-        new_callable=AsyncMock,
-    )
-
-    response = client.post("/credits/subscription", json={"tier": "NO_TIER"})
-
-    assert response.status_code == 200
-    assert response.json()["url"] == ""
-    mock_set_tier.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.NO_TIER)
-
-
 def test_update_subscription_tier_paid_tier_with_payment_off(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
@@ -1263,15 +1238,18 @@ def test_update_subscription_tier_same_tier_stripe_error_returns_502(
     assert "contact support" in response.json()["detail"].lower()
 
 
-def test_update_subscription_tier_no_tier_with_payment_schedules_cancel_and_does_not_update_db(
+@pytest.mark.parametrize("payment_enabled", [True, False])
+def test_update_subscription_tier_no_tier_schedules_cancel_and_does_not_update_db(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
     set_platform_payment,
+    payment_enabled: bool,
 ) -> None:
     """Cancelling to NO_TIER schedules Stripe cancellation at period end.
 
     The DB tier must NOT be updated immediately — the customer.subscription.deleted
-    webhook fires at period end and downgrades to NO_TIER then.
+    webhook fires at period end and downgrades to NO_TIER then. With payment off
+    too: a subscription from when it was on still bills until cancelled.
     """
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.PRO
@@ -1289,7 +1267,7 @@ def test_update_subscription_tier_no_tier_with_payment_schedules_cancel_and_does
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    set_platform_payment(True)
+    set_platform_payment(payment_enabled)
 
     response = client.post("/credits/subscription", json={"tier": "NO_TIER"})
 
@@ -1298,10 +1276,12 @@ def test_update_subscription_tier_no_tier_with_payment_schedules_cancel_and_does
     mock_set_tier.assert_not_awaited()
 
 
+@pytest.mark.parametrize("payment_enabled", [True, False])
 def test_update_subscription_tier_no_tier_cancel_failure_returns_502(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
     set_platform_payment,
+    payment_enabled: bool,
 ) -> None:
     """Cancelling to NO_TIER returns 502 with a generic error (no Stripe detail leakage)."""
     mock_user = Mock()
@@ -1318,7 +1298,7 @@ def test_update_subscription_tier_no_tier_cancel_failure_returns_502(
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    set_platform_payment(True)
+    set_platform_payment(payment_enabled)
 
     response = client.post("/credits/subscription", json={"tier": "NO_TIER"})
 
@@ -2023,10 +2003,12 @@ def test_update_subscription_tier_paid_to_paid_stripe_error_returns_502(
     assert response.status_code == 502
 
 
+@pytest.mark.parametrize("payment_enabled", [True, False])
 def test_update_subscription_tier_no_tier_no_stripe_subscription(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
     set_platform_payment,
+    payment_enabled: bool,
 ) -> None:
     """Cancelling to NO_TIER when no Stripe subscription exists updates DB tier directly.
 
@@ -2043,7 +2025,7 @@ def test_update_subscription_tier_no_tier_no_stripe_subscription(
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    set_platform_payment(True)
+    set_platform_payment(payment_enabled)
     # Simulate no active Stripe subscriptions — returns False
     cancel_mock = mocker.patch(
         "backend.api.features.billing.subscriptions.routes.cancel_stripe_subscription",

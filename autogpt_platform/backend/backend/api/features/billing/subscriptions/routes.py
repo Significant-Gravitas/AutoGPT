@@ -512,41 +512,31 @@ async def update_subscription_tier(
             )
         return await get_subscription_status(user_id)
 
-    payment_enabled = is_platform_payment_enabled()
-
     target_price_id = await get_subscription_price_id(tier, request.billing_cycle)
 
     # Cancel: target NO_TIER. Schedule Stripe cancellation at period end;
     # cancel_at_period_end=True lets the webhook flip the DB tier. No active
-    # sub (admin-granted or never-paid) or payment disabled → DB flip.
-    # NO_TIER is never priceable, so this branch always fires for cancel
-    # requests regardless of LD config.
+    # sub (admin-granted or never-paid) → DB flip. Runs with payment off too,
+    # since a subscription from when it was on keeps billing until cancelled.
     if tier == SubscriptionTier.NO_TIER:
-        if payment_enabled:
-            try:
-                had_subscription = await cancel_stripe_subscription(user_id)
-            except stripe.StripeError as e:
-                logger.exception(
-                    "Stripe error cancelling subscription for user %s: %s",
-                    user_id,
-                    e,
-                )
-                raise HTTPException(
-                    status_code=502,
-                    detail=(
-                        "Unable to cancel your subscription right now. "
-                        "Please try again or contact support."
-                    ),
-                )
-            if not had_subscription:
-                # No Stripe subscription drove this change (admin-granted or
-                # never-paid).
-                await set_subscription_tier(user_id, tier)
-            return await get_subscription_status(user_id)
-        await set_subscription_tier(user_id, tier)
+        try:
+            had_subscription = await cancel_stripe_subscription(user_id)
+        except stripe.StripeError:
+            logger.exception(f"Stripe error cancelling subscription for user {user_id}")
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "Unable to cancel your subscription right now. "
+                    "Please try again or contact support."
+                ),
+            )
+        if not had_subscription:
+            # No Stripe subscription drove this change (admin-granted or
+            # never-paid).
+            await set_subscription_tier(user_id, tier)
         return await get_subscription_status(user_id)
 
-    if not payment_enabled:
+    if not is_platform_payment_enabled():
         raise HTTPException(
             status_code=422,
             detail=f"Subscription not available for tier {tier.value}",
