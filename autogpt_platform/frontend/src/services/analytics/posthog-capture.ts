@@ -30,7 +30,8 @@ const PROMPT_GRACE_ATTEMPTS = 4;
 
 interface CaptureOptions {
   /**
-   * Send at most once per tab. Marked only when the event is sent: it is an
+   * Send at most once per tab. Marked only when posthog-js takes the event
+   * (capture returns it; a `before_send` drop returns nothing): it is an
    * analytics marker, so a dropped event writes nothing and is tried again on
    * the next mount, sent then only if consent has since been given.
    */
@@ -62,8 +63,7 @@ export function capturePostHogEvent(
     if (oncePerTabKey && isAlreadyHandled(oncePerTabKey)) return;
     const decision = decideNow();
     if (decision === "send") {
-      posthog.capture(event, properties);
-      markHandled(oncePerTabKey);
+      if (posthog.capture(event, properties)) markHandled(oncePerTabKey);
       return;
     }
     if (decision === "drop") return;
@@ -145,8 +145,9 @@ function finish(decision: Exclude<Decision, "hold">) {
   if (decision === "drop") return;
   for (const { event, properties, timestamp, oncePerTabKey } of pending) {
     try {
-      posthog.capture(event, properties, { timestamp });
-      markHandled(oncePerTabKey);
+      if (posthog.capture(event, properties, { timestamp })) {
+        markHandled(oncePerTabKey);
+      }
     } catch {
       // Keep sending the rest.
     }

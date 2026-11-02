@@ -10,7 +10,10 @@ const { posthog } = vi.hoisted(() => ({
   posthog: {
     __loaded: false,
     capturing: false,
-    capture: vi.fn(),
+    // posthog-js returns the event it takes, and nothing when it drops one.
+    capture: vi.fn((event: string): { event: string } | undefined => ({
+      event,
+    })),
     is_capturing() {
       return this.capturing;
     },
@@ -299,6 +302,30 @@ describe("capturePostHogEvent", () => {
     capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
     expect(posthog.capture).toHaveBeenCalledTimes(2);
     expect(sessionStorage.getItem(ONCE_KEY)).toBe("1");
+  });
+
+  // PostHog may still capture for a moment after consent is withdrawn; its
+  // before_send hook then drops the event and capture returns nothing.
+  it("leaves the guard unset when posthog-js drops the event itself", () => {
+    startCapturing();
+    posthog.capture.mockReturnValue(undefined);
+
+    capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
+
+    expect(posthog.capture).toHaveBeenCalledTimes(1);
+    expect(sessionStorage.getItem(ONCE_KEY)).toBeNull();
+  });
+
+  it("leaves the guard unset when posthog-js drops a held event itself", () => {
+    storeConsentCookie(true);
+    capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
+    posthog.capture.mockReturnValue(undefined);
+
+    startCapturing();
+    vi.advanceTimersByTime(250);
+
+    expect(posthog.capture).toHaveBeenCalledTimes(1);
+    expect(sessionStorage.getItem(ONCE_KEY)).toBeNull();
   });
 
   it("never throws when posthog-js does", () => {
