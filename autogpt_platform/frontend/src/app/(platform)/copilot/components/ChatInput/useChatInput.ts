@@ -1,5 +1,6 @@
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { isTouchDevice } from "@/lib/platform";
+import { countPromptTowardStarToast } from "../../helpers/githubStarToast";
 import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { focusComposer } from "./helpers";
 import { useChatDraft } from "./useChatDraft";
@@ -106,6 +107,7 @@ export function useChatInput({
     async function sendAndNotify() {
       await onSend(trimmedMessage);
       notifyMessageSent();
+      countPromptTowardStarToast();
     }
     await sendAndNotify()
       .catch((error) => {
@@ -140,6 +142,7 @@ export function useChatInput({
     dismissKeyboard();
     async function enqueue(send: NonNullable<Args["onEnqueue"]>) {
       await send(trimmedMessage);
+      countPromptTowardStarToast();
     }
     await enqueue(onEnqueue)
       .catch((error) => {
