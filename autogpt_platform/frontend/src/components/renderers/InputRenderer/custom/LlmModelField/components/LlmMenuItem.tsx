@@ -40,21 +40,19 @@ export function LlmMenuItem({
         </div>
         <div className="flex items-center gap-2">
           {isActive && (
-            <Icon icon={Tick02Icon} className="h-4 w-4 text-success" />
+            <Icon icon={Tick02Icon} tone="success" className="h-4 w-4" />
           )}
           {rightSlot}
           {showChevron && (
-            <Icon
-              icon={ArrowRight01Icon}
-              className="h-4 w-4 text-foreground-strong"
-            />
+            <Icon icon={ArrowRight01Icon} tone="primary" className="h-4 w-4" />
           )}
         </div>
       </div>
       {subtitle && (
         <Text
           variant="small"
-          className={cn("mb-1 text-foreground-tertiary", hasIcon && "pl-0")}
+          tone="muted"
+          className={cn("mb-1", hasIcon && "pl-0")}
         >
           {subtitle}
         </Text>

@@ -100,7 +100,8 @@ export function AgentImageItem({
                 icon={PlayIcon}
                 size={20}
                 // oxlint-disable-next-line design-system/no-restyle -- the play glyph is darker than the button label; Icon has no tone
-                className="text-foreground-base sm:h-6 sm:w-6 md:h-7 md:w-7"
+                tone="base"
+                className="sm:h-6 sm:w-6 md:h-7 md:w-7"
               />
             }
           >

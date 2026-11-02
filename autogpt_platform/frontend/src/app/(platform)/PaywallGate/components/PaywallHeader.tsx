@@ -20,7 +20,7 @@ export function PaywallHeader() {
         target="_blank"
         className="mt-2 inline-flex items-center gap-2 rounded-full border border-brand/20 bg-accent-surface/60 px-4 py-1.5 text-sm text-foreground-body transition-colors hover:bg-brand/5"
       >
-        <Icon icon={PlayCircleIcon} className="size-5 shrink-0 text-brand" />
+        <Icon icon={PlayCircleIcon} tone="brand" className="size-5 shrink-0" />
         <span>Explore a quick demo</span>
       </Link>
     </div>

@@ -46,7 +46,9 @@ export function ProviderBox({
           <Icon
             icon={Loading03Icon}
             size={20}
-            className="absolute -right-1 -bottom-1 rounded-full bg-surface text-foreground-tertiary motion-safe:animate-spin"
+            tone="muted"
+            spin
+            className="absolute -right-1 -bottom-1 rounded-full bg-surface"
           />
         )}
       </span>

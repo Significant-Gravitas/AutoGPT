@@ -116,7 +116,7 @@ export const AllBlocksContent = () => {
                     variant="body-medium"
                     as="span"
                     tone="inherit"
-                    className="underline"
+                    decoration="underline"
                   >
                     see all
                   </Text>

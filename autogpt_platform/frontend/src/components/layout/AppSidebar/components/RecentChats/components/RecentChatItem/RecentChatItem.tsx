@@ -198,10 +198,7 @@ export const RecentChatItem = memo(function RecentChatItem({
             disabled={isExporting}
           >
             {isExporting ? (
-              <Icon
-                icon={Loading03Icon}
-                className="mr-2 h-4 w-4 animate-spin"
-              />
+              <Icon icon={Loading03Icon} spin className="mr-2 h-4 w-4" />
             ) : (
               <Icon icon={Download04Icon} className="mr-2 h-4 w-4" />
             )}

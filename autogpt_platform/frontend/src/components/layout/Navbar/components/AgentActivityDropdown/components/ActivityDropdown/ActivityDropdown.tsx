@@ -101,11 +101,7 @@ export function ActivityDropdown({
                   className="absolute top-1/2 right-1 flex h-6 w-6 -translate-y-1/2 items-center justify-center"
                   aria-label="Clear search"
                 >
-                  <Icon
-                    icon={Cancel01Icon}
-                    size={16}
-                    className="text-foreground-tertiary"
-                  />
+                  <Icon icon={Cancel01Icon} size={16} tone="muted" />
                 </button>
               </div>
             </div>
@@ -125,7 +121,8 @@ export function ActivityDropdown({
                   <Icon
                     icon={Search01Icon}
                     size={16}
-                    className="h-4 w-4 text-foreground-secondary"
+                    tone="secondary"
+                    className="h-4 w-4"
                   />
                 </Button>
               ) : null}
@@ -151,10 +148,7 @@ export function ActivityDropdown({
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-5 pt-6 pb-8">
             <div className="mx-auto inline-flex flex-col items-center justify-center rounded-full bg-bgLightGrey p-6">
-              <Icon
-                icon={BellIcon}
-                className="h-6 w-6 text-foreground-disabled"
-              />
+              <Icon icon={BellIcon} tone="disabled" className="h-6 w-6" />
             </div>
             <div className="flex flex-col items-center justify-center">
               <Text variant="body-medium">

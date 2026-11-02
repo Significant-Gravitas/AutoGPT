@@ -51,7 +51,7 @@ export default function TitleField(props: TitleFieldProps) {
       >
         {title}
       </Text>
-      <Text variant="small" className={"mr-1 text-error"}>
+      <Text variant="small" tone="error" className="mr-1">
         {required ? "*" : null}
       </Text>
       {!isAnyOf && (

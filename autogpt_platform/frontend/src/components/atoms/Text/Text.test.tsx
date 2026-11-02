@@ -1,6 +1,6 @@
 import { render, screen, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { tones, type Tone } from "./helpers";
+import { tones, type Tone } from "@/components/styles/tones";
 import { Text } from "./Text";
 
 afterEach(() => {

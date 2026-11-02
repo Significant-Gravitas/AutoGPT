@@ -138,7 +138,8 @@ function ScheduleRow({ schedule }: { schedule: SessionSchedule }) {
       <Icon
         icon={schedule.isRecurring ? RepeatIcon : ClockIcon}
         size={16}
-        className="mt-0.5 shrink-0 text-foreground-body"
+        tone="body"
+        className="mt-0.5 shrink-0"
       />
       <div className="min-w-0 flex-1">
         <Text variant="body-tight" tone="emphasis" className="truncate">

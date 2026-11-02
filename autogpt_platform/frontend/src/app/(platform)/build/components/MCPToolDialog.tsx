@@ -492,7 +492,7 @@ export function MCPToolDialog({
                 variant="body-tight"
                 role="alert"
                 aria-live="polite"
-                className="text-error-foreground"
+                tone="error-strong"
               >
                 {error}
               </Text>
@@ -770,7 +770,8 @@ function MCPToolCard({
           </Text>
           <Icon
             icon={ArrowDown01Icon}
-            className={`h-3 w-3 transition-transform ${expanded ? "rotate-180" : ""}`}
+            motion="transform"
+            className={`h-3 w-3 ${expanded ? "rotate-180" : ""}`}
           />
         </button>
       )}

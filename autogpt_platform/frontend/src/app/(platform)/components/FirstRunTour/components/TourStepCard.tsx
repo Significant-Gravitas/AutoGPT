@@ -139,12 +139,7 @@ function StepProgress({ stepNumber, stepCount }: StepProgressProps) {
           />
         ))}
       </div>
-      <Text
-        variant="small"
-        tone="secondary"
-        className="tabular-nums"
-        dir="auto"
-      >
+      <Text variant="small" tone="secondary" tabular dir="auto">
         {stepNumber} of {stepCount}
       </Text>
     </div>

@@ -75,18 +75,10 @@ export function ChangelogPopup() {
             />
           </div>
           <div data-slot="changelog-popup-heading" className="min-w-0 flex-1">
-            <Text
-              variant="body-medium"
-              data-slot="changelog-popup-title"
-              className="text-foreground"
-            >
+            <Text variant="body-medium" data-slot="changelog-popup-title">
               What&apos;s new
             </Text>
-            <Text
-              variant="small"
-              data-slot="changelog-popup-date"
-              className="text-muted-foreground"
-            >
+            <Text variant="small" data-slot="changelog-popup-date" tone="muted">
               {latestEntry.dateRange}
             </Text>
           </div>
@@ -120,11 +112,7 @@ export function ChangelogPopup() {
                 data-slot="changelog-popup-bullet"
                 className="mt-2.5 size-1 shrink-0 rounded-full bg-muted-foreground"
               />
-              <Text
-                variant="body"
-                data-slot="changelog-popup-highlight-text"
-                className="text-foreground"
-              >
+              <Text variant="body" data-slot="changelog-popup-highlight-text">
                 {item}
               </Text>
             </li>

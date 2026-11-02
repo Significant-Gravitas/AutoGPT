@@ -73,8 +73,8 @@ export const AnyOfFieldTitle = (props: customFieldProps) => {
       {shoudlShowType && (
         <Text
           variant="small"
+          tone="body"
           className={cn(
-            "text-foreground-body",
             isInputBroken && "line-through",
             colorClass,
             inputMismatch && "rounded-md bg-error-surface px-1 !text-error",

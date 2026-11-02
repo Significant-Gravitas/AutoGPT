@@ -114,14 +114,12 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
         )}
       >
         {isLoading ? (
-          <Icon
-            icon={Loading03Icon}
-            className="h-5 w-5 animate-spin text-action-foreground"
-          />
+          <Icon icon={Loading03Icon} spin tone="inverse" className="h-5 w-5" />
         ) : (
           <Icon
             icon={PlusSignIcon}
-            className="h-5 w-5 text-action-foreground"
+            tone="inverse"
+            className="h-5 w-5"
             strokeWidth={2}
           />
         )}

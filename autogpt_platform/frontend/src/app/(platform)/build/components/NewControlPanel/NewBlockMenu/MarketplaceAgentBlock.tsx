@@ -110,13 +110,14 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
             <Text
               variant="small-medium-loose-underline"
               as="span"
-              className="text-info-foreground"
+              tone="info-strong"
             >
               Workflow page
             </Text>
             <Icon
               icon={LinkSquare01Icon}
-              className="h-4 w-4 text-info-foreground"
+              tone="info-strong"
+              className="h-4 w-4"
               strokeWidth={1}
             />
           </Link>
@@ -130,11 +131,12 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
         {!loading ? (
           <Icon
             icon={PlusSignIcon}
-            className="h-5 w-5 text-action-foreground"
+            tone="inverse"
+            className="h-5 w-5"
             strokeWidth={2}
           />
         ) : (
-          <Icon icon={Loading03Icon} className="h-5 w-5 animate-spin" />
+          <Icon icon={Loading03Icon} spin className="h-5 w-5" />
         )}
       </div>
     </button>

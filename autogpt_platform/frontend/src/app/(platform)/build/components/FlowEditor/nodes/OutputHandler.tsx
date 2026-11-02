@@ -219,7 +219,8 @@ export function OutputHandler({ outputSchema, nodeId, uiType }: Props) {
           <Icon
             icon={ArrowDown01Icon}
             size={16}
-            className={`transition-transform ${isOutputVisible ? "rotate-180" : ""}`}
+            motion="transform"
+            className={isOutputVisible ? "rotate-180" : undefined}
           />
         </Text>
       </Button>

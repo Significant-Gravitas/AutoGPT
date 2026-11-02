@@ -30,11 +30,7 @@ export function ConnectionsSection({ rows, mcp }: Props) {
   return (
     <div className="overflow-hidden rounded-3xl border border-separator bg-surface">
       <div className="flex items-center gap-3 border-b border-separator px-4 py-5">
-        <Icon
-          icon={PlugSocketIcon}
-          size={18}
-          className="text-foreground-subtle"
-        />
+        <Icon icon={PlugSocketIcon} size={18} tone="subtle" />
         <div className="min-w-0 flex-1">
           <Text variant="large-medium-tight" as="h3" tone="primary">
             {remaining.length ? "Connect your apps" : "Your apps are connected"}

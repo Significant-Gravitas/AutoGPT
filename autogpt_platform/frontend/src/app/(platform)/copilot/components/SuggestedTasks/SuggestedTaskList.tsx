@@ -68,7 +68,8 @@ export function SuggestedTaskList({
                   <Icon
                     icon={promptIcon}
                     size={15}
-                    className="shrink-0 text-foreground-disabled"
+                    tone="disabled"
+                    className="shrink-0"
                   />
                   <Text
                     variant="body-medium"
@@ -99,7 +100,8 @@ export function SuggestedTaskList({
                   <Icon
                     icon={promptIcon}
                     size={15}
-                    className="shrink-0 text-foreground-subtle"
+                    tone="subtle"
+                    className="shrink-0"
                   />
                   <Text
                     variant="body-medium"
@@ -112,14 +114,17 @@ export function SuggestedTaskList({
                     <Icon
                       icon={Loading03Icon}
                       size={15}
-                      className="ml-auto shrink-0 animate-spin text-foreground-subtle"
+                      spin
+                      tone="subtle"
+                      className="ml-auto shrink-0"
                       aria-label="Starting"
                     />
                   ) : (
                     <Icon
                       icon={ArrowRight01Icon}
                       size={15}
-                      className="ml-auto shrink-0 text-foreground-subtle"
+                      tone="subtle"
+                      className="ml-auto shrink-0"
                     />
                   )}
                 </button>

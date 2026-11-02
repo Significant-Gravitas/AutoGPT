@@ -49,7 +49,7 @@ export function RecordingButton({
       )}
     >
       {isTranscribing ? (
-        <Icon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
+        <Icon icon={Loading03Icon} spin className="h-4 w-4" />
       ) : (
         <Icon icon={Mic01Icon} className="h-4 w-4" />
       )}

@@ -86,14 +86,18 @@ function SubAgentUpdateAvailableBar({
   return (
     <div className="flex items-center justify-between gap-2 rounded-t-xl bg-info-surface px-3 py-2">
       <div className="flex items-center gap-2">
-        <Icon icon={ArrowUp02Icon} className="h-4 w-4 text-info-foreground" />
-        <Text variant="body-tight" as="span" className="text-info-foreground">
+        <Icon icon={ArrowUp02Icon} tone="info-strong" className="h-4 w-4" />
+        <Text variant="body-tight" as="span" tone="info-strong">
           Update available (v{currentVersion} → v{latestVersion})
         </Text>
         {!isCompatible && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Icon icon={Alert01Icon} className="h-4 w-4 text-warning" />
+              <Icon
+                icon={Alert01Icon}
+                tone="warning-bright"
+                className="h-4 w-4"
+              />
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
               <Text variant="small-medium-lh-normal" tone="inherit">

@@ -74,8 +74,9 @@ export function FileChips({
                 const chipIcon = (
                   <Icon
                     icon={isFolder ? Folder01Icon : getFileTypeIcon(mimeType)}
+                    tone="primary"
                     className={cn(
-                      "h-3.5 w-3.5 shrink-0 text-foreground-strong",
+                      "h-3.5 w-3.5 shrink-0",
                       stacked && "text-foreground-subtle",
                     )}
                   />
@@ -142,7 +143,9 @@ export function FileChips({
                     {showSpinner ? (
                       <Icon
                         icon={Loading03Icon}
-                        className="ml-0.5 h-3 w-3 animate-spin text-foreground-subtle"
+                        spin
+                        tone="subtle"
+                        className="ml-0.5 h-3 w-3"
                       />
                     ) : (
                       <button

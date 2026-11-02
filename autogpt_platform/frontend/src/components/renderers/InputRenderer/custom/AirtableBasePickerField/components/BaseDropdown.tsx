@@ -116,7 +116,8 @@ export function BaseDropdown({
           <Icon
             icon={UnfoldMoreIcon}
             size={16}
-            className="shrink-0 text-foreground-tertiary"
+            tone="muted"
+            className="shrink-0"
           />
         </button>
       </PopoverTrigger>

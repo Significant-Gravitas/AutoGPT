@@ -76,10 +76,9 @@ export function ToolAccordion({
         </div>
         <Icon
           icon={ArrowDown01Icon}
-          className={cn(
-            "h-4 w-4 shrink-0 text-foreground-tertiary transition-transform",
-            isExpanded && "rotate-180",
-          )}
+          tone="muted"
+          motion="transform"
+          className={cn("h-4 w-4 shrink-0", isExpanded && "rotate-180")}
         />
       </button>
 

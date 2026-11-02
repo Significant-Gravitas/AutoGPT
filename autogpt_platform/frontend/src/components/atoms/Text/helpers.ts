@@ -1,3 +1,6 @@
+import { cva } from "class-variance-authority";
+import { tones } from "@/components/styles/tones";
+
 export type As =
   | "h1"
   | "h2"
@@ -194,32 +197,40 @@ export const variants = {
 
 export type Variant = keyof typeof variants;
 
-/**
- * Semantic colours, each a colour role at the hex it rendered before the
- * roles existed. Omit for the variant's own colour (foreground-base #141414).
- */
-export const tones = {
-  primary: "text-foreground-strong", // #2C2C30
-  emphasis: "text-foreground-emphasis", // #3E3E43
-  body: "text-foreground-body", // #505057
-  secondary: "text-foreground-secondary", // #68686F
-  muted: "text-foreground-tertiary", // #83838C
-  subtle: "text-foreground-subtle", // #ADADB3
-  danger: "text-error-hover", // #D93636
-  error: "text-error", // #EF4444
-  warning: "text-warning-foreground", // #B45309
-  success: "text-success", // #149443
-  disabled: "text-foreground-disabled", // #C5C5C9
-  // The parent's colour, for copy inside a control that changes it on hover.
-  inherit: "text-inherit",
-  // TODO(tokens): no light-green role for text on a dark fill; `success`
-  // (#149443) would lose its contrast there, so emerald-300 #6EE7B7 stays.
-  "success-light": "text-emerald-300",
-  "success-strong": "text-success-foreground", // #107435
-  "warning-strong": "text-warning-foreground", // #B45309
-} as const;
-
-export type Tone = keyof typeof tones;
+// The props that adjust a variant (Text.tsx). Each applies after the
+// variant's classes, so `weight="semibold"` replaces its `font-medium`.
+export const textModifiers = cva("", {
+  variants: {
+    tone: tones,
+    weight: {
+      normal: "font-normal",
+      medium: "font-medium",
+      semibold: "font-semibold",
+      bold: "font-bold",
+    },
+    mono: { true: "font-mono" },
+    tabular: { true: "tabular-nums" },
+    italic: { true: "italic" },
+    decoration: {
+      underline: "underline",
+      "line-through": "line-through",
+      none: "no-underline",
+    },
+    transform: {
+      uppercase: "uppercase",
+      lowercase: "lowercase",
+      capitalize: "capitalize",
+      none: "normal-case",
+    },
+    align: {
+      left: "text-left",
+      center: "text-center",
+      right: "text-right",
+      start: "text-start",
+      end: "text-end",
+    },
+  },
+});
 
 export const variantElementMap: Record<Variant, As> = {
   h1: "h1",

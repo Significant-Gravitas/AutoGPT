@@ -20,7 +20,7 @@ export function UsageMeter({ label, percent, detail }: Props) {
         <Text variant="small-medium" className="!text-foreground-body">
           {label}
         </Text>
-        <Text variant="small" tone="muted" className="tabular-nums">
+        <Text variant="small" tone="muted" tabular>
           {formatUsagePercent(value)} used
         </Text>
       </div>

@@ -70,7 +70,8 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
             >
               <Icon
                 icon={FlaskConicalIcon}
-                className="size-4 transition-transform duration-200 ease-out group-hover:scale-110"
+                motion="transform"
+                className="size-4 group-hover:scale-110"
               />
             </Button>
           </TooltipTrigger>

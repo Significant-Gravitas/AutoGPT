@@ -50,7 +50,8 @@ export function CollapsibleNavGroup({
             </Text>
             <Icon
               icon={ArrowDown01Icon}
-              className="ml-auto size-4 text-sidebar-foreground/90 transition-transform duration-200 group-data-[collapsible=icon]:size-4.5 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none max-md:size-5"
+              motion="transform"
+              className="ml-auto size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5 group-data-[state=open]/collapsible:rotate-180 max-md:size-5"
             />
           </CollapsibleTrigger>
         </SidebarGroupLabel>

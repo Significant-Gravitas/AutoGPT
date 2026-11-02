@@ -44,7 +44,7 @@ export function BillingPlanOffer({
         <Text
           variant="small-medium"
           // oxlint-disable-next-line design-system/no-restyle -- no Text tone for accent-strong yet (Text helpers belong to P2)
-          className="text-accent-strong"
+          tone="accent"
         >
           AutoGPT {target}
         </Text>
@@ -69,7 +69,8 @@ export function BillingPlanOffer({
             variant="h2"
             as="span"
             // oxlint-disable-next-line design-system/no-restyle -- the price is a sans display number; no Text variant has it
-            className="font-sans text-title leading-10 font-semibold tracking-display"
+            weight="semibold"
+            className="font-sans tracking-display"
           >
             {price.split(" / ")[0]}
           </Text>

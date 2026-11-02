@@ -84,12 +84,7 @@ export function HeldReviewDialog({ carousel, held, chatLink = true }: Props) {
                 leadingIcon={ArrowLeft01Icon}
                 onClick={() => carousel.move(-1)}
               />
-              <Text
-                variant="body-medium"
-                as="span"
-                aria-live="polite"
-                className="tabular-nums"
-              >
+              <Text variant="body-medium" as="span" aria-live="polite" tabular>
                 {carousel.position} of {carousel.total}
               </Text>
               <Button
@@ -202,7 +197,7 @@ function Finished({
 }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-      <Icon icon={Tick02Icon} size={20} className="text-success" aria-hidden />
+      <Icon icon={Tick02Icon} size={20} tone="success" aria-hidden />
       <Text variant="h4" as="h3" data-pane-focus>
         All {carousel.total} reviewed
       </Text>

@@ -46,7 +46,8 @@ export function NodeAdvancedToggle({
           <Icon
             icon={ArrowDown01Icon}
             size={16}
-            className={`transition-transform ${showAdvanced ? "rotate-180" : ""}`}
+            motion="transform"
+            className={showAdvanced ? "rotate-180" : undefined}
             aria-hidden
           />
         </Text>

@@ -349,7 +349,7 @@ export function FileInput(props: Props) {
               <Text
                 data-slot="file-input-progress-text"
                 variant="small"
-                className="text-info-foreground"
+                tone="info-strong"
               >
                 {mode === "base64" ? "Processing..." : "Uploading..."}
               </Text>
@@ -366,13 +366,14 @@ export function FileInput(props: Props) {
                 <Icon
                   data-slot="file-input-file-icon"
                   icon={File02Icon}
-                  className="h-4 w-4 flex-shrink-0 text-foreground-secondary"
+                  tone="secondary"
+                  className="h-4 w-4 flex-shrink-0"
                 />
 
                 <Text
                   data-slot="file-input-file-name"
                   variant="small-medium"
-                  className="truncate text-foreground-base"
+                  className="truncate"
                 >
                   {fileInfo
                     ? getFileLabel(fileInfo.name, fileInfo.content_type)
@@ -382,7 +383,7 @@ export function FileInput(props: Props) {
                   <Text
                     data-slot="file-input-file-size"
                     variant="small"
-                    className="text-foreground-tertiary"
+                    tone="muted"
                   >
                     {formatFileSize(fileInfo.size)}
                   </Text>
@@ -504,7 +505,8 @@ export function FileInput(props: Props) {
                 <Icon
                   data-slot="file-input-file-icon"
                   icon={File02Icon}
-                  className="h-7 w-7 text-foreground-base"
+                  tone="base"
+                  className="h-7 w-7"
                 />
                 <div
                   data-slot="file-input-file-details"

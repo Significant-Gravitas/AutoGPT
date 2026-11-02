@@ -149,7 +149,8 @@ export function ExpertCard({ expert, isHired, category }: Props) {
               size={16}
               aria-hidden
               // oxlint-disable-next-line design-system/no-restyle -- the arrow nudges on hover; Icon has no motion prop
-              className="transition-transform duration-200 group-hover:translate-x-0.5"
+              motion="transform"
+              className="group-hover:translate-x-0.5"
             />
           </span>
         </div>

@@ -58,7 +58,7 @@ export function ActivationStatus({
               : "mb-4 text-brand"
           }
         />
-        <Text variant="body" className="text-foreground-body">
+        <Text variant="body" tone="body">
           {isReady
             ? hasFreshUsage
               ? `Your ${plan} plan is active with fresh daily and weekly allowances. Your conversations and work are right where you left them.`

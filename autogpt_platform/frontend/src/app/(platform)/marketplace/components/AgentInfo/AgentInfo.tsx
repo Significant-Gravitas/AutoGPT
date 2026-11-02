@@ -191,7 +191,8 @@ export const AgentInfo = ({
                       icon={PlusSignIcon}
                       size={16}
                       // oxlint-disable-next-line design-system/no-restyle -- the plus spins on hover; Icon has no motion prop
-                      className="transition-transform duration-300 group-hover/add:scale-125 group-hover/add:rotate-90"
+                      motion="transform"
+                      className="group-hover/add:scale-125 group-hover/add:rotate-90"
                     />
                   ) : undefined
                 }

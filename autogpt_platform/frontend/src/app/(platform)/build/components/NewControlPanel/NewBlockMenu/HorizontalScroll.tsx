@@ -86,7 +86,8 @@ export const HorizontalScroll: React.FC<HorizontalScrollAreaProps> = ({
             <Icon
               icon={ArrowLeft02Icon}
               size={28}
-              className="rounded-full bg-foreground-body p-1 text-action-foreground drop-shadow"
+              tone="inverse"
+              className="rounded-full bg-foreground-body p-1 drop-shadow"
             />
           </button>
         )}
@@ -100,7 +101,8 @@ export const HorizontalScroll: React.FC<HorizontalScrollAreaProps> = ({
             <Icon
               icon={ArrowRight02Icon}
               size={28}
-              className="rounded-full bg-foreground-body p-1 text-action-foreground drop-shadow"
+              tone="inverse"
+              className="rounded-full bg-foreground-body p-1 drop-shadow"
             />
           </button>
         )}

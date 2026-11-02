@@ -222,12 +222,14 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                                 `${execution.execId}-${index}` ? (
                                   <Icon
                                     icon={Tick02Icon}
-                                    className="size-4 text-success"
+                                    tone="success"
+                                    className="size-4"
                                   />
                                 ) : (
                                   <Icon
                                     icon={Copy01Icon}
-                                    className="size-4 text-foreground-base"
+                                    tone="base"
+                                    className="size-4"
                                   />
                                 )}
                               </Button>
@@ -240,7 +242,8 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                               >
                                 <Icon
                                   icon={Download04Icon}
-                                  className="size-4 text-foreground-base"
+                                  tone="base"
+                                  className="size-4"
                                 />
                               </Button>
                             </div>
@@ -275,12 +278,14 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                         {copiedIndex === index ? (
                           <Icon
                             icon={Tick02Icon}
-                            className="size-4 text-success"
+                            tone="success"
+                            className="size-4"
                           />
                         ) : (
                           <Icon
                             icon={Copy01Icon}
-                            className="size-4 text-foreground-base"
+                            tone="base"
+                            className="size-4"
                           />
                         )}
                       </Button>
@@ -293,7 +298,8 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                       >
                         <Icon
                           icon={Download04Icon}
-                          className="size-4 text-foreground-base"
+                          tone="base"
+                          className="size-4"
                         />
                       </Button>
                     </div>

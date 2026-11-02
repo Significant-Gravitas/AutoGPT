@@ -122,10 +122,8 @@ function HandoffDetails({ name, about, task, onShowProfile }: DetailsProps) {
           icon={ArrowDown01Icon}
           size={12}
           aria-hidden
-          className={cn(
-            "transition-transform motion-reduce:transition-none",
-            open && "rotate-180",
-          )}
+          motion="transform"
+          className={cn(open && "rotate-180")}
         />
       </button>
       <div

@@ -52,7 +52,7 @@ export function SectionMobileNav({ items, sectionName, showBackLink }: Props) {
                 size={16}
                 className="text-foreground-base"
               />
-              <Text variant="body" as="span" className="font-medium">
+              <Text variant="body" as="span" weight="medium">
                 {current.label}
               </Text>
             </span>

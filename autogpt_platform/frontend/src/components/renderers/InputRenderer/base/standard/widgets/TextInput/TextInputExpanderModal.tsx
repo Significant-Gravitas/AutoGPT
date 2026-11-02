@@ -104,7 +104,7 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
               )}
             >
               {isCopied ? (
-                <Icon icon={Tick02Icon} size={16} className="text-success" />
+                <Icon icon={Tick02Icon} size={16} tone="success" />
               ) : (
                 <Icon icon={Copy01Icon} size={16} />
               )}

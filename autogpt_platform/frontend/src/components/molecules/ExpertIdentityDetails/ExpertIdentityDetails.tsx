@@ -128,11 +128,11 @@ export function ExpertIdentityDetails({
       {compact && area ? (
         <Text
           as="span"
-          variant="small"
-          tone="secondary"
+          variant="small-tight"
           data-slot="expert-identity-area"
           // oxlint-disable-next-line design-system/require-static-classes -- forwards the caller's areaClassName
-          className={cn("truncate leading-4", areaClassName)}
+          tone="secondary"
+          className={cn("truncate", areaClassName)}
           title={area}
         >
           {area}

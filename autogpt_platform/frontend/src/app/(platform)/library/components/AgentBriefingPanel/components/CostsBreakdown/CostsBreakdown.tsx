@@ -36,7 +36,8 @@ export function CostsBreakdown({ agents }: Props) {
           icon={ArrowDown01Icon}
           size={14}
           // oxlint-disable-next-line design-system/no-restyle -- the chevron animates its rotation
-          className={`transition-transform ${isExpanded ? "rotate-180" : ""}`}
+          motion="transform"
+          className={`${isExpanded ? "rotate-180" : ""}`}
         />
       </Button>
 

@@ -83,7 +83,8 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
         <Icon
           icon={classification.icon}
           size={20}
-          className="shrink-0 text-foreground-subtle"
+          tone="subtle"
+          className="shrink-0"
         />
         <div className="min-w-0 flex-1">
           <Text variant="body-medium-tight" tone="primary" className="truncate">
@@ -99,7 +100,8 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
         <Icon
           icon={Download01Icon}
           size={16}
-          className="shrink-0 text-foreground-subtle"
+          tone="subtle"
+          className="shrink-0"
         />
       </button>
     );

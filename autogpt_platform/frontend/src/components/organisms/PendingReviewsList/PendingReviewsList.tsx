@@ -237,15 +237,11 @@ export function PendingReviewsList({
         data-slot="pending-reviews-list-empty"
         className="flex flex-col items-center justify-center py-12 text-center"
       >
-        <Icon
-          icon={Clock01Icon}
-          size={48}
-          className="mb-4 text-muted-foreground"
-        />
-        <Text variant="h4" className="text-muted-foreground">
+        <Icon icon={Clock01Icon} size={48} tone="muted" className="mb-4" />
+        <Text variant="h4" tone="muted">
           {emptyMessage}
         </Text>
-        <Text variant="body" className="mt-2 max-w-md text-muted-foreground">
+        <Text variant="body" tone="muted" className="mt-2 max-w-md">
           When workflows have human-in-the-loop blocks, they will appear here
           for your review and approval.
         </Text>
@@ -336,13 +332,13 @@ export function PendingReviewsList({
                         <Icon
                           icon={ArrowRight01Icon}
                           size={20}
-                          className="text-foreground-secondary"
+                          tone="secondary"
                         />
                       ) : (
                         <Icon
                           icon={ArrowDown01Icon}
                           size={20}
-                          className="text-foreground-secondary"
+                          tone="secondary"
                         />
                       )}
                       <div

@@ -55,11 +55,7 @@ function OfferHeading({
       data-slot="offer-heading"
       className="mb-3 flex flex-wrap items-center gap-2"
     >
-      <Text
-        variant="h5"
-        as="h2"
-        className="font-semibold text-foreground-emphasis"
-      >
+      <Text variant="h5" as="h2" weight="semibold" tone="emphasis">
         {plan.name}
       </Text>
       {plan.usage && (

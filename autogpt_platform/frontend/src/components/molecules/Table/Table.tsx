@@ -87,9 +87,10 @@ export function Table({
                   >
                     {readOnly ? (
                       <Text
-                        variant="body"
+                        variant="body-tight"
                         data-slot="table-cell-text"
-                        className="px-3 py-2 text-body leading-5 text-foreground-emphasis"
+                        tone="emphasis"
+                        className="px-3 py-2"
                       >
                         {row[column] || "-"}
                       </Text>

@@ -35,7 +35,8 @@ function ActivityNavIndicator() {
     <Icon
       icon={ArrowUpRight01Icon}
       size={16}
-      className="shrink-0 text-foreground-subtle"
+      tone="subtle"
+      className="shrink-0"
       aria-hidden="true"
     />
   );
@@ -49,33 +50,21 @@ export function ActivityItem({ execution }: Props) {
   function getStatusIcon() {
     switch (execution.status) {
       case AgentExecutionStatus.QUEUED:
-        return <Icon icon={Clock01Icon} size={18} className="text-brand" />;
+        return <Icon icon={Clock01Icon} size={18} tone="brand" />;
       case AgentExecutionStatus.RUNNING:
-        return (
-          <Icon
-            icon={Loading03Icon}
-            size={18}
-            className="animate-spin text-brand"
-          />
-        );
+        return <Icon icon={Loading03Icon} size={18} spin tone="brand" />;
       case AgentExecutionStatus.COMPLETED:
         return isCompletedWithErrors(execution) ? (
-          <Icon
-            icon={Alert02Icon}
-            size={18}
-            className="text-warning-foreground"
-          />
+          <Icon icon={Alert02Icon} size={18} tone="warning" />
         ) : (
-          <Icon icon={CheckmarkCircle02Icon} size={18} className="text-brand" />
+          <Icon icon={CheckmarkCircle02Icon} size={18} tone="brand" />
         );
       case AgentExecutionStatus.FAILED:
-        return <Icon icon={Alert01Icon} size={18} className="text-brand" />;
+        return <Icon icon={Alert01Icon} size={18} tone="brand" />;
       case AgentExecutionStatus.TERMINATED:
-        return <Icon icon={StopCircleIcon} size={18} className="text-brand" />;
+        return <Icon icon={StopCircleIcon} size={18} tone="brand" />;
       case AgentExecutionStatus.INCOMPLETE:
-        return (
-          <Icon icon={MinusSignCircleIcon} size={18} className="text-brand" />
-        );
+        return <Icon icon={MinusSignCircleIcon} size={18} tone="brand" />;
       case AgentExecutionStatus.REVIEW:
         return (
           <Icon

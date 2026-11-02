@@ -82,7 +82,8 @@ export function Button(props: ButtonProps | CompactButtonProps) {
         <Icon
           data-slot="button-spinner"
           icon={Loading03Icon}
-          className="h-4 w-4 animate-spin"
+          spin
+          className="h-4 w-4"
         />
       )}
       {!loading && resolvedLeftIcon}

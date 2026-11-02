@@ -26,7 +26,8 @@ export function AvailableIntegrations({ query, onSelect }: Props) {
           as="h2"
           id="available-integrations-heading"
           tone="secondary"
-          className="tracking-eyebrow uppercase"
+          transform="uppercase"
+          className="tracking-eyebrow"
         >
           Available integrations
         </Text>

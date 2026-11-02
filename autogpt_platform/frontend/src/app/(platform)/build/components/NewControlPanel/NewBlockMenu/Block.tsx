@@ -170,10 +170,7 @@ function BlockCard({
             "flex h-7 w-7 items-center justify-center rounded-lg bg-foreground-body group-disabled:bg-foreground-subtle",
           )}
         >
-          <Icon
-            icon={PlusSignIcon}
-            className="h-5 w-5 text-action-foreground"
-          />
+          <Icon icon={PlusSignIcon} tone="inverse" className="h-5 w-5" />
         </div>
       </button>
       {isMCPBlock && (

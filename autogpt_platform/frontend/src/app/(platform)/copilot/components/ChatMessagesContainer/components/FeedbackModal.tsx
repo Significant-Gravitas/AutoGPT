@@ -38,7 +38,7 @@ export function FeedbackModal({ isOpen, onSubmit, onCancel }: Props) {
     >
       <Dialog.Content>
         <div className="mx-auto w-[95%] space-y-4">
-          <Text variant="body-tight" as="p" className="text-muted-foreground">
+          <Text variant="body-tight" as="p" tone="muted">
             Your feedback helps us improve. Share details below.
           </Text>
           <Input
@@ -52,11 +52,7 @@ export function FeedbackModal({ isOpen, onSubmit, onCancel }: Props) {
             className="resize-none"
           />
           <div className="flex items-center justify-between">
-            <Text
-              variant="small-tight"
-              as="p"
-              className="text-muted-foreground"
-            >
+            <Text variant="small-tight" as="p" tone="muted">
               {comment.length}/2000
             </Text>
             <div className="flex gap-2">

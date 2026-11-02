@@ -144,10 +144,7 @@ export function MentionDropdown({
           </p>
         ) : isLoading ? (
           <p className="flex items-center gap-2 px-3 py-2 text-sm text-foreground-tertiary">
-            <Icon
-              icon={Loading03Icon}
-              className="h-4 w-4 shrink-0 animate-spin"
-            />
+            <Icon icon={Loading03Icon} spin className="h-4 w-4 shrink-0" />
             Searching files…
           </p>
         ) : null}
@@ -178,10 +175,7 @@ function ConnectOption({ query }: { query: string }) {
   const search = query.trim();
   return (
     <>
-      <Icon
-        icon={PlugSocketIcon}
-        className="h-4 w-4 shrink-0 text-foreground-strong"
-      />
+      <Icon icon={PlugSocketIcon} tone="primary" className="h-4 w-4 shrink-0" />
       <span className="min-w-0 flex-1">
         <span className="block truncate font-medium">
           Connect an integration
@@ -238,10 +232,7 @@ function FolderOption({
 }) {
   return (
     <>
-      <Icon
-        icon={Folder01Icon}
-        className="h-4 w-4 shrink-0 text-foreground-strong"
-      />
+      <Icon icon={Folder01Icon} tone="primary" className="h-4 w-4 shrink-0" />
       <span className="min-w-0 flex-1 truncate">{folder.name}</span>
       <Text variant="small-tight" as="span" tone="muted" className="shrink-0">
         {count}
@@ -255,7 +246,8 @@ function FileOption({ file }: { file: WorkspaceFileItem }) {
     <>
       <Icon
         icon={getFileTypeIcon(file.mime_type)}
-        className="h-4 w-4 shrink-0 text-foreground-strong"
+        tone="primary"
+        className="h-4 w-4 shrink-0"
       />
       <span className="min-w-0 flex-1 truncate">{file.name}</span>
     </>

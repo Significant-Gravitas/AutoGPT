@@ -54,7 +54,8 @@ export function IntegrationsPanel({
           as="h2"
           id="tool-connections-heading"
           tone="body"
-          className="pb-3 pl-4 tracking-eyebrow uppercase"
+          transform="uppercase"
+          className="pb-3 pl-4 tracking-eyebrow"
         >
           Tools your experts and workflows use
         </Text>

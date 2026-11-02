@@ -352,7 +352,7 @@ export function ExpertChangeCard({
   return (
     <div className={SHELL}>
       <div className={HEADER}>
-        <Icon icon={header.icon} size={18} className="text-foreground-subtle" />
+        <Icon icon={header.icon} size={18} tone="subtle" />
         <Text
           variant="body-medium-tight"
           as="span"
@@ -475,11 +475,7 @@ function SoulChangeCard({
   return (
     <div className={SHELL}>
       <div className={HEADER}>
-        <Icon
-          icon={PencilEdit02Icon}
-          size={18}
-          className="text-foreground-subtle"
-        />
+        <Icon icon={PencilEdit02Icon} size={18} tone="subtle" />
         <Text
           variant="body-medium-tight"
           as="span"
@@ -621,11 +617,7 @@ export function ExpertChangeCardSkeleton() {
   return (
     <div className={SHELL}>
       <div className={HEADER}>
-        <Icon
-          icon={UserAdd01Icon}
-          size={18}
-          className="text-foreground-subtle"
-        />
+        <Icon icon={UserAdd01Icon} size={18} tone="subtle" />
         <Text variant="body-medium-tight" as="span" tone="primary">
           Create an Expert
         </Text>

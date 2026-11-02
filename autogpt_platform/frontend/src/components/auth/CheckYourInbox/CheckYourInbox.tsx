@@ -36,7 +36,7 @@ export function CheckYourInbox({
   return (
     <div className="flex w-full flex-col items-center text-center">
       <div className="mb-6 flex size-14 items-center justify-center rounded-full bg-accent-surface">
-        <Icon icon={Mail01Icon} className="size-7 text-brand" />
+        <Icon icon={Mail01Icon} tone="brand" className="size-7" />
       </div>
 
       <Text

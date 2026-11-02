@@ -106,7 +106,8 @@ export function PlanOffer({
             <Icon
               icon={Tick02Icon}
               size={16}
-              className="mt-0.5 shrink-0 text-brand"
+              tone="brand"
+              className="mt-0.5 shrink-0"
             />
             {feature}
           </li>

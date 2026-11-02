@@ -55,11 +55,7 @@ export const FilterChip: React.FC<Props> = ({
             transition={{ duration: 0.3, type: "spring", bounce: 0.2 }}
             className="flex h-4 w-4 items-center justify-center rounded-full bg-surface-muted"
           >
-            <Icon
-              icon={Cancel01Icon}
-              size={12}
-              className="text-accent-strong"
-            />
+            <Icon icon={Cancel01Icon} size={12} tone="accent" />
           </motion.span>
         )}
         {number !== undefined && isHovered && (

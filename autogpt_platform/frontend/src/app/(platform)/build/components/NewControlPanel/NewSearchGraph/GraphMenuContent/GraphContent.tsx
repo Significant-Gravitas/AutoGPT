@@ -137,7 +137,8 @@ export function GraphSearchContent({
                     <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-foreground-body">
                       <Icon
                         icon={CornerUpRightIcon}
-                        className="h-4 w-4 text-action-foreground"
+                        tone="inverse"
+                        className="h-4 w-4"
                       />
                     </div>
                   </div>

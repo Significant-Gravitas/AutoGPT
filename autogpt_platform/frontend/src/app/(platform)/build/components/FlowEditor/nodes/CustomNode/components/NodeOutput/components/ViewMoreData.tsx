@@ -158,7 +158,7 @@ export const ViewMoreData = ({
                                       <Icon
                                         icon={Tick02Icon}
                                         size={16}
-                                        className="text-success"
+                                        tone="success"
                                       />
                                     ) : (
                                       <Icon icon={Copy01Icon} size={16} />

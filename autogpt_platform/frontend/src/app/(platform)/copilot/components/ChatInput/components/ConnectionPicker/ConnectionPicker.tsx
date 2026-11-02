@@ -79,8 +79,9 @@ export function ConnectionPicker({
         variant="small-medium-tight"
         as="span"
         aria-label="AI connections unavailable"
+        tone="error"
         className={cn(
-          "inline-flex h-9 items-center gap-1.5 rounded-full border border-destructive/20 bg-destructive/10 px-2.5 text-destructive",
+          "inline-flex h-9 items-center gap-1.5 rounded-full border border-destructive/20 bg-destructive/10 px-2.5",
           className,
         )}
       >
@@ -183,11 +184,7 @@ export function ConnectionPicker({
             <span className="hidden sm:inline">
               <Swap>{triggerLabel}</Swap>
             </span>
-            <Icon
-              icon={ArrowDown01Icon}
-              size={14}
-              className="text-muted-foreground"
-            />
+            <Icon icon={ArrowDown01Icon} size={14} tone="muted" />
           </>
         )}
       </Button>

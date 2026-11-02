@@ -67,7 +67,8 @@ export function ContentCardTitle({
   return (
     <Text
       variant="body-medium"
-      className={cn("truncate text-foreground-emphasis", className)}
+      tone="emphasis"
+      className={cn("truncate", className)}
     >
       {children}
     </Text>
@@ -84,10 +85,9 @@ export function ContentCardSubtitle({
   return (
     <Text
       variant="small"
-      className={cn(
-        "mt-0.5 truncate font-mono text-foreground-emphasis",
-        className,
-      )}
+      mono
+      tone="emphasis"
+      className={cn("mt-0.5 truncate", className)}
     >
       {children}
     </Text>
@@ -102,10 +102,7 @@ export function ContentCardDescription({
   className?: string;
 }) {
   return (
-    <Text
-      variant="body"
-      className={cn("mt-2 text-foreground-emphasis", className)}
-    >
+    <Text variant="body" tone="emphasis" className={cn("mt-2", className)}>
       {children}
     </Text>
   );
@@ -123,7 +120,7 @@ export function ContentMessage({
   className?: string;
 }) {
   return (
-    <Text variant="body" className={cn("text-foreground-emphasis", className)}>
+    <Text variant="body" tone="emphasis" className={className}>
       {children}
     </Text>
   );
@@ -137,7 +134,7 @@ export function ContentHint({
   className?: string;
 }) {
   return (
-    <Text variant="small" className={cn("text-foreground-tertiary", className)}>
+    <Text variant="small" tone="muted" className={className}>
       {children}
     </Text>
   );

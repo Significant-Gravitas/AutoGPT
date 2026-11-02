@@ -34,12 +34,7 @@ export function ReviewSidebar({ carousel, sheet = false }: Props) {
         <Text variant="body-medium" as="h2">
           To review
         </Text>
-        <Text
-          variant="small"
-          as="span"
-          tone="secondary"
-          className="tabular-nums"
-        >
+        <Text variant="small" as="span" tone="secondary" tabular>
           {carousel.left} of {carousel.total} left
         </Text>
       </div>

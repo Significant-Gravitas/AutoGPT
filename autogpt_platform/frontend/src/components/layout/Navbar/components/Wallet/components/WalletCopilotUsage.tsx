@@ -88,7 +88,7 @@ function TrialUsage() {
         <Text variant="body-medium" tone="body">
           Trial allowance
         </Text>
-        <Text variant="body" tone="muted" className="tabular-nums">
+        <Text variant="body" tone="muted" tabular>
           {formatTrialPercent(percent)} used
         </Text>
       </div>

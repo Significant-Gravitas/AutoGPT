@@ -128,8 +128,9 @@ export function CredentialRow({
         {!(asSelectTrigger && isNodeVariant) && showMaskedKey && (
           <Text
             variant="large"
+            mono
             className={cn(
-              "absolute top-[65%] -translate-y-1/2 overflow-hidden font-mono tracking-tight whitespace-nowrap",
+              "absolute top-[65%] -translate-y-1/2 overflow-hidden tracking-tight whitespace-nowrap",
               asSelectTrigger ? "right-0" : "right-6",
             )}
           >
@@ -140,7 +141,8 @@ export function CredentialRow({
       {(showCaret || (asSelectTrigger && !readOnly)) && (
         <Icon
           icon={ArrowDown01Icon}
-          className="h-4 w-4 shrink-0 text-foreground-subtle"
+          tone="subtle"
+          className="h-4 w-4 shrink-0"
         />
       )}
       {!readOnly && !showCaret && !asSelectTrigger && onDelete && (
@@ -150,10 +152,7 @@ export function CredentialRow({
               className="ml-auto shrink-0 rounded p-1 hover:bg-surface-hover"
               onClick={(e) => e.stopPropagation()}
             >
-              <Icon
-                icon={MoreVerticalIcon}
-                className="h-5 w-5 text-foreground-subtle"
-              />
+              <Icon icon={MoreVerticalIcon} tone="subtle" className="h-5 w-5" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">

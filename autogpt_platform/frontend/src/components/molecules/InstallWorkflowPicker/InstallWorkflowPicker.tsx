@@ -76,7 +76,7 @@ export function InstallWorkflowPicker({
             <Text
               variant="body"
               data-slot="install-workflow-picker-empty"
-              className="text-foreground-tertiary"
+              tone="muted"
             >
               No hired experts yet.
             </Text>

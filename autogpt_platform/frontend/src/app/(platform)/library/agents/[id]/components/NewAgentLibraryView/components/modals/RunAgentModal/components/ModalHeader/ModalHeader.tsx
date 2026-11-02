@@ -41,7 +41,7 @@ export function ModalHeader({ agent }: ModalHeaderProps) {
             <Text
               variant="lead-semibold"
               // oxlint-disable-next-line design-system/no-restyle -- no Text tone for info-foreground yet
-              className="text-info-foreground"
+              tone="info-strong"
             >
               Tip
             </Text>
@@ -61,7 +61,7 @@ export function ModalHeader({ agent }: ModalHeaderProps) {
             <Text
               variant="lead-semibold"
               // oxlint-disable-next-line design-system/no-restyle -- no Text tone for brand-hover yet
-              className="text-brand-hover"
+              tone="brand-strong"
             >
               Instructions
             </Text>

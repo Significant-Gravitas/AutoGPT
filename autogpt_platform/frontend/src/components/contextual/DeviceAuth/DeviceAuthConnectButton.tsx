@@ -52,7 +52,7 @@ export function DeviceAuthConnectButton({
           Requesting a code from {providerName}…
         </Text>
         <div className="flex items-center gap-2 text-foreground-tertiary">
-          <Icon icon={Loading03Icon} size={16} className="animate-spin" />
+          <Icon icon={Loading03Icon} size={16} spin />
           <Text variant="small">Starting device authorization…</Text>
         </div>
       </div>
@@ -85,7 +85,7 @@ export function DeviceAuthConnectButton({
           and Sentry masks the code, as it does all text. */}
       <div className="ph-no-capture flex flex-col gap-3 rounded-lg border border-border-base bg-surface-muted p-4">
         <div className="flex flex-col gap-1">
-          <Text variant="small" tone="muted" className="font-medium">
+          <Text variant="small" tone="muted" weight="medium">
             Your code
           </Text>
           <Text
@@ -111,7 +111,7 @@ export function DeviceAuthConnectButton({
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-foreground-tertiary">
-          <Icon icon={Loading03Icon} size={16} className="animate-spin" />
+          <Icon icon={Loading03Icon} size={16} spin />
           <Text variant="small">Waiting for approval…</Text>
         </div>
         <Button

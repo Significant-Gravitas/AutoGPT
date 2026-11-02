@@ -31,7 +31,8 @@ export function ScheduledSendChip({ job, onEdit, onCancel, isBusy }: Props) {
         <Icon
           icon={Clock01Icon}
           size={16}
-          className="shrink-0 text-brand-hover"
+          tone="brand-strong"
+          className="shrink-0"
         />
         <Text variant="small-medium" className="shrink-0 !text-accent-strong">
           {isDue ? "Sending…" : label}

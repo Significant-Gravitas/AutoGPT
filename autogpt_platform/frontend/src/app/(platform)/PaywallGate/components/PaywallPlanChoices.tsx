@@ -90,7 +90,7 @@ export function PaywallPlanChoices({
           </Button>
         </div>
       )}
-      <Text variant="small" tone="secondary" className="text-center text-xs">
+      <Text variant="small-tight" tone="secondary" className="text-center">
         Your conversations and workflows stay saved. Cancel anytime.
       </Text>
     </section>
@@ -162,7 +162,8 @@ function PlanChoice({
             <Icon
               icon={Tick02Icon}
               size={15}
-              className="mt-0.5 shrink-0 text-brand-hover"
+              tone="brand-strong"
+              className="mt-0.5 shrink-0"
             />
             <Text variant="small" tone="body">
               {feature}

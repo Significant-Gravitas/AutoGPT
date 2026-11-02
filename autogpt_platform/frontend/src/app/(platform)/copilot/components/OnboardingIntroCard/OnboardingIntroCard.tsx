@@ -137,11 +137,7 @@ export function OnboardingIntroCard({
                   className="rounded-full p-2 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
                 >
                   {isCopied ? (
-                    <Icon
-                      icon={Tick02Icon}
-                      size={16}
-                      className="text-success"
-                    />
+                    <Icon icon={Tick02Icon} size={16} tone="success" />
                   ) : (
                     <Icon icon={Copy01Icon} size={16} />
                   )}

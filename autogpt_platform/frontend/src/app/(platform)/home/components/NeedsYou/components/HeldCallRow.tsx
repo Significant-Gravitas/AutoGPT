@@ -120,7 +120,8 @@ export function HeldCallRow({
             variant="small"
             as="span"
             tone="secondary"
-            className="mr-1 hidden tabular-nums sm:inline"
+            tabular
+            className="mr-1 hidden sm:inline"
           >
             <time dateTime={new Date(item.created_at).toISOString()}>
               {shortAge(item.created_at)}

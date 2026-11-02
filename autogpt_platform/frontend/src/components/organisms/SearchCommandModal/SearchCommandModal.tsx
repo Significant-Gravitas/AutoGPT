@@ -134,7 +134,8 @@ export function SearchCommandModal({
           >
             <Icon
               icon={Search01Icon}
-              className="h-5 w-5 shrink-0 text-foreground-emphasis"
+              tone="emphasis"
+              className="h-5 w-5 shrink-0"
             />
             <Input
               bare

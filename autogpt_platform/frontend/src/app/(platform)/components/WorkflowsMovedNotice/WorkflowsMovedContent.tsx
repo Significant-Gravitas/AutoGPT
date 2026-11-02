@@ -77,12 +77,7 @@ function WorkflowLocation() {
       {["Team", "Otto", "Workflows"].map((label, index) => (
         <li key={label} className="flex items-center gap-2">
           {index > 0 && (
-            <Icon
-              icon={ArrowRight02Icon}
-              size={12}
-              className="text-foreground-subtle"
-              aria-hidden
-            />
+            <Icon icon={ArrowRight02Icon} size={12} tone="subtle" aria-hidden />
           )}
           <span
             className={

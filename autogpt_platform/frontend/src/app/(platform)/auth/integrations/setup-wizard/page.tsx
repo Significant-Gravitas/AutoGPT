@@ -282,17 +282,9 @@ export default function IntegrationSetupWizardPage() {
                     </Text>
                     <div className="grow"></div>
                     {isSelected ? (
-                      <Icon
-                        icon={Tick02Icon}
-                        size={20}
-                        className="text-success"
-                      />
+                      <Icon icon={Tick02Icon} size={20} tone="success" />
                     ) : (
-                      <Icon
-                        icon={CircleIcon}
-                        size={20}
-                        className="text-foreground-disabled"
-                      />
+                      <Icon icon={CircleIcon} size={20} tone="disabled" />
                     )}
                     {isSelected && (
                       <Text variant="small" tone="success">

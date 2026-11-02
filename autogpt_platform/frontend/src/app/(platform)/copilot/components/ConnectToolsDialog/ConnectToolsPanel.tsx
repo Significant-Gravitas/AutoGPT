@@ -149,7 +149,8 @@ export function ConnectToolsPanel({
                     <Icon
                       icon={Search01Icon}
                       size={16}
-                      className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-foreground-subtle"
+                      tone="subtle"
+                      className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2"
                     />
                     <input
                       type="text"
@@ -164,11 +165,7 @@ export function ConnectToolsPanel({
                   {query.trim() ? (
                     providers.length === 0 ? (
                       <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border-base py-8 text-center">
-                        <Icon
-                          icon={Plug01Icon}
-                          size={16}
-                          className="text-foreground-subtle"
-                        />
+                        <Icon icon={Plug01Icon} size={16} tone="subtle" />
                         <Text variant="body" tone="secondary">
                           {`No services match "${query.trim()}"`}
                         </Text>

@@ -79,7 +79,7 @@ function ToolIcon({
   isError: boolean;
 }) {
   if (isError) {
-    return <Icon icon={AlertDiamondIcon} size={14} className="text-error" />;
+    return <Icon icon={AlertDiamondIcon} size={14} tone="error" />;
   }
   if (isStreaming) {
     return <OrbitLoader size={14} />;
@@ -634,19 +634,11 @@ function getTodoAccordionData(input: unknown): AccordionData {
           <div key={i} className="flex items-start gap-2 text-xs">
             <span className="mt-0.5 flex-shrink-0">
               {todo.status === "completed" ? (
-                <Icon
-                  icon={CheckmarkCircle02Icon}
-                  size={14}
-                  className="text-success"
-                />
+                <Icon icon={CheckmarkCircle02Icon} size={14} tone="success" />
               ) : todo.status === "in_progress" ? (
-                <Icon icon={CircleDashedIcon} size={14} className="text-info" />
+                <Icon icon={CircleDashedIcon} size={14} tone="info" />
               ) : (
-                <Icon
-                  icon={CircleIcon}
-                  size={14}
-                  className="text-foreground-subtle"
-                />
+                <Icon icon={CircleIcon} size={14} tone="subtle" />
               )}
             </span>
             <span

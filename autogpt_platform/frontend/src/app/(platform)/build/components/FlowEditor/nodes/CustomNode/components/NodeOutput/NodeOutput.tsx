@@ -64,11 +64,7 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                     )}
                   >
                     {copiedKey === "input" ? (
-                      <Icon
-                        icon={Tick02Icon}
-                        size={12}
-                        className="text-success"
-                      />
+                      <Icon icon={Tick02Icon} size={12} tone="success" />
                     ) : (
                       <Icon icon={Copy01Icon} size={12} />
                     )}
@@ -123,7 +119,7 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                                 <Icon
                                   icon={Tick02Icon}
                                   size={12}
-                                  className="text-success"
+                                  tone="success"
                                 />
                               ) : (
                                 <Icon icon={Copy01Icon} size={12} />

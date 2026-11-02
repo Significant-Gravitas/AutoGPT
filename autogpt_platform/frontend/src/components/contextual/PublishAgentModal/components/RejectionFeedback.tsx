@@ -16,7 +16,7 @@ export function RejectionFeedback({ comments }: Props) {
           Review feedback
         </Text>
       </div>
-      <Text variant="small" className="text-error-foreground">
+      <Text variant="small" tone="error-strong">
         {comments}
       </Text>
     </div>
