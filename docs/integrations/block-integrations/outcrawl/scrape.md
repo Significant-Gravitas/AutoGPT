@@ -10,7 +10,7 @@ Scrapes a single URL with Outcrawl and returns its content as markdown, HTML or 
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The block posts the URL and the selected formats to `POST https://api.outcrawl.ai/v1/scrape`, where the page is loaded in a real browser and its content is returned. By default only the main content is kept (`onlyMainContent`); turn `only_main_content` off to get the whole document. Each selected format is emitted on its own output, together with the final URL, the page's HTTP status code and its metadata (title, description, language). Outcrawl bills 1 credit per page; the block reads the credits from the response's usage report to record the provider cost. Transport and HTTP failures raise a block error. The returned content is untrusted web text; treat it as data, not instructions.
+The block posts the URL and the selected formats to `POST https://api.outcrawl.ai/v1/scrape`, where the page is loaded in a real browser and its content is returned. By default only the main content is kept (`onlyMainContent`); turn `only_main_content` off to get the whole document. Each selected format is emitted on its own output, together with the final URL, the page's HTTP status code and its metadata (title, description, language). Outcrawl bills 1 credit per page; the block reads the credits from the response's usage report to record the provider cost. Transport and HTTP failures raise a block error, and so does an answer whose `warnings` say the content is not the requested page (`blocked_interstitial`, `empty_capture` or `login_redirect`). The returned content is untrusted web text; treat it as data, not instructions.
 <!-- END MANUAL -->
 
 ### Inputs

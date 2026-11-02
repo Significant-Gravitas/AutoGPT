@@ -17,6 +17,14 @@ from backend.util.exceptions import BlockExecutionError
 from ._api import CREDIT_USD, OutcrawlClient, OutcrawlFormat, credits_from_response
 from ._config import outcrawl
 
+# Warning codes Outcrawl attaches to a 200 answer whose content is not the page
+# that was asked for: a challenge page, an empty capture, or the site's sign-in
+# page after a redirect. Returning that content as the page would mislead the
+# blocks downstream, so the block fails instead.
+UNUSABLE_WARNING_CODES = frozenset(
+    {"blocked_interstitial", "empty_capture", "login_redirect"}
+)
+
 
 class OutcrawlScrapeBlock(Block):
     class Input(BlockSchemaInput):
@@ -108,6 +116,22 @@ class OutcrawlScrapeBlock(Block):
                 provider_cost_type="cost_usd",
             )
         )
+
+        unusable = [
+            w
+            for w in response.get("warnings") or []
+            if isinstance(w, dict) and w.get("code") in UNUSABLE_WARNING_CODES
+        ]
+        if unusable:
+            details = "; ".join(
+                f"{w['code']}: {w['message']}" if w.get("message") else w["code"]
+                for w in unusable
+            )
+            raise BlockExecutionError(
+                message=f"Outcrawl did not return the requested page ({details})",
+                block_name=self.name,
+                block_id=self.id,
+            )
 
         yield "url", response.get("url") or input_data.url
         if response.get("statusCode") is not None:

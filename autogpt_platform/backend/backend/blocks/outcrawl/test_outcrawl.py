@@ -163,6 +163,61 @@ async def test_scrape_block_wraps_api_errors():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "code", ["login_redirect", "blocked_interstitial", "empty_capture"]
+)
+async def test_scrape_block_rejects_unusable_pages(code):
+    block = OutcrawlScrapeBlock()
+
+    async def warned(credentials, payload):
+        return {
+            "url": "https://github.com/login",
+            "statusCode": 200,
+            "markdown": "Sign in to GitHub",
+            "metadata": {"title": "Sign in to GitHub"},
+            "warnings": [{"code": code, "message": "not the page asked for"}],
+            "usage": {"credits": "1"},
+        }
+
+    block._scrape = warned
+    with (
+        mock.patch.object(block, "merge_stats") as merge_stats,
+        pytest.raises(BlockExecutionError, match=f"{code}: not the page"),
+    ):
+        await _collect(
+            block,
+            {
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "url": "https://github.com/settings/profile",
+            },
+        )
+    # The page was still fetched and billed, so the cost is recorded.
+    assert merge_stats.called
+
+
+@pytest.mark.asyncio
+async def test_scrape_block_keeps_content_with_other_warnings():
+    block = OutcrawlScrapeBlock()
+
+    async def warned(credentials, payload):
+        return {
+            "url": "https://agpt.co/",
+            "statusCode": 200,
+            "markdown": "AutoGPT",
+            "metadata": {"title": "AutoGPT"},
+            "warnings": [{"code": "some_other_code", "message": "informational"}],
+            "usage": {"credits": "1"},
+        }
+
+    block._scrape = warned
+    with mock.patch.object(block, "merge_stats"):
+        out = await _collect(
+            block, {"credentials": TEST_CREDENTIALS_INPUT, "url": "https://agpt.co"}
+        )
+    assert out["markdown"] == "AutoGPT"
+
+
+@pytest.mark.asyncio
 async def test_search_block_scrape_results_requests_markdown():
     block = OutcrawlSearchBlock()
     captured = {}
