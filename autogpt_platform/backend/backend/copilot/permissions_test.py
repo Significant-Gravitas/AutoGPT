@@ -358,6 +358,69 @@ class TestValidateBlockIdentifiers:
         assert result == []
 
 
+def _mock_registry(mocker, count: int) -> list[str]:
+    registry = {}
+    for i in range(count):
+        block_cls = mocker.MagicMock()
+        block_cls.return_value.name = f"Block {i}"
+        registry[f"{i:08x}-0000-4000-8000-000000000000"] = block_cls
+    mocker.patch("backend.blocks.get_blocks", return_value=registry)
+    return list(registry)
+
+
+@pytest.mark.asyncio
+class TestValidateBlockIdentifiersLimits:
+    async def test_refuses_more_than_1000_identifiers(self, mocker):
+        _mock_registry(mocker, 3)
+        with pytest.raises(ValueError, match="At most 1000"):
+            await validate_block_identifiers(["Block 0"] * 1_001)
+
+    async def test_accepts_1000_identifiers(self, mocker):
+        _mock_registry(mocker, 3)
+        assert await validate_block_identifiers(["block 1"] * 1_000) == []
+
+    async def test_resolves_each_identifier_by_lookup(self, mocker):
+        _mock_registry(mocker, 300)
+        matcher = mocker.patch(
+            "backend.copilot.permissions._block_matches", wraps=_block_matches
+        )
+        identifiers = [f"Block {i}" for i in range(250)]
+        identifiers += [f"missing {i}" for i in range(250)]
+
+        result = await validate_block_identifiers(identifiers)
+
+        assert result == identifiers[250:]
+        assert matcher.call_count <= len(identifiers)
+
+    async def test_resolves_like_the_per_block_rule(self, mocker):
+        block_ids = _mock_registry(mocker, 20)
+        identifiers = [
+            block_ids[3],
+            block_ids[4].upper(),
+            f"  {block_ids[5]} ",
+            block_ids[6][:8],
+            block_ids[7][:8].upper(),
+            "  BLOCK 8 ",
+            "block 9",
+            "deadbeef",
+            "Unknown",
+            block_ids[10][:7],
+            f"{block_ids[11]}x",
+            "00000013",
+            "",
+        ]
+        expected = [
+            ident
+            for ident in identifiers
+            if not any(
+                _block_matches(ident, bid, f"Block {i}")
+                for i, bid in enumerate(block_ids)
+            )
+        ]
+
+        assert await validate_block_identifiers(identifiers) == expected
+
+
 # ---------------------------------------------------------------------------
 # apply_tool_permissions
 # ---------------------------------------------------------------------------

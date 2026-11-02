@@ -1061,6 +1061,10 @@ class NodeExecutionStats(BaseModel):
     output_token_count: int = 0
     cache_read_token_count: int = 0
     cache_creation_token_count: int = 0
+    # Estimated input tokens of LLM requests that reached the provider and
+    # were cancelled before a reply reported their usage. Billed only when a
+    # stop request ended the run (see billing.bills_stop_estimate).
+    abandoned_input_token_count: int = 0
     cost: int = 0
     # Post-flight adjustment to the pre-flight ``cost`` estimate. Three writers:
     # 1. charge_reconciled_usage — dynamic cost delta (TOKENS/SECOND/ITEMS/
