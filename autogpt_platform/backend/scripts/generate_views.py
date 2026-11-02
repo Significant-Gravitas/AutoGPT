@@ -32,6 +32,7 @@ Usage
   poetry run analytics-views             # apply all views to DB
   poetry run analytics-views --dry-run   # print all view SQL only
   poetry run analytics-views --only graph_execution,retention_login_weekly
+  poetry run analytics-views --recreate --only user_lifecycle,user_lifecycle_funnel_weekly
 
 Environment variables
 ---------------------
@@ -41,6 +42,11 @@ Notes
 -----
 - .env DB_* vars are read automatically as a fallback.
 - Safe to re-run: uses CREATE OR REPLACE VIEW.
+- CREATE OR REPLACE VIEW cannot drop or rename a column. After such a
+  change, pass --recreate: it drops the selected views and creates them
+  again in the same transaction. List every view that reads from them in
+  --only too; if one is missing, Postgres refuses the drop and nothing
+  changes.
 - Looker, PostHog Data Warehouse, and Supabase MCP all read from the
   same analytics.* views — no raw tables exposed.
 """
@@ -152,6 +158,14 @@ def build_view_sql(name: str, query_body: str) -> str:
     return f"CREATE OR REPLACE VIEW {SCHEMA}.{name} WITH (security_invoker = false) AS\n{body};\n"
 
 
+def build_drop_sql(names: list[str]) -> str:
+    # One statement, no CASCADE: Postgres drops views that depend on each
+    # other together, and refuses when a view outside the list depends on one
+    # of them, so nothing is dropped without being recreated.
+    targets = ", ".join(f"{SCHEMA}.{name}" for name in names)
+    return f"DROP VIEW IF EXISTS {targets};\n"
+
+
 def load_views(only: list[str] | None = None) -> list[tuple[str, str]]:
     """Return [(label, sql)] for all views, in alphabetical order."""
     files = sorted(QUERIES_DIR.glob("*.sql"))
@@ -206,8 +220,13 @@ def cmd_views(args: argparse.Namespace) -> None:
         print("No matching views found.")
         sys.exit(0)
 
+    view_count = len(views)
+    if args.recreate:
+        names = [label.removeprefix(f"view {SCHEMA}.") for label, _ in views]
+        views = [("drop views to recreate", build_drop_sql(names))] + views
+
     if args.dry_run:
-        print(f"-- {len(views)} views\n")
+        print(f"-- {view_count} views\n")
         for label, sql in views:
             print(f"-- {label}")
             print(sql)
@@ -217,7 +236,7 @@ def cmd_views(args: argparse.Namespace) -> None:
     if not db_url:
         no_db_url_error()
     assert db_url
-    print(f"Applying {len(views)} view(s)...")
+    print(f"Applying {view_count} view(s)...")
     # Append grant refresh so the readonly role sees any new views
     grant = f"GRANT SELECT ON ALL TABLES IN SCHEMA {SCHEMA} TO analytics_readonly;"
     run_sql(db_url, views + [("grant analytics_readonly", grant)])
@@ -239,6 +258,11 @@ def main_views() -> None:
     )
     parser.add_argument("--db-url", help="Postgres connection string")
     parser.add_argument("--only", help="Comma-separated view names to update")
+    parser.add_argument(
+        "--recreate",
+        action="store_true",
+        help="Drop the selected views before creating them (needed to remove a column)",
+    )
     cmd_views(parser.parse_args())
 
 

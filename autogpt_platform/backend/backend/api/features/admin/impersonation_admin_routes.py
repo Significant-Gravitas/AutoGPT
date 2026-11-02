@@ -110,14 +110,16 @@ async def notify_impersonation_start(
 async def _send_impersonation_alert(admin: User, target_user_id: str) -> None:
     """Send the Discord alert. Raises if it was not actually delivered."""
     # Prefer the email carried in the JWT; fall back to a DB lookup if absent.
+    # The target is a user, so the alert names them by ID only, never by email.
     admin_email = admin.email or await _resolve_email(admin.user_id)
-    target_email = await _resolve_email(target_user_id)
+    base_url = settings.config.frontend_base_url or settings.config.platform_base_url
 
     content = (
         "🕵️ **Admin impersonation started**\n"
         f"Admin: {admin_email or 'unknown'} (`{admin.user_id}`)\n"
-        f"Now viewing as: {target_email or 'unknown'} (`{target_user_id}`)\n"
-        "Source: admin dashboard"
+        f"Now viewing as: `{target_user_id}`\n"
+        "Source: admin dashboard\n"
+        f"[View User Details]({base_url}/admin/spending?search={target_user_id})"
     )
 
     status = await asyncio.wait_for(
