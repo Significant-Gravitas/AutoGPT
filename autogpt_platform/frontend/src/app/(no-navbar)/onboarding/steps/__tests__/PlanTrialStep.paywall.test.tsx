@@ -40,7 +40,7 @@ vi.mock("@posthog/react", () => ({
 const posthogJS = vi.hoisted(() => ({
   __loaded: true,
   is_capturing: () => true,
-  capture: vi.fn(),
+  capture: vi.fn((event: string) => ({ event })),
 }));
 vi.mock("posthog-js", () => ({ default: posthogJS }));
 

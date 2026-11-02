@@ -44,8 +44,8 @@ export function onboardingStepKey(
  * a single opaque number. PostHog funnels order steps by their filter, so one
  * event with a `step` property serves every step.
  *
- * The once-per-tab guard is marked only once the event is sent or dropped for
- * lack of consent, not while it waits for the answer.
+ * The once-per-tab guard is marked only once the event is sent, never while it
+ * waits for the answer or when it is dropped for lack of consent.
  */
 export function trackOnboardingStep(key: OnboardingStepKey) {
   capturePostHogEvent(
