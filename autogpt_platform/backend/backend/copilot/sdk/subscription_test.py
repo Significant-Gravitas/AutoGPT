@@ -1,10 +1,12 @@
 """Subscription validation uses the configured executable, without real auth."""
 
+import json
+import logging
 import os
 import subprocess
 from collections.abc import Iterator
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -28,9 +30,9 @@ def isolated_subscription(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         "run",
         Mock(side_effect=AssertionError("unexpected spawn")),
     )
-    subscription.validate_subscription.cache_clear()
+    subscription._validate_subscription.cache_clear()
     yield
-    subscription.validate_subscription.cache_clear()
+    subscription._validate_subscription.cache_clear()
 
 
 @pytest.fixture
@@ -122,7 +124,9 @@ def test_unset_cli_keeps_existing_discovery(
         subscription, "find_bundled_cli", lambda: "existing-bundled-or-path-cli"
     )
     subscription.validate_subscription()
-    assert [call[0] for call in runs] == ["existing-bundled-or-path-cli"] * 2
+    assert [call[0] for call in runs] == [
+        os.path.realpath("existing-bundled-or-path-cli")
+    ] * 2
 
 
 def test_launcher_retargeting_does_not_redirect_auth(
@@ -161,3 +165,181 @@ def test_validation_cache_distinguishes_configured_paths(
     for path in (cli, cli, second):
         subscription.validate_subscription(os.fspath(path))
     assert [call[0] for call in runs] == [str(cli), str(cli), str(second), str(second)]
+
+
+@pytest.mark.parametrize(
+    "setting", ["CHAT_CLAUDE_AGENT_CLI_PATH", "CLAUDE_AGENT_CLI_PATH"]
+)
+def test_validation_cache_follows_environment_selection(
+    cli: Path, runs: list[list[str]], monkeypatch: pytest.MonkeyPatch, setting: str
+):
+    second = cli.with_name("2.1.285.exe")
+    second.write_bytes(b"another executable")
+    second.chmod(0o755)
+    for path in (cli, cli, second, cli):
+        monkeypatch.setenv(setting, str(path))
+        subscription.validate_subscription()
+    assert [call[0] for call in runs] == [str(cli), str(cli), str(second), str(second)]
+
+
+def test_validation_cache_follows_retargeted_launcher(cli: Path, runs: list[list[str]]):
+    second = cli.with_name("2.1.285.exe")
+    second.write_bytes(b"another executable")
+    second.chmod(0o755)
+    launcher = cli.with_name("claude.exe")
+    try:
+        launcher.symlink_to(cli)
+    except OSError:
+        pytest.skip("symlink permission is unavailable")
+    subscription.validate_subscription(str(launcher))
+    launcher.unlink()
+    launcher.symlink_to(second)
+    subscription.validate_subscription(str(launcher))
+    subscription.validate_subscription(str(second))
+    assert [call[0] for call in runs] == [str(cli), str(cli), str(second), str(second)]
+
+
+def test_cached_selection_still_rejects_a_removed_executable(
+    cli: Path, runs: list[list[str]], monkeypatch: pytest.MonkeyPatch
+):
+    subscription.validate_subscription(str(cli))
+    cli.unlink()
+    provision = Mock(side_effect=AssertionError("unexpected credential write"))
+    monkeypatch.setattr(subscription, "provision_credentials_file", provision)
+    with pytest.raises(RuntimeError, match="Configured Claude CLI"):
+        subscription.validate_subscription(str(cli))
+    provision.assert_not_called()
+    assert len(runs) == 2
+
+
+@pytest.mark.parametrize("failure", ["version", "auth", "logged-out"])
+def test_failed_validation_is_not_cached(
+    cli: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+):
+    version = subprocess.CompletedProcess([], 0, "2.1.284", "")
+    logged_in = subprocess.CompletedProcess([], 0, '{"loggedIn": true}', "")
+    refused = subprocess.CompletedProcess([], 1, "", "probe failed")
+    logged_out = subprocess.CompletedProcess([], 0, '{"loggedIn": false}', "")
+    failures = {
+        "version": [refused],
+        "auth": [version, refused],
+        "logged-out": [version, logged_out],
+    }[failure]
+    run = Mock(side_effect=[*failures, version, logged_in])
+    monkeypatch.setattr(subscription.subprocess, "run", run)
+    with pytest.raises(RuntimeError):
+        subscription.validate_subscription(str(cli))
+    subscription.validate_subscription(str(cli))
+    subscription.validate_subscription(str(cli))
+    assert run.call_count == len(failures) + 2
+
+
+ACCOUNT_EMAIL = "synthetic-account-privacy-16237@example.invalid"
+
+
+@pytest.fixture
+def cli_run() -> Iterator[MagicMock]:
+    subscription._validate_subscription.cache_clear()
+    try:
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch.object(subscription, "provision_credentials_file") as provision,
+            patch.object(subscription, "find_bundled_cli", return_value="fake-claude"),
+            patch.object(subscription.subprocess, "run") as run,
+        ):
+            run.side_effect = [
+                subprocess.CompletedProcess([], 0, "1.2.3", ""),
+                subprocess.CompletedProcess(
+                    [],
+                    0,
+                    json.dumps(
+                        {
+                            "loggedIn": True,
+                            "authMethod": "claude.ai",
+                            "email": ACCOUNT_EMAIL,
+                        }
+                    ),
+                    "",
+                ),
+            ]
+            yield run
+            provision.assert_called_once_with()
+    finally:
+        subscription._validate_subscription.cache_clear()
+
+
+def test_validate_subscription_keeps_auth_method_without_account_email(
+    cli_run: MagicMock, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.INFO, logger=subscription.__name__):
+        assert subscription.validate_subscription() is None
+        assert subscription.validate_subscription() is None
+
+    assert cli_run.call_count == 2
+    assert ACCOUNT_EMAIL not in caplog.text
+    assert all(ACCOUNT_EMAIL not in repr(vars(record)) for record in caplog.records)
+    assert "Claude Code subscription mode: CLI version 1.2.3" in caplog.messages
+    assert "Claude subscription auth: method=claude.ai" in caplog.messages
+
+
+@pytest.mark.parametrize(
+    "version_code, auth_code, logged_in, error, calls",
+    [
+        (1, 0, True, "Claude CLI check failed", 1),
+        (0, 1, True, "Claude CLI is not authenticated", 2),
+        (0, 0, False, "Claude CLI reports loggedIn=false", 2),
+    ],
+)
+def test_validate_subscription_still_rejects_failed_checks(
+    cli_run: MagicMock,
+    caplog: pytest.LogCaptureFixture,
+    version_code: int,
+    auth_code: int,
+    logged_in: bool,
+    error: str,
+    calls: int,
+) -> None:
+    cli_run.side_effect = [
+        subprocess.CompletedProcess([], version_code, "1.2.3", "version unavailable"),
+        subprocess.CompletedProcess(
+            [],
+            auth_code,
+            json.dumps(
+                {
+                    "loggedIn": logged_in,
+                    "authMethod": "claude.ai",
+                    "email": ACCOUNT_EMAIL,
+                }
+            ),
+            "",
+        ),
+    ]
+    with (
+        caplog.at_level(logging.INFO, logger=subscription.__name__),
+        pytest.raises(RuntimeError, match=error),
+    ):
+        subscription.validate_subscription()
+
+    assert cli_run.call_count == calls
+    assert subscription._validate_subscription.cache_info().currsize == 0
+    assert not any(
+        "Claude subscription auth:" in message for message in caplog.messages
+    )
+    assert ACCOUNT_EMAIL not in caplog.text
+    assert all(ACCOUNT_EMAIL not in repr(vars(record)) for record in caplog.records)
+
+
+def test_validate_subscription_still_warns_on_unparseable_auth_status(
+    cli_run: MagicMock, caplog: pytest.LogCaptureFixture
+) -> None:
+    cli_run.side_effect = [
+        subprocess.CompletedProcess([], 0, "1.2.3", ""),
+        subprocess.CompletedProcess([], 0, f"invalid JSON: {ACCOUNT_EMAIL}", ""),
+    ]
+    with caplog.at_level(logging.INFO, logger=subscription.__name__):
+        assert subscription.validate_subscription() is None
+
+    assert cli_run.call_count == 2
+    assert "Could not parse `claude auth status` output" in caplog.messages
+    assert ACCOUNT_EMAIL not in caplog.text
+    assert all(ACCOUNT_EMAIL not in repr(vars(record)) for record in caplog.records)

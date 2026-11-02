@@ -17,13 +17,24 @@ from .tool_adapter import (
 )
 
 
-@pytest.fixture(params=[False, True], ids=["no-sandbox", "full-sandbox"])
+@pytest.fixture(
+    params=[
+        pytest.param((False, None, False, False), id="no-sandbox"),
+        pytest.param((False, None, True, True), id="full-sandbox"),
+        pytest.param((True, "test-e2b-key", False, True), id="e2b-active"),
+        pytest.param((False, "test-e2b-key", False, False), id="e2b-disabled"),
+        pytest.param((True, None, False, False), id="e2b-missing-key"),
+        pytest.param((True, "", False, False), id="e2b-empty-key"),
+        pytest.param((True, None, True, True), id="e2b-missing-key-local"),
+        pytest.param((False, "test-e2b-key", True, True), id="e2b-disabled-local"),
+    ]
+)
 def bash_available(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch):
-    available = request.param
-    monkeypatch.setattr(config, "use_e2b_sandbox", False)
-    monkeypatch.setattr(config, "e2b_api_key", None)
+    e2b_enabled, e2b_key, local_sandbox, available = request.param
+    monkeypatch.setattr(config, "use_e2b_sandbox", e2b_enabled)
+    monkeypatch.setattr(config, "e2b_api_key", e2b_key)
     monkeypatch.setattr(
-        "backend.copilot.tools.bash_exec.has_full_sandbox", lambda: available
+        "backend.copilot.tools.bash_exec.has_full_sandbox", lambda: local_sandbox
     )
     return available
 
@@ -78,6 +89,10 @@ async def test_mcp_advertises_bash_only_with_a_supported_sandbox(
     assert offered <= set(get_copilot_tool_names(use_e2b=use_e2b))
     assert "Bash" in get_sdk_disallowed_tools(use_e2b=use_e2b)
     assert "Bash" not in get_copilot_tool_names(use_e2b=use_e2b)
+    if bash_available:
+        bash_tool = next(t for t in result.root.tools if t.name == "bash_exec")
+        assert bash_tool.annotations is not None
+        assert bash_tool.annotations.readOnlyHint is False
 
 
 async def _cli_offered_tools(

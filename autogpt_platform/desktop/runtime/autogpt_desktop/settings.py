@@ -89,8 +89,8 @@ def without_telemetry(values: dict[str, str]) -> dict[str, str]:
 CLAUDE_TOKEN_SETTINGS = ("CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_REFRESH_TOKEN")
 CLAUDE_SUBSCRIPTION = "CHAT_USE_CLAUDE_CODE_SUBSCRIPTION"
 # Where AutoPilot's per-session working directories go, in place of the
-# backend's /tmp/copilot-<session> (build/backend_patches.py makes the backend
-# read it). The path has to contain `tmp/copilot-`: the backend only sweeps
+# backend's /tmp/copilot-<session>, via COPILOT_WORKSPACE_PREFIX. The path
+# has to contain `tmp/copilot-`: the backend only sweeps
 # transcript directories whose name, made from this path, has `-tmp-copilot-`.
 WORKSPACE_PREFIX_VARIABLE = "COPILOT_WORKSPACE_PREFIX"
 

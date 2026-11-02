@@ -17,7 +17,6 @@ LOCK = DESKTOP.parent / "backend" / "poetry.lock"
 REAL_BUNDLE = DESKTOP / "build" / "runtime"
 sys.path.insert(0, str(DESKTOP / "build"))
 artifacts = importlib.import_module("artifacts")
-backend_patches = importlib.import_module("backend_patches")
 build_runtime = importlib.import_module("build_runtime")
 claude_cli = importlib.import_module("claude_cli")
 lock_export = importlib.import_module("lock_export")
@@ -220,14 +219,6 @@ def test_the_assembled_bundle_has_the_locked_sdk_and_its_cli(tmp_path: Path):
         tmp_path,
         artifacts.CLAUDE_CLI_VERSION,
     )
-
-
-def test_the_assembled_bundles_backend_has_the_build_time_patches():
-    """Without them no AutoPilot turn starts on Windows, and nothing else
-    that runs a bundle sends one."""
-    if not (REAL_BUNDLE / "manifest.json").is_file():
-        pytest.skip("no assembled bundle (build/runtime)")
-    backend_patches.check(REAL_BUNDLE / "backend")
 
 
 # --- running the steps again on an assembled bundle ------------------------------------

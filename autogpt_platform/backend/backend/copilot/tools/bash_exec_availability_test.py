@@ -18,6 +18,13 @@ from .bash_exec import BashExecTool
         ("Darwin", False, True, "test-e2b-key", True),
         ("Windows", False, False, "test-e2b-key", False),
         ("Darwin", False, False, "test-e2b-key", False),
+        ("Linux", False, False, "test-e2b-key", False),
+        ("Linux", False, True, "test-e2b-key", True),
+        ("Linux", True, True, None, True),
+        ("Linux", True, False, "test-e2b-key", True),
+        ("Linux", True, True, "test-e2b-key", True),
+        ("Windows", False, True, "", False),
+        ("Linux", True, True, "", True),
     ],
 )
 def test_only_offered_with_a_supported_sandbox(

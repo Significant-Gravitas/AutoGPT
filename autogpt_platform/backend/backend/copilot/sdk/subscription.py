@@ -92,15 +92,20 @@ def provision_credentials_file() -> None:
     logger.info("Provisioned Claude credentials file at %s", creds_path)
 
 
-@functools.cache
 def validate_subscription(cli_path: str | None = None) -> None:
     """Validate the configured Claude CLI, or the bundled/PATH fallback.
 
-    Cached per configured path so the blocking subprocess check runs once
-    per process and selection. On first call, provisions ``~/.claude/.credentials.json``
-    from the ``CLAUDE_CODE_OAUTH_TOKEN`` env var when available.
+    Resolve before checking the cache so a changed environment or retargeted
+    launcher selects a fresh validation. Invalid overrides cannot provision
+    credentials or silently fall back to another executable.
     """
     cli = _configured_cli(cli_path) or find_bundled_cli()
+    _validate_subscription(os.path.realpath(cli))
+
+
+@functools.cache
+def _validate_subscription(cli: str) -> None:
+    """Provision and probe once per resolved executable, caching only success."""
     provision_credentials_file()
 
     result = subprocess.run(
@@ -144,9 +149,8 @@ def validate_subscription(cli_path: str | None = None) -> None:
                 "or run `claude login`."
             )
         logger.info(
-            "Claude subscription auth: method=%s, email=%s",
+            "Claude subscription auth: method=%s",
             status.get("authMethod"),
-            status.get("email"),
         )
     except json.JSONDecodeError:
         logger.warning("Could not parse `claude auth status` output")

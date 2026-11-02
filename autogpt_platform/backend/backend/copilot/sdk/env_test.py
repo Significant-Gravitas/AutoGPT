@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from backend.copilot.config import ChatConfig
-from backend.copilot.sdk.env import cli_prompt_text, cli_user_message
+from backend.copilot.sdk.env import build_sdk_env, cli_prompt_text, cli_user_message
 
 # ---------------------------------------------------------------------------
 # Helpers — build a ChatConfig with explicit field values so tests don't
@@ -83,8 +83,6 @@ class TestBuildSdkEnvSubscription:
             patch("backend.copilot.sdk.env.config", cfg),
             patch("backend.copilot.sdk.env.validate_subscription") as validate,
         ):
-            from backend.copilot.sdk.env import build_sdk_env
-
             build_sdk_env()
         validate.assert_called_once_with(str(cli))
 

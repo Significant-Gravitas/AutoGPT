@@ -20,7 +20,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import backend_patches
 import backend_tests
 import bundled_tools
 import claude_cli
@@ -254,8 +253,6 @@ class Build:
         print(f"  left out {len(left_out)} test modules of the backend")
         shutil.copytree(source / "migrations", target / "migrations")
         shutil.copy2(source / "schema.prisma", target / "schema.prisma")
-        # Before step_compile, which ships the bytecode of what is here now.
-        backend_patches.apply(target)
         # backend/util/docs.py finds the docs by walking up to a `docs/platform`
         # directory; markdown only, as in the backend Dockerfile.
         docs = self.out / "docs"
@@ -752,7 +749,6 @@ class Build:
                         f"prisma/{kind} {problem}; run the prisma step again"
                     )
         bundled_tools.check(self.out)
-        backend_patches.check(self.out / "backend")
         if [path.name for path in self.site_packages.iterdir()] != [RELOCATION_FILE]:
             raise RuntimeError(
                 f"third-party packages are in {self.site_packages}, not in site/; "

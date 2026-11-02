@@ -496,7 +496,7 @@ no CLI is started in the user's home.
 **Workspaces.** Each chat session works in a directory of its own:
 `/tmp/copilot-<session>` on macOS and Linux, as in the appliance, and
 `tmp\copilot-<session>` in the data directory on Windows, which has no
-`/tmp` (see `build/backend_patches.py`).
+`/tmp`. The backend reads this location from `COPILOT_WORKSPACE_PREFIX`.
 
 **Which CLI.** The one inside the `claude-agent-sdk` package, at the version
 `backend/poetry.lock` pins: what the Docker image runs. Anthropic publishes
@@ -952,15 +952,19 @@ is already assembled:
 them, so the steps after it have to follow it). `prune`, `zip` and `verify`
 are what [Size](#size) describes.
 
-The backend is copied into the bundle and then changed there, never in the
-repository: `build/backend_patches.py` replaces a few exact pieces of its
-text, each offered upstream as a patch in `upstream/`. The build stops when
-upstream has changed one of them.
+The backend is copied from the repository without source patches. Shared
+Windows runtime configuration, portable workspace paths, and subscription-log
+privacy are reviewed separately in [#16450](https://github.com/Significant-Gravitas/AutoGPT/pull/16450),
+[#16454](https://github.com/Significant-Gravitas/AutoGPT/pull/16454), and
+[#16456](https://github.com/Significant-Gravitas/AutoGPT/pull/16456).
 
-The desktop needs shared compatibility changes for unavailable Bash sandboxes,
-configured Claude CLI paths, blocking the SDK's native PowerShell tool, and
-hiding memory interfaces when the service is absent. These are being extracted
-as prerequisite PRs. Local browser tools are disabled only in desktop mode.
+The other shared prerequisites are the optional memory UI
+([#16452](https://github.com/Significant-Gravitas/AutoGPT/pull/16452)),
+sandbox-aware Bash availability
+([#16455](https://github.com/Significant-Gravitas/AutoGPT/pull/16455)), and
+configured Claude CLI validation with the SDK's native PowerShell tool blocked
+([#16457](https://github.com/Significant-Gravitas/AutoGPT/pull/16457)).
+Local browser tools are disabled only in desktop mode.
 Hosted OAuth refresh policy, chat terminal-error delivery and replay stripping remain the
 platform's existing behavior.
 
@@ -973,8 +977,8 @@ remain explicit opt-ins and cannot publish.
 The last step, `seal`, removes what a run from the bundle may have left in
 it and refuses a bundle that would write into itself or fetch anything when
 installed, whose `claude-agent-sdk` is not the locked one, whose Claude Code
-CLI is not the version that SDK names, whose backend lacks the build-time
-patches, that still holds what an older build left in it, or that is over
+CLI is not the version that SDK names, that still holds what an older build
+left in it, or that is over
 one of its budgets ([Size](#size)); run it again before packaging a bundle
 that has been run from.
 `build/smoke_test.py` boots an assembled bundle (with the machine's Claude
@@ -1112,9 +1116,10 @@ AutoPilot's use of the Claude Code sign-in is tested against a stand-in CLI
 (`runtime/tests/claude_stub.py`: a real program, since Windows refuses
 anything else), never the machine's own. Like the real one it leaves a
 `.claude.json` in a home directory that has none, which is how the tests
-see that nothing is started in such a home. `test_backend_patches.py` tries the
-build-time backend patches on the backend in the repository, and holds each
-equal to the patch offered upstream.
+see that nothing is started in such a home. Shared backend tests cover workspace
+path confinement, configured CLI selection, and subscription-log privacy.
+Desktop settings tests check that Windows workspaces remain inside the data
+directory and keep the transcript-cleanup naming convention.
 
 A few of the shell tests read `electron-updater` and `@electron/osx-sign` to
 notice when a new version of either drops something this relies on; they are
