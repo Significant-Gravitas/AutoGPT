@@ -463,7 +463,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
 
       {rejection && <CredentialRejectionNotice rejection={rejection} />}
 
-      <div className="rounded-2xl border bg-background p-4">
+      <div className="rounded-2xl border bg-canvas p-4">
         {grantableId ? (
           <Button
             variant="primary"
@@ -503,7 +503,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
               nameSuffix={service}
               className="grid gap-1"
               labelClassName="text-xs font-medium text-foreground-body"
-              selectClassName="rounded border bg-background px-2 py-1.5 text-sm"
+              selectClassName="rounded border bg-canvas px-2 py-1.5 text-sm"
             />
             <Text
               variant="small-medium-tight"

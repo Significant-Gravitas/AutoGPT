@@ -58,7 +58,7 @@ export function ChangelogPopup() {
     >
       <div
         data-slot="changelog-popup-card"
-        className="rounded-2xl border border-border bg-background p-5 shadow-lg"
+        className="rounded-2xl border border-border-base bg-canvas p-5 shadow-lg"
       >
         <div
           data-slot="changelog-popup-header"
@@ -66,7 +66,7 @@ export function ChangelogPopup() {
         >
           <div
             data-slot="changelog-popup-badge"
-            className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-secondary text-foreground"
+            className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-surface-hover text-foreground-base"
           >
             <Icon
               data-slot="changelog-popup-badge-icon"
@@ -78,14 +78,14 @@ export function ChangelogPopup() {
             <Text
               variant="body-medium"
               data-slot="changelog-popup-title"
-              className="text-foreground"
+              className="text-foreground-base"
             >
               What&apos;s new
             </Text>
             <Text
               variant="small"
               data-slot="changelog-popup-date"
-              className="text-muted-foreground"
+              className="text-foreground-tertiary"
             >
               {latestEntry.dateRange}
             </Text>
@@ -97,7 +97,7 @@ export function ChangelogPopup() {
             withTooltip={false}
             onClick={dismiss}
             data-slot="changelog-popup-dismiss"
-            className="-mt-1 -mr-1 text-muted-foreground hover:text-foreground"
+            className="-mt-1 -mr-1 text-foreground-tertiary hover:text-foreground-base"
             aria-label="Dismiss changelog"
           >
             <Icon
@@ -118,12 +118,12 @@ export function ChangelogPopup() {
               <span
                 aria-hidden="true"
                 data-slot="changelog-popup-bullet"
-                className="mt-2.5 size-1 shrink-0 rounded-full bg-muted-foreground"
+                className="mt-2.5 size-1 shrink-0 rounded-full bg-foreground-tertiary"
               />
               <Text
                 variant="body"
                 data-slot="changelog-popup-highlight-text"
-                className="text-foreground"
+                className="text-foreground-base"
               >
                 {item}
               </Text>
@@ -133,14 +133,14 @@ export function ChangelogPopup() {
 
         <div
           data-slot="changelog-popup-footer"
-          className="border-t border-border pt-3"
+          className="border-t border-border-base pt-3"
         >
           <Link
             href={latestEntry.url}
             isExternal
             onClick={dismiss}
             data-slot="changelog-popup-link"
-            className="inline-flex items-center gap-1.5 text-foreground"
+            className="inline-flex items-center gap-1.5 text-foreground-base"
           >
             View changelog
             <Icon

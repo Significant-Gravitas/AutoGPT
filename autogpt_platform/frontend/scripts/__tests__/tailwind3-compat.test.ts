@@ -220,7 +220,7 @@ describe("Tailwind 4 renders the app's classes as Tailwind 3 did", () => {
       "var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow)",
     );
     expect(declarations(root, ".ring")["--tw-ring-shadow"]).toContain(
-      "calc(3px + var(--tw-ring-offset-width)) var(--tw-ring-color, rgb(59 130 246 / 0.5))",
+      "calc(3px + var(--tw-ring-offset-width)) var(--tw-ring-color, rgb(var(--color-info) / 0.5))",
     );
     expect(declarations(root, ".w-\\(--sidebar-width\\)")).toEqual({
       width: "var(--sidebar-width)",

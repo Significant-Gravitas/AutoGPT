@@ -212,8 +212,8 @@ export const tones = {
   disabled: "text-foreground-disabled", // #C5C5C9
   // The parent's colour, for copy inside a control that changes it on hover.
   inherit: "text-inherit",
-  // TODO(tokens): no light-green role for text on a dark fill; `success`
-  // (#149443) would lose its contrast there, so emerald-300 #6EE7B7 stays.
+  // Green on a dark fill: `success` (#149443) would lose its contrast there,
+  // so emerald-300 stays until the dark theme (ds-colour-exempt.json).
   "success-light": "text-emerald-300",
   "success-strong": "text-success-foreground", // #107435
   "warning-strong": "text-warning-foreground", // #B45309

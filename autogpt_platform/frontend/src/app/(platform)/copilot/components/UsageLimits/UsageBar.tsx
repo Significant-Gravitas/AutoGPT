@@ -34,8 +34,7 @@ export function UsageBar({ label, percentUsed, resetsAt }: Props) {
           aria-valuemax={100}
           aria-valuenow={percent}
           className={`h-full rounded-full transition-[width] duration-300 ease-out ${
-            // oxlint-disable-next-line design-system/no-raw-colors -- orange "almost full" bar; warning is amber, a hue change deferred
-            isHigh ? "bg-orange-500" : "bg-info"
+            isHigh ? "bg-orange" : "bg-info"
           }`}
           style={{ width: `${Math.max(percent > 0 ? 1 : 0, percent)}%` }}
         />

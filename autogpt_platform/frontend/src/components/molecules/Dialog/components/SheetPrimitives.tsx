@@ -25,8 +25,6 @@ SheetTrigger.displayName = SheetPrimitive.Trigger.displayName;
 
 const SheetPortal = SheetPrimitive.Portal;
 
-// TODO(tokens): black (#141414) is held only by the `foreground-base` role,
-// a text colour, not a scrim (SECRT-3154).
 const SheetOverlay = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Overlay>
@@ -34,7 +32,7 @@ const SheetOverlay = React.forwardRef<
   <SheetPrimitive.Overlay
     data-slot="sheet-overlay"
     className={cn(
-      "fixed inset-0 z-50 bg-black/80 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
+      "fixed inset-0 z-50 bg-scrim/80 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
       className,
     )}
     {...props}

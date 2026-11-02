@@ -21,15 +21,15 @@ export default function Error({
   }, [error]);
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-background">
+    <div className="fixed inset-0 flex items-center justify-center bg-canvas">
       <div className="w-full max-w-md px-4 text-center sm:px-6">
-        <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-muted">
+        <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-surface-hover">
           <Icon icon={CircleAlertGlyph} aria-label="Icon" className="size-10" />
         </div>
         <Text variant="2xl-bold-tracking-tight" as="h1" className="mt-8">
           Oops, something went wrong!
         </Text>
-        <p className="mt-4 text-muted-foreground">
+        <p className="mt-4 text-foreground-tertiary">
           We&apos;re sorry, but an unexpected error has occurred. Please try
           again later or contact support if the issue persists.
         </p>

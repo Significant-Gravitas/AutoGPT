@@ -19,8 +19,7 @@ const TIER_COLORS: Record<Tier, string> = {
   NO_TIER: "bg-error-surface text-error-foreground",
   BASIC: "bg-surface-hover text-foreground-body",
   PRO: "bg-info/20 text-info-foreground",
-  // oxlint-disable-next-line design-system/no-raw-colors -- indigo has no role; info or brand would change the hue (deferred)
-  MAX: "bg-indigo-100 text-indigo-700",
+  MAX: "bg-indigo/15 text-accent-strong",
   BUSINESS: "bg-accent-surface text-accent-strong",
   ENTERPRISE: "bg-warning-surface text-warning-foreground",
 };

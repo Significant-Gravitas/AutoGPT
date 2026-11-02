@@ -95,7 +95,7 @@ export function BlockCostEstimatesContent() {
 
       {data ? (
         <div className="flex flex-col gap-2">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-foreground-tertiary">
             {data.total_rows} blocks · window {data.window_days}d (cap{" "}
             {data.max_window_days}d) · min samples {data.min_samples} ·
             generated{" "}
@@ -105,7 +105,7 @@ export function BlockCostEstimatesContent() {
           </p>
           <div className="overflow-x-auto rounded border">
             <table className="w-full text-sm">
-              <thead className="bg-muted/50">
+              <thead className="bg-surface-hover/50">
                 <tr>
                   <th className="p-2 text-left">Block ID</th>
                   <th className="p-2 text-left">Block name</th>
@@ -135,7 +135,7 @@ export function BlockCostEstimatesContent() {
           </div>
         </div>
       ) : (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-foreground-tertiary">
           Pick a window and click Aggregate to compute per-block average
           credits-per-execution.
         </p>

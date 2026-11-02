@@ -201,7 +201,7 @@ function ExpertPageLink({ expert, className }: ExpertPageLinkProps) {
     <Link
       href={`/team/${expert.id}`}
       className={cn(
-        "flex items-center gap-1 text-body-sm leading-inherit font-medium text-foreground-body transition-colors hover:text-foreground",
+        "flex items-center gap-1 text-body-sm leading-inherit font-medium text-foreground-body transition-colors hover:text-foreground-base",
         className,
       )}
     >

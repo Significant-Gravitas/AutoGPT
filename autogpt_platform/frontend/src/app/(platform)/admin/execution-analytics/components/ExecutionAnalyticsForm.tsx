@@ -1,7 +1,7 @@
 "use client";
 
-// TODO(tokens): chart and canvas colours, which have no tokens yet: #3B82F6,
-// #10B981, #F59E0B, #8B5CF6.
+// Chart series colours stay hex: recharts writes them as SVG attributes,
+// where CSS variables do not resolve (ds-colour-exempt.json).
 
 import { useState, useEffect } from "react";
 import {
@@ -625,8 +625,7 @@ export function ExecutionAnalyticsForm() {
                 3-Day Avg
               </Text>
             </div>
-            {/* oxlint-disable-next-line design-system/no-raw-colors -- orange has no role; amber would change the hue (deferred) */}
-            <div className="rounded-lg border bg-surface p-4 text-center text-orange-600">
+            <div className="rounded-lg border bg-surface p-4 text-center text-orange-foreground">
               <Text variant="2xl-bold" as="div" tone="inherit">
                 {trendsData.latest_data.seven_day_avg?.toFixed(2) || "N/A"}
               </Text>

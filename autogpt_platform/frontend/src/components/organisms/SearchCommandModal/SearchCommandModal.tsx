@@ -118,7 +118,7 @@ export function SearchCommandModal({
       }}
     >
       <RXDialog.Portal>
-        <RXDialog.Overlay className="fixed inset-0 z-[80] bg-black/20 backdrop-blur-sm" />
+        <RXDialog.Overlay className="fixed inset-0 z-[80] bg-scrim/20 backdrop-blur-sm" />
         <RXDialog.Content
           onOpenAutoFocus={handleOpenAutoFocus}
           className="fixed top-[18vh] left-1/2 z-[80] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 overflow-hidden rounded-3xl bg-surface shadow-2xl ring-1 ring-border-base focus:outline-none"
@@ -150,7 +150,7 @@ export function SearchCommandModal({
                   : undefined
               }
               autoComplete="off"
-              className="h-9 border-0 bg-transparent px-0 text-foreground shadow-none placeholder:text-foreground-body focus-visible:ring-0"
+              className="h-9 border-0 bg-transparent px-0 text-foreground-base shadow-none placeholder:text-foreground-body focus-visible:ring-0"
             />
             {isLoading && isSearching ? (
               <LoadingSpinner

@@ -234,8 +234,8 @@ export function SubmissionItem({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onSelect={() => setConfirmDeleteOpen(true)}
-                  // oxlint-disable-next-line design-system/no-raw-colors, design-system/no-restyle -- rose delete text kept until the rose -> error hue change is approved
-                  className="text-rose-600 focus:text-rose-700"
+                  // oxlint-disable-next-line design-system/no-restyle -- the menu item has no destructive variant (deferred)
+                  className="text-error-hover focus:text-error-foreground"
                 >
                   <span className="flex items-center gap-2">
                     <UIIcon icon={Delete02Icon} size={14} />

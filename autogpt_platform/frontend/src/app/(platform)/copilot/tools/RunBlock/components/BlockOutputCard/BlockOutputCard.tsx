@@ -70,7 +70,7 @@ function OutputKeySection({
         <Button
           variant="ghost"
           size="small"
-          className="mt-1 h-auto px-0 py-0.5 text-caption-sm leading-inherit text-muted-foreground"
+          className="mt-1 h-auto px-0 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary"
           onClick={() => setExpanded((prev) => !prev)}
         >
           {expanded ? "Show less" : `Show all ${items.length} items`}

@@ -337,7 +337,7 @@ export function SetupRequirementsCard({
       {/* Inside a chain the connectors are lifted out and rendered as a card
           below it; standalone the card keeps the full credentials picker. */}
       {needsCredentials && !chainActions && (
-        <div className="rounded-2xl border bg-background p-3">
+        <div className="rounded-2xl border bg-canvas p-3">
           <Text tone="muted" variant="small" className="w-fit border-b">
             {credentialsLabel ??
               (isEditMode ? "Credentials" : "Workflow credentials")}
@@ -357,7 +357,7 @@ export function SetupRequirementsCard({
       {/* Same lift-out as the connectors: inside a chain the inputs form
           renders in the card below it, not inside the accordion. */}
       {isEditMode && !chainActions && (inputSchema || hasAdvancedFields) && (
-        <div className="rounded-2xl border bg-background p-3 pt-4">
+        <div className="rounded-2xl border bg-canvas p-3 pt-4">
           <Text tone="muted" variant="small" className="w-fit border-b">
             Inputs
           </Text>
@@ -381,7 +381,7 @@ export function SetupRequirementsCard({
           {hasAdvancedFields && (
             <button
               type="button"
-              className="text-xs text-muted-foreground underline"
+              className="text-xs text-foreground-tertiary underline"
               onClick={() => setShowAdvanced((v) => !v)}
             >
               {showAdvanced ? "Hide advanced fields" : "Show advanced fields"}
@@ -391,7 +391,7 @@ export function SetupRequirementsCard({
       )}
 
       {!isEditMode && expectedInputs.length > 0 && (
-        <div className="rounded-2xl border bg-background p-3">
+        <div className="rounded-2xl border bg-canvas p-3">
           <ContentCardTitle className="text-xs">
             Expected inputs
           </ContentCardTitle>

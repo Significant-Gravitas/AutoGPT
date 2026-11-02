@@ -7,7 +7,7 @@ function BlockCostEstimatesDashboard() {
       <div className="flex flex-col gap-4">
         <div>
           <h1 className="text-3xl font-bold">Block Cost Estimates</h1>
-          <p className="text-muted-foreground">
+          <p className="text-foreground-tertiary">
             Aggregate per-block average credits-per-execution from historical
             CreditTransaction USAGE rows. Use this to seed
             <code className="mx-1 text-xs">block_preflight_estimates.json</code>

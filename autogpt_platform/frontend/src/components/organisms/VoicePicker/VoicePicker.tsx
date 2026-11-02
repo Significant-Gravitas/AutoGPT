@@ -62,7 +62,7 @@ export function VoicePicker({
           <h2
             data-slot="voice-picker-title"
             className={cn(
-              "text-foreground",
+              "text-foreground-base",
               compact
                 ? "text-base font-medium"
                 : "text-2xl font-semibold tracking-heading",
@@ -75,7 +75,7 @@ export function VoicePicker({
           <p
             data-slot="voice-picker-description"
             className={cn(
-              "text-muted-foreground",
+              "text-foreground-tertiary",
               compact ? "text-sm" : "text-base",
             )}
           >

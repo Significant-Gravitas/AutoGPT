@@ -104,13 +104,13 @@ export function ContextPanelToggle({
             >
               <Icon
                 icon={LicenseDraftIcon}
-                className="!size-4 text-sidebar-foreground/90"
+                className="!size-4 text-foreground-emphasis/90"
               />
               {documentCount > 0 && (
                 <Text
                   variant="small-medium-tight"
                   as="span"
-                  className="text-sidebar-foreground/90"
+                  className="text-foreground-emphasis/90"
                 >
                   {documentCount}
                 </Text>
@@ -142,7 +142,7 @@ export function ContextPanelToggle({
             >
               <Icon
                 icon={ComputerIcon}
-                className="!size-4 text-sidebar-foreground/90"
+                className="!size-4 text-foreground-emphasis/90"
               />
             </Button>
           </TooltipTrigger>

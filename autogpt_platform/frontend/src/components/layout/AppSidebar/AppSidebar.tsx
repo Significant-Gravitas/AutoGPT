@@ -75,7 +75,7 @@ function NavLinkLoader() {
   return (
     <LoadingSpinner
       size="small"
-      className="ml-auto !size-4 shrink-0 text-sidebar-foreground/90 group-data-[collapsible=icon]:!size-4.5"
+      className="ml-auto !size-4 shrink-0 text-foreground-emphasis/90 group-data-[collapsible=icon]:!size-4.5"
     />
   );
 }
@@ -87,7 +87,7 @@ function HomeIcon() {
     return (
       <LoadingSpinner
         size="small"
-        className="!size-4 shrink-0 text-sidebar-foreground/90 group-data-[collapsible=icon]:!size-4.5"
+        className="!size-4 shrink-0 text-foreground-emphasis/90 group-data-[collapsible=icon]:!size-4.5"
       />
     );
   }
@@ -95,7 +95,7 @@ function HomeIcon() {
   return (
     <Icon
       icon={Home10Icon}
-      className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
+      className="size-4 text-foreground-emphasis/90 group-data-[collapsible=icon]:size-4.5"
     />
   );
 }
@@ -141,7 +141,7 @@ function NavItem({ link }: NavItemProps) {
         <Link href={link.href}>
           <Icon
             icon={link.icon}
-            className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
+            className="size-4 text-foreground-emphasis/90 group-data-[collapsible=icon]:size-4.5"
           />
           <span className="truncate">{link.name}</span>
           <NavLinkLoader />

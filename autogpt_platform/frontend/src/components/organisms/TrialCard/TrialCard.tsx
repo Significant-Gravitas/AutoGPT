@@ -83,7 +83,7 @@ export function TrialCardContent({
         <p
           role="alert"
           data-slot="trial-card-content-error"
-          className="mt-3 text-sm text-destructive"
+          className="mt-3 text-sm text-error"
         >
           {error}
         </p>
@@ -106,7 +106,11 @@ export function TrialCardContent({
         className="flex w-full flex-col gap-2 py-4"
       >
         <div data-slot="trial-card-content-heading" className="sr-only">
-          <Text variant="body-medium" as="span" className="text-textBlack">
+          <Text
+            variant="body-medium"
+            as="span"
+            className="text-foreground-base"
+          >
             {trial.eligible ? "Free trial" : "Your plan"}
           </Text>
         </div>

@@ -33,7 +33,7 @@ describe("Button compact sizes", () => {
     renderButton({ variant: "outline", size: "xs", children: "New Pod" });
     const el = screen.getByRole("button", { name: "New Pod" });
     expect(el.className).toContain("border-border-base");
-    expect(el.className).not.toContain("border-zinc-700");
+    expect(el.className).not.toContain("border-foreground-body");
   });
 
   it("renders a leadingIcon before the label", () => {

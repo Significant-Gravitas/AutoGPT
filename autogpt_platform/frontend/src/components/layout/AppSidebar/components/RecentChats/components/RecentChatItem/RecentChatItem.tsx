@@ -169,7 +169,7 @@ export const RecentChatItem = memo(function RecentChatItem({
           >
             <Icon
               icon={MoreHorizontalIcon}
-              className="text-sidebar-foreground/90"
+              className="text-foreground-emphasis/90"
             />
           </SidebarMenuAction>
         </DropdownMenuTrigger>

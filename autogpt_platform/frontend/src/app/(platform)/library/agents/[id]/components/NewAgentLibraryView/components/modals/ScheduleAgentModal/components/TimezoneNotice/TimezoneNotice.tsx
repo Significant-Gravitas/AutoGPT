@@ -27,7 +27,7 @@ export function TimezoneNotice() {
   const tzName = getTimezoneDisplayName(userTimezone || "UTC");
 
   return (
-    <div className="mt-1 flex items-center gap-2 rounded-md bg-muted/50 p-3 text-muted-foreground">
+    <div className="mt-1 flex items-center gap-2 rounded-md bg-surface-hover/50 p-3 text-foreground-tertiary">
       <Icon icon={InformationCircleIcon} className="h-4 w-4" />
       <p className="text-sm">
         Schedule will run in your timezone:{" "}

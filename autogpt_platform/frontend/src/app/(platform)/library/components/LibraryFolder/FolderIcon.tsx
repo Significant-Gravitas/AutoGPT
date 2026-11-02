@@ -1,4 +1,3 @@
-/* oxlint-disable design-system/no-raw-colors -- folder colours are user-picked data, not UI colour */
 import { motion } from "framer-motion";
 import { Text } from "@/components/atoms/Text/Text";
 

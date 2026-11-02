@@ -54,7 +54,7 @@ export function SampleCard({
           data-slot="sample-card-label"
           className={cn(
             "text-xs font-semibold tracking-caps uppercase",
-            labelClassName ?? "text-accent",
+            labelClassName ?? "text-brand",
           )}
         >
           {sample.label}
@@ -64,14 +64,14 @@ export function SampleCard({
             icon={CheckmarkCircle02Icon}
             size={18}
             // oxlint-disable-next-line design-system/require-static-classes -- the accent colour class comes from the caller (an expert's colour)
-            className={cn("shrink-0", labelClassName ?? "text-accent")}
+            className={cn("shrink-0", labelClassName ?? "text-brand")}
           />
         ) : null}
       </div>
       <p
         data-slot="sample-card-text"
         className={cn(
-          "whitespace-pre-line text-muted-foreground",
+          "whitespace-pre-line text-foreground-tertiary",
           compact
             ? "line-clamp-3 text-sm leading-normal"
             : "text-body-md leading-relaxed",

@@ -11,10 +11,9 @@ export const cardVariants = cva("", {
       outline: "rounded-2xl bg-surface ring-1 ring-inset ring-border-base/60",
       elevated:
         "overflow-hidden rounded-3xl bg-surface shadow-foreground-base smooth-shadow-ring-sm",
-      muted: "rounded-2xl border border-border bg-muted/40",
+      muted: "rounded-2xl border border-border-base bg-surface-hover/40",
       featured:
-        // oxlint-disable-next-line design-system/no-raw-colors -- grey gradient border stops, no gradient-stop roles
-        "rounded-2xl bg-gradient-to-br from-zinc-300 via-zinc-400 to-zinc-500 p-px",
+        "rounded-2xl bg-gradient-to-br from-border-strong via-foreground-subtle to-foreground-tertiary p-px",
       info: "rounded-2xl bg-info-surface text-body leading-5 text-info-foreground",
       success:
         "rounded-2xl bg-success-surface text-body leading-5 text-success-foreground",
@@ -102,15 +101,14 @@ export const iconTints: Record<Variant, string> = {
   default: "shrink-0",
   outline: "shrink-0 text-foreground-subtle",
   elevated: "shrink-0",
-  muted: "text-muted-foreground",
+  muted: "text-foreground-tertiary",
   featured: "shrink-0",
   info: "shrink-0",
   success: "shrink-0",
   warning: "shrink-0",
   "warning-strong": "shrink-0",
   "warning-outline": "shrink-0",
-  // oxlint-disable-next-line design-system/no-raw-colors -- yellow icon fill, no yellow role; warning would turn it amber
-  caution: "fill-yellow-600 text-action-foreground",
+  caution: "fill-yellow-foreground text-action-foreground",
   error: "shrink-0",
 };
 

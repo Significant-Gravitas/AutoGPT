@@ -95,12 +95,10 @@ export function ExpertOverview({
             <PanelEmptyState
               textSize="body-md"
               tiles={[
-                // oxlint-disable-next-line design-system/no-raw-colors -- sky has no role; info blue would change the hue (deferred)
-                <span key="a" className="inline-flex text-sky-500">
+                <span key="a" className="inline-flex text-sky">
                   <Icon icon={BubbleChatIcon} size={22} />
                 </span>,
-                // oxlint-disable-next-line design-system/no-raw-colors -- orange has no role; amber would change the hue (deferred)
-                <span key="b" className="inline-flex text-orange-500">
+                <span key="b" className="inline-flex text-orange">
                   <Icon icon={PlayIcon} size={22} />
                 </span>,
                 <span key="c" className="inline-flex text-brand">

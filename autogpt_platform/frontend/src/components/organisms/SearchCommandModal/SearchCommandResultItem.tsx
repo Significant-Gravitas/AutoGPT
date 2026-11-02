@@ -86,7 +86,9 @@ export function SearchCommandResultItem({
             data-slot="search-command-result-item-title"
             className={cn(
               "truncate transition-colors duration-150",
-              isHighlighted ? "text-foreground" : "text-foreground-emphasis",
+              isHighlighted
+                ? "text-foreground-base"
+                : "text-foreground-emphasis",
             )}
           >
             {highlightMatch(item.title, query).map((part, partIndex) => (

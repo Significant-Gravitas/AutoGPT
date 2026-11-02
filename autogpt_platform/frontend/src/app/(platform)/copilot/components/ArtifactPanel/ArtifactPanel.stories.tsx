@@ -50,7 +50,7 @@ const meta: Meta<typeof ArtifactPanel> = {
   decorators: [
     (Story) => (
       <TooltipProvider>
-        <div className="flex h-[800px] w-full bg-sidebar">
+        <div className="flex h-[800px] w-full bg-surface-muted">
           <div className="flex-1 bg-surface-muted p-8">
             <p className="text-sm text-foreground-tertiary">Chat area</p>
           </div>

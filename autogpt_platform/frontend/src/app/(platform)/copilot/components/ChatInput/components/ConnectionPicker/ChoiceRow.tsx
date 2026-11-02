@@ -64,7 +64,7 @@ export function ChoiceRow({
     <div
       className={cn(
         "flex w-full items-center gap-3 px-3 py-2.5 transition-colors",
-        "hover:bg-background has-[button:focus-visible]:bg-background",
+        "hover:bg-canvas has-[button:focus-visible]:bg-canvas",
       )}
     >
       <button
@@ -114,7 +114,7 @@ export function ChoiceRow({
         size={16}
         aria-hidden
         className={cn(
-          "flex-none text-primary transition-opacity",
+          "flex-none text-action transition-opacity",
           isSelected ? "opacity-100" : "opacity-0",
         )}
       />

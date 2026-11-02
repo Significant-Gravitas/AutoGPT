@@ -16,7 +16,7 @@ export function TeamScene() {
             d={teamBranch(member)}
             aria-hidden="true"
             fill="none"
-            className="stroke-border"
+            className="stroke-border-base"
             strokeWidth={2}
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -63,7 +63,7 @@ function TeamNode({ member }: Props) {
         height={20}
       >
         <div className="text-center text-xs leading-4">
-          <span className="block font-medium text-foreground">
+          <span className="block font-medium text-foreground-base">
             {member.name}
           </span>
         </div>

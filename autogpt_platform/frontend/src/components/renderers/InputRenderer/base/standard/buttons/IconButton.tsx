@@ -103,7 +103,7 @@ export function RemoveButton(props: AutogptIconButtonProps) {
     <IconButton
       title={translateString(TranslatableString.RemoveButton)}
       {...props}
-      className={"border-destructive"}
+      className={"border-error"}
       icon={
         <Icon
           icon={Delete02Icon}

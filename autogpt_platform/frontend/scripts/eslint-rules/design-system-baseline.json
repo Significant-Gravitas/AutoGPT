@@ -755,9 +755,6 @@
   "src/components/atoms/Button/helpers.ts": {
     "no-unknown-classes": 7
   },
-  "src/components/atoms/Text/helpers.ts": {
-    "no-raw-colors": 1
-  },
   "src/components/auth/AuthCard.tsx": {
     "no-restyle": 1
   },

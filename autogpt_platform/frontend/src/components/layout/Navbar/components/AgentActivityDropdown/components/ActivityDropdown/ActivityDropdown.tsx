@@ -150,7 +150,7 @@ export function ActivityDropdown({
           />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-5 pt-6 pb-8">
-            <div className="mx-auto inline-flex flex-col items-center justify-center rounded-full bg-bgLightGrey p-6">
+            <div className="mx-auto inline-flex flex-col items-center justify-center rounded-full bg-surface-hover p-6">
               <Icon
                 icon={BellIcon}
                 className="h-6 w-6 text-foreground-disabled"

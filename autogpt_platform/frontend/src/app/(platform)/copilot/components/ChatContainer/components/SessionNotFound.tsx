@@ -28,12 +28,12 @@ export function SessionNotFound() {
         <Icon
           icon={BubbleChatBlockedIcon}
           size={28}
-          className="text-muted-foreground"
+          className="text-foreground-tertiary"
         />
         <Text variant="large-medium" as="h2">
           This chat isn&apos;t available on this account
         </Text>
-        <Text variant="body" className="text-muted-foreground">
+        <Text variant="body" className="text-foreground-tertiary">
           It may belong to another account you use, or it no longer exists.
         </Text>
         <Button

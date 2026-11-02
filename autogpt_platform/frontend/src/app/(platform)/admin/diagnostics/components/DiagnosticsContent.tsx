@@ -211,8 +211,7 @@ export function DiagnosticsContent() {
                       {executionData.queued_executions_db}
                     </p>
                     {executionData.stuck_queued_1h > 0 && (
-                      // oxlint-disable-next-line design-system/no-raw-colors -- orange has no role; amber would change the hue (deferred)
-                      <p className="text-xs text-orange-600">
+                      <p className="text-xs text-orange-foreground">
                         {executionData.stuck_queued_1h} stuck {">"}1h
                       </p>
                     )}
@@ -240,8 +239,7 @@ export function DiagnosticsContent() {
                       "flex h-12 w-12 items-center justify-center rounded-full",
                       executionData.queued_executions_rabbitmq === -1
                         ? "bg-error-surface"
-                        : // oxlint-disable-next-line design-system/no-raw-colors -- yellow has no role; amber would change the hue (deferred)
-                          "bg-yellow-100",
+                        : "bg-yellow/30",
                     )}
                   >
                     <div
@@ -249,8 +247,7 @@ export function DiagnosticsContent() {
                         "h-6 w-6 rounded-full",
                         executionData.queued_executions_rabbitmq === -1
                           ? "bg-error"
-                          : // oxlint-disable-next-line design-system/no-raw-colors -- yellow has no role; amber would change the hue (deferred)
-                            "bg-yellow-500",
+                          : "bg-yellow",
                       )}
                     ></div>
                   </div>
@@ -359,8 +356,7 @@ export function DiagnosticsContent() {
                       {scheduleData.user_schedules}
                     </p>
                     {scheduleData.total_orphaned > 0 && (
-                      // oxlint-disable-next-line design-system/no-raw-colors -- orange has no role; amber would change the hue (deferred)
-                      <p className="text-xs text-orange-600">
+                      <p className="text-xs text-orange-foreground">
                         {scheduleData.total_orphaned} orphaned
                       </p>
                     )}
@@ -428,8 +424,7 @@ export function DiagnosticsContent() {
         <CardContent>
           <div className="space-y-3 text-sm">
             <div>
-              {/* oxlint-disable-next-line design-system/no-raw-colors -- orange has no role; amber would change the hue (deferred) */}
-              <p className="font-semibold text-orange-700">
+              <p className="font-semibold text-warning-foreground">
                 🟠 Orphaned Executions:
               </p>
               <p className="text-foreground-secondary">
@@ -449,8 +444,7 @@ export function DiagnosticsContent() {
               </p>
             </div>
             <div>
-              {/* oxlint-disable-next-line design-system/no-raw-colors -- yellow has no role; amber would change the hue (deferred) */}
-              <p className="font-semibold text-yellow-700">
+              <p className="font-semibold text-yellow-foreground">
                 🟡 Long-Running Executions:
               </p>
               <p className="text-foreground-secondary">
@@ -468,8 +462,7 @@ export function DiagnosticsContent() {
               </p>
             </div>
             <div>
-              {/* oxlint-disable-next-line design-system/no-raw-colors -- pink has no role; red would change the hue (deferred) */}
-              <p className="font-semibold text-pink-700">
+              <p className="font-semibold text-pink-foreground">
                 🩷 Invalid States (Data Corruption):
               </p>
               <p className="text-foreground-secondary">

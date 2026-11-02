@@ -125,7 +125,7 @@ export function OutputHandler({ outputSchema, nodeId, uiType }: Props) {
         ? selfIsRelevant || descendantIsRelevant
         : isOutputVisible || selfIsRelevant || descendantIsRelevant;
 
-      const { displayType, colorClass, hexColor } =
+      const { displayType, colorClass } =
         // oxlint-disable-next-line design-system/require-static-classes -- getTypeDisplayInfo returns whole, static class strings
         getTypeDisplayInfo(fieldSchema);
       const isExpanded =
@@ -189,7 +189,6 @@ export function OutputHandler({ outputSchema, nodeId, uiType }: Props) {
                 isBroken={isBroken}
                 field_name={fullKey}
                 nodeId={nodeId}
-                hexColor={hexColor}
               />
             )}
           </div>

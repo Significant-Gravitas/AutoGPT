@@ -24,7 +24,7 @@ export function SidebarSearch() {
         >
           <Icon
             icon={Search01Icon}
-            className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5 max-md:size-5"
+            className="size-4 text-foreground-emphasis/90 group-data-[collapsible=icon]:size-4.5 max-md:size-5"
           />
         </button>
       </TooltipTrigger>

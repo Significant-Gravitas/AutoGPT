@@ -112,6 +112,9 @@
             ]
           }
         ],
+        "design-system/no-alias-colours": "error",
+        "design-system/no-palette-colours": "error",
+        "design-system/no-hex-colours": "error",
         "design-system/no-dark-variant": "error",
         "design-system/no-legacy-import": "error",
         "design-system/no-legacy-button-variant": "error",
@@ -156,6 +159,9 @@
       ],
       "rules": {
         "design-system/no-raw-colors": "off",
+        "design-system/no-alias-colours": "off",
+        "design-system/no-palette-colours": "off",
+        "design-system/no-hex-colours": "off",
         "design-system/no-arbitrary-values": "off",
         "design-system/no-restyle": "off",
         "design-system/no-inline-styles": "off",
@@ -171,6 +177,9 @@
       "files": ["src/app/api/__generated__/**"],
       "rules": {
         "design-system/no-raw-colors": "off",
+        "design-system/no-alias-colours": "off",
+        "design-system/no-palette-colours": "off",
+        "design-system/no-hex-colours": "off",
         "design-system/no-arbitrary-values": "off",
         "design-system/no-restyle": "off",
         "design-system/no-inline-styles": "off",

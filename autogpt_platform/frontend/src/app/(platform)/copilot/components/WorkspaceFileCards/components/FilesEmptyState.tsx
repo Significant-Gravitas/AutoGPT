@@ -14,13 +14,7 @@ export function FilesEmptyState() {
   return (
     <PanelEmptyState
       tiles={[
-        <Icon
-          key="image"
-          icon={Image01Icon}
-          size={22}
-          // oxlint-disable-next-line design-system/no-raw-colors -- cyan illustration accent; info is blue, a hue change deferred
-          className="text-sky-500"
-        />,
+        <Icon key="image" icon={Image01Icon} size={22} className="text-sky" />,
         <Icon
           key="table"
           icon={Table01Icon}

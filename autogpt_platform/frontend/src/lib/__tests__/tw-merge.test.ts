@@ -16,7 +16,10 @@ describe("cn() merges classes as tailwind-merge 2 did", () => {
       "scrollbar-thumb-muted-foreground scrollbar-thumb-rounded-lg",
     ],
     ["scrollbar-thin scrollbar-none", "scrollbar-thin scrollbar-none"],
-    ["text-body text-zinc-500", "text-body text-zinc-500"],
+    [
+      "text-body text-foreground-tertiary",
+      "text-body text-foreground-tertiary",
+    ],
     ["text-sm text-body", "text-body"],
     ["rounded-xl rounded-2xlarge", "rounded-2xlarge"],
     ["leading-6 leading-inherit", "leading-inherit"],

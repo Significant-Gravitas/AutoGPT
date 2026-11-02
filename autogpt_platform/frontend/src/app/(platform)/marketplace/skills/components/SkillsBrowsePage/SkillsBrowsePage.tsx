@@ -149,14 +149,14 @@ function EmptyResult({
         <button
           type="button"
           onClick={onShowAll}
-          className="text-sm font-medium text-accent transition-colors hover:text-accent/80"
+          className="text-sm font-medium text-brand transition-colors hover:text-brand/80"
         >
           Show all
         </button>
       ) : (
         <Link
           href="/library/skills"
-          className="text-sm font-medium text-accent transition-colors hover:text-accent/80"
+          className="text-sm font-medium text-brand transition-colors hover:text-brand/80"
         >
           Go to your skills →
         </Link>

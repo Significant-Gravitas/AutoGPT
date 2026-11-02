@@ -113,7 +113,7 @@ export function StepStrip({ currentStep }: Props) {
                   className={cn(
                     "whitespace-nowrap !text-current transition-colors",
                     isCurrent
-                      ? "text-foreground"
+                      ? "text-foreground-base"
                       : isComplete
                         ? "text-foreground-body"
                         : "font-normal text-foreground-subtle",

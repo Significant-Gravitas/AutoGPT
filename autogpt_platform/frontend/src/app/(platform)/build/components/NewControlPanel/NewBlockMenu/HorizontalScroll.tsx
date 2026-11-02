@@ -71,10 +71,10 @@ export const HorizontalScroll: React.FC<HorizontalScrollAreaProps> = ({
           {children}
         </div>
         {canScrollLeft && (
-          <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-background via-background/80 to-background/0" />
+          <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-canvas via-canvas/80 to-canvas/0" />
         )}
         {canScrollRight && (
-          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background via-background/80 to-background/0" />
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-canvas via-canvas/80 to-canvas/0" />
         )}
         {canScrollLeft && (
           <button

@@ -44,7 +44,7 @@ export function ExpertOnboardingCard({ part }: Props) {
       );
     }
     return (
-      <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 py-2 text-sm text-foreground-tertiary">
         <MorphingTextAnimation text="Getting set up…" />
       </div>
     );

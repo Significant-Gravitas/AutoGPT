@@ -57,7 +57,7 @@ export default function AdminPreviewPage() {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <p className="text-muted-foreground">Loading preview...</p>
+        <p className="text-foreground-tertiary">Loading preview...</p>
       </div>
     );
   }
@@ -65,10 +65,10 @@ export default function AdminPreviewPage() {
   if (error || !data) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4">
-        <p className="text-destructive">{error || "Preview not found"}</p>
+        <p className="text-error">{error || "Preview not found"}</p>
         <button
           onClick={() => router.back()}
-          className="text-muted-foreground underline"
+          className="text-foreground-tertiary underline"
         >
           Go back
         </button>
@@ -87,7 +87,7 @@ export default function AdminPreviewPage() {
       <div className="mb-6 flex items-center justify-between">
         <button
           onClick={() => router.back()}
-          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+          className="flex items-center gap-2 text-sm text-foreground-tertiary hover:text-foreground-base"
         >
           <Icon icon={ArrowLeft02Icon} size={16} />
           Back to Admin Marketplace
@@ -101,7 +101,7 @@ export default function AdminPreviewPage() {
           <button
             onClick={handleAddToLibrary}
             disabled={isAddingToLibrary}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="rounded-md bg-action px-4 py-2 text-sm font-medium text-action-foreground hover:bg-action/90 disabled:opacity-50"
           >
             {isAddingToLibrary ? "Adding..." : "Add to My Library"}
           </button>
@@ -129,8 +129,8 @@ export default function AdminPreviewPage() {
           {allMedia.length > 0 ? (
             <AgentImages images={allMedia} />
           ) : (
-            <div className="flex h-64 items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25">
-              <p className="text-muted-foreground">
+            <div className="flex h-64 items-center justify-center rounded-lg border-2 border-dashed border-foreground-tertiary/25">
+              <p className="text-foreground-tertiary">
                 No images or videos submitted
               </p>
             </div>
@@ -142,7 +142,7 @@ export default function AdminPreviewPage() {
       <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
         {data.instructions && (
           <div className="rounded-lg border p-4">
-            <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
+            <h3 className="mb-2 text-sm font-semibold text-foreground-tertiary">
               Instructions
             </h3>
             <p className="text-sm whitespace-pre-wrap">{data.instructions}</p>
@@ -150,19 +150,19 @@ export default function AdminPreviewPage() {
         )}
         {data.recommended_schedule_cron && (
           <div className="rounded-lg border p-4">
-            <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
+            <h3 className="mb-2 text-sm font-semibold text-foreground-tertiary">
               Recommended Schedule
             </h3>
-            <code className="rounded bg-muted px-2 py-1 text-sm">
+            <code className="rounded bg-surface-hover px-2 py-1 text-sm">
               {data.recommended_schedule_cron}
             </code>
           </div>
         )}
         <div className="rounded-lg border p-4">
-          <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
+          <h3 className="mb-2 text-sm font-semibold text-foreground-tertiary">
             Slug
           </h3>
-          <code className="rounded bg-muted px-2 py-1 text-sm">
+          <code className="rounded bg-surface-hover px-2 py-1 text-sm">
             {data.slug}
           </code>
         </div>

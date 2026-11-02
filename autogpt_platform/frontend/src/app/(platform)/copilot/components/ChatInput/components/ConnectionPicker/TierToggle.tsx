@@ -103,7 +103,7 @@ export function TierToggle({
             onClick={() => onSelect(segment.tier)}
             className={cn(
               "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
-              "focus-visible:bg-background focus-visible:outline-none",
+              "focus-visible:bg-canvas focus-visible:outline-none",
             )}
           >
             <Icon
@@ -132,7 +132,7 @@ export function TierToggle({
               size={16}
               aria-hidden
               className={cn(
-                "flex-none text-primary transition-opacity",
+                "flex-none text-action transition-opacity",
                 segment.tier === value ? "opacity-100" : "opacity-0",
               )}
             />
