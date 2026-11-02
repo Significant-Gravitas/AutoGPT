@@ -3358,3 +3358,58 @@ async def test_legacy_invocation_metadata_reads_non_invocable_skill():
     ):
         skills = await list_user_skills("user-1")
     assert skills[0].extra.get("user-invocable") is False
+
+
+@pytest.mark.asyncio
+async def test_ordinary_skill_write_retains_index_fast_path():
+    fake = _FakeWorkspaceManager()
+    parsed = ParsedSkill(
+        name="ordinary", description="ordinary skill", body="instructions"
+    )
+    prepared = skills._PreparedSkill(
+        parsed, render_skill_markdown(parsed), None, frozenset()
+    )
+    await skills._write_skill(
+        fake, prepared, None, SKILL_ORIGIN_USER, set(), set(), {}, MagicMock()
+    )
+    assert fake.metadata["/skills/ordinary/SKILL.md"]["invocation"] == {}
+    fake.read_file = AsyncMock(side_effect=AssertionError("fast path must not read"))
+    with _patch_skills_path(fake):
+        listed = await _list_user_skills_from_workspace("user-1")
+    assert listed[0].name == "ordinary"
+    fake.read_file.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invocable", [False, True])
+async def test_legacy_index_fallback_preserves_every_fast_path_field(invocable):
+    fake = _FakeWorkspaceManager()
+    path = "/skills/legacy/SKILL.md"
+    parsed = ParsedSkill(
+        name="legacy",
+        description="old skill",
+        body="instructions",
+        triggers=("daily",),
+        version="7",
+        extra={"user-invocable": invocable},
+    )
+    fake.files[path] = render_skill_markdown(parsed).encode()
+    baseline = skills.SkillBaseline(
+        "listing", "version", "hash", "previous", ("notes.md",)
+    )
+    meta = {
+        "kind": "copilot_skill",
+        "description": parsed.description,
+        "triggers": list(parsed.triggers),
+        "version": parsed.version,
+        "skill_origin": "marketplace",
+        **skills._baseline_metadata(baseline),
+    }
+    fake.metadata[path] = meta
+    expected = skills._index_entry_from_metadata(
+        "legacy", {**meta, "invocation": skills.invocation_frontmatter(parsed.extra)}
+    )
+    with _patch_skills_path(fake):
+        listed = await _list_user_skills_from_workspace("user-1")
+    assert listed == [expected]
+    assert (listed[0].extra.get("user-invocable") is False) == (not invocable)

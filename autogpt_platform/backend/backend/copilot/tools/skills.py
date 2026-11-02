@@ -1618,8 +1618,7 @@ async def _write_skill(
     }
     if skill.parsed.version:
         metadata[_META_VERSION] = skill.parsed.version
-    if invocation := invocation_frontmatter(skill.parsed.extra):
-        metadata[_META_INVOCATION] = invocation
+    metadata[_META_INVOCATION] = invocation_frontmatter(skill.parsed.extra)
     if baseline is not None:
         metadata.update(_baseline_metadata(baseline))
     folder = skill_folder(expert_id)
@@ -1825,22 +1824,28 @@ async def _list_user_skills_from_workspace(
         parsed = await asyncio.gather(
             *(_parse_skill_from_workspace(manager, f.path) for f, _ in needs_read),
         )
-        for (_, meta), p in zip(needs_read, parsed):
+        for (file, meta), p in zip(needs_read, parsed):
             if p is None:
                 continue
             # Index never needs the body — drop it so the cache payload
             # stays small (defaults are already body-less, fast-path
             # entries are body-less, keep the contract uniform).  The
             # origin is the row's, whatever the file says.
+            invocation = invocation_frontmatter(p.extra)
+            entry = _index_entry_from_metadata(
+                file.path.rsplit("/", 2)[-2], {**meta, _META_INVOCATION: invocation}
+            )
             skills.append(
-                ParsedSkill(
+                entry
+                or ParsedSkill(
                     name=p.name,
                     description=p.description,
                     body="",
                     triggers=p.triggers,
                     version=p.version,
-                    extra=invocation_frontmatter(p.extra),
+                    extra=invocation,
                     origin=_skill_origin(meta),
+                    baseline=_baseline_from_metadata(meta),
                 )
             )
 
