@@ -401,17 +401,25 @@ async def execute_node(
         if not field_info.requires_credentials(discriminator_value):
             data.inputs[field_name] = None
 
-    # Sanity check: validate the execution input.
-    input_data, error = validate_exec(
-        node, data.inputs, resolve_input=False, dry_run=execution_context.dry_run
-    )
-    if input_data is None:
-        log_metadata.warning(f"Failing node, input validation error: {error}")
-        # Raised, not yielded, so the node ends FAILED with this error rather
-        # than COMPLETED with an error output.
-        raise BlockInputError(
-            message=error, block_name=node_block.name, block_id=node_block.id
+    # Sanity check: validate the execution input. A value the node can't use
+    # is raised, not yielded, so the node ends FAILED with the input error.
+    try:
+        input_data, error = validate_exec(
+            node,
+            data.inputs,
+            resolve_input=False,
+            dry_run=execution_context.dry_run,
+            raise_on_mismatch=True,
         )
+    except InputMismatchError as e:
+        log_metadata.warning(f"Failing node, input it can't use: {e}")
+        raise BlockInputError(
+            message=str(e), block_name=node_block.name, block_id=node_block.id
+        ) from e
+    if input_data is None:
+        log_metadata.warning(f"Skip execution, input validation error: {error}")
+        yield "error", error
+        return
 
     # Re-shape the input data for agent block.
     # AgentExecutorBlock specially separate the node input_data & its input_default.
@@ -746,7 +754,11 @@ async def _enqueue_next_nodes(
     execution_context: ExecutionContext,
 ) -> list[NodeExecutionEntry]:
     async def add_enqueued_execution(
-        node_exec_id: str, node_id: str, block_id: str, data: BlockInput
+        node_exec_id: str,
+        node_id: str,
+        block_id: str,
+        data: BlockInput,
+        input_error: str | None = None,
     ) -> NodeExecutionEntry:
         await async_update_node_execution_status(
             db_client=db_client,
@@ -766,27 +778,31 @@ async def _enqueue_next_nodes(
             execution_context=execution_context,
             queued_at=datetime.now(timezone.utc),
             queued_by="node_output",
+            input_error=input_error,
         )
 
     def validate_next_input(
         next_node: Node, data: BlockInput
-    ) -> tuple[BlockInput | None, str]:
+    ) -> tuple[BlockInput | None, str, str | None]:
         """Validate the input of a node that may be ready to run.
 
-        Missing input returns no data, so the node keeps waiting. A value that
-        can't be converted or used still returns data: the node is queued, and
-        its own validation in `execute_node` fails it with the error, rather
-        than leaving it skipped while the run completes.
+        Returns the data to queue, the validation message, and the input error
+        the node is queued to fail with. Missing input returns no data, so the
+        node keeps waiting. A value that can't be converted or used still
+        returns data: the node is queued, and its own validation in
+        `execute_node` fails it with the error, rather than leaving it skipped
+        while the run completes.
         """
         try:
-            return validate_exec(
+            valid, msg = validate_exec(
                 next_node,
                 data,
                 dry_run=execution_context.dry_run,
                 raise_on_mismatch=True,
             )
         except InputMismatchError as e:
-            return e.data, str(e)
+            return e.data, str(e), str(e)
+        return valid, msg, None
 
     async def register_next_executions(node_link: Link) -> list[NodeExecutionEntry]:
         try:
@@ -845,7 +861,7 @@ async def _enqueue_next_nodes(
                 next_node_input.update(node_input_mask)
 
             # Validate the input data for the next node.
-            next_node_input, validation_msg = validate_next_input(
+            next_node_input, validation_msg, input_error = validate_next_input(
                 next_node, next_node_input
             )
             suffix = f"{next_output_name}>{next_input_name}~{next_node_exec_id}:{validation_msg}"
@@ -863,6 +879,7 @@ async def _enqueue_next_nodes(
                     node_id=next_node_id,
                     block_id=next_node.block_id,
                     data=next_node_input,
+                    input_error=input_error,
                 )
             )
 
@@ -892,7 +909,7 @@ async def _enqueue_next_nodes(
                 if node_input_mask:
                     idata.update(node_input_mask)
 
-                idata, msg = validate_next_input(next_node, idata)
+                idata, msg, ierror = validate_next_input(next_node, idata)
                 suffix = f"{next_output_name}>{next_input_name}~{ineid}:{msg}"
                 if not idata:
                     log_metadata.info(f"Enqueueing static-link skipped: {suffix}")
@@ -904,6 +921,7 @@ async def _enqueue_next_nodes(
                         node_id=next_node_id,
                         block_id=next_node.block_id,
                         data=idata,
+                        input_error=ierror,
                     )
                 )
             return enqueued_executions
@@ -1070,7 +1088,11 @@ class ExecutionProcessor:
                     block=node.block,
                     db_client=db_client,
                 )
-            if not node_exec.execution_context.dry_run:
+            # A node queued to fail on its input was never charged.
+            if (
+                not node_exec.execution_context.dry_run
+                and node_exec.input_error is None
+            ):
                 reconciled_delta, _ = await billing.charge_reconciled_usage(
                     node_exec=node_exec,
                     stats=execution_stats,
@@ -1529,14 +1551,18 @@ class ExecutionProcessor:
                     f"for node {queued_node_exec.node_id}",
                 )
 
-                # Charge usage (may raise) — skipped for dry runs and for
-                # REVIEW/RUNNING re-dispatches that were already charged.
+                # Charge usage (may raise) — skipped for dry runs, for
+                # REVIEW/RUNNING re-dispatches that were already charged, and
+                # for a node queued only to fail on an input it can't use.
                 try:
                     if queued_node_exec.redispatched_from is not None:
                         queued_node_exec.pre_flight_charge = (
                             billing.redispatch_reconcile_baseline(queued_node_exec)
                         )
-                    elif not graph_exec.execution_context.dry_run:
+                    elif (
+                        not graph_exec.execution_context.dry_run
+                        and queued_node_exec.input_error is None
+                    ):
                         (
                             cost,
                             remaining_balance,

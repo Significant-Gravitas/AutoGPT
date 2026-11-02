@@ -4,6 +4,7 @@ Before, the executor left such a node unqueued with only a log line, and the
 run still finished COMPLETED without saying which block was skipped or why.
 """
 
+import threading
 from contextlib import asynccontextmanager
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -11,9 +12,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.blocks.llm import AITextGeneratorBlock
+from backend.blocks.orchestrator import OrchestratorBlock
 from backend.data.execution import ExecutionContext, ExecutionStatus, NodeExecutionEntry
 from backend.data.graph import Link, Node
-from backend.data.model import NodeExecutionStats
+from backend.data.model import GraphExecutionStats, NodeExecutionStats
 from backend.executor.manager import (
     ExecutionProcessor,
     _enqueue_next_nodes,
@@ -115,6 +117,36 @@ def test_missing_input_is_reported_before_a_bad_value(
     assert expected in error
 
 
+def test_a_node_waiting_for_a_tool_output_keeps_waiting():
+    """The Orchestrator's missing-input check reads its conversation history,
+    so it runs on the converted value: here a JSON string with a tool call
+    that has no output yet."""
+    block = OrchestratorBlock()
+    node = Node(block_id=block.id, input_default={"prompt": "hi"})
+    history = '[{"role": "assistant", "tool_calls": [{"id": "call-1"}]}]'
+
+    data, error = validate_exec(
+        node, {"conversation_history": history}, raise_on_mismatch=True
+    )
+
+    assert data is None
+    assert "last_tool_output" in error
+
+
+def test_a_dry_run_tolerates_a_value_it_cannot_convert():
+    """A dry run simulates the block, so like a schema mismatch, a value that
+    can't be converted doesn't fail it."""
+    data, _ = validate_exec(
+        _llm_node("model", "prompt"),
+        {"model": _BAD_MODEL, "prompt": "hi"},
+        dry_run=True,
+        raise_on_mismatch=True,
+    )
+
+    assert data is not None
+    assert data["model"] == _BAD_MODEL
+
+
 def test_a_list_into_a_text_input_is_still_converted():
     data, _ = validate_exec(
         _llm_node("prompt"), {"prompt": ["a", "b"]}, raise_on_mismatch=True
@@ -186,6 +218,22 @@ async def test_a_node_given_a_value_it_cannot_use_is_queued_to_fail():
     assert len(queued) == 1
     assert queued[0].node_id == "llm-node"
     assert queued[0].inputs["model"] == _BAD_MODEL
+    # Marked, so the dispatcher doesn't bill a block that won't run.
+    assert queued[0].input_error and "`model`" in queued[0].input_error
+
+
+@pytest.mark.asyncio
+async def test_a_node_with_usable_input_is_queued_unmarked():
+    target = _llm_node("model", "prompt")
+
+    queued = await _route(
+        target,
+        [("model_out", "gpt-4o"), ("prompt_out", "hi")],
+        _db_client(target),
+    )
+
+    assert len(queued) == 1
+    assert queued[0].input_error is None
 
 
 @pytest.mark.asyncio
@@ -212,6 +260,25 @@ async def test_a_node_waiting_on_a_static_link_is_queued_to_fail():
 
     assert [entry.node_exec_id for entry in queued] == ["llm-exec-1", "llm-exec-0"]
     assert all(entry.inputs["model"] == _BAD_MODEL for entry in queued)
+
+
+@pytest.mark.asyncio
+async def test_a_static_link_leaves_an_execution_still_missing_input_waiting():
+    target = _llm_node("model", "prompt", "sys_prompt", static=frozenset({"model"}))
+    # Still has no `sys_prompt`, so the static `model` doesn't complete it.
+    waiting = MagicMock(node_exec_id="llm-exec-0", input_data={"prompt": "earlier"})
+
+    queued = await _route(
+        target,
+        [
+            ("prompt_out", "hi"),
+            ("sys_prompt_out", "be brief"),
+            ("model_out", _BAD_MODEL),
+        ],
+        _db_client(target, [waiting]),
+    )
+
+    assert [entry.node_exec_id for entry in queued] == ["llm-exec-1"]
 
 
 # ------------------------------------------------------------- running the node
@@ -248,6 +315,25 @@ async def test_running_a_node_with_an_input_it_cannot_use_raises_the_input_error
 
 
 @pytest.mark.asyncio
+async def test_running_a_node_still_missing_input_yields_the_error_as_before():
+    """Only a value the node can't use fails it. A node run without an input
+    it needs (e.g. an Orchestrator tool call missing an argument) still
+    yields the error as an output, so the caller gets the message."""
+    outputs = [
+        item
+        async for item in execute_node(
+            _llm_node("model"),
+            _entry({"credentials": _CREDENTIALS, "model": "gpt-4o"}),
+            MagicMock(),
+        )
+    ]
+
+    assert len(outputs) == 1
+    assert outputs[0][0] == "error"
+    assert "missing input" in outputs[0][1]
+
+
+@pytest.mark.asyncio
 async def test_the_node_ends_failed_with_the_input_error():
     node = _llm_node("model", "prompt")
     db = MagicMock()
@@ -271,3 +357,32 @@ async def test_the_node_ends_failed_with_the_input_error():
     assert output["output_name"] == "error"
     assert "`model`" in output["output_data"]
     assert _BAD_MODEL in output["output_data"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("input_error", [None, "can't use it"])
+async def test_a_node_queued_to_fail_on_its_input_is_not_reconciled(
+    input_error: str | None,
+):
+    """It was never charged up front, so settling it must not bill it either."""
+    reconcile = AsyncMock(return_value=(0, 0))
+    entry = _entry(dict(_QUEUED_INPUT))
+    entry.input_error = input_error
+
+    with (
+        patch(f"{_MOD}.log_system_credential_cost", new=AsyncMock()),
+        patch(f"{_MOD}.billing.charge_reconciled_usage", new=reconcile),
+        patch(f"{_MOD}.async_update_node_execution_status", new=AsyncMock()),
+        patch(f"{_MOD}.async_update_graph_execution_state", new=AsyncMock()),
+    ):
+        await ExecutionProcessor()._settle_node(
+            node=_llm_node("model", "prompt"),
+            node_exec=entry,
+            status=ExecutionStatus.FAILED,
+            execution_stats=NodeExecutionStats(),
+            graph_stats_pair=(GraphExecutionStats(), threading.Lock()),
+            db_client=MagicMock(),
+            log_metadata=MagicMock(),
+        )
+
+    assert reconcile.await_count == (1 if input_error is None else 0)

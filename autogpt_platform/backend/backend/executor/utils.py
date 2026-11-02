@@ -423,9 +423,17 @@ def validate_exec(
     if resolve_input:
         data = merge_execution_input(data)
 
+    # Coerce non-matching data types to the expected input schema. A value that
+    # can't be converted is reported only after the missing-input check, so a
+    # node still missing input keeps waiting. Coercing first still matters:
+    # some blocks' missing-input checks read the converted values.
+    conversion_error: str | None = None
+    try:
+        coerce_inputs_to_schema(data, schema)
+    except ConversionError as e:
+        conversion_error = str(e)
+
     # Input data post-merge should contain all required fields from the schema.
-    # Checked before coercion so a node still missing input keeps waiting even
-    # when a value it already has can't be converted.
     if missing_input := schema.get_missing_input(data):
         if dry_run:
             # In dry-run mode all missing inputs are tolerated — simulate_block()
@@ -434,25 +442,17 @@ def validate_exec(
         else:
             return None, f"{error_prefix} missing input {missing_input}"
 
-    def mismatch(error: str) -> tuple[None, str]:
-        error_message = f"{error_prefix} {error}"
-        logger.warning(error_message)
-        if raise_on_mismatch:
-            raise InputMismatchError(error_message, data)
-        return None, error_message
-
-    # Coerce non-matching data types to the expected input schema.
-    try:
-        coerce_inputs_to_schema(data, schema)
-    except ConversionError as e:
-        return mismatch(str(e))
-
     # Last validation: Validate the input values against the schema.
     # Skip for dry runs — simulate_block doesn't use real inputs, and sentinel
     # credential values (None) would fail JSON-schema type/required checks.
+    # A value that can't be converted is tolerated there for the same reason.
     if not dry_run:
-        if error := schema.get_mismatch_error(data):
-            return mismatch(error)
+        if error := conversion_error or schema.get_mismatch_error(data):
+            error_message = f"{error_prefix} {error}"
+            logger.warning(error_message)
+            if raise_on_mismatch:
+                raise InputMismatchError(error_message, data)
+            return None, error_message
 
     return data, node_block.name
 
