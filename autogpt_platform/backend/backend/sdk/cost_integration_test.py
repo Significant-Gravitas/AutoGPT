@@ -20,9 +20,17 @@ from backend.blocks._base import BlockCost, BlockCostType
 from backend.blocks.agent_mail._config import agent_mail
 from backend.blocks.agent_mail.inbox import AgentMailListInboxesBlock
 from backend.blocks.baas.bots import BaasBotJoinMeetingBlock
+from backend.blocks.dataforseo._config import dataforseo
+from backend.blocks.dataforseo.keyword_suggestions import (
+    DataForSeoKeywordSuggestionsBlock,
+)
 from backend.blocks.exa.search import ExaSearchBlock
 from backend.data.block_cost_config import BLOCK_COSTS
-from backend.data.model import APIKeyCredentials, NodeExecutionStats
+from backend.data.model import (
+    APIKeyCredentials,
+    NodeExecutionStats,
+    UserPasswordCredentials,
+)
 from backend.executor.utils import block_usage_cost
 from backend.integrations.credentials_store import exa_credentials
 from backend.sdk.cost_integration import (
@@ -35,6 +43,13 @@ AGENT_MAIL_PLATFORM_KEY = APIKeyCredentials(
     provider="agent_mail",
     api_key=SecretStr("platform-key"),
     title="AgentMail API Key",
+)
+DATAFORSEO_PLATFORM_KEY = UserPasswordCredentials(
+    id="dataforseo-default",
+    provider="dataforseo",
+    username=SecretStr("platform-user"),
+    password=SecretStr("platform-password"),
+    title="DataForSEO Credentials",
 )
 
 
@@ -92,8 +107,8 @@ def test_fresh_process_bills_sdk_price_like_the_executor():
         for line in result.stdout.splitlines()
         if line.startswith("COST ")
     ]
-    # Platform key: $0.05 * 100 credits/USD; own key: free.
-    assert costs == ["5", "0"]
+    # Platform key: $0.05 * 150 credits/USD = 7.5, billed as 8; own key: free.
+    assert costs == ["8", "0"]
 
 
 def test_executor_lookup_bills_sdk_run_price_on_the_platform_key(monkeypatch):
@@ -115,8 +130,21 @@ def test_executor_lookup_bills_sdk_usd_price_on_the_platform_key():
         block, _credentials(exa_credentials.id, "exa"), stats=stats
     )
 
-    # $0.05 provider spend * 100 credits/USD.
-    assert cost == 5
+    # $0.05 provider spend * 150 credits/USD = 7.5, billed as 8.
+    assert cost == 8
+
+
+def test_dataforseo_bills_its_reported_spend_at_the_platform_rate(monkeypatch):
+    monkeypatch.setattr(dataforseo, "default_credentials", [DATAFORSEO_PLATFORM_KEY])
+    block = _block_loaded_like_the_executor(DataForSeoKeywordSuggestionsBlock)
+    stats = NodeExecutionStats(provider_cost=0.021, provider_cost_type="cost_usd")
+
+    cost, _ = block_usage_cost(
+        block, _credentials(DATAFORSEO_PLATFORM_KEY.id, "dataforseo"), stats=stats
+    )
+
+    # A $0.021 DataForSEO task * 150 credits/USD = 3.15, billed as 4 credits.
+    assert cost == 4
 
 
 def test_own_key_runs_stay_free(monkeypatch):
