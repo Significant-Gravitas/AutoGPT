@@ -31,8 +31,8 @@ const PROMPT_GRACE_ATTEMPTS = 4;
 interface CaptureOptions {
   /**
    * Send at most once per tab. Marked only when the event is sent: it is an
-   * analytics marker, so a dropped event writes nothing and is tried again
-   * (and dropped again) on the next mount.
+   * analytics marker, so a dropped event writes nothing and is tried again on
+   * the next mount, sent then only if consent has since been given.
    */
   oncePerTabKey?: string;
 }

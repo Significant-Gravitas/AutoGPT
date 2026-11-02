@@ -159,6 +159,19 @@ describe("capturePostHogEvent", () => {
     expect(sessionStorage.getItem(ONCE_KEY)).toBe("1");
   });
 
+  it("sends a dropped event on a later call once the visitor has consented in that tab", () => {
+    installCookiebot();
+    capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
+
+    answerCookiebot({ statistics: true });
+    startCapturing();
+    capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
+    capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
+
+    expect(posthog.capture).toHaveBeenCalledExactlyOnceWith("tour_started", {});
+    expect(sessionStorage.getItem(ONCE_KEY)).toBe("1");
+  });
+
   it("drops held events when the visitor declines on load", () => {
     capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
     installCookiebot();
@@ -234,6 +247,18 @@ describe("capturePostHogEvent", () => {
     expect(sessionStorage.getItem(ONCE_KEY)).toBeNull();
   });
 
+  it("sends a timed-out event on a later call once PostHog captures", () => {
+    capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
+    vi.advanceTimersByTime(60_000);
+
+    storeConsentCookie(true);
+    startCapturing();
+    capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
+
+    expect(posthog.capture).toHaveBeenCalledExactlyOnceWith("tour_started", {});
+    expect(sessionStorage.getItem(ONCE_KEY)).toBe("1");
+  });
+
   it("holds a once-per-tab event only once, and leaves its guard unset while held", () => {
     storeConsentCookie(true);
 
@@ -260,6 +285,20 @@ describe("capturePostHogEvent", () => {
 
     expect(posthog.capture).toHaveBeenCalledTimes(1);
     expect(sessionStorage.getItem(ONCE_KEY)).toBeNull();
+  });
+
+  it("leaves the guard unset when posthog-js fails to send straight away, so a later call sends", () => {
+    startCapturing();
+    posthog.capture.mockImplementationOnce(() => {
+      throw new Error("blocked");
+    });
+
+    capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
+    expect(sessionStorage.getItem(ONCE_KEY)).toBeNull();
+
+    capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
+    expect(posthog.capture).toHaveBeenCalledTimes(2);
+    expect(sessionStorage.getItem(ONCE_KEY)).toBe("1");
   });
 
   it("never throws when posthog-js does", () => {
