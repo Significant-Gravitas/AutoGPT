@@ -302,7 +302,7 @@ jobs:
       # FalkorDB backs the Graphiti knowledge graph the copilot uses for
       # long-term memory. Mirrors the local compose mapping
       # (autogpt_platform/docker-compose.platform.yml: ``6380:6379``) so
-      # ``GraphitiConfig`` defaults (``localhost:6380``) work unchanged. The
+      # the default Graphiti port is available on the runner. The
       # password is derived from the run, like the broker login below, and
       # the job's ``GRAPHITI_FALKORDB_PASSWORD`` gives the tests the same one.
       # ``REDIS_ARGS=--requirepass <pw>`` is the FalkorDB
@@ -605,6 +605,7 @@ jobs:
           EXECUTION_SCHEDULER_PORT: "18003"
           NOTIFICATION_SERVICE_PORT: "18007"
           REDIS_HOST: localhost
+          GRAPHITI_FALKORDB_HOST: 127.0.0.1
           TRIAL_TEST_DATABASE: "1"
         run: |
           export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${DATABASE_NAME}"

@@ -123,7 +123,7 @@ async def test_rank_cancels_and_drains_siblings_after_provider_error(recwarn):
     assert started == started_when_rank_returned
     assert finished == started
     assert cancelled == MAX_PARALLEL_SCORES - 1
-    assert not (asyncio.all_tasks() - baseline_tasks)
+    assert not pending_when_rank_returned
     assert not [
         warning for warning in recwarn if issubclass(warning.category, RuntimeWarning)
     ]
@@ -169,6 +169,7 @@ async def test_rank_cancellation_drains_active_and_queued_requests(recwarn):
         ranking.cancel()
         with pytest.raises(asyncio.CancelledError):
             await asyncio.wait_for(ranking, timeout=5)
+        pending_when_rank_returned = asyncio.all_tasks() - baseline_tasks
     finally:
         release_scores.set()
         if not ranking.done():
@@ -180,7 +181,7 @@ async def test_rank_cancellation_drains_active_and_queued_requests(recwarn):
     assert started == MAX_PARALLEL_SCORES
     assert finished == started
     assert cancelled == started
-    assert not (asyncio.all_tasks() - baseline_tasks)
+    assert not pending_when_rank_returned
     assert not [
         warning for warning in recwarn if issubclass(warning.category, RuntimeWarning)
     ]

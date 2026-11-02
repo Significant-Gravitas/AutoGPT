@@ -234,7 +234,7 @@ class TestRunValidation:
         )
         ctx = _make_context()
         existing_session = SimpleNamespace(
-            metadata=ChatSessionMetadata(origin="automation")
+            expert_id=None, metadata=ChatSessionMetadata(origin="automation")
         )
         with patch(
             "backend.copilot.model.get_chat_session_metadata",
