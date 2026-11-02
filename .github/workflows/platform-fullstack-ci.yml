@@ -419,7 +419,10 @@ jobs:
         background: true
         run: |
           lowest=
-          for i in $(seq 180); do
+          # e2e_test sets no job-level timeout-minutes, so GitHub's 360-minute
+          # default is the real ceiling; sample until then or the stop file,
+          # whichever comes first, so a long build+seed can't outlast the log.
+          for i in $(seq 2160); do
             [ -f /tmp/stop-memory-log ] && break
             read -r used available < <(free -m | awk '/^Mem:/ {print $3, $7}')
             swap=$(free -m | awk '/^Swap:/ {print $3}')
