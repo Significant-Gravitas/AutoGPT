@@ -6,6 +6,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.blocks.smartlead._api import SmartLeadClient
 from backend.blocks.smartlead._auth import (
     TEST_CREDENTIALS,
@@ -84,6 +85,7 @@ class CreateCampaignBlock(Block):
                     created_at="2024-01-01T00:00:00Z",
                 )
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -100,6 +102,7 @@ class CreateCampaignBlock(Block):
         credentials: SmartLeadCredentials,
         **kwargs,
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         response = await self.create_campaign(input_data.name, credentials)
 
         yield "id", response.id
@@ -226,6 +229,7 @@ class AddLeadToCampaignBlock(Block):
         credentials: SmartLeadCredentials,
         **kwargs,
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         response = await self.add_leads_to_campaign(
             input_data.campaign_id, input_data.lead_list, credentials
         )
@@ -309,6 +313,7 @@ class SaveCampaignSequencesBlock(Block):
                     message="Sequences saved successfully",
                 )
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -327,6 +332,7 @@ class SaveCampaignSequencesBlock(Block):
         credentials: SmartLeadCredentials,
         **kwargs,
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         response = await self.save_campaign_sequences(
             input_data.campaign_id, input_data.sequences, credentials
         )

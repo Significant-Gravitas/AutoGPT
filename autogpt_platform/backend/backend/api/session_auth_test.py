@@ -80,7 +80,7 @@ async def test_signed_legacy_token_cutoff_applies_to_http_and_websocket(
     monkeypatch.setattr(
         session_auth.settings.config, "auth_legacy_token_deadline", deadline
     )
-    monkeypatch.setattr(ws_api.settings.config, "enable_auth", True)
+    monkeypatch.setattr(ws_api, "is_user_banned", AsyncMock(return_value=False))
     token = _sign(signing_key, {"sub": "user", "aud": "authenticated"})
 
     response = client.get("/user", headers={"Authorization": f"Bearer {token}"})

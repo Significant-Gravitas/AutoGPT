@@ -15,6 +15,7 @@ from typing import Any
 import prisma.errors
 import prisma.models
 import prisma.types
+from prisma import Prisma
 from pydantic import BaseModel, Field
 
 from backend.data.skill_content_approvals import (
@@ -65,6 +66,15 @@ class SkillHeadRecord(BaseModel):
     learning_paused_at: datetime | None
     use_paused_at: datetime | None
     updated_at: datetime
+
+    @property
+    def deleted(self) -> bool:
+        """The owner deleted the skill: the head has moved but names nothing.
+
+        A head that never named a version is at 0; only a deletion clears the
+        pointer of one that has moved.
+        """
+        return self.current_version_id is None and self.current_version > 0
 
     @classmethod
     def from_db(cls, row: prisma.models.SkillHead) -> "SkillHeadRecord":
@@ -235,6 +245,18 @@ async def update_head_policy(
     return SkillHeadRecord.from_db(row) if row else head
 
 
+async def pause_use_if_current(user_id: str, head_id: str, version_id: str) -> bool:
+    """Stop using the skill only while the head still names *version_id*.
+
+    A deletion or a newer version landing first leaves the head alone.
+    """
+    paused = await prisma.models.SkillHead.prisma().update_many(
+        where={"id": head_id, "userId": user_id, "currentVersionId": version_id},
+        data={"usePausedAt": datetime.now(timezone.utc)},
+    )
+    return paused > 0
+
+
 async def publish_version_if_current(
     user_id: str,
     head_id: str,
@@ -265,8 +287,9 @@ async def publish_version_if_current(
 # ---------------------------------------------------------------------------
 
 
-async def next_version_number(head_id: str) -> int:
-    latest = await prisma.models.SkillVersion.prisma().find_first(
+async def next_version_number(head_id: str, *, client: Prisma | None) -> int:
+    """Inside a transaction, pass the transaction as *client*."""
+    latest = await prisma.models.SkillVersion.prisma(client).find_first(
         where={"headId": head_id}, order={"version": "desc"}
     )
     return (latest.version if latest else 0) + 1
@@ -297,7 +320,7 @@ async def create_version(
 ) -> SkillVersionRecord:
     """Append an immutable version row (numbers are monotonic per head)."""
     for _ in range(3):
-        number = await next_version_number(head.id)
+        number = await next_version_number(head.id, client=None)
         try:
             row = await prisma.models.SkillVersion.prisma().create(
                 data={

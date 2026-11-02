@@ -1,0 +1,3 @@
+# Synthetic separator-heavy fixtures in the secret-detection test, not credentials.
+autogpt_platform/frontend/src/lib/secret-detection.test.ts:generic-api-key:22
+autogpt_platform/frontend/src/lib/secret-detection.test.ts:slack-app-token:53

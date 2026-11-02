@@ -21,7 +21,6 @@ from prisma.models import AuthSession, AuthUser, User
 from starlette.websockets import WebSocket
 
 from backend.api import session_auth, ws_api
-from backend.api.features.store import skill_routes
 from backend.api.rest_api import app
 from backend.data import db
 
@@ -109,7 +108,6 @@ async def test_native_email_login_renewal_and_signout_revoke_backend_access(
     bearer = await sign_in_native(client, f"{prefix}@example.test")
     token = await access_token(client, bearer)
     renewed = await access_token(client, bearer)
-    monkeypatch.setattr(ws_api.settings.config, "enable_auth", True)
     send = AsyncMock()
     websocket = WebSocket(
         {"type": "websocket", "query_string": urlencode({"token": token}).encode()},
@@ -271,9 +269,6 @@ async def test_optional_routes_recheck_identity_after_signout(
     lookup_target: str,
 ) -> None:
     monkeypatch.setattr(app, "dependency_overrides", {})
-    monkeypatch.setattr(
-        skill_routes, "is_feature_enabled", AsyncMock(return_value=True)
-    )
     lookup = AsyncMock(side_effect=HTTPException(status_code=404))
     monkeypatch.setattr(lookup_target, lookup)
     client, prefix = auth_service

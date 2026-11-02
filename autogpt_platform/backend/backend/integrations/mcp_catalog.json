@@ -419,6 +419,23 @@
     }
   },
   {
+    "name": "mcp_cloudflare",
+    "display_name": "Cloudflare",
+    "description": "Manage Workers, DNS, R2, D1, KV and other Cloudflare resources through the Cloudflare API, and search Cloudflare's developer docs.",
+    "mcp_server": {
+      "server_url": "https://mcp.cloudflare.com/mcp",
+      "documentation_url": "https://developers.cloudflare.com/agents/model-context-protocol/cloudflare/servers-for-cloudflare/",
+      "setup_instructions": "Sign in to Cloudflare and keep Full access on its consent screen. Cloudflare refuses calls outside a narrower choice, and Minimal allows only your identity and account list. Or use a Cloudflare API token with the permissions you need. Account tokens also need Account Resources: Read, and tokens with Client IP Address Filtering aren't supported.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth",
+        "bearer"
+      ],
+      "oauth_request_all_scopes": true,
+      "icon_id": "cloudflare"
+    }
+  },
+  {
     "name": "mcp_coda",
     "display_name": "Coda",
     "description": "Search and work with Coda documents, tables, and rows.",
@@ -651,6 +668,22 @@
         "oauth"
       ],
       "icon_id": "harmonic"
+    }
+  },
+  {
+    "name": "mcp_hubspot",
+    "display_name": "HubSpot",
+    "description": "Search and manage CRM records, activities, and marketing content.",
+    "mcp_server": {
+      "server_url": "https://mcp.hubspot.com",
+      "documentation_url": "https://developers.hubspot.com/docs/apps/developer-platform/build-apps/integrate-with-the-remote-hubspot-mcp-server",
+      "setup_instructions": "Sign in to HubSpot and choose the account to connect. Available tools and data depend on your HubSpot permissions and subscription.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth"
+      ],
+      "icon_id": "hubspot",
+      "provider": "hubspot"
     }
   },
   {

@@ -42,7 +42,9 @@ export const WebhookDisclaimer = ({ nodeId }: { nodeId: string }) => {
                 }
                 className="underline"
               >
-                Workflow Library
+                <Text variant="small-medium-inherit" as="span" tone="inherit">
+                  Workflow Library
+                </Text>
               </Link>
               {!isNodeSaved && " (after saving the workflow)"}.
             </Text>
@@ -50,7 +52,7 @@ export const WebhookDisclaimer = ({ nodeId }: { nodeId: string }) => {
         </Alert>
       </div>
 
-      <Text variant="small" className="mb-4 ml-6 !text-purple-700">
+      <Text variant="small" className="mb-4 ml-6 !text-accent-strong">
         Below inputs are only for display purposes and cannot be edited.
       </Text>
     </>

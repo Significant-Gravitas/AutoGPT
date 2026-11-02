@@ -1,5 +1,7 @@
 import type BackendAPI from "@/lib/autogpt-server-api/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { IMPERSONATION_STORAGE_KEY } from "@/lib/constants";
+import { ImpersonationState } from "@/lib/impersonation";
 import type { User } from "../../types";
 
 const getCurrentUserMock = vi.fn();
@@ -171,21 +173,53 @@ describe("validateSession", () => {
     expect(result).toEqual({ isValid: true, shouldUpdateUser: false });
   });
 
-  it("falls back to the helper redirect path when the action throws", async () => {
-    validateSessionActionMock.mockRejectedValue(new Error("server gone"));
-    getRedirectPathMock.mockReturnValue("/login?next=%2Fcopilot");
+  it("keeps the session when the action call fails on the network", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    validateSessionActionMock.mockRejectedValue(new TypeError("Load failed"));
 
     const result = await validateSession({
       path: "/copilot",
       currentUser: makeUser("user-1"),
     });
 
-    expect(getRedirectPathMock).toHaveBeenCalledWith("/copilot");
     expect(result).toEqual({
-      isValid: false,
-      redirectPath: "/login?next=%2Fcopilot",
-      shouldUpdateUser: true,
+      isValid: true,
+      shouldUpdateUser: false,
+      unavailable: "network",
     });
+  });
+
+  it("keeps the session when the auth backend reports itself unavailable", async () => {
+    validateSessionActionMock.mockResolvedValue({
+      user: null,
+      isValid: false,
+      isUnavailable: true,
+    });
+
+    const result = await validateSession({
+      path: "/copilot",
+      currentUser: makeUser("user-1"),
+    });
+
+    expect(result.isValid).toBe(true);
+    expect(result.unavailable).toBe("network");
+  });
+
+  it("flags deployment skew when the server no longer knows the action", async () => {
+    const { UnrecognizedActionError } = await import(
+      "next/dist/client/components/unrecognized-action-error"
+    );
+    validateSessionActionMock.mockRejectedValue(
+      new UnrecognizedActionError("Server Action was not found"),
+    );
+
+    const result = await validateSession({
+      path: "/copilot",
+      currentUser: makeUser("user-1"),
+    });
+
+    expect(result.isValid).toBe(true);
+    expect(result.unavailable).toBe("deployment-skew");
   });
 });
 
@@ -250,6 +284,22 @@ describe("handleStorageEvent", () => {
       shouldLogout: true,
       redirectPath: "/login?next=%2Fcopilot",
     });
+  });
+
+  it("drops this tab's admin impersonation when another tab logs out", () => {
+    isLogoutEventMock.mockReturnValue(true);
+    getRedirectPathMock.mockReturnValue(null);
+    ImpersonationState.set("impersonated-user", "admin-1");
+
+    handleStorageEvent({
+      event: new StorageEvent("storage", { key: "supabase-logout" }),
+      api: null,
+      router: null,
+      path: "/marketplace",
+    });
+
+    expect(sessionStorage.getItem(IMPERSONATION_STORAGE_KEY)).toBeNull();
+    expect(ImpersonationState.get()).toBeNull();
   });
 
   it("handles logout without an api client", () => {

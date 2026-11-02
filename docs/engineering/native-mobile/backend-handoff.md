@@ -28,6 +28,8 @@ The foundation targets `dev` directly. Landing requires current-base checks and 
 | Accepted retry           | A successful repeated admission is an acknowledgement, not proof that the message is still in the queue or that a turn is currently running. Refresh persisted history and stream state.                                                                   |
 | Ownership                | Continue using the selected server, authenticated account and conversation together. Server authorization remains authoritative; a client ID does not grant access to a conversation.                                                                      |
 
+JWKS connection failures follow the retryable authentication-outage contract above. WebSocket codes 4001, 4002 and 4003 reject missing or invalid credentials; 4004 rejects a banned account. Stop automatic reconnects for these codes. Ban-lookup failures retain dev's retryable 1011 close code.
+
 **Keep automatic outbox replay disabled.** Redis receipts expire, cancellation is not durably fenced after receipt expiry or Redis loss, and a Redis outage can still interrupt rollback recovery. Do not promise durable offline delivery or replay an old send automatically on relaunch/account switching. A later backend slice must prove cancellation remains effective when a delayed request crosses cancellation and a subsequent turn, including database failures and Redis loss.
 
 ## Remaining backend slices

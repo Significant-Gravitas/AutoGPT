@@ -1,3 +1,4 @@
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import {
   getMeta,
   getParts,
@@ -65,7 +66,7 @@ export async function readRecordingSnapshot(): Promise<RecordingSnapshot> {
     return { ...EMPTY_SNAPSHOT, supported: false, readAt: Date.now() };
   }
   try {
-    const meta = await getMeta();
+    const meta = await getMeta(useAuthStore.getState().user?.id);
     if (!meta) return { ...EMPTY_SNAPSHOT, readAt: Date.now() };
 
     const stored = await getParts(meta.recordingId);

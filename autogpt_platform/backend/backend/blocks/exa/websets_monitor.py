@@ -12,6 +12,7 @@ from exa_py import AsyncExa
 from exa_py.websets.types import Monitor as SdkMonitor
 from pydantic import BaseModel
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -229,6 +230,7 @@ class ExaCreateMonitorBlock(Block):
             ],
             test_credentials=TEST_CREDENTIALS,
             test_mock=self._create_test_mock(),
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -277,6 +279,7 @@ class ExaCreateMonitorBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         aexa = self._get_client(credentials.api_key.get_secret_value())
 
         # Build the payload
@@ -386,6 +389,7 @@ class ExaGetMonitorBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         # Use AsyncExa SDK
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         sdk_monitor = await aexa.websets.monitors.get(monitor_id=input_data.monitor_id)
@@ -456,12 +460,14 @@ class ExaUpdateMonitorBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaUpdateMonitorBlock.Input,
             output_schema=ExaUpdateMonitorBlock.Output,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         # Use AsyncExa SDK
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         # Build update payload
@@ -528,6 +534,7 @@ class ExaDeleteMonitorBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         # Use AsyncExa SDK
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         deleted_monitor = await aexa.websets.monitors.delete(
@@ -589,6 +596,7 @@ class ExaListMonitorsBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         # Use AsyncExa SDK
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         response = await aexa.websets.monitors.list(

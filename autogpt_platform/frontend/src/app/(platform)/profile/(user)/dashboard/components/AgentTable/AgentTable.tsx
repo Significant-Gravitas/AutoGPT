@@ -28,28 +28,28 @@ export const AgentTable: React.FC<AgentTableProps> = ({
     <div className="w-full" data-testid="agent-table">
       {/* Table header - Hide on mobile */}
       <div className="hidden flex-col md:flex">
-        <div className="border-t border-neutral-300 dark:border-neutral-700" />
+        <div className="border-t border-border-strong" />
         <div className="flex items-center px-4 py-2">
-          <div className="grid w-full grid-cols-[minmax(400px,1fr),180px,140px,100px,100px,40px] items-center gap-4">
-            <div className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+          <div className="grid w-full grid-cols-[minmax(400px,1fr)_180px_140px_100px_100px_40px] items-center gap-4">
+            <div className="text-sm font-medium text-foreground-emphasis">
               Workflow info
             </div>
-            <div className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+            <div className="text-sm font-medium text-foreground-emphasis">
               Date submitted
             </div>
-            <div className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+            <div className="text-sm font-medium text-foreground-emphasis">
               Status
             </div>
-            <div className="text-right text-sm font-medium text-neutral-800 dark:text-neutral-200">
+            <div className="text-right text-sm font-medium text-foreground-emphasis">
               Runs
             </div>
-            <div className="text-right text-sm font-medium text-neutral-800 dark:text-neutral-200">
+            <div className="text-right text-sm font-medium text-foreground-emphasis">
               Reviews
             </div>
             <div></div>
           </div>
         </div>
-        <div className="border-b border-neutral-300 dark:border-neutral-700" />
+        <div className="border-b border-border-strong" />
       </div>
 
       {/* Table body */}
@@ -73,7 +73,7 @@ export const AgentTable: React.FC<AgentTableProps> = ({
           ))}
         </div>
       ) : (
-        <div className="py-4 text-center font-sans text-base text-neutral-600 dark:text-neutral-400">
+        <div className="py-4 text-center font-sans text-base text-foreground-secondary">
           No workflows available. Create your first workflow to get started!
         </div>
       )}

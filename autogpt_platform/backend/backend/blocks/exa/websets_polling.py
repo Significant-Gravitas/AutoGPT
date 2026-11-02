@@ -13,6 +13,7 @@ from typing import Any, Dict
 from exa_py import AsyncExa
 from pydantic import BaseModel
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -110,11 +111,13 @@ class ExaWaitForWebsetBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaWaitForWebsetBlock.Input,
             output_schema=ExaWaitForWebsetBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         start_time = time.time()
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
@@ -342,6 +345,7 @@ class ExaWaitForSearchBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         start_time = time.time()
         interval = input_data.check_interval
         max_interval = 30
@@ -497,11 +501,13 @@ class ExaWaitForEnrichmentBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaWaitForEnrichmentBlock.Input,
             output_schema=ExaWaitForEnrichmentBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         start_time = time.time()
         interval = input_data.check_interval
         max_interval = 30

@@ -19,9 +19,11 @@ Install the locked backend and frontend dependencies, generate Prisma, and migra
 From `autogpt_platform/backend`:
 
 ```sh
-poetry run pytest test/native_mobile/auth_journey.py -q
+poetry run pytest test/native_mobile/auth_journey.py test/native_mobile/jwks_recovery_journey.py -q
 poetry run pytest backend/copilot/pending_retries_db_test.py backend/api/features/chat/pending_retries_test.py -q
 ```
+
+The JWKS recovery journey signs in through production auth, interrupts only the key-fetch network boundary, and verifies HTTP 503 or WebSocket 1013 followed by recovery with the same session. Its request-body case also verifies authentication runs before JSON parsing: an outage answers 503, then recovery reaches the malformed body's 422.
 
 The auth fixture starts its own auth process on an available loopback port and stops it afterward. It uses a stable, public test-only auth secret because the auth signing keys are encrypted in PostgreSQL and reused across test runs. Its generated accounts are deleted after each journey. The runtime harness is `frontend/scripts/native-auth-server.ts`; it uses the locked `tsx` dependency. No Google, Apple, APNs, Stripe, or live model credentials are needed for these cases.
 

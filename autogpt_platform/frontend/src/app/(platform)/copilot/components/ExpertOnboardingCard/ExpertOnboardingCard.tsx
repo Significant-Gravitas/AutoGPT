@@ -1,19 +1,20 @@
 "use client";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { cn } from "@/lib/utils";
 import {
-  ArrowLeft01Icon,
   ArrowRight01Icon,
   CheckmarkCircle02Icon,
-  SentIcon,
 } from "@hugeicons/core-free-icons";
 import type { ToolUIPart } from "ai";
 import { domAnimation, LazyMotion, m } from "framer-motion";
 import { useContext, useId } from "react";
 import { useExpertMap } from "../../useExpertMap";
+import { AnsweredQuestions } from "../AnsweredQuestions/AnsweredQuestions";
 import { MorphingTextAnimation } from "../MorphingTextAnimation/MorphingTextAnimation";
+import { AnsweredQuestionsContext } from "../QuestionDock/AnsweredQuestionsContext";
 import { OnboardingChoices } from "./components/OnboardingChoices/OnboardingChoices";
+import { OnboardingFooter } from "./components/OnboardingFooter";
+import { OnboardingReview } from "./components/OnboardingReview";
 import { parseExpertOnboarding, type ExpertOnboardingOutput } from "./helpers";
 import { PendingOnboardingContext } from "./PendingOnboardingContext";
 import { useExpertOnboardingCard } from "./useExpertOnboardingCard";
@@ -37,7 +38,7 @@ export function ExpertOnboardingCard({ part }: Props) {
       part.state === "output-error" || part.state === "output-available";
     if (isSettled) {
       return (
-        <div className="py-2 text-sm text-zinc-500">
+        <div className="py-2 text-sm text-foreground-tertiary">
           Couldn&apos;t open the setup questions.
         </div>
       );
@@ -66,18 +67,25 @@ interface FormProps {
 
 function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
   const { expertsById } = useExpertMap();
+  // What the user's reply in the chat said, as opposed to the form's answers.
+  const sentAnswers = useContext(AnsweredQuestionsContext).get(callId);
   const sectionId = useId();
   const {
+    answer,
+    answers,
+    choicesRef,
     current,
     currentStep,
-    isAnswered,
     isDone,
-    isLast,
+    isNextReview,
+    isReady,
+    isReview,
     isSending,
-    value,
     advance,
     choose,
+    edit,
     goBack,
+    handleKeyDown,
     setAnswer,
     skip,
   } = useExpertOnboardingCard({
@@ -90,37 +98,56 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
     ? expertsById.get(onboarding.expertId)
     : undefined;
   const name = expert?.name ?? "Your new hire";
-  const labelId = `${sectionId}-${currentStep.keyword}`;
+  const labelId = `${sectionId}-${currentStep?.keyword ?? "review"}`;
 
   if (isDone) {
+    // Skipped questions have no answer to show, so only answered ones stay.
+    const answered = onboarding.steps.flatMap((step) => {
+      const answer = sentAnswers?.get(step.keyword);
+      return answer
+        ? [{ key: step.keyword, question: step.question, answer }]
+        : [];
+    });
     return (
-      <div className="flex items-center gap-2 py-2 text-sm text-zinc-500">
-        <Icon
-          icon={CheckmarkCircle02Icon}
-          size={16}
-          className="shrink-0 text-zinc-400"
-        />
-        Setup questions from {name}
+      <div className="flex flex-col gap-1 py-2">
+        <div className="flex items-center gap-2 text-sm text-foreground-tertiary">
+          <Icon
+            icon={CheckmarkCircle02Icon}
+            size={16}
+            className="shrink-0 text-foreground-subtle"
+          />
+          Setup questions from {name}
+        </div>
+        {answered.length > 0 && <AnsweredQuestions items={answered} />}
       </div>
     );
   }
 
   const total = onboarding.steps.length;
+  const shown = Math.min(current + 1, total);
 
   return (
-    <div className="w-full max-w-xl overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-[0_16px_40px_-24px_rgba(0,0,0,0.25)]">
+    // Focusable so a click anywhere on the card brings its keys along.
+    <div
+      tabIndex={-1}
+      onKeyDown={handleKeyDown}
+      // oxlint-disable-next-line design-system/no-arbitrary-values -- the floating card lift shadow; no shadow token has it
+      className="w-full max-w-xl overflow-hidden rounded-lg border border-border-base bg-surface shadow-[0_16px_40px_-24px_rgba(0,0,0,0.25)] outline-none"
+    >
       <div
         role="progressbar"
         aria-label="Setup progress"
         aria-valuemin={1}
         aria-valuemax={total}
-        aria-valuenow={current + 1}
-        aria-valuetext={`Question ${current + 1} of ${total}`}
-        className="h-1 bg-zinc-100"
+        aria-valuenow={shown}
+        aria-valuetext={
+          isReview ? "Check your answers" : `Question ${shown} of ${total}`
+        }
+        className="h-1 bg-surface-hover"
       >
         <div
-          className="h-full bg-zinc-800 transition-[width] duration-300 ease-out"
-          style={{ width: `${((current + 1) / total) * 100}%` }}
+          className="h-full bg-action transition-[width] duration-300 ease-out"
+          style={{ width: `${(shown / total) * 100}%` }}
         />
       </div>
 
@@ -128,71 +155,64 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
             ``motion`` component below it. */}
       <LazyMotion features={domAnimation} strict>
         <m.div
-          key={currentStep.keyword}
+          key={currentStep?.keyword ?? "review"}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
-          className="flex flex-col gap-4 px-5 pt-5"
+          className="flex flex-col gap-4 px-4 pt-4 sm:px-5 sm:pt-5"
         >
-          <span className="flex gap-2 text-lg font-medium leading-snug text-zinc-900">
-            <span
-              aria-hidden="true"
-              className="flex shrink-0 items-center gap-0.5 text-sm text-zinc-400"
-            >
-              {current + 1}
-              <Icon icon={ArrowRight01Icon} size={12} />
-            </span>
-            <span id={labelId}>{currentStep.question}</span>
-          </span>
-          <OnboardingChoices
-            key={currentStep.keyword}
-            options={currentStep.options}
-            value={value}
-            labelId={labelId}
-            autoFocus={current > 0}
-            onChoose={choose}
-            onChange={setAnswer}
-            onSubmit={advance}
-          />
+          {currentStep ? (
+            <>
+              <span className="flex flex-col gap-1">
+                <span className="flex gap-2 text-base leading-snug font-medium text-foreground-strong sm:text-lg">
+                  <span
+                    aria-hidden="true"
+                    className="flex shrink-0 items-center gap-0.5 text-sm text-foreground-subtle"
+                  >
+                    {current + 1}
+                    <Icon icon={ArrowRight01Icon} size={12} />
+                  </span>
+                  <span id={labelId}>{currentStep.question}</span>
+                </span>
+                {currentStep.allow_multiple && (
+                  <span className="text-sm text-foreground-tertiary">
+                    Choose as many as you like
+                  </span>
+                )}
+              </span>
+              <OnboardingChoices
+                key={currentStep.keyword}
+                ref={choicesRef}
+                options={currentStep.options}
+                answer={answer}
+                isMultiple={currentStep.allow_multiple}
+                labelId={labelId}
+                onChoose={choose}
+                onChange={setAnswer}
+                onSubmit={advance}
+              />
+            </>
+          ) : (
+            <OnboardingReview
+              steps={onboarding.steps}
+              answers={answers}
+              labelId={labelId}
+              onEdit={edit}
+            />
+          )}
         </m.div>
       </LazyMotion>
 
-      <div className="flex items-center justify-between px-5 pb-4 pt-4">
-        <button
-          type="button"
-          aria-label="Previous question"
-          disabled={current === 0}
-          onClick={goBack}
-          className="flex size-8 items-center justify-center rounded-md text-zinc-400 transition-colors enabled:hover:bg-zinc-100 enabled:hover:text-zinc-600 disabled:invisible"
-        >
-          <Icon icon={ArrowLeft01Icon} size={16} />
-        </button>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={skip}
-            disabled={isSending}
-            className="flex h-8 items-center rounded-md border border-zinc-200 bg-white px-3.5 text-sm font-medium text-zinc-700 transition-colors enabled:hover:border-zinc-300 enabled:hover:bg-zinc-50 disabled:opacity-50"
-          >
-            Skip questions
-          </button>
-          <button
-            type="button"
-            aria-label={isLast ? "Send answers" : "Next question"}
-            disabled={!isAnswered || isSending}
-            onClick={advance}
-            className={cn(
-              "flex h-8 items-center gap-1.5 rounded-md px-4 text-sm font-medium transition-all duration-200 enabled:active:scale-95",
-              isAnswered && !isSending
-                ? "bg-zinc-900 text-white hover:bg-zinc-800"
-                : "bg-zinc-100 text-zinc-400",
-            )}
-          >
-            {isLast ? "Send" : "Next"}
-            <Icon icon={isLast ? SentIcon : ArrowRight01Icon} size={14} />
-          </button>
-        </div>
-      </div>
+      <OnboardingFooter
+        canGoBack={current > 0}
+        isReady={isReady}
+        isReview={isReview}
+        isNextReview={isNextReview}
+        isSending={isSending}
+        onBack={goBack}
+        onSkip={skip}
+        onNext={advance}
+      />
     </div>
   );
 }

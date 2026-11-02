@@ -38,7 +38,7 @@ async def test_confirmed_trial_to_max_uses_confirmed_price_and_one_reset(
         "currency": "usd",
         "recurring": {"interval": "month", "interval_count": 1},
     }
-    mock_billing_boundaries(case, mocker, max_price)
+    period = mock_billing_boundaries(case, mocker, max_price)
     mutation = mocker.patch(
         "stripe.Subscription.modify_async",
         side_effect=partial(settle_conversion, case, max_price),
@@ -48,6 +48,11 @@ async def test_confirmed_trial_to_max_uses_confirmed_price_and_one_reset(
     assert preview.status == "confirmation_required" and preview.terms
     assert preview.terms.plan == "MAX" and preview.terms.price_id == "price_max"
     assert preview.terms.amount_due == 6000 and not preview.usage_reset
+    assert preview.terms.period_starts_at == datetime.fromtimestamp(
+        period["start"], UTC
+    )
+    assert preview.terms.next_payment_at == datetime.fromtimestamp(period["end"], UTC)
+    assert preview.terms.tax_amount == 0
     mutation.assert_not_called()
     assert await case.counters(None) == (trial_cost, trial_cost)
     assert preview.id
@@ -149,6 +154,10 @@ async def prepare_trial_checkout(case, cost, tier="PRO"):
 
 
 def mock_billing_boundaries(case, mocker, max_price):
+    now = int(datetime.now(UTC).timestamp())
+    period = {"start": now, "end": now + 30 * 86400}
+    line = deepcopy(case.invoice["lines"]["data"][0])
+    line.update(amount=6000, price=max_price, period=period)
     mocker.patch.object(
         credit,
         "build_price_to_tier_map",
@@ -170,10 +179,13 @@ def mock_billing_boundaries(case, mocker, max_price):
                 "customer": case.subscription["customer"],
                 "currency": "usd",
                 "amount_due": 6000,
+                "total_tax_amounts": [],
+                "lines": {"data": [line], "has_more": False},
             },
             None,
         ),
     )
+    return period
 
 
 async def settle_conversion(

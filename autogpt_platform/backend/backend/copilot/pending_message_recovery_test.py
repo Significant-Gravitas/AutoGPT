@@ -6,12 +6,17 @@ import pytest
 import pytest_asyncio
 
 from backend.copilot import pending_message_recovery as recovery
+from backend.copilot.gate.held import HeldResult
+from backend.copilot.model import ChatSession
+from backend.copilot.pending_message_helpers import persist_unfolded_rows
 from backend.copilot.pending_messages import (
+    MAX_PENDING_MESSAGES,
     PendingMessage,
     _buffer_key,
     drain_pending_messages,
     push_pending_message,
 )
+from backend.copilot.tool_image import ToolImage
 from backend.data.redis_client import get_redis_async
 
 
@@ -70,3 +75,33 @@ async def test_empty_recovery_does_not_touch_redis(
     await recovery.restore_pending_messages("unused", [])
 
     get_redis.assert_not_awaited()
+
+
+@pytest.mark.parametrize("newer_count", [0, MAX_PENDING_MESSAGES])
+async def test_unfolded_image_batch_is_requeued_once_in_order(
+    session_id: str, newer_count: int
+) -> None:
+    session = ChatSession.new("user-1", dry_run=False)
+    session.session_id = session_id
+    pending = [
+        PendingMessage(content="before"),
+        HeldResult(
+            content="Approved image: " + "x" * 40_000,
+            metadata={"held_call": {"review_id": "image-review"}},
+            model_image=ToolImage(mime_type="image/png", data_base64="cGl4ZWxz"),
+        ),
+        PendingMessage(content="after"),
+    ]
+    expected = list(pending)
+    newer = [PendingMessage(content=f"newer-{index}") for index in range(newer_count)]
+    for message in newer:
+        await push_pending_message(session_id, message)
+
+    await persist_unfolded_rows(session, pending, log_prefix="test")
+    await persist_unfolded_rows(session, pending, log_prefix="test")
+
+    assert not pending
+    assert not session.messages
+    recovered = await drain_pending_messages(session_id)
+    recovered.extend(await drain_pending_messages(session_id))
+    assert recovered == expected + newer

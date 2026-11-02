@@ -170,7 +170,7 @@ keeps the ceiling proportionate, and it is why a user with no subscription
 gets zero: a plan that may not spend may not delegate.
 
 On the code defaults, which is what production serves today — the two
-LaunchDarkly flags that can override the base limits and the tier multipliers
+feature flags that can override the base limits and the tier multipliers
 (`copilot-cost-limits`, `copilot-tier-multipliers`) are both off there:
 
 | Plan | Daily allowance | Per-tree ceiling | Per-turn cap |

@@ -19,9 +19,9 @@ async def websocket_server(
     monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncIterator[tuple[str, ConnectionManager]]:
     manager = ConnectionManager()
+    monkeypatch.setattr(ws_api, "is_user_banned", AsyncMock(return_value=False))
     monkeypatch.setattr(manager, "_start_notification_subscription", AsyncMock())
     monkeypatch.setattr(ws_api, "_connection_manager", manager)
-    monkeypatch.setattr(ws_api.settings.config, "enable_auth", True)
     server = uvicorn.Server(
         uvicorn.Config(
             ws_api.app,
@@ -97,7 +97,6 @@ async def test_auth_failure_reaches_the_client_as_a_close_frame(
 async def test_disconnected_auth_failure_does_not_register_socket(
     monkeypatch: pytest.MonkeyPatch, disconnect_on: str
 ) -> None:
-    monkeypatch.setattr(ws_api.settings.config, "enable_auth", True)
     send = AsyncMock(
         side_effect=(
             [BrokenPipeError()]
@@ -146,14 +145,11 @@ async def test_auth_failure_propagates_unrelated_errors(
         )
 
 
-@pytest.mark.parametrize("enable_auth", [True, False])
 async def test_valid_socket_is_accepted_once_and_serves_heartbeats(
     websocket_server: tuple[str, ConnectionManager],
     monkeypatch: pytest.MonkeyPatch,
-    enable_auth: bool,
 ) -> None:
     url, manager = websocket_server
-    monkeypatch.setattr(ws_api.settings.config, "enable_auth", enable_auth)
     monkeypatch.setattr(
         ws_api, "parse_jwt_token_async", AsyncMock(return_value={"sub": "user"})
     )

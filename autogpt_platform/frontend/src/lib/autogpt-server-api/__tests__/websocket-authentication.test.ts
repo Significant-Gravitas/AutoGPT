@@ -38,7 +38,7 @@ describe("WebSocket authentication and recovery", () => {
     return FakeWebSocket.instances[index];
   }
 
-  it.each([4001, 4002, 4003])(
+  it.each([4001, 4002, 4003, 4004])(
     "does not report authenticated connection or retry after close %s",
     async (code) => {
       const connected = vi.fn();

@@ -15,7 +15,8 @@ Supported formats:
   otherwise returns a plain ``list`` of parsed values
 - **CSV** (``.csv``) — ``csv.reader`` → ``list[list[str]]``
 - **TSV** (``.tsv``) — tab-delimited → ``list[list[str]]``
-- **YAML** (``.yaml``, ``.yml``) — parsed via PyYAML; containers only
+- **YAML** (``.yaml``, ``.yml``) — parsed via PyYAML's safe loader within size
+  limits; containers only
 - **TOML** (``.toml``) — parsed via stdlib ``tomllib``
 - **Parquet** (``.parquet``) — via pandas/pyarrow → ``list[list[Any]]`` with header row
 - **Excel** (``.xlsx``) — via pandas/openpyxl → ``list[list[Any]]`` with header row
@@ -39,11 +40,27 @@ from collections.abc import Callable
 # posixpath.splitext handles forward-slash URI paths correctly on all platforms,
 # unlike os.path.splitext which uses platform-native separators.
 from posixpath import splitext
-from typing import Any
+from typing import IO, Any, Literal
 
+import sentry_sdk
 import yaml
 
+from backend.util.bounded_yaml import load_bounded_yaml
+from backend.util.zip_member import ZipMemberTooLarge, check_unpacked_size
+
 logger = logging.getLogger(__name__)
+
+# Limits on a YAML file's text and on the document it expands to. The
+# expanded budget is YAML_EXPANSION_FACTOR times the text's size, kept between
+# MIN_YAML_EXPANDED_BYTES and MAX_YAML_EXPANDED_BYTES.
+MAX_YAML_BYTES = 10 * 1024 * 1024
+MAX_YAML_EXPANDED_BYTES = 20 * 1024 * 1024
+MIN_YAML_EXPANDED_BYTES = 1024 * 1024
+YAML_EXPANSION_FACTOR = 8
+
+# The .xlsx caps, per member and per workbook, checked before pandas reads it.
+MAX_XLSX_MEMBER_BYTES = 50 * 1024 * 1024
+MAX_XLSX_TOTAL_BYTES = 200 * 1024 * 1024
 
 # ---------------------------------------------------------------------------
 # Extension / MIME → format label mapping
@@ -295,9 +312,6 @@ def _row_has_content(row: list[str]) -> bool:
 
 
 def _parse_yaml(content: str) -> list | dict | str:
-    # NOTE: YAML anchor/alias expansion can amplify input beyond the 10MB cap.
-    # safe_load prevents code execution; for production hardening consider
-    # a YAML parser with expansion limits (e.g. ruamel.yaml with max_alias_count).
     if "\n---" in content or content.startswith("---\n"):
         # Multi-document YAML: only the first document is parsed; the rest
         # are silently ignored by yaml.safe_load.  Warn so callers are aware.
@@ -305,7 +319,22 @@ def _parse_yaml(content: str) -> list | dict | str:
             "Multi-document YAML detected (--- separator); "
             "only the first document will be parsed."
         )
-    return _parse_container(yaml.safe_load, content)
+    return _parse_container(_load_yaml, content)
+
+
+def _load_yaml(content: str) -> Any:
+    return load_bounded_yaml(
+        content,
+        subject="YAML file",
+        max_bytes=MAX_YAML_BYTES,
+        max_expanded_bytes=_yaml_expanded_budget(content),
+        allow_anchors=True,
+    )
+
+
+def _yaml_expanded_budget(content: str) -> int:
+    scaled = YAML_EXPANSION_FACTOR * len(content.encode("utf-8"))
+    return min(MAX_YAML_EXPANDED_BYTES, max(MIN_YAML_EXPANDED_BYTES, scaled))
 
 
 def _parse_toml(content: str) -> Any:
@@ -338,10 +367,46 @@ def _parse_parquet(content: bytes) -> list[list[Any]]:
 def _parse_xlsx(content: bytes) -> list[list[Any]]:
     import pandas as pd
 
+    check_xlsx_unpacked_size(io.BytesIO(content), source="file_content_parser")
     # Explicitly specify openpyxl engine; the default engine varies by pandas
     # version and does not support legacy .xls (which is excluded by our format map).
     df = pd.read_excel(io.BytesIO(content), engine="openpyxl")
     return _df_to_rows(df)
+
+
+def check_xlsx_unpacked_size(
+    file: str | IO[bytes],
+    *,
+    source: Literal["spreadsheet_block", "file_content_parser"],
+) -> None:
+    """Refuse a workbook past the .xlsx caps, reporting each refusal to Sentry.
+
+    Only a zip is read; anything else is left for the Excel reader to reject.
+    """
+    if not zipfile.is_zipfile(file):
+        return
+    try:
+        check_unpacked_size(
+            file,
+            max_member_bytes=MAX_XLSX_MEMBER_BYTES,
+            max_total_bytes=MAX_XLSX_TOTAL_BYTES,
+        )
+    except ZipMemberTooLarge as e:
+        _report_xlsx_refusal(e, source)
+        raise
+
+
+def _report_xlsx_refusal(error: ZipMemberTooLarge, source: str) -> None:
+    # Sizes and the call site only: never the file name or its content.
+    limit_name = (
+        "MAX_XLSX_MEMBER_BYTES" if error.cap == "member" else "MAX_XLSX_TOTAL_BYTES"
+    )
+    sentry_sdk.capture_message(
+        "xlsx workbook over unpack limit",
+        level="warning",
+        tags={"xlsx_limit": limit_name, "xlsx_source": source},
+        extras={"unpacked_bytes": error.counted, "limit_bytes": error.limit},
+    )
 
 
 def _df_to_rows(df: Any) -> list[list[Any]]:

@@ -97,18 +97,20 @@ def baseline_io(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         ),
     )
     for name, value in {
-        "resolve_answered": [],
         "resolve_model_route": ResolvedModel(
             model="anthropic/claude-sonnet-4-6", source="env"
         ),
         "_build_system_prompt": ("System prompt", None),
-        "is_enabled_for_user": False,
-        "is_feature_enabled": False,
         "persist_and_record_usage": None,
         "download_transcript": None,
         "_upload_final_transcript": None,
     }.items():
         monkeypatch.setattr(service, name, AsyncMock(return_value=value))
+    held_statuses = MagicMock()
+    held_statuses.__aiter__.return_value = []
+    monkeypatch.setattr(
+        service, "resolve_answered", MagicMock(return_value=held_statuses)
+    )
     monkeypatch.setattr(service, "_get_main_client", MagicMock())
     monkeypatch.setattr(
         service, "upsert_chat_session", AsyncMock(side_effect=lambda session: session)

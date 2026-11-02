@@ -1,104 +1,31 @@
 "use client";
 
 import { DEFAULT_SEARCH_TERMS } from "@/app/(platform)/marketplace/components/HeroSection/helpers";
-import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 import type { FeatureFlagsIntegration } from "@sentry/nextjs";
 import { useEffect, useState } from "react";
-import { FLAG_BACKEND, isPostHogFlagsEnabled } from "./flag-backend";
+import { FrontendFlag as Flag } from "@/app/api/__generated__/models/frontendFlag";
 import { useFlagResolutionStarted } from "./flag-resolution";
 import { useFlagSource } from "./flag-source";
 import { usePwFlagOverrides } from "./pw-flag-overrides";
 
-export enum Flag {
-  MARKETPLACE_SEARCH_TERMS = "marketplace-search-terms",
-  ENABLE_PLATFORM_PAYMENT = "enable-platform-payment",
-  ARTIFACTS_PAGE = "artifacts-page",
-  CHAT_MODE_OPTION = "chat-mode-option",
-  GENERIC_TRIGGER_AGENTS = "generic-trigger-agents",
-  CHAT_SEARCH = "chat-search",
-  AUTOGPT_NEW_LAYOUT = "autogpt-new-layout",
-  CHAT_WORKSPACE_FILES = "chat-workspace-files",
-  CHAT_PINNING = "chat-pinning",
-  TASK_PROGRESS_BAR = "task-progress-bar",
-  HIRE_EXPERTS = "hire-experts",
-  // Reveals the marketplace Skills shelf and the skill listing pages.
-  SKILLS_HUB = "skills-hub",
-  // Reveals the notification-preferences card on /settings/account. The card
-  // is built but its design is still being reworked, so it ships dark and is
-  // targeted at AGPT staff in LaunchDarkly. Until this is on for everyone,
-  // /profile/settings stays un-redirected (``useNewSettingsRedirect``) so the
-  // toggles remain reachable for everyone else — flip both together.
-  SETTINGS_NOTIFICATIONS = "settings-notifications",
-  // Replaces the onboarding pillbox step with the voice brain dump.
-  // Mirror of the backend ``Flag`` enum — the endpoints 404 when off, so
-  // both sides must agree. Off renders the pillbox flow untouched.
-  ONBOARDING_BRAIN_DUMP = "onboarding-brain-dump",
-  // Child of HIRE_EXPERTS: the greeting page builds a team from the brain
-  // dump. Mirror of the backend ``Flag`` enum; both must be on.
-  ONBOARDING_EXPERT_TEAM = "onboarding-expert-team",
-  // Graphiti memory + dream-system gates. Mirror of the backend
-  // ``Flag`` enum in ``backend/util/feature_flag.py``. Frontend reads
-  // them when memory/dream-related UI surfaces ship (P6+ on the
-  // dream-system roadmap). They default false below to match the
-  // backend's fail-closed gating (default=False, opt-in only) — a
-  // LaunchDarkly outage or missing flag key must not switch the
-  // feature on. Use ``NEXT_PUBLIC_FORCE_FLAG_*`` env overrides to
-  // enable the stack for local-dev / Playwright runs.
-  GRAPHITI_MEMORY = "graphiti-memory",
-  GRAPHITI_COMMUNITIES_ENABLED = "graphiti-communities-enabled",
-  DREAM_PASS_ENABLED = "dream-pass-enabled",
-  DREAM_PASS_INVALIDATE_ENTITY = "dream-pass-invalidate-entity",
-  // Nightly skill learning (versioned, evidence-linked skill updates and
-  // their Memory/Expert/chat surfaces). Mirror of the backend flag;
-  // independent of the dream pass. Fail-closed.
-  DREAM_SKILL_LEARNING_ENABLED = "dream-skill-learning-enabled",
-  // JSON flag mapping copilot-bot platform key (lowercase) -> visible on the
-  // Bots settings page. Lets ops hide a platform (e.g. Slack while its
-  // Marketplace review is pending) without a deploy. Missing keys default to
-  // visible — only an explicit ``false`` hides a card.
-  COPILOT_BOT_PLATFORMS = "copilot-bot-platforms",
-  // Voice mode on /copilot: hands-free listen → send → speak → listen.
-  // Mirror of the backend ``Flag`` enum — the speech endpoint 404s when off,
-  // so both sides must agree. Fail-closed.
-  COPILOT_VOICE_MODE = "copilot-voice-mode",
-  // The chat's approval mode selector. Mirror of the backend ``Flag`` enum,
-  // which ignores a sent mode when off. Fail-closed.
-  COPILOT_AUTO_MODE = "copilot-auto-mode",
-  // The share of chat sessions whose stream the converter shadows and checks
-  // against the server, 0 to 1 (a PostHog payload). 0 is off.
-  COPILOT_STREAM_SHADOW = "copilot-stream-shadow",
-  // The chat's own stream runtime in place of the AI SDK's: resume at a
-  // cursor, render from the persisted rows. Frontend only; fail-closed.
-  COPILOT_STREAM_RUNTIME = "copilot-stream-runtime",
-}
+// Declared once, on the backend (`FrontendFlag` in `backend/util/feature_flag/frontend.py`),
+// which is also the set `/api/feature-flags` serves.
+export { Flag };
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
 
 const defaultFlags = {
   [Flag.MARKETPLACE_SEARCH_TERMS]: DEFAULT_SEARCH_TERMS,
   [Flag.ENABLE_PLATFORM_PAYMENT]: false,
-  [Flag.ARTIFACTS_PAGE]: false,
   [Flag.CHAT_MODE_OPTION]: false,
   [Flag.GENERIC_TRIGGER_AGENTS]: false,
-  [Flag.CHAT_SEARCH]: false,
-  [Flag.AUTOGPT_NEW_LAYOUT]: false,
   [Flag.CHAT_WORKSPACE_FILES]: false,
   [Flag.CHAT_PINNING]: false,
   [Flag.TASK_PROGRESS_BAR]: false,
-  [Flag.HIRE_EXPERTS]: false,
-  [Flag.SKILLS_HUB]: false,
-  // Off by default so a LaunchDarkly outage or a missing key hides the card
+  // Off by default so a flag service outage or a missing flag hides the card
   // rather than exposing the in-progress design to everyone.
   [Flag.SETTINGS_NOTIFICATIONS]: false,
-  // Off by default: with no LaunchDarkly key (local dev, CI, Playwright)
-  // the wizard falls back to this map, and a ``true`` here renders the
-  // brain dump for everyone — which is what the backend 404s are meant to
-  // prevent. Use NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_BRAIN_DUMP locally.
-  [Flag.ONBOARDING_BRAIN_DUMP]: false,
-  [Flag.ONBOARDING_EXPERT_TEAM]: false,
-  [Flag.GRAPHITI_MEMORY]: false,
-  [Flag.GRAPHITI_COMMUNITIES_ENABLED]: false,
   [Flag.DREAM_PASS_ENABLED]: false,
   [Flag.DREAM_PASS_INVALIDATE_ENTITY]: false,
   [Flag.DREAM_SKILL_LEARNING_ENABLED]: false,
@@ -107,7 +34,7 @@ const defaultFlags = {
   [Flag.COPILOT_AUTO_MODE]: false,
   [Flag.COPILOT_STREAM_SHADOW]: 0,
   [Flag.COPILOT_STREAM_RUNTIME]: false,
-};
+} satisfies Record<Flag, unknown>;
 
 type FlagValues = typeof defaultFlags;
 
@@ -115,9 +42,9 @@ type FlagValues = typeof defaultFlags;
  * Read a per-flag override from the build-time env.
  *
  * Set ``NEXT_PUBLIC_FORCE_FLAG_<NAME>=true|false`` (``NAME`` = flag value
- * with ``-`` → ``_``, upper-cased) to bypass LaunchDarkly for that flag
+ * with ``-`` → ``_``, upper-cased) to bypass the flag service for that flag
  * in local dev.  Returns ``undefined`` when no override is configured so
- * the caller falls through to LaunchDarkly / ``defaultFlags``.
+ * the caller falls through to the flag service / ``defaultFlags``.
  *
  * Note: ``NEXT_PUBLIC_*`` env vars are baked into the bundle at build
  * time, so the frontend image must be rebuilt after changing them.
@@ -134,36 +61,18 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_MARKETPLACE_SEARCH_TERMS;
     case Flag.ENABLE_PLATFORM_PAYMENT:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_ENABLE_PLATFORM_PAYMENT;
-    case Flag.SKILLS_HUB:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_SKILLS_HUB;
-    case Flag.ARTIFACTS_PAGE:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_ARTIFACTS_PAGE;
     case Flag.CHAT_MODE_OPTION:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_MODE_OPTION;
     case Flag.GENERIC_TRIGGER_AGENTS:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_GENERIC_TRIGGER_AGENTS;
-    case Flag.CHAT_SEARCH:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_SEARCH;
-    case Flag.AUTOGPT_NEW_LAYOUT:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_AUTOGPT_NEW_LAYOUT;
     case Flag.CHAT_WORKSPACE_FILES:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_WORKSPACE_FILES;
     case Flag.CHAT_PINNING:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_PINNING;
     case Flag.TASK_PROGRESS_BAR:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_TASK_PROGRESS_BAR;
-    case Flag.HIRE_EXPERTS:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS;
     case Flag.SETTINGS_NOTIFICATIONS:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_SETTINGS_NOTIFICATIONS;
-    case Flag.ONBOARDING_BRAIN_DUMP:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_BRAIN_DUMP;
-    case Flag.ONBOARDING_EXPERT_TEAM:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_EXPERT_TEAM;
-    case Flag.GRAPHITI_MEMORY:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY;
-    case Flag.GRAPHITI_COMMUNITIES_ENABLED:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_COMMUNITIES_ENABLED;
     case Flag.DREAM_PASS_ENABLED:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_ENABLED;
     case Flag.DREAM_PASS_INVALIDATE_ENTITY:
@@ -185,7 +94,7 @@ function readEnvOverride(flag: Flag): string | undefined {
 // Array-typed flags (e.g. ``MARKETPLACE_SEARCH_TERMS``)
 // cannot be meaningfully overridden through a single boolean string env
 // var — returning ``true`` / ``false`` would clash with the array type
-// callers expect.  These flags are still subject to LaunchDarkly + the
+// callers expect.  These flags are still subject to the flag service + the
 // ``defaultFlags`` fallback; the env override path just skips them.
 const ARRAY_TYPED_FLAGS: ReadonlySet<Flag> = new Set([
   Flag.MARKETPLACE_SEARCH_TERMS,
@@ -197,7 +106,7 @@ const ARRAY_TYPED_FLAGS: ReadonlySet<Flag> = new Set([
 // boolean flag on without listing them individually. A per-flag
 // ``NEXT_PUBLIC_FORCE_FLAG_<NAME>`` still wins, so one flag can be excluded
 // with ``=false`` while the rest stay forced. Array/JSON-typed flags keep
-// their LaunchDarkly / default values.
+// their served / default values.
 //
 // Inert in a production build, mirroring the backend's app_env guard:
 // NEXT_PUBLIC_* vars are inlined at build time, so one stray value in a
@@ -263,7 +172,6 @@ export function useFlagStatus<T extends Flag>(
   flag: T,
 ): { enabled: FlagValues[T]; ready: boolean; answered: boolean } {
   const { value, resolved } = useFlagSource(flag);
-  const areFlagsEnabled = areFeatureFlagsEnabled();
   const pwOverrides = usePwFlagOverrides();
   const override = pwFlagOverride(pwOverrides, flag) ?? envFlagOverride(flag);
 
@@ -286,7 +194,7 @@ export function useFlagStatus<T extends Flag>(
   if (isPwMockEnabled && pwOverrides === null) {
     return { enabled: served, ready: false, answered: false };
   }
-  if (override !== undefined || !areFlagsEnabled || isPwMockEnabled) {
+  if (override !== undefined || isPwMockEnabled) {
     return { enabled: served, ready: true, answered: true };
   }
   return {
@@ -297,7 +205,7 @@ export function useFlagStatus<T extends Flag>(
 }
 
 function servedFlagValue<T extends Flag>(flag: T, value: unknown) {
-  if (!areFeatureFlagsEnabled() || isPwMockEnabled) return defaultFlags[flag];
+  if (isPwMockEnabled) return defaultFlags[flag];
   return resolveFlagValue(flag, value);
 }
 
@@ -322,20 +230,6 @@ export function resolveFlagValue<T extends Flag>(
   }
 
   return (typeof value === typeof fallback ? value : fallback) as FlagValues[T];
-}
-
-// ``environment.areFeatureFlagsEnabled`` only knows about LaunchDarkly, and
-// deliberately stays that way — it is what the provider and the flag test
-// mocks stub. This is the same question asked of whichever vendor is configured.
-function areFeatureFlagsEnabled() {
-  switch (FLAG_BACKEND) {
-    case "posthog":
-      return isPostHogFlagsEnabled();
-    case "dual":
-      return environment.areFeatureFlagsEnabled() || isPostHogFlagsEnabled();
-    default:
-      return environment.areFeatureFlagsEnabled();
-  }
 }
 
 // Records the value served, not the vendor's; env overrides pass undefined.

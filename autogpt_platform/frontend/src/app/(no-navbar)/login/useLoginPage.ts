@@ -1,6 +1,7 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useCaptureMarketingPrompt } from "@/hooks/useCaptureMarketingPrompt";
 import { sanitizeAuthNext } from "@/lib/auth-redirect";
+import { isBannedNotice } from "@/lib/auth/account-banned";
 import {
   EMAIL_VERIFICATION_NOTICE_PARAM,
   getEmailVerificationNotice,
@@ -14,6 +15,8 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 import { login as loginAction } from "./actions";
+import { isTeamEmail } from "@/lib/auth/team-email";
+import { clearImpersonationEverywhere } from "@/lib/impersonation";
 
 export function useLoginPage() {
   useCaptureMarketingPrompt();
@@ -38,6 +41,7 @@ export function useLoginPage() {
   const verificationNotice = getEmailVerificationNotice(
     searchParams.get(EMAIL_VERIFICATION_NOTICE_PARAM),
   );
+  const showBannedNotice = isBannedNotice(searchParams);
 
   // Only honour explicit `?next=` deep links here. Generic "already logged in
   // on /login, get me out" is handled by OnboardingProvider so the user lands
@@ -61,6 +65,8 @@ export function useLoginPage() {
   async function handleProviderLogin(provider: LoginProvider) {
     setIsGoogleLoading(true);
     setIsLoggingIn(true);
+    // Leftover impersonation (expired admin session, pre-fix cookie) would 403 a non-admin.
+    clearImpersonationEverywhere();
 
     try {
       // Include next URL in OAuth flow if present
@@ -95,7 +101,7 @@ export function useLoginPage() {
     setIsLoading(true);
     setIsLoggingIn(true);
 
-    if (data.email.includes("@agpt.co")) {
+    if (isTeamEmail(data.email)) {
       toast({
         title: "Please use Google SSO to login using an AutoGPT email.",
         variant: "default",
@@ -105,6 +111,8 @@ export function useLoginPage() {
       setIsLoggingIn(false);
       return;
     }
+
+    clearImpersonationEverywhere();
 
     try {
       const result = await loginAction(data.email, data.password, nextUrl);
@@ -145,6 +153,7 @@ export function useLoginPage() {
     nextUrl,
     verificationEmail,
     verificationNotice,
+    showBannedNotice,
     user,
     isLoading,
     isGoogleLoading,

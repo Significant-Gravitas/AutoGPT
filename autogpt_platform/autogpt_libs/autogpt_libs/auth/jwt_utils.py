@@ -5,8 +5,9 @@ from collections.abc import Awaitable, Callable
 from typing import Annotated, Any
 
 import jwt
-from fastapi import HTTPException, Request, Security
+from fastapi import FastAPI, HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jwt.algorithms import get_default_algorithms
 
 from .config import get_settings
 from .models import User
@@ -96,7 +97,14 @@ async def parse_jwt_token_async(
     every other request on the worker until it returns, not just this one — so
     hand it to a thread. Cache hits are pure CPU and return immediately.
     """
-    return await asyncio.to_thread(parse_jwt_token, token, audience)
+    try:
+        return await asyncio.to_thread(parse_jwt_token, token, audience)
+    except jwt.PyJWKClientConnectionError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Authentication service unavailable, retry shortly",
+            headers={"Retry-After": "5"},
+        ) from exc
 
 
 def parse_jwt_token(token: str, audience: str = "authenticated") -> dict[str, Any]:
@@ -134,22 +142,30 @@ def parse_jwt_token(token: str, audience: str = "authenticated") -> dict[str, An
         raise ValueError("Invalid token: signing algorithm is not accepted")
 
     try:
-        key = _get_jwks_client().get_signing_key_from_jwt(token).key
-    except jwt.PyJWKClientError as e:
-        raise ValueError(f"Invalid token: {e!s}") from e
+        signing_key = _get_jwks_client().get_signing_key_from_jwt(token)
+    except jwt.PyJWKClientConnectionError:
+        raise
+    # Covers PyJWKClientError and the lookup's DecodeError on a non-object payload.
+    except jwt.PyJWTError as e:
+        raise ValueError(f"Invalid token: {str(e)}") from e
+
+    # Checked before decoding: PyJWT's key loader raises TypeError, not a token
+    # error, for a key of another type.
+    if not _algorithm_fits_key(algorithm, signing_key):
+        raise ValueError("Invalid token: signing algorithm does not match its key")
 
     try:
         payload = jwt.decode(
             token,
-            key,
-            algorithms=settings.JWT_JWKS_ALGORITHMS,
+            signing_key.key,
+            algorithms=[algorithm],
             audience=audience,
         )
         return payload
     except jwt.ExpiredSignatureError as e:
         raise ValueError("Token has expired") from e
-    except jwt.InvalidTokenError as e:
-        raise ValueError(f"Invalid token: {e!s}") from e
+    except jwt.PyJWTError as e:
+        raise ValueError(f"Invalid token: {str(e)}") from e
 
 
 def _get_jwks_client() -> jwt.PyJWKClient:
@@ -174,6 +190,19 @@ def _get_jwks_client() -> jwt.PyJWKClient:
     return _jwks_client
 
 
+def _algorithm_fits_key(algorithm: str, signing_key: jwt.PyJWK) -> bool:
+    """A JWK that declares `alg` serves that algorithm only; one without serves
+    any algorithm for its key type."""
+    # PyJWK reports an inferred alg as algorithm_name too; only the JWK says which.
+    if signing_key._jwk_data.get("alg"):
+        return algorithm == signing_key.algorithm_name
+    try:
+        get_default_algorithms()[algorithm].check_crypto_key_type(signing_key.key)
+    except jwt.InvalidKeyError:
+        return False
+    return True
+
+
 def verify_user(jwt_payload: dict | None, admin_only: bool) -> User:
     if jwt_payload is None:
         raise HTTPException(status_code=401, detail="Authorization header is missing")
@@ -187,3 +216,12 @@ def verify_user(jwt_payload: dict | None, admin_only: bool) -> User:
         raise HTTPException(status_code=403, detail="Admin access required")
 
     return User.from_payload(jwt_payload)
+
+
+def add_auth_responses_to_openapi(app: FastAPI) -> None:
+    """
+    Add 401 responses to all endpoints that use the bearer JWT authentication scheme.
+    """
+    from .helpers import add_auth_responses_to_openapi
+
+    add_auth_responses_to_openapi(app, [bearer_jwt_auth.scheme_name])

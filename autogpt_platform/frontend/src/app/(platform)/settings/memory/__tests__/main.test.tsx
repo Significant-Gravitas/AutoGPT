@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
-import { http } from "msw";
+import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resetCopilotChatRegistry } from "@/app/(platform)/copilot/copilotChatRegistry";
@@ -53,16 +53,13 @@ vi.mock("@/app/(platform)/copilot/helpers", async (importActual) => {
 
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
-    GRAPHITI_MEMORY: "graphiti-memory",
     DREAM_SKILL_LEARNING_ENABLED: "dream-skill-learning-enabled",
-    HIRE_EXPERTS: "hire-experts",
     CHAT_MODE_OPTION: "chat-mode-option",
     ENABLE_PLATFORM_PAYMENT: "enable-platform-payment",
   },
-  useGetFlag: (flag: string) =>
-    flag === "graphiti-memory" || flag === "hire-experts",
-  useFlagStatus: (flag: string) => ({
-    enabled: flag === "graphiti-memory",
+  useGetFlag: () => false,
+  useFlagStatus: () => ({
+    enabled: false,
     answered: true,
   }),
 }));
@@ -309,6 +306,13 @@ describe("Settings memory page", () => {
     "falls back to AutoPilot when ?expert= is %s",
     async (_case, expertParam) => {
       mockHappyPath();
+      server.use(
+        http.get(
+          /\/api\/proxy\/api\/memory\/experts\/expert-gone\/(?:facts|overview)/,
+          () =>
+            HttpResponse.json({ detail: "Expert not found" }, { status: 404 }),
+        ),
+      );
       window.history.replaceState(
         {},
         "",

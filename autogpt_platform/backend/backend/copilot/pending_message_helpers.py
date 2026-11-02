@@ -33,8 +33,8 @@ from backend.copilot.pending_messages import (
     claim_client_message,
     drain_pending_messages,
     finish_despite_cancellation,
-    format_pending_as_user_message,
     peek_pending_count,
+    pending_message_text,
     push_pending_message,
     push_pending_message_if_session_running,
     release_client_message,
@@ -475,7 +475,7 @@ def pending_texts_from(pending: list[PendingMessage]) -> list[str]:
     turn-start injection (bundles the pending block into the user prompt)
     and the auto-continue combined-message path.
     """
-    return [format_pending_as_user_message(pm)["content"] for pm in pending]
+    return [pending_message_text(pm) for pm in pending]
 
 
 def combine_pending_with_current(
@@ -619,6 +619,9 @@ async def persist_pending_as_user_rows(
     existing = {
         message.id: i for i, message in enumerate(session.messages) if message.id
     }
+    pending_by_id: dict[str, PendingMessage] = {}
+    for message in pending:
+        pending_by_id.setdefault(message.id, message)
     for row in rows:
         if row.id in existing:
             if row.sequence is not None:
@@ -626,7 +629,16 @@ async def persist_pending_as_user_rows(
             continue
         session.messages.append(row)
         if transcript_builder is not None:
-            transcript_builder.append_user(content=row.content or "")
+            source = pending_by_id.get(row.id or "")
+            image = source.model_image if source is not None else None
+            content = row.content or ""
+            transcript_builder.append_user(
+                content=(
+                    [{"type": "text", "text": content}, image.anthropic()]
+                    if image is not None
+                    else content
+                )
+            )
 
     # ``persist_session_safe`` may return a ``model_copy`` of *session* (e.g.
     # when ``upsert_chat_session`` patches a concurrently-updated title).
@@ -672,6 +684,33 @@ async def persist_pending_as_user_rows(
         len(pending),
     )
     return True
+
+
+async def persist_unfolded_rows(
+    session: "ChatSession | None",
+    pending: list[PendingMessage],
+    *,
+    log_prefix: str,
+) -> None:
+    """Save rows a turn took but ended before folding in, such as results of
+    approved calls whose approvals it spent. Empties *pending*, so only the
+    first of several exits saves, and never raises over the turn's own error."""
+    if not pending or session is None:
+        return
+    saving = list(pending)
+    pending.clear()
+    try:
+        if any(message.model_image is not None for message in saving):
+            # No model transcript exists yet to retain the pixels. Requeue the
+            # whole batch so the next turn receives its images and order intact.
+            await restore_pending_messages(session.session_id, saving)
+            return
+        await persist_pending_as_user_rows(session, None, saving, log_prefix=log_prefix)
+    except Exception:
+        logger.warning(
+            f"{log_prefix} Could not save {len(saving)} unfolded row(s)",
+            exc_info=True,
+        )
 
 
 def drained_rows_entry(

@@ -2,6 +2,7 @@ import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { cardArguments, fallbackAsk } from "../ApprovalQueue/helpers";
 import { heldAskText, heldToolName, isHeldReadId } from "../ToolChain/heldRow";
+import type { MessagePart } from "./helpers";
 
 // Rows the server writes for a held call: the one that starts the turn when a
 // card is answered, and the call's late result, which the reply narrates.
@@ -201,6 +202,18 @@ export function getHeldOutcomes(
     waiting.splice(index, 1);
   }
   return outcomes;
+}
+
+// A part drawn outside the chain renders from what its held call returned, as
+// a chain row does through applyHeldOutcome.
+export function withHeldOutcome(
+  part: MessagePart,
+  outcomes: ReadonlyMap<string, HeldOutcome>,
+): MessagePart {
+  if (!("toolCallId" in part) || !("output" in part)) return part;
+  if (heldReviewId(part.output) === null) return part;
+  const outcome = outcomes.get(part.toolCallId);
+  return outcome ? ({ ...part, output: outcome.output } as MessagePart) : part;
 }
 
 function heldCallMetadata(metadata: unknown) {

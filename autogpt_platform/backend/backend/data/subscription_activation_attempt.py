@@ -51,7 +51,7 @@ async def save_quote(
         user_id,
         subscription_id,
         customer_id,
-        terms.model_dump_json(),
+        terms.persisted_json(),
         return_to,
         model=ActivationAttempt,
     )
@@ -71,7 +71,7 @@ async def save_confirmation(attempt: ActivationAttempt) -> ActivationAttempt:
         + _COLUMNS,
         attempt.id,
         attempt.user_id,
-        attempt.terms.model_dump_json(),
+        attempt.terms.persisted_json(),
         attempt.subscription_id,
         attempt.customer_id,
         model=ActivationAttempt,

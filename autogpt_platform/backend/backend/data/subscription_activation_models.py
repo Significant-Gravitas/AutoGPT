@@ -56,15 +56,31 @@ class ActivationTerms(BaseModel):
     charge_timing: Literal["on_confirmation"] = "on_confirmation"
     renewal_terms: str
     expires_at: datetime
+    trial_ends_at: datetime | None = None
+    period_starts_at: datetime | None = None
+    next_payment_at: datetime | None = None
+    tax_amount: int | None = None
 
     @property
     def token(self) -> str:
-        return sha256(self.model_dump_json().encode()).hexdigest()
+        return sha256(self.persisted_json().encode()).hexdigest()
+
+    def persisted_json(self) -> str:
+        return self.model_dump_json(exclude=self._undisclosed_fields())
 
     def same_charge_as(self, other: "ActivationTerms") -> bool:
-        return self.model_dump(exclude={"expires_at"}) == other.model_dump(
-            exclude={"expires_at"}
-        )
+        excluded = {"expires_at", "period_starts_at", "next_payment_at"}
+        excluded |= self._undisclosed_fields() | other._undisclosed_fields()
+        return self.model_dump(exclude=excluded) == other.model_dump(exclude=excluded)
+
+    def _undisclosed_fields(self) -> set[str]:
+        fields = {
+            "trial_ends_at": self.trial_ends_at,
+            "period_starts_at": self.period_starts_at,
+            "next_payment_at": self.next_payment_at,
+            "tax_amount": self.tax_amount,
+        }
+        return {name for name, value in fields.items() if value is None}
 
 
 class ActivationConfirmRequest(BaseModel):

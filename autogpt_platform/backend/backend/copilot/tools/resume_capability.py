@@ -29,7 +29,7 @@ from backend.data.db_accessors import review_db
 
 from .base import BaseTool
 from .capability_gates import gate_denied, gate_denied_error
-from .continue_run_block import ContinueRunBlockTool
+from .continue_run_block import ContinueRunBlockTool, run_claimed
 from .models import ErrorResponse, ReviewRequiredResponse, ToolResponseBase
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
@@ -204,18 +204,18 @@ async def _resume_mcp(
             review_id=new_id,
             input_data=fresh.model_dump(),
         ).from_outside()
-    result = await RunMCPToolTool()._execute(
+    return await run_claimed(
+        review_id,
         user_id,
         session,
-        server_url=payload.server_url,
-        tool_name=payload.tool,
-        tool_arguments=arguments,
+        lambda: RunMCPToolTool()._execute(
+            user_id,
+            session,
+            server_url=payload.server_url,
+            tool_name=payload.tool,
+            tool_arguments=arguments,
+        ),
     )
-    # A sign-in card or a fresh review means the call has not run, so the
-    # approval must survive for the retry that follows.
-    if result.type not in ("error", "setup_requirements", "review_required"):
-        await review_db().delete_review_by_node_exec_id(review_id, user_id)
-    return result
 
 
 async def _rerun_block(
@@ -229,11 +229,14 @@ async def _rerun_block(
         return review
     block_id = parse_node_id_from_exec_id(review_id).removeprefix(COPILOT_NODE_PREFIX)
     stored = review.payload if isinstance(review.payload, dict) else {}
-    result = await RunBlockTool()._execute(
-        user_id, session, block_id=block_id, input_data={**stored, **input_overrides}
+    return await run_claimed(
+        review_id,
+        user_id,
+        session,
+        lambda: RunBlockTool()._execute(
+            user_id,
+            session,
+            block_id=block_id,
+            input_data={**stored, **input_overrides},
+        ),
     )
-    # Delete only once the run has actually happened: dropping the review
-    # first left a failed run with nothing to retry from.
-    if result.type not in ("error", "setup_requirements", "review_required"):
-        await review_db().delete_review_by_node_exec_id(review_id, user_id)
-    return result

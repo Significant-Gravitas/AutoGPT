@@ -8,11 +8,16 @@ from moviepy.video.io.VideoFileClip import VideoFileClip
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.blocks.video._utils import extract_source_name, strip_chapters_inplace
+from backend.blocks.video._utils import (
+    extract_source_name,
+    open_video_clip,
+    strip_chapters_inplace,
+)
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
@@ -50,6 +55,7 @@ class LoopVideoBlock(Block):
             categories={BlockCategory.MULTIMEDIA},
             input_schema=LoopVideoBlock.Input,
             output_schema=LoopVideoBlock.Output,
+            effect=BlockEffect.WORKSPACE,
         )
 
     async def run(
@@ -77,7 +83,9 @@ class LoopVideoBlock(Block):
         clip = None
         looped_clip = None
         try:
-            clip = VideoFileClip(input_abspath)
+            clip = open_video_clip(
+                input_abspath, block_name=self.name, block_id=str(self.id)
+            )
 
             # 3) Apply the loop effect
             if input_data.duration:

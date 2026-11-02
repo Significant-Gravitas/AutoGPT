@@ -5,6 +5,7 @@ from typing import Any, Literal
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -71,6 +72,7 @@ class PersistInformationBlock(Block):
                     "language": "en",
                 }
             },
+            effect=BlockEffect.WORKSPACE,
         )
 
     async def run(
@@ -141,6 +143,7 @@ class RetrieveInformationBlock(Block):
             ],
             test_mock={"_retrieve_data": lambda *args, **kwargs: None},
             static_output=True,
+            effect=BlockEffect.READ,
         )
 
     async def run(

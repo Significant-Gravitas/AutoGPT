@@ -34,7 +34,7 @@ describe("pending subscriptions share connection retries", () => {
     return FakeWebSocket.instances[index];
   }
 
-  it.each([4001, 4002, 4003])(
+  it.each([4001, 4002, 4003, 4004])(
     "rejects the pending send without retrying auth close %s",
     async (code) => {
       const outcome = api.subscribeToGraphExecution(executionID).then(
@@ -73,7 +73,7 @@ describe("pending subscriptions share connection retries", () => {
     );
   });
 
-  it.each([4001, 4002, 4003])(
+  it.each([4001, 4002, 4003, 4004])(
     "waits for a closing socket's auth code %s before rejecting a new send",
     async (code) => {
       const connected = api.connectWebSocket();
