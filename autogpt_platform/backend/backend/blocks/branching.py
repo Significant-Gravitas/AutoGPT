@@ -123,6 +123,20 @@ class ConditionBlock(Block):
             yield "no_output", no_value
 
 
+def _parse_exact_float(text: str) -> float | Decimal:
+    """``parse_float`` hook for ``json.loads`` that keeps decimal values exact.
+
+    A float is returned only when it represents *text* exactly; otherwise the
+    exact ``Decimal`` is kept, which never equals a float. This applies the
+    scalar rule to numbers nested in lists and dicts, so "[0.10000000000000001]"
+    no longer matches [0.1].
+    """
+    number = float(text)
+    if Decimal(text) == Decimal(repr(number)):
+        return number
+    return Decimal(text)
+
+
 def _convert_for_match(value: Any, target: Any) -> Any:
     """Convert *value* to the type of *target* only when the conversion is lossless.
 
@@ -161,7 +175,7 @@ def _convert_for_match(value: Any, target: Any) -> Any:
         # same shape, or a list/tuple holding the same items.
         if isinstance(value, str):
             try:
-                parsed = json.loads(value)
+                parsed = json.loads(value, parse_float=_parse_exact_float)
             except ValueError:
                 return value
             if issubclass(input_type, dict):

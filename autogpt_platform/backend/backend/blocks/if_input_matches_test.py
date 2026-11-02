@@ -43,6 +43,8 @@ async def _matches(input_value: Any, value: Any) -> bool:
         (False, ""),
         (9007199254740992, "9007199254740993"),  # float() rounded these equal
         (0.1, "0.10000000000000001"),
+        ([0.1], "[0.10000000000000001]"),  # nested numbers are exact too
+        ({"a": 0.1}, '{"a": 0.10000000000000001}'),
         (1.0, "nan"),
         (["hello"], "hello"),  # convert() wrapped scalars into containers
         ([3], 3),
@@ -90,6 +92,9 @@ async def test_lossy_conversion_does_not_report_a_match(input_value, value):
         (9007199254740993, "9007199254740993"),  # float() used to miss this
         (True, 1),  # plain equality between bool and number is unchanged
         ([True], "[1]"),
+        ([0.1], "[0.10]"),
+        ({"a": [1.5]}, '{"a": [1.50]}'),
+        ([100.0], "[1e2]"),
     ],
 )
 async def test_equivalent_values_still_match(input_value, value):
