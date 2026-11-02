@@ -1,6 +1,7 @@
 import { useGetV2ListLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
-import { getPaginationNextPageNumber, unpaginate } from "@/app/api/helpers";
-import { useEffect, useMemo } from "react";
+import { unpaginate } from "@/app/api/helpers";
+import { useEffect, useMemo, useRef } from "react";
+import { getNextLibraryPage } from "./helpers";
 import { buildAgentInfoMap } from "./store";
 
 export function useLibraryAgents() {
@@ -8,8 +9,11 @@ export function useLibraryAgents() {
     data: agentsQueryData,
     isLoading: isRefreshing,
     fetchNextPage,
+    refetch,
     hasNextPage,
-    isFetchingNextPage,
+    isFetching,
+    isError,
+    isFetchNextPageError,
   } = useGetV2ListLibraryAgentsInfinite(
     {
       page: 1,
@@ -18,30 +22,65 @@ export function useLibraryAgents() {
     },
     {
       query: {
-        getNextPageParam: getPaginationNextPageNumber,
-        // Don't block rendering - fetch in background
+        initialPageParam: 1,
+        getNextPageParam: getNextLibraryPage,
+        retry: 2,
+        retryOnMount: false,
         refetchOnMount: false,
         refetchOnWindowFocus: false,
-        staleTime: 5 * 60 * 1000, // 5 minutes
+        refetchOnReconnect: false,
+        staleTime: 5 * 60 * 1000,
       },
     },
   );
 
-  // Auto-fetch all pages so the agentInfoMap is complete (#11229)
+  const attemptedData = useRef<typeof agentsQueryData>(undefined);
   useEffect(() => {
-    if (hasNextPage && !isFetchingNextPage) {
-      fetchNextPage();
+    if (
+      hasNextPage &&
+      !isFetching &&
+      !isError &&
+      attemptedData.current !== agentsQueryData
+    ) {
+      // Cancellation restores the same data; wait for an explicit retry or refresh.
+      attemptedData.current = agentsQueryData;
+      void fetchNextPage({ cancelRefetch: false });
     }
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+  }, [agentsQueryData, hasNextPage, isFetching, isError, fetchNextPage]);
 
-  const agents = agentsQueryData ? unpaginate(agentsQueryData, "agents") : [];
+  function retry() {
+    if (isFetching) return;
+    if (isFetchNextPageError || (!isError && hasNextPage)) {
+      void fetchNextPage({ cancelRefetch: false });
+    } else {
+      void refetch({ cancelRefetch: false });
+    }
+  }
 
-  // Use agents.length as dependency to avoid recreating map unnecessarily
-  const agentInfoMap = useMemo(
-    () => buildAgentInfoMap(agents),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [agents.length, agents.map((a) => a.id).join(",")],
+  const agents = useMemo(
+    () =>
+      agentsQueryData
+        ? Array.from(
+            new Map(
+              unpaginate(agentsQueryData, "agents").map((agent) => [
+                agent.id,
+                agent,
+              ]),
+            ).values(),
+          )
+        : [],
+    [agentsQueryData],
   );
 
-  return { agents, agentInfoMap, isRefreshing, lastUpdatedAt: undefined };
+  const agentInfoMap = useMemo(() => buildAgentInfoMap(agents), [agents]);
+
+  return {
+    agents,
+    agentInfoMap,
+    isRefreshing,
+    isError,
+    isFetching,
+    retry,
+    lastUpdatedAt: undefined,
+  };
 }

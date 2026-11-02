@@ -4,8 +4,9 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Key, storage } from "@/services/storage/local-storage";
-import { ShieldCheckIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
+import { SecurityCheckIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   agentId: string;
@@ -33,29 +34,26 @@ export function AIAgentSafetyPopup({ agentId, onAcknowledge, isOpen }: Props) {
 
   return (
     <Dialog
+      title="Safety Checks"
       controlled={{ isOpen, set: () => {} }}
       styling={{ maxWidth: "480px" }}
     >
       <Dialog.Content>
         <div className="flex flex-col items-center p-6 text-center">
-          <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-blue-50">
-            <ShieldCheckIcon
-              weight="fill"
-              size={32}
-              className="text-blue-600"
-            />
+          <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-info-surface text-info-foreground">
+            <Icon icon={SecurityCheckIcon} size={32} />
           </div>
 
           <Text variant="h3" className="mb-4">
             Safety Checks Enabled
           </Text>
 
-          <Text variant="body" className="mb-2 text-zinc-700">
-            AI-generated agents may take actions that affect your data or
+          <Text variant="body" tone="body" className="mb-2">
+            AI-generated workflows may take actions that affect your data or
             external systems.
           </Text>
 
-          <Text variant="body" className="mb-8 text-zinc-700">
+          <Text variant="body" tone="body" className="mb-8">
             AutoGPT includes safety checks so you&apos;ll always have the
             opportunity to review and approve sensitive actions before they
             happen.

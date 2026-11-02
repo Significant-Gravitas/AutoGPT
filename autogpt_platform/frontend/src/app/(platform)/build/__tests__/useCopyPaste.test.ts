@@ -516,6 +516,40 @@ describe("useCopyPaste", () => {
     });
   });
 
+  describe("read-only graph", () => {
+    it("ignores Ctrl+C when the graph is read-only", async () => {
+      const node = createTestNode("1", { selected: true });
+      useNodeStore.setState({ nodes: [node] });
+
+      const { result } = renderHook(() => useCopyPaste(true));
+
+      act(() => {
+        result.current(makeCopyEvent());
+      });
+
+      expect(mockWriteText).not.toHaveBeenCalled();
+    });
+
+    it("ignores Ctrl+V when the graph is read-only", async () => {
+      mockReadText.mockResolvedValue(
+        clipboardPayload(
+          [createTestNode("a", { position: { x: 0, y: 0 } })],
+          [],
+        ),
+      );
+      useNodeStore.setState({ nodes: [], nodeCounter: 0 });
+
+      const { result } = renderHook(() => useCopyPaste(true));
+
+      act(() => {
+        result.current(makePasteEvent());
+      });
+
+      expect(mockReadText).not.toHaveBeenCalled();
+      expect(useNodeStore.getState().nodes).toHaveLength(0);
+    });
+  });
+
   describe("meta key support (macOS)", () => {
     it("handles Cmd+C (metaKey) the same as Ctrl+C", async () => {
       const node = createTestNode("1", { selected: true });

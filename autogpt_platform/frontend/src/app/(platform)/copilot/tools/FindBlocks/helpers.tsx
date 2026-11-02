@@ -1,7 +1,8 @@
 import type { BlockListResponse } from "@/app/api/__generated__/models/blockListResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
-import { CubeIcon, PackageIcon } from "@phosphor-icons/react";
 import { FindBlockInput, FindBlockToolPart } from "./FindBlocks";
+import { CubeIcon, Package01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function parseOutput(output: unknown): BlockListResponse | null {
   if (!output) return null;
@@ -56,20 +57,20 @@ export function ToolIcon({
   isError?: boolean;
 }) {
   return (
-    <PackageIcon
+    <Icon
+      icon={Package01Icon}
       size={14}
-      weight="regular"
       className={
         isError
-          ? "text-red-500"
+          ? "text-error"
           : isStreaming
-            ? "text-neutral-500"
-            : "text-neutral-400"
+            ? "text-foreground-tertiary"
+            : "text-foreground-subtle"
       }
     />
   );
 }
 
 export function AccordionIcon() {
-  return <CubeIcon size={32} weight="light" />;
+  return <Icon icon={CubeIcon} size={32} />;
 }

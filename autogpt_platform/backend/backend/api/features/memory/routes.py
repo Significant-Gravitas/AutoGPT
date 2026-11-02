@@ -1,0 +1,332 @@
+"""User-facing memory API: read + forget for the caller's own memory scopes.
+
+Backs the Settings → Memory page (SECRT-2580). Scope is structural, mirroring
+the admin memory API: account (Otto) routes live at ``/memory/...`` and
+expert routes at ``/memory/experts/{expert_id}/...``. Every route resolves the
+scope from the *authenticated caller* — there is no target-user path segment,
+so these routes can never read or delete another user's memory by construction.
+
+Facts are listed and counted with the recall policy's live-fact test
+(``graphiti/recall.py``), and a single-fact forget is the chat forget tool's
+soft ``retract`` (``graphiti/recall_forget.py``): the edge is marked
+``retracted`` and stops being served but stays for audit, every episode it
+came from stops being recalled, and so does every fact the dream derived
+from it (counted in the response's ``derived_forgotten``). A forget whose
+clean-up failed, or that left derived facts for a second forget, answers
+500, not success, and one that found memory busy answers 409; both retry.
+The scope erase hard-deletes every node and edge in the scope's graph; the
+account erase also deletes the business understanding, which the
+``/understanding`` routes show and forget on their own.
+"""
+
+import logging
+from typing import Annotated
+
+import autogpt_libs.auth as autogpt_auth_lib
+from fastapi import APIRouter, HTTPException, Path, Query, Security
+from redis.exceptions import ResponseError
+
+from backend.api.features.experts import experts_db
+from backend.api.features.memory.models import (
+    EraseMemoryResponse,
+    ForgetFactResponse,
+    ForgetUnderstandingResponse,
+    MemoryFact,
+    MemoryFactListResponse,
+    MemoryScopeOverview,
+    MemoryUnderstanding,
+)
+from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver, open_driver
+from backend.copilot.graphiti.memory_model import MemoryForgetFailureCode
+from backend.copilot.graphiti.recall import live_fact_predicate
+from backend.copilot.graphiti.recall_forget import retract
+from backend.copilot.graphiti.scope import MemoryScope
+from backend.data.understanding import (
+    clear_business_understanding,
+    get_business_understanding,
+)
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(
+    prefix="/memory",
+    tags=["memory", "private"],
+    dependencies=[Security(autogpt_auth_lib.requires_user)],
+)
+
+_EXPERT_ID_PATH = Path(
+    min_length=1, max_length=128, description="Expert id owned by the caller"
+)
+_FACT_UUID_PATH = Path(min_length=1, max_length=128, description="Fact edge uuid")
+_LIMIT_QUERY = Query(ge=1, le=500)
+
+_MISSING_GRAPH_MARKERS = ("no such graph", "does not exist", "invalid graph")
+
+
+def _is_missing_graph_error(exc: BaseException) -> bool:
+    if not isinstance(exc, ResponseError):
+        return False
+    msg = str(exc).lower()
+    return any(marker in msg for marker in _MISSING_GRAPH_MARKERS)
+
+
+async def _resolve_scope(user_id: str, expert_id: str | None) -> MemoryScope:
+    """Resolve the caller-owned memory scope for the request.
+
+    An expert scope must name an active expert the caller owns — archived
+    experts 404 here, matching the
+    settings page's active-experts-only dropdown.
+    """
+    if expert_id is None:
+        try:
+            return MemoryScope.for_user(user_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    expert = await experts_db.get_expert(user_id, expert_id, include_workflows=False)
+    if expert is None:
+        raise HTTPException(status_code=404, detail="Expert not found")
+
+    try:
+        return MemoryScope.for_expert(user_id, expert.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+async def _count(driver: AutoGPTFalkorDriver, query: str) -> int:
+    try:
+        result = await driver.execute_query(query)
+        rows = result[0] if result else []
+        return int(rows[0]["c"]) if rows else 0
+    except ResponseError as exc:
+        if _is_missing_graph_error(exc):
+            return 0
+        raise
+
+
+async def _get_overview_impl(
+    user_id: str, expert_id: str | None
+) -> MemoryScopeOverview:
+    scope = await _resolve_scope(user_id, expert_id)
+    driver = open_driver(scope)
+    try:
+        facts = await _count(
+            driver,
+            f"MATCH ()-[e:RELATES_TO]->() WHERE {live_fact_predicate('e')} "
+            "RETURN count(e) AS c",
+        )
+        entities = await _count(driver, "MATCH (n:Entity) RETURN count(n) AS c")
+        # A hard forget's tombstone is a record that a conversation
+        # happened, not an episode the user still has.
+        episodes = await _count(
+            driver,
+            "MATCH (n:Episodic) WHERE n.hard_deleted_at IS NULL "
+            "RETURN count(n) AS c",
+        )
+    finally:
+        await driver.close()
+    return MemoryScopeOverview(
+        expert_id=scope.expert_id,
+        facts=facts,
+        entities=entities,
+        episodes=episodes,
+    )
+
+
+@router.get("/overview", operation_id="get_my_memory_overview")
+async def get_my_memory_overview(
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> MemoryScopeOverview:
+    """Counts for the caller's account (Otto) memory."""
+    return await _get_overview_impl(user_id, None)
+
+
+@router.get(
+    "/experts/{expert_id}/overview", operation_id="get_my_expert_memory_overview"
+)
+async def get_my_expert_memory_overview(
+    expert_id: Annotated[str, _EXPERT_ID_PATH],
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> MemoryScopeOverview:
+    """Counts for one of the caller's experts' isolated memory."""
+    return await _get_overview_impl(user_id, expert_id)
+
+
+async def _list_facts_impl(
+    user_id: str, expert_id: str | None, limit: int
+) -> MemoryFactListResponse:
+    scope = await _resolve_scope(user_id, expert_id)
+    driver = open_driver(scope)
+    try:
+        result = await driver.execute_query(
+            f"""
+            MATCH (src:Entity)-[e:RELATES_TO]->(tgt:Entity)
+            WHERE e.group_id = $g AND {live_fact_predicate("e")}
+            RETURN e.uuid AS uuid,
+                   e.fact AS fact,
+                   e.name AS name,
+                   src.name AS source,
+                   tgt.name AS target,
+                   toString(e.created_at) AS created_at
+            ORDER BY e.created_at DESC
+            LIMIT $limit
+            """,
+            g=scope.group_id,
+            limit=limit,
+        )
+        rows = result[0] if result else []
+    except ResponseError as exc:
+        if not _is_missing_graph_error(exc):
+            raise
+        rows = []
+    finally:
+        await driver.close()
+
+    items = [
+        MemoryFact(
+            uuid=str(r.get("uuid", "")),
+            fact=r.get("fact"),
+            name=r.get("name"),
+            source=str(r.get("source") or ""),
+            target=str(r.get("target") or ""),
+            created_at=r.get("created_at"),
+        )
+        for r in rows
+    ]
+    return MemoryFactListResponse(expert_id=scope.expert_id, items=items)
+
+
+@router.get("/facts", operation_id="list_my_memory_facts")
+async def list_my_memory_facts(
+    limit: Annotated[int, _LIMIT_QUERY] = 50,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> MemoryFactListResponse:
+    """Live facts in the caller's account memory, newest first."""
+    return await _list_facts_impl(user_id, None, limit)
+
+
+@router.get("/experts/{expert_id}/facts", operation_id="list_my_expert_memory_facts")
+async def list_my_expert_memory_facts(
+    expert_id: Annotated[str, _EXPERT_ID_PATH],
+    limit: Annotated[int, _LIMIT_QUERY] = 50,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> MemoryFactListResponse:
+    """Live facts in one expert's isolated memory, newest first."""
+    return await _list_facts_impl(user_id, expert_id, limit)
+
+
+async def _forget_fact_impl(
+    user_id: str, expert_id: str | None, fact_uuid: str
+) -> ForgetFactResponse:
+    scope = await _resolve_scope(user_id, expert_id)
+    # The chat forget tool's soft retraction (a system retraction, not a
+    # world change), so the fact and its episode text stop being recalled.
+    result = await retract(scope, [fact_uuid])
+    codes = {failure.code for failure in result.failures}
+    if MemoryForgetFailureCode.BUSY in codes:  # every uuid busy, nothing written
+        raise HTTPException(status_code=409, detail=result.failures[0].reason)
+    if MemoryForgetFailureCode.CLEANUP_ERROR in codes:
+        # Recall already hides the fact and its text, but the redaction did
+        # not land; a retry finishes it, so this is not reported as done.
+        raise HTTPException(
+            status_code=500,
+            detail="Forgot this memory but could not finish cleaning up; try again",
+        )
+    if result.deleted or result.resumed:
+        return ForgetFactResponse(
+            uuid=fact_uuid,
+            forgotten=True,
+            derived_forgotten=len(result.derived),
+            resumed=bool(result.resumed),
+        )
+    if MemoryForgetFailureCode.QUERY_ERROR in codes:
+        raise HTTPException(status_code=500, detail="Could not forget this memory")
+    raise HTTPException(status_code=404, detail="Memory not found")
+
+
+@router.delete("/facts/{fact_uuid}", operation_id="forget_my_memory_fact")
+async def forget_my_memory_fact(
+    fact_uuid: Annotated[str, _FACT_UUID_PATH],
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> ForgetFactResponse:
+    """Forget one fact from the caller's account memory."""
+    return await _forget_fact_impl(user_id, None, fact_uuid)
+
+
+@router.delete(
+    "/experts/{expert_id}/facts/{fact_uuid}",
+    operation_id="forget_my_expert_memory_fact",
+)
+async def forget_my_expert_memory_fact(
+    expert_id: Annotated[str, _EXPERT_ID_PATH],
+    fact_uuid: Annotated[str, _FACT_UUID_PATH],
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> ForgetFactResponse:
+    """Forget one fact from an expert's isolated memory."""
+    return await _forget_fact_impl(user_id, expert_id, fact_uuid)
+
+
+async def _erase_scope_impl(user_id: str, expert_id: str | None) -> EraseMemoryResponse:
+    scope = await _resolve_scope(user_id, expert_id)
+    driver = open_driver(scope)
+    deleted = 0
+    try:
+        deleted = await _count(driver, "MATCH (n) RETURN count(n) AS c")
+        if deleted:
+            await driver.execute_query("MATCH (n) DETACH DELETE n")
+    except ResponseError as exc:
+        # A missing-graph error here means the graph vanished between the
+        # count and the delete — the scope is gone either way, so keep the
+        # counted value instead of misreporting 0.
+        if not _is_missing_graph_error(exc):
+            raise
+    finally:
+        await driver.close()
+
+    logger.info(
+        f"Memory erase: user {user_id[:12]} wiped scope "
+        f"{scope.expert_id or 'Otto'} ({deleted} nodes)"
+    )
+    return EraseMemoryResponse(
+        expert_id=scope.expert_id, deleted_nodes=deleted, erased=True
+    )
+
+
+@router.delete("", operation_id="erase_my_memory")
+async def erase_my_memory(
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> EraseMemoryResponse:
+    """Permanently erase the caller's entire account memory, the business
+    understanding included."""
+    response = await _erase_scope_impl(user_id, None)
+    await clear_business_understanding(user_id)
+    return response
+
+
+@router.delete("/experts/{expert_id}", operation_id="erase_my_expert_memory")
+async def erase_my_expert_memory(
+    expert_id: Annotated[str, _EXPERT_ID_PATH],
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> EraseMemoryResponse:
+    """Permanently erase one expert's entire isolated memory."""
+    return await _erase_scope_impl(user_id, expert_id)
+
+
+@router.get("/understanding", operation_id="get_my_business_understanding")
+async def get_my_business_understanding(
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> MemoryUnderstanding:
+    """What Otto keeps about the caller's work; every new chat starts with it."""
+    understanding = await get_business_understanding(user_id)
+    if understanding is None:
+        return MemoryUnderstanding()
+    return MemoryUnderstanding.model_validate(understanding.model_dump())
+
+
+@router.delete("/understanding", operation_id="forget_my_business_understanding")
+async def forget_my_business_understanding(
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> ForgetUnderstandingResponse:
+    """Delete what Otto keeps about the caller's work."""
+    forgotten = await clear_business_understanding(user_id)
+    return ForgetUnderstandingResponse(forgotten=forgotten)

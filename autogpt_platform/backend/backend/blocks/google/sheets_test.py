@@ -11,6 +11,7 @@ credentials must surface a clean, user-facing ``BlockExecutionError``
 import pytest
 
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
+from backend.data.execution import ExecutionContext
 from backend.util.exceptions import BlockExecutionError
 
 
@@ -30,7 +31,7 @@ async def test_sheets_read_missing_credentials_yields_clean_error():
     }
 
     with pytest.raises(BlockExecutionError, match="Missing credentials"):
-        async for _ in block.execute(input_data):
+        async for _ in block.execute(input_data, execution_context=ExecutionContext()):
             pass
 
 
@@ -44,7 +45,7 @@ async def test_sheets_read_no_spreadsheet_still_hits_credentials_guard():
     input_data = {"range": "Sheet1!A1:B2"}  # no spreadsheet, no credentials
 
     with pytest.raises(BlockExecutionError, match="Missing credentials"):
-        async for _ in block.execute(input_data):
+        async for _ in block.execute(input_data, execution_context=ExecutionContext()):
             pass
 
 
@@ -79,7 +80,7 @@ async def test_sheets_read_upstream_chained_value_skips_guard(mocker):
     }
 
     with pytest.raises(Exception) as exc_info:
-        async for _ in block.execute(input_data):
+        async for _ in block.execute(input_data, execution_context=ExecutionContext()):
             pass
 
     # The guard should skip (chained data present) and let us reach run(),
@@ -121,7 +122,7 @@ async def test_sheets_read_upstream_chained_with_explicit_none_cred_id_skips_gua
     }
 
     with pytest.raises(Exception) as exc_info:
-        async for _ in block.execute(input_data):
+        async for _ in block.execute(input_data, execution_context=ExecutionContext()):
             pass
 
     # The guard must not raise "Missing credentials" for this shape.

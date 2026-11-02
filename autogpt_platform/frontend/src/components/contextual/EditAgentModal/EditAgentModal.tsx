@@ -27,9 +27,9 @@ export function EditAgentModal({
 
   return (
     <Dialog
-      title="Edit Agent"
+      title="Edit submission"
       styling={{
-        maxWidth: "45rem",
+        maxWidth: "48rem",
       }}
       controlled={{
         isOpen,

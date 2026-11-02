@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, RenderOptions } from "@testing-library/react";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { ReactElement, ReactNode } from "react";
+import { ProActivationProvider } from "@/services/pro-activation/ProActivationProvider";
 
 function createTestQueryClient() {
   return new QueryClient({
@@ -23,7 +24,9 @@ function TestProviders({ children }: { children: ReactNode }) {
       <NuqsTestingAdapter>
         <BackendAPIProvider>
           <OnboardingProvider>
-            <TooltipProvider>{children}</TooltipProvider>
+            <TooltipProvider>
+              <ProActivationProvider>{children}</ProActivationProvider>
+            </TooltipProvider>
           </OnboardingProvider>
         </BackendAPIProvider>
       </NuqsTestingAdapter>
@@ -38,5 +41,11 @@ function customRender(
   return render(ui, { wrapper: TestProviders, ...options });
 }
 
+// MorphingTextAnimation renders one span per character and uses a non-breaking
+// space for spaces, so normalize all whitespace before asserting on the text.
+function normalizeWhitespace(container: HTMLElement): string {
+  return (container.textContent ?? "").replace(/\s+/g, " ").trim();
+}
+
 export * from "@testing-library/react";
-export { customRender as render };
+export { customRender as render, normalizeWhitespace };

@@ -2,7 +2,8 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { ArrowRightIcon, LightbulbIcon } from "@phosphor-icons/react";
+import { ArrowRight02Icon, BulbIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   message: string;
@@ -20,30 +21,30 @@ export function SuggestedGoalCard({
   onUseSuggestedGoal,
 }: Props) {
   return (
-    <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+    <div className="rounded-xl border border-warning-border bg-warning-surface/50 p-4">
       <div className="flex items-start gap-3">
-        <LightbulbIcon
+        <Icon
+          icon={BulbIcon}
           size={20}
-          weight="fill"
-          className="mt-0.5 text-amber-600"
+          className="mt-0.5 text-warning-foreground"
         />
         <div className="flex-1 space-y-3">
           <div>
-            <Text variant="body-medium" className="font-medium text-slate-900">
+            <Text tone="primary" variant="body-medium" className="font-medium">
               {goalType === "unachievable"
                 ? "Goal cannot be accomplished"
                 : "Goal needs more detail"}
             </Text>
-            <Text variant="small" className="text-slate-600">
+            <Text tone="secondary" variant="small">
               {reason || message}
             </Text>
           </div>
 
-          <div className="rounded-lg border border-amber-300 bg-white p-3">
-            <Text variant="small" className="mb-1 font-semibold text-amber-800">
+          <div className="rounded-lg border border-warning-border bg-surface p-3">
+            <Text tone="warning" variant="small" className="mb-1 font-semibold">
               Suggested alternative:
             </Text>
-            <Text variant="body-medium" className="text-slate-900">
+            <Text tone="primary" variant="body-medium">
               {suggestedGoal}
             </Text>
           </div>
@@ -53,7 +54,7 @@ export function SuggestedGoalCard({
             variant="primary"
           >
             <span className="inline-flex items-center gap-1.5">
-              Use this goal <ArrowRightIcon size={14} weight="bold" />
+              Use this goal <Icon icon={ArrowRight02Icon} size={14} />
             </span>
           </Button>
         </div>

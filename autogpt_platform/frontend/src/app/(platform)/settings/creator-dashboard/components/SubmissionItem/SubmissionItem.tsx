@@ -1,15 +1,9 @@
 "use client";
 
 import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
+import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
-import {
-  DotsThreeVerticalIcon,
-  EyeIcon,
-  ImageBrokenIcon,
-  PencilSimpleIcon,
-  TrashIcon,
-} from "@phosphor-icons/react";
-
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 import { Button } from "@/components/atoms/Button/Button";
@@ -25,9 +19,18 @@ import {
 
 import { formatRuns, formatSubmittedAt, getStatusVisual } from "../../helpers";
 import { useSubmissionItem } from "./useSubmissionItem";
+import {
+  Delete02Icon,
+  EyeIcon,
+  ImageNotFound01Icon,
+  LinkSquare01Icon,
+  MoreVerticalIcon,
+  PencilIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon as UIIcon } from "@/components/atoms/Icon/Icon";
 
 interface EditPayload extends StoreSubmissionEditRequest {
-  store_listing_version_id: string | undefined;
+  store_listing_version_id: string;
   graph_id: string;
 }
 
@@ -37,6 +40,7 @@ interface Props {
   onView: (submission: StoreSubmission) => void;
   onEdit: (payload: EditPayload) => void;
   onDelete: (submissionId: string) => Promise<void>;
+  creatorUsername?: string;
 }
 
 const ROW_EASE = [0.16, 1, 0.3, 1] as const;
@@ -50,20 +54,27 @@ export function SubmissionItem({
   onView,
   onEdit,
   onDelete,
+  creatorUsername,
 }: Props) {
   const reduceMotion = useReducedMotion();
   const {
     canModify,
+    marketplaceUrl,
     handleView,
     handleEdit,
     confirmDeleteOpen,
     setConfirmDeleteOpen,
     isDeleting,
     handleConfirmDelete,
-  } = useSubmissionItem({ submission, onView, onEdit, onDelete });
+  } = useSubmissionItem({
+    submission,
+    onView,
+    onEdit,
+    onDelete,
+    creatorUsername,
+  });
 
   const visual = getStatusVisual(submission.status);
-  const StatusIcon = visual.Icon;
   const thumbnail = submission.image_urls?.[0];
 
   return (
@@ -82,43 +93,62 @@ export function SubmissionItem({
               delay: Math.min(rowIndex, ROW_STAGGER_CAP) * ROW_STAGGER,
             }
       }
-      className="ease-[cubic-bezier(0.16,1,0.3,1)] border-b border-zinc-100 transition-colors duration-150 last:border-b-0 hover:bg-zinc-50/60"
+      className="border-b border-separator transition-colors duration-150 last:border-b-0 hover:bg-surface-muted/60"
     >
       <td className="px-4 py-3 align-middle">
         <div className="flex items-center gap-3">
-          <div className="relative aspect-video w-20 shrink-0 select-none overflow-hidden rounded-[8px] bg-zinc-100">
+          <div className="relative aspect-video w-20 shrink-0 overflow-hidden rounded-small bg-surface-hover select-none">
             {thumbnail ? (
               <Image
                 src={thumbnail}
+                unoptimized={isLocalStoreMediaUrl(thumbnail)}
                 alt={submission.name}
                 fill
                 sizes="80px"
-                style={{ objectFit: "cover" }}
                 draggable={false}
-                className="pointer-events-none"
+                className="pointer-events-none object-cover"
               />
             ) : (
-              <div className="flex h-full w-full items-center justify-center">
-                <ImageBrokenIcon
+              <div className="flex h-full w-full items-center justify-center text-foreground-subtle">
+                <UIIcon
+                  icon={ImageNotFound01Icon}
                   size={20}
-                  className="pointer-events-none text-zinc-400"
+                  className="pointer-events-none"
                 />
               </div>
             )}
           </div>
           <div className="flex min-w-0 flex-col">
             <div className="flex min-w-0 items-center gap-2">
-              <Text
-                variant="body-medium"
-                as="span"
-                className="truncate text-textBlack"
-              >
-                {submission.name}
-              </Text>
+              {marketplaceUrl ? (
+                <Link
+                  href={marketplaceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex min-w-0 items-center gap-1 truncate text-foreground-base hover:underline"
+                  data-testid="submission-marketplace-link"
+                >
+                  <Text variant="body-medium" as="span" className="truncate">
+                    {submission.name}
+                  </Text>
+                  <UIIcon
+                    icon={LinkSquare01Icon}
+                    size={14}
+                    // oxlint-disable-next-line design-system/no-restyle -- the link glyph is quieter than the name it sits beside
+                    className="shrink-0 text-foreground-tertiary"
+                    aria-hidden
+                  />
+                </Link>
+              ) : (
+                <Text variant="body-medium" as="span" className="truncate">
+                  {submission.name}
+                </Text>
+              )}
               <Text
                 variant="small"
                 as="span"
-                className="shrink-0 text-zinc-600"
+                tone="secondary"
+                className="shrink-0"
               >
                 v{submission.graph_version}
               </Text>
@@ -126,7 +156,8 @@ export function SubmissionItem({
             <Text
               variant="small"
               as="span"
-              className="line-clamp-1 max-w-[420px] text-zinc-500"
+              tone="muted"
+              className="line-clamp-1 max-w-[420px]"
             >
               {submission.description}
             </Text>
@@ -136,18 +167,18 @@ export function SubmissionItem({
 
       <td className="px-4 py-3 align-middle">
         <span
-          className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${visual.pillClass}`}
+          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ${visual.pillClass}`}
         >
-          <StatusIcon size={12} weight="fill" />
+          <UIIcon icon={visual.Icon} size={12} />
           {visual.label}
         </span>
       </td>
 
-      <td className="whitespace-nowrap px-4 py-3 align-middle text-sm text-zinc-700">
+      <td className="px-4 py-3 align-middle text-sm whitespace-nowrap text-foreground-body">
         {formatSubmittedAt(submission.submitted_at)}
       </td>
 
-      <td className="whitespace-nowrap px-4 py-3 text-right align-middle text-sm tabular-nums text-zinc-700">
+      <td className="px-4 py-3 text-right align-middle text-sm whitespace-nowrap text-foreground-body tabular-nums">
         {formatRuns(submission.run_count ?? 0)}
       </td>
 
@@ -158,42 +189,58 @@ export function SubmissionItem({
               type="button"
               aria-label="Submission actions"
               data-testid="submission-actions"
-              className="ease-[cubic-bezier(0.16,1,0.3,1)] inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-[background-color,color,transform] duration-150 hover:bg-zinc-100 hover:text-zinc-900 active:scale-[0.92] motion-reduce:transition-none motion-reduce:active:scale-100"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-foreground-tertiary transition-[background-color,color,transform] duration-150 hover:bg-surface-hover hover:text-foreground-strong active:scale-[0.92] motion-reduce:transition-none motion-reduce:active:scale-100"
             >
-              <DotsThreeVerticalIcon size={18} weight="bold" />
+              <UIIcon icon={MoreVerticalIcon} size={18} />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent
             align="end"
             sideOffset={6}
-            className="data-[state=open]:ease-[cubic-bezier(0.16,1,0.3,1)] data-[state=closed]:ease-[cubic-bezier(0.4,0,1,1)] min-w-[160px] origin-[var(--radix-dropdown-menu-content-transform-origin)] data-[state=closed]:duration-150 data-[state=open]:duration-200 motion-reduce:!duration-100"
+            // oxlint-disable-next-line design-system/no-restyle -- the row menu keeps its own open and close timing
+            className="min-w-[160px] origin-[var(--radix-dropdown-menu-content-transform-origin)] data-[state=closed]:duration-150 data-[state=open]:duration-200 motion-reduce:!duration-100"
           >
             {canModify ? (
-              <DropdownMenuItem
-                onSelect={handleEdit}
-                className="flex cursor-pointer items-center gap-2"
-              >
-                <PencilSimpleIcon size={14} />
-                Edit details
+              <DropdownMenuItem onSelect={handleEdit}>
+                <span className="flex items-center gap-2">
+                  <UIIcon icon={PencilIcon} size={14} />
+                  Edit details
+                </span>
               </DropdownMenuItem>
             ) : (
-              <DropdownMenuItem
-                onSelect={handleView}
-                className="flex cursor-pointer items-center gap-2"
-              >
-                <EyeIcon size={14} />
-                View submission
+              <DropdownMenuItem onSelect={handleView}>
+                <span className="flex items-center gap-2">
+                  <UIIcon icon={EyeIcon} size={14} />
+                  View submission
+                </span>
               </DropdownMenuItem>
             )}
+            {marketplaceUrl ? (
+              <DropdownMenuItem asChild>
+                <Link
+                  href={marketplaceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex cursor-pointer items-center gap-2"
+                  data-testid="submission-marketplace-menu-link"
+                >
+                  <UIIcon icon={LinkSquare01Icon} size={14} />
+                  View on marketplace
+                </Link>
+              </DropdownMenuItem>
+            ) : null}
             {canModify ? (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onSelect={() => setConfirmDeleteOpen(true)}
-                  className="flex cursor-pointer items-center gap-2 text-rose-600 focus:text-rose-700"
+                  // oxlint-disable-next-line design-system/no-raw-colors, design-system/no-restyle -- rose delete text kept until the rose -> error hue change is approved
+                  className="text-rose-600 focus:text-rose-700"
                 >
-                  <TrashIcon size={14} />
-                  Delete
+                  <span className="flex items-center gap-2">
+                    <UIIcon icon={Delete02Icon} size={14} />
+                    Delete
+                  </span>
                 </DropdownMenuItem>
               </>
             ) : null}
@@ -209,7 +256,7 @@ export function SubmissionItem({
           }}
         >
           <Dialog.Content>
-            <Text variant="body" className="text-zinc-700">
+            <Text variant="body" tone="body">
               This will remove <strong>{submission.name}</strong> from the
               store. This action cannot be undone.
             </Text>

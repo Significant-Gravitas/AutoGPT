@@ -1,13 +1,22 @@
 import asyncio
 import logging
 import os
+from collections.abc import AsyncGenerator
+from weakref import ReferenceType, WeakKeyDictionary, ref
 
 from dotenv import load_dotenv
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 from redis.asyncio.cluster import ClusterNode as AsyncClusterNode
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
+from redis.asyncio.retry import Retry as AsyncRetry
+from redis.backoff import ExponentialBackoff, NoBackoff
 from redis.cluster import ClusterNode, RedisCluster
+from redis.exceptions import ClusterDownError
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import RedisError
+from redis.exceptions import TimeoutError as RedisTimeoutError
+from redis.retry import Retry
 
 from backend.util.cache import cached
 from backend.util.retry import conn_retry
@@ -35,11 +44,47 @@ USE_ANNOUNCED_ADDRESS = os.getenv("REDIS_USE_ANNOUNCED_ADDRESS", "").lower() in 
     "yes",
 )
 
+# Per-node pool cap. redis-py 8.x lowered the default from 2**31 to 100 and
+# raises MaxConnectionsError instead of waiting, so one wide graph fan-out on
+# an executor's shared loop failed lock and publish calls. 10000 matches the
+# server's default `maxclients`, so the server limit is the one that binds.
+REDIS_MAX_CONNECTIONS = int(os.getenv("REDIS_MAX_CONNECTIONS", "10000"))
+
+# Retry transient cluster errors internally so a rotation blip never surfaces
+# as a graph-exec 500.
+REDIS_RETRY_ATTEMPTS = int(os.getenv("REDIS_RETRY_ATTEMPTS", "5"))
+
+# Errors that should trigger a per-command retry inside the redis-py client.
+TRANSIENT_REDIS_ERRORS: tuple[type[RedisError], ...] = (
+    RedisConnectionError,
+    RedisTimeoutError,
+    ClusterDownError,
+)
+
 logger = logging.getLogger(__name__)
 
 # Aliases so call-sites don't care which class this is.
 RedisClient = RedisCluster
 AsyncRedisClient = AsyncRedisCluster
+
+
+def _build_retry() -> Retry:
+    """Per-command retry with exponential backoff (0.1s → 10s cap)."""
+    return Retry(
+        backoff=ExponentialBackoff(cap=10, base=0.1),
+        retries=REDIS_RETRY_ATTEMPTS,
+        supported_errors=TRANSIENT_REDIS_ERRORS,
+    )
+
+
+def _build_async_retry() -> AsyncRetry:
+    """Async sibling of :func:`_build_retry` — redis-py ships separate sync
+    and async ``Retry`` classes; passing the wrong one fails type checks."""
+    return AsyncRetry(
+        backoff=ExponentialBackoff(cap=10, base=0.1),
+        retries=REDIS_RETRY_ATTEMPTS,
+        supported_errors=TRANSIENT_REDIS_ERRORS,
+    )
 
 
 def _address_remap(addr: tuple[str, int]) -> tuple[str, int]:
@@ -64,9 +109,37 @@ def connect() -> RedisClient:
         socket_connect_timeout=SOCKET_CONNECT_TIMEOUT,
         socket_keepalive=True,
         health_check_interval=HEALTH_CHECK_INTERVAL,
+        max_connections=REDIS_MAX_CONNECTIONS,
         address_remap=_address_remap,
+        # Drives both per-command retries and the cluster-level retry counter.
+        retry=_build_retry(),
     )
     # Close on PING failure so retries don't leak ClusterNodes (AUTOGPT-SERVER-8T1).
+    try:
+        c.ping()
+    except Exception:
+        try:
+            c.close()
+        except Exception:
+            pass
+        raise
+    return c
+
+
+def connect_once(timeout: float) -> RedisClient:
+    """One attempt, short timeouts, no retries: for callers with a fallback of their own."""
+    c = RedisCluster(
+        startup_nodes=[ClusterNode(HOST, PORT)],
+        password=PASSWORD,
+        decode_responses=True,
+        socket_timeout=timeout,
+        socket_connect_timeout=timeout,
+        socket_keepalive=True,
+        health_check_interval=HEALTH_CHECK_INTERVAL,
+        max_connections=REDIS_MAX_CONNECTIONS,
+        address_remap=_address_remap,
+        retry=Retry(NoBackoff(), 0),
+    )
     try:
         c.ping()
     except Exception:
@@ -99,7 +172,12 @@ async def connect_async() -> AsyncRedisClient:
         socket_connect_timeout=SOCKET_CONNECT_TIMEOUT,
         socket_keepalive=True,
         health_check_interval=HEALTH_CHECK_INTERVAL,
+        max_connections=REDIS_MAX_CONNECTIONS,
         address_remap=_address_remap,
+        # redis-py 6.x AsyncRedisCluster ignores `retry_on_error` — the cluster
+        # retry path uses a hardcoded {Timeout, Connection, ClusterDown} set.
+        # Pass `retry` only to match the sync RedisCluster call above.
+        retry=_build_async_retry(),
     )
     # Close on PING failure so retries don't leak ClusterNodes (AUTOGPT-SERVER-8V6/8V4/8V3).
     try:
@@ -113,26 +191,64 @@ async def connect_async() -> AsyncRedisClient:
     return c
 
 
-# One AsyncRedisCluster per event loop: the client binds to the loop it was
-# first awaited on, so a module-level singleton breaks across test loops.
-_async_clients: dict[int, AsyncRedisCluster] = {}
+# Async Redis connections bind to the loop where they are first used.
+_async_clients: WeakKeyDictionary[asyncio.AbstractEventLoop, AsyncRedisClient] = (
+    WeakKeyDictionary()
+)
+_async_client_finalizers: WeakKeyDictionary[
+    asyncio.AbstractEventLoop, AsyncGenerator[None, None]
+] = WeakKeyDictionary()
+_async_client_locks: WeakKeyDictionary[
+    asyncio.AbstractEventLoop, ReferenceType[asyncio.Lock]
+] = WeakKeyDictionary()
+
+
+def _get_async_client_lock(loop: asyncio.AbstractEventLoop) -> asyncio.Lock:
+    lock_ref = _async_client_locks.get(loop)
+    lock = lock_ref() if lock_ref is not None else None
+    if lock is None:
+        lock = asyncio.Lock()
+        _async_client_locks[loop] = ref(lock)
+    return lock
 
 
 @conn_retry("AsyncRedis", "Releasing connection")
 async def disconnect_async():
     loop = asyncio.get_running_loop()
-    c = _async_clients.pop(id(loop), None)
-    if c is not None:
-        await c.close()
+    async with _get_async_client_lock(loop):
+        client = _async_clients.pop(loop, None)
+        finalizer = _async_client_finalizers.pop(loop, None)
+        if finalizer is not None:
+            await finalizer.aclose()
+        elif client is not None:
+            await client.close()
 
 
 async def get_redis_async() -> AsyncRedisClient:
     loop = asyncio.get_running_loop()
-    client = _async_clients.get(id(loop))
-    if client is None:
-        client = await connect_async()
-        _async_clients[id(loop)] = client
-    return client
+    async with _get_async_client_lock(loop):
+        client = _async_clients.get(loop)
+        if client is None:
+            client = await connect_async()
+            finalizer = _close_async_client_on_loop_shutdown(client)
+            await anext(finalizer)
+            _async_clients[loop] = client
+            _async_client_finalizers[loop] = finalizer
+        return client
+
+
+async def _close_async_client_on_loop_shutdown(
+    client: AsyncRedisClient,
+) -> AsyncGenerator[None, None]:
+    """Close a loop-owned client during ``loop.shutdown_asyncgens()``."""
+    try:
+        yield
+    finally:
+        loop = asyncio.get_running_loop()
+        if _async_clients.get(loop) is client:
+            _async_clients.pop(loop, None)
+            _async_client_finalizers.pop(loop, None)
+        await client.close()
 
 
 # Sharded pub/sub only delivers on the keyslot-owning shard; subscribers

@@ -1,6 +1,7 @@
 "use client";
 
-import { CurrencyDollarSimpleIcon } from "@phosphor-icons/react";
+import { DollarSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Props = {
   tier?: number;
@@ -12,12 +13,12 @@ export function LlmPriceTier({ tier }: Props) {
   }
   const clamped = Math.min(3, Math.max(1, tier));
   return (
-    <div className="flex items-center text-zinc-900">
+    <div className="flex items-center text-foreground-strong">
       {Array.from({ length: clamped }).map((_, index) => (
-        <CurrencyDollarSimpleIcon
+        <Icon
+          icon={DollarSignIcon}
           key={`price-${index}`}
           className="-mr-0.5 h-3 w-3"
-          weight="bold"
         />
       ))}
     </div>

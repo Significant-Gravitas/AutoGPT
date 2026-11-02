@@ -17,100 +17,48 @@ from backend.util.file_content_parser import (
 
 
 class TestInferFormat:
-    # --- extension-based ---
-
-    def test_json_extension(self):
-        assert infer_format_from_uri("/home/user/data.json") == "json"
-
-    def test_jsonl_extension(self):
-        assert infer_format_from_uri("/tmp/events.jsonl") == "jsonl"
-
-    def test_ndjson_extension(self):
-        assert infer_format_from_uri("/tmp/events.ndjson") == "jsonl"
-
-    def test_csv_extension(self):
-        assert infer_format_from_uri("workspace:///reports/sales.csv") == "csv"
-
-    def test_tsv_extension(self):
-        assert infer_format_from_uri("/home/user/data.tsv") == "tsv"
-
-    def test_yaml_extension(self):
-        assert infer_format_from_uri("/home/user/config.yaml") == "yaml"
-
-    def test_yml_extension(self):
-        assert infer_format_from_uri("/home/user/config.yml") == "yaml"
-
-    def test_toml_extension(self):
-        assert infer_format_from_uri("/home/user/config.toml") == "toml"
-
-    def test_parquet_extension(self):
-        assert infer_format_from_uri("/data/table.parquet") == "parquet"
-
-    def test_xlsx_extension(self):
-        assert infer_format_from_uri("/data/spreadsheet.xlsx") == "xlsx"
-
-    def test_xls_extension_returns_xls_label(self):
-        # Legacy .xls is mapped so callers can produce a helpful error.
-        assert infer_format_from_uri("/data/old_spreadsheet.xls") == "xls"
-
-    def test_case_insensitive(self):
-        assert infer_format_from_uri("/data/FILE.JSON") == "json"
-        assert infer_format_from_uri("/data/FILE.CSV") == "csv"
-
-    def test_unicode_filename(self):
-        assert infer_format_from_uri("/home/user/\u30c7\u30fc\u30bf.json") == "json"
-        assert infer_format_from_uri("/home/user/\u00e9t\u00e9.csv") == "csv"
-
-    def test_unknown_extension(self):
-        assert infer_format_from_uri("/home/user/readme.txt") is None
-
-    def test_no_extension(self):
-        assert infer_format_from_uri("workspace://abc123") is None
-
-    # --- MIME-based ---
-
-    def test_mime_json(self):
-        assert infer_format_from_uri("workspace://abc123#application/json") == "json"
-
-    def test_mime_csv(self):
-        assert infer_format_from_uri("workspace://abc123#text/csv") == "csv"
-
-    def test_mime_tsv(self):
-        assert (
-            infer_format_from_uri("workspace://abc123#text/tab-separated-values")
-            == "tsv"
-        )
-
-    def test_mime_ndjson(self):
-        assert (
-            infer_format_from_uri("workspace://abc123#application/x-ndjson") == "jsonl"
-        )
-
-    def test_mime_yaml(self):
-        assert infer_format_from_uri("workspace://abc123#application/x-yaml") == "yaml"
-
-    def test_mime_xlsx(self):
-        uri = "workspace://abc123#application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        assert infer_format_from_uri(uri) == "xlsx"
-
-    def test_mime_parquet(self):
-        assert (
-            infer_format_from_uri("workspace://abc123#application/vnd.apache.parquet")
-            == "parquet"
-        )
-
-    def test_unknown_mime(self):
-        assert infer_format_from_uri("workspace://abc123#text/plain") is None
-
-    def test_unknown_mime_falls_through_to_extension(self):
-        # Unknown MIME (text/plain) should fall through to extension-based detection.
-        assert infer_format_from_uri("workspace:///data.csv#text/plain") == "csv"
-
-    # --- MIME takes precedence over extension ---
-
-    def test_mime_overrides_extension(self):
-        # .txt extension but JSON MIME → json
-        assert infer_format_from_uri("workspace:///file.txt#application/json") == "json"
+    @pytest.mark.parametrize(
+        "uri, expected",
+        [
+            # extension
+            ("/home/user/data.json", "json"),
+            ("/tmp/events.jsonl", "jsonl"),
+            ("/tmp/events.ndjson", "jsonl"),
+            ("workspace:///reports/sales.csv", "csv"),
+            ("/home/user/data.tsv", "tsv"),
+            ("/home/user/config.yaml", "yaml"),
+            ("/home/user/config.yml", "yaml"),
+            ("/home/user/config.toml", "toml"),
+            ("/data/table.parquet", "parquet"),
+            ("/data/spreadsheet.xlsx", "xlsx"),
+            # Legacy .xls is mapped so callers can produce a helpful error.
+            ("/data/old_spreadsheet.xls", "xls"),
+            ("/data/FILE.JSON", "json"),
+            ("/data/FILE.CSV", "csv"),
+            ("/home/user/\u30c7\u30fc\u30bf.json", "json"),
+            ("/home/user/\u00e9t\u00e9.csv", "csv"),
+            ("/home/user/readme.txt", None),
+            ("workspace://abc123", None),
+            # MIME
+            ("workspace://abc123#application/json", "json"),
+            ("workspace://abc123#text/csv", "csv"),
+            ("workspace://abc123#text/tab-separated-values", "tsv"),
+            ("workspace://abc123#application/x-ndjson", "jsonl"),
+            ("workspace://abc123#application/x-yaml", "yaml"),
+            (
+                "workspace://abc123#application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "xlsx",
+            ),
+            ("workspace://abc123#application/vnd.apache.parquet", "parquet"),
+            ("workspace://abc123#text/plain", None),
+            # An unknown MIME falls through to the extension.
+            ("workspace:///data.csv#text/plain", "csv"),
+            # A known MIME wins over the extension.
+            ("workspace:///file.txt#application/json", "json"),
+        ],
+    )
+    def test_infer_format_from_uri(self, uri, expected):
+        assert infer_format_from_uri(uri) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -320,6 +268,16 @@ class TestParseTsv:
 # parse_file_content — YAML
 # ---------------------------------------------------------------------------
 
+KIB = 1024
+MIB = 1024 * KIB
+
+
+def _yaml_expanding_to(expanded: int, *, padding: int) -> str:
+    """YAML whose text is about ``padding`` bytes plus a few KiB, and whose
+    ``uses`` list expands to about ``expanded`` bytes through an alias."""
+    uses = ", ".join(["*b"] * (expanded // 1000))
+    return f"pad: {'y' * padding}\nbase: &b [{'x' * 1000}]\nuses: [{uses}]"
+
 
 class TestParseYaml:
     def test_list(self):
@@ -346,6 +304,53 @@ class TestParseYaml:
         result = parse_file_content(content, "yaml")
         # Malformed YAML should fall back to the original string, not raise.
         assert result == content
+
+    def test_anchors_and_aliases_parse(self):
+        content = "base: &b {x: 1}\nuse: *b"
+        result = parse_file_content(content, "yaml")
+        assert result == {"base": {"x": 1}, "use": {"x": 1}}
+
+    def test_yaml_expanding_past_the_limit_falls_back_to_text(self, monkeypatch):
+        monkeypatch.setattr(
+            "backend.util.file_content_parser.MAX_YAML_EXPANDED_BYTES", 1024
+        )
+        uses = ", ".join(["*b"] * 40)
+        content = f"base: &b [xxxxxxxx, xxxxxxxx, xxxxxxxx]\nuses: [{uses}]"
+
+        assert parse_file_content(content, "yaml") == content
+        with pytest.raises(ValueError, match="expands to more than 1 KiB"):
+            parse_file_content(content, "yaml", strict=True)
+
+    def test_yaml_that_refers_to_itself_falls_back_to_text(self):
+        content = "items: &a [1, *a]"
+
+        assert parse_file_content(content, "yaml") == content
+
+    @pytest.mark.parametrize(
+        "padding, expanded",
+        [
+            pytest.param(0, 900 * KIB, id="small file under the 1 MiB minimum"),
+            pytest.param(256 * KIB, 1536 * KIB, id="256 KiB file under 8x its size"),
+        ],
+    )
+    def test_yaml_within_its_expanded_budget_parses(self, padding, expanded):
+        content = _yaml_expanding_to(expanded, padding=padding)
+
+        assert isinstance(parse_file_content(content, "yaml"), dict)
+
+    @pytest.mark.parametrize(
+        "padding, expanded",
+        [
+            pytest.param(0, 2 * MIB, id="small file over the 1 MiB minimum"),
+            pytest.param(256 * KIB, 3 * MIB, id="256 KiB file over 8x its size"),
+        ],
+    )
+    def test_yaml_past_its_expanded_budget_falls_back_to_text(self, padding, expanded):
+        content = _yaml_expanding_to(expanded, padding=padding)
+
+        assert parse_file_content(content, "yaml") == content
+        with pytest.raises(ValueError, match="expands to more than"):
+            parse_file_content(content, "yaml", strict=True)
 
 
 # ---------------------------------------------------------------------------

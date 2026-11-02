@@ -1,6 +1,6 @@
 import { describe, expect, test, vi, beforeEach, afterEach } from "vitest";
 import type { CopilotWeeklyUsageRow } from "@/app/api/__generated__/models/copilotWeeklyUsageRow";
-import type { UserTransaction } from "@/app/api/__generated__/models/userTransaction";
+import type { UserCreditTransactionAdminView } from "@/app/api/__generated__/models/userCreditTransactionAdminView";
 
 import {
   buildCopilotUsageCsv,
@@ -12,10 +12,12 @@ import {
   downloadCsv,
 } from "../helpers";
 
-function makeTx(overrides: Partial<UserTransaction> = {}): UserTransaction {
+function makeTx(
+  overrides: Partial<UserCreditTransactionAdminView> = {},
+): UserCreditTransactionAdminView {
   return {
     transaction_key: "tx-1",
-    transaction_time: "2026-04-01T10:00:00Z",
+    transaction_time: new Date("2026-04-01T10:00:00Z"),
     transaction_type: "TOP_UP",
     amount: 5000,
     running_balance: 12500,
@@ -25,7 +27,7 @@ function makeTx(overrides: Partial<UserTransaction> = {}): UserTransaction {
     reason: "Stripe checkout",
     admin_email: null,
     ...overrides,
-  } as UserTransaction;
+  };
 }
 
 function makeUsage(

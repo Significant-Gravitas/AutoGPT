@@ -123,4 +123,82 @@ describe("Pagination", () => {
       ).disabled,
     ).toBe(true);
   });
+
+  it("renders every page number when total_pages is small", () => {
+    render(
+      <Pagination
+        pagination={makePagination({ current_page: 2, total_pages: 5 })}
+        onPageChange={() => {}}
+      />,
+    );
+    for (const page of [1, 2, 3, 4, 5]) {
+      expect(
+        screen.getByRole("button", { name: `Go to page ${page}` }),
+      ).toBeDefined();
+    }
+    expect(screen.queryByRole("button", { name: "Go to page 6" })).toBeNull();
+  });
+
+  it("slides the visible window so 5 pages render around the current page", () => {
+    render(
+      <Pagination
+        pagination={makePagination({
+          current_page: 4,
+          total_pages: 10,
+          total_items: 200,
+        })}
+        onPageChange={() => {}}
+      />,
+    );
+    for (const page of [2, 3, 4, 5, 6]) {
+      expect(
+        screen.getByRole("button", { name: `Go to page ${page}` }),
+      ).toBeDefined();
+    }
+    expect(screen.queryByRole("button", { name: "Go to page 1" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Go to page 7" })).toBeNull();
+  });
+
+  it("clamps the window at the end so the last page stays visible", () => {
+    render(
+      <Pagination
+        pagination={makePagination({
+          current_page: 10,
+          total_pages: 10,
+          total_items: 200,
+        })}
+        onPageChange={() => {}}
+      />,
+    );
+    for (const page of [6, 7, 8, 9, 10]) {
+      expect(
+        screen.getByRole("button", { name: `Go to page ${page}` }),
+      ).toBeDefined();
+    }
+  });
+
+  it("marks the current page button with aria-current=page", () => {
+    render(
+      <Pagination
+        pagination={makePagination({ current_page: 3, total_pages: 5 })}
+        onPageChange={() => {}}
+      />,
+    );
+    const current = screen.getByRole("button", { name: "Go to page 3" });
+    expect(current.getAttribute("aria-current")).toBe("page");
+    const other = screen.getByRole("button", { name: "Go to page 2" });
+    expect(other.getAttribute("aria-current")).toBeNull();
+  });
+
+  it("invokes onPageChange with the page number when a numbered button is clicked", () => {
+    const onPageChange = vi.fn();
+    render(
+      <Pagination
+        pagination={makePagination({ current_page: 2, total_pages: 5 })}
+        onPageChange={onPageChange}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Go to page 5" }));
+    expect(onPageChange).toHaveBeenCalledWith(5);
+  });
 });

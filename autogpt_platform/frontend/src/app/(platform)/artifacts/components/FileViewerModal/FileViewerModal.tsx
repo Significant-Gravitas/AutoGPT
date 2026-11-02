@@ -1,0 +1,173 @@
+"use client";
+
+import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
+import { ArtifactContent } from "@/app/(platform)/copilot/components/ArtifactPanel/components/ArtifactContent";
+import { classifyArtifact } from "@/app/(platform)/copilot/components/ArtifactPanel/helpers";
+import type { ArtifactRef } from "@/app/(platform)/copilot/store";
+import { Button } from "@/components/atoms/Button/Button";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { useToast } from "@/components/molecules/Toast/use-toast";
+import { useState } from "react";
+import {
+  downloadFileBlob,
+  getFileDownloadUrl,
+  getPreviewKind,
+} from "../ArtifactsList/helpers";
+import { CodeIcon, Download04Icon, EyeIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { DownloadOnly } from "./components/DownloadOnly";
+import { OfficePreview } from "./components/OfficePreview";
+
+interface Props {
+  file: WorkspaceFileItem | null;
+  onClose: () => void;
+}
+
+const VIEWER_STYLING = {
+  width: "90vw",
+  maxWidth: "1100px",
+  height: "85vh",
+  padding: "1rem",
+};
+
+export function FileViewerModal({ file, onClose }: Props) {
+  // Parent conditionally renders this and keys it by file id, so each open
+  // mounts a fresh instance and per-file view state starts at preview.
+  const [isSourceView, setIsSourceView] = useState(false);
+
+  if (!file) return null;
+
+  const classification = classifyArtifact(
+    file.mime_type ?? null,
+    file.name,
+    file.size_bytes,
+  );
+  const previewKind = getPreviewKind(
+    file.mime_type,
+    file.size_bytes,
+    file.name,
+  );
+  const artifact = toArtifactRef(file);
+  const downloadUrl = getFileDownloadUrl(file.id);
+
+  return (
+    <Dialog
+      controlled={{
+        isOpen: true,
+        set: (open) => {
+          if (!open) onClose();
+        },
+      }}
+      styling={VIEWER_STYLING}
+      title={
+        <Header
+          name={file.name}
+          fileId={file.id}
+          showSourceToggle={classification.hasSourceToggle}
+          isSourceView={isSourceView}
+          onToggleSource={() => setIsSourceView((v) => !v)}
+        />
+      }
+    >
+      <Dialog.Content>
+        <div className="flex h-full min-h-0 flex-col" data-testid="file-viewer">
+          {previewKind === "office" ? (
+            <OfficePreview file={file} downloadUrl={downloadUrl} />
+          ) : classification.openable ? (
+            <ArtifactContent
+              artifact={artifact}
+              isSourceView={isSourceView}
+              classification={classification}
+            />
+          ) : (
+            <DownloadOnly name={file.name} downloadUrl={downloadUrl} />
+          )}
+        </div>
+      </Dialog.Content>
+    </Dialog>
+  );
+}
+
+interface HeaderProps {
+  name: string;
+  fileId: string;
+  showSourceToggle: boolean;
+  isSourceView: boolean;
+  onToggleSource: () => void;
+}
+
+function Header({
+  name,
+  fileId,
+  showSourceToggle,
+  isSourceView,
+  onToggleSource,
+}: HeaderProps) {
+  const { toast } = useToast();
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  async function handleDownload() {
+    if (isDownloading) return;
+    setIsDownloading(true);
+    try {
+      await downloadFileBlob(fileId, name);
+    } catch (error) {
+      toast({
+        title: "Failed to download file",
+        description:
+          error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDownloading(false);
+    }
+  }
+
+  return (
+    // pr-12 leaves room for the Dialog's absolute close button.
+    <div className="flex w-full flex-col gap-2 pr-12">
+      <span className="min-w-0 truncate text-base font-medium text-foreground-strong">
+        {name}
+      </span>
+      <div className="flex items-center gap-2">
+        {showSourceToggle ? (
+          <Button
+            variant="secondary"
+            size="small"
+            onClick={onToggleSource}
+            leftIcon={
+              isSourceView ? (
+                <Icon icon={EyeIcon} size={14} />
+              ) : (
+                <Icon icon={CodeIcon} size={14} />
+              )
+            }
+          >
+            {isSourceView ? "Preview" : "Source"}
+          </Button>
+        ) : null}
+        <Button
+          variant="secondary"
+          size="small"
+          onClick={handleDownload}
+          loading={isDownloading}
+          leftIcon={<Icon icon={Download04Icon} size={14} />}
+          data-testid="file-viewer-download"
+        >
+          {isDownloading ? "Downloading…" : "Download"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function toArtifactRef(file: WorkspaceFileItem): ArtifactRef {
+  return {
+    id: file.id,
+    title: file.name,
+    mimeType: file.mime_type ?? null,
+    sourceUrl: getFileDownloadUrl(file.id),
+    origin: file.origin === "uploaded" ? "user-upload" : "agent",
+    sizeBytes: file.size_bytes,
+  };
+}

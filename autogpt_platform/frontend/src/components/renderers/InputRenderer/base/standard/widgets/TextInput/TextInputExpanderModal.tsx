@@ -1,13 +1,14 @@
 "use client";
 
-import React, { FC, useEffect, useState } from "react";
+import React, { FC, useEffect, useId, useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/atoms/Input/Input";
+import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface InputExpanderModalProps {
   isOpen: boolean;
@@ -30,6 +31,7 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
   placeholder,
   inputType = "text",
 }) => {
+  const inputId = useId();
   const [tempValue, setTempValue] = useState(defaultValue);
   const [isCopied, setIsCopied] = useState(false);
   const { toast } = useToast();
@@ -59,6 +61,7 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
 
   return (
     <Dialog
+      title={title || "Edit Text"}
       controlled={{
         isOpen,
         set: async (open) => {
@@ -70,18 +73,15 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
     >
       <Dialog.Content>
         <div className="flex flex-col gap-4 px-1">
-          <Text variant="h4" className="text-slate-900">
-            {title || "Edit Text"}
-          </Text>
           <Text variant="body">{description}</Text>
           <Input
             type="textarea"
-            label=""
+            label={title || "Edit value"}
             hideLabel
-            id="input-expander-modal"
+            id={inputId}
             value={tempValue}
             className={cn(
-              "!min-h-[300px] rounded-2xlarge",
+              "!min-h-[300px]",
               inputType === "json" && "font-mono text-sm",
             )}
             onChange={(e) => setTempValue(e.target.value)}
@@ -94,16 +94,19 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
               variant="secondary"
               size="small"
               onClick={copyValue}
+              aria-label={
+                isCopied ? "Copied to clipboard" : "Copy to clipboard"
+              }
               className={cn(
-                "h-fit min-w-0 gap-1.5 border border-zinc-200 p-2 text-black hover:text-slate-900",
+                "h-fit min-w-0 gap-1.5 border border-border-base p-2 text-foreground-base hover:text-foreground-strong",
                 isCopied &&
-                  "border-green-400 bg-green-100 hover:border-green-400 hover:bg-green-200",
+                  "border-success bg-success-surface hover:border-success hover:bg-success/40",
               )}
             >
               {isCopied ? (
-                <CheckIcon size={16} className="text-green-600" />
+                <Icon icon={Tick02Icon} size={16} className="text-success" />
               ) : (
-                <CopyIcon size={16} />
+                <Icon icon={Copy01Icon} size={16} />
               )}
             </Button>
           </div>

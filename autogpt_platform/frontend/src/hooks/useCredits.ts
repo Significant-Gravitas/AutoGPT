@@ -3,15 +3,17 @@ import {
   RefundRequest,
   TransactionHistory,
 } from "@/lib/autogpt-server-api/types";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function useCredits({
+  identityKey,
   fetchInitialCredits = false,
   fetchInitialAutoTopUpConfig = false,
   fetchInitialTransactionHistory = false,
   fetchInitialRefundRequests = false,
 }: {
+  identityKey?: string | null;
   fetchInitialCredits?: boolean;
   fetchInitialAutoTopUpConfig?: boolean;
   fetchInitialTransactionHistory?: boolean;
@@ -35,14 +37,25 @@ export default function useCredits({
     amount: number;
     threshold: number;
   } | null>(null);
+  const identityKeyRef = useRef(identityKey);
+  const [stateIdentityKey, setStateIdentityKey] = useState(identityKey);
+
+  useEffect(() => {
+    identityKeyRef.current = identityKey;
+    setStateIdentityKey(identityKey);
+    setCredits(null);
+    setAutoTopUpConfig(null);
+  }, [identityKey]);
 
   const api = useMemo(() => new AutoGPTServerAPI(), []);
   const router = useRouter();
 
   const fetchCredits = useCallback(async () => {
+    const requestIdentityKey = identityKey;
     const response = await api.getUserCredit();
+    if (identityKeyRef.current !== requestIdentityKey) return;
     setCredits(response.credits ?? null);
-  }, [api]);
+  }, [api, identityKey]);
 
   useEffect(() => {
     if (!fetchInitialCredits) return;
@@ -50,9 +63,11 @@ export default function useCredits({
   }, [fetchCredits, fetchInitialCredits]);
 
   const fetchAutoTopUpConfig = useCallback(async () => {
+    const requestIdentityKey = identityKey;
     const response = await api.getAutoTopUpConfig();
+    if (identityKeyRef.current !== requestIdentityKey) return;
     setAutoTopUpConfig(response);
-  }, [api]);
+  }, [api, identityKey]);
 
   useEffect(() => {
     if (!fetchInitialAutoTopUpConfig) return;
@@ -70,6 +85,9 @@ export default function useCredits({
   const requestTopUp = useCallback(
     async (credit_amount: number) => {
       const response = await api.requestTopUp(credit_amount);
+      if (!response.checkout_url) {
+        throw new Error("Checkout didn't start. Please try again later.");
+      }
       router.push(response.checkout_url);
     },
     [api, router],
@@ -110,7 +128,6 @@ export default function useCredits({
     fetchTransactionHistory();
     // Note: We only need to fetch transaction history once.
     // Hence, we should avoid `fetchTransactionHistory` to the dependency array.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchInitialTransactionHistory]);
 
   const [refundRequests, setRefundRequests] = useState<RefundRequest[]>([]);
@@ -135,11 +152,11 @@ export default function useCredits({
   }, []);
 
   return {
-    credits,
+    credits: stateIdentityKey === identityKey ? credits : null,
     fetchCredits,
     requestTopUp,
     refundTopUp,
-    autoTopUpConfig,
+    autoTopUpConfig: stateIdentityKey === identityKey ? autoTopUpConfig : null,
     fetchAutoTopUpConfig,
     updateAutoTopUpConfig,
     transactionHistory,

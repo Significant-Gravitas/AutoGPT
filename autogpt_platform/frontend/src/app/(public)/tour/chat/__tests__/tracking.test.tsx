@@ -1,0 +1,252 @@
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+} from "@/tests/integrations/test-utils";
+
+// DotDistortionShader paints a canvas/WebGL frame that happy-dom cannot run and
+// that is purely decorative — stub it so the real chat tree can render.
+vi.mock("../components/DotDistortionShader/DotDistortionShader", () => ({
+  DotDistortionShader: () => null,
+}));
+
+import {
+  configureCookiebot,
+  installCookiebot,
+  removeCookiebot,
+} from "@/tests/integrations/cookiebot";
+import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
+
+const { posthog } = vi.hoisted(() => ({
+  posthog: { __loaded: true, is_capturing: () => true, capture: vi.fn() },
+}));
+vi.mock("posthog-js", () => ({ default: posthog }));
+
+import TourChatPage from "../page";
+import { TourSidebar } from "../components/TourSidebar/TourSidebar";
+import { DEFAULT_SCENARIO_ID } from "../script/tourScenarios";
+import { useTourStore } from "../tourStore";
+
+const datafast = vi.fn();
+
+function eventsNamed(name: string) {
+  return datafast.mock.calls.filter(([eventName]) => eventName === name);
+}
+
+const ADVANCE_STEP_MS = 200;
+// Longest turn is ~7.7s of parts — including the 5s fake run — plus the 3s
+// hold before the demo completes (see main.test.tsx for the chunking rationale).
+const ADVANCE_TOTAL_MS = 16000;
+
+async function advanceThroughTurn() {
+  for (
+    let elapsed = 0;
+    elapsed < ADVANCE_TOTAL_MS;
+    elapsed += ADVANCE_STEP_MS
+  ) {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ADVANCE_STEP_MS);
+    });
+  }
+}
+
+async function pressEnterToSend() {
+  fireEvent.keyDown(screen.getByRole("button", { name: /^Send:/i }), {
+    key: "Enter",
+  });
+  await advanceThroughTurn();
+}
+
+describe("Tour DataFast tracking", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+    // DataFast waits for analytics consent on the tour like everywhere else.
+    configureCookiebot();
+    installCookiebot({ statistics: true });
+    window.history.pushState({}, "", "/tour/chat");
+    window.datafast = datafast;
+    datafast.mockClear();
+    posthog.capture.mockClear();
+    sessionStorage.clear();
+    useTourStore.setState({
+      activeScenarioId: DEFAULT_SCENARIO_ID,
+      runId: 0,
+      isDemoComplete: false,
+      watchedScenarioIds: [],
+      isNudgeVisible: false,
+    });
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+    removeCookiebot();
+    window.history.pushState({}, "", "/");
+  });
+
+  test("sends no DataFast events before the visitor consents", async () => {
+    installCookiebot();
+    render(<TourChatPage />);
+    await advanceThroughTurn();
+    await pressEnterToSend();
+    fireEvent.click(screen.getByText("Make this workflow yours"));
+
+    expect(datafast).not.toHaveBeenCalled();
+  });
+
+  test("fires tour_start on a later visit when consent was not known on the first", async () => {
+    installCookiebot();
+    const first = render(<TourChatPage />);
+    first.unmount();
+    expect(eventsNamed("tour_start")).toHaveLength(0);
+
+    installCookiebot({ statistics: true });
+    render(<TourChatPage />);
+
+    expect(eventsNamed("tour_start")).toHaveLength(1);
+  });
+
+  test("fires tour_start once per session and tour_scenario_start per scenario run", async () => {
+    render(<TourChatPage />);
+
+    expect(eventsNamed("tour_start")).toHaveLength(1);
+    expect(eventsNamed("tour_scenario_start")).toEqual([
+      ["tour_scenario_start", { scenario: DEFAULT_SCENARIO_ID }],
+    ]);
+
+    await advanceThroughTurn();
+    await pressEnterToSend();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Watch another scenario/i }),
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(eventsNamed("tour_start")).toHaveLength(1);
+    expect(eventsNamed("tour_scenario_start")).toHaveLength(2);
+    expect(eventsNamed("tour_scenario_start")[1][1]).toEqual({
+      scenario: "support-queue",
+    });
+  });
+
+  describe.each(["tour", "marketplace"] as const)("%s sidebar", (surface) => {
+    test.each([
+      {
+        mode: "CLOUD",
+        eyebrow: "Free trial",
+        name: "Start free trial",
+        label: "free-trial",
+      },
+      {
+        mode: "LOCAL",
+        eyebrow: "Get started",
+        name: "Create account",
+        label: "signup",
+      },
+    ])(
+      "$mode CTA describes its destination and tracks its surface",
+      ({ mode, eyebrow, name, label }) => {
+        vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", mode);
+        window.history.pushState(
+          {},
+          "",
+          surface === "tour" ? "/tour/chat" : "/marketplace",
+        );
+        installCookiebot({ statistics: true });
+        render(
+          <SidebarProvider>
+            <TourSidebar variant={surface} />
+          </SidebarProvider>,
+        );
+
+        expect(screen.getByText(eyebrow)).toBeDefined();
+        const signupCTA = screen.getByRole("link", { name });
+        expect(signupCTA.getAttribute("href")).toBe("/signup");
+        expect(signupCTA.getAttribute("target")).toBeNull();
+        if (mode === "LOCAL") {
+          expect(screen.queryByText(/free trial/i)).toBeNull();
+        }
+        fireEvent.click(signupCTA);
+        fireEvent.click(
+          screen.getByRole("link", { name: "Self-host instead" }),
+        );
+
+        const metadata = { placement: "sidebar-card", surface };
+        expect(eventsNamed("tour_cta_click")).toEqual([
+          ["tour_cta_click", { label, ...metadata }],
+          ["tour_cta_click", { label: "self-host", ...metadata }],
+        ]);
+        expect(posthog.capture).toHaveBeenCalledWith("tour_cta_clicked", {
+          label,
+          ...metadata,
+        });
+        expect(posthog.capture).toHaveBeenCalledWith("tour_cta_clicked", {
+          label: "self-host",
+          ...metadata,
+        });
+      },
+    );
+  });
+
+  test("fires tour_scenario_complete when the demo plays through", async () => {
+    render(<TourChatPage />);
+
+    await advanceThroughTurn();
+    expect(eventsNamed("tour_scenario_complete")).toHaveLength(0);
+
+    await pressEnterToSend();
+
+    expect(eventsNamed("tour_scenario_complete")).toEqual([
+      ["tour_scenario_complete", { scenario: DEFAULT_SCENARIO_ID }],
+    ]);
+  });
+
+  test("end card CTAs fire tour_cta_click with their labels", async () => {
+    render(<TourChatPage />);
+    await advanceThroughTurn();
+    await pressEnterToSend();
+
+    fireEvent.click(screen.getByText("Make this workflow yours"));
+    fireEvent.click(screen.getByText("or self-host free"));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Watch another scenario/i }),
+    );
+
+    const labels = eventsNamed("tour_cta_click").map(
+      ([, metadata]) => metadata,
+    );
+    expect(labels).toEqual([
+      { label: "pricing", placement: "end-card" },
+      { label: "self-host", placement: "end-card" },
+      { label: "another-scenario", placement: "end-card" },
+    ]);
+  });
+
+  // The tour is public and pre-signup: the PostHog mirror carries the same
+  // metadata as DataFast and nothing that identifies the visitor.
+  test("mirrors the tour funnel to PostHog under its PostHog names", async () => {
+    render(<TourChatPage />);
+    await advanceThroughTurn();
+    await pressEnterToSend();
+    fireEvent.click(screen.getByText("Make this workflow yours"));
+
+    const events = posthog.capture.mock.calls.map(([name, properties]) => [
+      name,
+      properties,
+    ]);
+    // Child effects run first, so the scenario starts before the tour does.
+    expect(events).toEqual([
+      ["tour_scenario_started", { scenario: DEFAULT_SCENARIO_ID }],
+      ["tour_started", {}],
+      ["tour_scenario_completed", { scenario: DEFAULT_SCENARIO_ID }],
+      ["tour_cta_clicked", { label: "pricing", placement: "end-card" }],
+    ]);
+  });
+});

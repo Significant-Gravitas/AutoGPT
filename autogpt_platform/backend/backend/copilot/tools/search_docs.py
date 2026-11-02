@@ -5,10 +5,13 @@ from typing import Any
 
 from prisma.enums import ContentType
 
+from backend.api.features.search.hybrid_search import HybridSearchRow
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import search
+from backend.util.docs import make_doc_url
 
 from .base import BaseTool
+from .external_scope import error_detail
 from .models import (
     DocSearchResult,
     DocSearchResultsResponse,
@@ -18,9 +21,6 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Base URL for documentation (can be configured)
-DOCS_BASE_URL = "https://docs.agpt.co"
 
 # Maximum number of results to return
 MAX_RESULTS = 5
@@ -37,8 +37,12 @@ class SearchDocsTool(BaseTool):
         return "search_docs"
 
     @property
+    def allow_external_use(self):
+        return True, []
+
+    @property
     def description(self) -> str:
-        return "Search platform documentation by keyword. Use get_doc_page to read full results."
+        return "Search platform documentation by keyword. Use tool:get_doc_page to read full results."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -74,12 +78,6 @@ class SearchDocsTool(BaseTool):
             truncated = truncated[:last_space]
 
         return truncated + "..."
-
-    def _make_doc_url(self, path: str) -> str:
-        """Create a URL for a documentation page."""
-        # Remove file extension for URL
-        url_path = path.rsplit(".", 1)[0] if "." in path else path
-        return f"{DOCS_BASE_URL}/{url_path}"
 
     async def _execute(
         self,
@@ -132,7 +130,7 @@ class SearchDocsTool(BaseTool):
                 )
 
             # Deduplicate by document path (keep highest scoring section per doc)
-            seen_docs: dict[str, dict[str, Any]] = {}
+            seen_docs: dict[str, HybridSearchRow] = {}
             for result in results:
                 metadata = result.get("metadata", {})
                 doc_path = metadata.get("path", "")
@@ -182,7 +180,7 @@ class SearchDocsTool(BaseTool):
                         section=section_title,
                         snippet=self._create_snippet(searchable_text),
                         score=round(score, 3),
-                        doc_url=self._make_doc_url(doc_path),
+                        doc_url=make_doc_url(doc_path),
                     )
                 )
 
@@ -197,7 +195,7 @@ class SearchDocsTool(BaseTool):
         except Exception as e:
             logger.error(f"Documentation search failed: {e}")
             return ErrorResponse(
-                message=f"Failed to search documentation: {str(e)}",
+                message=f"Failed to search documentation: {error_detail(e, session)}",
                 error="search_failed",
                 session_id=session_id,
             )

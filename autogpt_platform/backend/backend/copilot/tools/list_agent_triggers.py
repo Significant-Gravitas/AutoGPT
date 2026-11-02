@@ -4,17 +4,15 @@ import asyncio
 import logging
 from typing import Any, Literal
 
+from prisma.enums import APIKeyPermission
 from pydantic import BaseModel
 
-from backend.api.features.library.db import (
-    get_library_agent,
-    list_presets,
-    list_trigger_agents,
-)
 from backend.copilot.model import ChatSession
+from backend.data.db_accessors import library_db
 from backend.util.exceptions import NotFoundError
 
 from .base import BaseTool
+from .external_scope import external_tenant, in_tenant
 from .models import ErrorResponse, ResponseType, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -44,6 +42,11 @@ class AgentTriggerInfo(BaseModel):
     # Webhook-trigger only.
     is_active: bool | None = None
     webhook_id: str | None = None
+    # Ingress URL for manual-setup webhooks — give this to the user verbatim
+    # so they can wire it up in their external service. None for trigger agents
+    # and for webhooks without an attached URL.
+    webhook_url: str | None = None
+    provider: str | None = None
 
 
 class AgentTriggerListResponse(ToolResponseBase):
@@ -65,6 +68,10 @@ class ListAgentTriggersTool(BaseTool):
     @property
     def name(self) -> str:
         return "list_agent_triggers"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_LIBRARY]
 
     @property
     def description(self) -> str:
@@ -112,11 +119,12 @@ class ListAgentTriggersTool(BaseTool):
                 session_id=session_id,
             )
 
+        ldb = library_db()
         try:
-            parent = await get_library_agent(id=library_agent_id, user_id=user_id)
+            parent = await ldb.get_library_agent(id=library_agent_id, user_id=user_id)
         except NotFoundError as e:
             return ErrorResponse(
-                message=f"Library agent not found: {e}",
+                message=f"Library workflow not found: {e}",
                 error="library_agent_not_found",
                 session_id=session_id,
             )
@@ -126,16 +134,22 @@ class ListAgentTriggersTool(BaseTool):
         # Both queries can run concurrently since they don't depend
         # on each other once we have the parent's graph_id.
         trigger_agents, preset_response = await asyncio.gather(
-            list_trigger_agents(
+            ldb.list_trigger_agents(
                 user_id=user_id,
                 library_agent_id=library_agent_id,
                 parent_graph_id=parent.graph_id,
             ),
-            list_presets(
+            # Scope to the session's memory scope (its expert, or Otto's
+            # unattributed presets) — without this the listing leaks other
+            # scopes' presets AND their webhook ingress URLs into the chat.
+            ldb.list_presets(
                 user_id=user_id,
                 page=1,
                 page_size=100,
                 graph_id=parent.graph_id,
+                expert_id=session.expert_id if session else None,
+                filter_by_expert=True,
+                organization_id=external_tenant(session),
             ),
         )
         webhook_presets = [
@@ -153,6 +167,7 @@ class ListAgentTriggersTool(BaseTool):
                 next_scheduled_run=ta.next_scheduled_run,
             )
             for ta in trigger_agents
+            if in_tenant(ta.organization_id, external_tenant(session))
         ] + [
             AgentTriggerInfo(
                 kind="webhook",
@@ -161,12 +176,14 @@ class ListAgentTriggersTool(BaseTool):
                 description=p.description or "",
                 is_active=p.is_active,
                 webhook_id=p.webhook_id,
+                webhook_url=p.webhook.url if p.webhook else None,
+                provider=p.webhook.provider if p.webhook else None,
             )
             for p in webhook_presets
         ]
 
         message = (
-            f"Found {len(triggers)} trigger(s) for this agent."
+            f"Found {len(triggers)} trigger(s) for this workflow."
             if triggers
             else "No triggers configured."
         )

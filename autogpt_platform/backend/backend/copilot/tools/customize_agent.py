@@ -4,10 +4,20 @@ import logging
 import uuid
 from typing import Any
 
+from prisma.enums import APIKeyPermission
+
 from backend.copilot.model import ChatSession
 
 from .agent_generator.pipeline import fetch_library_agents, fix_validate_and_save
+from .agent_json_input import (
+    AGENT_JSON_REF_SCHEMA,
+    AGENT_JSON_SCHEMA,
+    reads_workspace_file,
+    resolve_agent_json_or_error,
+)
 from .base import BaseTool
+from .expert_scope import install_saved_agent
+from .external_scope import external_tenancy
 from .models import ErrorResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -19,6 +29,22 @@ class CustomizeAgentTool(BaseTool):
     @property
     def name(self) -> str:
         return "customize_agent"
+
+    @property
+    def allow_external_use(self):
+        return True, [
+            APIKeyPermission.WRITE_GRAPH,
+            APIKeyPermission.WRITE_LIBRARY,
+            # READ_STORE permission not needed since we only use public marketplace data
+        ]
+
+    def external_permissions(self, args: dict[str, Any]) -> list[APIKeyPermission]:
+        # Reading the graph from a workspace file is a read of the caller's files.
+        needed = [APIKeyPermission.READ_FILES] if reads_workspace_file(args) else []
+        # Sub-agents to embed are read from the caller's library.
+        if args.get("library_agent_ids"):
+            needed.append(APIKeyPermission.READ_LIBRARY)
+        return needed
 
     @property
     def description(self) -> str:
@@ -35,14 +61,14 @@ class CustomizeAgentTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "agent_json": {
-                    "type": "object",
-                    "description": "Customized agent JSON with nodes and links.",
-                },
+                "agent_json": AGENT_JSON_SCHEMA,
+                "agent_json_ref": AGENT_JSON_REF_SCHEMA,
                 "library_agent_ids": {
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "Library agent IDs as building blocks.",
+                    "title": "Building blocks",
+                    "entity": "library_agent",
                 },
                 "save": {
                     "type": "boolean",
@@ -52,16 +78,18 @@ class CustomizeAgentTool(BaseTool):
                 "folder_id": {
                     "type": "string",
                     "description": "Folder ID to save into (default: root).",
+                    "entity": "library_folder",
                 },
             },
-            "required": ["agent_json"],
+            "required": [],
         }
 
     async def _execute(
         self,
         user_id: str | None,
         session: ChatSession,
-        agent_json: dict[str, Any] | None = None,
+        agent_json: dict[str, Any] | str | None = None,
+        agent_json_ref: str | None = None,
         save: bool = True,
         library_agent_ids: list[str] | None = None,
         folder_id: str | None = None,
@@ -69,14 +97,20 @@ class CustomizeAgentTool(BaseTool):
     ) -> ToolResponseBase:
         session_id = session.session_id if session else None
 
-        if not agent_json:
-            return ErrorResponse(
-                message=(
-                    "Please provide agent_json with the complete customized agent graph."
-                ),
-                error="missing_agent_json",
-                session_id=session_id,
-            )
+        agent_json, resolve_error = await resolve_agent_json_or_error(
+            agent_json=agent_json,
+            agent_json_ref=agent_json_ref,
+            user_id=user_id,
+            session=session,
+            session_id=session_id,
+            missing_message=(
+                "Please provide agent_json with the complete customized "
+                "workflow, or agent_json_ref pointing at the workspace workflow file."
+            ),
+        )
+        if resolve_error is not None:
+            return resolve_error
+        assert agent_json is not None  # narrowed: resolve_error covers the None case
 
         if library_agent_ids is None:
             library_agent_ids = []
@@ -97,14 +131,21 @@ class CustomizeAgentTool(BaseTool):
 
         # Fetch library agents for AgentExecutorBlock validation
         library_agents = await fetch_library_agents(user_id, library_agent_ids)
+        organization_id, team_id = external_tenancy(session)
 
-        return await fix_validate_and_save(
+        saved = await fix_validate_and_save(
             agent_json,
             user_id=user_id,
             session_id=session_id,
             save=save,
             is_update=False,
-            default_name="Customized Agent",
+            default_name="Customized Workflow",
             library_agents=library_agents,
             folder_id=folder_id,
+            organization_id=organization_id,
+            team_id=team_id,
+            external_caller=session.external_caller,
         )
+        if user_id:
+            return await install_saved_agent(user_id, session, saved)
+        return saved

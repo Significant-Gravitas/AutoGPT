@@ -2,19 +2,34 @@
 
 * [What is the AutoGPT Platform?](what-is-autogpt-platform.md)
 
-## Getting Started
+## Using the Platform
 
-* [Setting Up Auto-GPT (Local Host)](getting-started.md)
+* [Getting Started (Cloud)](getting-started-cloud.md)
+* [AutoPilot](autopilot.md)
+* [Agent Builder Guide](agent-builder-guide.md)
+* [Agent Library](agent-library.md)
+* [Marketplace](marketplace.md)
+* [Scheduling & Triggers](scheduling-and-triggers.md)
+* [Templates](templates.md)
+* [Credits & Billing](credits-and-billing.md)
+* [Integrations & Credentials](integrations-and-credentials.md)
+* [Data Flow & Execution](data-flow-and-execution.md)
+* [Sharing & Exporting Agents](sharing-and-exporting.md)
+
+## Self-Hosting
+
+* [Setting Up AutoGPT (Self-Host)](getting-started.md)
+* [Run AutoGPT in One Docker Container](single-container.md)
 * [AutoGPT Platform Installer](installer.md)
+* [Advanced Setup](advanced_setup.md)
+
+## Tutorials
+
+* [Create a Basic Agent](create-basic-agent.md)
 * [Edit an Agent](edit-agent.md)
 * [Delete an Agent](delete-agent.md)
 * [Download & Import an Agent](download-agent-from-marketplace-local.md)
-* [Create a Basic Agent](create-basic-agent.md)
 * [Submit an Agent to the Marketplace](submit-agent-to-marketplace.md)
-
-## Advanced Setup
-
-* [Advanced Setup](advanced_setup.md)
 
 ## Building Blocks
 
@@ -26,10 +41,60 @@
 
 * [Using Google Gemini](gemini.md)
 * [Using Ollama](ollama.md)
+* [AutoPilot on a self-hosted LLM (no API keys)](copilot-local-llm.md)
+* [Nightly skill learning](skill-learning.md)
 * [Using AI/ML API](aimlapi.md)
 * [Using D-ID](d_id.md)
 
 ## API & Integrations
 
-* [API Introduction](integrating/api-guide.md)
+* [AutoGPT Platform API](integrating/api-guide.md)
+  * [Quickstart](integrating/quickstart.md)
+  * [Build with AI coding agents](integrating/ai-coding-agents.md)
+  * [Cloud and self-hosted](integrating/environments.md)
+  * [Authentication and permissions](integrating/authentication.md)
+  * [Run agents](integrating/running-agents.md)
+  * [Build agents](integrating/building-agents.md)
+  * [Errors, rate limits, and pagination](integrating/api-conventions.md)
+  * [MCP server](integrating/mcp-server.md)
+  * [Migrate from v1](integrating/migrate-from-v1.md)
+* [API reference](integrating/api-reference.md)
+  * ```yaml
+    props:
+      models: true
+      downloadLink: true
+      grouping: by-operation
+    type: builtin:openapi
+    dependencies:
+      spec:
+        ref:
+          kind: openapi
+          spec: autogpt-api-v2
+    ```
 * [OAuth & SSO](integrating/oauth-guide.md)
+
+## Contributing
+
+* [Managing LLM Models](contributing/managing-llm-models.md)
+* [Agent Collaboration Architecture](contributing/agent-collaboration-architecture.md)
+
+## Changelog
+
+* [What's New](changelog/README.md)
+  * [Expert pages with an Overview, an app that fits your phone, and a lighter login](changelog/october-23-2026.md)
+  * [A clearer wallet, a kinder trial, and shorter replies from Otto](changelog/october-8-october-14-2026.md)
+  * [A bigger roster, Clay & Rock avatars, folders in your workspace](changelog/september-24-september-30-2026.md)
+  * [Meet your Experts: hire a specialist and put it to work](changelog/september-19-2026.md)
+  * [A cleaner chat that shows its work, clickable answers, emails worth opening](changelog/august-21-september-4-2026.md)
+  * [Paste screenshots into chat, talk through onboarding, self-host in one container](changelog/july-29-august-13-2026.md)
+  * [A new sidebar, a smarter composer, and Otto on Telegram](changelog/july-15-july-22-2026.md)
+  * [Organize files, share your work, connect Discord](changelog/june-18-july-9-2026.md)
+  * [Smarter Automation, Fresher Design, Open for Business](changelog/may-7-june-10-2026.md)
+  * [Artifacts, Briefings, and Builder Chat](changelog/april-10-may-1-2026.md)
+  * [Smarter Starts, Faster Feedback](changelog/march-23-april-9-2026.md)
+  * [Import workflows from other platforms and enjoy a polished marketplace](changelog/march-20-march-25-2026.md)
+  * [Explore a new marketplace, track usage, and give instant feedback](changelog/march-13-march-20-2026.md)
+  * [Organize your agents, get notified, and enjoy a cleaner chat](changelog/march-5-march-12-2026.md)
+  * [Connect any app, share files, and let AutoPilot browse for you](changelog/february-26-march-4-2026.md)
+  * [Telegram bots, agent folders, and a rebuilt builder](changelog/february-11-february-26-2026.md)
+  * [Voice input, persistent files, and a smarter AI](changelog/january-29-february-11-2026.md)

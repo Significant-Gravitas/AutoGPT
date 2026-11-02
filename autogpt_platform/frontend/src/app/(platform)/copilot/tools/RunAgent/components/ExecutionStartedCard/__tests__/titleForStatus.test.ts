@@ -11,6 +11,7 @@ describe("titleForStatus", () => {
     ["TIMED_OUT", "Execution incomplete"],
     ["INCOMPLETE", "Execution incomplete"],
     ["RUNNING", "Execution running"],
+    ["SCHEDULED", "Execution scheduled"],
     ["QUEUED", "Execution started"],
     ["", "Execution started"],
   ])("maps %s -> %s", (input, expected) => {

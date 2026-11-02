@@ -1,4 +1,9 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { restoreFromBackForwardCache } from "@/tests/integrations/back-forward-cache";
+import {
+  installGtagShim,
+  removeGtagShim,
+} from "@/tests/integrations/gtag-shim";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   render,
   screen,
@@ -15,11 +20,26 @@ vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
   useUpdateSubscriptionTier: () => mockUseUpdateSubscriptionTier(),
 }));
 
+const posthog = vi.hoisted(() => ({
+  __loaded: true,
+  is_capturing: () => true,
+  capture: vi.fn(),
+}));
+vi.mock("posthog-js", () => ({ default: posthog }));
+
 const mockToast = vi.fn();
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   toast: (args: unknown) => mockToast(args),
   useToast: () => ({ toast: mockToast }),
   useToastOnFail: () => mockToast,
+}));
+
+// test-utils wraps every render in OnboardingProvider, which asynchronously
+// redirects incomplete users via router.replace("/onboarding"). That timer can
+// fire mid-test and pollute the router.replace assertions below, so stub the
+// provider to a passthrough (same approach as the login/signup tests).
+vi.mock("@/providers/onboarding/onboarding-provider", () => ({
+  default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
 // Strip Radix portals — happy-dom doesn't render them. The mock keeps the
@@ -39,6 +59,39 @@ vi.mock("@/components/molecules/Dialog/Dialog", () => ({
   Dialog: MockDialog,
 }));
 
+const mockValidateSession = vi.fn().mockResolvedValue(true);
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({
+    validateSession: mockValidateSession,
+    isLoggedIn: true,
+  }),
+}));
+
+// The shared test wrapper mounts OnboardingProvider, which asynchronously
+// checks onboarding completion and can fire router.replace("/onboarding").
+// That shares this file's mocked next/navigation replace, so the stray
+// redirect races into assertions that the paywall did NOT navigate. Render
+// children directly to keep navigation owned solely by PaywallModal.
+vi.mock("@/providers/onboarding/onboarding-provider", () => ({
+  default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
+const mockReplace = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: mockReplace,
+    prefetch: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+  }),
+  usePathname: () => "/build",
+  useSearchParams: () => new URLSearchParams(),
+  useParams: () => ({}),
+}));
+
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { PaywallModal } from "../PaywallModal";
 
 interface SubscriptionShape {
@@ -48,36 +101,55 @@ interface SubscriptionShape {
   monthly_cost?: number;
   proration_credit_cents?: number;
   has_active_stripe_subscription?: boolean;
+  paused_workflow_schedules?: number;
 }
 
 function setupMocks({
   subscription,
   isLoading = false,
+  isFetching = false,
   mutateFn = vi.fn().mockResolvedValue({ status: 200, data: { url: "" } }),
   isPending = false,
 }: {
   subscription: SubscriptionShape | null;
   isLoading?: boolean;
+  isFetching?: boolean;
   mutateFn?: ReturnType<typeof vi.fn>;
   isPending?: boolean;
 }) {
+  const refetchFn = vi.fn();
   mockUseGetSubscriptionStatus.mockReturnValue({
     data: subscription,
     isLoading,
+    isFetching,
+    refetch: refetchFn,
   });
   mockUseUpdateSubscriptionTier.mockReturnValue({
     mutateAsync: mutateFn,
     isPending,
   });
-  return { mutateFn };
+  return { mutateFn, refetchFn };
 }
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  // Flush in-flight async work (e.g. a redirect from a rejected upgrade
+  // mutation) before clearing mocks, so a late router.replace from one test
+  // can't leak into the next and trip its "not redirected" assertion.
+  await new Promise((resolve) => setTimeout(resolve, 0));
   vi.clearAllMocks();
 });
 
 describe("PaywallModal — dynamic plan rendering", () => {
+  it("keeps account and billing access available without starting a checkout", () => {
+    const { mutateFn } = setupMocks({
+      subscription: { tier: "NO_TIER", tier_costs: { PRO: 5000 } },
+    });
+    render(<PaywallModal />);
+    fireEvent.click(screen.getByRole("button", { name: "Back to billing" }));
+    expect(mockReplace).toHaveBeenCalledWith("/settings/billing");
+    expect(mutateFn).not.toHaveBeenCalled();
+  });
   it("renders one card per tier in tier_costs (PRO + MAX → 2 cards)", () => {
     setupMocks({
       subscription: {
@@ -131,8 +203,59 @@ describe("PaywallModal — dynamic plan rendering", () => {
   });
 });
 
+describe("PaywallModal — paused scheduled work", () => {
+  it.each([
+    [3, "Your 3 scheduled workflows are paused until you subscribe."],
+    [1, "Your scheduled workflow is paused until you subscribe."],
+  ])(
+    "tells a user without a plan that %i workflow schedule(s) wait for one",
+    (count, text) => {
+      setupMocks({
+        subscription: {
+          tier: "NO_TIER",
+          tier_costs: { PRO: 5000 },
+          paused_workflow_schedules: count,
+        },
+      });
+
+      render(<PaywallModal />);
+
+      expect(screen.getByText(text)).toBeDefined();
+    },
+  );
+
+  it("says nothing about scheduled work when none is paused", () => {
+    setupMocks({
+      subscription: {
+        tier: "NO_TIER",
+        tier_costs: { PRO: 5000 },
+        paused_workflow_schedules: 0,
+      },
+    });
+
+    render(<PaywallModal />);
+
+    expect(screen.getByText("Pro")).toBeDefined();
+    expect(screen.queryByText(/paused until you subscribe/)).toBeNull();
+  });
+});
+
+describe("PaywallModal — logout", () => {
+  it("routes to the shared /logout page when the Log out button is clicked", () => {
+    setupMocks({
+      subscription: { tier: "NO_TIER", tier_costs: { PRO: 5000 } },
+    });
+
+    render(<PaywallModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /log out/i }));
+
+    expect(mockReplace).toHaveBeenCalledWith("/logout");
+  });
+});
+
 describe("PaywallModal — Monthly/Yearly cycle toggle", () => {
-  it("displays monthly prices by default", () => {
+  it("defaults to monthly billing with the actual monthly prices", () => {
     setupMocks({
       subscription: {
         tier: "NO_TIER",
@@ -143,12 +266,14 @@ describe("PaywallModal — Monthly/Yearly cycle toggle", () => {
 
     render(<PaywallModal />);
 
-    // PRO monthly = 5000 cents = $50.00
-    expect(screen.getByText("$50.00")).toBeDefined();
-    expect(screen.getByText("$320.00")).toBeDefined();
+    // PRO monthly = 5000 cents = $50.00, MAX monthly = 32000 cents = $320.00.
+    expect(screen.getByText("$50")).toBeDefined();
+    expect(screen.getByText("$320")).toBeDefined();
+    expect(screen.getAllByText("/ month").length).toBe(2);
+    expect(screen.queryByText(/Charged today/i)).toBeNull();
   });
 
-  it("toggling Yearly switches displayed prices to tier_costs_yearly", async () => {
+  it("toggling Yearly shows the actual yearly charge and billing interval", async () => {
     setupMocks({
       subscription: {
         tier: "NO_TIER",
@@ -159,12 +284,13 @@ describe("PaywallModal — Monthly/Yearly cycle toggle", () => {
 
     render(<PaywallModal />);
 
-    fireEvent.click(screen.getByRole("radio", { name: /yearly/i }));
+    fireEvent.click(screen.getByRole("button", { name: /yearly/i }));
 
-    // PRO yearly = 51000 cents = $510.00; MAX yearly = 326400 cents = $3,264.00
+    // Show the full yearly payment, not a monthly equivalent.
     await waitFor(() => {
-      expect(screen.getByText("$510.00")).toBeDefined();
-      expect(screen.getByText("$3,264.00")).toBeDefined();
+      expect(screen.getByText("$510")).toBeDefined();
+      expect(screen.getByText("$3,264")).toBeDefined();
+      expect(screen.getAllByText("/ year").length).toBe(2);
     });
   });
 });
@@ -188,7 +314,7 @@ describe("PaywallModal — upgrade mutation", () => {
     });
   }
 
-  it("clicking Upgrade to Pro with monthly toggle fires {tier:PRO, billing_cycle:monthly}", async () => {
+  it("clicking Start Pro with the default monthly toggle fires {tier:PRO, billing_cycle:monthly}", async () => {
     stubLocation();
     const { mutateFn } = setupMocks({
       subscription: {
@@ -200,7 +326,7 @@ describe("PaywallModal — upgrade mutation", () => {
 
     render(<PaywallModal />);
 
-    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
 
     await waitFor(() => {
       expect(mutateFn).toHaveBeenCalledTimes(1);
@@ -210,7 +336,7 @@ describe("PaywallModal — upgrade mutation", () => {
     expect(args.data.billing_cycle).toBe("monthly");
   });
 
-  it("clicking Upgrade to Pro with yearly toggle fires {tier:PRO, billing_cycle:yearly}", async () => {
+  it("clicking Start Pro after switching to yearly fires {tier:PRO, billing_cycle:yearly}", async () => {
     stubLocation();
     const { mutateFn } = setupMocks({
       subscription: {
@@ -222,8 +348,8 @@ describe("PaywallModal — upgrade mutation", () => {
 
     render(<PaywallModal />);
 
-    fireEvent.click(screen.getByRole("radio", { name: /yearly/i }));
-    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /yearly/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
 
     await waitFor(() => {
       expect(mutateFn).toHaveBeenCalledTimes(1);
@@ -249,7 +375,7 @@ describe("PaywallModal — upgrade mutation", () => {
 
     render(<PaywallModal />);
 
-    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
 
     await waitFor(() => {
       expect(window.location.href).toBe("https://checkout.stripe.com/c/test");
@@ -281,6 +407,207 @@ describe("PaywallModal — upgrade mutation", () => {
     expect(mutateFn).not.toHaveBeenCalled();
   });
 
+  it("re-validates the session when the paywall mounts", () => {
+    setupMocks({
+      subscription: { tier: "NO_TIER", tier_costs: { PRO: 5000 } },
+    });
+
+    render(<PaywallModal />);
+
+    expect(mockValidateSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends the current page as cancel_url so backing out of Stripe re-gates", async () => {
+    stubLocation();
+    Object.assign(window.location, { href: "https://app.test/copilot" });
+    const { mutateFn } = setupMocks({
+      subscription: {
+        tier: "NO_TIER",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+      },
+    });
+
+    render(<PaywallModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
+
+    await waitFor(() => {
+      expect(mutateFn).toHaveBeenCalledTimes(1);
+    });
+    const [args] = mutateFn.mock.calls[0];
+    // Same page, plus the marker that reports the abandoned checkout.
+    expect(args.data.cancel_url).toBe(
+      "https://app.test/copilot?paywall_checkout=cancelled",
+    );
+    expect(args.data.surface).toBe("paywall_gate");
+    // Stripe fills {CHECKOUT_SESSION_ID}; plan and cycle let the return page
+    // report the subscription to Google Ads.
+    expect(args.data.success_url).toBe(
+      "https://app.test/profile/credits?subscription=success&session_id={CHECKOUT_SESSION_ID}&plan=PRO&cycle=monthly",
+    );
+  });
+
+  it("reports begin_checkout only once Stripe returns a Checkout URL", async () => {
+    stubLocation();
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
+    const gtagCalls = installGtagShim();
+    const mutateFn = vi
+      .fn()
+      .mockResolvedValue({ status: 200, data: { url: null } });
+    setupMocks({
+      mutateFn,
+      subscription: { tier: "NO_TIER", tier_costs: { PRO: 5000 } },
+    });
+
+    render(<PaywallModal />);
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
+
+    await waitFor(() => {
+      expect(mutateFn).toHaveBeenCalledTimes(1);
+    });
+    expect(gtagCalls.filter((call) => call[1] === "conversion")).toEqual([]);
+
+    mutateFn.mockResolvedValue({
+      status: 200,
+      data: { url: "https://checkout.stripe.com/pay/cs_test" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
+
+    await waitFor(() => {
+      expect(gtagCalls).toContainEqual([
+        "event",
+        "conversion",
+        {
+          send_to: "AW-123/BC",
+          value: 50,
+          currency: "USD",
+          event_callback: expect.any(Function),
+        },
+      ]);
+    });
+    const conversion = gtagCalls.find((call) => call[1] === "conversion");
+    (conversion?.[2] as { event_callback: () => void }).event_callback();
+    await waitFor(() => {
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.com/pay/cs_test",
+      );
+    });
+    removeGtagShim();
+    vi.unstubAllEnvs();
+  });
+
+  it("stays busy while the conversion goes out, so a second click starts no second checkout", async () => {
+    stubLocation();
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
+    const gtagCalls = installGtagShim();
+    const { mutateFn } = setupMocks({
+      mutateFn: vi.fn().mockResolvedValue({
+        status: 200,
+        data: { url: "https://checkout.stripe.com/pay/cs_test" },
+      }),
+      subscription: { tier: "NO_TIER", tier_costs: { PRO: 5000 } },
+    });
+
+    render(<PaywallModal />);
+    const upgrade = screen.getByRole("button", { name: /start pro/i });
+    fireEvent.click(upgrade);
+    await waitFor(() =>
+      expect(gtagCalls.some((call) => call[1] === "conversion")).toBe(true),
+    );
+    expect(upgrade.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(upgrade);
+
+    await waitFor(() => {
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.com/pay/cs_test",
+      );
+    });
+    expect(mutateFn).toHaveBeenCalledTimes(1);
+    removeGtagShim();
+    vi.unstubAllEnvs();
+  });
+
+  it("stays busy while Stripe loads, and is usable again after Back restores the page", async () => {
+    stubLocation();
+    const { mutateFn } = setupMocks({
+      mutateFn: vi.fn().mockResolvedValue({
+        status: 200,
+        data: { url: "https://checkout.stripe.com/pay/cs_test" },
+      }),
+      subscription: { tier: "NO_TIER", tier_costs: { PRO: 5000 } },
+    });
+
+    render(<PaywallModal />);
+    const upgrade = screen.getByRole("button", { name: /start pro/i });
+    fireEvent.click(upgrade);
+    await waitFor(() =>
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.com/pay/cs_test",
+      ),
+    );
+    expect(upgrade.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(upgrade);
+    expect(mutateFn).toHaveBeenCalledTimes(1);
+
+    restoreFromBackForwardCache();
+
+    expect(upgrade.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(upgrade);
+    await waitFor(() => expect(mutateFn).toHaveBeenCalledTimes(2));
+  });
+
+  it("401 from updateTier routes to /login instead of toasting a dead-end error", async () => {
+    stubLocation();
+    const mutateFn = vi
+      .fn()
+      .mockRejectedValue(
+        new ApiError("Authorization header is missing", 401, null),
+      );
+    setupMocks({
+      subscription: {
+        tier: "NO_TIER",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+      },
+      mutateFn,
+    });
+
+    render(<PaywallModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
+
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith("/login");
+    });
+    expect(mockToast).not.toHaveBeenCalled();
+    expect(window.location.href).toBe("");
+  });
+
+  it("non-401 ApiError surfaces a toast and stays on the paywall", async () => {
+    stubLocation();
+    const mutateFn = vi
+      .fn()
+      .mockRejectedValue(new ApiError("Forbidden", 403, null));
+    setupMocks({
+      subscription: {
+        tier: "NO_TIER",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+      },
+      mutateFn,
+    });
+
+    render(<PaywallModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledTimes(1);
+    });
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(window.location.href).toBe("");
+  });
+
   it("422 from updateTier surfaces a toast and does not redirect", async () => {
     stubLocation();
     const mutateFn = vi
@@ -296,7 +623,7 @@ describe("PaywallModal — upgrade mutation", () => {
 
     render(<PaywallModal />);
 
-    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
 
     await waitFor(() => {
       expect(mockToast).toHaveBeenCalledTimes(1);
@@ -324,6 +651,21 @@ describe("PaywallModal — admin-overridden NO_TIER with active Stripe sub", () 
     });
   }
 
+  it("routes a paid Pro user to the exact Max charge review without mutating", () => {
+    stubLocation();
+    const { mutateFn } = setupMocks({
+      subscription: {
+        tier: "PRO",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        has_active_stripe_subscription: true,
+      },
+    });
+    render(<PaywallModal />);
+    fireEvent.click(screen.getByRole("button", { name: /start max/i }));
+    expect(mockReplace).toHaveBeenCalledWith("/settings/billing?upgrade=MAX");
+    expect(mutateFn).not.toHaveBeenCalled();
+  });
+
   it("staging gate: clicking Upgrade with active Stripe sub opens confirm dialog and skips mutation", () => {
     stubLocation();
     const { mutateFn } = setupMocks({
@@ -336,7 +678,7 @@ describe("PaywallModal — admin-overridden NO_TIER with active Stripe sub", () 
     });
 
     render(<PaywallModal />);
-    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
 
     // Confirmation dialog text surfaces; mutation has NOT fired yet.
     expect(
@@ -358,7 +700,7 @@ describe("PaywallModal — admin-overridden NO_TIER with active Stripe sub", () 
     });
 
     render(<PaywallModal />);
-    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
     fireEvent.click(screen.getByRole("button", { name: /switch to pro/i }));
 
     await waitFor(() => {
@@ -379,7 +721,7 @@ describe("PaywallModal — admin-overridden NO_TIER with active Stripe sub", () 
     });
 
     render(<PaywallModal />);
-    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
 
     expect(mutateFn).not.toHaveBeenCalled();
@@ -396,7 +738,7 @@ describe("PaywallModal — admin-overridden NO_TIER with active Stripe sub", () 
     });
 
     render(<PaywallModal />);
-    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
 
     await waitFor(() => {
       expect(mutateFn).toHaveBeenCalledTimes(1);
@@ -423,6 +765,39 @@ describe("PaywallModal — empty / loading states", () => {
     expect(screen.queryByRole("button", { name: /upgrade to/i })).toBeNull();
   });
 
+  it("Retry in the unavailable fallback refetches the subscription status", () => {
+    const { refetchFn } = setupMocks({
+      subscription: {
+        tier: "NO_TIER",
+        tier_costs: {},
+      },
+    });
+
+    render(<PaywallModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+
+    expect(refetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("Retry is disabled while the refetch is in flight", () => {
+    const { refetchFn } = setupMocks({
+      subscription: {
+        tier: "NO_TIER",
+        tier_costs: {},
+      },
+      isFetching: true,
+    });
+
+    render(<PaywallModal />);
+
+    const retryButton = screen.getByRole("button", { name: /retry/i });
+    expect(retryButton.hasAttribute("disabled")).toBe(true);
+
+    fireEvent.click(retryButton);
+    expect(refetchFn).not.toHaveBeenCalled();
+  });
+
   it("renders skeletons while subscription status is loading", () => {
     setupMocks({ subscription: null, isLoading: true });
 
@@ -433,5 +808,92 @@ describe("PaywallModal — empty / loading states", () => {
     expect(
       screen.queryByText(/Subscriptions are temporarily unavailable/i),
     ).toBeNull();
+  });
+});
+
+describe("PaywallModal — PostHog paywall funnel", () => {
+  const originalLocation = window.location;
+
+  beforeEach(() => {
+    // paywall_viewed is once per tab; earlier renders in this file set it.
+    sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: originalLocation,
+    });
+    posthog.capture.mockClear();
+    sessionStorage.clear();
+  });
+
+  function eventsNamed(name: string) {
+    return posthog.capture.mock.calls.filter(([event]) => event === name);
+  }
+
+  it("reports the paywall view and the picked plan", async () => {
+    const { mutateFn } = setupMocks({
+      subscription: { tier: "NO_TIER", tier_costs: { PRO: 5000, MAX: 32000 } },
+    });
+
+    render(<PaywallModal />);
+    fireEvent.click(screen.getByRole("button", { name: /start max/i }));
+
+    await waitFor(() => {
+      expect(mutateFn).toHaveBeenCalledTimes(1);
+    });
+    expect(eventsNamed("paywall_viewed")).toEqual([
+      ["paywall_viewed", { surface: "paywall_gate" }],
+    ]);
+    expect(eventsNamed("plan_selected")).toEqual([
+      [
+        "plan_selected",
+        {
+          subscription_tier: "MAX",
+          billing_cycle: "monthly",
+          surface: "paywall_gate",
+        },
+      ],
+    ]);
+    expect(eventsNamed("checkout_abandoned")).toEqual([]);
+  });
+
+  // Backing out of Stripe lands on the same page with the marker the cancel
+  // URL carried; it is reported once and removed so a refresh stays quiet.
+  it("reports the return from Stripe without paying and drops the marker", () => {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: {
+        origin: "https://app.test",
+        href: "https://app.test/copilot?paywall_checkout=cancelled",
+      },
+    });
+    const historySpy = vi
+      .spyOn(window.history, "replaceState")
+      .mockImplementation(() => {});
+    setupMocks({
+      subscription: { tier: "NO_TIER", tier_costs: { PRO: 5000 } },
+    });
+
+    try {
+      render(<PaywallModal />);
+
+      expect(eventsNamed("checkout_abandoned")).toEqual([
+        [
+          "checkout_abandoned",
+          { checkout_kind: "subscription", surface: "paywall_gate" },
+        ],
+      ]);
+      expect(historySpy).toHaveBeenCalledTimes(1);
+      // Null, not Next's own state: with it Next skips syncing its router URL
+      // and writes the marker back on its next update.
+      expect(historySpy.mock.calls[0][0]).toBeNull();
+      expect(historySpy.mock.calls[0][2]).toBe("/copilot");
+    } finally {
+      historySpy.mockRestore();
+    }
   });
 });

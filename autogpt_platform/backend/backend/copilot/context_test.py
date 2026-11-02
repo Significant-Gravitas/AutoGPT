@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import os
 import tempfile
 from unittest.mock import MagicMock
@@ -16,9 +17,15 @@ from backend.copilot.context import (
     get_execution_context,
     get_sdk_cwd,
     is_allowed_local_path,
+    is_sdk_tool_path,
+    is_unattended_turn,
+    looks_like_sdk_tool_result_path,
     resolve_sandbox_path,
+    sdk_tool_result_redirect_hint,
     set_execution_context,
+    set_turn_unattended,
 )
+from backend.copilot.model import ChatSessionMetadata
 from backend.copilot.permissions import CopilotPermissions
 
 
@@ -91,6 +98,23 @@ def test_get_sdk_cwd_returns_set_value():
 # ---------------------------------------------------------------------------
 # is_allowed_local_path
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "relative,expected",
+    [
+        ("test-encoded-dir/a1b2c3d4-e5f6-7890-abcd-ef1234567890/tool-results/o", True),
+        ("test-encoded-dir/a1b2c3d4-e5f6-7890-abcd-ef1234567890/tool-outputs/o", True),
+        ("other-session/a1b2c3d4-e5f6-7890-abcd-ef1234567890/tool-results/o", False),
+        ("test-encoded-dir/settings.json", False),
+    ],
+)
+def test_is_sdk_tool_path_only_allows_current_session_results(relative, expected):
+    token = _current_project_dir.set("test-encoded-dir")
+    try:
+        assert is_sdk_tool_path(os.path.join(SDK_PROJECTS_DIR, relative)) is expected
+    finally:
+        _current_project_dir.reset(token)
 
 
 def test_is_allowed_local_path_empty():
@@ -242,3 +266,176 @@ def test_resolve_sandbox_path_tmp_escape_raises():
 def test_resolve_sandbox_path_tmp_prefix_collision_raises():
     with pytest.raises(ValueError):
         resolve_sandbox_path("/tmp_evil/malicious.txt")
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("cat /root/.claude/projects/-tmp-abc/def/tool-results/toolu_01.json", True),
+        (
+            (
+                "cd /root/.claude/projects/-tmp-abc/def/tool-results/ && "
+                "python3 -c \"open('toolu_01.json')\""
+            ),
+            True,
+        ),
+        ("ls -t /root/.claude/projects/*/*/tool-results/", True),
+        ("ls ~/.claude/projects", True),
+        ("find .claude/projects -name '*.json'", True),
+        ("cat tool-outputs/toolu_x.json", True),
+        ("ls my-pipeline/tool-outputs/data.json", False),
+        ("ls $HOME/.claude/projects", True),
+        (f"ls {SDK_PROJECTS_DIR}/x", True),
+        ("ls /home/user/my-repo/.claude/projects", False),
+        ("cat my-repo/.claude/projects/notes.md", False),
+        ("ls /home/user/.claude/projects-backup/x", False),
+        ("cat /home/user/.claude/settings.json", False),
+        ("", False),
+    ],
+)
+def test_looks_like_sdk_tool_result_path(text, expected):
+    assert looks_like_sdk_tool_result_path(text) is expected
+
+
+class TestSdkToolResultRedirectHint:
+    """``sdk_tool_result_redirect_hint`` builds the "Offending fragment"
+    line from the path-shaped token in *path_or_command*, not from the
+    command's executable. Regression coverage for the case where
+    ``cat /…/tool-results/foo.json | jq`` previously echoed
+    ``Offending fragment: 'cat'`` — useless to the model."""
+
+    def test_absolute_sdk_path_in_bash_command(self):
+        cmd = (
+            "cat /root/.claude/projects/-tmp-abc/def/tool-results/"
+            "toolu_x.json | jq ."
+        )
+        msg = sdk_tool_result_redirect_hint(cmd)
+        assert (
+            "Offending fragment: '/root/.claude/projects/-tmp-abc/def/"
+            "tool-results/toolu_x.json'"
+        ) in msg
+        assert "'cat'" not in msg
+
+    def test_quoted_path_unwraps_quotes(self):
+        cmd = 'cat "/root/.claude/projects/-a/b/tool-results/x.json"'
+        msg = sdk_tool_result_redirect_hint(cmd)
+        assert (
+            "Offending fragment: '/root/.claude/projects/-a/b/tool-results/x.json'"
+            in msg
+        )
+
+    def test_cd_into_tool_results_dir(self):
+        cmd = (
+            "cd /root/.claude/projects/-tmp-abc/def/tool-results/ && "
+            "python3 -c \"open('toolu_01.json')\""
+        )
+        msg = sdk_tool_result_redirect_hint(cmd)
+        assert (
+            "Offending fragment: '/root/.claude/projects/-tmp-abc/def/tool-results/'"
+            in msg
+        )
+
+    def test_relative_shorthand(self):
+        msg = sdk_tool_result_redirect_hint("cat tool-outputs/toolu_x.json | head")
+        assert "Offending fragment: 'tool-outputs/toolu_x.json'" in msg
+
+    def test_bare_path_input(self):
+        # ``read_workspace_file`` passes a bare path, not a command.
+        msg = sdk_tool_result_redirect_hint("tool-outputs/toolu_y.json")
+        assert "Offending fragment: 'tool-outputs/toolu_y.json'" in msg
+
+    def test_empty_input_fragment(self):
+        # Defensive: never crash on an empty input; the message just
+        # echoes an empty fragment.
+        msg = sdk_tool_result_redirect_hint("")
+        assert "Offending fragment: ''" in msg
+
+
+class TestEnvelopeDoesNotEscapeItsTurn:
+    """The turn envelope must not outlive the turn that set it.
+
+    ``mark_session_completed`` → ``dispatch_next_for_user`` → ``dispatch_turn``
+    runs inside the driver stream's own ``finally``. If the finished turn's
+    envelope were still visible there, the user's *queued* message would be
+    promoted as a depth-1 child and silently lose the descent-denied tools.
+
+    What prevents it is that the driver is consumed inside
+    ``asyncio.create_task`` (``stream_heartbeat``), which copies the context so
+    a ``ContextVar.set`` inside the generator cannot propagate to the caller.
+    That is load-bearing and non-obvious — inline the wrapper and every queued
+    turn quietly becomes a narrowed child — so it is pinned here.
+    """
+
+    @staticmethod
+    async def _drive(gen) -> None:
+        async for _ in gen:
+            pass
+
+    @pytest.mark.asyncio
+    async def test_envelope_set_inside_a_task_driven_stream_does_not_leak(self):
+        import asyncio
+
+        from backend.copilot.context import get_current_envelope, set_execution_context
+        from backend.copilot.tree import root_envelope
+
+        async def driver():
+            set_execution_context(None, None, envelope=root_envelope("inner-turn"))
+            yield 1
+
+        assert get_current_envelope() is None
+        # The task boundary is what isolates it — same shape as stream_heartbeat.
+        await asyncio.create_task(self._drive(driver()))
+        assert get_current_envelope() is None, (
+            "the envelope escaped its turn; a queued user message would now be "
+            "promoted as a narrowed child"
+        )
+
+    @pytest.mark.asyncio
+    async def test_control_generator_driven_without_a_task_does_leak(self):
+        """The control that makes the test above meaningful: drive the same
+        generator with no task boundary and the envelope *does* escape."""
+        from backend.copilot.context import get_current_envelope, set_execution_context
+        from backend.copilot.tree import root_envelope
+
+        async def driver():
+            set_execution_context(None, None, envelope=root_envelope("leaked"))
+            yield 1
+
+        assert get_current_envelope() is None
+        try:
+            await self._drive(driver())
+            leaked = get_current_envelope()
+            assert leaked is not None and leaked.tree_id == "leaked"
+        finally:
+            # An assertion failure here must not cascade into the sibling
+            # test: this generator leaks the contextvar deliberately.
+            set_execution_context(None, None, envelope=None)
+
+
+# ---------------------------------------------------------------------------
+# Whether anyone is watching the turn (SECRT-2804)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "origin, scheduled, unattended",
+    [
+        ("automation", False, True),
+        ("interactive", True, True),
+        ("interactive", False, False),
+        (None, False, False),
+    ],
+    ids=["automation chat", "scheduled into a user chat", "user chat", "legacy chat"],
+)
+def test_set_turn_unattended(origin, scheduled, unattended):
+    session = MagicMock(metadata=ChatSessionMetadata(origin=origin))
+
+    def turn() -> bool:
+        set_turn_unattended(session, scheduled=scheduled)
+        return is_unattended_turn()
+
+    assert contextvars.copy_context().run(turn) is unattended
+
+
+def test_a_turn_is_watched_until_the_executor_says_otherwise():
+    assert contextvars.copy_context().run(is_unattended_turn) is False

@@ -1,0 +1,51 @@
+name: batch-command-listener
+
+# Turns `/batch`, `/batch-remove`, `/batch-merge` PR comments into repository_dispatch
+# events handled by batch-command-handler.yml. Deterministic ChatOps — no AI.
+#
+# Why a GitHub App token and not GITHUB_TOKEN:
+#   A repository_dispatch created with GITHUB_TOKEN does NOT trigger the handler
+#   workflow (GitHub suppresses workflow-triggered-by-GITHUB_TOKEN to avoid loops).
+#   The dispatch must be made by a real identity — here a GitHub App installation
+#   token minted per-run from BATCH_BOT_APP_ID + BATCH_BOT_PRIVATE_KEY.
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    # PR comments only, and only when the FIRST line starts with `/batch`
+    # (peter-evans/slash-command-dispatch additionally enforces first-line + a
+    # real repo-permission lookup — `author_association` is unreliable in orgs).
+    if: >-
+      github.event.issue.pull_request != null &&
+      startsWith(github.event.comment.body, '/batch')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        with:
+          app-id: ${{ vars.BATCH_BOT_APP_ID }}
+          private-key: ${{ secrets.BATCH_BOT_PRIVATE_KEY }}
+          # Only what slash-command-dispatch needs: create the repository_dispatch
+          # (contents) and react to the triggering comment (issues/pull-requests).
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Slash command dispatch
+        uses: peter-evans/slash-command-dispatch@0683e68ce8b375f2dc24214e065a3ae1ef93040e # v5
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          issue-type: pull-request
+          permission: write
+          commands: |
+            batch
+            batch-remove
+            batch-merge
+          # Pass the PR number explicitly so the handler never has to guess it.
+          static-args: |
+            pr=${{ github.event.issue.number }}

@@ -6,10 +6,44 @@ import threading
 import time
 from typing import TYPE_CHECKING, Any, cast
 
+from redis.exceptions import ClusterDownError
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
+
+from backend.util import tracing
+
 if TYPE_CHECKING:
     from backend.data.redis_client import AsyncRedisClient, RedisClient
 
 logger = logging.getLogger(__name__)
+
+# Transient redis errors retried internally by the client; if they still
+# surface here, retries are exhausted — log at warning to keep Sentry quiet
+# during rotation windows.
+_TRANSIENT_LOCK_ERRORS: tuple[type[BaseException], ...] = (
+    RedisConnectionError,
+    RedisTimeoutError,
+    ClusterDownError,
+)
+
+# redis-py's reconnect path dereferences `.host` / `.port` on a plain
+# ConnectionError, surfacing as AttributeError with one of these signatures.
+# Only suppress AttributeError when the message matches — a typo on a
+# ClusterLock attribute must still bubble up at ERROR.
+_REDIS_RECONNECT_ATTRS = ("'host'", "'port'", "'connection_pool'")
+
+
+def _is_transient_redis_error(exc: BaseException) -> bool:
+    """True iff ``exc`` is a transient redis-cluster error worth retrying
+    or downgrading to WARNING. Generic ``AttributeError`` is only accepted
+    when its message matches the redis-py reconnect signature."""
+    if isinstance(exc, _TRANSIENT_LOCK_ERRORS):
+        return True
+    if isinstance(exc, AttributeError):
+        msg = str(exc)
+        return any(attr in msg for attr in _REDIS_RECONNECT_ATTRS)
+    return False
+
 
 # CAS release: DEL only when the stored owner still matches — guards against
 # wiping a successor's lock after an external force-release.
@@ -62,10 +96,25 @@ class ClusterLock:
             return None
 
         except Exception as e:
-            logger.error(f"ClusterLock.try_acquire failed for key {self.key}: {e}")
+            if _is_transient_redis_error(e):
+                logger.warning(
+                    f"ClusterLock.try_acquire transient redis error for key "
+                    f"{self.key}: {type(e).__name__}: {e}"
+                )
+            else:
+                logger.error(f"ClusterLock.try_acquire failed for key {self.key}: {e}")
             return None
 
     def refresh(self) -> bool:
+        """Refresh lock TTL if we still own it; see ``_refresh``.
+
+        A keepalive repeated for as long as the lock is held, so its Redis
+        calls are kept out of the holder's Sentry transaction.
+        """
+        with tracing.suppress_child_spans():
+            return self._refresh()
+
+    def _refresh(self) -> bool:
         """Refresh lock TTL if we still own it.
 
         Rate limited to at most once every timeout/10 seconds (minimum 1 second).
@@ -119,7 +168,13 @@ class ClusterLock:
             return False
 
         except Exception as e:
-            logger.error(f"ClusterLock.refresh failed for key {self.key}: {e}")
+            if _is_transient_redis_error(e):
+                logger.warning(
+                    f"ClusterLock.refresh transient redis error for key "
+                    f"{self.key}: {type(e).__name__}: {e}"
+                )
+            else:
+                logger.error(f"ClusterLock.refresh failed for key {self.key}: {e}")
             with self._refresh_lock:
                 self._last_refresh = 0
             return False
@@ -129,12 +184,11 @@ class ClusterLock:
 
         Owner-checked: only deletes the Redis key if the stored value still
         matches our owner_id. Prevents wiping a successor's lock when the
-        original key was force-released externally and re-acquired.
+        original key was force-released externally and re-acquired. Runs even
+        after a failed refresh, which may have been a transient Redis error
+        while this holder still owned the key; skipping the delete would leave
+        the key held until its TTL.
         """
-        with self._refresh_lock:
-            if self._last_refresh == 0:
-                return
-
         try:
             self.redis.eval(_RELEASE_LUA, 1, self.key, self.owner_id)
         except Exception:
@@ -188,10 +242,27 @@ class AsyncClusterLock:
             return None
 
         except Exception as e:
-            logger.error(f"AsyncClusterLock.try_acquire failed for key {self.key}: {e}")
+            if _is_transient_redis_error(e):
+                logger.warning(
+                    f"AsyncClusterLock.try_acquire transient redis error for key "
+                    f"{self.key}: {type(e).__name__}: {e}"
+                )
+            else:
+                logger.error(
+                    f"AsyncClusterLock.try_acquire failed for key {self.key}: {e}"
+                )
             return None
 
     async def refresh(self) -> bool:
+        """Refresh lock TTL if we still own it; see ``_refresh``.
+
+        A keepalive repeated for as long as the lock is held, so its Redis
+        calls are kept out of the holder's Sentry transaction.
+        """
+        with tracing.suppress_child_spans():
+            return await self._refresh()
+
+    async def _refresh(self) -> bool:
         """Refresh lock TTL if we still own it.
 
         Rate limited to at most once every timeout/10 seconds (minimum 1 second).
@@ -245,22 +316,19 @@ class AsyncClusterLock:
             return False
 
         except Exception as e:
-            logger.error(f"AsyncClusterLock.refresh failed for key {self.key}: {e}")
+            if _is_transient_redis_error(e):
+                logger.warning(
+                    f"AsyncClusterLock.refresh transient redis error for key "
+                    f"{self.key}: {type(e).__name__}: {e}"
+                )
+            else:
+                logger.error(f"AsyncClusterLock.refresh failed for key {self.key}: {e}")
             async with self._refresh_lock:
                 self._last_refresh = 0
             return False
 
     async def release(self):
-        """Release the lock.
-
-        Owner-checked: only deletes the Redis key if the stored value still
-        matches our owner_id. Prevents wiping a successor's lock when the
-        original key was force-released externally and re-acquired.
-        """
-        async with self._refresh_lock:
-            if self._last_refresh == 0:
-                return
-
+        """Release the lock; see :meth:`ClusterLock.release`."""
         try:
             await cast(Any, self.redis.eval(_RELEASE_LUA, 1, self.key, self.owner_id))
         except Exception:

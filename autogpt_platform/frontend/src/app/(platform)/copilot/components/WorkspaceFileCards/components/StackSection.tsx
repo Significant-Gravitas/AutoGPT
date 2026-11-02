@@ -1,0 +1,57 @@
+"use client";
+
+import type { IconSvgElement } from "@hugeicons/react";
+import type { ReactNode } from "react";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
+
+interface Props {
+  title: string;
+  icon: IconSvgElement;
+  count?: number;
+  action?: ReactNode;
+  /** Drop the card so the content sits on the panel, like the Files page. */
+  plain?: boolean;
+  children: ReactNode;
+}
+
+/**
+ * A titled card in the chat's floating stack — label outside, content in the
+ * card, mirroring the home briefing tiles (``HomeTile``). Keeping the title
+ * out of the card is what separates one section from the next.
+ */
+export function StackSection({
+  title,
+  icon,
+  count,
+  action,
+  plain = false,
+  children,
+}: Props) {
+  return (
+    <section className="flex min-w-0 flex-col">
+      {/* px-3 matches the card's own padding, so the title starts exactly
+          where the row content inside does. */}
+      <div className="mb-1.5 flex items-center gap-1.5 px-3">
+        <Icon
+          icon={icon}
+          size={14}
+          className="text-foreground-tertiary"
+          aria-hidden
+        />
+        <Text tone="body" variant="small-medium">
+          {title}
+          {count === undefined ? "" : ` (${count})`}
+        </Text>
+        {action && <div className="ml-auto flex items-center">{action}</div>}
+      </div>
+      {plain ? (
+        <div className="px-3">{children}</div>
+      ) : (
+        <div className="rounded-lg bg-surface/90 px-3 py-1 smooth-shadow-ring-sm backdrop-blur">
+          {children}
+        </div>
+      )}
+    </section>
+  );
+}

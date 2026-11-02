@@ -16,7 +16,7 @@ When activated, the block:
    - Install dependencies (npm, pip, etc.)
    - Run terminal commands
    - Build and test applications
-5. Extracts all text files created/modified during execution
+5. Extracts all files created/modified during execution (text files and binary files like images, PDFs, etc.)
 6. Returns the response and files, optionally keeping the sandbox alive for follow-up tasks
 
 The block supports conversation continuation through three mechanisms:
@@ -28,7 +28,7 @@ The block supports conversation continuation through three mechanisms:
 | Input | Description |
 |-------|-------------|
 | E2B Credentials | API key for the E2B platform to create the sandbox. Get one at [e2b.dev](https://e2b.dev/docs) |
-| Anthropic Credentials | API key for Anthropic to power Claude Code. Get one at [Anthropic's website](https://console.anthropic.com) |
+| Anthropic Credentials | Your own API key for Anthropic to power Claude Code. Platform credits can't be used here. Get one at [Anthropic's website](https://console.anthropic.com) |
 | Prompt | The task or instruction for Claude Code to execute. Claude Code can create files, install packages, run commands, and perform complex coding tasks |
 | Timeout | Sandbox timeout in seconds (default: 300). Set higher for complex tasks. Note: Only applies when creating a new sandbox |
 | Setup Commands | Optional shell commands to run before executing Claude Code (e.g., installing dependencies) |
@@ -42,7 +42,7 @@ The block supports conversation continuation through three mechanisms:
 | Output | Description |
 |--------|-------------|
 | Response | The output/response from Claude Code execution |
-| Files | List of text files created/modified during execution. Each file includes path, relative_path, name, and content fields |
+| Files | List of files (text and binary) created/modified during execution. Includes images, PDFs, and other supported formats. Each file has path, relative_path, name, content, and workspace_ref fields. Binary files are stored in workspace and accessible via workspace_ref |
 | Conversation History | Full conversation history including this turn. Use to restore context on a fresh sandbox |
 | Session ID | Session ID for this conversation. Pass back with sandbox_id to continue the conversation |
 | Sandbox ID | ID of the sandbox instance (null if disposed). Pass back with session_id to continue the conversation |

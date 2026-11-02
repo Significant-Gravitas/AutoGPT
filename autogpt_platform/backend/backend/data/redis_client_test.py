@@ -3,13 +3,20 @@
 Patches the redis-py constructors + ``ping()`` so no real Redis is needed.
 """
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
+from redis.asyncio.retry import Retry as AsyncRetry
 from redis.cluster import RedisCluster
+from redis.exceptions import ClusterDownError
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
+from redis.retry import Retry
 
 import backend.data.redis_client as redis_client
+from backend.util.testing import is_tcp_port_reachable
 
 
 @pytest.fixture(autouse=True)
@@ -17,6 +24,8 @@ def _reset_module_caches() -> None:
     """Flush cached singletons between tests so each test sees a fresh connect."""
     redis_client.get_redis.cache_clear()
     redis_client._async_clients.clear()
+    redis_client._async_client_finalizers.clear()
+    redis_client._async_client_locks.clear()
 
 
 def test_connect_builds_redis_cluster() -> None:
@@ -42,6 +51,23 @@ def test_connect_builds_redis_cluster() -> None:
     client.ping.assert_called_once()
 
 
+def test_connect_configures_retry_on_transient_errors() -> None:
+    """Sync RedisCluster must carry a Retry that fires on transient errors,
+    so a shard rotation blip retries internally instead of surfacing as 500."""
+    with patch.object(redis_client, "RedisCluster", autospec=True) as mock_cluster:
+        mock_cluster.return_value = MagicMock(spec=RedisCluster)
+        redis_client.connect()
+
+    kwargs = mock_cluster.call_args.kwargs
+    retry = kwargs["retry"]
+    assert isinstance(retry, Retry)
+    assert retry.get_retries() == redis_client.REDIS_RETRY_ATTEMPTS
+    supported = set(retry._supported_errors)
+    assert RedisConnectionError in supported
+    assert RedisTimeoutError in supported
+    assert ClusterDownError in supported
+
+
 def test_address_remap_pins_host_and_preserves_port() -> None:
     """Default remap rewrites announced shard host to the configured seed."""
     with patch.object(redis_client, "USE_ANNOUNCED_ADDRESS", False):
@@ -55,6 +81,32 @@ def test_address_remap_passthrough_when_use_announced_address() -> None:
     """When announced addresses resolve directly, remap leaves them alone."""
     with patch.object(redis_client, "USE_ANNOUNCED_ADDRESS", True):
         assert redis_client._address_remap(("redis-1", 17001)) == ("redis-1", 17001)
+
+
+@pytest.mark.asyncio
+async def test_connect_async_configures_retry() -> None:
+    """Async RedisCluster must carry an ``AsyncRetry`` keyed on the same
+    transient errors as the sync path. ``retry_on_error`` is intentionally
+    omitted — redis-py 6.x ignores it for cluster operations (the cluster
+    retry path uses a hardcoded {Timeout, Connection, ClusterDown} set)."""
+    with patch.object(redis_client, "AsyncRedisCluster", autospec=True) as mock_cluster:
+        fake = MagicMock(spec=AsyncRedisCluster)
+        fake.ping = AsyncMock()
+        mock_cluster.return_value = fake
+        await redis_client.connect_async()
+
+    kwargs = mock_cluster.call_args.kwargs
+    retry = kwargs["retry"]
+    # redis-py's async cluster uses a separate AsyncRetry class — passing the
+    # sync `Retry` would type-fail at construction time.
+    assert isinstance(retry, AsyncRetry)
+    assert retry.get_retries() == redis_client.REDIS_RETRY_ATTEMPTS
+    supported = set(retry._supported_errors)
+    assert RedisConnectionError in supported
+    assert RedisTimeoutError in supported
+    assert ClusterDownError in supported
+    # No `retry_on_error` kwarg — it's ineffective on AsyncRedisCluster.
+    assert "retry_on_error" not in kwargs
 
 
 @pytest.mark.asyncio
@@ -103,6 +155,59 @@ async def test_get_redis_async_caches_connect() -> None:
     mock_conn.assert_called_once()
 
 
+@pytest.mark.asyncio
+async def test_get_redis_async_serializes_concurrent_connects() -> None:
+    connect_started = asyncio.Event()
+    allow_connect = asyncio.Event()
+    fake = MagicMock(spec=AsyncRedisCluster)
+    fake.close = AsyncMock()
+
+    async def delayed_connect() -> AsyncRedisCluster:
+        connect_started.set()
+        await allow_connect.wait()
+        return fake
+
+    with patch.object(
+        redis_client,
+        "connect_async",
+        new=AsyncMock(side_effect=delayed_connect),
+    ) as mock_connect:
+        first = asyncio.create_task(redis_client.get_redis_async())
+        second = asyncio.create_task(redis_client.get_redis_async())
+        await connect_started.wait()
+        await asyncio.sleep(0)
+
+        assert mock_connect.await_count == 1
+
+        allow_connect.set()
+        first_client, second_client = await asyncio.gather(first, second)
+        await redis_client.disconnect_async()
+
+    assert first_client is fake
+    assert second_client is fake
+    mock_connect.assert_awaited_once()
+    fake.close.assert_awaited_once()
+
+
+def test_get_redis_async_closes_client_when_owning_loop_shuts_down() -> None:
+    fake = MagicMock(spec=AsyncRedisCluster)
+    fake.close = AsyncMock()
+
+    with patch.object(redis_client, "connect_async", new=AsyncMock(return_value=fake)):
+        loop = asyncio.new_event_loop()
+        try:
+            client = loop.run_until_complete(redis_client.get_redis_async())
+            assert client is fake
+            assert redis_client._async_clients[loop] is fake
+        finally:
+            loop.run_until_complete(loop.shutdown_asyncgens())
+            loop.close()
+
+    fake.close.assert_awaited_once()
+    assert not redis_client._async_clients
+    assert not redis_client._async_client_finalizers
+
+
 def test_disconnect_closes_cached_client() -> None:
     with patch.object(redis_client, "connect", autospec=True) as mock_connect:
         fake = MagicMock(spec=RedisCluster)
@@ -123,7 +228,8 @@ async def test_disconnect_async_closes_cached_client() -> None:
         await redis_client.disconnect_async()
 
     fake.close.assert_awaited_once()
-    assert redis_client._async_clients == {}
+    assert not redis_client._async_clients
+    assert not redis_client._async_client_finalizers
 
 
 @pytest.mark.asyncio
@@ -138,15 +244,7 @@ async def test_disconnect_async_no_cached_client_is_noop() -> None:
 
 
 def _has_live_cluster() -> bool:
-    try:
-        c = redis_client.connect()
-    except Exception:  # noqa: BLE001 — any connect failure → skip the test
-        return False
-    try:
-        c.close()
-    except Exception:
-        pass
-    return True
+    return is_tcp_port_reachable(redis_client.HOST, redis_client.PORT)
 
 
 @pytest.mark.skipif(

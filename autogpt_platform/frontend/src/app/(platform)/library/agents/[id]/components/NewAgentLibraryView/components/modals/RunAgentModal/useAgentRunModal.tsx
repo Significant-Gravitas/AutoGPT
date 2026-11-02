@@ -12,7 +12,6 @@ import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentP
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { isEmpty } from "@/lib/utils";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
-import { analytics } from "@/services/analytics";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useCallback,
@@ -160,16 +159,12 @@ export function useAgentRunModal(
       onSuccess: (response) => {
         if (response.status === 200) {
           toast({
-            title: "Agent execution started",
+            title: "Workflow execution started",
           });
           queryClient.invalidateQueries({
             queryKey: getGetV1ListGraphExecutionsQueryKey(agent.graph_id),
           });
           callbacks?.onRun?.(response.data);
-          analytics.sendDatafastEvent("run_agent", {
-            name: agent.name,
-            id: agent.graph_id,
-          });
           setIsOpen(false);
         }
       },

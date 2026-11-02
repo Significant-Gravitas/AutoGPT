@@ -1,9 +1,12 @@
+import asyncio
 import logging
+import threading
 from typing import Any
 
 import jwt
-from fastapi import HTTPException, Security
+from fastapi import FastAPI, HTTPException, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jwt.algorithms import get_default_algorithms
 
 from .config import get_settings
 from .models import User
@@ -14,6 +17,23 @@ logger = logging.getLogger(__name__)
 bearer_jwt_auth = HTTPBearer(
     bearerFormat="jwt", scheme_name="HTTPBearerJWT", auto_error=False
 )
+
+# Refresh the cached JWK set hourly; key rotation keeps old keys in the set
+# during the grace period, so a stale cache only matters for brand-new keys
+# (handled below by PyJWKClient's kid-miss refetch).
+JWKS_CACHE_LIFESPAN_SECONDS = 3600
+
+# Upper bound on a single JWKS fetch. The JWKS endpoint is our own frontend, so
+# a slow response means it is redeploying or unhealthy — fail the request
+# quickly rather than tying up a worker for PyJWT's 30s default.
+JWKS_FETCH_TIMEOUT_SECONDS = 5
+
+# Cached client keyed on the JWKS URL: if the URL changes (config reload,
+# test override), the old client is discarded instead of silently serving
+# keys from the previous endpoint.
+_jwks_client: jwt.PyJWKClient | None = None
+_jwks_client_url: str | None = None
+_jwks_client_lock = threading.Lock()
 
 
 async def get_jwt_payload(
@@ -35,34 +55,118 @@ async def get_jwt_payload(
         raise HTTPException(status_code=401, detail="Authorization header is missing")
 
     try:
-        payload = parse_jwt_token(credentials.credentials)
+        payload = await parse_jwt_token_async(credentials.credentials)
         logger.debug("Token decoded successfully")
         return payload
     except ValueError as e:
-        raise HTTPException(status_code=401, detail=str(e))
+        raise HTTPException(status_code=401, detail=str(e)) from e
 
 
-def parse_jwt_token(token: str) -> dict[str, Any]:
+async def parse_jwt_token_async(
+    token: str, audience: str = "authenticated"
+) -> dict[str, Any]:
+    """Async wrapper around :func:`parse_jwt_token`.
+
+    On a JWKS cache miss the verification does a *synchronous* HTTP fetch
+    (PyJWKClient uses urllib). Awaiting that directly on the event loop stalls
+    every other request on the worker until it returns, not just this one — so
+    hand it to a thread. Cache hits are pure CPU and return immediately.
+    """
+    return await asyncio.to_thread(parse_jwt_token, token, audience)
+
+
+def parse_jwt_token(token: str, audience: str = "authenticated") -> dict[str, Any]:
     """
     Parse and validate a JWT token.
 
+    Tokens are verified against the JWK set published by the platform auth
+    service (`JWT_JWKS_URL`), which issues asymmetric (ES256) tokens only.
+    Symmetrically signed (HS*) tokens are rejected outright; the shared-secret
+    path that carried Supabase-issued sessions across the Better Auth cutover
+    is no longer needed now that those sessions have expired.
+
     :param token: The token to parse
+    :param audience: The `aud` claim the token must carry. Defaults to the
+        user-token audience; service tokens use a distinct audience so the
+        two planes can't be replayed against each other.
     :return: The decoded payload
     :raises ValueError: If the token is invalid or expired
     """
     settings = get_settings()
     try:
+        header = jwt.get_unverified_header(token)
+    except jwt.InvalidTokenError as e:
+        raise ValueError(f"Invalid token: {str(e)}") from e
+
+    # Validate the algorithm before touching the JWK set: a non-string or
+    # unsupported `alg` must fail as a 401, not surface as a server error or
+    # trigger a JWKS fetch for a token that can never verify.
+    algorithm = header.get("alg")
+    if not isinstance(algorithm, str):
+        raise ValueError("Invalid token: signing algorithm is not accepted")
+    if algorithm.startswith("HS"):
+        raise ValueError("Invalid token: symmetric tokens are not accepted")
+    if algorithm not in settings.JWT_JWKS_ALGORITHMS:
+        raise ValueError("Invalid token: signing algorithm is not accepted")
+
+    try:
+        signing_key = _get_jwks_client().get_signing_key_from_jwt(token)
+    # Covers PyJWKClientError and the lookup's DecodeError on a non-object payload.
+    except jwt.PyJWTError as e:
+        raise ValueError(f"Invalid token: {str(e)}") from e
+
+    # Checked before decoding: PyJWT's key loader raises TypeError, not a token
+    # error, for a key of another type.
+    if not _algorithm_fits_key(algorithm, signing_key):
+        raise ValueError("Invalid token: signing algorithm does not match its key")
+
+    try:
         payload = jwt.decode(
             token,
-            settings.JWT_VERIFY_KEY,
-            algorithms=[settings.JWT_ALGORITHM],
-            audience="authenticated",
+            signing_key.key,
+            algorithms=[algorithm],
+            audience=audience,
         )
         return payload
-    except jwt.ExpiredSignatureError:
-        raise ValueError("Token has expired")
-    except jwt.InvalidTokenError as e:
-        raise ValueError(f"Invalid token: {str(e)}")
+    except jwt.ExpiredSignatureError as e:
+        raise ValueError("Token has expired") from e
+    except jwt.PyJWTError as e:
+        raise ValueError(f"Invalid token: {str(e)}") from e
+
+
+def _get_jwks_client() -> jwt.PyJWKClient:
+    global _jwks_client, _jwks_client_url
+
+    url = get_settings().JWT_JWKS_URL
+    if _jwks_client is not None and _jwks_client_url == url:
+        return _jwks_client
+
+    with _jwks_client_lock:
+        if _jwks_client is None or _jwks_client_url != url:
+            _jwks_client = jwt.PyJWKClient(
+                url,
+                cache_keys=True,
+                lifespan=JWKS_CACHE_LIFESPAN_SECONDS,
+                # PyJWT defaults to 30s. The fetch is synchronous, so on a
+                # cache miss that is 30s of a worker doing nothing — bound it
+                # to something closer to "the frontend is briefly redeploying".
+                timeout=JWKS_FETCH_TIMEOUT_SECONDS,
+            )
+            _jwks_client_url = url
+    return _jwks_client
+
+
+def _algorithm_fits_key(algorithm: str, signing_key: jwt.PyJWK) -> bool:
+    """A JWK that declares `alg` serves that algorithm only; one without serves
+    any algorithm for its key type."""
+    # PyJWK reports an inferred alg as algorithm_name too; only the JWK says which.
+    if signing_key._jwk_data.get("alg"):
+        return algorithm == signing_key.algorithm_name
+    try:
+        get_default_algorithms()[algorithm].check_crypto_key_type(signing_key.key)
+    except jwt.InvalidKeyError:
+        return False
+    return True
 
 
 def verify_user(jwt_payload: dict | None, admin_only: bool) -> User:
@@ -74,7 +178,16 @@ def verify_user(jwt_payload: dict | None, admin_only: bool) -> User:
     if not user_id:
         raise HTTPException(status_code=401, detail="User ID not found in token")
 
-    if admin_only and jwt_payload["role"] != "admin":
+    if admin_only and jwt_payload.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
 
     return User.from_payload(jwt_payload)
+
+
+def add_auth_responses_to_openapi(app: FastAPI) -> None:
+    """
+    Add 401 responses to all endpoints that use the bearer JWT authentication scheme.
+    """
+    from .helpers import add_auth_responses_to_openapi
+
+    add_auth_responses_to_openapi(app, [bearer_jwt_auth.scheme_name])

@@ -1,10 +1,11 @@
-import { Card, CardContent, CardFooter } from "@/components/__legacy__/ui/card";
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { FormProvider } from "react-hook-form";
+import { Card, CardContent, CardFooter } from "@/components/atoms/Card/Card";
+import { FormField } from "@/components/molecules/Form/Form";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/__legacy__/ui/popover";
+} from "@/components/molecules/Popover/Popover";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import {
@@ -12,10 +13,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { FloppyDiskIcon } from "@phosphor-icons/react";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
 import { ControlPanelButton } from "../ControlPanelButton";
 import { useNewSaveControl } from "./useNewSaveControl";
+import { FloppyDiskIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export const NewSaveControl = () => {
   const { form, isSaving, graphVersion, handleSave } = useNewSaveControl();
@@ -40,7 +42,7 @@ export const NewSaveControl = () => {
               selected={saveControlOpen}
               className="rounded-none"
             >
-              <FloppyDiskIcon className="size-5" />
+              <Icon icon={FloppyDiskIcon} className="size-5" />
             </ControlPanelButton>
           </PopoverTrigger>
         </TooltipTrigger>
@@ -51,10 +53,10 @@ export const NewSaveControl = () => {
         sideOffset={15}
         align="start"
         data-id="save-control-popover-content"
-        className="w-96 max-w-[400px] rounded-xlarge"
+        className="w-96 max-w-[400px] rounded-xlarge border-border-base text-foreground-base"
       >
-        <Card className="border-none dark:bg-slate-900">
-          <Form {...form}>
+        <Card variant="outlined" className="border-none">
+          <FormProvider {...form}>
             <form onSubmit={form.handleSubmit(handleSave)}>
               <CardContent className="p-0">
                 <div className="space-y-3">
@@ -66,7 +68,7 @@ export const NewSaveControl = () => {
                         id="name"
                         label="Name"
                         size="small"
-                        placeholder="Enter your agent name"
+                        placeholder="Enter your workflow name"
                         data-id="save-control-name-input"
                         data-testid="save-control-name-input"
                         maxLength={100}
@@ -84,7 +86,7 @@ export const NewSaveControl = () => {
                         id="description"
                         size="small"
                         label="Description"
-                        placeholder="Your agent description"
+                        placeholder="Your workflow description"
                         data-id="save-control-description-input"
                         data-testid="save-control-description-input"
                         maxLength={500}
@@ -115,17 +117,17 @@ export const NewSaveControl = () => {
                   variant="primary"
                   type="submit"
                   size="small"
-                  className="w-full dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-800"
+                  className="w-full"
                   data-id="save-control-save-agent"
                   data-testid="save-control-save-agent-button"
                   disabled={isSaving}
                   loading={isSaving}
                 >
-                  Save Agent
+                  Save Workflow
                 </Button>
               </CardFooter>
             </form>
-          </Form>
+          </FormProvider>
         </Card>
       </PopoverContent>
     </Popover>

@@ -8,6 +8,7 @@ import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/
 import type { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
 
 import {
   EASE_OUT,
@@ -22,7 +23,7 @@ import { SortColumnFilter } from "./columns/SortColumnFilter";
 import { StatusColumnFilter } from "./columns/StatusColumnFilter";
 
 interface EditPayload extends StoreSubmissionEditRequest {
-  store_listing_version_id: string | undefined;
+  store_listing_version_id: string;
   graph_id: string;
 }
 
@@ -35,9 +36,13 @@ interface Props {
   filterState: FilterState;
   onFilterChange: (next: FilterState) => void;
   onResetFilters: () => void;
+  searchInput: string;
+  onSearchChange: (next: string) => void;
+  debouncedSearch: string;
   onView: (submission: StoreSubmission) => void;
   onEdit: (payload: EditPayload) => void;
   onDelete: (submissionId: string) => Promise<void>;
+  creatorUsername?: string;
   index?: number;
 }
 
@@ -52,9 +57,13 @@ export function SubmissionsList({
   filterState,
   onFilterChange,
   onResetFilters,
+  searchInput,
+  onSearchChange,
+  debouncedSearch,
   onView,
   onEdit,
   onDelete,
+  creatorUsername,
   index = 0,
 }: Props) {
   const reduceMotion = useReducedMotion();
@@ -79,21 +88,35 @@ export function SubmissionsList({
       className="flex w-full flex-col gap-3"
       data-testid="submissions-list"
     >
-      <div className="flex items-center justify-between pl-4 pr-1">
-        <Text variant="body-medium" as="span" className="text-textBlack">
-          Submissions
-        </Text>
-        <Text variant="small" className="text-zinc-500">
+      <div className="flex items-center justify-between pr-1 pl-4">
+        <div className="flex items-center gap-2">
+          <Text variant="body-medium" as="span">
+            Submissions
+          </Text>
+        </div>
+        <Text variant="small" tone="muted">
           {submissions.length} of {totalCount}
         </Text>
       </div>
 
-      <div className="overflow-hidden rounded-[18px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+      <div className="pr-1 sm:max-w-md">
+        <SearchInput
+          value={searchInput}
+          onChange={onSearchChange}
+          placeholder="Search by workflow or listing name"
+          aria-label="Search submissions"
+          maxLength={100}
+          loading={isFetching}
+          size="medium"
+        />
+      </div>
+
+      <div className="overflow-hidden rounded-large border border-border-base bg-surface shadow-message-table">
         <div>
           <table className="w-full border-collapse text-left">
             <thead>
-              <tr className="border-b border-zinc-100 bg-zinc-50/60">
-                <ColumnHeader label="Agent" />
+              <tr className="border-b border-separator bg-surface-muted/60">
+                <ColumnHeader label="Workflow" />
                 <ColumnHeader
                   label="Status"
                   width="140px"
@@ -150,22 +173,35 @@ export function SubmissionsList({
                     onView={onView}
                     onEdit={onEdit}
                     onDelete={onDelete}
+                    creatorUsername={creatorUsername}
                   />
                 ))
               ) : (
                 <tr>
                   <td colSpan={COLUMN_COUNT} className="px-4 py-12">
                     <div className="flex flex-col items-center justify-center gap-3 text-center">
-                      <Text variant="body-medium" className="text-textBlack">
-                        No submissions match these filters
+                      <Text variant="body-medium">
+                        {debouncedSearch
+                          ? `No submissions match "${debouncedSearch}"`
+                          : "No submissions match these filters"}
                       </Text>
-                      <Button
-                        variant="secondary"
-                        size="small"
-                        onClick={onResetFilters}
-                      >
-                        Clear filters
-                      </Button>
+                      {debouncedSearch ? (
+                        <Button
+                          variant="secondary"
+                          size="small"
+                          onClick={() => onSearchChange("")}
+                        >
+                          Clear search
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="secondary"
+                          size="small"
+                          onClick={onResetFilters}
+                        >
+                          Clear filters
+                        </Button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -174,7 +210,7 @@ export function SubmissionsList({
           </table>
         </div>
         {pagination && onPageChange ? (
-          <div className="border-t border-zinc-100">
+          <div className="border-t border-separator">
             <Pagination
               pagination={pagination}
               onPageChange={onPageChange}

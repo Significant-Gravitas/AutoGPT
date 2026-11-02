@@ -8,12 +8,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   NotificationState,
   categorizeExecutions,
+  enrichExecutionWithAgentInfo,
   handleExecutionUpdate,
 } from "./helpers";
 
 export function useAgentActivityDropdown() {
   const [isOpen, setIsOpen] = useState(false);
-  const { agentInfoMap } = useLibraryAgents();
+  const {
+    agentInfoMap,
+    isError: libraryError,
+    isFetching: isFetchingLibrary,
+    retry: retryLibrary,
+  } = useLibraryAgents();
 
   const [notifications, setNotifications] = useState<NotificationState>({
     activeExecutions: [],
@@ -46,23 +52,15 @@ export function useAgentActivityDropdown() {
     [agentInfoMap],
   );
 
-  // Process initial execution state when data loads
-  // Use a ref to track if we've already processed to avoid infinite loops
-  const processedExecutionsRef = useRef<string | null>(null);
+  const processedExecutionsRef = useRef<typeof executions>(undefined);
   useEffect(() => {
-    const executionKey = executions
-      ? `${executions.length}-${executionsSuccess}`
-      : null;
-
     if (
       executions &&
       executionsSuccess &&
-      agentInfoMap.size > 0 &&
-      processedExecutionsRef.current !== executionKey
+      processedExecutionsRef.current !== executions
     ) {
-      const notifications = categorizeExecutions(executions, agentInfoMap);
-      setNotifications(notifications);
-      processedExecutionsRef.current = executionKey;
+      setNotifications(categorizeExecutions(executions, agentInfoMap));
+      processedExecutionsRef.current = executions;
     }
   }, [executions, executionsSuccess, agentInfoMap]);
 
@@ -75,6 +73,17 @@ export function useAgentActivityDropdown() {
 
   return {
     ...notifications,
+    activeExecutions: notifications.activeExecutions.map((execution) =>
+      enrichExecutionWithAgentInfo(execution, agentInfoMap),
+    ),
+    recentCompletions: notifications.recentCompletions.map((execution) =>
+      enrichExecutionWithAgentInfo(execution, agentInfoMap),
+    ),
+    recentFailures: notifications.recentFailures.map((execution) =>
+      enrichExecutionWithAgentInfo(execution, agentInfoMap),
+    ),
+    libraryError: libraryError && !isFetchingLibrary,
+    retryLibrary,
     isReady: executionsSuccess,
     error: executionsError,
     isOpen,

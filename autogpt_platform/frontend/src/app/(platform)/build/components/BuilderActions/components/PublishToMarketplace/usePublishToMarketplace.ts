@@ -17,24 +17,27 @@ const defaultPublishState: PublishState = {
 
 interface UsePublishToMarketplaceProps {
   flowID: string | null;
+  flowVersion: number | null;
 }
 
 export function usePublishToMarketplace({
   flowID,
+  flowVersion,
 }: UsePublishToMarketplaceProps) {
   const [publishState, setPublishState] =
     useState<PublishState>(defaultPublishState);
 
-  const handlePublishToMarketplace = () => {
-    if (!flowID) return;
+  function handlePublishToMarketplace() {
+    if (!flowID || flowVersion === null) return;
 
-    // Open the publish modal starting with the select step
+    // Builder already knows the agent — skip the picker and jump straight
+    // to the listing form pre-scoped to the current graph/version.
     setPublishState({
       isOpen: true,
-      step: "select",
+      step: "info",
       submissionData: null,
     });
-  };
+  }
 
   const handleStateChange = useCallback((newState: PublishState) => {
     setPublishState(newState);

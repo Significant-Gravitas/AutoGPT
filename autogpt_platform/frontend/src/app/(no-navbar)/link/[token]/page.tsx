@@ -1,5 +1,6 @@
 "use client";
 
+import { CookieSettingsLink } from "@/components/molecules/CookieSettingsLink/CookieSettingsLink";
 import { ErrorView } from "./components/ErrorView";
 import { LoadingView } from "./components/LoadingView";
 import { NotAuthenticatedView } from "./components/NotAuthenticatedView";
@@ -26,6 +27,7 @@ export default function PlatformLinkPage() {
           linkType={page.viewData.linkType}
           platform={page.viewData.platform}
           serverName={page.viewData.serverName}
+          serverNoun={page.viewData.serverNoun}
           userEmail={page.userEmail}
           isLinking={false}
           onLink={page.handleLink}
@@ -38,6 +40,7 @@ export default function PlatformLinkPage() {
           linkType={page.viewData.linkType}
           platform={page.viewData.platform}
           serverName={page.viewData.serverName}
+          serverNoun={page.viewData.serverNoun}
           userEmail={page.userEmail}
           isLinking
           onLink={page.handleLink}
@@ -50,6 +53,8 @@ export default function PlatformLinkPage() {
           linkType={page.successData.linkType}
           platform={page.successData.platform}
           serverName={page.successData.serverName}
+          serverNoun={page.successData.serverNoun}
+          returnUrl={page.successData.returnUrl}
         />
       )}
 
@@ -58,6 +63,7 @@ export default function PlatformLinkPage() {
       <div className="mt-8 text-center text-xs text-muted-foreground">
         <p>Powered by AutoGPT Platform</p>
       </div>
+      <CookieSettingsLink className="mt-2" />
     </div>
   );
 }

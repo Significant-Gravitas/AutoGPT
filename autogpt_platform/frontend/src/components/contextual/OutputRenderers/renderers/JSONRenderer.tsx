@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useState } from "react";
-import { CaretDown, CaretRight } from "@phosphor-icons/react";
 import {
   OutputRenderer,
   OutputMetadata,
   DownloadContent,
   CopyContent,
 } from "../types";
+import { ArrowDown01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 function canRenderJSON(value: unknown, _metadata?: OutputMetadata): boolean {
   if (_metadata?.type === "json") {
@@ -108,14 +109,15 @@ function JSONViewer({ data }: { data: any }) {
       return <span className="text-muted-foreground">undefined</span>;
 
     if (typeof value === "boolean") {
-      return <span className="text-blue-600">{value.toString()}</span>;
+      return <span className="text-info-foreground">{value.toString()}</span>;
     }
 
     if (typeof value === "number") {
-      return <span className="text-green-600">{value}</span>;
+      return <span className="text-success">{value}</span>;
     }
 
     if (typeof value === "string") {
+      // oxlint-disable-next-line design-system/no-raw-colors -- JSON string syntax colour; warning-foreground would be a hue change (deferred visual change)
       return <span className="text-orange-600">&quot;{value}&quot;</span>;
     }
 
@@ -134,16 +136,16 @@ function JSONViewer({ data }: { data: any }) {
             className="inline-flex items-center rounded px-1 hover:bg-muted"
           >
             {isCollapsed ? (
-              <CaretRight className="size-3" />
+              <Icon icon={ArrowRight01Icon} className="size-3" />
             ) : (
-              <CaretDown className="size-3" />
+              <Icon icon={ArrowDown01Icon} className="size-3" />
             )}
             <span className="ml-1 text-muted-foreground">
               Array({itemCount})
             </span>
           </button>
           {!isCollapsed && (
-            <div className="ml-4 mt-1">
+            <div className="mt-1 ml-4">
               {value.map((item, index) => (
                 <div key={index} className="flex">
                   <span className="mr-2 text-muted-foreground">{index}:</span>
@@ -171,17 +173,17 @@ function JSONViewer({ data }: { data: any }) {
             className="inline-flex items-center rounded px-1 hover:bg-muted"
           >
             {isCollapsed ? (
-              <CaretRight className="size-3" />
+              <Icon icon={ArrowRight01Icon} className="size-3" />
             ) : (
-              <CaretDown className="size-3" />
+              <Icon icon={ArrowDown01Icon} className="size-3" />
             )}
             <span className="ml-1 text-muted-foreground">Object</span>
           </button>
           {!isCollapsed && (
-            <div className="ml-4 mt-1">
+            <div className="mt-1 ml-4">
               {keys.map((objKey) => (
                 <div key={objKey} className="flex">
-                  <span className="mr-2 text-purple-600">
+                  <span className="mr-2 text-brand-hover">
                     &quot;{objKey}&quot;:
                   </span>
                   {renderValue(value[objKey], `${key}.${objKey}`)}

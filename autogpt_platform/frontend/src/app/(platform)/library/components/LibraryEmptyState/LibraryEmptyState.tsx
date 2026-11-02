@@ -2,8 +2,9 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { PlusIcon, StorefrontIcon } from "@phosphor-icons/react";
 import { motion, useReducedMotion } from "framer-motion";
+import { PlusSignIcon, Store01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const EASE_OUT_QUINT = [0.22, 1, 0.36, 1] as const;
 
@@ -33,14 +34,14 @@ export function LibraryEmptyState() {
 
       <div className="flex max-w-md flex-col items-center gap-2">
         <motion.div {...fadeUp(0.28)}>
-          <Text variant="h3" className="text-zinc-900">
+          <Text variant="h3" tone="primary">
             Your library is empty
           </Text>
         </motion.div>
         <motion.div {...fadeUp(0.36)}>
-          <Text variant="body" className="text-zinc-500">
-            Build your own agent from scratch, or grab one from the marketplace
-            to get started.
+          <Text variant="body" tone="muted">
+            Build your own workflow from scratch, or grab one from the
+            marketplace to get started.
           </Text>
         </motion.div>
       </div>
@@ -52,9 +53,9 @@ export function LibraryEmptyState() {
             href="/build"
             variant="primary"
             size="large"
-            leftIcon={<PlusIcon className="h-4 w-4" weight="bold" />}
+            leftIcon={<Icon icon={PlusSignIcon} className="h-4 w-4" />}
           >
-            Build an agent
+            Build a workflow
           </Button>
         </motion.div>
         <motion.div {...fadeUp(0.5)}>
@@ -63,7 +64,7 @@ export function LibraryEmptyState() {
             href="/marketplace"
             variant="secondary"
             size="large"
-            leftIcon={<StorefrontIcon className="h-4 w-4" weight="bold" />}
+            leftIcon={<Icon icon={Store01Icon} className="h-4 w-4" />}
           >
             Browse marketplace
           </Button>
@@ -110,6 +111,7 @@ function StackedCardsIllustration() {
             ease: EASE_OUT_QUINT,
             delay: shouldReduceMotion ? 0 : i * 0.08,
           }}
+          // oxlint-disable-next-line design-system/no-inline-styles -- framer-motion reads an SVG transform origin from style
           style={{ transformOrigin: "240px 96px", transformBox: "fill-box" }}
         >
           <Card x={card.x} y={card.y} width={card.width} />
@@ -140,15 +142,14 @@ function Card({ x, y, width }: CardProps) {
         height={height}
         rx={radius}
         ry={radius}
-        fill="white"
-        stroke="#E4E4E7"
+        className="fill-card stroke-border"
         strokeWidth={1}
       />
       <circle
         cx={x + padding + dotRadius}
         cy={y + height / 2}
         r={dotRadius}
-        fill="#E4E4E7"
+        className="fill-border"
       />
       <rect
         x={x + padding + dotRadius * 2 + 12}
@@ -157,7 +158,7 @@ function Card({ x, y, width }: CardProps) {
         height={12}
         rx={6}
         ry={6}
-        fill="#E4E4E7"
+        className="fill-border"
       />
       <rect
         x={x + width - padding - 80}
@@ -166,7 +167,7 @@ function Card({ x, y, width }: CardProps) {
         height={12}
         rx={3}
         ry={3}
-        fill="#E4E4E7"
+        className="fill-border"
       />
       <rect
         x={x + width - padding - 60}
@@ -175,7 +176,7 @@ function Card({ x, y, width }: CardProps) {
         height={12}
         rx={3}
         ry={3}
-        fill="#E4E4E7"
+        className="fill-border"
       />
       <rect
         x={x + width - padding - 40}
@@ -184,7 +185,7 @@ function Card({ x, y, width }: CardProps) {
         height={12}
         rx={6}
         ry={6}
-        fill="#E4E4E7"
+        className="fill-border"
       />
     </g>
   );

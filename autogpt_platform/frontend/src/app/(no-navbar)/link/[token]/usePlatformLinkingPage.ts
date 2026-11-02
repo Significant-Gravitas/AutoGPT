@@ -6,11 +6,13 @@ import {
 import { ConfirmLinkResponse } from "@/app/api/__generated__/models/confirmLinkResponse";
 import { ConfirmUserLinkResponse } from "@/app/api/__generated__/models/confirmUserLinkResponse";
 import { LinkType } from "@/app/api/__generated__/models/linkType";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useToast } from "@/components/molecules/Toast/use-toast";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useParams, useSearchParams } from "next/navigation";
 import {
   getLoginRedirect,
   getPlatformDisplayName,
+  getTelegramAuth,
   isUserLink,
   TOKEN_PATTERN,
 } from "./helpers";
@@ -27,6 +29,7 @@ interface ViewData {
   linkType: LinkType;
   platform: string;
   serverName: string | null;
+  serverNoun: string;
 }
 
 export function usePlatformLinkingPage() {
@@ -35,7 +38,8 @@ export function usePlatformLinkingPage() {
   const rawToken = (params.token as string | undefined) ?? "";
   const token = TOKEN_PATTERN.test(rawToken) ? rawToken : null;
   const platformFromUrl = getPlatformDisplayName(searchParams.get("platform"));
-  const { user, isUserLoading, logOut } = useSupabase();
+  const { user, isUserLoading, logOut } = useAuth();
+  const { toast } = useToast();
 
   const {
     data: info,
@@ -74,11 +78,27 @@ export function usePlatformLinkingPage() {
 
   function handleLink() {
     if (!token || !info) return;
-    mutation.mutate({ token });
+    // A login_url button tap appends a Telegram-signed identity to this
+    // page's URL; forwarding it lets the backend verify WHO opened the link.
+    mutation.mutate({
+      token,
+      data: { telegram_auth: getTelegramAuth(searchParams) },
+    });
   }
 
   async function handleSwitchAccount() {
-    await logOut();
+    try {
+      await logOut();
+    } catch {
+      // The sign-out never reached the server: this account is still
+      // signed in, so don't send the user on as if it weren't.
+      toast({
+        title: "Couldn't sign you out",
+        description: "Check your connection and try again.",
+        variant: "destructive",
+      });
+      return;
+    }
     window.location.href = getLoginRedirect(token);
   }
 
@@ -91,6 +111,7 @@ export function usePlatformLinkingPage() {
     successData: buildSuccessData({
       confirmResponse,
       fallbackPlatform: platformFromUrl,
+      serverNoun: info?.server_noun ?? "server",
     }),
     errorMessage: buildErrorMessage({
       hasToken: Boolean(token),
@@ -125,7 +146,12 @@ function resolveStatus(args: {
 
 function buildViewData(args: {
   info:
-    | { link_type: LinkType; platform: string; server_name?: string | null }
+    | {
+        link_type: LinkType;
+        platform: string;
+        server_name?: string | null;
+        server_noun?: string;
+      }
     | undefined;
   platformFromUrl: string;
 }): ViewData | null {
@@ -135,13 +161,15 @@ function buildViewData(args: {
     platform:
       getPlatformDisplayName(args.info.platform) || args.platformFromUrl,
     serverName: args.info.server_name ?? null,
+    serverNoun: args.info.server_noun ?? "server",
   };
 }
 
 function buildSuccessData(args: {
   confirmResponse: ConfirmLinkResponse | ConfirmUserLinkResponse | undefined;
   fallbackPlatform: string;
-}): (ViewData & { platform: string }) | null {
+  serverNoun: string;
+}): (ViewData & { platform: string; returnUrl: string | null }) | null {
   if (!args.confirmResponse) return null;
   const serverName =
     "server_name" in args.confirmResponse
@@ -153,6 +181,9 @@ function buildSuccessData(args: {
       getPlatformDisplayName(args.confirmResponse.platform) ||
       args.fallbackPlatform,
     serverName,
+    // From the token info — the confirm response carries no noun.
+    serverNoun: args.serverNoun,
+    returnUrl: args.confirmResponse.return_url ?? null,
   };
 }
 

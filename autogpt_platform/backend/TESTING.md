@@ -39,6 +39,20 @@ poetry run pytest -v
 poetry run pytest --cov=backend
 ```
 
+The local test stack uses the same PostgreSQL 15 + pgvector image as CI. Its
+`test-db-data` volume is separate from the development database.
+
+Tests that need backend services must request the `server` fixture, directly or
+through a setup fixture. It starts the services once per session and cleans up
+graphs and store listings before stopping them. Pure unit tests do not start
+these service processes.
+
+For local runs on platforms with `forkserver`, the service processes share
+preloaded code and models instead of importing separate copies. CI retains its
+existing process startup. The preload must stay free of
+background threads and open database connections; `scripts/test_server_fixture.py`
+checks this contract.
+
 ## Snapshot Testing
 
 Snapshot testing captures the output of your code and compares it against previously saved snapshots. This is particularly useful for testing API responses.
@@ -273,6 +287,47 @@ Snapshot tests work in CI by:
 1. Committing snapshot files to the repository
 2. CI compares against committed snapshots
 3. Fails if snapshots don't match
+
+### Running backend CI on demand
+
+The backend CI workflow (`.github/workflows/platform-backend-ci.yml`) also supports a
+manual `workflow_dispatch` trigger, so you can run the full lint / type-check / test +
+coverage suite against any branch without pushing a new commit:
+
+```bash
+gh workflow run platform-backend-ci.yml --ref <branch>
+```
+
+This runs the same `test` job as the automatic triggers, including the coverage upload
+to Codecov for that branch's HEAD commit.
+
+When it's useful:
+- The automatic `push` / `pull_request` runs are **path-filtered** (they only fire when
+  the change touches `autogpt_platform/backend/**`, `autogpt_platform/autogpt_libs/**`,
+  the workflow file, or the lockfile script). A branch that changes only frontend/docs
+  never triggers backend CI — a manual run lets you exercise the backend suite anyway.
+- It produces a **fresh backend coverage upload** for a branch that didn't otherwise run
+  backend CI (for example, to refresh coverage on a long-lived branch).
+
+#### Refreshing an open PR's coverage status
+
+If the branch has an open PR, pass `pr_number` so the upload is attached to that PR and
+Codecov re-evaluates its `codecov/project/platform-backend` status against the PR base:
+
+```bash
+gh workflow run platform-backend-ci.yml --ref <pr-head-branch> -f pr_number=<PR#>
+```
+
+This is handy when a PR's `codecov/project/platform-backend` check is red only because
+the branch never ran backend CI (so Codecov is comparing stale carried-forward coverage);
+a dispatch with `pr_number` produces a current upload for the PR head and refreshes the
+check. Internally this sets the Codecov action's `override_pr`; for all automatic events
+it is left empty, so normal PR/commit detection is unchanged.
+
+> Note: `workflow_dispatch` is only available once the trigger exists on the repository's
+> **default branch** (`master`); dispatching another branch with `--ref` still requires
+> that. The `pr_number` / `override_pr` refresh path therefore can't be exercised until
+> this change reaches `master` — validate it with one real dispatch then.
 
 ## Troubleshooting
 

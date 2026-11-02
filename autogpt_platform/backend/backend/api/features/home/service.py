@@ -1,0 +1,336 @@
+import asyncio
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import Any
+from zoneinfo import ZoneInfo
+
+from autogpt_libs.auth.models import RequestContext
+from autogpt_libs.auth.permissions import OrgAction, check_org_permission
+from pydantic import BaseModel, ValidationError
+
+from backend.api.features.experts import experts_db
+from backend.api.features.experts.models import Expert
+from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
+from backend.api.features.library import db as library_db
+from backend.copilot import db as chat_db
+from backend.copilot.briefing.models import BriefingContent
+from backend.copilot.model import ChatSessionInfo
+from backend.copilot.scheduled_chats import service as scheduled_chats
+from backend.copilot.scheduled_chats.service import PausedScheduledChat
+from backend.data import activity_event as activity_db
+from backend.data import briefing as briefing_db
+from backend.data import execution as execution_db
+from backend.data import human_review as review_db
+from backend.data import user as user_db
+from backend.data import workspace as workspace_db
+from backend.data.credit import get_credit_model
+from backend.data.execution import GraphExecutionMeta
+from backend.data.execution_cost_summary import (
+    UserExecutionCostSummary,
+    get_user_cost_summary,
+)
+from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
+from backend.util.clients import get_scheduler_client
+from backend.util.settings import Settings
+from backend.util.timezone_utils import get_user_timezone_or_utc
+
+from .compose import compose_home_dashboard
+from .models import HomeDashboardResponse
+
+logger = logging.getLogger(__name__)
+settings = Settings()
+
+_EXECUTION_LIMIT = 300
+_REVIEW_LIMIT = 100
+_WORK_EVENT_LIMIT = 200
+# Enough of a user id to correlate log lines for one user without writing the
+# whole identifier into logs that are retained and widely readable.
+_LOG_ID_CHARS = 12
+
+
+class HomeSourceData(BaseModel):
+    experts: list[Expert]
+    executions: list[GraphExecutionMeta]
+    reviews: list[PendingHumanReviewModel]
+    cost_summary: UserExecutionCostSummary
+    schedules: list[GraphExecutionJobInfo | CopilotTurnJobInfo]
+    credits_balance: int | None
+    questions: list[ChatSessionInfo]
+    work_events: list[activity_db.ActivityEvent]
+    paused_chats: list[PausedScheduledChat]
+    timezone_name: str
+
+
+async def build_home_dashboard(
+    *,
+    user_id: str,
+    ctx: RequestContext | None = None,
+) -> HomeDashboardResponse:
+    now = datetime.now(timezone.utc)
+    week_start = now - timedelta(days=7)
+    data = await _load_home_source_data(
+        user_id=user_id,
+        ctx=ctx,
+        now=now,
+        week_start=week_start,
+    )
+    graph_ids = list(
+        {execution.graph_id for execution in data.executions}
+        | {review.graph_id for review in data.reviews if review.graph_id}
+    )
+    work_session_ids = list(
+        {event.session_id for event in data.work_events if event.session_id}
+    )
+    # All depend on the gathered data (graph ids / session ids / timezone) but
+    # not on each other, so these reads cost no extra round-trip.
+    library_refs, persisted_briefing, session_titles = await asyncio.gather(
+        # Removed agents keep naming their past runs on the Recent work card.
+        library_db.get_library_agent_refs_by_graph_ids(
+            user_id, graph_ids, include_deleted=True
+        ),
+        _persisted_briefing(user_id=user_id, timezone_name=data.timezone_name, now=now),
+        _get_session_titles(user_id=user_id, session_ids=work_session_ids),
+    )
+
+    return compose_home_dashboard(
+        now=now,
+        experts=data.experts,
+        executions=data.executions,
+        reviews=data.reviews,
+        schedules=data.schedules,
+        library_refs=library_refs,
+        cost_summary=data.cost_summary,
+        credits_balance=data.credits_balance,
+        timezone_name=data.timezone_name,
+        questions=data.questions,
+        persisted_briefing=persisted_briefing,
+        work_events=data.work_events,
+        session_titles=session_titles,
+        paused_chats=data.paused_chats,
+    )
+
+
+async def _persisted_briefing(
+    *, user_id: str, timezone_name: str, now: datetime
+) -> BriefingContent | None:
+    """Today's stored briefing, or None when home should compute live instead.
+
+    None covers every way the anchor can be missing: no row yet (a pre-9am
+    signup), a job that failed, and — mirroring `briefings/routes.py` — stored
+    content written by a different composer version that no longer validates.
+
+    `delivered_at` is deliberately not part of that test. An unstamped row
+    means the content was stored but the thread post failed, and
+    `generate_and_deliver_briefing` redelivers *that same stored content* on
+    its next run rather than recomposing it. The undelivered row is therefore
+    already the canonical story; skipping it would put home back on a live
+    recompute that drifts from the message the user is about to receive —
+    exactly the divergence this card exists to remove.
+
+    The date comes off the request's own `now` rather than a second clock read:
+    loading the source data takes long enough to cross local midnight, and the
+    card would then look up tomorrow's row for a dashboard composed against
+    yesterday.
+    """
+    briefing_date = now.astimezone(ZoneInfo(timezone_name)).date()
+    try:
+        record = await briefing_db.get_briefing_for_date(user_id, briefing_date)
+    except Exception:
+        logger.warning(
+            "Home could not load the briefing for user %s", user_id[:_LOG_ID_CHARS]
+        )
+        return None
+    if record is None:
+        return None
+    try:
+        content = BriefingContent.model_validate(record.content)
+    except ValidationError:
+        logger.warning(
+            "Briefing %s failed to validate against BriefingContent; "
+            "home is composing its card live instead",
+            record.id,
+        )
+        return None
+    return content
+
+
+async def _load_home_source_data(
+    *,
+    user_id: str,
+    ctx: RequestContext | None,
+    now: datetime,
+    week_start: datetime,
+) -> HomeSourceData:
+    experts_task = asyncio.create_task(experts_db.list_experts(user_id))
+    executions_task = asyncio.create_task(
+        execution_db.get_graph_executions(
+            user_id=user_id,
+            created_time_gte=week_start,
+            created_time_lte=now,
+            limit=_EXECUTION_LIMIT,
+        )
+    )
+    reviews_task = asyncio.create_task(
+        review_db.get_pending_reviews_for_user(user_id, page=1, page_size=_REVIEW_LIMIT)
+    )
+    cost_summary_task = asyncio.create_task(
+        get_user_cost_summary(
+            user_id=user_id,
+            since=week_start,
+            until=now,
+            include_by_expert=True,
+        )
+    )
+    schedules_task = asyncio.create_task(_get_schedules(user_id=user_id))
+    credits_task = asyncio.create_task(_get_credits(user_id=user_id, ctx=ctx))
+    questions_task = asyncio.create_task(_get_pending_questions(user_id=user_id))
+    work_events_task = asyncio.create_task(
+        _get_work_events(user_id=user_id, since=week_start)
+    )
+    paused_chats_task = asyncio.create_task(_get_paused_chats(user_id=user_id))
+    user_task = asyncio.create_task(user_db.get_user_by_id(user_id))
+    # Gather rather than awaiting one by one: a failure in the first task would
+    # otherwise leave the rest detached with their exceptions never retrieved.
+    started: list[asyncio.Task[Any]] = [
+        experts_task,
+        executions_task,
+        reviews_task,
+        cost_summary_task,
+        schedules_task,
+        credits_task,
+        questions_task,
+        work_events_task,
+        paused_chats_task,
+        user_task,
+    ]
+    await asyncio.gather(*started)
+    user = user_task.result()
+    return HomeSourceData(
+        experts=experts_task.result(),
+        executions=executions_task.result(),
+        reviews=reviews_task.result(),
+        cost_summary=cost_summary_task.result(),
+        schedules=schedules_task.result(),
+        credits_balance=credits_task.result(),
+        questions=questions_task.result(),
+        work_events=work_events_task.result(),
+        paused_chats=paused_chats_task.result(),
+        timezone_name=get_user_timezone_or_utc(user.timezone if user else None),
+    )
+
+
+async def _get_schedules(
+    *,
+    user_id: str,
+) -> list[GraphExecutionJobInfo | CopilotTurnJobInfo]:
+    # Deliberately owner-scoped: executions, reviews and cost totals on this page
+    # are all personal, so org/team schedules would surface upcoming runs whose
+    # outcomes and approvals could never appear anywhere else on the dashboard.
+    # Bounded like the library's schedule badges: a slow scheduler costs the
+    # upcoming-runs rows, not the whole dashboard.
+    try:
+        return await asyncio.wait_for(
+            get_scheduler_client().get_execution_schedules(user_id=user_id),
+            timeout=settings.config.schedule_read_timeout_seconds,
+        )
+    except Exception:
+        logger.warning(
+            "Home could not load schedules for user %s", user_id[:_LOG_ID_CHARS]
+        )
+        return []
+
+
+async def _get_paused_chats(*, user_id: str) -> list[PausedScheduledChat]:
+    # Fail-soft like schedules: a broken read costs these items, not the page.
+    try:
+        return await scheduled_chats.list_paused_scheduled_chats(user_id)
+    except Exception:
+        logger.warning(
+            "Home could not load paused scheduled chats for user %s",
+            user_id[:_LOG_ID_CHARS],
+        )
+        return []
+
+
+async def _get_pending_questions(*, user_id: str) -> list[ChatSessionInfo]:
+    # Fail-soft like schedules and credits: a chat that was deleted or whose
+    # metadata no longer parses must cost the user one row, not the page.
+    try:
+        return await chat_db.get_sessions_with_pending_question(user_id)
+    except Exception:
+        logger.warning(
+            "Home could not load pending questions for user %s",
+            user_id[:_LOG_ID_CHARS],
+        )
+        return []
+
+
+async def _get_work_events(
+    *, user_id: str, since: datetime
+) -> list[activity_db.ActivityEvent]:
+    # Fail-soft like schedules and credits: a broken audit read costs the
+    # Recent work card, not the page.
+    try:
+        events = await activity_db.list_activity_events(
+            user_id,
+            since=since,
+            categories=["FILE", "INTEGRATION", "SCHEDULE"],
+            limit=_WORK_EVENT_LIMIT,
+        )
+    except Exception:
+        logger.warning(
+            "Home could not load work events for user %s", user_id[:_LOG_ID_CHARS]
+        )
+        return []
+    try:
+        return await _without_working_files(user_id, events)
+    except Exception:
+        logger.warning(
+            "Home could not check work files for user %s", user_id[:_LOG_ID_CHARS]
+        )
+        # An unchecked file row may be one of Otto's own; the rest still show.
+        return [event for event in events if event.category != "FILE"]
+
+
+async def _without_working_files(
+    user_id: str, events: list[activity_db.ActivityEvent]
+) -> list[activity_db.ActivityEvent]:
+    """Drop the FILE rows logged for Otto's own working files before writes
+    stopped logging them. The migration marks the files (``isInternal``), not
+    these log rows, so the mark is read through each row's file id."""
+    file_ids = [e.object_id for e in events if e.category == "FILE" and e.object_id]
+    internal = await workspace_db.list_internal_file_ids(user_id, file_ids)
+    return [
+        event
+        for event in events
+        if not (event.category == "FILE" and event.object_id in internal)
+    ]
+
+
+async def _get_session_titles(
+    *, user_id: str, session_ids: list[str]
+) -> dict[str, str | None]:
+    try:
+        return await chat_db.get_session_titles(user_id, session_ids)
+    except Exception:
+        logger.warning(
+            "Home could not load session titles for user %s", user_id[:_LOG_ID_CHARS]
+        )
+        return {}
+
+
+async def _get_credits(*, user_id: str, ctx: RequestContext | None) -> int | None:
+    # An org wallet is pooled and MANAGE_BILLING gates it on /credits, so a
+    # member without that permission must not read the same figure here.
+    # Personal orgs are unaffected: their membership row is always isOwner.
+    if ctx and ctx.org_id and not check_org_permission(ctx, OrgAction.MANAGE_BILLING):
+        return None
+    organization_id = ctx.org_id if ctx else None
+    try:
+        model = await get_credit_model(user_id, organization_id)
+        return await model.get_credits(user_id, organization_id)
+    except Exception:
+        logger.warning(
+            "Home could not load credits for user %s", user_id[:_LOG_ID_CHARS]
+        )
+        return None

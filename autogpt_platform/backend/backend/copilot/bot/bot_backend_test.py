@@ -1,21 +1,36 @@
 """Tests for the bot's thin facade over PlatformLinkingManagerClient."""
 
 import asyncio
-from datetime import datetime, timezone
+import json
+import logging
+from datetime import UTC, datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot import stream_registry
 from backend.copilot.response_model import (
     StreamError,
     StreamFinish,
     StreamTextDelta,
     StreamToolOutputAvailable,
+    StreamTurnPaused,
 )
+from backend.copilot.tools.models import (
+    ApprovalRequiredResponse,
+    SetupInfo,
+    SetupRequirementsResponse,
+    UserReadiness,
+)
+from backend.copilot.turn_pause import TurnPause
 from backend.platform_linking.models import (
+    BotExpert,
     ChatTurnHandle,
     LinkTokenResponse,
+    Platform,
     ResolveResponse,
+    TurnDenial,
+    WorkspaceUploadResult,
 )
 from backend.util.exceptions import (
     DuplicateChatMessageError,
@@ -23,7 +38,15 @@ from backend.util.exceptions import (
     NotFoundError,
 )
 
-from .bot_backend import BotBackend
+from .adapters.base import InboundAttachment
+from .bot_backend import (
+    BotBackend,
+    BotStreamError,
+    ChatTurnDeniedError,
+    _extract_clarification_needed,
+    _extract_setup_requirements,
+    _is_corrupted_setup_requirements,
+)
 
 
 @pytest.fixture
@@ -53,6 +76,51 @@ class TestResolve:
         )
         result = await api.resolve_user("discord", "u1")
         assert result.linked is False
+        assert result.account_hint is None
+
+    @pytest.mark.asyncio
+    async def test_resolve_user_forwards_include_account(self, api: BotBackend):
+        api._client.resolve_user_link = AsyncMock(
+            return_value=ResolveResponse(linked=True, account_hint="b***@agpt.co")
+        )
+        result = await api.resolve_user("telegram", "u1", include_account=True)
+        assert result.linked is True
+        assert result.account_hint == "b***@agpt.co"
+        assert api._client.resolve_user_link.await_args.kwargs["include_account"]
+
+
+class TestListLinkedServerIds:
+    @pytest.mark.asyncio
+    async def test_forwards_uppercased_platform_and_returns_ids(self, api: BotBackend):
+        api._client.list_user_server_ids = AsyncMock(return_value=["g1", "g2"])
+        result = await api.list_linked_server_ids("discord", "user-1")
+        assert result == ["g1", "g2"]
+        api._client.list_user_server_ids.assert_awaited_once_with(
+            platform=Platform.DISCORD, user_id="user-1"
+        )
+
+    @pytest.mark.asyncio
+    async def test_empty_when_no_links(self, api: BotBackend):
+        api._client.list_user_server_ids = AsyncMock(return_value=[])
+        assert await api.list_linked_server_ids("discord", "user-1") == []
+
+
+class TestRefreshServerName:
+    @pytest.mark.asyncio
+    async def test_forwards_uppercased_platform(self, api: BotBackend):
+        api._client.refresh_server_link_name = AsyncMock()
+        await api.refresh_server_name("discord", "g1", "AutoGPT HQ")
+        api._client.refresh_server_link_name.assert_awaited_once_with(
+            platform=Platform.DISCORD,
+            platform_server_id="g1",
+            server_name="AutoGPT HQ",
+        )
+
+    @pytest.mark.asyncio
+    async def test_skips_call_when_server_name_is_empty(self, api: BotBackend):
+        api._client.refresh_server_link_name = AsyncMock()
+        await api.refresh_server_name("discord", "g1", "")
+        api._client.refresh_server_link_name.assert_not_awaited()
 
 
 class TestCreateLinkTokens:
@@ -113,9 +181,10 @@ class TestStreamChat:
         api._client.start_chat_turn = AsyncMock(return_value=handle)
 
         queue: asyncio.Queue = asyncio.Queue()
-        await queue.put(StreamTextDelta(id="1", delta="Hello "))
-        await queue.put(StreamTextDelta(id="2", delta="world"))
-        await queue.put(StreamFinish())
+        # Same block id — a continuous text stream, no separator inserted.
+        await queue.put((None, StreamTextDelta(id="1", delta="Hello ")))
+        await queue.put((None, StreamTextDelta(id="1", delta="world")))
+        await queue.put((None, StreamFinish()))
 
         captured_session_ids: list[str] = []
 
@@ -124,7 +193,7 @@ class TestStreamChat:
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
                 new=AsyncMock(return_value=queue),
             ),
             patch(
@@ -145,16 +214,22 @@ class TestStreamChat:
         assert captured_session_ids == ["sess"]
 
     @pytest.mark.asyncio
-    async def test_surfaces_stream_error(self, api: BotBackend):
+    async def test_inserts_paragraph_break_between_text_blocks(self, api: BotBackend):
+        # Otto emits text in separate blocks around tool calls / reasoning,
+        # each with its own id. Concatenating them without a separator runs the
+        # blocks together ("first thought.second thought"); a paragraph break
+        # keeps them readable, matching the frontend's distinct-part rendering.
         handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
         api._client.start_chat_turn = AsyncMock(return_value=handle)
 
         queue: asyncio.Queue = asyncio.Queue()
-        await queue.put(StreamError(errorText="executor crashed"))
+        await queue.put((None, StreamTextDelta(id="1", delta="first thought.")))
+        await queue.put((None, StreamTextDelta(id="2", delta="second thought.")))
+        await queue.put((None, StreamFinish()))
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
                 new=AsyncMock(return_value=queue),
             ),
             patch(
@@ -164,11 +239,43 @@ class TestStreamChat:
         ):
             chunks: list[str] = []
             async for chunk in api.stream_chat(
-                platform="discord", platform_user_id="u1", message="hi"
+                platform="discord",
+                platform_user_id="u1",
+                message="hi",
             ):
                 chunks.append(chunk)
 
-        assert any("executor crashed" in c for c in chunks)
+        assert "".join(chunks) == "first thought.\n\nsecond thought."
+
+    @pytest.mark.asyncio
+    async def test_surfaces_stream_error(self, api: BotBackend):
+        handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
+        api._client.start_chat_turn = AsyncMock(return_value=handle)
+
+        queue: asyncio.Queue = asyncio.Queue()
+        await queue.put(
+            (None, StreamError(errorText="executor crashed", code="sdk_error"))
+        )
+
+        with (
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
+                new=AsyncMock(return_value=queue),
+            ),
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
+                new=AsyncMock(),
+            ),
+            pytest.raises(BotStreamError) as excinfo,
+        ):
+            async for _ in api.stream_chat(
+                platform="discord", platform_user_id="u1", message="hi"
+            ):
+                pass
+
+        assert excinfo.value.error_kind == "backend_stream_error"
+        assert excinfo.value.code == "sdk_error"
+        assert "executor crashed" in str(excinfo.value)
 
     @pytest.mark.asyncio
     async def test_notifies_setup_requirements_tool_output(self, api: BotBackend):
@@ -177,14 +284,17 @@ class TestStreamChat:
 
         queue: asyncio.Queue = asyncio.Queue()
         await queue.put(
-            StreamToolOutputAvailable(
-                toolCallId="tool-1",
-                toolName="connect_integration",
-                output='{"type":"setup_requirements","message":"Connect GitHub"}',
+            (
+                None,
+                StreamToolOutputAvailable(
+                    toolCallId="tool-1",
+                    toolName="connect_integration",
+                    output='{"type":"setup_requirements","message":"Connect GitHub"}',
+                ),
             )
         )
-        await queue.put(StreamTextDelta(id="1", delta="After setup"))
-        await queue.put(StreamFinish())
+        await queue.put((None, StreamTextDelta(id="1", delta="After setup")))
+        await queue.put((None, StreamFinish()))
 
         setup_calls: list[tuple[str, dict, str | None]] = []
 
@@ -193,7 +303,7 @@ class TestStreamChat:
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
                 new=AsyncMock(return_value=queue),
             ),
             patch(
@@ -218,6 +328,181 @@ class TestStreamChat:
                 "connect_integration",
             )
         ]
+
+    @pytest.mark.asyncio
+    async def test_notifies_setup_dropped_on_corrupted_output(self, api: BotBackend):
+        handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
+        api._client.start_chat_turn = AsyncMock(return_value=handle)
+
+        queue: asyncio.Queue = asyncio.Queue()
+        await queue.put(
+            (
+                None,
+                StreamToolOutputAvailable(
+                    toolCallId="tool-1",
+                    toolName="connect_integration",
+                    output='{"type":"setup_requirements","message":"Connect Goo',
+                ),
+            )
+        )
+        await queue.put((None, StreamFinish()))
+
+        setup_calls: list[tuple[str, dict, str | None]] = []
+        dropped_calls: list[tuple[str, str | None]] = []
+
+        async def on_setup(session_id: str, output: dict, tool_name: str | None):
+            setup_calls.append((session_id, output, tool_name))
+
+        async def on_dropped(session_id: str, tool_name: str | None):
+            dropped_calls.append((session_id, tool_name))
+
+        with (
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
+                new=AsyncMock(return_value=queue),
+            ),
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
+                new=AsyncMock(),
+            ),
+        ):
+            async for _ in api.stream_chat(
+                platform="discord",
+                platform_user_id="u1",
+                message="hi",
+                on_setup_required=on_setup,
+                on_setup_dropped=on_dropped,
+            ):
+                pass
+
+        # The corrupted payload yields no card, so on_setup_required must not
+        # fire — but the user is told the link was dropped.
+        assert setup_calls == []
+        assert dropped_calls == [("sess", "connect_integration")]
+
+    @pytest.mark.asyncio
+    async def test_notifies_clarification_needed_tool_output(self, api: BotBackend):
+        handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
+        api._client.start_chat_turn = AsyncMock(return_value=handle)
+
+        questions = [
+            {
+                "question": "Which region?",
+                "keyword": "region",
+                "options": ["US", "EU"],
+            }
+        ]
+        queue: asyncio.Queue = asyncio.Queue()
+        await queue.put(
+            (
+                None,
+                StreamToolOutputAvailable(
+                    toolCallId="tool-1",
+                    toolName="ask_question",
+                    output=json.dumps(
+                        {
+                            "type": "agent_builder_clarification_needed",
+                            "message": "Which region?",
+                            "questions": questions,
+                        }
+                    ),
+                ),
+            )
+        )
+        await queue.put((None, StreamTextDelta(id="1", delta="After question")))
+        await queue.put((None, StreamFinish()))
+
+        clarification_calls: list[tuple[str, dict, str | None]] = []
+
+        async def on_clarification(
+            session_id: str, output: dict, tool_name: str | None
+        ):
+            clarification_calls.append((session_id, output, tool_name))
+
+        with (
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
+                new=AsyncMock(return_value=queue),
+            ),
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
+                new=AsyncMock(),
+            ),
+        ):
+            chunks: list[str] = []
+            async for chunk in api.stream_chat(
+                platform="discord",
+                platform_user_id="u1",
+                message="hi",
+                on_clarification_needed=on_clarification,
+            ):
+                chunks.append(chunk)
+
+        assert chunks == ["After question"]
+        assert len(clarification_calls) == 1
+        session_id, output, tool_name = clarification_calls[0]
+        assert session_id == "sess"
+        assert tool_name == "ask_question"
+        assert output["questions"] == questions
+
+    @pytest.mark.asyncio
+    async def test_each_held_call_asks_for_its_card_once(self, api: BotBackend):
+        """A retried held call names its card again; the channel shows it once.
+        A review the gate did not raise is left to the web app."""
+        handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
+        api._client.start_chat_turn = AsyncMock(return_value=handle)
+
+        def held(review_id: str, tool: str = "post_to_chat_platform"):
+            return StreamToolOutputAvailable(
+                toolCallId=f"call-{review_id}",
+                toolName=tool,
+                output=ApprovalRequiredResponse(
+                    message="Held.",
+                    session_id="sess",
+                    tool_name=tool,
+                    reason="outward",
+                    review_id=review_id,
+                ).model_dump_json(),
+                success=False,
+            )
+
+        queue: asyncio.Queue = asyncio.Queue()
+        for chunk in (
+            held("r1"),
+            held("r1"),
+            held("r2"),
+            StreamToolOutputAvailable(
+                toolCallId="call-x",
+                toolName="run_capability",
+                output=json.dumps({"type": "review_required", "review_id": "legacy"}),
+            ),
+            StreamFinish(),
+        ):
+            await queue.put((None, chunk))
+        cards: list[tuple[str, str]] = []
+
+        async def on_approval(session_id: str, review_id: str) -> None:
+            cards.append((session_id, review_id))
+
+        with (
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
+                new=AsyncMock(return_value=queue),
+            ),
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
+                new=AsyncMock(),
+            ),
+        ):
+            async for _ in api.stream_chat(
+                platform="discord",
+                platform_user_id="u1",
+                message="hi",
+                on_approval_needed=on_approval,
+            ):
+                pass
+
+        assert cards == [("sess", "r1"), ("sess", "r2")]
 
     @pytest.mark.asyncio
     async def test_duplicate_message_propagates(self, api: BotBackend):
@@ -247,24 +532,523 @@ class TestStreamChat:
                 pass
 
     @pytest.mark.asyncio
-    async def test_subscribe_returns_none_yields_error(self, api: BotBackend):
+    @pytest.mark.parametrize(
+        "unavailable",
+        [stream_registry.TurnStreamGone(), stream_registry.TurnStreamTrimmed(None)],
+    )
+    async def test_a_turn_stream_gone_or_trimmed_raises(
+        self, api: BotBackend, unavailable: Exception
+    ):
         handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
         api._client.start_chat_turn = AsyncMock(return_value=handle)
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
-                new=AsyncMock(return_value=None),
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
+                new=AsyncMock(side_effect=unavailable),
+            ),
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
+                new=AsyncMock(),
+            ),
+            pytest.raises(BotStreamError) as excinfo,
+        ):
+            async for _ in api.stream_chat(
+                platform="discord", platform_user_id="u1", message="hi"
+            ):
+                pass
+
+        assert excinfo.value.error_kind == "subscribe_failed"
+
+
+def _connected_card() -> str:
+    """The "already signed in" card run_mcp_tool returns for a status probe
+    (``surface_connect_card`` with a working credential)."""
+    return SetupRequirementsResponse(
+        message="You're connected to linear.app. Use Reconnect to swap accounts.",
+        session_id="sess",
+        setup_info=SetupInfo(
+            agent_id="https://mcp.linear.app/mcp",
+            agent_name="linear.app",
+            user_readiness=UserReadiness(
+                has_all_credentials=True, missing_credentials={}, ready_to_run=True
+            ),
+            requirements={"credentials": [], "inputs": [], "execution_modes": []},
+        ),
+    ).model_dump_json()
+
+
+class TestConnectedCardIsNotASetupPrompt:
+    """Recorded case (Discord, #AutoPwuts thread, 2026-09-15 10:48): while
+    filing a Linear ticket the model checked the connection, got the
+    "connected" card, and the relay posted "You're connected to linear.app.
+    Use Reconnect to swap accounts. Click the button below ... finish setup"
+    although nothing needed doing."""
+
+    def test_connected_card_needs_no_user_action(self):
+        assert _extract_setup_requirements(_connected_card()) is None
+
+    def test_card_with_missing_credentials_is_still_a_prompt(self):
+        payload = json.loads(_connected_card())
+        payload["setup_info"]["user_readiness"] = {
+            "has_all_credentials": False,
+            "missing_credentials": {"credentials": {"provider": "mcp"}},
+            "ready_to_run": False,
+        }
+        assert _extract_setup_requirements(payload) == payload
+
+    def test_card_for_a_rejected_credential_is_still_a_prompt(self):
+        payload = json.loads(_connected_card())
+        payload["rejection"] = {"provider": "mcp", "detail": "expired"}
+        assert _extract_setup_requirements(payload) == payload
+
+    def test_inputs_still_to_pick_are_still_a_prompt(self):
+        payload = json.loads(_connected_card())
+        payload["setup_info"]["user_readiness"]["ready_to_run"] = False
+        assert _extract_setup_requirements(payload) == payload
+
+    @pytest.mark.asyncio
+    async def test_connected_card_does_not_use_up_the_turns_setup_prompt(
+        self, api: BotBackend
+    ):
+        handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
+        api._client.start_chat_turn = AsyncMock(return_value=handle)
+        missing = '{"type":"setup_requirements","message":"Connect Sentry"}'
+
+        queue: asyncio.Queue = asyncio.Queue()
+        await queue.put(
+            (
+                None,
+                StreamToolOutputAvailable(
+                    toolCallId="tool-1",
+                    toolName="run_mcp_tool",
+                    output=_connected_card(),
+                ),
+            )
+        )
+        await queue.put(
+            (
+                None,
+                StreamToolOutputAvailable(
+                    toolCallId="tool-2", toolName="run_mcp_tool", output=missing
+                ),
+            )
+        )
+        await queue.put((None, StreamFinish()))
+
+        setup_calls: list[dict] = []
+
+        async def on_setup(session_id: str, output: dict, tool_name: str | None):
+            setup_calls.append(output)
+
+        with (
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
+                new=AsyncMock(return_value=queue),
             ),
             patch(
                 "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
                 new=AsyncMock(),
             ),
         ):
-            chunks: list[str] = []
-            async for chunk in api.stream_chat(
-                platform="discord", platform_user_id="u1", message="hi"
+            async for _ in api.stream_chat(
+                platform="discord",
+                platform_user_id="u1",
+                message="file it",
+                on_setup_required=on_setup,
             ):
-                chunks.append(chunk)
+                pass
 
-        assert any("failed to subscribe" in c.lower() for c in chunks)
+        assert setup_calls == [json.loads(missing)]
+
+
+class TestPausedTurn:
+    """A turn at its budget or step limit now pauses instead of failing
+    (#15388). The web chat offers a Keep going button; a chat user has none,
+    so the reply has to say how to pick the task back up."""
+
+    async def _reply(self, api: BotBackend, *chunks) -> str:
+        handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
+        api._client.start_chat_turn = AsyncMock(return_value=handle)
+        queue: asyncio.Queue = asyncio.Queue()
+        for chunk in (*chunks, StreamFinish()):
+            await queue.put((None, chunk))
+
+        with (
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
+                new=AsyncMock(return_value=queue),
+            ),
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
+                new=AsyncMock(),
+            ),
+        ):
+            return "".join(
+                [
+                    chunk
+                    async for chunk in api.stream_chat(
+                        platform="discord", platform_user_id="u1", message="hi"
+                    )
+                ]
+            )
+
+    @pytest.mark.asyncio
+    async def test_a_step_check_in_follows_the_checkpoint_with_how_to_go_on(
+        self, api: BotBackend
+    ):
+        reply = await self._reply(
+            api,
+            StreamTextDelta(id="1", delta="Done 3 of 5 files. Next: the other 2."),
+            StreamTurnPaused(pause=TurnPause(reason="steps", steps=450).as_part()),
+        )
+
+        assert reply == (
+            "Done 3 of 5 files. Next: the other 2.\n\n"
+            'Paused: checking in after a long run. Reply "keep going" to pick it up.'
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_task_size_pause_says_to_keep_going(self, api: BotBackend):
+        reply = await self._reply(
+            api,
+            StreamTurnPaused(
+                pause=TurnPause(reason="task", checkpoint_saved=False).as_part()
+            ),
+        )
+
+        assert reply == (
+            "Paused: this task reached its size limit. "
+            'Reply "keep going" to pick it up.'
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_budget_pause_says_when_it_can_go_on(self, api: BotBackend):
+        resets_at = datetime(2026, 10, 16, 0, 0, tzinfo=UTC)
+
+        reply = await self._reply(
+            api,
+            StreamTurnPaused(
+                pause=TurnPause(reason="daily", resets_at=resets_at).as_part()
+            ),
+        )
+
+        assert reply == (
+            "Paused: this task is out of today's budget. "
+            'Reply "keep going" after it resets at 00:00 UTC on Oct 16.'
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_trial_pause_says_to_go_on_once_there_is_allowance(
+        self, api: BotBackend
+    ):
+        reply = await self._reply(
+            api, StreamTurnPaused(pause=TurnPause(reason="trial").as_part())
+        )
+
+        assert reply == (
+            "Paused: the trial allowance is used up. "
+            'Reply "keep going" once your plan has allowance again.'
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_turn_refused_at_start_says_when_it_can_go_on(
+        self, api: BotBackend
+    ):
+        # The executor refuses a turn the allowance can't cover (#15396).
+        resets_at = datetime(2026, 10, 16, 0, 0, tzinfo=UTC)
+
+        reply = await self._reply(
+            api,
+            StreamTurnPaused(
+                pause=TurnPause(
+                    reason="daily",
+                    resets_at=resets_at,
+                    checkpoint_saved=False,
+                    started=False,
+                ).as_part()
+            ),
+        )
+
+        assert reply == (
+            "Not started: out of today's budget. "
+            'Reply "keep going" after it resets at 00:00 UTC on Oct 16.'
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_budget_that_never_resets_points_at_the_plan(self, api: BotBackend):
+        # No plan behind the account: nothing refills, so no reset to wait for.
+        reply = await self._reply(
+            api,
+            StreamTurnPaused(
+                pause=TurnPause(
+                    reason="weekly", checkpoint_saved=False, started=False
+                ).as_part()
+            ),
+        )
+
+        assert reply == (
+            "Not started: out of this week's budget. "
+            'Reply "keep going" once your plan has allowance again.'
+        )
+
+
+class TestExtractSetupRequirements:
+    def test_extracts_from_json_string(self):
+        payload = '{"type":"setup_requirements","message":"Connect GitHub"}'
+        assert _extract_setup_requirements(payload) == {
+            "type": "setup_requirements",
+            "message": "Connect GitHub",
+        }
+
+    def test_truncated_setup_requirements_logs_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ):
+        """A corrupted setup_requirements payload must not be dropped silently —
+        the user never receives their sign-in link, so we need telemetry."""
+        truncated = '{"type":"setup_requirements","message":"Connect Goo'
+        with caplog.at_level(logging.WARNING):
+            assert _extract_setup_requirements(truncated) is None
+        assert any("setup_requirements" in record.message for record in caplog.records)
+
+    def test_non_setup_unparseable_output_stays_silent(
+        self, caplog: pytest.LogCaptureFixture
+    ):
+        with caplog.at_level(logging.WARNING):
+            assert _extract_setup_requirements("plain text tool result") is None
+        assert not caplog.records
+
+
+class TestExtractClarificationNeeded:
+    def test_extracts_from_json_string(self):
+        payload = json.dumps(
+            {
+                "type": "agent_builder_clarification_needed",
+                "message": "Which region?",
+                "questions": [{"question": "Which region?", "keyword": "region"}],
+            }
+        )
+        result = _extract_clarification_needed(payload)
+        assert result is not None
+        assert result["questions"] == [
+            {"question": "Which region?", "keyword": "region"}
+        ]
+
+    def test_extracts_from_dict(self):
+        payload = {
+            "type": "agent_builder_clarification_needed",
+            "message": "Which region?",
+            "questions": [{"question": "Which region?", "keyword": "region"}],
+        }
+        assert _extract_clarification_needed(payload) == payload
+
+    def test_no_questions_returns_none(self):
+        payload = json.dumps(
+            {
+                "type": "agent_builder_clarification_needed",
+                "message": "Which region?",
+                "questions": [],
+            }
+        )
+        assert _extract_clarification_needed(payload) is None
+
+    def test_non_list_questions_returns_none(self):
+        # A truthy non-list would be passed on and then iterated by the
+        # renderer, raising TypeError inside the stream callback — which the
+        # user sees as the generic error, with the question lost.
+        payload = json.dumps(
+            {
+                "type": "agent_builder_clarification_needed",
+                "message": "Which region?",
+                "questions": "Which region?",
+            }
+        )
+        assert _extract_clarification_needed(payload) is None
+
+    def test_other_tool_output_returns_none(self):
+        payload = '{"type":"setup_requirements","message":"Connect GitHub"}'
+        assert _extract_clarification_needed(payload) is None
+
+    def test_truncated_clarification_logs_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ):
+        truncated = '{"type":"agent_builder_clarification_needed","message":"Which reg'
+        with caplog.at_level(logging.WARNING):
+            assert _extract_clarification_needed(truncated) is None
+        assert any("clarification" in record.message for record in caplog.records)
+
+    def test_non_clarification_unparseable_output_stays_silent(
+        self, caplog: pytest.LogCaptureFixture
+    ):
+        with caplog.at_level(logging.WARNING):
+            assert _extract_clarification_needed("plain text tool result") is None
+        assert not caplog.records
+
+
+class TestIsCorruptedSetupRequirements:
+    def test_truncated_setup_requirements_is_corrupted(self):
+        assert _is_corrupted_setup_requirements(
+            '{"type":"setup_requirements","message":"Connect Goo'
+        )
+
+    def test_valid_setup_requirements_is_not_corrupted(self):
+        assert not _is_corrupted_setup_requirements(
+            '{"type":"setup_requirements","message":"Connect GitHub"}'
+        )
+
+    def test_unparseable_non_setup_output_is_not_corrupted(self):
+        assert not _is_corrupted_setup_requirements('{"type":"other","x')
+
+    def test_plain_text_and_dict_outputs_are_not_corrupted(self):
+        assert not _is_corrupted_setup_requirements("plain text tool result")
+        assert not _is_corrupted_setup_requirements({"type": "setup_requirements"})
+
+
+class TestUploadWorkspaceFiles:
+    @pytest.mark.asyncio
+    async def test_forwards_each_attachment_and_returns_results(self, api: BotBackend):
+        api._client.upload_workspace_file = AsyncMock(
+            side_effect=[
+                WorkspaceUploadResult(filename="a.png", file_id="f1"),
+                WorkspaceUploadResult(filename="b.exe", error="virus_detected"),
+            ]
+        )
+
+        results = await api.upload_workspace_files(
+            platform="discord",
+            platform_user_id="u1",
+            platform_server_id="g1",
+            attachments=(
+                InboundAttachment(
+                    filename="a.png", mime_type="image/png", content=b"x"
+                ),
+                InboundAttachment(
+                    filename="b.exe", mime_type="application/octet-stream", content=b"y"
+                ),
+            ),
+        )
+
+        assert [r.file_id for r in results] == ["f1", None]
+        assert results[1].error == "virus_detected"
+        assert api._client.upload_workspace_file.await_count == 2
+        first = api._client.upload_workspace_file.await_args_list[0].kwargs["request"]
+        assert first.platform == Platform.DISCORD
+        assert first.filename == "a.png"
+        assert first.platform_server_id == "g1"
+
+    @pytest.mark.asyncio
+    async def test_one_upload_failure_does_not_abort_the_rest(self, api: BotBackend):
+        # A transport/RPC failure on one file becomes an upload_failed result;
+        # later files still upload (and the handler never crashes).
+        api._client.upload_workspace_file = AsyncMock(
+            side_effect=[
+                RuntimeError("connection reset"),
+                WorkspaceUploadResult(filename="b.png", file_id="f2"),
+            ]
+        )
+
+        results = await api.upload_workspace_files(
+            platform="discord",
+            platform_user_id="u1",
+            platform_server_id=None,
+            attachments=(
+                InboundAttachment(
+                    filename="a.png", mime_type="image/png", content=b"x"
+                ),
+                InboundAttachment(
+                    filename="b.png", mime_type="image/png", content=b"y"
+                ),
+            ),
+        )
+
+        assert results[0].error == "upload_failed"
+        assert results[0].file_id is None
+        assert results[1].file_id == "f2"
+
+    @pytest.mark.asyncio
+    async def test_no_attachments_makes_no_calls(self, api: BotBackend):
+        api._client.upload_workspace_file = AsyncMock()
+        results = await api.upload_workspace_files(
+            platform="discord",
+            platform_user_id="u1",
+            platform_server_id=None,
+            attachments=(),
+        )
+        assert results == []
+        api._client.upload_workspace_file.assert_not_awaited()
+
+
+class TestStreamChatDenial:
+    @pytest.mark.asyncio
+    async def test_stream_chat_raises_chat_turn_denied_on_denial(self, api: BotBackend):
+        api._client.start_chat_turn = AsyncMock(
+            return_value=ChatTurnHandle(
+                session_id="",
+                turn_id="",
+                user_id="u1",
+                denial=TurnDenial(reason="paywalled", message="subscription required"),
+            )
+        )
+
+        with pytest.raises(ChatTurnDeniedError) as exc_info:
+            async for _ in api.stream_chat(
+                platform="discord", platform_user_id="pu1", message="hi"
+            ):
+                pass
+
+        assert exc_info.value.denial.reason == "paywalled"
+
+
+class TestStreamChatOptions:
+    @pytest.mark.asyncio
+    async def test_expert_and_model_reach_the_request_and_notice_goes_to_its_callback(
+        self, api: BotBackend
+    ):
+        handle = ChatTurnHandle(
+            session_id="sess", turn_id="turn", user_id="u1", notice="Fell back."
+        )
+        api._client.start_chat_turn = AsyncMock(return_value=handle)
+        queue: asyncio.Queue = asyncio.Queue()
+        await queue.put((None, StreamTextDelta(id="1", delta="Hi")))
+        await queue.put((None, StreamFinish()))
+
+        with (
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
+                new=AsyncMock(return_value=queue),
+            ),
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
+                new=AsyncMock(),
+            ),
+        ):
+            notices: list[str] = []
+
+            async def capture(notice: str) -> None:
+                notices.append(notice)
+
+            chunks = [
+                c
+                async for c in api.stream_chat(
+                    platform="discord",
+                    platform_user_id="u1",
+                    message="hi",
+                    expert_id="e1",
+                    model="advanced",
+                    on_notice=capture,
+                )
+            ]
+
+        request = api._client.start_chat_turn.await_args.kwargs["request"]
+        assert request.expert_id == "e1" and request.model == "advanced"
+        assert notices == ["Fell back."]
+        assert "".join(chunks) == "Hi"
+
+    @pytest.mark.asyncio
+    async def test_list_user_experts_passes_through(self, api: BotBackend):
+        experts = [BotExpert(id="e1", name="Bolt", role="Builder")]
+        api._client.list_user_experts = AsyncMock(return_value=experts)
+        assert await api.list_user_experts("telegram", "u1", None) == experts
+        api._client.list_user_experts.assert_awaited_once_with(
+            platform=Platform.TELEGRAM, platform_user_id="u1", platform_server_id=None
+        )

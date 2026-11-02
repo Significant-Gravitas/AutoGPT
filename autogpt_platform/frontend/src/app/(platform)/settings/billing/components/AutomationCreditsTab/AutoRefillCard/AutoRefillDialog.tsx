@@ -1,11 +1,10 @@
 "use client";
-
-import { WarningIcon } from "@phosphor-icons/react";
-
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { Alert01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   isOpen: boolean;
@@ -42,7 +41,7 @@ export function AutoRefillDialog({
     >
       <Dialog.Content>
         <div className="flex flex-col gap-4">
-          <Text variant="small" as="span" className="text-zinc-500">
+          <Text variant="small" as="span" tone="muted">
             Top up your balance automatically when it dips below the threshold
             you set.
           </Text>
@@ -60,9 +59,9 @@ export function AutoRefillDialog({
             onChange={setRefillAmount}
           />
 
-          <div className="flex items-start gap-2 rounded-[12px] bg-amber-50 px-3 py-2">
-            <WarningIcon size={18} className="mt-0.5 shrink-0 text-amber-600" />
-            <Text variant="small" as="span" className="text-amber-700">
+          <div className="flex items-start gap-2 rounded-medium bg-warning-surface px-3 py-2 text-warning-foreground">
+            <Icon icon={Alert01Icon} size={18} className="mt-0.5 shrink-0" />
+            <Text variant="small" as="span" tone="warning">
               As a safety mechanism, auto-refill will only trigger once per
               task. Keep this in mind when budgeting to ensure your balance does
               not hit zero and your tasks don&apos;t pause mid-run.
@@ -120,7 +119,7 @@ function RefillRow({
 }) {
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-      <Text variant="body" as="span" className="text-textBlack">
+      <Text variant="body" as="span">
         {label}
       </Text>
       <div className="w-full sm:max-w-[180px]">

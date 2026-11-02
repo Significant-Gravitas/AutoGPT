@@ -30,8 +30,10 @@ test("marketplace happy path: user can add a Marketplace agent to Library and ru
 
   const agentName = await page.getByTestId("agent-title").innerText();
 
-  await page.getByTestId("agent-add-library-button").click();
-  await expect(page.getByText("Redirecting to your library...")).toBeVisible();
+  await Promise.all([
+    expect(page.getByText("Redirecting to your library...")).toBeVisible(),
+    page.getByTestId("agent-add-library-button").click(),
+  ]);
   await expect(page).toHaveURL(/\/library\/agents\//);
 
   const libraryPage = new LibraryPage(page);

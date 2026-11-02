@@ -8,6 +8,11 @@
 
 <!-- List the key changes. Keep it higher level than the diff but specific enough to highlight what's new/modified. -->
 
+### Agents and large language models used
+
+<!-- List each agent platform with its model name/version (e.g. Claude Code with Claude Opus 4.1).
+Write None if no agents were used, or unknown for unavailable model details. -->
+
 ### Checklist 📋
 
 #### For code changes:
@@ -26,6 +31,15 @@
   - [ ] Import an agent from marketplace and confirm it executes correctly
   - [ ] Edit an agent from monitor, and confirm it executes correctly
 </details>
+
+#### For frontend changes (design system, see `docs/engineering/design-system.md`):
+
+- [ ] `pnpm lint` passes, including the `design-system/*` rules; I did not raise any count in `scripts/eslint-rules/design-system-baseline.json` except for a moved, renamed or split file (explained under **Changes**)
+- [ ] No `dark:`/`light:` classes, raw palette classes (`bg-zinc-200`) or hex/`rgb()` colours (`bg-[#fff]`); colours use role tokens (`bg-surface`, `text-foreground-secondary`)
+- [ ] No imports from `src/components/__legacy__`, `legacy/` paths or `@/components/ui`, and no `LegacyButton` / `legacy-*` Button variants
+- [ ] Copy uses the `Text` atom with a `variant`/`tone`; primitives get a `variant`/`size`. `className` holds layout, plus on `Text` only truncation, line clamping, wrapping, breaking, `text-balance`/`text-pretty` and alignment
+- [ ] Before/after screenshots at 1440 and 390 px are attached for changes to `src/components/**`, `globals.css` or `tailwind*.ts`, or I wrote "no pixel change" and how I checked
+- [ ] User-facing copy says workflow and Otto, never agent or graph (root `AGENTS.md`, "User-facing copy")
 
 #### For configuration changes:
 

@@ -4,16 +4,23 @@ Telegram Bot API Webhooks Manager.
 Handles webhook registration and validation for Telegram bots.
 """
 
+import asyncio
 import hmac
 import logging
 
+from autogpt_libs.utils.synchronize import AsyncRedisKeyedMutex
 from fastapi import HTTPException, Request
 from strenum import StrEnum
 
 from backend.data import integrations
 from backend.data.model import APIKeyCredentials, Credentials
+from backend.data.redis_client import get_redis_async
 from backend.integrations.providers import ProviderName
-from backend.util.exceptions import MissingConfigError
+from backend.util.exceptions import (
+    MissingConfigError,
+    WebhookRegistrationError,
+    WebhookSetupUnavailableError,
+)
 from backend.util.request import Requests
 from backend.util.settings import Config
 
@@ -21,6 +28,8 @@ from ._base import BaseWebhooksManager
 from .utils import webhook_ingress_url
 
 logger = logging.getLogger(__name__)
+
+_SETUP_LOCK_ACQUIRE_TIMEOUT_SECONDS = 10
 
 
 class TelegramWebhookType(StrEnum):
@@ -47,6 +56,8 @@ class TelegramWebhooksManager(BaseWebhooksManager):
         webhook_type: TelegramWebhookType,
         resource: str,
         events: list[str],
+        organization_id: str | None = None,
+        team_id: str | None = None,
     ) -> integrations.Webhook:
         """
         Telegram only supports one webhook per bot. Instead of creating a new
@@ -60,23 +71,102 @@ class TelegramWebhooksManager(BaseWebhooksManager):
                 "PLATFORM_BASE_URL must be set to use Webhook functionality"
             )
 
+        lock_key = (
+            "webhook-setup",
+            self.PROVIDER_NAME.value,
+            user_id,
+            credentials.id,
+            resource,
+        )
+        try:
+            mutex = AsyncRedisKeyedMutex(await get_redis_async())
+        except Exception as exc:
+            raise WebhookSetupUnavailableError(
+                "Could not safely lock Telegram webhook setup"
+            ) from exc
+
+        # The acquire attempt must be INSIDE the release-guarded block: a
+        # wait_for timeout cancels the acquire task, which can land after the
+        # Redis lock was actually taken — without the finally, that lock would
+        # leak until its TTL. ``mutex.release`` checks ownership, so releasing
+        # after a failed/never-completed acquire is a safe no-op.
+        try:
+            try:
+                await asyncio.wait_for(
+                    mutex.acquire(lock_key),
+                    timeout=_SETUP_LOCK_ACQUIRE_TIMEOUT_SECONDS,
+                )
+            except Exception as exc:
+                raise WebhookSetupUnavailableError(
+                    "Could not safely lock Telegram webhook setup"
+                ) from exc
+            return await self._get_suitable_auto_webhook_locked(
+                user_id=user_id,
+                credentials=credentials,
+                webhook_type=webhook_type,
+                resource=resource,
+                events=events,
+                organization_id=organization_id,
+                team_id=team_id,
+            )
+        finally:
+            try:
+                await mutex.release(lock_key)
+            except Exception:
+                logger.exception(
+                    "Failed to release Telegram webhook setup lock; "
+                    "the lock will expire automatically"
+                )
+
+    async def _get_suitable_auto_webhook_locked(
+        self,
+        user_id: str,
+        credentials: Credentials,
+        webhook_type: TelegramWebhookType,
+        resource: str,
+        events: list[str],
+        organization_id: str | None,
+        team_id: str | None,
+    ) -> integrations.Webhook:
         # Exact match — no re-registration needed
         if webhook := await integrations.find_webhook_by_credentials_and_props(
             user_id=user_id,
             credentials_id=credentials.id,
             webhook_type=webhook_type,
             resource=resource,
+            organization_id=organization_id,
+            team_id=team_id,
             events=events,
         ):
+            if not self._matches_tenancy(webhook, organization_id, team_id):
+                raise WebhookRegistrationError(
+                    "This Telegram bot already has a webhook in another tenancy"
+                )
             return webhook
 
-        # Find any existing webhook for the same bot, regardless of events
-        if existing := await integrations.find_webhook_by_credentials_and_props(
+        existing = await integrations.find_webhook_by_credentials_and_props(
             user_id=user_id,
             credentials_id=credentials.id,
             webhook_type=webhook_type,
             resource=resource,
-        ):
+            organization_id=organization_id,
+            team_id=team_id,
+        )
+        if existing is None:
+            existing = (
+                await integrations.find_webhook_by_credentials_and_props_any_tenant(
+                    user_id=user_id,
+                    credentials_id=credentials.id,
+                    webhook_type=webhook_type,
+                    resource=resource,
+                )
+            )
+
+        if existing:
+            if not self._matches_tenancy(existing, organization_id, team_id):
+                raise WebhookRegistrationError(
+                    "This Telegram bot already has a webhook in another tenancy"
+                )
             # Re-register with Telegram using the same URL but new allowed_updates
             ingress_url = webhook_ingress_url(self.PROVIDER_NAME, existing.id)
             _, config = await self._register_webhook(
@@ -98,7 +188,24 @@ class TelegramWebhooksManager(BaseWebhooksManager):
             events=events,
             resource=resource,
             credentials=credentials,
+            organization_id=organization_id,
+            team_id=team_id,
         )
+
+    @classmethod
+    async def verify_signature(
+        cls,
+        webhook: integrations.Webhook,
+        request: Request,
+    ) -> None:
+        # Telegram sends X-Telegram-Bot-Api-Secret-Token when secret_token was
+        # set in the setWebhook call (we always set it; see _register_webhook).
+        secret_header = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+        if not secret_header or not hmac.compare_digest(secret_header, webhook.secret):
+            raise HTTPException(
+                status_code=403,
+                detail="Invalid or missing X-Telegram-Bot-Api-Secret-Token",
+            )
 
     @classmethod
     async def validate_payload(
@@ -110,20 +217,9 @@ class TelegramWebhooksManager(BaseWebhooksManager):
         """
         Validates incoming Telegram webhook request.
 
-        Telegram sends X-Telegram-Bot-Api-Secret-Token header when secret_token
-        was set in setWebhook call.
-
         Returns:
             tuple: (payload dict, event_type string)
         """
-        # Verify secret token header
-        secret_header = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
-        if not secret_header or not hmac.compare_digest(secret_header, webhook.secret):
-            raise HTTPException(
-                status_code=403,
-                detail="Invalid or missing X-Telegram-Bot-Api-Secret-Token",
-            )
-
         payload = await request.json()
 
         # Determine event type based on update content
@@ -204,7 +300,7 @@ class TelegramWebhooksManager(BaseWebhooksManager):
 
         if not result.get("ok"):
             error_desc = result.get("description", "Unknown error")
-            raise ValueError(f"Failed to set Telegram webhook: {error_desc}")
+            raise ValueError(f"Telegram returned error: {error_desc}")
 
         # Telegram doesn't return a webhook ID, use empty string
         config = {

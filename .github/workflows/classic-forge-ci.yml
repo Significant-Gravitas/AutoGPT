@@ -5,6 +5,7 @@ on:
     branches: [ master, dev, ci-test* ]
     paths:
       - '.github/workflows/classic-forge-ci.yml'
+      - '.github/actions/start-minio/**'
       - 'classic/forge/**'
       - 'classic/pyproject.toml'
       - 'classic/poetry.lock'
@@ -12,6 +13,7 @@ on:
     branches: [ master, dev, release-* ]
     paths:
       - '.github/workflows/classic-forge-ci.yml'
+      - '.github/actions/start-minio/**'
       - 'classic/forge/**'
       - 'classic/pyproject.toml'
       - 'classic/poetry.lock'
@@ -33,22 +35,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Start MinIO service
-        working-directory: '.'
-        run: |
-          docker pull minio/minio:edge-cicd
-          docker run -d -p 9000:9000 minio/minio:edge-cicd
-
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Start MinIO service
+        uses: ./.github/actions/start-minio
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
 
       - name: Set up Python dependency cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/pypoetry
           key: poetry-${{ runner.os }}-${{ hashFiles('classic/poetry.lock') }}
@@ -82,19 +81,19 @@ jobs:
 
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}  # Run even if tests fail
-        uses: codecov/test-results-action@v1
+        uses: codecov/test-results-action@0fa95f0e1eeaafde2c782583b36b28ad0d8c77d3 # v1.2.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: forge
 
       - name: Upload logs to artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-logs
           path: classic/logs/

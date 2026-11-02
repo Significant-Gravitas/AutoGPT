@@ -6,13 +6,13 @@
 var NOTIFICATION_MAP = {
   copilot_completion: {
     session_completed: {
-      title: "AutoPilot is ready",
-      body: "A response is waiting for you.",
+      title: "AutoGPT",
+      body: "Task completed",
       url: "/copilot",
     },
     session_failed: {
-      title: "AutoPilot session failed",
-      body: "Something went wrong with your session.",
+      title: "AutoGPT",
+      body: "Task failed",
       url: "/copilot",
     },
   },
@@ -53,9 +53,11 @@ self.addEventListener("activate", function (event) {
 var _clientUrls = {};
 
 // User-controlled master toggle. Pages postMessage on mount and on change.
-// Default true: if the SW restarts and no tab has reported yet, pushes still
-// fire — the worst case is one notification before the page mounts and
-// re-syncs the flag.
+// It lives in memory, so it is lost whenever the browser stops this idle
+// worker, and it can't be what keeps notifications off: switching them off
+// unsubscribes this browser, so the server stops sending. The flag only
+// silences pushes already on the way before that finishes.
+// Default true: a worker woken by a push with no tab open must still show it.
 var _notificationsEnabled = true;
 
 self.addEventListener("message", function (event) {
@@ -152,8 +154,8 @@ self.addEventListener("push", function (event) {
 
         var options = {
           body: config.body,
-          icon: "/favicon.ico",
-          badge: "/favicon.ico",
+          icon: "/notification-icon-192.png",
+          badge: "/notification-badge-96.png",
           tag: tag,
           data: Object.assign({ url: targetUrl }, data),
           renotify: true,

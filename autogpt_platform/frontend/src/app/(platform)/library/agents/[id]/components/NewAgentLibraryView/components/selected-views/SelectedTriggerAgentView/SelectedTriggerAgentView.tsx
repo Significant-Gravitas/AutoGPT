@@ -59,7 +59,7 @@ export function SelectedTriggerAgentView({
         : queryError != null
           ? String(queryError)
           : "Failed to load trigger data";
-    return <ErrorCard responseError={{ message }} context="trigger agent" />;
+    return <ErrorCard responseError={{ message }} context="trigger workflow" />;
   }
 
   if (isLoading || !data) {
@@ -70,8 +70,8 @@ export function SelectedTriggerAgentView({
     return (
       <SelectedViewLayout agent={agent} banner={banner}>
         <RunDetailCard title="Trigger not found">
-          <Text variant="body" className="!text-zinc-500">
-            This trigger agent no longer exists.
+          <Text variant="body" tone="muted">
+            This trigger workflow no longer exists.
           </Text>
         </RunDetailCard>
       </SelectedViewLayout>
@@ -88,14 +88,14 @@ export function SelectedTriggerAgentView({
                 {triggerAgent.description ? (
                   <Text variant="body">{triggerAgent.description}</Text>
                 ) : (
-                  <Text variant="body" className="!text-zinc-500">
+                  <Text variant="body" tone="muted">
                     No description.
                   </Text>
                 )}
-                <Text variant="small" className="!text-zinc-500">
-                  Trigger agents run on a schedule and execute this agent when
-                  their conditions are met. Edit them in the builder to change
-                  what they do.
+                <Text variant="small" tone="muted">
+                  Trigger workflows run on a schedule and execute this workflow
+                  when their conditions are met. Edit them in the builder to
+                  change what they do.
                 </Text>
               </div>
             </RunDetailCard>
@@ -104,50 +104,58 @@ export function SelectedTriggerAgentView({
               <RunDetailCard title="Schedule">
                 <div className="flex flex-col gap-6">
                   {schedule.graph_version !== triggerAgent.graph_version && (
-                    <Text
-                      variant="small"
-                      className="rounded-md bg-amber-50 px-3 py-2 !text-amber-800"
-                    >
-                      This schedule is running version {schedule.graph_version}{" "}
-                      of the trigger agent, but the latest version is{" "}
-                      {triggerAgent.graph_version}. Ask AutoPilot to recreate
-                      the schedule to pick up your latest edits.
-                    </Text>
+                    <div className="rounded-md bg-warning-surface px-3 py-2">
+                      <Text variant="small" tone="warning">
+                        This schedule is running version{" "}
+                        {schedule.graph_version} of the trigger workflow, but
+                        the latest version is {triggerAgent.graph_version}. Ask
+                        your expert to recreate the schedule to pick up your
+                        latest edits.
+                      </Text>
+                    </div>
                   )}
                   <div className="flex flex-col gap-1.5">
                     <Text variant="large-medium">Recurrence</Text>
-                    <Text variant="body" className="flex items-center gap-3">
-                      {humanizeCronExpression(schedule.cron)}{" "}
-                      <span className="text-zinc-500">&middot;</span>{" "}
-                      <span className="text-zinc-500">
+                    <div className="flex items-center gap-3">
+                      <Text variant="body" as="span">
+                        {humanizeCronExpression(schedule.cron)}
+                      </Text>{" "}
+                      <Text variant="body" as="span" tone="muted">
+                        &middot;
+                      </Text>{" "}
+                      <Text variant="body" as="span" tone="muted">
                         {getTimezoneDisplayName(
                           displayTimezone || schedule.timezone || "UTC",
                         )}
-                      </span>
-                    </Text>
+                      </Text>
+                    </div>
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <Text variant="large-medium">Next run</Text>
-                    <Text variant="body" className="flex items-center gap-3">
-                      {formatInTimezone(
-                        schedule.next_run_time,
-                        displayTimezone || "UTC",
-                        {
-                          year: "numeric",
-                          month: "long",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          hour12: false,
-                        },
-                      )}{" "}
-                      <span className="text-zinc-500">&middot;</span>{" "}
-                      <span className="text-zinc-500">
+                    <div className="flex items-center gap-3">
+                      <Text variant="body" as="span">
+                        {formatInTimezone(
+                          schedule.next_run_time,
+                          displayTimezone || "UTC",
+                          {
+                            year: "numeric",
+                            month: "long",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: false,
+                          },
+                        )}
+                      </Text>{" "}
+                      <Text variant="body" as="span" tone="muted">
+                        &middot;
+                      </Text>{" "}
+                      <Text variant="body" as="span" tone="muted">
                         {getTimezoneDisplayName(
                           displayTimezone || schedule.timezone || "UTC",
                         )}
-                      </span>
-                    </Text>
+                      </Text>
+                    </div>
                   </div>
                 </div>
               </RunDetailCard>
@@ -155,8 +163,8 @@ export function SelectedTriggerAgentView({
 
             {!schedule && !isSchedulesLoading && (
               <RunDetailCard title="Schedule">
-                <Text variant="body" className="!text-zinc-500">
-                  No schedule configured for this trigger agent.
+                <Text variant="body" tone="muted">
+                  No schedule configured for this trigger workflow.
                 </Text>
               </RunDetailCard>
             )}

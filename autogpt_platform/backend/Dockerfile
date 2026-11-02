@@ -1,3 +1,7 @@
+# Node.js for Prisma and agent-browser comes from the official image, which
+# gets Node's security releases before the NodeSource apt repository does.
+FROM node:24.22.1-trixie-slim AS node
+
 # ============================ DEPENDENCY BUILDER ============================ #
 
 FROM debian:13-slim AS builder
@@ -11,27 +15,33 @@ WORKDIR /app
 
 RUN echo 'Acquire::http::Pipeline-Depth 0;\nAcquire::http::No-Cache true;\nAcquire::BrokenProxy true;\n' > /etc/apt/apt.conf.d/99fixbadproxy
 
-# Install Node.js repository key and setup
-RUN apt-get update --allow-releaseinfo-change --fix-missing \
-    && apt-get install -y curl ca-certificates gnupg \
-    && mkdir -p /etc/apt/keyrings \
-    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
-    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list
+# APT_REFRESH is part of the cache key of every RUN after it, so a new value
+# re-runs the package installs below and security fixes reach the images
+# instead of staying behind a cached layer. CI passes the UTC date, which
+# refreshes them once a day. Every stage that installs packages declares it
+# before its first install.
+ARG APT_REFRESH
 
-# Update package list and install Python, Node.js, and build dependencies
-RUN apt-get update \
+# Install Python and build dependencies
+RUN apt-get update --allow-releaseinfo-change --fix-missing \
     && apt-get install -y \
+    ca-certificates \
     python3.13 \
     python3.13-dev \
     python3.13-venv \
     python3-pip \
     build-essential \
+    git \
     libpq5 \
     libz-dev \
     libssl-dev \
     postgresql-client \
-    nodejs \
     && rm -rf /var/lib/apt/lists/*
+
+COPY --from=node /usr/local/bin/node /usr/bin/node
+COPY --from=node /usr/local/lib/node_modules/npm /usr/lib/node_modules/npm
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/bin/npm \
+    && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/bin/npx
 
 ENV POETRY_HOME=/opt/poetry
 ENV POETRY_NO_INTERACTION=1
@@ -39,7 +49,12 @@ ENV POETRY_VIRTUALENVS_CREATE=true
 ENV POETRY_VIRTUALENVS_IN_PROJECT=true
 ENV PATH=/opt/poetry/bin:$PATH
 
-RUN pip3 install poetry --break-system-packages
+# Poetry gets its own venv, laid out as its installer would: in the system
+# site-packages pip must replace Debian's packages and cannot uninstall them.
+RUN python3 -m venv $POETRY_HOME/venv \
+    && $POETRY_HOME/venv/bin/pip install --no-cache-dir poetry==2.5.1 \
+    && mkdir -p $POETRY_HOME/bin \
+    && ln -s ../venv/bin/poetry $POETRY_HOME/bin/poetry
 
 # Copy and install dependencies
 COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
@@ -62,11 +77,18 @@ WORKDIR /app/autogpt_platform/backend
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# APT_REFRESH re-runs the package install below; see the builder stage.
+ARG APT_REFRESH
+
 # Install only what's needed for prisma migrate: Node.js and minimal Python for prisma-python
+# libatomic1: debian:13-slim no longer ships it, but the Prisma CLI's bundled
+# Node (copied from the builder, which had it via build-essential) dynamically
+# links libatomic.so.1 — without it `node` exits 127 and migrate crash-loops.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.13 \
-    python3-pip \
+    python3.13-venv \
     ca-certificates \
+    libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Node.js from builder (needed for Prisma CLI)
@@ -77,8 +99,11 @@ COPY --from=builder /usr/bin/npm /usr/bin/npm
 # Copy Prisma binaries
 COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-python/binaries
 
-# Install prisma-client-py directly (much smaller than copying full venv)
-RUN pip3 install prisma>=0.15.0 --break-system-packages
+# Install prisma-client-py directly (much smaller than copying full venv).
+# Pinned to poetry.lock's version, which the engine binaries above were fetched for.
+RUN python3.13 -m venv /opt/prisma \
+    && /opt/prisma/bin/pip install --no-cache-dir prisma==0.15.0
+ENV PATH=/opt/prisma/bin:$PATH
 
 COPY autogpt_platform/backend/schema.prisma ./
 COPY autogpt_platform/backend/backend/data/partial_types.py ./backend/data/partial_types.py
@@ -87,11 +112,23 @@ COPY autogpt_platform/backend/migrations ./migrations
 
 # ============================== BACKEND SERVER ============================== #
 
-FROM debian:13-slim AS server
+FROM debian:13-slim AS docs-filter
+# The copilot docs tools read markdown only — strip everything else
+# (images, scripts, configs) so no unused or untrusted files ship in the
+# server image or its layer history.
+COPY docs /docs
+RUN find /docs -type f ! -name '*.md' ! -name '*.mdx' -delete \
+    && find /docs -type d -empty -delete
+
+FROM debian:13-slim AS server-base
 
 WORKDIR /app
 
 ENV DEBIAN_FRONTEND=noninteractive
+
+# APT_REFRESH re-runs the package installs below, Chromium included; see the
+# builder stage.
+ARG APT_REFRESH
 
 # Install Python, FFmpeg, ImageMagick, and CLI tools for agent use.
 # bubblewrap provides OS-level sandbox (whitelist-only FS + no network)
@@ -106,11 +143,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ripgrep \
     tree \
     bubblewrap \
+    libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy poetry (build-time only, for `poetry install --only-root` to create entry points)
-COPY --from=builder /usr/local/lib/python3* /usr/local/lib/python3*
-COPY --from=builder /usr/local/bin/poetry /usr/local/bin/poetry
+COPY --from=builder /opt/poetry /opt/poetry
+ENV PATH=/opt/poetry/bin:$PATH
 # Copy Node.js installation for Prisma and agent-browser.
 # npm/npx are symlinks in the builder (-> ../lib/node_modules/npm/bin/*-cli.js);
 # COPY resolves them to regular files, breaking require() paths.  Recreate as
@@ -128,11 +166,21 @@ COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-pyth
 # Note: system chromium tracks the Debian package schedule rather than a pinned
 # Chrome for Testing release. If agent-browser requires a specific Chrome version,
 # verify compatibility against the chromium package version in the base image.
+# agent-browser is pinned: the daemon's process lifecycle (idle shutdown,
+# Chromium reaping on close) has changed across releases, and an unpinned
+# install means two builds of the same commit can behave differently.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends chromium fonts-liberation \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g agent-browser \
+    && npm install -g agent-browser@0.37.1 \
     && rm -rf /tmp/* /root/.npm
+
+# The Copilot browser reaches the network only through an egress proxy that
+# carries TCP. This policy stops WebRTC from sending UDP around it, in every
+# frame and window; the matching command-line switch is not honoured.
+RUN mkdir -p /etc/chromium/policies/managed \
+    && echo '{"WebRtcIPHandling": "disable_non_proxied_udp"}' \
+        > /etc/chromium/policies/managed/agent-browser-network.json
 
 ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
 
@@ -143,18 +191,27 @@ WORKDIR /app/autogpt_platform/backend
 COPY --from=builder /app/autogpt_platform/backend/.venv ./.venv
 ENV PATH="/app/autogpt_platform/backend/.venv/bin:$PATH"
 
+# Dependencies end here; AutoGPT code starts below. The single-container
+# image builds on server-base so its own dependencies sit under the code.
+FROM server-base AS server
+
 # Copy dependency files + autogpt_libs (path dependency)
 COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
 COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.toml ./
 
-# Copy backend code + docs (for Copilot docs search)
+# Copy backend code + docs (markdown only — see docs-filter stage)
 COPY autogpt_platform/backend ./
-COPY docs /app/docs
+COPY --from=docs-filter /docs /app/docs
 # Install the project package to create entry point scripts in .venv/bin/
 # (e.g., rest, executor, ws, db, scheduler, notification - see [tool.poetry.scripts])
 RUN POETRY_VIRTUALENVS_CREATE=true POETRY_VIRTUALENVS_IN_PROJECT=true \
     poetry install --no-ansi --only-root
 
 ENV PORT=8000
+
+# The commit Sentry reports as the release. Declared after every layer so a new
+# sha only changes image metadata and leaves the cached layers above intact.
+ARG SENTRY_RELEASE=""
+ENV SENTRY_RELEASE=${SENTRY_RELEASE}
 
 CMD ["rest"]

@@ -43,15 +43,17 @@ def image_size(request):
 
 
 @pytest.mark.skipif(not OPENAI_API_KEY, reason="OPENAI_API_KEY not set")
-def test_dalle(
-    image_gen_component: ImageGeneratorComponent,
-    image_size,
-):
-    """Test DALL-E image generation."""
+def test_dalle(image_gen_component: ImageGeneratorComponent):
+    """Test image generation via OpenAI's images API (gpt-image-1).
+
+    gpt-image-1 only returns 1024x1024 for square output, so this is the
+    only size exercised here (dall-e-2/3 and their 256/512 sizes were
+    removed from the API on 2026-05-12).
+    """
     generate_and_validate(
         image_gen_component,
         image_provider="dalle",
-        image_size=image_size,
+        image_size=1024,
     )
 
 
