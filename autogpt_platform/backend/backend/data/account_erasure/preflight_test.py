@@ -211,7 +211,9 @@ async def test_a_closed_account_whose_rows_are_gone_is_finished(no_orgs):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("bad_id", ["", "x", "../other", "a b c d e f g h", "%" * 9])
+@pytest.mark.parametrize(
+    "bad_id", ["", "x", "../other", "a b c d e f g h", "%" * 9, "12345678/../other"]
+)
 async def test_a_malformed_id_is_refused_before_anything_else(no_orgs, bad_id):
     subject = Subject(user_id=bad_id, has_user_row=True, has_auth_identity=True)
 

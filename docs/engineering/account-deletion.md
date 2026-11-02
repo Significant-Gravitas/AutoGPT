@@ -15,7 +15,7 @@ Keep and the erasure must never both win. Keep (`reopen_account`) deletes the ro
 
 `startedAt` is **never set back to null**. An erasure that stopped halfway (a failed step, a crashed pod) leaves the row with `startedAt` set and `completedAt` null; the next run selects it again (selection does not filter on `startedAt`), the claim keeps the first date, and the idempotent steps resume. Never clear `startedAt` by hand to "retry": that would let the owner keep an account that is already half erased.
 
-Because a resuming run may claim again, the claim does not keep two runners apart. Don't `--apply` an account by hand while the job is on and may be erasing it (turn the job off first, or let it finish), and run the database manager with one sweep at a time (one replica).
+Because a resuming run may claim again, the claim does not keep two runners apart; a Redis lease per account does (`lease.py`). Each `--apply` (the job's or the CLI's) takes it before it reads the account and holds it until the erasure ends, so two database manager replicas, or the CLI beside the job, never erase the same account at once: the second one reports "another run is erasing it" and moves on. The lease expires on its own after an hour, so a crashed run is resumed by the next one. With Redis down nothing is erased.
 
 ## How erasure runs
 
@@ -36,7 +36,7 @@ The database manager runs every step, so **the database manager pod needs every 
 - **`ENCRYPTION_KEY`**, the same value the backend pods have: the ban record's hash is keyed with a key derived from it, and sign-up (on the REST API pods) checks the hash with the same key. Without it the ban record step is skipped.
 - It also reaches the scheduler and the notification manager over RPC, and Redis and RabbitMQ (the work stop), as the other services do.
 
-A skipped step does not stop the erasure: the request is still marked done, and the sweep logs a warning naming the skipped steps. Check the database manager's logs after the first runs; a skip there means a setting is missing.
+A step whose settings are missing **stops the erasure** before the account's rows go (they hold the address MailerLite needs and the expert IDs that name the memory graphs): the step is reported failed, the sweep logs an error, and the next run retries once the setting is in. Files count too: with no bucket configured the files step only sweeps the pod's local data directory, which a cloud pod can't tell apart from a missing bucket setting. A stack that does not use a service says so in `ACCOUNT_ERASURE_UNUSED_SERVICES` (a JSON list of any of `buckets`, `falkordb`, `posthog`, `mailerlite`, `stripe`; a self-hosted stack that keeps files on disk lists `buckets`); its step is then skipped and the erasure carries on.
 
 ## Who runs the CLI, and where
 
@@ -92,7 +92,7 @@ The apply erases the accounts the dry run listed as unblocked.
 
 Before any step, the erasure claims the request (`startedAt`, above). The account's rows go last, because every earlier step finds its data through them; a step that fails stops the erasure there, and the next run (or a rerun of the CLI) resumes.
 
-1. **Work** (`stop_work`): reruns closing's `stop_user_work`, and removes the memory crons (nightly batch, community rebuild, skill learning) of the account and of each expert it owns. A schedule or trigger whose removal failed when the account was closed is not retried otherwise, and neither the scheduler nor the webhook ingress checks for a closed account. Closing leaves the memory crons registered so they resume if the account is kept (`is_user_refused` stops them doing anything meanwhile); once the account is erased nothing else would remove them. A scheduler that can't be reached fails the step.
+1. **Work** (`stop_work`): reruns closing's `stop_user_work`, checks that no schedule is left (it never raises, so a scheduler it couldn't reach would otherwise pass unnoticed: a schedule still listed fails the step), and removes the memory crons (nightly batch, community rebuild, skill learning) of the account and of each expert it owns. A schedule or trigger whose removal failed when the account was closed is not retried otherwise, and neither the scheduler nor the webhook ingress checks for a closed account. Closing leaves the memory crons registered so they resume if the account is kept (`is_user_refused` stops them doing anything meanwhile); once the account is erased nothing else would remove them. A scheduler that can't be reached fails the step.
 2. **Confirmation**: if closing could not send the account-closed email (`confirmationSentAt` is null), sends it now, while the address still exists, and records it. By now the 14 days are over, so it says the account is being erased instead of naming a last day to keep it. A send that fails stops the erasure, so the next run tries again.
 3. **Org subscriptions**: expires the open Checkouts and cancels the subscriptions of the organizations that go with the account, when their Stripe customer is not the account's own (closing cancelled that one).
 4. **Shared agents**: hands the agents other accounts use to the "deleted user" account (below), with their marketplace listings.
@@ -133,6 +133,7 @@ The agent's content stays as the creator last saved it, node inputs included. Cr
 - **Trial claims**: `SubscriptionTrialClaim` keeps hashes that stop the same person claiming a second free trial with a new account. They carry no account ID, on purpose.
 - **Our cost records**: `PlatformCostLog` rows stay with their user ID set to null.
 - **Audit log rows** of shared organizations the account acted in stay, with its user ID.
+- **What it created in shared organizations**: team and org credentials it added stay with the team or org, and rows it initiated there (invitations it sent, transfers, org ledger entries, teams) keep its user ID.
 - **Langfuse traces** expire on their own after 90 days.
 - **Database backups** age out on their retention schedule.
 

@@ -67,6 +67,16 @@ async def delete_files(subject: Subject, *, dry_run: bool) -> StepReport:
         }
     if kept:
         counts["kept_media"] = len(kept)
+    if not buckets:
+        # A pod missing its bucket settings looks the same as a stack that
+        # keeps files on disk; the routine tells them apart by
+        # `account_erasure_unused_services`.
+        return StepReport(
+            name="files",
+            status=StepStatus.SKIPPED,
+            counts=counts,
+            note="no bucket configured; swept the local data directory only",
+        )
     return StepReport(
         name="files",
         status=StepStatus.WOULD_DO if dry_run else StepStatus.DONE,

@@ -24,6 +24,10 @@ from collections.abc import Awaitable, Callable
 
 from backend.data.account_erasure.ban_record import keep_ban_record
 from backend.data.account_erasure.database import delete_rows
+from backend.data.account_erasure.lease import (
+    acquire_erasure_lease,
+    release_erasure_lease,
+)
 from backend.data.account_erasure.marketplace import delete_marketplace
 from backend.data.account_erasure.memory import delete_memory
 from backend.data.account_erasure.models import (
@@ -51,10 +55,23 @@ from backend.data.account_erasure.third_parties import (
     forget_mailerlite_subscriber,
 )
 from backend.data.account_erasure.work import stop_work
+from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 
 Step = Callable[..., Awaitable[StepReport]]
+
+# The outside service each step needs. Without its settings the step is
+# skipped, and an apply stops there, before the rows go (they hold the address
+# MailerLite needs and the expert IDs that name the memory graphs), unless the
+# stack says it doesn't use the service (`account_erasure_unused_services`).
+_SERVICE_OF_STEP = {
+    "org_subscriptions": "stripe",
+    "files": "buckets",
+    "memory": "falkordb",
+    "posthog": "posthog",
+    "mailerlite": "mailerlite",
+}
 
 
 async def erase_account(
@@ -69,8 +86,23 @@ async def erase_account(
 
     Raises `AccountErasureBlocked` before deleting anything when a blocker
     needs a decision; a dry run reports blockers instead. An apply whose
-    request can't be claimed runs no step (`report.not_claimed`). Returns the
-    report; `report.complete` says whether everything is gone."""
+    request can't be claimed, or that another run is erasing, runs no step
+    (`report.not_claimed`). Returns the report; `report.complete` says whether
+    everything is gone."""
+    if dry_run:
+        return await _erase(user_id, email, dry_run=True)
+    lease = await acquire_erasure_lease(user_id)
+    if lease is None:
+        return ErasureReport(
+            user_id=user_id, dry_run=False, not_claimed="another run is erasing it"
+        )
+    try:
+        return await _erase(user_id, email, dry_run=False)
+    finally:
+        await release_erasure_lease(lease)
+
+
+async def _erase(user_id: str, email: str | None, *, dry_run: bool) -> ErasureReport:
     subject = await load_subject(user_id, email)
     plan = await plan_transfer(user_id)
     subject.shared_graph_ids = plan.graph_ids
@@ -97,6 +129,8 @@ async def _run(
         return report
     for name, step in steps:
         result = await _run_step(name, step, subject, dry_run)
+        if not dry_run:
+            result = _stop_on_a_missing_service(result)
         report.steps.append(result)
         if result.status == StepStatus.FAILED and not dry_run:
             break
@@ -121,6 +155,23 @@ async def _claim(subject: Subject, report: ErasureReport) -> bool:
     )
     logger.info(f"Account erasure of {subject.user_id}: not claimed")
     return False
+
+
+def _stop_on_a_missing_service(result: StepReport) -> StepReport:
+    """A step skipped for want of its settings fails the apply, so the next
+    run retries once they are in, unless the stack doesn't use the service."""
+    service = _SERVICE_OF_STEP.get(result.name)
+    if result.status != StepStatus.SKIPPED or service is None:
+        return result
+    if service in Settings().config.account_erasure_unused_services:
+        return result
+    return result.model_copy(
+        update={
+            "status": StepStatus.FAILED,
+            "note": f'{result.note}. Set it up, or add "{service}" to '
+            "ACCOUNT_ERASURE_UNUSED_SERVICES if this stack doesn't use it.",
+        }
+    )
 
 
 def _erasure_steps() -> list[tuple[str, Step]]:
@@ -148,7 +199,12 @@ async def _run_step(
     try:
         return await step(subject, dry_run=dry_run)
     except Exception as e:
-        logger.exception(f"Account erasure step {name} failed for {subject.user_id}")
+        # A failed send can quote the address it was sending to.
+        logger.error(
+            f"Account erasure step {name} failed for {subject.user_id}: "
+            f"{type(e).__name__}",
+            exc_info=name != "confirmation",
+        )
         return StepReport(
             name=name,
             status=StepStatus.FAILED,

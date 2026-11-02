@@ -2,10 +2,12 @@
 memory of the user and one per expert they own (`copilot/graphiti/client.py`).
 """
 
-from falkordb.asyncio import FalkorDB
-
 from backend.copilot.graphiti.client import derive_memory_group_id, evict_client
 from backend.copilot.graphiti.config import graphiti_config
+from backend.copilot.graphiti.falkordb_connect import (
+    build_off_loop,
+    new_falkordb_client,
+)
 from backend.data.account_erasure.models import StepReport, StepStatus, Subject
 
 
@@ -23,11 +25,10 @@ async def delete_memory(subject: Subject, *, dry_run: bool) -> StepReport:
             note="no FalkorDB on this stack (GRAPHITI_FALKORDB_HOST is empty)",
         )
     wanted = memory_graph_names(subject)
-    db = FalkorDB(
-        host=graphiti_config.falkordb_host,
-        port=graphiti_config.falkordb_port,
-        password=graphiti_config.falkordb_password or None,
-    )
+    # The client's constructor talks to FalkorDB synchronously; built off
+    # the event loop, with the transport deadlines, an unreachable server
+    # fails the step in seconds instead of stalling the database manager.
+    db = await build_off_loop(new_falkordb_client)
     try:
         present = [name for name in await db.list_graphs() if name in wanted]
         if not dry_run:

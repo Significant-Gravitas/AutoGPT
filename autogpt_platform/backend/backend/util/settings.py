@@ -366,15 +366,26 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=False,
         description=(
             "Run the job that erases closed accounts (every AccountDeletionRequest "
-            "not completed yet). Off by default. It runs in the database manager, "
-            "which then needs the bucket, FalkorDB, PostHog personal key and "
-            "MailerLite settings (docs/engineering/account-deletion.md)."
+            "past its 14 days and not completed yet). Off by default. It runs in "
+            "the database manager, which then needs the bucket, FalkorDB, PostHog "
+            "personal key, MailerLite and Stripe settings and ENCRYPTION_KEY "
+            "(docs/engineering/account-deletion.md)."
         ),
     )
     account_erasure_sweep_interval_secs: int = Field(
         default=60 * 60,
         ge=5 * 60,
         description="Interval in seconds between account erasure sweeps.",
+    )
+    account_erasure_unused_services: List[str] = Field(
+        default=[],
+        description=(
+            "Outside services this stack does not use, so the account erasure "
+            "may skip their step: any of buckets (files stay in the local data "
+            "directory), falkordb, posthog, mailerlite, stripe. A skipped step "
+            "for a service not listed stops the erasure before the account's "
+            "rows go, and the next run retries it."
+        ),
     )
 
     # Auth identity <-> platform User invariant monitoring

@@ -3,6 +3,7 @@ order; it deletes nothing on a dry run, when something is blocked or when the
 request can't be claimed (kept, not due, or erased already), and stops at the
 first failed step so a rerun can resume."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -39,10 +40,17 @@ STEP_NAMES = [
 class Steps:
     """Every step replaced by a mock that records the dry_run it got."""
 
-    def __init__(self, monkeypatch, *, failing: str | None = None):
+    def __init__(
+        self,
+        monkeypatch,
+        *,
+        failing: str | None = None,
+        skipping: str | None = None,
+    ):
         self.calls: list[tuple[str, bool]] = []
         self.subjects: list[Subject] = []
         self.failing = failing
+        self.skipping = skipping
         targets = {
             "stop_work": "stop_work",
             "confirmation": "send_confirmation",
@@ -66,10 +74,36 @@ class Steps:
             self.subjects.append(subject)
             if name == self.failing:
                 raise RuntimeError("sam@example.com is down")
+            if name == self.skipping:
+                return StepReport(name=name, status=StepStatus.SKIPPED, note="unset")
             status = StepStatus.WOULD_DO if dry_run else StepStatus.DONE
             return StepReport(name=name, status=status, counts={"rows": 0})
 
         return step
+
+
+@pytest.fixture(autouse=True)
+def lease(monkeypatch):
+    """The per-account lease, free unless a test takes it."""
+    held = SimpleNamespace(
+        acquire=AsyncMock(return_value=object()), release=AsyncMock()
+    )
+    monkeypatch.setattr(routine, "acquire_erasure_lease", held.acquire)
+    monkeypatch.setattr(routine, "release_erasure_lease", held.release)
+    return held
+
+
+@pytest.fixture
+def unused_services(monkeypatch):
+    services: list[str] = []
+    monkeypatch.setattr(
+        routine,
+        "Settings",
+        lambda: SimpleNamespace(
+            config=SimpleNamespace(account_erasure_unused_services=services)
+        ),
+    )
+    return services
 
 
 @pytest.fixture
@@ -247,3 +281,81 @@ async def test_a_malformed_id_runs_no_step(monkeypatch):
 
     assert steps.calls == []
     assert [b.name for b in raised.value.report.blockers] == ["invalid_account_id"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "step", ["org_subscriptions", "files", "memory", "posthog", "mailerlite"]
+)
+async def test_a_step_skipped_for_want_of_its_service_stops_before_the_rows(
+    monkeypatch, account, unused_services, step
+):
+    """The rows hold the address MailerLite needs and the expert IDs that
+    name the memory graphs: they stay for a rerun once the setting is in."""
+    steps = Steps(monkeypatch, skipping=step)
+
+    report = await routine.erase_account(USER_ID, dry_run=False)
+
+    ran = [name for name, _ in steps.calls]
+    assert ran[-1] == step
+    assert "database" not in ran and "request" not in ran
+    assert report.steps[-1].status == StepStatus.FAILED
+    assert "ACCOUNT_ERASURE_UNUSED_SERVICES" in report.steps[-1].note
+    assert not report.complete
+
+
+@pytest.mark.asyncio
+async def test_a_service_the_stack_does_not_use_may_be_skipped(
+    monkeypatch, account, unused_services
+):
+    unused_services.append("posthog")
+    steps = Steps(monkeypatch, skipping="posthog")
+
+    report = await routine.erase_account(USER_ID, dry_run=False)
+
+    assert [name for name, _ in steps.calls] == STEP_NAMES
+    assert report.complete
+
+
+@pytest.mark.asyncio
+async def test_a_dry_run_reports_a_skip_as_a_skip(
+    monkeypatch, account, unused_services
+):
+    Steps(monkeypatch, skipping="memory")
+
+    report = await routine.erase_account(USER_ID)
+
+    assert len(report.steps) == len(STEP_NAMES)
+    memory = next(s for s in report.steps if s.name == "memory")
+    assert memory.status == StepStatus.SKIPPED
+
+
+@pytest.mark.asyncio
+async def test_an_account_another_run_is_erasing_is_left_alone(
+    monkeypatch, account, lease
+):
+    lease.acquire.return_value = None
+    steps = Steps(monkeypatch)
+    load = AsyncMock()
+    monkeypatch.setattr(routine, "load_subject", load)
+
+    report = await routine.erase_account(USER_ID, dry_run=False)
+
+    load.assert_not_awaited()
+    assert steps.calls == []
+    assert report.not_claimed == "another run is erasing it"
+    lease.release.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_lease_is_released_after_an_apply_and_never_taken_by_a_dry_run(
+    monkeypatch, account, lease
+):
+    Steps(monkeypatch, failing="files")
+
+    await routine.erase_account(USER_ID)
+    lease.acquire.assert_not_awaited()
+
+    await routine.erase_account(USER_ID, dry_run=False)
+    lease.acquire.assert_awaited_once_with(USER_ID)
+    lease.release.assert_awaited_once()

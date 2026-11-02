@@ -30,6 +30,13 @@ async def stop_work(subject: Subject, *, dry_run: bool) -> StepReport:
     stop."""
     if not dry_run:
         await stop_user_work(subject.user_id)
+        # stop_user_work never raises: a scheduler it couldn't reach is only
+        # logged. Listing again turns that into a failed step to retry.
+        left = await get_scheduler_client().get_execution_schedules(
+            user_id=subject.user_id, include_paused=True
+        )
+        if left:
+            raise RuntimeError(f"{len(left)} schedules outlived stop_user_work")
         removed = await remove_memory_crons(subject)
         return StepReport(
             name="stop_work", status=StepStatus.DONE, counts={"memory_crons": removed}

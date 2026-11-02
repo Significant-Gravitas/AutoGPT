@@ -187,6 +187,10 @@ async def test_a_self_hosted_stack_removes_the_accounts_folders(monkeypatch, tmp
 
     again = await storage.delete_files(SUBJECT, dry_run=False)
     assert again.counts == {"local_files": 0}
+    # With no bucket the step can't tell a self-hosted stack from a pod
+    # missing its bucket settings, so it never reports done; the routine
+    # lets it pass only on a stack that lists "buckets" as unused.
+    assert again.status == StepStatus.SKIPPED
 
 
 @pytest.mark.asyncio

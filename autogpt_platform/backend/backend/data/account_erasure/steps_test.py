@@ -32,7 +32,10 @@ def work_calls(monkeypatch):
     monkeypatch.setattr(work, "get_scheduler_client", lambda: scheduler)
     runs = AsyncMock(return_value=[SimpleNamespace(id="e1")])
     monkeypatch.setattr(work.execution_db, "get_graph_executions", runs)
-    stop = AsyncMock()
+    async def stop_everything(user_id):
+        scheduler.get_execution_schedules.return_value = []
+
+    stop = AsyncMock(side_effect=stop_everything)
     monkeypatch.setattr(work, "stop_user_work", stop)
     return SimpleNamespace(scheduler=scheduler, runs=runs, stop=stop)
 
@@ -56,6 +59,17 @@ async def test_the_apply_reruns_the_close_steps_work_stop(work_calls):
 
     work_calls.stop.assert_awaited_once_with(USER_ID)
     assert report.status == StepStatus.DONE
+
+
+@pytest.mark.asyncio
+async def test_a_schedule_the_rerun_could_not_stop_fails_the_step(work_calls):
+    """stop_user_work never raises, so a scheduler it couldn't reach would
+    pass unnoticed; the schedules still listed afterwards fail the step for
+    the next run to retry, before the workflows go."""
+    work_calls.stop.side_effect = None
+
+    with pytest.raises(RuntimeError):
+        await work.stop_work(SUBJECT, dry_run=False)
 
 
 @pytest.mark.asyncio
@@ -179,7 +193,7 @@ async def test_only_the_accounts_memory_graphs_are_deleted(monkeypatch):
     subject = SUBJECT.model_copy(update={"expert_ids": ["expert-1"]})
     expert_graph = memory.derive_memory_group_id(USER_ID, "expert-1")
     falkor = FakeFalkor([f"user_{USER_ID}", expert_graph, "user_someone-else"])
-    monkeypatch.setattr(memory, "FalkorDB", lambda **kwargs: falkor)
+    monkeypatch.setattr(memory, "new_falkordb_client", lambda: falkor)
     monkeypatch.setattr(memory, "evict_client", AsyncMock())
 
     dry = await memory.delete_memory(subject, dry_run=True)
@@ -213,7 +227,7 @@ async def test_memory_is_skipped_on_a_stack_without_falkordb(
 ):
     falkordb_at(host)
     connect = MagicMock()
-    monkeypatch.setattr(memory, "FalkorDB", connect)
+    monkeypatch.setattr(memory, "new_falkordb_client", connect)
 
     report = await memory.delete_memory(SUBJECT, dry_run=False)
 
@@ -229,7 +243,7 @@ async def test_an_unreachable_falkordb_fails_the_step(monkeypatch, falkordb_at):
     falkordb_at("falkordb.internal")
     falkor = FakeFalkor([])
     falkor.list_graphs = AsyncMock(side_effect=ConnectionError("refused"))
-    monkeypatch.setattr(memory, "FalkorDB", lambda **kwargs: falkor)
+    monkeypatch.setattr(memory, "new_falkordb_client", lambda: falkor)
 
     with pytest.raises(ConnectionError):
         await memory.delete_memory(SUBJECT, dry_run=False)
