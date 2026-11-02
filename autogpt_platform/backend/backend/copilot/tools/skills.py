@@ -1712,10 +1712,11 @@ async def _parse_skill_from_workspace(
 
 
 def _index_entry_from_metadata(slug: str, meta: dict) -> ParsedSkill | None:
-    """Build a body-less :class:`ParsedSkill` from ``WorkspaceFile.metadata``
-    written at store time.  Returns ``None`` when the metadata is missing
-    a description (older SKILL.md predating the metadata-cache change) so
-    the caller falls back to reading the file.
+    """Build a body-less entry from skill metadata.
+
+    Return None when the skill kind or description is missing/invalid, or
+    invocation is absent or not a dict. The caller then reads SKILL.md so
+    legacy skills still honour user-invocable: false.
     """
     if meta.get(_META_KIND) != _META_KIND_VALUE:
         return None
@@ -1736,9 +1737,7 @@ def _index_entry_from_metadata(slug: str, meta: dict) -> ParsedSkill | None:
         body="",
         triggers=triggers,
         version=str(version) if version else None,
-        extra=invocation_frontmatter(
-            invocation if isinstance(invocation, dict) else {}
-        ),
+        extra=invocation_frontmatter(invocation),
         origin=_skill_origin(meta),
         baseline=_baseline_from_metadata(meta),
     )

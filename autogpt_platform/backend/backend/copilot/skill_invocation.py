@@ -48,7 +48,7 @@ from backend.copilot.tools.skills import (
 logger = logging.getLogger(__name__)
 
 # How many of the owner's skills an alias lookup reads before giving up.
-# Only a name that is not a slug gets here, and an owner has far fewer.
+# Any unresolved name, including an unmatched slug, can reach the alias scan.
 _MAX_ALIAS_SCAN = 100
 
 _SLUG = re.compile(r"[a-z0-9_-]+")
