@@ -16,6 +16,7 @@ import {
   clickStop,
   renderHost,
   resetChatRuntimes,
+  STREAM_PATHS,
   TEST_BACKEND_BASE_URL,
   TEST_SESSION_ID,
   typeAndSend,
@@ -48,12 +49,18 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({ isUserLoading: false, isLoggedIn: true }),
 }));
 
+const streamPath = vi.hoisted(() => ({ runtime: false }));
+
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
   const actual =
     await importActual<
       typeof import("@/services/feature-flags/use-get-flag")
     >();
-  return { ...actual, useGetFlag: () => false };
+  return {
+    ...actual,
+    useGetFlag: (flag: string) =>
+      flag === actual.Flag.COPILOT_STREAM_RUNTIME && streamPath.runtime,
+  };
 });
 
 const STAR_TOAST_TITLE = "Enjoying AutoGPT?";
@@ -180,7 +187,11 @@ afterEach(() => {
   server.resetHandlers();
 });
 
-describe("GitHub star toast", () => {
+describe.each(STREAM_PATHS)("GitHub star toast on the %s path", (path) => {
+  beforeEach(() => {
+    streamPath.runtime = path === "stream runtime";
+  });
+
   it("asks once, after the fifth answer, on a self-hosted install", async () => {
     vi.stubEnv("NEXT_PUBLIC_APP_ENV", "local");
     renderChat();
@@ -191,7 +202,9 @@ describe("GitHub star toast", () => {
     await sendPrompt(5);
     expect(await screen.findByText(STAR_TOAST_TITLE)).toBeDefined();
 
-    const star = screen.getByRole("link", { name: "Star on GitHub" });
+    const star = screen.getByRole("link", {
+      name: "Star on GitHub (opens in a new tab)",
+    });
     expect(star.getAttribute("href")).toBe(REPO_URL);
     expect(star.getAttribute("target")).toBe("_blank");
     await clickWithoutNavigating(star);

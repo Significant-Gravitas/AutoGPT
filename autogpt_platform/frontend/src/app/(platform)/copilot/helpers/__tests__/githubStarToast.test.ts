@@ -23,9 +23,23 @@ const kickoffPrompt: UIMessage = {
 };
 const reply = textMessage("reply", "assistant", "Hi, I'm your new analyst.");
 
+// Prompt ids stay unique across tests: a counted prompt is never counted again.
+let promptNumber = 0;
+
+function newPrompt() {
+  promptNumber += 1;
+  return textMessage(`prompt-${promptNumber}`, "user", "Plan my week");
+}
+
 function answer(messages: UIMessage[], times: number) {
   for (let turn = 0; turn < times; turn++) {
     countAnswerTowardStarToast({ messages });
+  }
+}
+
+function answerNewPrompts(times: number, before: UIMessage[] = []) {
+  for (let turn = 0; turn < times; turn++) {
+    countAnswerTowardStarToast({ messages: [...before, newPrompt(), reply] });
   }
 }
 
@@ -45,12 +59,20 @@ describe("countAnswerTowardStarToast", () => {
     answer([kickoffPrompt, reply], 5);
     expect(toast).not.toHaveBeenCalled();
 
-    answer([kickoffPrompt, reply, textMessage("p", "user", "Hi"), reply], 5);
+    answerNewPrompts(5, [kickoffPrompt, reply]);
     expect(toast).toHaveBeenCalledOnce();
   });
 
   it("doesn't count a turn that answers no prompt", () => {
     answer([reply], 5);
     expect(toast).not.toHaveBeenCalled();
+  });
+
+  it("counts a prompt once, however many turns answer it", () => {
+    answer([newPrompt(), reply], 5);
+    expect(toast).not.toHaveBeenCalled();
+
+    answerNewPrompts(4);
+    expect(toast).toHaveBeenCalledOnce();
   });
 });

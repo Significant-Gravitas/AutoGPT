@@ -18,6 +18,10 @@ interface FinishedTurn {
   isError?: boolean;
 }
 
+// A continuation turn the backend starts after an answer finishes still ends
+// on the prompt that answer counted, so each prompt counts once.
+const countedPrompts = new Set<string>();
+
 /** Self-hosted installs (app env `local`, never dev or prod) ask for a GitHub
  *  star once Otto has answered five of the user's prompts, in any chat. A turn
  *  that failed, was stopped or dropped counts for nothing, so the ask never
@@ -27,9 +31,11 @@ export function countAnswerTowardStarToast(turn: FinishedTurn) {
   if (environment.getAppEnv() !== AppEnv.LOCAL) return;
   if (turn.isAbort || turn.isDisconnect || turn.isError) return;
   const prompt = turn.messages.findLast((message) => message.role === "user");
-  if (!prompt || isKickoffMessage(prompt)) return;
+  if (!prompt || isKickoffMessage(prompt) || countedPrompts.has(prompt.id))
+    return;
   const answered = (Number(storage.get(Key.GITHUB_STAR_PROMPT_COUNT)) || 0) + 1;
   if (answered > ANSWERS_BEFORE_STAR_TOAST) return;
+  countedPrompts.add(prompt.id);
   storage.set(Key.GITHUB_STAR_PROMPT_COUNT, String(answered));
   if (answered < ANSWERS_BEFORE_STAR_TOAST) return;
   toast({
@@ -53,6 +59,7 @@ function StarOnGitHubButton() {
       onClick={() => sonnerToast.dismiss(GITHUB_STAR_TOAST_KEY)}
     >
       Star on GitHub
+      <span className="sr-only"> (opens in a new tab)</span>
     </Button>
   );
 }
