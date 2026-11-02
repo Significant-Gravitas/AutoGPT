@@ -3972,3 +3972,78 @@ class TestTurnEndCheckpoint:
             ):
                 events.append(event)
         return events
+
+
+@pytest.mark.asyncio
+async def test_auto_continue_preserves_each_pending_user_row():
+    from backend.copilot.pending_messages import PendingMessage
+    from backend.copilot.skill_invocation import InvocableSkill
+    from backend.copilot.tools.skills import ParsedSkill
+
+    helper = TestStreamChatCompletionRetryIntegration()
+    session = helper._make_session()
+    session.title = "Report"
+    pending = [
+        PendingMessage(content="/report weekly"),
+        PendingMessage(content="Include totals"),
+    ]
+    combined = "\n\n".join(pm.content for pm in pending)
+    client_cm = helper._make_client_mock(result_message=helper._make_result_message())
+    patches = _make_sdk_patches(
+        session,
+        original_transcript=_build_transcript(
+            [("user", "hello"), ("assistant", "ready")]
+        ),
+        compacted_transcript=None,
+        client_side_effect=lambda *a, **kw: client_cm,
+    )
+
+    async def persist(s, *_a, **_kw):
+        for sequence, row in enumerate(s.messages):
+            row.sequence = sequence
+        return s
+
+    db = MagicMock()
+    db.update_message_content_by_sequence = AsyncMock(return_value=True)
+    found = InvocableSkill(
+        skill=ParsedSkill(name="report", description="Write a report", body="Write $0"),
+        is_default=True,
+    )
+    patches.extend(
+        [
+            (
+                "backend.copilot.pending_message_helpers.persist_session_safe",
+                dict(new=persist),
+            ),
+            ("backend.copilot.service.chat_db", dict(return_value=db)),
+            (
+                "backend.copilot.skill_invocation.is_skills_feature_enabled",
+                dict(new=AsyncMock(return_value=True)),
+            ),
+            (
+                "backend.copilot.skill_invocation.resolve_invocable_skill",
+                dict(new=AsyncMock(return_value=found)),
+            ),
+        ]
+    )
+    events = []
+    with contextlib.ExitStack() as stack:
+        for target, kwargs in patches:
+            stack.enter_context(patch(target, **kwargs))
+        async for event in stream_chat_completion_sdk(
+            session_id=session.session_id,
+            message=combined,
+            is_user_message=True,
+            user_id=session.user_id,
+            session=session,
+            continued_pending=pending,
+        ):
+            events.append(event)
+    assert not [event for event in events if isinstance(event, StreamError)]
+    assert client_cm.__aenter__.return_value.query.await_count == 1
+    assert [row.content for row in session.messages if row.role == "user"] == [
+        "hello",
+        "/report weekly",
+        "Include totals",
+    ]
+    db.update_message_content_by_sequence.assert_not_awaited()

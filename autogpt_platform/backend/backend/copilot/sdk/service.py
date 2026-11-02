@@ -5876,7 +5876,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # into this turn and every later one. Same row as the injection
         # above, and before pending messages are folded in for the same
         # reason.
-        if is_user_message:
+        if is_user_message and not continued_pending:
             invoked_message = await inject_skill_invocation(
                 current_message,
                 session_id,
