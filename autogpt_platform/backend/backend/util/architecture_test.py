@@ -950,6 +950,179 @@ def test_only_cli_io_writes_to_the_cli_stdin():
 
 
 # ---------------------------------------------------------------------------
+# Rule: zip members and workbooks are read through the capped readers
+# ---------------------------------------------------------------------------
+#
+# Motivation: backend/util/zip_member.py reads a zip member under a byte cap,
+# and check_xlsx_unpacked_size applies the .xlsx caps before pandas reads a
+# workbook. A read that goes around them has neither cap.
+
+_ZIP_MEMBER_MODULE = "util/zip_member.py"
+_READ_EXCEL_MODULES = frozenset(
+    {"util/file_content_parser.py", "blocks/spreadsheet.py"}
+)
+_ZIP_READ_METHODS = frozenset({"read", "open", "extract", "extractall"})
+
+
+def test_zip_members_and_workbooks_are_read_through_the_capped_readers():
+    offenders: list[str] = []
+    for py in sorted(_iter_backend_py_files()):
+        rel = py.relative_to(BACKEND_ROOT).as_posix()
+        if py.name.endswith("_test.py"):
+            continue
+        try:
+            tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+        except SyntaxError:
+            continue
+        for call, line in _uncapped_archive_reads(tree):
+            if call == "read_excel" and rel in _READ_EXCEL_MODULES:
+                continue
+            if call != "read_excel" and rel == _ZIP_MEMBER_MODULE:
+                continue
+            offenders.append(f"{rel}:{line} {call}")
+
+    assert not offenders, (
+        "Zip members are read through backend/util/zip_member.py, and a workbook "
+        "is checked with check_xlsx_unpacked_size before pandas reads it.\n\n"
+        "Offenders:\n  " + "\n  ".join(offenders) + "\n\n"
+        "Fix: read the member with zip_member.read_member / iter_member, or call "
+        "check_xlsx_unpacked_size first and add the module to _READ_EXCEL_MODULES."
+    )
+
+
+@pytest.mark.parametrize(
+    "source, expected",
+    [
+        ("with zipfile.ZipFile(f) as z:\n    z.read('a')", ["ZipFile.read"]),
+        ("with ZipFile(f) as z:\n    z.open('a').read()", ["ZipFile.open"]),
+        ("z = zipfile.ZipFile(f)\nz.extractall(d)", ["ZipFile.extractall"]),
+        ("z: zipfile.ZipFile = zipfile.ZipFile(f)\nz.read('a')", ["ZipFile.read"]),
+        ("z: ZipFile = ZipFile(f)\nz.extractall(d)", ["ZipFile.extractall"]),
+        ("with zipfile.ZipFile(f) as archive:\n    archive.read('a')", ["ZipFile.read"]),
+        ("zipfile.ZipFile(f).read('a')", ["ZipFile.read"]),
+        ("def f(z: zipfile.ZipFile):\n    z.read('a')", ["ZipFile.read"]),
+        ("def f(z: 'zipfile.ZipFile'):\n    z.extract('a')", ["ZipFile.extract"]),
+        ("with zipfile.ZipFile(b, 'w') as z:\n    z.open('a', 'w')", []),
+        ("with zipfile.ZipFile(b, 'a') as z:\n    z.open('a', mode='w')", []),
+        ("with zipfile.ZipFile(f) as z:\n    z.namelist()", []),
+        ("with open(f) as z:\n    z.read()", []),
+        ("pd.read_excel(f)", ["read_excel"]),
+        ("from pandas import read_excel\nread_excel(f)", ["read_excel"]),
+    ],
+)  # fmt: skip
+def test_archive_read_scan_reads_each_form(source: str, expected: list[str]):
+    assert [call for call, _ in _uncapped_archive_reads(ast.parse(source))] == expected
+
+
+def _uncapped_archive_reads(tree: ast.Module) -> list[tuple[str, int]]:
+    archives = _zip_file_names(tree)
+    found: list[tuple[str, int]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if (isinstance(func, ast.Attribute) and func.attr == "read_excel") or (
+            isinstance(func, ast.Name) and func.id == "read_excel"
+        ):
+            found.append(("read_excel", node.lineno))
+            continue
+        if not isinstance(func, ast.Attribute) or func.attr not in _ZIP_READ_METHODS:
+            continue
+        receiver = func.value
+        is_archive = (
+            isinstance(receiver, ast.Name) and receiver.id in archives
+        ) or _is_zip_file_call(receiver)
+        if not is_archive:
+            continue
+        if func.attr == "open" and _opens_for_writing(node):
+            continue
+        found.append((f"ZipFile.{func.attr}", node.lineno))
+    return sorted(found, key=lambda item: item[1])
+
+
+def _zip_file_names(tree: ast.Module) -> set[str]:
+    """Names bound to a ``ZipFile``: by ``with``, by assignment, or by an
+    annotated parameter or assignment."""
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.With, ast.AsyncWith)):
+            for item in node.items:
+                if _is_zip_file_call(item.context_expr) and isinstance(
+                    item.optional_vars, ast.Name
+                ):
+                    names.add(item.optional_vars.id)
+        elif isinstance(node, ast.Assign) and _is_zip_file_call(node.value):
+            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
+        elif (
+            isinstance(node, ast.AnnAssign)
+            and node.value is not None
+            and _is_zip_file_call(node.value)
+            and isinstance(node.target, ast.Name)
+        ):
+            names.add(node.target.id)
+        elif isinstance(node, ast.arg) and "ZipFile" in _annotation_names(
+            node.annotation
+        ):
+            names.add(node.arg)
+    return names
+
+
+def _is_zip_file_call(node: ast.expr) -> bool:
+    return isinstance(node, ast.Call) and _decorator_name(node.func) == "ZipFile"
+
+
+def _opens_for_writing(call: ast.Call) -> bool:
+    mode = _argument(call, 1, "mode")
+    return isinstance(mode, ast.Constant) and mode.value in ("w", "a", "x")
+
+
+# ---------------------------------------------------------------------------
+# Rule: REST routes run blocks through the direct block execution workers
+# ---------------------------------------------------------------------------
+#
+# Motivation: the API server's event loop serves every request in the
+# process, and block runs belong on the direct block execution workers. Routes
+# hand a block's ``execute()`` stream to
+# ``backend.executor.direct_block_execution``, which runs it on a worker loop
+# under a time budget and a per-user cap.
+
+_API_PACKAGE = BACKEND_ROOT / "api"
+
+
+def _iterates_block_execute(node: ast.AST) -> bool:
+    if isinstance(node, ast.AsyncFor):
+        target = node.iter
+    elif isinstance(node, ast.comprehension) and node.is_async:
+        target = node.iter
+    else:
+        return False
+    return (
+        isinstance(target, ast.Call)
+        and isinstance(target.func, ast.Attribute)
+        and target.func.attr == "execute"
+    )
+
+
+def test_api_routes_do_not_iterate_block_execute():
+    offenders: list[str] = []
+    for py in _API_PACKAGE.rglob("*.py"):
+        if "__pycache__" in py.parts or py.name.endswith("_test.py"):
+            continue
+        tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+        offenders.extend(
+            f"{py.relative_to(BACKEND_ROOT).as_posix()}:{node.lineno}"
+            for node in ast.walk(tree)
+            if _iterates_block_execute(node)
+        )
+
+    assert not offenders, (
+        "API code must not iterate a block's execute() stream itself; pass it "
+        "to backend.executor.direct_block_execution.run_block_off_loop.\n\n"
+        "Offenders:\n  " + "\n  ".join(offenders)
+    )
+
+
+# ---------------------------------------------------------------------------
 # Rule: work billed after it starts reads the ledger decided when it started
 # ---------------------------------------------------------------------------
 #

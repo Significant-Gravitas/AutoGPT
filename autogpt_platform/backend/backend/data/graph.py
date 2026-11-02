@@ -2,7 +2,7 @@ import asyncio
 import logging
 import uuid
 from collections import defaultdict
-from collections.abc import Collection, Container, Mapping, Sequence
+from collections.abc import Collection, Container, Iterable, Mapping, Sequence
 from datetime import datetime, timezone
 from typing import (
     TYPE_CHECKING,
@@ -101,8 +101,27 @@ class Link(BaseDbModel):
             is_static=link.isStatic,
         )
 
+    @property
+    def ends(self) -> tuple[str, str, str, str]:
+        """The two pins the link connects; links with the same ends are
+        duplicates of each other."""
+        return (self.source_id, self.source_name, self.sink_id, self.sink_name)
+
     def __hash__(self):
-        return hash((self.source_id, self.sink_id, self.source_name, self.sink_name))
+        return hash(
+            (self.id, self.source_id, self.sink_id, self.source_name, self.sink_name)
+        )
+
+
+def dedupe_links(links: Iterable[Link]) -> list[Link]:
+    """Keeps the first link for each pair of ends, in order; it is static if
+    any of its duplicates is."""
+    unique: dict[tuple[str, str, str, str], Link] = {}
+    for link in links:
+        kept = unique.setdefault(link.ends, link)
+        if link.is_static and not kept.is_static:
+            unique[link.ends] = kept.model_copy(update={"is_static": True})
+    return list(unique.values())
 
 
 class Node(BaseDbModel):
@@ -194,8 +213,10 @@ class NodeModel(Node):
             graph_version=node.agentGraphVersion,
             webhook_id=node.webhookId,
         )
-        obj.input_links = [Link.from_db(link) for link in node.Input or []]
-        obj.output_links = [Link.from_db(link) for link in node.Output or []]
+        obj.input_links = dedupe_links(Link.from_db(link) for link in node.Input or [])
+        obj.output_links = dedupe_links(
+            Link.from_db(link) for link in node.Output or []
+        )
         if for_export:
             return obj.stripped_for_export()
         return obj
@@ -540,27 +561,7 @@ class GraphModel(Graph, GraphMeta):
             f"{graph_credentials_inputs}"
         )
 
-        # Warn if same-provider credentials inputs can't be combined (= bad UX)
-        graph_cred_fields = list(graph_credentials_inputs.values())
-        for i, (field, keys, _) in enumerate(graph_cred_fields):
-            for other_field, other_keys, _ in list(graph_cred_fields)[i + 1 :]:
-                if field.provider != other_field.provider:
-                    continue
-                if ProviderName.HTTP in field.provider:
-                    continue
-                # MCP credentials are intentionally split by server URL
-                if ProviderName.MCP in field.provider:
-                    continue
-
-                # If this happens, that means a block implementation probably needs
-                # to be updated.
-                logger.warning(
-                    "Multiple combined credentials fields "
-                    f"for provider {field.provider} "
-                    f"on graph #{self.id} ({self.name}); "
-                    f"fields: {field} <> {other_field};"
-                    f"keys: {keys} <> {other_keys}."
-                )
+        self._warn_uncombined_credentials_inputs(graph_credentials_inputs)
 
         # Build JSON schema directly to avoid expensive create_model + validation overhead
         properties = {}
@@ -642,6 +643,42 @@ class GraphModel(Graph, GraphMeta):
             "properties": properties,
             "required": required_fields,
         }
+
+    def _warn_uncombined_credentials_inputs(
+        self,
+        graph_credentials_inputs: dict[
+            str, tuple[CredentialsFieldInfo, set[tuple[str, str]], bool]
+        ],
+    ) -> None:
+        """Warn if same-provider credentials inputs can't be combined (= bad UX).
+
+        Inputs are grouped by provider, and each provider with more than one
+        input is warned about once.
+        """
+        by_provider: defaultdict[
+            frozenset, list[tuple[CredentialsFieldInfo, set[tuple[str, str]]]]
+        ] = defaultdict(list)
+        for field, keys, _ in graph_credentials_inputs.values():
+            by_provider[field.provider].append((field, keys))
+
+        for provider, fields in by_provider.items():
+            if len(fields) < 2:
+                continue
+            if ProviderName.HTTP in provider:
+                continue
+            # MCP credentials are intentionally split by server URL
+            if ProviderName.MCP in provider:
+                continue
+
+            # If this happens, that means a block implementation probably needs
+            # to be updated.
+            logger.warning(
+                "Multiple combined credentials fields "
+                f"for provider {provider} "
+                f"on graph #{self.id} ({self.name}); "
+                f"fields: {' <> '.join(str(field) for field, _ in fields)}; "
+                f"keys: {' <> '.join(str(keys) for _, keys in fields)}."
+            )
 
     def aggregate_credentials_inputs(
         self,
@@ -1298,12 +1335,10 @@ class GraphModel(Graph, GraphMeta):
             organization_id=graph.organizationId if not for_export else None,
             team_id=graph.teamId if not for_export else None,
             nodes=[NodeModel.from_db(node, for_export) for node in graph.Nodes or []],
-            links=list(
-                {
-                    Link.from_db(link)
-                    for node in graph.Nodes or []
-                    for link in (node.Input or []) + (node.Output or [])
-                }
+            links=dedupe_links(
+                Link.from_db(link)
+                for node in graph.Nodes or []
+                for link in (node.Input or []) + (node.Output or [])
             ),
             sub_graphs=[
                 GraphModel.from_db(sub_graph, for_export)
@@ -1694,11 +1729,24 @@ async def get_store_listed_graphs(graph_ids: list[str]) -> dict[str, GraphModel]
     return graphs
 
 
+async def get_graph_at_version(
+    graph_id: str, version: int, *, client: Prisma | None
+) -> GraphModel | None:
+    """The graph at exactly *version*, with no access check: `get_graph` with
+    `skip_access_check=True`, on *client*. Not exposed over RPC."""
+    graph = await AgentGraph.prisma(client).find_first(
+        where={"id": graph_id, "version": version},
+        include=AGENT_GRAPH_INCLUDE,
+    )
+    return GraphModel.from_db(graph) if graph else None
+
+
 async def get_graph_as_admin(
     graph_id: str,
     version: int | None = None,
     user_id: str | None = None,
     for_export: bool = False,
+    client: Prisma | None = None,
 ) -> GraphModel | None:
     """
     Intentionally parallels the get_graph but should only be used for admin tasks, because can return any graph that's been submitted
@@ -1715,7 +1763,7 @@ async def get_graph_as_admin(
     if version is not None:
         where_clause["version"] = version
 
-    graph = await AgentGraph.prisma().find_first(
+    graph = await AgentGraph.prisma(client).find_first(
         where=where_clause,
         include=AGENT_GRAPH_INCLUDE,
         order={"version": "desc"},
@@ -1727,7 +1775,7 @@ async def get_graph_as_admin(
         return None
 
     if for_export:
-        sub_graphs = await get_sub_graphs(graph)
+        sub_graphs = await get_sub_graphs(graph, client=client)
         return GraphModel.from_db(
             graph=graph,
             sub_graphs=sub_graphs,
@@ -1737,14 +1785,16 @@ async def get_graph_as_admin(
     return GraphModel.from_db(graph, for_export)
 
 
-async def get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
+async def get_sub_graphs(
+    graph: AgentGraph, client: Prisma | None = None
+) -> list[AgentGraph]:
     """All sub-graphs of a given graph, recursively, flattened into a list."""
-    [sub_graphs] = await get_sub_graphs_of_each([graph])
+    [sub_graphs] = await get_sub_graphs_of_each([graph], client=client)
     return sub_graphs
 
 
 async def get_sub_graphs_of_each(
-    graphs: Sequence[AgentGraph],
+    graphs: Sequence[AgentGraph], client: Prisma | None = None
 ) -> list[list[AgentGraph]]:
     """
     Each graph's sub-graphs, recursively, flattened, in the order of `graphs`.
@@ -1768,7 +1818,7 @@ async def get_sub_graphs_of_each(
         ]
         if missing := {ref for level in refs for ref in level} - fetched.keys():
             fetched.update(dict.fromkeys(missing))
-            rows = await AgentGraph.prisma().find_many(
+            rows = await AgentGraph.prisma(client).find_many(
                 where={
                     "OR": [
                         {"id": graph_id, "version": graph_version, "userId": user_id}
@@ -1802,8 +1852,7 @@ def _sub_graph_refs(graph: AgentGraph, agent_block_id: str) -> list[tuple[str, i
         (graph_id, graph_version)
         for node in graph.Nodes or []
         if (
-            node.AgentBlock
-            and node.AgentBlock.id == agent_block_id
+            node.agentBlockId == agent_block_id
             and (graph_id := cast(str, dict(node.constantInput).get("graph_id")))
             and (
                 graph_version := cast(
@@ -1815,14 +1864,27 @@ def _sub_graph_refs(graph: AgentGraph, agent_block_id: str) -> list[tuple[str, i
 
 
 async def get_connected_output_nodes(node_id: str) -> list[tuple[Link, Node]]:
-    links = await AgentNodeLink.prisma().find_many(
-        where={"agentNodeSourceId": node_id},
-        include={"AgentNodeSink": {"include": AGENT_NODE_INCLUDE}},
+    """Each distinct outgoing link of the node, paired with its sink node.
+
+    Every sink node is read once, however many links lead to it, and without
+    its own links, which no caller needs.
+    """
+    links = dedupe_links(
+        Link.from_db(link)
+        for link in await AgentNodeLink.prisma().find_many(
+            where={"agentNodeSourceId": node_id}
+        )
     )
+    if not links:
+        return []
+    sink_nodes = {
+        node.id: NodeModel.from_db(node)
+        for node in await AgentNode.prisma().find_many(
+            where={"id": {"in": list({link.sink_id for link in links})}}
+        )
+    }
     return [
-        (Link.from_db(link), NodeModel.from_db(link.AgentNodeSink))
-        for link in links
-        if link.AgentNodeSink
+        (link, sink_nodes[link.sink_id]) for link in links if link.sink_id in sink_nodes
     ]
 
 
@@ -2258,6 +2320,8 @@ async def __create_graph(
     team_id: str | None = None,
 ):
     graphs = [graph] + graph.sub_graphs
+    for g in graphs:
+        g.links = dedupe_links(g.links)
 
     # Reject unsafe dynamic pin names before anything is written, so no save
     # path (route, fork, copy, copilot) can persist one. The use-site guards in
