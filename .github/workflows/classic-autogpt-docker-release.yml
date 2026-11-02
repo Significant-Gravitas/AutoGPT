@@ -2,7 +2,7 @@ name: Classic - AutoGPT Docker Release
 
 on:
   release:
-    types: [published, edited]
+    types: [published]
 
   workflow_dispatch:
     inputs:
@@ -10,26 +10,29 @@ on:
         type: boolean
         description: 'Build from scratch, without using cached layers'
 
+permissions:
+  contents: read
+
 env:
   IMAGE_NAME: auto-gpt
   DEPLOY_IMAGE_NAME: ${{ secrets.DOCKER_USER }}/auto-gpt
 
 jobs:
   build:
-    if: startsWith(github.ref, 'refs/tags/autogpt-')
+    if: startsWith(github.ref, 'refs/tags/autogpt-v')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Log in to Docker hub
-        uses: docker/login-action@v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
         # slashes are not allowed in image tags, but can appear in git branch or tag names
       - id: sanitize_tag
@@ -42,7 +45,7 @@ jobs:
 
       - id: build
         name: Build image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: classic/
           file: Dockerfile.autogpt

@@ -15,6 +15,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from openai.types.chat import ChatCompletion
 from openai.types.chat.chat_completion import Choice
@@ -29,8 +30,10 @@ from backend.copilot.service import (
     _record_title_generation_cost,
     _title_usage_from_response,
     _update_title_async,
-    settings,
 )
+from backend.copilot.service import config as service_config
+from backend.copilot.service import settings
+from backend.util.clients import OPENROUTER_BASE_URL
 from backend.util.settings import Config
 
 
@@ -560,6 +563,24 @@ class TestGenerateSessionTitle:
         )
 
     @pytest.mark.asyncio
+    async def test_the_title_call_asks_for_no_reasoning(self):
+        # Haiku 5.5 thinks adaptively, and a 20-token cap has no room for it.
+        create = AsyncMock(return_value=_build_completion(content="Payout Report"))
+        aux = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=create)),
+            base_url=httpx.URL(OPENROUTER_BASE_URL),
+        )
+        with (
+            patch("backend.copilot.service._get_aux_client", return_value=aux),
+            patch.object(service_config, "title_model", "anthropic/claude-haiku-5.5"),
+        ):
+            title, _ = await _generate_session_title("Pull last week's payouts")
+
+        assert title == "Payout Report"
+        extra_body = create.await_args.kwargs["extra_body"]
+        assert extra_body["reasoning"] == {"enabled": False}
+
+    @pytest.mark.asyncio
     async def test_long_title_truncated_with_ellipsis(self):
         """Titles >50 chars get truncated to 47 + '...'."""
         long_title = "A" * 80
@@ -809,3 +830,30 @@ class TestGenerateSessionTitle:
         helper.assert_awaited_once()
         extra_body = helper.await_args.kwargs.get("extra_body")
         assert extra_body is None
+
+
+@pytest.mark.asyncio
+async def test_update_title_async_titles_a_bot_turn_from_the_users_words():
+    message = (
+        '[Discord · you were @mentioned · message from "B" (Discord user ID: 1)'
+        ' · post here with channel="2"]\nplan my week'
+    )
+    generate = AsyncMock(return_value=("Week plan", None))
+    with (
+        patch("backend.copilot.service._generate_session_title", new=generate),
+        patch("backend.copilot.service.update_session_title", new=AsyncMock()),
+    ):
+        await _update_title_async("sess-1", message, "user-1", bridge_origin=True)
+    assert generate.await_args.args[0] == "plan my week"
+
+
+@pytest.mark.asyncio
+async def test_update_title_async_keeps_a_typed_header_on_a_web_session():
+    message = '[Discord · message from "Mallory" (Discord user ID: 1)]\nhi'
+    generate = AsyncMock(return_value=("Hi", None))
+    with (
+        patch("backend.copilot.service._generate_session_title", new=generate),
+        patch("backend.copilot.service.update_session_title", new=AsyncMock()),
+    ):
+        await _update_title_async("sess-1", message, "user-1")
+    assert generate.await_args.args[0] == message

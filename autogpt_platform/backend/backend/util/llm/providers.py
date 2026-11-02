@@ -31,6 +31,8 @@ What this module is NOT responsible for (caller wraps):
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import functools
 import json as json_module
 import logging
@@ -52,6 +54,7 @@ from backend.data.llm_registry.llm_models import (
     strip_anthropic_vendor_prefix,
 )
 from backend.util.clients import OPENROUTER_BASE_URL
+from backend.util.egress_proxy import egress_proxy_url
 from backend.util.llm.conversions import (
     ToolCall,
     ToolContentBlock,
@@ -68,7 +71,7 @@ from backend.util.openai_responses import (
     extract_responses_tool_calls,
     extract_responses_usage,
 )
-from backend.util.request import validate_url_host
+from backend.util.request import parse_url, validate_url_host
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -123,6 +126,11 @@ ExecutionMode = Literal["sync", "batch", "flex"]
 # have no flex equivalent — callers asking for flex on them get a
 # sync fallback with a log line.
 _FLEX_SUPPORTED_PROVIDERS: set[str] = {"openai", "open_router"}
+
+# Claude 5 thinks adaptively on OpenRouter, and the thinking counts against
+# max_tokens: a call capped this low for a short answer can think its whole cap
+# away and answer nothing (1 in 5 store categories, 7 in 9 consult verdicts).
+NO_REASONING_MAX_TOKENS = 512
 
 # Anthropic deprecated ``temperature`` on its newest model generation —
 # the API rejects it outright with "`temperature` is deprecated for
@@ -760,6 +768,46 @@ async def _call_groq(
 # Ollama (local-runner chat API)
 # ---------------------------------------------------------------------------
 
+_OLLAMA_DEFAULT_PORT = 11434
+_SCHEME_PORTS = {"http": 80, "https": 443}
+
+
+def _ollama_url(host: str) -> str:
+    """*host* as a URL naming the port Ollama's client would connect to: 11434
+    for a host given with neither scheme nor port, otherwise its scheme's."""
+    url = parse_url(host)
+    # parse_url adds "http://" itself to a host that names no scheme.
+    scheme_given = "://" in host.replace("\\", "/")
+    port = _SCHEME_PORTS.get(url.scheme) if scheme_given else _OLLAMA_DEFAULT_PORT
+    if url.port is None and port is not None:
+        url = url._replace(netloc=f"{url.netloc}:{port}")
+    return url.geturl()
+
+
+def _configured_ollama_url() -> httpx.URL | None:
+    try:
+        return httpx.URL(_ollama_url(settings.config.ollama_host))
+    except (ValueError, httpx.InvalidURL):
+        return None
+
+
+async def _scope_ollama_key(request: httpx.Request) -> None:
+    """Drop the process's OLLAMA_API_KEY, which ollama.AsyncClient sends with
+    every request, redirects included, unless this request goes to the
+    configured Ollama endpoint itself, in scheme, host and port alike.
+
+    Being trusted is not enough: trust ignores the scheme, lets any port
+    through for an entry configured without one, and covers the copilot's chat
+    endpoint. httpx also keeps the header on an http-to-https redirect."""
+    url, configured = request.url, _configured_ollama_url()
+    # Both read by httpx: IDNA-encoded host, a scheme's default port as None.
+    if configured is None or (url.scheme, url.raw_host, url.port) != (
+        configured.scheme,
+        configured.raw_host,
+        configured.port,
+    ):
+        request.headers.pop("authorization", None)
+
 
 async def _call_ollama(
     *,
@@ -775,9 +823,20 @@ async def _call_ollama(
     if tools:
         raise ValueError("Ollama does not support tools.")
 
+    messages = _prepare_ollama_messages(messages)
+
     # SSRF guard — the host can be user-supplied (block-layer input
     # field), so it must match an operator-configured trust list.
-    await validate_url_host(ollama_host, trusted_hostnames=_trusted_ollama_hostnames())
+    checked, is_trusted, _ = await validate_url_host(
+        _ollama_url(ollama_host), trusted_hostnames=_trusted_ollama_hostnames()
+    )
+    if checked.port == 0:
+        # Ollama's client reads port 0 as no port and connects to its default.
+        raise ValueError(f"Ollama host {ollama_host!r} has an invalid port")
+    # Connect to the URL that was checked, never the raw input: Ollama's own
+    # parser reads some spellings (a backslash before "@", a leading "//") as a
+    # different host.
+    host = checked.geturl()
 
     # ``num_predict`` is Ollama's OUTPUT token cap. ``num_ctx`` (the
     # input context window) is deliberately left at the model default —
@@ -787,14 +846,13 @@ async def _call_ollama(
     if temperature is not None:
         options["temperature"] = temperature
 
-    client = ollama.AsyncClient(
-        host=ollama_host, timeout=request_timeout(timeout_seconds)
-    )
-    response = await client.chat(
+    response = await _send_ollama_chat(
+        host,
+        is_trusted=is_trusted,
+        timeout_seconds=timeout_seconds,
         model=model,
         messages=messages,
-        stream=False,
-        format="json" if force_json_output else None,
+        json_format=force_json_output,
         options=options,
     )
     return ProviderResponse(
@@ -803,6 +861,83 @@ async def _call_ollama(
         completion_tokens=response.eval_count or 0,
         raw_response=response,
     )
+
+
+def _prepare_ollama_messages(messages: list[dict]) -> list[dict]:
+    prepared: list[dict] = []
+    for message in messages:
+        images = message.get("images")
+        if images is None:
+            prepared.append(message)
+            continue
+        if not isinstance(images, (list, tuple)):
+            raise ValueError(
+                "Ollama images must be a list of base64-encoded image data"
+            )
+        prepared.append(
+            {**message, "images": [_decode_ollama_image(image) for image in images]}
+        )
+    return prepared
+
+
+def _decode_ollama_image(image: object) -> bytes:
+    if isinstance(image, bytes):
+        return image
+    if not isinstance(image, str):
+        raise ValueError("Ollama images must contain base64-encoded image data")
+    try:
+        return base64.b64decode(
+            image.replace("\r", "").replace("\n", ""), validate=True
+        )
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError(
+            "Ollama images must contain base64-encoded image data"
+        ) from exc
+
+
+async def _send_ollama_chat(
+    host: str,
+    *,
+    is_trusted: bool,
+    timeout_seconds: float,
+    model: str,
+    messages: list[dict],
+    json_format: bool,
+    options: dict[str, Any],
+) -> ollama.ChatResponse:
+    """Send one chat to the checked *host*, connecting the way its trust
+    allows."""
+    client_kwargs: dict[str, Any] = {
+        "host": host,
+        "timeout": request_timeout(timeout_seconds),
+        "event_hooks": {"request": [_scope_ollama_key]},
+    }
+    if not is_trusted:
+        # The host passed the address check, but ollama.AsyncClient hands the
+        # name to httpx, which resolves it again to connect and follows
+        # redirects on its own: a changed DNS answer or a redirect could still
+        # reach an internal address. The egress proxy checks every address it
+        # dials, on every hop. Trusted operator hosts connect without it: they
+        # are usually loopback, which the public-only proxy refuses.
+        client_kwargs["proxy"] = egress_proxy_url()
+
+    client = ollama.AsyncClient(**client_kwargs)
+    try:
+        return await client.chat(
+            model=model,
+            messages=messages,
+            stream=False,
+            format="json" if json_format else None,
+            options=options,
+        )
+    except httpx.ProxyError as e:
+        if is_trusted:
+            raise
+        # httpx's wording names a proxy the user never configured.
+        raise ConnectionError(
+            f"Could not connect to Ollama at {host}: it is unreachable or "
+            "not on a public address."
+        ) from e
 
 
 def _trusted_ollama_hostnames() -> list[str]:
@@ -916,6 +1051,7 @@ async def _call_openai_compat(
         # Ask OpenRouter to surface per-request USD cost on `usage.cost`.
         # Same shape used by backend/executor/simulator.py — keep aligned.
         extra_body["usage"] = {"include": True}
+        extra_body.update(small_call_reasoning(model, max_tokens))
         call_kwargs["extra_headers"] = {
             "HTTP-Referer": "https://agpt.co",
             "X-Title": "AutoGPT",
@@ -935,9 +1071,12 @@ async def _call_openai_compat(
         raise ValueError(f"{base_url} returned empty choices in response")
 
     cache_read, cache_creation = _extract_openai_compat_cache_tokens(response)
+    finish_reason = response.choices[0].finish_reason
 
     return ProviderResponse(
         content=response.choices[0].message.content or "",
+        # Callers check Anthropic's "max_tokens"; OpenAI calls it "length".
+        stop_reason="max_tokens" if finish_reason == "length" else finish_reason,
         prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
         completion_tokens=(response.usage.completion_tokens if response.usage else 0),
         cache_read_tokens=cache_read,
@@ -1096,6 +1235,7 @@ async def call_provider_openai_compat_sync(
     extra_body: dict[str, Any] | None = None,
     extra_headers: dict[str, str] | None = None,
     timeout_seconds: float | None = None,
+    temperature: float | None = None,
     client_factory: type[openai.AsyncOpenAI] = openai.AsyncOpenAI,
 ) -> Any:
     """Non-streaming OpenAI-compat chat call, returns the raw SDK
@@ -1127,6 +1267,10 @@ async def call_provider_openai_compat_sync(
         "max_tokens": max_tokens,
         "timeout": request_timeout(timeout_seconds),
     }
+    if temperature is not None:
+        create_kwargs["temperature"] = temperature
+    if client.base_url.host == httpx.URL(OPENROUTER_BASE_URL).host:
+        extra_body = {**(extra_body or {}), **small_call_reasoning(model, max_tokens)}
     if extra_body:
         create_kwargs["extra_body"] = extra_body
     if extra_headers:
@@ -1140,6 +1284,18 @@ async def call_provider_openai_compat_sync(
         )
     except asyncio.TimeoutError as exc:
         raise timeout_error(model, timeout_seconds) from exc
+
+
+def small_call_reasoning(model: str, max_tokens: int) -> dict[str, Any]:
+    """OpenRouter ``extra_body`` turning reasoning off for a small Claude 5 call.
+
+    Empty for a bigger cap or any other model, whose thinking the caller keeps.
+    """
+    if max_tokens > NO_REASONING_MAX_TOKENS:
+        return {}
+    if not strip_anthropic_vendor_prefix(model).startswith(CLAUDE_5_FAMILY_PREFIXES):
+        return {}
+    return {"reasoning": {"enabled": False}}
 
 
 def timeout_error(target: str, timeout_seconds: float) -> TimeoutError:

@@ -1,67 +1,42 @@
-import scrollbar from "tailwind-scrollbar";
 import type { Config } from "tailwindcss";
-import plugin from "tailwindcss/plugin";
 import tailwindcssAnimate from "tailwindcss-animate";
-import { colors } from "./src/components/styles/colors";
+import tailwind3Preset from "./tailwind.v3-preset.ts";
 
-const SMOOTH_SHADOW_SM =
-  "0 18px 47px 0 color-mix(in srgb, var(--smooth-shadow-color) 3%, transparent), 0 7.5px 19px 0 color-mix(in srgb, var(--smooth-shadow-color) 2%, transparent), 0 4px 10.5px 0 color-mix(in srgb, var(--smooth-shadow-color) 2%, transparent), 0 2.3px 5.8px 0 color-mix(in srgb, var(--smooth-shadow-color) 1%, transparent), 0 1.2px 3.1px 0 color-mix(in srgb, var(--smooth-shadow-color) 1%, transparent), 0 0.5px 1.3px 0 color-mix(in srgb, var(--smooth-shadow-color) 1%, transparent)";
-const SMOOTH_RING =
-  "0 0 0 var(--smooth-ring-width, 1px) var(--smooth-ring-color)";
+// The colours, type scale and radii are the theme in src/app/globals.css,
+// with this app's own utilities (`@utility`). What is left here is the rest of
+// Tailwind 3's theme (the preset), the spacing, shadow and motion values
+// still in JS, and tailwindcss-animate.
 
-const smoothShadowRing = plugin(function smoothShadowRing({
-  addBase,
-  addUtilities,
-}) {
-  addBase({
-    ":root": {
-      "--smooth-ring-color": "rgba(0, 0, 0, 0.05)",
-      "--smooth-ring-width": "1px",
-    },
-    '.dark, .dark-mode, [data-theme="dark"]': {
-      "--smooth-ring-color": "rgba(255, 255, 255, 0.18)",
-    },
-  });
-  addUtilities({
-    ".smooth-shadow-ring-sm": {
-      "--smooth-shadow-color": "var(--tw-shadow-color, rgb(0 0 0))",
-      boxShadow: `${SMOOTH_SHADOW_SM}, ${SMOOTH_RING}`,
-    },
-  });
-});
-
-// Fractal-noise tile, inlined so the grain costs no extra request. `#` and `%`
-// stay percent-encoded or the data URI terminates early.
-const GRAIN_TEXTURE = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='grain'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23grain)'/%3E%3C/svg%3E")`;
-
-// Lays grain over an element's own background. Deliberately sets no `position`,
-// so it never fights the positioning utilities already on the target — callers
-// must position the element themselves.
-const grainTexture = plugin(function grainTexture({ addUtilities }) {
-  addUtilities({
-    ".grain-overlay::after": {
-      content: '""',
-      position: "absolute",
-      inset: "0",
-      backgroundImage: GRAIN_TEXTURE,
-      opacity: "0.5",
-      mixBlendMode: "soft-light",
-      pointerEvents: "none",
-    },
-  });
-});
-
-const textShadow = plugin(function textShadow({ matchUtilities, theme }) {
-  matchUtilities(
-    {
-      "text-shadow": (value) => ({ textShadow: value }),
-    },
-    { values: theme("textShadow") },
-  );
-});
+// Classes Tailwind 3 generated nothing for, which Tailwind 4 would now turn
+// into CSS: bare numbers it accepts without a theme step (`z-12`, `flex-2`,
+// `opacity-1`), an `ease-[...]` arbitrary value Tailwind 3 rejected as
+// ambiguous, and streamdown's Tailwind 4 syntax (`content-(--x)`, a trailing
+// `!`, `wrap-anywhere`). Listing them keeps every element looking as it did;
+// the owning components can drop or fix them on their own.
+const TAILWIND_3_DEAD_CLASSES = [
+  "z-12",
+  "flex-2",
+  "disabled:opacity-1",
+  "ease-[cubic-bezier(0.16,1,0.3,1)]",
+  "ease-[cubic-bezier(0.33,1,0.68,1)]",
+  "data-[state=open]:ease-[cubic-bezier(0.16,1,0.3,1)]",
+  "data-[state=closed]:ease-[cubic-bezier(0.4,0,1,1)]",
+  "wrap-anywhere",
+  "*:last:after:content-(--streamdown-caret)",
+  // Streamdown's classes below stack variants in Tailwind 4's order, which
+  // reads them the other way round from Tailwind 3; globals.css keeps the
+  // rules Tailwind 3 generated for them.
+  "*:first:mt-0",
+  "*:last:mb-0",
+  "*:last:after:inline",
+  "*:last:after:align-baseline",
+  "dark:bg-(--shiki-dark-bg)!",
+  "dark:text-(--shiki-dark)!",
+];
 
 const config = {
-  darkMode: ["class", ".dark-mode"], // ignore dark: prefix classes for now until we fully support dark mode
+  presets: [tailwind3Preset],
+  blocklist: TAILWIND_3_DEAD_CLASSES,
   content: ["./src/**/*.{ts,tsx}", "./node_modules/streamdown/dist/**/*.js"],
   prefix: "",
   theme: {
@@ -73,66 +48,6 @@ const config = {
       },
     },
     extend: {
-      fontFamily: {
-        sans: ["var(--font-geist-sans)"],
-        mono: ["var(--font-geist-mono)"],
-        poppins: ["var(--font-poppins)"],
-      },
-      colors: {
-        ...colors,
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
-        primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
-        },
-        secondary: {
-          DEFAULT: "hsl(var(--secondary))",
-          foreground: "hsl(var(--secondary-foreground))",
-        },
-        destructive: {
-          DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))",
-        },
-        muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
-        },
-        accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
-        },
-        popover: {
-          DEFAULT: "hsl(var(--popover))",
-          foreground: "hsl(var(--popover-foreground))",
-        },
-        card: {
-          DEFAULT: "hsl(var(--card))",
-          foreground: "hsl(var(--card-foreground))",
-        },
-        customGray: {
-          "100": "#d9d9d9",
-          "200": "#a8a8a8",
-          "300": "#878787",
-          "400": "#646464",
-          "500": "#474747",
-          "600": "#282828",
-          "700": "#272727",
-        },
-        sidebar: {
-          DEFAULT: "hsl(var(--sidebar-background))",
-          foreground: "hsl(var(--sidebar-foreground))",
-          primary: "hsl(var(--sidebar-primary))",
-          "primary-foreground": "hsl(var(--sidebar-primary-foreground))",
-          accent: "hsl(var(--sidebar-accent))",
-          "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
-          border: "hsl(var(--sidebar-border))",
-          ring: "hsl(var(--sidebar-ring))",
-        },
-      },
       spacing: {
         "0": "0rem",
         "1": "0.25rem",
@@ -177,18 +92,6 @@ const config = {
         "7.5": "1.875rem",
         "8.5": "2.125rem",
       },
-      borderRadius: {
-        xsmall: "0.25rem",
-        small: "0.5rem",
-        medium: "0.75rem",
-        large: "1rem",
-        xlarge: "1.25rem",
-        "2xlarge": "1.5rem",
-        full: "9999px",
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
-      },
       boxShadow: {
         subtle: "0px 1px 2px 0px rgba(0,0,0,0.05)",
         "message-table": "0 1px 2px rgba(0,0,0,0.04)",
@@ -196,14 +99,6 @@ const config = {
       backgroundImage: {
         "message-table-header":
           "radial-gradient(35% 160% at 8% 0%, rgba(139,92,246,0.05), transparent), radial-gradient(35% 160% at 50% 0%, rgba(99,102,241,0.04), transparent), radial-gradient(35% 160% at 92% 0%, rgba(59,130,246,0.05), transparent), linear-gradient(to bottom, theme(colors.white), theme(colors.zinc.50))",
-      },
-      textShadow: {
-        "message-table-violet":
-          "0 0 6px rgba(139,92,246,0.45), 0 0 18px rgba(139,92,246,0.55)",
-        "message-table-indigo":
-          "0 0 6px rgba(99,102,241,0.45), 0 0 18px rgba(99,102,241,0.55)",
-        "message-table-blue":
-          "0 0 6px rgba(59,130,246,0.45), 0 0 18px rgba(59,130,246,0.55)",
       },
       keyframes: {
         "accordion-down": {
@@ -283,10 +178,6 @@ const config = {
           "60%": { transform: "translateX(-3px)" },
           "80%": { transform: "translateX(3px)" },
         },
-        aurora: {
-          "0%": { backgroundPosition: "50% 50%, 50% 50%" },
-          "100%": { backgroundPosition: "350% 50%, 350% 50%" },
-        },
         "marquee-x": {
           "0%": { transform: "translateX(0)" },
           "100%": { transform: "translateX(-50%)" },
@@ -325,7 +216,6 @@ const config = {
         shimmer: "shimmer 4s ease-in-out infinite",
         loader: "loader 1s infinite",
         shake: "shake 0.5s ease-in-out",
-        aurora: "aurora 60s linear infinite",
         "marquee-x": "marquee-x 40s linear infinite",
         "progress-bar":
           "progress-bar 1.4s cubic-bezier(0.65, 0, 0.35, 1) infinite",
@@ -344,13 +234,7 @@ const config = {
       },
     },
   },
-  plugins: [
-    tailwindcssAnimate,
-    scrollbar({ nocompatible: true }),
-    smoothShadowRing,
-    grainTexture,
-    textShadow,
-  ],
+  plugins: [tailwindcssAnimate],
 } satisfies Config;
 
 export default config;

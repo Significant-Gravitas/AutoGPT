@@ -12,7 +12,6 @@ import { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgen
 import { Button } from "@/components/atoms/Button/Button";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { analytics } from "@/services/analytics";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -36,7 +35,8 @@ function UndoActions({
         variant="primary"
         size="small"
         as="NextLink"
-        className="bg-neutral-200 text-zinc-900 hover:bg-neutral-300 hover:text-zinc-800"
+        // oxlint-disable-next-line design-system/no-restyle -- a light button on the dark toast; no Button variant is light-on-dark
+        className="bg-surface-active text-foreground-strong hover:bg-border-strong hover:text-foreground-emphasis"
         href={libraryHref}
       >
         Open workflow
@@ -45,7 +45,8 @@ function UndoActions({
         variant="ghost"
         size="small"
         loading={isUndoing}
-        className="border-none text-zinc-200 hover:bg-transparent hover:text-zinc-400"
+        // oxlint-disable-next-line design-system/no-restyle -- a quiet text button on the dark toast; no Button variant is light-on-dark
+        className="border-none text-surface-active hover:bg-transparent hover:text-foreground-subtle"
         onClick={async () => {
           setIsUndoing(true);
           try {
@@ -134,8 +135,6 @@ export function AddToLibraryButton({
       await queryClient.invalidateQueries({
         queryKey: getGetV2ListLibraryAgentsQueryKey(),
       });
-
-      analytics.sendDatafastEvent("add_to_library", { id: data.id });
 
       const addedToast = toast({
         title: `Workflow ${agentName} added to your library.`,

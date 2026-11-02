@@ -37,10 +37,6 @@ from backend.copilot.tools.models import (
 _MODULE = "backend.copilot.tools.graphiti_forget"
 
 
-async def _enabled(_user_id: str) -> bool:
-    return True
-
-
 @pytest.fixture(autouse=True)
 def lock_redis(mocker) -> FakeRedis:
     """The real ``retract`` takes the graph's write lock; keep it in memory."""
@@ -67,10 +63,7 @@ class TestExpertMemoryScope:
     async def test_forget_search_uses_expert_memory_group(self) -> None:
         search_facts = AsyncMock(return_value=[])
         session = ChatSession.new("user-abc", dry_run=False, expert_id="expert-1")
-        with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
-            patch(f"{_MODULE}.search_facts", search_facts),
-        ):
+        with (patch(f"{_MODULE}.search_facts", search_facts),):
             await MemoryForgetSearchTool()._execute(
                 "user-abc", session, query="private fact"
             )
@@ -83,10 +76,7 @@ class TestExpertMemoryScope:
     async def test_forget_confirm_uses_expert_memory_group(self) -> None:
         retract = AsyncMock(return_value=ForgetResult())
         session = ChatSession.new("user-abc", dry_run=False, expert_id="expert-1")
-        with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
-            patch(f"{_MODULE}.retract", retract),
-        ):
+        with (patch(f"{_MODULE}.retract", retract),):
             await MemoryForgetConfirmTool()._execute(
                 "user-abc", session, uuids=["private-edge"]
             )
@@ -116,10 +106,7 @@ class TestForgetSearchCandidates:
             attributes={"status": status} if status else {},
         )
         session = ChatSession.new("user-abc", dry_run=False)
-        with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
-            patch(f"{_MODULE}.search_facts", AsyncMock(return_value=[edge])),
-        ):
+        with (patch(f"{_MODULE}.search_facts", AsyncMock(return_value=[edge])),):
             response = await MemoryForgetSearchTool()._execute(
                 "user-abc", session, query="atlas"
             )
@@ -162,7 +149,6 @@ class TestForgetSearchForgottenCandidates:
         session = ChatSession.new("user-abc", dry_run=False)
         search_forgotten = AsyncMock(return_value=forgotten)
         with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
             patch(f"{_MODULE}.search_facts", AsyncMock(return_value=live)),
             patch(f"{_MODULE}.search_forgotten_facts", search_forgotten),
             patch(f"{_MODULE}.recheck", AsyncMock(return_value=(live, []))),
@@ -295,10 +281,7 @@ class TestForgetConfirmModes:
     async def test_hard_delete_asks_for_a_hard_retract(self) -> None:
         retract = AsyncMock(return_value=ForgetResult(deleted=["e1"]))
         session = ChatSession.new("user-abc", dry_run=False)
-        with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
-            patch(f"{_MODULE}.retract", retract),
-        ):
+        with (patch(f"{_MODULE}.retract", retract),):
             response = await MemoryForgetConfirmTool()._execute(
                 "user-abc", session, uuids=["e1"], hard_delete=True
             )
@@ -313,10 +296,7 @@ class TestForgetConfirmModes:
         """The user hears of the dream's facts the forget retracted too."""
         result = ForgetResult(deleted=["e1"], derived=["d1", "d2", "d3"])
         session = ChatSession.new("user-abc", dry_run=False)
-        with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
-            patch(f"{_MODULE}.retract", AsyncMock(return_value=result)),
-        ):
+        with (patch(f"{_MODULE}.retract", AsyncMock(return_value=result)),):
             response = await MemoryForgetConfirmTool()._execute(
                 "user-abc", session, uuids=["e1"]
             )
@@ -331,10 +311,7 @@ class TestForgetConfirmModes:
     @pytest.mark.asyncio
     async def test_unavailable_graph_is_an_error_response(self) -> None:
         session = ChatSession.new("user-abc", dry_run=False)
-        with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
-            patch(f"{_MODULE}.retract", AsyncMock(side_effect=OSError("refused"))),
-        ):
+        with (patch(f"{_MODULE}.retract", AsyncMock(side_effect=OSError("refused"))),):
             response = await MemoryForgetConfirmTool()._execute(
                 "user-abc", session, uuids=["e1"]
             )
@@ -358,7 +335,6 @@ class TestForgetFailuresAreActionable:
         driver = _mock_driver([], [])  # the lookup finds nothing, nothing names it
         session = ChatSession.new("user-abc", dry_run=False)
         with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
             patch(
                 "backend.copilot.graphiti.recall_forget.open_driver",
                 MagicMock(return_value=driver),
@@ -397,7 +373,6 @@ class TestForgetFailuresAreActionable:
         )
         session = ChatSession.new("user-abc", dry_run=False)
         with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
             patch(
                 "backend.copilot.graphiti.recall_forget.open_driver",
                 MagicMock(return_value=driver),
@@ -428,7 +403,6 @@ class TestForgetFailuresAreActionable:
         )
         session = ChatSession.new("user-abc", dry_run=False)
         with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
             patch(
                 "backend.copilot.graphiti.recall_forget.open_driver",
                 MagicMock(return_value=driver),
@@ -466,12 +440,112 @@ class TestBuildConfirmMessage:
 
     def test_edges_already_erased_are_told_apart(self) -> None:
         message = _build_confirm_message(0, False, [], 2, 1)
-        assert message == (
-            "0 memory edge(s) retracted from memory; "
-            "2 fact(s) derived from them retracted too. "
-            "1 memory edge(s) had already been erased; what was derived from "
-            "them was retracted and erased."
+        assert message.startswith("1 memory edge(s) had already been erased.")
+        assert "0 memory edge(s) retracted from memory" not in message
+
+    def test_a_hard_forget_whose_deletion_failed_says_so(self) -> None:
+        """Its cascade ran, then deleting the edge failed: the edge and its
+        text are still there, so the message must not call it erased."""
+        failures = [
+            MemoryForgetFailure(
+                uuid="uuid-1",
+                code=MemoryForgetFailureCode.CLEANUP_ERROR,
+                reason="graph unavailable",
+            )
+        ]
+        message = _build_confirm_message(0, True, failures, 2)
+        assert message.startswith(
+            "The memory edge(s) could not be permanently deleted, but 2 fact(s) "
+            "derived from them were retracted; erasing their text may not have "
+            "finished (see below)."
         )
+        assert "already" not in message
+        assert "uuid-1" in message
+
+    def test_resumed_edges_claim_derived_facts_only_when_there_were_any(
+        self,
+    ) -> None:
+        none_derived = _build_confirm_message(1, True, [], 0, 1)
+        assert none_derived == (
+            "1 memory edge(s) permanently deleted. "
+            "1 memory edge(s) had already been erased."
+        )
+        assert "derived" not in none_derived
+
+        derived = _build_confirm_message(1, True, [], 2, 1)
+        assert derived == (
+            "1 memory edge(s) permanently deleted. "
+            "1 memory edge(s) had already been erased. "
+            "2 fact(s) derived from these edges were retracted and erased."
+        )
+
+    def test_one_derived_count_is_credited_to_every_kind_of_edge(self) -> None:
+        """The count covers what the deleted and the already-erased edges
+        derived, so it is never credited to the deleted ones alone. A soft
+        forget erases only the already-erased edges' derived facts."""
+        hard = _build_confirm_message(2, True, [], 5, 1)
+        assert "derived from them" not in hard
+        assert hard.endswith(
+            "5 fact(s) derived from these edges were retracted and erased."
+        )
+
+        soft = _build_confirm_message(2, False, [], 5, 1)
+        assert soft.startswith(
+            "2 memory edge(s) retracted from memory. "
+            "1 memory edge(s) had already been erased. "
+            "5 fact(s) derived from these edges were retracted, and those "
+            "derived from the already-erased edges were erased too."
+        )
+        assert "retracted and erased" not in soft
+
+        failures = [
+            MemoryForgetFailure(
+                uuid="uuid-3",
+                code=MemoryForgetFailureCode.CLEANUP_ERROR,
+                reason="erase failed",
+            )
+        ]
+        failed = _build_confirm_message(2, False, failures, 5, 1)
+        assert (
+            "erasing those derived from the already-erased edges may not have "
+            "finished (see below)."
+        ) in failed
+        assert "erased too" not in failed
+
+    def test_erasure_is_claimed_only_when_nothing_failed(self) -> None:
+        """A derived fact is counted once retracted, before its text is erased,
+        so a failure means its text may still be there."""
+        clean = _build_confirm_message(0, True, [], 2, 1)
+        assert clean == (
+            "1 memory edge(s) had already been erased. "
+            "2 derived fact(s) retracted and erased."
+        )
+
+        failures = [
+            MemoryForgetFailure(
+                uuid="uuid-2",
+                code=MemoryForgetFailureCode.CLEANUP_ERROR,
+                reason="erase failed",
+            )
+        ]
+        resumed = _build_confirm_message(0, True, failures, 2, 1)
+        assert resumed.startswith(
+            "1 memory edge(s) had already been erased. 2 derived fact(s) "
+            "retracted; erasing their text may not have finished (see below)."
+        )
+        assert "retracted and erased" not in resumed
+
+        mixed = _build_confirm_message(1, True, failures, 2, 1)
+        assert "derived from these edges were retracted; erasing" in mixed
+        assert "retracted and erased" not in mixed
+
+    def test_a_soft_derived_only_result_never_claims_erasure(self) -> None:
+        soft = _build_confirm_message(0, False, [], 2)
+        assert soft == (
+            "The memory edge(s) could not be retracted from memory, but 2 fact(s) "
+            "derived from them were retracted."
+        )
+        assert "erased" not in soft
 
     def test_a_soft_forget_says_it_is_not_a_permanent_deletion(self) -> None:
         """A model told a user who had asked for a permanent delete that a soft

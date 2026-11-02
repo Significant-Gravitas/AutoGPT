@@ -25,11 +25,11 @@ export function MaxUpgradeSummary({ preview }: Props) {
     ? "including tax"
     : "plus applicable tax";
   return (
-    <div className="overflow-hidden rounded-2xl border border-zinc-200">
-      <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-zinc-200 bg-zinc-50 px-5 py-4">
+    <div className="overflow-hidden rounded-2xl border border-border-base">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border-base bg-surface-muted px-5 py-4">
         <Text variant="body-medium">
           Max{" "}
-          <span className="font-normal text-zinc-500">
+          <span className="font-normal text-foreground-tertiary">
             · {preview.billing_cycle === "yearly" ? "Yearly" : "Monthly"}
           </span>
         </Text>
@@ -65,18 +65,20 @@ export function MaxUpgradeSummary({ preview }: Props) {
             value={amount(preview.adjustment_amount)}
           />
         )}
-        <div className="border-t border-zinc-200 pt-4">
+        <div className="border-t border-border-base pt-4">
           <SummaryRow
             label="Due today"
             value={amount(preview.amount_due)}
             emphasized
           />
         </div>
-        <Text variant="small" tone="secondary" className="pt-2 leading-5">
-          Next renewal: {dateLabel(preview.period_end)}. Max’s regular price is{" "}
-          {amount(preview.recurring_amount)} {recurringTax} per {unit}, before
-          any applicable discounts or account credits.
-        </Text>
+        <div className="pt-2">
+          <Text variant="small-loose" tone="secondary">
+            Next renewal: {dateLabel(preview.period_end)}. Max’s regular price
+            is {amount(preview.recurring_amount)} {recurringTax} per {unit},
+            before any applicable discounts or account credits.
+          </Text>
+        </div>
       </div>
     </div>
   );
@@ -95,13 +97,15 @@ function SummaryRow({
     <div className="flex items-start justify-between gap-4">
       <Text
         variant={emphasized ? "body-medium" : "small"}
-        className={emphasized ? "text-zinc-900" : "text-zinc-600"}
+        tone={emphasized ? "primary" : "secondary"}
       >
         {label}
       </Text>
       <Text
         variant={emphasized ? "body-medium" : "small"}
-        className={`shrink-0 tabular-nums ${emphasized ? "text-zinc-900" : "text-zinc-600"}`}
+        tone={emphasized ? "primary" : "secondary"}
+        // oxlint-disable-next-line design-system/no-restyle -- amounts use tabular figures
+        className="shrink-0 tabular-nums"
       >
         {value}
       </Text>

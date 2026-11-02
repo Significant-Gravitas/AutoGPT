@@ -1,4 +1,10 @@
-import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
+import { useFirstRunTourStore } from "@/app/(platform)/components/FirstRunTour/store";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+} from "@/tests/integrations/test-utils";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -12,15 +18,20 @@ import { PlatformChrome } from "../PlatformChrome";
 
 const showAppSidebarMock = vi.fn<() => boolean>(() => true);
 const showTourSidebarMock = vi.fn<() => boolean>(() => false);
+const showChangelogMock = vi.fn<() => boolean>(() => true);
 vi.mock("../usePlatformChrome", () => ({
   usePlatformChrome: () => ({
     showAppSidebar: showAppSidebarMock(),
     showTourSidebar: showTourSidebarMock(),
+    showChangelog: showChangelogMock(),
   }),
 }));
 
 vi.mock("@/components/layout/AppSidebar/AppSidebar", () => ({
   AppSidebar: () => <div data-testid="app-sidebar" />,
+}));
+vi.mock("@/components/molecules/ChangelogPopup/ChangelogPopup", () => ({
+  ChangelogPopup: () => <div data-testid="changelog-popup" />,
 }));
 vi.mock("@/components/layout/TopUpPrompt/TopUpPromptProvider", () => ({
   TopUpPromptProvider: ({ children }: { children: ReactNode }) => (
@@ -48,6 +59,7 @@ describe("PlatformChrome", () => {
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
     showAppSidebarMock.mockReturnValue(true);
     showTourSidebarMock.mockReturnValue(false);
+    showChangelogMock.mockReturnValue(true);
     useTourStore.setState({ isDemoComplete: false });
   });
 
@@ -59,6 +71,7 @@ describe("PlatformChrome", () => {
     );
 
     expect(screen.getByTestId("app-sidebar")).toBeDefined();
+    expect(screen.getByTestId("changelog-popup")).toBeDefined();
     expect(screen.getByTestId("global-search")).toBeDefined();
     expect(screen.getByTestId("child")).toBeDefined();
   });
@@ -72,6 +85,7 @@ describe("PlatformChrome", () => {
     );
 
     expect(screen.queryByTestId("app-sidebar")).toBeNull();
+    expect(screen.queryByTestId("changelog-popup")).toBeNull();
     expect(screen.queryByRole("navigation")).toBeNull();
     expect(screen.getByTestId("global-search")).toBeDefined();
     expect(screen.getByTestId("child")).toBeDefined();
@@ -106,7 +120,28 @@ describe("PlatformChrome", () => {
     expect(screen.queryByText(/Start with Pro/i)).toBeNull();
     expect(screen.queryByText(/\$42\.50/)).toBeNull();
     expect(screen.queryByTestId("app-sidebar")).toBeNull();
+    expect(screen.queryByTestId("changelog-popup")).toBeNull();
     expect(screen.getByTestId("child")).toBeDefined();
+  });
+
+  it("holds the changelog back while the first-run walkthrough is open", () => {
+    // On a phone the popup sat inside the walkthrough's window, over the
+    // first tasks it was pointing at. It comes back once the walkthrough ends.
+    act(() => useFirstRunTourStore.getState().open("auto"));
+    const { rerender } = render(<PlatformChrome>content</PlatformChrome>);
+    expect(screen.queryByTestId("changelog-popup")).toBeNull();
+
+    act(() => useFirstRunTourStore.getState().close());
+    rerender(<PlatformChrome>content</PlatformChrome>);
+    expect(screen.getByTestId("changelog-popup")).toBeDefined();
+  });
+
+  it("waits for the signed-in session before showing the changelog", () => {
+    showChangelogMock.mockReturnValue(false);
+    render(<PlatformChrome>content</PlatformChrome>);
+
+    expect(screen.getByTestId("app-sidebar")).toBeDefined();
+    expect(screen.queryByTestId("changelog-popup")).toBeNull();
   });
 
   it("keeps the marketplace free-trial card after a previous tour completes", () => {

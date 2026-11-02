@@ -14,8 +14,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from backend.copilot.dream.routing import ExecutionPath
 from backend.util.llm.providers import ProviderLiteral
+
+from .execution_path import ExecutionPath
 
 InferenceKind = Literal[
     "dream", "briefing_narrative", "consult", "eval_judge", "skill_learning"

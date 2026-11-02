@@ -14,22 +14,21 @@ import { getExpertSchedules } from "../helpers";
 
 interface Args {
   expertId: string;
-  enabled: boolean;
 }
 
-export function useExpertDetailPage({ expertId, enabled }: Args) {
+export function useExpertDetailPage({ expertId }: Args) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   const expertQuery = useGetExpert(expertId, {
-    query: { select: (res) => okData(res) ?? null, enabled },
+    query: { select: (res) => okData(res) ?? null },
   });
   const schedulesQuery = useGetV1ListExecutionSchedulesForAUser({
-    query: { select: (res) => okData(res) ?? [], enabled },
+    query: { select: (res) => okData(res) ?? [] },
   });
   const activityQuery = useGetExpertActivity(expertId, {
-    query: { select: (res) => okData(res) ?? null, enabled },
+    query: { select: (res) => okData(res) ?? null },
   });
 
   const expert = expertQuery.data ?? null;
@@ -116,7 +115,7 @@ export function useExpertDetailPage({ expertId, enabled }: Args) {
 
   return {
     expert,
-    isLoading: enabled && (expertQuery.isLoading || schedulesQuery.isLoading),
+    isLoading: expertQuery.isLoading || schedulesQuery.isLoading,
     isError:
       expertQuery.isError ||
       schedulesQuery.isError ||
@@ -124,7 +123,7 @@ export function useExpertDetailPage({ expertId, enabled }: Args) {
     refetch,
     schedules,
     activity: activityQuery.data ?? null,
-    isActivityLoading: enabled && activityQuery.isLoading,
+    isActivityLoading: activityQuery.isLoading,
     isActivityError: activityQuery.isError,
     isPickerOpen,
     openPicker: () => setIsPickerOpen(true),

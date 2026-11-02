@@ -49,7 +49,7 @@ export function formatValidationError(
     if (errorItems.length > 0) {
       return (
         <div className="space-y-1">
-          <div className="font-medium text-white">
+          <div className="font-medium text-action-foreground">
             {detail.message || "Validation failed"}
           </div>
           <div className="mt-2 space-y-1 text-xs">{errorItems}</div>

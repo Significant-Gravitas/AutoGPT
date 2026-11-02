@@ -52,10 +52,10 @@ export function WorkspaceFolderRows({
           <li
             key={folder.id}
             className={cn(
-              "flex w-full items-center gap-3 rounded-2xl border bg-white p-3 transition-colors",
+              "flex w-full items-center gap-3 rounded-2xl border bg-surface p-3 transition-colors",
               isSelected
-                ? "border-violet-300 ring-1 ring-violet-200"
-                : "border-zinc-200 hover:border-zinc-300",
+                ? "border-brand/40 ring-1 ring-brand/20"
+                : "border-border-base hover:border-border-strong",
             )}
           >
             <button
@@ -67,7 +67,7 @@ export function WorkspaceFolderRows({
                 e.preventDefault();
                 onOpen(folder.id);
               }}
-              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:outline-none"
             >
               <div
                 className={cn(
@@ -83,13 +83,14 @@ export function WorkspaceFolderRows({
               </div>
               <div className="flex min-w-0 flex-1 flex-col">
                 <Text
+                  tone="primary"
                   variant="body-medium"
-                  className="truncate text-zinc-900"
+                  className="truncate"
                   title={folder.name}
                 >
                   {folder.name}
                 </Text>
-                <Text variant="small" className="text-zinc-500">
+                <Text tone="muted" variant="small">
                   {folderSummary(folder.file_count ?? 0, subfolderCount)}
                 </Text>
               </div>
@@ -104,10 +105,10 @@ export function WorkspaceFolderRows({
               }}
               className={cn(
                 "flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-sm transition-colors",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300",
+                "focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:outline-none",
                 isSelected
-                  ? "text-violet-600"
-                  : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700",
+                  ? "text-brand"
+                  : "text-foreground-tertiary hover:bg-surface-hover hover:text-foreground-body",
               )}
             >
               Attach
@@ -119,7 +120,7 @@ export function WorkspaceFolderRows({
             <Icon
               icon={ArrowRight01Icon}
               size={16}
-              className="shrink-0 text-zinc-400"
+              className="shrink-0 text-foreground-subtle"
               aria-hidden
             />
           </li>

@@ -192,6 +192,7 @@ async def sdk_service_turn(
 
     stubs: dict[str, Any] = {
         "ClaudeSDKClient": MagicMock(side_effect=cli),
+        "require_verbatim_prompts_cli": MagicMock(return_value="claude"),
         "AsyncClusterLock": MagicMock(side_effect=lock),
         "_make_sdk_cwd": MagicMock(return_value=tempfile.mkdtemp()),
         "propagate_attributes": MagicMock(),

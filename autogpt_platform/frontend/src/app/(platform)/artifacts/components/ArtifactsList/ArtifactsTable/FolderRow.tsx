@@ -14,12 +14,10 @@ import { FOLDER_STYLE } from "../../WorkspaceFolders/folder-constants";
 import { formatDayLabel, formatFullDate } from "../helpers";
 import {
   ACTIONS_CELL_CLASS,
-  DATE_CELL_CLASS,
   NAME_BUTTON_CLASS,
   REDUCED_ROW_VARIANTS,
   ROW_GRID_CLASS,
   ROW_VARIANTS,
-  SIZE_CELL_CLASS,
 } from "./row-layout";
 
 interface Props {
@@ -85,7 +83,7 @@ export function FolderRow({
       animate="show"
       className={cn(
         ROW_GRID_CLASS,
-        "group cursor-pointer px-2 transition-colors hover:bg-zinc-50",
+        "group cursor-pointer px-2 transition-colors hover:bg-surface-muted",
         isDragOver && `${FOLDER_STYLE.surface} ring-2 ${FOLDER_STYLE.ring}`,
       )}
       data-folder-id={id}
@@ -101,16 +99,18 @@ export function FolderRow({
       >
         <div
           className={cn(
-            "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-zinc-200",
+            "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border-base",
             FOLDER_STYLE.surface,
+            FOLDER_STYLE.icon,
           )}
         >
-          <Icon icon={Folder01Icon} size={20} className={FOLDER_STYLE.icon} />
+          <Icon icon={Folder01Icon} size={20} />
         </div>
         <Text
           variant="body-medium"
           as="span"
-          className="truncate text-zinc-900"
+          tone="primary"
+          className="truncate"
           data-testid="workspace-folder-name"
         >
           {name}
@@ -119,7 +119,8 @@ export function FolderRow({
       <Text
         variant="body"
         as="span"
-        className={cn(DATE_CELL_CLASS, "text-zinc-500")}
+        tone="muted"
+        className="hidden truncate sm:block"
         title={formatFullDate(updatedAt)}
       >
         {formatDayLabel(updatedAt)}
@@ -127,14 +128,16 @@ export function FolderRow({
       <Text
         variant="body"
         as="span"
-        className={cn(SIZE_CELL_CLASS, "text-zinc-500")}
+        tone="muted"
+        // oxlint-disable-next-line design-system/no-restyle -- tabular figures keep the size column aligned; Text has no numeric variant
+        className="hidden tabular-nums md:block"
       >
         {folderSummary(fileCount, subfolderCount)}
       </Text>
       <div
         className={cn(
           ACTIONS_CELL_CLASS,
-          "gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100",
+          "gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100",
         )}
         onClick={(e) => e.stopPropagation()}
       >

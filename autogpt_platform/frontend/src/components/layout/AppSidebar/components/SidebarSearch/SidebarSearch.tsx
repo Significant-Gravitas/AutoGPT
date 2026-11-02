@@ -6,20 +6,21 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+  TooltipPortal,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { Search01Icon } from "@hugeicons/core-free-icons";
 
 export function SidebarSearch() {
   const openSearch = useGlobalSearchStore((state) => state.openSearch);
 
   return (
-    <Tooltip>
+    <Tooltip inheritDelay>
       <TooltipTrigger asChild>
         <button
           type="button"
           aria-label="Search"
           onClick={openSearch}
-          className="flex size-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-zinc-200 max-md:size-10"
+          className="flex size-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-surface-active max-md:size-10"
         >
           <Icon
             icon={Search01Icon}
@@ -27,7 +28,9 @@ export function SidebarSearch() {
           />
         </button>
       </TooltipTrigger>
-      <TooltipContent side="right">Search</TooltipContent>
+      <TooltipPortal>
+        <TooltipContent side="right">Search</TooltipContent>
+      </TooltipPortal>
     </Tooltip>
   );
 }

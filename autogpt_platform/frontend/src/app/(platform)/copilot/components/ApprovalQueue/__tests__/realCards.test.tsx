@@ -27,6 +27,7 @@ test.each(cards.map((card) => [card.story, card] as const))(
     const payload = card.review.payload as {
       headline: { ask: string; object: string | null };
       fields: { key: string; label: string }[];
+      preview: { covers: string[] } | null;
     };
     expect(
       await screen.findByRole("heading", {
@@ -47,7 +48,11 @@ test.each(cards.map((card) => [card.story, card] as const))(
     expect(text).not.toContain("MimeType");
     if (card.schema) {
       // Labels come from the schema once it arrives; each shown input has one.
-      const shown = payload.fields.find((field) => !isIdKey(field.key));
+      // An argument the preview shows by name is not listed again.
+      const covered = payload.preview?.covers ?? [];
+      const shown = payload.fields.find(
+        (field) => !isIdKey(field.key) && !covered.includes(field.key),
+      );
       if (shown) await screen.findByText(shown.label);
     }
   },

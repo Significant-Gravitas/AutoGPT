@@ -19,14 +19,19 @@ services:
   db:
     <<: *agpt-services
     image: pgvector/pgvector:pg15
+    # Sets POSTGRES_PASSWORD on a test volume created under an older one, as
+    # the development stack's `db` does (see ../db/entrypoint.sh).
+    entrypoint: ["bash", "/usr/local/bin/autogpt-db-entrypoint.sh"]
+    command: ["postgres"]
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       POSTGRES_DB: agpt_test
     ports:
-      - ${POSTGRES_PORT:-5432}:5432
+      - 127.0.0.1:${POSTGRES_PORT:-5432}:5432
     volumes:
       - ../db/init/00-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+      - ../db/entrypoint.sh:/usr/local/bin/autogpt-db-entrypoint.sh:ro
       - test-db-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
@@ -80,15 +85,18 @@ services:
       timeout: 10s
       retries: 5
       start_period: 10s
-    environment:
-      - RABBITMQ_DEFAULT_USER=rabbitmq_user_default
-      - RABBITMQ_DEFAULT_PASS=k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7
+    # The login the tests read from backend/.env, where `make init-env`
+    # generates the password.
+    env_file:
+      - .env.default
+      - path: .env
+        required: false
     ports:
-      - "5672:5672"
+      - "127.0.0.1:5672:5672"
   clamav:
     image: clamav/clamav-debian:latest
     ports:
-      - "3310:3310"
+      - "127.0.0.1:3310:3310"
     volumes:
       - clamav-data:/var/lib/clamav
     environment:

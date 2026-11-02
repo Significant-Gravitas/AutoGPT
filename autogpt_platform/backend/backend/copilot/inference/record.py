@@ -14,7 +14,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from backend.copilot.dream.routing import batch_discount
 from backend.copilot.model import ChatSession
 from backend.copilot.price_card import compute_cost_usd, price_for
 from backend.copilot.token_tracking import persist_and_record_usage
@@ -27,6 +26,7 @@ from .context import (
     Payer,
     RouteDecision,
 )
+from .execution_path import batch_discount
 
 
 class _KindAccounting(BaseModel):

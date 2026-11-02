@@ -9,7 +9,7 @@ import {
   Folder01Icon,
   Home01Icon,
 } from "@hugeicons/core-free-icons";
-import type { KeyboardEvent } from "react";
+import type { CSSProperties, KeyboardEvent } from "react";
 import { useRef } from "react";
 import { FOLDER_STYLE } from "../../WorkspaceFolders/folder-constants";
 import { rowKey, type TreeRow } from "../helpers";
@@ -96,14 +96,17 @@ export function FolderTree({
             tabIndex={index === tabbableIndex ? 0 : -1}
             onKeyDown={(e) => handleKeyDown(e, index)}
             onClick={() => !isDisabled && onSelect(row.id)}
-            style={{ paddingLeft: `${(row.level - 1) * 20 + 8}px` }}
+            style={
+              { "--indent": `${(row.level - 1) * 20 + 8}px` } as CSSProperties
+            }
             className={cn(
-              "flex items-center gap-2 rounded-lg py-2 pr-2 outline-none",
+              // oxlint-disable-next-line design-system/no-arbitrary-values -- the indent grows with the folder depth
+              "flex items-center gap-2 rounded-lg py-2 pr-2 pl-[var(--indent)] outline-none",
               isDisabled
-                ? "cursor-not-allowed text-zinc-400"
-                : "cursor-pointer text-zinc-800 hover:bg-zinc-50",
-              isSelected && "bg-zinc-100",
-              "focus-visible:ring-2 focus-visible:ring-zinc-300",
+                ? "cursor-not-allowed text-foreground-subtle"
+                : "cursor-pointer text-foreground-emphasis hover:bg-surface-muted",
+              isSelected && "bg-surface-hover",
+              "focus-visible:ring-2 focus-visible:ring-border-strong",
             )}
             data-testid="move-to-folder-option"
           >
@@ -116,28 +119,31 @@ export function FolderTree({
                   e.stopPropagation();
                   onToggleExpanded(row.id as string);
                 }}
-                className="flex h-[18px] w-[22px] shrink-0 items-center justify-center rounded text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600"
+                className="flex h-[18px] w-[22px] shrink-0 items-center justify-center rounded text-foreground-subtle hover:bg-surface-active hover:text-foreground-secondary"
               >
-                <Icon
-                  icon={ArrowRight01Icon}
-                  size={14}
+                <span
                   className={cn(
-                    "transition-transform",
+                    "flex transition-transform",
                     row.isExpanded && "rotate-90",
                   )}
-                />
+                >
+                  <Icon icon={ArrowRight01Icon} size={14} />
+                </span>
               </button>
             ) : (
               <span className="w-[22px] shrink-0" aria-hidden />
             )}
-            <Icon
-              icon={row.id === null ? Home01Icon : Folder01Icon}
-              size={18}
+            <span
               className={cn(
-                "shrink-0",
-                isDisabled ? "text-zinc-300" : FOLDER_STYLE.icon,
+                "flex shrink-0",
+                isDisabled ? "text-foreground-disabled" : FOLDER_STYLE.icon,
               )}
-            />
+            >
+              <Icon
+                icon={row.id === null ? Home01Icon : Folder01Icon}
+                size={18}
+              />
+            </span>
             <Text
               variant="small-medium"
               as="span"
@@ -147,13 +153,11 @@ export function FolderTree({
               {row.name}
             </Text>
             {row.disabledReason ? (
-              <Text
-                variant="small"
-                as="span"
-                className="ml-auto shrink-0 pl-2 text-zinc-400"
-              >
-                {row.disabledReason}
-              </Text>
+              <span className="ml-auto shrink-0 pl-2">
+                <Text variant="small" as="span" tone="subtle">
+                  {row.disabledReason}
+                </Text>
+              </span>
             ) : null}
           </li>
         );
