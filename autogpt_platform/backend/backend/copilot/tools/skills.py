@@ -187,7 +187,7 @@ def skill_folder(expert_id: str | None) -> str:
 SKILLS_INDEX_CACHE_TTL_S = 60
 # Versioned: an entry cached before origins were recorded would count every
 # installed skill as the owner's for a TTL after deploy.
-SKILLS_INDEX_CACHE_KEY = "copilot:skills_index:v2:{user_id}"
+SKILLS_INDEX_CACHE_KEY = "copilot:skills_index:v3:{user_id}"
 
 # A skill name on an expert's row that resolves to no folder in Otto's
 # library — a marketplace attachment, or a skill deleted after assignment —

@@ -3413,3 +3413,33 @@ async def test_legacy_index_fallback_preserves_every_fast_path_field(invocable):
         listed = await _list_user_skills_from_workspace("user-1")
     assert listed == [expected]
     assert (listed[0].extra.get("user-invocable") is False) == (not invocable)
+
+
+@pytest.mark.asyncio
+async def test_old_cached_index_cannot_offer_a_non_invocable_skill():
+    fake = _FakeWorkspaceManager()
+    path = "/skills/internal/SKILL.md"
+    fake.files[path] = render_skill_markdown(
+        ParsedSkill(
+            name="internal",
+            description="Internal",
+            body="Instructions",
+            extra={"user-invocable": False},
+        )
+    ).encode()
+    fake.metadata[path] = {"kind": "copilot_skill", "description": "Internal"}
+    cached = {
+        "copilot:skills_index:v2:user-1": json.dumps(
+            [{"name": "internal", "description": "Internal", "origin": "user"}]
+        )
+    }
+    redis = AsyncMock()
+    redis.get.side_effect = cached.get
+    with (
+        _patch_skills_path(fake),
+        patch.object(skills, "get_redis_async", AsyncMock(return_value=redis)),
+    ):
+        listed = await skills.list_user_skills("user-1")
+    assert len(listed) == 1
+    assert listed[0].extra.get("user-invocable") is False
+    redis.set.assert_awaited_once()
