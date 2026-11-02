@@ -67,8 +67,8 @@ from backend.util.test import SpinTestServer
 
 # Everything below that names a catalog expert or reads its content checks a
 # rule the catalog must always meet, never the catalog's current copy: the
-# roster lives in Significant-Gravitas/skills-catalog, CI reads its main as
-# prod does, and pinning exact titles, timings, roles or lists here broke this
+# roster lives in Significant-Gravitas/skills-catalog, and pinning exact
+# titles, timings, roles or lists here broke this
 # suite on every catalog edit. The catalog's own check validates the content.
 SKILLS_ONLY_ROSTER = ("Devon", "Riley", "Jordan")
 OPERATIONS_EXPERTS = ("Harper", "Vera", "Ellis")

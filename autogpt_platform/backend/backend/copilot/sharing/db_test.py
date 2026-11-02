@@ -784,6 +784,10 @@ class TestSharedExecutionFileAllowlist:
             )
 
         assert created == 1
+        execution_include = mock_prisma_calls[
+            "execution"
+        ].return_value.find_unique.call_args.kwargs["include"]
+        assert execution_include["NodeExecutions"]["include"]["Node"] is True
         find_many_call = mock_prisma_calls[
             "workspace_file"
         ].return_value.find_many.call_args.kwargs

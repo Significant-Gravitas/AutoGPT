@@ -240,7 +240,7 @@ class ChatMessage(BaseModel):
     # model. None on user/tool rows.
     #
     # routing_source is excluded from serialized payloads: "ld" vs "env"
-    # would let a client infer LaunchDarkly cohort membership. It still
+    # would let a client infer flag cohort membership. It still
     # persists — the DB save path maps fields explicitly (not via
     # model_dump) and the back-fill reads attributes.
     model: str | None = None
@@ -254,14 +254,10 @@ class ChatMessage(BaseModel):
     llm_auth_provider: CopilotLlmAuthProvider | None = None
     llm_credential_id: str | None = None
 
-    # Langfuse trace of the SDK turn that wrote this assistant or reasoning
-    # row; a rating of the reply is scored against it. Internal, so excluded
-    # from payloads like routing_source, and persisted the same way.
-    langfuse_trace_id: str | None = Field(default=None, exclude=True)
-
     # PostHog trace of the turn that wrote this assistant or reasoning row
     # (``copilot.ai_spans``): the ``$ai_trace_id`` of its generations, which a
-    # rating of the reply carries. Internal and persisted like the above.
+    # rating of the reply carries. Internal, so excluded from payloads like
+    # routing_source, and persisted the same way.
     trace_id: str | None = Field(default=None, exclude=True)
 
     stamps_pending_save: bool = Field(default=False, exclude=True)
@@ -331,7 +327,6 @@ class ChatMessage(BaseModel):
                 "CopilotLlmAuthProvider | None", prisma_message.llmAuthProvider
             ),
             llm_credential_id=prisma_message.llmCredentialId,
-            langfuse_trace_id=prisma_message.langfuseTraceId,
             trace_id=prisma_message.traceId,
         )
 
@@ -1223,7 +1218,6 @@ async def _save_session_to_db(
                     "routing_source": msg.routing_source,
                     "llm_auth_provider": msg.llm_auth_provider,
                     "llm_credential_id": msg.llm_credential_id,
-                    "langfuse_trace_id": msg.langfuse_trace_id,
                     "trace_id": msg.trace_id,
                     "metadata": msg.metadata,
                 }
@@ -1278,7 +1272,6 @@ async def _save_session_to_db(
                 routing_source=msg.routing_source,
                 llm_auth_provider=msg.llm_auth_provider,
                 llm_credential_id=msg.llm_credential_id,
-                langfuse_trace_id=msg.langfuse_trace_id,
                 trace_id=msg.trace_id,
             )
         except Exception as e:
