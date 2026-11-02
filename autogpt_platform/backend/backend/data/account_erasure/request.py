@@ -55,8 +55,12 @@ async def claim_request(user_id: str) -> str | None:
     an unclaimed row). Returns the request's ID, or None when there is nothing
     to claim: the owner kept the account, the 14 days are not over, or the
     erasure finished. A claim that an earlier, unfinished run made keeps its
-    first date. The database's clock decides, read in UTC as the columns are
-    stored (they have no time zone), and no lock is held once it returns."""
+    first date. The database's clock decides here, read in UTC as the
+    columns are stored (they have no time zone); Keep (`reopen_account`)
+    compares with the app server's clock instead. They can't both win
+    whatever the skew: each statement re-checks its condition on the locked
+    row, Keep deletes only an unclaimed row and the claim needs the row.
+    No lock is held once it returns."""
     rows = await query_raw_with_schema(
         'UPDATE {schema_prefix}"AccountDeletionRequest" '
         'SET "startedAt" = COALESCE("startedAt", now() AT TIME ZONE \'UTC\') '

@@ -19,6 +19,7 @@ import hmac
 from datetime import UTC, datetime, timedelta
 
 from prisma.enums import AccountBanCategory
+from prisma.errors import UniqueViolationError
 from prisma.models import AccountBanRecord
 
 from backend.data.account_erasure.models import StepReport, StepStatus, Subject
@@ -32,7 +33,8 @@ settings = Settings()
 
 async def keep_ban_record(subject: Subject, *, dry_run: bool) -> StepReport:
     """Record a ban still in force before the auth identity goes. Idempotent:
-    a rerun writes the same record again."""
+    a rerun keeps the record the first run wrote, dates included, so retries
+    never push its end out."""
     now = datetime.now(UTC)
     if not _ban_in_force(subject, now) or not subject.email:
         return StepReport(
@@ -42,25 +44,15 @@ async def keep_ban_record(subject: Subject, *, dry_run: bool) -> StepReport:
         )
     digest = email_hash(subject.email)
     if digest is None:
+        # Fails rather than skips: once the identity goes, the ban is lost.
         return StepReport(
             name="ban_record",
-            status=StepStatus.SKIPPED,
-            note="no ENCRYPTION_KEY on this service to key the hash with",
+            status=StepStatus.FAILED,
+            note="no ENCRYPTION_KEY on this service to key the hash with; set "
+            "it and run again",
         )
     if not dry_run:
-        delete_after = _delete_after(subject, now)
-        await AccountBanRecord.prisma().upsert(
-            where={"emailHash": digest},
-            data={
-                "create": {
-                    "emailHash": digest,
-                    "category": AccountBanCategory.ADMIN,
-                    "recordedAt": now,
-                    "deleteAfter": delete_after,
-                },
-                "update": {"deleteAfter": delete_after},
-            },
-        )
+        await _create_once(digest, now, _delete_after(subject, now))
     return StepReport(
         name="ban_record",
         status=StepStatus.WOULD_DO if dry_run else StepStatus.DONE,
@@ -85,6 +77,25 @@ async def purge_expired_ban_records(*, now: datetime | None = None) -> int:
     return await AccountBanRecord.prisma().delete_many(
         where={"deleteAfter": {"lte": now or datetime.now(UTC)}}
     )
+
+
+async def _create_once(digest: str, now: datetime, delete_after: datetime) -> None:
+    try:
+        await AccountBanRecord.prisma().create(
+            data={
+                "emailHash": digest,
+                "category": AccountBanCategory.ADMIN,
+                "recordedAt": now,
+                "deleteAfter": delete_after,
+            }
+        )
+    except UniqueViolationError:
+        # Kept from an earlier run: left as it is. One that ran out but was
+        # not purged yet starts over, for this ban.
+        await AccountBanRecord.prisma().update_many(
+            where={"emailHash": digest, "deleteAfter": {"lte": now}},
+            data={"recordedAt": now, "deleteAfter": delete_after},
+        )
 
 
 def email_hash(email: str) -> str | None:

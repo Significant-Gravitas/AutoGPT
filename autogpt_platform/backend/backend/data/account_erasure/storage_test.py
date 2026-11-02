@@ -187,10 +187,6 @@ async def test_a_self_hosted_stack_removes_the_accounts_folders(monkeypatch, tmp
 
     again = await storage.delete_files(SUBJECT, dry_run=False)
     assert again.counts == {"local_files": 0}
-    # With no bucket the step can't tell a self-hosted stack from a pod
-    # missing its bucket settings, so it never reports done; the routine
-    # lets it pass only on a stack that lists "buckets" as unused.
-    assert again.status == StepStatus.SKIPPED
 
 
 @pytest.mark.asyncio
@@ -267,3 +263,47 @@ async def test_kept_media_reads_listings_that_stay_and_other_libraries(monkeypat
     sql, *args = query.await_args.args
     assert "$2" not in sql and "__HANDED_OVER__" not in sql
     assert args == [USER_ID]
+
+
+@pytest.mark.asyncio
+async def test_workspace_files_on_disk_go_too_when_only_the_public_bucket_is_set(
+    monkeypatch, tmp_path, kept
+):
+    """Workspace storage keeps files on disk whenever the private bucket is
+    unset (`workspace_storage.py`), whatever public bucket there is."""
+    workspaces = tmp_path / "workspaces"
+    on_disk = workspaces / WORKSPACE_ID / "f1" / "a.txt"
+    on_disk.parent.mkdir(parents=True)
+    on_disk.write_text("x")
+    bucket = FakeBucket({"public": [f"users/{USER_ID}/images/1.png"]})
+    monkeypatch.setattr(
+        storage,
+        "Settings",
+        lambda: SimpleNamespace(
+            config=SimpleNamespace(
+                resolved_private_user_data_bucket="",
+                resolved_public_site_media_bucket="public",
+                media_gcs_bucket_name="",
+                workspace_storage_dir=str(workspaces),
+            )
+        ),
+    )
+    monkeypatch.setattr(storage.async_storage, "Storage", lambda: bucket)
+    monkeypatch.setattr(storage, "media_root", lambda: tmp_path / "store-media")
+
+    report = await storage.delete_files(SUBJECT, dry_run=False)
+
+    assert not on_disk.exists()
+    assert report.counts["local_files"] == 1
+    assert report.counts["public_bucket_objects"] == 1
+
+
+@pytest.mark.asyncio
+async def test_a_private_bucket_means_no_local_sweep(gcs, monkeypatch):
+    sweep_local = MagicMock(return_value=0)
+    monkeypatch.setattr(storage, "_sweep_local", sweep_local)
+
+    report = await storage.delete_files(SUBJECT, dry_run=False)
+
+    sweep_local.assert_not_called()
+    assert "local_files" not in report.counts

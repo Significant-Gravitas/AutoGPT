@@ -109,7 +109,27 @@ _AFTER_ORGS = [
     # graphs and library folders with ON DELETE RESTRICT; deleting them first
     # keeps the cascade from depending on trigger order.
     ("library_agents", "LibraryAgent", '"userId" = $1'),
+    # A preset's saved inputs point at it with ON DELETE SET NULL, so the
+    # preset's delete would leave them, inputs and all, with no owner.
+    (
+        "preset_inputs",
+        "AgentNodeExecutionInputOutput",
+        (
+            '"agentPresetId" IN (SELECT "id" FROM {schema_prefix}"AgentPreset" '
+            'WHERE "userId" = $1)'
+        ),
+    ),
     ("presets", "AgentPreset", '"userId" = $1'),
+    # Its notification batches cascade from the account, but their events
+    # point at them with ON DELETE SET NULL and would stay, data and all.
+    (
+        "notification_events",
+        "NotificationEvent",
+        (
+            '"userNotificationBatchId" IN (SELECT "id" FROM '
+            '{schema_prefix}"UserNotificationBatch" WHERE "userId" = $1)'
+        ),
+    ),
     ("webhooks", "IntegrationWebhook", '"userId" = $1'),
 ]
 _LAST = [

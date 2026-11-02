@@ -140,11 +140,17 @@ _CLOSE_DOES = (
 
 
 async def _run_pending(*, apply: bool, yes: bool):
-    from backend.data.account_erasure.sweep import erase_each, erase_pending
+    from backend.data.account_erasure.sweep import (
+        erase_each,
+        erase_pending,
+        purge_ban_records,
+    )
 
     plans = await erase_pending(dry_run=True)
     if not plans:
         click.echo("No closed account is waiting to be erased.")
+        if apply:
+            click.echo(f"Purged {await purge_ban_records()} expired ban record(s).")
         return
     for plan in plans:
         _report(plan)
@@ -162,6 +168,7 @@ async def _run_pending(*, apply: bool, yes: bool):
     for result in results:
         click.echo("")
         _report(result)
+    click.echo(f"\nPurged {await purge_ban_records()} expired ban record(s).")
     _finish(results)
 
 
@@ -205,12 +212,19 @@ def _report(report: "ErasureReport") -> None:
 def _finish(reports: list["ErasureReport"]) -> None:
     """Fail the command unless every step of every erasure went through, so
     a script never reads a partial run as done."""
-    if any(report.not_claimed for report in reports):
+    from backend.data.account_erasure.routine import ERASED_ALREADY
+
+    finished = [r for r in reports if r.not_claimed == ERASED_ALREADY]
+    if any(report.not_claimed and report not in finished for report in reports):
         raise click.ClickException(
-            "Nothing was erased for an account its owner kept, or that is "
-            "erased already (see above)."
+            "Nothing was erased for an account its owner kept, or that another "
+            "run is erasing (see above)."
         )
-    unfinished = [report.user_id for report in reports if not report.complete]
+    unfinished = [
+        report.user_id
+        for report in reports
+        if not report.complete and report not in finished
+    ]
     if unfinished:
         raise click.ClickException(
             f"{len(unfinished)} erasure(s) did not finish (see the failed step "

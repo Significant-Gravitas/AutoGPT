@@ -111,15 +111,12 @@ async def test_mailerlite_is_skipped_without_a_token(mailerlite):
 
 
 @pytest.mark.asyncio
-async def test_mailerlite_without_an_email_finds_nothing_left_to_guess(mailerlite):
-    """No address means the rows are gone already: a rerun after the step
-    ran, which must not stop the erasure from finishing."""
+async def test_mailerlite_without_an_email_is_skipped_not_guessed(mailerlite):
     report = await third_parties.forget_mailerlite_subscriber(
         Subject(user_id=USER_ID), dry_run=False
     )
 
-    assert report.status == StepStatus.DONE
-    assert report.counts == {"subscribers": 0}
+    assert report.status == StepStatus.SKIPPED
     mailerlite.find_subscriber_id.assert_not_awaited()
 
 
@@ -138,3 +135,8 @@ async def test_the_subscriber_is_forgotten_on_apply(mailerlite):
     mailerlite.forget_subscriber.assert_awaited_once_with("sam@example.com")
     assert report.counts == {"subscribers": 1}
     assert "sam@example.com" not in report.model_dump_json()
+
+
+def test_posthog_retries_are_bounded():
+    """An outage answering 5xx fails the step instead of holding the sweep."""
+    assert third_parties._posthog().retry_max_attempts == 3

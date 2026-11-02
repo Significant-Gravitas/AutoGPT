@@ -82,3 +82,8 @@ async def test_forgetting_needs_a_token(monkeypatch):
     )
     with pytest.raises(mailerlite.MailerLiteNotConfigured):
         await mailerlite.forget_subscriber(EMAIL)
+
+
+def test_mailerlite_retries_are_bounded():
+    """An outage answering 5xx ends in an error instead of retrying forever."""
+    assert mailerlite._client().retry_max_attempts == 3

@@ -32,6 +32,7 @@ def work_calls(monkeypatch):
     monkeypatch.setattr(work, "get_scheduler_client", lambda: scheduler)
     runs = AsyncMock(return_value=[SimpleNamespace(id="e1")])
     monkeypatch.setattr(work.execution_db, "get_graph_executions", runs)
+
     async def stop_everything(user_id):
         scheduler.get_execution_schedules.return_value = []
 

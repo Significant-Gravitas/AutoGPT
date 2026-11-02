@@ -192,3 +192,20 @@ async def test_only_the_accounts_own_runs_are_deleted(db):
     # Not runs of its agents by other accounts: those agents were handed over.
     assert '"AgentGraph"' not in batch
     assert 'e."userId" = $1' in batch
+
+
+def test_rows_that_would_outlive_their_parent_go_before_it():
+    """A preset's saved inputs and a notification batch's events point at
+    their parent with ON DELETE SET NULL: deleted explicitly, inputs before
+    their presets."""
+    deletions = {d.label: d for d in database.planned_deletions(SUBJECT)}
+    labels = list(deletions)
+    assert labels.index("preset_inputs") < labels.index("presets")
+    assert labels.index("notification_events") < labels.index("user")
+    assert deletions["preset_inputs"].table == "AgentNodeExecutionInputOutput"
+    assert '{schema_prefix}"AgentPreset"' in deletions["preset_inputs"].condition
+    assert deletions["notification_events"].table == "NotificationEvent"
+    assert (
+        '{schema_prefix}"UserNotificationBatch"'
+        in deletions["notification_events"].condition
+    )

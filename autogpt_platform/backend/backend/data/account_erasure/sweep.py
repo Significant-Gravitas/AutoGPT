@@ -15,6 +15,7 @@ from backend.data.account_erasure.ban_record import purge_expired_ban_records
 from backend.data.account_erasure.models import (
     AccountErasureBlocked,
     ErasureReport,
+    StepReport,
     StepStatus,
 )
 from backend.data.account_erasure.request import pending_user_ids
@@ -40,6 +41,20 @@ async def _erase_one(user_id: str, dry_run: bool) -> ErasureReport:
         report = await erase_account(user_id, dry_run=dry_run)
     except AccountErasureBlocked as e:
         report = e.report
+    except Exception as e:
+        # Outside any step (reading the account, the lease, the claim): this
+        # account waits for the next run, and the rest still go. The type
+        # only, as a message can quote the address.
+        logger.error(f"Account erasure of {user_id} failed: {type(e).__name__}")
+        report = ErasureReport(
+            user_id=user_id,
+            dry_run=dry_run,
+            steps=[
+                StepReport(
+                    name="erasure", status=StepStatus.FAILED, note=type(e).__name__
+                )
+            ],
+        )
     if not dry_run:
         _log(report)
     return report
@@ -97,15 +112,26 @@ async def start_account_erasure_sweep() -> bool:
 _sweeps: set[asyncio.Task] = set()
 
 
+async def purge_ban_records() -> int:
+    """Purge the ban records past their date, on its own: a failure here is
+    logged and never stops an erasure."""
+    try:
+        purged = await purge_expired_ban_records()
+    except Exception as e:
+        logger.error(f"Purging expired ban records failed: {type(e).__name__}")
+        return 0
+    if purged:
+        logger.info(f"Purged {purged} expired ban record(s)")
+    return purged
+
+
 async def _run_sweep() -> None:
+    await purge_ban_records()
     try:
         reports = await erase_pending(dry_run=False)
-        purged = await purge_expired_ban_records()
-    except Exception:
-        logger.exception("Account erasure sweep failed")
+    except Exception as e:
+        logger.error(f"Account erasure sweep failed: {type(e).__name__}")
         return
-    if purged:
-        logger.info(f"Account erasure sweep purged {purged} expired ban record(s)")
     if reports:
         done = sum(1 for report in reports if report.complete)
         logger.info(f"Account erasure sweep erased {done} of {len(reports)}")

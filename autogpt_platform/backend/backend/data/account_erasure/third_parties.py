@@ -50,13 +50,11 @@ async def forget_mailerlite_subscriber(
             note="MAILERLITE_API_TOKEN is not set",
         )
     if not subject.email:
-        # Every account has an address while its rows exist; none means an
-        # earlier run already got past this step and erased them.
         return StepReport(
             name="mailerlite",
-            status=StepStatus.WOULD_DO if dry_run else StepStatus.DONE,
-            counts={"subscribers": 0},
-            note="no address left: the account's rows are gone",
+            status=StepStatus.SKIPPED,
+            note="no email on record for this account; look the subscriber up "
+            "by hand",
         )
     if dry_run:
         found = await mailerlite.find_subscriber_id(subject.email) is not None
@@ -98,9 +96,12 @@ def _raise_for_posthog(status: int, action: str) -> None:
 
 
 def _posthog() -> Requests:
+    # A bounded retry: an outage answering 5xx must fail the step, not hold
+    # the sweep on this pod for good.
     return Requests(
         trusted_origins=[Settings().secrets.posthog_app_host],
         raise_for_status=False,
+        retry_max_attempts=3,
     )
 
 

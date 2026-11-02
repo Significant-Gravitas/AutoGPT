@@ -193,3 +193,19 @@ async def test_no_shared_graphs_skips_the_listing_lookup(monkeypatch):
 
     assert plan.graph_ids == [] and plan.listing_ids == []
     assert query.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_a_team_agent_is_shared_only_with_another_team_member(monkeypatch):
+    """Team rows are visible to that team's members (`tenancy`), so the org
+    clause leaves them out and the team clause needs another active member
+    of the team, still active in the org."""
+    query = AsyncMock(return_value=[])
+    monkeypatch.setattr(shared_agents, "query_raw_with_schema", query)
+
+    await shared_agents.plan_transfer(USER_ID)
+
+    graphs_sql = query.await_args_list[0].args[0]
+    assert 'g."teamId" IS NULL AND EXISTS' in graphs_sql
+    assert '{schema_prefix}"TeamMember" tm' in graphs_sql
+    assert 'tm."userId" <> $1' in graphs_sql

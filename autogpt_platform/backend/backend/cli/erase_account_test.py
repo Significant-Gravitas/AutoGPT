@@ -192,6 +192,24 @@ def test_a_stripe_refusal_on_close_leaves_the_account_open(run):
     assert "still open" in result.output
 
 
+def test_an_account_erased_already_is_a_success(run):
+    """Rerunning a finished erasure (to confirm it, say) is not a failure."""
+
+    def erasing(user_id, *, dry_run, **kw):
+        if dry_run:
+            return _report(dry_run=True)
+        return ErasureReport(
+            user_id=user_id, dry_run=False, not_claimed=routine.ERASED_ALREADY
+        )
+
+    run.erasing.side_effect = erasing
+
+    result = run.invoke(EMAIL, "--apply", "--yes")
+
+    assert result.exit_code == 0, result.output
+    assert "nothing ran: erased already" in result.output
+
+
 def test_an_erasure_the_owner_kept_meanwhile_fails_the_command(run):
     def erasing(user_id, *, dry_run, **kw):
         if dry_run:
@@ -229,7 +247,9 @@ def pending(monkeypatch):
         ]
     )
     monkeypatch.setattr(sweep, "erase_each", each)
-    return SimpleNamespace(plans=plans, each=each)
+    purge = AsyncMock(return_value=2)
+    monkeypatch.setattr(sweep, "purge_ban_records", purge)
+    return SimpleNamespace(plans=plans, each=each, purge=purge)
 
 
 def test_pending_without_apply_lists_what_would_go(run, pending):
@@ -245,6 +265,19 @@ def test_pending_apply_erases_the_unblocked_ones_from_the_dry_run(run, pending):
 
     assert result.exit_code == 0, result.output
     pending.each.assert_awaited_once_with(["a"], dry_run=False)
+    pending.purge.assert_awaited_once_with()
+    assert "Purged 2 expired ban record(s)" in result.output
+
+
+def test_pending_purges_even_with_nothing_to_erase(run, pending):
+    pending.plans.return_value = []
+
+    assert run.invoke("--pending").exit_code == 0
+    pending.purge.assert_not_awaited()
+    result = run.invoke("--pending", "--apply", "--yes")
+
+    assert result.exit_code == 0, result.output
+    pending.purge.assert_awaited_once_with()
 
 
 @pytest.fixture

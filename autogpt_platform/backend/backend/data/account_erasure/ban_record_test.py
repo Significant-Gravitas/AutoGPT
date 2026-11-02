@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from prisma.enums import AccountBanCategory, AccountDeletionSource
+from prisma.errors import UniqueViolationError
 
 from backend.data.account_erasure import ban_record
 from backend.data.account_erasure.models import StepStatus, Subject
@@ -28,7 +29,8 @@ def records(monkeypatch):
         ban_record.settings.secrets, "encryption_key", "test-encryption-key"
     )
     table = MagicMock()
-    table.prisma.return_value.upsert = AsyncMock()
+    table.prisma.return_value.create = AsyncMock()
+    table.prisma.return_value.update_many = AsyncMock(return_value=0)
     table.prisma.return_value.find_first = AsyncMock(return_value=None)
     table.prisma.return_value.delete_many = AsyncMock(return_value=3)
     monkeypatch.setattr(ban_record, "AccountBanRecord", table)
@@ -56,10 +58,10 @@ async def test_a_ban_for_good_is_recorded_for_3_years(records):
 
     report = await ban_record.keep_ban_record(BANNED, dry_run=False)
 
-    data = records.upsert.await_args.kwargs["data"]["create"]
+    data = records.create.await_args.kwargs["data"]
     assert data["emailHash"] == ban_record.email_hash(EMAIL)
     assert data["category"] == AccountBanCategory.ADMIN
-    assert EMAIL not in str(records.upsert.await_args)
+    assert EMAIL not in str(records.create.await_args)
     lasts = data["deleteAfter"] - data["recordedAt"]
     assert lasts == timedelta(days=3 * 365)
     assert data["recordedAt"] >= before
@@ -73,7 +75,7 @@ async def test_a_ban_that_ends_sooner_is_kept_only_until_then(records):
 
     await ban_record.keep_ban_record(temporary, dry_run=False)
 
-    assert records.upsert.await_args.kwargs["data"]["create"]["deleteAfter"] == ends
+    assert records.create.await_args.kwargs["data"]["deleteAfter"] == ends
 
 
 @pytest.mark.asyncio
@@ -90,7 +92,7 @@ async def test_no_record_without_a_ban_in_force(records, update):
         BANNED.model_copy(update=update), dry_run=False
     )
 
-    records.upsert.assert_not_awaited()
+    records.create.assert_not_awaited()
     assert report.counts == {"ban_records": 0}
 
 
@@ -98,19 +100,39 @@ async def test_no_record_without_a_ban_in_force(records, update):
 async def test_a_dry_run_writes_no_record(records):
     report = await ban_record.keep_ban_record(BANNED, dry_run=True)
 
-    records.upsert.assert_not_awaited()
+    records.create.assert_not_awaited()
     assert report.status == StepStatus.WOULD_DO
     assert report.counts == {"ban_records": 1}
 
 
 @pytest.mark.asyncio
-async def test_without_a_key_the_step_is_skipped(records, monkeypatch):
+async def test_without_a_key_the_step_fails_so_the_ban_is_not_lost(
+    records, monkeypatch
+):
+    """Skipping would let the identity, and the ban with it, go for good."""
     monkeypatch.setattr(ban_record.settings.secrets, "encryption_key", "")
 
     report = await ban_record.keep_ban_record(BANNED, dry_run=False)
 
-    assert report.status == StepStatus.SKIPPED
-    records.upsert.assert_not_awaited()
+    assert report.status == StepStatus.FAILED
+    assert "ENCRYPTION_KEY" in report.note
+    records.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_rerun_keeps_the_first_record_and_its_end(records):
+    """A retry must not push the record's end out; only a record that ran out
+    and was not purged yet starts over."""
+    records.create.side_effect = UniqueViolationError(
+        {"user_facing_error": {"message": "Unique constraint failed"}}
+    )
+
+    report = await ban_record.keep_ban_record(BANNED, dry_run=False)
+
+    assert report.status == StepStatus.DONE
+    where = records.update_many.await_args.kwargs["where"]
+    assert where["emailHash"] == ban_record.email_hash(EMAIL)
+    assert "lte" in where["deleteAfter"]
 
 
 @pytest.mark.asyncio

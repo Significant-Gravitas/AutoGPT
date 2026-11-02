@@ -476,8 +476,11 @@ async def _find_subscriber(email: str) -> dict | None:
 
 def _client() -> Requests:
     # Statuses are inspected rather than raised on, because "already gone" is a
-    # success for a removal.
-    return Requests(trusted_origins=[API_BASE], raise_for_status=False)
+    # success for a removal. Retries are bounded so an outage answering 5xx
+    # ends in an error instead of retrying forever.
+    return Requests(
+        trusted_origins=[API_BASE], raise_for_status=False, retry_max_attempts=3
+    )
 
 
 def _headers() -> dict[str, str]:

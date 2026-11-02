@@ -142,3 +142,37 @@ def test_the_scheduler_job_starts_the_sweep_only_when_switched_on(monkeypatch, e
     scheduler.erase_closed_accounts()
 
     assert client.start_account_erasure_sweep.await_count == int(enabled)
+
+
+@pytest.mark.asyncio
+async def test_an_error_outside_the_steps_skips_that_account_only(monkeypatch, caplog):
+    """Reading the account, the lease or the claim failing: logged by type,
+    never by message (it can quote the address), and the rest still go."""
+
+    async def erase(user_id, *, dry_run):
+        if user_id == "b":
+            raise RuntimeError("sam@example.com is unreachable")
+        return _report(user_id, dry_run=dry_run)
+
+    monkeypatch.setattr(sweep, "erase_account", erase)
+
+    with caplog.at_level("ERROR", logger=sweep.logger.name):
+        reports = await sweep.erase_each(["a", "b", "c"], dry_run=False)
+
+    assert [r.user_id for r in reports] == ["a", "b", "c"]
+    assert [r.complete for r in reports] == [True, False, True]
+    assert "RuntimeError" in caplog.text
+    assert "sam@example.com" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_failing_purge_does_not_stop_the_sweep(monkeypatch):
+    erase = AsyncMock(return_value=[])
+    monkeypatch.setattr(sweep, "erase_pending", erase)
+    monkeypatch.setattr(
+        sweep, "purge_expired_ban_records", AsyncMock(side_effect=RuntimeError())
+    )
+
+    await sweep._run_sweep()
+
+    erase.assert_awaited_once()

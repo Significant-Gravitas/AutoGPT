@@ -69,13 +69,19 @@ _SHARED_GRAPHS = """
              -- members, so shared while anyone else is active in the org.
              -- Orgs nobody else is active in go with the account
              -- (`preflight._orgs`), and their agents with them.
-             OR EXISTS (SELECT 1 FROM {schema_prefix}"OrgMember" m
-                         WHERE m."orgId" = g."organizationId"
-                           AND m."userId" <> $1 AND m."status" = 'ACTIVE')
-             OR EXISTS (SELECT 1 FROM {schema_prefix}"Team" t
-                          JOIN {schema_prefix}"OrgMember" m ON m."orgId" = t."orgId"
-                         WHERE t."id" = g."teamId"
-                           AND m."userId" <> $1 AND m."status" = 'ACTIVE')
+             -- A team agent only by its team's members
+             -- (`tenancy.visibility_filter`).
+             OR (g."teamId" IS NULL AND EXISTS (
+                  SELECT 1 FROM {schema_prefix}"OrgMember" m
+                   WHERE m."orgId" = g."organizationId"
+                     AND m."userId" <> $1 AND m."status" = 'ACTIVE'))
+             OR EXISTS (SELECT 1 FROM {schema_prefix}"TeamMember" tm
+                          JOIN {schema_prefix}"Team" t ON t."id" = tm."teamId"
+                          JOIN {schema_prefix}"OrgMember" m
+                            ON m."orgId" = t."orgId" AND m."userId" = tm."userId"
+                         WHERE tm."teamId" = g."teamId"
+                           AND tm."userId" <> $1 AND tm."status" = 'ACTIVE'
+                           AND m."status" = 'ACTIVE')
            )
         UNION
         SELECT sub."id"

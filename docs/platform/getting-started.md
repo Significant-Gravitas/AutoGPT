@@ -358,6 +358,10 @@ move them to the new key instead of losing them. Run everything from
 
    It is safe to run more than once: values already under the new key are left
    alone, and a value that neither key can read is listed and not touched.
+   One thing it does not carry over: the sign-up blocks that account erasure
+   keeps for banned accounts (`AccountBanRecord`) are derived from the key, so
+   after a rotation they no longer match and those addresses can sign up
+   again.
    Running the backend outside Docker, the same command is
    `poetry run cli rotate-encryption-key` in `autogpt_platform/backend`.
 

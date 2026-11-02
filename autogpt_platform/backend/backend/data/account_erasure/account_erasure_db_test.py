@@ -226,8 +226,11 @@ async def _uses(other_id: str, graph, creator_id: str) -> None:
     )
 
 
-async def _holdings(user_id: str) -> None:
-    """Ledger rows and a library entry of its own agent in a folder."""
+async def _holdings(user_id: str) -> list[str]:
+    """Ledger rows, a library entry of its own agent in a folder, a preset
+    with a saved input and a notification batch with an event. Returns the
+    IDs of the input and the event, which point at their preset and batch
+    with ON DELETE SET NULL and so must go explicitly."""
     for metadata in (
         {
             "graph_exec_id": "exec-1",
@@ -262,6 +265,33 @@ async def _holdings(user_id: str) -> None:
             "folderId": folder.id,
         }
     )
+    preset = await prisma.models.AgentPreset.prisma().create(
+        data={
+            "userId": user_id,
+            "name": "Mine",
+            "description": "",
+            "agentGraphId": graph.id,
+            "agentGraphVersion": graph.version,
+        }
+    )
+    saved_input = await prisma.models.AgentNodeExecutionInputOutput.prisma().create(
+        data={
+            "name": "prompt",
+            "data": SafeJson("my secret plans"),
+            "agentPresetId": preset.id,
+        }
+    )
+    batch = await prisma.models.UserNotificationBatch.prisma().create(
+        data={"userId": user_id, "type": prisma.enums.NotificationType.ALERT}
+    )
+    event = await prisma.models.NotificationEvent.prisma().create(
+        data={
+            "userNotificationBatchId": batch.id,
+            "type": prisma.enums.NotificationType.ALERT,
+            "data": SafeJson({"note": "sam@example.com"}),
+        }
+    )
+    return [saved_input.id, event.id]
 
 
 async def _verifications(user_id: str, email: str) -> list[str]:
@@ -370,7 +400,7 @@ async def test_a_closed_account_is_erased_and_its_shared_agents_keep_working(
     await _review(other_version, user_id)
     await _review(own_version, other_id)
     await _uses(other_id, published, creator_id=user_id)
-    await _holdings(user_id)
+    left_behind = await _holdings(user_id)
     email = f"deletion-{user_id[:8]}@example.com"
     kept_verification = await _verifications(user_id, email)
 
@@ -399,6 +429,13 @@ async def test_a_closed_account_is_erased_and_its_shared_agents_keep_working(
         prisma.enums.AccountDeletionSource.SETTINGS,
     )
     assert set((await _left_of(user_id)).values()) == {0}
+    saved_input_id, event_id = left_behind
+    assert not await prisma.models.AgentNodeExecutionInputOutput.prisma().count(
+        where={"id": saved_input_id}
+    )
+    assert not await prisma.models.NotificationEvent.prisma().count(
+        where={"id": event_id}
+    )
     # Gone, not left behind with no owner (which reads as a platform skill).
     assert not await prisma.models.SkillListing.prisma().count(where={"id": skill})
     assert not await prisma.models.SkillListingVersion.prisma().count(
@@ -535,6 +572,24 @@ async def test_agents_another_org_member_can_open_go_to_the_placeholder(
     team = await prisma.models.Team.prisma().create(
         data={"name": "Deletion test team", "orgId": shared_org}
     )
+    await prisma.models.TeamMember.prisma().create(
+        data={"teamId": team.id, "userId": colleague}
+    )
+    # A team only the account is in: nobody else can open its agents.
+    solo_team = await prisma.models.Team.prisma().create(
+        data={"name": "Deletion solo team", "orgId": shared_org}
+    )
+    await prisma.models.TeamMember.prisma().create(
+        data={"teamId": solo_team.id, "userId": user_id}
+    )
+    solo_team_agent = await prisma.models.AgentGraph.prisma().create(
+        data={
+            "userId": user_id,
+            "name": "Solo team agent",
+            "organizationId": shared_org,
+            "teamId": solo_team.id,
+        }
+    )
     org_home = await prisma.models.AgentGraph.prisma().create(
         data={"userId": user_id, "name": "Org agent", "organizationId": shared_org}
     )
@@ -578,7 +633,7 @@ async def test_agents_another_org_member_can_open_go_to_the_placeholder(
         assert kept.teamId == team_id
     opened = await get_graph(org_home.id, None, colleague, organization_id=shared_org)
     assert opened is not None
-    for gone in (lapsed, personal):
+    for gone in (lapsed, personal, solo_team_agent):
         assert not await prisma.models.AgentGraph.prisma().count(where={"id": gone.id})
     assert await prisma.models.Organization.prisma().count(where={"id": shared_org})
     assert not await prisma.models.Organization.prisma().count(where={"id": lapsed_org})
@@ -667,9 +722,11 @@ async def test_the_claim_and_keep_never_both_win(server: SpinTestServer):
     first = await prisma.models.AccountDeletionRequest.prisma().find_unique_or_raise(
         where={"userId": user_id}
     )
-    # Once claimed, Keep is too late, and a second claim (a run resuming a
-    # stopped erasure) keeps the first date.
-    assert await reopen_account(user_id) == ReopenOutcome.TOO_LATE
+    # Once claimed, Keep is too late even on a clock still inside the 14 days
+    # (so it is startedAt that refuses it, not the date), and a second claim
+    # (a run resuming a stopped erasure) keeps the first date.
+    before_the_end = first.eraseAfter - timedelta(hours=1)
+    assert await reopen_account(user_id, now=before_the_end) == ReopenOutcome.TOO_LATE
     assert await request.claim_request(user_id) == claimed
     again = await prisma.models.AccountDeletionRequest.prisma().find_unique_or_raise(
         where={"userId": user_id}

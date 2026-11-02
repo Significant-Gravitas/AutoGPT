@@ -55,23 +55,13 @@ from backend.data.account_erasure.third_parties import (
     forget_mailerlite_subscriber,
 )
 from backend.data.account_erasure.work import stop_work
-from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 
 Step = Callable[..., Awaitable[StepReport]]
 
-# The outside service each step needs. Without its settings the step is
-# skipped, and an apply stops there, before the rows go (they hold the address
-# MailerLite needs and the expert IDs that name the memory graphs), unless the
-# stack says it doesn't use the service (`account_erasure_unused_services`).
-_SERVICE_OF_STEP = {
-    "org_subscriptions": "stripe",
-    "files": "buckets",
-    "memory": "falkordb",
-    "posthog": "posthog",
-    "mailerlite": "mailerlite",
-}
+# `report.not_claimed` for a request an earlier run finished.
+ERASED_ALREADY = "erased already"
 
 
 async def erase_account(
@@ -129,8 +119,6 @@ async def _run(
         return report
     for name, step in steps:
         result = await _run_step(name, step, subject, dry_run)
-        if not dry_run:
-            result = _stop_on_a_missing_service(result)
         report.steps.append(result)
         if result.status == StepStatus.FAILED and not dry_run:
             break
@@ -149,29 +137,12 @@ async def _claim(subject: Subject, report: ErasureReport) -> bool:
     if subject.request_id is not None:
         return True
     report.not_claimed = (
-        "erased already"
+        ERASED_ALREADY
         if subject.request_completed
         else "kept by its owner, or its 14 days are not over"
     )
     logger.info(f"Account erasure of {subject.user_id}: not claimed")
     return False
-
-
-def _stop_on_a_missing_service(result: StepReport) -> StepReport:
-    """A step skipped for want of its settings fails the apply, so the next
-    run retries once they are in, unless the stack doesn't use the service."""
-    service = _SERVICE_OF_STEP.get(result.name)
-    if result.status != StepStatus.SKIPPED or service is None:
-        return result
-    if service in Settings().config.account_erasure_unused_services:
-        return result
-    return result.model_copy(
-        update={
-            "status": StepStatus.FAILED,
-            "note": f'{result.note}. Set it up, or add "{service}" to '
-            "ACCOUNT_ERASURE_UNUSED_SERVICES if this stack doesn't use it.",
-        }
-    )
 
 
 def _erasure_steps() -> list[tuple[str, Step]]:
