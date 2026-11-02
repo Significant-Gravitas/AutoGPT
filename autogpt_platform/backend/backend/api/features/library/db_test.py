@@ -28,6 +28,12 @@ from ._add_to_library import restore_existing_library_agent
 from .exceptions import LibraryAgentInAnotherOrganizationError
 
 
+@pytest.fixture(autouse=True)
+def _under_the_preset_cap(mocker):
+    # The cap's query is proven against a real database in preset_count_test.py.
+    mocker.patch.object(db, "check_preset_count", new=AsyncMock())
+
+
 @pytest.mark.parametrize("expert_id", [None, "expert-1"])
 @pytest.mark.asyncio
 async def test_list_presets_filters_exact_expert_scope(mocker, expert_id):
@@ -1803,12 +1809,14 @@ async def test_new_inputs_need_credentials_alongside_which_may_be_empty(
 
     @asynccontextmanager
     async def fake_tx():
-        yield None
+        yield AsyncMock()
 
     preset_client = AsyncMock()
     mocker.patch.object(prisma.models.AgentPreset, "prisma", return_value=preset_client)
+    row_client = AsyncMock()
+    row_client.count.return_value = 0
     mocker.patch.object(
-        prisma.models.AgentNodeExecutionInputOutput, "prisma", return_value=AsyncMock()
+        prisma.models.AgentNodeExecutionInputOutput, "prisma", return_value=row_client
     )
     mocker.patch.object(db, "transaction", fake_tx)
     mocker.patch.object(
