@@ -44,26 +44,41 @@ async def load_subject(user_id: str, email: str | None = None) -> Subject:
         org_stripe_customer_ids=await _org_stripe_customers(user, sole_orgs),
         expert_ids=[expert.id for expert in experts],
         request_source=request.source if request else None,
+        erase_after=request.eraseAfter if request else None,
         confirmation_sent=bool(request and request.confirmationSentAt),
         request_completed=bool(request and request.completedAt),
+        banned=bool(identity and identity.banned),
+        ban_expires=identity.banExpires if identity else None,
     )
 
 
-async def find_blockers(subject: Subject, *, closing: bool = False) -> list[Blocker]:
+async def find_blockers(
+    subject: Subject, *, now: datetime | None = None
+) -> list[Blocker]:
     """What stops the erasure. Only a closed account (one with a deletion
-    request) is erased; `closing` says the caller closes it first, as the
-    CLI does for a request made by email."""
+    request) whose 14 days to keep it are over is erased."""
     if refused := invalid_id(subject.user_id) or system_account(subject.user_id):
         return refused
     blockers: list[Blocker] = []
-    if not (subject.has_request or closing):
+    if not subject.has_request:
         blockers.append(
             Blocker(
                 name="not_closed",
                 count=0,
                 resolution="This account has no deletion request, so it is "
-                "still open. For a request made by email, pass --close to close "
-                "it the way Settings does, then erase it.",
+                "still open. For a request made by email, run erase-account "
+                "--close to close it the way Settings does; it is erased once "
+                "its 14 days to keep it are over.",
+            )
+        )
+    elif _keep_window_open(subject, now or datetime.now(UTC)):
+        blockers.append(
+            Blocker(
+                name="not_due",
+                count=0,
+                resolution="The owner can still keep this account until "
+                f"{subject.erase_after:%Y-%m-%d %H:%M} UTC. It is erased after "
+                "that, by the job or by running this again.",
             )
         )
     _, solely_owned_shared_orgs = await _orgs(subject.user_id)
@@ -113,6 +128,13 @@ async def _oauth_apps_others_use(user_id: str) -> int:
             ],
         }
     )
+
+
+def _keep_window_open(subject: Subject, now: datetime) -> bool:
+    """A finished erasure is past its window whatever the date says."""
+    if subject.request_completed or subject.erase_after is None:
+        return False
+    return subject.erase_after > now
 
 
 def invalid_id(user_id: str) -> list[Blocker]:

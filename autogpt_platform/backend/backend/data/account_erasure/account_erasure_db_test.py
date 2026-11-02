@@ -5,8 +5,9 @@ account has in its library and has run, a private agent in a folder, a draft
 listing, a published skill with a file, reviews both ways, a credit ledger and
 a personal org is closed the way Settings closes it (`close_account`, SECRT-2877), and its deletion
 request is then processed:
-- it is pending once past the grace, and the confirmation the close did not
-  send goes out first, to its address;
+- it is pending only once its 14 days to keep it are over, the erasure claims
+  it before any step, and the confirmation the close did not send goes out
+  first, to its address;
 - its published agent, sub-agent and listing go to the "deleted user"
   account, the listing still taken down, and the other account can still
   open and run the agent;
@@ -15,7 +16,13 @@ request is then processed:
   the orphan-healing job finds nothing to bring it back from;
 - the ledger stays, stripped of the block inputs and personal Stripe details;
 - the request stays, marked done, and is no longer pending;
-- a rerun is a no-op.
+- a rerun can't claim it again and changes nothing.
+
+A request is claimed only once its 14 days are over and only while it is
+still there: a Keep before the claim wins, and one after it is too late.
+
+An account erased while banned leaves a ban record (a keyed hash of its
+address), which sign-up finds; one that is not banned leaves none.
 
 An account whose agents live in an org another member is active in, closed by
 a request made by email: the org-home and team agents (which every member, or
@@ -37,8 +44,8 @@ import prisma.models
 import pytest
 
 from backend.blocks.agent import AgentExecutorBlock
-from backend.data.account_deletion import close_account
-from backend.data.account_erasure import request, routine
+from backend.data.account_deletion import ReopenOutcome, close_account, reopen_account
+from backend.data.account_erasure import ban_record, request, routine
 from backend.data.account_erasure.database import delete_rows
 from backend.data.account_erasure.deleted_user import DELETED_USER_ID, DELETED_USER_NAME
 from backend.data.account_erasure.marketplace import delete_marketplace
@@ -280,6 +287,14 @@ async def _verifications(user_id: str, email: str) -> list[str]:
     return [f"{user_id}-other"]
 
 
+async def _past_the_14_days(user_id: str) -> None:
+    """Move the request's erase date into the past, as 14 days passing would."""
+    await prisma.models.AccountDeletionRequest.prisma().update(
+        where={"userId": user_id},
+        data={"eraseAfter": datetime.now(UTC) - timedelta(minutes=1)},
+    )
+
+
 async def _erase_rows(user_id: str) -> Subject:
     """The steps that change rows, without the routine's outside services."""
     subject = await load_subject(user_id)
@@ -368,17 +383,20 @@ async def test_a_closed_account_is_erased_and_its_shared_agents_keep_working(
 
     # Closed from Settings, with the confirmation email not sent.
     assert await close_account(user_id, prisma.enums.AccountDeletionSource.SETTINGS)
-    soon = datetime.now(UTC) + timedelta(minutes=1)
-    assert user_id not in await request.pending_user_ids(now=soon)
-    assert user_id in await request.pending_user_ids(grace=timedelta(0), now=soon)
+    assert user_id not in await request.pending_user_ids()
+    assert "not_due" in await _blocker_names(user_id)
+    await _past_the_14_days(user_id)
+    assert user_id in await request.pending_user_ids()
     subject = await load_subject(user_id)
     subject.kept_listing_ids = (await plan_transfer(user_id)).listing_ids
 
     report = await routine.erase_account(user_id, dry_run=False)
 
     assert report.complete, report
-    outside_services.assert_awaited_once_with(
-        email, prisma.enums.AccountDeletionSource.SETTINGS
+    outside_services.assert_awaited_once()
+    assert outside_services.await_args.args[:2] == (
+        email,
+        prisma.enums.AccountDeletionSource.SETTINGS,
     )
     assert set((await _left_of(user_id)).values()) == {0}
     # Gone, not left behind with no owner (which reads as a platform skill).
@@ -393,8 +411,9 @@ async def test_a_closed_account_is_erased_and_its_shared_agents_keep_working(
         where={"userId": user_id}
     )
     assert done.confirmationSentAt is not None
+    assert done.startedAt is not None
     assert done.completedAt is not None
-    assert user_id not in await request.pending_user_ids(grace=timedelta(0), now=soon)
+    assert user_id not in await request.pending_user_ids()
     verifications = await prisma.models.AuthVerification.prisma().find_many(
         where={"id": {"startswith": user_id}}
     )
@@ -465,18 +484,19 @@ async def test_a_closed_account_is_erased_and_its_shared_agents_keep_working(
         where={"reviewByUserId": user_id}
     )
 
-    # A rerun finds nothing, changes nothing and sends nothing.
+    # A rerun finds nothing, can't claim the finished request, changes
+    # nothing and sends nothing.
     again = await delete_rows(await load_subject(user_id), dry_run=False)
     assert set(again.counts.values()) == {0}
     assert await plan_transfer(user_id) == type(plan)()
     rerun = await routine.erase_account(user_id, dry_run=False)
-    assert rerun.complete
+    assert rerun.not_claimed == "erased already"
+    assert rerun.steps == []
     outside_services.assert_awaited_once()
-    assert (
-        await prisma.models.AccountDeletionRequest.prisma().find_unique_or_raise(
-            where={"userId": user_id}
-        )
-    ).completedAt == done.completedAt
+    after = await prisma.models.AccountDeletionRequest.prisma().find_unique_or_raise(
+        where={"userId": user_id}
+    )
+    assert (after.startedAt, after.completedAt) == (done.startedAt, done.completedAt)
 
     # The healing job finds no orphaned identity to re-create the account
     # from. (Its query, read-only: healing would provision other tests' rows.)
@@ -614,6 +634,7 @@ async def test_an_oauth_app_other_accounts_use_waits_for_the_operator(
     unused = await _oauth_app(developer)
     await _grant(unused, user, revoked=True)
     assert await close_account(developer, prisma.enums.AccountDeletionSource.SETTINGS)
+    await _past_the_14_days(developer)
 
     assert await _blocker_names(developer) == ["oauth_apps_in_use"]
 
@@ -628,3 +649,65 @@ async def test_an_oauth_app_other_accounts_use_waits_for_the_operator(
         where={"id": {"in": [used, unused]}}
     )
     await _erase_rows(user)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_claim_and_keep_never_both_win(server: SpinTestServer):
+    user_id = await _account()
+    assert await close_account(user_id, prisma.enums.AccountDeletionSource.SETTINGS)
+
+    # Inside the 14 days there is nothing to claim, and Keep still works.
+    assert await request.claim_request(user_id) is None
+    assert await reopen_account(user_id) == ReopenOutcome.REOPENED
+
+    assert await close_account(user_id, prisma.enums.AccountDeletionSource.SETTINGS)
+    await _past_the_14_days(user_id)
+    claimed = await request.claim_request(user_id)
+    assert claimed is not None
+    first = await prisma.models.AccountDeletionRequest.prisma().find_unique_or_raise(
+        where={"userId": user_id}
+    )
+    # Once claimed, Keep is too late, and a second claim (a run resuming a
+    # stopped erasure) keeps the first date.
+    assert await reopen_account(user_id) == ReopenOutcome.TOO_LATE
+    assert await request.claim_request(user_id) == claimed
+    again = await prisma.models.AccountDeletionRequest.prisma().find_unique_or_raise(
+        where={"userId": user_id}
+    )
+    assert again.startedAt == first.startedAt
+
+    await _erase_rows(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_banned_account_erased_leaves_a_ban_record(
+    server: SpinTestServer, outside_services: AsyncMock, monkeypatch
+):
+    monkeypatch.setattr(ban_record.settings.secrets, "encryption_key", "test-key")
+    banned = await _account()
+    not_banned = await _account()
+    banned_email = f"deletion-{banned[:8]}@example.com"
+    not_banned_email = f"deletion-{not_banned[:8]}@example.com"
+    await prisma.models.AuthUser.prisma().update(
+        where={"id": banned},
+        data={"banned": True, "banReason": "spam from this address"},
+    )
+    for user_id in (banned, not_banned):
+        assert await close_account(user_id, prisma.enums.AccountDeletionSource.SETTINGS)
+        await _past_the_14_days(user_id)
+        assert (await routine.erase_account(user_id, dry_run=False)).complete
+
+    assert await ban_record.is_banned_address(banned_email.upper())
+    assert not await ban_record.is_banned_address(not_banned_email)
+    record = await prisma.models.AccountBanRecord.prisma().find_unique_or_raise(
+        where={"emailHash": ban_record.email_hash(banned_email) or ""}
+    )
+    assert record.category == prisma.enums.AccountBanCategory.ADMIN
+    assert record.deleteAfter - record.recordedAt == ban_record.BAN_RECORD_RETENTION
+
+    later = record.deleteAfter + timedelta(seconds=1)
+    assert not await ban_record.is_banned_address(banned_email, now=later)
+    assert await ban_record.purge_expired_ban_records(now=later) >= 1
+    assert not await prisma.models.AccountBanRecord.prisma().count(
+        where={"id": record.id}
+    )

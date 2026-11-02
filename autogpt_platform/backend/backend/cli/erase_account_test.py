@@ -1,9 +1,10 @@
 """The erase-account command: a dry run unless --apply, a dry run first even
 with it, blockers stop it before anything goes, a partial erasure fails the
-command, and nothing it prints carries the email. --close closes an account
-the way Settings does before erasing it, and --pending erases every closed
-account the same way."""
+command, and nothing it prints carries the email. --close only closes an
+account the way Settings does (its owner then has 14 days to keep it), and
+--pending erases every closed account whose 14 days are over."""
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -25,6 +26,7 @@ from backend.data.account_erasure.models import (
 
 USER_ID = "3f0b8c1e-4c2a-4f7e-9a51-0c6f2d8e1a77"
 EMAIL = "sam@example.com"
+ERASE_AFTER = datetime(2026, 11, 16, 9, 30, tzinfo=UTC)
 
 
 def _report(
@@ -60,13 +62,13 @@ def run(monkeypatch):
     monkeypatch.setattr(db, "connect", AsyncMock())
     monkeypatch.setattr(db, "disconnect", AsyncMock())
     monkeypatch.setattr(cli, "_resolve", AsyncMock(return_value=(USER_ID, EMAIL)))
-    closed = AsyncMock(return_value=True)
-    monkeypatch.setattr(account_deletion, "is_account_closed", closed)
+    closed = AsyncMock(return_value=SimpleNamespace(eraseAfter=ERASE_AFTER))
+    monkeypatch.setattr(account_deletion, "get_deletion_request", closed)
     erasing = AsyncMock(
         side_effect=lambda user_id, *, dry_run, **kw: _report(dry_run=dry_run)
     )
     monkeypatch.setattr(routine, "erase_account", erasing)
-    closing = AsyncMock()
+    closing = AsyncMock(return_value=ERASE_AFTER)
     monkeypatch.setattr(request, "close_for_email_request", closing)
 
     def invoke(*args: str, input: str | None = None):
@@ -145,45 +147,63 @@ def test_a_partial_erasure_fails_the_command(run):
     assert "run it again to resume" in result.output
 
 
-def test_close_closes_an_open_account_before_erasing_it(run):
-    run.closed.return_value = False
+def test_close_only_closes_an_open_account(run):
+    """Its owner then has 14 days to keep it, as from Settings; the job
+    erases it after that."""
+    run.closed.return_value = None
 
     result = run.invoke(EMAIL, "--close", "--apply", "--yes")
 
     assert result.exit_code == 0, result.output
     run.closing.assert_awaited_once_with(USER_ID)
-    # The dry run is not refused for the request the close will write.
-    assert run.erasing.await_args_list[0].kwargs["closing"] is True
-    assert "closes it as a request made by email" in result.output
+    run.erasing.assert_not_awaited()
+    assert "can keep it until 2026-11-16 09:30 UTC" in result.output
+    assert EMAIL not in result.output
 
 
 def test_close_without_apply_closes_nothing(run):
-    run.closed.return_value = False
+    run.closed.return_value = None
 
     result = run.invoke(EMAIL, "--close")
 
     assert result.exit_code == 0, result.output
     run.closing.assert_not_awaited()
+    assert "Dry run" in result.output
 
 
-def test_close_on_a_closed_account_only_erases(run):
+def test_close_on_a_closed_account_changes_nothing(run):
     result = run.invoke(EMAIL, "--close", "--apply", "--yes")
 
     assert result.exit_code == 0, result.output
     run.closing.assert_not_awaited()
-    assert run.erasing.await_args_list[0].kwargs["closing"] is False
+    run.erasing.assert_not_awaited()
     assert "closed already" in result.output
+    assert "2026-11-16 09:30 UTC" in result.output
 
 
-def test_a_stripe_refusal_on_close_erases_nothing(run):
-    run.closed.return_value = False
+def test_a_stripe_refusal_on_close_leaves_the_account_open(run):
+    run.closed.return_value = None
     run.closing.side_effect = PlanCancellationError()
 
     result = run.invoke(EMAIL, "--close", "--apply", "--yes")
 
     assert result.exit_code == 1
-    assert _dry_runs(run.erasing) == [True]
+    run.erasing.assert_not_awaited()
     assert "still open" in result.output
+
+
+def test_an_erasure_the_owner_kept_meanwhile_fails_the_command(run):
+    def erasing(user_id, *, dry_run, **kw):
+        if dry_run:
+            return _report(dry_run=True)
+        return ErasureReport(user_id=user_id, dry_run=False, not_claimed="kept")
+
+    run.erasing.side_effect = erasing
+
+    result = run.invoke(EMAIL, "--apply", "--yes")
+
+    assert result.exit_code == 1
+    assert "nothing ran: kept" in result.output
 
 
 @pytest.mark.parametrize("args", [(), (EMAIL, "--pending"), ("--pending", "--close")])

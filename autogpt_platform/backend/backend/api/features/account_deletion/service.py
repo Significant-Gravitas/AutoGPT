@@ -62,9 +62,10 @@ count.
 
 Hand-off to data erasure (SECRT-2854): the AccountDeletionRequest row is the
 whole hand-off. That routine processes every row whose ``eraseAfter`` has
-passed and whose ``startedAt`` and ``completedAt`` are still null, claiming it
-by setting ``startedAt`` before it erases anything, so there is nothing to
-enqueue here; a row deleted by reopening the account is simply gone. It
+passed and whose ``completedAt`` is still null, claiming it by setting
+``startedAt`` (never cleared, and kept by a run that resumes a stopped
+erasure) before it erases anything, so there is nothing to enqueue here; a
+row deleted by reopening the account is simply gone. It
 should first rerun ``stop_user_work``, as a schedule or trigger whose removal
 failed here is not retried (``is_user_refused`` keeps them from starting work
 meanwhile). It owns removing the memory crons closing leaves registered so

@@ -1,6 +1,7 @@
-"""The routine runs every step in order, deletes nothing on a dry run or when
-something is blocked, stops at the first failed step so a rerun can resume,
-and a rerun of a finished erasure is a no-op."""
+"""The routine claims the request before any step, then runs every step in
+order; it deletes nothing on a dry run, when something is blocked or when the
+request can't be claimed (kept, not due, or erased already), and stops at the
+first failed step so a rerun can resume."""
 
 from unittest.mock import AsyncMock
 
@@ -18,6 +19,7 @@ from backend.data.account_erasure.models import (
 from backend.data.account_erasure.shared_agents import TransferPlan
 
 USER_ID = "3f0b8c1e-4c2a-4f7e-9a51-0c6f2d8e1a77"
+REQUEST_ID = "9d4f6a2b-1c3e-4b5a-8f7d-2e6c0a9b1d34"
 STEP_NAMES = [
     "stop_work",
     "confirmation",
@@ -28,6 +30,7 @@ STEP_NAMES = [
     "memory",
     "posthog",
     "mailerlite",
+    "ban_record",
     "database",
     "request",
 ]
@@ -50,6 +53,7 @@ class Steps:
             "memory": "delete_memory",
             "posthog": "delete_posthog_person",
             "mailerlite": "forget_mailerlite_subscriber",
+            "ban_record": "keep_ban_record",
             "database": "delete_rows",
             "request": "complete_request",
         }
@@ -81,6 +85,7 @@ def account(monkeypatch):
         routine, "plan_transfer", AsyncMock(return_value=TransferPlan())
     )
     monkeypatch.setattr(routine, "find_blockers", AsyncMock(return_value=[]))
+    monkeypatch.setattr(routine, "claim_request", AsyncMock(return_value=REQUEST_ID))
     return subject
 
 
@@ -160,24 +165,56 @@ async def test_a_failed_step_does_not_stop_a_dry_run(monkeypatch, account):
 
 
 @pytest.mark.asyncio
-async def test_a_second_run_finds_nothing_and_still_completes(monkeypatch):
-    gone = Subject(
-        user_id=USER_ID,
-        request_source=AccountDeletionSource.SETTINGS,
-        request_completed=True,
-    )
-    monkeypatch.setattr(routine, "load_subject", AsyncMock(return_value=gone))
-    monkeypatch.setattr(
-        routine, "plan_transfer", AsyncMock(return_value=TransferPlan())
-    )
-    monkeypatch.setattr(routine, "find_blockers", AsyncMock(return_value=[]))
+async def test_an_apply_claims_the_request_before_any_step(monkeypatch, account):
+    steps = Steps(monkeypatch)
+    order: list[str] = []
+
+    async def claim(user_id):
+        order.append(f"claim {user_id}")
+        assert steps.calls == []
+        return REQUEST_ID
+
+    monkeypatch.setattr(routine, "claim_request", claim)
+
+    await routine.erase_account(USER_ID, dry_run=False)
+
+    assert order == [f"claim {USER_ID}"]
+    assert {s.request_id for s in steps.subjects} == {REQUEST_ID}
+
+
+@pytest.mark.asyncio
+async def test_a_dry_run_claims_nothing(monkeypatch, account):
     Steps(monkeypatch)
+    claim = AsyncMock()
+    monkeypatch.setattr(routine, "claim_request", claim)
+
+    await routine.erase_account(USER_ID)
+
+    claim.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "completed, reason",
+    [
+        (False, "kept by its owner, or its 14 days are not over"),
+        (True, "erased already"),
+    ],
+)
+async def test_a_request_that_cannot_be_claimed_runs_no_step(
+    monkeypatch, account, completed, reason
+):
+    """The owner kept the account after the dry run read it, or an earlier
+    run finished: nothing is deleted, and nothing reads as done."""
+    account.request_completed = completed
+    monkeypatch.setattr(routine, "claim_request", AsyncMock(return_value=None))
+    steps = Steps(monkeypatch)
 
     report = await routine.erase_account(USER_ID, dry_run=False)
 
-    assert not report.account_found
-    assert report.complete
-    assert all(set(s.counts.values()) <= {0} for s in report.steps)
+    assert steps.calls == []
+    assert report.not_claimed == reason
+    assert not report.complete
 
 
 @pytest.mark.asyncio
@@ -192,18 +229,6 @@ async def test_every_step_sees_the_agents_that_go_to_the_placeholder(
 
     assert {tuple(s.shared_graph_ids) for s in steps.subjects} == {("g1",)}
     assert {tuple(s.kept_listing_ids) for s in steps.subjects} == {("l1",)}
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("closing", [False, True])
-async def test_closing_reaches_the_blocker_check(monkeypatch, account, closing):
-    Steps(monkeypatch)
-    find_blockers = AsyncMock(return_value=[])
-    monkeypatch.setattr(routine, "find_blockers", find_blockers)
-
-    await routine.erase_account(USER_ID, closing=closing)
-
-    assert find_blockers.await_args.kwargs["closing"] is closing
 
 
 @pytest.mark.asyncio

@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     "--close",
     is_flag=True,
     help="For a request made by email: close the account the way Settings "
-    "does first, then erase it.",
+    "does. It is erased once its 14 days to keep it are over.",
 )
 @click.option("--apply", is_flag=True, help="Make the change. Without it, dry run.")
 @click.option("--yes", is_flag=True, help="With --apply, skip the confirmation.")
@@ -29,22 +29,24 @@ def erase_account_command(
     """Erase a closed account and everything it holds (SECRT-2854).
 
     ACCOUNT is the user ID or the account's email. Only a closed account (one
-    with a deletion request, from Settings, the paywall or --close) is
-    erased. --pending erases every closed account not erased yet, as the
-    periodic job does.
+    with a deletion request, from Settings, the paywall or --close) whose 14
+    days to keep it are over is erased. --pending erases every such account
+    not erased yet, as the periodic job does.
 
-    --close is for a request made by email to privacy@: it closes the account
-    exactly as the Settings button does (Stripe plan cancelled, apps
-    disconnected, work and email stopped, sign-in banned, the confirmation
-    email sent), then erases it.
+    --close is for a request made by email to privacy@: it only closes the
+    account, exactly as the Settings button does (Stripe plan cancelled, apps
+    disconnected, work and email stopped, the confirmation email sent). The
+    owner then has 14 days to sign in and keep it, as from Settings.
 
-    The erasure stops the account's work again, sends the confirmation if it
-    has not gone out, cancels the subscriptions of the orgs that go with the
-    account, hands the agents other accounts use to a "deleted user" account,
-    deletes the rest of its marketplace presence, its files in every bucket,
-    its AutoPilot memory, its PostHog person and MailerLite subscriber, its
-    rows and auth identity last, and marks the request done. The credit
-    ledger and Stripe's billing records stay.
+    The erasure first claims the request, so the owner can no longer keep the
+    account. It then stops the account's work again and removes its memory
+    crons, sends the confirmation if it has not gone out, cancels the
+    subscriptions of the orgs that go with the account, hands the agents
+    other accounts use to a "deleted user" account, deletes the rest of its
+    marketplace presence, its files in every bucket, its AutoPilot memory,
+    its PostHog person and MailerLite subscriber, keeps a ban record if the
+    account is banned, deletes its rows and auth identity last, and marks the
+    request done. The credit ledger and Stripe's billing records stay.
 
     Dry run by default, with counts only. Idempotent: a failed --apply stops
     with the account in place, and running it again resumes. The runbook is
@@ -58,10 +60,10 @@ def erase_account_command(
     logging.disable(logging.INFO)
     if pending:
         asyncio.run(_with_db(_run_pending(apply=apply, yes=yes)))
+    elif close:
+        asyncio.run(_with_db(_run_close(account or "", apply=apply, yes=yes)))
     else:
-        asyncio.run(
-            _with_db(_run_one(account or "", close=close, apply=apply, yes=yes))
-        )
+        asyncio.run(_with_db(_run_one(account or "", apply=apply, yes=yes)))
 
 
 async def _with_db(work):
@@ -74,19 +76,13 @@ async def _with_db(work):
         await disconnect()
 
 
-async def _run_one(account: str, *, close: bool, apply: bool, yes: bool):
-    from backend.data.account_deletion import is_account_closed
+async def _run_one(account: str, *, apply: bool, yes: bool):
     from backend.data.account_erasure.models import AccountErasureBlocked
     from backend.data.account_erasure.routine import erase_account
 
     user_id, email = await _resolve(account)
-    closing = close and not await is_account_closed(user_id)
-    plan = await erase_account(user_id, dry_run=True, email=email, closing=closing)
+    plan = await erase_account(user_id, dry_run=True, email=email)
     _report(plan)
-    if closing:
-        click.echo(_CLOSE_FIRST)
-    elif close:
-        click.echo("\nThe account is closed already; --close changes nothing.")
     if not apply:
         click.echo("\nDry run: nothing was changed. Re-run with --apply.")
         return
@@ -94,8 +90,6 @@ async def _run_one(account: str, *, close: bool, apply: bool, yes: bool):
         raise click.ClickException("Blocked: resolve the blockers above first.")
     if not yes:
         click.confirm(f"\nErase account {user_id} for good?", abort=True)
-    if closing:
-        await _close(user_id)
     try:
         result = await erase_account(user_id, dry_run=False, email=email)
     except AccountErasureBlocked as e:
@@ -106,25 +100,43 @@ async def _run_one(account: str, *, close: bool, apply: bool, yes: bool):
     _finish([result])
 
 
-_CLOSE_FIRST = (
-    "\nThe account is open: --apply first closes it as a request made by "
-    "email, the way Settings does (Stripe plan cancelled, apps disconnected, "
-    "work and email stopped, sign-in banned, confirmation email sent)."
-)
-
-
-async def _close(user_id: str) -> None:
+async def _run_close(account: str, *, apply: bool, yes: bool):
+    """Close the account for a request made by email; erase nothing."""
     from backend.api.features.account_deletion.service import PlanCancellationError
+    from backend.data.account_deletion import get_deletion_request
     from backend.data.account_erasure.request import close_for_email_request
 
+    user_id, _ = await _resolve(account)
+    if request := await get_deletion_request(user_id):
+        click.echo(
+            f"Account {user_id} is closed already; it is erased after "
+            f"{request.eraseAfter:%Y-%m-%d %H:%M} UTC. --close changes nothing."
+        )
+        return
+    click.echo(f"Account {user_id} is open.{_CLOSE_DOES}")
+    if not apply:
+        click.echo("\nDry run: nothing was changed. Re-run with --apply.")
+        return
+    if not yes:
+        click.confirm(f"\nClose account {user_id}?", abort=True)
     try:
-        await close_for_email_request(user_id)
+        erase_after = await close_for_email_request(user_id)
     except PlanCancellationError:
         raise click.ClickException(
             "Stripe refused or timed out on the plan cancel, so the account "
-            "is still open and nothing was erased. Run it again."
+            "is still open. Run it again."
         )
-    click.echo("\nClosed the account.")
+    click.echo(
+        f"\nClosed the account. Its owner can keep it until "
+        f"{erase_after:%Y-%m-%d %H:%M} UTC; the job erases it after that."
+    )
+
+
+_CLOSE_DOES = (
+    " --close --apply closes it as a request made by email, the way Settings "
+    "does: Stripe plan cancelled, apps disconnected, work and email stopped, "
+    "confirmation email sent. The owner then has 14 days to keep it."
+)
 
 
 async def _run_pending(*, apply: bool, yes: bool):
@@ -179,6 +191,8 @@ def _report(report: "ErasureReport") -> None:
     click.echo(f"{mode} for account {report.user_id}")
     if not report.account_found:
         click.echo("  no platform account or auth identity (already erased?)")
+    if report.not_claimed:
+        click.echo(f"  nothing ran: {report.not_claimed}")
     for blocker in report.blockers:
         click.echo(f"BLOCKED {blocker.name}: {blocker.count}")
         click.echo(f"  {blocker.resolution}")

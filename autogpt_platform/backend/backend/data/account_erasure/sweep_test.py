@@ -1,7 +1,7 @@
 """The sweep erases every pending account in turn: a blocked or failed one is
-logged and left for the next run, and the rest still go. Only one sweep runs
-at a time in a process, and the scheduler's job does nothing while the switch
-is off."""
+logged and left for the next run, and the rest still go. Each sweep purges
+the ban records past their date. Only one sweep runs at a time in a process,
+and the scheduler's job does nothing while the switch is off."""
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
@@ -56,7 +56,33 @@ async def test_each_pending_account_is_erased_and_a_blocked_one_skipped(
 
 
 @pytest.mark.asyncio
+async def test_a_sweep_purges_the_ban_records_past_their_date(monkeypatch):
+    monkeypatch.setattr(sweep, "erase_pending", AsyncMock(return_value=[]))
+    purge = AsyncMock(return_value=2)
+    monkeypatch.setattr(sweep, "purge_expired_ban_records", purge)
+
+    await sweep._run_sweep()
+
+    purge.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_an_unclaimed_account_is_logged_as_skipped_not_as_an_error(
+    monkeypatch, caplog
+):
+    """The owner kept it after the sweep listed it: nothing needs a person."""
+    report = ErasureReport(user_id="a", dry_run=False, not_claimed="kept")
+    monkeypatch.setattr(sweep, "erase_account", AsyncMock(return_value=report))
+
+    with caplog.at_level("INFO", logger=sweep.logger.name):
+        await sweep.erase_each(["a"], dry_run=False)
+
+    assert [r.levelname for r in caplog.records] == ["INFO"]
+
+
+@pytest.mark.asyncio
 async def test_only_one_sweep_runs_at_a_time(monkeypatch):
+    monkeypatch.setattr(sweep, "purge_expired_ban_records", AsyncMock(return_value=0))
     release = asyncio.Event()
 
     async def erase_pending(*, dry_run):

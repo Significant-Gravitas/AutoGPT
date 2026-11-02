@@ -1,7 +1,8 @@
 """The hand-off from closing an account: which requests are pending, the
-confirmation the close could not send goes out before the address does, the
-request is marked done once, and a request made by email is closed exactly
-the way Settings closes one."""
+claim that keeps Keep from racing the erasure, the confirmation the close
+could not send goes out before the address does, the claimed request is
+marked done once, and a request made by email is closed exactly the way
+Settings closes one."""
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -16,11 +17,15 @@ from backend.data.account_erasure.models import StepStatus, Subject
 USER_ID = "3f0b8c1e-4c2a-4f7e-9a51-0c6f2d8e1a77"
 EMAIL = "sam@example.com"
 NOW = datetime(2026, 10, 20, 12, 0, tzinfo=UTC)
+ERASE_AFTER = NOW - timedelta(hours=1)
+REQUEST_ID = "9d4f6a2b-1c3e-4b5a-8f7d-2e6c0a9b1d34"
 PENDING = Subject(
     user_id=USER_ID,
     email=EMAIL,
     has_user_row=True,
     request_source=AccountDeletionSource.SETTINGS,
+    erase_after=ERASE_AFTER,
+    request_id=REQUEST_ID,
 )
 
 
@@ -36,20 +41,47 @@ def requests_table(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_pending_requests_are_the_unfinished_ones_past_the_grace(
+async def test_pending_requests_are_the_unfinished_ones_past_their_erase_date(
     requests_table,
 ):
-    """A request closed moments ago is left alone: the close sends its
-    confirmation just after writing the row."""
-    ids = await request.pending_user_ids(grace=timedelta(minutes=15), now=NOW)
+    """Not filtered on startedAt: an erasure that stopped halfway is
+    resumed."""
+    ids = await request.pending_user_ids(now=NOW)
 
     assert ids == ["a", "b"]
     kwargs = requests_table.find_many.await_args.kwargs
-    assert kwargs["where"] == {
-        "completedAt": None,
-        "requestedAt": {"lte": NOW - timedelta(minutes=15)},
-    }
-    assert kwargs["order"] == {"requestedAt": "asc"}
+    assert kwargs["where"] == {"completedAt": None, "eraseAfter": {"lte": NOW}}
+    assert kwargs["order"] == {"eraseAfter": "asc"}
+
+
+@pytest.fixture
+def claim_query(monkeypatch):
+    query = AsyncMock(return_value=[{"id": REQUEST_ID}])
+    monkeypatch.setattr(request, "query_raw_with_schema", query)
+    return query
+
+
+@pytest.mark.asyncio
+async def test_the_claim_is_one_conditional_statement(claim_query):
+    """Only an unfinished request past its erase date, on the database's
+    clock; an earlier claim keeps its date and nothing ever clears it."""
+    assert await request.claim_request(USER_ID) == REQUEST_ID
+
+    sql, user_id = claim_query.await_args.args
+    assert user_id == USER_ID
+    assert sql.startswith('UPDATE {schema_prefix}"AccountDeletionRequest"')
+    assert 'SET "startedAt" = COALESCE("startedAt", now())' in sql
+    assert '"completedAt" IS NULL' in sql
+    assert '"eraseAfter" <= now()' in sql
+    assert 'RETURNING "id"' in sql
+    assert "NULL," not in sql and '"startedAt" = NULL' not in sql
+
+
+@pytest.mark.asyncio
+async def test_a_kept_or_early_request_is_not_claimed(claim_query):
+    claim_query.return_value = []
+
+    assert await request.claim_request(USER_ID) is None
 
 
 @pytest.fixture
@@ -64,7 +96,9 @@ def email(monkeypatch):
 async def test_a_confirmation_the_close_could_not_send_goes_out_first(email):
     report = await request.send_confirmation(PENDING, dry_run=False)
 
-    email.send.assert_awaited_once_with(EMAIL, AccountDeletionSource.SETTINGS)
+    email.send.assert_awaited_once_with(
+        EMAIL, AccountDeletionSource.SETTINGS, ERASE_AFTER
+    )
     email.mark.assert_awaited_once_with(USER_ID)
     assert report.counts == {"emails": 1}
     assert report.status == StepStatus.DONE
@@ -80,7 +114,7 @@ async def test_the_confirmation_is_worded_for_the_request_source(email):
 
     await request.send_confirmation(by_email, dry_run=False)
 
-    email.send.assert_awaited_once_with(EMAIL, AccountDeletionSource.EMAIL)
+    email.send.assert_awaited_once_with(EMAIL, AccountDeletionSource.EMAIL, ERASE_AFTER)
 
 
 @pytest.mark.asyncio
@@ -125,13 +159,28 @@ async def test_without_an_address_the_confirmation_is_skipped(email):
 
 
 @pytest.mark.asyncio
-async def test_the_request_is_marked_done_once(requests_table):
+async def test_the_claimed_request_is_marked_done_once(requests_table):
+    """The row this erasure claimed, not any row of the user ID; a rerun
+    keeps the first date."""
     report = await request.complete_request(PENDING, dry_run=False)
 
     where = requests_table.update_many.await_args.kwargs["where"]
-    # A rerun keeps the first date.
-    assert where == {"userId": USER_ID, "completedAt": None}
+    assert where == {
+        "id": REQUEST_ID,
+        "startedAt": {"not": None},
+        "completedAt": None,
+    }
     assert report.counts == {"completed": 1}
+
+
+@pytest.mark.asyncio
+async def test_an_unclaimed_request_is_never_marked_done(requests_table):
+    unclaimed = PENDING.model_copy(update={"request_id": None})
+
+    with pytest.raises(RuntimeError):
+        await request.complete_request(unclaimed, dry_run=False)
+
+    requests_table.update_many.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -152,9 +201,10 @@ async def test_an_email_request_is_closed_the_way_settings_closes_one(monkeypatc
     monkeypatch.setattr(
         request, "get_user_by_id", AsyncMock(return_value=SimpleNamespace(email=EMAIL))
     )
-    close = AsyncMock()
+    close = AsyncMock(return_value=NOW + timedelta(days=14))
     monkeypatch.setattr(request, "delete_account", close)
 
-    await request.close_for_email_request(USER_ID)
+    erase_after = await request.close_for_email_request(USER_ID)
 
     close.assert_awaited_once_with(USER_ID, EMAIL, AccountDeletionSource.EMAIL)
+    assert erase_after == NOW + timedelta(days=14)

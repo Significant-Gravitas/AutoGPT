@@ -4,31 +4,30 @@
 The job runs inside the database manager, which has the Prisma connection
 the scheduler lacks. The scheduler only starts it over RPC
 (`start_account_erasure_sweep`), and only while
-`account_erasure_sweep_enabled` is on (off by default).
+`account_erasure_sweep_enabled` is on (off by default). Each sweep also
+purges the ban records past their date (`ban_record.py`).
 """
 
 import asyncio
 import logging
-from datetime import timedelta
 
+from backend.data.account_erasure.ban_record import purge_expired_ban_records
 from backend.data.account_erasure.models import (
     AccountErasureBlocked,
     ErasureReport,
     StepStatus,
 )
-from backend.data.account_erasure.request import PENDING_GRACE, pending_user_ids
+from backend.data.account_erasure.request import pending_user_ids
 from backend.data.account_erasure.routine import erase_account
 
 logger = logging.getLogger(__name__)
 
 
-async def erase_pending(
-    *, dry_run: bool = True, grace: timedelta = PENDING_GRACE
-) -> list[ErasureReport]:
-    """Erase each account closed at least `grace` ago and not erased yet,
-    oldest first. One that is blocked or fails is reported and left for the
-    next run; the rest still go."""
-    return await erase_each(await pending_user_ids(grace=grace), dry_run=dry_run)
+async def erase_pending(*, dry_run: bool = True) -> list[ErasureReport]:
+    """Erase each account whose 14 days to keep it are over and that is not
+    erased yet, oldest first. One that is blocked or fails is reported and
+    left for the next run; the rest still go."""
+    return await erase_each(await pending_user_ids(), dry_run=dry_run)
 
 
 async def erase_each(user_ids: list[str], *, dry_run: bool) -> list[ErasureReport]:
@@ -48,6 +47,11 @@ async def _erase_one(user_id: str, dry_run: bool) -> ErasureReport:
 
 def _log(report: ErasureReport) -> None:
     """Names and counts only: the report never carries an email or a path."""
+    if report.not_claimed:
+        logger.info(
+            f"Account erasure of {report.user_id} skipped: {report.not_claimed}"
+        )
+        return
     if report.blockers:
         names = ", ".join(blocker.name for blocker in report.blockers)
         logger.error(
@@ -92,9 +96,12 @@ _sweeps: set[asyncio.Task] = set()
 async def _run_sweep() -> None:
     try:
         reports = await erase_pending(dry_run=False)
+        purged = await purge_expired_ban_records()
     except Exception:
         logger.exception("Account erasure sweep failed")
         return
+    if purged:
+        logger.info(f"Account erasure sweep purged {purged} expired ban record(s)")
     if reports:
         done = sum(1 for report in reports if report.complete)
         logger.info(f"Account erasure sweep erased {done} of {len(reports)}")

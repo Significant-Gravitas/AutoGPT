@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 from enum import Enum
 
 from prisma.enums import AccountDeletionSource
@@ -45,6 +46,10 @@ class ErasureReport(BaseModel):
     account_found: bool = True
     blockers: list[Blocker] = []
     steps: list[StepReport] = []
+    # Why an --apply ran no step although nothing blocked it: the request
+    # could not be claimed (`request.claim_request`), because the owner kept
+    # the account, its erasure date is still ahead, or it is erased already.
+    not_claimed: str = ""
 
     @property
     def failed(self) -> bool:
@@ -53,7 +58,7 @@ class ErasureReport(BaseModel):
     @property
     def complete(self) -> bool:
         """Every step ran through on an --apply, so nothing is left."""
-        return not (self.dry_run or self.blockers or self.failed)
+        return not (self.dry_run or self.blockers or self.failed or self.not_claimed)
 
 
 class Subject(BaseModel):
@@ -81,6 +86,12 @@ class Subject(BaseModel):
     # (`preflight.find_blockers`). The confirmation email words its reason by
     # it.
     request_source: AccountDeletionSource | None = None
+    # The request's ID once this erasure claimed it (`request.claim_request`):
+    # the completion marks that row, and only that one.
+    request_id: str | None = None
+    # When the owner's 14 days to keep the account end: the erasure may claim
+    # the request only after it.
+    erase_after: datetime | None = None
     # Whether the account-deleted email went out (the request's
     # `confirmationSentAt`); the erasure sends it first when it did not.
     confirmation_sent: bool = False
@@ -91,6 +102,11 @@ class Subject(BaseModel):
     shared_graph_ids: list[str] = []
     # Its marketplace listings of those agents, handed over with them.
     kept_listing_ids: list[str] = []
+    # A ban on the auth identity still in force when the erasure reads it:
+    # the erasure keeps a ban record (`ban_record.py`) so the address can't
+    # sign up again while it lasts. `ban_expires` None is a ban for good.
+    banned: bool = False
+    ban_expires: datetime | None = None
 
     @property
     def has_request(self) -> bool:

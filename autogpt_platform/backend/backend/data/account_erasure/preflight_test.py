@@ -1,8 +1,10 @@
 """What blocks an erasure, and which orgs go with the account: only orgs no
 one else is an active member of. A shared org it alone owns, and an OAuth app
-of its that other accounts still use, wait for a decision, an account that is not closed is refused unless the caller closes
-it first, and a malformed ID is refused outright."""
+of its that other accounts still use, wait for a decision; an account that is
+not closed, or whose 14 days to keep it are not over, is refused; and a
+malformed ID is refused outright."""
 
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -16,8 +18,12 @@ from backend.data.account_erasure.models import Subject
 USER_ID = "3f0b8c1e-4c2a-4f7e-9a51-0c6f2d8e1a77"
 OTHER = "9d4e2b7a-1111-4c2a-9a51-0c6f2d8e1a77"
 THIRD = "5a6b7c8d-2222-4c2a-9a51-0c6f2d8e1a77"
+NOW = datetime(2026, 11, 2, 12, 0, tzinfo=UTC)
 CLOSED = Subject(
-    user_id=USER_ID, has_user_row=True, request_source=AccountDeletionSource.SETTINGS
+    user_id=USER_ID,
+    has_user_row=True,
+    request_source=AccountDeletionSource.SETTINGS,
+    erase_after=NOW - timedelta(minutes=1),
 )
 
 
@@ -109,7 +115,7 @@ async def test_only_orgs_nobody_else_is_active_in_go_with_the_account(orgs):
 
 @pytest.mark.asyncio
 async def test_a_shared_org_without_another_owner_blocks(orgs):
-    blockers = await preflight.find_blockers(CLOSED)
+    blockers = await preflight.find_blockers(CLOSED, now=NOW)
 
     assert [(b.name, b.count) for b in blockers] == [
         ("shared_orgs_without_another_owner", 2)
@@ -129,7 +135,7 @@ async def test_oauth_apps_other_accounts_use_block(no_orgs):
     the operator moves or disables them first."""
     preflight._oauth_apps_others_use.return_value = 2
 
-    blockers = await preflight.find_blockers(CLOSED)
+    blockers = await preflight.find_blockers(CLOSED, now=NOW)
 
     assert [(b.name, b.count) for b in blockers] == [("oauth_apps_in_use", 2)]
     assert "ownerId" in blockers[0].resolution
@@ -169,25 +175,39 @@ async def test_an_open_account_is_not_erased(no_orgs):
 
 
 @pytest.mark.asyncio
-async def test_an_account_the_caller_closes_first_is_not_blocked(no_orgs):
-    open_account = Subject(user_id=USER_ID, has_user_row=True)
-
-    assert await preflight.find_blockers(open_account, closing=True) == []
+async def test_a_closed_account_is_erased_once_its_14_days_are_over(no_orgs):
+    assert await preflight.find_blockers(CLOSED, now=NOW) == []
 
 
 @pytest.mark.asyncio
-async def test_a_closed_account_is_erased(no_orgs):
-    assert await preflight.find_blockers(CLOSED) == []
+async def test_an_account_its_owner_can_still_keep_is_not_erased(no_orgs):
+    keepable = CLOSED.model_copy(update={"erase_after": NOW + timedelta(days=3)})
+
+    blockers = await preflight.find_blockers(keepable, now=NOW)
+
+    assert [(b.name, b.count) for b in blockers] == [("not_due", 0)]
+    assert "2026-11-05 12:00 UTC" in blockers[0].resolution
+
+
+@pytest.mark.asyncio
+async def test_a_finished_erasure_is_not_held_back_by_its_date(no_orgs):
+    done = CLOSED.model_copy(
+        update={"erase_after": NOW + timedelta(days=3), "request_completed": True}
+    )
+
+    assert await preflight.find_blockers(done, now=NOW) == []
 
 
 @pytest.mark.asyncio
 async def test_a_closed_account_whose_rows_are_gone_is_finished(no_orgs):
     """A rerun after a partial erasure: the request is still there."""
     nothing_left = Subject(
-        user_id=USER_ID, request_source=AccountDeletionSource.SETTINGS
+        user_id=USER_ID,
+        request_source=AccountDeletionSource.SETTINGS,
+        erase_after=NOW - timedelta(days=1),
     )
 
-    assert await preflight.find_blockers(nothing_left) == []
+    assert await preflight.find_blockers(nothing_left, now=NOW) == []
 
 
 @pytest.mark.asyncio
@@ -195,7 +215,7 @@ async def test_a_closed_account_whose_rows_are_gone_is_finished(no_orgs):
 async def test_a_malformed_id_is_refused_before_anything_else(no_orgs, bad_id):
     subject = Subject(user_id=bad_id, has_user_row=True, has_auth_identity=True)
 
-    blockers = await preflight.find_blockers(subject, closing=True)
+    blockers = await preflight.find_blockers(subject)
 
     assert [b.name for b in blockers] == ["invalid_account_id"]
     preflight._orgs.assert_not_awaited()
@@ -205,7 +225,7 @@ async def test_a_malformed_id_is_refused_before_anything_else(no_orgs, bad_id):
 async def test_the_placeholder_account_is_never_deleted(no_orgs):
     placeholder = Subject(user_id=DELETED_USER_ID, has_user_row=True)
 
-    blockers = await preflight.find_blockers(placeholder, closing=True)
+    blockers = await preflight.find_blockers(placeholder)
 
     assert [b.name for b in blockers] == ["system_account"]
 
