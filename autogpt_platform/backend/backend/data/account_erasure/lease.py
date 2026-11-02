@@ -12,7 +12,7 @@ its own (`LEASE_TTL_SECONDS`), so the next run can resume.
 
 import uuid
 
-from redis.exceptions import RedisError
+from redis.exceptions import RedisClusterException, RedisError
 
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
@@ -37,8 +37,9 @@ async def acquire_erasure_lease(user_id: str) -> AsyncClusterLock | None:
             owner_id=uuid.uuid4().hex,
             timeout=LEASE_TTL_SECONDS,
         )
-    except (RedisError, OSError) as e:
-        # A client not connected yet connects here, and raises if it can't.
+    except (RedisError, RedisClusterException, OSError) as e:
+        # A client not connected yet connects here, and raises if it can't:
+        # the cluster client raises RedisClusterException, not a RedisError.
         raise ErasureLeaseUnavailable("account erasure lease unavailable") from e
     owner = await lock.try_acquire()
     if owner is None:

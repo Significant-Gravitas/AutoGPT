@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import RedisClusterException
 
 from backend.data.account_erasure import lease
 
@@ -64,12 +65,18 @@ async def test_redis_that_cannot_answer_is_an_error_not_a_free_lease(locks):
 
 
 @pytest.mark.asyncio
-async def test_redis_that_cannot_connect_is_the_same_error(locks, monkeypatch):
+@pytest.mark.parametrize(
+    "error",
+    [
+        # What the cluster client raises when it can't connect at all.
+        RedisClusterException("Redis Cluster cannot be connected"),
+        RedisConnectionError("down"),
+    ],
+)
+async def test_redis_that_cannot_connect_is_the_same_error(locks, monkeypatch, error):
     """A cold client connects on first use, and its own error would reach the
     CLI as a raw traceback."""
-    monkeypatch.setattr(
-        lease, "get_redis_async", AsyncMock(side_effect=RedisConnectionError("down"))
-    )
+    monkeypatch.setattr(lease, "get_redis_async", AsyncMock(side_effect=error))
 
     with pytest.raises(lease.ErasureLeaseUnavailable):
         await lease.acquire_erasure_lease(USER_ID)
