@@ -99,6 +99,7 @@ from backend.monitoring.instrumentation import instrument_fastapi, start_metrics
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
 from backend.util.process import freeze_startup_heap
 from backend.util.service import UnhealthyServiceError
+from backend.util.trusted_proxies import uvicorn_forwarded_allow_ips
 from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .external.fastapi_app import external_api
@@ -675,6 +676,9 @@ class AgentServer(backend.util.service.AppProcess):
             loop="uvloop" if platform.system() != "Windows" else "auto",
             # Disable WebSockets since this service doesn't have any WebSocket endpoints
             ws="none",
+            forwarded_allow_ips=uvicorn_forwarded_allow_ips(
+                settings.config.trusted_proxies
+            ),
         )
 
     @staticmethod

@@ -108,9 +108,17 @@ configure_environment() {
   )"
   export AUTOGPT_PUBLIC_URL
   log "public URL: ${AUTOGPT_PUBLIC_URL}"
+  # The operator's TRUSTED_PROXIES name the proxies in front of the container.
+  AUTOGPT_TRUSTED_PROXIES="$(
+    "${AUTOGPT_PYTHON}" "${AUTOGPT_ASSET_DIR}/runtime_config.py" \
+      validate-trusted-proxies "${TRUSTED_PROXIES:-}"
+  )"
+  [[ -z "${AUTOGPT_TRUSTED_PROXIES}" ]] || \
+    log "proxies in front of the container: ${AUTOGPT_TRUSTED_PROXIES}"
   configure_account_registration
   configure_backend_cors_origin
   write_nginx_public_url_config
+  write_nginx_real_ip_config
 
   export PGDATA=/data/postgres
   export POSTGRES_USER=postgres POSTGRES_DB=postgres
@@ -152,8 +160,8 @@ configure_environment() {
   export NOTIFICATIONMANAGER_HOST=127.0.0.1 PLATFORMLINKINGMANAGER_HOST=127.0.0.1
   export COPILOTEXECUTOR_HOST=127.0.0.1 COPILOTCHATBRIDGE_HOST=127.0.0.1
   export AGENT_API_HOST=127.0.0.1 WEBSOCKET_SERVER_HOST=127.0.0.1
-  # nginx sends the REST server one X-Forwarded-For entry: the client.
-  export TRUSTED_PROXY_COUNT=1
+  # The services' only proxy is the image's nginx, which sends the visitor alone.
+  export TRUSTED_PROXIES=127.0.0.1,::1
   # The persistent backend JSON contains user-tunable product settings, but it
   # must not be able to move or expose appliance services. Environment values
   # have higher Pydantic priority, so pin the fixed internal topology here.
@@ -237,6 +245,27 @@ write_nginx_public_url_config() {
     printf "set \$autogpt_public_host \"%s\";\n" "${public_host}"
     printf "set \$autogpt_public_scheme \"%s\";\n" "${public_scheme}"
   } >"${path}"
+}
+
+write_nginx_real_ip_config() {
+  local path="${AUTOGPT_RUNTIME_DIR}/nginx/real-ip.conf"
+  [[ ! -L "${path}" ]] || fatal "refusing symlink at nginx real IP config"
+  install -m 0600 -o autogpt_proxy -g autogpt_proxy /dev/null "${path}"
+  nginx_real_ip_config >"${path}"
+}
+
+# nginx takes the visitor from X-Forwarded-For only from a listed proxy, walking
+# right to left past listed ones; with none listed, the connecting peer is it.
+nginx_real_ip_config() {
+  local -a proxies
+  local proxy
+  read -r -a proxies <<<"${AUTOGPT_TRUSTED_PROXIES:-}"
+  ((${#proxies[@]} > 0)) || return 0
+  for proxy in "${proxies[@]}"; do
+    printf "set_real_ip_from %s;\n" "${proxy}"
+  done
+  printf "real_ip_header X-Forwarded-For;\n"
+  printf "real_ip_recursive on;\n"
 }
 
 normalize_integer() {

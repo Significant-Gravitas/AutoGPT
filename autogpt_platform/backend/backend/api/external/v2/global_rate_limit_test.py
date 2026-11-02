@@ -15,6 +15,58 @@ CLIENT = "203.0.113.7"
 # What the hosted platform's proxies append after the client: Cloudflare's
 # edge address, then Google's load balancer appends that and its own.
 OUR_PROXIES = "172.70.1.1, 34.1.1.1"
+# The same chain as a list: Cloudflare's edge, the load balancer, its front end.
+LISTED = "172.64.0.0/13, 34.1.1.1, 10.0.0.0/8"
+
+
+@pytest.fixture(autouse=True)
+def no_trusted_proxies(mocker: pytest_mock.MockFixture) -> None:
+    """The hop-count tests below read the deprecated setting, as an install
+    that leaves TRUSTED_PROXIES unset does."""
+    mocker.patch.object(global_rate_limit.settings.config, "trusted_proxies", "")
+
+
+@pytest.mark.parametrize("spoofed", ["", "6.6.6.6, ", "6.6.6.6, 7.7.7.7, "])
+async def test_with_trusted_proxies_the_anonymous_bucket_is_the_first_unlisted_hop(
+    mocker: pytest_mock.MockFixture, spoofed: str
+) -> None:
+    mocker.patch.object(global_rate_limit.settings.config, "trusted_proxies", LISTED)
+    mocker.patch.object(global_rate_limit.settings.config, "trusted_proxy_count", 1)
+    anonymous = mocker.patch.object(
+        global_rate_limit._anonymous_limiter, "check", return_value=None
+    )
+
+    await _call_middleware(f"{spoofed}{CLIENT}, {OUR_PROXIES}")
+
+    anonymous.assert_awaited_once_with(CLIENT)
+
+
+def test_with_trusted_proxies_an_unlisted_peer_is_the_client(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch.object(global_rate_limit.settings.config, "trusted_proxies", LISTED)
+    scope = {
+        "type": "http",
+        "client": ("198.51.100.4", 0),
+        "headers": [(b"x-forwarded-for", f"{CLIENT}, {OUR_PROXIES}".encode())],
+    }
+
+    assert client_ip(scope) == "198.51.100.4"
+
+
+def test_the_hop_count_warns_once_that_trusted_proxies_replaces_it(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch.object(global_rate_limit.settings.config, "trusted_proxy_count", 1)
+    warning = mocker.patch.object(global_rate_limit.logger, "warning")
+    global_rate_limit._warn_hop_count_deprecated.cache_clear()
+    scope = {"type": "http", "client": (PEER, 0), "headers": []}
+
+    client_ip(scope)
+    client_ip(scope)
+
+    warning.assert_called_once()
+    assert "set TRUSTED_PROXIES" in warning.call_args.args[0]
 
 
 @pytest.mark.parametrize("spoofed", ["", "6.6.6.6, ", "6.6.6.6, 7.7.7.7, "])

@@ -110,6 +110,9 @@ def main() -> int:
     url_parser = subparsers.add_parser("validate-public-url")
     url_parser.add_argument("url")
 
+    proxies_parser = subparsers.add_parser("validate-trusted-proxies")
+    proxies_parser.add_argument("proxies")
+
     args = parser.parse_args()
     try:
         if args.command == "ensure":
@@ -143,6 +146,8 @@ def main() -> int:
                 )
             if offenders:
                 return 1
+        elif args.command == "validate-trusted-proxies":
+            print(validate_trusted_proxies(args.proxies))
         else:
             print(validate_public_url(args.url))
     except (OSError, ValueError) as exc:
@@ -668,6 +673,22 @@ def validate_public_url(value: str) -> str:
     host = _normalize_public_host(parsed.hostname)
     netloc = host if port is None else f"{host}:{port}"
     return urlunsplit((parsed.scheme, netloc, "", "", ""))
+
+
+def validate_trusted_proxies(value: str) -> str:
+    """The comma-separated proxies in front of the container, as space-separated
+    networks; only these normalized forms reach nginx's config."""
+    networks = []
+    for entry in (part.strip() for part in value.split(",")):
+        if not entry:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(entry, strict=False))
+        except ValueError as exc:
+            raise ValueError(
+                f"TRUSTED_PROXIES takes IP addresses or CIDR ranges; cannot parse: {entry}"
+            ) from exc
+    return " ".join(str(network) for network in networks)
 
 
 def _normalize_public_host(host: str) -> str:

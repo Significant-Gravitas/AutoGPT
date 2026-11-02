@@ -23,6 +23,7 @@ from pydantic_settings import (
 )
 
 from backend.util.data import get_data_path
+from backend.util.trusted_proxies import parse_trusted_proxies
 
 logger = logging.getLogger(__name__)
 
@@ -536,17 +537,27 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "This is necessary to make sure webhooks find their way.",
     )
 
+    trusted_proxies: str = Field(
+        default="",
+        description="The proxies in front of the backend, as comma-separated IP "
+        "addresses or CIDR ranges, the same list the frontend reads. The client "
+        "is the first X-Forwarded-For address from the right that is not listed, "
+        "read only from a listed peer, for uvicorn (request.client) and the "
+        "External API's per-address limits alike. When set, TRUSTED_PROXY_COUNT "
+        "and FORWARDED_ALLOW_IPS are ignored.",
+    )
+
     trusted_proxy_count: int = Field(
         # Prod is Cloudflare -> Google LB -> pod, so the client is 3rd from the
         # right; 1 keys every anonymous caller on the LB's address, one bucket.
         default=3,
         ge=0,
-        description="How many X-Forwarded-For entries our own proxies append. "
-        "The client IP is that many entries from the right; everything further "
-        "left is caller-controlled and must not be trusted. The default is the "
-        "hosted platform: Cloudflare appends the client, Google's load balancer "
-        "appends Cloudflare's address and its own. 0 ignores the header and uses "
-        "the socket peer.",
+        description="Deprecated: set TRUSTED_PROXIES, which replaces it. Read "
+        "only while TRUSTED_PROXIES is empty: how many X-Forwarded-For entries "
+        "our own proxies append, so the External API's client IP is that many "
+        "entries from the right. The default is the hosted platform: Cloudflare "
+        "appends the client, Google's load balancer appends Cloudflare's address "
+        "and its own. 0 ignores the header and uses the socket peer.",
     )
 
     e2b_egress_proxy_address: str = Field(
@@ -1202,6 +1213,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Allowed callback URL origins for external OAuth flows. "
         "External apps must have their callback URLs start with one of these origins.",
     )
+
+    @field_validator("trusted_proxies")
+    @classmethod
+    def validate_trusted_proxies(cls, v: str) -> str:
+        """Refuse to start on an entry no reader could match, rather than walk
+        past nothing and put every caller behind the proxy in one bucket."""
+        parse_trusted_proxies(v)
+        return v
 
     @field_validator("trusted_frontend_origins")
     @classmethod

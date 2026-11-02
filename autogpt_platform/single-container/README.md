@@ -99,6 +99,29 @@ For LAN or remote access, keep the loopback binding, put a TLS reverse proxy in
 front of it, and set `AUTOGPT_PUBLIC_URL` to the proxy's `https://` origin.
 Close signup before you expose the app.
 
+### Behind your own reverse proxy
+
+Set `TRUSTED_PROXIES` to the proxies between the browser and the container, as
+comma-separated IP addresses or CIDR ranges. The image's nginx then takes the
+visitor's address from `X-Forwarded-For`, walking right to left past the listed
+proxies, and passes only that address to the app, so the sign-in limits, IP
+blocks and sign-in log see each visitor. It reads the header only from a listed
+proxy, so a value the visitor sends cannot choose the address. Without it,
+every visitor appears as the proxy.
+
+For a host nginx container on a Docker network named `proxy`:
+
+```bash
+docker network inspect proxy --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}'
+# 172.18.0.0/16 -> run this container with TRUSTED_PROXIES=172.18.0.0/16
+```
+
+That proxy should append to the header
+(`proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`) or set it to
+the visitor's address. List only networks that hold nothing but your proxies,
+because every address on them is trusted to name the visitor. An entry that is
+not an address or range stops the container from starting.
+
 Configure model providers and optional integrations with environment variables.
 Otto's default remote profile uses `OPEN_ROUTER_API_KEY` for chat and
 memory extraction and `OPENAI_API_KEY` for embeddings; the canonical guide
