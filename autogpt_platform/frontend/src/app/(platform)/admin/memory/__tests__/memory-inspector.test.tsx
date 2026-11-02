@@ -66,7 +66,7 @@ describe.each(["CLOUD", "LOCAL"])(
     beforeEach(() => vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", mode));
 
     it("does not mount or query memory data when explicitly disabled", async () => {
-      vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY", "false");
+      vi.stubEnv("NEXT_PUBLIC_GRAPH_MEMORY", "disabled");
       render(await MemoryDashboardPage());
 
       expect(
@@ -83,10 +83,10 @@ describe.each(["CLOUD", "LOCAL"])(
       expect(withRoleAccess).toHaveBeenCalledWith(["admin"]);
     });
 
-    it.each([undefined, "true", "", "False", "0"])(
+    it.each([undefined, "enabled", "", "false", "Disabled", "0"])(
       "preserves the inspector and queries with override %s",
       async (override) => {
-        vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY", override);
+        vi.stubEnv("NEXT_PUBLIC_GRAPH_MEMORY", override);
         render(await MemoryDashboardPage());
 
         expect(
@@ -106,10 +106,10 @@ describe.each(["CLOUD", "LOCAL"])(
       },
     );
 
-    it.each(["false", undefined])(
+    it.each(["disabled", undefined])(
       "honors an authorization rejection with override %s",
       async (override) => {
-        vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY", override);
+        vi.stubEnv("NEXT_PUBLIC_GRAPH_MEMORY", override);
         authorize.mockRejectedValueOnce(new Error("Unauthorized"));
 
         await expect(MemoryDashboardPage()).rejects.toThrow("Unauthorized");

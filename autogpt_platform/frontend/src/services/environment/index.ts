@@ -132,7 +132,7 @@ function isLocal() {
 }
 
 function isGraphMemoryAvailable() {
-  return process.env.NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY !== "false";
+  return process.env.NEXT_PUBLIC_GRAPH_MEMORY !== "disabled";
 }
 
 function isServerSide() {

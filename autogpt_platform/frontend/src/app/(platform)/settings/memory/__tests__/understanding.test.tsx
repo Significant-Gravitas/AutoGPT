@@ -75,7 +75,7 @@ function mockAccountScope(understanding: () => MemoryUnderstanding) {
 }
 
 beforeEach(() => {
-  vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY", undefined);
+  vi.stubEnv("NEXT_PUBLIC_GRAPH_MEMORY", undefined);
   resetCopilotChatRegistry();
   window.history.replaceState({}, "", "/settings/memory");
 });
@@ -225,7 +225,7 @@ describe.each(["CLOUD", "LOCAL"])("memory availability in %s", (mode) => {
   it.each(["/settings/memory", "/settings/memory?expert=expert-maria"])(
     "keeps the normal header and onboarding without graph requests at %s when disabled",
     async (path) => {
-      vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY", "false");
+      vi.stubEnv("NEXT_PUBLIC_GRAPH_MEMORY", "disabled");
       window.history.replaceState({}, "", path);
       const graphRequest = vi.fn();
       server.use(
@@ -273,10 +273,10 @@ describe.each(["CLOUD", "LOCAL"])("memory availability in %s", (mode) => {
     },
   );
 
-  it.each([undefined, "true"])(
+  it.each([undefined, "enabled"])(
     "keeps graph memory and onboarding with override %s",
     async (override) => {
-      vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY", override);
+      vi.stubEnv("NEXT_PUBLIC_GRAPH_MEMORY", override);
       mockAccountScope(() => KEPT);
       const graphRequest = vi.fn();
       server.use(
