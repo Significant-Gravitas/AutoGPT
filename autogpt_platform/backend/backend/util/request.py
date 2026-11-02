@@ -1,4 +1,5 @@
 import asyncio
+import codecs
 import ipaddress
 import re
 import socket
@@ -99,6 +100,99 @@ BLOCKED_IP_NETWORKS = [
 
 ALLOWED_SCHEMES = ["http", "https"]
 HOSTNAME_REGEX = re.compile(r"^[A-Za-z0-9.-]+$")  # Basic DNS-safe hostname pattern
+
+# The longest name DNS allows, checked before IDNA encoding.
+MAX_HOSTNAME_LENGTH = 253
+
+# An allowlist of the text encodings a remote server may name for a response
+# body we decode, by their canonical codec names (``codecs.lookup(...).name``),
+# so any alias of a listed codec matches. Anything else is decoded as UTF-8.
+ALLOWED_RESPONSE_CHARSETS = frozenset(
+    {
+        # Unicode
+        "utf-8",
+        "utf-8-sig",
+        "utf-16",
+        "utf-16-le",
+        "utf-16-be",
+        "utf-32",
+        "utf-32-le",
+        "utf-32-be",
+        "ascii",
+        # ISO-8859, Windows, KOI8 and Mac single-byte families
+        *(f"iso8859-{n}" for n in (*range(1, 12), *range(13, 17))),
+        *(f"cp{n}" for n in range(1250, 1259)),
+        "koi8-r",
+        "koi8-u",
+        "koi8-t",
+        # DOS and other legacy single-byte codepages
+        *(
+            f"cp{n}"
+            for n in (
+                437,
+                720,
+                737,
+                775,
+                850,
+                852,
+                855,
+                857,
+                858,
+                860,
+                861,
+                862,
+                863,
+                864,
+                865,
+                866,
+                869,
+                1125,
+            )
+        ),
+        "kz1048",
+        "ptcp154",
+        "hp-roman8",
+        "mac-arabic",
+        "mac-croatian",
+        "mac-cyrillic",
+        "mac-farsi",
+        "mac-greek",
+        "mac-iceland",
+        "mac-latin2",
+        "mac-roman",
+        "mac-romanian",
+        "mac-turkish",
+        # Thai
+        "tis-620",
+        "cp874",
+        # Chinese
+        "gb2312",
+        "gbk",
+        "gb18030",
+        "big5",
+        "big5hkscs",
+        "cp950",
+        # Japanese
+        "shift_jis",
+        "shift_jis_2004",
+        "shift_jisx0213",
+        "cp932",
+        "euc_jp",
+        "euc_jis_2004",
+        "euc_jisx0213",
+        "iso2022_jp",
+        "iso2022_jp_1",
+        "iso2022_jp_2",
+        "iso2022_jp_2004",
+        "iso2022_jp_3",
+        "iso2022_jp_ext",
+        # Korean
+        "euc_kr",
+        "cp949",
+        "johab",
+        "iso2022_kr",
+    }
+)
 
 # IPv6 prefixes whose last 32 bits are an IPv4 address the network may route
 # the connection to: the well-known NAT64 prefix (RFC 6052), SIIT (RFC 2765)
@@ -284,6 +378,9 @@ async def validate_url_host(
     if not parsed.hostname:
         raise ValueError(f"Invalid host/URL; no host in parse result: {url}")
 
+    if len(parsed.hostname.removesuffix(".")) > MAX_HOSTNAME_LENGTH:
+        raise ValueError(f"Hostname is longer than {MAX_HOSTNAME_LENGTH} characters")
+
     # IDNA encode to prevent Unicode domain attacks
     try:
         ascii_hostname = idna.encode(parsed.hostname).decode("ascii")
@@ -440,9 +537,7 @@ class Response:
         """
         if encoding is None:
             # Try to extract charset from headers; fall back to UTF-8
-            ctype = self.headers.get("content-type", "")
-            match = re.search(r"charset=([^\s;]+)", ctype, flags=re.I)
-            encoding = match.group(1) if match else None
+            encoding = _response_charset(self.headers.get("content-type", ""))
         return self.content.decode(encoding or "utf-8", errors="replace")
 
     @property
@@ -457,6 +552,18 @@ class Response:
         """
         if self.status >= 400:
             raise http_status_error(self.status, self.reason, self.content)
+
+
+def _response_charset(content_type: str) -> str | None:
+    """The allowed codec a ``Content-Type`` header names, or None."""
+    match = re.search(r"charset=([^\s;]+)", content_type, flags=re.I)
+    if not match:
+        return None
+    try:
+        name = codecs.lookup(match.group(1).strip("\"'")).name
+    except LookupError:
+        return None
+    return name if name in ALLOWED_RESPONSE_CHARSETS else None
 
 
 def http_status_error(status: int, reason: str | None, body: bytes) -> Exception:
