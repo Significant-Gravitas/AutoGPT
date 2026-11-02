@@ -179,7 +179,7 @@ The 10-minute windows for the first row start on the clock: at :00, :10, :20 and
 - A successful sign-in gives its attempt back, so only failed sign-ins count toward the 5.
 - The per-address limits apply whether or not the address has an account, so a refusal says nothing about which addresses do.
 - Each window starts on the clock, and these limits cover the sign-in and reset-password pages as well as the API paths below.
-- **What you see:** `429`, with "Too many attempts. Please try again in 3 minutes." and an `X-Retry-After` header in seconds.
+- **What you see:** `429`, with "Too many attempts. Please try again in 3 minutes." — the wait named in seconds under a minute — and an `X-Retry-After` header in seconds.
 - Where the Platform has no IP address for the caller, only the per-address limits apply; see [Client IP Addresses](client-ip.md#signing-in). None of these are configurable.
 
 ### The authentication API
