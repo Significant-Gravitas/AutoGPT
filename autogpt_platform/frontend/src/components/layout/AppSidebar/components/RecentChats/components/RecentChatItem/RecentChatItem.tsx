@@ -167,10 +167,7 @@ export const RecentChatItem = memo(function RecentChatItem({
             aria-label="Chat actions"
             className="max-md:!top-1.5 max-md:w-8 max-md:[&>svg]:size-5"
           >
-            <Icon
-              icon={MoreHorizontalIcon}
-              className="text-sidebar-foreground/90"
-            />
+            <Icon icon={MoreHorizontalIcon} tone="emphasis-soft" />
           </SidebarMenuAction>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">

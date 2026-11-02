@@ -262,7 +262,8 @@ export default function AuthorizePage() {
               variant="primary"
               onClick={handleApprove}
               disabled={isAuthorizing}
-              className="w-full text-lg"
+              textSize="body-md"
+              className="w-full"
             >
               {isAuthorizing ? "Authorizing..." : "Authorize"}
             </Button>
@@ -270,7 +271,8 @@ export default function AuthorizePage() {
               variant="secondary"
               onClick={handleDeny}
               disabled={isAuthorizing}
-              className="w-full text-lg"
+              textSize="body-md"
+              className="w-full"
             >
               Deny
             </Button>

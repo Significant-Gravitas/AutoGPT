@@ -106,7 +106,8 @@ function OfferPrice({
           variant="h3"
           as="span"
           aria-label={presentation.price}
-          className="leading-9 text-foreground-emphasis"
+          tone="emphasis"
+          className="leading-9"
         >
           {presentation.price}
         </Text>
@@ -118,11 +119,8 @@ function OfferPrice({
       </div>
       <Text
         variant="small"
-        tone={presentation.trial ? undefined : "muted"}
-        className={cn(
-          "mb-2 min-h-4",
-          presentation.trial && "text-accent-strong",
-        )}
+        tone={presentation.trial ? "accent" : "muted"}
+        className="mb-2 min-h-4"
       >
         {presentation.caption || "\u00a0"}
       </Text>
@@ -159,7 +157,7 @@ function OfferFeatures({
               icon={Tick02Icon}
               size={10}
               aria-hidden
-              className={isTeam ? "text-foreground-tertiary" : "text-brand"}
+              tone={isTeam ? "muted" : "brand"}
             />
           </span>
           <Text

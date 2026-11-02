@@ -38,16 +38,12 @@ export function PaywallPlanChoices({
           {(["monthly", "yearly"] as const).map((value) => (
             <Button
               key={value}
-              variant="ghost"
+              variant={cycle === value ? "ghost" : "ghost-muted"}
               size="small"
               aria-pressed={cycle === value}
               onClick={() => onCycle(value)}
               disabled={pending}
-              className={
-                cycle === value
-                  ? "bg-surface shadow-sm"
-                  : "text-foreground-tertiary"
-              }
+              className={cycle === value ? "bg-surface shadow-sm" : undefined}
             >
               {value === "monthly" ? "Monthly" : "Yearly"}
               {value === "yearly" && (
@@ -134,7 +130,7 @@ function PlanChoice({
         <Icon
           icon={SparklesIcon}
           size={18}
-          className={isPro ? "text-brand-hover" : "text-foreground-secondary"}
+          tone={isPro ? "brand-strong" : "secondary"}
         />
         <Text variant="large-semibold" as="h2">
           {plan.name}
@@ -146,7 +142,7 @@ function PlanChoice({
           : "For bigger ideas and heavier work."}
       </Text>
       <div className="mb-5">
-        <Text variant="h3" as="span" className="tracking-tight">
+        <Text variant="h3-tracking-tight" as="span">
           {formatted ?? "Unavailable"}
         </Text>
         {formatted && (

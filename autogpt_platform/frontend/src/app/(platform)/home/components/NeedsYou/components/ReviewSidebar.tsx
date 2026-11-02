@@ -91,13 +91,11 @@ export function ReviewSidebar({ carousel, sheet = false }: Props) {
           );
         })}
       </ul>
-      <Text
-        variant="small"
-        tone="secondary"
-        className="border-t border-separator px-4 py-3"
-      >
-        {sheet ? "Tap an item to jump to it" : "← → move · Esc close"}
-      </Text>
+      <div className="border-t border-separator px-4 py-3">
+        <Text variant="small" tone="secondary">
+          {sheet ? "Tap an item to jump to it" : "← → move · Esc close"}
+        </Text>
+      </div>
     </nav>
   );
 }

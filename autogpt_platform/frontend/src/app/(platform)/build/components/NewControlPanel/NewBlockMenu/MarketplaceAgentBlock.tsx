@@ -71,8 +71,8 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
           <Text
             variant="body-medium"
             as="span"
-            tone="emphasis"
-            className={cn("line-clamp-1 group-disabled:text-foreground-subtle")}
+            tone={rest.disabled ? "subtle" : "emphasis"}
+            className="line-clamp-1"
           >
             {highlightText(title, highlightedText)}
           </Text>
@@ -81,8 +81,8 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
           <Text
             variant="small-loose"
             as="span"
-            tone="muted"
-            className={cn("truncate group-disabled:text-foreground-subtle")}
+            tone={rest.disabled ? "subtle" : "muted"}
+            className="truncate"
           >
             By {creator_name}
           </Text>
@@ -94,8 +94,8 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
           <Text
             variant="small-loose"
             as="span"
-            tone="muted"
-            className={cn("truncate group-disabled:text-foreground-subtle")}
+            tone={rest.disabled ? "subtle" : "muted"}
+            className="truncate"
           >
             {number_of_runs} runs
           </Text>

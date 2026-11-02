@@ -135,7 +135,7 @@ export function RateLimitResetDialog({
     >
       <Dialog.Content>
         {checking ? (
-          <Text tone="muted" variant="body" role="status" className="!text-sm">
+          <Text tone="muted" variant="body-tight" role="status">
             Refreshing your plan and usage…
           </Text>
         ) : unavailable ? (

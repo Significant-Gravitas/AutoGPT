@@ -31,8 +31,8 @@ export function NodeAdvancedToggle({
       )}
     >
       <Button
-        variant="ghost"
-        className="h-fit min-w-0 p-0 hover:border-transparent hover:bg-transparent"
+        variant="toggle"
+        size="inline"
         onClick={() => setShowAdvanced(nodeId, !showAdvanced)}
         aria-expanded={showAdvanced}
       >

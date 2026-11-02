@@ -121,9 +121,10 @@ export function DraftRecoveryPopup({
                 <TooltipTrigger asChild>
                   <Button
                     variant="primary"
-                    size="small"
+                    size="icon-sm"
+                    shape="pill"
                     onClick={onLoad}
-                    className="aspect-square min-w-0 p-1.5"
+                    className="size-9"
                   >
                     <Icon icon={HistoryIcon} size={20} />
                     <span className="sr-only">Restore changes</span>
@@ -135,10 +136,11 @@ export function DraftRecoveryPopup({
                 <TooltipTrigger asChild>
                   <Button
                     variant="destructive"
-                    size="icon"
+                    size="icon-sm"
+                    shape="pill"
                     onClick={onDiscard}
                     aria-label="Discard changes"
-                    className="aspect-square min-w-0 p-1.5"
+                    className="size-9"
                   >
                     <Icon icon={Cancel01Icon} size={20} />
                     <span className="sr-only">Discard changes</span>

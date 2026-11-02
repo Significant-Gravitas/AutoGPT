@@ -39,7 +39,7 @@ export function PausedCardActions({ card, onStop }: Props) {
             onClick={() => void resume.cancelResume()}
             loading={resume.isCancelling}
             disabled={isBusy}
-            className="ml-1 text-sm"
+            className="ml-1"
           >
             Cancel
           </Button>

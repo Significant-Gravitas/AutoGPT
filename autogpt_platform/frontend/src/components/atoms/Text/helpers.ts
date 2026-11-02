@@ -222,6 +222,19 @@ export const textModifiers = cva("", {
       capitalize: "capitalize",
       none: "normal-case",
     },
+    tracking: {
+      tight: "tracking-tight",
+      normal: "tracking-normal",
+      wide: "tracking-wide",
+      widest: "tracking-widest",
+      title: "tracking-title",
+      heading: "tracking-heading",
+      display: "tracking-display",
+      caps: "tracking-caps",
+      eyebrow: "tracking-eyebrow",
+    },
+    // Animates a colour change, e.g. a hover colour set by a parent.
+    motion: { colors: "transition-colors" },
     align: {
       left: "text-left",
       center: "text-center",

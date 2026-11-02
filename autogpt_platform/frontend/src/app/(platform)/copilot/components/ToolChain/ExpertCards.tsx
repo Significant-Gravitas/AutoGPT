@@ -396,11 +396,11 @@ export function ExpertChangeCard({
           {showDetails && (
             <Button
               variant="secondary"
-              size="small"
+              size="row"
               aria-expanded={panelAvailable ? undefined : showCharter}
               onClick={handleShowMore}
               leftIcon={<Icon icon={InformationCircleIcon} size={16} />}
-              className="h-8 !min-w-0 shrink-0 px-3"
+              className="shrink-0"
             >
               {showCharter ? "Hide details" : "Details"}
             </Button>
@@ -553,10 +553,9 @@ function DecisionFooter({
         {decision && onUndo && (
           <Button
             variant="secondary"
-            size="small"
+            size="row"
             onClick={onUndo}
             leftIcon={<Icon icon={UndoIcon} size={14} />}
-            className="h-8 !min-w-0 px-3"
           >
             {chosen
               ? "Change"
@@ -569,19 +568,17 @@ function DecisionFooter({
           <>
             <Button
               variant="ghost"
-              size="small"
+              size="row"
               disabled={waiting}
               onClick={() => onDecide("declined")}
-              className="h-8 !min-w-0 px-3"
             >
               Decline
             </Button>
             <Button
               variant="primary"
-              size="small"
+              size="row"
               disabled={waiting}
               onClick={() => onDecide("approved")}
-              className="h-8 !min-w-0 px-3"
             >
               Approve
             </Button>
@@ -864,10 +861,11 @@ export function ExpertChangeGroup({
   ) : canSend ? (
     <Button
       variant="primary"
-      size="icon"
+      size="icon-sm"
+      shape="pill"
+      withTooltip={false}
       aria-label="Send decisions"
       onClick={() => send(decisions)}
-      className="size-8 p-0"
     >
       <Icon icon={SentIcon} size={15} />
     </Button>

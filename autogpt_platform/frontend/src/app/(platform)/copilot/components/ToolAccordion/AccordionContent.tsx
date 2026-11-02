@@ -59,14 +59,16 @@ export function ContentCardHeader({
 
 export function ContentCardTitle({
   children,
+  size = "default",
   className,
 }: {
   children: React.ReactNode;
+  size?: "default" | "small";
   className?: string;
 }) {
   return (
     <Text
-      variant="body-medium"
+      variant={size === "small" ? "small-medium-tight" : "body-medium"}
       tone="emphasis"
       className={cn("truncate", className)}
     >
@@ -96,13 +98,19 @@ export function ContentCardSubtitle({
 
 export function ContentCardDescription({
   children,
+  size = "default",
   className,
 }: {
   children: React.ReactNode;
+  size?: "default" | "small";
   className?: string;
 }) {
   return (
-    <Text variant="body" tone="emphasis" className={cn("mt-2", className)}>
+    <Text
+      variant={size === "small" ? "small-tight" : "body"}
+      tone="emphasis"
+      className={cn("mt-2", className)}
+    >
       {children}
     </Text>
   );

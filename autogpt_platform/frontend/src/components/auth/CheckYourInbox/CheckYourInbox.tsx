@@ -76,12 +76,7 @@ export function CheckYourInbox({
         <Text variant="body-medium" tone="muted">
           {copy.backPrompt}
         </Text>
-        <Button
-          type="button"
-          variant="link"
-          className="h-auto min-w-0 p-0"
-          onClick={onBack}
-        >
+        <Button type="button" variant="link" size="inline" onClick={onBack}>
           {copy.backLabel}
         </Button>
       </div>

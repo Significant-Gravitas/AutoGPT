@@ -113,11 +113,11 @@ function SubAgentUpdateAvailableBar({
       <Button
         size="small"
         variant={isCompatible ? "primary" : "outline"}
+        tone={isCompatible ? undefined : "warning"}
         onClick={onUpdate}
         className={cn(
           "h-7",
-          !isCompatible &&
-            "border-warning text-warning-foreground hover:bg-warning-surface",
+          !isCompatible && "border-warning hover:bg-warning-surface",
         )}
       >
         <Text variant="small-medium-tight" as="span" tone="inherit">

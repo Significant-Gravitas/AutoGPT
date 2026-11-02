@@ -292,7 +292,7 @@ export function PendingReviewsList({
                 Your review is needed
               </Text>
             </AttentionCard.Row>
-            <Text variant="large" className="text-textGrey">
+            <Text variant="large" tone="body">
               {reviewGroups.every(([nodeId]) => isGateReview(nodeId))
                 ? "Otto is waiting for your approval before the action below."
                 : "This workflow is paused until you approve the step below. Check what it will do, and edit it if needed."}
@@ -404,7 +404,7 @@ export function PendingReviewsList({
                           onClick={() => processGroup(nodeId, true)}
                           disabled={isBusy}
                           variant="primary"
-                          className="flex min-w-20 items-center justify-center gap-2 rounded-full px-4 py-3"
+                          className="flex min-w-20"
                           loading={groupAction === "approve"}
                         >
                           {reviewCount === 1
@@ -415,7 +415,7 @@ export function PendingReviewsList({
                           onClick={() => processGroup(nodeId, false)}
                           disabled={isBusy}
                           variant="destructive"
-                          className="flex min-w-20 items-center justify-center gap-2 rounded-full bg-error-hover px-4 py-3"
+                          className="flex min-w-20"
                           loading={groupAction === "reject"}
                         >
                           {reviewCount === 1
@@ -430,7 +430,7 @@ export function PendingReviewsList({
             })}
           </div>
 
-          <Text variant="small" className="text-textGrey">
+          <Text variant="small" tone="body">
             Each decision applies only to the reviews shown above it. You can
             turn auto-approval on or off using the toggle for each node.
           </Text>

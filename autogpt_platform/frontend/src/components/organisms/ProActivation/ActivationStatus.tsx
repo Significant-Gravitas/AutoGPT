@@ -52,11 +52,9 @@ export function ActivationStatus({
                 : Loading03Icon
           }
           size={24}
-          className={
-            !isReady && !payment && !failed && !notApplicable
-              ? "mb-4 animate-spin text-brand"
-              : "mb-4 text-brand"
-          }
+          tone="brand"
+          spin={!isReady && !payment && !failed && !notApplicable}
+          className="mb-4"
         />
         <Text variant="body" tone="body">
           {isReady

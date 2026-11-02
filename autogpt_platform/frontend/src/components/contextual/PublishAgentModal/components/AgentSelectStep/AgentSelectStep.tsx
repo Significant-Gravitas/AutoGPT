@@ -381,16 +381,16 @@ function PaginationBar({
         </button>
         {pages.map((entry, idx) =>
           entry === "…" ? (
-            <Text
-              variant="body-tight"
-              as="span"
-              tone="subtle"
-              key={`gap-${idx}`}
-              className="px-1"
-              aria-hidden
-            >
-              …
-            </Text>
+            <span key={`gap-${idx}`} className="px-1" aria-hidden>
+              <Text
+                variant="body-tight"
+                as="span"
+                tone="subtle"
+                className="block"
+              >
+                …
+              </Text>
+            </span>
           ) : (
             <button
               key={entry}

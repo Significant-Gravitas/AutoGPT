@@ -158,12 +158,7 @@ export function IncompatibleUpdateDialog({
             <Button variant="ghost" size="small" onClick={onClose}>
               Cancel
             </Button>
-            <Button
-              variant="primary"
-              size="small"
-              onClick={onConfirm}
-              className="border-warning-foreground bg-warning-foreground hover:bg-warning-foreground/90"
-            >
+            <Button variant="warning" size="small" onClick={onConfirm}>
               Update Anyway
             </Button>
           </Dialog.Footer>
@@ -292,14 +287,14 @@ function SingleColumnSection({
       <Text variant="body-tight" tone="muted" className="mt-1">
         {description}
       </Text>
-      <ul className="mt-2 space-y-1">
+      <ul className="mt-2 list-disc space-y-1">
         {items.map((item) => (
           <Text
             variant="body-tight"
             tone="body"
             as="li"
             key={item}
-            className="ml-4 list-disc"
+            className="ml-4"
           >
             <Text
               variant="small-mono-tight"

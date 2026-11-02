@@ -23,7 +23,7 @@ export function MarketingFooter({ footerText }: Props) {
         variant="small-medium"
         tone="muted"
         transform="uppercase"
-        className="tracking-caps"
+        tracking="caps"
       >
         {footerText}
       </Text>

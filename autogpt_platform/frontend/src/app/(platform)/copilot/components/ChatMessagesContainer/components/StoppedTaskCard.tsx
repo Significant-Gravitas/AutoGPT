@@ -14,8 +14,9 @@ export function StoppedTaskCard() {
         </Text>
         <Text
           tone="secondary"
-          variant="body"
-          className="mt-1 text-body-sm leading-inherit"
+          variant="body-sm-medium-inherit"
+          weight="normal"
+          className="mt-1"
         >
           The response above is incomplete. You can ask to continue or type
           something new.

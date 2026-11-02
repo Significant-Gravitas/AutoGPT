@@ -86,14 +86,15 @@ export function Table({
                     className="p-2"
                   >
                     {readOnly ? (
-                      <Text
-                        variant="body-tight"
-                        data-slot="table-cell-text"
-                        tone="emphasis"
-                        className="px-3 py-2"
-                      >
-                        {row[column] || "-"}
-                      </Text>
+                      <div className="px-3 py-2">
+                        <Text
+                          variant="body-tight"
+                          data-slot="table-cell-text"
+                          tone="emphasis"
+                        >
+                          {row[column] || "-"}
+                        </Text>
+                      </div>
                     ) : (
                       <Input
                         id={`table-${rowIndex}-${column}`}
@@ -119,7 +120,8 @@ export function Table({
                       onClick={() => handleDeleteRow(rowIndex)}
                       aria-label="Delete row"
                       data-slot="table-delete-row"
-                      className="text-foreground-subtle transition-colors hover:text-error"
+                      tone="subtle"
+                      className="hover:text-error"
                     >
                       <Icon
                         aria-hidden

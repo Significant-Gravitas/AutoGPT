@@ -141,10 +141,8 @@ function BlockCard({
             <Text
               variant="body-medium"
               as="span"
-              tone="emphasis"
-              className={cn(
-                "line-clamp-1 group-disabled:text-foreground-subtle",
-              )}
+              tone={rest.disabled ? "subtle" : "emphasis"}
+              className="line-clamp-1"
             >
               {highlightText(
                 beautifyString(title).replace(/ Block$/, ""),
@@ -156,10 +154,8 @@ function BlockCard({
             <Text
               variant="small-loose"
               as="span"
-              tone="muted"
-              className={cn(
-                "line-clamp-1 group-disabled:text-foreground-subtle",
-              )}
+              tone={rest.disabled ? "subtle" : "muted"}
+              className="line-clamp-1"
             >
               {highlightText(description, highlightedText, "small-bold-loose")}
             </Text>

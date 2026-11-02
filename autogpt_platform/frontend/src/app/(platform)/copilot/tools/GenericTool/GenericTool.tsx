@@ -85,34 +85,33 @@ function ToolIcon({
     return <OrbitLoader size={14} />;
   }
 
-  const iconClass = "text-success";
   switch (category) {
     case "bash":
-      return <Icon icon={TerminalIcon} size={14} className={iconClass} />;
+      return <Icon icon={TerminalIcon} size={14} tone="success" />;
     case "web":
-      return <Icon icon={Globe02Icon} size={14} className={iconClass} />;
+      return <Icon icon={Globe02Icon} size={14} tone="success" />;
     case "browser":
-      return <Icon icon={ComputerIcon} size={14} className={iconClass} />;
+      return <Icon icon={ComputerIcon} size={14} tone="success" />;
     case "file-read":
-      return <Icon icon={FileEmpty02Icon} size={14} className={iconClass} />;
+      return <Icon icon={FileEmpty02Icon} size={14} tone="success" />;
     case "file-write":
-      return <Icon icon={FileEmpty02Icon} size={14} className={iconClass} />;
+      return <Icon icon={FileEmpty02Icon} size={14} tone="success" />;
     case "file-delete":
-      return <Icon icon={Delete02Icon} size={14} className={iconClass} />;
+      return <Icon icon={Delete02Icon} size={14} tone="success" />;
     case "file-list":
-      return <Icon icon={Files01Icon} size={14} className={iconClass} />;
+      return <Icon icon={Files01Icon} size={14} tone="success" />;
     case "search":
-      return <Icon icon={Search01Icon} size={14} className={iconClass} />;
+      return <Icon icon={Search01Icon} size={14} tone="success" />;
     case "edit":
-      return <Icon icon={PencilIcon} size={14} className={iconClass} />;
+      return <Icon icon={PencilIcon} size={14} tone="success" />;
     case "todo":
-      return <Icon icon={CheckListIcon} size={14} className={iconClass} />;
+      return <Icon icon={CheckListIcon} size={14} tone="success" />;
     case "compaction":
-      return <Icon icon={ReloadIcon} size={14} className={iconClass} />;
+      return <Icon icon={ReloadIcon} size={14} tone="success" />;
     case "agent":
-      return <Icon icon={Robot01Icon} size={14} className={iconClass} />;
+      return <Icon icon={Robot01Icon} size={14} tone="success" />;
     default:
-      return <Icon icon={Settings01Icon} size={14} className={iconClass} />;
+      return <Icon icon={Settings01Icon} size={14} tone="success" />;
   }
 }
 

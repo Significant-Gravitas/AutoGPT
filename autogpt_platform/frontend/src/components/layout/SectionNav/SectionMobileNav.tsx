@@ -47,11 +47,7 @@ export function SectionMobileNav({ items, sectionName, showBackLink }: Props) {
             aria-label={`${sectionName} navigation, current: ${current.label}`}
           >
             <span className="flex items-center gap-2">
-              <UIIcon
-                icon={current.Icon}
-                size={16}
-                className="text-foreground-base"
-              />
+              <UIIcon icon={current.Icon} size={16} tone="base" />
               <Text variant="body" as="span" weight="medium">
                 {current.label}
               </Text>
@@ -59,10 +55,9 @@ export function SectionMobileNav({ items, sectionName, showBackLink }: Props) {
             <UIIcon
               icon={ArrowDown01Icon}
               size={16}
-              className={cn(
-                "text-foreground-body transition-transform",
-                open && "rotate-180",
-              )}
+              tone="body"
+              motion="transform"
+              className={open ? "rotate-180" : undefined}
             />
           </button>
         </PopoverTrigger>
@@ -83,20 +78,13 @@ export function SectionMobileNav({ items, sectionName, showBackLink }: Props) {
                   isActive ? "bg-surface-hover" : "hover:bg-surface-muted",
                 )}
               >
-                <UIIcon
-                  icon={Icon}
-                  size={16}
-                  className="text-foreground-base"
-                />
+                <UIIcon icon={Icon} size={16} tone="base" />
                 <Text
                   variant="body"
                   as="span"
-                  className={cn(
-                    "flex-1",
-                    isActive
-                      ? "font-medium text-foreground-base"
-                      : "font-normal text-foreground-body",
-                  )}
+                  tone={isActive ? "base" : "body"}
+                  weight={isActive ? "medium" : "normal"}
+                  className="flex-1"
                 >
                   {label}
                 </Text>

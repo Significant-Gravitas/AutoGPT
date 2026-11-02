@@ -8,6 +8,8 @@ export const tones = {
   base: "text-foreground-base", // #141414
   primary: "text-foreground-strong", // #2C2C30
   emphasis: "text-foreground-emphasis", // #3E3E43
+  // emphasis at 90%: the sidebar's navigation icons.
+  "emphasis-soft": "text-foreground-emphasis/90",
   body: "text-foreground-body", // #505057
   secondary: "text-foreground-secondary", // #68686F
   muted: "text-foreground-tertiary", // #83838C

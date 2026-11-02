@@ -89,10 +89,14 @@ export function DeviceAuthConnectButton({
             Your code
           </Text>
           <Text
-            variant="h3"
+            variant="2xl"
             as="p"
+            align="center"
             tone="emphasis"
-            className="text-center font-mono text-2xl tracking-widest select-all"
+            weight="medium"
+            mono
+            tracking="widest"
+            className="select-all"
           >
             {userCode}
           </Text>

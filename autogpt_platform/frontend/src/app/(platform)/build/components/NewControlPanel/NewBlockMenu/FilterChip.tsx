@@ -39,11 +39,13 @@ export const FilterChip: React.FC<Props> = ({
         <Text
           variant="body-medium"
           as="span"
-          tone="secondary"
-          className={cn(
-            "group-hover:text-foreground-secondary group-disabled:text-foreground-subtle",
-            selected && "text-action-foreground",
-          )}
+          tone={
+            rest.disabled
+              ? "subtle"
+              : selected && !isHovered
+                ? "inverse"
+                : "secondary"
+          }
         >
           {name}
         </Text>

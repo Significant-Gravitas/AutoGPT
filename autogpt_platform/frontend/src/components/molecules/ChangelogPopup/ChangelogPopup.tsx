@@ -84,12 +84,12 @@ export function ChangelogPopup() {
           </div>
           <Button
             type="button"
-            variant="ghost"
+            variant="ghost-muted"
             size="icon-sm"
             withTooltip={false}
             onClick={dismiss}
             data-slot="changelog-popup-dismiss"
-            className="-mt-1 -mr-1 text-muted-foreground hover:text-foreground"
+            className="-mt-1 -mr-1"
             aria-label="Dismiss changelog"
           >
             <Icon

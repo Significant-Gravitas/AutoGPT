@@ -207,3 +207,67 @@ describe("Button textSize", () => {
     expect(classes).not.toContain("text-body");
   });
 });
+
+describe("Button quiet variants, row and inline sizes, and shape", () => {
+  it.each([
+    ["ghost-muted", "text-foreground-tertiary", "hover:text-foreground-body"],
+    ["ghost-subtle", "text-foreground-subtle", "hover:text-foreground-body"],
+    ["ghost-danger", "text-foreground-tertiary", "hover:text-error"],
+  ] as const)("renders %s with a ghost box", (variant, rest, hover) => {
+    renderButton({ variant, size: "icon-xs", "aria-label": variant });
+    const classes = screen
+      .getByRole("button", { name: variant })
+      .className.split(" ");
+    expect(classes).toEqual(
+      expect.arrayContaining([
+        "bg-transparent",
+        "border-transparent",
+        rest,
+        hover,
+      ]),
+    );
+    expect(classes).not.toContain("text-foreground-base");
+  });
+
+  it("renders row as a 32px button with no minimum width", () => {
+    renderButton({ variant: "secondary", size: "row", children: "Retry" });
+    const classes = screen
+      .getByRole("button", { name: "Retry" })
+      .className.split(" ");
+    expect(classes).toEqual(expect.arrayContaining(["h-8", "min-w-0", "px-3"]));
+    expect(classes).not.toContain("h-9");
+  });
+
+  it("renders a link at the inline size with no box", () => {
+    renderButton({ variant: "link", size: "inline-xs", children: "Details" });
+    const classes = screen
+      .getByRole("button", { name: "Details" })
+      .className.split(" ");
+    expect(classes).toEqual(
+      expect.arrayContaining(["h-auto", "p-0", "text-caption", "leading-4"]),
+    );
+    expect(classes).not.toContain("h-[2.875rem]");
+  });
+
+  it.each([
+    ["pill", "rounded-full"],
+    ["rounded", "rounded-xl"],
+    ["soft", "rounded-lg"],
+  ] as const)("renders shape %s over the size's radius", (shape, cls) => {
+    renderButton({ variant: "primary", size: "xs", shape, children: "Go" });
+    const classes = screen
+      .getByRole("button", { name: "Go" })
+      .className.split(" ");
+    expect(classes).toContain(cls);
+    expect(classes).not.toContain("rounded-md");
+  });
+
+  it("keeps a ghost-* variant's look while loading", () => {
+    renderButton({ variant: "ghost-muted", loading: true, children: "Saving" });
+    const classes = screen
+      .getByRole("button", { name: "Saving" })
+      .className.split(" ");
+    expect(classes).toContain("text-foreground-tertiary");
+    expect(classes).not.toContain("bg-foreground-tertiary");
+  });
+});

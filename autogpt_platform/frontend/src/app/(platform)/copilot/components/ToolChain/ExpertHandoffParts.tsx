@@ -69,19 +69,17 @@ export function HandoffProposal({
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Button
               variant="primary"
-              size="small"
+              size="row"
               disabled={actions.disabled}
               onClick={actions.onStart}
-              className="h-8 !min-w-0 px-3.5"
             >
               Hire and start
             </Button>
             <Button
               variant="ghost"
-              size="small"
+              size="row"
               disabled={actions.disabled}
               onClick={actions.onNotNow}
-              className="h-8 !min-w-0 px-3"
             >
               Not now
             </Button>

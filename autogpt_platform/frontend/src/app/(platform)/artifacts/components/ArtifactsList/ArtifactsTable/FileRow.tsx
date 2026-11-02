@@ -164,7 +164,6 @@ export function FileRow({
       <Text
         variant="body"
         as="span"
-        // oxlint-disable-next-line design-system/no-restyle -- tabular figures keep the size column aligned; Text has no numeric variant
         tone="muted"
         tabular
         className="hidden md:block"

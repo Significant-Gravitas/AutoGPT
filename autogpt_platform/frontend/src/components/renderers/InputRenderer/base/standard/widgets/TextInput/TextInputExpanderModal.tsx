@@ -91,17 +91,15 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
 
           <div className="flex items-center justify-end gap-1">
             <Button
-              variant="secondary"
-              size="small"
+              variant={isCopied ? "success" : "secondary"}
+              size="icon-sm"
+              shape="pill"
+              tone="base"
+              withTooltip={false}
               onClick={copyValue}
               aria-label={
                 isCopied ? "Copied to clipboard" : "Copy to clipboard"
               }
-              className={cn(
-                "h-fit min-w-0 gap-1.5 border border-border-base p-2 text-foreground-base hover:text-foreground-strong",
-                isCopied &&
-                  "border-success bg-success-surface hover:border-success hover:bg-success/40",
-              )}
             >
               {isCopied ? (
                 <Icon icon={Tick02Icon} size={16} tone="success" />

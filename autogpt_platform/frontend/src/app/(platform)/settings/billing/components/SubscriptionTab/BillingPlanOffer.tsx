@@ -41,19 +41,16 @@ export function BillingPlanOffer({
         <span className="flex size-7 items-center justify-center rounded-lg bg-accent-surface text-accent-strong">
           <Icon icon={SparklesIcon} size={17} />
         </span>
-        <Text
-          variant="small-medium"
-          // oxlint-disable-next-line design-system/no-restyle -- no Text tone for accent-strong yet (Text helpers belong to P2)
-          tone="accent"
-        >
+        <Text variant="small-medium" tone="accent">
           AutoGPT {target}
         </Text>
       </div>
       <Text
         variant="h4"
         as="h2"
-        // oxlint-disable-next-line design-system/no-restyle -- the plan title is set tight on a 32px line; no Text variant has it
-        className="mt-4 mb-3 leading-8 tracking-display"
+        tracking="display"
+        // oxlint-disable-next-line design-system/no-restyle -- the plan title sits on a 32px line; no Text variant has it
+        className="mt-4 mb-3 leading-8"
       >
         {title}
       </Text>
@@ -68,9 +65,10 @@ export function BillingPlanOffer({
           <Text
             variant="h2"
             as="span"
-            // oxlint-disable-next-line design-system/no-restyle -- the price is a sans display number; no Text variant has it
             weight="semibold"
-            className="font-sans tracking-display"
+            tracking="display"
+            // oxlint-disable-next-line design-system/no-restyle -- the price is a sans display number; no Text variant has it
+            className="font-sans"
           >
             {price.split(" / ")[0]}
           </Text>

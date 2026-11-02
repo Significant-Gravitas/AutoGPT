@@ -6,7 +6,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/molecules/Accordion/Accordion";
-import { beautifyString, cn } from "@/lib/utils";
+import { beautifyString } from "@/lib/utils";
 import { NodeDataViewer } from "./components/NodeDataViewer/NodeDataViewer";
 import { ContentRenderer } from "./components/ContentRenderer";
 import { useNodeOutput } from "./useNodeOutput";
@@ -54,14 +54,11 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                     dataType="input"
                   />
                   <Button
-                    variant="secondary"
-                    size="small"
+                    variant={copiedKey === "input" ? "success" : "secondary"}
+                    size="icon-sm"
+                    shape="pill"
                     onClick={() => handleCopy("input", latestInputData)}
-                    className={cn(
-                      "h-fit min-w-0 gap-1.5 border border-border-base p-2 text-foreground-base hover:text-foreground-strong",
-                      copiedKey === "input" &&
-                        "border-success bg-success/30 hover:border-success hover:bg-success/40",
-                    )}
+                    tone="base"
                   >
                     {copiedKey === "input" ? (
                       <Icon icon={Tick02Icon} size={12} tone="success" />
@@ -106,14 +103,13 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                               execId={executionResultId}
                             />
                             <Button
-                              variant="secondary"
-                              size="small"
+                              variant={
+                                copiedKey === key ? "success" : "secondary"
+                              }
+                              size="icon-sm"
+                              shape="pill"
                               onClick={() => handleCopy(key, value)}
-                              className={cn(
-                                "h-fit min-w-0 gap-1.5 border border-border-base p-2 text-foreground-base hover:text-foreground-strong",
-                                copiedKey === key &&
-                                  "border-success bg-success/30 hover:border-success hover:bg-success/40",
-                              )}
+                              tone="base"
                             >
                               {copiedKey === key ? (
                                 <Icon

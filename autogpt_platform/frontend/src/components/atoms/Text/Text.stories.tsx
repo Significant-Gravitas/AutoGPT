@@ -310,3 +310,44 @@ export function TextRoles() {
     </div>
   );
 }
+
+//=============================================================================
+// Modifier props: adjust a variant without a className
+//=============================================================================
+export function Modifiers() {
+  return (
+    <div className="space-y-3 p-8">
+      <Text variant="body" weight="semibold">
+        weight=&quot;semibold&quot;
+      </Text>
+      <Text variant="body" mono>
+        mono · run_7f3a2c
+      </Text>
+      <Text variant="body" tabular>
+        tabular · 1,204.50 credits
+      </Text>
+      <Text variant="body" italic>
+        italic
+      </Text>
+      <Text variant="body" decoration="line-through" tone="muted">
+        decoration=&quot;line-through&quot;
+      </Text>
+      <Text variant="small" transform="uppercase" tone="muted">
+        transform=&quot;uppercase&quot;
+      </Text>
+      <Text variant="small" transform="uppercase" tracking="caps">
+        tracking=&quot;caps&quot;
+      </Text>
+      <Text variant="body" align="center">
+        align=&quot;center&quot;
+      </Text>
+      <StoryCode
+        code={`<Text variant="body" weight="semibold">…</Text>
+<Text variant="body" mono>…</Text>
+<Text variant="body" tabular>…</Text>
+<Text variant="body" decoration="line-through" tone="muted">…</Text>
+<Text variant="small" transform="uppercase" tone="muted">…</Text>`}
+      />
+    </div>
+  );
+}

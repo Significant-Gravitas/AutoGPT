@@ -44,15 +44,12 @@ export function GraphSearchContent({
 
       <div className="flex-1 overflow-hidden">
         {trimmedQuery && (
-          <Text
-            variant="small-tight"
-            as="div"
-            tone="muted"
-            className="px-4 pt-3"
-          >
-            Found {filteredNodes.length} node
-            {filteredNodes.length !== 1 ? "s" : ""}
-          </Text>
+          <div className="px-4 pt-3">
+            <Text variant="small-tight" as="div" tone="muted">
+              Found {filteredNodes.length} node
+              {filteredNodes.length !== 1 ? "s" : ""}
+            </Text>
+          </div>
         )}
         <ScrollArea className="h-full w-full">
           <div role="listbox" className="space-y-3 px-4 py-4">
@@ -113,14 +110,16 @@ export function GraphSearchContent({
                           {nodeTitle}
                         </Text>
                         {hasCustomName && (
-                          <Text
-                            variant="small-loose"
-                            as="span"
-                            tone="muted"
-                            className="shrink-0 rounded-xl bg-surface-active px-2"
-                          >
-                            {nodeType}
-                          </Text>
+                          <span className="shrink-0 rounded-xl bg-surface-active px-2">
+                            <Text
+                              variant="small-loose"
+                              as="span"
+                              tone="muted"
+                              className="block"
+                            >
+                              {nodeType}
+                            </Text>
+                          </span>
                         )}
                       </div>
                       {description && (

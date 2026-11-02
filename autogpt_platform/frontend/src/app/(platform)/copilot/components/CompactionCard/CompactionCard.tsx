@@ -66,8 +66,8 @@ function LiveCompaction({ phase, stats }: LiveProps) {
         <Icon
           icon={ReloadIcon}
           size={14}
-          // oxlint-disable-next-line design-system/no-arbitrary-values -- a slow 2.4s pulse; the duration scale stops at 2000ms
           spin
+          // oxlint-disable-next-line design-system/no-arbitrary-values -- a slow 2.4s pulse; the duration scale stops at 2000ms
           className="[animation-duration:2.4s]"
         />
         {/* Polite live region on the label ONLY — the progressbar's

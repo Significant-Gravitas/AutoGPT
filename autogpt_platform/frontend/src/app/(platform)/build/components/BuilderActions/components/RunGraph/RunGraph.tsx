@@ -36,22 +36,17 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
 
   // Determine which icon to show with proper animation
   const renderIcon = () => {
-    const iconClass = cn(
-      "size-4 transition-transform duration-200 ease-out",
-      !isLoading && "group-hover:scale-110",
-    );
+    const iconClass = cn("size-4", !isLoading && "group-hover:scale-110");
 
     if (isLoading) {
-      return (
-        <Icon icon={Loading03Icon} className={cn(iconClass, "animate-spin")} />
-      );
+      return <Icon icon={Loading03Icon} spin className={iconClass} />;
     }
 
     if (isGraphRunning) {
-      return <Icon icon={StopIcon} className={iconClass} />;
+      return <Icon icon={StopIcon} motion="transform" className={iconClass} />;
     }
 
-    return <Icon icon={PlayIcon} className={iconClass} />;
+    return <Icon icon={PlayIcon} motion="transform" className={iconClass} />;
   };
 
   return (
@@ -62,11 +57,11 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
           <TooltipTrigger asChild>
             <Button
               size="icon"
-              variant="ghost"
+              variant="ghost-warning"
               data-id="simulate-graph-button"
               onClick={() => void handleRunGraph({ dryRun: true })}
               disabled={!flowID || isLoading}
-              className="group text-warning-foreground hover:bg-warning-surface"
+              className="group"
             >
               <Icon
                 icon={FlaskConicalIcon}

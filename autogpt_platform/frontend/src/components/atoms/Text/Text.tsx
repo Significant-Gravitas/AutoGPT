@@ -24,7 +24,20 @@ type CustomProps = {
   italic?: boolean;
   decoration?: "underline" | "line-through" | "none";
   transform?: "uppercase" | "lowercase" | "capitalize" | "none";
+  /** Letter-spacing over the variant's own, from the tracking tokens. */
+  tracking?:
+    | "tight"
+    | "normal"
+    | "wide"
+    | "widest"
+    | "title"
+    | "heading"
+    | "display"
+    | "caps"
+    | "eyebrow";
   align?: "left" | "center" | "right" | "start" | "end";
+  /** Animates colour changes. */
+  motion?: "colors";
   className?: string;
   /** With `as="label"`: the id of the control the label names. */
   htmlFor?: string;
@@ -46,7 +59,9 @@ export function Text({
   italic,
   decoration,
   transform,
+  tracking,
   align,
+  motion,
   className = "",
   ...rest
 }: TextProps) {
@@ -62,7 +77,9 @@ export function Text({
       italic,
       decoration,
       transform,
+      tracking,
       align,
+      motion,
     }),
     className,
   );

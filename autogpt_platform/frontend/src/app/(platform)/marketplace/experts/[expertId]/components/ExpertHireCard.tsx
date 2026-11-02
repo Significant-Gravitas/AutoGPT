@@ -36,12 +36,7 @@ export function ExpertHireCard({ expert, firstName, actions }: Props) {
 
       <div className="mt-5 border-t border-separator pt-4">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground-strong">
-          <Icon
-            icon={Coins01Icon}
-            size={16}
-            // oxlint-disable-next-line design-system/no-restyle -- a muted glyph beside a stronger heading; Icon has no tone
-            tone="muted"
-          />
+          <Icon icon={Coins01Icon} size={16} tone="muted" />
           Included with your plan
         </h2>
         <p className="mt-1.5 text-sm leading-6 text-foreground-secondary">
@@ -67,7 +62,6 @@ function Perk({
       <Icon
         icon={icon}
         size={16}
-        // oxlint-disable-next-line design-system/no-restyle -- a green check beside body text; Icon has no tone
         tone="success"
         className="mt-0.5 shrink-0"
         aria-hidden

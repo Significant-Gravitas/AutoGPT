@@ -23,8 +23,6 @@ export function LlmMenuItem({
   onClick,
   isActive,
 }: Props) {
-  const hasIcon = Boolean(icon);
-
   return (
     <button
       type="button"
@@ -49,11 +47,7 @@ export function LlmMenuItem({
         </div>
       </div>
       {subtitle && (
-        <Text
-          variant="small"
-          tone="muted"
-          className={cn("mb-1", hasIcon && "pl-0")}
-        >
+        <Text variant="small" tone="muted" className="mb-1">
           {subtitle}
         </Text>
       )}

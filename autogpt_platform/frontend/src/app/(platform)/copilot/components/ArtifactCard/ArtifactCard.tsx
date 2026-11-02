@@ -122,10 +122,8 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
       <Icon
         icon={classification.icon}
         size={20}
-        className={cn(
-          "shrink-0",
-          isActive ? "text-brand" : "text-foreground-subtle",
-        )}
+        tone={isActive ? "brand" : "subtle"}
+        className="shrink-0"
       />
       <div className="min-w-0 flex-1">
         <Text variant="body-medium-tight" tone="primary" className="truncate">

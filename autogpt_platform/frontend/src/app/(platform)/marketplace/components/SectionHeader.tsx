@@ -84,7 +84,6 @@ export function SectionHeader({
               <Icon
                 icon={ArrowRight02Icon}
                 size={14}
-                // oxlint-disable-next-line design-system/no-restyle -- the arrow nudges on hover; Icon has no motion prop
                 motion="transform"
                 className="group-hover:translate-x-0.5"
               />

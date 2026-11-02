@@ -17,7 +17,7 @@ export function UsageMeter({ label, percent, detail }: Props) {
         data-slot="usage-meter-header"
         className="flex justify-between gap-2"
       >
-        <Text variant="small-medium" className="!text-foreground-body">
+        <Text variant="small-medium" tone="body">
           {label}
         </Text>
         <Text variant="small" tone="muted" tabular>
@@ -44,7 +44,7 @@ export function UsageMeter({ label, percent, detail }: Props) {
         />
       </div>
       {detail && (
-        <Text variant="small" tone="muted" className="!text-xs">
+        <Text variant="small-tight" tone="muted">
           {detail}
         </Text>
       )}

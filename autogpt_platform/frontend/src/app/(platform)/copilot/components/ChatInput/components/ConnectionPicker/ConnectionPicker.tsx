@@ -75,19 +75,23 @@ export function ConnectionPicker({
 
   if (isError) {
     return (
-      <Text
-        variant="small-medium-tight"
-        as="span"
+      <span
         aria-label="AI connections unavailable"
-        tone="error"
         className={cn(
-          "inline-flex h-9 items-center gap-1.5 rounded-full border border-destructive/20 bg-destructive/10 px-2.5",
+          "inline-flex h-9 items-center rounded-full border border-destructive/20 bg-destructive/10 px-2.5",
           className,
         )}
       >
-        <Icon icon={AlertCircleIcon} size={14} />
-        <span className="hidden sm:inline">Connections unavailable</span>
-      </Text>
+        <Text
+          variant="small-medium-tight"
+          as="span"
+          tone="error"
+          className="inline-flex items-center gap-1.5"
+        >
+          <Icon icon={AlertCircleIcon} size={14} />
+          <span className="hidden sm:inline">Connections unavailable</span>
+        </Text>
+      </span>
     );
   }
 
@@ -156,19 +160,16 @@ export function ConnectionPicker({
     <PopoverTrigger asChild>
       <Button
         type="button"
-        variant="ghost"
-        size={showsTier ? "icon" : "small"}
+        variant={showsTier ? "ghost-muted" : "ghost"}
+        size={showsTier ? "icon-sm" : "small"}
+        shape={showsTier ? "pill" : undefined}
+        withTooltip={false}
         aria-label={
           showsTier
             ? `Model tier ${label} — change`
             : `Runs on ${triggerLabel} — change`
         }
-        className={cn(
-          showsTier
-            ? "size-8 p-0 text-foreground-tertiary hover:bg-surface-hover hover:text-foreground-body"
-            : "h-9 min-w-0 gap-1.5 px-2.5 py-1",
-          className,
-        )}
+        className={cn(!showsTier && "min-w-0", className)}
       >
         {/* The tier the next turn runs at, whichever half of the setting
             the label happens to be naming. It swaps on the same beat as the

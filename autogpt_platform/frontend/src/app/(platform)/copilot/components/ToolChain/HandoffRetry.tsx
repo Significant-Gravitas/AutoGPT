@@ -47,12 +47,11 @@ export function HandoffRetry({ title, name, expertId, onSend }: Props) {
   return (
     <Button
       variant="secondary"
-      size="small"
+      size="row"
       onClick={() => {
         markAsked();
         onSend(`Try handing ${title} to ${name} again.`);
       }}
-      className="h-8 !min-w-0 px-3"
     >
       Try again
     </Button>

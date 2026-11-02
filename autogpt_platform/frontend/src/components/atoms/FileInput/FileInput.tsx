@@ -34,8 +34,10 @@ function PreviewButton({
         <Button
           data-slot="file-input-preview"
           variant="outline"
-          size="small"
-          className="h-7 w-7 min-w-0 flex-shrink-0 border-border-strong p-0 text-foreground-tertiary hover:text-info-foreground"
+          size="icon-xs"
+          shape="pill"
+          withTooltip={false}
+          className="flex-shrink-0 text-foreground-tertiary hover:text-info-foreground"
           type="button"
           aria-label="Preview file"
         >
@@ -403,8 +405,10 @@ export function FileInput(props: Props) {
               <Button
                 data-slot="file-input-clear"
                 variant="outline"
-                size="small"
-                className="h-7 w-7 min-w-0 flex-shrink-0 border-border-strong p-0 text-foreground-tertiary hover:text-error-hover"
+                size="icon-xs"
+                shape="pill"
+                withTooltip={false}
+                className="flex-shrink-0 text-foreground-tertiary hover:text-error-hover"
                 onClick={handleClear}
                 type="button"
                 aria-label="Clear file"
@@ -426,7 +430,7 @@ export function FileInput(props: Props) {
                 variant="outline"
                 size="small"
                 onClick={() => inputRef.current?.click()}
-                className="flex-1 border-border-strong text-caption leading-4"
+                className="flex-1 text-caption leading-4"
                 disabled={isUploading}
                 type="button"
               >
@@ -543,11 +547,13 @@ export function FileInput(props: Props) {
                 <Button
                   data-slot="file-input-clear"
                   variant="outline"
-                  size="small"
+                  size="icon-xs"
+                  shape="pill"
+                  withTooltip={false}
                   type="button"
                   onClick={handleClear}
                   aria-label="Clear file"
-                  className="h-7 w-7 min-w-0 flex-shrink-0 border-border-strong p-0 text-foreground-tertiary hover:text-error-hover"
+                  className="flex-shrink-0 text-foreground-tertiary hover:text-error-hover"
                 >
                   <Icon
                     data-slot="file-input-clear-icon"

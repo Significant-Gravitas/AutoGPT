@@ -129,18 +129,19 @@ export function SuggestedTaskList({
                   )}
                 </button>
               )}
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                withTooltip={false}
-                aria-label={`Hide: ${task.title}`}
-                disabled={sendingId !== null}
-                onClick={() => onHide(task)}
-                className="mr-2 shrink-0 text-foreground-subtle opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 hover:text-foreground-body focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
-              >
-                <Icon icon={Cancel01Icon} size={14} />
-              </Button>
+              <span className="mr-2 flex shrink-0 opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 has-[:focus-visible]:opacity-100 [@media(hover:none)]:opacity-100">
+                <Button
+                  type="button"
+                  variant="ghost-subtle"
+                  size="icon-xs"
+                  withTooltip={false}
+                  aria-label={`Hide: ${task.title}`}
+                  disabled={sendingId !== null}
+                  onClick={() => onHide(task)}
+                >
+                  <Icon icon={Cancel01Icon} size={14} />
+                </Button>
+              </span>
             </motion.li>
           );
         })}

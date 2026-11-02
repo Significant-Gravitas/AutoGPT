@@ -14,7 +14,7 @@ export function FeatureList({ itemsTitle, items }: Props) {
           variant="small-medium"
           tone="muted"
           transform="uppercase"
-          className="tracking-caps"
+          tracking="caps"
         >
           {itemsTitle}
         </Text>

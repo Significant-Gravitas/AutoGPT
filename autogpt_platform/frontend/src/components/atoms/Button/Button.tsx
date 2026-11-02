@@ -25,6 +25,8 @@ export function Button(props: ButtonProps | CompactButtonProps) {
     textSize = "body",
     variant,
     size,
+    shape,
+    tone,
     loading = false,
     withTooltip = true,
     leadingIcon,
@@ -105,7 +107,13 @@ export function Button(props: ButtonProps | CompactButtonProps) {
       <button
         data-slot="button"
         className={cn(
-          extendedButtonVariants({ variant: "link", className }),
+          extendedButtonVariants({
+            variant: "link",
+            size,
+            shape,
+            tone,
+            className,
+          }),
           loading && "pointer-events-none opacity-60",
           isDisabled && "pointer-events-none opacity-50",
         )}
@@ -120,16 +128,20 @@ export function Button(props: ButtonProps | CompactButtonProps) {
   }
 
   if (loading) {
-    const loadingClassName =
-      variant === "ghost"
-        ? cn(
-            extendedButtonVariants({ variant, size, className }),
-            "pointer-events-none",
-          )
-        : cn(
-            extendedButtonVariants({ variant: "primary", size, className }),
-            "pointer-events-none border-foreground-tertiary bg-foreground-tertiary text-action-foreground",
-          );
+    const loadingClassName = variant?.startsWith("ghost")
+      ? cn(
+          extendedButtonVariants({ variant, size, shape, tone, className }),
+          "pointer-events-none",
+        )
+      : cn(
+          extendedButtonVariants({
+            variant: "primary",
+            size,
+            shape,
+            className,
+          }),
+          "pointer-events-none border-foreground-tertiary bg-foreground-tertiary text-action-foreground",
+        );
 
     if (as === "NextLink") {
       return (
@@ -168,7 +180,7 @@ export function Button(props: ButtonProps | CompactButtonProps) {
         data-slot="button"
         {...(restProps as LinkProps)}
         className={cn(
-          extendedButtonVariants({ variant, size, className }),
+          extendedButtonVariants({ variant, size, shape, tone, className }),
           loading && "pointer-events-none",
           isDisabled && "pointer-events-none opacity-50",
         )}
@@ -185,7 +197,7 @@ export function Button(props: ButtonProps | CompactButtonProps) {
     <button
       data-slot="button"
       className={cn(
-        extendedButtonVariants({ variant, size, className }),
+        extendedButtonVariants({ variant, size, shape, tone, className }),
         loading && "pointer-events-none",
       )}
       disabled={isDisabled}

@@ -130,7 +130,6 @@ export function SkillCard({ skill, isInstalled }: Props) {
                 icon={ArrowRight02Icon}
                 size={16}
                 aria-hidden
-                // oxlint-disable-next-line design-system/no-restyle -- the arrow nudges on hover; Icon has no motion prop
                 motion="transform"
                 className="group-hover:translate-x-0.5"
               />

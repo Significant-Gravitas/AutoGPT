@@ -25,18 +25,23 @@ export function WorkGroup({ group, timezone }: Props) {
       <Text variant="body-medium-tight" tone="primary" className="truncate">
         {actor.name}
       </Text>
-      <Text
-        variant="small-medium-tight"
-        as="span"
-        transform="capitalize"
+      <span
         className={cn(
           "shrink-0 rounded-full border px-1.5",
           // oxlint-disable-next-line design-system/require-static-classes -- ACTOR_CHIPS holds whole, static class strings
           chip.className,
         )}
       >
-        {chip.label}
-      </Text>
+        <Text
+          variant="small-medium-tight"
+          as="span"
+          tone="inherit"
+          transform="capitalize"
+          className="block"
+        >
+          {chip.label}
+        </Text>
+      </span>
       <Text
         variant="small"
         tone="muted"

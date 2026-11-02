@@ -112,8 +112,9 @@ export function CredentialRow({
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <Text
             variant="body"
+            tracking="tight"
             className={cn(
-              "min-w-0 shrink tracking-tight",
+              "min-w-0 shrink",
               isNodeVariant ? "truncate" : "line-clamp-1 text-ellipsis",
             )}
           >
@@ -129,8 +130,9 @@ export function CredentialRow({
           <Text
             variant="large"
             mono
+            tracking="tight"
             className={cn(
-              "absolute top-[65%] -translate-y-1/2 overflow-hidden tracking-tight whitespace-nowrap",
+              "absolute top-[65%] -translate-y-1/2 overflow-hidden whitespace-nowrap",
               asSelectTrigger ? "right-0" : "right-6",
             )}
           >

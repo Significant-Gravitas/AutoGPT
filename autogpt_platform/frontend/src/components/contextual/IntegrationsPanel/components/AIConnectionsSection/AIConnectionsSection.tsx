@@ -61,7 +61,7 @@ export function AIConnectionsSection() {
         id="ai-connections-heading"
         tone="body"
         transform="uppercase"
-        className="tracking-eyebrow"
+        tracking="eyebrow"
       >
         AI subscriptions
       </Text>

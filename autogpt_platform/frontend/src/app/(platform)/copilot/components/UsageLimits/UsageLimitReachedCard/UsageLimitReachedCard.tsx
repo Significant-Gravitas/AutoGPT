@@ -49,9 +49,9 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
           <Button
             as="NextLink"
             href="/settings/billing"
-            size="small"
-            variant="ghost"
-            className="!h-auto !p-0 !text-xs !text-foreground-tertiary"
+            size="inline-xs"
+            variant="ghost-muted"
+            className="min-w-[5.5rem]"
           >
             {state.experience.inactiveTrialStatus === "payment_failed"
               ? "Review billing"
@@ -68,7 +68,7 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
               ? budgetOutTitle(state.wait.window)
               : copy.noticeTitle}
       </Text>
-      <Text tone="muted" variant="small" className="mt-2 !leading-5">
+      <Text tone="muted" variant="small-loose" className="mt-2">
         {state.isRefreshing
           ? "Refreshing your plan and usage…"
           : state.isError

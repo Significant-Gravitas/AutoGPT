@@ -149,9 +149,10 @@ function UsageUnavailable({ onRetry }: { onRetry: () => void }) {
       </Text>
       <Button
         variant="ghost"
-        size="small"
+        size="xs"
+        shape="pill"
         onClick={onRetry}
-        className="h-auto px-2 py-1 text-xs"
+        className="min-w-20"
       >
         Retry
       </Button>

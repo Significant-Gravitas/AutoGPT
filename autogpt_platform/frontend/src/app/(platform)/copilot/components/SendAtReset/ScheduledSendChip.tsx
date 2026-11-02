@@ -34,7 +34,7 @@ export function ScheduledSendChip({ job, onEdit, onCancel, isBusy }: Props) {
           tone="brand-strong"
           className="shrink-0"
         />
-        <Text variant="small-medium" className="shrink-0 !text-accent-strong">
+        <Text variant="small-medium" tone="accent" className="shrink-0">
           {isDue ? "Sending…" : label}
         </Text>
         {job.message && (

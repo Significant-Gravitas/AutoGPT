@@ -65,8 +65,8 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
           <Text
             variant="body-medium"
             as="span"
-            tone="emphasis"
-            className={cn("line-clamp-1 group-disabled:text-foreground-subtle")}
+            tone={rest.disabled ? "subtle" : "emphasis"}
+            className="line-clamp-1"
           >
             {highlightText(title, highlightedText)}
           </Text>
@@ -76,10 +76,8 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
             <Text
               variant="small-loose"
               as="span"
-              tone="muted"
-              className={cn(
-                "line-clamp-1 group-disabled:text-foreground-subtle",
-              )}
+              tone={rest.disabled ? "subtle" : "muted"}
+              className="line-clamp-1"
             >
               Edited {formatTimeAgo(edited_time.toISOString())}
             </Text>
@@ -92,20 +90,22 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
           <Text
             variant="small-loose"
             as="span"
-            tone="muted"
-            className={cn("line-clamp-1 group-disabled:text-foreground-subtle")}
+            tone={rest.disabled ? "subtle" : "muted"}
+            className="line-clamp-1"
           >
             Version {version}
           </Text>
 
-          <Text
-            variant="small-medium-loose"
-            as="span"
-            tone="muted"
-            className={cn("rounded-xl bg-surface-active px-2")}
-          >
-            Your Workflow
-          </Text>
+          <span className="rounded-xl bg-surface-active px-2">
+            <Text
+              variant="small-medium-loose"
+              as="span"
+              tone="muted"
+              className="block"
+            >
+              Your Workflow
+            </Text>
+          </span>
         </div>
       </div>
       <div

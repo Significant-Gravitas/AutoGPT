@@ -313,7 +313,8 @@ export default function IntegrationSetupWizardPage() {
               variant="primary"
               onClick={handleComplete}
               disabled={!isAllComplete}
-              className="w-full text-lg"
+              textSize="body-md"
+              className="w-full"
             >
               {isAllComplete
                 ? "Continue"
@@ -322,7 +323,8 @@ export default function IntegrationSetupWizardPage() {
             <Button
               variant="secondary"
               onClick={handleCancel}
-              className="w-full text-lg"
+              textSize="body-md"
+              className="w-full"
             >
               Cancel
             </Button>

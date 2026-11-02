@@ -112,11 +112,11 @@ export function ActivityDropdown({
               </span>
               {withSearch ? (
                 <Button
-                  variant="ghost"
-                  size="small"
+                  variant="toggle"
+                  size="inline"
                   onClick={toggleSearch}
                   aria-label="Search workflows"
-                  className="!h-auto !w-fit !min-w-0 !p-0 hover:border-transparent hover:bg-transparent"
+                  className="w-fit"
                 >
                   <Icon
                     icon={Search01Icon}

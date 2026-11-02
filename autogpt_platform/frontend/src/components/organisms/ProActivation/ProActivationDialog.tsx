@@ -130,7 +130,8 @@ export function ProActivationDialog({ activation }: Props) {
               )}
               <Button
                 variant="link"
-                className="w-full text-foreground-secondary"
+                tone="secondary"
+                className="w-full"
                 onClick={() => setOpen(false)}
               >
                 Not now

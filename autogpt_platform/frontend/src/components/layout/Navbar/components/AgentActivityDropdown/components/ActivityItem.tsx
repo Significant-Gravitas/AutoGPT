@@ -153,11 +153,7 @@ export function ActivityItem({ execution }: Props) {
           <Text
             key={index}
             variant="small"
-            className={
-              index === 0
-                ? "!text-foreground-secondary"
-                : "!text-foreground-tertiary"
-            }
+            tone={index === 0 ? "secondary" : "muted"}
           >
             {line}
           </Text>
