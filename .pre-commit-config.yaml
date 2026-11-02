@@ -51,7 +51,7 @@ repos:
           python3 autogpt_platform/single-container/runtime_config.py
           check-env-defaults --root autogpt_platform
         language: system
-        files: ^autogpt_platform/(backend|frontend)/\.env\.default$
+        files: ^autogpt_platform/((backend|frontend)/)?\.env\.default$
         pass_filenames: false
 
   - repo: https://github.com/astral-sh/ruff-pre-commit

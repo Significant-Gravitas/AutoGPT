@@ -19,7 +19,7 @@ export function OverviewCard({ title, action, className, children }: Props) {
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <Text variant="body-medium" tone="primary">
+        <Text variant="body-md-medium" tone="primary">
           {title}
         </Text>
         {action}

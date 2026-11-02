@@ -15,8 +15,7 @@ export function CycleToggle({ value, onChange, disabled }: Props) {
     <div
       role="radiogroup"
       aria-label="Billing cycle"
-      // TODO(tokens): no exact role (border-[#d8d8d8])
-      className="inline-flex rounded-full border border-[#d8d8d8] bg-surface-hover p-[3px]"
+      className="inline-flex rounded-full border border-border-base bg-surface-hover p-0.5"
     >
       {CYCLES.map((cycle) => {
         const selected = value === cycle;
@@ -42,8 +41,8 @@ export function CycleToggle({ value, onChange, disabled }: Props) {
               <>
                 Yearly{" "}
                 <span
-                  // TODO(tokens): no exact role (from-green-500 #16A34A, via-emerald-500 #10B981, to-teal-500 #14B8A6)
-                  className="ml-1 bg-gradient-to-r from-green-500 via-emerald-500 to-teal-500 bg-clip-text text-caption-sm font-semibold leading-inherit text-transparent"
+                  // oxlint-disable-next-line design-system/no-raw-colors -- the green-to-teal "Save 15%" gradient has no role
+                  className="ml-1 bg-gradient-to-r from-green-500 via-success to-teal-500 bg-clip-text text-caption-sm leading-inherit font-semibold text-transparent"
                 >
                   Save 15%
                 </span>

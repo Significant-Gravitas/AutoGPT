@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class CreateOrgRequest(BaseModel):
@@ -116,6 +116,15 @@ class CreateInvitationRequest(BaseModel):
     is_admin: bool = False
     is_billing_manager: bool = False
     team_ids: list[str] = Field(default_factory=list)
+
+    @field_validator("email")
+    @classmethod
+    def _normalize_email(cls, email: str) -> str:
+        # Stored lowercase so the invitee's pending list can match it exactly.
+        email = email.strip().lower()
+        if not email:
+            raise ValueError("email must not be blank")
+        return email
 
 
 class InvitationResponse(BaseModel):

@@ -31,7 +31,7 @@ function DefaultHeading() {
         Choose the plan that&apos;s right for{" "}
         <span
           data-slot="plan-header-heading-accent"
-          // TODO(tokens): no role for the indigo-500 gradient stop.
+          // oxlint-disable-next-line design-system/no-raw-colors -- brand-to-indigo gradient text, no to- role holds indigo
           className="bg-gradient-to-r from-brand to-indigo-500 bg-clip-text text-transparent"
         >
           you

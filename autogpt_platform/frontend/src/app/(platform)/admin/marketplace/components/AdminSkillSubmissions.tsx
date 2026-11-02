@@ -21,7 +21,7 @@ export function AdminSkillSubmissions() {
 
   if (isUnavailable) {
     return (
-      <Text variant="body" className="!text-foreground-tertiary">
+      <Text variant="body" tone="muted">
         Skill submissions are unavailable right now.
       </Text>
     );
@@ -29,7 +29,7 @@ export function AdminSkillSubmissions() {
 
   if (submissions.length === 0) {
     return (
-      <Text variant="body" className="!text-foreground-tertiary">
+      <Text variant="body" tone="muted">
         No skill submissions are waiting for review.
       </Text>
     );
@@ -49,10 +49,10 @@ export function AdminSkillSubmissions() {
                 v{submission.version}
               </span>
             </Text>
-            <Text variant="small" className="!text-foreground-tertiary">
+            <Text variant="small" tone="muted">
               {submission.description}
             </Text>
-            <Text variant="small" className="!mt-1 !text-foreground-subtle">
+            <Text variant="small" className="!mt-1" tone="subtle">
               /{submission.slug} · {submission.categories.join(", ")}
               {submission.required_providers.length > 0
                 ? ` · works with ${submission.required_providers.join(", ")}`

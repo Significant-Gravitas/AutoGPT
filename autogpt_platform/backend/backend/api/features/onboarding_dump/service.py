@@ -43,8 +43,14 @@ from backend.api.features.onboarding_dump.models import (
 from backend.api.features.onboarding_dump.rate_limit import (
     enforce_personalization_budget,
 )
+from backend.api.utils.validation_errors import bounded_validation_errors
 from backend.copilot.db import user_has_any_session
-from backend.data.onboarding import format_brain_dump_for_extraction
+from backend.data.onboarding import (
+    format_brain_dump_for_extraction,
+    get_user_onboarding,
+)
+from backend.data.onboarding_role import OTHER
+from backend.data.onboarding_wizard import OnboardingWizardProgress
 from backend.data.tally import extract_business_understanding
 from backend.data.understanding import (
     BusinessUnderstandingInput,
@@ -535,9 +541,15 @@ async def _store_team(
 async def _safe_understanding(user_id: str) -> tuple[str | None, list[str]]:
     """``(user_role, pain_points)`` from the signup wizard's answers.
 
+    The wizard's saved progress holds them from the role step on. The
+    understanding gets its copy only at the wizard's last step, after the
+    hire step, so it answers only for an account with no saved answers.
     A read that fails costs the recommendation its wizard context, not
     the recommendation.
     """
+    saved = await _saved_wizard_answers(user_id)
+    if saved is not None:
+        return saved
     try:
         understanding = await get_business_understanding(user_id)
     except Exception as e:
@@ -546,6 +558,27 @@ async def _safe_understanding(user_id: str) -> tuple[str | None, list[str]]:
     if understanding is None:
         return None, []
     return understanding.user_role, understanding.pain_points
+
+
+async def _saved_wizard_answers(user_id: str) -> tuple[str, list[str]] | None:
+    try:
+        stored = (await get_user_onboarding(user_id)).wizardProgress
+        progress = OnboardingWizardProgress.model_validate(stored) if stored else None
+    except ValidationError as e:
+        logger.warning(
+            f"Brain dump team: wizard progress unusable: {bounded_validation_errors(e)}"
+        )
+        return None
+    except Exception as e:
+        logger.warning(f"Brain dump team: wizard progress read failed: {e}")
+        return None
+    if progress is None:
+        return None
+    # The profile the wizard submits sends Other's typed text as the role.
+    role = progress.otherRole.strip() if progress.role == OTHER else progress.role
+    if not role:
+        return None
+    return role, list(progress.painPoints)
 
 
 async def _safe_templates() -> list[Expert]:
@@ -592,7 +625,9 @@ async def _team_for_intro(
     try:
         team = ExpertRecommendations.model_validate(stored)
     except ValidationError as e:
-        logger.warning("Brain dump team: stored value unusable: %s", e)
+        logger.warning(
+            f"Brain dump team: stored value unusable: {bounded_validation_errors(e)}"
+        )
         return await _fallback_team(user_id), False
     if team.source == "disabled":
         # Legacy rows written before team recommendations were available.

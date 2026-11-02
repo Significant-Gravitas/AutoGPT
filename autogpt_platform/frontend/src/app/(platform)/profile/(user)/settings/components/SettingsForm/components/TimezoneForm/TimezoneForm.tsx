@@ -1,5 +1,6 @@
 "use client";
 
+import { FormProvider } from "react-hook-form";
 import {
   Card,
   CardContent,
@@ -7,13 +8,12 @@ import {
   CardTitle,
 } from "@/components/atoms/Card/Card";
 import {
-  Form,
   FormControl,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/__legacy__/ui/form";
+} from "@/components/molecules/Form/Form";
 import {
   Select,
   SelectContent,
@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/atoms/Select/components/SelectPrimitives";
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import type { User } from "@/lib/auth/types";
 import * as React from "react";
 import { TIMEZONES } from "./helpers";
@@ -57,14 +58,22 @@ export function TimezoneForm({ user, currentTimezone = "not-set" }: Props) {
         <CardTitle>Timezone</CardTitle>
       </CardHeader>
       <CardContent>
-        <Form {...form}>
+        <FormProvider {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <FormField
               control={form.control}
               name="timezone"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Select your timezone</FormLabel>
+                  <FormLabel>
+                    <Text
+                      variant="body-medium-lh-none"
+                      as="span"
+                      tone="inherit"
+                    >
+                      Select your timezone
+                    </Text>
+                  </FormLabel>
                   <Select
                     onValueChange={field.onChange}
                     defaultValue={field.value}
@@ -90,7 +99,7 @@ export function TimezoneForm({ user, currentTimezone = "not-set" }: Props) {
               {isLoading ? "Saving..." : "Save timezone"}
             </Button>
           </form>
-        </Form>
+        </FormProvider>
       </CardContent>
     </Card>
   );

@@ -104,6 +104,36 @@ async def test_add_memory_outputs(mem0_transport, conversation: bool, results):
     )
 
 
+async def test_add_memory_outputs_processed_memory_with_nested_values(
+    mem0_transport,
+):
+    processed = {
+        "id": "memory-1",
+        "event": "ADD",
+        "memory": "I am a vegetarian",
+        "structured_attributes": {"day": 13, "is_weekend": False},
+    }
+    mem0_transport(lambda _: httpx.Response(200, json={"results": [processed]}))
+
+    outputs = [
+        item
+        async for item in AddMemoryBlock().execute(
+            {"credentials": TEST_CREDENTIALS_INPUT},
+            execution_context=ExecutionContext(),
+            credentials=TEST_CREDENTIALS,
+            user_id="user-1",
+            graph_id="workflow-1",
+            graph_exec_id="run-1",
+        )
+    ]
+
+    assert outputs == [
+        ("results", [processed]),
+        ("action", "ADD"),
+        ("memory", "I am a vegetarian"),
+    ]
+
+
 @pytest.mark.parametrize(
     "block_type",
     [AddMemoryBlock, SearchMemoryBlock, GetAllMemoriesBlock, GetLatestMemoryBlock],

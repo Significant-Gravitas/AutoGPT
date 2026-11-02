@@ -7,7 +7,7 @@ import { getExpertIntroSuffix } from "../helpers";
 import { EditNameDialog } from "./EditNameDialog/EditNameDialog";
 
 interface Props {
-  name: string;
+  name: string | null;
   /** Null holds the line back (recipient still resolving) without moving
    * the composer below it. */
   intro: string | null;
@@ -30,8 +30,15 @@ export function EmptyHero({
     <>
       <div className="mb-1 flex items-center justify-center gap-3 pt-8 md:pt-0">
         <Text variant="h4" tone="primary">
-          Hey, <span className="text-foreground-strong">{name}</span>
-          <EditNameDialog currentName={name} />
+          Hey
+          {name ? (
+            <>
+              , <span className="text-foreground-strong">{name}</span>
+            </>
+          ) : (
+            " there"
+          )}
+          <EditNameDialog currentName={name ?? ""} />
         </Text>
       </div>
       {intro === null ? (
@@ -55,7 +62,7 @@ export function EmptyHero({
         // Keyed on the text so switching recipient re-types the line.
         <TextGenerateEffect
           key={intro}
-          className="mb-8 !font-normal [&>div]:!mt-0 [&_div]:!text-heading-sm [&_div]:!leading-normal [&_div]:!tracking-normal"
+          className="mb-8 !font-normal [&_div]:!text-heading-sm [&_div]:!leading-normal [&_div]:!tracking-normal [&>div]:!mt-0"
           duration={0.6}
           words={intro}
         />

@@ -8,6 +8,7 @@ import {
   ContentMessage,
 } from "../../../../components/ToolAccordion/AccordionContent";
 import type { MCPToolOutputResponse } from "../../helpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   output: MCPToolOutputResponse;
@@ -60,7 +61,7 @@ export function MCPToolOutputCard({ output }: Props) {
         </ContentCardTitle>
 
         {isImage ? (
-          // eslint-disable-next-line @next/next/no-img-element
+          // eslint-disable-next-line @next/next/no-img-element -- a base64 data URL from the tool output
           <img
             src={`data:${result.mimeType};base64,${result.data}`}
             alt={`Result from ${output.tool_name}`}
@@ -71,9 +72,13 @@ export function MCPToolOutputCard({ output }: Props) {
             {resultText}
           </ContentCodeBlock>
         ) : (
-          <p className="mt-2 max-h-96 overflow-y-auto whitespace-pre-wrap break-words text-sm text-foreground-emphasis">
+          <Text
+            variant="body-tight"
+            tone="emphasis"
+            className="mt-2 max-h-96 overflow-y-auto break-words whitespace-pre-wrap"
+          >
             {resultText}
-          </p>
+          </Text>
         )}
       </ContentCard>
     </ContentGrid>

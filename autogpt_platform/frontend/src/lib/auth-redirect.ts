@@ -25,9 +25,16 @@ export function sanitizeAuthNext(
   if (rawNext.includes("\\")) return null;
   // The URL parser strips tab/CR/LF *before* parsing, so a tab-bearing value
   // could slip past the checks above and then resolve as "//evil.com".
-  // eslint-disable-next-line no-control-regex
-  if (/[\u0000-\u001F\u007F]/.test(rawNext)) return null;
+  if (hasControlCharacter(rawNext)) return null;
   // /copilot is only a server redirect to /home; a client navigation into that
   // redirect from a (no-navbar) page crashes the App Router (React #310).
   return rawNext.replace(/^\/copilot\/?(?=[?#]|$)/, "/home");
+}
+
+function hasControlCharacter(value: string) {
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if (code <= 0x1f || code === 0x7f) return true;
+  }
+  return false;
 }

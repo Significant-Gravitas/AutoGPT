@@ -4,7 +4,7 @@ import { Download01Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import type { SessionFile } from "../../ContextPanel/components/FilesTab/useSessionFiles";
 import { WorkspaceFileCard } from "./WorkspaceFileCard";
 import { WorkspaceFileRow } from "./WorkspaceFileRow";
@@ -102,8 +102,8 @@ function Body({
   if (isLoading) {
     return (
       <div className="grid gap-2.5 py-1">
-        <Skeleton className="h-5 w-full rounded-lg" />
-        <Skeleton className="h-5 w-2/3 rounded-lg" />
+        <Skeleton variant="translucent" className="h-5 w-full rounded-lg" />
+        <Skeleton variant="translucent" className="h-5 w-2/3 rounded-lg" />
       </div>
     );
   }
@@ -131,7 +131,7 @@ function Body({
   return (
     <>
       {rowStyle === "detailed" ? (
-        <div className="-mx-3 grid max-h-80 divide-y divide-border-base/70 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-active">
+        <div className="-mx-3 scrollbar-thin grid max-h-80 scrollbar-thumb-surface-active scrollbar-track-transparent divide-y divide-border-base/70 overflow-y-auto">
           {visibleFiles.map((file) => (
             <WorkspaceFileRow
               key={file.item.id}
@@ -145,7 +145,7 @@ function Body({
       ) : (
         // Rows bleed their hover highlight past the text with negative
         // margins, so the scroller widens to match — otherwise it clips them.
-        <div className="-mx-2.5 grid max-h-72 gap-0.5 overflow-y-auto px-2.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-active">
+        <div className="-mx-2.5 scrollbar-thin grid max-h-72 scrollbar-thumb-surface-active scrollbar-track-transparent gap-0.5 overflow-y-auto px-2.5">
           {visibleFiles.map((file) => (
             <WorkspaceFileCard
               key={file.item.id}
@@ -161,7 +161,7 @@ function Body({
         <button
           type="button"
           onClick={() => setShowAll(!showAll)}
-          className="w-full pb-0.5 pt-1.5 text-left text-body-sm leading-inherit text-foreground-tertiary transition-colors hover:text-foreground-emphasis"
+          className="w-full pt-1.5 pb-0.5 text-left text-body-sm leading-inherit text-foreground-tertiary transition-colors hover:text-foreground-emphasis"
         >
           {showAll ? "Show less" : `View more (${hiddenCount})`}
         </button>

@@ -173,8 +173,9 @@ async def test_notice_uses_shared_notification_queue(trial, outcome):
                 get_user_by_id=AsyncMock(
                     return_value=SimpleNamespace(
                         id="user-1",
-                        name="Sam",
-                        email="sam@example.com",
+                        # What email sign-up stores: the address's local part.
+                        name="sam.carter",
+                        email="sam.carter@example.com",
                         marketing_opt_out_at=None,
                         timezone="America/Chicago",
                     )
@@ -201,6 +202,7 @@ async def test_notice_uses_shared_notification_queue(trial, outcome):
         assert event.type == NotificationType.TRIAL_UPDATE
         assert event.user_id == trial.user_id
         assert event.data.notice_key == notices.trial_notice_key(trial, "started")
+        assert event.data.user_name == "there"
     if outcome in ("publish_failed", "raised"):
         release.assert_awaited_once_with(notices.trial_notice_key(trial, "started"))
     else:

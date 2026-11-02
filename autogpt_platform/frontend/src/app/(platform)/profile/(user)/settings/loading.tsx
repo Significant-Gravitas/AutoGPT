@@ -1,4 +1,4 @@
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Separator } from "@/components/atoms/Separator/Separator";
 
 export default function SettingsLoading() {

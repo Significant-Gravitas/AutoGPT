@@ -29,7 +29,7 @@ export function UsageCard({ index = 0 }: Props) {
   if (isLoading) {
     return (
       <motion.div {...sectionMotion}>
-        <Skeleton className="h-[260px] rounded-[18px]" />
+        <Skeleton className="h-[260px] rounded-2xl" />
       </motion.div>
     );
   }
@@ -50,26 +50,23 @@ export function UsageCard({ index = 0 }: Props) {
   return (
     <motion.section {...sectionMotion} className="flex w-full flex-col gap-2">
       <div className="px-4">
-        <Text variant="body-medium" as="span" className="text-textBlack">
+        <Text variant="body-medium" as="span">
           Usage
         </Text>
       </div>
 
-      <div className="flex flex-col gap-5 rounded-[18px] border border-border-base bg-surface p-5 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+      <div className="flex flex-col gap-5 rounded-large border border-border-base bg-surface p-5 shadow-message-table">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <div className="flex items-baseline gap-2">
-            <Text
-              variant="large-medium"
-              as="span"
-              className="tabular-nums text-textBlack"
-            >
+            {/* oxlint-disable-next-line design-system/no-restyle -- the spend total uses tabular figures */}
+            <Text variant="large-medium" as="span" className="tabular-nums">
               ${totalSpent.toFixed(2)}
             </Text>
-            <Text variant="body" as="span" className="text-foreground-tertiary">
+            <Text variant="body" as="span" tone="muted">
               · {totalRuns} runs
             </Text>
           </div>
-          <Text variant="body" as="span" className="text-foreground-body">
+          <Text variant="body" as="span" tone="body">
             Last 30 days
           </Text>
         </div>
@@ -77,16 +74,11 @@ export function UsageCard({ index = 0 }: Props) {
         <TooltipProvider delayDuration={150}>
           <div className="flex gap-3">
             <div
-              className="flex h-44 w-10 flex-col justify-between text-right"
+              className="flex h-44 w-10 flex-col justify-between text-right tabular-nums"
               aria-hidden="true"
             >
               {yTicks.map((tick, i) => (
-                <Text
-                  key={i}
-                  variant="small"
-                  as="span"
-                  className="tabular-nums text-foreground-subtle"
-                >
+                <Text key={i} variant="small" as="span" tone="subtle">
                   {tick.label}
                 </Text>
               ))}
@@ -108,25 +100,13 @@ export function UsageCard({ index = 0 }: Props) {
               </div>
 
               <div className="flex justify-between pl-1">
-                <Text
-                  variant="small"
-                  as="span"
-                  className="text-foreground-tertiary"
-                >
+                <Text variant="small" as="span" tone="muted">
                   {firstDate}
                 </Text>
-                <Text
-                  variant="small"
-                  as="span"
-                  className="text-foreground-tertiary"
-                >
+                <Text variant="small" as="span" tone="muted">
                   {middleDate}
                 </Text>
-                <Text
-                  variant="small"
-                  as="span"
-                  className="text-foreground-tertiary"
-                >
+                <Text variant="small" as="span" tone="muted">
                   {lastDate}
                 </Text>
               </div>
@@ -162,8 +142,7 @@ function UsageBar({
               ? `${day.date}: $0.00, 0 runs`
               : `${day.date}: $${day.amount.toFixed(2)}, ${day.runs} runs`
           }
-          // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle, a text colour
-          className="group flex h-full flex-1 flex-col justify-end focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+          className="group flex h-full flex-1 flex-col justify-end focus-visible:ring-2 focus-visible:ring-foreground-subtle focus-visible:outline-none"
         >
           {isEmpty ? (
             <div className="h-px w-full bg-transparent" />
@@ -182,26 +161,20 @@ function UsageBar({
                       delay: 0.15 + index * 0.015,
                     }
               }
-              className="w-full cursor-help rounded-t-[3px] border-t-2 border-brand bg-brand/30 transition-colors group-hover:bg-brand/50"
+              className="w-full cursor-help rounded-t-xsmall border-t-2 border-brand bg-brand/30 transition-colors group-hover:bg-brand/50"
             />
           )}
         </button>
       </TooltipTrigger>
       <TooltipContent side="top">
         <div className="flex flex-col gap-0.5">
-          <span
-            // TODO(tokens): SECRT-3152 rare size (text-[0.6785rem])
-            className="text-[0.6785rem] font-medium uppercase tracking-eyebrow text-foreground-subtle"
-          >
+          <span className="text-caption-sm leading-inherit font-medium tracking-eyebrow text-foreground-subtle uppercase">
             {day.date}
           </span>
-          <span
-            // TODO(tokens): no fitting role for text-zinc-50 #F9F9FA; #F9F9FA is surface-muted, a fill
-            className="text-sm font-medium tabular-nums text-zinc-50"
-          >
+          <span className="text-sm font-medium text-action-foreground tabular-nums">
             ${day.amount.toFixed(2)}
           </span>
-          <span className="text-xs tabular-nums text-foreground-subtle">
+          <span className="text-xs text-foreground-subtle tabular-nums">
             {day.runs} runs
           </span>
         </div>

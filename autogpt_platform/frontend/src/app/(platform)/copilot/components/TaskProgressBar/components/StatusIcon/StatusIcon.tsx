@@ -17,8 +17,7 @@ export function StatusIcon({ status }: Props) {
       <Icon
         icon={Tick02Icon}
         size={14}
-        // TODO(tokens): no exact role for text-emerald-500
-        className="text-emerald-500"
+        className="text-success"
         aria-label="completed"
       />
     );
@@ -27,7 +26,7 @@ export function StatusIcon({ status }: Props) {
     return (
       <LoadingSpinner
         size="small"
-        className="h-3.5 w-3.5 text-brand [animation-duration:0.5s]"
+        className="h-3.5 w-3.5 text-brand duration-500"
         aria-label="in progress"
       />
     );
