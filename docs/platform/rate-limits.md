@@ -167,6 +167,21 @@ When the Platform requires new accounts to verify their email address:
 
 The 10-minute windows for the first row start on the clock: at :00, :10, :20 and so on. **Resend email** also waits 60 seconds between clicks. None of these are configurable. A self-hosted install requires verification only with `AUTH_REQUIRE_EMAIL_VERIFICATION=true` on the frontend.
 
+### Signing in and resetting a password
+
+| Action                      | Limit                            | Counted per   |
+| --------------------------- | -------------------------------- | ------------- |
+| Signing in                  | 3 per 10 seconds                 | IP address    |
+| Signing in                  | 5 failed attempts per 10 minutes | email address |
+| Requesting a password reset | 3 per 60 seconds                 | IP address    |
+| Requesting a password reset | 1 per 10 minutes                 | email address |
+
+- A successful sign-in gives its attempt back, so only failed sign-ins count toward the 5.
+- The per-address limits apply whether or not the address has an account, so a refusal says nothing about which addresses do.
+- Each window starts on the clock, and these limits cover the sign-in and reset-password pages as well as the API paths below.
+- **What you see:** `429`, with "Too many attempts. Please try again in 3 minutes." and an `X-Retry-After` header in seconds.
+- Where the Platform has no IP address for the caller, only the per-address limits apply; see [Client IP Addresses](client-ip.md#signing-in). None of these are configurable.
+
 ### The authentication API
 
 Requests to the authentication API under `/api/auth/` are limited per IP address and path:
@@ -180,6 +195,20 @@ Requests to the authentication API under `/api/auth/` are limited per IP address
 Each path counts on its own. A path allows that many requests in a row, and starts counting again once a whole window has passed since the last request it let through. Past the limit, the answer is `429` with `{"message":"Too many requests. Please try again later."}` and an `X-Retry-After` header in seconds.
 
 These limits apply to production builds of the frontend and aren't configurable. On a self-hosted install behind a reverse proxy, see [Client IP Addresses](client-ip.md).
+
+## The External API
+
+Every call to the [External API](integrating/api-guide.md) shares one limit, on top of any limit on the endpoint itself:
+
+| Caller                                                     | Limit                 | Counted per |
+| ---------------------------------------------------------- | --------------------- | ----------- |
+| With an API key or an access token                         | 200 requests a minute | account     |
+| Without one                                                | 5 requests a minute   | IP address  |
+| Without one, reading the API's own docs and OpenAPI schema | 60 requests a minute  | IP address  |
+
+- Each minute starts on the clock minute. Every response carries its place in the window in `X-RateLimit-*` headers, and a `429` adds `Retry-After`.
+- A request that presents a credential is also counted before the credential is checked, per credential and per IP address, so repeated failures are refused without the cost of checking them.
+- **Self-hosting:** the per-IP counts read `X-Forwarded-For`, not the connection address. Set `TRUSTED_PROXY_COUNT` on the backend to the number of entries your own proxies add; see [Client IP Addresses](client-ip.md#limits-on-the-external-api).
 
 ## Not on this page
 
