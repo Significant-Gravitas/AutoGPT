@@ -1,14 +1,11 @@
 import { server } from "@/mocks/mock-server";
 import {
-  installGtagShim,
-  removeGtagShim,
-} from "@/tests/integrations/gtag-shim";
-import {
   act,
   fireEvent,
   render,
   screen,
   waitFor,
+  within,
 } from "@/tests/integrations/test-utils";
 import {
   deferredTrialResponse,
@@ -28,6 +25,12 @@ import {
   trialSubscription,
   yearlyOffer,
 } from "./trial-plan-fixtures";
+
+// These cover the hosted billing UI, which self-hosted builds hide.
+vi.mock("@/hooks/useIsBillingEnabled", () => ({
+  useIsBillingEnabled: () => true,
+  useBillingStatus: () => ({ isBillingEnabled: true, isResolved: true }),
+}));
 
 const toast = vi.hoisted(() => vi.fn());
 vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => ({
@@ -51,10 +54,13 @@ vi.mock(
   }),
 );
 
-const checkoutURL = "https://checkout.stripe.com/c/pay/cs_max";
+const paymentPage = "https://invoice.stripe.com/i/acct_1/test_pay";
 
-function stubNavigation() {
-  return vi.spyOn(window.location, "assign").mockImplementation(() => {});
+async function openUpgrade() {
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Upgrade to Max" }),
+  );
+  return screen.findByRole("dialog", { name: "Start Max today?" });
 }
 
 beforeEach(() => setTrialUser());
@@ -63,29 +69,36 @@ afterEach(() => {
   toast.mockReset();
   analytics.trackPaywallViewed.mockReset();
   analytics.trackPlanSelected.mockReset();
-  removeGtagShim();
-  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
 describe("upgrading past the trial's plan", () => {
   it.each([
-    ["monthly", trialOffer],
-    ["yearly", yearlyOffer],
+    ["monthly", trialOffer, "$320 / month"],
+    ["yearly", yearlyOffer, "$3,264 / year"],
   ] as const)(
-    "opens Stripe Checkout for the next tier on the %s cycle",
-    async (cycle, offer) => {
-      const assign = stubNavigation();
+    "charges the saved card for the next tier on the %s cycle once confirmed",
+    async (cycle, offer, price) => {
+      const assign = vi.spyOn(window.location, "assign");
       mockBilling(trialResponse({ ...cancelPending, offer }));
       const body = mockPlanRequest(() =>
-        HttpResponse.json({ ...trialSubscription, url: checkoutURL }),
+        HttpResponse.json({ ...trialSubscription, tier: "MAX", url: "" }),
       );
       render(<SettingsBillingPage />);
+
+      const dialog = await openUpgrade();
+      expect(dialog.textContent).toContain(price);
+      expect(body).not.toHaveBeenCalled();
       fireEvent.click(
-        await screen.findByRole("button", { name: "Upgrade to Max" }),
+        within(dialog).getByRole("button", { name: "Subscribe to Max" }),
       );
 
-      await waitFor(() => expect(assign).toHaveBeenCalledWith(checkoutURL));
+      await waitFor(() =>
+        expect(toast).toHaveBeenCalledWith({
+          title: "You're on Max",
+          description: "Your trial has ended and your plan starts today.",
+        }),
+      );
       expect(body).toHaveBeenCalledWith({
         tier: "MAX",
         billing_cycle: cycle,
@@ -97,89 +110,86 @@ describe("upgrading past the trial's plan", () => {
         billing_cycle: cycle,
         surface: "billing",
       });
-      expect(screen.queryByRole("dialog")).toBeNull();
-      expect(toast).not.toHaveBeenCalled();
+      expect(assign).not.toHaveBeenCalled();
     },
   );
 
-  it("reports begin_checkout at the next tier's price before leaving", async () => {
-    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
-    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
-    const gtagCalls = installGtagShim();
-    const assign = stubNavigation();
+  it("keeps the trial without a request when the person backs out", async () => {
     mockBilling();
-    mockPlanRequest(() =>
-      HttpResponse.json({ ...trialSubscription, url: checkoutURL }),
+    const body = mockPlanRequest(() =>
+      HttpResponse.json({ ...trialSubscription, url: "" }),
     );
     render(<SettingsBillingPage />);
-    const upgrade = await screen.findByRole("button", {
-      name: "Upgrade to Max",
-    });
-    fireEvent.click(upgrade);
 
-    await waitFor(() =>
-      expect(gtagCalls).toContainEqual([
-        "event",
-        "conversion",
-        {
-          send_to: "AW-123/BC",
-          value: 320,
-          currency: "USD",
-          event_callback: expect.any(Function),
-        },
-      ]),
+    const dialog = await openUpgrade();
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Keep my trial" }),
     );
-    expect(upgrade.hasAttribute("disabled")).toBe(true);
-    await waitFor(() => expect(assign).toHaveBeenCalledWith(checkoutURL));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(body).not.toHaveBeenCalled();
   });
 
-  it("frees the choices after handing off, so a page restored from history works", async () => {
-    const assign = stubNavigation();
-    mockBilling();
+  it("sends the customer to Stripe's page when their bank wants to confirm", async () => {
+    const assign = vi.spyOn(window.location, "assign");
+    const { hits } = mockBilling();
     mockPlanRequest(() =>
-      HttpResponse.json({ ...trialSubscription, url: checkoutURL }),
+      HttpResponse.json({ ...trialSubscription, url: paymentPage }),
     );
     render(<SettingsBillingPage />);
     fireEvent.click(
-      await screen.findByRole("button", { name: "Upgrade to Max" }),
+      within(await openUpgrade()).getByRole("button", {
+        name: "Subscribe to Max",
+      }),
     );
 
-    await waitFor(() => expect(assign).toHaveBeenCalledOnce());
+    const bank = await screen.findByRole("dialog", {
+      name: "Confirm with your bank",
+    });
+    expect(bank.textContent).toContain("$320 / month payment for Max");
+    const pay = within(bank).getByRole("link", { name: "Pay on Stripe" });
+    expect(pay.getAttribute("href")).toBe(paymentPage);
+    expect(pay.getAttribute("target")).toBe("_blank");
+    expect(toast).not.toHaveBeenCalled();
+    expect(assign).not.toHaveBeenCalled();
+
+    // Closing re-reads the trial: the customer may have paid in the other tab.
+    const trialReads = hits.trial;
+    fireEvent.click(within(bank).getByRole("button", { name: "Done" }));
     await waitFor(() =>
       expect(
-        screen
-          .getByRole("button", { name: "Upgrade to Max" })
-          .hasAttribute("disabled"),
-      ).toBe(false),
+        screen.queryByRole("dialog", { name: "Confirm with your bank" }),
+      ).toBeNull(),
     );
-    expect(
-      screen
-        .getByRole("button", { name: "Subscribe to Pro" })
-        .hasAttribute("disabled"),
-    ).toBe(false);
+    await waitFor(() => expect(hits.trial).toBeGreaterThan(trialReads));
   });
 
-  it("shows why Checkout could not start", async () => {
-    const assign = stubNavigation();
+  it("shows why Max could not start and frees the choices", async () => {
     mockBilling();
     mockPlanRequest(() =>
       HttpResponse.json(
-        { detail: "Stripe is unavailable. Please retry." },
-        { status: 502 },
+        {
+          detail:
+            "Your saved card can't be charged. Update it under Payment method, then try again.",
+        },
+        { status: 409 },
       ),
     );
     render(<SettingsBillingPage />);
     fireEvent.click(
-      await screen.findByRole("button", { name: "Upgrade to Max" }),
+      within(await openUpgrade()).getByRole("button", {
+        name: "Subscribe to Max",
+      }),
     );
+
     await waitFor(() =>
       expect(toast).toHaveBeenCalledWith({
         title: "Unable to start Max",
-        description: "Stripe is unavailable. Please retry.",
+        description:
+          "Your saved card can't be charged. Update it under Payment method, then try again.",
         variant: "destructive",
       }),
     );
-    expect(assign).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(
         screen
@@ -189,35 +199,35 @@ describe("upgrading past the trial's plan", () => {
     );
   });
 
-  it("does not send user B to the Checkout user A started", async () => {
-    const assign = stubNavigation();
+  it("does not show user B the payment page user A was sent to", async () => {
     setTrialUser("user-a");
     mockBilling();
     mockPricePerUser();
-    const checkout = deferredTrialResponse<void>();
+    const charge = deferredTrialResponse<void>();
     const sent = vi.fn();
     server.use(
       http.post("*/api/credits/subscription", async () => {
         sent();
-        await checkout.promise;
-        return HttpResponse.json({
-          ...trialSubscription,
-          url: "https://checkout.stripe.com/c/pay/cs_user_a",
-        });
+        await charge.promise;
+        return HttpResponse.json({ ...trialSubscription, url: paymentPage });
       }),
     );
     render(<SettingsBillingPage />);
     fireEvent.click(
-      await screen.findByRole("button", { name: "Upgrade to Max" }),
+      within(await openUpgrade()).getByRole("button", {
+        name: "Subscribe to Max",
+      }),
     );
     await waitFor(() => expect(sent).toHaveBeenCalledOnce());
 
     act(() => setTrialUser("user-b"));
     await screen.findByText("$30");
-    checkout.resolve();
+    charge.resolve();
     await act(() => new Promise((settle) => setTimeout(settle, 50)));
 
-    expect(assign).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("dialog", { name: "Confirm with your bank" }),
+    ).toBeNull();
     expect(toast).not.toHaveBeenCalled();
   });
 });

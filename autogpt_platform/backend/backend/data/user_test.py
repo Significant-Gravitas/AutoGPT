@@ -1,15 +1,18 @@
 """Unit tests for helpers in backend.data.user."""
 
 import asyncio
+import base64
+import uuid
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import prisma.errors
 import pytest
 
+from backend.data import profile as profile_module
 from backend.data import user as user_module
 from backend.data.notifications import AudienceAction, NotificationResult
 from backend.data.user import (
@@ -33,6 +36,25 @@ def _application_user(user_id: str, email: str) -> user_module.User:
 
 
 class TestUpdateUserTimezone:
+    @pytest.fixture(autouse=True)
+    def _stub_background_reregistration(self, mocker):
+        """The update spawns the dream and briefing re-registrations as
+        background tasks. Left live, they reach the flag service, the
+        registry and Redis from the test's loop and can outlive the test;
+        the tests that pin those tasks patch them again themselves."""
+        mocker.patch(
+            "backend.copilot.dream.registry.reregister_user",
+            new=AsyncMock(return_value={}),
+        )
+        mocker.patch(
+            "backend.copilot.briefing.scheduling.clear_briefing_registration_marker",
+            new=AsyncMock(),
+        )
+        mocker.patch(
+            "backend.copilot.briefing.scheduling.ensure_morning_briefing_scheduled",
+            new=AsyncMock(),
+        )
+
     @pytest.mark.asyncio
     async def test_invalidates_all_three_user_caches(self):
         prisma_user = MagicMock(id="user-1", email="user@example.com")
@@ -89,19 +111,19 @@ class TestUpdateUserTimezone:
         assert "connection lost" in str(exc.value)
 
     @pytest.mark.asyncio
-    async def test_eagerly_re_registers_dream_schedules_with_force_refresh(self):
+    async def test_eagerly_re_registers_every_memory_scope_of_the_user(self):
         """APScheduler cron triggers bind to the timezone at registration
-        time. A profile-page timezone change MUST eagerly re-register
-        the dream-system crons so they fire at the right local time
-        without waiting for the 7-day Redis dedup-key TTL to expire."""
+        time. A profile-page timezone change MUST eagerly re-register the
+        dream-system crons of every memory scope the user has (the account
+        and each expert) so they fire at the right local time."""
         from backend.copilot.briefing import scheduling as briefing_scheduling
-        from backend.copilot.dream import scheduling as dream_scheduling
+        from backend.copilot.dream import registry as dream_registry
 
         prisma_user = MagicMock(id="user-tz", email="user@example.com")
-        captured: list[tuple[str, bool]] = []
+        captured: list[str] = []
 
-        async def fake_ensure(user_id: str, *, force_refresh: bool = False):
-            captured.append((user_id, force_refresh))
+        async def fake_reregister(user_id: str):
+            captured.append(user_id)
             return {}
 
         with (
@@ -110,9 +132,7 @@ class TestUpdateUserTimezone:
             patch.object(user_module.get_user_by_id, "cache_delete"),
             patch.object(user_module.get_user_by_email, "cache_delete"),
             patch.object(user_module.get_or_create_user, "cache_clear"),
-            patch.object(
-                dream_scheduling, "ensure_dream_system_scheduled", new=fake_ensure
-            ),
+            patch.object(dream_registry, "reregister_user", new=fake_reregister),
             # This test isolates the dream-system re-registration contract;
             # the sibling morning-briefing re-registration (also wired here)
             # is covered separately by scheduling_test.py.
@@ -135,7 +155,7 @@ class TestUpdateUserTimezone:
             # assert it was called.
             await asyncio.sleep(0)
 
-        assert captured == [("user-tz", True)]
+        assert captured == ["user-tz"]
 
     @pytest.mark.asyncio
     async def test_re_register_task_is_retained_and_its_failure_logged(self):
@@ -145,11 +165,11 @@ class TestUpdateUserTimezone:
         ``_background_tasks`` until done and log failures via the
         done-callback instead of dropping them."""
         from backend.copilot.briefing import scheduling as briefing_scheduling
-        from backend.copilot.dream import scheduling as dream_scheduling
+        from backend.copilot.dream import registry as dream_registry
 
         prisma_user = MagicMock(id="user-tz", email="user@example.com")
 
-        async def failing_ensure(user_id: str, *, force_refresh: bool = False):
+        async def failing_reregister(user_id: str):
             raise RuntimeError("scheduler unreachable")
 
         with (
@@ -158,9 +178,7 @@ class TestUpdateUserTimezone:
             patch.object(user_module.get_user_by_id, "cache_delete"),
             patch.object(user_module.get_user_by_email, "cache_delete"),
             patch.object(user_module.get_or_create_user, "cache_clear"),
-            patch.object(
-                dream_scheduling, "ensure_dream_system_scheduled", new=failing_ensure
-            ),
+            patch.object(dream_registry, "reregister_user", new=failing_reregister),
             # Isolate the dream-system task-retention contract under test
             # from the sibling morning-briefing re-registration (also wired
             # here) — real Redis/flag I/O in that path would otherwise give
@@ -206,7 +224,7 @@ class TestUpdateUserTimezone:
         stored marker before re-ensuring, or the drift check would read
         the just-superseded timezone and skip the re-register."""
         from backend.copilot.briefing import scheduling as briefing_scheduling
-        from backend.copilot.dream import scheduling as dream_scheduling
+        from backend.copilot.dream import registry as dream_registry
 
         prisma_user = MagicMock(id="user-tz", email="user@example.com")
         calls: list[str] = []
@@ -223,9 +241,7 @@ class TestUpdateUserTimezone:
             patch.object(user_module.get_user_by_id, "cache_delete"),
             patch.object(user_module.get_user_by_email, "cache_delete"),
             patch.object(user_module.get_or_create_user, "cache_clear"),
-            patch.object(
-                dream_scheduling, "ensure_dream_system_scheduled", new=AsyncMock()
-            ),
+            patch.object(dream_registry, "reregister_user", new=AsyncMock()),
             patch.object(
                 briefing_scheduling,
                 "clear_briefing_registration_marker",
@@ -1007,6 +1023,19 @@ class TestGetBillingEmailRecipient:
         )
 
 
+def _credentials_tx(mocker) -> MagicMock:
+    """Stand in for the transaction ``set_user_credentials`` writes through."""
+    tx = MagicMock()
+    tx.execute_raw = AsyncMock()
+
+    @asynccontextmanager
+    async def fake_transaction():
+        yield tx
+
+    mocker.patch("backend.data.user.transaction", fake_transaction)
+    return tx
+
+
 class TestTableBackedCredentials:
     """get/set_user_credentials — the IntegrationCredential-backed seam the
     credential store runs on after the blob→table migration."""
@@ -1041,6 +1070,83 @@ class TestTableBackedCredentials:
         assert where == {"ownerType": "USER", "ownerId": "u1", "status": "active"}
 
     @pytest.mark.asyncio
+    async def test_get_near_expiry_oauth_credentials_returns_only_refreshable_due_rows(
+        self, mocker
+    ):
+        from pydantic import SecretStr
+
+        from backend.data.model import APIKeyCredentials, OAuth2Credentials
+        from backend.data.user import get_near_expiry_oauth_credentials
+        from backend.util.encryption import JSONCryptor
+
+        due = OAuth2Credentials(
+            id="due",
+            provider="github",
+            access_token=SecretStr("access"),
+            access_token_expires_at=790_399,
+            refresh_token=SecretStr("refresh"),
+            scopes=[],
+        )
+        future = due.model_copy(
+            update={"id": "future", "access_token_expires_at": 790_401}
+        )
+        provider_runtime = due.model_copy(
+            update={"id": "runtime", "refresh_strategy": "provider_runtime"}
+        )
+        managed = due.model_copy(update={"id": "managed", "is_managed": True})
+        without_refresh = due.model_copy(
+            update={"id": "without-refresh", "refresh_token": None}
+        )
+        expired = due.model_copy(
+            update={"id": "expired", "access_token_expires_at": 999}
+        )
+        expired_refresh = due.model_copy(
+            update={"id": "expired-refresh", "refresh_token_expires_at": 999}
+        )
+        without_expiry = due.model_copy(
+            update={"id": "without-expiry", "access_token_expires_at": None}
+        )
+        api_key = APIKeyCredentials(
+            id="api-key", provider="github", api_key=SecretStr("key")
+        )
+        cryptor = JSONCryptor()
+
+        def row(owner_id, credentials):
+            return MagicMock(
+                id=credentials.id,
+                ownerId=owner_id,
+                encryptedPayload=cryptor.encrypt(credentials.model_dump()),
+            )
+
+        corrupt = MagicMock(
+            id="corrupt", ownerId="user-corrupt", encryptedPayload="bad"
+        )
+        mock_prisma = MagicMock()
+        mock_prisma.integrationcredential.find_many = AsyncMock(
+            return_value=[
+                row("user-due", due),
+                row("user-future", future),
+                row("user-runtime", provider_runtime),
+                row("user-managed", managed),
+                row("user-without-refresh", without_refresh),
+                row("user-expired", expired),
+                row("user-expired-refresh", expired_refresh),
+                row("user-without-expiry", without_expiry),
+                row("user-api", api_key),
+                corrupt,
+            ]
+        )
+        mocker.patch("backend.data.user.prisma", mock_prisma)
+        mocker.patch("time.time", return_value=2_000_000)
+
+        result = await get_near_expiry_oauth_credentials(790_400)
+
+        assert result == [("user-due", due), ("user-expired", expired)]
+        mock_prisma.integrationcredential.find_many.assert_awaited_once_with(
+            where={"ownerType": "USER", "status": "active", "credentialType": "oauth2"}
+        )
+
+    @pytest.mark.asyncio
     async def test_set_updates_existing_creates_new_revokes_missing(self, mocker):
         from unittest.mock import AsyncMock, MagicMock
 
@@ -1063,26 +1169,25 @@ class TestTableBackedCredentials:
         row_gone.id = "cred-gone"
         row_gone.status = "active"
 
-        mock_prisma = MagicMock()
-        mock_prisma.integrationcredential.find_many = AsyncMock(
+        mock_tx = _credentials_tx(mocker)
+        mock_tx.integrationcredential.find_many = AsyncMock(
             return_value=[row_kept, row_gone]
         )
-        mock_prisma.integrationcredential.update = AsyncMock()
-        mock_prisma.integrationcredential.create = AsyncMock()
-        mock_prisma.organization.find_first = AsyncMock(
+        mock_tx.integrationcredential.update = AsyncMock()
+        mock_tx.integrationcredential.create = AsyncMock()
+        mock_tx.organization.find_first = AsyncMock(
             return_value=MagicMock(id="org-personal")
         )
-        mocker.patch("backend.data.user.prisma", mock_prisma)
 
         await set_user_credentials("u1", [kept, new])
 
-        create_data = mock_prisma.integrationcredential.create.call_args.kwargs["data"]
+        create_data = mock_tx.integrationcredential.create.call_args.kwargs["data"]
         assert create_data["id"] == "cred-new"
         assert create_data["organizationId"] == "org-personal"
 
         update_calls = {
             c.kwargs["where"]["id"]: c.kwargs["data"]
-            for c in mock_prisma.integrationcredential.update.call_args_list
+            for c in mock_tx.integrationcredential.update.call_args_list
         }
         # kept: payload refresh; gone: revoked
         assert "encryptedPayload" in update_calls["cred-kept"]
@@ -1090,7 +1195,7 @@ class TestTableBackedCredentials:
 
     @pytest.mark.asyncio
     async def test_set_raises_without_personal_org_for_new_cred(self, mocker):
-        from unittest.mock import AsyncMock, MagicMock
+        from unittest.mock import AsyncMock
 
         from pydantic import SecretStr
 
@@ -1101,10 +1206,9 @@ class TestTableBackedCredentials:
         new = APIKeyCredentials(
             id="cred-new", provider="notion", api_key=SecretStr("sk-3"), title="N"
         )
-        mock_prisma = MagicMock()
-        mock_prisma.integrationcredential.find_many = AsyncMock(return_value=[])
-        mock_prisma.organization.find_first = AsyncMock(return_value=None)
-        mocker.patch("backend.data.user.prisma", mock_prisma)
+        mock_tx = _credentials_tx(mocker)
+        mock_tx.integrationcredential.find_many = AsyncMock(return_value=[])
+        mock_tx.organization.find_first = AsyncMock(return_value=None)
 
         with pytest.raises(DatabaseError):
             await set_user_credentials("u1", [new])
@@ -1114,7 +1218,7 @@ class TestGetOrCreateUserStatus:
     @pytest.fixture(autouse=True)
     def stub_user_provisioning(self):
         with (
-            patch.object(user_module, "_ensure_user_profile", new_callable=AsyncMock),
+            patch.object(user_module, "ensure_profile", new_callable=AsyncMock),
             patch.object(
                 user_module,
                 "ensure_personal_org",
@@ -1126,6 +1230,7 @@ class TestGetOrCreateUserStatus:
             ) as posthog_sync,
             patch.object(user_module, "AuthAccount") as auth_account,
             patch.object(user_module, "track_signup_completed"),
+            patch.object(user_module, "set_account_properties"),
         ):
             auth_account.prisma.return_value.find_first = AsyncMock(return_value=None)
             yield ensure_org, posthog_sync
@@ -1162,6 +1267,7 @@ class TestGetOrCreateUserStatus:
                 "from_db",
                 return_value=_application_user("user-existing", "bob@example.com"),
             ),
+            patch.object(user_module, "set_account_properties") as person,
         ):
             mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
 
@@ -1171,6 +1277,7 @@ class TestGetOrCreateUserStatus:
 
         assert result.was_created is False
         mock_prisma.user.create.assert_not_called()
+        person.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_reports_created_for_a_row_the_auth_hook_inserted_bare(
@@ -1193,6 +1300,7 @@ class TestGetOrCreateUserStatus:
             ),
             patch.object(user_module, "AuthAccount") as auth_account,
             patch.object(user_module, "track_signup_completed") as track,
+            patch.object(user_module, "set_account_properties") as person,
         ):
             mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
             auth_account.prisma.return_value.find_first = AsyncMock(
@@ -1200,13 +1308,18 @@ class TestGetOrCreateUserStatus:
             )
 
             result = await user_module.get_or_create_user_with_status(
-                {"sub": "user-hooked", "email": "hook@example.com"}
+                {"sub": "user-hooked", "email": "hook@example.com", "role": "admin"}
             )
 
         assert result.was_created is True
         mock_prisma.user.create.assert_not_called()
         posthog_sync.assert_called_once_with("user-hooked")
         track.assert_called_once_with(user_id="user-hooked", signup_method="email")
+        # The email type and sign-in method MailerLite segments on, and the
+        # token's role, which flags our own team.
+        person.assert_called_once_with(
+            "user-hooked", "hook@example.com", "email", "admin"
+        )
 
     @pytest.mark.asyncio
     async def test_a_row_created_concurrently_is_read_back_not_an_error(self):
@@ -1381,6 +1494,7 @@ class TestGetOrCreateUserProfile:
 
         with (
             patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(profile_module, "prisma", mock_prisma),
             patch.object(
                 user_module.User,
                 "from_db",
@@ -1410,6 +1524,7 @@ class TestGetOrCreateUserProfile:
 
         with (
             patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(profile_module, "prisma", mock_prisma),
             patch.object(
                 user_module.User,
                 "from_db",
@@ -1436,6 +1551,7 @@ class TestGetOrCreateUserProfile:
 
         with (
             patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(profile_module, "prisma", mock_prisma),
             patch.object(user_module.User, "from_db", return_value=sentinel_user),
             patch.object(user_module.logger, "warning") as warn_mock,
         ):
@@ -1461,6 +1577,7 @@ class TestGetOrCreateUserProfile:
 
         with (
             patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(profile_module, "prisma", mock_prisma),
             patch.object(
                 user_module.User,
                 "from_db",
@@ -1503,7 +1620,7 @@ class TestGetOrCreateUserPersonalOrg:
                 "from_db",
                 return_value=_application_user("user-org", "erin@example.com"),
             ),
-            patch.object(user_module, "_ensure_user_profile", new_callable=AsyncMock),
+            patch.object(user_module, "ensure_profile", new_callable=AsyncMock),
             patch.object(
                 user_module,
                 "ensure_personal_org",
@@ -1529,7 +1646,7 @@ class TestGetOrCreateUserPersonalOrg:
         with (
             patch.object(user_module, "prisma") as mock_prisma,
             patch.object(user_module.User, "from_db", return_value=MagicMock()),
-            patch.object(user_module, "_ensure_user_profile", new_callable=AsyncMock),
+            patch.object(user_module, "ensure_profile", new_callable=AsyncMock),
             patch.object(
                 user_module,
                 "ensure_personal_org",
@@ -1576,6 +1693,35 @@ class TestGetAuthUserFlagFields:
             fields = await user_module.get_auth_user_flag_fields("ghost")
 
         assert fields is None
+
+
+class TestIsUserBanned:
+    """The ban states themselves are driven through the real dependencies in
+    ``api/banned_account_test.py``; these pin what those can't reach."""
+
+    @pytest.mark.asyncio
+    async def test_a_missing_auth_row_is_not_a_ban(self):
+        with patch.object(user_module, "AuthUser") as mock_auth_user:
+            mock_auth_user.prisma.return_value.find_unique = AsyncMock(
+                return_value=None
+            )
+            assert await user_module.is_auth_user_banned("no-auth-row") is False
+
+    @pytest.mark.asyncio
+    async def test_the_answer_is_shared_until_it_expires(self, mocker):
+        """Every request asks, so a hit must not reach the database."""
+        mocker.patch("backend.data.db.is_connected", return_value=True)
+        user_id = f"cached-{uuid.uuid4()}"
+        now = datetime.now(timezone.utc)
+        row = MagicMock(banned=True, banExpires=now + timedelta(days=1))
+        with patch.object(user_module, "AuthUser") as mock_auth_user:
+            find_unique = AsyncMock(return_value=row)
+            mock_auth_user.prisma.return_value.find_unique = find_unique
+            assert await user_module.is_user_banned(user_id) is True
+            assert await user_module.is_user_banned(user_id) is True
+        user_module.is_user_banned.cache_delete(user_id)
+
+        find_unique.assert_awaited_once_with(where={"id": user_id})
 
 
 class TestGetUserDefaultChatRoute:
@@ -1843,3 +1989,41 @@ class TestFindOrphanedAuthIdentities:
 
         assert found[0].email_owner_id == "user-old"
         assert found[0].has_email_collision is True
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_error_does_not_repeat_the_token():
+    """The one-click route logs this error on any failure, and the token in it
+    never expires."""
+    token = base64.urlsafe_b64encode(b"user-1:not-its-signature").decode()
+
+    with pytest.raises(ValueError) as exc:
+        await user_module.unsubscribe_user_by_token(token)
+
+    assert token not in str(exc.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("zero_daily_limit", [False, True])
+async def test_disabling_notifications_zeroes_the_daily_limit_only_when_asked(
+    zero_daily_limit: bool,
+):
+    with (
+        patch.object(user_module, "PrismaUser") as mock_prisma_user,
+        patch.object(user_module.get_user_by_id, "cache_delete") as cache_delete,
+    ):
+        mock_prisma_user.prisma.return_value.update = AsyncMock()
+
+        await user_module.disable_all_user_notifications(
+            "user-1", zero_daily_limit=zero_daily_limit
+        )
+
+    written = mock_prisma_user.prisma.return_value.update.await_args.kwargs
+    assert written["where"] == {"id": "user-1"}
+    assert written["data"]["briefingFrequency"] == "OFF"
+    assert written["data"]["alertsEnabled"] is False
+    assert written["data"]["notifyOnStoreVerdict"] is False
+    assert ("maxEmailsPerDay" in written["data"]) is zero_daily_limit
+    if zero_daily_limit:
+        assert written["data"]["maxEmailsPerDay"] == 0
+    cache_delete.assert_called_once_with("user-1")

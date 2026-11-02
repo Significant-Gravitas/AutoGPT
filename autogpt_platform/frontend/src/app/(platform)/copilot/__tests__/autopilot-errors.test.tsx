@@ -1,5 +1,6 @@
 import {
   getGetV2ListChatConnectionsMockHandler200,
+  getGetV2GetCopilotUsageMockHandler200,
   getPutV2ChangeTheConnectionAnExistingChatRunsOnMockHandler200,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
@@ -10,7 +11,7 @@ import {
   copilotStreamHandler,
   streamSseResponse,
 } from "@/tests/integrations/copilot-sse";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UIMessageChunk } from "ai";
 import { http, HttpResponse } from "msw";
@@ -57,7 +58,7 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
   }),
 }));
 
-const flagState = vi.hoisted(() => ({ experts: false }));
+const flagState = vi.hoisted(() => ({ billing: false }));
 
 const streamPath = vi.hoisted(() => ({ runtime: false }));
 
@@ -65,14 +66,13 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     CHAT_MODE_OPTION: "CHAT_MODE_OPTION",
     ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT",
-    HIRE_EXPERTS: "HIRE_EXPERTS",
     COPILOT_STREAM_RUNTIME: "copilot-stream-runtime",
   },
   useGetFlag: (flag: string) =>
     flag === "copilot-stream-runtime"
       ? streamPath.runtime
-      : flag === "HIRE_EXPERTS"
-        ? flagState.experts
+      : flag === "ENABLE_PLATFORM_PAYMENT"
+        ? flagState.billing
         : false,
 }));
 
@@ -81,7 +81,7 @@ beforeEach(() => {
   useCopilotStreamStore.getState().resetAll();
   useCopilotUIStore.setState({ initialPrompt: null });
   window.localStorage.clear();
-  flagState.experts = false;
+  flagState.billing = false;
 });
 
 afterEach(() => {
@@ -89,7 +89,7 @@ afterEach(() => {
   useCopilotStreamStore.getState().resetAll();
   useCopilotUIStore.setState({ initialPrompt: null });
   window.localStorage.clear();
-  flagState.experts = false;
+  flagState.billing = false;
 });
 
 describe.each(STREAM_PATHS)("on the %s path", (path) => {
@@ -201,7 +201,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       // useCopilotStream's rate-limit branch sets rateLimitMessage, which the
       // RateLimitGate translates into a Dialog with this title.
       expect(
-        await screen.findByText(/daily usage limit reached/i, undefined, {
+        await screen.findByText(/We couldn’t check your usage/i, undefined, {
           timeout: 5000,
         }),
       ).toBeDefined();
@@ -209,7 +209,6 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
 
     it("clears kickoff recovery state after an HTTP 429", async () => {
       const expertId = "3f8b0f7e-9f30-4a3b-a6a1-000000000001";
-      flagState.experts = true;
       server.use(
         http.get("*/api/experts/identities", () =>
           HttpResponse.json([
@@ -236,7 +235,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       });
 
       expect(
-        await screen.findByText(/daily usage limit reached/i, undefined, {
+        await screen.findByText(/We couldn’t check your usage/i, undefined, {
           timeout: 5000,
         }),
       ).toBeDefined();
@@ -337,7 +336,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
         ) as HTMLTextAreaElement;
         expect(input.disabled).toBe(false);
       });
-      expect(screen.queryByRole("button", { name: /stop/i })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
     });
   });
 
@@ -389,15 +388,34 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       },
     };
 
+    function usageLimitAdmission() {
+      let refused = false;
+      server.use(
+        getGetV2GetCopilotUsageMockHandler200(() => ({
+          tier: "PRO",
+          daily: {
+            percent_used: refused ? 100 : 0,
+            resets_at: new Date("2099-10-08T00:00:00Z"),
+          },
+          weekly: {
+            percent_used: 40,
+            resets_at: new Date("2099-10-12T00:00:00Z"),
+          },
+        })),
+      );
+      return http.post(
+        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+        () => {
+          refused = true;
+          return HttpResponse.json(ourCap, { status: 429 });
+        },
+      );
+    }
+
     it("keeps the plan dialog for our cap and offers the linked subscription beside the upgrade", async () => {
+      flagState.billing = true;
       let switchedTo: unknown = null;
       server.use(
-        copilotStreamErrorHandler({
-          baseUrl: TEST_BACKEND_BASE_URL,
-          sessionId: TEST_SESSION_ID,
-          status: 429,
-          body: ourCap,
-        }),
         getGetV2ListChatConnectionsMockHandler200({
           offers: [platformOffer(), chatgptOffer()],
         }),
@@ -410,24 +428,30 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       );
 
       renderHost();
+      server.use(usageLimitAdmission());
       await typeAndSend("over the cap");
 
       // Our own cap, so our own dialog: the upgrade path survives ...
+      const dialog = await screen.findByRole("dialog");
       expect(
-        await screen.findByText(/daily usage limit reached/i, undefined, {
-          timeout: 5000,
-        }),
+        await within(dialog).findByText(
+          /You’ve hit today’s limit/i,
+          undefined,
+          {
+            timeout: 5000,
+          },
+        ),
       ).toBeDefined();
       expect(screen.queryByText(/hit this connection's limit/i)).toBeNull();
       expect(
-        screen.getByRole("button", { name: /upgrade plan|contact us/i }),
+        await within(dialog).findByRole("button", { name: /upgrade to max/i }),
       ).toBeDefined();
 
       // ... and the linked subscription is offered next to it, because the cap
       // does not apply to a turn billed to the user's own credential.
       const user = userEvent.setup();
       await user.click(
-        await screen.findByRole(
+        await within(dialog).findByRole(
           "button",
           { name: /continue on chatgpt/i },
           { timeout: 5000 },
@@ -440,34 +464,33 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
           llm_credential_id: "cred-1",
         }),
       );
-      await waitFor(() =>
-        expect(screen.queryByText(/daily usage limit reached/i)).toBeNull(),
-      );
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     });
 
     it("offers nothing to continue on when the platform is the only connection", async () => {
+      flagState.billing = true;
       server.use(
-        copilotStreamErrorHandler({
-          baseUrl: TEST_BACKEND_BASE_URL,
-          sessionId: TEST_SESSION_ID,
-          status: 429,
-          body: ourCap,
-        }),
         getGetV2ListChatConnectionsMockHandler200({
           offers: [platformOffer()],
         }),
       );
 
       renderHost();
+      server.use(usageLimitAdmission());
       await typeAndSend("over the cap");
 
+      const dialog = await screen.findByRole("dialog");
       expect(
-        await screen.findByText(/daily usage limit reached/i, undefined, {
-          timeout: 5000,
-        }),
+        await within(dialog).findByText(
+          /You’ve hit today’s limit/i,
+          undefined,
+          {
+            timeout: 5000,
+          },
+        ),
       ).toBeDefined();
       expect(
-        screen.getByRole("button", { name: /upgrade plan|contact us/i }),
+        await within(dialog).findByRole("button", { name: /upgrade to max/i }),
       ).toBeDefined();
       // The connection that just refused is never offered back. Were it not
       // excluded, "Continue on AutoGPT Platform" would appear once the offers
@@ -526,7 +549,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
           timeout: 5000,
         }),
       ).toBeDefined();
-      expect(screen.queryByText(/daily usage limit reached/i)).toBeNull();
+      expect(screen.queryByText(/You’ve hit today’s limit/i)).toBeNull();
     });
   });
 });
@@ -539,3 +562,85 @@ function settledStatus(path: StreamPath) {
     ? getTurnRuntime(TEST_SESSION_ID).getSnapshot().phase
     : getOrCreateCopilotChatRuntime(TEST_SESSION_ID).chat.status;
 }
+
+describe.each(STREAM_PATHS)(
+  "AutoPilot reopened on the %s path — a failure stored on the chat",
+  (path) => {
+    beforeEach(() => {
+      streamPath.runtime = path === "stream runtime";
+    });
+
+    function failedChat(kind: string) {
+      return [
+        {
+          id: "row-0",
+          role: "user",
+          content: "Summarize my inbox.",
+          sequence: 0,
+        },
+        {
+          id: "row-1",
+          role: "assistant",
+          content: "[__COPILOT_ERROR_f7a1__] The connection refused this turn.",
+          sequence: 1,
+          metadata: {
+            provider_failure: {
+              kind,
+              message: "The connection refused this turn.",
+              authProvider: "codex",
+              credentialId: "cred-1",
+              resetsAt: null,
+              retryable: false,
+              reconnectFixesIt: kind === "auth_expired",
+            },
+          },
+        },
+      ];
+    }
+
+    // Still on the connection that failed, so the failure is still live.
+    const onThatConnection = {
+      dry_run: false,
+      builder_graph_id: null,
+      llm_auth_provider: "codex",
+      llm_credential_id: "cred-1",
+    } as const;
+
+    beforeEach(() => {
+      server.use(getGetV2ListChatConnectionsMockHandler200({ offers: [] }));
+    });
+
+    it("reopens the continue-elsewhere dialog for a spent quota", async () => {
+      renderHost({
+        sessionOverride: {
+          messages: failedChat("usage_limit"),
+          metadata: onThatConnection,
+        },
+      });
+
+      expect(
+        await screen.findByText(/hit this connection's limit/i, undefined, {
+          timeout: 5000,
+        }),
+      ).toBeDefined();
+    }, 15_000);
+
+    it("leaves it closed for a failure that is not a limit", async () => {
+      renderHost({
+        sessionOverride: {
+          messages: failedChat("auth_expired"),
+          metadata: onThatConnection,
+        },
+      });
+
+      await screen.findByText("Summarize my inbox.", undefined, {
+        timeout: 5000,
+      });
+      await expect(
+        screen.findByText(/hit this connection's limit/i, undefined, {
+          timeout: 1500,
+        }),
+      ).rejects.toThrow();
+    }, 15_000);
+  },
+);

@@ -1,7 +1,7 @@
 import { Key, storage } from "@/services/storage/local-storage";
 import { create } from "zustand";
 import { clearContentCache } from "./components/ArtifactPanel/components/useArtifactContent";
-import { ORIGINAL_TITLE, parseSessionIDs } from "./helpers";
+import { parseSessionIDs } from "./helpers";
 
 export interface DeleteTarget {
   id: string;
@@ -116,6 +116,30 @@ function getPersistedOpen(): boolean {
   return storage.get(Key.COPILOT_CONTEXT_PANEL_OPEN) === "true";
 }
 
+export function getPersistedNotificationsEnabled(): boolean {
+  return (
+    isClient &&
+    storage.get(Key.COPILOT_NOTIFICATIONS_ENABLED) === "true" &&
+    typeof Notification !== "undefined" &&
+    Notification.permission === "granted"
+  );
+}
+
+export function hasStoredNotificationsOn(): boolean {
+  return isClient && storage.get(Key.COPILOT_NOTIFICATIONS_ENABLED) === "true";
+}
+
+// A stored "false" is an off the user chose (an off the browser forced, a
+// revoked permission, removes the key instead), so it counts like dismissing
+// the turn-on banner.
+export function getPersistedNotificationBannerDismissed(): boolean {
+  return (
+    isClient &&
+    (storage.get(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED) === "true" ||
+      storage.get(Key.COPILOT_NOTIFICATIONS_ENABLED) === "false")
+  );
+}
+
 function getPersistedTab(): ContextPanelTab {
   if (!isClient) return "files";
   const saved = storage.get(Key.COPILOT_CONTEXT_PANEL_TAB);
@@ -173,6 +197,12 @@ interface CopilotUIState {
   initialPrompt: string | null;
   setInitialPrompt: (prompt: string | null) => void;
 
+  /** Text of a message that never went out. Unlike `initialPrompt`, the
+   *  composer adds it to whatever the user has typed since. */
+  recoveredDraft: string | null;
+  restoreDraft: (text: string) => void;
+  clearRecoveredDraft: () => void;
+
   /**
    * Bumped every time the composer actually sends a message. Chain action
    * cards draft into the input rather than sending themselves, so this is
@@ -212,12 +242,14 @@ interface CopilotUIState {
 
   isNotificationsEnabled: boolean;
   setNotificationsEnabled: (enabled: boolean) => void;
+  /** Off because the browser no longer allows notifications, not a choice. */
+  forgetNotificationsEnabled: () => void;
+
+  isNotificationBannerDismissed: boolean;
+  dismissNotificationBanner: () => void;
 
   isSoundEnabled: boolean;
   toggleSound: () => void;
-
-  showNotificationDialog: boolean;
-  setShowNotificationDialog: (show: boolean) => void;
 
   // Artifact panel
   artifactPanel: ArtifactPanelState;
@@ -295,6 +327,15 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   initialPrompt: null,
   setInitialPrompt: (prompt) => set({ initialPrompt: prompt }),
 
+  recoveredDraft: null,
+  restoreDraft: (text) =>
+    set((state) => ({
+      recoveredDraft: state.recoveredDraft
+        ? `${state.recoveredDraft}\n\n${text}`
+        : text,
+    })),
+  clearRecoveredDraft: () => set({ recoveredDraft: null }),
+
   sentMessageCount: 0,
   notifyMessageSent: () =>
     set((state) => ({ sentMessageCount: state.sentMessageCount + 1 })),
@@ -349,14 +390,25 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     set({ completedSessionIDs: new Set<string>() });
   },
 
-  isNotificationsEnabled:
-    isClient &&
-    storage.get(Key.COPILOT_NOTIFICATIONS_ENABLED) === "true" &&
-    typeof Notification !== "undefined" &&
-    Notification.permission === "granted",
+  isNotificationsEnabled: getPersistedNotificationsEnabled(),
   setNotificationsEnabled: (enabled) => {
+    // An "off" stored before the banner existed is its only record of being
+    // dismissed; keep that record once the stored "false" is replaced.
+    if (enabled && getPersistedNotificationBannerDismissed()) {
+      storage.set(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED, "true");
+    }
     storage.set(Key.COPILOT_NOTIFICATIONS_ENABLED, String(enabled));
     set({ isNotificationsEnabled: enabled });
+  },
+  forgetNotificationsEnabled: () => {
+    storage.clean(Key.COPILOT_NOTIFICATIONS_ENABLED);
+    set({ isNotificationsEnabled: false });
+  },
+
+  isNotificationBannerDismissed: getPersistedNotificationBannerDismissed(),
+  dismissNotificationBanner: () => {
+    storage.set(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED, "true");
+    set({ isNotificationBannerDismissed: true });
   },
 
   isSoundEnabled:
@@ -367,9 +419,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       storage.set(Key.COPILOT_SOUND_ENABLED, String(next));
       return { isSoundEnabled: next };
     }),
-
-  showNotificationDialog: false,
-  setShowNotificationDialog: (show) => set({ showNotificationDialog: show }),
 
   // Artifact panel
   artifactPanel: {
@@ -738,6 +787,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       artifactPanelWidth: DEFAULT_ARTIFACT_PANEL_WIDTH,
       isSearchOpen: false,
       isNotificationsEnabled: false,
+      isNotificationBannerDismissed: false,
       isSoundEnabled: true,
       contextPanelExpert: null,
       artifactPanel: {
@@ -754,8 +804,5 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       copilotLlmAuth: null,
       isDryRun: false,
     });
-    if (isClient) {
-      document.title = ORIGINAL_TITLE;
-    }
   },
 }));

@@ -30,7 +30,7 @@ describe("RunAgentTool streaming state", () => {
     );
 
     expect(normalizeWhitespace(container)).toContain(
-      "Running agent, this might take a minute",
+      "Running workflow, this might take a minute",
     );
     expect(normalizeWhitespace(container)).not.toContain("Play while you wait");
     expect(normalizeWhitespace(container)).not.toContain("WASD");
@@ -47,9 +47,9 @@ describe("RunAgentTool streaming state", () => {
     );
 
     expect(normalizeWhitespace(container)).toContain(
-      "Scheduling agent, this might take a minute",
+      "Scheduling workflow, this might take a minute",
     );
-    expect(normalizeWhitespace(container)).not.toContain("Running agent");
+    expect(normalizeWhitespace(container)).not.toContain("Running workflow");
   });
 });
 

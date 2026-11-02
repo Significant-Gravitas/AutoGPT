@@ -10,9 +10,10 @@ the group on its own. The backend owns both edges of this group (see
 A conversion is also the customer's first paid subscription, so it joins the
 paying audience the way a first checkout does.
 
-The subscriber's status and dates (`subscriber_fields.py`) ride on the same
-event. The notification service writes only the fields while the trial group
-is not configured.
+The subscriber's status and dates are not written here: they come from the
+lifecycle sync every trial transition triggers (`lifecycle_audience.py`), by
+the same rules as PostHog's. Joining a group can create the subscriber after
+that sync found nobody to write, so a join asks for one more sync.
 
 Nothing is queued for a customer who opted out of marketing, or whom a signal
 places in Iran or Russia (`consent.py`); their trial notices and claims are
@@ -20,14 +21,14 @@ unaffected.
 """
 
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 
 from backend.data.db_accessors import user_db
 from backend.data.notifications import AudienceAction
-from backend.notifications import subscriber_fields
 from backend.notifications.consent import MarketingContact, audience_change_allowed
+from backend.notifications.lifecycle_audience import resync_after_group_change
 from backend.notifications.queue import queue_audience_change
-from backend.notifications.subscriber_fields import Fields, audience_event
+from backend.notifications.subscriber_fields import audience_event
 
 logger = logging.getLogger(__name__)
 
@@ -40,55 +41,41 @@ _TRIAL_GROUP_CHANGES: Mapping[str, AudienceAction] = {
     "ended": AudienceAction.REMOVE_TRIAL,
 }
 
-# Each from the live Stripe subscription at the moment the notice applies.
-_TRIAL_FIELDS: Mapping[str, Callable[[dict], Fields]] = {
-    "started": lambda sub: subscriber_fields.trial_started(sub.get("trial_start")),
-    "resumed": lambda _: subscriber_fields.trial_resumed(),
-    "canceled": lambda _: subscriber_fields.trial_canceled(),
-    "payment_failed": lambda _: subscriber_fields.trial_canceled(),
-    "ended": lambda _: subscriber_fields.trial_canceled(),
-    # The trial's end is when the first paid period began.
-    "converted": lambda sub: subscriber_fields.subscribed(sub.get("trial_end")),
-}
 
-
-async def queue_trial_audience_change(
-    kind: str, user: MarketingContact, subscription: dict
-) -> None:
-    """Queue the trial group change and field update for this notice, if it
-    has either.
+async def queue_trial_audience_change(kind: str, user: MarketingContact) -> None:
+    """Queue the trial group change for this notice, if it has one.
 
     Raises when it cannot be queued, so the caller releases the notice claim
-    and Stripe's retry makes the change. Both are idempotent, so a retry that
-    repeats one is harmless. It is queued whatever this process's MailerLite
+    and Stripe's retry makes the change. It is idempotent, so a retry that
+    repeats it is harmless. It is queued whatever this process's MailerLite
     settings: only the notification service holds them.
     """
     action = _TRIAL_GROUP_CHANGES.get(kind)
     if action is None:
         return
-    await _queue_group_change(action, user, _TRIAL_FIELDS[kind](subscription))
+    await _queue_group_change(action, user)
 
 
 async def leave_trial_group(user: MarketingContact) -> None:
-    """The trial ended because another plan was bought: leave the trial group
-    without writing any fields, so that plan's status and dates stay.
+    """The trial ended because another plan was bought: leave the trial group.
 
     No notice or claim rides on it: a repeated removal changes nothing. Raises
     when it cannot be queued, so Stripe retries the event."""
-    await _queue_group_change(AudienceAction.REMOVE_TRIAL, user, None)
+    await _queue_group_change(AudienceAction.REMOVE_TRIAL, user)
 
 
-async def _queue_group_change(
-    action: AudienceAction, user: MarketingContact, fields: Fields | None
-) -> None:
+async def _queue_group_change(action: AudienceAction, user: MarketingContact) -> None:
     if not audience_change_allowed(user, action):
         return
-    event = audience_event(action, user.email, user.id, fields)
+    event = audience_event(action, user.email, user.id)
     if event is None:
         return
     result = await queue_audience_change(event)
     if not result.success:
         raise RuntimeError(f"Could not queue {action.value}: {result.message}")
+    if action == AudienceAction.ADD_TRIAL:
+        # A join can create the subscriber; a removal never does.
+        await resync_after_group_change(user.id)
 
 
 async def join_paying_audience(user: MarketingContact) -> None:
@@ -120,3 +107,5 @@ async def join_paying_audience(user: MarketingContact) -> None:
             f"Trial for user {user.id} converted but {action.value} could not be "
             f"queued: {result.message}"
         )
+        return
+    await resync_after_group_change(user.id)

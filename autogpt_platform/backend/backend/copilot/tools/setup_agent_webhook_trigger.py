@@ -16,6 +16,8 @@ Credential handling splits into two classes:
 import logging
 from typing import Any
 
+from prisma.enums import APIKeyPermission
+
 from backend.api.features.library.model import LibraryAgentPreset
 from backend.blocks._base import BlockType
 from backend.copilot.model import ChatSession
@@ -31,6 +33,7 @@ from backend.util.exceptions import (
 
 from .base import BaseTool
 from .expert_scope import annotate_expert_grants, require_installed_workflow
+from .external_scope import external_tenancy
 from .models import (
     ErrorResponse,
     ResponseType,
@@ -99,6 +102,11 @@ class SetupAgentWebhookTriggerTool(BaseTool):
         return "setup_agent_webhook_trigger"
 
     @property
+    def allow_external_use(self):
+        # A trigger fires runs, so it needs run permission on top of the write
+        return True, [APIKeyPermission.WRITE_LIBRARY, APIKeyPermission.RUN_AGENT]
+
+    @property
     def description(self) -> str:
         return (
             "Set up a webhook trigger for an agent with a webhook trigger block. "
@@ -127,13 +135,13 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                 "graph_id": {
                     "type": "string",
                     "description": "Agent graph ID (alt to library_agent_id).",
-                    "title": "Agent",
+                    "title": "Workflow",
                     "entity": "graph",
                 },
                 "graph_version": {
                     "type": "integer",
                     "description": "Graph version (used with graph_id).",
-                    "title": "Agent version",
+                    "title": "Workflow version",
                 },
                 "name": {
                     "type": "string",
@@ -206,7 +214,7 @@ class SetupAgentWebhookTriggerTool(BaseTool):
         if not (trigger_node := graph.webhook_input_node):
             return ErrorResponse(
                 message=(
-                    f"Agent '{graph.name}' has no webhook trigger block, so it "
+                    f"Workflow '{graph.name}' has no webhook trigger block, so it "
                     "can't have a webhook trigger. Run or schedule it instead."
                 ),
                 error="no_webhook_trigger",
@@ -230,7 +238,9 @@ class SetupAgentWebhookTriggerTool(BaseTool):
         if card:
             return card
 
-        library_agent = await get_or_create_library_agent(graph, user_id)
+        library_agent = await get_or_create_library_agent(
+            graph, user_id, *external_tenancy(session)
+        )
         try:
             preset = await triggers_db().setup_triggered_preset(
                 user_id=user_id,
@@ -288,7 +298,7 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                 )
             except NotFoundError:
                 return None, ErrorResponse(
-                    message=f"Library agent '{library_agent_id}' not found.",
+                    message=f"Library workflow '{library_agent_id}' not found.",
                     error="library_agent_not_found",
                     session_id=session_id,
                 )
@@ -301,7 +311,7 @@ class SetupAgentWebhookTriggerTool(BaseTool):
         )
         if not graph:
             return None, ErrorResponse(
-                message=f"Agent graph '{graph_id}' not found.",
+                message=f"Workflow '{graph_id}' not found.",
                 error="graph_not_found",
                 session_id=session_id,
             )

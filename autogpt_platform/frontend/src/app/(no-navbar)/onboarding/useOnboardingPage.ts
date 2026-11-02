@@ -6,12 +6,12 @@ import { environment } from "@/services/environment";
 import { useTrialCheckoutReturn } from "@/services/trials/useTrialCheckoutReturn";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { stepKey } from "./progress";
 import { Step, useOnboardingWizardStore } from "./store";
 import { onboardingStepKey, trackOnboardingStep } from "./tracking";
-import { stepKey } from "./progress";
-import { useWizardProgress } from "./useWizardProgress";
 import { useOnboardingLayout } from "./useOnboardingLayout";
 import { useOnboardingProfile } from "./useOnboardingProfile";
+import { useWizardProgress } from "./useWizardProgress";
 
 export function useOnboardingPage() {
   const router = useRouter();
@@ -28,8 +28,6 @@ export function useOnboardingPage() {
     isReady,
     isPaymentEnabled,
     isSelfHostConnectEnabled,
-    isBrainDumpEnabled,
-    isExpertTeamEnabled,
     paidConfirmation,
   } = useOnboardingLayout({
     userID: user?.id ?? null,
@@ -145,8 +143,6 @@ export function useOnboardingPage() {
     handlePreparingComplete,
     isPaymentEnabled,
     isSelfHostConnectEnabled,
-    isBrainDumpEnabled,
-    isExpertTeamEnabled,
     steps,
     preparingStep,
     totalSteps,

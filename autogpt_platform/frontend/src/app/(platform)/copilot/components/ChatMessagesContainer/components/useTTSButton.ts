@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useInsertionEffect, useRef, useState } from "react";
 
 import { useTextToSpeech } from "@/components/contextual/Chat/components/ChatMessage/useTextToSpeech";
 import { useToast } from "@/components/molecules/Toast/use-toast";
@@ -20,7 +20,7 @@ interface Args {
 }
 
 export function useTTSButton({ text, sessionID }: Args) {
-  const cleanText = useMemo(() => stripMarkdownForSpeech(text), [text]);
+  const cleanText = stripMarkdownForSpeech(text);
   const browser = useTextToSpeech(cleanText);
   const server = useServerSpeech(cleanText, sessionID);
 
@@ -45,7 +45,9 @@ function useServerSpeech(text: string, sessionID: string | null) {
   const playerRef = useRef<SpeechPlayer | null>(null);
   const reportedRef = useRef(false);
   const sessionRef = useRef(sessionID);
-  sessionRef.current = sessionID;
+  useInsertionEffect(() => {
+    sessionRef.current = sessionID;
+  }, [sessionID]);
 
   useEffect(() => {
     playerRef.current?.stop();
@@ -53,8 +55,6 @@ function useServerSpeech(text: string, sessionID: string | null) {
   }, [text]);
 
   useEffect(() => () => playerRef.current?.destroy(), []);
-
-  return { isPlaying, toggle };
 
   function toggle() {
     if (isPlaying) {
@@ -100,4 +100,6 @@ function useServerSpeech(text: string, sessionID: string | null) {
       variant: "destructive",
     });
   }
+
+  return { isPlaying, toggle };
 }

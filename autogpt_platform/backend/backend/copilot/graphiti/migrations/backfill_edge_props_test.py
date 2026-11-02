@@ -21,13 +21,11 @@ from . import backfill_edge_props as mig
 
 @pytest.fixture(autouse=True)
 def _stub_driver(mocker):
-    """Replace AutoGPTFalkorDriver with a MagicMock that returns canned
+    """Replace the driver factory with a MagicMock that returns canned
     execute_query results."""
     driver = mocker.MagicMock()
     driver.close = AsyncMock(return_value=None)
-    mocker.patch.object(
-        mig, "AutoGPTFalkorDriver", mocker.MagicMock(return_value=driver)
-    )
+    mocker.patch.object(mig, "open_driver", mocker.MagicMock(return_value=driver))
     return driver
 
 

@@ -5,8 +5,9 @@ import os
 import secrets
 import shutil
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from test.native_mobile.auth_process import auth_harness
 from unittest.mock import AsyncMock
 from urllib.parse import urlencode
 from uuid import uuid4
@@ -14,6 +15,7 @@ from uuid import uuid4
 import pytest
 import pytest_asyncio
 from autogpt_libs.auth import config as auth_config
+from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 from prisma.models import AuthSession, AuthUser, User
 from starlette.websockets import WebSocket
@@ -42,48 +44,27 @@ async def auth_service(
         "AUTH_REQUIRE_EMAIL_VERIFICATION": "false",
         "NATIVE_AUTH_PORT": "0",
     }
-    process = await asyncio.create_subprocess_exec(
-        node,
-        "--import",
-        "tsx",
-        "scripts/native-auth-server.ts",
+    connected = db.is_connected()
+    async with auth_harness(
+        [node, "--import", "tsx", "scripts/native-auth-server.ts"],
         cwd=frontend,
         env=env,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    connected = db.is_connected()
-    try:
-        assert process.stdout is not None
-        async with asyncio.timeout(40):
-            while True:
-                line = await process.stdout.readline()
-                if not line:
-                    raise RuntimeError(
-                        "The production auth harness exited before readiness"
-                    )
-                if line.startswith(b"NATIVE_AUTH_READY "):
-                    origin = line.decode().split()[1]
-                    break
-        monkeypatch.setenv("JWT_JWKS_URL", f"{origin}/api/auth/jwks")
-        monkeypatch.setattr(auth_config, "_settings", auth_config.Settings())
-        if not connected:
-            await db.connect()
-        async with AsyncClient(base_url=origin, timeout=15) as client:
-            yield client, prefix
-    finally:
-        if db.is_connected():
-            await AuthUser.prisma().delete_many(where={"email": {"startswith": prefix}})
-            await User.prisma().delete_many(where={"email": {"startswith": prefix}})
+    ) as origin:
+        try:
+            monkeypatch.setenv("JWT_JWKS_URL", f"{origin}/api/auth/jwks")
+            monkeypatch.setattr(auth_config, "_settings", auth_config.Settings())
             if not connected:
-                await db.disconnect()
-        if process.returncode is None:
-            process.terminate()
-            try:
-                await asyncio.wait_for(process.wait(), 5)
-            except TimeoutError:
-                process.kill()
-                await process.wait()
+                await db.connect()
+            async with AsyncClient(base_url=origin, timeout=15) as client:
+                yield client, prefix
+        finally:
+            if db.is_connected():
+                await AuthUser.prisma().delete_many(
+                    where={"email": {"startswith": prefix}}
+                )
+                await User.prisma().delete_many(where={"email": {"startswith": prefix}})
+                if not connected:
+                    await db.disconnect()
 
 
 async def sign_in_native(client: AsyncClient, email: str) -> str:
@@ -127,11 +108,10 @@ async def test_native_email_login_renewal_and_signout_revoke_backend_access(
     bearer = await sign_in_native(client, f"{prefix}@example.test")
     token = await access_token(client, bearer)
     renewed = await access_token(client, bearer)
-    monkeypatch.setattr(ws_api.settings.config, "enable_auth", True)
     send = AsyncMock()
     websocket = WebSocket(
         {"type": "websocket", "query_string": urlencode({"token": token}).encode()},
-        receive=AsyncMock(),
+        receive=AsyncMock(return_value={"type": "websocket.connect"}),
         send=send,
     )
     assert await ws_api.authenticate_websocket(websocket)
@@ -166,7 +146,9 @@ async def test_native_email_login_renewal_and_signout_revoke_backend_access(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("change", ["expire", "ban", "change_owner"])
+@pytest.mark.parametrize(
+    "change", ["expire", "ban", "past_ban", "future_ban", "change_owner"]
+)
 async def test_backend_rechecks_session_authority(
     auth_service: tuple[AsyncClient, str], change: str
 ) -> None:
@@ -179,10 +161,21 @@ async def test_backend_rechecks_session_authority(
     if change == "expire":
         await AuthSession.prisma().update_many(
             where={"userId": user.id},
-            data={"expiresAt": datetime.now(UTC) - timedelta(seconds=1)},
+            data={"expiresAt": datetime.now(timezone.utc) - timedelta(seconds=1)},
         )
-    elif change == "ban":
-        await AuthUser.prisma().update(where={"id": user.id}, data={"banned": True})
+    elif change in {"ban", "past_ban", "future_ban"}:
+        await AuthUser.prisma().update(
+            where={"id": user.id},
+            data={
+                "banned": True,
+                "banExpires": (
+                    None
+                    if change == "ban"
+                    else datetime.now(timezone.utc)
+                    + timedelta(seconds=-60 if change == "past_ban" else 60)
+                ),
+            },
+        )
     else:
         second_email = f"{prefix}-second@example.test"
         await sign_in_native(client, second_email)
@@ -198,7 +191,7 @@ async def test_backend_rechecks_session_authority(
             await backend.get(
                 "/api/auth/user/timezone", headers={"Authorization": f"Bearer {token}"}
             )
-        ).status_code == 401
+        ).status_code == (200 if change == "past_ban" else 401)
 
 
 @pytest.mark.asyncio
@@ -253,3 +246,51 @@ async def test_native_session_bearer_requires_its_signature(
             "/api/auth/token", headers={"Authorization": f"Bearer {unsigned}"}
         )
     ).status_code == 401
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,lookup_target",
+    [
+        (
+            "/api/store/search?query=private&content_types=CHAT_SESSION",
+            "backend.api.features.store.routes.search_engine.unified_hybrid_search",
+        ),
+        (
+            "/api/store/skills/test-skill/files/SKILL.md?version_id=pending",
+            "backend.api.features.store.skill_routes.skill_db.find_readable_version",
+        ),
+    ],
+)
+async def test_optional_routes_recheck_identity_after_signout(
+    auth_service: tuple[AsyncClient, str],
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+    lookup_target: str,
+) -> None:
+    monkeypatch.setattr(app, "dependency_overrides", {})
+    lookup = AsyncMock(side_effect=HTTPException(status_code=404))
+    monkeypatch.setattr(lookup_target, lookup)
+    client, prefix = auth_service
+    email = f"{prefix}@example.test"
+    bearer = await sign_in_native(client, email)
+    token = await access_token(client, bearer)
+    user = await AuthUser.prisma().find_unique(where={"email": email})
+    assert user is not None
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://backend"
+    ) as backend:
+        for expected_user in (user.id, None):
+            response = await backend.get(
+                path, headers={"Authorization": f"Bearer {token}"}
+            )
+            assert response.status_code == 404
+            assert lookup.await_args is not None
+            assert lookup.await_args.kwargs["user_id"] == expected_user
+            if expected_user is not None:
+                response = await client.post(
+                    "/api/auth/sign-out",
+                    headers={"Authorization": f"Bearer {bearer}"},
+                    json={},
+                )
+                assert response.status_code == 200

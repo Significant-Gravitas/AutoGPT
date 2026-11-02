@@ -40,7 +40,7 @@ export function ModalRunSection() {
       defaultRunType === "manual-trigger" ? (
         <ModalSection
           title="Task Trigger"
-          subtitle="Set up a trigger for the agent to run this task automatically"
+          subtitle="Set up a trigger for the workflow to run this task automatically"
         >
           <WebhookTriggerBanner />
           <div className="flex flex-col gap-4">
@@ -81,7 +81,7 @@ export function ModalRunSection() {
       {inputFields.length > 0 ? (
         <ModalSection
           title="Task Inputs"
-          subtitle="Enter the information you want to provide to the agent for this task"
+          subtitle="Enter the information you want to provide to the workflow for this task"
         >
           {inputFields.map(([key, inputSubSchema]) => (
             <RunAgentInputs
@@ -99,7 +99,7 @@ export function ModalRunSection() {
       {credentialFields.length > 0 ? (
         <ModalSection
           title="Task Credentials"
-          subtitle="These are the credentials the agent will use to perform this task"
+          subtitle="These are the credentials the workflow will use to perform this task"
         >
           <CredentialsGroupedView
             credentialFields={credentialFields}

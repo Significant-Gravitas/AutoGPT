@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -23,12 +24,17 @@ from backend.copilot.pending_message_helpers import persist_pending_as_user_rows
 from backend.copilot.pending_message_receipts import pending_message_receipt_key
 from backend.copilot.pending_message_reconciliation import reconcile_pending_rows
 from backend.copilot.pending_messages import (
+    MAX_PENDING_MESSAGES,
     PendingMessage,
+    _buffer_key,
+    _client_message_key,
     drain_pending_messages,
     push_pending_message,
 )
+from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.data import db
 from backend.data.redis_client import get_redis_async
+from backend.data.redis_helpers import RedisListCapacityExceeded
 
 
 @pytest_asyncio.fixture
@@ -113,6 +119,9 @@ async def test_competing_writer_pk_collision_recovers_on_next_drain(
 ) -> None:
     session = persisted_session
     pending = PendingMessage(content="Racing writer")
+    transcript = TranscriptBuilder()
+    transcript.append_user("Earlier turn")
+    original_transcript = transcript.to_jsonl()
     real_reconcile = reconcile_pending_rows
 
     async def reconcile_then_compete(session, messages, content_of):
@@ -127,12 +136,26 @@ async def test_competing_writer_pk_collision_recovers_on_next_drain(
     with monkeypatch.context() as race:
         race.setattr(helpers, "reconcile_pending_rows", reconcile_then_compete)
         assert not await persist_pending_as_user_rows(
-            session, None, [pending], log_prefix="test"
+            session, transcript, [pending], log_prefix="test"
         )
     assert session.messages == []
+    assert transcript.to_jsonl() == original_transcript
     retry = await drain_pending_messages(session.session_id)
     assert [message.id for message in retry] == [pending.id]
-    assert await persist_pending_as_user_rows(session, None, retry, log_prefix="test")
+    assert await persist_pending_as_user_rows(
+        session, transcript, retry, log_prefix="test"
+    )
+    recovered_transcript = transcript.to_jsonl()
+    assert await persist_pending_as_user_rows(
+        session, transcript, retry, log_prefix="test"
+    )
+    assert transcript.to_jsonl() == recovered_transcript
+    resumed = TranscriptBuilder()
+    resumed.load_previous(recovered_transcript)
+    assert [entry.message["content"] for entry in resumed.snapshot()[0]] == [
+        "Earlier turn",
+        pending.content,
+    ]
     assert await drain_pending_messages(session.session_id) == []
     restored = await get_chat_session(session.session_id)
     assert restored is not None
@@ -171,6 +194,7 @@ async def test_http_retry_uses_persisted_row_after_redis_receipt_expires(
         message_id = scoped_client_message_id(
             session.user_id, session.session_id, body["message_id"]
         )
+        await redis.delete(_client_message_key(session.session_id, message_id))
         await redis.delete(pending_message_receipt_key(session.session_id, message_id))
         await redis.hset(
             stream_registry.get_session_meta_key(session.session_id),
@@ -178,9 +202,48 @@ async def test_http_retry_uses_persisted_row_after_redis_receipt_expires(
         )
         response = await client.post(path, json=body)
         assert response.status_code == 200
-        assert response.json()["turn_in_flight"] is False
+        assert response.json()["turn_in_flight"] is True
         assert await drain_pending_messages(session.session_id) == []
         assert (
             await StoredMessage.prisma().count(where={"sessionId": session.session_id})
             == 1
         )
+
+
+async def test_rollback_restores_drained_batch_ahead_of_refilled_queue(
+    persisted_session: ChatSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = persisted_session
+    older = [PendingMessage(content=f"Older {i}") for i in range(MAX_PENDING_MESSAGES)]
+    newer = [PendingMessage(content=f"Newer {i}") for i in range(MAX_PENDING_MESSAGES)]
+    for message in older:
+        await push_pending_message(session.session_id, message)
+    drained = await drain_pending_messages(session.session_id)
+    for message in newer:
+        await push_pending_message(session.session_id, message)
+
+    with monkeypatch.context() as failure:
+        failure.setattr(
+            helpers, "upsert_chat_session", AsyncMock(side_effect=OSError())
+        )
+        assert not await persist_pending_as_user_rows(
+            session, None, drained, log_prefix="test"
+        )
+    assert session.messages == []
+    redis = await get_redis_async()
+    assert await redis.llen(_buffer_key(session.session_id)) == 2 * MAX_PENDING_MESSAGES
+    assert 0 < await redis.ttl(_buffer_key(session.session_id)) <= 3600
+    with pytest.raises(RedisListCapacityExceeded):
+        await push_pending_message(session.session_id, PendingMessage(content="Full"))
+
+    for expected in (older, newer):
+        recovered = await drain_pending_messages(session.session_id)
+        assert recovered == expected
+        assert await persist_pending_as_user_rows(
+            session, None, recovered, log_prefix="test"
+        )
+    rows = await StoredMessage.prisma().find_many(
+        where={"sessionId": session.session_id}, order={"sequence": "asc"}
+    )
+    assert [row.id for row in rows] == [message.id for message in older + newer]
+    assert await drain_pending_messages(session.session_id) == []

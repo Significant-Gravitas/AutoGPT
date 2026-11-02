@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -35,16 +36,6 @@ class ResearchModel(str, Enum):
     FAST = "exa-research-fast"
     STANDARD = "exa-research"
     PRO = "exa-research-pro"
-
-
-class ResearchStatus(str, Enum):
-    """Research task status."""
-
-    PENDING = "pending"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    CANCELED = "canceled"
-    FAILED = "failed"
 
 
 class ResearchCostModel(BaseModel):
@@ -181,11 +172,13 @@ class ExaCreateResearchBlock(Block):
             categories={BlockCategory.SEARCH, BlockCategory.AI},
             input_schema=ExaCreateResearchBlock.Input,
             output_schema=ExaCreateResearchBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         url = "https://api.exa.ai/research/v1"
         headers = {
             "Content-Type": "application/json",
@@ -320,6 +313,7 @@ class ExaGetResearchBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         url = f"https://api.exa.ai/research/v1/{input_data.research_id}"
         headers = {
             "x-api-key": credentials.api_key.get_secret_value(),
@@ -405,11 +399,13 @@ class ExaWaitForResearchBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaWaitForResearchBlock.Input,
             output_schema=ExaWaitForResearchBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         start_time = time.time()
         url = f"https://api.exa.ai/research/v1/{input_data.research_id}"
         headers = {
@@ -500,6 +496,7 @@ class ExaListResearchBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         url = "https://api.exa.ai/research/v1"
         headers = {
             "x-api-key": credentials.api_key.get_secret_value(),

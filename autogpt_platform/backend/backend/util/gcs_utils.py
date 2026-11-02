@@ -7,7 +7,9 @@ including path parsing, client management, and signed URL generation.
 
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from typing import AsyncIterator
 
 import aiohttp
 from gcloud.aio import storage as async_gcs_storage
@@ -137,6 +139,50 @@ async def download_range(bucket: str, blob: str, max_bytes: int) -> bytes:
             except Exception:
                 pass  # Best-effort cleanup
         await session.close()
+
+
+@asynccontextmanager
+async def fresh_gcs_client() -> AsyncIterator[async_gcs_storage.Storage]:
+    """An async client on its own session, closed on exit.
+
+    Same reasoning as ``download_with_fresh_session``: a session created for
+    the call can't be tied to an event loop that is gone by the next one.
+    """
+    session = aiohttp.ClientSession(
+        connector=aiohttp.TCPConnector(limit=10, force_close=True)
+    )
+    client = async_gcs_storage.Storage(session=session)
+    try:
+        yield client
+    finally:
+        try:
+            await client.close()
+        except Exception:
+            pass  # Best-effort cleanup
+        await session.close()
+
+
+def object_created_at(item: dict) -> datetime:
+    """When GCS created the object, from its ``timeCreated`` field."""
+    # RFC 3339 with a trailing "Z", which ``fromisoformat`` only reads from
+    # Python 3.11 on.
+    created = datetime.fromisoformat(item["timeCreated"].replace("Z", "+00:00"))
+    return created if created.tzinfo else created.replace(tzinfo=timezone.utc)
+
+
+async def blob_created_at(bucket: str, blob: str) -> datetime | None:
+    """When the object was created, or ``None`` if it doesn't exist.
+
+    Errors other than a 404 propagate.
+    """
+    async with fresh_gcs_client() as client:
+        try:
+            metadata = await client.download_metadata(bucket, blob)
+        except Exception as e:
+            if is_not_found_error(e):
+                return None
+            raise
+    return object_created_at(metadata)
 
 
 async def generate_signed_url(

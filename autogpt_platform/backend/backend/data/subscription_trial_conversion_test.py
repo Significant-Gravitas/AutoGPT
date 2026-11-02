@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 import stripe
@@ -11,6 +11,8 @@ from backend.data import subscription_trial_conversion as conversion
 from backend.data.subscription_trial import TrialState
 
 pytest_plugins = ("backend.data.subscription_trial_fixtures",)
+
+PRO = SubscriptionTier.PRO
 
 
 @pytest.fixture
@@ -101,7 +103,7 @@ def boundaries(live: dict):
 async def test_converts_cancel_pending_trial_in_place_under_checkout_lock(
     pending_trial, boundaries
 ):
-    assert await conversion.convert_cancel_pending_trial(pending_trial)
+    assert await conversion.convert_cancel_pending_trial(pending_trial, PRO) is None
 
     assert boundaries.calls == [
         "lock:user-1",
@@ -147,7 +149,7 @@ async def test_refuses_a_subscription_the_trial_does_not_own(
     )
 
     with pytest.raises(conversion.TrialConversionRefused) as refused:
-        await conversion.convert_cancel_pending_trial(pending_trial)
+        await conversion.convert_cancel_pending_trial(pending_trial, PRO)
 
     assert str(refused.value) == "This trial has ended. Manage the plan in billing."
     boundaries.expire.assert_not_awaited()
@@ -173,7 +175,7 @@ async def test_refuses_a_trial_that_is_no_longer_running(
     boundaries.retrieve.return_value = ended
 
     with pytest.raises(conversion.TrialConversionRefused, match="has ended"):
-        await conversion.convert_cancel_pending_trial(pending_trial)
+        await conversion.convert_cancel_pending_trial(pending_trial, PRO)
 
     boundaries.sync.assert_awaited_once_with(dict(ended))
     boundaries.expire.assert_not_awaited()
@@ -191,7 +193,7 @@ async def test_a_trial_stripe_already_converted_is_saved_and_succeeds(
     boundaries.retrieve.side_effect = None
     boundaries.retrieve.return_value = converted
 
-    assert await conversion.convert_cancel_pending_trial(pending_trial)
+    assert await conversion.convert_cancel_pending_trial(pending_trial, PRO) is None
 
     boundaries.sync.assert_awaited_once_with(dict(converted))
     boundaries.modify.assert_not_awaited()
@@ -207,7 +209,7 @@ async def test_canceled_trial_is_reconciled_and_refused(
     boundaries.retrieve.return_value = canceled
 
     with pytest.raises(conversion.TrialConversionRefused, match="has ended"):
-        await conversion.convert_cancel_pending_trial(pending_trial)
+        await conversion.convert_cancel_pending_trial(pending_trial, PRO)
 
     boundaries.sync.assert_awaited_once_with(dict(canceled))
     boundaries.expire.assert_not_awaited()
@@ -225,7 +227,7 @@ async def test_resumed_trial_is_refused_like_any_running_trial(
     )
 
     with pytest.raises(conversion.TrialConversionRefused) as refused:
-        await conversion.convert_cancel_pending_trial(pending_trial)
+        await conversion.convert_cancel_pending_trial(pending_trial, PRO)
 
     assert str(refused.value) == (
         "Your accepted plan starts after your trial. Manage the trial in billing."
@@ -236,17 +238,173 @@ async def test_resumed_trial_is_refused_like_any_running_trial(
 
 
 @pytest.mark.asyncio
-async def test_a_card_stripe_cannot_charge_sends_the_conversion_to_checkout(
+async def test_a_card_stripe_cannot_charge_is_refused_until_it_is_updated(
     pending_trial, boundaries
 ):
-    """Only Checkout can take a new card, and ending a card-less trial would
-    let Stripe cancel it instead of billing it."""
+    """Ending a card-less trial would let Stripe cancel it instead of billing
+    it, and Checkout can't take a new card beside the trial's subscription."""
     boundaries.card.return_value = False
 
-    assert not await conversion.convert_cancel_pending_trial(pending_trial)
+    with pytest.raises(conversion.TrialConversionRefused) as refused:
+        await conversion.convert_cancel_pending_trial(pending_trial, PRO)
 
+    assert str(refused.value) == conversion.CARD_NEEDED
     boundaries.expire.assert_not_awaited()
     boundaries.modify.assert_not_awaited()
+    boundaries.sync.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_another_plan_moves_the_trials_own_subscription_onto_its_price(
+    pending_trial, boundaries
+):
+    """Stripe limits a customer to one subscription, so Max is bought by
+    changing the trial's, with the choice recorded for the reconcile."""
+    page = await conversion.convert_cancel_pending_trial(
+        pending_trial, SubscriptionTier.MAX, "price_max"
+    )
+
+    assert page is None
+    boundaries.modify.assert_awaited_once_with(
+        "sub_1",
+        cancel_at_period_end=False,
+        trial_end="now",
+        items=[{"id": "si_1", "price": "price_max"}],
+        metadata={
+            "trial_conversion_price_id": "price_max",
+            "trial_conversion_tier": "MAX",
+        },
+        payment_behavior="error_if_incomplete",
+    )
+    boundaries.sync.assert_awaited_once_with(dict(boundaries.converted))
+
+
+@pytest.mark.asyncio
+async def test_another_plan_needs_a_subscription_with_one_plan(
+    pending_trial, live, boundaries
+):
+    live["items"] = {
+        "data": [
+            {"id": "si_1", "price": {"id": "price_pro"}, "quantity": 1},
+            {"id": "si_2", "price": {"id": "price_seat"}, "quantity": 1},
+        ],
+        "has_more": False,
+    }
+    boundaries.retrieve.side_effect = None
+    boundaries.retrieve.return_value = stripe.Subscription.construct_from(
+        live, "test-key"
+    )
+
+    with pytest.raises(ValueError, match="one plan"):
+        await conversion.convert_cancel_pending_trial(
+            pending_trial, SubscriptionTier.MAX, "price_max"
+        )
+
+    boundaries.modify.assert_not_awaited()
+
+
+def _bank_wants_to_confirm() -> stripe.CardError:
+    return stripe.CardError(
+        "Authentication required.",
+        param="card",
+        code="authentication_required",
+        json_body={"error": {"code": "authentication_required"}},
+    )
+
+
+def _held(live: dict, **changes) -> stripe.Subscription:
+    return stripe.Subscription.construct_from(
+        {
+            **live,
+            "pending_update": {"trial_end": 1, "expires_at": 2},
+            "latest_invoice": {
+                "id": "in_held",
+                "status": "open",
+                "created": 1,
+                "hosted_invoice_url": "https://invoice.stripe.com/i/test_pay",
+            },
+            **changes,
+        },
+        "test-key",
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "tier,price_id,plan",
+    [
+        (PRO, None, {}),
+        (
+            SubscriptionTier.MAX,
+            "price_max",
+            {
+                "items": [{"id": "si_1", "price": "price_max"}],
+                "metadata": {
+                    "trial_conversion_price_id": "price_max",
+                    "trial_conversion_tier": "MAX",
+                },
+            },
+        ),
+    ],
+)
+async def test_a_bank_that_wants_to_confirm_gets_stripes_invoice_page(
+    pending_trial, live, boundaries, tier, price_id, plan
+):
+    """The same change is held until its invoice is paid; meanwhile the trial
+    stays cancel-pending, so nothing is saved. The hold names an API version
+    that takes metadata and cancel_at_period_end in a pending update."""
+    boundaries.modify.side_effect = [_bank_wants_to_confirm(), _held(live)]
+
+    page = await conversion.convert_cancel_pending_trial(pending_trial, tier, price_id)
+
+    assert page == "https://invoice.stripe.com/i/test_pay"
+    first, hold = boundaries.modify.await_args_list
+    assert "stripe_version" not in first.kwargs
+    assert hold.kwargs == {
+        "cancel_at_period_end": False,
+        "trial_end": "now",
+        **plan,
+        "payment_behavior": "pending_if_incomplete",
+        "expand": ["latest_invoice"],
+        "stripe_version": "2026-09-30.endive",
+    }
+    boundaries.sync.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_held_change_that_was_paid_at_once_is_read_back_and_saved(
+    pending_trial, live, boundaries
+):
+    """The hold's answer is in the newer API version's shape, so the plan is
+    read back in the SDK's own version before it is saved."""
+    boundaries.modify.side_effect = [
+        _bank_wants_to_confirm(),
+        _held(live, status="active", pending_update=None),
+    ]
+    active = stripe.Subscription.construct_from(
+        {**live, "status": "active", "cancel_at_period_end": False}, "test-key"
+    )
+    boundaries.retrieve.side_effect = [
+        stripe.Subscription.construct_from(live, "test-key"),
+        active,
+    ]
+
+    assert await conversion.convert_cancel_pending_trial(pending_trial, PRO) is None
+
+    assert boundaries.retrieve.await_args_list[-1] == call(live["id"])
+    boundaries.sync.assert_awaited_once_with(dict(active))
+
+
+@pytest.mark.asyncio
+async def test_a_held_change_without_a_page_to_pay_on_is_an_error(
+    pending_trial, live, boundaries
+):
+    held = _held(live, latest_invoice={"id": "in_held", "created": 1})
+    boundaries.modify.side_effect = [_bank_wants_to_confirm(), held]
+
+    with pytest.raises(ValueError, match="no page"):
+        await conversion.convert_cancel_pending_trial(pending_trial, PRO)
+
     boundaries.sync.assert_not_awaited()
 
 
@@ -261,7 +419,7 @@ async def test_a_conversion_stripe_did_not_activate_is_saved_and_refused(
     boundaries.modify.return_value = canceled
 
     with pytest.raises(conversion.TrialConversionRefused, match="has ended"):
-        await conversion.convert_cancel_pending_trial(pending_trial)
+        await conversion.convert_cancel_pending_trial(pending_trial, PRO)
 
     boundaries.sync.assert_awaited_once_with(dict(canceled))
 
@@ -274,7 +432,7 @@ async def test_a_failed_sync_after_the_charge_still_reports_the_conversion(
     it, so the paying customer is not told the change failed."""
     boundaries.sync.side_effect = stripe.APIConnectionError("Stripe is unreachable")
 
-    assert await conversion.convert_cancel_pending_trial(pending_trial)
+    assert await conversion.convert_cancel_pending_trial(pending_trial, PRO) is None
 
     boundaries.modify.assert_awaited_once()
 
@@ -288,7 +446,7 @@ async def test_a_busy_checkout_lock_is_a_retryable_conflict(pending_trial, bound
 
     with patch.object(conversion, "subscription_checkout_lock", busy):
         with pytest.raises(conversion.TrialConversionRefused) as refused:
-            await conversion.convert_cancel_pending_trial(pending_trial)
+            await conversion.convert_cancel_pending_trial(pending_trial, PRO)
 
     assert str(refused.value) == "Your trial is already being updated. Please retry."
     boundaries.retrieve.assert_not_awaited()
@@ -308,7 +466,7 @@ async def test_refuses_while_another_plan_is_live(
     )
 
     with pytest.raises(conversion.TrialConversionRefused) as refused:
-        await conversion.convert_cancel_pending_trial(pending_trial)
+        await conversion.convert_cancel_pending_trial(pending_trial, PRO)
 
     assert str(refused.value) == (
         "Another plan is already active. Manage it in billing."
@@ -327,24 +485,15 @@ async def test_ended_plans_do_not_block_the_conversion(pending_trial, live, boun
         {"id": "sub_abandoned", "status": "incomplete_expired"},
     )
 
-    await conversion.convert_cancel_pending_trial(pending_trial)
+    await conversion.convert_cancel_pending_trial(pending_trial, PRO)
 
     boundaries.modify.assert_awaited_once()
     boundaries.sync.assert_awaited_once_with(dict(boundaries.converted))
 
 
-@pytest.fixture
-def subscription_lookup():
-    """The short-lived active-subscription lookup the status route reads."""
-    lookup = credit._get_active_subscription_cached
-    lookup.cache_delete("cus_1")
-    yield lookup
-    lookup.cache_delete("cus_1")
-
-
 @pytest.mark.asyncio
 async def test_conversion_refreshes_the_cached_subscription_lookup(
-    pending_trial, live, boundaries, subscription_lookup
+    pending_trial, live, boundaries
 ):
     """The status returned right after shows the paid period, not the trial's."""
     trialing = stripe.Subscription.construct_from(live, "test-key")
@@ -353,9 +502,35 @@ async def test_conversion_refreshes_the_cached_subscription_lookup(
         "_get_active_subscription",
         AsyncMock(side_effect=[trialing, boundaries.converted]),
     ):
-        assert await subscription_lookup("cus_1") is trialing
-        await conversion.convert_cancel_pending_trial(pending_trial)
-        assert await subscription_lookup("cus_1") is boundaries.converted
+        before = await credit._get_active_subscription_cached("cus_1")
+        assert before is not None and before.status == "trialing"
+        await conversion.convert_cancel_pending_trial(pending_trial, PRO)
+        after = await credit._get_active_subscription_cached("cus_1")
+        assert after is not None and after.status == "active"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sync_fails", [False, True])
+async def test_the_paid_plan_is_saved_before_the_lookup_is_dropped(
+    pending_trial, boundaries, sync_fails
+):
+    """The charge has gone through: saving the plan comes first, and dropping
+    the cached lookup follows even when the save fails."""
+
+    async def failing_sync(*args, **kwargs):
+        boundaries.calls.append("sync")
+        raise RuntimeError("database down")
+
+    if sync_fails:
+        boundaries.sync.side_effect = failing_sync
+
+    async def invalidate(customer_id: str) -> None:
+        boundaries.calls.append(f"invalidate:{customer_id}")
+
+    with patch.object(conversion, "invalidate_billing_lookups", invalidate):
+        assert await conversion.convert_cancel_pending_trial(pending_trial, PRO) is None
+
+    assert boundaries.calls[-4:] == ["modify", "sync", "invalidate:cus_1", "unlock"]
 
 
 @pytest.mark.asyncio
@@ -365,7 +540,7 @@ async def test_card_decline_leaves_the_trial_cancel_pending(pending_trial, bound
     )
 
     with pytest.raises(stripe.CardError):
-        await conversion.convert_cancel_pending_trial(pending_trial)
+        await conversion.convert_cancel_pending_trial(pending_trial, PRO)
 
     boundaries.sync.assert_not_awaited()
     assert boundaries.calls[-1] == "unlock"

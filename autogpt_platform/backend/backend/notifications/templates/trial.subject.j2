@@ -1,5 +1,5 @@
 {% if kind == 'started' %}Your AutoGPT trial has started
-Your trial allowance is available until {{ ends_label }}.
+You have full access until {{ ends_label }}; after that your {{ plan.name }} plan starts at {{ plan.price_display }} unless you cancel first.
 {% elif kind == 'ending' %}Your AutoGPT trial ends on {{ ends_label }}
 Unless you cancel before then, your saved card will be charged for your {{ plan.name }} plan at {{ plan.price_display }}.
 {% elif kind == 'canceled' %}Your AutoGPT trial cancellation is confirmed

@@ -13,6 +13,8 @@ patterns we actually use into a single place:
 - :func:`hash_compare_and_set` — set a hash field only if its current
   value matches an expected one.  Genuinely needs Lua because the
   condition depends on the current value (pipeline can't branch).
+- :func:`string_compare_and_set` — the same for a plain string key, with
+  delete as the "new value" option (ownership-checked release/handover).
 
 Everything sharable lives here.  If a new Lua script is tempting in
 application code, add a helper here first — callers should not touch
@@ -53,8 +55,40 @@ redis.call('HSET', KEYS[1], ARGV[1], ARGV[3])
 return 1
 """
 
+# Compare-and-set on a string key.  Returns 1 if swapped, 0 otherwise.
+#
+#   KEYS[1]  key
+#   ARGV[1]  expected current value
+#   ARGV[2]  new value, or "" to delete the key
+#   ARGV[3]  expiry value for the new value
+#   ARGV[4]  "1" to also swap when the key is missing
+#   ARGV[5]  "EX" for relative seconds or "PXAT" for an absolute millisecond deadline
+_STRING_CAS_LUA = """
+local current = redis.call('GET', KEYS[1])
+if current ~= ARGV[1] and not (current == false and ARGV[4] == '1') then
+    return 0
+end
+if ARGV[2] == '' then
+    redis.call('DEL', KEYS[1])
+else
+    redis.call('SET', KEYS[1], ARGV[2], ARGV[5], ARGV[3])
+end
+return 1
+"""
+
+_POP_MATCHING_PREFIX_LUA = """
+local current = redis.call('LRANGE', KEYS[1], 0, #ARGV - 1)
+if #current ~= #ARGV then return {} end
+for i = 1, #ARGV do
+    if current[i] ~= ARGV[i] then return {} end
+end
+redis.call('LTRIM', KEYS[1], #ARGV, -1)
+return current
+"""
+
 # Push to a capped list only when a hash field currently matches the expected
-# value. Returns the new list length, or -1 when the guard fails.
+# value. Returns the list length, -1 on a failed guard, or -2 at capacity.
+# A queued ID with an expired receipt restores that receipt from the list's PTTL.
 #
 #   KEYS[1]  hash key
 #   KEYS[2]  list key
@@ -64,6 +98,7 @@ return 1
 #   ARGV[3]  list value
 #   ARGV[4]  max list length
 #   ARGV[5]  list TTL seconds
+#   ARGV[6]  message ID used to recover an expired receipt
 _GATED_CAPPED_RPUSH_LUA = """
 if #KEYS == 3 and redis.call('EXISTS', KEYS[3]) == 1 then
     return redis.call('LLEN', KEYS[2])
@@ -496,5 +531,49 @@ async def hash_compare_and_set(
     result = await cast(
         "Any",
         redis.eval(_HASH_CAS_LUA, 1, key, field, expected, new, *(guard or ())),
+    )
+    return int(result) == 1
+
+
+async def pop_matching_list_prefix(
+    redis: AsyncRedisClient, key: str, expected: list[str]
+) -> list[str | bytes]:
+    """Pop a previously inspected prefix only if it still matches atomically."""
+    if not expected:
+        return []
+    result = await cast("Any", redis.eval(_POP_MATCHING_PREFIX_LUA, 1, key, *expected))
+    return list(result or [])
+
+
+async def string_compare_and_set(
+    redis: AsyncRedisClient,
+    key: str,
+    *,
+    expected: str,
+    new: str | None,
+    ttl_seconds: int = 0,
+    or_missing: bool = False,
+    expires_at_ms: int | None = None,
+) -> bool:
+    """Atomically replace *key* with *new* (``None`` deletes it) iff it still
+    holds *expected*, or is missing and *or_missing* is set.
+
+    Returns ``True`` if the swap happened.  Use it when a value names its
+    owner, so a holder whose key expired and was taken over cannot overwrite
+    or delete its successor's value. An absolute ``expires_at_ms`` overrides
+    ``ttl_seconds`` without extending the deadline by the request latency.
+    """
+    result = await cast(
+        "Any",
+        redis.eval(
+            _STRING_CAS_LUA,
+            1,
+            key,
+            expected,
+            new or "",
+            expires_at_ms if expires_at_ms is not None else ttl_seconds,
+            "1" if or_missing else "0",
+            "PXAT" if expires_at_ms is not None else "EX",
+        ),
     )
     return int(result) == 1

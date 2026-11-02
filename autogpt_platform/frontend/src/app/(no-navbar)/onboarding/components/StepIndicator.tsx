@@ -13,7 +13,9 @@ export function StepIndicator({ totalSteps, currentStep }: Props) {
           key={i}
           className={cn(
             "h-1.5 rounded-full transition-all",
-            i + 1 === currentStep ? "w-4 bg-zinc-900" : "w-1.5 bg-zinc-300",
+            i + 1 === currentStep
+              ? "w-4 bg-action-hover"
+              : "w-1.5 bg-surface-active",
           )}
         />
       ))}
