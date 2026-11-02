@@ -9,6 +9,7 @@ import {
   NotificationState,
   categorizeExecutions,
   handleExecutionUpdate,
+  relabelNotifications,
 } from "./helpers";
 
 export function useAgentActivityDropdown() {
@@ -47,13 +48,11 @@ export function useAgentActivityDropdown() {
   );
 
   // Process initial execution state when data loads
-  // Use a ref to track if we've already processed to avoid infinite loops.
-  // The library loads page by page, so the key includes the map size: each
-  // page that lands re-labels runs of workflows that were not loaded yet.
+  // Use a ref to track if we've already processed to avoid infinite loops
   const processedExecutionsRef = useRef<string | null>(null);
   useEffect(() => {
     const executionKey = executions
-      ? `${executions.length}-${executionsSuccess}-${agentInfoMap.size}`
+      ? `${executions.length}-${executionsSuccess}`
       : null;
 
     if (
@@ -76,7 +75,9 @@ export function useAgentActivityDropdown() {
   });
 
   return {
-    ...notifications,
+    // Named at read time: the library loads page by page, and runs of
+    // workflows on later pages get their names once those pages land.
+    ...relabelNotifications(notifications, agentInfoMap),
     isReady: executionsSuccess,
     error: executionsError,
     isOpen,

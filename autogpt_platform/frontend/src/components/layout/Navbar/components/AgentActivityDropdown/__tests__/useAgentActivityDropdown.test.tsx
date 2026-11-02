@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
-import { delay, http, HttpResponse } from "msw";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   getGetV1ListAllExecutionsMockHandler,
@@ -10,18 +10,31 @@ import {
 } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
 import { getGetV2ListLibraryAgentsResponseMock } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import type { GraphExecution } from "@/lib/autogpt-server-api/types";
 import { server } from "@/mocks/mock-server";
 import { useAgentActivityDropdown } from "../useAgentActivityDropdown";
+
+const executionHandlers = new Set<(execution: GraphExecution) => void>();
 
 vi.mock("@/lib/autogpt-server-api/context", () => ({
   useBackendAPI: () => ({
     onWebSocketConnect: () => () => {},
     onWebSocketDisconnect: () => () => {},
-    onWebSocketMessage: () => () => {},
+    onWebSocketMessage: (
+      _method: string,
+      handler: (execution: GraphExecution) => void,
+    ) => {
+      executionHandlers.add(handler);
+      return () => executionHandlers.delete(handler);
+    },
     subscribeToGraphExecutions: () => Promise.resolve(),
     connectWebSocket: () => Promise.resolve(),
   }),
 }));
+
+beforeEach(() => {
+  executionHandlers.clear();
+});
 
 function makeWrapper() {
   const client = new QueryClient({
@@ -37,15 +50,19 @@ function makeWrapper() {
 
 const agentTemplate = getGetV2ListLibraryAgentsResponseMock().agents[0];
 
-// 150 workflows over two pages of 100; page 2 arrives well after the
-// executions list, as it does in the browser.
+// 150 workflows over two pages of 100. Page 2 is held until `releasePage2`
+// is called, so the test controls when the rest of the library arrives.
 function serveLibrary() {
+  let releasePage2 = () => {};
+  const page2Released = new Promise<void>((resolve) => {
+    releasePage2 = resolve;
+  });
   server.use(
     http.get("*/api/library/agents", async ({ request }) => {
       const params = new URL(request.url).searchParams;
       const page = Number(params.get("page") ?? 1);
       const pageSize = Number(params.get("page_size") ?? 15);
-      if (page > 1) await delay(100);
+      if (page > 1) await page2Released;
       const start = (page - 1) * pageSize;
       const count = Math.max(0, Math.min(pageSize, 150 - start));
       return HttpResponse.json({
@@ -64,18 +81,28 @@ function serveLibrary() {
       });
     }),
   );
+  return () => releasePage2();
+}
+
+function runningExecution(id: string, graphID: string) {
+  return {
+    ...getGetV1ListAllExecutionsResponseMock()[0],
+    id,
+    graph_id: graphID,
+    status: AgentExecutionStatus.RUNNING,
+    started_at: new Date(),
+    ended_at: null,
+  };
 }
 
 describe("useAgentActivityDropdown", () => {
   test("names a run of a workflow past the first library page", async () => {
-    serveLibrary();
-    const execution = {
-      ...getGetV1ListAllExecutionsResponseMock()[0],
-      id: "run-1",
-      graph_id: "g-120",
-      status: AgentExecutionStatus.RUNNING,
-    };
-    server.use(getGetV1ListAllExecutionsMockHandler([execution]));
+    const releasePage2 = serveLibrary();
+    server.use(
+      getGetV1ListAllExecutionsMockHandler([
+        runningExecution("run-1", "g-120"),
+      ]),
+    );
 
     const { result } = renderHook(() => useAgentActivityDropdown(), {
       wrapper: makeWrapper(),
@@ -86,10 +113,52 @@ describe("useAgentActivityDropdown", () => {
         "Unknown Workflow",
       ),
     );
+    releasePage2();
     await waitFor(() =>
       expect(result.current.activeExecutions[0]?.agent_name).toBe(
         "Workflow number 120",
       ),
     );
+  });
+
+  test("keeps a live update that arrived before the next library page", async () => {
+    const releasePage2 = serveLibrary();
+    const pageOneRun = runningExecution("run-1", "g-5");
+    server.use(
+      getGetV1ListAllExecutionsMockHandler([
+        pageOneRun,
+        runningExecution("run-2", "g-120"),
+      ]),
+    );
+
+    const { result } = renderHook(() => useAgentActivityDropdown(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() =>
+      expect(result.current.activeExecutions).toHaveLength(2),
+    );
+    await waitFor(() => expect(executionHandlers.size).toBeGreaterThan(0));
+    act(() => {
+      executionHandlers.forEach((handler) =>
+        handler({
+          ...pageOneRun,
+          status: AgentExecutionStatus.COMPLETED,
+          ended_at: new Date(),
+        } as unknown as GraphExecution),
+      );
+    });
+    await waitFor(() =>
+      expect(result.current.recentCompletions).toHaveLength(1),
+    );
+
+    releasePage2();
+    await waitFor(() =>
+      expect(result.current.activeExecutions[0]?.agent_name).toBe(
+        "Workflow number 120",
+      ),
+    );
+    expect(result.current.activeExecutions).toHaveLength(1);
+    expect(result.current.recentCompletions[0]?.id).toBe("run-1");
   });
 });
