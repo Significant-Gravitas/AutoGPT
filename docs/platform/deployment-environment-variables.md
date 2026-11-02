@@ -179,8 +179,18 @@ only.
 
 `TRUSTED_PROXY_COUNT` in `backend/.env` is the number of proxies that add an
 `X-Forwarded-For` entry in front of the backend. The default, `3`, is for the
-hosted platform: set `1` for a single reverse proxy, or `0` with none. It
-keys the per-visitor rate limits.
+hosted platform: set `1` for a single reverse proxy, or `0` with none. Only
+the External API (`/api/v2`) uses it, for its per-IP rate limits.
+
+The frontend finds the visitor's address separately, for the per-visitor
+limit on store search and for the sign-in history and IP blocks. Set
+`TRUST_X_FORWARDED_FOR=true` in `frontend/.env` when the proxy sets
+`X-Forwarded-For` to the visitor's address, replacing any value the request
+arrived with. Caddy does that by default. In nginx, use
+`proxy_set_header X-Forwarded-For $remote_addr;`, not
+`$proxy_add_x_forwarded_for`, which keeps what the visitor sent. Without the
+setting, all visitors share one store-search limit and sign-ins record no IP
+address.
 
 ## 5. Decide who can sign up
 
@@ -216,13 +226,19 @@ example `https://autogpt.example.com/api/auth/callback/google`.
 ## Using your own database or Redis
 
 The compose files point every backend service at the bundled `db`, `redis-0`
-and `rabbitmq` containers, and set `DB_HOST`, `REDIS_HOST`, `RABBITMQ_HOST`,
-`DATABASE_URL` and `DIRECT_URL` in their `environment:` sections. Those override
-`backend/.env`, so pointing the stack at a managed service takes a
-`docker-compose.override.yml` that sets them per service, not an `.env` change.
+and `rabbitmq` containers, and set `DB_HOST`, `REDIS_HOST`, `REDIS_PORT`
+(`17000`), `RABBITMQ_HOST`, `DATABASE_URL` and `DIRECT_URL` in their
+`environment:` sections. Those override `backend/.env`, so pointing the stack
+at a managed service takes a `docker-compose.override.yml` that sets them per
+service, not an `.env` change. Override `REDIS_PORT` along with `REDIS_HOST`,
+or the backend still connects to port `17000`.
 `DIRECT_URL` is the connection that database migrations use; give it a direct
 connection, not one through a pooler such as PgBouncer. The backend expects a
 Redis Cluster, not a single Redis server.
+
+For Redis there is a shorter way: the backend reads `REDIS_CLUSTER_HOST` and
+`REDIS_CLUSTER_PORT` before `REDIS_HOST` and `REDIS_PORT`, and the compose
+files do not set them, so setting those two in `backend/.env` is enough.
 
 ## Checklist
 
@@ -231,7 +247,7 @@ Redis Cluster, not a single Redis server.
 - [ ] `FRONTEND_BASE_URL` and `NEXT_PUBLIC_FRONTEND_BASE_URL` added to `autogpt_platform/.env`
 - [ ] `BETTER_AUTH_URL`, `NEXT_PUBLIC_AGPT_SERVER_URL` and `NEXT_PUBLIC_AGPT_WS_SERVER_URL` in `frontend/.env`
 - [ ] `PLATFORM_BASE_URL` and `BACKEND_CORS_ALLOW_ORIGINS` in `backend/.env`
-- [ ] A TLS reverse proxy in front of `3000`, `8001` and `8006`, those ports firewalled, and `TRUSTED_PROXY_COUNT` set
+- [ ] A TLS reverse proxy in front of `3000`, `8001` and `8006`, those ports firewalled, `TRUSTED_PROXY_COUNT` set, and `TRUST_X_FORWARDED_FOR=true` in `frontend/.env` if the proxy replaces `X-Forwarded-For`
 - [ ] Sign-ups limited, if the server is public
 - [ ] `docker compose up -d --build`
 - [ ] From another machine: sign up, log in, and check the browser console shows no `localhost` connection errors
