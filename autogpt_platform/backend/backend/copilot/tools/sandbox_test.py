@@ -5,6 +5,7 @@ import importlib.util
 import ntpath
 import os
 import posixpath
+import sys
 import time
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -177,3 +178,26 @@ def test_relocated_transcript_cleanup_stays_scoped(
     assert transcript.cleanup_stale_project_dirs(target_name) == removed
     assert (projects / target_name).exists() == (removed == 0)
     assert (projects / other_name / "transcript.jsonl").is_file()
+
+
+@pytest.mark.parametrize("allowed", [True, False])
+def test_resume_transcript_respects_configured_workspace_prefix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, allowed: bool
+):
+    prefix = str(tmp_path / "relocated" / "tmp" / "copilot-")
+    monkeypatch.setenv("COPILOT_WORKSPACE_PREFIX", prefix)
+    name = "backend.copilot._configured_workspace_transcript_test"
+    spec = importlib.util.spec_from_file_location(name, transcript.__file__)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, name, module)
+    spec.loader.exec_module(module)
+    cwd = Path(prefix + "abc123") if allowed else tmp_path / "outside"
+    result = module.write_transcript_to_tempfile("{}\n", "abc123", str(cwd))
+    if allowed:
+        assert result is not None
+        assert Path(result).parent == cwd.resolve()
+        assert Path(result).read_text(encoding="utf-8") == "{}\n"
+    else:
+        assert result is None
+        assert not cwd.exists()

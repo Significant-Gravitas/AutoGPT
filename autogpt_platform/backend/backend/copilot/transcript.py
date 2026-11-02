@@ -524,7 +524,9 @@ def _sanitize_id(raw_id: str, max_len: int = 36) -> str:
     return cleaned or "unknown"
 
 
-_SAFE_CWD_PREFIX = os.path.realpath("/tmp/copilot-")
+_SAFE_CWD_PREFIX = os.path.realpath(
+    os.environ.get("COPILOT_WORKSPACE_PREFIX") or "/tmp/copilot-"
+)
 
 
 def projects_base() -> str:
