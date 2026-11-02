@@ -15,7 +15,7 @@ Keep and the erasure must never both win. Keep (`reopen_account`) deletes the ro
 
 `startedAt` is **never set back to null**. An erasure that stopped halfway (a failed step, a crashed pod) leaves the row with `startedAt` set and `completedAt` null; the next run selects it again (selection does not filter on `startedAt`), the claim keeps the first date, and the idempotent steps resume. Never clear `startedAt` by hand to "retry": that would let the owner keep an account that is already half erased.
 
-Because a resuming run may claim again, the claim does not keep two runners apart; a Redis lease per account does (`lease.py`). Each `--apply` (the job's or the CLI's) takes it before it reads the account and holds it until the erasure ends, so two database manager replicas, or the CLI beside the job, never erase the same account at once: the second one reports "another run is erasing it" and moves on. The lease expires on its own after an hour, so a crashed run is resumed by the next one. With Redis down nothing is erased.
+Because a resuming run may claim again, the claim does not keep two runners apart; a Redis lease per account does (`lease.py`). Each `--apply` (the job's or the CLI's) takes it before it reads the account and holds it until the erasure ends, so two database manager replicas, or the CLI beside the job, never erase the same account at once: the second one reports "another run is erasing it" and moves on. The erasure renews the lease before each step and stops if it was lost (a run that took over an hour); after a crash it expires on its own within the hour, so the next run resumes. With Redis down nothing is erased.
 
 ## How erasure runs
 
@@ -33,10 +33,10 @@ The database manager runs every step, so **the database manager pod needs every 
 - **PostHog**: `POSTHOG_PERSONAL_API_KEY` (a personal API key with the `person:write` scope), `POSTHOG_PROJECT_ID`, and `POSTHOG_APP_HOST` if the project is not in the EU cloud. Without them the PostHog step is skipped.
 - **MailerLite**: `MAILERLITE_API_TOKEN`. Without it the MailerLite step is skipped.
 - **Stripe**: `STRIPE_API_KEY`, for the subscriptions of orgs that go with the account.
-- **`ENCRYPTION_KEY`**, the same value the backend pods have: the ban record's hash is keyed with a key derived from it, and sign-up (on the REST API pods) checks the hash with the same key. Without it the ban record step is skipped.
+- **`ENCRYPTION_KEY`**, the same value the backend pods have: the ban record's hash is keyed with a key derived from it, and sign-up (on the REST API pods) checks the hash with the same key. Without it the ban record step fails and the erasure stops before the rows go; set it and run again.
 - It also reaches the scheduler and the notification manager over RPC, and Redis and RabbitMQ (the work stop), as the other services do.
 
-A skipped step does not stop the erasure: the request is still marked done, and the sweep logs a warning naming the skipped steps. Check the database manager's logs after the first runs; a skip there means a setting is missing. (Whether a skipped step should instead stop the erasure before the rows go is an open decision.) The files step sweeps every configured bucket, and also the pod's local data directory whenever the private bucket is unset, since workspace files are kept on disk then. PostHog and MailerLite calls retry a 5xx at most three times, then fail the step.
+A skipped step does not stop the erasure: the request is still marked done, and the sweep logs a warning naming the skipped steps. Check the database manager's logs after the first runs; a skip there means a setting is missing. (Whether a skipped step should instead stop the erasure before the rows go is an open decision.) The files step sweeps every configured bucket, and also the pod's local data directory whenever the private bucket is unset, since workspace files are kept on disk then. PostHog and MailerLite calls make at most three attempts on a 5xx, 429 or 408, then fail the step.
 
 ## Who runs the CLI, and where
 

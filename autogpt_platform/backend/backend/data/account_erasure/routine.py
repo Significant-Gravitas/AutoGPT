@@ -21,11 +21,13 @@ finish; a rerun of a finished erasure finds nothing and changes nothing.
 
 import logging
 from collections.abc import Awaitable, Callable
+from functools import partial
 
 from backend.data.account_erasure.ban_record import keep_ban_record
 from backend.data.account_erasure.database import delete_rows
 from backend.data.account_erasure.lease import (
     acquire_erasure_lease,
+    keep_erasure_lease,
     release_erasure_lease,
 )
 from backend.data.account_erasure.marketplace import delete_marketplace
@@ -59,6 +61,23 @@ from backend.data.account_erasure.work import stop_work
 logger = logging.getLogger(__name__)
 
 Step = Callable[..., Awaitable[StepReport]]
+KeepAlive = Callable[[], Awaitable[bool]]
+
+# Steps whose exceptions can't quote the account's address, so their
+# tracebacks are logged. The rest (the confirmation email, the MailerLite
+# lookup by address) log the exception type only.
+_TRACEBACK_STEPS = {
+    "stop_work",
+    "org_subscriptions",
+    "shared_agents",
+    "marketplace",
+    "files",
+    "memory",
+    "posthog",
+    "ban_record",
+    "database",
+    "request",
+}
 
 # `report.not_claimed` for a request an earlier run finished.
 ERASED_ALREADY = "erased already"
@@ -87,18 +106,26 @@ async def erase_account(
             user_id=user_id, dry_run=False, not_claimed="another run is erasing it"
         )
     try:
-        return await _erase(user_id, email, dry_run=False)
+        return await _erase(
+            user_id, email, dry_run=False, keepalive=partial(keep_erasure_lease, lease)
+        )
     finally:
         await release_erasure_lease(lease)
 
 
-async def _erase(user_id: str, email: str | None, *, dry_run: bool) -> ErasureReport:
+async def _erase(
+    user_id: str,
+    email: str | None,
+    *,
+    dry_run: bool,
+    keepalive: KeepAlive | None = None,
+) -> ErasureReport:
     subject = await load_subject(user_id, email)
     plan = await plan_transfer(user_id)
     subject.shared_graph_ids = plan.graph_ids
     subject.kept_listing_ids = plan.listing_ids
     blockers = await find_blockers(subject)
-    return await _run(subject, _erasure_steps(), blockers, dry_run)
+    return await _run(subject, _erasure_steps(), blockers, dry_run, keepalive)
 
 
 async def _run(
@@ -106,6 +133,7 @@ async def _run(
     steps: list[tuple[str, Step]],
     blockers: list[Blocker],
     dry_run: bool,
+    keepalive: KeepAlive | None = None,
 ) -> ErasureReport:
     report = ErasureReport(
         user_id=subject.user_id,
@@ -118,6 +146,17 @@ async def _run(
     if not dry_run and not await _claim(subject, report):
         return report
     for name, step in steps:
+        if keepalive is not None and not await keepalive():
+            # Another run may be on this account now: leave it to that one.
+            report.steps.append(
+                StepReport(
+                    name=name,
+                    status=StepStatus.FAILED,
+                    note="lost the erasure lease before this step; the next "
+                    "run resumes",
+                )
+            )
+            break
         result = await _run_step(name, step, subject, dry_run)
         report.steps.append(result)
         if result.status == StepStatus.FAILED and not dry_run:
@@ -170,11 +209,10 @@ async def _run_step(
     try:
         return await step(subject, dry_run=dry_run)
     except Exception as e:
-        # A failed send can quote the address it was sending to.
         logger.error(
             f"Account erasure step {name} failed for {subject.user_id}: "
             f"{type(e).__name__}",
-            exc_info=name != "confirmation",
+            exc_info=name in _TRACEBACK_STEPS,
         )
         return StepReport(
             name=name,

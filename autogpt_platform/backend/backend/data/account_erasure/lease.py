@@ -5,25 +5,29 @@ stopped, so it does not keep two live runs apart: the hourly job on two
 database manager replicas, or the CLI beside the job. Both would read the
 account once and act on it twice (the confirmation email sent twice, say).
 A Redis lease per account, held from before the account is read until the
-erasure ends, keeps them apart. It outlives any erasure (`LEASE_TTL_SECONDS`)
-and expires on its own after a crash, so the next run can resume.
+erasure ends, keeps them apart. The erasure renews it before each step
+(`keep_erasure_lease`) and stops if it was lost; after a crash it expires on
+its own (`LEASE_TTL_SECONDS`), so the next run can resume.
 """
 
-import logging
 import uuid
 
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 
-logger = logging.getLogger(__name__)
-
 LEASE_KEY_PREFIX = "account_erasure:lease:"
 LEASE_TTL_SECONDS = 60 * 60
 
 
+class ErasureLeaseUnavailable(RuntimeError):
+    """Redis can't answer, so whether another run holds the lease is unknown,
+    and nothing is erased."""
+
+
 async def acquire_erasure_lease(user_id: str) -> AsyncClusterLock | None:
-    """The lease, or None while another run holds it. Raises when Redis
-    can't answer: erasing without knowing is what the lease prevents."""
+    """The lease, or None while another run holds it. Raises
+    `ErasureLeaseUnavailable` when Redis can't answer: erasing without
+    knowing is what the lease prevents."""
     lock = AsyncClusterLock(
         redis=await get_redis_async(),
         key=f"{LEASE_KEY_PREFIX}{user_id}",
@@ -32,14 +36,19 @@ async def acquire_erasure_lease(user_id: str) -> AsyncClusterLock | None:
     )
     owner = await lock.try_acquire()
     if owner is None:
-        raise RuntimeError("account erasure lease unavailable")
+        raise ErasureLeaseUnavailable("account erasure lease unavailable")
     if owner != lock.owner_id:
         return None
     return lock
 
 
+async def keep_erasure_lease(lock: AsyncClusterLock) -> bool:
+    """Renew the lease; False when it lapsed or another run took it over, and
+    the erasure must stop."""
+    return await lock.refresh()
+
+
 async def release_erasure_lease(lock: AsyncClusterLock) -> None:
-    try:
-        await lock.release()
-    except Exception:
-        logger.warning("Account erasure lease release failed; its TTL clears it")
+    """Owner-checked: a lease another run took over is left to it. A release
+    that fails is swallowed by the lock, and the TTL clears the key."""
+    await lock.release()

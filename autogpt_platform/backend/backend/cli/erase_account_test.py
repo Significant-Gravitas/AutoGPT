@@ -192,6 +192,23 @@ def test_a_stripe_refusal_on_close_leaves_the_account_open(run):
     assert "still open" in result.output
 
 
+def test_redis_down_is_a_clear_error_not_a_traceback(run):
+    from backend.data.account_erasure.lease import ErasureLeaseUnavailable
+
+    def erasing(user_id, *, dry_run, **kw):
+        if dry_run:
+            return _report(dry_run=True)
+        raise ErasureLeaseUnavailable("account erasure lease unavailable")
+
+    run.erasing.side_effect = erasing
+
+    result = run.invoke(EMAIL, "--apply", "--yes")
+
+    assert result.exit_code == 1
+    assert "Redis can't be reached" in result.output
+    assert "Traceback" not in result.output
+
+
 def test_an_account_erased_already_is_a_success(run):
     """Rerunning a finished erasure (to confirm it, say) is not a failure."""
 

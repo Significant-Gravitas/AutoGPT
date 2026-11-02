@@ -67,7 +67,7 @@ def _log(report: ErasureReport) -> None:
             f"Account erasure of {report.user_id} skipped: {report.not_claimed}"
         )
         return
-    if [blocker.name for blocker in report.blockers] == ["not_closed"]:
+    if any(blocker.name == "not_closed" for blocker in report.blockers):
         # Listed as pending at the start of the sweep, then kept by its owner.
         logger.info(f"Account erasure of {report.user_id} skipped: kept by its owner")
         return

@@ -77,6 +77,7 @@ async def _with_db(work):
 
 
 async def _run_one(account: str, *, apply: bool, yes: bool):
+    from backend.data.account_erasure.lease import ErasureLeaseUnavailable
     from backend.data.account_erasure.models import AccountErasureBlocked
     from backend.data.account_erasure.routine import erase_account
 
@@ -95,6 +96,11 @@ async def _run_one(account: str, *, apply: bool, yes: bool):
     except AccountErasureBlocked as e:
         _report(e.report)
         raise click.ClickException("Blocked since the dry run; nothing erased.")
+    except ErasureLeaseUnavailable:
+        raise click.ClickException(
+            "Redis can't be reached, so it is unknown whether another run is "
+            "erasing this account. Nothing was changed; run it again."
+        )
     click.echo("")
     _report(result)
     _finish([result])
@@ -217,8 +223,8 @@ def _finish(reports: list["ErasureReport"]) -> None:
     finished = [r for r in reports if r.not_claimed == ERASED_ALREADY]
     if any(report.not_claimed and report not in finished for report in reports):
         raise click.ClickException(
-            "Nothing was erased for an account its owner kept, or that another "
-            "run is erasing (see above)."
+            "At least one account was not erased: its owner kept it, or another "
+            "run is erasing it (see above)."
         )
     unfinished = [
         report.user_id

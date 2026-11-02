@@ -90,6 +90,8 @@ def lease(monkeypatch):
     )
     monkeypatch.setattr(routine, "acquire_erasure_lease", held.acquire)
     monkeypatch.setattr(routine, "release_erasure_lease", held.release)
+    held.keep = AsyncMock(return_value=True)
+    monkeypatch.setattr(routine, "keep_erasure_lease", held.keep)
     return held
 
 
@@ -310,3 +312,45 @@ async def test_the_lease_is_released_after_an_apply_and_never_taken_by_a_dry_run
     await routine.erase_account(USER_ID, dry_run=False)
     lease.acquire.assert_awaited_once_with(USER_ID)
     lease.release.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_the_lease_is_renewed_before_each_step(monkeypatch, account, lease):
+    steps = Steps(monkeypatch)
+
+    await routine.erase_account(USER_ID, dry_run=False)
+
+    assert lease.keep.await_count == len(steps.calls) == len(STEP_NAMES)
+
+
+@pytest.mark.asyncio
+async def test_a_lost_lease_stops_the_erasure_before_the_next_step(
+    monkeypatch, account, lease
+):
+    """A long erasure whose lease lapsed may have another run on it now."""
+    renewals = iter([True, True, False])
+    lease.keep.side_effect = lambda *_: next(renewals)
+    steps = Steps(monkeypatch)
+
+    report = await routine.erase_account(USER_ID, dry_run=False)
+
+    assert [name for name, _ in steps.calls] == STEP_NAMES[:2]
+    assert report.steps[-1].name == STEP_NAMES[2]
+    assert report.steps[-1].status == StepStatus.FAILED
+    assert "lease" in report.steps[-1].note
+    assert not report.complete
+    lease.release.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_failure_logs_no_traceback_for_steps_that_handle_the_address(
+    monkeypatch, account, caplog
+):
+    Steps(monkeypatch, failing="mailerlite")
+
+    with caplog.at_level("ERROR", logger=routine.logger.name):
+        await routine.erase_account(USER_ID, dry_run=False)
+
+    (record,) = caplog.records
+    assert not record.exc_info
+    assert "sam@example.com" not in caplog.text
