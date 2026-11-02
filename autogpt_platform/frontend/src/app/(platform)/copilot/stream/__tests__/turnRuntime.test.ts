@@ -1181,6 +1181,60 @@ describe("recovered terminal errors", () => {
     return `data: ${JSON.stringify({ type: "data-turn-error", data: { turnId, errorText }, transient: true })}\n\n`;
   }
 
+  it.each(["absent", "matching", "different", "missing_reply"] as const)(
+    "reports only real drift with a %s persisted error marker",
+    async (persistedMarker) => {
+      await sendAndPublish(toolTurn.sse.length - 1);
+      backend.stopWithoutFinish();
+      vi.spyOn(backend, "view").mockImplementation(() => {
+        const marker = turnSegment().recoveredError;
+        return {
+          messages: [
+            ...(persistedMarker === "missing_reply"
+              ? toolTurn.rows.slice(0, -1)
+              : toolTurn.rows
+            ).map((row, sequence) => ({ ...row, sequence })),
+            ...((persistedMarker === "matching" ||
+              persistedMarker === "different") &&
+            marker
+              ? [
+                  {
+                    role: "assistant",
+                    content:
+                      persistedMarker === "matching"
+                        ? marker.content
+                        : "different",
+                    sequence: toolTurn.rows.length,
+                  },
+                ]
+              : []),
+          ],
+          has_more_messages: false,
+          active_stream: null,
+        };
+      });
+      backend.connections[0].send(recovered());
+      await advance(1_000);
+
+      expect(turnSegment().reconciled).toBe(true);
+      if (
+        persistedMarker === "different" ||
+        persistedMarker === "missing_reply"
+      ) {
+        expect(report).toHaveBeenCalledWith(
+          "finish",
+          expect.objectContaining({
+            diffs: [
+              persistedMarker === "different" ? "3: content" : "2: missing",
+            ],
+          }),
+        );
+      } else {
+        expect(report).not.toHaveBeenCalled();
+      }
+    },
+  );
+
   it.each([false, true])(
     "fails a resumed turn once, stored finish=%s",
     async (finish) => {

@@ -1122,7 +1122,16 @@ export class TurnRuntime {
         }));
       return;
     }
-    const drift = diffRows(seg.log.rows, persisted.rows);
+    const drift = diffRows(seg.log.rows, persisted.rows).filter(
+      ({ index, fields }) =>
+        !(
+          seg.log.rows[index]?.key === seg.recoveredError?.key &&
+          index === seg.log.rows.length - 1 &&
+          index >= persisted.rows.length &&
+          fields.length === 1 &&
+          fields[0] === "missing"
+        ),
+    );
     if (drift.length > 0 && !seg.stopped && !seg.frozen) {
       this.deps.report("finish", {
         turnId: seg.log.turnId,

@@ -12,6 +12,7 @@ from backend.copilot.response_model import (
     StreamFinish,
     StreamRecoveredError,
 )
+from backend.copilot.stream_terminal import TurnTerminal
 
 
 @pytest.fixture
@@ -152,7 +153,18 @@ async def test_per_turn_record_survives_successor_and_decodes(redis, encode):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("raw", [None, b"bad json", b"[]", b'{"turn_id":"other"}'])
+@pytest.mark.parametrize(
+    "raw",
+    [
+        None,
+        b"bad json",
+        b"[]",
+        b'{"turn_id":"other"}',
+        b'{"turn_id":"t","status":"failed","error_message":42}',
+        b'{"turn_id":"t","status":"failed","error_code":false}',
+        b'{"turn_id":"t","status":"running","error_message":"not terminal"}',
+    ],
+)
 async def test_missing_or_invalid_record_falls_back_to_matching_hash(redis, raw):
     redis.get.return_value = raw
     redis.hgetall.return_value = {
@@ -266,7 +278,7 @@ async def test_stop_record_cannot_resurrect_cancellation(redis, mocker):
         "s", registry.CANCELLED_MESSAGE, skip_error_publish=True, turn_id="t"
     )
     terminal = orjson.loads(cas.call_args.kwargs["record"][1])
-    assert registry._terminal_error(terminal, "t") is None
+    assert TurnTerminal.model_validate(terminal).as_error() is None
     assert [type(call.args[1]) for call in publish.await_args_list] == [StreamFinish]
 
 
