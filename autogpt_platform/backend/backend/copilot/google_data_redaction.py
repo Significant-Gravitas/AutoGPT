@@ -3,9 +3,9 @@
 Google's Limited Use policy bars staff from reading what the Gmail, Drive,
 Docs, Sheets and Calendar blocks return, so neither their output nor the
 arguments AutoPilot passed them may reach a trace. :func:`redact_google_data`
-is the redaction for a traced payload. Nothing in the backend applies it since
-Langfuse tracing was removed (SECRT-2711): the PostHog spans the backend sends
-(``copilot/ai_spans.py``) carry no tool input or output.
+is the redaction for a traced payload. Nothing in the backend applies it: the
+backend no longer traces to Langfuse (SECRT-2711), and the PostHog spans it
+sends (``copilot/ai_spans.py``) carry no tool input or output.
 
 Data counts as Google's by the block that produced it, never by what it says:
 
