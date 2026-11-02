@@ -22,7 +22,7 @@ from backend.copilot.gate.subject import (
     workflow_subject,
 )
 from backend.copilot.gate.workflow import awaiting_whom, card_chat_for_run
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatSession, pauses_irreversible_actions
 from backend.copilot.permissions import denied_graph_providers
 from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.copilot.tool_display import emit_tool_display_name
@@ -1087,7 +1087,7 @@ class RunAgentTool(BaseTool):
                 pause_irreversible_actions=(
                     not dry_run
                     and not gate_approved
-                    and session.metadata.pauses_irreversible_actions
+                    and await pauses_irreversible_actions(session.metadata)
                 ),
             )
         except GraphValidationError as e:
@@ -1415,7 +1415,7 @@ class RunAgentTool(BaseTool):
             result = await get_scheduler_client().add_execution_schedule(
                 user_id=user_id,
                 graph_id=library_agent.graph_id,
-                graph_version=library_agent.graph_version,
+                graph_version=graph.version,
                 name=schedule_name,
                 cron=cron,
                 input_data=inputs,

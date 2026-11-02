@@ -12,6 +12,8 @@ on:
       - ".github/scripts/test_frontend_cobertura_contract.py"
       - ".github/scripts/run_unittest_junit.py"
       - "autogpt_platform/frontend/**"
+      # The Better Auth tables are Prisma's; auth-schema.test.ts checks them.
+      - "autogpt_platform/backend/schema.prisma"
       - "autogpt_platform/backend/Dockerfile"
       - "autogpt_platform/docker-compose.yml"
       - "autogpt_platform/docker-compose.platform.yml"
@@ -25,6 +27,8 @@ on:
       - ".github/scripts/test_frontend_cobertura_contract.py"
       - ".github/scripts/run_unittest_junit.py"
       - "autogpt_platform/frontend/**"
+      # The Better Auth tables are Prisma's; auth-schema.test.ts checks them.
+      - "autogpt_platform/backend/schema.prisma"
       - "autogpt_platform/backend/Dockerfile"
       - "autogpt_platform/docker-compose.yml"
       - "autogpt_platform/docker-compose.platform.yml"

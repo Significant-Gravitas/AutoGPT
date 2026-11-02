@@ -184,12 +184,17 @@ async def update_graph(
     if not existing_versions:
         raise HTTPException(404, detail=f"Workflow #{graph_id} not found")
 
-    graph.version = max(g.version for g in existing_versions) + 1
+    latest_version = max(g.version for g in existing_versions)
+    graph.version = latest_version + 1
     current_active_version = next((v for v in existing_versions if v.is_active), None)
 
+    requested_graph = graph
     graph = graph_db.make_graph_model(graph, user_id)
     submitted_node_ids = graph.reassign_ids(user_id=user_id, reassign_graph_id=False)
     _validate_graph_to_save(graph, submitted_node_ids)
+
+    if await graph_db.graph_owner_id(graph_id) != user_id:
+        return await _save_as_fork(requested_graph, latest_version, user_id, ctx)
 
     # If this new version is going to be active, validate node credentials
     # BEFORE persisting so a credential issue can't leave a half-saved version
@@ -395,6 +400,27 @@ async def execute_graph(
     except Exception:
         record_graph_operation(operation="execute", status="error")
         raise
+
+
+async def _save_as_fork(
+    graph: graph_db.Graph,
+    forked_from_version: int,
+    user_id: str,
+    ctx: RequestContext,
+) -> UpdateGraphResponse:
+    """A graph ID belonging to somebody else is saved as the caller's own copy."""
+    fork, _ = await library_db.fork_graph_in_library(
+        graph,
+        user_id,
+        forked_from_version=forked_from_version,
+        organization_id=ctx.org_id,
+        team_id=ctx.team_id,
+    )
+    fork_with_subgraphs = await graph_db.get_graph(
+        fork.id, fork.version, user_id=user_id, include_subgraphs=True
+    )
+    assert fork_with_subgraphs
+    return UpdateGraphResponse(graph=fork_with_subgraphs, skipped_webhook_presets=[])
 
 
 def _validate_graph_to_save(

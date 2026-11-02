@@ -12,6 +12,7 @@ import {
   TwitterIcon,
 } from "@hugeicons/core-free-icons";
 import { createIconComponent } from "@/components/atoms/Icon/Icon";
+import { z } from "zod";
 
 export const fallbackIcon = createIconComponent(Key01Icon);
 const globeIcon = createIconComponent(Globe02Icon);
@@ -300,6 +301,57 @@ export function hasExistingHostCredential<
   return credentials.some(
     (c) => c.type === "host_scoped" && "host" in c && c.host === host,
   );
+}
+
+// Mirrors SCOPE_RULES in backend/data/credential_scope.py: these providers'
+// blocks connect to a server the workflow names, so a login's scope says which
+// one, as <scheme>://host[:port].
+const SERVER_SCOPE_SCHEMES: Record<string, { value: string; label: string }[]> =
+  {
+    smtp: [{ value: "smtp", label: "SMTP" }],
+    database: [
+      { value: "postgresql", label: "PostgreSQL" },
+      { value: "mysql", label: "MySQL" },
+      { value: "mssql", label: "Microsoft SQL Server" },
+    ],
+  };
+
+export function getServerScopeSchemes(provider: string) {
+  return SERVER_SCOPE_SCHEMES[provider] ?? null;
+}
+
+// The examples in the server messages, as in SCOPE_RULES.
+const SERVER_EXAMPLES: Record<string, { host: string; port: number }> = {
+  smtp: { host: "smtp.example.com", port: 587 },
+  database: { host: "db.example.com", port: 5432 },
+};
+
+const SERVER_PATTERN =
+  /^(\[[0-9a-fA-F:.]+\]|[A-Za-z0-9._-]+)(?::([0-9]{1,5}))?$/;
+
+export function isValidServer(server: string) {
+  const match = SERVER_PATTERN.exec(server.trim());
+  if (!match) return false;
+  if (match[2] === undefined) return true;
+  const port = Number(match[2]);
+  return port >= 1 && port <= 65535;
+}
+
+export function getInvalidServerMessage(provider: string) {
+  const { host, port } = SERVER_EXAMPLES[provider] ?? SERVER_EXAMPLES.smtp;
+  return `Enter a valid server, like ${host} or ${host}:${port} (port 1-65535)`;
+}
+
+export function getServerFieldSchema(provider: string) {
+  return z
+    .string()
+    .trim()
+    .min(1, "Server is required")
+    .refine(isValidServer, getInvalidServerMessage(provider));
+}
+
+export function buildServerScope(scheme: string, server: string) {
+  return `${scheme}://${server.trim().toLowerCase()}`;
 }
 
 export type ActionTarget =
