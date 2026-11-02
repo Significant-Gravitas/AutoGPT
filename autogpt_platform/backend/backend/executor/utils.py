@@ -89,7 +89,7 @@ from backend.util.exceptions import (
 from backend.util.json import dumps as json_dumps
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
-from backend.util.type import coerce_inputs_to_schema
+from backend.util.type import ConversionError, coerce_inputs_to_schema
 
 config = Config()
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[GraphExecutorUtil]")
@@ -356,11 +356,26 @@ def _is_cost_filter_match(cost_filter: BlockInput, input_data: BlockInput) -> bo
 # Dynamic field utilities are now imported from backend.data.dynamic_fields
 
 
+class InputMismatchError(ValueError):
+    """The node has every input it needs, but a value can't be used: it can't
+    be converted to its input's type, or it doesn't match the input's schema.
+
+    Unlike a missing input, more data arriving later won't fix this, so the
+    node should fail rather than wait. ``data`` is the resolved input, which
+    is what the node is queued with to fail with this error.
+    """
+
+    def __init__(self, message: str, data: BlockInput):
+        super().__init__(message)
+        self.data = data
+
+
 def validate_exec(
     node: Node,
     data: BlockInput,
     resolve_input: bool = True,
     dry_run: bool = False,
+    raise_on_mismatch: bool = False,
 ) -> tuple[BlockInput | None, str]:
     """
     Validate the input data for a node execution.
@@ -372,6 +387,10 @@ def validate_exec(
         dry_run: When True, credential fields are allowed to be missing — they
             will be substituted with a sentinel so the node can be queued and
             later executed via simulate_block.
+        raise_on_mismatch: When True, a value that can't be converted or
+            doesn't match the schema raises ``InputMismatchError`` instead of
+            being returned as an error, so the caller can tell it apart from
+            input that is still missing.
 
     Returns:
         A tuple of the validated data and the block name.
@@ -404,10 +423,9 @@ def validate_exec(
     if resolve_input:
         data = merge_execution_input(data)
 
-    # Coerce non-matching data types to the expected input schema.
-    coerce_inputs_to_schema(data, schema)
-
     # Input data post-merge should contain all required fields from the schema.
+    # Checked before coercion so a node still missing input keeps waiting even
+    # when a value it already has can't be converted.
     if missing_input := schema.get_missing_input(data):
         if dry_run:
             # In dry-run mode all missing inputs are tolerated — simulate_block()
@@ -416,14 +434,25 @@ def validate_exec(
         else:
             return None, f"{error_prefix} missing input {missing_input}"
 
+    def mismatch(error: str) -> tuple[None, str]:
+        error_message = f"{error_prefix} {error}"
+        logger.warning(error_message)
+        if raise_on_mismatch:
+            raise InputMismatchError(error_message, data)
+        return None, error_message
+
+    # Coerce non-matching data types to the expected input schema.
+    try:
+        coerce_inputs_to_schema(data, schema)
+    except ConversionError as e:
+        return mismatch(str(e))
+
     # Last validation: Validate the input values against the schema.
     # Skip for dry runs — simulate_block doesn't use real inputs, and sentinel
     # credential values (None) would fail JSON-schema type/required checks.
     if not dry_run:
         if error := schema.get_mismatch_error(data):
-            error_message = f"{error_prefix} {error}"
-            logger.warning(error_message)
-            return None, error_message
+            return mismatch(error)
 
     return data, node_block.name
 

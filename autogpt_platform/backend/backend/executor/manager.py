@@ -79,6 +79,7 @@ from backend.util.decorator import (
     time_measured,
 )
 from backend.util.exceptions import (
+    BlockInputError,
     GraphNotFoundError,
     InsufficientBalanceError,
     ModerationError,
@@ -127,6 +128,7 @@ from .utils import (
     NODE_UNWIND_GRACE_SECONDS,
     CancelExecutionEvent,
     ExecutionOutputEntry,
+    InputMismatchError,
     LogMetadata,
     NodeExecutionProgress,
     create_execution_queue_config,
@@ -404,9 +406,12 @@ async def execute_node(
         node, data.inputs, resolve_input=False, dry_run=execution_context.dry_run
     )
     if input_data is None:
-        log_metadata.warning(f"Skip execution, input validation error: {error}")
-        yield "error", error
-        return
+        log_metadata.warning(f"Failing node, input validation error: {error}")
+        # Raised, not yielded, so the node ends FAILED with this error rather
+        # than COMPLETED with an error output.
+        raise BlockInputError(
+            message=error, block_name=node_block.name, block_id=node_block.id
+        )
 
     # Re-shape the input data for agent block.
     # AgentExecutorBlock specially separate the node input_data & its input_default.
@@ -763,6 +768,26 @@ async def _enqueue_next_nodes(
             queued_by="node_output",
         )
 
+    def validate_next_input(
+        next_node: Node, data: BlockInput
+    ) -> tuple[BlockInput | None, str]:
+        """Validate the input of a node that may be ready to run.
+
+        Missing input returns no data, so the node keeps waiting. A value that
+        can't be converted or used still returns data: the node is queued, and
+        its own validation in `execute_node` fails it with the error, rather
+        than leaving it skipped while the run completes.
+        """
+        try:
+            return validate_exec(
+                next_node,
+                data,
+                dry_run=execution_context.dry_run,
+                raise_on_mismatch=True,
+            )
+        except InputMismatchError as e:
+            return e.data, str(e)
+
     async def register_next_executions(node_link: Link) -> list[NodeExecutionEntry]:
         try:
             return await _register_next_executions(node_link)
@@ -820,8 +845,8 @@ async def _enqueue_next_nodes(
                 next_node_input.update(node_input_mask)
 
             # Validate the input data for the next node.
-            next_node_input, validation_msg = validate_exec(
-                next_node, next_node_input, dry_run=execution_context.dry_run
+            next_node_input, validation_msg = validate_next_input(
+                next_node, next_node_input
             )
             suffix = f"{next_output_name}>{next_input_name}~{next_node_exec_id}:{validation_msg}"
 
@@ -867,9 +892,7 @@ async def _enqueue_next_nodes(
                 if node_input_mask:
                     idata.update(node_input_mask)
 
-                idata, msg = validate_exec(
-                    next_node, idata, dry_run=execution_context.dry_run
-                )
+                idata, msg = validate_next_input(next_node, idata)
                 suffix = f"{next_output_name}>{next_input_name}~{ineid}:{msg}"
                 if not idata:
                     log_metadata.info(f"Enqueueing static-link skipped: {suffix}")

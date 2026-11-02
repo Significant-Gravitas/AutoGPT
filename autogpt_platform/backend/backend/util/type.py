@@ -362,7 +362,17 @@ def coerce_inputs_to_schema(data: dict[str, Any], schema: type) -> None:
             continue
         if _value_satisfies_type(value, target):
             continue
-        data[name] = convert(value, target)
+        try:
+            data[name] = convert(value, target)
+        except ConversionError as e:
+            shown = repr(value)
+            if len(shown) > 100:
+                shown = shown[:100] + "..."
+            target_name = getattr(target, "__name__", str(target))
+            raise ConversionError(
+                f"Input `{name}` can't take the value {shown}: "
+                f"it can't be converted to {target_name}"
+            ) from e
 
 
 class FormattedStringType(str):
