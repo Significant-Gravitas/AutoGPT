@@ -103,7 +103,7 @@ export function MentionDropdown({
         role="listbox"
         aria-label="Skill commands"
         onMouseDown={(e) => e.preventDefault()}
-        className="absolute bottom-full left-0 z-50 mb-2 max-h-80 w-80 max-w-full overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-md"
+        className="absolute bottom-full left-0 z-50 mb-2 max-h-80 w-80 max-w-full overflow-y-auto rounded-2xl border border-border-base bg-white p-1.5 shadow-md"
       >
         {options.map((option, index) =>
           option.kind === "skill"
@@ -116,15 +116,14 @@ export function MentionDropdown({
             : null,
         )}
         {isLoading ? (
-          <p className="flex items-center gap-2 px-3 py-2 text-sm text-zinc-500">
-            <Icon
-              icon={Loading03Icon}
-              className="h-4 w-4 shrink-0 animate-spin"
-            />
+          <p className="flex items-center gap-2 px-3 py-2 text-sm text-foreground-tertiary">
+            <Icon icon={Loading03Icon} className="h-4 w-4 shrink-0" />
             Loading skills…
           </p>
         ) : options.length === 0 ? (
-          <p className="px-3 py-2 text-sm text-zinc-500">No matching skills.</p>
+          <p className="px-3 py-2 text-sm text-foreground-tertiary">
+            No matching skills.
+          </p>
         ) : null}
       </div>
     );
@@ -272,13 +271,13 @@ function SkillOption({ skill }: { skill: SkillCommand }) {
       <span className="flex min-w-0 items-baseline gap-2">
         <span className="truncate font-medium">/{skill.name}</span>
         {skill.argumentHint && (
-          <span className="shrink-0 text-xs text-zinc-400">
+          <span className="shrink-0 text-xs text-foreground-subtle">
             {skill.argumentHint}
           </span>
         )}
       </span>
       <span
-        className="block truncate text-xs text-zinc-500"
+        className="block truncate text-xs text-foreground-tertiary"
         title={skill.description}
       >
         {skill.description}
