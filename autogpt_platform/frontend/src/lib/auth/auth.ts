@@ -11,6 +11,7 @@ import { compare, hash } from "bcryptjs";
 import { PostgresDialect } from "kysely";
 import { Pool } from "pg";
 import { assertSignInAllowed, assertSignUpAllowed } from "./access-blocks";
+import { assertNotBannedAddress } from "./ban-record";
 import { getTrustedClientIP } from "./client-ip";
 import { DISABLED_AUTH_PATHS } from "./disabled-paths";
 import { assertNotDisposableEmail } from "./disposable-email";
@@ -514,13 +515,15 @@ function assertSignUpPolicy(email: string, ctx: { path?: string } | null) {
   }
 }
 
-// IP and email-domain blocks from /admin/users (access-blocks.ts) answer
-// before the disposable list, so an admin's domain block keeps its message.
+// IP and email-domain blocks from /admin/users (access-blocks.ts) and the ban
+// record of an erased, banned account (ban-record.ts) answer before the
+// disposable list, so an admin's block keeps its message.
 async function assertEmailSignUpAllowed(
   email: string,
   ipAddress: string | null,
 ) {
   await assertSignUpAllowed(authDbPool, { email, ipAddress });
+  await assertNotBannedAddress(email);
   const dns = sharedLookups();
   await assertNotDisposableEmail(email, { dns });
   await assertEmailHasMailServer(email, { dns });

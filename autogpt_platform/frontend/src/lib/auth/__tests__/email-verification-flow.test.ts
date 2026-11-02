@@ -71,6 +71,8 @@ const sentEmails = vi.hoisted(
 );
 // Addresses the mail provider refuses at send time, as sendAuthEmail reports it.
 const refusedAtSend = vi.hoisted(() => new Set<string>());
+// Its own lookup is tested in ban-record.test.ts and access-blocks-flow.test.ts.
+vi.mock("../ban-record", () => ({ assertNotBannedAddress: vi.fn() }));
 vi.mock("../email", () => ({
   sendAuthEmail: vi.fn(async (email: (typeof sentEmails)[number]) => {
     if (refusedAtSend.has(email.to)) {
