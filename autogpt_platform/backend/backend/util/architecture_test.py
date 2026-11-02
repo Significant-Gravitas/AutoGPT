@@ -221,7 +221,6 @@ _GLOBAL_CLOCK_PATCH_OFFENDERS = {
     "copilot/expert_context_test.py asyncio.sleep": 2,
     "copilot/graphiti/falkordb_driver_test.py asyncio.sleep": 4,
     "copilot/optimize_blocks_test.py asyncio.sleep": 3,
-    "copilot/sdk/openrouter_cost_test.py asyncio.sleep": 1,
     "copilot/sdk/p0_guardrails_test.py asyncio.sleep": 7,
     "copilot/sdk/provider_out_of_credits_test.py asyncio.sleep": 1,
     "copilot/sdk/retry_scenarios_test.py asyncio.sleep": 3,
