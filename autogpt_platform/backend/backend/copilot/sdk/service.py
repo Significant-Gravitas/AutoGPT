@@ -14,6 +14,7 @@ import os
 import random
 import re
 import shutil
+import stat
 import sys
 import time
 import uuid
@@ -40,9 +41,6 @@ from claude_agent_sdk import (
     ToolUseBlock,
 )
 from claude_agent_sdk.types import SystemPromptPreset
-from langfuse import get_client, propagate_attributes
-from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
-from opentelemetry import trace as otel_trace
 from pydantic import BaseModel
 
 from backend.blocks.desktop._common import workspace_volume_mounts
@@ -58,7 +56,6 @@ from backend.copilot.budget_gate import gate_auto_continue
 from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.sandbox_status import build_sandbox_replaced_notice
 from backend.copilot.continuation import as_model_prompt
-from backend.copilot.feedback_db import RATEABLE_ROLES
 from backend.copilot.cli_session_entry import rewrite_user_entry
 from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
 from backend.copilot.graphiti.context import fetch_warm_context
@@ -67,7 +64,7 @@ from backend.copilot.graphiti.context_marker import (
     append_injected_memory_block,
     strip_injected_memory_text,
 )
-from backend.copilot.google_data_redaction import install_trace_redaction
+from backend.copilot.host_fs import cli_tmpdir, save_new_file
 from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
@@ -76,6 +73,8 @@ from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.learning.capture import capture_chat_turn, find_initiating_user_row
 from backend.copilot.sdk.cli_prelaunch import CLIPrelaunch
 from backend.copilot.sdk.codex_compat_gateway import (
+    GATEWAY_REFUSED_CODE,
+    GATEWAY_REFUSED_MESSAGE,
     CodexAnthropicGateway,
     gateway_for_lease,
 )
@@ -107,7 +106,6 @@ from backend.util.prompt import (
     estimate_token_count,
     get_compression_target,
 )
-from backend.util.settings import Settings
 
 from ..config import ChatConfig, CopilotLLMModel
 from ..constants import (
@@ -168,7 +166,6 @@ from ..prompting import (
     get_graphiti_supplement,
     get_sdk_supplement,
 )
-from ..rate_limit import get_user_tier
 from ..response_model import (
     StreamBaseResponse,
     StreamCheckpoint,
@@ -202,7 +199,6 @@ from ..expert_context import build_expert_identity_suffix
 from ..expert_kickoff import is_expert_kickoff_turn
 from ..service import (
     _build_system_prompt,
-    _is_langfuse_configured,
     _update_title_async,
     first_message_expert_context,
     inject_user_context,
@@ -254,7 +250,8 @@ from .compaction import (
     sdk_compaction_stats,
     transcript_stats,
 )
-from .env import DISABLE_SLASH_COMMANDS_FLAG, cli_prompt_text, cli_user_message
+from .cli_io import send_user_blocks, send_user_text
+from .env import DISABLE_SLASH_COMMANDS_FLAG, cli_prompt_text
 from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
 from .first_turn_context import FirstTurnContext
 from .governor import TurnGovernor
@@ -613,6 +610,32 @@ async def _consume_sdk_until_done(
                 # it appends the marker and yields StreamError exactly once.
                 # Yielding StreamError before the retry decision causes the
                 # client to display an error that is immediately superseded.
+                loop_state.ended_with_stream_error = True
+                break
+
+            # Our own gateway refusing a request is a defect on our side, so
+            # its sentence is not an answer: forwarded, the turn reads as a
+            # successful reply of "API Error: 409 …" and nothing retries it.
+            # Judged after the transient check, which owns a provider failure
+            # the gateway relayed.
+            refusal = (
+                ctx.codex_gateway.last_refusal
+                if ctx.codex_gateway is not None
+                else None
+            )
+            # The preview is a truncated ``repr`` of the block list, so a
+            # refusal behind a long block, or carrying an escaped quote, is
+            # not in it: read the blocks' own text.
+            refusal_text = "".join(
+                block.text for block in sdk_msg.content if isinstance(block, TextBlock)
+            )
+            if refusal is not None and refusal in refusal_text:
+                logger.error(
+                    f"{ctx.log_prefix} Codex gateway refused the request — "
+                    f"failing the turn: {refusal}"
+                )
+                loop_state.stream_error_msg = GATEWAY_REFUSED_MESSAGE
+                loop_state.stream_error_code = GATEWAY_REFUSED_CODE
                 loop_state.ended_with_stream_error = True
                 break
 
@@ -1269,7 +1292,7 @@ _EXPECTED_STOP_CODES: frozenset[str] = frozenset(
 # Handled-error codes whose StreamError the outer retry loop yields itself,
 # after it has persisted the history marker, rather than the attempt.
 _OUTER_LOOP_YIELDS_ERROR_CODES: frozenset[str] = frozenset(
-    {"transient_api_error", PROVIDER_UNAVAILABLE_CODE}
+    {"transient_api_error", PROVIDER_UNAVAILABLE_CODE, GATEWAY_REFUSED_CODE}
 )
 
 
@@ -2132,75 +2155,6 @@ def _classify_final_failure(
     return None
 
 
-def _setup_langfuse_otel() -> None:
-    """Configure OTEL tracing for the Claude Agent SDK → Langfuse.
-
-    This uses LangSmith's built-in Claude Agent SDK integration to monkey-patch
-    `ClaudeSDKClient`, capturing every tool call and model turn as OTEL spans.
-    Spans are exported via OTLP to Langfuse (or any OTEL-compatible backend).
-
-    To route traces elsewhere, override `OTEL_EXPORTER_OTLP_ENDPOINT` and
-    `OTEL_EXPORTER_OTLP_HEADERS` environment variables — no code changes needed.
-
-    Every run is passed through the Google data redaction before it is
-    exported; if that cannot be installed, the SDK is left untraced.
-    """
-    if not _is_langfuse_configured():
-        return
-
-    # Ours to take back if the setup fails, so LangSmith does not trace
-    # without the redaction.
-    set_here: list[str] = []
-    try:
-        settings = Settings()
-        pk = settings.secrets.langfuse_public_key
-        sk = settings.secrets.langfuse_secret_key
-        host = settings.secrets.langfuse_host
-        tracing_env = settings.secrets.langfuse_tracing_environment
-
-        # OTEL exporter config — these are only set if not already present,
-        # so explicit env-var overrides always win. The LangSmith client
-        # reads its OTEL mode as the redaction builds it, so these go first.
-        creds = base64.b64encode(f"{pk}:{sk}".encode()).decode()
-        set_here = _set_env_defaults(
-            {
-                "LANGSMITH_OTEL_ENABLED": "true",
-                "LANGSMITH_OTEL_ONLY": "true",
-                "OTEL_EXPORTER_OTLP_ENDPOINT": f"{host}/api/public/otel",
-                "OTEL_EXPORTER_OTLP_HEADERS": f"Authorization=Basic {creds}",
-                "OTEL_PYTHON_EXPORTER_OTLP_HTTP_TRACES_CREDENTIAL_PROVIDER": (
-                    "autogpt-copilot-traces"
-                ),
-                # The Langfuse server maps this to its first-class
-                # environment field.
-                "OTEL_RESOURCE_ATTRIBUTES": f"langfuse.environment={tracing_env}",
-            }
-        )
-
-        install_trace_redaction()
-        # Switched on only once every run it traces is redacted.
-        set_here += _set_env_defaults({"LANGSMITH_TRACING": "true"})
-        configure_claude_agent_sdk(tags=["sdk"])
-        logger.info(
-            "OTEL tracing configured for Claude Agent SDK → %s [%s]", host, tracing_env
-        )
-    except Exception:
-        for key in set_here:
-            os.environ.pop(key, None)
-        logger.warning("OTEL setup skipped — failed to configure", exc_info=True)
-
-
-def _set_env_defaults(defaults: dict[str, str]) -> list[str]:
-    """Set each variable not already set; return the ones this set."""
-    added = [key for key in defaults if key not in os.environ]
-    for key in added:
-        os.environ[key] = defaults[key]
-    return added
-
-
-_setup_langfuse_otel()
-
-
 # Set to hold background tasks to prevent garbage collection
 _background_tasks: set[asyncio.Task[Any]] = set()
 
@@ -2294,13 +2248,10 @@ async def _iter_sdk_messages(
     timeout.  On timeout we yield a heartbeat sentinel but keep the Task
     alive so it can deliver the next message.
 
-    Every fetch Task runs in one context, copied once up front.  The
-    langsmith tracing wrapper around ``receive_response()`` stores the
-    ``claude.conversation`` run in a ContextVar during the first fetch and
-    parents each reply's ``claude.assistant.turn`` span on it; a Task given
-    a fresh copy of the caller's context per message never sees that run,
-    so every reply after the first message would drop out of the trace.
-    Only one fetch is in flight at a time, so sharing the context is safe.
+    Every fetch Task runs in one context, copied once up front, so a
+    ContextVar the SDK sets while fetching one message is still set for
+    the next.  Only one fetch is in flight at a time, so sharing the
+    context is safe.
 
     Yields `None` on heartbeat timeout (caller should refresh locks and
     emit heartbeat events).  Yields the raw SDK message otherwise.
@@ -2380,7 +2331,7 @@ def _resolve_sdk_model() -> str | None:
     user's subscription plan.  Otherwise derives from
     ``config.thinking_standard_model``.
 
-    For per-user routing (LaunchDarkly overrides), see
+    For per-user routing (PostHog overrides), see
     :func:`_resolve_sdk_model_for_request`.
     """
     if config.claude_agent_model:
@@ -2435,7 +2386,7 @@ async def _resolve_sdk_model_for_request(
 
     Priority (highest first):
     1. ``config.claude_agent_model`` — unconditional override, bypasses LD.
-    2. LaunchDarkly ``copilot-model-routing[thinking][{tier}]`` if it
+    2. PostHog ``copilot-model-routing[thinking][{tier}]`` if it
        serves a value different from the config default for *user_id*.
        An LD-served override wins over subscription mode so admins can
        route specific users to a specific model without flipping
@@ -3014,7 +2965,8 @@ def process_cli_restore(
 async def _cleanup_sdk_tool_results(cwd: str) -> None:
     """Remove SDK session artifacts for a specific working directory.
 
-    Cleans up the ephemeral working directory `/tmp/copilot-<session>/`.
+    Cleans up the ephemeral working directory `/tmp/copilot-<session>/` and
+    the CLI's temp directory beside it.
 
     Also sweeps stale CLI project directories (older than 12 h) to prevent
     unbounded disk growth.  The sweep is best-effort, rate-limited to once
@@ -3029,6 +2981,7 @@ async def _cleanup_sdk_tool_results(cwd: str) -> None:
         return
 
     await asyncio.to_thread(shutil.rmtree, normalized, True)
+    await asyncio.to_thread(shutil.rmtree, cli_tmpdir(normalized), True)
 
     # Best-effort sweep of old project dirs to prevent disk leak.
     # Pass the encoded cwd so only this session's project directory is swept,
@@ -3805,27 +3758,6 @@ _VISION_MIME_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/w
 # Max size for embedding images directly in the user message (20 MiB raw).
 _MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024
 
-# Matches characters unsafe for filenames.
-_UNSAFE_FILENAME = re.compile(r"[^\w.\-]")
-
-
-def _save_to_sdk_cwd(sdk_cwd: str, filename: str, content: bytes) -> str:
-    """Write file content to the SDK ephemeral directory.
-
-    Returns the absolute path.  Adds a numeric suffix on name collisions.
-    """
-    safe = _UNSAFE_FILENAME.sub("_", filename) or "file"
-    candidate = os.path.join(sdk_cwd, safe)
-    if os.path.exists(candidate):
-        stem, ext = os.path.splitext(safe)
-        idx = 1
-        while os.path.exists(candidate):
-            candidate = os.path.join(sdk_cwd, f"{stem}_{idx}{ext}")
-            idx += 1
-    with open(candidate, "wb") as f:
-        f.write(content)
-    return candidate
-
 
 class PreparedAttachments(BaseModel):
     """Result of preparing file attachments for a query."""
@@ -3904,7 +3836,7 @@ async def _prepare_file_attachments(
                 # is unreadable there — the workspace tool works in both modes.
                 # A local copy is still written for non-E2B tooling, but the
                 # model is never pointed at that path.
-                _save_to_sdk_cwd(sdk_cwd, file_info.name, content)
+                save_new_file(sdk_cwd, file_info.name, content)
                 # ``file_id=<uuid>`` (not ``file_id:``) — chat-share
                 # allowlisting extracts references via _FILE_ID_RE, which
                 # matches exactly this shape (data/sharing/workspace_refs.py).
@@ -4450,10 +4382,7 @@ async def _run_stream_attempt(
                 *ctx.attachments.image_blocks,
                 {"type": "text", "text": cli_text},
             ]
-            user_msg = cli_user_message(content_blocks, ctx.session_id)
-            if client._transport is None:  # noqa: SLF001
-                raise RuntimeError("ClaudeSDKClient transport is not initialized")
-            await client._transport.write(json.dumps(user_msg) + "\n")  # noqa: SLF001
+            await send_user_blocks(client, content_blocks, ctx.session_id)
             state.transcript_builder.append_user(
                 content=[
                     *ctx.attachments.image_blocks,
@@ -4461,7 +4390,7 @@ async def _run_stream_attempt(
                 ]
             )
         else:
-            await client.query(cli_text, session_id=ctx.session_id)
+            await send_user_text(client, state.query_message, ctx.session_id)
             state.transcript_builder.append_user(content=ctx.current_message)
 
         loop_state = _SDKLoopState(
@@ -4519,10 +4448,7 @@ async def _run_stream_attempt(
                 "after thinking-only final turn",
                 ctx.log_prefix,
             )
-            await client.query(
-                _THINKING_ONLY_REPROMPT,
-                session_id=ctx.session_id,
-            )
+            await send_user_text(client, _THINKING_ONLY_REPROMPT, ctx.session_id)
             async for ev in _consume_sdk_until_done(
                 client, ctx, state, acc, loop_state
             ):
@@ -5071,7 +4997,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             The SDK path does not currently branch on this value.
         model: Per-request model preference from the frontend toggle.
             'advanced' → Claude Opus; 'standard' → global config default.
-            Takes priority over per-user LaunchDarkly targeting.
+            Takes priority over per-user PostHog targeting.
     """
     if session is None:
         session = await get_chat_session(session_id, user_id)
@@ -5262,16 +5188,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         )
         return
 
-    # OTEL context manager — initialized inside the try and cleaned up in finally.
-    _otel_ctx: Any = None
     # The CLI spawned ahead of the query — stopped in finally if no launch used it.
     _cli_prelaunch: CLIPrelaunch | None = None
-    # Parent Langfuse span for the turn — created so that the
-    # ``openrouter-cost-reconcile`` backfill event has a stable trace_id to
-    # attach to even though it fires after the SDK-emitted spans end.
-    # ``propagate_attributes`` alone doesn't create a span, so without this
-    # wrapper ``get_current_trace_id()`` returns None at the finally block.
-    _lf_span: Any = None
     skip_transcript_upload = False
     has_history = len(session.messages) > 1
     transcript_content: str = ""
@@ -5333,7 +5251,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
     # Make sure there is no more code between the lock acquisition and try-block.
     try:
-        # Build system prompt (reuses non-SDK path with Langfuse support).
+        # Build system prompt (reuses non-SDK path with Langfuse prompt
+        # management).
         # Pre-compute the cwd here so the exact working directory path can be
         # injected into the supplement instead of the generic placeholder.
         # Catch ValueError early so the failure yields a clean StreamError rather
@@ -5341,6 +5260,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         try:
             sdk_cwd = _make_sdk_cwd(session_id)
             os.makedirs(sdk_cwd, exist_ok=True)
+            _make_cli_tmpdir(sdk_cwd)
         except (ValueError, OSError) as e:
             logger.error("%s Invalid SDK cwd: %s", log_prefix, e)
             yield StreamError(
@@ -5359,7 +5279,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         )
 
         # --- Run independent async I/O operations in parallel ---
-        # E2B sandbox setup, system prompt build (Langfuse + DB), Graphiti
+        # E2B sandbox setup, system prompt build (Langfuse prompt + DB), Graphiti
         # warm-context, and CLI session restore are all independent network
         # calls. Running them concurrently saves ~500-1000ms vs sequential.
 
@@ -5631,8 +5551,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             )
             fallback_model = _resolve_fallback_model()
 
-        # sdk_cwd routes the CLI's temp dir into the per-session workspace
-        # so sub-agent output files land inside sdk_cwd (see build_sdk_env).
+        # sdk_cwd also names the CLI's temp dir, beside it (see build_sdk_env).
         sdk_env = build_sdk_env(
             session_id=session_id,
             user_id=user_id,
@@ -5670,7 +5589,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             allowed = get_copilot_tool_names(
                 use_e2b=use_e2b, disabled_groups=disabled_tool_groups
             )
-            disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
+            disallowed = get_sdk_disallowed_tools()
 
         if kickoff_hidden:
             kickoff_hidden_mcp = {f"{MCP_TOOL_PREFIX}{n}" for n in kickoff_hidden}
@@ -5816,41 +5735,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         )
         adapter.governor = governor
 
-        # Propagate user_id/session_id as OTEL context attributes so the
-        # langsmith tracing integration attaches them to every span.  This
-        # is what Langfuse (or any OTEL backend) maps to its native
-        # user/session fields.
-        _user_tier = await get_user_tier(user_id) if user_id else None
-        _otel_metadata: dict[str, str] = {
-            "resume": str(use_resume),
-            "conversation_turn": str(turn),
-            "tool_surface": "registry",
-        }
-        if _user_tier:
-            _otel_metadata["subscription_tier"] = _user_tier.value
-
-        # Open a Langfuse parent span so the trace_id is observable from
-        # the finally block — ``propagate_attributes`` only annotates an
-        # existing span, it does not create one.
-        try:
-            _lf_span = get_client().start_as_current_span(name="copilot-sdk-turn")
-            _lf_span.__enter__()
-        except Exception:
-            logger.debug("Failed to open Langfuse parent span", exc_info=True)
-            _lf_span = None
-
-        _otel_ctx = propagate_attributes(
-            user_id=user_id,
-            session_id=session_id,
-            trace_name="copilot-sdk",
-            tags=["sdk"],
-            metadata=_otel_metadata,
-        )
-        _otel_ctx.__enter__()
-
         # The CLI's options are final and the query isn't built yet: spawn it
-        # now, under the turn's trace context, so it boots while the query is
-        # assembled instead of after (``CLIPrelaunch``).
+        # now, so it boots while the query is assembled instead of after
+        # (``CLIPrelaunch``).
         _cli_prelaunch = await CLIPrelaunch.start(sdk_options, log_prefix)
 
         current_message = message or ""
@@ -6828,48 +6715,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             if _cli_prelaunch is not None:
                 await _cli_prelaunch.close()
 
-        # --- Close OTEL context (with cost attributes) ---
-        # Captured before __exit__ so the reconcile task (launched below,
-        # after the span closes) can attach a backfill event to this turn's
-        # Langfuse trace.  Without it, Langfuse shows the rate-card estimate
-        # only — for non-Anthropic OpenRouter routes that's wildly wrong.
-        langfuse_trace_id: str | None = None
-        if _otel_ctx is not None:
-            try:
-                span = otel_trace.get_current_span()
-                if span and span.is_recording():
-                    span.set_attribute("gen_ai.usage.prompt_tokens", turn_prompt_tokens)
-                    span.set_attribute(
-                        "gen_ai.usage.completion_tokens", turn_completion_tokens
-                    )
-                    span.set_attribute(
-                        "gen_ai.usage.cache_read_tokens", turn_cache_read_tokens
-                    )
-                    span.set_attribute(
-                        "gen_ai.usage.cache_creation_tokens",
-                        turn_cache_creation_tokens,
-                    )
-                    if turn_cost_usd is not None:
-                        span.set_attribute("gen_ai.usage.cost_usd", turn_cost_usd)
-            except Exception:
-                logger.debug("Failed to set OTEL cost attributes", exc_info=True)
-            try:
-                _otel_ctx.__exit__(*sys.exc_info())
-            except Exception:
-                logger.warning("OTEL context teardown failed", exc_info=True)
-        if _lf_span is not None:
-            # Capture from our Langfuse parent span before tearing it down;
-            # tracks the lifetime of ``_lf_span`` so the trace id is still
-            # available if ``_otel_ctx`` was never entered.
-            try:
-                langfuse_trace_id = get_client().get_current_trace_id()
-            except Exception:
-                logger.debug("Failed to capture Langfuse trace_id", exc_info=True)
-            try:
-                _lf_span.__exit__(*sys.exc_info())
-            except Exception:
-                logger.warning("Langfuse parent span teardown failed", exc_info=True)
-
         # --- Persist token usage to session + rate-limit counters ---
         # Both must live in finally so they stay consistent even when an
         # exception interrupts the try block after StreamUsage was yielded.
@@ -6947,7 +6792,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     fallback_cost_usd=turn_cost_usd,
                     api_key=config.api_key,
                     log_prefix=log_prefix,
-                    langfuse_trace_id=langfuse_trace_id,
                     absorbed_generation_ids=absorbed_gen_ids,
                 )
             )
@@ -6996,11 +6840,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 requested_model=sdk_model,
                 actual_model=state.observed_model if state is not None else None,
                 routing_source=routing_source,
-            )
-            _stamp_turn_trace_id(
-                session.messages,
-                start_index=pre_turn_message_count,
-                trace_id=langfuse_trace_id,
             )
             stamp_turn_trace_id(session.messages, pre_turn_message_count)
             # What this turn ran on, recorded on the turn rather than read
@@ -7482,25 +7321,18 @@ def _stamp_turn_messages(
                 msg.stamps_pending_save = True
 
 
-def _stamp_turn_trace_id(
-    messages: list[ChatMessage],
-    *,
-    start_index: int,
-    trace_id: str | None,
-) -> None:
-    """Record the turn's Langfuse trace on the reply rows it wrote.
-
-    A thumbs up/down on the reply is scored against this trace (see
-    ``backend.copilot.feedback``). Every rateable role is stamped: the UI
-    names a reply bubble after its last assistant *or* reasoning row, and a
-    rating of either must find the trace. Bounded to the turn and never
-    overwriting, exactly like ``_stamp_turn_messages``; rows flushed mid-turn
-    ride the same stamps back-fill.
-    """
-    if not trace_id:
-        return
-    for msg in messages[start_index:]:
-        if msg.role in RATEABLE_ROLES and msg.langfuse_trace_id is None:
-            msg.langfuse_trace_id = trace_id
-            if msg.sequence is not None:
-                msg.stamps_pending_save = True
+def _make_cli_tmpdir(sdk_cwd: str) -> str:
+    """Create the CLI's temp directory with mode 0700, or reuse one an earlier
+    turn of this session left, which must be a 0700 directory of this user."""
+    path = cli_tmpdir(sdk_cwd)
+    try:
+        os.mkdir(path, 0o700)
+    except FileExistsError:
+        st = os.lstat(path)
+        if (
+            not stat.S_ISDIR(st.st_mode)
+            or st.st_uid != os.getuid()
+            or st.st_mode & 0o077
+        ):
+            raise
+    return path

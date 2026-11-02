@@ -10,9 +10,12 @@ injection -- analogous to parameterized SQL queries.
 import base64
 import json
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from contextlib import nullcontext
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
+from e2b_code_interpreter.constants import DEFAULT_TIMEOUT as RUN_CODE_TIMEOUT
+from pydantic import SecretStr
 
 from backend.blocks.code_executor import (
     TEST_CREDENTIALS,
@@ -32,6 +35,11 @@ from backend.blocks.code_executor_helpers import (
     build_variable_injection,
 )
 from backend.data.execution import ExecutionContext
+from backend.integrations.credentials_store import e2b_credentials
+
+# A credential with no key of its own: E2B opens the box on the operator's,
+# so a block must ask for the pause as it does for the platform's own.
+_EMPTY_KEY_CREDENTIALS = TEST_CREDENTIALS.model_copy(update={"api_key": SecretStr("")})
 
 
 def _b64_json(variables: dict) -> str:
@@ -337,7 +345,14 @@ class TestConnectToExistingSandbox:
         cls.get_info = AsyncMock(return_value=box.get_info.return_value)
         cls.connect = AsyncMock(return_value=box)
 
-    async def test_another_users_sandbox_is_refused_and_left_alone(self):
+    @pytest.mark.parametrize(
+        "dispose_sandbox, pause_when_kept",
+        [(True, False), (False, True)],
+        ids=["disposed", "kept-on-platform-key"],
+    )
+    async def test_another_users_sandbox_is_refused_and_left_alone(
+        self, dispose_sandbox, pause_when_kept
+    ):
         block = ExecuteCodeBlock()
         context = ExecutionContext(user_id="user-b", graph_exec_id="gexec-1")
         theirs = self._sandbox(
@@ -350,23 +365,30 @@ class TestConnectToExistingSandbox:
                 "autogpt_user": "user-a",
             }
         )
-        with patch("backend.blocks.code_executor.AsyncSandbox") as cls:
+        hold = AsyncMock()
+        with patch("backend.blocks.code_executor.AsyncSandbox") as cls, patch(
+            "backend.blocks.code_executor.hold_sandbox", hold
+        ), patch("backend.util.e2b_network.AsyncSandbox") as by_id:
             self._sdk(cls, theirs)
+            by_id.pause = AsyncMock()
             with pytest.raises(PermissionError, match="does not belong"):
                 await block.execute_code(
                     api_key="k",
                     code="print(1)",
                     language=ProgrammingLanguage.PYTHON,
                     sandbox_id="sb-theirs",
-                    dispose_sandbox=True,
+                    dispose_sandbox=dispose_sandbox,
+                    pause_when_kept=pause_when_kept,
                     execution_context=context,
                 )
         cls.get_info.assert_awaited_once_with("sb-theirs", api_key="k")
         # Connecting would resume the other user's box on their bill.
         cls.connect.assert_not_awaited()
         theirs.run_code.assert_not_awaited()
-        # Not ours to kill either, even with dispose_sandbox set.
+        # Not ours to kill, count or pause, whatever the run would do with its own.
         theirs.kill.assert_not_awaited()
+        hold.assert_not_awaited()
+        by_id.pause.assert_not_awaited()
 
     async def test_step_block_hands_the_caller_to_the_ownership_check(self):
         """The step block always reconnects by id, so without the caller's
@@ -430,3 +452,179 @@ class TestConnectToExistingSandbox:
                     execution_context=None,
                 )
         cls.connect.assert_not_awaited()
+
+
+def _executed_box(sandbox_id: str) -> MagicMock:
+    execution = MagicMock(error=None, results=[], text="")
+    execution.logs.stdout, execution.logs.stderr = [], []
+    box = MagicMock(sandbox_id=sandbox_id)
+    box.run_code = AsyncMock(return_value=execution)
+    return box
+
+
+class TestKeptSandbox:
+    """When a block returns, a disposed box is killed, and a kept box is
+    released (paused once no other run holds it) on the platform's E2B key and
+    left running on the user's own key."""
+
+    @pytest.mark.parametrize(
+        "dispose_sandbox, pause_when_kept, outcome",
+        [
+            (True, True, "kill"),
+            (True, False, "kill"),
+            (False, True, "release"),
+            (False, False, None),
+        ],
+    )
+    async def test_the_box_is_killed_released_or_left_running(
+        self, dispose_sandbox, pause_when_kept, outcome
+    ):
+        box = _executed_box("sb")
+        m = "backend.blocks.code_executor"
+        kill, hold, release = AsyncMock(), AsyncMock(), AsyncMock()
+        with patch(f"{m}.create_sandbox", AsyncMock(return_value=box)), patch(
+            f"{m}.kill_sandbox", kill
+        ), patch(f"{m}.hold_sandbox", hold), patch(f"{m}.release_sandbox", release):
+            await ExecuteCodeBlock().execute_code(
+                api_key="k",
+                code="print(1)",
+                language=ProgrammingLanguage.PYTHON,
+                dispose_sandbox=dispose_sandbox,
+                pause_when_kept=pause_when_kept,
+            )
+        kept = outcome == "release"
+        assert kill.await_args_list == ([call(box)] if outcome == "kill" else [])
+        assert hold.await_args_list == ([call("sb")] if kept else [])
+        assert release.await_args_list == (
+            [call("sb", box, api_key="k")] if kept else []
+        )
+
+    @pytest.mark.parametrize("connects", [True, False])
+    async def test_a_resumed_box_is_counted_before_it_connects(self, connects):
+        """Another run returning during the connect must not pause the box
+        under this one, and the box must outlive ``run_code``'s own limit."""
+        context = _execution_context()
+        user = context.user_id
+        stamp = {
+            "service": "autogpt-platform",
+            "autogpt_owner": f"user:{user}",
+            "autogpt_kind": "code",
+            "autogpt_source": "block",
+            "autogpt_env": "dev",
+            "autogpt_user": user,
+        }
+        box = _executed_box("sb-mine")
+        order: list[str] = []
+        hold = AsyncMock(side_effect=lambda *_: order.append("hold"))
+
+        async def connect(*args, **kwargs):
+            order.append("connect")
+            if not connects:
+                raise RuntimeError("connect failed")
+            return box
+
+        m = "backend.blocks.code_executor"
+        release, connect_mock = AsyncMock(), AsyncMock(side_effect=connect)
+        with patch(f"{m}.AsyncSandbox") as cls, patch(
+            f"{m}.connect_sandbox", connect_mock
+        ), patch(f"{m}.hold_sandbox", hold), patch(f"{m}.release_sandbox", release):
+            cls.get_info = AsyncMock(return_value=MagicMock(metadata=stamp))
+            with nullcontext() if connects else pytest.raises(RuntimeError):
+                await ExecuteCodeStepBlock().execute_code(
+                    api_key="k",
+                    code="1",
+                    language=ProgrammingLanguage.PYTHON,
+                    sandbox_id="sb-mine",
+                    pause_when_kept=True,
+                    execution_context=context,
+                )
+        assert order == ["hold", "connect"]
+        assert connect_mock.await_args.kwargs["timeout"] > RUN_CODE_TIMEOUT
+        assert release.await_args_list == [
+            call("sb-mine", box if connects else None, api_key="k")
+        ]
+
+    @pytest.mark.parametrize(
+        "block_cls, fields",
+        [
+            (ExecuteCodeBlock, {"code": "print(1)", "dispose_sandbox": False}),
+            (InstantiateCodeSandboxBlock, {"setup_code": "print(1)"}),
+            (ExecuteCodeStepBlock, {"sandbox_id": "sb-mine", "step_code": "1"}),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "credentials, paused",
+        [
+            (e2b_credentials, True),
+            (TEST_CREDENTIALS, False),
+            (_EMPTY_KEY_CREDENTIALS, True),
+        ],
+        ids=["platform-key", "own-key", "empty-key"],
+    )
+    async def test_each_block_pauses_a_kept_box_only_on_the_platform_key(
+        self, block_cls, fields, credentials, paused
+    ):
+        block = block_cls()
+        with patch.object(
+            block, "execute_code", AsyncMock(return_value=([], "", "", "", "sb", []))
+        ) as execute:
+            async for _ in block.run(
+                block_cls.Input(
+                    credentials={**TEST_CREDENTIALS_INPUT, "id": credentials.id},
+                    **fields,
+                ),
+                credentials=credentials,
+                execution_context=_execution_context(),
+            ):
+                pass
+        assert execute.await_args.kwargs["pause_when_kept"] is paused
+
+    @pytest.mark.parametrize(
+        "credentials, disposed",
+        [
+            (e2b_credentials, True),
+            (_EMPTY_KEY_CREDENTIALS, True),
+            (TEST_CREDENTIALS, False),
+        ],
+        ids=["platform-key", "empty-key", "own-key"],
+    )
+    async def test_a_box_this_block_cannot_return_is_disposed_on_the_operators_key(
+        self, credentials, disposed
+    ):
+        """ExecuteCodeBlock returns no sandbox ID, so a box it keeps can never
+        be reached again; on the operator's key it must not be left paused for
+        good, whatever the user asked for."""
+        block = ExecuteCodeBlock()
+        with patch.object(
+            block, "execute_code", AsyncMock(return_value=([], "", "", "", "sb", []))
+        ) as execute:
+            async for _ in block.run(
+                ExecuteCodeBlock.Input(
+                    credentials={**TEST_CREDENTIALS_INPUT, "id": credentials.id},
+                    code="print(1)",
+                    dispose_sandbox=False,
+                ),
+                credentials=credentials,
+                execution_context=_execution_context(),
+            ):
+                pass
+        assert execute.await_args.kwargs["dispose_sandbox"] is disposed
+
+    async def test_the_block_that_returns_its_box_keeps_it_for_reuse(self):
+        """InstantiateCodeSandboxBlock's box is reachable through its
+        sandbox_id output, so it is paused for the next step, never disposed."""
+        block = InstantiateCodeSandboxBlock()
+        with patch.object(
+            block, "execute_code", AsyncMock(return_value=([], "", "", "", "sb", []))
+        ) as execute:
+            async for _ in block.run(
+                InstantiateCodeSandboxBlock.Input(
+                    credentials={**TEST_CREDENTIALS_INPUT, "id": e2b_credentials.id},
+                    setup_code="print(1)",
+                ),
+                credentials=e2b_credentials,
+                execution_context=_execution_context(),
+            ):
+                pass
+        assert execute.await_args.kwargs.get("dispose_sandbox", False) is False
+        assert execute.await_args.kwargs["pause_when_kept"] is True

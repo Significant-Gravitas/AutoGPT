@@ -171,6 +171,24 @@ export function categorizeExecutions(
   };
 }
 
+export function relabelNotifications(
+  state: NotificationState,
+  agentInfoMap: Map<
+    string,
+    { name: string; description: string; library_agent_id?: string }
+  >,
+): NotificationState {
+  function relabel(execution: AgentExecutionWithInfo) {
+    return enrichExecutionWithAgentInfo(execution, agentInfoMap);
+  }
+  return {
+    ...state,
+    activeExecutions: state.activeExecutions.map(relabel),
+    recentCompletions: state.recentCompletions.map(relabel),
+    recentFailures: state.recentFailures.map(relabel),
+  };
+}
+
 export function removeExecutionFromAllCategories(
   state: NotificationState,
   executionId: string,

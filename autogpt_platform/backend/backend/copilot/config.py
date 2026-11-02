@@ -173,7 +173,7 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
 # - 'extended_thinking': route to the Claude Agent SDK path with the default
 #   (opus) model.
 # ``None`` means "no override"; the server falls back to the Claude Code
-# subscription flag → LaunchDarkly COPILOT_SDK → config.use_claude_agent_sdk.
+# subscription flag → the COPILOT_SDK flag → config.use_claude_agent_sdk.
 CopilotMode = Literal["fast", "extended_thinking"]
 
 # Per-request model tier set by the frontend model toggle.
@@ -426,15 +426,15 @@ class ChatConfig(BaseSettings):
     # User.subscriptionTier DB column and resolved inside
     # get_global_rate_limits().
     #
-    # These defaults act as the ceiling when LaunchDarkly is unreachable;
+    # These defaults act as the ceiling when PostHog is unreachable;
     # the live per-tier values come from the COPILOT_*_COST_LIMIT flags.
     #
     # A negative value disables that window's cap. Self-hosted distributions
     # (the single-container image and the unraid template) export -1 for both
     # because the operator pays the model provider directly and, without
-    # LaunchDarkly, every account resolves to NO_TIER → BASIC multiplier and
+    # PostHog, every account resolves to NO_TIER → BASIC multiplier and
     # would otherwise inherit these cloud ceilings. The defaults here stay
-    # positive so a LaunchDarkly outage on cloud never removes the cap.
+    # positive so a PostHog outage on cloud never removes the cap.
     daily_cost_limit_microdollars: int = Field(
         default=2_500_000,
         description="Max cost per day in microdollars, resets at midnight UTC. "
