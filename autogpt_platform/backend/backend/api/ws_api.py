@@ -16,6 +16,7 @@ from backend.api.model import (
     WSSubscribeGraphExecutionsRequest,
 )
 from backend.api.utils.cors import build_cors_params
+from backend.api.utils.validation_errors import bounded_validation_errors
 from backend.data import redis_client
 from backend.data.user import is_user_banned
 from backend.monitoring.instrumentation import (
@@ -30,6 +31,8 @@ logger = logging.getLogger(__name__)
 settings = Settings()
 
 ACCOUNT_BANNED_CLOSE_CODE = 4004
+# Clients send only subscribe, unsubscribe and heartbeat messages of ~100 bytes.
+WS_MAX_MESSAGE_BYTES = 4096
 
 
 @asynccontextmanager
@@ -234,7 +237,8 @@ async def websocket_router(
     user_id = await authenticate_websocket(websocket)
     if not user_id:
         return
-    await manager.connect_socket(websocket, user_id=user_id)
+    if not await manager.connect_socket(websocket, user_id=user_id):
+        return
 
     # Track WebSocket connection
     update_websocket_connections(user_id, 1)
@@ -252,7 +256,7 @@ async def websocket_router(
                 logger.error(
                     "Invalid WebSocket message from user #%s: %s",
                     user_id,
-                    e,
+                    bounded_validation_errors(e),
                 )
                 await websocket.send_text(
                     WSMessage(
@@ -277,7 +281,7 @@ async def websocket_router(
                     "Validation error while handling '%s' for user #%s: %s",
                     message.method.value,
                     user_id,
-                    e,
+                    bounded_validation_errors(e),
                 )
                 await websocket.send_text(
                     WSMessage(
@@ -384,5 +388,6 @@ class WebsocketServer(AppProcess):
             host=Config().websocket_server_host,
             port=Config().websocket_server_port,
             ws="websockets-sansio",
+            ws_max_size=WS_MAX_MESSAGE_BYTES,
             log_config=None,
         )

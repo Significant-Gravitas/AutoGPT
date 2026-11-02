@@ -93,6 +93,8 @@ model AuthJwks {
   privateKey String
   createdAt  DateTime  @default(now())
   expiresAt  DateTime?
+  alg        String?
+  crv        String?
 
   @@map("UserAuthJwks")
 }
