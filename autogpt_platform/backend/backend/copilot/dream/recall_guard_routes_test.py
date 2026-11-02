@@ -188,7 +188,7 @@ def graph(mocker) -> SimpleNamespace:
     database = MagicMock()
     database.create_chat_session = AsyncMock()
     database.update_chat_session_title = AsyncMock()
-    database.add_chat_message = AsyncMock()
+    database.add_dream_narrative = AsyncMock()
     mocker.patch("backend.data.db_accessors.chat_db", return_value=database)
     mocker.patch(
         "backend.data.db_accessors.orgs_db",

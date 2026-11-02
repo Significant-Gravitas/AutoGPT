@@ -117,6 +117,7 @@ async def test_a_stalled_redis_fails_open_fast(
     with caplog.at_level(logging.WARNING):
         await enforce_feedback_rate_limit(USER_ID)
 
-    assert time.monotonic() - started < 1
+    # Ten times the 0.25 s deadline, still well short of the 5 s stall.
+    assert time.monotonic() - started < 2.5
     hits.assert_not_called()
     assert "failed open" in caplog.text

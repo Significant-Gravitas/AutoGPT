@@ -323,3 +323,28 @@ async def test_providers_are_waited_on_together(
 
     assert started == ["cred-1", "cred-2"]
     assert not [r for r in caplog.records if r.name == MODULE]
+
+
+@pytest.mark.asyncio
+async def test_at_most_ten_providers_are_called_at_once(
+    get_all_creds: AsyncMock, revoke: AsyncMock, cleanup: AsyncMock
+):
+    get_all_creds.return_value = [_github() for _ in range(25)]
+    running = 0
+    peak = 0
+
+    async def slow_revoke(*_args, **_kwargs):
+        nonlocal running, peak
+        running += 1
+        peak = max(peak, running)
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        running -= 1
+        return True
+
+    revoke.side_effect = slow_revoke
+
+    await revoke_connected_apps(USER_ID)
+
+    assert revoke.await_count == 25
+    assert peak == 10

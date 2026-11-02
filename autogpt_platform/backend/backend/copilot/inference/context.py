@@ -14,8 +14,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from backend.copilot.dream.routing import ExecutionPath
 from backend.util.llm.providers import ProviderLiteral
+
+from .execution_path import ExecutionPath
 
 InferenceKind = Literal[
     "dream", "briefing_narrative", "consult", "eval_judge", "skill_learning"
@@ -125,6 +126,16 @@ class InferenceContext(BaseModel):
     trace_id: str | None = None
 
 
+# How a background call failed, naming it without quoting the model.
+InferenceErrorCode = Literal[
+    "empty_content",
+    "non_json_content",
+    "schema_mismatch",
+    "call_failed",
+    "inference_failed",
+]
+
+
 class InferenceError(RuntimeError):
     """A background call produced no usable answer.
 
@@ -132,8 +143,17 @@ class InferenceError(RuntimeError):
     (empty content, unparseable JSON, a schema mismatch). Callers retain it
     for telemetry and apply their own charging policy; failed dream phases
     are absorbed. ``None`` means no call completed.
+
+    ``code`` identifies the failure without quoting model content in durable records.
     """
 
-    def __init__(self, message: str, usage: InferenceUsage | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        usage: InferenceUsage | None = None,
+        *,
+        code: InferenceErrorCode = "inference_failed",
+    ) -> None:
         super().__init__(message)
         self.usage = usage
+        self.code: InferenceErrorCode = code

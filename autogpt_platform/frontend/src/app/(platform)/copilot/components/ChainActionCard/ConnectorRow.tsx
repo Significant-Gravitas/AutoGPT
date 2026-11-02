@@ -1,5 +1,6 @@
 "use client";
 
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { useGrantExpertCredentials } from "@/app/api/__generated__/endpoints/experts/experts";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { Button } from "@/components/atoms/Button/Button";
@@ -12,6 +13,7 @@ import { ProviderAvatar } from "@/components/contextual/IntegrationsPanel/compon
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import {
+  CredentialsActionsContext,
   CredentialsProvidersContext,
   type CredentialsProviderData,
   type CredentialsProvidersContextType,
@@ -21,6 +23,7 @@ import { useContext, useEffect, useRef, useState } from "react";
 import type { ConnectorRow as Row } from "./helpers";
 import { useExpertCredentialSelection } from "./useExpertCredentialSelection";
 import type { ExpertGrant } from "../SetupRequirementsCard/helpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   row: Row;
@@ -39,6 +42,9 @@ export function ConnectorRow({ row }: Props) {
   // A sign-in finished without reporting its credential, so the account it
   // added is found by diffing the provider list against `knownIds`.
   const [awaitingNewAccount, setAwaitingNewAccount] = useState(false);
+  const [pendingCredentialId, setPendingCredentialId] = useState<string | null>(
+    null,
+  );
   const [grantError, setGrantError] = useState<string | null>(null);
   // A credential connected from this row while an expert is asking. It stays
   // here until its grant succeeds, so a failed grant is retried from the
@@ -54,6 +60,7 @@ export function ConnectorRow({ row }: Props) {
   // a renewed credential from the one the provider refused.
   const [renewedIds, setRenewedIds] = useState<string[]>([]);
   const allProviders = useContext(CredentialsProvidersContext);
+  const credentialsActions = useContext(CredentialsActionsContext);
   const { mutateAsync: grantCredentials, isPending: isGranting } =
     useGrantExpertCredentials();
   const expertGrant = row.expertGrant;
@@ -130,7 +137,20 @@ export function ConnectorRow({ row }: Props) {
     return true;
   }
 
-  useEffect(() => {
+  // Several saved accounts can satisfy one row. Nothing picks between them for
+  // the user: the row offers them, and the backend runs on exactly that one.
+  const pickable = expertGrant
+    ? []
+    : filterSystemCredentials(
+        usableProviders?.[row.provider]?.savedCredentials ?? [],
+      ).flatMap((saved) => grantableAmong(row, [saved]) ?? []);
+  // The selected credential itself must still fit: that another account
+  // does is no reason to keep this one and call it Connected.
+  const selectedStillFits = pickable.some(
+    (credential) => credential.id === row.selected?.id,
+  );
+
+  const syncSelection = useStableCallback(() => {
     if (expertGrant) {
       if (!awaitingNewAccount || row.selected || !knownIds.current) return;
       const fresh = newlyConnectedCredential(
@@ -153,8 +173,23 @@ export function ConnectorRow({ row }: Props) {
       if (fresh) {
         setAwaitingNewAccount(false);
         setRenewedIds((ids) => [...ids, fresh.grantable.id]);
+        setPendingCredentialId(fresh.grantable.id);
         return;
       }
+      return;
+    }
+    if (pendingCredentialId) {
+      const signedIn = pickable.find((c) => c.id === pendingCredentialId);
+      if (!signedIn) return;
+      row.select({
+        id: signedIn.id,
+        provider: row.provider,
+        type: signedIn.type as CredentialsMetaInput["type"],
+        title: signedIn.title,
+      });
+      setPendingCredentialId(null);
+      row.onConnected(signedIn.id);
+      return;
     }
     // Cards stream in one commit at a time, so a row's schema can widen after
     // it auto-selected: a selection that no longer satisfies it must go, or
@@ -188,30 +223,24 @@ export function ConnectorRow({ row }: Props) {
       type: savedCredential.type as CredentialsMetaInput["type"],
       title: savedCredential.title ?? undefined,
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- row.select is rebuilt each render by the card
+  });
+  // row.select is rebuilt each render by the card, so only these decide.
+  const rejectedKey = rejectedIds.join();
+  const renewedKey = renewedIds.join();
+  useEffect(() => {
+    syncSelection();
   }, [
     savedCredential?.id,
     row.selected,
     allProviders,
     awaitingNewAccount,
+    pendingCredentialId,
     expertGrant?.expertId,
-    rejectedIds.join(),
-    renewedIds.join(),
+    rejectedKey,
+    renewedKey,
     hasRefusedAccount,
   ]);
 
-  // Several saved accounts can satisfy one row. Nothing picks between them for
-  // the user: the row offers them, and the backend runs on exactly that one.
-  const pickable = expertGrant
-    ? []
-    : filterSystemCredentials(
-        usableProviders?.[row.provider]?.savedCredentials ?? [],
-      ).flatMap((saved) => grantableAmong(row, [saved]) ?? []);
-  // The selected credential itself must still fit: that another account
-  // does is no reason to keep this one and call it Connected.
-  const selectedStillFits = pickable.some(
-    (credential) => credential.id === row.selected?.id,
-  );
   const hasChoice =
     !expertGrant &&
     !row.selected &&
@@ -272,41 +301,88 @@ export function ConnectorRow({ row }: Props) {
       : null;
     setGrantError(null);
     setAwaitingNewAccount(false);
+    setPendingCredentialId(null);
     setDialogOpen(true);
   }
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2.5">
-      <span className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-zinc-100 bg-white p-1.5">
-        <ProviderAvatar id={row.provider} name={row.displayName} />
+    <div className="flex flex-wrap items-center gap-3 border-b border-separator px-4 py-5 last:border-b-0">
+      <span className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-separator bg-surface p-1.5">
+        <ProviderAvatar
+          id={row.iconId ?? row.provider}
+          name={row.displayName}
+        />
       </span>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm font-medium text-zinc-900">
+      <div className="flex min-w-32 flex-1 flex-col gap-1">
+        <Text
+          variant="body-medium-tight"
+          as="span"
+          tone="primary"
+          className="truncate"
+        >
           {row.displayName}
-        </span>
+        </Text>
         {grantError && !isDialogOpen ? (
-          <span className="truncate text-xs text-red-600">{grantError}</span>
+          <span className="truncate text-xs text-error-foreground">
+            {grantError}
+          </span>
         ) : expertGrant && !isSatisfied ? (
-          <span className="truncate text-xs text-zinc-500">
+          <Text
+            variant="small-tight"
+            as="span"
+            tone="muted"
+            className="truncate"
+          >
             {grantableOptions.length > 0
               ? "Needs this expert's access"
               : "This expert needs its own access"}
-          </span>
+          </Text>
         ) : (
           row.description && (
-            <span className="truncate text-xs text-zinc-500">
+            <Text
+              variant="small-tight"
+              as="span"
+              tone="muted"
+              className="truncate"
+            >
               {row.description}
-            </span>
+            </Text>
           )
+        )}
+        {isSatisfied && row.selected?.title && (
+          <Text
+            variant="small-tight"
+            as="span"
+            tone="muted"
+            className="break-words"
+          >
+            {row.selected.title}
+          </Text>
+        )}
+        {awaitingReconnect && (
+          <span className="text-xs text-error-foreground">
+            Access needs attention. Connect this account again.
+          </span>
         )}
       </div>
 
       {isSatisfied && !linksOnAyrshare ? (
-        <span className="flex shrink-0 items-center gap-1.5 text-sm font-medium text-zinc-500">
-          <Icon icon={CheckmarkCircle02Icon} size={16} />
-          {expertGrant ? "Granted" : "Connected"}
-        </span>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <span className="flex items-center gap-1.5 text-sm font-medium text-foreground-tertiary">
+            <Icon icon={CheckmarkCircle02Icon} size={16} />
+            {expertGrant ? "Granted" : "Connected"}
+          </span>
+          {!expertGrant && (
+            <button
+              type="button"
+              onClick={openDialog}
+              className="text-xs text-foreground-tertiary underline underline-offset-2"
+            >
+              Change account
+            </button>
+          )}
+        </div>
       ) : (
         <Button
           variant="primary"
@@ -344,7 +420,7 @@ export function ConnectorRow({ row }: Props) {
                 isPending: isGranting,
                 error: grantError,
               }
-            : hasChoice
+            : hasChoice || (isSatisfied && pickable.length > 0)
               ? {
                   credentials: pickable,
                   onUse: pick,
@@ -370,9 +446,16 @@ export function ConnectorRow({ row }: Props) {
             // Without a reported credential nothing is known to be renewed,
             // so every refused account stays refused until the diff finds
             // the one this sign-in added.
-            if (credential) setRenewedIds((ids) => [...ids, credential.id]);
-            else setAwaitingNewAccount(true);
-            row.onConnected(credential?.id);
+            row.select(undefined);
+            if (credential?.id) {
+              if (!grantableAmong(row, [toSavedCredential(credential)])) {
+                setGrantError(UNUSABLE_ACCOUNT_ERROR);
+                return;
+              }
+              credentialsActions?.upsert(row.provider, credential);
+              setRenewedIds((ids) => [...ids, credential.id]);
+              setPendingCredentialId(credential.id);
+            } else setAwaitingNewAccount(true);
             return;
           }
           // A flow that does not report its credential leaves the refresh to

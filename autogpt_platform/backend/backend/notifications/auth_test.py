@@ -1,7 +1,8 @@
-"""The account-deleted confirmation: the auth email kit without an action link,
+"""The account-closed confirmation: the auth email kit without an action link,
 sent with a reply-to so a reply reaches the shared inbox."""
 
 import re
+from datetime import datetime, timedelta, timezone
 from html import unescape
 from typing import get_args
 from unittest.mock import MagicMock, call
@@ -17,9 +18,22 @@ from backend.notifications.auth import (
 )
 from backend.notifications.renderer import build_urls
 
+ERASE_AFTER = datetime(2026, 11, 13, 23, 30, tzinfo=timezone.utc)
+DATED_PREHEADER = (
+    "Changed your mind? Sign in by 12 Nov 2026 and choose Keep my account. "
+    "After that, everything in your account is erased."
+)
+UNDATED_PREHEADER = (
+    "Changed your mind? Sign in within 14 days and choose Keep my account. "
+    "After that, everything in your account is erased."
+)
+DELETED_INTRO = (
+    "We've closed your AutoGPT account, signed you out, disconnected your apps "
+    "and revoked your API keys. Your Marketplace listings and reviews are "
+    "removed, and notification emails stay off until you switch them back on."
+)
 DELETED_BODY = (
-    "We've closed your AutoGPT account and disconnected your apps. "
-    "We finish removing your data within 30 days. "
+    f"{DELETED_INTRO} {UNDATED_PREHEADER} "
     "If you have a minute, reply and tell us what we could have done better."
 )
 DELETED_REASON = "You deleted your account in AutoGPT."
@@ -49,11 +63,11 @@ def test_account_deleted_subject_headline_and_body_in_order():
     email = render_auth_email("account_deleted")
     html = unescape(email.html)
 
-    assert email.subject == "Your AutoGPT account is deleted"
-    assert email.preheader == "We finish removing your data within 30 days."
-    assert "<title>Your AutoGPT account is deleted</title>" in html
-    assert "ACCOUNT · DELETED" in html
-    assert ">Your account is deleted<" in html
+    assert email.subject == "Your AutoGPT account is closed"
+    assert email.preheader == UNDATED_PREHEADER
+    assert "<title>Your AutoGPT account is closed</title>" in html
+    assert "ACCOUNT · CLOSED" in html
+    assert ">Your account is closed<" in html
     assert f">{DELETED_BODY}</div>" in html
     assert DELETED_REASON in html
 
@@ -68,7 +82,7 @@ def test_account_deleted_has_no_button_link_or_ignore_line():
         assert "Copy this link" not in part
         assert "expires" not in part
     assert 'bgcolor="#6144DF"' not in email.html
-    assert set(re.findall(r'href="([^"]+)"', email.html)) == {
+    assert set(re.findall(r'<a\b[^>]*?\bhref="([^"]+)"', email.html)) == {
         "https://agpt.co",
         "mailto:contact@agpt.co",
         discord,
@@ -90,7 +104,7 @@ def test_account_deleted_plain_text_part():
     discord = build_urls("").discord
 
     assert email.text == (
-        "Your account is deleted\n"
+        "Your account is closed\n"
         "\n"
         f"{DELETED_BODY}\n"
         "\n"
@@ -147,9 +161,13 @@ def send(monkeypatch) -> MagicMock:
     "source", [AccountDeletionSource.SETTINGS, AccountDeletionSource.PAYWALL]
 )
 async def test_send_account_deleted_email_replies_to_the_shared_inbox(send, source):
-    await auth_email.send_account_deleted_email("sam@example.com", source)
+    await auth_email.send_account_deleted_email("sam@example.com", source, ERASE_AFTER)
 
-    email = render_auth_email("account_deleted")
+    email = render_auth_email(
+        "account_deleted",
+        reason=DELETED_REASON,
+        preheader=DATED_PREHEADER,
+    )
     assert send.call_args_list == [
         call(
             "sam@example.com",
@@ -181,7 +199,7 @@ async def test_send_account_deleted_email_uses_the_configured_reply_to(
     )
 
     await auth_email.send_account_deleted_email(
-        "sam@example.com", AccountDeletionSource.SETTINGS
+        "sam@example.com", AccountDeletionSource.SETTINGS, ERASE_AFTER
     )
 
     assert send.call_args.kwargs["reply_to"] == "inbox@example.org"
@@ -195,5 +213,52 @@ async def test_send_account_deleted_email_raises_when_delivery_fails(send):
 
     with pytest.raises(RuntimeError, match="Postmark is not configured"):
         await auth_email.send_account_deleted_email(
-            "sam@example.com", AccountDeletionSource.SETTINGS
+            "sam@example.com", AccountDeletionSource.SETTINGS, ERASE_AFTER
         )
+
+
+async def test_send_account_deleted_email_names_the_last_day_to_keep_the_account(
+    send,
+):
+    await auth_email.send_account_deleted_email(
+        "sam@example.com", AccountDeletionSource.SETTINGS, ERASE_AFTER
+    )
+
+    _, subject, html, text = send.call_args.args
+    assert subject == "Your AutoGPT account is closed"
+    assert DATED_PREHEADER in unescape(html)
+    assert DATED_PREHEADER in text
+    assert "within 14 days" not in text
+
+
+@pytest.mark.parametrize(
+    "erase_after, last_day",
+    [
+        # 02:00 UTC on 13 Nov is 18:00 on 12 Nov in California: too late to
+        # name 12 Nov there.
+        (datetime(2026, 11, 13, 2, 0, tzinfo=timezone.utc), "11 Nov 2026"),
+        (datetime(2026, 11, 13, 12, 0, tzinfo=timezone.utc), "12 Nov 2026"),
+        (datetime(2026, 11, 13, 23, 30, tzinfo=timezone.utc), "12 Nov 2026"),
+        (datetime(2026, 12, 1, 0, 0, tzinfo=timezone.utc), "29 Nov 2026"),
+    ],
+)
+def test_the_email_names_a_day_over_before_the_erasure_everywhere(
+    erase_after, last_day
+):
+    preheader = auth_email.account_closed_preheader(erase_after)
+
+    assert f"Sign in by {last_day} and" in preheader
+    assert "UTC" not in preheader
+
+
+@pytest.mark.parametrize("hour", range(24))
+def test_the_named_day_ends_before_the_erasure_even_at_utc_minus_12(hour):
+    """The last zone to finish a day is UTC-12, whose day ends at 12:00 UTC
+    the next day: that must be no later than the erasure, at any hour."""
+    erase_after = datetime(2026, 11, 13, hour, 0, tzinfo=timezone.utc)
+    preheader = auth_email.account_closed_preheader(erase_after)
+    named = datetime.strptime(
+        preheader.split("Sign in by ")[1].split(" and")[0], "%d %b %Y"
+    ).replace(tzinfo=timezone.utc)
+
+    assert named + timedelta(days=1, hours=12) <= erase_after

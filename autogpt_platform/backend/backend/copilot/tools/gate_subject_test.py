@@ -20,6 +20,7 @@ from prisma.enums import ReviewStatus
 from backend.blocks._base import BlockEffect
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.ai_image_generator_block import AIImageGeneratorBlock
+from backend.blocks.airtable.schema import AirtableCreateTableBlock
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.code_executor import ExecuteCodeStepBlock
 from backend.blocks.discord.bot_blocks import SendDiscordMessageBlock
@@ -33,7 +34,7 @@ from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.search import GetWikipediaSummaryBlock
 from backend.blocks.sql_query_block import SQLQueryBlock
 from backend.copilot import usage_activation_fixtures
-from backend.copilot.gate import RUN_FILES_KEY, RUNS_KEY, chat_rules
+from backend.copilot.gate import RUN_FILES_KEY, RUNS_KEY, chat_rules, held
 from backend.copilot.gate.chat_rules import RuleHit
 from backend.copilot.gate.chat_rules_test import _Redis
 from backend.copilot.gate.classifier import Judgement
@@ -93,7 +94,7 @@ def _session(mode: AutopilotMode = "auto") -> ChatSession:
 
 @pytest.fixture
 def gate():
-    """The gate on, no approval on record, nothing rejected in this chat."""
+    """Both gates on, no approval on record, nothing rejected in this chat."""
     store = SimpleNamespace(
         find_review=AsyncMock(return_value=None),
         open_review=AsyncMock(side_effect=_opened),
@@ -101,6 +102,7 @@ def gate():
     )
     with (
         patch(f"{_GATE}.is_feature_enabled", AsyncMock(return_value=True)),
+        patch(f"{_GATE}.reads.get_flag_variant", AsyncMock(return_value=True)),
         patch(f"{_GATE}.review_store.find_review", store.find_review),
         patch(f"{_GATE}.review_store.open_review", store.open_review),
         patch(f"{_GATE}.review_store.consume", store.consume),
@@ -1337,3 +1339,132 @@ async def test_a_write_with_no_sandbox_to_resolve_it_in_is_judged(gate):
     ):
         ran, held, asked = await _bash("auto", _LONG_POST)
     assert (ran, held, asked) == (0, True, 1)
+
+
+# ---- an Airtable change: shown as it runs, asked after the pick ------------
+
+_READ = "backend.copilot.sdk.file_ref.read_file_bytes"
+_CREDS = "backend.copilot.tools.run_capability.resolve_block_credentials"
+_BLOCK = AirtableCreateTableBlock().id
+_FIELDS = [
+    {"name": "Order number", "type": "singleLineText"},
+    {"name": "Total", "type": "currency"},
+]
+_FROM_FILE = {
+    "base_id": "appX",
+    "table_name": "Orders",
+    "table_fields": "@@agptfile:workspace:///fields.json",
+}
+
+
+@pytest.fixture
+def files():
+    """Workspace files by path, read as the model's references resolve them."""
+    contents = {"fields.json": json.dumps(_FIELDS)}
+
+    async def read(uri, user_id, session):
+        name = uri.rsplit("/", 1)[-1]
+        if name not in contents:
+            raise ValueError(f"File not found: {name}")
+        return contents[name].encode()
+
+    with patch(_READ, AsyncMock(side_effect=read)):
+        yield contents
+
+
+@pytest.fixture(autouse=True)
+def creds():
+    with patch(_CREDS, AsyncMock(return_value=({}, []))):
+        yield
+
+
+def _approve_only(review_id: str):
+    async def find(rid, user_id, session_id):
+        if rid == review_id:
+            return SimpleNamespace(status=ReviewStatus.APPROVED, payload={})
+        return None
+
+    return AsyncMock(side_effect=find)
+
+
+async def test_fields_from_a_file_are_shown_and_exactly_they_run(gate, ran, files):
+    held = await _run_capability(_session(), _BLOCK, dict(_FROM_FILE))
+
+    assert _is_held(held)
+    review_id, args, subject = (
+        gate.open_review.await_args.args[0],
+        gate.open_review.await_args.args[4],
+        gate.open_review.await_args.args[6],
+    )
+    assert [f.name for f in subject.preview.tables[0].fields] == [
+        "Order number",
+        "Total",
+    ]
+    # The card lists the fields themselves, not the file they came from.
+    assert args["input"]["table_fields"] == _FIELDS
+
+    gate.find_review = _approve_only(review_id)
+    with patch("backend.copilot.gate.review_store.find_review", gate.find_review):
+        await _run_capability(_session(), _BLOCK, dict(_FROM_FILE))
+    ran.assert_awaited_once()
+    assert ran.await_args.args[3]["table_fields"] == _FIELDS
+
+
+async def test_a_file_changed_after_approval_asks_again(gate, ran, files):
+    await _run_capability(_session(), _BLOCK, dict(_FROM_FILE))
+    approved = gate.open_review.await_args.args[0]
+
+    files["fields.json"] = json.dumps(_FIELDS + [{"name": "Secret", "type": "url"}])
+    with patch(
+        "backend.copilot.gate.review_store.find_review", _approve_only(approved)
+    ):
+        again = await _run_capability(_session(), _BLOCK, dict(_FROM_FILE))
+
+    # A new card for the new fields, not the approval of the old ones.
+    assert _is_held(again)
+    ran.assert_not_awaited()
+    assert gate.open_review.await_count == 2
+    assert gate.open_review.await_args.args[0] != approved
+
+
+@pytest.mark.parametrize("unpicked", [{}, {"base_id": None}, {"base_id": ""}])
+async def test_the_base_is_picked_before_anything_asks(gate, ran, unpicked):
+    """The picker card comes first; the one approval follows the pick."""
+    payload = {"table_name": "Orders", "table_fields": _FIELDS, **unpicked}
+
+    first = await _run_capability(_session(), _BLOCK, payload)
+
+    assert not _is_held(first)
+    gate.open_review.assert_not_awaited()
+    ran.assert_awaited_once()
+
+    picked = await _run_capability(_session(), _BLOCK, {**payload, "base_id": "appX"})
+    assert _is_held(picked)
+    gate.open_review.assert_awaited_once()
+
+
+async def test_an_approved_call_replays_the_content_it_was_approved_for(
+    gate, ran, files
+):
+    """A held call is stored resolved. Replaying it on approval must not
+    resolve it again: a name read from a file that itself mentions a file
+    reference is text, and expanding it would fail or ask a second time."""
+    files["name.txt"] = "Orders (see @@agptfile:/home/user/old_notes.txt )"
+    payload = {**_FROM_FILE, "table_name": "@@agptfile:/home/user/name.txt"}
+    remember = AsyncMock(return_value=True)
+    with patch(f"{_GATE}.held.remember", remember):
+        held_result = await _run_capability(_session(), _BLOCK, payload)
+    assert _is_held(held_result)
+    call = remember.await_args.args[1]
+    assert call.args["input"]["table_name"] == files["name.txt"]
+
+    with patch(
+        "backend.copilot.gate.review_store.find_review",
+        _approve_only(call.review_id),
+    ):
+        await held._run("user-1", _session(), call, RunCapabilityTool())
+
+    ran.assert_awaited_once()
+    assert ran.await_args.args[3]["table_name"] == files["name.txt"]
+    assert ran.await_args.args[7] is True  # run as resolved, not expanded again
+    assert gate.open_review.await_count == 1

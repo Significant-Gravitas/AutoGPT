@@ -183,6 +183,7 @@ poetry run swap-proxy
 | --- | --- | --- |
 | `SWAP_PROXY_LISTEN_HOST` / `SWAP_PROXY_LISTEN_PORT` | `0.0.0.0` / `1080` | SOCKS5 listener |
 | `SWAP_PROXY_BACKEND_URL` | `http://localhost:8012` | the backend's swap service (`SwapCredentialService`), which serves only the two calls the proxy makes |
+| `INTERNAL_API_KEY` | none: required | the key the backend's services require on every internal call, so the same value as the backend's own `INTERNAL_API_KEY`. The backend derives its key from `ENCRYPTION_KEY` when that is unset, and the proxy has no `ENCRYPTION_KEY`, so a deployment with the proxy sets one explicitly on both. The proxy does not start without it |
 | `SWAP_PROXY_CONFDIR` | `~/.mitmproxy` | directory the signing CA is mounted into; see below |
 | `SWAP_PROXY_GENERATE_CA` | `false` | local runs only: generate a CA if the directory has none |
 | `SWAP_PROXY_EGRESS_ALLOW` | empty | comma-separated private hosts or CIDRs boxes may reach anyway |

@@ -16,7 +16,7 @@ import {
   MultiSelectorItem,
   MultiSelectorList,
   MultiSelectorTrigger,
-} from "@/components/__legacy__/ui/multiselect";
+} from "@/components/molecules/MultiSelect/MultiSelect";
 
 function isSchema(value: unknown): value is RJSFSchema {
   return typeof value === "object" && value !== null;

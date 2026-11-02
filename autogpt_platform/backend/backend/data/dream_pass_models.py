@@ -63,6 +63,24 @@ CLOSED_ROW_CLEARS: frozenset[ClearableColumn] = frozenset(
 # pass's lock with, and the expiry that says whether the pass may still run.
 MARKED_ROW_CLEARS: frozenset[ClearableColumn] = frozenset({"input_bundle"})
 
+# The fields holding the dream's own words in a pass's phase outputs and
+# operations, at any depth, and what a hard forget leaves in each and in a
+# narrative: the placeholder a forgotten fact reads
+# (``copilot/graphiti/recall.FORGOTTEN_FACT``).
+DREAM_TEXT_FIELDS: tuple[str, ...] = (
+    "content",
+    "rationale",
+    "reason",
+    "summary_for_user",
+)
+ERASED_TEXT = "[forgotten]"
+# What a pass's read set holds when its writer did not state it: a pass from
+# before read sets were recorded, or one a release without them wrote during
+# its rollout. It may have read anything, so any hard forget in its scope
+# reaches it, and its narrative's session takes the mark with its read set
+# (``DreamPass.readUuids``'s default; never a graph uuid).
+UNKNOWN_READS = "*"
+
 
 class DreamPhaseOutputs(BaseModel):
     """Each phase's validated output, as the next phase and apply read it."""
@@ -80,9 +98,24 @@ class DreamPassApplied(BaseModel):
     proposal_count: int = 0
     demotion_count: int = 0
     entity_invalidation_count: int = 0
+    # Writes and proposals the worker dropped unwritten for resting on a
+    # forget, before the pass was reported; a row written before it reads 0.
     dropped_forgotten: int = 0
+    # Writes and proposals not written yet when the pass was reported; a
+    # row written before it reads 0.
     pending_writes: int = 0
+    # Writes and proposals the worker did not make (their citation marker or
+    # the graph write failed), and writes made whose derivation record
+    # failed and awaits reconcile; a row written before them reads 0.
     failed_writes: int = 0
+    provenance_pending: int = 0
+    # Writes and proposals dropped before they were queued for citing
+    # nothing the pass read, or a fact of another scope; a row written
+    # before it reads 0.
+    uncited_writes_dropped: int = 0
+    # Their citations of a fact of another scope; a row written before it
+    # reads 0.
+    cross_scope_citations_dropped: int = 0
     # Distinct facts an acknowledged write spared and the accounting read
     # found live (provisional when the accounting is incomplete); a row
     # written before it reads 0.
@@ -164,6 +197,8 @@ class DreamPassUpdate(BaseModel):
     usage: DreamPassUsage | None = None
     window_start: datetime | None = None
     window_end: datetime | None = None
+    # Every fact and episode the pass gathered, added to what the row holds.
+    read_uuids: list[str] | None = None
     error: str | None = None
     submitted_at: datetime | None = None
     applied_at: datetime | None = None
@@ -233,6 +268,11 @@ class DreamPassRecord(BaseModel):
     window_start: datetime | None
     window_end: datetime | None
     error: str | None
+    # Set by a hard forget that reached the pass, never cleared.
+    erased_at: datetime | None = None
+    # Every fact and episode the pass gathered, never cleared;
+    # ``[UNKNOWN_READS]`` for a pass from before read sets were recorded.
+    read_uuids: list[str] = Field(default_factory=list)
     created_at: datetime
     started_at: datetime | None
     submitted_at: datetime | None
@@ -275,6 +315,8 @@ class DreamPassRecord(BaseModel):
             window_start=row.windowStart,
             window_end=row.windowEnd,
             error=row.error,
+            erased_at=row.erasedAt,
+            read_uuids=list(row.readUuids or []),
             created_at=row.createdAt,
             started_at=row.startedAt,
             submitted_at=row.submittedAt,

@@ -4,7 +4,7 @@ import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { DeletionSource } from "../../helpers";
-import { getDeletionErrorMessage } from "./helpers";
+import { getClosedToastTitle, getDeletionErrorMessage } from "./helpers";
 
 interface Args {
   source: DeletionSource;
@@ -19,15 +19,19 @@ export function useDeleteAccount({ source, onBusyChange }: Args) {
 
   async function deleteAccount(confirmEmail: string) {
     onBusyChange(true);
+    let eraseAfter: Date | string | null | undefined;
     try {
-      await mutateAsync({ data: { confirm_email: confirmEmail, source } });
+      const response = await mutateAsync({
+        data: { confirm_email: confirmEmail, source },
+      });
+      if (response.status === 200) eraseAfter = response.data.erase_after;
     } catch (error) {
       onBusyChange(false);
       toast({ title: getDeletionErrorMessage(error), variant: "destructive" });
       return;
     }
     setIsLeaving(true);
-    toast({ title: "Your account is deleted." });
+    toast({ title: getClosedToastTitle(eraseAfter) });
     // Signing out here would clear the user while the page behind still
     // renders, and it would drop this dialog (Settings turns into a skeleton,
     // the paywall lets go) before the redirect. /logout signs out, then

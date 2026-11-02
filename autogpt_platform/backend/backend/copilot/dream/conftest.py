@@ -22,6 +22,8 @@ with, and a batch's status reads ended, unless a test sets its own.
 from __future__ import annotations
 
 import asyncio
+import gc
+from collections.abc import Iterator
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
@@ -33,13 +35,18 @@ import pytest_asyncio
 from backend.copilot import usage_activation_fixtures
 from backend.copilot.trial_cost_context import TrialCostContext
 from backend.data.dream_pass_models import (
+    DREAM_TEXT_FIELDS,
+    ERASED_TEXT,
     OPEN_STATUSES,
+    UNKNOWN_READS,
     DreamPassDraft,
     DreamPassOperations,
     DreamPassRecord,
     DreamPassUpdate,
     DreamPhaseOutputs,
 )
+
+from .pass_errors import PASS_ERROR_STAGES, UNRECORDED, is_pass_error
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
@@ -54,20 +61,48 @@ async def graph_cleanup():
     yield
 
 
+@pytest.fixture(autouse=True)
+def no_gc_during_test() -> Iterator[None]:
+    """These tests time the loop against budgets of tenths of a second, and a
+    full collection over the suite's heap stalls it for over a second on CI."""
+    enabled = gc.isenabled()
+    gc.disable()
+    yield
+    if enabled:
+        gc.enable()
+
+
 class FakeAsyncRedis:
     """In-memory stand-in for the ``decode_responses=True`` async client.
 
     Covers the surface the dream code uses: ``get``/``set`` (with ``nx``,
     ``xx`` and ``ex``), ``delete``, ``expire``, ``ttl``, ``exists``, ``incr``,
-    the hash commands, and ``eval`` for the two single-key lock scripts in
-    ``locks.py`` (compare-and-delete, compare-and-extend). TTLs are recorded,
-    not enforced.
+    the hash commands, the set commands the reaper's sweep of pending dream
+    records uses (``graphiti/provenance_pending.py``), and ``eval`` for the
+    two single-key lock scripts in ``locks.py`` (compare-and-delete,
+    compare-and-extend). TTLs are recorded, not enforced.
     """
 
     def __init__(self) -> None:
         self.store: dict[str, str] = {}
         self.hashes: dict[str, dict[str, str]] = {}
+        self.sets: dict[str, set[str]] = {}
         self.ttls: dict[str, int] = {}
+
+    async def sadd(self, name: str, *values: Any) -> int:
+        bucket = self.sets.setdefault(name, set())
+        added = {self._s(value) for value in values} - bucket
+        bucket |= added
+        return len(added)
+
+    async def srem(self, name: str, *values: Any) -> int:
+        bucket = self.sets.get(name, set())
+        removed = {self._s(value) for value in values} & bucket
+        bucket -= removed
+        return len(removed)
+
+    async def srandmember(self, name: str, number: int) -> list[str]:
+        return sorted(self.sets.get(name, set()))[:number]
 
     @staticmethod
     def _s(value: Any) -> str:
@@ -197,9 +232,12 @@ class FakeDreamDb:
     stop bumps the cancel generation, ``clear`` empties its columns, and a
     terminal row, another user's row (for an update naming the owner) or a
     row written after the update's instant is not written; an update marked
-    ``closed_row`` writes a terminal row only. ``writes`` holds
-    every draft and update that was written, in order, as sent. ``fail``
-    makes every call raise, as an unreachable database would.
+    ``closed_row`` writes a terminal row only. The read set only grows, and an
+    error that is not one of the fixed codes is recorded as ``UNRECORDED``.
+    An update that closes a row a hard forget marked (``erased_at``) blanks
+    its text and error, as ``erase_dream_passes`` does to a closed one.
+    ``writes`` holds every draft and update that was written, in order, as
+    sent. ``fail`` makes every call raise, as an unreachable database would.
     """
 
     def __init__(self) -> None:
@@ -228,10 +266,14 @@ class FakeDreamDb:
             row["status"] = update.status
         if update.phase is not None and _order(update.phase) > _order(row["phase"]):
             row["phase"] = update.phase
+        if update.read_uuids is not None:
+            row["read_uuids"] = sorted({*row["read_uuids"], *update.read_uuids})
         for field, value in dict(update).items():
             if value is None or field in _NOT_WRITTEN_AS_IS:
                 continue
-            if field in ("phase_outputs", "operations"):
+            if field == "error":
+                row["error"] = recorded_error(value)
+            elif field in ("phase_outputs", "operations"):
                 row[field].update(
                     {k: v for k, v in dict(value).items() if v is not None}
                 )
@@ -242,6 +284,11 @@ class FakeDreamDb:
         row.update({column: None for column in update.clear})
         row["cancel_generation"] += int(update.bump_cancel_generation)
         row["updated_at"] = datetime.now(timezone.utc)
+        closes = update.closed_row or (
+            update.status is not None and update.status not in OPEN_STATUSES
+        )
+        if row.get("erased_at") is not None and closes:
+            _blank_row(row)
         return True
 
     async def get_dream_pass(self, pass_id: str) -> DreamPassRecord | None:
@@ -264,6 +311,37 @@ class FakeDreamDb:
             for pass_id, row in reversed(self.rows.items())
             if row["scope_key"] == scope_key and row["status"] in OPEN_STATUSES
         ][:limit]
+
+    async def erase_dream_passes(
+        self, user_id: str, scope_key: str, *, reached: list[str], named: list[str]
+    ) -> list[str]:
+        """Mark the user's passes of the scope a hard forget reached (one
+        that read a reached uuid or may have read anything, open, closed with
+        a cleanup pending, named, or marked before), blank those marked now
+        and closed, and keep every
+        error of the scope only as a fixed code; the ids marked, now or
+        before. ``data/dream_pass.ERASE_SQL``."""
+        self._raise_if_down()
+        marked: list[str] = []
+        for pass_id, row in self.rows.items():
+            if (row["user_id"], row["scope_key"]) != (user_id, scope_key):
+                continue
+            row["error"] = blank_error(row.get("error"))
+            if not (
+                row.get("erased_at") is not None
+                or row["status"] in OPEN_STATUSES
+                or row.get("cleanup_pending_at") is not None
+                or pass_id in named
+                or set(row["read_uuids"]) & set(reached)
+                or UNKNOWN_READS in row["read_uuids"]
+            ):
+                continue
+            marked.append(pass_id)
+            if row.get("erased_at") is None:
+                row["erased_at"] = datetime.now(timezone.utc)
+                if row["status"] not in OPEN_STATUSES:
+                    _blank_row(row)
+        return marked
 
     async def list_expired_dream_passes(
         self,
@@ -352,6 +430,7 @@ class FakeDreamDb:
             **dict(draft),
             "phase_outputs": {},
             "operations": {},
+            "read_uuids": [],
             "cancel_generation": 0,
             "created_at": now,
             "updated_at": now,
@@ -394,6 +473,7 @@ _NOT_WRITTEN_AS_IS = frozenset(
         "not_updated_since",
         "clear",
         "closed_row",
+        "read_uuids",
     }
 )
 
@@ -410,6 +490,55 @@ def _writable(row: dict[str, Any], update: DreamPassUpdate) -> bool:
             or row["updated_at"] <= update.not_updated_since
         )
     )
+
+
+def _blank_row(row: dict[str, Any]) -> None:
+    """Blank the dream's text in *row*'s JSON columns, and its error unless
+    it is a fixed code."""
+    row["phase_outputs"], row["operations"] = blank_text(_json_columns(row))
+    row["error"] = blank_error(row.get("error"))
+
+
+def _json_columns(row: dict[str, Any]) -> list[dict[str, Any]]:
+    """*row*'s phase outputs and operations as the database keeps them."""
+    return [
+        DreamPhaseOutputs(**row["phase_outputs"]).model_dump(mode="json"),
+        DreamPassOperations(**row["operations"]).model_dump(mode="json"),
+    ]
+
+
+def blank_text(value: Any) -> Any:
+    """*value* with every string under one of ``DREAM_TEXT_FIELDS`` reading
+    ``ERASED_TEXT``, as the migration's ``dream_text_blanked`` does."""
+    if isinstance(value, dict):
+        return {
+            key: (
+                ERASED_TEXT
+                if key in DREAM_TEXT_FIELDS and isinstance(item, str)
+                else blank_text(item)
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [blank_text(item) for item in value]
+    return value
+
+
+def blank_error(error: str | None) -> str | None:
+    """*error* when it is one of the fixed codes, else ``ERASED_TEXT`` after
+    its stage when that is one of the fixed stages, as the migration's
+    ``dream_error_blanked`` does."""
+    if error is None or is_pass_error(error):
+        return error
+    stage, separator, _ = error.partition(": ")
+    if separator and stage in PASS_ERROR_STAGES:
+        return f"{stage}: {ERASED_TEXT}"
+    return ERASED_TEXT
+
+
+def recorded_error(error: str) -> str:
+    """*error* as the store records it: a fixed code, else ``UNRECORDED``."""
+    return error if is_pass_error(error) else UNRECORDED
 
 
 def _due(row: dict[str, Any], due_before: datetime) -> bool:

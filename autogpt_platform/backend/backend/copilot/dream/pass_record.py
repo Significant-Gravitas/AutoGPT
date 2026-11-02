@@ -44,8 +44,15 @@ from backend.data.dream_pass_models import (
 
 from .fetch import DreamInput
 from .locks import DEFAULT_LOCK_TTL_SECONDS
+from .pass_errors import is_pass_error, pass_error
 from .routing import ExecutionPath
-from .schemas import DreamOperations, DreamPassResult, DreamPassUsage, DreamPhase
+from .schemas import (
+    DreamOperations,
+    DreamPassResult,
+    DreamPassUsage,
+    DreamPhase,
+    IngestionDrainStatus,
+)
 
 # What started a pass: the nightly job, the admin trigger, or an eval run.
 DreamTrigger = Literal["cron", "admin", "eval"]
@@ -119,11 +126,25 @@ def lease(lease_token: str, ttl_seconds: int) -> DreamPassUpdate:
 
 
 def gathered(input_bundle: DreamInput) -> DreamPassUpdate:
-    """The input is in: the window it covers; consolidate is next."""
+    """The input is in: the window it covers and every fact and episode it
+    read, which the row keeps for a hard forget; consolidate is next."""
     return DreamPassUpdate(
         phase=DreamPassPhase.CONSOLIDATE,
         window_start=input_bundle.window_start,
         window_end=input_bundle.window_end,
+        read_uuids=read_uuids(input_bundle),
+    )
+
+
+def read_uuids(input_bundle: DreamInput) -> list[str]:
+    """Every fact and episode *input_bundle* holds, sorted."""
+    return sorted(
+        {
+            *input_bundle.known_fact_uuids,
+            *input_bundle.known_episode_uuids,
+            *(fact.uuid for fact in input_bundle.facts),
+            *(episode.uuid for episode in input_bundle.episodes),
+        }
     )
 
 
@@ -316,12 +337,28 @@ def cleanup_finished() -> DreamPassUpdate:
 
 def stop_error(row: DreamPassRecord) -> str | None:
     """Why the row says its pass was stopped from outside, as the pass's
-    error (``cancelled: <reason>``, ``expired: <reason>``); ``None`` while its
+    error: the stop's own (``cancelled: by_admin``, ``expired: forced``,
+    ``consolidate: reaped``), else ``<status>: stopped``; ``None`` while its
     cancel generation is still the one a new row starts at."""
     if row.cancel_generation == INITIAL_CANCEL_GENERATION:
         return None
-    how = row.status.value.lower()
-    return f"{how}: {row.error}" if row.error else how
+    if row.error is not None and is_pass_error(row.error):
+        return row.error
+    if row.status == DreamPassStatus.CANCELLED:
+        return pass_error("cancelled", "stopped")
+    return pass_error("expired", "stopped")
+
+
+def _drain_status(row: DreamPassRecord) -> IngestionDrainStatus:
+    """What *row* says of its writes' drain. Only an applied record knows.
+    Without one, a pass that never recorded apply starting (``applying``)
+    never applied; one that did may have applied before it ended, so its
+    drain is unknown."""
+    if row.operations.applied is not None:
+        return row.operations.applied.ingestion_drain_status
+    if row.operations.planned is None:
+        return IngestionDrainStatus.not_applied
+    return IngestionDrainStatus.unknown
 
 
 def dream_pass_result_from_row(row: DreamPassRecord) -> DreamPassResult:
@@ -345,12 +382,15 @@ def dream_pass_result_from_row(row: DreamPassRecord) -> DreamPassResult:
         dropped_forgotten=applied.dropped_forgotten,
         pending_writes=applied.pending_writes,
         failed_writes=applied.failed_writes,
+        provenance_pending=applied.provenance_pending,
+        uncited_writes_dropped=applied.uncited_writes_dropped,
+        cross_scope_citations_dropped=applied.cross_scope_citations_dropped,
         protected_demotions=applied.protected_demotions,
         indeterminate_demotion_writes=applied.indeterminate_demotion_writes,
         demotion_accounting_complete=applied.demotion_accounting_complete,
         summary_for_user=applied.summary_for_user,
         dream_session_id=applied.dream_session_id,
-        ingestion_drain_status=applied.ingestion_drain_status,
+        ingestion_drain_status=_drain_status(row),
         operations=applied.snapshot,
         usage=row.usage,
         error=row.error,
@@ -368,6 +408,9 @@ def _applied(result: DreamPassResult) -> DreamPassApplied:
         dropped_forgotten=result.dropped_forgotten,
         pending_writes=result.pending_writes,
         failed_writes=result.failed_writes,
+        provenance_pending=result.provenance_pending,
+        uncited_writes_dropped=result.uncited_writes_dropped,
+        cross_scope_citations_dropped=result.cross_scope_citations_dropped,
         protected_demotions=result.protected_demotions,
         indeterminate_demotion_writes=result.indeterminate_demotion_writes,
         demotion_accounting_complete=result.demotion_accounting_complete,

@@ -5,12 +5,14 @@ on:
     branches: [master, dev]
     paths:
       - '.github/workflows/classic-autogpt-docker-ci.yml'
+      - '.github/actions/start-minio/**'
       - 'classic/original_autogpt/**'
       - 'classic/forge/**'
   pull_request:
     branches: [ master, dev, release-* ]
     paths:
       - '.github/workflows/classic-autogpt-docker-ci.yml'
+      - '.github/actions/start-minio/**'
       - 'classic/original_autogpt/**'
       - 'classic/forge/**'
 
@@ -35,10 +37,10 @@ jobs:
         build-type: [release, dev]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - if: runner.debug
         run: |
@@ -47,7 +49,7 @@ jobs:
 
       - id: build
         name: Build image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: classic/
           file: classic/Dockerfile.autogpt
@@ -89,35 +91,30 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    services:
-      minio:
-        image: minio/minio:edge-cicd
-        options: >
-          --name=minio
-          --health-interval=10s --health-timeout=5s --health-retries=3
-          --health-cmd="curl -f http://localhost:9000/minio/health/live"
+    timeout-minutes: 30
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           submodules: true
 
+      - name: Start MinIO service
+        uses: ./.github/actions/start-minio
+
       - if: github.event_name == 'push'
         name: Log in to Docker hub
-        uses: docker/login-action@v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - id: build
         name: Build image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: classic/
           file: classic/Dockerfile.autogpt
@@ -137,7 +134,7 @@ jobs:
           CI: true
           PLAIN_OUTPUT: True
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          S3_ENDPOINT_URL: http://minio:9000
+          S3_ENDPOINT_URL: http://127.0.0.1:9000
           AWS_ACCESS_KEY_ID: minioadmin
           AWS_SECRET_ACCESS_KEY: minioadmin
         run: |

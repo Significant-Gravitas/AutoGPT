@@ -26,8 +26,10 @@ async def unlink_chat_platforms(user_id: str) -> None:
 
     A message in a linked server (Discord, Slack, Telegram and the other
     chat platforms) or a linked DM starts an AutoPilot turn as the link's
-    owner with no login. The bot also treats a closed account's links as
-    unlinked, so one this fails to remove still runs no turn. Uses the same
+    owner with no login. Closing the account deletes any this fails to
+    remove, and the bot treats a closed account's links as unlinked, so none
+    runs a turn after the close. Unlinked here first, so no new turn starts
+    while the running ones are cancelled. Uses the same
     unlink calls as the platform-linking routes. Best effort and never raises:
     each call that fails is logged and the rest still run.
     """
@@ -68,8 +70,8 @@ async def cancel_autopilot_turns(user_id: str) -> None:
     Queued turns go first because a running turn's end promotes the user's
     oldest queued turn. Running turns get the cancel the chat's Stop button
     sends, which reaches a turn an executor has picked up. Only turns that
-    took a running slot are listed: a chat-platform turn skips the slot, so
-    one already running is not cancelled here. Best effort and never raises;
+    took a running slot are listed; chat-platform turns take one too, so a
+    running one is cancelled here as well. Best effort and never raises;
     bounded by STEP_TIMEOUT_SECONDS per call for the queue and
     TURN_STOP_WAIT_SECONDS in all for the running turns.
     """

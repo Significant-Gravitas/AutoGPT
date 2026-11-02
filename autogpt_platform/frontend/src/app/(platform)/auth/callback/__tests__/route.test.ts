@@ -512,6 +512,24 @@ describe("auth callback GET — user creation failures", () => {
     );
   });
 
+  it("keeps a closed account signed in and sends it to the keep-account screen", async () => {
+    // Every backend route answers a deleted account this way for the 14 days
+    // its owner can still keep it; signing in is how they keep it.
+    vi.stubEnv("BETTER_AUTH_URL", "https://autogpt.example.com");
+    postV1GetOrCreateUserMock.mockRejectedValue(
+      new ApiError("This account is closed.", 401, {
+        detail: "This account is closed.",
+      }),
+    );
+
+    const response = await GET(makeCallbackRequest("/auth/callback?next=/x"));
+
+    expect(response.headers.get("location")).toBe(
+      "https://autogpt.example.com/account-closed",
+    );
+    expect(rollbackSessionMock).not.toHaveBeenCalled();
+  });
+
   it("redirects to server-error when the backend rejects with a 5xx status", async () => {
     postV1GetOrCreateUserMock.mockRejectedValue(
       new BackendApiErrorStub("Internal Server Error", 500),

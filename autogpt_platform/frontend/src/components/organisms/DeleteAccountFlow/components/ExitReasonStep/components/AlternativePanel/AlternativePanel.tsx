@@ -28,7 +28,7 @@ export function AlternativePanel({ panel, isActionPending, onAction }: Props) {
       className="focus:outline-none [&>svg]:top-3.5 [&>svg]:translate-y-0"
     >
       <div className="flex flex-col items-start gap-3">
-        <Text variant="body" className="text-zinc-800">
+        <Text variant="body" tone="emphasis">
           {panel.copy}
         </Text>
         {action ? (
@@ -37,7 +37,7 @@ export function AlternativePanel({ panel, isActionPending, onAction }: Props) {
             size="small"
             loading={isActionPending}
             onClick={() => onAction(action.kind)}
-            className="h-auto min-h-11 whitespace-normal text-left lg:min-h-[2.25rem]"
+            className="h-auto min-h-11 text-left whitespace-normal lg:min-h-[2.25rem]"
           >
             {action.label}
           </Button>

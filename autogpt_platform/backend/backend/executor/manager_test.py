@@ -32,6 +32,24 @@ def mock_embedding_functions():
         yield
 
 
+@pytest.fixture(autouse=True)
+def _runners_belong_to_their_org():
+    """Check memberships for real here, unlike the other executor tests.
+
+    These runs are picked up by the executor service, which checks a run's
+    org/team against the database in its own process, out of a patch's reach.
+    The test server puts each run in an org no one is a member of, so a run
+    kept there would be stopped; checked here too, it moves to the user's own.
+    """
+
+
+@pytest.fixture(autouse=True)
+def _default_team_untenanted():
+    """Look up the user's own org and team for real: these tests use real
+    users, who have a personal org with a default team, and a run moved there
+    passes the executor service's check as it would in production."""
+
+
 async def create_graph(s: SpinTestServer, g: graph.Graph, u: User) -> graph.Graph:
     logger.info(f"Creating graph for user {u.id}")
     return await s.agent_server.test_create_graph(CreateGraph(graph=g), u.id)

@@ -1,5 +1,4 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Text } from "@/components/atoms/Text/Text";
 import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { motion } from "framer-motion";
 import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
@@ -30,16 +29,12 @@ export function AutopilotScene() {
               initial={{ opacity: 0, x: -8 }}
               animate={{ opacity: 1, x: 0 }}
               transition={reveal(i)}
-              className="flex items-center gap-1.5"
+              className="flex items-center gap-1.5 text-brand"
             >
-              <Icon
-                icon={ArrowRight01Icon}
-                size={16}
-                className="shrink-0 text-purple-500"
-              />
-              <Text variant="body" as="span">
+              <Icon icon={ArrowRight01Icon} size={18} className="shrink-0" />
+              <span className="font-sans text-body-lg font-normal text-foreground-base md:text-lead">
                 {point}
-              </Text>
+              </span>
             </motion.li>
           ))}
         </ul>
@@ -48,9 +43,9 @@ export function AutopilotScene() {
           animate={{ opacity: 1 }}
           transition={reveal(POINTS.length)}
         >
-          <Text variant="body" as="p" tone="muted">
+          <p className="font-sans text-body-lg font-normal text-foreground-tertiary md:text-lead">
             and more…
-          </Text>
+          </p>
         </motion.div>
       </div>
     </div>

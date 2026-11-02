@@ -51,13 +51,15 @@ from .recall_integration_fixtures import (
     stop_ingestion_workers,
 )
 from .scope import MemoryScope
+from .types import MemoryFact
 
 _PARAPHRASE: Fact = ("Alice", "Atlas", "Alice is working on Atlas")
 _TENTATIVE = {"status": "tentative", "scope": "real:global"}
 
 # What the platform writes on a live fact outside graphiti's extraction: the
-# recall stamps, the ratification and web-verification stamps, and the
-# dream's envelope metadata (``ingest._stamp_edge_metadata``).
+# recall stamps, the ratification and web-verification stamps, the dream's
+# envelope metadata (``ingest._stamp_edge_metadata``) and its derivation
+# record (``recall_derivation.record``).
 STAMPS: dict[str, Any] = {
     "recall_count": 3,
     "last_recalled_at": "2026-05-01T00:00:00.000000+00:00",
@@ -69,6 +71,8 @@ STAMPS: dict[str, Any] = {
     "confidence": 0.9,
     "provenance": "dream:pass-1",
     "scope": "project:atlas",
+    "derived_from_facts": ["fact-cited"],
+    "derived_from_episodes": ["episode-cited"],
 }
 
 
@@ -180,6 +184,36 @@ async def test_a_merged_restatement_leaves_every_attribute_as_it_was(
         k: v for k, v in before.items() if k != "episodes"
     }
     assert "MemoryFact" not in asked
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_an_attribute_less_stored_memory_fact_seeds_attributes_on_restatement(
+    scope_graph, stub_graphiti_client, ingest_worker_cleanup
+) -> None:
+    driver, scope = scope_graph
+    uuid = await _stamped_fact(driver, scope, stub_graphiti_client, "MemoryFact")
+    await driver.execute_query(
+        "MATCH ()-[e:RELATES_TO {uuid: $uuid}]->() SET e += $cleared",
+        uuid=uuid,
+        cleared={key: None for key in set(STAMPS) | set(MemoryFact.model_fields)},
+    )
+    before = await edge_properties(driver, uuid)
+    assert not (set(before) & (set(STAMPS) | set(MemoryFact.model_fields)))
+
+    episode, asked = await _restate(
+        driver, scope, stub_graphiti_client, _PARAPHRASE, duplicate_of={ALICE[2]}
+    )
+
+    after = await edge_properties(driver, uuid)
+    assert "MemoryFact" in asked
+    assert after["status"] == "tentative"
+    assert after["scope"] == "real:global"
+    assert episode in after["episodes"]
+    seeded = set(MemoryFact.model_fields) | {"episodes"}
+    assert {k: v for k, v in after.items() if k not in seeded} == {
+        k: v for k, v in before.items() if k not in seeded
+    }
 
 
 @pytest.mark.integration

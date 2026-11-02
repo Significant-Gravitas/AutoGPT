@@ -119,7 +119,7 @@ class TestTheBatchLease:
 
         provider.assert_not_awaited()
         row = fake_dream_db.rows["p1"]
-        error = "recombine: dream lock lost before recombine"
+        error = "recombine: lock_lost"
         assert (row["status"], row["error"]) == (DreamPassStatus.ERRORED, error)
         assert [p.phase for p in row["usage"].phases] == ["consolidate"]
         assert fake_dream_redis.store[_LOCK_KEY] == "newer-token"

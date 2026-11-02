@@ -141,7 +141,7 @@ class TestTheBatchRoute:
 
         assert newer.error is None and not newer.skipped
         assert [call.args[1] for call in apply.await_args_list] == [newer.pass_id]
-        error = f"expired: forced by an admin-triggered dream pass {newer.pass_id}"
+        error = "expired: forced"
         await _assert_ended_without_applying(fake_dream_db, fake_dream_redis, error)
         assert fake_dream_db.rows["p1"]["status"] is DreamPassStatus.EXPIRED
         assert fake_dream_db.rows[newer.pass_id]["status"] is DreamPassStatus.COMPLETE
@@ -221,7 +221,7 @@ class TestTheBatchRoute:
             assert 1.9 < loop.time() - started < 4
         assert newer.error is None and not newer.skipped
         assert [call.args[1] for call in apply.await_args_list] == [newer.pass_id]
-        error = f"expired: forced by an admin-triggered dream pass {newer.pass_id}"
+        error = "expired: forced"
         await _assert_ended_without_applying(fake_dream_db, fake_dream_redis, error)
         assert _charged(charges) == ["consolidate", "recombine", "sanitize"]
 
@@ -248,7 +248,7 @@ class TestTheBatchRoute:
 
         apply.assert_not_awaited()
         await _assert_ended_without_applying(
-            fake_dream_db, fake_dream_redis, "apply: dream lease could not be renewed"
+            fake_dream_db, fake_dream_redis, "apply: lease_unrenewed"
         )
         assert _LOCK_KEY not in fake_dream_redis.store
 

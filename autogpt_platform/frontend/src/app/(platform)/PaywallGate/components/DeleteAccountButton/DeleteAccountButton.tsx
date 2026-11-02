@@ -18,7 +18,8 @@ export function DeleteAccountButton() {
         size="small"
         onClick={openFlow}
         leftIcon={<Icon icon={UserRemove01Icon} size={16} />}
-        className="bg-white/90 text-zinc-500 hover:text-zinc-700"
+        // oxlint-disable-next-line design-system/no-restyle -- matches the paywall's Log out button next to it, which has these classes
+        className="bg-surface/90 text-foreground-tertiary hover:text-foreground-body"
       >
         Delete account
       </Button>

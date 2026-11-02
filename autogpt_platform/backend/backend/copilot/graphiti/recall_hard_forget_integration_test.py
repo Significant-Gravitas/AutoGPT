@@ -306,8 +306,6 @@ async def test_a_soft_forget_can_still_be_made_permanent_from_chat(
     alice, bob = edges[ALICE[2]], edges[BOB[2]]
     await retract(scope, [alice])
     assert (await edge_row(driver, alice))["fact"] == FORGOTTEN_FACT
-    enabled = AsyncMock(return_value=True)
-    mocker.patch.object(graphiti_forget, "is_enabled_for_user", enabled)
     session = ChatSession.new(scope.owner_user_id, dry_run=False)
     search = graphiti_forget.MemoryForgetSearchTool()
 

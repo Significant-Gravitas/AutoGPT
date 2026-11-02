@@ -365,6 +365,35 @@ class TestLoadPriorTranscript:
         assert builder.is_empty
 
     @pytest.mark.asyncio
+    async def test_transcript_it_cannot_scrub_allows_upload(self):
+        """A line the strip cannot parse makes the file as unusable as a
+        corrupt one, instead of failing the turn."""
+        builder = TranscriptBuilder()
+        restore = TranscriptDownload(
+            content=(
+                b'{"type":"assistant","uuid":"a1","message":{"role":"assistant",'
+                b'"content":[{"type":"text","text":"hi"}]}}\n'
+                b'{"type":"attachment","attachment":{"type":"file","con\n'
+            ),
+            message_count=1,
+            mode="sdk",
+        )
+        with patch(
+            "backend.copilot.baseline.service.download_transcript",
+            new=AsyncMock(return_value=restore),
+        ):
+            upload_safe, dl = await _load_prior_transcript(
+                user_id="user-1",
+                session_id="session-1",
+                session_messages=_make_session_messages("user", "assistant"),
+                transcript_builder=builder,
+            )
+
+        assert upload_safe is True
+        assert dl is None
+        assert builder.is_empty
+
+    @pytest.mark.asyncio
     async def test_download_exception_returns_false(self):
         builder = TranscriptBuilder()
         with patch(

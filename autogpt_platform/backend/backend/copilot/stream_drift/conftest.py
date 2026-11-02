@@ -55,8 +55,8 @@ def baseline_offline(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         ),
         "_build_system_prompt": ("System prompt", None),
         "build_turn_budget_block": "",
-        "is_enabled_for_user": False,
-        "is_feature_enabled": False,
+        "_fetch_graphiti_context": "",
+        "enqueue_conversation_turn": None,
         "persist_and_record_usage": None,
         "download_transcript": None,
     }.items():

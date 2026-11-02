@@ -97,11 +97,45 @@ function mountedIDs() {
   );
 }
 
+// jsdom has no ResizeObserver. Where a test installs this one, it reports
+// each newly observed element once the scroll has rendered, as a browser does
+// after layout: the virtualizer measures a row mounted mid-scroll only then.
+const resizeObservers = new Set<FakeResizeObserver>();
+
+class FakeResizeObserver {
+  private observed: Element[] = [];
+
+  constructor(private callback: ResizeObserverCallback) {
+    resizeObservers.add(this);
+  }
+
+  observe(target: Element) {
+    this.observed.push(target);
+  }
+
+  unobserve() {}
+
+  disconnect() {
+    resizeObservers.delete(this);
+  }
+
+  report() {
+    const entries = this.observed.map(
+      (target) => ({ target }) as ResizeObserverEntry,
+    );
+    this.observed = [];
+    if (entries.length > 0) {
+      this.callback(entries, this as unknown as ResizeObserver);
+    }
+  }
+}
+
 function scrollTo(top: number) {
   act(() => {
     stick.scroller!.scrollTop = top;
     stick.scroller!.dispatchEvent(new Event("scroll"));
   });
+  act(() => resizeObservers.forEach((observer) => observer.report()));
 }
 
 function bottomOffset(count: number) {
@@ -288,6 +322,7 @@ describe("VirtualTranscript", () => {
     }
 
     beforeEach(() => {
+      vi.stubGlobal("ResizeObserver", FakeResizeObserver);
       Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
         configurable: true,
         get(this: HTMLElement) {
@@ -306,6 +341,11 @@ describe("VirtualTranscript", () => {
       };
     });
 
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      resizeObservers.clear();
+    });
+
     it("moves the scroll position by the error of a row that enters above the viewport", () => {
       const messages = Array.from({ length: 500 }, (_, i) => message(i));
       renderTranscript(messages);
@@ -320,6 +360,22 @@ describe("VirtualTranscript", () => {
       expect(mountedIDs()).toContain(`m${TALL_INDEX}`);
       expect(stick.scroller!.scrollTop).toBe(
         476 * ROW_STRIDE + (TALL_HEIGHT - ROW_HEIGHT),
+      );
+    });
+
+    it("moves the scroll position for a row that enters across the top of the viewport", () => {
+      const messages = Array.from({ length: 500 }, (_, i) => message(i));
+      renderTranscript(messages);
+      stick.state.isAtBottom = false;
+      scrollTo(478 * ROW_STRIDE);
+      expect(mountedIDs()).not.toContain(`m${TALL_INDEX}`);
+
+      // Its guessed height ends below the top of the viewport.
+      scrollTo(TALL_INDEX * ROW_STRIDE + 50);
+
+      expect(mountedIDs()).toContain(`m${TALL_INDEX}`);
+      expect(stick.scroller!.scrollTop).toBe(
+        TALL_INDEX * ROW_STRIDE + 50 + (TALL_HEIGHT - ROW_HEIGHT),
       );
     });
 
@@ -401,5 +457,21 @@ describe("VirtualTranscript", () => {
     const messages = Array.from({ length: 60 }, (_, i) => message(i));
     renderTranscript(messages);
     expect(mountedIDs()).toHaveLength(60);
+  });
+
+  it("leaves no update behind when it unmounts mid-scroll", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      renderTranscript(Array.from({ length: 500 }, (_, i) => message(i)));
+      scrollTo(bottomOffset(500));
+      cleanup();
+      // Vitest deletes `window` when it tears the environment down, and an
+      // update landing after that fails the run.
+      vi.stubGlobal("window", undefined);
+      vi.advanceTimersByTime(1_000);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
   });
 });

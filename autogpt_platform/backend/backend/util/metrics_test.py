@@ -23,6 +23,7 @@ from sentry_sdk.utils import event_from_exception, json_dumps
 # Imported at module scope on purpose: AppProcess calls sentry_init() in its
 # class body, so the guard has to hold at collection time, not just in a test.
 import backend.util.process
+from backend.api.utils.client_ip import CLIENT_IP_TOKEN_HEADER
 from backend.util import feature_flag, metrics, tracing
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.metrics import (
@@ -427,6 +428,28 @@ def test_sentry_init_sends_no_trace_headers_to_third_parties(monkeypatch) -> Non
     assert calls[0]["trace_propagation_targets"] == []
 
 
+def test_a_large_frame_local_reaches_the_event_truncated(monkeypatch) -> None:
+    """A failed virus scan's traceback holds the upload in several frames, and the
+    SDK's full repr of each took seconds and a gigabyte for a 90 MB file."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    metrics.sentry_init()
+
+    def write_file(content: bytes) -> None:
+        raise RuntimeError("Virus scanning failed")
+
+    try:
+        write_file(b"x" * 5_000_000)
+    except RuntimeError:
+        event, _ = event_from_exception(
+            sys.exc_info(), client_options={**DEFAULT_OPTIONS, **calls[0]}
+        )
+
+    raising_frame = event["exception"]["values"][0]["stacktrace"]["frames"][-1]
+    assert len(raising_frame["vars"]["content"]) < 2_000
+
+
 def test_sentry_init_skipped_in_subprocess_spawned_by_pytest(monkeypatch) -> None:
     """A spawned service subprocess does not inherit sys.modules, but does
     inherit PYTEST_CURRENT_TEST from the environment."""
@@ -633,10 +656,11 @@ def test_before_send_filters_emails_and_ips_from_extras_and_frame_vars() -> None
     def notify_user():
         email = "ada@example.com"
         user_email = "ada.lovelace@example.com"
+        recipient = "ada@example.org"
         ip = "203.0.113.7"
         ip_address = "198.51.100.4"
         email_count = 1
-        if email and user_email and ip and ip_address and email_count:
+        if email and user_email and recipient and ip and ip_address and email_count:
             raise RuntimeError("could not send the notification")
 
     try:
@@ -664,7 +688,7 @@ def test_before_send_filters_emails_and_ips_from_extras_and_frame_vars() -> None
     }
     assert body["extra"]["ip_address"] == "[Filtered]"
     frame_vars = body["exception"]["values"][0]["stacktrace"]["frames"][-1]["vars"]
-    for name in ("email", "user_email", "ip", "ip_address"):
+    for name in ("email", "user_email", "recipient", "ip", "ip_address"):
         assert frame_vars[name] == "[Filtered]", name
     # Keys that only mention an email or IP stay readable for debugging.
     assert frame_vars["email_count"] == "1"
@@ -689,6 +713,8 @@ def _event_with_ip_headers() -> dict:
                 "Cf-Ipcity": "Warsaw",
                 "Cf-Iplatitude": "52.2",
                 "X-Vercel-Ip-City": "Warsaw",
+                # The frontend's signed client-IP token carries the visitor's IP too.
+                CLIENT_IP_TOKEN_HEADER: "203.0.113.7",
                 "Cf-Ray": "8a1b2c3d4e5f6789-WAW",
             },
         },

@@ -26,7 +26,7 @@ const InputNodeHandle = ({
       type={"target"}
       position={Position.Left}
       id={cleanedHandleId}
-      className={"-ml-6 mr-2"}
+      className={"mr-2 -ml-6"}
       data-tutorial-id={`input-handler-${nodeId}-${cleanedHandleId}`}
     >
       <div className="pointer-events-none">
@@ -35,8 +35,8 @@ const InputNodeHandle = ({
           size={16}
           fill={isInputConnected ? "currentColor" : "none"}
           className={cn(
-            "text-gray-400 opacity-100",
-            isInputBroken && "text-red-500",
+            "text-handle opacity-100",
+            isInputBroken && "text-error",
           )}
         />
       </div>
@@ -72,10 +72,7 @@ const OutputNodeHandle = ({
           icon={CircleIcon}
           size={16}
           color={isOutputConnected ? hexColor : "gray"}
-          className={cn(
-            "text-gray-400 opacity-100",
-            isBroken && "text-red-500",
-          )}
+          className={cn("text-handle opacity-100", isBroken && "text-error")}
         />
       </div>
     </Handle>

@@ -4,9 +4,14 @@ import logging
 from uuid import uuid4
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
-from backend.copilot import stream_registry
-from backend.copilot.config import ChatConfig
-from backend.copilot.executor.utils import enqueue_copilot_turn
+from backend.copilot.active_turns import (
+    ConcurrentTurnLimitError,
+    TurnSlot,
+    acquire_turn_slot,
+    get_inflight_turn_limit,
+)
+from backend.copilot.config import ChatConfig, CopilotLLMModel
+from backend.copilot.executor.utils import dispatch_turn
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
@@ -24,14 +29,22 @@ from backend.copilot.rate_limit import (
 )
 from backend.copilot.transports import resolve_default_chat_route
 from backend.copilot.tree import root_envelope
+from backend.copilot.turn_queue import count_inflight_turns
 from backend.data.db_accessors import orgs_db, platform_linking_db, workspace_db
 from backend.data.user import is_user_banned
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 from backend.util.settings import Settings
 from backend.util.workspace import WorkspaceManager
 
+from .chat_experts import (
+    list_owner_experts,
+    require_turn_expert,
+    resolve_turn_model,
+    session_reusable,
+)
 from .models import (
     BotChatRequest,
+    BotExpert,
     ChatSessionSummary,
     ChatTurnHandle,
     EnsureSessionResult,
@@ -273,20 +286,20 @@ async def _resolve_or_create_session(
     source_platform: str,
     *,
     allow_expert_session: bool = True,
+    expert_id: str | None = None,
 ) -> ChatSession:
     """Reuse the bot's cached session, or start a fresh one.
 
     The bot caches session IDs across turns and a cached session can be
     deleted from the web app in between — fall back to a new one so the
-    conversation self-heals instead of erroring.
+    conversation self-heals instead of erroring. A session bound to another
+    expert than ``expert_id`` (or one this context may not reach) is replaced.
     """
     session = None
     if session_id:
         session = await get_chat_session(session_id, owner_user_id)
-        if (
-            session is not None
-            and not allow_expert_session
-            and session.expert_id is not None
+        if session is not None and not await session_reusable(
+            session, owner_user_id, expert_id, allow_expert_session
         ):
             session = None
     if session is None:
@@ -302,6 +315,7 @@ async def _resolve_or_create_session(
             source_platform=source_platform,
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
+            expert_id=expert_id,
         )
     return session
 
@@ -311,6 +325,7 @@ async def ensure_chat_session(
     platform_user_id: str,
     platform_server_id: str | None,
     session_id: str | None,
+    expert_id: str | None = None,
 ) -> EnsureSessionResult:
     """Resolve (or create) the session for a bot conversation.
 
@@ -335,11 +350,13 @@ async def ensure_chat_session(
             owner_user_id[-8:],
         )
         return EnsureSessionResult(denial=denial)
+    await require_turn_expert(owner_user_id, expert_id, platform_server_id)
     session = await _resolve_or_create_session(
         owner_user_id,
         session_id,
         platform.value.lower(),
         allow_expert_session=platform_server_id is None,
+        expert_id=expert_id,
     )
     return EnsureSessionResult(session_id=session.session_id)
 
@@ -365,6 +382,14 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
             session_id="", turn_id="", user_id=owner_user_id, denial=denial
         )
 
+    # Bot turns share the owner's in-flight cap with every other turn source.
+    inflight_cap = get_inflight_turn_limit()
+    if await count_inflight_turns(owner_user_id) >= inflight_cap:
+        return _busy_handle(owner_user_id, inflight_cap)
+
+    await require_turn_expert(
+        owner_user_id, request.expert_id, request.platform_server_id
+    )
     if request.file_ids and request.session_id:
         # Attachment turn: the files were already uploaded into this session
         # (ensure_chat_session ran first). It must still exist — silently
@@ -372,7 +397,12 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         session = await get_chat_session(request.session_id, owner_user_id)
         if session is None:
             raise NotFoundError("The session for the uploaded files no longer exists.")
-        if request.platform_server_id is not None and session.expert_id is not None:
+        if not await session_reusable(
+            session,
+            owner_user_id,
+            request.expert_id,
+            allow_expert_session=request.platform_server_id is None,
+        ):
             raise NotFoundError("The session for the uploaded files no longer exists.")
     else:
         session = await _resolve_or_create_session(
@@ -380,9 +410,45 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
             request.session_id,
             request.platform.value.lower(),
             allow_expert_session=request.platform_server_id is None,
+            expert_id=request.expert_id,
         )
     session_id = session.session_id
+    model, notice = await resolve_turn_model(owner_user_id, request.model, session)
 
+    try:
+        async with acquire_turn_slot(
+            owner_user_id, session_id, capacity=inflight_cap
+        ) as slot:
+            turn_id = await _persist_and_dispatch(
+                request, slot, session, owner_user_id, model
+            )
+    except ConcurrentTurnLimitError:
+        return _busy_handle(owner_user_id, inflight_cap)
+
+    logger.info(
+        f"Bot chat turn started: {request.platform.value} "
+        f"(server {request.platform_server_id or 'DM'}, session {session_id}, "
+        f"turn {turn_id}, owner ...{owner_user_id[-8:]})"
+    )
+
+    return ChatTurnHandle(
+        session_id=session_id,
+        turn_id=turn_id,
+        user_id=owner_user_id,
+        notice=notice,
+    )
+
+
+async def _persist_and_dispatch(
+    request: BotChatRequest,
+    slot: TurnSlot,
+    session: ChatSession,
+    owner_user_id: str,
+    model: CopilotLLMModel | None,
+) -> str:
+    """Save the message and dispatch its turn inside the held slot; returns the
+    turn id."""
+    session_id = session.session_id
     # Persist the user message before enqueueing, mirroring the REST chat
     # endpoint — otherwise the executor runs against empty history.
     is_duplicate = (
@@ -403,25 +469,20 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         raise DuplicateChatMessageError("Message already in flight.")
 
     turn_id = str(uuid4())
-
-    await stream_registry.create_session(
+    org_id, team_id = await _turn_tenancy(owner_user_id, session)
+    await dispatch_turn(
+        slot,
         session_id=session_id,
         user_id=owner_user_id,
+        turn_id=turn_id,
+        message=request.message,
         tool_call_id=CHAT_TOOL_CALL_ID,
         tool_name=CHAT_TOOL_NAME,
-        turn_id=turn_id,
-    )
-
-    org_id, team_id = await orgs_db().get_user_default_team(owner_user_id)
-    await enqueue_copilot_turn(
-        session_id=session_id,
-        user_id=owner_user_id,
-        message=request.message,
-        turn_id=turn_id,
         is_user_message=True,
         organization_id=org_id,
         team_id=team_id,
         file_ids=request.file_ids or None,
+        model=model,
         llm_auth_provider=session.metadata.llm_auth_provider,
         llm_credential_id=session.metadata.llm_credential_id,
         # Roots its own tree, and born tainted: the message was written on a
@@ -429,21 +490,49 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         # anything this turn spawns inherits the bit.
         envelope=root_envelope(turn_id, tainted=True, session_id=session_id),
     )
+    return turn_id
 
-    logger.info(
-        "Bot chat turn started: %s (server %s, session %s, turn %s, owner ...%s)",
-        request.platform.value,
-        request.platform_server_id or "DM",
-        session_id,
-        turn_id,
-        owner_user_id[-8:],
-    )
 
+def _busy_handle(owner_user_id: str, inflight_cap: int) -> ChatTurnHandle:
     return ChatTurnHandle(
-        session_id=session_id,
-        turn_id=turn_id,
+        session_id="",
+        turn_id="",
         user_id=owner_user_id,
+        denial=TurnDenial(
+            reason="rate_limited",
+            message=(
+                f"The linked account is already running its limit of {inflight_cap} "
+                "tasks at once. Try again once one of them finishes."
+            ),
+        ),
     )
+
+
+async def _turn_tenancy(
+    owner_user_id: str, session: ChatSession
+) -> tuple[str | None, str | None]:
+    """An expert session runs in the org/team it is pinned to (the owner's
+    personal one); anything else in the owner's default team."""
+    if session.expert_id is not None and session.organization_id:
+        return session.organization_id, session.team_id
+    return await orgs_db().get_user_default_team(owner_user_id)
+
+
+async def list_user_experts(
+    platform: Platform, platform_user_id: str, platform_server_id: str | None
+) -> list[BotExpert]:
+    """The experts a bot conversation can route a turn to.
+
+    The owner resolves exactly like a chat turn. A server gets none: expert
+    sessions are DM-only, and listing the server owner's hires to every
+    member would leak them for nothing.
+    """
+    owner_user_id = await resolve_owner(
+        platform.value, platform_server_id, platform_user_id
+    )
+    if platform_server_id is not None:
+        return []
+    return await list_owner_experts(owner_user_id)
 
 
 LIST_USER_CHATS_MAX_LIMIT = 25

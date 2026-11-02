@@ -2,6 +2,10 @@ import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/au
 import { getOnboardingStatus } from "@/app/api/helpers";
 import { sanitizeAuthNext } from "@/lib/auth-redirect";
 import {
+  ACCOUNT_CLOSED_PATH,
+  isAccountClosedError,
+} from "@/lib/auth/closed-account";
+import {
   EMAIL_VERIFICATION_NOTICE_PARAM,
   type EmailVerificationNotice,
   hasMarketingOptOutParam,
@@ -115,6 +119,11 @@ export async function GET(request: Request) {
         (shouldShowOnboarding ? "/onboarding" : "/copilot");
       revalidatePath(next, "layout");
     } catch (createUserError) {
+      // An account its owner deleted: signing in is how they keep it, so the
+      // session stays and they see when it will be erased.
+      if (isAccountClosedError(createUserError)) {
+        return NextResponse.redirect(`${publicOrigin}${ACCOUNT_CLOSED_PATH}`);
+      }
       console.error("Error creating user:", createUserError);
 
       // Better Auth already set the session cookie before redirecting here, so

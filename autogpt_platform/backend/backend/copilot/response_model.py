@@ -12,6 +12,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from backend.copilot.tool_image import ImageCarrier
 from backend.util.json import dumps as json_dumps
 from backend.util.truncate import truncate
 
@@ -224,7 +225,7 @@ class StreamToolDisplayAvailable(StreamBaseResponse):
 _MAX_TOOL_OUTPUT_SIZE = 100_000  # ~100 KB; truncate to avoid bloating SSE/DB
 
 
-class StreamToolOutputAvailable(StreamBaseResponse):
+class StreamToolOutputAvailable(StreamBaseResponse, ImageCarrier):
     """Tool execution result."""
 
     type: ResponseType = ResponseType.TOOL_OUTPUT_AVAILABLE

@@ -13,6 +13,7 @@ their declared ``boundaries`` as policy to check against — fenced as data — 
 their name for accountability. Nothing else crosses.
 """
 
+import html
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -42,6 +43,18 @@ MAX_QUOTE_CHARS = 300
 TIMEOUT_SECONDS = 20.0
 
 
+def _escaped(text: str) -> str:
+    """Text for the auditor, escaped (``&`` first) so whatever it copies back
+    decodes exactly: a written ``&lt;`` stays distinct from an escaped ``<``."""
+    return html.escape(text, quote=False)
+
+
+def _as_written(text: str) -> str:
+    """The auditor's output with ``_escaped`` undone. It reads escaped
+    material and copies from it, so its output is read as that same text."""
+    return text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+
+
 class VerdictPayload(BaseModel):
     """What the auditing model is asked to emit."""
 
@@ -59,8 +72,8 @@ def audit_frame(reviewer: Expert) -> str:
     and it crosses fenced — it is the team's declared policy, not orders to
     the auditor.
     """
-    name = escape_prompt_xml_tags(reviewer.name)
-    policy = escape_prompt_xml_tags(reviewer.boundaries.strip())[:MAX_POLICY_CHARS]
+    name = _escaped(reviewer.name)
+    policy = _escaped(reviewer.boundaries.strip()[:MAX_POLICY_CHARS])
     if policy:
         quoted = "\n".join(f"> {line}" for line in policy.splitlines())
         policy_block = (
@@ -107,11 +120,13 @@ def audit_material(work: str, authority: str, question: str) -> str:
 
     All three are authored upstream: the draft may be forwarded or scraped
     text, and the other two are written by another model. None of them gets to
-    redirect the audit.
+    redirect the audit. Each is cut to its limit and then escaped the way
+    ``verdict_response`` reads the ruling back, so escaping never pushes text
+    past the cut.
     """
-    draft = escape_prompt_xml_tags(work.strip())[:MAX_WORK_CHARS]
-    claimed = escape_prompt_xml_tags(authority.strip())[:MAX_AUTHORITY_CHARS]
-    extra = escape_prompt_xml_tags(question.strip())[:MAX_QUESTION_CHARS]
+    draft = _escaped(work.strip()[:MAX_WORK_CHARS])
+    claimed = _escaped(authority.strip()[:MAX_AUTHORITY_CHARS])
+    extra = _escaped(question.strip()[:MAX_QUESTION_CHARS])
     extra_block = f"<also_rule_on>\n{extra}\n</also_rule_on>\n\n" if extra else ""
     return (
         f"<draft>\n{draft}\n</draft>\n\n"
@@ -131,11 +146,16 @@ def verdict_response(
     The auditor's prose is model-generated text conditioned on a `boundaries`
     column that a poisoned soul-edit could have written, and it lands in the
     caller's context in a trusted position. Blockquoting it with explicit
-    provenance mirrors ``fence_voice_preferences``.
+    provenance mirrors ``fence_voice_preferences``. Its reason and quotes are
+    escaped, after truncation, wherever they appear: the whole response is
+    the tool result the caller's model reads, the structured fields as much
+    as the message. The auditor quotes from material it read escaped, so its
+    output is read as that text first; the verdict card decodes the result
+    once and shows a quoted line as the draft's author wrote it.
     """
-    reason = " ".join(verdict.reason.split())[:MAX_REASON_CHARS]
+    reason = _escaped(" ".join(_as_written(verdict.reason).split())[:MAX_REASON_CHARS])
     quotes = [
-        " ".join(q.split())[:MAX_QUOTE_CHARS]
+        _escaped(" ".join(_as_written(q).split())[:MAX_QUOTE_CHARS])
         for q in verdict.quotes[:MAX_QUOTES]
         if q.strip()
     ]

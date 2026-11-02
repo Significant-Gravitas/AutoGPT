@@ -81,7 +81,7 @@ async def test_a_pass_cancelled_while_it_gathered_submits_nothing(
 
     provider.submit.assert_not_awaited()
     assert (result.error, result.execution_path) == (
-        "cancelled: testing",
+        "cancelled: by_admin",
         "anthropic_batch",
     )
     assert input_bundle_key(result.pass_id) not in fake_dream_redis.store
@@ -107,7 +107,7 @@ async def test_a_pass_cancelled_while_it_submitted_takes_its_batch_back(
     provider.submit.assert_awaited_once()
     provider.revoke.assert_awaited_once_with("batch-1")
     provider.cancel.assert_awaited_once_with("batch-1")
-    assert result.error == "cancelled: testing"
+    assert result.error == "cancelled: by_admin"
     assert input_bundle_key(result.pass_id) not in fake_dream_redis.store
     assert _LOCK_KEY not in fake_dream_redis.store
     _assert_cancelled(fake_dream_db, result.pass_id)
@@ -237,17 +237,37 @@ async def test_a_refused_submit_whose_row_cannot_be_read_is_not_handed_off(
     _assert_cancelled(fake_dream_db, result.pass_id)
 
 
-async def test_a_pass_whose_row_is_gone_is_not_handed_off(
+async def test_a_pass_whose_row_was_never_inserted_submits_nothing(
     fake_dream_db, fake_dream_redis, gather, provider, mocker
 ):
-    """A row that was never inserted (or was deleted with its user or
-    expert) refuses the submit too: the pass has nothing that could stop it
-    later, so it stops here."""
+    """A pass whose insert failed stops before it gathers: a hard forget
+    could not find it to mark it, so it reads nothing and submits nothing."""
     mocker.patch.object(
         fake_dream_db,
         "create_dream_pass",
         AsyncMock(side_effect=ConnectionError("dream pass database unreachable")),
     )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error == "pass: record_unconfirmed"
+    gather.assert_not_awaited()
+    provider.submit.assert_not_awaited()
+    assert _LOCK_KEY not in fake_dream_redis.store
+
+
+async def test_a_pass_whose_row_was_deleted_is_not_handed_off(
+    fake_dream_db, fake_dream_redis, gather, provider
+):
+    """A row deleted with its user or expert after the gather refuses the
+    submit: the pass has nothing that could stop it later, so it stops
+    here."""
+
+    async def submitted_after_the_row_went(**_kwargs) -> MagicMock:
+        fake_dream_db.rows.clear()
+        return MagicMock(provider_batch_id="batch-1")
+
+    provider.submit.side_effect = submitted_after_the_row_went
 
     result = await orchestrator_mod.execute_dream_pass("u")
 
@@ -273,7 +293,7 @@ def _assert_cancelled(fake_dream_db, pass_id: str) -> None:
     row = fake_dream_db.rows[pass_id]
     assert (row["status"], row["error"], row["cancel_generation"]) == (
         DreamPassStatus.CANCELLED,
-        "testing",
+        "cancelled: by_admin",
         1,
     )
 

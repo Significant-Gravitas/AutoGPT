@@ -22,16 +22,16 @@ const CONSEQUENCE_ICON: Record<ConsequenceKey, IconSvgElement> = {
 
 export function ConsequenceList({ items }: Props) {
   return (
-    <ul className="flex flex-col divide-y divide-zinc-100 rounded-xl border border-zinc-200">
+    <ul className="flex flex-col divide-y divide-separator rounded-xl border border-border-base">
       {items.map((item) => (
         <li key={item.key} className="flex items-start gap-3 px-4 py-3">
           <Icon
             icon={CONSEQUENCE_ICON[item.key]}
             size={18}
             aria-hidden
-            className="mt-0.5 shrink-0 text-zinc-500"
+            className="mt-0.5 shrink-0 text-foreground-tertiary"
           />
-          <Text variant="body" as="span" className="min-w-0 text-zinc-800">
+          <Text variant="body" as="span" tone="emphasis" className="min-w-0">
             {item.text}
           </Text>
         </li>

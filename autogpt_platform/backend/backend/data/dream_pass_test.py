@@ -17,6 +17,7 @@ from prisma.models import Expert, User
 
 from backend.copilot.dream.fetch import DreamInput, EpisodeRow, FactRow, SessionRow
 from backend.copilot.dream.input_bundle import input_bundle_to_dict
+from backend.copilot.dream.pass_errors import UNRECORDED, pass_error
 from backend.copilot.dream.schemas import (
     ConsolidatedFact,
     ConsolidationOutput,
@@ -162,6 +163,9 @@ async def test_phase_outputs_and_operations_merge_one_field_at_a_time(make_user)
     planned = DreamOperations(summary_for_user="clamped")
     applied = DreamPassApplied(
         consolidated_count=1,
+        dropped_forgotten=4,
+        uncited_writes_dropped=3,
+        cross_scope_citations_dropped=5,
         protected_demotions=2,
         indeterminate_demotion_writes=1,
         demotion_accounting_complete=False,
@@ -277,7 +281,9 @@ async def test_a_finished_pass_is_final(make_user):
 
     assert not await update_dream_pass(
         draft.id,
-        DreamPassUpdate(status=DreamPassStatus.ERRORED, error="late crash"),
+        DreamPassUpdate(
+            status=DreamPassStatus.ERRORED, error=pass_error("pass", "crashed")
+        ),
     )
     assert not await update_dream_pass(
         draft.id,
@@ -371,14 +377,21 @@ async def test_deleting_the_expert_or_the_user_removes_their_passes(make_user):
 
 
 async def test_text_loses_the_control_characters_postgres_rejects(make_user):
+    """Free text (a skip's reason) is kept without them. An error is not free
+    text: one that is not a fixed code is recorded as ``UNRECORDED``."""
     owner = await make_user()
     draft = _draft(owner)
     await create_dream_pass(draft)
 
     assert await update_dream_pass(
         draft.id,
-        DreamPassUpdate(status=DreamPassStatus.ERRORED, error="bad\x00byte"),
+        DreamPassUpdate(
+            status=DreamPassStatus.SKIPPED,
+            skip_reason="bad\x00byte",
+            error="bad\x00byte",
+        ),
     )
 
     row = await get_dream_pass(draft.id)
-    assert row is not None and row.error == "badbyte"
+    assert row is not None
+    assert (row.skip_reason, row.error) == ("badbyte", UNRECORDED)

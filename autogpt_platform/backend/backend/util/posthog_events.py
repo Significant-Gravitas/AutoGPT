@@ -46,6 +46,8 @@ class PostHogEvent(StrEnum):
     CHAT_TOOL_CALLED = "chat_tool_called"
     CHAT_OUTCOME = "chat_outcome"
     CHAT_LIBRARY_CHECK_OUTCOME = "chat_library_check_outcome"
+    # backend/copilot/gate/shadow.py
+    CHAT_READ_SCREEN_SHADOW_DECISION = "chat_read_screen_shadow_decision"
 
     # Billing: backend/data/credit.py
     TOPUP_COMPLETED = "topup_completed"
@@ -92,6 +94,14 @@ class PostHogEvent(StrEnum):
     ACCOUNT_DELETION_FEEDBACK = "account_deletion_feedback"
     ACCOUNT_DELETION_ALTERNATIVE_CLICKED = "account_deletion_alternative_clicked"
     ACCOUNT_DELETION_COMPLETED = "account_deletion_completed"
+    ACCOUNT_DELETION_KEPT = "account_deletion_kept"
+    # Email (SECRT-2735): backend/api/features/postmark/, from Postmark's
+    # webhooks for the mail the platform sends itself.
+    EMAIL_DELIVERED = "email_delivered"
+    EMAIL_OPENED = "email_opened"
+    EMAIL_CLICKED = "email_clicked"
+    EMAIL_BOUNCED = "email_bounced"
+    EMAIL_COMPLAINED = "email_complained"
 
 
 class PlannedPostHogEvent(StrEnum):

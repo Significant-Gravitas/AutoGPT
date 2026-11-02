@@ -191,14 +191,31 @@ async def test_enqueue_turn_includes_default_transport_and_attribution() -> None
 
 
 @pytest.mark.asyncio
-async def test_enqueue_turn_treats_duplicate_message_pk_as_already_queued() -> None:
+@pytest.mark.parametrize(
+    "error_data",
+    [
+        {
+            "user_facing_error": {
+                "message": "Unique constraint failed on the fields: (`id`)",
+                "error_code": "P2002",
+                "meta": {"target": ["id"]},
+            }
+        },
+        # Through the database manager's RPC only the message survives.
+        {
+            "user_facing_error": {
+                "message": "Unique constraint failed on the fields: (`id`)"
+            }
+        },
+    ],
+    ids=["local", "rpc"],
+)
+async def test_enqueue_turn_treats_duplicate_message_pk_as_already_queued(
+    error_data: dict,
+) -> None:
     db = MagicMock()
     db.get_next_sequence = AsyncMock(return_value=1)
-    db.add_chat_message = AsyncMock(
-        side_effect=UniqueViolationError(
-            {"user_facing_error": {"message": "ChatMessage_pkey"}}
-        )
-    )
+    db.add_chat_message = AsyncMock(side_effect=UniqueViolationError(error_data))
     db.update_chat_session_status = AsyncMock()
     invalidate = AsyncMock()
     with (
@@ -1087,10 +1104,11 @@ async def test_dispatch_leaves_queued_when_user_paywalled() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("route", ["platform", "codex", "microsoft_365_copilot"])
 async def test_a_banned_owner_is_refused_on_every_route(route) -> None:
-    """The scheduler and the queue both ask here, and a ban outranks the
-    route: a ChatGPT or Microsoft 365 turn costs us nothing but still runs."""
+    """The scheduler and the queue both ask here, and a ban (or a closed
+    account) outranks the route: a ChatGPT or Microsoft 365 turn costs us
+    nothing but still runs."""
     with (
-        patch.object(turn_queue, "is_user_banned", new=AsyncMock(return_value=True)),
+        patch.object(turn_queue, "is_user_refused", new=AsyncMock(return_value=True)),
         patch.object(turn_queue, "has_codex_access", new=AsyncMock(return_value=True)),
         patch.object(
             turn_queue, "is_user_paywalled", new=AsyncMock(return_value=False)
@@ -1098,7 +1116,9 @@ async def test_a_banned_owner_is_refused_on_every_route(route) -> None:
     ):
         refusal = await turn_queue.turn_refusal("u1", route)
 
-    assert refusal == turn_queue.TurnRefusal(reason="is banned", kind="banned")
+    assert refusal == turn_queue.TurnRefusal(
+        reason="is banned or closed", kind="banned"
+    )
 
 
 @pytest.mark.asyncio

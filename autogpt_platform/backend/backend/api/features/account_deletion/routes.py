@@ -1,12 +1,17 @@
 """Self-serve account deletion (SECRT-2877).
 
-Both routes 404 while the self-serve-account-deletion flag is off for the
-caller, and answer 403 to an admin acting as another user: closing an account
-is its owner's own act. The deletion route authenticates with
-``get_user_id_allowing_closed`` so a repeat call from an account it already
-closed still answers 200; every other route rejects a closed account. Neither
-route sits behind the payment paywall: an account without a plan must be able
-to delete itself.
+Deleting and the exit feedback 404 while the self-serve-account-deletion flag
+is off for the caller. Reading the deletion status and keeping the account do
+not: someone who closed their account while the flag was on must still be
+able to keep it. Deleting, the feedback and keeping the account answer 403 to
+an admin acting as another user: each is its owner's own act.
+
+The deletion, status and keep routes authenticate with
+``get_user_id_allowing_closed``: they answer a closed account (a repeat call,
+the screen shown at sign-in during the 14 days) and a banned one (deleting
+the account is its owner's right whatever the ban). Every other route rejects
+both. None of them sits behind the payment paywall: an account without a plan
+must be able to delete itself.
 """
 
 from typing import Annotated
@@ -22,6 +27,11 @@ from backend.api.features.account_deletion.models import (
     AccountDeletionResponse,
     DeletionFeedbackRequest,
 )
+from backend.api.features.account_deletion.restore import (
+    TooLateToRestoreError,
+    get_deletion_status,
+    restore_account,
+)
 from backend.api.features.account_deletion.service import (
     EmailMismatchError,
     PlanCancellationError,
@@ -34,6 +44,10 @@ PLAN_CANCELLATION_DETAIL = (
     "We couldn't cancel your plan. Nothing was deleted. Try again."
 )
 IMPERSONATION_DETAIL = "Account deletion isn't available while impersonating a user."
+TOO_LATE_DETAIL = (
+    "It's too late to keep this account: its data is being erased. Contact "
+    "contact@agpt.co if you need help."
+)
 
 
 async def require_account_deletion_flag(
@@ -78,7 +92,7 @@ async def request_account_deletion(
     user_id: Annotated[str, Security(get_user_id_allowing_closed)],
 ) -> AccountDeletionResponse:
     try:
-        await delete_account(
+        erase_after = await delete_account(
             user_id=user_id,
             confirm_email=body.confirm_email,
             source=AccountDeletionSource(body.source.upper()),
@@ -87,7 +101,7 @@ async def request_account_deletion(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, EMAIL_MISMATCH_DETAIL)
     except PlanCancellationError:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, PLAN_CANCELLATION_DETAIL)
-    return AccountDeletionResponse(status="scheduled")
+    return AccountDeletionResponse(status="scheduled", erase_after=erase_after)
 
 
 @router.post(
@@ -105,3 +119,33 @@ async def send_account_deletion_feedback(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> None:
     await record_feedback(user_id=user_id, body=body)
+
+
+# Not behind the flag: see the module docstring.
+status_router = APIRouter(prefix="/account/deletion", tags=["account"])
+
+
+@status_router.get("", summary="Get account deletion status")
+async def get_account_deletion_status(
+    user_id: Annotated[str, Security(get_user_id_allowing_closed)],
+) -> AccountDeletionResponse:
+    return await get_deletion_status(user_id)
+
+
+@status_router.post(
+    "/restore",
+    summary="Keep my account",
+    dependencies=[Depends(reject_impersonation)],
+    responses={
+        403: {"description": IMPERSONATION_DETAIL},
+        409: {"description": TOO_LATE_DETAIL},
+    },
+)
+async def keep_account(
+    user_id: Annotated[str, Security(get_user_id_allowing_closed)],
+) -> AccountDeletionResponse:
+    try:
+        await restore_account(user_id)
+    except TooLateToRestoreError:
+        raise HTTPException(status.HTTP_409_CONFLICT, TOO_LATE_DETAIL)
+    return AccountDeletionResponse(status="open")

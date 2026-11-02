@@ -42,6 +42,7 @@ from .batch_costs import recorded_usage
 from .batch_outcome import BatchPass, clean_up_after, fail_pass, mark_job_errored
 from .batch_submit import read_input_bundle
 from .fetch import DreamInput
+from .pass_errors import pass_error
 from .pass_record import stop_error
 from .provider_batch import provider_batch_stopped
 from .schemas import DreamOperations, DreamPassResult, IngestionDrainStatus
@@ -54,11 +55,9 @@ logger = logging.getLogger(__name__)
 DISPATCH_CHECK_READ_TIMEOUT_SECONDS = 3.0
 
 # How a pass whose last batch came back twice closes: the first delivery
-# claimed apply and never finished.
-DUPLICATE_ERROR = (
-    "apply: an earlier delivery claimed apply and never finished; closed "
-    "without applying again, and what it wrote may have landed"
-)
+# claimed apply and never finished, so it closes without applying again,
+# and what that delivery wrote may have landed.
+DUPLICATE_ERROR = pass_error("apply", "duplicate_delivery")
 
 
 async def should_dispatch(entry: PendingEntry) -> bool:
@@ -83,9 +82,9 @@ async def drop_closed(entry: PendingEntry) -> None:
     reaper's, from the closed row."""
     bp = BatchPass.from_payload(entry.payload or {})
     row, owner = await _owner_of(bp)
-    reason = "pass already closed"
+    reason = pass_error("batch", "already_closed")
     if row is not None:
-        reason = stop_error(row) or f"pass already {row.status.value.lower()}"
+        reason = stop_error(row) or reason
     logger.info(
         f"Dream batch {entry.provider_batch_id} of pass {bp.pass_id} dropped "
         f"unpolled: {reason}"
