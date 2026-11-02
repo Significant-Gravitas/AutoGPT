@@ -1011,9 +1011,9 @@ model ChatMessage {
   llmAuthProvider String?
   llmCredentialId String?
 
-  // Langfuse trace of the SDK turn that wrote this assistant or reasoning
-  // row. No longer written since Langfuse tracing was removed (SECRT-2711);
-  // to be dropped with the rest of Langfuse (SECRT-3022).
+  // Legacy: the Langfuse trace of the SDK turn that wrote this assistant or
+  // reasoning row. Nothing writes it (SECRT-2711); it is dropped with the
+  // rest of Langfuse (SECRT-3022).
   langfuseTraceId String?
 
   // PostHog trace of the turn that wrote this assistant or reasoning row:
@@ -1055,9 +1055,9 @@ model ChatMessageFeedback {
   scoreValue Int
   comment    String?
 
-  // The trace the rating's Langfuse score was attached to. No longer written
-  // since Langfuse tracing was removed (SECRT-2711); to be dropped with the
-  // rest of Langfuse (SECRT-3022).
+  // Legacy: the trace the rating's Langfuse score was attached to. Nothing
+  // writes it (SECRT-2711); it is dropped with the rest of Langfuse
+  // (SECRT-3022).
   langfuseTraceId String?
 
   @@unique([messageId, userId, scoreName])
