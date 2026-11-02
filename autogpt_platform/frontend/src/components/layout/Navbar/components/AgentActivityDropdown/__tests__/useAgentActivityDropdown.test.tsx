@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   getGetV1ListAllExecutionsMockHandler,
@@ -32,8 +32,16 @@ vi.mock("@/lib/autogpt-server-api/context", () => ({
   }),
 }));
 
+let releaseHeldPage: (() => void) | undefined;
+
 beforeEach(() => {
   executionHandlers.clear();
+});
+
+// Settle the held page even when a test fails before releasing it.
+afterEach(() => {
+  releaseHeldPage?.();
+  releaseHeldPage = undefined;
 });
 
 function makeWrapper() {
@@ -57,6 +65,7 @@ function serveLibrary() {
   const page2Released = new Promise<void>((resolve) => {
     releasePage2 = resolve;
   });
+  releaseHeldPage = releasePage2;
   server.use(
     http.get("*/api/library/agents", async ({ request }) => {
       const params = new URL(request.url).searchParams;
