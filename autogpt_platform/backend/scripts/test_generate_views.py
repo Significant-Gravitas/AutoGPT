@@ -39,6 +39,23 @@ def test_recreate_drops_the_selected_views_before_creating_them(
     )
 
 
+def test_recreate_restores_the_grants_the_views_had(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    generate_views.cmd_views(
+        _args(only="user_lifecycle_funnel_weekly,user_lifecycle", recreate=True)
+    )
+
+    out = capsys.readouterr().out
+    save = out.index("CREATE TEMP TABLE analytics_view_grants ON COMMIT DROP")
+    assert "c.relname IN ('user_lifecycle', 'user_lifecycle_funnel_weekly')" in out
+    assert save < out.index("DROP VIEW IF EXISTS")
+    restore = out.index("FOR g IN SELECT * FROM analytics_view_grants")
+    assert restore > out.index(
+        "CREATE OR REPLACE VIEW analytics.user_lifecycle_funnel_weekly "
+    )
+
+
 def test_without_recreate_nothing_is_dropped(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

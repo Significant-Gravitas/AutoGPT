@@ -44,9 +44,9 @@ Notes
 - Safe to re-run: uses CREATE OR REPLACE VIEW.
 - CREATE OR REPLACE VIEW cannot drop or rename a column. After such a
   change, pass --recreate: it drops the selected views and creates them
-  again in the same transaction. List every view that reads from them in
-  --only too; if one is missing, Postgres refuses the drop and nothing
-  changes. Views are created in file-name order, so a view must sort
+  again in the same transaction, with the grants they had. List every
+  view that reads from them in --only too; if one is missing, Postgres
+  refuses the drop and nothing changes. Views are created in file-name order, so a view must sort
   after the views it reads.
 - Looker, PostHog Data Warehouse, and Supabase MCP all read from the
   same analytics.* views — no raw tables exposed.
@@ -177,6 +177,39 @@ def build_drop_sql(names: list[str]) -> str:
     return f"DROP VIEW IF EXISTS {targets};\n"
 
 
+def build_save_grants_sql(names: list[str]) -> str:
+    # A drop removes every grant on the view; keep them to restore after the
+    # views are created again. The owner's own grants come back with
+    # ownership, so they are left out.
+    targets = ", ".join(f"'{name}'" for name in names)
+    return (
+        "CREATE TEMP TABLE analytics_view_grants ON COMMIT DROP AS\n"
+        "SELECT c.relname AS view_name, a.privilege_type, a.is_grantable,\n"
+        "       CASE WHEN a.grantee = 0 THEN 'PUBLIC'\n"
+        "            ELSE quote_ident(r.rolname) END AS grantee\n"
+        "FROM pg_class c\n"
+        "JOIN pg_namespace n ON n.oid = c.relnamespace\n"
+        "CROSS JOIN LATERAL aclexplode(c.relacl) a\n"
+        "LEFT JOIN pg_roles r ON r.oid = a.grantee\n"
+        f"WHERE n.nspname = '{SCHEMA}' AND c.relname IN ({targets})\n"
+        "  AND a.grantee <> c.relowner;\n"
+    )
+
+
+RESTORE_GRANTS_SQL = f"""DO $$
+DECLARE g record;
+BEGIN
+  FOR g IN SELECT * FROM analytics_view_grants LOOP
+    EXECUTE format(
+      'GRANT %s ON {SCHEMA}.%I TO %s%s',
+      g.privilege_type, g.view_name, g.grantee,
+      CASE WHEN g.is_grantable THEN ' WITH GRANT OPTION' ELSE '' END
+    );
+  END LOOP;
+END $$;
+"""
+
+
 def load_views(only: list[str] | None = None) -> list[tuple[str, str]]:
     """Return [(label, sql)] for all views, in alphabetical order."""
     files = sorted(QUERIES_DIR.glob("*.sql"))
@@ -236,10 +269,15 @@ def cmd_views(args: argparse.Namespace) -> None:
         names = [label.removeprefix(f"view {SCHEMA}.") for label, _ in views]
         # Fail fast instead of queueing every reader behind a drop that waits
         # on a long BI query.
-        views = [
-            ("lock timeout", "SET LOCAL lock_timeout = '30s';\n"),
-            ("drop views to recreate", build_drop_sql(names)),
-        ] + views
+        views = (
+            [
+                ("lock timeout", "SET LOCAL lock_timeout = '30s';\n"),
+                ("save grants", build_save_grants_sql(names)),
+                ("drop views to recreate", build_drop_sql(names)),
+            ]
+            + views
+            + [("restore grants", RESTORE_GRANTS_SQL)]
+        )
 
     if args.dry_run:
         print(f"-- {view_count} views\n")
