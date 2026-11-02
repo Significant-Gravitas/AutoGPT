@@ -138,6 +138,8 @@ def render_skill_body(body: str, arguments: str, names: list[str]) -> str:
             received = True
             return backslashes + positional[position]
         # A declared name counts as receiving even when its position is empty.
+        if name is None:
+            return match.group(0)
         received = True
         position = named[name]
         value = positional[position] if position < len(positional) else ""
