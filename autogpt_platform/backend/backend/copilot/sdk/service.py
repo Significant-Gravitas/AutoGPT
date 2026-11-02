@@ -78,6 +78,8 @@ from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.learning.capture import capture_chat_turn, find_initiating_user_row
 from backend.copilot.sdk.cli_prelaunch import CLIPrelaunch
 from backend.copilot.sdk.codex_compat_gateway import (
+    GATEWAY_REFUSED_CODE,
+    GATEWAY_REFUSED_MESSAGE,
     CodexAnthropicGateway,
     gateway_for_lease,
 )
@@ -616,6 +618,32 @@ async def _consume_sdk_until_done(
                 # it appends the marker and yields StreamError exactly once.
                 # Yielding StreamError before the retry decision causes the
                 # client to display an error that is immediately superseded.
+                loop_state.ended_with_stream_error = True
+                break
+
+            # Our own gateway refusing a request is a defect on our side, so
+            # its sentence is not an answer: forwarded, the turn reads as a
+            # successful reply of "API Error: 409 …" and nothing retries it.
+            # Judged after the transient check, which owns a provider failure
+            # the gateway relayed.
+            refusal = (
+                ctx.codex_gateway.last_refusal
+                if ctx.codex_gateway is not None
+                else None
+            )
+            # The preview is a truncated ``repr`` of the block list, so a
+            # refusal behind a long block, or carrying an escaped quote, is
+            # not in it: read the blocks' own text.
+            refusal_text = "".join(
+                block.text for block in sdk_msg.content if isinstance(block, TextBlock)
+            )
+            if refusal is not None and refusal in refusal_text:
+                logger.error(
+                    f"{ctx.log_prefix} Codex gateway refused the request — "
+                    f"failing the turn: {refusal}"
+                )
+                loop_state.stream_error_msg = GATEWAY_REFUSED_MESSAGE
+                loop_state.stream_error_code = GATEWAY_REFUSED_CODE
                 loop_state.ended_with_stream_error = True
                 break
 
@@ -1272,7 +1300,7 @@ _EXPECTED_STOP_CODES: frozenset[str] = frozenset(
 # Handled-error codes whose StreamError the outer retry loop yields itself,
 # after it has persisted the history marker, rather than the attempt.
 _OUTER_LOOP_YIELDS_ERROR_CODES: frozenset[str] = frozenset(
-    {"transient_api_error", PROVIDER_UNAVAILABLE_CODE}
+    {"transient_api_error", PROVIDER_UNAVAILABLE_CODE, GATEWAY_REFUSED_CODE}
 )
 
 
