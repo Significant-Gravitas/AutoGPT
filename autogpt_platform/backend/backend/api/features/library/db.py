@@ -1,6 +1,7 @@
 import asyncio
 import itertools
 import logging
+from collections.abc import Mapping
 from typing import Literal, LiteralString, Optional, cast
 
 import fastapi
@@ -30,6 +31,7 @@ from backend.data.graph import GraphSettings
 from backend.data.includes import (
     AGENT_PRESET_INCLUDE,
     LIBRARY_FOLDER_INCLUDE,
+    MAX_NODE_INPUT_OUTPUT_FETCH,
     library_agent_include,
 )
 from backend.data.model import CredentialsMetaInput, GraphInput
@@ -2327,6 +2329,9 @@ async def create_preset(
     logger.debug(
         f"Creating preset ({repr(preset.name)}) for user #{user_id}",
     )
+    # Fast preflight; the count that actually gates the write is re-run
+    # locked, immediately before the insert, below.
+    await check_preset_count(user_id)
     # A preset may only reference a graph the caller can access (owned, or in
     # their library and submitted); get_graph() enforces that, None if not.
     # The preset then inherits the graph's org/team (resource-follows-parent)
@@ -2373,27 +2378,24 @@ async def create_preset(
         isActive=preset.is_active,
         webhookId=webhook_id,
         InputPresets={
-            "create": [
-                prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
-                    name=name, data=SafeJson(data)
-                )
-                for name, data in {
-                    **preset.inputs,
-                    **preset.credentials,
-                }.items()
-            ]
+            "create": preset_input_rows({**preset.inputs, **preset.credentials}),
         },
     )
     if organization_id:
         create_input["organizationId"] = organization_id
     if team_id:
         create_input["teamId"] = team_id
-    if expert_id:
-        # Re-resolve under a row lock so an archive or ownership change landing
-        # between the tenancy check above and this write can't be persisted.
-        # Experts are private and owner-only here, so a failed re-check is a
-        # not-found rather than a silently dropped attribution.
-        async with transaction() as tx:
+    # Locked so two concurrent creates can't both pass check_preset_count and
+    # both insert, landing the account over MAX_PRESETS_PER_USER.
+    async with transaction() as tx:
+        await _lock_preset_creation(tx, user_id)
+        await check_preset_count(user_id, tx=tx)
+        if expert_id:
+            # Re-resolve under a row lock so an archive or ownership change
+            # landing between the tenancy check above and this write can't be
+            # persisted. Experts are private and owner-only here, so a failed
+            # re-check is a not-found rather than a silently dropped
+            # attribution.
             attributed_expert_id = await resolve_attributable_expert(
                 tx,
                 user_id,
@@ -2403,12 +2405,7 @@ async def create_preset(
             if attributed_expert_id is None:
                 raise NotFoundError(f"Expert #{expert_id} not found")
             create_input["expertId"] = attributed_expert_id
-            new_preset = await prisma.models.AgentPreset.prisma(tx).create(
-                data=create_input,
-                include=AGENT_PRESET_INCLUDE,
-            )
-    else:
-        new_preset = await prisma.models.AgentPreset.prisma().create(
+        new_preset = await prisma.models.AgentPreset.prisma(tx).create(
             data=create_input,
             include=AGENT_PRESET_INCLUDE,
         )
@@ -2536,19 +2533,35 @@ async def update_preset(
                 raise ValueError(
                     "Preset inputs and credentials must be provided together"
                 )
+            # Locked so two concurrent replacements of the same preset can't
+            # both pass the count below, then each delete and insert without
+            # seeing the other's rows — leaving more than the cap.
+            await _lock_preset_row(tx, preset_id)
+            # A caller's view of InputPresets is capped at the read bound
+            # (AGENT_PRESET_INCLUDE), so a preset already PAST it can't be
+            # replaced from that view — delete_many below would drop whatever
+            # the read never surfaced. At the bound exactly, the read still
+            # returns every row, so this matches check_preset_input_count's
+            # own ">" rather than refusing the boundary it allows writing.
+            stored_row_count = await prisma.models.AgentNodeExecutionInputOutput.prisma(
+                tx
+            ).count(where={"agentPresetId": preset_id})
+            if stored_row_count > MAX_NODE_INPUT_OUTPUT_FETCH:
+                raise InvalidInputError(
+                    f"Preset #{preset_id} holds {stored_row_count} inputs and "
+                    "credentials, past what a read returns; its inputs can't "
+                    "be replaced through this endpoint"
+                )
             update_data["InputPresets"] = {
-                "create": [
-                    prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
-                        name=name, data=SafeJson(data)
-                    )
-                    for name, data in {
+                "create": preset_input_rows(
+                    {
                         **inputs,
                         **{
                             key: creds_meta.model_dump(exclude_none=True)
                             for key, creds_meta in credentials.items()
                         },
-                    }.items()
-                ],
+                    }
+                ),
             }
             # Existing InputPresets must be deleted, in a separate query
             await prisma.models.AgentNodeExecutionInputOutput.prisma(tx).delete_many(
@@ -2563,6 +2576,70 @@ async def update_preset(
     if not updated:
         raise RuntimeError(f"AgentPreset #{preset_id} vanished while updating")
     return library_model.LibraryAgentPreset.from_db(updated)
+
+
+MAX_PRESETS_PER_USER = 1000
+
+
+def preset_input_rows(
+    entries: Mapping[str, object],
+) -> list[prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput]:
+    """One row per name, bounded here rather than at each caller."""
+    check_preset_input_count(entries)
+    return [
+        prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(
+            name=name, data=SafeJson(data)
+        )
+        for name, data in entries.items()
+    ]
+
+
+def check_preset_input_count(entries: Mapping[str, object]) -> None:
+    """Refuse a preset with more named inputs than one read brings back."""
+    if len(entries) > MAX_NODE_INPUT_OUTPUT_FETCH:
+        raise InvalidInputError(
+            f"A preset takes at most {MAX_NODE_INPUT_OUTPUT_FETCH} inputs and "
+            f"credentials together; got {len(entries)}"
+        )
+
+
+async def check_preset_count(user_id: str, tx: prisma.Prisma | None = None) -> None:
+    """Refuse a new preset once the user holds `MAX_PRESETS_PER_USER`.
+
+    Pass `tx` from inside `_lock_preset_creation`'s transaction so the count
+    and the insert it gates serialize per user.
+    """
+    held = await prisma.models.AgentPreset.prisma(tx).count(
+        where={"userId": user_id, "isDeleted": False}
+    )
+    if held >= MAX_PRESETS_PER_USER:
+        raise InvalidInputError(
+            f"An account holds at most {MAX_PRESETS_PER_USER} presets; "
+            "delete one to save another"
+        )
+
+
+async def _lock_preset_creation(tx: prisma.Prisma, user_id: str) -> None:
+    # execute_raw, not query_raw: pg_advisory_xact_lock returns void,
+    # which Prisma cannot deserialize as a result column.
+    await tx.execute_raw(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+        f"preset-creation:{user_id}",
+    )
+
+
+async def _lock_preset_row(tx: prisma.Prisma, preset_id: str) -> None:
+    """Row lock on the AgentPreset, held through update_preset's count,
+    delete and insert so two concurrent input replacements serialize."""
+    schema = get_database_schema()
+    schema_prefix = f'"{schema}".' if schema != "public" else ""
+    await tx.query_raw(
+        cast(
+            LiteralString,
+            f'SELECT "id" FROM {schema_prefix}"AgentPreset" WHERE "id" = $1 FOR UPDATE',
+        ),
+        preset_id,
+    )
 
 
 async def set_preset_webhook(

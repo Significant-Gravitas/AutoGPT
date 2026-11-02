@@ -31,6 +31,7 @@ Examples
     @@agptfile:/home/user/script.sh
 """
 
+import asyncio
 import itertools
 import logging
 import re
@@ -599,7 +600,9 @@ async def _expand_bare_ref(
         # file) instead of silently returning garbled bytes.
         strict = fmt in BINARY_FORMATS
         try:
-            parsed = parse_file_content(content, fmt, strict=strict)
+            parsed = await asyncio.to_thread(
+                parse_file_content, content, fmt, strict=strict
+            )
         except PARSE_EXCEPTIONS as exc:
             raise FileRefExpansionError(f"Failed to parse {fmt} file: {exc}") from exc
         # Normalize bytes fallback to str so tools never
