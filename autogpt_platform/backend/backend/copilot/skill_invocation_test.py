@@ -344,3 +344,27 @@ async def test_failed_persistence_keeps_command_retryable(owned, mocker, sequenc
             row.content, "session", [row], user_id="user", expert_id=None
         )
     assert row.content == "/fix-issue 42"
+
+
+@pytest.mark.parametrize(
+    "case", ["different-command", "new-turn", "unsaved", "user-tag"]
+)
+def test_persisted_invocation_recovery_is_limited_to_the_current_saved_row(case):
+    from backend.copilot.model import ChatMessage
+
+    expanded = (
+        "<skill_invocation>Saved instructions</skill_invocation>\n\n/report weekly"
+    )
+    rows = [ChatMessage(role="user", content=expanded, sequence=0)]
+    message = "/report weekly"
+    assert si.get_persisted_skill_invocation(message, rows) == expanded
+    if case == "different-command":
+        message = "/report monthly"
+    elif case == "new-turn":
+        rows.append(ChatMessage(role="assistant", content="done", sequence=1))
+    elif case == "unsaved":
+        rows[0].sequence = None
+    else:
+        rows[0].content = "/report weekly"
+        message = expanded
+    assert si.get_persisted_skill_invocation(message, rows) is None

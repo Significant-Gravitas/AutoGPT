@@ -3967,3 +3967,42 @@ async def test_skill_invocation_keeps_one_first_turn_context_in_transcript():
     assert turn.model_input().count(skills_context) == 1
     assert turn.uploaded().count(skills_context.encode()) == 1
     assert turn.uploaded().count(b"<skill_invocation>") == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("first_turn", [True, False])
+@pytest.mark.parametrize("incoming", ["/report weekly", ""])
+async def test_retry_keeps_persisted_skill_in_model_and_transcript(
+    first_turn, incoming
+):
+    expanded = "<skill_invocation>\nWrite the saved weekly report.\n</skill_invocation>\n\n/report weekly"
+    if first_turn:
+        expanded = "<available_skills>report</available_skills>\n\n" + expanded
+    session = (
+        _baseline_session(expanded)
+        if first_turn
+        else _baseline_session("hello", "ready", expanded)
+    )
+    original_rows = len(session.messages)
+    resolve = AsyncMock(return_value=None)
+    turn = await _run_baseline_turn(
+        session,
+        message=incoming,
+        first_block=None,
+        refresh=_refresh_nothing,
+        extra=[
+            (
+                "backend.copilot.skill_invocation.is_skills_feature_enabled",
+                dict(new=AsyncMock(return_value=True)),
+            ),
+            (
+                "backend.copilot.skill_invocation.resolve_invocable_skill",
+                dict(new=resolve),
+            ),
+        ],
+    )
+    assert turn.model_input().count("<skill_invocation>") == 1
+    assert turn.uploaded().count(b"<skill_invocation>") == 1
+    assert session.messages[original_rows - 1].content == expanded
+    assert sum(m.role == "user" for m in session.messages) == (1 if first_turn else 2)
+    resolve.assert_not_awaited()

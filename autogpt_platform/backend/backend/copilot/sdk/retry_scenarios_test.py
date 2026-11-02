@@ -4047,3 +4047,66 @@ async def test_auto_continue_preserves_each_pending_user_row():
         "Include totals",
     ]
     db.update_message_content_by_sequence.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("first_turn", [True, False])
+@pytest.mark.parametrize("incoming", ["/report weekly", ""])
+async def test_retry_keeps_persisted_skill_in_sdk_query_and_upload(
+    first_turn, incoming
+):
+    expanded = "<skill_invocation>\nWrite the saved weekly report.\n</skill_invocation>\n\n/report weekly"
+    helper = TestFirstTurnWarmContextIsEphemeral()
+    if first_turn:
+        expanded = "<available_skills>report</available_skills>\n\n" + expanded
+    session = (
+        helper._first_turn(expanded)
+        if first_turn
+        else helper._second_turn("hello", expanded)
+    )
+    original_rows = len(session.messages)
+
+    async def persist(s, *_a, **_kw):
+        for sequence, row in enumerate(s.messages):
+            row.sequence = sequence
+        return s
+
+    builders = []
+
+    def build_transcript():
+        builder = TranscriptBuilder()
+        builders.append(builder)
+        return builder
+
+    queries = []
+    upload = AsyncMock()
+    resolve = AsyncMock(return_value=None)
+    await helper._run(
+        session,
+        TestFollowUpWarmContextCallSite._clients(queries),
+        message=incoming,
+        first_block=None,
+        refresh=helper._no_refresh,
+        extra=[
+            (f"{_SVC}.TranscriptBuilder", dict(side_effect=build_transcript)),
+            (f"{_SVC}.persist_session_safe", dict(new=persist)),
+            (f"{_SVC}.download_transcript", dict(new=AsyncMock(return_value=None))),
+            (f"{_SVC}.read_cli_session_from_disk", dict(new=helper._cli_file(queries))),
+            (f"{_SVC}.upload_transcript", dict(new=upload)),
+            (
+                "backend.copilot.skill_invocation.is_skills_feature_enabled",
+                dict(new=AsyncMock(return_value=True)),
+            ),
+            (
+                "backend.copilot.skill_invocation.resolve_invocable_skill",
+                dict(new=resolve),
+            ),
+        ],
+    )
+    assert builders[0].to_jsonl().count("<skill_invocation>") == 1
+    assert len(queries) == 1
+    assert queries[0].count("<skill_invocation>") == 1
+    assert upload.await_args.kwargs["content"].count(b"<skill_invocation>") == 1
+    assert session.messages[original_rows - 1].content == expanded
+    assert sum(m.role == "user" for m in session.messages) == (1 if first_turn else 2)
+    resolve.assert_not_awaited()

@@ -186,6 +186,23 @@ class InvocableSkill(BaseModel):
     is_default: bool
 
 
+def get_persisted_skill_invocation(
+    message: str | None, session_messages: list[ChatMessage]
+) -> str | None:
+    """Recover the current row's expansion when retrying the same command."""
+    if not session_messages:
+        return None
+    current = session_messages[-1]
+    if current.role != "user" or current.sequence is None or not current.content:
+        return None
+    prefix, text = split_leading_server_blocks(current.content)
+    if f"<{SKILL_INVOCATION_TAG}>" not in prefix:
+        return None
+    if message and message != text:
+        return None
+    return current.content
+
+
 async def resolve_invocable_skill(
     user_id: str, expert_id: str | None, name: str, session_id: str | None = None
 ) -> InvocableSkill | None:

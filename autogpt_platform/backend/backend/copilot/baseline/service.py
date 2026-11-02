@@ -142,7 +142,10 @@ from backend.copilot.service import (
     strip_user_context_tags,
 )
 from backend.copilot.session_cleanup import prune_orphan_tool_calls
-from backend.copilot.skill_invocation import inject_skill_invocation
+from backend.copilot.skill_invocation import (
+    get_persisted_skill_invocation,
+    inject_skill_invocation,
+)
 from backend.copilot.stream_checkpoint import turn_checkpoint
 from backend.copilot.thinking_stripper import ThinkingStripper as _ThinkingStripper
 from backend.copilot.token_tracking import (
@@ -1904,7 +1907,14 @@ async def stream_chat_completion_baseline(
     if is_user_message and message and message.strip():
         await clear_pending_question(session)
 
-    if maybe_append_user_message(session, message, is_user_message, message_metadata):
+    persisted_invocation = (
+        get_persisted_skill_invocation(message, session.messages)
+        if is_user_message
+        else None
+    )
+    if persisted_invocation is None and maybe_append_user_message(
+        session, message, is_user_message, message_metadata
+    ):
         if is_user_message:
             track_user_message(
                 user_id=user_id,
@@ -2030,7 +2040,9 @@ async def stream_chat_completion_baseline(
     # Gate context fetch on both first turn AND user message so that assistant-
     # role calls (e.g. tool-result submissions) on the first turn don't trigger
     # a needless DB lookup for user understanding.
-    should_inject_user_context = is_first_turn and is_user_message
+    should_inject_user_context = (
+        is_first_turn and is_user_message and persisted_invocation is None
+    )
 
     if should_inject_user_context:
         prompt_task = _build_system_prompt(user_id)
@@ -2192,7 +2204,7 @@ async def stream_chat_completion_baseline(
     # Inject user context into the first user message on first turn.
     # Done before attachment/URL injection so the context prefix lands at
     # the very start of the message content.
-    turn_text = message or ""
+    turn_text = persisted_invocation or message or ""
     if not turn_text and session.messages and session.messages[-1].role == "user":
         turn_text = session.messages[-1].content or ""
     user_message_for_transcript = turn_text
@@ -2273,7 +2285,8 @@ async def stream_chat_completion_baseline(
             )
             if invoked is not None:
                 current_user["content"] = invoked
-                user_message_for_transcript = invoked.removeprefix(
+            if invoked is not None or persisted_invocation is not None:
+                user_message_for_transcript = str(current_user["content"]).removeprefix(
                     transcript_context_prefix
                 )
 
