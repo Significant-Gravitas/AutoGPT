@@ -522,7 +522,10 @@ jobs:
       - name: Set up Platform - Run migrations
         run: |
           echo "Running migrations..."
-          docker compose -f ../docker-compose.resolved.yml run --rm migrate
+          # --no-deps: `run` resolves migrate's full dependency closure, so
+          # without it this starts rabbitmq too (db's own dependency, even
+          # though db is already healthy from the step above) during the build.
+          docker compose -f ../docker-compose.resolved.yml run --rm --no-deps migrate
           echo "✅ Migrations completed"
         env:
           NEXT_PUBLIC_PW_TEST: true
