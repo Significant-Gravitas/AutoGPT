@@ -34,6 +34,7 @@ from backend.copilot.service import (
     split_leading_server_blocks,
     strip_server_injected_tags,
 )
+from backend.copilot.tools import skills as skill_registry
 from backend.copilot.tools.skills import (
     ParsedSkill,
     get_default_skill_with_body,
@@ -184,7 +185,7 @@ class InvocableSkill(BaseModel):
 
 
 async def resolve_invocable_skill(
-    user_id: str, expert_id: str | None, name: str
+    user_id: str, expert_id: str | None, name: str, session_id: str | None = None
 ) -> InvocableSkill | None:
     """The chat's skill a ``/name`` command runs, or None.
 
@@ -218,6 +219,27 @@ async def resolve_invocable_skill(
                 break
     if found is None or found.skill.extra.get("user-invocable") is False:
         return None
+    if not found.is_default:
+        manager, raw = await skill_registry.read_skill_for_load(
+            user_id, expert_id, found.skill.name, scope
+        )
+        text = raw.decode("utf-8")
+        parsed = skill_registry.parse_skill_markdown(
+            text, fallback_name=found.skill.name
+        )
+        if parsed is None or parsed.extra.get("user-invocable") is False:
+            return None
+        loaded = await skill_registry.resolve_loaded_skill_version(
+            user_id, expert_id, found.skill.name, text, manager=manager
+        )
+        await skill_registry.record_skill_loaded(
+            user_id,
+            expert_id,
+            found.skill.name,
+            version_id=loaded.version_id,
+            session_id=session_id,
+        )
+        found = InvocableSkill(skill=parsed, is_default=False)
     return found
 
 
@@ -274,7 +296,9 @@ async def inject_skill_invocation(
     try:
         if not await is_skills_feature_enabled(user_id):
             return None
-        found = await resolve_invocable_skill(user_id, expert_id, invocation.name)
+        found = await resolve_invocable_skill(
+            user_id, expert_id, invocation.name, session_id
+        )
     except Exception:
         logger.exception("[skills] could not resolve /%s", invocation.name)
         return None

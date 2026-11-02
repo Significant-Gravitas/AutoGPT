@@ -171,6 +171,23 @@ def owned(mocker: pytest_mock.MockFixture) -> dict[str, ParsedSkill]:
         ),
     )
     mocker.patch.object(si, "get_default_skill_with_body", lambda name: None)
+    mocker.patch.object(
+        si.skill_registry,
+        "read_skill_for_load",
+        AsyncMock(
+            side_effect=lambda user_id, expert_id, name, scope: (
+                None,
+                si.skill_registry.render_skill_markdown(skills[name]).encode(),
+            )
+        ),
+    )
+    mocker.patch.object(
+        si.skill_registry,
+        "resolve_loaded_skill_version",
+        AsyncMock(return_value=si.skill_registry.LoadedSkillVersion()),
+    )
+    mocker.patch.object(si.skill_registry, "record_skill_loaded", AsyncMock())
+
     mocker.patch.object(si, "is_skills_feature_enabled", AsyncMock(return_value=True))
     mocker.patch.object(
         si,

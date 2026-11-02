@@ -3356,6 +3356,16 @@ async def resolve_loaded_skill_version(
     )
 
 
+async def read_skill_for_load(
+    user_id: str, expert_id: str | None, name: str, scope: WorkspaceScope | None
+) -> tuple[WorkspaceManager, bytes]:
+    from backend.copilot.learning.publish import reconcile_skill_for_read
+
+    manager = await _get_user_skill_manager(user_id, scope)
+    await reconcile_skill_for_read(user_id, expert_id, name)
+    return manager, await manager.read_file(_skill_md_path(name, expert_id))
+
+
 class ReadSkillTool(BaseTool):
     """Load a skill by name: its body, its package listing, and a copy of
     that package in the working directory the model's shell runs in."""
@@ -3444,11 +3454,9 @@ class ReadSkillTool(BaseTool):
             )
 
         try:
-            from backend.copilot.learning.publish import reconcile_skill_for_read
-
-            manager = await _get_user_skill_manager(user_id, owner.scope)
-            await reconcile_skill_for_read(user_id, owner.expert_id, name)
-            raw = await manager.read_file(_skill_md_path(name, owner.expert_id))
+            manager, raw = await read_skill_for_load(
+                user_id, owner.expert_id, name, owner.scope
+            )
         except WorkspaceAccessDeniedError:
             return ErrorResponse(
                 message=EXPERT_SKILL_SCOPE_DENIED,
