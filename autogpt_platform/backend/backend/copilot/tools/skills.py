@@ -223,6 +223,7 @@ _META_MERGE_CONFLICTS = "merge_conflicts"
 # The slash-command frontmatter the chat's "/" picker lists: see
 # :data:`INVOCATION_FRONTMATTER_KEYS`.
 _META_INVOCATION = "invocation"
+_META_ALIASES = "aliases"
 
 # What the index says about a marketplace copy relative to the marketplace.
 UPDATE_AVAILABLE = "available"
@@ -384,6 +385,34 @@ class ParsedSkill:
     # Derived at index time, never stored: one of the ``UPDATE_*`` states, or
     # None when the copy is current or is not a marketplace copy.
     update: str | None = None
+    aliases: tuple[str, ...] = ()
+
+
+def skill_aliases(skill: ParsedSkill) -> set[str]:
+    """Other names a vendored skill answers to, from its ``metadata``.
+
+    A skill packaged from a Claude Code plugin keeps the name its own text
+    uses, e.g. ``original-name: incident-response``, and the plugin it came
+    from, e.g. ``source: .../commercial-legal/skills/amendment-history``. So
+    ``/incident-response`` and ``/commercial-legal:amendment-history`` reach
+    it without editing the published skill.
+    """
+    metadata = skill.extra.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return set()
+    original = metadata.get("original-name")
+    if not isinstance(original, str) or not original.strip():
+        return set()
+    original = original.strip().lower()
+    aliases = {original}
+    source = metadata.get("source")
+    if isinstance(source, str):
+        parts = [part for part in source.strip("/").lower().split("/") if part]
+        if "skills" in parts:
+            skills_at = len(parts) - 1 - parts[::-1].index("skills")
+            if skills_at >= 1:
+                aliases.add(f"{parts[skills_at - 1]}:{original}")
+    return aliases
 
 
 def budget_origin(skill: ParsedSkill) -> str:
@@ -1619,6 +1648,7 @@ async def _write_skill(
     if skill.parsed.version:
         metadata[_META_VERSION] = skill.parsed.version
     metadata[_META_INVOCATION] = invocation_frontmatter(skill.parsed.extra)
+    metadata[_META_ALIASES] = sorted(skill_aliases(skill.parsed))
     if baseline is not None:
         metadata.update(_baseline_metadata(baseline))
     folder = skill_folder(expert_id)
@@ -1715,8 +1745,8 @@ def _index_entry_from_metadata(slug: str, meta: dict) -> ParsedSkill | None:
     """Build a body-less entry from skill metadata.
 
     Return None when the skill kind or description is missing/invalid, or
-    invocation is absent or not a dict. The caller then reads SKILL.md so
-    legacy skills still honour user-invocable: false.
+    invocation is absent or not a dict, or aliases is absent/invalid. The
+    caller then reads SKILL.md for legacy aliases and user-invocable: false.
     """
     if meta.get(_META_KIND) != _META_KIND_VALUE:
         return None
@@ -1729,7 +1759,12 @@ def _index_entry_from_metadata(slug: str, meta: dict) -> ParsedSkill | None:
     triggers = tuple(str(t) for t in raw_triggers if isinstance(t, str) and t)
     version = meta.get(_META_VERSION)
     invocation = meta.get(_META_INVOCATION)
-    if not isinstance(invocation, dict):
+    aliases = meta.get(_META_ALIASES)
+    if (
+        not isinstance(invocation, dict)
+        or not isinstance(aliases, list)
+        or any(not isinstance(alias, str) for alias in aliases)
+    ):
         return None
     return ParsedSkill(
         name=slug,
@@ -1738,6 +1773,7 @@ def _index_entry_from_metadata(slug: str, meta: dict) -> ParsedSkill | None:
         triggers=triggers,
         version=str(version) if version else None,
         extra=invocation_frontmatter(invocation),
+        aliases=tuple(aliases),
         origin=_skill_origin(meta),
         baseline=_baseline_from_metadata(meta),
     )
@@ -1831,8 +1867,10 @@ async def _list_user_skills_from_workspace(
             # entries are body-less, keep the contract uniform).  The
             # origin is the row's, whatever the file says.
             invocation = invocation_frontmatter(p.extra)
+            aliases = sorted(skill_aliases(p))
             entry = _index_entry_from_metadata(
-                file.path.rsplit("/", 2)[-2], {**meta, _META_INVOCATION: invocation}
+                file.path.rsplit("/", 2)[-2],
+                {**meta, _META_INVOCATION: invocation, _META_ALIASES: aliases},
             )
             skills.append(
                 entry
@@ -1843,6 +1881,7 @@ async def _list_user_skills_from_workspace(
                     triggers=p.triggers,
                     version=p.version,
                     extra=invocation,
+                    aliases=tuple(aliases),
                     origin=_skill_origin(meta),
                     baseline=_baseline_from_metadata(meta),
                 )
@@ -1870,7 +1909,12 @@ async def _read_skills_cache(
         return None
     try:
         payload = json.loads(raw)
-        if not isinstance(payload, list):
+        if not isinstance(payload, list) or any(
+            not isinstance(item, dict)
+            or not isinstance(item.get("aliases"), list)
+            or any(not isinstance(alias, str) for alias in item["aliases"])
+            for item in payload
+        ):
             return None
         return [
             ParsedSkill(
@@ -1880,6 +1924,7 @@ async def _read_skills_cache(
                 triggers=tuple(str(t) for t in item.get("triggers", [])),
                 version=item.get("version"),
                 extra=invocation_frontmatter(item.get("invocation") or {}),
+                aliases=tuple(item["aliases"]),
                 origin=_normalize_origin(item.get("origin")),
                 baseline=_baseline_from_metadata(item.get("baseline") or {}),
                 update=_normalize_update(item.get("update")),
@@ -1905,6 +1950,7 @@ async def _write_skills_cache(
                     "triggers": list(s.triggers),
                     "version": s.version,
                     "invocation": invocation_frontmatter(s.extra),
+                    "aliases": list(s.aliases),
                     "origin": s.origin,
                     "baseline": (
                         _baseline_metadata(s.baseline) if s.baseline else None

@@ -19,7 +19,6 @@ here without editing their text:
 - Argument values are inserted literally, never expanded again.
 """
 
-import asyncio
 import logging
 import re
 import shlex
@@ -46,10 +45,6 @@ from backend.copilot.tools.skills import (
 )
 
 logger = logging.getLogger(__name__)
-
-# How many of the owner's skills an alias lookup reads before giving up.
-# Any unresolved name, including an unmatched slug, can reach the alias scan.
-_MAX_ALIAS_SCAN = 100
 
 _SLUG = re.compile(r"[a-z0-9_-]+")
 
@@ -151,33 +146,6 @@ def render_skill_body(body: str, arguments: str, names: list[str]) -> str:
     return rendered
 
 
-def skill_aliases(skill: ParsedSkill) -> set[str]:
-    """Other names a vendored skill answers to, from its ``metadata``.
-
-    A skill packaged from a Claude Code plugin keeps the name its own text
-    uses, e.g. ``original-name: incident-response``, and the plugin it came
-    from, e.g. ``source: .../commercial-legal/skills/amendment-history``. So
-    ``/incident-response`` and ``/commercial-legal:amendment-history`` reach
-    it without editing the published skill.
-    """
-    metadata = skill.extra.get("metadata")
-    if not isinstance(metadata, Mapping):
-        return set()
-    original = metadata.get("original-name")
-    if not isinstance(original, str) or not original.strip():
-        return set()
-    original = original.strip().lower()
-    aliases = {original}
-    source = metadata.get("source")
-    if isinstance(source, str):
-        parts = [part for part in source.strip("/").lower().split("/") if part]
-        if "skills" in parts:
-            skills_at = len(parts) - 1 - parts[::-1].index("skills")
-            if skills_at >= 1:
-                aliases.add(f"{parts[skills_at - 1]}:{original}")
-    return aliases
-
-
 class InvocableSkill(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -214,28 +182,20 @@ async def resolve_invocable_skill(
     """
     wanted = name.strip().lower()
     scope = await resolve_skill_scope(user_id, expert_id)
+    owned = await list_user_skills(user_id, expert_id, scope)
+    selected = next((entry for entry in owned if entry.name == wanted), None)
     found: InvocableSkill | None = None
-    if _SLUG.fullmatch(wanted):
-        if skill := await read_user_skill_with_body(
-            user_id, wanted, expert_id=expert_id, scope=scope
-        ):
-            found = InvocableSkill(skill=skill, is_default=False)
-        elif skill := get_default_skill_with_body(wanted):
+    if selected is None and _SLUG.fullmatch(wanted):
+        if skill := get_default_skill_with_body(wanted):
             found = InvocableSkill(skill=skill, is_default=True)
-    if found is None:
-        owned = await list_user_skills(user_id, expert_id, scope)
-        candidates = await asyncio.gather(
-            *(
-                read_user_skill_with_body(
-                    user_id, entry.name, expert_id=expert_id, scope=scope
-                )
-                for entry in owned[:_MAX_ALIAS_SCAN]
-            )
+    if selected is None and found is None:
+        selected = next((entry for entry in owned if wanted in entry.aliases), None)
+    if selected is not None:
+        skill = await read_user_skill_with_body(
+            user_id, selected.name, expert_id=expert_id, scope=scope
         )
-        for skill in candidates:
-            if skill is not None and wanted in skill_aliases(skill):
-                found = InvocableSkill(skill=skill, is_default=False)
-                break
+        if skill is not None:
+            found = InvocableSkill(skill=skill, is_default=False)
     if found is None or found.skill.extra.get("user-invocable") is False:
         return None
     if not found.is_default:

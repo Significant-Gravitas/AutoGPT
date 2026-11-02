@@ -19,6 +19,7 @@ def command_load(mocker):
     manager.read_file = AsyncMock(return_value=text.encode())
     mocker.patch.object(si, "resolve_skill_scope", AsyncMock(return_value=None))
     mocker.patch.object(si, "read_user_skill_with_body", AsyncMock(return_value=parsed))
+    mocker.patch.object(si, "list_user_skills", AsyncMock(return_value=[parsed]))
     mocker.patch.object(si, "is_skills_feature_enabled", AsyncMock(return_value=True))
     mocker.patch.object(
         si, "persist_current_user_message", AsyncMock(side_effect=lambda *a, **kw: a[2])

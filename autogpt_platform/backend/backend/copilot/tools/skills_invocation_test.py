@@ -57,6 +57,7 @@ def test_an_index_entry_reads_the_picker_fields_back():
             "kind": "copilot_skill",
             "description": "Fix a GitHub issue by number",
             "invocation": {"argument-hint": "[issue-number]", "user-invocable": False},
+            "aliases": [],
         },
     )
     assert entry is not None

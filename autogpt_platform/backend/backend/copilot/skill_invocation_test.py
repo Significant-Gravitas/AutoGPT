@@ -20,10 +20,9 @@ from backend.copilot.skill_invocation import (
     render_invocation,
     render_skill_body,
     resolve_invocable_skill,
-    skill_aliases,
     split_arguments,
 )
-from backend.copilot.tools.skills import ParsedSkill
+from backend.copilot.tools.skills import ParsedSkill, skill_aliases
 
 
 @pytest.mark.parametrize(
@@ -165,7 +164,13 @@ def owned(mocker: pytest_mock.MockFixture) -> dict[str, ParsedSkill]:
         "list_user_skills",
         AsyncMock(
             side_effect=lambda *_, **__: [
-                ParsedSkill(name=name, description="", body="")
+                ParsedSkill(
+                    name=name,
+                    description="",
+                    body="",
+                    extra=si.skill_registry.invocation_frontmatter(skills[name].extra),
+                    aliases=tuple(sorted(skill_aliases(skills[name]))),
+                )
                 for name in sorted(skills)
             ]
         ),
@@ -368,3 +373,11 @@ def test_persisted_invocation_recovery_is_limited_to_the_current_saved_row(case)
         rows[0].content = "/report weekly"
         message = expanded
     assert si.get_persisted_skill_invocation(message, rows) is None
+
+
+@pytest.mark.parametrize("name", ["me", "done", "typo", "foo:bar"])
+async def test_unmatched_command_reads_no_skill_bodies(owned, name):
+    owned["fix-issue"] = _skill()
+    assert await resolve_invocable_skill("user", None, name) is None
+    si.read_user_skill_with_body.assert_not_awaited()
+    si.skill_registry.read_skill_for_load.assert_not_awaited()
