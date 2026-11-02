@@ -177,7 +177,8 @@ jobs:
 
   e2e_test:
     name: end-to-end tests (${{ matrix.suite }})
-    runs-on: ubuntu-latest
+    # Pinned: Playwright has no Chromium build for ubuntu-latest's 26.04 image.
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
