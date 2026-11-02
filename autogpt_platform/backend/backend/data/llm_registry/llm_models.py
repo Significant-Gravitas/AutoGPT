@@ -146,6 +146,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GPT6_ASTRA = "gpt-6-astra"
     GPT6_SOL = "gpt-6-sol"
     GPT6_1_SOL = "gpt-6.1-sol"
+    GPT6_1_TERRA = "gpt-6.1-terra"
     GPT6_LUNA = "gpt-6-luna"
     # GPT-5.6 models (July 2026)
     GPT5_6_SOL = "gpt-5.6-sol"
@@ -207,6 +208,9 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GEMINI_2_5_FLASH = "google/gemini-2.5-flash"
     GEMINI_2_0_FLASH = "google/gemini-2.0-flash-001"
     GEMINI_3_1_FLASH_LITE_PREVIEW = "google/gemini-3.1-flash-lite-preview"
+    GEMINI_3_1_FLASH_LITE = "google/gemini-3.1-flash-lite"
+    GEMINI_3_5_FLASH = "google/gemini-3.5-flash"
+    GEMINI_3_5_FLASH_LITE = "google/gemini-3.5-flash-lite"
     GEMINI_3_8_FLASH = "google/gemini-3.8-flash"
     GEMINI_4_ARGON = "google/gemini-4-argon"
     GEMINI_2_5_FLASH_LITE = "google/gemini-2.5-flash-lite"

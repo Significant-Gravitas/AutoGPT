@@ -154,9 +154,6 @@ vi.mock("@/services/environment", async (importOriginal) => {
     environment: { ...actual.environment, isLocal: () => local },
   };
 });
-vi.mock("launchdarkly-react-client-sdk", () => ({
-  useLDClient: () => ({ waitForInitialization: () => Promise.resolve() }),
-}));
 
 beforeEach(() => {
   user = {
@@ -426,6 +423,38 @@ describe("onboarding before payment", () => {
 });
 
 describe("draft recovery", () => {
+  it("saves the role to the account once its step is left, and keeps it at the paywall", async () => {
+    render(<OnboardingPage />);
+    fireEvent.click(await screen.findByTestId("step-team"));
+    fireEvent.click(await screen.findByTestId("step-autopilot"));
+    await screen.findByTestId("step-role");
+    act(() => useOnboardingWizardStore.getState().setRole("Other"));
+    act(() => useOnboardingWizardStore.getState().setOtherRole("Dentist"));
+    fireEvent.click(screen.getByTestId("step-role"));
+    await screen.findByTestId("step-braindump");
+    await waitFor(() =>
+      expect(serverDraft).toMatchObject({
+        currentStep: "painPoints",
+        completedSteps: expect.arrayContaining(["role"]),
+        role: "Other",
+        otherRole: "Dentist",
+      }),
+    );
+    fireEvent.click(screen.getByTestId("step-braindump"));
+    fireEvent.click(await screen.findByTestId("step-hire"));
+    expect(await screen.findByTestId("step-subscription")).toBeDefined();
+    await waitFor(() =>
+      expect(serverDraft).toMatchObject({
+        currentStep: "subscription",
+        completedSteps: expect.arrayContaining(["role", "painPoints", "hire"]),
+        role: "Other",
+        otherRole: "Dentist",
+      }),
+    );
+    expect(submitProfile).not.toHaveBeenCalled();
+    expect(completeStep).not.toHaveBeenCalled();
+  });
+
   it("saves each step in the background without holding navigation", async () => {
     patchState.mockImplementation(() => new Promise(() => {}));
     render(<OnboardingPage />);

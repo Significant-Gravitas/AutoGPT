@@ -27,10 +27,7 @@ export function PausedChatListItem({ paused }: Props) {
 
   const detail = (
     <>
-      <div
-        // TODO(tokens): no exact role for border-slate-50 #F7F8F9
-        className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-slate-50 bg-warning-surface"
-      >
+      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-separator bg-warning-surface">
         <Icon icon={PauseIcon} size={18} className="text-warning-foreground" />
       </div>
       <div className="flex min-w-0 flex-col gap-1">
@@ -40,7 +37,7 @@ export function PausedChatListItem({ paused }: Props) {
         >
           {paused.title}
         </Text>
-        <Text variant="small" className="!text-warning-foreground">
+        <Text variant="small" tone="warning">
           {paused.summary}
         </Text>
       </div>

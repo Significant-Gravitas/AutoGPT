@@ -51,7 +51,7 @@ export function TextGenerateEffect({
           return (
             <motion.span
               key={word + idx}
-              className="text-black opacity-0 dark:text-white"
+              className="text-foreground-base opacity-0"
               style={{
                 filter: filter ? "blur(10px)" : "none",
               }}
@@ -69,7 +69,7 @@ export function TextGenerateEffect({
       <div className="mt-4">
         <div
           // TODO(tokens): no role holds 24px (text-2xl); the type scale goes 22px (heading-sm) to 28px (heading). SECRT-3152
-          className="text-2xl leading-snug tracking-wide text-black dark:text-white"
+          className="text-2xl leading-snug tracking-wide text-foreground-base"
         >
           {renderWords()}
         </div>

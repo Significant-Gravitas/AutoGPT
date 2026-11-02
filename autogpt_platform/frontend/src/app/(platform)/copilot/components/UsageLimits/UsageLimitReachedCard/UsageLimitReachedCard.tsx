@@ -38,7 +38,7 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
       className="mx-auto w-full rounded-2xl border border-border-base bg-surface p-5 shadow-sm"
     >
       <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <Text variant="small" className="!text-xs !text-foreground-tertiary">
+        <Text tone="muted" variant="small-tight">
           {state.isRefreshing
             ? "Checking your allowance"
             : state.isError
@@ -68,10 +68,7 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
               ? budgetOutTitle(state.wait.window)
               : copy.noticeTitle}
       </Text>
-      <Text
-        variant="small"
-        className="mt-2 !leading-5 !text-foreground-tertiary"
-      >
+      <Text tone="muted" variant="small" className="mt-2 !leading-5">
         {state.isRefreshing
           ? "Refreshing your plan and usage…"
           : state.isError
@@ -98,10 +95,7 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
             {getUsageOfferAction(state.experience, state.offer)}
           </Button>
           {state.experience.freshProUsage && (
-            <Text
-              variant="small"
-              className="!text-xs !text-foreground-tertiary"
-            >
+            <Text tone="muted" variant="small-tight">
               + tax. Review before you pay.
             </Text>
           )}
@@ -125,7 +119,7 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
         />
       )}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-        <Text variant="small" className="!text-xs !text-foreground-subtle">
+        <Text tone="subtle" variant="small-tight">
           You can keep editing your draft.
         </Text>
         {state.isError ? (

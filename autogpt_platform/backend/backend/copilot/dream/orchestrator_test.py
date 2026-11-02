@@ -211,7 +211,7 @@ def _charge_spy() -> AsyncMock:
 @pytest.fixture(autouse=True)
 def _stub_batch_flag(mocker):
     """Default the batch-path LD flag off so tests stay on sync + hermetic
-    (no LaunchDarkly calls). The wiring test re-patches to assert flag flow."""
+    (no PostHog calls). The wiring test re-patches to assert flag flow."""
     mocker.patch.object(
         orchestrator_mod, "is_feature_enabled", AsyncMock(return_value=False)
     )

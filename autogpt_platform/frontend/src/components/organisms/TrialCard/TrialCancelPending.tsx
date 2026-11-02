@@ -35,10 +35,9 @@ export function TrialCancelPending({
           className="inline-flex items-center gap-1.5 rounded-full bg-surface-hover px-2 py-0.5 text-xs text-foreground-body"
         >
           <span
-            // TODO(tokens): no surface role for the zinc-400 status dot.
             aria-hidden
             data-slot="trial-cancel-pending-status-dot"
-            className="size-1.5 rounded-full bg-zinc-400"
+            className="size-1.5 rounded-full bg-foreground-subtle"
           />
           Cancellation pending
         </span>

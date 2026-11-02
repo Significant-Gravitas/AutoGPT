@@ -1,6 +1,3 @@
-// TODO(tokens): no role for these colours yet, so they stay raw:
-// text-gray-500 #6B7280.
-
 import { withRoleAccess } from "@/lib/withRoleAccess";
 import { Suspense } from "react";
 import type { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
@@ -28,7 +25,7 @@ async function AdminMarketplaceDashboard({
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">Marketplace Management</h1>
-            <p className="text-gray-500">
+            <p className="text-foreground-tertiary">
               Unified view for marketplace management and approval history
             </p>
           </div>

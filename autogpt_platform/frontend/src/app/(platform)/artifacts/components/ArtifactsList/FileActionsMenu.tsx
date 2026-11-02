@@ -66,11 +66,9 @@ export function FileActionsMenu({ file, className }: Props) {
             data-testid="artifacts-download"
           >
             {isDownloading ? (
-              <Icon
-                icon={Loading03Icon}
-                size={16}
-                className="mr-2 animate-spin"
-              />
+              <span className="mr-2 flex animate-spin">
+                <Icon icon={Loading03Icon} size={16} />
+              </span>
             ) : (
               <Icon icon={Download04Icon} size={16} className="mr-2" />
             )}
@@ -108,16 +106,14 @@ export function FileActionsMenu({ file, className }: Props) {
           <DropdownMenuItem
             onSelect={handleDelete}
             disabled={isDeleting}
-            // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover, a hover fill
-            className="text-red-600 focus:bg-error-surface focus:text-error-foreground"
+            // oxlint-disable-next-line design-system/no-restyle -- a destructive item; the menu molecule has no destructive variant
+            className="text-error-hover focus:bg-error-surface focus:text-error-foreground"
             data-testid="artifacts-delete"
           >
             {isDeleting ? (
-              <Icon
-                icon={Loading03Icon}
-                size={16}
-                className="mr-2 animate-spin"
-              />
+              <span className="mr-2 flex animate-spin">
+                <Icon icon={Loading03Icon} size={16} />
+              </span>
             ) : (
               <Icon icon={Delete02Icon} size={16} className="mr-2" />
             )}

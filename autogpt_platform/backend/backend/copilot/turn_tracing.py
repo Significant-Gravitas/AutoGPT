@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 from sentry_sdk.tracing import Span
 
 from backend.copilot import ai_spans
+from backend.copilot.constants import AUTOPILOT_BLOCK_TOOL_NAME
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamReasoningDelta,
@@ -30,6 +31,7 @@ from backend.util import tracing
 
 if TYPE_CHECKING:
     from backend.copilot.executor.utils import CoPilotExecutionEntry
+    from backend.copilot.model import ChatSessionOrigin
 
 TURN_OP = "copilot.turn"
 TOOL_OP = "copilot.tool"
@@ -48,6 +50,7 @@ class TurnTrace:
         self._chunks = 0
         self._tool_calls = 0
         self.engine: str | None = None
+        self.origin: str | None = None
         self.outcome = "completed"
         self.error_code: str | None = None
 
@@ -56,6 +59,11 @@ class TurnTrace:
         self.engine = engine
         self.span.set_tag("copilot.engine", engine)
         tracing.set_timing("copilot.turn.setup_ms", self._elapsed_ms(), span=self.span)
+
+    def set_origin(self, origin: str) -> None:
+        """What started the turn, once its chat session is known."""
+        self.origin = origin
+        self.span.set_tag("copilot.turn.origin", origin)
 
     def observe(self, chunk: StreamBaseResponse) -> None:
         """Account for one chunk the turn streamed."""
@@ -107,7 +115,7 @@ class TurnTrace:
             outcome=self.outcome,
             error_code=self.error_code,
             engine=self.engine,
-            origin=_origin(entry),
+            origin=self.origin or turn_origin(entry),
             tool_call_count=self._tool_calls,
         )
 
@@ -126,7 +134,7 @@ def turn_transaction(entry: "CoPilotExecutionEntry") -> Iterator[TurnTrace]:
         tags={
             "copilot.llm_auth_provider": entry.llm_auth_provider,
             "copilot.model_tier": entry.model or "default",
-            "copilot.turn.origin": _origin(entry),
+            "copilot.turn.origin": turn_origin(entry),
         },
         data={
             key: value
@@ -152,11 +160,27 @@ def turn_transaction(entry: "CoPilotExecutionEntry") -> Iterator[TurnTrace]:
             turn.report_to_posthog(entry)
 
 
-def _origin(entry: "CoPilotExecutionEntry") -> str:
+def turn_origin(
+    entry: "CoPilotExecutionEntry",
+    session_origin: "ChatSessionOrigin | None" = None,
+) -> str:
+    """What started a turn: ``scheduled`` (a schedule, or a turn nobody is
+    watching), ``spawned`` (a subtask), ``automation`` (a workflow's AutoPilot
+    block, whose prompts are machine-written), ``system`` (the platform, not a
+    message) or ``chat`` (a message someone sent).
+
+    The block is known by what dispatched the turn (``entry.tool_name``), so a
+    message someone types into a chat the block opened stays ``chat``. An
+    entry queued before ``tool_name`` existed falls back to the chat's
+    origin, which the executor passes once the session is loaded."""
     if entry.scheduled is not None or entry.unattended:
         return "scheduled"
     if entry.envelope is not None and entry.envelope.depth > 0:
         return "spawned"
+    if entry.tool_name == AUTOPILOT_BLOCK_TOOL_NAME:
+        return "automation"
+    if entry.tool_name is None and session_origin == "automation":
+        return "automation"
     if not entry.is_user_message:
         return "system"
     return "chat"

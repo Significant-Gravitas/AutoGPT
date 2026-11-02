@@ -21,23 +21,10 @@ export function PanelHeader({
   onRevert,
 }: Props) {
   return (
-    <div
-      // TODO(tokens): no exact role: border-slate-100 #EFF1F4
-      className="flex items-center justify-between border-b border-slate-100 px-4 py-3"
-    >
+    <div className="flex items-center justify-between border-b border-separator px-4 py-3">
       <div className="flex items-center gap-2">
-        <Icon
-          // TODO(tokens): no exact role: text-violet-600 #7C3AED
-          icon={BubbleChatIcon}
-          size={18}
-          className="text-violet-600"
-        />
-        <Text
-          variant="body-semibold-tight"
-          as="span"
-          // TODO(tokens): no exact role: text-slate-800 #475263
-          className="text-slate-800"
-        >
+        <Icon icon={BubbleChatIcon} size={18} className="text-brand" />
+        <Text variant="body-semibold-tight" tone="body" as="span">
           Chat with Builder
         </Text>
       </div>

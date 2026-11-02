@@ -31,8 +31,20 @@ export function shouldRedirectOnLogout(pathname: string): boolean {
 }
 
 // Cross-tab logout utilities
+// Other tabs only hear a storage write that changes the value, so each
+// signal is unique even when two land in the same millisecond.
+export function uniqueSignal(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+// Full reload, so the page shows (and requests act as) what changed in
+// another tab rather than what this tab started with.
+export function reloadPage(): void {
+  window.location.reload();
+}
+
 export function broadcastLogout(): void {
-  storage.set(Key.LOGOUT, Date.now().toString());
+  storage.set(Key.LOGOUT, uniqueSignal());
 }
 
 export function isLogoutEvent(event: StorageEvent): boolean {
@@ -54,9 +66,15 @@ export function hasWebSocketDisconnectIntent(): boolean {
 
 // Redirect utilities
 export function getRedirectPath(
-  path: string, // including query strings
+  path: string | null | undefined, // including query strings
   userRole?: string,
 ): string | null {
+  // Callers (e.g. the public validateSession server action) can't guarantee a
+  // path at runtime; without one there is nothing to protect or return to.
+  if (typeof path !== "string" || path.length === 0) {
+    return null;
+  }
+
   if (shouldRedirectOnLogout(path)) {
     // Preserve the original path as a 'next' parameter so user can return after login
     return `/login?next=${encodeURIComponent(path)}`;
@@ -77,6 +95,7 @@ export interface EventListeners {
 export function setupSessionEventListeners(
   onVisibilityChange: () => void,
   onStorageChange: (e: StorageEvent) => void,
+  onOnline?: () => void,
 ): EventListeners {
   if (environment.isServerSide()) {
     return { cleanup: () => {} };
@@ -84,11 +103,17 @@ export function setupSessionEventListeners(
 
   document.addEventListener("visibilitychange", onVisibilityChange);
   window.addEventListener("storage", onStorageChange);
+  if (onOnline) window.addEventListener("online", onOnline);
 
   return {
     cleanup: () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("storage", onStorageChange);
+      if (onOnline) window.removeEventListener("online", onOnline);
     },
   };
+}
+
+export function navigateWithFullLoad(path: string): void {
+  window.location.assign(path);
 }

@@ -80,6 +80,7 @@ export function ExpertIdentityDetails({
               "min-w-0",
               size === "page" ? "max-w-full break-words" : "truncate",
               size === "card" && "text-body-sm leading-inherit",
+              // oxlint-disable-next-line design-system/require-static-classes -- forwards the caller's areaClassName
               areaClassName,
             )}
             title={titleOnNameLine}
@@ -96,7 +97,9 @@ export function ExpertIdentityDetails({
                     size === "page" && "text-lg",
                   )}
                   style={{
+                    // oxlint-disable-next-line design-system/no-inline-styles -- gradient mixes the runtime category colour with the primary role
                     backgroundImage: `linear-gradient(90deg, color-mix(in srgb, ${areaColor} 60%, rgb(var(--color-primary))), color-mix(in srgb, ${areaColor} 85%, rgb(var(--color-primary))))`,
+                    // oxlint-disable-next-line design-system/no-inline-styles -- glow in the runtime category colour
                     filter: `drop-shadow(0 0 6px color-mix(in srgb, ${areaColor} 45%, transparent))`,
                   }}
                 >
@@ -128,6 +131,7 @@ export function ExpertIdentityDetails({
           variant="small"
           tone="secondary"
           data-slot="expert-identity-area"
+          // oxlint-disable-next-line design-system/require-static-classes -- forwards the caller's areaClassName
           className={cn("truncate leading-4", areaClassName)}
           title={area}
         >
