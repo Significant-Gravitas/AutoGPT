@@ -1,4 +1,3 @@
-import { Text } from "@/components/atoms/Text/Text";
 import { environment } from "@/services/environment";
 import { MemoryVisualizer } from "./MemoryVisualizer";
 
@@ -6,21 +5,18 @@ export function MemoryInspector() {
   const isAvailable = environment.isGraphMemoryAvailable();
 
   return (
-    <div className="mx-auto flex flex-col gap-4 p-6">
-      <Text variant="h1">Memory Inspector</Text>
-      {isAvailable ? (
-        <>
-          <Text variant="body" tone="secondary">
-            View entities, facts, and communities stored in your memory graph.
-            Trigger a community rebuild on demand.
-          </Text>
-          <MemoryVisualizer />
-        </>
-      ) : (
-        <Text variant="body" tone="secondary">
-          Long-term memory is unavailable on this installation.
-        </Text>
-      )}
+    <div className="mx-auto p-6">
+      <div className="flex flex-col gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">Memory Inspector</h1>
+          <p className="text-foreground-tertiary">
+            {isAvailable
+              ? "View entities, facts, and communities stored in your Graphiti memory graph. Trigger a community rebuild on demand."
+              : "Long-term memory is unavailable on this installation."}
+          </p>
+        </div>
+        {isAvailable ? <MemoryVisualizer /> : null}
+      </div>
     </div>
   );
 }

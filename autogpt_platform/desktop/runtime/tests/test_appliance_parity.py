@@ -2245,7 +2245,7 @@ def test_what_the_images_install_is_bundled_or_waived():
 FRONTEND_STAGE = "frontend"
 FRONTEND_BUILD_DIFFERS = {
     "DATABASE_URL": "a placeholder either way; there is no Unix socket to name on Windows",
-    "NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY": "false: desktop does not bundle FalkorDB",
+    "NEXT_PUBLIC_GRAPH_MEMORY": "disabled: desktop does not bundle FalkorDB",
     "NEXT_SKIP_BUILD_CHECKS": "desktop only",
     "CI": "desktop only",
     "NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID": "desktop does not send feature-flag identities",
@@ -2304,7 +2304,7 @@ def test_the_frontend_is_built_with_the_appliances_settings():
     theirs = stage_env(DOCKERFILE, FRONTEND_STAGE)
     ours = build_constant("FRONTEND_BUILD_ENV")
     assert isinstance(ours, dict)
-    assert ours["NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY"] == "false"
+    assert ours["NEXT_PUBLIC_GRAPH_MEMORY"] == "disabled"
     different = {
         name: f"appliance {theirs.get(name)!r}, desktop {ours.get(name)!r}"
         for name in sorted(set(theirs) | set(ours))

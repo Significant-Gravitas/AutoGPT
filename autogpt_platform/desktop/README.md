@@ -964,6 +964,9 @@ sandbox-aware Bash availability
 ([#16455](https://github.com/Significant-Gravitas/AutoGPT/pull/16455)), and
 configured Claude CLI validation with the SDK's native PowerShell tool blocked
 ([#16457](https://github.com/Significant-Gravitas/AutoGPT/pull/16457)).
+The frontend is built with `NEXT_PUBLIC_GRAPH_MEMORY=disabled`; changing this
+capability requires rebuilding. Onboarding and skill learning retain their
+own availability rules.
 Local browser tools are disabled only in desktop mode.
 Hosted OAuth refresh policy, chat terminal-error delivery and replay stripping remain the
 platform's existing behavior.
@@ -1222,8 +1225,9 @@ a newline to stdin instead stops it after ending what is running, for good.
   invocation, until a managed browser with the required network policy is
   bundled and verified. Installing `agent-browser` on the host does not enable them.
   ImageMagick is also not bundled; the video text-overlay block is disabled.
-- Graphiti long-term memory is not included. Memory settings and memory tools
-  are hidden, and the admin Memory Inspector shows an unavailable message.
+- Graphiti long-term memory is not included. Graph memory controls are hidden,
+  and Settings and the admin Memory Inspector show an unavailable message.
+  Onboarding remains available; skill learning follows its own feature flag.
   Chat history is stored normally.
 - Chat-bot bridge services and public webhook routing are not bundled. The
   Bots settings page shows no enabled platforms without bot configuration;
