@@ -2,7 +2,10 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import type { UIMessage } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildKickoffMessage } from "../../expertKickoff";
-import { countAnswerTowardStarToast } from "../githubStarToast";
+import {
+  countAnswerTowardStarToast,
+  resetStarToastCounts,
+} from "../githubStarToast";
 
 vi.mock("@/components/molecules/Toast/use-toast", () => ({ toast: vi.fn() }));
 
@@ -23,7 +26,6 @@ const kickoffPrompt: UIMessage = {
 };
 const reply = textMessage("reply", "assistant", "Hi, I'm your new analyst.");
 
-// Prompt ids stay unique across tests: a counted prompt is never counted again.
 let promptNumber = 0;
 
 function newPrompt() {
@@ -48,6 +50,7 @@ describe("countAnswerTowardStarToast", () => {
   beforeEach(() => {
     vi.stubEnv("NEXT_PUBLIC_APP_ENV", "local");
     window.localStorage.clear();
+    resetStarToastCounts();
     vi.mocked(toast).mockClear();
   });
 

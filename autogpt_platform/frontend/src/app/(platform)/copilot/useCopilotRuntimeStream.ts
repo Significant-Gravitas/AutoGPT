@@ -180,12 +180,12 @@ export function useCopilotRuntimeStream({
     return runtime.bind(
       {
         onError: handleError,
-        onTurnEnd: () => {
+        onTurnEnd: ({ interrupted }) => {
           void queryClient.invalidateQueries({
             queryKey: getGetV2GetCopilotUsageQueryKey(),
           });
-          // A turn that failed ends here too; only a finished one counts.
-          if (runtime.getSnapshot().phase === "finished") {
+          // A turn that failed or was cut off ends here too; neither counts.
+          if (!interrupted && runtime.getSnapshot().phase === "finished") {
             countAnswerTowardStarToast({ messages: messagesRef.current });
           }
         },

@@ -111,9 +111,11 @@ interface Turns {
   held?: { turn: number; hold: StreamHold };
   /** This turn starts answering, then fails the way a provider error does. */
   failedTurn?: number;
+  /** This turn's stream closes mid-answer, and a resume finds it gone. */
+  cutTurn?: number;
 }
 
-function answeringStreamHandler({ held, failedTurn }: Turns) {
+function answeringStreamHandler({ held, failedTurn, cutTurn }: Turns) {
   let turn = 0;
   return http.post(
     `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
@@ -122,16 +124,21 @@ function answeringStreamHandler({ held, failedTurn }: Turns) {
       turn += 1;
       const answer = `Answer ${turn}`;
       const failed = turn === failedTurn;
+      const cut = turn === cutTurn;
       stored.messages = [
         ...stored.messages,
         sessionMessage(turn * 2 - 1, "user", body.message ?? ""),
-        ...(failed ? [] : [sessionMessage(turn * 2, "assistant", answer)]),
+        ...(failed || cut
+          ? []
+          : [sessionMessage(turn * 2, "assistant", answer)]),
       ];
       const chunks: UIMessageChunk[] = assistantTextChunks(answer, {
         messageId: `answer-${turn}`,
         textPartId: `answer-${turn}-text`,
       });
       if (failed) chunks.splice(-2, 2, { type: "error", errorText: FAILURE });
+      // The text never closes: the stream ends partway through the answer.
+      if (cut) chunks.splice(-3, 3);
       return streamSseResponse(chunks, {
         abortSignal: request.signal,
         hold: held?.turn === turn ? held.hold : undefined,
@@ -140,8 +147,16 @@ function answeringStreamHandler({ held, failedTurn }: Turns) {
   );
 }
 
+// A resume of a turn the server is no longer running.
+function goneStreamHandler() {
+  return http.get(
+    `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+    () => new HttpResponse(null, { status: 204 }),
+  );
+}
+
 function renderChat(turns: Turns = {}) {
-  server.use(answeringStreamHandler(turns));
+  server.use(answeringStreamHandler(turns), goneStreamHandler());
   renderHost();
   // Registered after renderHost so the stored rows win over the empty session.
   server.use(storedSessionHandler());
@@ -259,4 +274,26 @@ describe.each(STREAM_PATHS)("GitHub star toast on the %s path", (path) => {
     },
     60_000,
   );
+});
+
+// Only the turn runtime ends a turn its stream cut off (`expire`).
+describe("GitHub star toast on the stream runtime path", () => {
+  beforeEach(() => {
+    streamPath.runtime = true;
+  });
+
+  it("doesn't count an answer the stream cut off", async () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_ENV", "local");
+    renderChat({ cutTurn: 5 });
+
+    for (let turn = 1; turn <= 4; turn++) await sendPrompt(turn);
+    await typeAndSend("Prompt 5");
+    expect(
+      await screen.findByText(/Response was interrupted/, undefined, {
+        timeout: 5000,
+      }),
+    ).toBeDefined();
+    await waitForTurnToSettle();
+    expect(screen.queryByText(STAR_TOAST_TITLE)).toBeNull();
+  }, 60_000);
 });

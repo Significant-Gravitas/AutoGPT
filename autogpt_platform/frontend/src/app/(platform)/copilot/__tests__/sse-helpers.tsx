@@ -23,6 +23,7 @@ import { ReactNode, StrictMode, useState } from "react";
 import { expect } from "vitest";
 import { CopilotChatHost } from "../CopilotChatHost";
 import { resetCopilotChatRegistry } from "../copilotChatRegistry";
+import { resetStarToastCounts } from "../helpers/githubStarToast";
 import { resetTurnRuntimes } from "../stream/turnRuntime";
 
 export const TEST_BACKEND_BASE_URL = "http://localhost:18006";
@@ -34,10 +35,12 @@ export const STREAM_PATHS = ["AI SDK", "stream runtime"] as const;
 export type StreamPath = (typeof STREAM_PATHS)[number];
 export const STREAM_RUNTIME_FLAG = "copilot-stream-runtime";
 
-/** Both paths keep a per-session runtime in a module-level map. */
+/** Both paths keep a per-session runtime in a module-level map, and the
+ *  GitHub star toast the prompts its finished turns counted. */
 export function resetChatRuntimes() {
   resetCopilotChatRegistry();
   resetTurnRuntimes();
+  resetStarToastCounts();
 }
 
 export interface SessionOverride {

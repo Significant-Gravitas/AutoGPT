@@ -47,6 +47,11 @@ export function countAnswerTowardStarToast(turn: FinishedTurn) {
   });
 }
 
+/** Forgets the prompts counted so far, for tests that reuse message ids. */
+export function resetStarToastCounts() {
+  countedPrompts.clear();
+}
+
 function StarOnGitHubButton() {
   return (
     <Button
