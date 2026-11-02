@@ -69,7 +69,7 @@
     "@rjsf/core": "6.1.2",
     "@rjsf/utils": "6.1.2",
     "@rjsf/validator-ajv8": "6.1.2",
-    "@sentry/nextjs": "10.27.0",
+    "@sentry/nextjs": "10.75.2",
     "@streamdown/cjk": "1.0.4",
     "@streamdown/math": "1.0.3",
     "@streamdown/mermaid": "1.0.3",
@@ -186,7 +186,7 @@
     "tailwindcss": "4.3.3",
     "tailwindcss-v3": "npm:tailwindcss@3.4.17",
     "typescript": "5.9.3",
-    "vite": "7.3.1",
+    "vite": "7.3.7",
     "vite-tsconfig-paths": "6.0.4",
     "vitest": "4.1.11"
   },
