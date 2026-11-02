@@ -180,7 +180,11 @@ def _convert_for_match(value: Any, target: Any) -> Any:
                 return value
             if issubclass(input_type, dict):
                 return parsed if isinstance(parsed, dict) else value
-            return input_type(parsed) if isinstance(parsed, list) else value
+            if not isinstance(parsed, list):
+                return value
+            converted = input_type(parsed)
+            # A set drops duplicates, so "[1, 1]" is not the set {1}.
+            return converted if len(converted) == len(parsed) else value
         if isinstance(value, (list, tuple)) and issubclass(input_type, (list, tuple)):
             return input_type(value)
         return value

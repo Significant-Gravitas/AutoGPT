@@ -52,6 +52,7 @@ async def _matches(input_value: Any, value: Any) -> bool:
         ({"value": 5}, "5"),
         (("x",), "x"),
         ({"x"}, "x"),
+        ({1}, "[1, 1]"),  # set() would drop the duplicate
         ([1, 2], '{"a": 1}'),
         (True, "yes"),  # only the spellings convert() treats as booleans
         (False, "off"),
@@ -95,6 +96,8 @@ async def test_lossy_conversion_does_not_report_a_match(input_value, value):
         ([0.1], "[0.10]"),
         ({"a": [1.5]}, '{"a": [1.50]}'),
         ([100.0], "[1e2]"),
+        ({1, 2}, "[2, 1]"),
+        ([1, 1], "[1, 1]"),
     ],
 )
 async def test_equivalent_values_still_match(input_value, value):
