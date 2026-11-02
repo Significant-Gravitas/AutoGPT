@@ -187,7 +187,7 @@ def _stub_subscription_status_lookups(mocker: pytest_mock.MockFixture) -> None:
         return_value=0,
     )
     # Default tier-multiplier resolver to the backend defaults so the endpoint
-    # never reaches LaunchDarkly during tests.  Individual tests override for
+    # never reaches PostHog during tests.  Individual tests override for
     # LD-override scenarios. get_tier_multipliers returns a string-keyed dict
     # (per its docstring) so we mirror that shape here — passing the
     # enum-keyed _DEFAULT_TIER_MULTIPLIERS directly would silently mismatch
@@ -395,7 +395,7 @@ def test_get_subscription_status_tier_multipliers_ld_override(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """A LaunchDarkly-overridden tier multiplier flows through the response."""
+    """A PostHog-overridden tier multiplier flows through the response."""
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.BASIC
 

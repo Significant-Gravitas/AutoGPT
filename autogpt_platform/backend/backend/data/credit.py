@@ -554,6 +554,7 @@ class UserCreditBase(ABC):
         transaction_key: str | None = None,
         ceiling_balance: int | None = None,
         fail_insufficient_credits: bool = True,
+        floor_balance: int = 0,
         metadata: SafeJson = SafeJson({}),
     ) -> tuple[int, str]:
         """
@@ -610,6 +611,7 @@ class UserCreditBase(ABC):
             transaction_key (str | None): The transaction key. Avoids adding transaction if the key already exists.
             ceiling_balance (int | None): The ceiling balance. Avoids adding more credits if the balance is already above the ceiling.
             fail_insufficient_credits (bool): Whether to fail if the user has insufficient credits.
+            floor_balance (int): The lowest balance a deduction may leave when insufficient credits fail it.
             metadata (Json): The metadata of the transaction.
 
         Returns:
@@ -665,7 +667,7 @@ class UserCreditBase(ABC):
                         $5::boolean = false OR  -- Allow inactive transactions
                         $2 >= 0 OR              -- Allow positive amounts (top-ups, grants)
                         $8::boolean = false OR  -- Allow when insufficient balance check is disabled
-                        user_balance_lock.balance + $2 >= 0  -- Allow spending only when sufficient balance
+                        user_balance_lock.balance + $2 >= $11::int  -- Allow spending only when sufficient balance
                     )
                     ON CONFLICT ("userId") DO UPDATE SET
                         "balance" = EXCLUDED."balance",
@@ -696,7 +698,7 @@ class UserCreditBase(ABC):
                         $5::boolean = false OR  -- Allow inactive transactions
                         $2 >= 0 OR              -- Allow positive amounts (top-ups, grants)
                         $8::boolean = false OR  -- Allow when insufficient balance check is disabled
-                        user_balance_lock.balance + $2 >= 0  -- Allow spending only when sufficient balance
+                        user_balance_lock.balance + $2 >= $11::int  -- Allow spending only when sufficient balance
                     )
                     RETURNING "runningBalance", "transactionKey"
                 )
@@ -712,6 +714,7 @@ class UserCreditBase(ABC):
                 fail_insufficient_credits,  # $8 - check balance for spending
                 transaction_key,  # $9 - transaction key (nullable)
                 POSTGRES_INT_MIN,  # $10 - underflow protection
+                floor_balance,  # $11 - lowest balance a checked deduction may leave
             )
         except Exception as e:
             # Convert raw SQL unique constraint violations to UniqueViolationError
@@ -920,7 +923,6 @@ class UserCredit(UserCreditBase):
         )
         if transaction is None:
             raise NotFoundError(f"Top-up {transaction_key} not found")
-        balance = await self.get_credits(user_id)
         amount = transaction.amount
         refund_key_format = settings.config.refund_request_time_key_format
         refund_key = f"{transaction.createdAt.strftime(refund_key_format)}-{user_id}"
@@ -942,7 +944,18 @@ class UserCredit(UserCreditBase):
                 "Unable to request a refund for this transaction, the request of the top-up transaction within the same week has already been made."
             )
 
-        if amount - balance > settings.config.refund_credit_tolerance_threshold:
+        # One locked step approves and deducts; the webhook only names the refund.
+        hold_key = _refund_hold_key(transaction_key)
+        try:
+            await self._add_transaction(
+                user_id=user_id,
+                amount=-amount,
+                transaction_type=CreditTransactionType.REFUND,
+                transaction_key=hold_key,
+                floor_balance=-settings.config.refund_credit_tolerance_threshold,
+                metadata=SafeJson({"refund_request_id": refund_request.id}),
+            )
+        except InsufficientBalanceError as e:
             user_data = await get_user_by_id(user_id)
             await self._send_refund_notification(
                 kind="request",
@@ -951,16 +964,32 @@ class UserCredit(UserCreditBase):
                 refund_request_id=refund_request.id,
                 reason=refund_request.reason,
                 amount_cents=amount,
-                balance_cents=balance,
+                balance_cents=int(e.balance),
             )
             return 0  # Register the refund request for manual approval.
 
-        # Auto refund the top-up.
-        refund = await stripe_call(
-            stripe.Refund.create_async,
-            payment_intent=transaction_key,
-            metadata=metadata,
-        )
+        try:
+            refund = await stripe_call(
+                stripe.Refund.create_async,
+                payment_intent=transaction_key,
+                metadata=metadata,
+            )
+        except Exception:
+            # No money went back, unless the webhook has already settled the hold.
+            if await self._settle_refund_hold(
+                user_id,
+                transaction_key,
+                f"{hold_key}-FAILED",
+                SafeJson({"refund_request_id": refund_request.id}),
+            ):
+                await self._add_transaction(
+                    user_id=user_id,
+                    amount=amount,
+                    transaction_type=CreditTransactionType.REFUND,
+                    transaction_key=f"{hold_key}-RETURNED",
+                    metadata=SafeJson({"reason": "Refund failed, credits returned."}),
+                )
+            raise
         return refund.amount
 
     async def deduct_credits(self, request: stripe.Refund | stripe.Dispute):
@@ -979,19 +1008,37 @@ class UserCredit(UserCreditBase):
         transaction = await self._find_top_up(request)
         if not transaction:
             return
-        if request.amount <= 0 or request.amount > transaction.amount:
+        # Stripe counts cents of the charge, which can differ from the credits granted.
+        credits = _top_up_credits_for_cents(transaction, request.amount)
+        if request.amount <= 0 or credits > transaction.amount:
             raise AssertionError(
                 f"Invalid amount to deduct ${request.amount / 100} from ${transaction.amount / 100} top-up"
             )
 
-        balance, _ = await self._add_transaction(
-            user_id=transaction.userId,
-            amount=-request.amount,
-            transaction_type=CreditTransactionType.REFUND,
-            transaction_key=request.id,
-            metadata=SafeJson(request),
-            fail_insufficient_credits=False,
-        )
+        if isinstance(request, stripe.Refund) and await self._settle_refund_hold(
+            transaction.userId,
+            transaction.transactionKey,
+            request.id,
+            SafeJson(request),
+        ):
+            await self._return_unheld(transaction, request.id, credits)
+            balance = await self.get_credits(transaction.userId)
+        else:
+            try:
+                balance, _ = await self._add_transaction(
+                    user_id=transaction.userId,
+                    amount=-credits,
+                    transaction_type=CreditTransactionType.REFUND,
+                    transaction_key=request.id,
+                    metadata=SafeJson(request),
+                    fail_insufficient_credits=False,
+                )
+            except UniqueViolationError:
+                # Taken already: on approval, or by an earlier delivery, which
+                # may have settled a hold without returning its surplus.
+                if isinstance(request, stripe.Refund):
+                    await self._return_unheld(transaction, request.id, credits)
+                balance = await self.get_credits(transaction.userId)
 
         # Update the result of the refund request if it exists.
         await CreditRefundRequest.prisma().update_many(
@@ -1000,7 +1047,7 @@ class UserCredit(UserCreditBase):
                 "transactionKey": transaction.transactionKey,
             },
             data={
-                "amount": request.amount,
+                "amount": credits,
                 "status": CreditRefundRequestStatus.APPROVED,
                 "result": "The refund request has been approved, the amount will be credited back to your account.",
             },
@@ -1023,10 +1070,37 @@ class UserCredit(UserCreditBase):
             return
         user_id = transaction.userId
         amount = dispute.amount
-        balance = await self.get_credits(user_id)
+        credits = _top_up_credits_for_cents(transaction, amount)
+        floor = settings.config.refund_credit_tolerance_threshold
 
-        # If the user has enough balance, just let them win the dispute.
-        if balance - amount >= settings.config.refund_credit_tolerance_threshold:
+        # If the user has enough balance, let them win the dispute. A chargeback's
+        # credits are taken now: `deduct_credits` only runs once it has closed.
+        if dispute.status.startswith("warning_"):
+            # An inquiry is not a chargeback; its credits go only if it is lost.
+            accepted = await self.get_credits(user_id) - credits >= floor
+        else:
+            try:
+                await self._add_transaction(
+                    user_id=user_id,
+                    amount=-credits,
+                    transaction_type=CreditTransactionType.REFUND,
+                    transaction_key=dispute.id,
+                    floor_balance=floor,
+                    metadata=SafeJson(dispute),
+                )
+            except InsufficientBalanceError:
+                # A repeat delivery finds its own take, at any balance.
+                accepted = (
+                    await CreditTransaction.prisma().find_first(
+                        where={"transactionKey": dispute.id, "userId": user_id}
+                    )
+                    is not None
+                )
+            except UniqueViolationError:
+                accepted = True  # A repeat delivery: the credits are taken already.
+            else:
+                accepted = True
+        if accepted:
             logger.warning(f"Accepting dispute from {user_id} for ${amount / 100}")
             dispute.close()
             return
@@ -1075,6 +1149,46 @@ class UserCredit(UserCreditBase):
             "uncategorized_text": evidence_text[:20000],
         }
         await stripe_call(stripe.Dispute.modify_async, dispute.id, evidence=evidence)
+
+    async def _settle_refund_hold(
+        self,
+        user_id: str,
+        payment_intent: str,
+        new_transaction_key: str,
+        metadata: SafeJson,
+    ) -> bool:
+        """Rename the credits `top_up_refund` holds for a refund of `payment_intent`.
+        Matched by payment intent alone: a refund's cents need not equal the credits."""
+        renamed = await CreditTransaction.prisma().update_many(
+            where={
+                "transactionKey": _refund_hold_key(payment_intent),
+                "userId": user_id,
+            },
+            data={"transactionKey": new_transaction_key, "metadata": metadata},
+        )
+        return renamed > 0
+
+    async def _return_unheld(
+        self, top_up: CreditTransaction, refund_id: str, credits: int
+    ) -> None:
+        """Give back, once, what a settled hold took beyond its refund's credits."""
+        if credits >= top_up.amount:
+            return
+        settled = await CreditTransaction.prisma().find_first(
+            where={"transactionKey": refund_id, "userId": top_up.userId}
+        )
+        if settled is None or settled.amount != -top_up.amount:
+            return  # Deducted directly at the refund's own size: nothing was held.
+        try:
+            await self._add_transaction(
+                user_id=top_up.userId,
+                amount=top_up.amount - credits,
+                transaction_type=CreditTransactionType.REFUND,
+                transaction_key=f"{refund_id}-UNHELD",
+                metadata=SafeJson({"reason": "Held more than this refund paid back."}),
+            )
+        except UniqueViolationError:
+            pass
 
     async def _find_top_up(
         self, request: stripe.Refund | stripe.Dispute
@@ -1510,6 +1624,22 @@ class UserCredit(UserCreditBase):
         ]
 
 
+def _refund_hold_key(payment_intent: str) -> str:
+    """The credits of an auto-approved refund until Stripe names the refund."""
+    return f"REFUND-HOLD-{payment_intent}"
+
+
+def _top_up_credits_for_cents(top_up: CreditTransaction, cents: int) -> int:
+    """Credits of a top-up that `cents` of its charge paid for, rounded up. The
+    charge is the PaymentIntent stored on activation; without one, cents are credits."""
+    metadata = top_up.metadata if isinstance(top_up.metadata, dict) else {}
+    payment_intent = metadata.get("payment_intent")
+    charged = payment_intent.get("amount") if isinstance(payment_intent, dict) else 0
+    if not charged or charged == top_up.amount:
+        return cents
+    return -(-top_up.amount * cents // charged)
+
+
 def _auto_top_up_key(user_id: str, metadata: UsageTransactionMetadata) -> str:
     """One auto top-up per graph execution or chat. A top-up stays inactive
     until its charge succeeds, so the key is what stops a repeat charge."""
@@ -1926,7 +2056,7 @@ class CardDeclinedError(Exception):
 
 
 class PendingChangeUnknown(Exception):
-    """Raised when pending-change state cannot be determined (e.g. LaunchDarkly
+    """Raised when pending-change state cannot be determined (e.g. PostHog
     price-id lookup failed). Propagates past the pending-change cache so the next
     request retries instead of serving a stale `None` for the TTL window."""
 
@@ -1972,7 +2102,7 @@ async def get_user_billing_cycle(user_id: str) -> BillingCycle | None:
     """Return the billing cycle ("monthly"/"yearly") of the user's active sub.
 
     Resolves cycle by matching the active subscription's price ID against the
-    LaunchDarkly-configured monthly/yearly price IDs for the user's current
+    PostHog-configured monthly/yearly price IDs for the user's current
     tier, falling back to scanning every priceable tier (handles the brief
     window during a tier change where DB tier and Stripe price disagree).
     Returns None when there's no Stripe customer, no active sub, or the price
@@ -2551,7 +2681,7 @@ async def _fetch_pending_subscription_change(customer_id: str) -> PendingChange 
     if not price_to_tier:
         logger.warning(
             "get_pending_subscription_change: no Stripe price IDs resolvable for"
-            " BASIC/PRO/MAX/BUSINESS (LaunchDarkly fetch failed?); raising to bypass"
+            " BASIC/PRO/MAX/BUSINESS (PostHog fetch failed?); raising to bypass"
             " the None cache so the next request retries fresh"
         )
         raise PendingChangeUnknown(
@@ -2663,7 +2793,7 @@ async def _resolve_cycle_for_price_id(price_id: str | None) -> BillingCycle | No
 
 
 def _ld_price_key(tier: SubscriptionTier, billing_cycle: BillingCycle) -> str:
-    """Compose the LaunchDarkly key for a tier+cycle.
+    """Compose the feature flag key for a tier+cycle.
 
     Monthly keeps the legacy ``<TIER>`` key (so a flag value flipped from
     monthly-only to also-yearly never breaks an older deploy that still reads
@@ -2678,7 +2808,7 @@ def _ld_price_key(tier: SubscriptionTier, billing_cycle: BillingCycle) -> str:
 async def get_subscription_price_id(
     tier: SubscriptionTier, billing_cycle: BillingCycle = "monthly"
 ) -> str | None:
-    """Return Stripe Price ID for a tier+cycle from LaunchDarkly, cached 60s.
+    """Return Stripe Price ID for a tier+cycle from PostHog, cached 60s.
 
     Reads the ``copilot-tier-stripe-prices`` JSON flag and looks up:
 
