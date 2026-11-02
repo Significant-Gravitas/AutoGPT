@@ -1,7 +1,7 @@
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
 import {
-  getAccountRefusal,
-  signOutRefusedAccount,
+  isAccountBannedResponse,
+  signOutBannedAccount,
 } from "@/lib/auth/account-banned";
 import { getWebSocketToken } from "@/lib/auth/actions";
 import { ImpersonationState } from "@/lib/impersonation";
@@ -735,9 +735,8 @@ export default class BackendAPI {
 
     if (!response.ok) {
       const error = await handleFetchError(response);
-      const refusal = getAccountRefusal(error.status, error.response);
-      if (refusal) {
-        signOutRefusedAccount(refusal);
+      if (isAccountBannedResponse(error.status, error.response)) {
+        signOutBannedAccount();
       }
       throw error;
     }
@@ -800,9 +799,8 @@ export default class BackendAPI {
           let errorMessage = `Upload failed (${xhr.status})`;
           try {
             const errorData = JSON.parse(xhr.responseText);
-            const refusal = getAccountRefusal(xhr.status, errorData);
-            if (refusal) {
-              signOutRefusedAccount(refusal);
+            if (isAccountBannedResponse(xhr.status, errorData)) {
+              signOutBannedAccount();
             }
             if (errorData.detail) {
               if (
@@ -914,9 +912,8 @@ export default class BackendAPI {
 
     if (!response.ok) {
       const error = await handleFetchError(response);
-      const refusal = getAccountRefusal(error.status, error.response);
-      if (refusal) {
-        signOutRefusedAccount(refusal);
+      if (isAccountBannedResponse(error.status, error.response)) {
+        signOutBannedAccount();
       }
       if (
         isAuthenticationError(response, error.message) &&

@@ -251,9 +251,7 @@ describe("auth config", () => {
     const options = await loadAuthOptions();
     const pluginIds = options.plugins.map((plugin) => plugin.id);
 
-    // closed-account before admin: its ban hook must run first.
     expect(pluginIds).toEqual([
-      "closed-account",
       "admin",
       "jwt",
       "supabase-bridge",

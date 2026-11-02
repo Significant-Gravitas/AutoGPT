@@ -1,7 +1,7 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useCaptureMarketingPrompt } from "@/hooks/useCaptureMarketingPrompt";
 import { sanitizeAuthNext } from "@/lib/auth-redirect";
-import { getAccountNotice } from "@/lib/auth/account-banned";
+import { isBannedNotice } from "@/lib/auth/account-banned";
 import {
   EMAIL_VERIFICATION_NOTICE_PARAM,
   getEmailVerificationNotice,
@@ -41,7 +41,7 @@ export function useLoginPage() {
     searchParams.get(EMAIL_VERIFICATION_NOTICE_PARAM),
   );
   const signInErrorNotice = getSignInErrorNotice(searchParams.get("error"));
-  const accountNotice = getAccountNotice(searchParams);
+  const showBannedNotice = isBannedNotice(searchParams);
 
   // Only honour explicit `?next=` deep links here. Generic "already logged in
   // on /login, get me out" is handled by OnboardingProvider so the user lands
@@ -149,7 +149,7 @@ export function useLoginPage() {
     nextUrl,
     verificationEmail,
     verificationNotice,
-    accountNotice,
+    showBannedNotice,
     user,
     isLoading,
     isGoogleLoading,
