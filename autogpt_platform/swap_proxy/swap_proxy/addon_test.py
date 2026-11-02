@@ -778,6 +778,23 @@ def test_brotli_is_taken_out_of_the_codings_a_request_offers(offered, sent):
     assert headers.get_all("accept-encoding") == [sent]
 
 
+def test_codings_offered_on_several_lines_become_one():
+    headers = http.Headers([(b"accept-encoding", b"gzip"), (b"accept-encoding", b"br")])
+    refuse_brotli(headers)
+    assert headers.get_all("accept-encoding") == ["gzip, br;q=0"]
+
+
+@pytest.fixture
+def no_brotli_decoder(monkeypatch):
+    """Ours or mitmproxy's: both look the decoder up when they decode."""
+
+    def decoder(*args, **kwargs):
+        raise AssertionError("a Brotli decoder ran")
+
+    monkeypatch.setattr(brotli, "Decompressor", decoder)
+    monkeypatch.setattr(brotli, "decompress", decoder)
+
+
 def test_a_request_that_offers_no_codings_is_left_as_it_is():
     headers = http.Headers()
     refuse_brotli(headers)
@@ -793,15 +810,9 @@ async def test_only_a_box_that_gets_swaps_asks_for_no_brotli(swaps, sent):
     assert flow.request.headers["accept-encoding"] == sent
 
 
-async def test_a_brotli_request_body_goes_out_as_it_is(caplog, monkeypatch):
+async def test_a_brotli_request_body_goes_out_as_it_is(caplog, no_brotli_decoder):
     """Not decoded, so not swapped; the head still is."""
     body = brotli.compress(b'{"token": "hsurr:github"}')
-
-    def decoder(*args, **kwargs):
-        raise AssertionError("a Brotli decoder ran")
-
-    monkeypatch.setattr(brotli, "Decompressor", decoder)
-    monkeypatch.setattr(brotli, "decompress", decoder)
     flow = tflow.tflow()
     addon = addon_for(flow, anywhere=True)
     flow.request.method = "POST"
@@ -821,15 +832,37 @@ async def test_a_brotli_request_body_goes_out_as_it_is(caplog, monkeypatch):
     ]
 
 
-async def test_a_brotli_response_from_a_scrubbed_host_is_refused(caplog):
-    flow = tflow.tflow(resp=True)
+BROTLI_ECHO = brotli.compress(b'{"a": "%s"}' % TOKEN.encode())
+
+
+async def test_a_brotli_response_from_a_scrubbed_host_is_refused(
+    caplog, no_brotli_decoder
+):
+    flow = text_response(BROTLI_ECHO)
     assert flow.response is not None
-    addon = addon_for(flow)
-    flow.response.headers["content-type"] = "application/json"
     flow.response.headers["content-encoding"] = "br"
-    flow.response.raw_content = brotli.compress(b'{"a": "%s"}' % TOKEN.encode())
+    addon = addon_for(flow)
     with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.responseheaders(flow)
+        assert flow.response.stream is False  # held whole
         await addon.response(flow)
+    assert flow.error is not None
+    assert audit(caplog) == [("refused-response", "undecodable-encoding")]
+
+
+async def test_a_streamed_brotli_response_from_a_scrubbed_host_is_refused(
+    caplog, no_brotli_decoder
+):
+    flow = text_response(b"", chunked=True)
+    assert flow.response is not None
+    flow.response.headers["content-encoding"] = "br"
+    addon = addon_for(flow)
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.responseheaders(flow)
+        stream = flow.response.stream
+        assert isinstance(stream, BufferedBody)
+        sent = [*stream(BROTLI_ECHO[:10]), *stream(BROTLI_ECHO[10:]), *stream(b"")]
+    assert b"".join(sent) == b""
     assert flow.error is not None
     assert audit(caplog) == [("refused-response", "undecodable-encoding")]
 
