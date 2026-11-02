@@ -2,6 +2,7 @@ import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
 import { render, screen, cleanup } from "@testing-library/react";
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { afterEach, describe, expect, it } from "vitest";
+import { tones } from "@/components/styles/tones";
 import { Button } from "./Button";
 import { ButtonProps } from "./helpers";
 
@@ -269,5 +270,87 @@ describe("Button quiet variants, row and inline sizes, and shape", () => {
       .className.split(" ");
     expect(classes).toContain("text-foreground-tertiary");
     expect(classes).not.toContain("bg-foreground-tertiary");
+  });
+});
+
+describe("Button fill variants, tone and icon-2xs", () => {
+  it.each([
+    [
+      "brand",
+      ["bg-brand", "text-action-foreground", "hover:bg-accent-strong"],
+      "bg-action",
+    ],
+    [
+      "warning",
+      [
+        "bg-warning-foreground",
+        "text-action-foreground",
+        "hover:bg-warning-foreground/90",
+      ],
+      "bg-action",
+    ],
+    [
+      "success",
+      ["bg-success/30", "border-success", "text-foreground-base"],
+      "bg-surface",
+    ],
+    [
+      "tray",
+      [
+        "bg-transparent",
+        "border-transparent",
+        "hover:bg-surface-hover",
+        "disabled:opacity-40",
+      ],
+      "shadow-sm",
+    ],
+    [
+      "ghost-warning",
+      ["text-warning-foreground", "hover:bg-warning-surface"],
+      "text-foreground-base",
+    ],
+  ] as const)(
+    "renders the %s variant's own classes",
+    (variant, defining, conflicting) => {
+      renderButton({ variant, size: "small", children: variant });
+      const classes = screen
+        .getByRole("button", { name: variant })
+        .className.split(" ");
+      expect(classes).toEqual(expect.arrayContaining([...defining]));
+      expect(classes).not.toContain(conflicting);
+    },
+  );
+
+  it.each(Object.entries(tones).filter(([tone]) => tone !== "base"))(
+    "replaces the variant's text colour with the %s tone",
+    (tone, cls) => {
+      renderButton({
+        variant: "ghost",
+        size: "small",
+        tone: tone as keyof typeof tones,
+        children: "Toned",
+      });
+      const classes = screen
+        .getByRole("button", { name: "Toned" })
+        .className.split(" ");
+      expect(classes).toContain(cls);
+      expect(classes).not.toContain("text-foreground-base");
+    },
+  );
+
+  it("renders icon-2xs as a 24px icon-only button", () => {
+    renderButton({
+      variant: "ghost-subtle",
+      size: "icon-2xs",
+      leadingIcon: PencilEdit02Icon,
+      "aria-label": "Rename",
+    });
+    const el = screen.getByRole("button", { name: "Rename" });
+    const classes = el.className.split(" ");
+    expect(classes).toEqual(
+      expect.arrayContaining(["size-6", "min-w-0", "p-0"]),
+    );
+    expect(classes).not.toContain("h-[2.875rem]");
+    expect(el.querySelector("svg")?.getAttribute("width")).toBe("14");
   });
 });

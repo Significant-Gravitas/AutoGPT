@@ -204,6 +204,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                                 variant="secondary"
                                 size="icon-xs"
                                 shape="pill"
+                                withTooltip={false}
                                 onClick={() =>
                                   handleCopyGroupedItem(
                                     execution.execId,
@@ -232,6 +233,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                                 variant="secondary"
                                 size="icon-xs"
                                 shape="pill"
+                                withTooltip={false}
                                 onClick={() => handleDownloadGroupedItem(item)}
                                 aria-label="Download item"
                               >
@@ -267,6 +269,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                         variant="secondary"
                         size="icon-xs"
                         shape="pill"
+                        withTooltip={false}
                         onClick={() => handleCopyItem(index)}
                         aria-label="Copy item"
                       >
@@ -288,6 +291,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                         variant="secondary"
                         size="icon-xs"
                         shape="pill"
+                        withTooltip={false}
                         onClick={() => handleDownloadItem(index)}
                         aria-label="Download item"
                       >

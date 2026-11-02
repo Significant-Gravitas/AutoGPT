@@ -138,6 +138,7 @@ export function DraftRecoveryPopup({
                     variant="destructive"
                     size="icon-sm"
                     shape="pill"
+                    withTooltip={false}
                     onClick={onDiscard}
                     aria-label="Discard changes"
                     className="size-9"
