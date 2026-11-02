@@ -14,7 +14,6 @@ vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
 }));
 vi.mock("@/services/environment", () => ({
   environment: {
-    areFeatureFlagsEnabled: () => true,
     isLocal: () => source.local,
   },
 }));

@@ -13,7 +13,6 @@ from backend.data import pro_activation
 from backend.data.pro_activation import UsageActivationState
 from backend.data.subscription_trial import TrialState
 from backend.util import feature_flag
-from backend.util.settings import FeatureFlagBackend
 
 from .rate_limit import (
     _DEFAULT_TIER_MULTIPLIERS,
@@ -627,11 +626,6 @@ class TestIsUserPaywalled:
         mocker.patch(
             "backend.copilot.rate_limit._fetch_user_tier",
             new=AsyncMock(return_value=SubscriptionTier.NO_TIER),
-        )
-        mocker.patch.object(
-            feature_flag.settings.config,
-            "feature_flag_backend",
-            FeatureFlagBackend.POSTHOG,
         )
         mocker.patch.object(feature_flag.posthog, "get_flag_client", return_value=None)
         set_platform_payment(True)
@@ -1710,8 +1704,8 @@ class TestSetUserTier:
         assert tier_after == SubscriptionTier.ENTERPRISE
 
     @pytest.mark.asyncio
-    async def test_drift_check_swallows_launchdarkly_failure(self):
-        """LaunchDarkly price-id lookup failures inside the drift check must
+    async def test_drift_check_swallows_posthog_failure(self):
+        """PostHog price-id lookup failures inside the drift check must
         never bubble up and 500 the admin tier write — the DB update is
         already committed by the time we check drift."""
         mock_prisma = AsyncMock()

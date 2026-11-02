@@ -2,7 +2,7 @@
 
 The single list of PostHog events: for every user action, one event name, one
 sender and one set of properties. [Activation Metrics & Experiments](activation-metrics.md)
-explains how PostHog fits next to the SQL views, Looker, LaunchDarkly and
+explains how PostHog fits next to the SQL views, Looker and
 DataFast; this page is the event contract.
 
 PostHog is the only place for what people do in the app. DataFast gets no
@@ -573,7 +573,6 @@ user or chat when their client goes through OpenRouter.
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
 | `$feature_flag_called` | browser (posthog-js) | live | set by PostHog | A PostHog flag is read (`useExperiment`). |
-| `feature_flag_mismatched` | browser | live | `flag`, `launchdarkly` (`value`, `resolved`), `posthog` (`value`, `resolved`) | Ops signal: with both flag vendors configured, LaunchDarkly and PostHog resolved a flag to different values (`useDualFlag`). Not a user action; keep out of funnels. |
 | `chunk_reload_triggered` | browser | live | `surface` (`unhandled_rejection`, `error_boundary`), `path` | Ops signal: a tab on an older build could not load a code chunk after a deploy (`ChunkLoadError`), and the page reloaded once to pick up the current build (`lib/chunk-load-reload.ts`). At most one reload a minute per tab. Not a user action; keep out of funnels. |
 
 Arms are also stored in the database (`analytics.experiment_assignment`),
@@ -720,6 +719,7 @@ history PostHog already holds.
 | `voice_transcribe_latency_ms` | browser | The `transcribe_latency_ms` property on `voice_turn_sent` (and `voice_turn_dropped` with `reason: filler_or_empty`). |
 | `voice_first_sound_latency_ms` | browser | The `first_sound_latency_ms` property on `voice_turn_completed`, or on `voice_turn_dropped` with `reason: interrupted` for a reply that was cut off. |
 | `experiment_exposed` | browser | Nothing: `useLaunchDarklyExperiment` had no caller and was deleted. PostHog-bucketed experiments use `$feature_flag_called`. |
+| `feature_flag_mismatched` | browser | Nothing: only the dual LaunchDarkly/PostHog flag backend sent it, and LaunchDarkly was removed (SECRT-2708). |
 | `copilot_trigger_setup` | backend | Nothing: never sent (no caller). |
 | `intro_card_dismissed`, `raise_door_clicked`, `intro_start_with_autopilot` | browser | Nothing: declared, never sent. |
 | `capability_card_viewed`, `capability_cards_completed`, `capability_cards_skipped` | browser | `first_run_tour_step_viewed`, `first_run_tour_completed` and `first_run_tour_skipped` (SECRT-3149): the four concept cards were replaced by the walkthrough over the real UI. |
