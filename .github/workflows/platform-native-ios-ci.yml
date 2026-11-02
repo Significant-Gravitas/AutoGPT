@@ -1,0 +1,147 @@
+name: AutoGPT Platform - Native iOS
+
+on:
+  pull_request:
+    paths:
+      - "autogpt_platform/mobile/**"
+      - ".github/workflows/platform-native-ios-ci.yml"
+  push:
+    branches: [dev, master]
+    paths:
+      - "autogpt_platform/mobile/**"
+      - ".github/workflows/platform-native-ios-ci.yml"
+  workflow_dispatch:
+    inputs:
+      cold_cache:
+        type: boolean
+        default: false
+        description: Force a cold run (the SwiftUI lane always builds without restored caches)
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-ios-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  source:
+    name: native source checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: autogpt_platform/mobile
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: autogpt_platform/mobile/package.json
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24.18.0"
+          cache: pnpm
+          cache-dependency-path: autogpt_platform/mobile/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm types
+
+  ios:
+    name: iOS build and launch journey
+    runs-on: macos-26
+    timeout-minutes: 10
+    env:
+      CI: "1"
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      MAESTRO_VERSION: "2.11.0"
+      MAESTRO_CLI_NO_ANALYTICS: "true"
+      MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED: "true"
+    defaults:
+      run:
+        working-directory: autogpt_platform/mobile
+    steps:
+      - uses: actions/checkout@v6
+      - name: Disable host Spotlight indexing
+        run: |
+          mkdir -p e2e/artifacts
+          sudo mdutil -i off / | tee e2e/artifacts/spotlight.txt
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Record toolchain
+        run: |
+          mkdir -p e2e/artifacts
+          {
+            xcodebuild -version
+            uname -m
+            sysctl hw.memsize hw.ncpu
+          } | tee e2e/artifacts/toolchain.txt
+          df -h . | tee e2e/artifacts/disk-before.txt
+
+      - name: Check Swift formatting
+        run: xcrun swift-format lint --strict --recursive apple/Sources
+
+      - name: Build native simulator apps
+        run: bash scripts/build-simulator.sh
+
+      - name: Prepare simulator after compilation
+        id: simulator
+        run: |
+          top -l 0 -s 15 -n 20 -o cpu -F -R -stats pid,command,cpu,mem,threads \
+            > e2e/artifacts/simulator-resources.log &
+          echo "$!" > "$RUNNER_TEMP/native-ios-monitor.pid"
+          sysctl vm.swapusage > e2e/artifacts/swap-before-simulator.txt
+          bash scripts/prepare-ios-e2e.sh > e2e/artifacts/device-setup.log 2>&1 \
+            || { tail -100 e2e/artifacts/device-setup.log; exit 1; }
+
+      - name: Run native launch journey
+        env:
+          NATIVE_SIMULATOR_ID: ${{ steps.simulator.outputs.simulator-id }}
+          MAESTRO_BIN: ${{ steps.simulator.outputs.maestro }}
+        run: |
+          xcrun simctl install "$NATIVE_SIMULATOR_ID" apple/.build/SimulatorChecks/Build/Products/Release-iphonesimulator/AutoGPT.app
+          "$MAESTRO_BIN" --device "$NATIVE_SIMULATOR_ID" test --format junit \
+            --output e2e/artifacts/launch.xml --test-output-dir e2e/artifacts/maestro e2e/launch.yaml
+          python3 scripts/check-junit.py e2e/artifacts/launch.xml
+
+      - name: Run native interaction fixtures
+        env:
+          NATIVE_SIMULATOR_ID: ${{ steps.simulator.outputs.simulator-id }}
+          MAESTRO_BIN: ${{ steps.simulator.outputs.maestro }}
+        run: |
+          xcrun simctl install "$NATIVE_SIMULATOR_ID" apple/.build/SimulatorChecks/Build/Products/Debug-iphonesimulator/AutoGPT.app
+          "$MAESTRO_BIN" --device "$NATIVE_SIMULATOR_ID" test --format junit \
+            --output e2e/artifacts/interactions.xml --test-output-dir e2e/artifacts/interactions apple/e2e/ui-protocol-fixtures.yaml
+          python3 scripts/check-junit.py e2e/artifacts/interactions.xml
+
+      - name: Record measurement scope
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/native-ios-monitor.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/native-ios-monitor.pid")" 2>/dev/null || true
+          fi
+          df -h . | tee e2e/artifacts/disk-after.txt
+          sysctl vm.swapusage > e2e/artifacts/swap-after.txt
+          vm_stat > e2e/artifacts/vm-after.txt
+          ps -axo pid,ppid,state,pcpu,rss,comm > e2e/artifacts/processes-after.txt
+          python3 scripts/collect-simulator-logs.py
+          {
+            echo 'Standard free macos-26 runner; Xcode 26.6; native arm64 simulator builds.'
+            echo 'Host Spotlight indexing disabled on this disposable CI runner.'
+            echo 'SwiftUI and system frameworks; no dependency or DerivedData caches are restored.'
+            echo 'Optimized Release launch journey; Debug-only interaction fixtures, excluded from Release.'
+            echo 'Compilation finishes before simulator boot; selected runtime matches the SDK.'
+            echo 'Use full job timestamps, including setup and upload, for the ten-minute budget.'
+            echo 'Fixtures are native UI/protocol coverage, not production-server or provider integration evidence.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: native-ios-evidence
+          path: autogpt_platform/mobile/e2e/artifacts
+          retention-days: 7
+          if-no-files-found: error
