@@ -50,7 +50,8 @@ first, for any body not known to fit:
   ``MAX_DECODED_BYTES`` (``decode.py``), never through mitmproxy's unbounded
   ``.content``.  Past that, or in an encoding that cannot be decoded within a
   bound, a response is refused like one too large to scrub, and a request
-  body goes out as it is, audited as not swapped.
+  body goes out as it is, audited as not swapped.  Brotli is never decoded,
+  so a box that gets swaps asks servers not to send it (``refuse_brotli``).
 
 The audit records a swap only for bytes that have not left yet.
 
@@ -238,6 +239,24 @@ def plain_copy(message: http.Message) -> http.Message:
     del plain.headers["content-encoding"]
     plain.raw_content = decoded
     return plain
+
+
+def refuse_brotli(headers: http.Headers) -> None:
+    """Take ``br`` out of the codings a request offers, and rule it out with
+    ``br;q=0`` (which also overrides a ``*``).  ``decode.py`` does not decode
+    Brotli, so a ``br`` answer from a host whose responses are scrubbed would
+    be refused; servers answer in gzip or uncompressed instead.  A request
+    that offers no codings is left as it is."""
+    offered = headers.get_all("accept-encoding")
+    if not offered:
+        return
+    kept = [
+        coding.strip()
+        for value in offered
+        for coding in value.split(",")
+        if coding.strip() and coding.split(";")[0].strip().lower() != "br"
+    ]
+    headers["accept-encoding"] = ", ".join([*kept, "br;q=0"])
 
 
 def put_back(message: http.Message, plain: http.Message) -> None:
@@ -434,6 +453,8 @@ class SwapProxyAddon:
             self._audit(owner, request.pretty_host, "refused-request", reason="no-sni")
             flow.kill()
             return
+        if owner.swap_user_id is not None:
+            refuse_brotli(request.headers)
         size = known_size(request, None)
         if size is not None and size <= MAX_BODY_BYTES:
             return

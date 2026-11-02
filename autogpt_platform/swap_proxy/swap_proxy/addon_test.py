@@ -8,6 +8,7 @@ import logging
 from types import SimpleNamespace
 from typing import Any
 
+import brotli
 import pytest
 from mitmproxy import http
 from mitmproxy.options import Options
@@ -25,6 +26,7 @@ from swap_proxy.addon import (
     ClosingLayer,
     SwapProxyAddon,
     known_size,
+    refuse_brotli,
 )
 from swap_proxy.egress import EgressGuard
 from swap_proxy.owners import Owner, OwnerDirectory
@@ -755,6 +757,81 @@ async def test_a_request_body_is_not_held_back_by_default():
     assert not isinstance(flow.request.stream, BufferedBody)
     await addon_for(flow, anywhere=True).requestheaders(flow)
     assert isinstance(flow.request.stream, BufferedBody)
+
+
+# ------------------------------------------------------------ Brotli
+
+
+@pytest.mark.parametrize(
+    "offered, sent",
+    [
+        ("gzip, deflate, br, zstd", "gzip, deflate, zstd, br;q=0"),
+        ("br;q=1.0, gzip;q=0.8", "gzip;q=0.8, br;q=0"),
+        ("BR", "br;q=0"),
+        ("*", "*, br;q=0"),
+        ("gzip", "gzip, br;q=0"),
+    ],
+)
+def test_brotli_is_taken_out_of_the_codings_a_request_offers(offered, sent):
+    headers = http.Headers(accept_encoding=offered)
+    refuse_brotli(headers)
+    assert headers.get_all("accept-encoding") == [sent]
+
+
+def test_a_request_that_offers_no_codings_is_left_as_it_is():
+    headers = http.Headers()
+    refuse_brotli(headers)
+    assert "accept-encoding" not in headers
+
+
+@pytest.mark.parametrize("swaps, sent", [(True, "gzip, br;q=0"), (False, "gzip, br")])
+async def test_only_a_box_that_gets_swaps_asks_for_no_brotli(swaps, sent):
+    flow = tflow.tflow()
+    addon = addon_for(flow, swaps=swaps)
+    flow.request.headers["accept-encoding"] = "gzip, br"
+    await addon.requestheaders(flow)
+    assert flow.request.headers["accept-encoding"] == sent
+
+
+async def test_a_brotli_request_body_goes_out_as_it_is(caplog, monkeypatch):
+    """Not decoded, so not swapped; the head still is."""
+    body = brotli.compress(b'{"token": "hsurr:github"}')
+
+    def decoder(*args, **kwargs):
+        raise AssertionError("a Brotli decoder ran")
+
+    monkeypatch.setattr(brotli, "Decompressor", decoder)
+    monkeypatch.setattr(brotli, "decompress", decoder)
+    flow = tflow.tflow()
+    addon = addon_for(flow, anywhere=True)
+    flow.request.method = "POST"
+    flow.request.headers["authorization"] = "Bearer hsurr:github"
+    flow.request.headers["content-type"] = "application/json"
+    flow.request.headers["content-encoding"] = "br"
+    flow.request.raw_content = body
+    flow.request.headers["content-length"] = str(len(body))
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.requestheaders(flow)
+        await addon.request(flow)
+    assert flow.error is None and flow.request.raw_content == body
+    assert flow.request.headers["authorization"] == f"Bearer {TOKEN}"
+    assert audit(caplog) == [
+        ("body-not-swapped", "undecodable-encoding"),
+        ("swapped", "hsurr:github"),
+    ]
+
+
+async def test_a_brotli_response_from_a_scrubbed_host_is_refused(caplog):
+    flow = tflow.tflow(resp=True)
+    assert flow.response is not None
+    addon = addon_for(flow)
+    flow.response.headers["content-type"] = "application/json"
+    flow.response.headers["content-encoding"] = "br"
+    flow.response.raw_content = brotli.compress(b'{"a": "%s"}' % TOKEN.encode())
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.response(flow)
+    assert flow.error is not None
+    assert audit(caplog) == [("refused-response", "undecodable-encoding")]
 
 
 # ------------------------------------------------------------ bodies that do not decode
