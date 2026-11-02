@@ -37,7 +37,7 @@ export function AgentImageItem({
 
   return (
     <div className="relative">
-      <div className="h-[15rem] overflow-hidden rounded-xl border border-neutral-100 bg-[#a8a8a8] sm:h-[20rem] sm:w-full md:h-[25rem] lg:h-[30rem]">
+      <div className="h-[15rem] overflow-hidden rounded-xl border border-separator bg-foreground-subtle sm:h-[20rem] sm:w-full md:h-[25rem] lg:h-[30rem]">
         {isValidVideoUrl(image) ? (
           isYouTubeUrl(image) ? (
             <YouTubeEmbed url={image} />
@@ -45,11 +45,10 @@ export function AgentImageItem({
             <div className="relative h-full w-full overflow-hidden">
               <video
                 ref={videoRef}
-                className="absolute inset-0 h-full w-full object-cover"
+                className="absolute inset-0 h-full w-full object-cover object-[center_25%]"
                 controls
                 preload="metadata"
                 poster={`${image}#t=0.1`}
-                style={{ objectPosition: "center 25%" }}
                 onPlay={() => handlePlay(index)}
                 onPause={() => handlePause(index)}
                 autoPlay={false}
@@ -79,11 +78,8 @@ export function AgentImageItem({
                 />
               </>
             ) : (
-              <div className="flex h-full w-full items-center justify-center rounded-xl bg-zinc-100">
-                <Icon
-                  icon={ImageNotFound01Icon}
-                  className="h-10 w-10 text-zinc-400"
-                />
+              <div className="flex h-full w-full items-center justify-center rounded-xl bg-surface-hover text-foreground-subtle">
+                <Icon icon={ImageNotFound01Icon} className="h-10 w-10" />
               </div>
             )}
           </div>
@@ -103,7 +99,8 @@ export function AgentImageItem({
               <Icon
                 icon={PlayIcon}
                 size={20}
-                className="text-black dark:text-neutral-200 sm:h-6 sm:w-6 md:h-7 md:w-7"
+                // oxlint-disable-next-line design-system/no-restyle -- the play glyph is darker than the button label; Icon has no tone
+                className="text-foreground-base sm:h-6 sm:w-6 md:h-7 md:w-7"
               />
             }
           >

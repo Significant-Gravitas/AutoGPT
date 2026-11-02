@@ -168,15 +168,22 @@ device context yet), so bucket pre-login experiments on the client.
 
 1. Create a **multivariate feature flag** in PostHog with the arm keys you want
    (`control`, `variant-a`, `variant-b`, ...) and make it an experiment there.
-2. In the frontend, read it through `useExperiment(key)` from
+   The backend buckets users from PostHog's flag definitions, which it loads
+   only with `POSTHOG_SECRET_KEY`; without it nobody is enrolled.
+2. Add the flag's key to `Experiment` in `backend/data/experiments.py` and run
+   `pnpm generate:api`, so the frontend gets it as a generated enum.
+3. In the frontend, read it through `useExperiment(Experiment.YOUR_KEY)` from
    `src/services/experiments/useExperiment.ts`. It returns `{ variant, isResolved }`:
    render the control experience until `isResolved`, and do not fire one-shot
    side effects before then, or a late variant is mis-recorded as control.
-   The hook reports the arm to `POST /api/experiments/assignments` once per
-   user and experiment; the backend keeps the **first** arm it sees.
-3. Backend-decided experiments can call
+   The hook reads `GET /api/experiments/assignments/{experiment}`, which returns
+   the user's stored arm, or buckets the signed-in user by id and stores that
+   arm; the **first** arm stored is kept. `variant` is `null` while the user is
+   not enrolled or not signed in. The browser reports the exposure to PostHog
+   itself, once the visitor allows analytics.
+4. Backend-decided experiments can call
    `backend.data.experiments.record_assignment(user_id, key, variant, source="backend")`.
-4. Read results in PostHog (exposure + the activation events above as goals),
+5. Read results in PostHog (exposure + the activation events above as goals),
    and in Looker by joining `analytics.experiment_assignment` to
    `user_lifecycle`, `user_task_daily` or `unit_economics_monthly`.
 

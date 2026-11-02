@@ -2,9 +2,12 @@
 
 import asyncio
 import base64
+import contextlib
 import json
 import logging
 import os
+import stat
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -452,6 +455,85 @@ class TestCleanupSdkToolResults:
         # Directory should NOT have been removed (rejected early)
         assert os.path.exists(evil_cwd)
         mock_sweep.assert_not_called()
+
+
+class TestCliTmpdir:
+    @pytest.mark.asyncio
+    async def test_cli_tmpdir_is_private_and_removed_with_the_cwd(self):
+        import backend.copilot.sdk.service as svc_mod
+
+        from .service import _cleanup_sdk_tool_results, _make_cli_tmpdir
+
+        cwd = f"/tmp/copilot-test-cli-tmpdir-{uuid.uuid4().hex}"
+        os.makedirs(cwd, exist_ok=True)
+        tmpdir = _make_cli_tmpdir(cwd)
+        assert os.path.dirname(tmpdir) == os.path.dirname(cwd)
+        assert stat.S_IMODE(os.lstat(tmpdir).st_mode) == 0o700
+        assert _make_cli_tmpdir(cwd) == tmpdir
+
+        with patch("backend.copilot.sdk.service.cleanup_stale_project_dirs"):
+            svc_mod._last_sweep_time = 0.0
+            await _cleanup_sdk_tool_results(cwd)
+
+        assert not os.path.lexists(tmpdir)
+
+    def test_cli_tmpdir_is_reused_only_when_private(self, tmp_path):
+        from backend.copilot.host_fs import cli_tmpdir
+
+        from .service import _make_cli_tmpdir
+
+        cwd = str(tmp_path / "copilot-s1")
+        os.mkdir(cli_tmpdir(cwd))
+        os.chmod(cli_tmpdir(cwd), 0o755)
+        with pytest.raises(FileExistsError):
+            _make_cli_tmpdir(cwd)
+
+    @pytest.mark.asyncio
+    async def test_a_turn_does_not_start_on_a_cli_tmpdir_that_is_not_private(
+        self, tmp_path
+    ):
+        from backend.copilot.host_fs import cli_tmpdir
+        from backend.copilot.model import ChatMessage, ChatSession
+        from backend.copilot.response_model import StreamError, StreamStatus
+
+        from .retry_scenarios_test import _make_sdk_patches
+        from .service import stream_chat_completion_sdk
+
+        cwd = str(tmp_path / "copilot-s1")
+        os.mkdir(cli_tmpdir(cwd))
+        os.chmod(cli_tmpdir(cwd), 0o755)
+        session = ChatSession(
+            session_id="s1",
+            user_id="u1",
+            usage=[],
+            started_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            messages=[ChatMessage(role="user", content="hello")],
+        )
+        client = MagicMock(side_effect=AssertionError("the CLI must not start"))
+        patches = [
+            (target, {"return_value": cwd} if target.endswith("._make_sdk_cwd") else kw)
+            for target, kw in _make_sdk_patches(session, "", None, client)
+        ]
+        first = None
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            stream = stream_chat_completion_sdk(
+                session_id="s1",
+                message="hello",
+                is_user_message=True,
+                user_id="u1",
+                session=session,
+            )
+            async for event in stream:
+                if isinstance(event, (StreamError, StreamStatus)):
+                    first = event
+                    break
+            await stream.aclose()
+
+        assert isinstance(first, StreamError) and first.code == "sdk_cwd_error"
+        client.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

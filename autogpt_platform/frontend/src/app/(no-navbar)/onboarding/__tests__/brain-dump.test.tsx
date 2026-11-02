@@ -7,16 +7,29 @@ import {
 import openapi from "@/app/api/openapi.json";
 import { server } from "@/mocks/mock-server";
 import {
+  act,
   cleanup,
+  fireEvent,
   render,
   screen,
   waitFor,
+  within,
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import posthog from "posthog-js";
 import type { ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 import OnboardingPage from "../page";
+import { BRAIN_DUMP_PROMPT_SETS } from "../steps/BrainDumpStep/prompts";
 import { NO_PAYWALL_STEPS, PAYWALL_LAST_STEPS } from "../store";
 import { useOnboardingWizardStore } from "../store";
 import { makeProgress } from "./progress-fixture";
@@ -47,6 +60,11 @@ const { recordingStoreState } = vi.hoisted(() => ({
       uploaded: boolean;
     }[],
   },
+}));
+
+// Each wizard save, in order, and whether Hire was already on screen.
+const { wizardSaves } = vi.hoisted(() => ({
+  wizardSaves: [] as { role: string; hireShown: boolean }[],
 }));
 
 vi.mock("../steps/BrainDumpStep/recordingStore", () => ({
@@ -83,6 +101,10 @@ vi.mock("../steps/BrainDumpStep/recordingStore", () => ({
       ? recordingStoreState.meta
       : null,
   clearRecording: async () => {
+    recordingStoreState.parts = [];
+    recordingStoreState.meta = null;
+  },
+  clearSkippedRecordings: async () => {
     recordingStoreState.parts = [];
     recordingStoreState.meta = null;
   },
@@ -168,11 +190,18 @@ vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
     }),
   getV1CheckIfOnboardingIsCompleted: () =>
     Promise.resolve({ status: 200, data: false }),
-  patchV1UpdateOnboardingState: () =>
-    Promise.resolve({
+  patchV1UpdateOnboardingState: (body: {
+    wizardProgress: { role: string };
+  }) => {
+    wizardSaves.push({
+      role: body.wizardProgress.role,
+      hireShown: document.querySelector('[data-testid="step-hire"]') !== null,
+    });
+    return Promise.resolve({
       status: 200,
       data: { userId: "brain-user", wizardRevision: 1 },
-    }),
+    });
+  },
   postV1CompleteOnboardingStep: () => Promise.resolve({ status: 200 }),
   postV1SubmitOnboardingProfile: () => Promise.resolve({ status: 200 }),
 }));
@@ -210,6 +239,16 @@ const INTRO_PATH_KEY = "autogpt:onboarding-intro-path";
 const PILLBOX_HEADING = "What's eating your time?";
 const DUMP_HEADLINE = "Talk to me about your work";
 const TYPING_HEADLINE = "Write to me about your work";
+const REST_GUIDANCE =
+  "Tell me what you do and what eats up your week. Otto uses it to pick your experts and plan your first week. A minute is plenty, and you can type instead.";
+
+// Copy split across a nested emphasis: matches the element that holds all
+// of it, not each piece.
+function fullText(text: string) {
+  return (_content: string, element: Element | null) =>
+    element?.textContent === text &&
+    Array.from(element.children).every((child) => child.textContent !== text);
+}
 
 class FakeMediaRecorder {
   static isTypeSupported() {
@@ -395,6 +434,7 @@ beforeEach(() => {
   recordingStoreState.meta = null;
   recordingStoreState.parts = [];
   recordingStoreState.finalizedIds = [];
+  wizardSaves.length = 0;
   useOnboardingWizardStore.getState().reset();
   localStorage.clear();
   window.sessionStorage.removeItem(STEP_STORAGE_KEY);
@@ -411,11 +451,13 @@ describe("onboarding brain dump", () => {
 
     render(<OnboardingPage />);
 
+    expect(await screen.findByText(fullText(REST_GUIDANCE))).toBeDefined();
+    // The middle sentence is the reason to share, so it stands out.
     expect(
-      await screen.findByText(
-        "Tell me what you do and what eats up your week. Two or three minutes is plenty. You can type instead if you prefer.",
-      ),
-    ).toBeDefined();
+      screen.getByText(
+        "Otto uses it to pick your experts and plan your first week.",
+      ).tagName,
+    ).toBe("SPAN");
     expect(screen.getByRole("button", { name: "Talk" })).toBeDefined();
     expect(screen.getByRole("button", { name: "Write" })).toBeDefined();
     expect(getUserMedia).not.toHaveBeenCalled();
@@ -463,6 +505,17 @@ describe("onboarding brain dump — typed fallback", () => {
     getUserMedia.mockRejectedValue(
       new DOMException("denied", "NotAllowedError"),
     );
+    // happy-dom reports every permission as granted, which reads as the
+    // system refusing an allowed site.
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: {
+        query: vi.fn().mockResolvedValue(new FakePermissionStatus("denied")),
+      },
+    });
+    onTestFinished(() => {
+      Reflect.deleteProperty(navigator, "permissions");
+    });
     landOnPainPointsStep();
 
     render(<OnboardingPage />);
@@ -478,10 +531,47 @@ describe("onboarding brain dump — typed fallback", () => {
     // The headline turns to writing; the step itself is not a dead end.
     expect(screen.getByText(TYPING_HEADLINE)).toBeDefined();
     expect(screen.queryByRole("button", { name: "Talk" })).toBeNull();
-    // Offering a way back to the orb would be a dead end here: the browser
-    // has already refused the microphone.
-    expect(screen.queryByRole("button", { name: "record instead" })).toBeNull();
+    // The way back stays: it asks the browser for the microphone again.
+    expect(
+      screen.getByRole("button", { name: "record instead" }),
+    ).toBeDefined();
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Your browser blocked the microphone, so write here instead.",
+    );
   });
+
+  // No microphone, or one another app holds: Talk used to do nothing at all.
+  it.each([
+    new DOMException("", "NotFoundError"),
+    new DOMException("", "NotReadableError"),
+    new TypeError("navigator.mediaDevices is undefined"),
+  ])(
+    "says the microphone couldn't open and offers Write when it fails with $name",
+    async (failure) => {
+      vi.mocked(posthog.capture).mockClear();
+      getUserMedia.mockRejectedValue(failure);
+      landOnPainPointsStep();
+
+      render(<OnboardingPage />);
+      await screen.findByText(DUMP_HEADLINE);
+      await userEvent.click(screen.getByRole("button", { name: "Talk" }));
+
+      expect(
+        await screen.findByText(
+          "We couldn't open your microphone. You can write it instead.",
+        ),
+      ).toBeDefined();
+      expect(screen.getByRole("button", { name: "Write" })).toBeDefined();
+      // Unlike a denial, this can be fixed on the device, so Talk stays.
+      expect(screen.getByRole("button", { name: "Talk" })).toBeDefined();
+      expect(posthog.capture).toHaveBeenCalledWith("brain_dump_mic_failed", {
+        error_name: failure.name,
+      });
+      expect(
+        vi.mocked(posthog.capture).mock.calls.map(([event]) => event),
+      ).not.toContain("brain_dump_permission_denied");
+    },
+  );
 
   it("opens the typed composer from the rest state via Write", async () => {
     landOnPainPointsStep();
@@ -626,6 +716,87 @@ describe("onboarding brain dump — skip", () => {
     );
   });
 });
+
+// The server builds the hire step's team from the role in the saved progress,
+// and the wizard saves a change 200 ms after it is made. Picking the role and
+// leaving the step in one go leaves no time for that timer.
+describe("onboarding brain dump — the role reaches the server first", () => {
+  it("saves a role picked just before a skip before showing Hire", async () => {
+    finalizeReturns({ status: "completed" });
+    landOnPainPointsStep();
+
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+    act(() => useOnboardingWizardStore.getState().setRole("Marketing"));
+    fireEvent.click(screen.getByRole("button", { name: "Skip for now" }));
+
+    expect(await screen.findByTestId("step-hire")).toBeDefined();
+    await waitFor(() =>
+      expect(wizardSaves.map((save) => save.role)).toContain("Marketing"),
+    );
+    expect(wizardSaves.find((save) => save.role === "Marketing")).toEqual({
+      role: "Marketing",
+      hireShown: false,
+    });
+  });
+
+  it.each([
+    ["typed", sendTypedTake],
+    ["recorded", sendRecordedTake],
+  ])(
+    "saves a role picked just before a %s take before sending the take",
+    async (_label, sendTake) => {
+      let rolesSavedAtFinalize: string[] = [];
+      server.use(
+        getUploadBrainDumpPartMockHandler200(() => ({
+          recording_id: "r",
+          part_index: 0,
+          received_bytes: 9,
+          total_bytes: 9,
+        })),
+        getFinalizeBrainDumpMockHandler200(() => {
+          rolesSavedAtFinalize = wizardSaves.map((save) => save.role);
+          return { status: "completed" as const, input_mode: "voice" as const };
+        }),
+      );
+      landOnPainPointsStep();
+
+      render(<OnboardingPage />);
+      await screen.findByText(DUMP_HEADLINE);
+      await sendTake(() =>
+        act(() => useOnboardingWizardStore.getState().setRole("Marketing")),
+      );
+
+      expect(await screen.findByTestId("step-hire")).toBeDefined();
+      expect(rolesSavedAtFinalize).toContain("Marketing");
+    },
+  );
+});
+
+// Each picks the role (`pickRole`) and sends in one go, with no time between.
+async function sendTypedTake(pickRole: () => void) {
+  await userEvent.click(screen.getByRole("button", { name: "Write" }));
+  await userEvent.type(
+    await screen.findByPlaceholderText(
+      "What repeats every week? What would you hand off first?",
+    ),
+    "I run a bakery",
+  );
+  pickRole();
+  fireEvent.click(screen.getByRole("button", { name: "I'm done" }));
+}
+
+async function sendRecordedTake(pickRole: () => void) {
+  await userEvent.click(screen.getByRole("button", { name: "Talk" }));
+  const send = await screen.findByRole("button", { name: "Send recording" });
+  await waitFor(() =>
+    expect(recordingStoreState.parts.map((part) => part.uploaded)).toEqual([
+      true,
+    ]),
+  );
+  pickRole();
+  fireEvent.click(send);
+}
 
 describe("onboarding brain dump — finishing a take", () => {
   // The success path all the way through: without it the finalize
@@ -1040,10 +1211,53 @@ describe("onboarding brain dump — insufficient content", () => {
     expect(await screen.findByTestId("step-hire")).toBeDefined();
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("B");
     await waitFor(() => expect(skip.skipBodies).toHaveLength(1));
-    // Already gone while the record is unanswered, so Back to the step
-    // cannot offer the abandoned take again.
-    expect(recordingStoreState.parts).toHaveLength(0);
+    // The take stays for Back, and the skip is recorded as a take of its
+    // own, so sending the recording later is not read as already done.
+    expect(recordingStoreState.parts).toHaveLength(1);
+    expect(skip.skipBodies[0]).not.toMatchObject({
+      recording_id: recordingStoreState.parts[0].recordingId,
+    });
     skip.release();
+  });
+
+  it("says why a take failed, and still offers the recording after skipping and going Back", async () => {
+    finalizeReturns({ status: "failed", error_code: "storage_failed" });
+    const objectURLs = [
+      vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:dump"),
+      vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined),
+    ];
+    const downloads: string[] = [];
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(function recordDownload(this: HTMLAnchorElement) {
+        downloads.push(this.download);
+      });
+    onTestFinished(() => {
+      click.mockRestore();
+      objectURLs.forEach((spy) => spy.mockRestore());
+    });
+
+    await recordAndSend();
+    expect(await screen.findByText("That didn't go through.")).toBeDefined();
+    expect(
+      screen.getByText("We couldn't store your recording on our side."),
+    ).toBeDefined();
+    const recordingID = recordingStoreState.parts[0].recordingId;
+    await userEvent.click(
+      screen.getByRole("button", { name: "Continue without it" }),
+    );
+    await screen.findByTestId("step-hire");
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+
+    expect(
+      await screen.findByText("Pick up where you left off?"),
+    ).toBeDefined();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Download recording" }),
+    );
+    await waitFor(() =>
+      expect(downloads).toEqual([`brain-dump-${recordingID}.webm`]),
+    );
   });
 
   it("opens the typed composer from the recovery screen", async () => {
@@ -1059,6 +1273,386 @@ describe("onboarding brain dump — insufficient content", () => {
         "What repeats every week? What would you hand off first?",
       ),
     ).toBeDefined();
+  });
+});
+
+describe("onboarding brain dump — Otto might ask", () => {
+  // The progress fixture's role.
+  const ENGINEERING = BRAIN_DUMP_PROMPT_SETS.Engineering;
+
+  beforeEach(() => {
+    vi.mocked(posthog.capture).mockClear();
+  });
+
+  it("sets the role's starter ideas around the step, out of reach", async () => {
+    landOnPainPointsStep();
+
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+
+    const ambient = screen.getByTestId("ambient-prompts");
+    expect(ambient.getAttribute("aria-hidden")).toBe("true");
+    expect(
+      within(ambient).getByText(ENGINEERING.questions[0].text),
+    ).toBeDefined();
+    expect(within(ambient).getAllByText("For example")).toHaveLength(2);
+    expect(ambient.querySelectorAll("button, a, [tabindex]")).toHaveLength(0);
+  });
+
+  it("asks one question at a time above the composer", async () => {
+    landOnPainPointsStep();
+
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+    await userEvent.click(screen.getByRole("button", { name: "Write" }));
+
+    expect(
+      await screen.findByText(ENGINEERING.questions[4].text),
+    ).toBeDefined();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Another question" }),
+    );
+
+    expect(
+      await screen.findByText(ENGINEERING.questions[5].text),
+    ).toBeDefined();
+    expect(posthog.capture).toHaveBeenCalledWith("brain_dump_prompt_advanced", {
+      via: "click",
+      screen: "typing",
+      prompt_index: 5,
+      prompt_set: "Engineering",
+    });
+  });
+
+  // The answer to WCAG 2.2.2: every idea that changes on its own can be
+  // paused, from the keyboard or by clicking the question.
+  function fakeRotationTimers() {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+  }
+
+  async function waitFor20Seconds() {
+    await act(async () => {
+      vi.advanceTimersByTime(20_000);
+    });
+  }
+
+  it("pauses the changing ideas from the keyboard", async () => {
+    fakeRotationTimers();
+    landOnPainPointsStep();
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+    await userEvent.click(screen.getByRole("button", { name: "Write" }));
+    await screen.findByText(ENGINEERING.questions[4].text);
+
+    const toggle = screen.getByRole("button", {
+      name: "Pause changing ideas",
+    });
+    toggle.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+
+    await waitFor20Seconds();
+    expect(screen.getByText(ENGINEERING.questions[4].text)).toBeDefined();
+
+    await userEvent.keyboard("{Enter}");
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    await waitFor20Seconds();
+    expect(
+      await screen.findByText(ENGINEERING.questions[5].text),
+    ).toBeDefined();
+  });
+
+  it("pauses the changing ideas when the question is clicked", async () => {
+    fakeRotationTimers();
+    landOnPainPointsStep();
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+    // Below 1280px the live question at rest is the only pointer route.
+    const question = screen
+      .getAllByText(ENGINEERING.questions[4].text)
+      .find((el) => !el.closest('[data-testid="ambient-prompts"]'));
+
+    await userEvent.click(question!);
+    await waitFor20Seconds();
+
+    expect(
+      screen
+        .getAllByText(ENGINEERING.questions[4].text)
+        .some((el) => !el.closest('[data-testid="ambient-prompts"]')),
+    ).toBe(true);
+    expect(
+      screen
+        .getByRole("button", { name: "Pause changing ideas" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+
+  it("reports the prompt set and the prompts seen with a typed dump", async () => {
+    finalizeReturns({ status: "completed" });
+    landOnPainPointsStep();
+
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+    await userEvent.click(screen.getByRole("button", { name: "Write" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Another question" }),
+    );
+    await userEvent.type(
+      screen.getByRole("textbox", { name: "Your brain dump" }),
+      "Release notes every Friday",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "I'm done" }));
+
+    await waitFor(() =>
+      expect(posthog.capture).toHaveBeenCalledWith("brain_dump_completed", {
+        input_mode: "typed",
+        chars: "Release notes every Friday".length,
+        prompt_set: "Engineering",
+        prompts_seen: 2,
+      }),
+    );
+    expect(posthog.capture).toHaveBeenCalledWith("brain_dump_typed_fallback", {
+      reason: "chose_to_type",
+      prompt_set: "Engineering",
+    });
+  });
+
+  it("reports the prompt set and the prompts seen with a skip", async () => {
+    recordBrainDumpTraffic();
+    landOnPainPointsStep();
+
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+    await userEvent.click(screen.getByRole("button", { name: "Write" }));
+    await screen.findByText(ENGINEERING.questions[4].text);
+    await userEvent.click(screen.getByRole("button", { name: "Skip for now" }));
+
+    expect(posthog.capture).toHaveBeenCalledWith("brain_dump_skipped", {
+      prompt_set: "Engineering",
+      prompts_seen: 1,
+    });
+    expect(await screen.findByTestId("step-hire")).toBeDefined();
+  });
+
+  it("sends the prompt set with the start of a recording", async () => {
+    landOnPainPointsStep();
+
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+    await userEvent.click(screen.getByRole("button", { name: "Talk" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Send recording" }),
+    ).toBeDefined();
+    expect(posthog.capture).toHaveBeenCalledWith("brain_dump_started", {
+      prompt_set: "Engineering",
+    });
+    expect(screen.getByText(ENGINEERING.questions[4].text)).toBeDefined();
+  });
+});
+
+class FakePermissionStatus extends EventTarget {
+  constructor(public state: PermissionState) {
+    super();
+  }
+
+  change(state: PermissionState) {
+    this.state = state;
+    this.dispatchEvent(new Event("change"));
+  }
+}
+
+describe("onboarding brain dump — a refused microphone", () => {
+  const BLOCKED =
+    "Your browser blocked the microphone, so write here instead. To talk, allow the microphone in your browser's site settings (the lock or microphone icon by the address bar), then try the microphone again.";
+  const DISMISSED =
+    "The microphone prompt was closed, so write here instead. To talk, try the microphone again.";
+  const REFUSED = new DOMException("denied", "NotAllowedError");
+
+  function captured(event: string) {
+    return vi
+      .mocked(posthog.capture)
+      .mock.calls.filter(([name]) => name === event);
+  }
+
+  function capturedNames() {
+    return vi.mocked(posthog.capture).mock.calls.map(([name]) => name);
+  }
+
+  function stubMicrophonePermission(state: PermissionState) {
+    const status = new FakePermissionStatus(state);
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: { query: vi.fn().mockResolvedValue(status) },
+    });
+    onTestFinished(() => {
+      Reflect.deleteProperty(navigator, "permissions");
+    });
+    return status;
+  }
+
+  async function pressTalkAndGetRefused() {
+    landOnPainPointsStep();
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+    await userEvent.click(screen.getByRole("button", { name: "Talk" }));
+    return screen.findByRole("alert");
+  }
+
+  beforeEach(() => {
+    vi.mocked(posthog.capture).mockClear();
+  });
+
+  it("says why Talk did not start and how to allow the microphone", async () => {
+    stubMicrophonePermission("denied");
+    getUserMedia.mockRejectedValue(REFUSED);
+
+    const notice = await pressTalkAndGetRefused();
+
+    expect(notice.textContent).toBe(BLOCKED);
+    expect(screen.getByText(TYPING_HEADLINE)).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "record instead" }),
+    ).toBeDefined();
+    expect(captured("brain_dump_permission_denied")).toHaveLength(1);
+    expect(captured("brain_dump_typed_fallback")).toEqual([
+      [
+        "brain_dump_typed_fallback",
+        { reason: "permission_denied", prompt_set: "Engineering" },
+      ],
+    ]);
+  });
+
+  it("tells a closed prompt apart from a blocked microphone", async () => {
+    stubMicrophonePermission("prompt");
+    getUserMedia.mockRejectedValue(REFUSED);
+
+    const notice = await pressTalkAndGetRefused();
+
+    expect(notice.textContent).toBe(DISMISSED);
+  });
+
+  it("starts recording when the retry is allowed", async () => {
+    stubMicrophonePermission("prompt");
+    getUserMedia
+      .mockRejectedValueOnce(REFUSED)
+      .mockResolvedValue({ getTracks: () => [] });
+    await pressTalkAndGetRefused();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "try the microphone again" }),
+    );
+
+    expect(
+      await screen.findByRole("button", { name: "Send recording" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(captured("brain_dump_permission_retried")).toEqual([
+      [
+        "brain_dump_permission_retried",
+        {
+          result: "granted",
+          permission_state: "prompt",
+          via: "retry_link",
+        },
+      ],
+    ]);
+    const names = capturedNames();
+    expect(names.indexOf("brain_dump_permission_retried")).toBeLessThan(
+      names.indexOf("brain_dump_started"),
+    );
+  });
+
+  it("keeps the notice and counts one fallback when refused again", async () => {
+    stubMicrophonePermission("denied");
+    getUserMedia.mockRejectedValue(REFUSED);
+    await pressTalkAndGetRefused();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "record instead" }),
+    );
+
+    await waitFor(() =>
+      expect(captured("brain_dump_permission_denied")).toHaveLength(2),
+    );
+    expect(captured("brain_dump_permission_retried")).toEqual([
+      [
+        "brain_dump_permission_retried",
+        {
+          result: "denied",
+          permission_state: "denied",
+          via: "record_instead",
+        },
+      ],
+    ]);
+    expect(captured("brain_dump_typed_fallback")).toHaveLength(1);
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.getByRole("alert").textContent).toBe(BLOCKED);
+    expect(screen.getByText(TYPING_HEADLINE)).toBeDefined();
+  });
+
+  it("keeps the notice up while the retry waits for an answer", async () => {
+    stubMicrophonePermission("denied");
+    getUserMedia.mockRejectedValueOnce(REFUSED);
+    getUserMedia.mockReturnValueOnce(new Promise(() => {}));
+    await pressTalkAndGetRefused();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "try the microphone again" }),
+    );
+
+    expect(getUserMedia).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("alert").textContent).toBe(BLOCKED);
+  });
+
+  it("says so when the retry finds the microphone busy", async () => {
+    stubMicrophonePermission("denied");
+    getUserMedia.mockRejectedValueOnce(REFUSED);
+    getUserMedia.mockRejectedValueOnce(
+      new DOMException("", "NotReadableError"),
+    );
+    await pressTalkAndGetRefused();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "try the microphone again" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain(
+        "We couldn't open your microphone, so write here instead.",
+      ),
+    );
+    expect(screen.getByText(TYPING_HEADLINE)).toBeDefined();
+  });
+
+  it("clears the notice once the site is allowed from the address bar", async () => {
+    const permission = stubMicrophonePermission("denied");
+    getUserMedia.mockRejectedValue(REFUSED);
+    await pressTalkAndGetRefused();
+
+    act(() => {
+      permission.change("granted");
+    });
+
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(captured("brain_dump_permission_retried")).toEqual([
+      [
+        "brain_dump_permission_retried",
+        {
+          result: "granted",
+          permission_state: "granted",
+          via: "permission_change",
+        },
+      ],
+    ]);
+    // "record instead" is the ordinary way back to Talk again.
+    await userEvent.click(
+      screen.getByRole("button", { name: "record instead" }),
+    );
+    expect(await screen.findByRole("button", { name: "Talk" })).toBeDefined();
   });
 });
 

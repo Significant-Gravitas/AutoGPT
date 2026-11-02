@@ -27,17 +27,17 @@ const VERDICTS: Record<string, VerdictStyle> = {
   pass: {
     label: "No objection",
     icon: CheckmarkCircle02Icon,
-    chip: "bg-green-50 text-green-700",
+    chip: "bg-success-surface text-success-foreground",
   },
   block: {
     label: "Blocked",
     icon: Alert02Icon,
-    chip: "bg-red-50 text-red-600",
+    chip: "bg-error-surface text-error-foreground",
   },
   insufficient: {
     label: "Not checked",
     icon: HelpCircleIcon,
-    chip: "bg-amber-50 text-amber-700",
+    chip: "bg-warning-surface text-warning-foreground",
   },
 };
 
@@ -71,10 +71,10 @@ export function ConsultVerdictCard({ output }: Props) {
           size={28}
         />
         <div className="min-w-0 flex-1">
-          <Text variant="body-medium" className="truncate text-zinc-800">
+          <Text tone="emphasis" variant="body-medium" className="truncate">
             {str(reviewer, "name") ?? "A teammate"}
           </Text>
-          <Text variant="small" className="truncate text-zinc-500">
+          <Text tone="muted" variant="small" className="truncate">
             {str(reviewer, "role") ?? "checked this"}
           </Text>
         </div>
@@ -89,7 +89,7 @@ export function ConsultVerdictCard({ output }: Props) {
         </span>
       </div>
       {reason ? (
-        <Text variant="small" className="mt-2 px-0.5 text-zinc-600">
+        <Text tone="secondary" variant="small" className="mt-2 px-0.5">
           {reason}
         </Text>
       ) : null}
@@ -98,9 +98,9 @@ export function ConsultVerdictCard({ output }: Props) {
           {quotes.map((quote, index) => (
             <li
               key={`${index}-${quote}`}
-              className="border-l-2 border-zinc-200 pl-2 text-zinc-500"
+              className="border-l-2 border-border-base pl-2 text-foreground-tertiary"
             >
-              <Text variant="small" className="text-zinc-500">
+              <Text tone="muted" variant="small">
                 {quote}
               </Text>
             </li>

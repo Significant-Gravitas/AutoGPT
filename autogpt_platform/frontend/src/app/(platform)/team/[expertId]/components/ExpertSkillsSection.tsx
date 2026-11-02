@@ -65,12 +65,14 @@ export function ExpertSkillsSection({
           <Button
             variant="secondary"
             size="small"
+            textSize="body-md"
             leadingIcon={PlusSignIcon}
             onClick={openAdd}
           >
             Add skill
           </Button>
           <ToolbarSearch
+            textSize="body-md"
             id="expert-skills-search"
             label="Search skills"
             value={query}
@@ -80,7 +82,7 @@ export function ExpertSkillsSection({
       </div>
       {learning.enabled ? (
         <div
-          className="mb-3 flex flex-col gap-2 rounded-2xl bg-white p-3.5 smooth-shadow-ring-sm sm:flex-row sm:items-center sm:justify-between"
+          className="mb-3 flex flex-col gap-2 rounded-2xl bg-surface p-3.5 smooth-shadow-ring-sm sm:flex-row sm:items-center sm:justify-between"
           data-testid="expert-learning-summary"
         >
           <Text variant="small" tone="secondary">
@@ -106,24 +108,16 @@ export function ExpertSkillsSection({
       {!hasAny ? (
         <SectionEmptyState
           tiles={[
-            <Icon
-              key="book"
-              icon={BookOpen01Icon}
-              size={22}
-              className="text-sky-500"
-            />,
-            <Icon
-              key="bulb"
-              icon={BulbIcon}
-              size={22}
-              className="text-amber-500"
-            />,
-            <Icon
-              key="sparkles"
-              icon={SparklesIcon}
-              size={22}
-              className="text-violet-500"
-            />,
+            // oxlint-disable-next-line design-system/no-raw-colors -- sky has no role; info blue would change the hue (deferred)
+            <span key="book" className="inline-flex text-sky-500">
+              <Icon icon={BookOpen01Icon} size={22} />
+            </span>,
+            <span key="bulb" className="inline-flex text-warning">
+              <Icon icon={BulbIcon} size={22} />
+            </span>,
+            <span key="sparkles" className="inline-flex text-brand">
+              <Icon icon={SparklesIcon} size={22} />
+            </span>,
           ]}
           title="No skills yet"
           description={`Add skills from your library so ${expert.name} knows how you like things done.`}
@@ -131,6 +125,7 @@ export function ExpertSkillsSection({
           <Button
             variant="primary"
             size="small"
+            textSize="body-md"
             leadingIcon={PlusSignIcon}
             onClick={openAdd}
           >
@@ -138,7 +133,7 @@ export function ExpertSkillsSection({
           </Button>
         </SectionEmptyState>
       ) : visible.length === 0 ? (
-        <Text variant="body" tone="muted" className="pt-4">
+        <Text variant="body-md" tone="muted" className="mt-4">
           No skills match.
         </Text>
       ) : (

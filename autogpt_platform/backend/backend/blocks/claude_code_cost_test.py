@@ -18,6 +18,7 @@ from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.model import NodeExecutionStats
 from backend.executor import utils as executor_utils
 from backend.executor.utils import block_usage_cost
+from backend.integrations.credentials_store import e2b_credentials
 
 
 @pytest.fixture(autouse=True)
@@ -29,13 +30,51 @@ def _stub_preflight_estimate(monkeypatch):
     monkeypatch.setattr(executor_utils, "get_preflight_estimate", lambda _bid: 0)
 
 
+def _meta(credentials) -> dict:
+    return {
+        "id": credentials.id,
+        "provider": credentials.provider,
+        "type": credentials.type,
+    }
+
+
+def _own_meta(provider: str) -> dict:
+    """A credential the user brought themselves: an id no platform entry names."""
+    return {"id": f"user-own-{provider}", "provider": provider, "type": "api_key"}
+
+
 def test_claude_code_registered_as_cost_usd_150():
-    """Sanity: BLOCK_COSTS holds the COST_USD, 150 cr/$ entry."""
+    """Sanity: BLOCK_COSTS holds the COST_USD, 150 cr/$ entry. There is none for
+    the platform Anthropic key: the block refuses it (see claude_code_test)."""
     entries = BLOCK_COSTS[ClaudeCodeBlock]
     assert len(entries) == 1
     entry = entries[0]
     assert entry.cost_type == BlockCostType.COST_USD
     assert entry.cost_amount == 150
+
+
+@pytest.mark.parametrize(
+    "e2b_meta, expected_credits",
+    [
+        # The platform sandbox: billed.
+        (_meta(e2b_credentials), 75),
+        # The user's own sandbox: nothing of the platform's is spent.
+        (_own_meta("e2b"), 0),
+    ],
+)
+def test_run_is_billed_when_it_uses_the_platform_sandbox(e2b_meta, expected_credits):
+    """Billing keys on the E2B credential only; the Anthropic key is always the
+    user's own."""
+    stats = NodeExecutionStats(provider_cost=0.50, provider_cost_type="cost_usd")
+    cost, _ = block_usage_cost(
+        block=ClaudeCodeBlock(),
+        input_data={
+            "e2b_credentials": e2b_meta,
+            "anthropic_credentials": _own_meta("anthropic"),
+        },
+        stats=stats,
+    )
+    assert cost == expected_credits
 
 
 @pytest.mark.parametrize(

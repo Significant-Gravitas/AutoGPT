@@ -164,6 +164,40 @@ def defined_flag_keys() -> frozenset[str] | None:
     return frozenset(flag["key"] for flag in client.feature_flags)
 
 
+async def evaluate_variant(
+    flag_key: str,
+    distinct_id: str,
+    person_properties: dict[str, Any] | None = None,
+) -> str | None:
+    """The multivariate arm *distinct_id* falls in, or None when not enrolled.
+
+    Evaluated from the local definitions only and without an exposure event, so
+    the read sends PostHog nothing about the user; with no definitions loaded
+    (no ``POSTHOG_SECRET_KEY``) nobody is enrolled.
+    """
+    client = get_flag_client()
+    # With no definitions loaded the SDK would fetch them before evaluating.
+    if client is None or not client.feature_flags:
+        return None
+    try:
+        result = await asyncio.get_running_loop().run_in_executor(
+            _read_executor,
+            functools.partial(
+                client.get_feature_flag_result,
+                flag_key,
+                distinct_id,
+                person_properties=person_properties or None,
+                only_evaluate_locally=True,
+                # The browser reports the exposure, consent-gated (`useExperiment.ts`).
+                send_feature_flag_events=False,
+            ),
+        )
+    except Exception as e:
+        logger.warning(f"PostHog variant read failed for {flag_key}: {e}")
+        return None
+    return result.variant if result is not None and result.enabled else None
+
+
 def initialize_posthog_flags() -> None:
     """Build the flag client and load its definitions before any read needs them."""
     global _shut_down

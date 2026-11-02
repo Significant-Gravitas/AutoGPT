@@ -96,6 +96,13 @@ async def setup_triggered_preset(
             or {}
         ),
     }
+    # What create_preset stores — this config merged with EVERY credential, not
+    # only the trigger node's — plus the `payload` webhook ingress adds to the
+    # trigger node, so a preset saved at the bound can still start a run.
+    db.check_preset_input_count(
+        {**trigger_config_with_credentials, **agent_credentials, "payload": None}
+    )
+    await db.check_preset_count(user_id)
 
     if expert_id:
         organization_id, team_id = await _resolve_private_expert_tenancy(
@@ -120,20 +127,25 @@ async def setup_triggered_preset(
     if not new_webhook:
         raise InvalidInputError(f"Could not set up webhook: {feedback}")
 
-    return await db.create_preset(
-        user_id=user_id,
-        preset=models.LibraryAgentPresetCreatable(
-            graph_id=graph.id,
-            graph_version=graph.version,
-            name=name,
-            description=description,
-            inputs=trigger_config_with_credentials,
-            credentials=agent_credentials,
-            is_active=True,
-        ),
-        webhook_id=new_webhook.id,
-        expert_id=expert_id,
-    )
+    try:
+        return await db.create_preset(
+            user_id=user_id,
+            preset=models.LibraryAgentPresetCreatable(
+                graph_id=graph.id,
+                graph_version=graph.version,
+                name=name,
+                description=description,
+                inputs=trigger_config_with_credentials,
+                credentials=agent_credentials,
+                is_active=True,
+            ),
+            webhook_id=new_webhook.id,
+            expert_id=expert_id,
+        )
+    except Exception:
+        # Until it is attached, a webhook registered for this setup is orphaned.
+        await _prune_dangling_webhook(user_id, new_webhook.id)
+        raise
 
 
 async def update_triggered_preset(
@@ -163,7 +175,7 @@ async def update_triggered_preset(
     if not current:
         raise NotFoundError(f"Preset #{preset_id} not found")
 
-    trigger_inputs_updated, new_webhook = False, None
+    new_webhook = None
     if inputs is not None and credentials is not None:
         graph = await get_graph(
             current.graph_id, current.graph_version, user_id=user_id
@@ -192,6 +204,10 @@ async def update_triggered_preset(
                     or {}
                 ),
             }
+            # What update_preset stores — inputs plus EVERY credential, not
+            # only the trigger node's — plus webhook ingress's `payload`, so a
+            # preset saved at the bound can still start a run.
+            db.check_preset_input_count({**inputs, **credentials, "payload": None})
             new_webhook, feedback = await setup_webhook_for_block(
                 user_id=user_id,
                 trigger_block=trigger_node.block,
@@ -200,28 +216,32 @@ async def update_triggered_preset(
                 organization_id=organization_id,
                 team_id=team_id,
             )
-            trigger_inputs_updated = True
             if not new_webhook:
                 raise InvalidInputError(
                     f"Could not update trigger configuration: {feedback}"
                 )
 
-    updated = await db.update_preset(
-        user_id=user_id,
-        preset_id=preset_id,
-        inputs=inputs,
-        credentials=credentials,
-        name=name,
-        description=description,
-        is_active=is_active,
-    )
+    try:
+        updated = await db.update_preset(
+            user_id=user_id,
+            preset_id=preset_id,
+            inputs=inputs,
+            credentials=credentials,
+            name=name,
+            description=description,
+            is_active=is_active,
+        )
+        if new_webhook:
+            updated = await db.set_preset_webhook(user_id, preset_id, new_webhook.id)
+    except Exception:
+        # Until it is attached, a webhook registered for this update is orphaned.
+        if new_webhook and new_webhook.id != current.webhook_id:
+            await _prune_dangling_webhook(user_id, new_webhook.id)
+        raise
 
-    if trigger_inputs_updated:
-        new_webhook_id = new_webhook.id if new_webhook else None
-        updated = await db.set_preset_webhook(user_id, preset_id, new_webhook_id)
-        # Clean up the old webhook if it's no longer referenced.
-        if current.webhook_id and current.webhook_id != new_webhook_id:
-            await _prune_dangling_webhook(user_id, current.webhook_id)
+    # Clean up the old webhook if it's no longer referenced.
+    if new_webhook and current.webhook_id and current.webhook_id != new_webhook.id:
+        await _prune_dangling_webhook(user_id, current.webhook_id)
 
     return updated
 
@@ -258,7 +278,9 @@ async def _prune_dangling_webhook(user_id: str, webhook_id: str) -> None:
     try:
         webhook = await get_webhook(webhook_id)
         credentials = (
-            await credentials_manager.get(user_id, webhook.credentials_id)
+            await credentials_manager.get(
+                user_id, webhook.credentials_id, allow_sdk_default=True
+            )
             if webhook.credentials_id
             else None
         )

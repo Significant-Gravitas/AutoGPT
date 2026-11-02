@@ -1,7 +1,10 @@
 "use client";
 
-import { Loader2, MoreVertical } from "lucide-react";
-import { Button } from "@/components/__legacy__/ui/button";
+import { MoreVerticalIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   Table,
   TableBody,
@@ -9,8 +12,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/__legacy__/ui/table";
-import { Badge } from "@/components/__legacy__/ui/badge";
+} from "@/components/molecules/Table/components/TablePrimitives";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,7 +29,7 @@ export function APIKeysSection() {
     <>
       {isLoading ? (
         <div className="flex justify-center p-4">
-          <Loader2 className="h-6 w-6 animate-spin" />
+          <LoadingSpinner variant="circle" size="medium" aria-hidden />
         </div>
       ) : (
         apiKeys &&
@@ -47,19 +50,23 @@ export function APIKeysSection() {
                 <TableRow key={key.id} data-testid="api-key-row">
                   <TableCell>{key.name}</TableCell>
                   <TableCell data-testid="api-key-id">
-                    <div className="rounded-md border p-1 px-2 text-xs">
-                      {`${key.head}******************${key.tail}`}
+                    <div className="rounded-md border p-1 px-2">
+                      <Text variant="small-tight" as="div" tone="inherit">
+                        {`${key.head}******************${key.tail}`}
+                      </Text>
                     </div>
                   </TableCell>
                   <TableCell>
                     <Badge
                       variant={
-                        key.status === "ACTIVE" ? "default" : "destructive"
+                        key.status === "ACTIVE" ? "solid" : "destructive"
                       }
                       className={
                         key.status === "ACTIVE"
-                          ? "border-green-600 bg-green-100 text-green-800"
-                          : "border-red-600 bg-red-100 text-red-800"
+                          ? // oxlint-disable-next-line design-system/no-restyle -- Badge has no bordered success chip yet; its success tint is a different shape and weight
+                            "border-success bg-success/30 text-success-foreground"
+                          : // oxlint-disable-next-line design-system/no-restyle -- Badge has no bordered error chip yet; its error tint is a different shape and weight
+                            "border-error-hover bg-error-surface text-error-foreground"
                       }
                     >
                       {key.status}
@@ -78,19 +85,22 @@ export function APIKeysSection() {
                       <DropdownMenuTrigger asChild>
                         <Button
                           data-testid="api-key-actions"
-                          variant="ghost"
-                          size="sm"
+                          variant="compact-ghost"
+                          size="compact-sm"
                         >
-                          <MoreVertical className="h-4 w-4" />
+                          <Icon
+                            aria-hidden
+                            icon={MoreVerticalIcon}
+                            className="h-4 w-4"
+                          />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem
-                          className="text-destructive"
                           onClick={() => handleRevokeKey(key.id)}
                           disabled={isDeleting}
                         >
-                          Revoke
+                          <span className="text-destructive">Revoke</span>
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>

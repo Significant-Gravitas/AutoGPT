@@ -5,6 +5,9 @@ import { notFound, useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { Text } from "@/components/atoms/Text/Text";
+import { Button } from "@/components/atoms/Button/Button";
+import { UsageCreditsDialog } from "@/components/organisms/UsageCreditsDialog/UsageCreditsDialog";
+import { InformationCircleIcon } from "@hugeicons/core-free-icons";
 import { useBillingStatus } from "@/hooks/useIsBillingEnabled";
 import {
   TabsLine,
@@ -60,6 +63,7 @@ function SettingsBillingPage() {
   const { mutateAsync: fulfillCheckout } = usePatchV1FulfillCheckoutSession();
   const handledTopupRef = useRef<string | null>(null);
   const handledSubscriptionRef = useRef<string | null>(null);
+  const [isExplainerOpen, setIsExplainerOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<BillingTab>(() =>
     resolveInitialTab(searchParams),
   );
@@ -153,9 +157,21 @@ function SettingsBillingPage() {
   return (
     <div className="mx-auto flex w-full max-w-[900px] flex-col gap-5 px-4 pb-8 sm:px-6">
       <header className="space-y-1">
-        <Text variant="h3" as="h1" className="tracking-[-0.035em]">
-          Billing &amp; usage
-        </Text>
+        <div className="flex items-center gap-1">
+          <Text variant="h3-tracking-tight" as="h1">
+            Billing &amp; usage
+          </Text>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            leadingIcon={InformationCircleIcon}
+            aria-label="How usage and credits work"
+            onClick={() => setIsExplainerOpen(true)}
+            // oxlint-disable-next-line design-system/no-restyle -- the info button is a quiet grey glyph beside the title
+            className="text-foreground-tertiary"
+          />
+        </div>
         <Text variant="body" tone="secondary">
           Everything you need to manage your plan.
         </Text>
@@ -177,6 +193,12 @@ function SettingsBillingPage() {
           <AutomationCreditsTab />
         </TabsLineContent>
       </TabsLine>
+
+      <UsageCreditsDialog
+        isOpen={isExplainerOpen}
+        onOpenChange={setIsExplainerOpen}
+        showBillingLink={false}
+      />
     </div>
   );
 }

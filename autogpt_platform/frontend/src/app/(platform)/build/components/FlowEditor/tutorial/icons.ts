@@ -4,6 +4,7 @@ type IconOptions = {
 };
 
 const DEFAULT_SIZE = 16;
+// TODO(tokens): no exact role: literal #52525B
 const DEFAULT_COLOR = "#52525b"; // zinc-600
 
 const iconPaths = {

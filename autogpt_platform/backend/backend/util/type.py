@@ -117,6 +117,11 @@ def __convert_num(value: Any, num_type: Type[NUM]) -> NUM:
     elif isinstance(value, num_type):
         return value
     else:
+        if num_type is int and isinstance(value, str):
+            try:
+                return num_type(value)
+            except ValueError:
+                pass
         try:
             return num_type(float(value))
         except (ValueError, TypeError):

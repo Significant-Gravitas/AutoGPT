@@ -2,7 +2,7 @@ import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import type { WebSocketNotification } from "@/lib/autogpt-server-api/types";
 import { Key } from "@/services/storage/local-storage";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
+import { useEffect, useInsertionEffect, useRef } from "react";
 import { COPILOT_COMPLETION_NOTIFICATION, parseSessionIDs } from "./helpers";
 import { useCopilotUIStore } from "./store";
 import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
@@ -64,7 +64,9 @@ export function useCopilotNotifications(activeSessionID: string | null) {
   const queryClient = useQueryClient();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const activeSessionRef = useRef(activeSessionID);
-  activeSessionRef.current = activeSessionID;
+  useInsertionEffect(() => {
+    activeSessionRef.current = activeSessionID;
+  });
   const completedSessionIDs = useCopilotUIStore((s) => s.completedSessionIDs);
 
   // Seeing a finished chat takes it off the list. The handler below skips

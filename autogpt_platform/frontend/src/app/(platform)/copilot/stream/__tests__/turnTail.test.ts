@@ -7,6 +7,7 @@ import {
   turnRows,
   userSegment,
   type Segment,
+  lastReplySequence,
 } from "../turnTail";
 
 describe("turnRows", () => {
@@ -122,3 +123,50 @@ function prompt(text: string) {
     parts: [{ type: "text" as const, text }],
   };
 }
+
+describe("lastReplySequence", () => {
+  const OWN = new Set(["x"]);
+
+  const row = (role: string, sequence: number): PersistedRow => ({
+    role,
+    sequence,
+    content: "x",
+  });
+
+  it("names the last reply after the turn's latest user row", () => {
+    expect(
+      lastReplySequence(
+        [
+          row("user", 10),
+          row("assistant", 11),
+          row("tool", 12),
+          row("assistant", 13),
+          row("tool", 14),
+        ],
+        OWN,
+      ),
+    ).toBe(13);
+  });
+
+  it("names nothing while the latest user row has no saved reply yet", () => {
+    expect(
+      lastReplySequence(
+        [row("user", 10), row("assistant", 11), row("user", 12)],
+        OWN,
+      ),
+    ).toBeNull();
+  });
+
+  it("names nothing when the window holds another turn's question", () => {
+    expect(
+      lastReplySequence(
+        [
+          row("assistant", 11),
+          { role: "user", sequence: 12, content: "From another tab" },
+          row("assistant", 13),
+        ],
+        OWN,
+      ),
+    ).toBeNull();
+  });
+});

@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 _background_tasks: set[asyncio.Task[None]] = set()
 
 
-def _build_searchable_text(graph: graph_db.GraphModel) -> str:
+def _build_searchable_text(graph: graph_db.GraphModel | graph_db.AgentGraph) -> str:
     parts = [
         graph.name or "",
         graph.description or "",
@@ -44,7 +44,9 @@ def _build_searchable_text(graph: graph_db.GraphModel) -> str:
 
 
 async def _run_embedding(
-    library_agent_id: str, user_id: str, graph: graph_db.GraphModel
+    library_agent_id: str,
+    user_id: str,
+    graph: graph_db.GraphModel | graph_db.AgentGraph,
 ) -> None:
     try:
         searchable_text = _build_searchable_text(graph)
@@ -83,7 +85,9 @@ async def _run_embedding(
 
 
 def schedule_library_agent_embedding(
-    library_agent_id: str, user_id: str, graph: graph_db.GraphModel
+    library_agent_id: str,
+    user_id: str,
+    graph: graph_db.GraphModel | graph_db.AgentGraph,
 ) -> asyncio.Task[None]:
     """Schedule a background (re-)embed. No-ops cheaply when the existing
     embedding's searchableText is unchanged. Failures are logged, not raised."""

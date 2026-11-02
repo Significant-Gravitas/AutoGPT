@@ -1,13 +1,12 @@
+import { peekFirstRunTourSeen } from "@/app/(platform)/components/FirstRunTour/helpers";
 import { useGetBrainDumpIntro } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import {
   clearWelcomePending,
-  peekCapabilityCardsSeen,
   peekGreetingDone,
   peekIntroPath,
   peekWelcomePending,
-  setCapabilityCardsSeen,
   setGreetingDone,
   setIntroAwaitingFollowup,
   setMicGlow,
@@ -35,12 +34,12 @@ export function useOnboardingIntroCard() {
   // starts clean.
   const [isDone, setIsDone] = useState(() => peekGreetingDone(userId));
 
-  // A user fresh out of onboarding gets the full-screen welcome overlay
-  // first. The greeting is not even fetched until they close it — the
-  // reveal animation must start on a page they are actually looking at.
-  // Seeded from sessionStorage so a refresh keeps the overlay up rather
-  // than skipping it.
-  const [isWelcomeOpen, setIsWelcomeOpen] = useState(
+  // A user fresh out of onboarding gets the guided first run over the real
+  // sidebar (FirstRunTour). The greeting loads behind it rather than after
+  // it: the walkthrough ends by pointing at the greeting's first tasks.
+  // Seeded from sessionStorage so a refresh mid-walkthrough brings it back
+  // rather than skipping it.
+  const [isFirstRunPending, setIsFirstRunPending] = useState(
     () => peekWelcomePending() || Boolean(peekIntroPath()),
   );
 
@@ -61,13 +60,13 @@ export function useOnboardingIntroCard() {
   }, [userId]);
 
   useEffect(() => {
-    // This browser already saw this user finish or skip the cards —
-    // never reshow, even if the pending flag somehow survived.
-    if (isWelcomeOpen && peekCapabilityCardsSeen(userId)) {
+    // This browser already saw this user finish or skip the walkthrough —
+    // never reopen it, even if the pending flag somehow survived.
+    if (isFirstRunPending && peekFirstRunTourSeen(userId)) {
       clearWelcomePending();
-      setIsWelcomeOpen(false);
+      setIsFirstRunPending(false);
     }
-  }, [isWelcomeOpen, userId]);
+  }, [isFirstRunPending, userId]);
 
   useEffect(() => {
     const path = takeIntroPath();
@@ -82,15 +81,15 @@ export function useOnboardingIntroCard() {
     // consumed by the first real message afterwards.
     setIntroAwaitingFollowup();
     trackBrainDump("intro_path", { path });
-    if (!peekCapabilityCardsSeen(userId)) {
+    if (!peekFirstRunTourSeen(userId)) {
       setWelcomePending();
-      setIsWelcomeOpen(true);
+      setIsFirstRunPending(true);
     }
   }, []);
 
   const { data, isError } = useGetBrainDumpIntro({
     query: {
-      enabled: !isDone && !isWelcomeOpen,
+      enabled: !isDone,
       staleTime: Infinity,
       gcTime: Infinity,
       refetchInterval: (query) => {
@@ -134,11 +133,11 @@ export function useOnboardingIntroCard() {
     }
   }, [serverSaysDone, userId]);
 
-  function closeWelcome() {
-    trackBrainDump("welcome_dialog_closed", {});
+  // The first run is over: the walkthrough ended, or never had to open.
+  function finishFirstRun({ wasShown }: { wasShown: boolean }) {
+    if (wasShown) trackBrainDump("welcome_dialog_closed", {});
     clearWelcomePending();
-    setCapabilityCardsSeen(userId);
-    setIsWelcomeOpen(false);
+    setIsFirstRunPending(false);
   }
 
   // `serverSaysDone` as well as `isDone`: the effect that caches the verdict
@@ -148,14 +147,13 @@ export function useOnboardingIntroCard() {
     isMounted &&
     !isDone &&
     !serverSaysDone &&
-    !isWelcomeOpen &&
     hasIntroAnswer &&
     Boolean(intro?.greeting);
 
   return {
     isVisible,
-    // The greeting is on its way (modal up, no server answer yet, or the
-    // pipeline still writing): the page shows the orb alone, centered, and
+    // The greeting is on its way (no server answer yet, or the pipeline
+    // still writing): the page shows the orb alone, centered, and
     // holds the composer until the greeting takes over. The orb then
     // travels into the heading rather than being replaced by it, so this
     // must go false in the same commit `isVisible` goes true.
@@ -165,14 +163,15 @@ export function useOnboardingIntroCard() {
     // before the greeting page arrived. The loader fades in on a delay, so
     // the first frame does not flash the composer.
     isAwaitingGreeting:
-      !isMounted ||
-      (!isDone && (isWelcomeOpen || !hasIntroAnswer || isPendingGeneration)),
+      !isMounted || (!isDone && (!hasIntroAnswer || isPendingGeneration)),
     // Only the greeting itself reads top-down like a letter. The loader
     // stays centered — that is the distance the orb travels when the
     // greeting lands.
     anchorTop: isVisible,
-    isWelcomeOpen: !isDone && isWelcomeOpen,
-    closeWelcome,
+    // Independent of the greeting: whether someone has had the walkthrough
+    // has nothing to do with whether they have sent their first message.
+    isFirstRunPending,
+    finishFirstRun,
     greeting: intro?.greeting ?? "",
     transcript: typeof intro?.transcript === "string" ? intro.transcript : "",
     path: intro?.path ?? "B",

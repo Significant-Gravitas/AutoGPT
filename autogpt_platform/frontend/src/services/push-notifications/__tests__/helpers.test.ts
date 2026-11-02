@@ -120,6 +120,45 @@ describe("setupPushSubscription", () => {
     expect(result).toBe(false);
     expect(mockSendSubscriptionToServer).not.toHaveBeenCalled();
   });
+
+  it("neither subscribes nor reports to the server once cancelled", async () => {
+    const result = await setupPushSubscription(() => true);
+    expect(result).toBe(false);
+    expect(mockSubscribeToPush).not.toHaveBeenCalled();
+    expect(mockSendSubscriptionToServer).not.toHaveBeenCalled();
+  });
+
+  it("drops the subscription and does not report it when cancelled while subscribing", async () => {
+    mockRegistration.pushManager.getSubscription = vi
+      .fn()
+      .mockResolvedValue(null);
+    let cancelled = false;
+    mockSubscribeToPush.mockImplementation(async () => {
+      cancelled = true;
+      return mockSubscription;
+    });
+    const result = await setupPushSubscription(() => cancelled);
+    expect(result).toBe(false);
+    expect(mockUnsubscribeFromPush).toHaveBeenCalledWith(mockSubscription);
+    expect(mockSendSubscriptionToServer).not.toHaveBeenCalled();
+  });
+
+  it("keeps a subscription that was already there when cancelled while subscribing", async () => {
+    let cancelled = false;
+    mockSubscribeToPush.mockImplementation(async () => {
+      cancelled = true;
+      return { endpoint: mockSubscription.endpoint };
+    });
+    const result = await setupPushSubscription(() => cancelled);
+    expect(result).toBe(false);
+    expect(mockUnsubscribeFromPush).not.toHaveBeenCalled();
+    expect(mockSendSubscriptionToServer).not.toHaveBeenCalled();
+  });
+
+  it("keeps the subscription when not cancelled", async () => {
+    await setupPushSubscription(() => false);
+    expect(mockUnsubscribeFromPush).not.toHaveBeenCalled();
+  });
 });
 
 describe("teardownPushSubscription", () => {

@@ -1,5 +1,8 @@
 import { useContext, useEffect, useRef, useState } from "react";
-import { usePostV2ContinueChatWithAnsweredReviews } from "@/app/api/__generated__/endpoints/executions/executions";
+import {
+  type postV2ContinueChatWithAnsweredReviewsResponse,
+  usePostV2ContinueChatWithAnsweredReviews,
+} from "@/app/api/__generated__/endpoints/executions/executions";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
 import { ReviewStatus } from "@/app/api/__generated__/models/reviewStatus";
 import { toast } from "@/components/molecules/Toast/use-toast";
@@ -129,8 +132,8 @@ export function useApprovalQueue({
         // This box can continue, so an answer here waits for the chat's others.
         { waitForOtherCards: true },
       );
-      ok = res.status === 200 && res.data.failed_count === 0;
-      turnFollows = !(res.status === 200 && res.data.awaiting_other_cards);
+      ok = isAccepted(res);
+      turnFollows = isTurnStarting(res);
     } catch {
       ok = false;
     }
@@ -163,8 +166,7 @@ export function useApprovalQueue({
     const chatSessionId = pending[0]?.scope.session_id;
     if (!chatSessionId) return;
     try {
-      const res = await continueChat({ chatSessionId });
-      if (res.status !== 204) throw new Error(`status ${res.status}`);
+      assertContinued(await continueChat({ chatSessionId }));
     } catch {
       toast({
         title: "Could not continue",
@@ -233,6 +235,27 @@ export function useApprovalQueue({
     setConfirmRejectAll,
     answer,
   };
+}
+
+function isAccepted(
+  res: Awaited<
+    ReturnType<ReturnType<typeof useProcessReviews>["processReviews"]>
+  >,
+) {
+  return res.status === 200 && res.data.failed_count === 0;
+}
+
+function assertContinued(res: postV2ContinueChatWithAnsweredReviewsResponse) {
+  if (res.status !== 204) throw new Error(`status ${res.status}`);
+}
+
+// False while the chat's other cards still wait for an answer.
+function isTurnStarting(
+  res: Awaited<
+    ReturnType<ReturnType<typeof useProcessReviews>["processReviews"]>
+  >,
+) {
+  return !(res.status === 200 && res.data.awaiting_other_cards);
 }
 
 function receiptText(item: ApprovalItem, approved: boolean) {

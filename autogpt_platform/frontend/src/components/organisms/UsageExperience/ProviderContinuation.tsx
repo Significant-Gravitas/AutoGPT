@@ -9,8 +9,11 @@ interface Props {
 }
 export function ProviderContinuation({ name, onContinue, isSwitching }: Props) {
   return (
-    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-zinc-200 pt-4">
-      <Text variant="small" className="!text-zinc-500">
+    <div
+      data-slot="provider-continuation"
+      className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border-base pt-4"
+    >
+      <Text variant="small" tone="muted">
         Or keep going with your connected {name} account. The rest of this chat
         runs there.
       </Text>

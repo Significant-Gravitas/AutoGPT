@@ -20,7 +20,9 @@ from langfuse import Langfuse
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletion
 
+from backend.copilot.chat_platform_header import strip_chat_platform_header
 from backend.copilot.prompting import VOICE_TURN_TAG
+from backend.copilot.sandbox_status import SANDBOX_STATUS_TAG
 from backend.data.db_accessors import chat_db, understanding_db
 from backend.data.understanding import (
     BusinessUnderstanding,
@@ -318,6 +320,7 @@ SERVER_INJECTED_BLOCK_TAGS: tuple[str, ...] = (
     MATCHED_SKILLS_TAG,
     SEEN_CAPABILITIES_TAG,
     VOICE_TURN_TAG,
+    SANDBOX_STATUS_TAG,
     *_EXPERT_BLOCK_TAGS,
 )
 
@@ -608,6 +611,7 @@ async def inject_user_context(
     skills_ctx: str = "",
     user_id: str | None = None,
     expert_id: str | None = None,
+    expert_ctx: str | None = None,
 ) -> str | None:
     """Prepend trusted context blocks to the first user message.
 
@@ -669,6 +673,9 @@ async def inject_user_context(
             here — ``build_expert_identity_suffix`` puts ``<expert_identity>``
             in the system prompt instead, where it outranks message context.
             Lookup failures degrade silently to no block.
+        expert_ctx: That prefix when the caller already read it
+            (``first_message_expert_context``, which the SDK engine starts
+            during setup); ``None`` reads it here.
 
     Returns:
         ``str`` -- the sanitised (and optionally prefixed) message when
@@ -755,9 +762,10 @@ async def inject_user_context(
     # like the other trusted blocks; degrades to "" on any lookup failure so
     # the turn proceeds as plain Otto.  Per-session dynamic, so it sits
     # below the cached <available_skills> prefix.
-    expert_ctx = await build_expert_context(
-        user_id, expert_id, include_teammates=not kickoff_turn
-    )
+    if expert_ctx is None:
+        expert_ctx = await first_message_expert_context(
+            user_id, expert_id, session_messages
+        )
     if expert_ctx:
         final_message = expert_ctx + final_message
     # Prepend the per-user skill index as the OUTERMOST <available_skills>
@@ -792,6 +800,21 @@ async def inject_user_context(
                     )
             return final_message
     return None
+
+
+async def first_message_expert_context(
+    user_id: str | None,
+    expert_id: str | None,
+    session_messages: list[ChatMessage],
+) -> str:
+    """The ``<expert_workflows>`` / ``<team_context>`` prefix of a session's
+    first user message (``build_expert_context``); the hire's kickoff turn
+    leaves the roster out."""
+    return await build_expert_context(
+        user_id,
+        expert_id,
+        include_teammates=not _is_expert_kickoff_turn(session_messages),
+    )
 
 
 def _is_expert_kickoff_turn(session_messages: list[ChatMessage]) -> bool:
@@ -1087,7 +1110,11 @@ async def _record_title_generation_cost(
 
 
 async def _update_title_async(
-    session_id: str, message: str, user_id: str | None = None
+    session_id: str,
+    message: str,
+    user_id: str | None = None,
+    *,
+    bridge_origin: bool = False,
 ) -> None:
     """Generate and persist a session title in the background.
 
@@ -1096,7 +1123,11 @@ async def _update_title_async(
     steps — a failure in one does not cancel the other, so a flaky
     Prisma call on cost recording never costs us the generated title.
     """
-    title, response = await _generate_session_title(message, user_id, session_id)
+    title, response = await _generate_session_title(
+        strip_chat_platform_header(message, bridge_origin=bridge_origin),
+        user_id,
+        session_id,
+    )
 
     if user_id:
         try:

@@ -94,7 +94,7 @@ export default function AdminPreviewPage() {
         </button>
 
         <div className="flex items-center gap-3">
-          <span className="rounded-md bg-amber-500/20 px-3 py-1 text-sm font-medium text-amber-600">
+          <span className="rounded-md bg-warning/20 px-3 py-1 text-sm font-medium text-warning-foreground">
             Admin Preview
             {!data.has_approved_version && " — Pending Approval"}
           </span>
@@ -145,7 +145,7 @@ export default function AdminPreviewPage() {
             <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
               Instructions
             </h3>
-            <p className="whitespace-pre-wrap text-sm">{data.instructions}</p>
+            <p className="text-sm whitespace-pre-wrap">{data.instructions}</p>
           </div>
         )}
         {data.recommended_schedule_cron && (

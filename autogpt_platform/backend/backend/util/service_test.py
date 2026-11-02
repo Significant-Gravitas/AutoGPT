@@ -5,6 +5,7 @@ import logging
 import sys
 import threading
 import time
+from collections.abc import Callable
 from datetime import datetime, timezone
 from functools import cached_property
 from typing import Annotated, Any, Protocol, cast
@@ -19,13 +20,17 @@ from prisma.errors import DataError, UniqueViolationError
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from backend.data.model import User
+from backend.util import retry as retry_module
+from backend.util import service as service_module
 from backend.util import service_rpc_models_test_support as rpc_models
 from backend.util import tracing
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
     GraphValidationError,
+    NotFoundError,
 )
+from backend.util.process import AppProcess
 from backend.util.service import (
     AppService,
     AppServiceClient,
@@ -1002,6 +1007,37 @@ async def test_health_check_during_shutdown(test_service):
         pass
 
 
+def test_cleanup_of_a_service_stopped_before_run_finishes_the_chain(mocker):
+    """A SIGTERM in a deploy's first moments reaches `cleanup()` before `run()`
+    has created the shared loop (Sentry AUTOGPT-SERVER-ABN, A85, A7H, A54)."""
+    process_cleanup = mocker.patch.object(AppProcess, "cleanup")
+
+    _LoopService().cleanup()
+
+    process_cleanup.assert_called_once_with()
+
+
+def test_cleanup_stops_the_loop_run_created(mocker):
+    process_cleanup = mocker.patch.object(AppProcess, "cleanup")
+    service = _LoopService()
+    service.shared_event_loop = asyncio.new_event_loop()
+    loop_thread = threading.Thread(target=service._run_shared_event_loop, daemon=True)
+    loop_thread.start()
+
+    service.cleanup()
+    loop_thread.join(timeout=30)
+
+    assert not loop_thread.is_alive()
+    assert service.shared_event_loop.is_closed()
+    process_cleanup.assert_called_once_with()
+
+
+class _LoopService(AppService):
+    @classmethod
+    def get_port(cls) -> int:
+        return 0
+
+
 # ============================================================================
 # Unit tests for DynamicClient._get_return
 # ============================================================================
@@ -1343,3 +1379,174 @@ class _StartupRecordingService(AppService):
         async with super().lifespan(app):
             self.order.append("subclass startup")
             yield
+
+
+# ============================================================================
+# A client that meets a server from the previous release, during a rollout
+# ============================================================================
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("call_path", ["sync", "async"])
+async def test_a_call_to_a_route_the_old_server_lacks_waits_for_the_new_one(
+    previous_release, call_path
+):
+    client = get_service_client(RolloutServiceClient, request_retry=True)
+    if call_path == "sync":
+        call = asyncio.create_task(asyncio.to_thread(client.added_in_release))
+    else:
+        call = asyncio.create_task(client.added_in_release_async())
+    await asyncio.sleep(1.5)
+    assert not call.done()
+
+    previous_release.stop()
+    with RolloutServiceNewRelease():
+        assert await asyncio.wait_for(call, timeout=60) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("call_path", ["sync", "async"])
+@pytest.mark.parametrize("transport_error_at", [None, 100.0])
+async def test_each_call_waits_300_s_from_its_first_missing_route(
+    fake_clock, call_path, transport_error_at
+):
+    """A transport error between the 404s must not restart the wait."""
+    attempts: list[float] = []
+    transport_errors: list[float] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        attempts.append(fake_clock.now)
+        if fake_clock.now > 1000:  # ends a wait that is never cut off
+            return httpx.Response(200, json=2)
+        failing = (
+            transport_error_at is not None and fake_clock.now >= transport_error_at
+        )
+        if failing and not transport_errors:
+            transport_errors.append(fake_clock.now)
+            raise httpx.ConnectError("connection refused", request=request)
+        return httpx.Response(404, json={"detail": "Not Found"})
+
+    client = await _rollout_client_answered_by(answer)
+    for _ in range(2):
+        attempts.clear()
+        with pytest.raises(HTTPClientError) as exc_info:
+            if call_path == "sync":
+                call = asyncio.to_thread(client.added_in_release)
+            else:
+                call = client.added_in_release_async()
+            await asyncio.wait_for(call, timeout=30)
+
+        assert exc_info.value.status_code == 404
+        assert 240 <= attempts[-1] - attempts[0] < 300
+    assert bool(transport_errors) == (transport_error_at is not None)
+
+
+@pytest.mark.asyncio
+async def test_a_not_found_raised_by_the_method_is_not_retried(
+    previous_release, monkeypatch
+):
+    monkeypatch.setattr(service_module, "rpc_client_missing_route_wait_seconds", 2)
+    client = get_service_client(RolloutServiceClient, request_retry=True)
+
+    with pytest.raises(NotFoundError, match="record-1"):
+        await asyncio.wait_for(client.lookup(), timeout=30)
+
+    assert await client.lookup_calls() == 1
+
+
+@pytest.fixture
+def fake_clock(monkeypatch) -> "FakeClock":
+    clock = FakeClock()
+    monkeypatch.setattr(service_module, "monotonic", clock.monotonic)
+    monkeypatch.setattr(retry_module, "_interruptible_sleep", clock.sleep)
+    monkeypatch.setattr(retry_module, "_interruptible_async_sleep", clock.async_sleep)
+    return clock
+
+
+class FakeClock:
+    """The retries' clock and sleep, where a sleep only moves the clock on."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.now += seconds
+
+    async def async_sleep(self, seconds: float) -> None:
+        self.now += seconds
+
+
+async def _rollout_client_answered_by(
+    answer: Callable[[httpx.Request], httpx.Response]
+):
+    client = get_service_client(RolloutServiceClient, request_retry=True)
+    transport = httpx.MockTransport(answer)
+    inner = cast(Any, client)
+    inner._sync_clients[RolloutServiceNewRelease.__name__] = httpx.Client(
+        transport=transport, base_url=inner.base_url
+    )
+    inner._async_clients[asyncio.get_running_loop()] = httpx.AsyncClient(
+        transport=transport, base_url=inner.base_url
+    )
+    return client
+
+
+@pytest.fixture
+async def previous_release():
+    service = RolloutServicePreviousRelease()
+    service.start(background=True)
+    try:
+        await wait_until_service_ready(f"http://localhost:{service.get_port()}")
+        yield service
+    finally:
+        service.stop()
+
+
+class RolloutServicePreviousRelease(AppService):
+    def __init__(self):
+        super().__init__()
+        self.lookups = 0
+
+    @classmethod
+    def get_port(cls) -> int:
+        return 18996
+
+    @expose
+    def lookup(self) -> int:
+        self.lookups += 1
+        raise NotFoundError("record-1 not found")
+
+    @expose
+    def lookup_calls(self) -> int:
+        return self.lookups
+
+
+class RolloutServiceNewRelease(RolloutServicePreviousRelease):
+    # Only the class's own exposed methods are served.
+    lookup = RolloutServicePreviousRelease.lookup
+    lookup_calls = RolloutServicePreviousRelease.lookup_calls
+
+    @expose
+    def added_in_release(self) -> int:
+        return 2
+
+    def __enter__(self):
+        super().__enter__()
+        get_service_client(RolloutServiceClient, request_retry=True).health_check()
+        return self
+
+
+class RolloutServiceClient(AppServiceClient):
+    @classmethod
+    def get_service_type(cls):
+        return RolloutServiceNewRelease
+
+    added_in_release = RolloutServiceNewRelease.added_in_release
+    added_in_release_async = endpoint_to_async(
+        RolloutServiceNewRelease.added_in_release
+    )
+    lookup = endpoint_to_async(RolloutServicePreviousRelease.lookup)
+    lookup_calls = endpoint_to_async(RolloutServicePreviousRelease.lookup_calls)

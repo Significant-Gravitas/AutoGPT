@@ -39,6 +39,7 @@ from backend.copilot.baseline.reasoning import (
     anthropic_thinking_extra_body,
     reasoning_extra_body,
 )
+from backend.copilot.baseline.tool_order import writes_files
 from backend.copilot.baseline.tool_persistence import BaselineToolPersistence
 from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.builder_context import (
@@ -62,6 +63,7 @@ from backend.copilot.graphiti.context_marker import append_injected_memory_block
 from backend.copilot.graphiti.context_refresh import join_refresh, start_refresh
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.hidden_rows import visible_to_model
+from backend.copilot.host_fs import save_new_file
 from backend.copilot.learning.capture import capture_chat_turn, find_initiating_user_row
 from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
 from backend.copilot.llm_attribution import openrouter_attribution
@@ -130,6 +132,7 @@ from backend.copilot.response_model import (
     StreamUsage,
     ToolDisplayData,
 )
+from backend.copilot.sandbox_status import build_sandbox_replaced_notice
 from backend.copilot.service import (
     _build_system_prompt,
     _get_main_client,
@@ -350,9 +353,6 @@ _VISION_MIME_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/w
 # Max size for embedding images directly in the user message (20 MiB raw).
 _MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024
 
-# Matches characters unsafe for filenames.
-_UNSAFE_FILENAME = re.compile(r"[^\w.\-]")
-
 # OpenRouter-specific extra_body flag that embeds the real generation cost
 # into the final usage chunk. Module-level constant so we don't reallocate
 # an identical dict on every streaming call.
@@ -441,16 +441,7 @@ async def _prepare_baseline_attachments(
                     f"{file_info.size_bytes:,} bytes) [embedded as image]"
                 )
             else:
-                safe = _UNSAFE_FILENAME.sub("_", file_info.name) or "file"
-                candidate = os.path.join(working_dir, safe)
-                if os.path.exists(candidate):
-                    stem, ext = os.path.splitext(safe)
-                    idx = 1
-                    while os.path.exists(candidate):
-                        candidate = os.path.join(working_dir, f"{stem}_{idx}{ext}")
-                        idx += 1
-                with open(candidate, "wb") as f:
-                    f.write(content)
+                candidate = save_new_file(working_dir, file_info.name, content)
                 file_descriptions.append(
                     f"- {file_info.name} ({mime}, "
                     f"{file_info.size_bytes:,} bytes) saved to "
@@ -1845,6 +1836,7 @@ async def _enqueue_graphiti_turn(
         message,
         assistant_msg=assistant_msg,
         expert_id=session.expert_id,
+        bridge_origin=session.metadata.source_platform is not None,
     )
 
 
@@ -2089,7 +2081,12 @@ async def stream_chat_completion_baseline(
             first_message = user_messages[0].content or message or ""
             if first_message:
                 task = asyncio.create_task(
-                    _update_title_async(session_id, first_message, user_id)
+                    _update_title_async(
+                        session_id,
+                        first_message,
+                        user_id,
+                        bridge_origin=session.metadata.source_platform is not None,
+                    )
                 )
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
@@ -2321,6 +2318,8 @@ async def stream_chat_completion_baseline(
     # on ``user_message_for_transcript``: that would persist one stale figure
     # per turn, the same trap the warm-context injection below names.
     budget_status = await build_turn_budget_block(envelope, user_id)
+    if e2b_sandbox is not None:
+        budget_status += await build_sandbox_replaced_notice(session_id)
     if budget_status:
         for msg in reversed(openai_messages):
             if msg["role"] == "user":
@@ -2666,6 +2665,7 @@ async def stream_chat_completion_baseline(
                 update_conversation=_bound_conversation_updater,
                 max_iterations=max_tool_rounds,
                 last_iteration_message=_LAST_ITERATION_HINT,
+                runs_alone=writes_files,
             ):
                 loop_result_holder[0] = loop_result
                 # Engine switch requested (enter_agent_building_mode): end

@@ -10,31 +10,32 @@ const STATUS_CONFIG: Record<
   running: {
     label: "Running",
     bg: "",
-    text: "text-blue-600",
+    text: "text-info-foreground",
     pulse: true,
   },
   error: {
     label: "Error",
     bg: "",
-    text: "text-red-500",
+    text: "text-error",
     pulse: false,
   },
   listening: {
     label: "Listening",
     bg: "",
-    text: "text-purple-500",
+    text: "text-brand",
     pulse: true,
   },
   scheduled: {
     label: "Scheduled",
     bg: "",
+    // oxlint-disable-next-line design-system/no-raw-colors -- yellow-600 #DFAF00 has no role; gold to amber change deferred (see PR)
     text: "text-yellow-600",
     pulse: false,
   },
   idle: {
     label: "Idle",
     bg: "",
-    text: "text-zinc-500",
+    text: "text-foreground-tertiary",
     pulse: false,
   },
 };
@@ -71,14 +72,15 @@ export function StatusBadge({ status, className }: Props) {
 function statusDotColor(status: AgentStatus): string {
   switch (status) {
     case "running":
-      return "bg-blue-500";
+      return "bg-info";
     case "error":
-      return "bg-red-500";
+      return "bg-error";
     case "listening":
-      return "bg-purple-500";
+      return "bg-brand";
     case "scheduled":
+      // oxlint-disable-next-line design-system/no-raw-colors -- yellow-500 #F5C000 has no role; yellow to amber change deferred (see PR)
       return "bg-yellow-500";
     case "idle":
-      return "bg-zinc-400";
+      return "bg-foreground-subtle";
   }
 }

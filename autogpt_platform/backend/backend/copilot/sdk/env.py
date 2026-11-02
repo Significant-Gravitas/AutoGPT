@@ -15,6 +15,7 @@ from typing import Any
 from urllib.parse import urlparse, urlsplit, urlunsplit
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.host_fs import cli_tmpdir
 from backend.copilot.llm_attribution import openrouter_attribution
 from backend.copilot.moonshot import is_moonshot_model, moonshot_context_window
 from backend.copilot.sdk.subscription import host_login_env, validate_subscription
@@ -228,10 +229,10 @@ def build_sdk_env(
         env["CLAUDE_CODE_EXTRA_BODY"] = _broadcast_extra_body(session_id, user_id)
 
     # --- Common: workspace isolation + security hardening (all modes) ---
-    # Route subagent temp files into the per-session workspace so output
-    # files are accessible (fixes /tmp/claude-0/ permission errors in E2B).
+    # A per-session temp dir of the backend's own (fixes /tmp/claude-0/
+    # permission errors in E2B); the caller creates it with _make_cli_tmpdir.
     if sdk_cwd:
-        env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
+        env["CLAUDE_CODE_TMPDIR"] = cli_tmpdir(sdk_cwd)
 
     # Harden multi-tenant deployment: prevent loading untrusted workspace
     # .claude.md files, writing auto-memory, and sending non-essential

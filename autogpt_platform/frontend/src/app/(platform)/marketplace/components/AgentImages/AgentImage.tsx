@@ -35,7 +35,7 @@ export function AgentImages({ images }: AgentImagesProps) {
   if (images.length === 0) return null;
 
   return (
-    <div className="w-full px-2 dark:bg-transparent lg:w-3/5 lg:flex-1">
+    <div className="w-full px-2 lg:w-3/5 lg:flex-1">
       {/* Main preview */}
       <AgentImageItem
         image={images[selectedIndex]}
@@ -61,8 +61,8 @@ export function AgentImages({ images }: AgentImagesProps) {
                 className={cn(
                   "relative h-16 w-24 shrink-0 overflow-hidden rounded-lg border transition-all sm:h-20 sm:w-32",
                   selectedIndex === index
-                    ? "border-violet-500"
-                    : "border-zinc-100 opacity-70 hover:opacity-100",
+                    ? "border-brand"
+                    : "border-separator opacity-70 hover:opacity-100",
                 )}
               >
                 {thumbnail.kind === "image" &&
@@ -71,11 +71,8 @@ export function AgentImages({ images }: AgentImagesProps) {
                     <Skeleton className="absolute inset-0 rounded-lg" />
                   )}
                 {thumbnailFailed ? (
-                  <div className="flex h-full w-full items-center justify-center bg-zinc-100">
-                    <Icon
-                      icon={ImageNotFound01Icon}
-                      className="h-5 w-5 text-zinc-400"
-                    />
+                  <div className="flex h-full w-full items-center justify-center bg-surface-hover text-foreground-subtle">
+                    <Icon icon={ImageNotFound01Icon} className="h-5 w-5" />
                   </div>
                 ) : thumbnail.kind === "image" ? (
                   <img
@@ -89,16 +86,12 @@ export function AgentImages({ images }: AgentImagesProps) {
                     onError={() => markThumbFailed(thumbnail.src)}
                   />
                 ) : thumbnail.kind === "youtube" ? (
-                  <div className="flex h-full w-full items-center justify-center bg-zinc-100">
-                    <Icon
-                      icon={YoutubeIcon}
-                      aria-hidden
-                      className="h-6 w-6 text-zinc-400"
-                    />
+                  <div className="flex h-full w-full items-center justify-center bg-surface-hover text-foreground-subtle">
+                    <Icon icon={YoutubeIcon} aria-hidden className="h-6 w-6" />
                     <span className="sr-only">{thumbnail.label}</span>
                   </div>
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center bg-neutral-200 text-xs text-neutral-500">
+                  <div className="flex h-full w-full items-center justify-center bg-surface-active text-xs text-foreground-tertiary">
                     Video
                   </div>
                 )}

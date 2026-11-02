@@ -83,7 +83,9 @@ export function useExpertMap() {
 
   // Memoized on purpose: the identities read out of this map are passed as
   // props (`expertIdentity`) down the whole chat tree, so rebuilding it every
-  // render would hand every consumer a fresh object identity each time.
+  // render would hand every consumer a fresh object identity each time. Kept
+  // with the compiler on: `activeExpertIds` is an effect dependency of the
+  // recipient picker, which writes the URL when it runs.
   const expertCollections = useMemo(() => {
     const experts = expertsQuery.data;
     if (!experts)
