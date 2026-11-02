@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.blocks.anysearch.search import AnySearchBlock
 from backend.blocks.llm import AITextGeneratorBlock
 from backend.blocks.orchestrator import OrchestratorBlock
 from backend.data.execution import ExecutionContext, ExecutionStatus, NodeExecutionEntry
@@ -84,6 +85,13 @@ def test_a_value_that_cannot_be_converted_raises_when_asked():
     # The resolved input the node is queued with, defaults included.
     assert raised.value.data["model"] == _BAD_MODEL
     assert raised.value.data["credentials"] == _CREDENTIALS
+
+
+def test_a_required_input_that_arrives_empty_is_an_input_error():
+    """Present but None: the node can't be completed later, so it fails with
+    an error that says so rather than waiting forever."""
+    with pytest.raises(InputMismatchError, match=r"\['prompt'\] received no value"):
+        validate_exec(_llm_node("prompt"), {"prompt": None}, raise_on_mismatch=True)
 
 
 def test_a_value_that_does_not_match_the_schema_raises_when_asked():
@@ -231,6 +239,32 @@ async def test_a_node_with_usable_input_is_queued_unmarked():
         [("model_out", "gpt-4o"), ("prompt_out", "hi")],
         _db_client(target),
     )
+
+    assert len(queued) == 1
+    assert queued[0].input_error is None
+
+
+@pytest.mark.asyncio
+async def test_unused_credentials_do_not_mark_a_node_to_fail():
+    """`execute_node` drops optional credentials the chosen auth doesn't use
+    before validating, so queueing does the same: an anonymous search with an
+    empty credentials object runs, and is billed, like any other node."""
+    block = AnySearchBlock()
+    target = Node(
+        id="llm-node",
+        block_id=block.id,
+        input_default={"auth": "anonymous", "credentials": {}},
+        input_links=[
+            Link(
+                source_id="source-node",
+                sink_id="llm-node",
+                source_name="query_out",
+                sink_name="query",
+            )
+        ],
+    )
+
+    queued = await _route(target, [("query_out", "news")], _db_client(target))
 
     assert len(queued) == 1
     assert queued[0].input_error is None

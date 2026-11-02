@@ -448,10 +448,18 @@ def validate_exec(
     # A value that can't be converted is tolerated there for the same reason.
     if not dry_run:
         if error := conversion_error or schema.get_mismatch_error(data):
+            # A required input that arrived as None is present, so it isn't
+            # missing, but the schema check reports it as a required property.
+            if empty := sorted(
+                name
+                for name in schema.get_required_fields()
+                if name in data and data[name] is None
+            ):
+                error = f"required input {empty} received no value"
             error_message = f"{error_prefix} {error}"
-            logger.warning(error_message)
             if raise_on_mismatch:
                 raise InputMismatchError(error_message, data)
+            logger.warning(error_message)
             return None, error_message
 
     return data, node_block.name

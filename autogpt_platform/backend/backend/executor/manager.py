@@ -340,6 +340,23 @@ async def _finish_despite_cancel(work: Awaitable[T]) -> T:
         raise
 
 
+def _drop_unused_credentials(node: Node, inputs: BlockInput) -> None:
+    """Remove optional credential metadata that the selected discriminator does
+    not use before schema validation. Empty or stale objects would otherwise
+    fail their nested credential schema before the executor can ignore them."""
+    input_model = cast(type[BlockSchema], node.block.input_schema)
+    required_fields = input_model.get_required_fields()
+    for field_name, field_info in input_model.get_credentials_fields_info().items():
+        if not field_info.discriminator or field_name in required_fields:
+            continue
+        discriminator_value = inputs.get(
+            field_info.discriminator,
+            node.input_default.get(field_info.discriminator),
+        )
+        if not field_info.requires_credentials(discriminator_value):
+            inputs[field_name] = None
+
+
 async def execute_node(
     node: Node,
     data: NodeExecutionEntry,
@@ -386,20 +403,7 @@ async def execute_node(
 
     input_model = cast(type[BlockSchema], node_block.input_schema)
     credential_fields_info = input_model.get_credentials_fields_info()
-    required_credential_fields = set(input_model.get_required_fields())
-
-    # Remove optional credential metadata that the selected discriminator does
-    # not use before schema validation. Empty or stale objects would otherwise
-    # fail their nested credential schema before the executor can ignore them.
-    for field_name, field_info in credential_fields_info.items():
-        if not field_info.discriminator or field_name in required_credential_fields:
-            continue
-        discriminator_value = data.inputs.get(
-            field_info.discriminator,
-            node.input_default.get(field_info.discriminator),
-        )
-        if not field_info.requires_credentials(discriminator_value):
-            data.inputs[field_name] = None
+    _drop_unused_credentials(node, data.inputs)
 
     # Sanity check: validate the execution input. A value the node can't use
     # is raised, not yielded, so the node ends FAILED with the input error.
@@ -793,6 +797,8 @@ async def _enqueue_next_nodes(
         `execute_node` fails it with the error, rather than leaving it skipped
         while the run completes.
         """
+        # As `execute_node` does, so a node it would run isn't marked to fail.
+        _drop_unused_credentials(next_node, data)
         try:
             valid, msg = validate_exec(
                 next_node,
