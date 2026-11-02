@@ -2,13 +2,15 @@ import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
+from fakeredis.aioredis import FakeRedis
 from redis.exceptions import RedisError
 
 from backend.copilot import stream_registry as registry
-from backend.copilot.response_model import StreamError, StreamFinish
-
-fakeredis = pytest.importorskip("fakeredis.aioredis")
-pytest.importorskip("lupa")
+from backend.copilot.response_model import (
+    StreamError,
+    StreamFinish,
+    StreamRecoveredError,
+)
 
 
 @pytest.mark.asyncio
@@ -16,7 +18,7 @@ pytest.importorskip("lupa")
 async def test_lost_publication_recovers_after_next_turn_with_actual_lua(
     mocker, stopped
 ):
-    async with fakeredis.FakeRedis(decode_responses=True) as redis:
+    async with FakeRedis(decode_responses=True) as redis:
         mocker.patch.object(registry, "get_redis_async", return_value=redis)
         publish = registry.publish_chunk
 
@@ -47,7 +49,13 @@ async def test_lost_publication_recovers_after_next_turn_with_actual_lua(
         assert errors == (
             []
             if stopped
-            else [StreamError(errorText="provider unavailable", code="provider_down")]
+            else [
+                StreamRecoveredError(
+                    turn_id="old",
+                    errorText="provider unavailable",
+                    code="provider_down",
+                )
+            ]
         )
         active = await registry.get_session("s")
         assert active.turn_id == "next" and active.status == "running"
@@ -55,7 +63,7 @@ async def test_lost_publication_recovers_after_next_turn_with_actual_lua(
 
 @pytest.mark.asyncio
 async def test_resume_consumed_error_with_actual_stream_and_lua(mocker):
-    async with fakeredis.FakeRedis(decode_responses=True) as redis:
+    async with FakeRedis(decode_responses=True) as redis:
         mocker.patch.object(registry, "get_redis_async", return_value=redis)
         await registry.create_session("s", None, "", "", turn_id="t")
         assert await registry.mark_session_completed("s", "failure", turn_id="t")
@@ -68,7 +76,7 @@ async def test_resume_consumed_error_with_actual_stream_and_lua(mocker):
 
 @pytest.mark.asyncio
 async def test_lost_error_and_finish_recover_at_live_timeout(mocker):
-    async with fakeredis.FakeRedis(decode_responses=True) as redis:
+    async with FakeRedis(decode_responses=True) as redis:
         mocker.patch.object(registry, "get_redis_async", return_value=redis)
         await registry.create_session("s", None, "", "", turn_id="t")
         mocker.patch.object(
@@ -80,6 +88,9 @@ async def test_lost_error_and_finish_recover_at_live_timeout(mocker):
         mocker.patch.object(redis, "xread", new=AsyncMock(return_value=[]))
         queue = asyncio.Queue()
         await registry._stream_listener("s", queue, "0-0", turn_id="t")
-        assert queue.get_nowait() == (None, StreamError(errorText="failure"))
+        assert queue.get_nowait() == (
+            None,
+            StreamRecoveredError(turn_id="t", errorText="failure"),
+        )
         assert queue.get_nowait() == (None, StreamFinish())
         assert queue.empty()

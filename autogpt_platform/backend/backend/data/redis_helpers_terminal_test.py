@@ -1,6 +1,7 @@
 from unittest.mock import AsyncMock
 
 import pytest
+from fakeredis.aioredis import FakeRedis
 
 from backend.data.redis_helpers import hash_compare_and_set
 
@@ -33,9 +34,7 @@ async def test_invalid_companions_cannot_partially_complete(record, updates):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("decoded", [False, True])
 async def test_terminal_cas_lua_ownership_and_independent_ttl(decoded):
-    fakeredis = pytest.importorskip("fakeredis.aioredis")
-    pytest.importorskip("lupa")
-    async with fakeredis.FakeRedis(decode_responses=decoded) as redis:
+    async with FakeRedis(decode_responses=decoded) as redis:
         meta, first, second = "meta:{s}", "terminal:{s}:a", "terminal:{s}:b"
         await redis.hset(meta, mapping={"status": "running", "turn_id": "a"})
         assert await hash_compare_and_set(

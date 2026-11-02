@@ -59,6 +59,7 @@ from .response_model import (
     StreamReasoningDelta,
     StreamReasoningEnd,
     StreamReasoningStart,
+    StreamRecoveredError,
     StreamStart,
     StreamStartStep,
     StreamStatus,
@@ -830,7 +831,9 @@ async def _get_terminal_meta(
         return {}
 
 
-def _terminal_error(meta: Mapping[Any, Any], turn_id: str) -> StreamError | None:
+def _terminal_error(
+    meta: Mapping[Any, Any], turn_id: str
+) -> StreamRecoveredError | None:
     meta = {_as_text(key): _as_text(value) for key, value in meta.items()}
     if _as_text(meta.get("status")) != "failed":
         return None
@@ -838,15 +841,17 @@ def _terminal_error(meta: Mapping[Any, Any], turn_id: str) -> StreamError | None
     if recorded_turn != turn_id:
         return None
     if message := _as_text(meta.get("error_message")):
-        return StreamError(
-            errorText=message, code=_as_text(meta.get("error_code")) or None
+        return StreamRecoveredError(
+            turn_id=turn_id,
+            errorText=message,
+            code=_as_text(meta.get("error_code")) or None,
         )
     return None
 
 
 async def _recover_terminal_error(
     redis: AsyncRedisClient, session_id: str, turn_id: str, after: str
-) -> StreamError | None:
+) -> StreamRecoveredError | None:
     terminal = await _get_terminal_meta(redis, session_id, turn_id)
     error = _terminal_error(terminal, turn_id)
     if error is None or after == "0-0":
@@ -856,12 +861,16 @@ async def _recover_terminal_error(
     upper = after
     try:
         while True:
-            entries = await redis.xrevrange(
-                _get_turn_stream_key(turn_id),
-                max=upper,
-                count=config.stream_replay_count,
-            )
+            entries = (
+                await redis.xrevrange(
+                    _get_turn_stream_key(turn_id),
+                    max=upper,
+                    count=config.stream_replay_count,
+                )
+            ) or []
             for _, fields in entries:
+                if fields is None:
+                    continue
                 decoded = {_as_text(k): _as_text(v) for k, v in fields.items()}
                 if isinstance(_chunk_from_fields(decoded), StreamError):
                     return None

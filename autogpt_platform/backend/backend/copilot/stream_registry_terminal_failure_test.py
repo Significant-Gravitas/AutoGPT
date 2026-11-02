@@ -7,7 +7,11 @@ from redis.crc import key_slot
 from redis.exceptions import RedisError
 
 from backend.copilot import stream_registry as registry
-from backend.copilot.response_model import StreamError, StreamFinish
+from backend.copilot.response_model import (
+    StreamError,
+    StreamFinish,
+    StreamRecoveredError,
+)
 
 
 @pytest.fixture
@@ -53,7 +57,8 @@ async def test_failed_turn_recovers_error_before_finish(redis, path, finish_stor
         queue = asyncio.Queue()
         await registry._stream_listener("s", queue, "0-0", turn_id="t")
     entries = drain(queue)
-    assert [type(chunk) for _, chunk in entries] == [StreamError, StreamFinish]
+    assert [type(chunk) for _, chunk in entries] == [StreamRecoveredError, StreamFinish]
+    assert entries[0][1].turn_id == "t"
     assert entries[0][1].code == "provider_down"
     assert entries[0][1].errorText == "provider unavailable"
     assert entries[0][0] is None
@@ -139,7 +144,9 @@ async def test_per_turn_record_survives_successor_and_decodes(redis, encode):
     redis.get.return_value = terminal if encode else terminal.decode()
     redis.hgetall.return_value = {"turn_id": "next", "status": "running"}
     error = await registry._recover_terminal_error(redis, "s", "t", "0-0")
-    assert error == StreamError(errorText="provider unavailable", code="provider_down")
+    assert error == StreamRecoveredError(
+        turn_id="t", errorText="provider unavailable", code="provider_down"
+    )
     redis.get.return_value = None
     assert await registry._recover_terminal_error(redis, "s", "t", "0-0") is None
 
@@ -163,6 +170,37 @@ async def test_error_cursor_read_failure_preserves_finish(redis):
     redis.xread.side_effect = [stored(StreamFinish()), []]
     queue = await registry.subscribe_to_turn("s", "u", "t", "1-0")
     assert drain(queue) == [("t:2-0", StreamFinish())]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("entries", [None, [(b"1-0", None)]])
+async def test_missing_reverse_scan_entries_keep_terminal_recovery(redis, entries):
+    redis.xrevrange.return_value = entries
+    assert await registry._recover_terminal_error(
+        redis, "s", "t", "1-0"
+    ) == StreamRecoveredError(
+        turn_id="t", errorText="provider unavailable", code="provider_down"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stored_error", [False, True])
+async def test_consumed_error_scan_continues_with_exclusive_cursor(
+    redis, mocker, stored_error
+):
+    mocker.patch.object(registry.config, "stream_replay_count", 1)
+    finish = {"data": StreamFinish().model_dump_json()}
+    error = {"data": StreamError(errorText="provider unavailable").model_dump_json()}
+    redis.xrevrange.side_effect = [
+        [("3-0", finish)],
+        [("2-0", error if stored_error else finish)],
+        [],
+    ]
+    result = await registry._recover_terminal_error(redis, "s", "t", "3-0")
+    assert (result is None) == stored_error
+    assert [call.kwargs["max"] for call in redis.xrevrange.await_args_list] == (
+        ["3-0", "(3-0"] if stored_error else ["3-0", "(3-0", "(2-0"]
+    )
 
 
 @pytest.mark.asyncio
@@ -197,7 +235,10 @@ async def test_publication_failure_leaves_recoverable_terminal(
     )
     redis.xread.side_effect = [[("stream", entries)], []]
     queue = await registry.subscribe_to_session("s", None)
-    assert [type(chunk) for _, chunk in drain(queue)] == [StreamError, StreamFinish]
+    assert [type(chunk) for _, chunk in drain(queue)] == [
+        StreamError if failed_publish == "finish" else StreamRecoveredError,
+        StreamFinish,
+    ]
 
 
 @pytest.mark.asyncio

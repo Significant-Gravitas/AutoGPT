@@ -120,6 +120,7 @@ publicsuffixlist = "1.1.0.20261010"
 aiohappyeyeballs = "^2.6.1"
 black = "^24.10.0"
 faker = ">=38.2,<41.0"
+fakeredis = { version = "^2.40.0", extras = ["lua"] }
 isort = "^5.13.2"
 poethepoet = ">=0.41,<0.50"
 pre-commit = "^4.4.0"
