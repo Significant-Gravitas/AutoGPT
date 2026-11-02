@@ -1,4 +1,5 @@
 name: AutoGPT Platform - Backend CI
+run-name: Backend CI (${{ inputs.test_layout || 'paths' }}, ${{ github.event_name }})
 
 on:
   push:
@@ -15,6 +16,10 @@ on:
       - ".github/scripts/test_validate_backend_skips.py"
       - ".github/scripts/backend_test_shard.py"
       - ".github/scripts/test_backend_test_shard.py"
+      - ".github/scripts/backend_shard_*.py"
+      - ".github/scripts/test_backend_shard_weights.py"
+      - ".github/scripts/backend-test-durations.json"
+      - ".github/scripts/update_backend_test_durations.py"
       - ".github/scripts/backend-allowed-skips.json"
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
@@ -33,6 +38,10 @@ on:
       - ".github/scripts/test_validate_backend_skips.py"
       - ".github/scripts/backend_test_shard.py"
       - ".github/scripts/test_backend_test_shard.py"
+      - ".github/scripts/backend_shard_*.py"
+      - ".github/scripts/test_backend_shard_weights.py"
+      - ".github/scripts/backend-test-durations.json"
+      - ".github/scripts/update_backend_test_durations.py"
       - ".github/scripts/backend-allowed-skips.json"
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
@@ -51,6 +60,15 @@ on:
         description: "Open PR number to attach coverage to. Leave blank for a branch run."
         required: false
         type: string
+      test_layout:
+        description: "Backend shard layout to measure on this revision"
+        type: choice
+        options: [paths, weighted]
+        default: paths
+      benchmark:
+        description: "Keep coverage artifacts without sending benchmark uploads to Codecov"
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ format('backend-ci-{0}', github.event_name == 'workflow_dispatch' && github.run_id || (github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha)) }}
@@ -126,6 +144,11 @@ jobs:
         run: >-
           poetry run python -m unittest discover
           -s ../../.github/scripts -p 'test_validate_backend_skips.py'
+
+      - name: Test weighted shard collection
+        run: >-
+          poetry run python -m unittest discover
+          -s ../../.github/scripts -p 'test_backend_shard_weights.py'
 
     env:
       CI: true
@@ -607,6 +630,7 @@ jobs:
           REDIS_HOST: localhost
           GRAPHITI_FALKORDB_HOST: 127.0.0.1
           TRIAL_TEST_DATABASE: "1"
+          TEST_LAYOUT: ${{ inputs.test_layout || 'paths' }}
         run: |
           export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${DATABASE_NAME}"
           export DIRECT_URL="$DATABASE_URL"
@@ -625,7 +649,7 @@ jobs:
             pytest_args+=(-q)
           fi
 
-          python ../../.github/scripts/backend_test_shard.py "$TEST_SHARD" -- "${pytest_args[@]}"
+          python ../../.github/scripts/backend_test_shard.py --layout "$TEST_LAYOUT" "$TEST_SHARD" -- "${pytest_args[@]}"
 
       - name: Validate test reports
         if: ${{ always() }}
@@ -658,10 +682,11 @@ jobs:
           path: |
             autogpt_platform/backend/junit-${{ matrix.test-shard }}.xml
             autogpt_platform/backend/coverage-${{ matrix.test-shard }}.xml
+            autogpt_platform/backend/shard-metrics-${{ matrix.test-shard }}.json
           if-no-files-found: error
 
       - name: Upload coverage reports to Codecov
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !inputs.benchmark }}
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

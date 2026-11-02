@@ -4,7 +4,7 @@ import argparse
 import os
 import subprocess
 import sys
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 SHARDS = {
     "data": ["backend/data"],
@@ -50,6 +50,7 @@ def shard_args(shard: str) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--layout", choices=["paths", "weighted"], default="paths")
     parser.add_argument("shard", choices=[*SHARDS, "remainder"])
     parser.add_argument("pytest_args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
@@ -58,8 +59,27 @@ def main() -> int:
         pytest_args = pytest_args[1:]
     if args.shard == "data":
         os.environ["E2E_REDIS_CLUSTER_RESTART"] = "1"
+    os.environ["BACKEND_TEST_SHARD"] = args.shard
+    os.environ["BACKEND_TEST_LAYOUT"] = args.layout
+    scripts = str(Path(__file__).resolve().parent)
+    os.environ["PYTHONPATH"] = os.pathsep.join(
+        part for part in (scripts, os.environ.get("PYTHONPATH", "")) if part
+    )
+    selected = (
+        shard_args(args.shard)
+        if args.layout == "paths"
+        else ["-c", "pyproject.toml", ".", "../../.github/scripts"]
+    )
     return subprocess.run(
-        ["poetry", "run", "pytest", *shard_args(args.shard), *pytest_args],
+        [
+            "poetry",
+            "run",
+            "pytest",
+            "-p",
+            "backend_shard_plugin",
+            *selected,
+            *pytest_args,
+        ],
         check=False,
     ).returncode
 

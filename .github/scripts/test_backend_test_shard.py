@@ -7,9 +7,8 @@ from pathlib import Path
 from unittest.mock import patch
 from xml.etree import ElementTree
 
-import yaml
-
 import backend_test_shard
+import yaml
 from backend_test_shard import SHARDS, shard_args
 
 
@@ -132,7 +131,16 @@ class BackendShardTests(unittest.TestCase):
                 self.assertEqual(backend_test_shard.main(), 3)
                 self.assertEqual(os.environ.get("E2E_REDIS_CLUSTER_RESTART"), restart)
                 run.assert_called_once_with(
-                    ["poetry", "run", "pytest", *shard_args(shard), "-q"], check=False
+                    [
+                        "poetry",
+                        "run",
+                        "pytest",
+                        "-p",
+                        "backend_shard_plugin",
+                        *shard_args(shard),
+                        "-q",
+                    ],
+                    check=False,
                 )
 
     def test_every_shard_configures_isolated_services_and_unknown_shards_fail(self):
