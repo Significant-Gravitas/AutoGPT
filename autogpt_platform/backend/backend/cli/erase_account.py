@@ -205,6 +205,11 @@ def _report(report: "ErasureReport") -> None:
 def _finish(reports: list["ErasureReport"]) -> None:
     """Fail the command unless every step of every erasure went through, so
     a script never reads a partial run as done."""
+    if any(report.not_claimed for report in reports):
+        raise click.ClickException(
+            "Nothing was erased for an account its owner kept, or that is "
+            "erased already (see above)."
+        )
     unfinished = [report.user_id for report in reports if not report.complete]
     if unfinished:
         raise click.ClickException(

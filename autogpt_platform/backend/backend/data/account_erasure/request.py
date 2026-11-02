@@ -55,12 +55,13 @@ async def claim_request(user_id: str) -> str | None:
     an unclaimed row). Returns the request's ID, or None when there is nothing
     to claim: the owner kept the account, the 14 days are not over, or the
     erasure finished. A claim that an earlier, unfinished run made keeps its
-    first date. The database's clock decides, the same one Keep's statement
-    runs against, and no lock is held once it returns."""
+    first date. The database's clock decides, read in UTC as the columns are
+    stored (they have no time zone), and no lock is held once it returns."""
     rows = await query_raw_with_schema(
         'UPDATE {schema_prefix}"AccountDeletionRequest" '
-        'SET "startedAt" = COALESCE("startedAt", now()) '
-        'WHERE "userId" = $1 AND "completedAt" IS NULL AND "eraseAfter" <= now() '
+        'SET "startedAt" = COALESCE("startedAt", now() AT TIME ZONE \'UTC\') '
+        'WHERE "userId" = $1 AND "completedAt" IS NULL '
+        "AND \"eraseAfter\" <= now() AT TIME ZONE 'UTC' "
         'RETURNING "id"',
         user_id,
     )
@@ -100,12 +101,17 @@ async def send_confirmation(subject: Subject, *, dry_run: bool) -> StepReport:
         return StepReport(
             name="confirmation",
             status=StepStatus.SKIPPED,
-            note="no address left to send it to",
+            note="no address or erase date left to send it with",
         )
     if not dry_run:
         await asyncio.wait_for(
             send_account_deleted_email(
-                subject.email, subject.request_source, subject.erase_after
+                subject.email,
+                subject.request_source,
+                subject.erase_after,
+                # Claimed, so the 14 days are over whatever this pod's clock
+                # says: the email must not offer a Keep that is refused.
+                now=max(datetime.now(UTC), subject.erase_after),
             ),
             timeout=CONFIRMATION_TIMEOUT_SECONDS,
         )

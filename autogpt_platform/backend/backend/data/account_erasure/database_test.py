@@ -109,7 +109,7 @@ def db(monkeypatch):
 
     execute = AsyncMock(return_value=1)
     query = AsyncMock(return_value=[{"n": 7}])
-    invalidate = MagicMock()
+    invalidate = AsyncMock()
     monkeypatch.setattr(database, "transaction", transaction)
     monkeypatch.setattr(database, "execute_raw_with_schema", execute)
     monkeypatch.setattr(database, "query_raw_with_schema", query)
@@ -127,7 +127,7 @@ async def test_a_dry_run_only_counts(db):
     report = await database.delete_rows(SUBJECT, dry_run=True)
 
     db.execute.assert_not_awaited()
-    db.invalidate.assert_not_called()
+    db.invalidate.assert_not_awaited()
     assert report.status == StepStatus.WOULD_DO
     assert report.counts["user"] == 7
     assert report.counts["executions"] == 7
@@ -153,7 +153,7 @@ async def test_the_identity_and_the_account_go_in_the_same_transaction(db):
     assert identity < user == len(in_tx) - 1
     assert all(sql.startswith("DELETE FROM") for sql in in_tx)
     assert report.status == StepStatus.DONE
-    db.invalidate.assert_called_once_with(USER_ID, "sam@example.com")
+    db.invalidate.assert_awaited_once_with(USER_ID, "sam@example.com")
 
 
 @pytest.mark.asyncio

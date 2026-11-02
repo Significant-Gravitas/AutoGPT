@@ -74,7 +74,7 @@ async def delete_rows(subject: Subject, *, dry_run: bool) -> StepReport:
                 *deletion.args,
                 client=tx,
             )
-    _invalidate_user_caches(subject.user_id, subject.email)
+    await _invalidate_user_caches(subject.user_id, subject.email)
     return StepReport(name="database", status=StepStatus.DONE, counts=counts)
 
 

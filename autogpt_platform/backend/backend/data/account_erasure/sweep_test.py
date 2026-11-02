@@ -81,6 +81,27 @@ async def test_an_unclaimed_account_is_logged_as_skipped_not_as_an_error(
 
 
 @pytest.mark.asyncio
+async def test_an_account_kept_after_the_sweep_listed_it_is_not_an_error(
+    monkeypatch, caplog
+):
+    """Its request is gone by the time its turn comes, so it reads as not
+    closed: that needs no person."""
+    blocked = ErasureReport(
+        user_id="a",
+        dry_run=False,
+        blockers=[Blocker(name="not_closed", count=0, resolution="")],
+    )
+    monkeypatch.setattr(
+        sweep, "erase_account", AsyncMock(side_effect=AccountErasureBlocked(blocked))
+    )
+
+    with caplog.at_level("INFO", logger=sweep.logger.name):
+        await sweep.erase_each(["a"], dry_run=False)
+
+    assert [r.levelname for r in caplog.records] == ["INFO"]
+
+
+@pytest.mark.asyncio
 async def test_only_one_sweep_runs_at_a_time(monkeypatch):
     monkeypatch.setattr(sweep, "purge_expired_ban_records", AsyncMock(return_value=0))
     release = asyncio.Event()

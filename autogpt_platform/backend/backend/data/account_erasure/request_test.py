@@ -70,9 +70,12 @@ async def test_the_claim_is_one_conditional_statement(claim_query):
     sql, user_id = claim_query.await_args.args
     assert user_id == USER_ID
     assert sql.startswith('UPDATE {schema_prefix}"AccountDeletionRequest"')
-    assert 'SET "startedAt" = COALESCE("startedAt", now())' in sql
+    # The columns hold UTC without a zone: now() is read in UTC, so a
+    # database in another time zone doesn't cut the 14 days short.
+    utc_now = "now() AT TIME ZONE 'UTC'"
+    assert f'SET "startedAt" = COALESCE("startedAt", {utc_now})' in sql
     assert '"completedAt" IS NULL' in sql
-    assert '"eraseAfter" <= now()' in sql
+    assert f'"eraseAfter" <= {utc_now}' in sql
     assert 'RETURNING "id"' in sql
     assert "NULL," not in sql and '"startedAt" = NULL' not in sql
 
@@ -96,8 +99,11 @@ def email(monkeypatch):
 async def test_a_confirmation_the_close_could_not_send_goes_out_first(email):
     report = await request.send_confirmation(PENDING, dry_run=False)
 
-    email.send.assert_awaited_once_with(
-        EMAIL, AccountDeletionSource.SETTINGS, ERASE_AFTER
+    email.send.assert_awaited_once()
+    assert email.send.await_args.args == (
+        EMAIL,
+        AccountDeletionSource.SETTINGS,
+        ERASE_AFTER,
     )
     email.mark.assert_awaited_once_with(USER_ID)
     assert report.counts == {"emails": 1}
@@ -114,7 +120,25 @@ async def test_the_confirmation_is_worded_for_the_request_source(email):
 
     await request.send_confirmation(by_email, dry_run=False)
 
-    email.send.assert_awaited_once_with(EMAIL, AccountDeletionSource.EMAIL, ERASE_AFTER)
+    assert email.send.await_args.args == (
+        EMAIL,
+        AccountDeletionSource.EMAIL,
+        ERASE_AFTER,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_late_confirmation_follows_the_claim_not_this_pods_clock(email):
+    """Claimed, so the 14 days are over: even a pod whose clock is behind the
+    erase date sends the "being erased" wording, never a Keep it would
+    refuse."""
+    ahead = PENDING.model_copy(
+        update={"erase_after": datetime.now(UTC) + timedelta(minutes=5)}
+    )
+
+    await request.send_confirmation(ahead, dry_run=False)
+
+    assert email.send.await_args.kwargs["now"] >= ahead.erase_after
 
 
 @pytest.mark.asyncio
