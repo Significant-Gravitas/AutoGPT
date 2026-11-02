@@ -6,9 +6,11 @@
 --   One row per user: where they came from, captured once around
 --   signup by the browser that created the account. Carries the ids
 --   the analytics tools knew the user by before they had a user id,
---   so channel (DataFast) and product analytics and flag bucketing
---   (PostHog, via the shared anonymous id) can all be joined to
---   activation, retention and revenue on user_id.
+--   so channel (DataFast) and product analytics (PostHog, via the
+--   shared anonymous id) can be joined to activation, retention and
+--   revenue on user_id. No feature-flag bucket is recorded here:
+--   anonymous flag reads send no exposure event, and experiment arms
+--   are stored per user by the experiments API.
 --
 --   Join to analytics.user_lifecycle for "which channel brings users
 --   who activate". Rows exist only for users who signed up (or first

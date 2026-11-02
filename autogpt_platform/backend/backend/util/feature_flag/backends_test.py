@@ -23,7 +23,7 @@ from backend.util.feature_flag import (
     frontend,
     is_feature_enabled,
 )
-from backend.util.settings import AppEnvironment, Settings
+from backend.util.settings import AppEnvironment, Config, Secrets
 
 SERVER_READ_EXPERIMENT = "server-read-experiment"
 
@@ -73,11 +73,13 @@ class TestObsoleteBackendSettings:
         monkeypatch.setenv("FEATURE_FLAG_BACKEND", "launchdarkly")
         monkeypatch.setenv("LAUNCH_DARKLY_SDK_KEY", "sdk-leftover")
 
-        settings = Settings()
+        # Built after setenv, so the real env parsing runs over the leftovers.
+        config = Config()
+        secrets = Secrets()
 
         # Nothing reads them any more: they are not settings, just ignored values.
-        assert "feature_flag_backend" not in type(settings.config).model_fields
-        assert "launch_darkly_sdk_key" not in type(settings.secrets).model_fields
+        assert "feature_flag_backend" not in type(config).model_fields
+        assert "launch_darkly_sdk_key" not in type(secrets).model_fields
 
 
 class TestPostHogWithoutAKey:

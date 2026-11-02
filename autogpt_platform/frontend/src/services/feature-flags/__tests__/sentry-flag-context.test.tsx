@@ -123,14 +123,26 @@ describe("Sentry's flag context", () => {
   });
 });
 
+const FORCE_FLAG_PREFIX = "NEXT_PUBLIC_FORCE_FLAG_";
+let savedForceFlags: Record<string, string | undefined> = {};
+
+function forceFlagKeys() {
+  return Object.keys(process.env).filter((key) =>
+    key.startsWith(FORCE_FLAG_PREFIX),
+  );
+}
+
 beforeEach(() => {
   source.flags = {};
   sentry.addFeatureFlag.mockReset();
-  Object.keys(process.env)
-    .filter((key) => key.startsWith("NEXT_PUBLIC_FORCE_FLAG_"))
-    .forEach((key) => delete process.env[key]);
+  savedForceFlags = Object.fromEntries(
+    forceFlagKeys().map((key) => [key, process.env[key]]),
+  );
+  forceFlagKeys().forEach((key) => delete process.env[key]);
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  forceFlagKeys().forEach((key) => delete process.env[key]);
+  Object.assign(process.env, savedForceFlags);
 });

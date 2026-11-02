@@ -76,9 +76,10 @@ backend's own reads, so the browser and the backend give one answer from one
 project. A Vercel preview gets the answer of the backend it calls, and a
 backend without PostHog answers `configured: false`, so the browser serves its
 own defaults and stops asking. The set of flags it serves is `FrontendFlag` in
-`backend/util/feature_flag/frontend.py`. Only experiments read posthog-js
-directly: `useExperiment` reads the arm from the project
-`NEXT_PUBLIC_POSTHOG_KEY` names.
+`backend/util/feature_flag/frontend.py`. Experiments work the same way:
+`useExperiment` fetches the user's stored arm from the backend's experiments
+API, so enrolment follows the backend's PostHog project and secret.
+`NEXT_PUBLIC_POSTHOG_KEY` only decides where the browser reports exposures.
 
 **What a read sends.** A signed-in read sends PostHog the person properties
 `role`, `email`, `email_domain` and `created_at` from the auth user row, and a
