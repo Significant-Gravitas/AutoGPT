@@ -186,6 +186,12 @@ class _DuplicateToolResultError(ValueError):
     pass
 
 
+# A refusal of ours is a defect on our side, not an answer, so the turn fails
+# with the bot's own wording rather than reading as a successful reply.
+GATEWAY_REFUSED_CODE = "gateway_refused"
+GATEWAY_REFUSED_MESSAGE = "The model connection failed on our side — please try again"
+
+
 class CodexAnthropicGateway:
     def __init__(
         self,
@@ -210,6 +216,11 @@ class CodexAnthropicGateway:
         # is an HTTP status and a sentence; the typed exception only exists
         # in here.
         self.last_failure: ProviderFailure | None = None
+        # The last request this gateway refused itself, as opposed to a
+        # provider failure it relays. The service layer only ever sees the
+        # CLI's rendering of it ("API Error: 409 <message>"), which it would
+        # otherwise forward to the user as the assistant's answer.
+        self.last_refusal: str | None = None
         self.model = model
         self.effort: CodexReasoningEffort | None = effort
         self._transport = cast(
@@ -359,6 +370,11 @@ class CodexAnthropicGateway:
             if cleanup_error is not None:
                 raise cleanup_error
 
+    def _refuse(self, status: int, error_type: str, message: str) -> web.Response:
+        """Answer a request this gateway rejects itself, and remember it."""
+        self.last_refusal = message
+        return _anthropic_error(status, error_type, message)
+
     async def _handle_health(self, request: web.Request) -> web.Response:
         if not self._is_authorized(request):
             return _anthropic_error(401, "authentication_error", "Unauthorized")
@@ -383,21 +399,19 @@ class CodexAnthropicGateway:
 
     async def _handle_messages(self, request: web.Request) -> web.StreamResponse:
         if not self._is_authorized(request):
-            return _anthropic_error(401, "authentication_error", "Unauthorized")
+            return self._refuse(401, "authentication_error", "Unauthorized")
         try:
             payload = await request.json()
         except web.HTTPRequestEntityTooLarge:
-            return _anthropic_error(
-                413, "request_too_large", _REQUEST_TOO_LARGE_MESSAGE
-            )
+            return self._refuse(413, "request_too_large", _REQUEST_TOO_LARGE_MESSAGE)
         except (json.JSONDecodeError, ValueError):
-            return _anthropic_error(
+            return self._refuse(
                 400,
                 "invalid_request_error",
                 "Request body must be JSON",
             )
         if not isinstance(payload, dict):
-            return _anthropic_error(
+            return self._refuse(
                 400,
                 "invalid_request_error",
                 "Request body must be an object",
@@ -406,13 +420,13 @@ class CodexAnthropicGateway:
         try:
             continuation = self._continue_conversation(payload)
         except _DuplicateToolResultError as exc:
-            return _anthropic_error(
+            return self._refuse(
                 409,
                 "invalid_request_error",
                 str(exc),
             )
         except (TypeError, ValueError) as exc:
-            return _anthropic_error(
+            return self._refuse(
                 400,
                 "invalid_request_error",
                 str(exc),
@@ -425,7 +439,7 @@ class CodexAnthropicGateway:
             try:
                 conversation, replay_key = self._start_conversation(payload), None
             except (TypeError, ValueError) as exc:
-                return _anthropic_error(400, "invalid_request_error", str(exc))
+                return self._refuse(400, "invalid_request_error", str(exc))
         else:
             conversation = continuation.conversation
             replay_key = continuation.replay_key
@@ -459,7 +473,7 @@ class CodexAnthropicGateway:
                 streamed=streamed,
             )
         if replay is None:
-            return _anthropic_error(
+            return self._refuse(
                 409,
                 "invalid_request_error",
                 "This tool-result request was already accepted",
@@ -512,13 +526,13 @@ class CodexAnthropicGateway:
                     conversation=claimed_by[0].conversation,
                     replay_key=fingerprint,
                 )
-            if any(record.result is None for record, _ in known):
-                raise _DuplicateToolResultError(
-                    "This tool-result request refers to a closed model call"
-                )
-            raise _DuplicateToolResultError(
-                "This tool-result request refers to a completed model call"
-            )
+            # Nothing is waiting for these results, so there is no
+            # conversation left to continue. The attempt that made the calls
+            # was abandoned, and the one replacing it resumes the CLI session,
+            # so it replays them with a message appended and can never match a
+            # claim. /v1/messages is stateless: answer it as a new
+            # conversation, because refusing it killed the whole turn.
+            return None
 
         conversation = claimable[0][0].conversation
         if any(record.conversation is not conversation for record, _ in claimable):

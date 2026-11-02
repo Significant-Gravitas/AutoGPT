@@ -862,7 +862,15 @@ async def test_duplicate_tool_result_request_is_claimed_once_without_new_turn() 
 
 
 @pytest.mark.asyncio
-async def test_completed_tool_result_cannot_start_a_new_conversation() -> None:
+async def test_a_relaunched_attempt_starts_a_new_conversation() -> None:
+    """What a building-mode relaunch sends after the model used some tools.
+
+    The service interrupts the CLI and resumes the same session with the
+    guide added, so the replayed request carries results the abandoned
+    conversation already consumed, plus the continuation message -- which no
+    claim fingerprint can match. Refusing it killed the whole turn and sent
+    the refusal to the user as the reply (SECRT-3333).
+    """
     agent_session = _FakeAgentSession(use_tool=True)
     transport = _FakeTransport(agent_session)
     async with CodexAnthropicGateway(
@@ -876,34 +884,96 @@ async def test_completed_tool_result_cannot_start_a_new_conversation() -> None:
                 headers=_headers(gateway),
                 json=_tool_request("run"),
             )
-            gateway_call_id = _tool_use_id(await first.json())
-            continuation = _tool_result_request(gateway_call_id, "one result")
-            completed = await client.post(
+            abandoned_call_id = _tool_use_id(await first.json())
+            answered = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_result_request(abandoned_call_id, "one result"),
+            )
+            assert answered.status == 200
+            await answered.read()
+
+            relaunch = _tool_result_request(abandoned_call_id, "one result")
+            relaunch_messages = relaunch["messages"]
+            assert isinstance(relaunch_messages, list)
+            replayed_result = relaunch_messages[0]
+            relaunch_messages.append(
+                {"role": "user", "content": "Building mode is now active"}
+            )
+            # Every request carries the tool list, this one included: it is
+            # the one that has to open a conversation of its own.
+            relaunch["tools"] = _tool_request("run")["tools"]
+            resumed = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=relaunch,
+            )
+            assert resumed.status == 200
+            resumed_call_id = _tool_use_id(await resumed.json())
+
+            # The resumed session replays the abandoned result alongside the
+            # new one on every later round, so they must not refuse it either.
+            continuation = _tool_result_request(resumed_call_id, "second result")
+            continuation_messages = continuation["messages"]
+            assert isinstance(continuation_messages, list)
+            continuation_messages.insert(0, replayed_result)
+            continued = await client.post(
                 f"{gateway.base_url}/v1/messages",
                 headers=_headers(gateway),
                 json=continuation,
             )
-            assert completed.status == 200
-            await completed.read()
+            assert continued.status == 200
+            await continued.read()
 
-            replay = _tool_result_request(gateway_call_id, "one result")
-            replay_messages = replay["messages"]
-            assert isinstance(replay_messages, list)
-            replay_messages.insert(
-                0,
-                {"role": "user", "content": "different request fingerprint"},
-            )
-            duplicate = await client.post(
+    assert resumed_call_id != abandoned_call_id
+    assert len(agent_session.requests) == 2
+    assert "Building mode is now active" in agent_session.requests[1].prompt
+    assert agent_session.tool_result == CodexDynamicToolResult(
+        content="second result",
+        success=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_two_results_for_one_call_are_refused_and_remembered() -> None:
+    """The guard a relaunch must not cost: one call, one answer.
+
+    ``last_refusal`` is how the service layer tells our own 4xx, which the
+    CLI reports as an assistant-message error, from the model's answer.
+    """
+    agent_session = _FakeAgentSession(use_tool=True)
+    transport = _FakeTransport(agent_session)
+    async with CodexAnthropicGateway(
+        credential_lease=_lease(),
+        model="gpt-5.6-terra",
+        transport=transport,
+    ) as gateway:
+        assert gateway.last_refusal is None
+        async with ClientSession() as client:
+            first = await client.post(
                 f"{gateway.base_url}/v1/messages",
                 headers=_headers(gateway),
-                json=replay,
+                json=_tool_request("run"),
             )
-            duplicate_payload = await duplicate.json()
+            gateway_call_id = _tool_use_id(await first.json())
+            answered = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_result_request(gateway_call_id, "one result"),
+            )
+            assert answered.status == 200
+            await answered.read()
 
-    assert duplicate.status == 409
-    assert duplicate_payload["error"]["message"] == (
-        "This tool-result request refers to a completed model call"
-    )
+            conflicting = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_result_request(gateway_call_id, "another result"),
+            )
+            refused = await conflicting.json()
+
+    assert conflicting.status == 409
+    assert refused["error"]["message"].startswith("Conflicting result for tool_use_id")
+    assert gateway.last_refusal == refused["error"]["message"]
     assert len(agent_session.requests) == 1
 
 
