@@ -44,10 +44,12 @@ Notes
 - Safe to re-run: uses CREATE OR REPLACE VIEW.
 - CREATE OR REPLACE VIEW cannot drop or rename a column. After such a
   change, pass --recreate: it drops the selected views and creates them
-  again in the same transaction, with the grants they had. List every
-  view that reads from them in --only too; if one is missing, Postgres
-  refuses the drop and nothing changes. Views are created in file-name order, so a view must sort
-  after the views it reads.
+  again in the same transaction, with the view-level grants they had
+  (column-level grants are not kept). Run it as the role that owns the
+  views. List every view that reads from them in --only too; if one is
+  missing, Postgres refuses the drop and nothing changes. Views are
+  created in file-name order, so a view must sort after the views it
+  reads.
 - Looker, PostHog Data Warehouse, and Supabase MCP all read from the
   same analytics.* views — no raw tables exposed.
 """

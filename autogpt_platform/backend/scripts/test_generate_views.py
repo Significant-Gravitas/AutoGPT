@@ -50,7 +50,11 @@ def test_recreate_restores_the_grants_the_views_had(
     save = out.index("CREATE TEMP TABLE analytics_view_grants ON COMMIT DROP")
     assert "c.relname IN ('user_lifecycle', 'user_lifecycle_funnel_weekly')" in out
     assert save < out.index("DROP VIEW IF EXISTS")
+    assert "WHEN a.grantee = 0 THEN 'PUBLIC'" in out
+    assert "a.grantee <> c.relowner" in out
     restore = out.index("FOR g IN SELECT * FROM analytics_view_grants")
+    assert "'GRANT %s ON analytics.%I TO %s%s'" in out
+    assert "WHEN g.is_grantable THEN ' WITH GRANT OPTION'" in out
     assert restore > out.index(
         "CREATE OR REPLACE VIEW analytics.user_lifecycle_funnel_weekly "
     )
