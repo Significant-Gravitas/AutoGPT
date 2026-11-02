@@ -41,7 +41,7 @@ def has_full_sandbox() -> bool:
     return _BWRAP_AVAILABLE
 
 
-WORKSPACE_PREFIX = os.path.normpath(
+WORKSPACE_PREFIX = os.path.realpath(
     os.environ.get("COPILOT_WORKSPACE_PREFIX") or "/tmp/copilot-"
 )
 
