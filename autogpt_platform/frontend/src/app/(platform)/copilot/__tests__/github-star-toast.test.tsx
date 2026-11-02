@@ -9,9 +9,11 @@ import {
 } from "@/tests/integrations/copilot-sse";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { UIMessageChunk } from "ai";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  clickStop,
   renderHost,
   resetChatRuntimes,
   TEST_BACKEND_BASE_URL,
@@ -19,8 +21,9 @@ import {
   typeAndSend,
 } from "./sse-helpers";
 
-// A self-hosted install asks for a GitHub star once, after the fifth prompt;
-// the hosted dev and prod sites never ask.
+// A self-hosted install asks for a GitHub star once Otto has answered five
+// prompts; a failed or stopped answer doesn't count, and the hosted dev and
+// prod sites never ask.
 
 vi.mock("@/services/environment", async (importActual) => {
   const actual = await importActual<typeof import("@/services/environment")>();
@@ -55,6 +58,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
 
 const STAR_TOAST_TITLE = "Enjoying AutoGPT?";
 const REPO_URL = "https://github.com/Significant-Gravitas/AutoGPT";
+const FAILURE = "The model provider stopped responding.";
 
 // What the backend has persisted so far: the stream-end hydrate replaces the
 // live list with these rows, exactly as it does in production.
@@ -95,12 +99,14 @@ function storedSessionHandler() {
   );
 }
 
-interface HeldTurn {
-  turn: number;
-  hold: StreamHold;
+interface Turns {
+  /** Parks this turn's stream until the test releases it. */
+  held?: { turn: number; hold: StreamHold };
+  /** This turn starts answering, then fails the way a provider error does. */
+  failedTurn?: number;
 }
 
-function answeringStreamHandler(held?: HeldTurn) {
+function answeringStreamHandler({ held, failedTurn }: Turns) {
   let turn = 0;
   return http.post(
     `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
@@ -108,40 +114,27 @@ function answeringStreamHandler(held?: HeldTurn) {
       const body = (await request.json()) as { message?: string };
       turn += 1;
       const answer = `Answer ${turn}`;
+      const failed = turn === failedTurn;
       stored.messages = [
         ...stored.messages,
         sessionMessage(turn * 2 - 1, "user", body.message ?? ""),
-        sessionMessage(turn * 2, "assistant", answer),
+        ...(failed ? [] : [sessionMessage(turn * 2, "assistant", answer)]),
       ];
-      return streamSseResponse(
-        assistantTextChunks(answer, {
-          messageId: `answer-${turn}`,
-          textPartId: `answer-${turn}-text`,
-        }),
-        {
-          abortSignal: request.signal,
-          hold: held?.turn === turn ? held.hold : undefined,
-        },
-      );
+      const chunks: UIMessageChunk[] = assistantTextChunks(answer, {
+        messageId: `answer-${turn}`,
+        textPartId: `answer-${turn}-text`,
+      });
+      if (failed) chunks.splice(-2, 2, { type: "error", errorText: FAILURE });
+      return streamSseResponse(chunks, {
+        abortSignal: request.signal,
+        hold: held?.turn === turn ? held.hold : undefined,
+      });
     },
   );
 }
 
-// The backend takes a follow-up typed while a turn is still answering.
-function pendingFollowUpHandler() {
-  return http.post(
-    `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/messages/pending`,
-    () =>
-      HttpResponse.json({
-        buffer_length: 1,
-        max_buffer_length: 10,
-        turn_in_flight: true,
-      }),
-  );
-}
-
-function renderChat(held?: HeldTurn) {
-  server.use(answeringStreamHandler(held), pendingFollowUpHandler());
+function renderChat(turns: Turns = {}) {
+  server.use(answeringStreamHandler(turns));
   renderHost();
   // Registered after renderHost so the stored rows win over the empty session.
   server.use(storedSessionHandler());
@@ -159,12 +152,6 @@ async function waitForTurnToSettle() {
     () => expect(screen.queryByRole("button", { name: "Stop" })).toBeNull(),
     { timeout: 5000 },
   );
-}
-
-async function queueFollowUp(text: string) {
-  const user = userEvent.setup();
-  await user.type(screen.getByLabelText(/chat message input/i), text);
-  await user.click(screen.getByRole("button", { name: "Queue message" }));
 }
 
 // A browser opens the link in a new tab and leaves this page alone; happy-dom
@@ -194,7 +181,7 @@ afterEach(() => {
 });
 
 describe("GitHub star toast", () => {
-  it("asks once, after the fifth prompt, on a self-hosted install", async () => {
+  it("asks once, after the fifth answer, on a self-hosted install", async () => {
     vi.stubEnv("NEXT_PUBLIC_APP_ENV", "local");
     renderChat();
 
@@ -216,21 +203,36 @@ describe("GitHub star toast", () => {
     expect(screen.queryByText(STAR_TOAST_TITLE)).toBeNull();
   }, 60_000);
 
-  it("counts a follow-up queued while Otto is still answering", async () => {
+  it("doesn't ask beside a failed answer, and asks after the next one", async () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_ENV", "local");
+    renderChat({ failedTurn: 5 });
+
+    for (let turn = 1; turn <= 4; turn++) await sendPrompt(turn);
+    await typeAndSend("Prompt 5");
+    expect(
+      await screen.findByText(FAILURE, { exact: false }, { timeout: 5000 }),
+    ).toBeDefined();
+    await waitForTurnToSettle();
+    expect(screen.queryByText(STAR_TOAST_TITLE)).toBeNull();
+
+    await sendPrompt(6);
+    expect(await screen.findByText(STAR_TOAST_TITLE)).toBeDefined();
+  }, 60_000);
+
+  it("doesn't count an answer the user stopped", async () => {
     vi.stubEnv("NEXT_PUBLIC_APP_ENV", "local");
     const { hold, release } = createStreamHold(1);
-    renderChat({ turn: 4, hold });
+    renderChat({ held: { turn: 5, hold } });
 
-    for (let turn = 1; turn <= 3; turn++) await sendPrompt(turn);
-    await typeAndSend("Prompt 4");
-    await screen.findByRole("button", { name: "Stop" });
-    await queueFollowUp("And one more thing");
-    release();
-    await screen.findByText("Answer 4", undefined, { timeout: 5000 });
-    await waitForTurnToSettle();
-
-    // Three answered prompts, the fourth and its follow-up make five.
-    expect(await screen.findByText(STAR_TOAST_TITLE)).toBeDefined();
+    try {
+      for (let turn = 1; turn <= 4; turn++) await sendPrompt(turn);
+      await typeAndSend("Prompt 5");
+      await clickStop();
+      await waitForTurnToSettle();
+      expect(screen.queryByText(STAR_TOAST_TITLE)).toBeNull();
+    } finally {
+      release();
+    }
   }, 60_000);
 
   it.each(["dev", "prod"])(
