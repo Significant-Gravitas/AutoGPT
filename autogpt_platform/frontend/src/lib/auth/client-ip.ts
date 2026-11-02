@@ -23,7 +23,8 @@ export function isForwardedForTrusted() {
 // The proxies in front of us, as IP addresses or CIDR ranges: Better Auth strips
 // them from the right of X-Forwarded-For to reach the client. It only warns on an
 // entry it cannot parse and then ignores it, which puts every caller back in one
-// rate-limit bucket, so a bad entry fails startup here instead.
+// rate-limit bucket, so a bad entry throws here instead; instrumentation.ts calls
+// this at server start, so the server refuses to come up rather than 500 later.
 export function trustedProxies() {
   const entries = (process.env.TRUSTED_PROXIES ?? "")
     .split(",")
