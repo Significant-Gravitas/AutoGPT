@@ -2273,7 +2273,9 @@ async def stream_chat_completion_baseline(
             )
             if invoked is not None:
                 current_user["content"] = invoked
-                user_message_for_transcript = invoked
+                user_message_for_transcript = invoked.removeprefix(
+                    transcript_context_prefix
+                )
 
     # Now that ``inject_user_context`` has wrapped + persisted the
     # original turn-starting send into its row, fold pending into the

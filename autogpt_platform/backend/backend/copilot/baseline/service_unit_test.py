@@ -3931,3 +3931,39 @@ class TestStampPostHogTrace:
         for stamp, save in pairs:
             stamped_at = src.index(stamp)
             assert stamped_at < src.index(save, stamped_at)
+
+
+@pytest.mark.asyncio
+async def test_skill_invocation_keeps_one_first_turn_context_in_transcript():
+    from backend.copilot.skill_invocation import InvocableSkill
+    from backend.copilot.tools.skills import ParsedSkill
+
+    session = _baseline_session("/report weekly")
+    found = InvocableSkill(
+        skill=ParsedSkill(name="report", description="Write a report", body="Write $0"),
+        is_default=True,
+    )
+    skills_context = "<available_skills>report</available_skills>"
+    turn = await _run_baseline_turn(
+        session,
+        first_block=None,
+        refresh=_refresh_nothing,
+        extra=[
+            (
+                f"{_BASELINE}.build_skills_context",
+                dict(new=AsyncMock(return_value=skills_context)),
+            ),
+            (
+                "backend.copilot.skill_invocation.is_skills_feature_enabled",
+                dict(new=AsyncMock(return_value=True)),
+            ),
+            (
+                "backend.copilot.skill_invocation.resolve_invocable_skill",
+                dict(new=AsyncMock(return_value=found)),
+            ),
+        ],
+    )
+    assert "Write weekly" in turn.model_input()
+    assert turn.model_input().count(skills_context) == 1
+    assert turn.uploaded().count(skills_context.encode()) == 1
+    assert turn.uploaded().count(b"<skill_invocation>") == 1
