@@ -141,6 +141,23 @@ def test_a_node_waiting_for_a_tool_output_keeps_waiting():
     assert "last_tool_output" in error
 
 
+def test_a_node_waiting_for_a_tool_output_keeps_waiting_with_a_bad_value():
+    """The rest of the input is still converted after a value that can't be,
+    so the missing-input check reads the converted history."""
+    block = OrchestratorBlock()
+    node = Node(block_id=block.id, input_default={"prompt": "hi"})
+    history = '[{"role": "assistant", "tool_calls": [{"id": "call-1"}]}]'
+
+    data, error = validate_exec(
+        node,
+        {"model": _BAD_MODEL, "conversation_history": history},
+        raise_on_mismatch=True,
+    )
+
+    assert data is None
+    assert "last_tool_output" in error
+
+
 def test_a_dry_run_tolerates_a_value_it_cannot_convert():
     """A dry run simulates the block, so like a schema mismatch, a value that
     can't be converted doesn't fail it."""
@@ -294,6 +311,7 @@ async def test_a_node_waiting_on_a_static_link_is_queued_to_fail():
 
     assert [entry.node_exec_id for entry in queued] == ["llm-exec-1", "llm-exec-0"]
     assert all(entry.inputs["model"] == _BAD_MODEL for entry in queued)
+    assert all(entry.input_error for entry in queued)
 
 
 @pytest.mark.asyncio

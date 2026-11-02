@@ -243,6 +243,30 @@ def test_a_redelivery_after_a_pod_died_bills_the_block_once(harness, costs, bill
     assert harness.wallet.total == billed, harness.wallet.spent
 
 
+def _fails_on_its_input(row: NodeRow):
+    """``execute_node`` rejects an input the block can't use before it runs."""
+
+    async def run(*, stats: NodeExecutionStats, **_):
+        row.status = ExecutionStatus.FAILED
+        stats.error = ValueError("Input `input` can't take the value")
+        return TimingInfo(cpu_time=0.0, wall_time=0.0), ExecutionStatus.FAILED
+
+    return run
+
+
+@pytest.mark.parametrize("costs", [PER_RUN, USAGE_PRICED], ids=["per-run", "usage"])
+def test_a_node_queued_to_fail_on_its_input_is_not_billed(harness, costs):
+    """An upstream output gave the node a value it can't use, so it was queued
+    only to fail with the input error (SECRT-1258). The marker is in-memory and
+    rides on the entry the dispatcher takes off the queue."""
+    harness.price(costs)
+    harness.row.entry.input_error = "Input `input` can't take the value"
+
+    harness.dispatch(_fails_on_its_input(harness.row))
+
+    assert harness.wallet.spent == []
+
+
 async def test_a_parked_block_reports_a_completed_run_with_nothing_to_bill():
     """The premise ``_parks_for_review`` stubs, through the real block run: a
     block that parks for review yields nothing and its run reports COMPLETED."""
