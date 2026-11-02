@@ -19,6 +19,8 @@ from backend.notifications.auth import (
 from backend.notifications.renderer import build_urls
 
 ERASE_AFTER = datetime(2026, 11, 13, 23, 30, tzinfo=timezone.utc)
+# When closing sends the email: the 14 days are still ahead.
+SENT_AT = ERASE_AFTER - timedelta(days=14)
 DATED_PREHEADER = (
     "Changed your mind? Sign in by 12 Nov 2026 and choose Keep my account. "
     "After that, everything in your account is erased."
@@ -161,7 +163,9 @@ def send(monkeypatch) -> MagicMock:
     "source", [AccountDeletionSource.SETTINGS, AccountDeletionSource.PAYWALL]
 )
 async def test_send_account_deleted_email_replies_to_the_shared_inbox(send, source):
-    await auth_email.send_account_deleted_email("sam@example.com", source, ERASE_AFTER)
+    await auth_email.send_account_deleted_email(
+        "sam@example.com", source, ERASE_AFTER, now=SENT_AT
+    )
 
     email = render_auth_email(
         "account_deleted",
@@ -182,13 +186,31 @@ async def test_send_account_deleted_email_replies_to_the_shared_inbox(send, sour
 async def test_an_email_request_gets_its_own_reason_line(send):
     """A request made by email to privacy@ was not made in AutoGPT."""
     await auth_email.send_account_deleted_email(
-        "sam@example.com", AccountDeletionSource.EMAIL
+        "sam@example.com", AccountDeletionSource.EMAIL, ERASE_AFTER, now=SENT_AT
     )
 
     _, _, html, text = send.call_args.args
     assert "You asked us by email to delete your account." in html
     assert "You asked us by email to delete your account." in text
     assert "You deleted your account in AutoGPT." not in html + text
+
+
+async def test_a_confirmation_sent_after_the_14_days_says_the_account_is_being_erased(
+    send,
+):
+    """The erasure sends the confirmation closing could not; by then a "Sign
+    in by" date would already be past."""
+    await auth_email.send_account_deleted_email(
+        "sam@example.com",
+        AccountDeletionSource.SETTINGS,
+        ERASE_AFTER,
+        now=ERASE_AFTER + timedelta(hours=1),
+    )
+
+    _, _, html, text = send.call_args.args
+    assert auth_email.ACCOUNT_BEING_ERASED_PREHEADER in text
+    assert "Sign in by" not in html + text
+    assert "Keep my account" not in html + text
 
 
 async def test_send_account_deleted_email_uses_the_configured_reply_to(
@@ -199,7 +221,7 @@ async def test_send_account_deleted_email_uses_the_configured_reply_to(
     )
 
     await auth_email.send_account_deleted_email(
-        "sam@example.com", AccountDeletionSource.SETTINGS, ERASE_AFTER
+        "sam@example.com", AccountDeletionSource.SETTINGS, ERASE_AFTER, now=SENT_AT
     )
 
     assert send.call_args.kwargs["reply_to"] == "inbox@example.org"
@@ -213,7 +235,7 @@ async def test_send_account_deleted_email_raises_when_delivery_fails(send):
 
     with pytest.raises(RuntimeError, match="Postmark is not configured"):
         await auth_email.send_account_deleted_email(
-            "sam@example.com", AccountDeletionSource.SETTINGS, ERASE_AFTER
+            "sam@example.com", AccountDeletionSource.SETTINGS, ERASE_AFTER, now=SENT_AT
         )
 
 
@@ -221,7 +243,7 @@ async def test_send_account_deleted_email_names_the_last_day_to_keep_the_account
     send,
 ):
     await auth_email.send_account_deleted_email(
-        "sam@example.com", AccountDeletionSource.SETTINGS, ERASE_AFTER
+        "sam@example.com", AccountDeletionSource.SETTINGS, ERASE_AFTER, now=SENT_AT
     )
 
     _, subject, html, text = send.call_args.args
