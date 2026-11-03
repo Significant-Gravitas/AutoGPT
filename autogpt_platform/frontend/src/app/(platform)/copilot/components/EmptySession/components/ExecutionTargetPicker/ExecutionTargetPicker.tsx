@@ -39,7 +39,7 @@ export function ExecutionTargetPicker() {
             <button
               type="button"
               aria-label={`Execution target: ${isLocal ? "Local PC" : "Cloud"}`}
-              className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-full border border-border-base bg-surface px-3 py-2 text-sm font-medium text-foreground-emphasis shadow-sm outline-none hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+              className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-full border border-border-base bg-surface px-3 py-2 text-body font-medium text-foreground-emphasis shadow-sm outline-none hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
             >
               {isLocal ? (
                 <span className="flex shrink-0 text-brand">
@@ -66,7 +66,7 @@ export function ExecutionTargetPicker() {
               <DropdownMenuRadioItem value="cloud" className="min-h-12">
                 <div className="flex min-w-0 flex-col">
                   <span className="font-medium">Cloud</span>
-                  <span className="text-xs text-foreground-tertiary">
+                  <span className="text-caption text-foreground-tertiary">
                     Run in an isolated hosted environment
                   </span>
                 </div>
@@ -74,7 +74,7 @@ export function ExecutionTargetPicker() {
               <DropdownMenuRadioItem value="local" className="min-h-12">
                 <div className="flex min-w-0 flex-col">
                   <span className="font-medium">Local PC</span>
-                  <span className="text-xs text-foreground-tertiary">
+                  <span className="text-caption text-foreground-tertiary">
                     Run on a connected computer and folder
                   </span>
                 </div>
@@ -92,7 +92,7 @@ export function ExecutionTargetPicker() {
                 ? `Local folder: ${picker.target.displayPath}. Change folder`
                 : "Choose a Local PC folder"
             }
-            className="inline-flex min-h-11 max-w-full min-w-0 items-center gap-2 rounded-full border border-border-base bg-surface px-3 py-2 text-sm text-foreground-body shadow-sm outline-none hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+            className="inline-flex min-h-11 max-w-full min-w-0 items-center gap-2 rounded-full border border-border-base bg-surface px-3 py-2 text-body text-foreground-body shadow-sm outline-none hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
           >
             <span className="flex shrink-0 text-warning">
               <Icon icon={FolderOpenIcon} size={17} aria-hidden="true" />
@@ -107,7 +107,7 @@ export function ExecutionTargetPicker() {
       {picker.error && picker.target.kind === "local" ? (
         <p
           role="alert"
-          className="mb-2 px-3 text-left text-xs font-medium text-warning-foreground"
+          className="mb-2 px-3 text-left text-caption font-medium text-warning-foreground"
         >
           {picker.error}
         </p>

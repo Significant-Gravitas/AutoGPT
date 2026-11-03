@@ -18,7 +18,7 @@ function MetadataField({ label, value }: MetadataFieldProps) {
       <dt className="text-caption-sm leading-inherit font-medium tracking-wide text-foreground-tertiary uppercase">
         {label}
       </dt>
-      <dd className="font-mono text-xs break-all text-foreground-emphasis">
+      <dd className="font-mono text-caption break-all text-foreground-emphasis">
         {value}
       </dd>
     </div>
@@ -105,7 +105,7 @@ export function RecordingReview({
                   className="flex flex-col gap-2 rounded-md border border-border-base px-3 py-2 sm:flex-row sm:items-start sm:justify-between"
                 >
                   <div className="flex min-w-0 flex-1 flex-col gap-1">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-foreground-strong">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-body text-foreground-strong">
                       <span className="font-medium">
                         Step {step.seq}: {step.action}
                       </span>
@@ -142,7 +142,7 @@ export function RecordingReview({
                     <details className="group mt-1">
                       <summary
                         aria-label={`View retained metadata for step ${step.seq}`}
-                        className="w-fit cursor-pointer rounded text-xs font-medium text-foreground-body outline-none hover:text-foreground-base focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2"
+                        className="w-fit cursor-pointer rounded text-caption font-medium text-foreground-body outline-none hover:text-foreground-base focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2"
                       >
                         View retained metadata
                       </summary>
@@ -233,7 +233,7 @@ export function RecordingReview({
                           <dt className="text-caption-sm leading-inherit font-medium tracking-wide text-foreground-tertiary uppercase">
                             Selectors
                           </dt>
-                          <dd className="text-xs text-foreground-emphasis">
+                          <dd className="text-caption text-foreground-emphasis">
                             {step.enrichment.selectors.length > 0 ? (
                               <ul className="mt-1 flex flex-col gap-1">
                                 {step.enrichment.selectors.map(

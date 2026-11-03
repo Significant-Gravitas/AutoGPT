@@ -67,7 +67,7 @@ export function LocalPCRecordingConsent({
             <Text variant="body-medium" tone="primary">
               Worth knowing:
             </Text>
-            <ul className="ml-4 list-disc text-sm text-foreground-body">
+            <ul className="ml-4 list-disc text-body text-foreground-body">
               <li>
                 The images show whatever was on your screen while recording —
                 including anything else that was open. You decide what&apos;s

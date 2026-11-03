@@ -99,7 +99,7 @@ export function LocalPCComputerUseConsent({ sessionID }: Props) {
               <Text variant="body-medium" tone="primary">
                 For this chat session, Otto can:
               </Text>
-              <ul className="ml-4 list-disc text-sm text-foreground-body">
+              <ul className="ml-4 list-disc text-body text-foreground-body">
                 {accessLines.map((line) => (
                   <li key={line}>{line}</li>
                 ))}
@@ -107,12 +107,15 @@ export function LocalPCComputerUseConsent({ sessionID }: Props) {
               <Text variant="body-tight" tone="body">
                 The shim writes operation records to its local audit log. Review
                 them with{" "}
-                <span className="font-mono text-xs">
+                <span className="font-mono text-caption">
                   autogpt-shim audit tail
                 </span>{" "}
                 on your machine. You can stop access with Ctrl+C in the
                 daemon&apos;s terminal, or disconnect it with{" "}
-                <span className="font-mono text-xs">autogpt-shim revoke</span>.
+                <span className="font-mono text-caption">
+                  autogpt-shim revoke
+                </span>
+                .
               </Text>
               <Text variant="body-tight" tone="body">
                 This consent applies only to the current chat session. New

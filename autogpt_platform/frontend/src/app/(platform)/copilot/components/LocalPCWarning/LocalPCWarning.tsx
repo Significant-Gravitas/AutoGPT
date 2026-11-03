@@ -96,7 +96,7 @@ export function LocalPCWarning({ onResolved, onCancel }: Props = {}) {
                 disabled when file tools are enough, and never run the executor
                 as root or administrator. Stop the executor to disconnect.
                 Review its local operation log with{" "}
-                <span className="font-mono text-xs">
+                <span className="font-mono text-caption">
                   autogpt-shim audit tail
                 </span>
                 .

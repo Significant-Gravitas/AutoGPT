@@ -83,7 +83,7 @@ export function LocalPCBadge({ sessionID, machineID, allowedRoot }: Props) {
         align="start"
         className="w-[min(24rem,calc(100vw-2rem))]"
       >
-        <div className="flex min-w-0 flex-col gap-2 text-sm">
+        <div className="flex min-w-0 flex-col gap-2 text-body">
           {connected ? (
             <>
               <div>
@@ -92,32 +92,32 @@ export function LocalPCBadge({ sessionID, machineID, allowedRoot }: Props) {
                 your machine.
               </div>
               {executor?.capabilities?.includes("shell") ? (
-                <div className="text-xs text-foreground-secondary">
+                <div className="text-caption text-foreground-secondary">
                   Shell commands are not limited by that file root and run with
                   your full user-level permissions.
                 </div>
               ) : null}
               {executor?.machine_id ? (
-                <div className="text-xs break-all text-foreground-secondary">
+                <div className="text-caption break-all text-foreground-secondary">
                   machine {executor.machine_id.slice(0, 12)}
                 </div>
               ) : null}
               {(executor?.computer_use_features_coarse ?? []).length > 0 ? (
-                <div className="text-xs break-words text-foreground-secondary">
+                <div className="text-caption break-words text-foreground-secondary">
                   computer-use:{" "}
                   {executor?.computer_use_features_coarse?.join(", ")}
                 </div>
               ) : (executor?.computer_use_features ?? []).length > 0 ? (
-                <div className="text-xs break-words text-foreground-secondary">
+                <div className="text-caption break-words text-foreground-secondary">
                   computer-use: {executor?.computer_use_features?.join(", ")}
                 </div>
               ) : null}
               {consentLabel ? (
-                <div className="text-xs text-foreground-secondary">
+                <div className="text-caption text-foreground-secondary">
                   {consentLabel}
                 </div>
               ) : null}
-              <div className="text-xs text-foreground-secondary">
+              <div className="text-caption text-foreground-secondary">
                 Review with{" "}
                 <span className="font-mono">autogpt-shim audit tail</span>
               </div>
@@ -142,7 +142,7 @@ export function LocalPCBadge({ sessionID, machineID, allowedRoot }: Props) {
           ) : null}
 
           {!connected && machineID ? (
-            <div className="text-xs break-all text-foreground-secondary">
+            <div className="text-caption break-all text-foreground-secondary">
               machine {machineID.slice(0, 12)}
             </div>
           ) : null}

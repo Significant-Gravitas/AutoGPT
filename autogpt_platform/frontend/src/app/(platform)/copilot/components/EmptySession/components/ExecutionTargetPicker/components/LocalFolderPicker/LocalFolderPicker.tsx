@@ -204,7 +204,7 @@ export function LocalFolderPicker({
                 ) : (browser.directory?.entries.length ?? 0) === 0 ? (
                   <div
                     role="status"
-                    className="flex min-h-48 items-center justify-center p-6 text-center text-sm text-foreground-tertiary"
+                    className="flex min-h-48 items-center justify-center p-6 text-center text-body text-foreground-tertiary"
                   >
                     This folder has no subfolders.
                   </div>
@@ -218,7 +218,7 @@ export function LocalFolderPicker({
                         <button
                           type="button"
                           onClick={() => browser.openDirectory(entry)}
-                          className="flex min-h-11 w-full min-w-0 items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-foreground-emphasis outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
+                          className="flex min-h-11 w-full min-w-0 items-center gap-3 rounded-xl px-3 py-2 text-left text-body text-foreground-emphasis outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
                         >
                           <span className="flex shrink-0 text-brand">
                             <Icon
@@ -325,7 +325,7 @@ function FolderPath({
           aria-label="Folder path"
           className="min-w-0 flex-1 overflow-x-auto"
         >
-          <ol className="flex min-w-max items-center gap-1 text-sm">
+          <ol className="flex min-w-max items-center gap-1 text-body">
             <li>
               <button
                 type="button"
@@ -360,7 +360,7 @@ function FolderPath({
       {currentPath ? (
         <code
           translate="no"
-          className="rounded-lg bg-surface-hover px-3 py-2 text-left text-xs break-all text-foreground-secondary"
+          className="rounded-lg bg-surface-hover px-3 py-2 text-left text-caption break-all text-foreground-secondary"
         >
           {currentPath}
         </code>

@@ -59,14 +59,14 @@ export function LocalExecutorSetup({ isRefreshing, onRefresh }: Props) {
       <ol className="mt-4 flex flex-col gap-3">
         {setupSteps.map((step, index) => (
           <li key={step.title} className="flex items-start gap-3">
-            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface text-xs font-semibold text-foreground-body ring-1 ring-border-base">
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface text-caption font-semibold text-foreground-body ring-1 ring-border-base">
               {index + 1}
             </span>
             <div className="min-w-0 flex-1">
               <Text variant="small-medium" tone="emphasis">
                 {step.title}
               </Text>
-              <pre className="mt-1 max-w-full overflow-x-auto rounded-lg bg-action-hover px-3 py-2 text-left font-mono text-xs text-action-foreground">
+              <pre className="mt-1 max-w-full overflow-x-auto rounded-lg bg-action-hover px-3 py-2 text-left font-mono text-caption text-action-foreground">
                 <code translate="no">
                   {step.command ?? "Loading deployment settings…"}
                 </code>
@@ -80,7 +80,7 @@ export function LocalExecutorSetup({ isRefreshing, onRefresh }: Props) {
         href="https://pipx.pypa.io/latest/how-to/install-pipx.html"
         target="_blank"
         rel="noopener noreferrer"
-        className="mt-3 inline-block text-sm text-accent-strong underline underline-offset-2"
+        className="mt-3 inline-block text-body text-accent-strong underline underline-offset-2"
       >
         Install pipx for your operating system
       </a>
@@ -92,7 +92,7 @@ export function LocalExecutorSetup({ isRefreshing, onRefresh }: Props) {
         <Text variant="small" tone="secondary" className="mt-1">
           Run this in your terminal (PowerShell on Windows):
         </Text>
-        <pre className="mt-2 max-w-full overflow-x-auto rounded-lg bg-action-hover px-3 py-2 text-left font-mono text-xs text-action-foreground">
+        <pre className="mt-2 max-w-full overflow-x-auto rounded-lg bg-action-hover px-3 py-2 text-left font-mono text-caption text-action-foreground">
           <code translate="no">
             {deployment?.startCommand ?? "Loading deployment settings…"}
           </code>
@@ -104,7 +104,7 @@ export function LocalExecutorSetup({ isRefreshing, onRefresh }: Props) {
           localhost works only when AutoGPT runs on that same computer. Use
           HTTPS for a deployment on another computer.
         </Text>
-        <details className="mt-3 text-sm text-foreground-body">
+        <details className="mt-3 text-body text-foreground-body">
           <summary className="cursor-pointer font-medium">
             Start automatically at sign-in
           </summary>
@@ -112,7 +112,7 @@ export function LocalExecutorSetup({ isRefreshing, onRefresh }: Props) {
             Save the settings below in your executor&apos;s config.toml, then
             install the per-user service. Keep the file at this location:
           </Text>
-          <ul className="my-2 list-inside list-disc text-xs break-all">
+          <ul className="my-2 list-inside list-disc text-caption break-all">
             <li>
               macOS: ~/Library/Application
               Support/autogpt-local-executor/config.toml
@@ -123,12 +123,12 @@ export function LocalExecutorSetup({ isRefreshing, onRefresh }: Props) {
             </li>
             <li>Windows: %APPDATA%\autogpt-local-executor\config.toml</li>
           </ul>
-          <pre className="max-w-full overflow-x-auto rounded-lg bg-action-hover px-3 py-2 text-xs text-action-foreground">
+          <pre className="max-w-full overflow-x-auto rounded-lg bg-action-hover px-3 py-2 text-caption text-action-foreground">
             <code translate="no">
               {deployment?.config ?? "Loading deployment settings…"}
             </code>
           </pre>
-          <pre className="mt-2 max-w-full overflow-x-auto rounded-lg bg-action-hover px-3 py-2 text-xs text-action-foreground">
+          <pre className="mt-2 max-w-full overflow-x-auto rounded-lg bg-action-hover px-3 py-2 text-caption text-action-foreground">
             <code translate="no">autogpt-shim install</code>
           </pre>
           <Text variant="small" tone="secondary" className="mt-2">
@@ -138,7 +138,7 @@ export function LocalExecutorSetup({ isRefreshing, onRefresh }: Props) {
       </div>
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border-base pt-4">
-        <div className="flex items-center gap-2 text-xs text-foreground-secondary">
+        <div className="flex items-center gap-2 text-caption text-foreground-secondary">
           <span className="flex text-success">
             <Icon icon={CheckmarkCircle02Icon} size={16} aria-hidden="true" />
           </span>
