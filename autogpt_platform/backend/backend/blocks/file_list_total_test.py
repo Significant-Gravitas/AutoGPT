@@ -49,7 +49,7 @@ async def test_github_multi_file_commit_limits_the_total():
     with (
         patch("backend.blocks.github.commits.resolve_media_content", resolve),
         patch.object(block, "multi_file_commit", commit),
-        patch("backend.util.file.MAX_FILE_SIZE_BYTES", 100),
+        patch("backend.util.file.MAX_TOTAL_FILE_SIZE_BYTES", 100),
     ):
         outputs = await _outputs(block, input_data, TEST_CREDENTIALS)
 
@@ -74,7 +74,7 @@ async def test_ai_image_customizer_limits_the_total():
     with (
         patch("backend.blocks.ai_image_customizer.store_media_file", store),
         patch.object(block, "run_model", run_model),
-        patch("backend.util.file.MAX_FILE_SIZE_BYTES", 100),
+        patch("backend.util.file.MAX_TOTAL_FILE_SIZE_BYTES", 100),
     ):
         outputs = await _outputs(block, input_data, REPLICATE_CREDENTIALS)
 

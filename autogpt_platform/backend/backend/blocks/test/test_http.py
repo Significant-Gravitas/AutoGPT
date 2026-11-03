@@ -217,7 +217,7 @@ async def test_prepare_files_limits_total_size(tmp_path):
             "backend.blocks.http.get_exec_file_path",
             side_effect=lambda _, path: str(tmp_path / path),
         ),
-        patch("backend.util.file.MAX_FILE_SIZE_BYTES", 100),
+        patch("backend.util.file.MAX_TOTAL_FILE_SIZE_BYTES", 100),
     ):
         payload = await SendWebRequestBlock._prepare_files(
             make_test_context(), "file", [MediaFileType("pad.bin")] * 2

@@ -7,7 +7,6 @@ import pytest
 
 from backend.util.sandbox_files import (
     MAX_BINARY_FILE_SIZE,
-    MAX_TOTAL_EXTRACTED_SIZE,
     ExtractedFile,
     extract_sandbox_files,
     store_sandbox_files,
@@ -186,13 +185,16 @@ async def test_a_file_is_read_only_up_to_the_limit():
 @pytest.mark.asyncio
 async def test_files_past_the_total_budget_are_skipped():
     names = [f"{_WORKDIR}/part{i}.log" for i in range(3)]
-    size = MAX_TOTAL_EXTRACTED_SIZE // 2
     sandbox = _sandbox(
         names,
-        file_sizes={name: str(size) for name in names},
-        file_contents={name: b"x" * size for name in names},
+        file_sizes={name: "100" for name in names},
+        file_contents={name: b"x" * 100 for name in names},
     )
-    files = await extract_sandbox_files(sandbox, _WORKDIR)
+    with (
+        patch("backend.util.sandbox_files.MAX_BINARY_FILE_SIZE", 100),
+        patch("backend.util.sandbox_files.MAX_TOTAL_EXTRACTED_SIZE", 250),
+    ):
+        files = await extract_sandbox_files(sandbox, _WORKDIR)
     assert [f.name for f in files] == ["part0.log", "part1.log"]
 
 

@@ -427,7 +427,7 @@ class TestCreateMimeMessageValidation:
                 "backend.blocks.google.gmail.get_exec_file_path",
                 side_effect=lambda _, path: str(tmp_path / path),
             ),
-            patch("backend.util.file.MAX_FILE_SIZE_BYTES", 100),
+            patch("backend.util.file.MAX_TOTAL_FILE_SIZE_BYTES", 100),
             pytest.raises(ValueError, match="Files too large"),
         ):
             await create_mime_message(input_data, exec_ctx)
@@ -497,7 +497,7 @@ class TestBuildReplyMessageValidation:
                 "backend.blocks.google.gmail.get_exec_file_path",
                 side_effect=lambda _, path: str(tmp_path / path),
             ),
-            patch("backend.util.file.MAX_FILE_SIZE_BYTES", 100),
+            patch("backend.util.file.MAX_TOTAL_FILE_SIZE_BYTES", 100),
             pytest.raises(ValueError, match="Files too large"),
         ):
             await _build_reply_message(mock_service, input_data, exec_ctx)
@@ -597,7 +597,7 @@ class TestForwardMessageValidation:
                 "backend.blocks.google.gmail.get_exec_file_path",
                 side_effect=lambda _, path: str(tmp_path / path),
             ),
-            patch("backend.util.file.MAX_FILE_SIZE_BYTES", 100),
+            patch("backend.util.file.MAX_TOTAL_FILE_SIZE_BYTES", 100),
             pytest.raises(ValueError, match="Files too large"),
         ):
             await GmailForwardBlock()._forward_message(
@@ -625,7 +625,7 @@ class TestForwardMessageValidation:
         with (
             patch.object(block, "_get_attachments", AsyncMock(return_value=originals)),
             patch.object(block, "download_attachment", download),
-            patch("backend.util.file.MAX_FILE_SIZE_BYTES", 100),
+            patch("backend.util.file.MAX_TOTAL_FILE_SIZE_BYTES", 100),
             pytest.raises(ValueError, match="Files too large"),
         ):
             await block._forward_message(

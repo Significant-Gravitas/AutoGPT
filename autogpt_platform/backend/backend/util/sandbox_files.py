@@ -121,7 +121,7 @@ BINARY_EXTENSIONS = {
 # Prevents OOM from accidentally extracting huge files
 MAX_BINARY_FILE_SIZE = 50 * 1024 * 1024
 # All files of one extraction together, held in memory at once.
-MAX_TOTAL_EXTRACTED_SIZE = 100 * 1024 * 1024
+MAX_TOTAL_EXTRACTED_SIZE = Config().max_total_file_size_mb * 1024 * 1024
 
 
 class SandboxFileOutput(BaseModel):
