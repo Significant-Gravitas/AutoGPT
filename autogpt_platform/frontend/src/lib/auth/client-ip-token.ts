@@ -1,4 +1,6 @@
-import { isForwardedForTrusted } from "./client-ip";
+import { getIPFromHeader } from "@better-auth/core/utils/ip";
+
+import { isForwardedForTrusted, trustedProxies } from "./client-ip";
 import { mintServiceToken } from "./service-token";
 
 export const CLIENT_IP_SCOPE = "client-ip";
@@ -32,8 +34,12 @@ export async function getClientIPToken(requestHeaders: Headers) {
   }
 }
 
+// Through Better Auth's own resolver, so the backend counts a visitor by the same
+// address the sign-in log and the auth limits use: the first hop from the right
+// that TRUSTED_PROXIES does not list.
 function readClientIP(requestHeaders: Headers) {
   if (!isForwardedForTrusted()) return null;
-  const ip = requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return ip && /^[0-9A-Fa-f:.]{2,45}$/.test(ip) ? ip : null;
+  const forwarded = requestHeaders.get("x-forwarded-for");
+  if (!forwarded) return null;
+  return getIPFromHeader(forwarded, { trustedProxies: trustedProxies() });
 }

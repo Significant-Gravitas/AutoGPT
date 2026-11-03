@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, SkipValidation
 from backend.platform_linking.models import CardTurn, ChatTurnHandle, TurnDenial
 from backend.util.exceptions import LinkAlreadyExistsError
 
-from . import sessions, threads
+from . import failures, sessions, threads
 from .adapters.base import MessageContext, PlatformAdapter
 from .attachments import (
     format_attachment_problems,
@@ -170,6 +170,12 @@ class MessageHandler:
                     "You mentioned me but didn't say anything. How can I help?",
                     ctx.message_id,
                 )
+            return
+
+        # A message that @-mentions someone else, and not us, is addressed to
+        # them. Even in a thread we own that is not ours to answer; leaving it
+        # to the model's NO_REPLY still spent a turn and sometimes a reply.
+        if ctx.addressed_to_others and not ctx.bot_mentioned:
             return
 
         # In a thread we only auto-reply when we own it (= we created it in
@@ -539,19 +545,12 @@ class MessageHandler:
                         "Ask a server admin to run `/setup` first.",
                     )
                     return False
-        except ValueError:
-            # ValueError-based domain exceptions (NotFoundError etc.) arrive
-            # over RPC with this base type.
-            logger.exception("Failed to check link status")
+        except Exception as exc:
+            category = failures.LINK_CHECK_FAILED
+            reference = failures.new_reference()
+            failures.report_failure(exc, category, reference, platform=ctx.platform)
             await adapter.send_message(
-                ctx.channel_id, "Something went wrong. Try again later."
-            )
-            return False
-        except Exception:
-            logger.exception("Unexpected error while checking link status")
-            await adapter.send_message(
-                ctx.channel_id,
-                "Something went wrong. Try again in a moment.",
+                ctx.channel_id, failures.failure_reply(category, reference)
             )
             return False
         return True

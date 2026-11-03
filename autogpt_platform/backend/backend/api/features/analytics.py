@@ -7,6 +7,7 @@ import pydantic
 from autogpt_libs.auth import get_user_id
 from autogpt_libs.auth.dependencies import requires_user
 
+from backend.api.utils.validation_errors import bounded_validation_errors
 from backend.data import attribution as attribution_db
 from backend.data.attribution import UserAttribution, UserAttributionInput
 
@@ -43,5 +44,7 @@ async def report_user_attribution(
         # the body; model_copy(update=...) would skip that check.
         data = UserAttributionInput.model_validate(merged)
     except pydantic.ValidationError as error:
-        raise fastapi.HTTPException(status_code=422, detail=error.errors()) from error
+        raise fastapi.HTTPException(
+            status_code=422, detail=bounded_validation_errors(error)
+        ) from error
     return await attribution_db.record_user_attribution(user_id, data)

@@ -97,7 +97,7 @@ export function SubmissionItem({
     >
       <td className="px-4 py-3 align-middle">
         <div className="flex items-center gap-3">
-          <div className="relative aspect-video w-20 shrink-0 select-none overflow-hidden rounded-small bg-surface-hover">
+          <div className="relative aspect-video w-20 shrink-0 overflow-hidden rounded-small bg-surface-hover select-none">
             {thumbnail ? (
               <Image
                 src={thumbnail}
@@ -134,8 +134,8 @@ export function SubmissionItem({
                   <UIIcon
                     icon={LinkSquare01Icon}
                     size={14}
-                    // oxlint-disable-next-line design-system/no-restyle -- the link glyph is quieter than the name it sits beside
-                    className="shrink-0 text-foreground-tertiary"
+                    tone="muted"
+                    className="shrink-0"
                     aria-hidden
                   />
                 </Link>
@@ -167,18 +167,18 @@ export function SubmissionItem({
 
       <td className="px-4 py-3 align-middle">
         <span
-          className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${visual.pillClass}`}
+          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-caption font-medium whitespace-nowrap ${visual.pillClass}`}
         >
           <UIIcon icon={visual.Icon} size={12} />
           {visual.label}
         </span>
       </td>
 
-      <td className="whitespace-nowrap px-4 py-3 align-middle text-sm text-foreground-body">
+      <td className="px-4 py-3 align-middle text-body whitespace-nowrap text-foreground-body">
         {formatSubmittedAt(submission.submitted_at)}
       </td>
 
-      <td className="whitespace-nowrap px-4 py-3 text-right align-middle text-sm tabular-nums text-foreground-body">
+      <td className="px-4 py-3 text-right align-middle text-body whitespace-nowrap text-foreground-body tabular-nums">
         {formatRuns(submission.run_count ?? 0)}
       </td>
 

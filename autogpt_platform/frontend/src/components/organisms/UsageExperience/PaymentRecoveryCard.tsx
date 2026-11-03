@@ -33,7 +33,7 @@ export function PaymentRecoveryCard({ payment, fallback }: Props) {
       <Text
         variant="h4"
         as="h2"
-        className="mb-3 mt-4 leading-8 tracking-display"
+        className="mt-4 mb-3 leading-8 tracking-display"
       >
         Your payment didn’t go through
       </Text>

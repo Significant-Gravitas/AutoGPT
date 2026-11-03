@@ -1,6 +1,6 @@
 /**
  * Swaps raw palette and arbitrary typography classes for the design tokens
- * in tailwind.config.ts / src/app/globals.css (SECRT-3099, DS1).
+ * in src/app/globals.css (SECRT-3099, DS1).
  *
  * Two kinds of rewrite:
  * - exact (TOKEN_GROUPS, SIZE_TOKENS): `scripts/check-token-equivalence.ts`

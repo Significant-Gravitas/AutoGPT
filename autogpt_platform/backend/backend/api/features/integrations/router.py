@@ -22,10 +22,12 @@ from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWA
 
 from backend.api.features.library.db import set_preset_webhook, update_preset
 from backend.api.features.library.model import LibraryAgentPreset
+from backend.api.middleware.body_limit import MiB, request_body_limit
 from backend.copilot.rate_limit import enforce_payment_paywall, is_user_paywalled
 from backend.copilot.scheduled_chats.reconnect import (
     resume_after_reconnect_in_background,
 )
+from backend.data.credential_scope import scope_error
 from backend.data.db_accessors import experts_db
 from backend.data.execution import ExecutionTrigger
 from backend.data.graph import NodeModel, get_graph, set_node_webhook
@@ -43,6 +45,7 @@ from backend.data.model import (
     HostScopedCredentials,
     OAuth2Credentials,
     OAuthState,
+    UserPasswordCredentials,
     is_sdk_default,
 )
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
@@ -73,12 +76,24 @@ from backend.integrations.managed_providers.ayrshare import (
     get_sso_link as get_ayrshare_sso_link,
 )
 from backend.integrations.mcp_catalog import get_mcp_catalog
+from backend.integrations.microsoft_access import (
+    MicrosoftAccessCheck,
+    check_microsoft_access,
+)
 from backend.integrations.oauth import (
     CREDENTIALS_BY_PROVIDER,
     DEVICE_HANDLERS_BY_NAME,
     HANDLERS_BY_NAME,
 )
 from backend.integrations.oauth.device_base import BaseDeviceAuthHandler
+from backend.integrations.oauth.microsoft_identity import (
+    MICROSOFT_PROVIDERS,
+    MicrosoftIdentity,
+    microsoft_identity,
+    same_microsoft_account,
+)
+from backend.integrations.oauth.microsoft_recovery import MicrosoftAuthError
+from backend.integrations.oauth.microsoft_tokens import browser_sign_in_available
 from backend.integrations.providers import ProviderName, provider_key
 from backend.integrations.service_identity import (
     service_for_catalog_entry,
@@ -138,6 +153,31 @@ class LoginResponse(BaseModel):
     login_url: str
     state_token: str
     cancel_url: str | None = None
+
+
+@router.post(
+    "/microsoft/check",
+    dependencies=[Depends(enforce_payment_paywall)],
+    summary="Verify Microsoft connection capabilities",
+)
+async def verify_microsoft_connection(
+    credential_id: Annotated[str, Body(embed=True)],
+    user_id: Annotated[str, Security(get_user_id)],
+) -> MicrosoftAccessCheck:
+    try:
+        credential = await creds_manager.get(user_id, credential_id)
+    except MicrosoftAuthError as e:
+        # Getting the connection renews an expired token, which Microsoft may
+        # refuse (a revoked grant, a password change).
+        raise HTTPException(400, detail=e.recovery.model_dump()) from None
+    except ValueError as e:
+        raise HTTPException(400, detail=str(e)) from None
+    if (
+        not isinstance(credential, OAuth2Credentials)
+        or credential.provider not in MICROSOFT_PROVIDERS
+    ):
+        raise HTTPException(404, "Microsoft connection not found.")
+    return await check_microsoft_access(credential)
 
 
 @router.get(
@@ -258,6 +298,11 @@ class CredentialsMetaResponse(BaseModel):
         default=None,
         description="Host pattern for host-scoped or MCP server URL for MCP credentials",
     )
+    scope: str | None = Field(
+        default=None,
+        description="What a user/password login may be used for, e.g. "
+        "smtp://host[:port]; null for a login saved before scopes existed",
+    )
     mcp_auth_scheme: MCPAuthScheme | None = Field(
         default=None,
         description="Manual authorization scheme for MCP credentials",
@@ -266,6 +311,7 @@ class CredentialsMetaResponse(BaseModel):
     service: str = ""
     service_name: str | None = None
     service_icon: str | None = None
+    microsoft_identity: MicrosoftIdentity | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -316,11 +362,18 @@ def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
         scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
         username=cred.username if isinstance(cred, OAuth2Credentials) else None,
         host=CredentialsMetaResponse.get_host(cred),
+        scope=cred.scope if isinstance(cred, UserPasswordCredentials) else None,
         mcp_auth_scheme=mcp_auth_scheme,
         is_managed=cred.is_managed,
         service=identity.service,
         service_name=identity.name,
         service_icon=identity.icon,
+        microsoft_identity=(
+            microsoft_identity(cred)
+            if isinstance(cred, OAuth2Credentials)
+            and cred.provider in MICROSOFT_PROVIDERS
+            else None
+        ),
     )
 
 
@@ -470,8 +523,15 @@ async def _exchange_code_for_credentials(
         if len(credentials.scopes) == 1 and " " in credentials.scopes[0]:
             credentials.scopes = credentials.scopes[0].split(" ")
 
+        # Microsoft consents to Work IQ (api://) together with Graph, but the
+        # token it returns is Graph's and lists only Graph's permissions.
+        expected = (
+            [scope for scope in scopes if not scope.startswith("api://")]
+            if provider in MICROSOFT_PROVIDERS
+            else scopes
+        )
         # Check if the granted scopes are sufficient for the requested scopes
-        if not set(scopes).issubset(set(credentials.scopes)):
+        if not set(expected).issubset(set(credentials.scopes)):
             # Stored and accepted anyway; the frontend then refuses to select it,
             # so this is the only record that the credential is short.
             report_credential_failure(
@@ -483,6 +543,11 @@ async def _exchange_code_for_credentials(
                 provider=provider.value,
             )
 
+    except MicrosoftAuthError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=e.recovery.model_dump(),
+        ) from None
     except Exception as e:
         logger.error(
             f"OAuth2 Code->Token exchange failed for provider {provider.value}: {e}"
@@ -663,6 +728,10 @@ async def device_auth_initiate(
     scopes: Annotated[
         str, Query(title="Comma-separated list of authorization scopes")
     ] = "",
+    credential_id: Annotated[
+        str | None,
+        Query(title="ID of existing credential to upgrade scopes for"),
+    ] = None,
 ) -> DeviceAuthInitiateResponse:
     handler = _get_device_auth_handler(provider)
 
@@ -677,10 +746,16 @@ async def device_auth_initiate(
         )
 
     requested_scopes = scopes.split(",") if scopes else []
+    if credential_id:
+        requested_scopes = await _prepare_scope_upgrade(
+            user_id, provider, credential_id, requested_scopes
+        )
     requested_scopes = handler.handle_default_scopes(requested_scopes)
 
     try:
         initiation = await handler.initiate_device_auth(requested_scopes)
+    except MicrosoftAuthError as e:
+        raise HTTPException(400, detail=e.recovery.model_dump()) from None
     except Exception as e:
         # The message carries the upstream response body verbatim; keep it in
         # the logs rather than handing it to the caller.
@@ -706,6 +781,9 @@ async def device_auth_initiate(
                 "interval": initiation.interval,
                 "user_code": initiation.user_code,
             },
+            # The poll then upgrades this connection, and refuses to put
+            # another account in its place.
+            credential_id=credential_id,
         )
     except Exception as e:
         # The upstream device code is already issued at this point; it simply
@@ -781,6 +859,8 @@ async def device_auth_poll(
 
     try:
         result = await handler.poll_for_tokens(device_code)
+    except MicrosoftAuthError as e:
+        raise HTTPException(400, detail=e.recovery.model_dump()) from None
     except Exception as e:
         # As above: `poll_for_tokens` embeds the raw upstream body in its
         # error, so log it and return something generic.
@@ -1104,6 +1184,10 @@ async def create_credentials(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Provider-runtime credentials cannot be created directly",
         )
+    if isinstance(credentials, UserPasswordCredentials) and (
+        error := scope_error(provider.value, credentials.scope)
+    ):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
     credentials.provider = provider
     try:
         await creds_manager.create(user_id, credentials)
@@ -1241,11 +1325,15 @@ async def delete_credentials_and_dependents(
 
 # ------------------------- WEBHOOK STUFF -------------------------- #
 
+# GitHub caps its payloads at 25 MB, the largest of the providers.
+WEBHOOK_PAYLOAD_LIMIT = 25 * MiB
+
 
 # ⚠️ Note
 # No user auth check because this endpoint is for webhook ingress and relies on
 # validation by the provider-specific `WebhooksManager`.
 @router.post("/{provider}/webhooks/{webhook_id}/ingress")
+@request_body_limit(WEBHOOK_PAYLOAD_LIMIT)
 async def webhook_ingress_generic(
     request: Request,
     provider: Annotated[
@@ -1310,7 +1398,9 @@ async def webhook_ingress_generic(
     # Only after the signature: loading can refresh the owner's OAuth token.
     try:
         credentials = (
-            await creds_manager.get(user_id, webhook.credentials_id)
+            await creds_manager.get(
+                user_id, webhook.credentials_id, allow_sdk_default=True
+            )
             if webhook.credentials_id
             else None
         )
@@ -1379,7 +1469,7 @@ async def webhook_ping(
     webhook_manager = get_webhook_manager(webhook.provider)
 
     credentials = (
-        await creds_manager.get(user_id, webhook.credentials_id)
+        await creds_manager.get(user_id, webhook.credentials_id, allow_sdk_default=True)
         if webhook.credentials_id
         else None
     )
@@ -1677,6 +1767,9 @@ async def _merge_or_create_credential(
             and provider_matches(existing.provider, credentials.provider)
             and not set(credentials.scopes).issuperset(set(existing.scopes))
         ):
+            # Another Microsoft account is never a re-auth of this one, even
+            # when it was granted less.
+            _refuse_another_microsoft_account(existing, credentials)
             # Narrowing re-auth: keep existing intact, persist new alongside.
             # The frontend `executeOAuthFlow` has already pre-screened that
             # the new credential covers the scopes the card asked for; the
@@ -1686,10 +1779,11 @@ async def _merge_or_create_credential(
             return credentials
         return await _upgrade_existing_credential(user_id, credential_id, credentials)
 
-    # Implicit merge: check for existing credential with same provider+username.
-    # Skip managed/system credentials and require a non-None username on both
-    # sides so we never accidentally merge unrelated credentials.
-    if credentials.username is None:
+    # Implicit merge: check for an existing credential for the same account
+    # (see `_same_account`). Skip managed/system credentials, and require a
+    # non-None username on both sides where the username is what matches, so
+    # we never accidentally merge unrelated credentials.
+    if credentials.username is None and credentials.provider not in MICROSOFT_PROVIDERS:
         await creds_manager.create(user_id, credentials)
         return credentials
 
@@ -1701,8 +1795,7 @@ async def _merge_or_create_credential(
             if isinstance(c, OAuth2Credentials)
             and not c.is_managed
             and not is_system_credential(c.id)
-            and c.username is not None
-            and c.username == credentials.username
+            and _same_account(c, credentials)
         ),
         None,
     )
@@ -1755,8 +1848,11 @@ async def _upgrade_existing_credential(
             detail="Credential provider does not match the requested provider",
         )
 
+    _refuse_another_microsoft_account(existing, new_credentials)
+
     if (
-        existing.username
+        new_credentials.provider not in MICROSOFT_PROVIDERS
+        and existing.username
         and new_credentials.username
         and existing.username != new_credentials.username
     ):
@@ -1793,6 +1889,32 @@ async def _upgrade_existing_credential(
         merged.username = existing.username
     await creds_manager.update(user_id, merged)
     return merged
+
+
+def _same_account(existing: OAuth2Credentials, new: OAuth2Credentials) -> bool:
+    """Microsoft names an account by tenant and object id: its username can
+    change, and a personal and a work account can share one. Other providers
+    are matched by username."""
+    if new.provider in MICROSOFT_PROVIDERS:
+        return same_microsoft_account(existing, new)
+    return existing.username is not None and existing.username == new.username
+
+
+def _refuse_another_microsoft_account(
+    existing: OAuth2Credentials, new_credentials: OAuth2Credentials
+) -> None:
+    """Upgrading names a connection; whoever signs in must be its account.
+
+    Microsoft accounts can share an email address (a personal and a work
+    account), so the username can't tell them apart.
+    """
+    if new_credentials.provider in MICROSOFT_PROVIDERS and not same_microsoft_account(
+        existing, new_credentials
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="This is a different Microsoft account. Add it as a separate connection.",
+        )
 
 
 # --------------------------- UTILITIES ---------------------------- #
@@ -1902,7 +2024,9 @@ async def _cleanup_orphaned_webhook_for_graph(
                         ProviderName(webhook.provider)
                     )
                     credentials = (
-                        await creds_manager.get(user_id, webhook.credentials_id)
+                        await creds_manager.get(
+                            user_id, webhook.credentials_id, allow_sdk_default=True
+                        )
                         if webhook.credentials_id
                         else None
                     )
@@ -1959,6 +2083,15 @@ def _get_provider_oauth_handler(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Provider '{key}' does not support OAuth",
+        )
+
+    if key in MICROSOFT_PROVIDERS and not browser_sign_in_available():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Microsoft connects with a sign-in code here, not a browser "
+                "sign-in. Use the Connect Microsoft button instead."
+            ),
         )
 
     # Check if this provider has custom OAuth credentials
@@ -2069,10 +2202,13 @@ async def list_providers(
 
     def _native(name: str) -> ProviderMetadata:
         identity = service_for_provider(name)
+        auth_types: list[CredentialsType] = get_supported_auth_types(name)
+        if name in MICROSOFT_PROVIDERS and not browser_sign_in_available():
+            auth_types = [kind for kind in auth_types if kind != "oauth2"]
         return ProviderMetadata(
             name=name,
             description=get_provider_description(name),
-            supported_auth_types=get_supported_auth_types(name),
+            supported_auth_types=auth_types,
             service=identity.service,
             service_name=identity.name,
             service_icon=identity.icon,

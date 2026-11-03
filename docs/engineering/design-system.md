@@ -15,7 +15,7 @@ The rules were turned on with about 9,000 existing violations, so each rule is a
 - `scripts/eslint-rules/design-system-baseline.json` holds, per file and rule, how many violations the file had when the rule was turned on.
 - A file at or under its count passes. A file over its count fails, and the error lists every violation of that rule in the file, since lint can't tell which one is new.
 - A file the baseline doesn't list must have none. That covers every new file.
-- A file with fewer violations than its count gets a warning (`design-system/baseline-outdated`), which doesn't fail lint.
+- A file with fewer violations than its count fails too (`design-system/baseline-outdated`), so a removed violation is locked in: run `pnpm lint:ds-baseline` and commit the lower count.
 - A violation suppressed with an `oxlint-disable` or `eslint-disable` comment doesn't count, the same as when the baseline is written.
 
 To update the baseline, run this from `autogpt_platform/frontend`:
@@ -33,7 +33,7 @@ Never raise a count to make new code pass. Fix the code, or suppress the one lin
 
 ## Tokens
 
-Colour comes from the role tokens in `src/app/globals.css` (`--color-<role>`, registered in `tailwind.config.ts`). Use them with any colour utility, opacity modifiers included: `bg-surface`, `text-foreground-secondary`, `border-border-base`, `ring-focus`, `bg-overlay/20`.
+Colour comes from the role tokens in `src/app/globals.css` (`--color-<role>` on `:root`, registered in its `@theme`). Use them with any colour utility, opacity modifiers included: `bg-surface`, `text-foreground-secondary`, `border-border-base`, `ring-focus`, `bg-overlay/20`.
 
 - Surfaces: `canvas`, `surface`, `surface-muted`, `surface-hover`, `surface-active`, `overlay`
 - Text: `foreground-base`, `foreground-strong`, `foreground-emphasis`, `foreground-body`, `foreground-secondary`, `foreground-tertiary`, `foreground-subtle`, `foreground-disabled`, `placeholder`
@@ -42,7 +42,7 @@ Colour comes from the role tokens in `src/app/globals.css` (`--color-<role>`, re
 - Status: `error`, `error-hover`, `error-foreground`, `error-surface`, `warning`, `warning-foreground`, `warning-surface`, `warning-border`, `success`, `success-foreground`, `success-surface`, `info`, `info-foreground`, `info-surface`
 - Builder: `builder-canvas`, `builder-grid`, `node-surface`, `node-border`, `node-selected`, `edge`, `handle`
 
-The raw palette (`zinc-*`, `neutral-*`, `purple-*`, …) and hex values belong in `globals.css` only.
+The raw palette (`zinc-*`, `neutral-*`, `purple-*`, …) lives in `tailwind.v3-preset.ts`, and hex values belong in `globals.css` only. The palette stays out of `globals.css`'s `@theme` because `@shadcn/lint` reads every colour there as a token.
 
 - **Rule `design-system/no-raw-colors`:** palette classes such as `bg-zinc-200`, in `className`, `cn()`/`cva()` and any other string.
 - **Rule `design-system/no-arbitrary-values`:** arbitrary colours such as `bg-[#fff]` and `text-[rgb(…)]`.
@@ -54,19 +54,25 @@ The error names the token with the same colour when one exists: `"text-zinc-500"
 When you migrate a class, keep the value: same value, new name. If no role has the exact value, leave the class and add `// TODO(tokens)`. Never pick the nearest role.
 
 `src/components/__tests__/design-system-contract.test.ts` checks that:
-- every role in `globals.css` is registered in `tailwind.config.ts`, and the other way round;
+- every role on `globals.css`'s `:root` is registered in its `@theme`, and the other way round, and `color-roles.ts` lists them all;
 - `.dark` only redefines names that `:root` declares;
-- the raw palette in `src/components/styles/colors.ts` gets no new colours.
+- the app's palette values (`APP_COLORS` in `tailwind.v3-preset.ts`) get no new colours, and `globals.css` declares none.
 
 ## Dark mode
 
-No `dark:` or `light:` classes. A theme is a set of token values, not a second set of classes. `tailwind.config.ts` ties `dark:` to a `.dark-mode` class the app never sets, so these classes never render. Delete them and keep the light value; the role tokens carry the theme. Rule: `design-system/no-dark-variant`.
+No `dark:` or `light:` classes. A theme is a set of token values, not a second set of classes. `globals.css` ties `dark:` to a `.dark` ancestor (`@custom-variant dark`), which the app never sets, so these classes never render. Delete them and keep the light value; the role tokens carry the theme. Rule: `design-system/no-dark-variant`.
 
 ## Primitives
 
-`src/components/{atoms,molecules,organisms}` own their look. At the call site, pick a `variant` or `size` (and a `tone` on `Text`). Use `className` only for layout: width, flex and grid placement, margin, position. A treatment you repeat becomes a variant on the primitive, never a class string copied between call sites.
+`src/components/{atoms,molecules,organisms}` own their look. At the call site, pick a `variant`, `size`, `tone` or `shape`. Use `className` only for layout: width, flex and grid placement, margin, position. A treatment you repeat becomes a variant on the primitive, never a class string copied between call sites.
 
-`Text` also accepts `truncate`, `line-clamp-*`, `whitespace-*`, `break-*`, `text-balance`, `text-pretty` and text alignment; `Icon` accepts layout only; `Skeleton` also accepts shape. Rule: `design-system/no-restyle`. It is off inside the three design-system directories, which define the looks.
+The props that replace the usual restyles:
+
+- **`Text`:** `tone` (colour), `weight`, `mono`, `tabular`, `italic`, `decoration`, `transform` and `align`, on top of the `variant`. A line height that differs from the variant's is a variant of its own (`body-tight`, `small-loose`, ...), not a `leading-*` class.
+- **`Icon`:** `tone` (the same values as `Text`, from `src/components/styles/tones.ts`; without one the icon takes the colour around it), `spin` for a loading indicator and `motion` (`transform`, `colors`, `opacity`) for an icon that animates a class change, such as a chevron's rotation.
+- **`Button`:** the quiet `ghost-muted`, `ghost-subtle` and `ghost-danger` variants, the `row` (32px), `inline`, `inline-xs` (no box, for a link in copy) and `icon-2xs` (24px) sizes, and `shape` (`pill`, `rounded`, `soft`) for the corner radius.
+
+`Text` also accepts `truncate`, `line-clamp-*`, `whitespace-*`, `break-*`, `text-balance`, `text-pretty`, `text-ellipsis`, `gap-*` and text alignment; `Icon` and `Button` accept layout only; `Skeleton` also accepts shape. Rule: `design-system/no-restyle`. Inside the three design-system directories, which define the looks, it checks only `Text`, `Icon` and `Button`, so a molecule restyles them through their props like any call site.
 
 Classes on a primitive must be static strings the linter can read, so no `` `bg-${tone}` ``; map a prop to whole class names instead. Rule: `design-system/require-static-classes`.
 
@@ -76,7 +82,7 @@ Each primitive marks its root element with `data-slot`. The contract test lists 
 
 Every class must be one this project's Tailwind generates: a typo such as `text-md` or `flex-end` silently renders nothing. Rule: `design-system/no-unknown-classes`.
 
-`components.json` keeps `tailwind.css` at `src/app/globals.css`, the stylesheet the app loads. That is where the shadcn CLI writes, and where `@shadcn/lint` reads the colour tokens from. `globals.css` has no `@import "tailwindcss"` (Tailwind 3 compat), so for the grammar `@shadcn/lint` falls back to the one stylesheet that does: `src/app/tailwind-grammar.css`, which imports Tailwind and `tailwind.config.ts`. Nothing imports that file, so it never ships. `design-system.mts` drops the notice `@shadcn/lint` prints about this fallback. A few class names that aren't Tailwind are allowed in `.oxlintrc.json`: the PostHog and xyflow markers (`ph-no-capture`, `nodrag`, `nowheel`, `nopan`) and the classes `globals.css` defines (`agpt-*`, `markdown-output`).
+`components.json` keeps `tailwind.css` at `src/app/globals.css`, the stylesheet the app loads. That is where the shadcn CLI writes, and where `@shadcn/lint` reads the colour tokens from. `globals.css` has no `@import "tailwindcss"` (Tailwind 3 compat), so for the grammar `@shadcn/lint` falls back to the one stylesheet that does: `src/app/tailwind-grammar.css`, which imports Tailwind and `globals.css` (and through it `tailwind.config.ts`). Nothing imports that file, so it never ships. `design-system.mts` drops the notice `@shadcn/lint` prints about this fallback. A few class names that aren't Tailwind are allowed in `.oxlintrc.json`: the PostHog and xyflow markers (`ph-no-capture`, `nodrag`, `nowheel`, `nopan`) and the classes `globals.css` defines (`agpt-*`, `markdown-output`).
 
 ## Styles
 
@@ -88,30 +94,32 @@ No arbitrary values except for layout and transitions (`w-[320px]`, `top-[7px]` 
 
 ## Typography
 
-Text renders through the `Text` atom by default: `<Text variant="body">`, with `as` for the tag (`<Text variant="small" as="span">`) and `tone` for the colour. `<Text>` owns its typography and colour; `className` takes layout, truncation, wrapping and alignment only (the `Text` contract of `design-system/no-restyle`).
+Text renders through the `Text` atom by default: `<Text variant="body">`, with `as` for the tag (`<Text variant="small" as="span">`), `tone` for the colour and `weight`, `mono` or `tabular` to adjust the variant. `<Text>` owns its typography and colour; `className` takes layout, truncation, wrapping and alignment only (the `Text` contract of `design-system/no-restyle`).
 
-Use a role class only where `Text` can't render the element identically, and inside primitives. Each role bundles its line-height:
+Use a scale class only where `Text` can't render the element identically, and inside primitives. The type scale is the app's only set of text sizes: its values are in `src/app/tokens/typography.css` (one `:root` block, mapped to `text-<step>` by `@theme` in `globals.css`), so a redesign changes that file and every size follows. Each step bundles its line-height:
 
-| Role | Size / line-height |
-| --- | --- |
-| `text-tiny` | 10/14px |
-| `text-caption-sm` | 11/16px |
-| `text-caption` | 12/18px |
-| `text-body-sm` | 13/20px |
-| `text-body` | 14/22px |
-| `text-body-md` | 15/24px |
-| `text-body-lg` | 16/26px |
-| `text-lead` | 20/28px |
-| `text-heading-sm` | 22/24px |
-| `text-heading` | 28/40px |
-| `text-title` | 32/40px |
-| `text-display` | 44/56px |
+| Step | Size / line-height | Replaced (SECRT-3152) |
+| --- | --- | --- |
+| `text-tiny` | 10/14px | |
+| `text-caption-sm` | 11/16px | |
+| `text-caption` | 12/18px | Tailwind `xs` (12/16) |
+| `text-body-sm` | 13/20px | |
+| `text-body` | 14/22px | Tailwind `sm` (14/20) |
+| `text-body-md` | 15/24px | |
+| `text-body-lg` | 16/26px | Tailwind `base` (16/24) |
+| `text-lead` | 20/28px | Tailwind `lg` (18/28) and `xl` (20/28) |
+| `text-heading-sm` | 22/24px | |
+| `text-heading-md` | 24/32px | Tailwind `2xl` (24/32) |
+| `text-heading` | 28/40px | Tailwind `3xl` (30/36) |
+| `text-title` | 32/40px | Tailwind `4xl` (36/40) |
+| `text-display` | 44/56px | Tailwind `5xl` (48/48) |
+| `text-hero` | 64/64px | Tailwind `6xl` to `9xl` |
 
 - **Line-height:** override it only with `leading-inherit`, `leading-4.5`, `leading-5.5`, `leading-6.5` or a Tailwind step.
 - **Letter-spacing:** `tracking-display`, `tracking-heading`, `tracking-title`, `tracking-caps` or `tracking-eyebrow`.
 - **Weight:** Tailwind's scale (`font-medium`, `font-semibold`).
 
-Never use raw sizes: no `text-[13px]`, `leading-[..]`, `tracking-[..]`, `font-[..]` or inline font styles. A few rare sizes are still raw (5, 6, 9, 17, 23, 26, 35, 36, 48 and 64px, plus fractional rems). They carry `// TODO(tokens): SECRT-3152` until they are snapped; never round one to the nearest role.
+Tailwind's own sizes are reset in the theme (`--text-*: initial`), so `text-sm` or `md:text-2xl` renders nothing. Rule `design-system/no-raw-text-size` fails them, and arbitrary sizes (`text-[13px]`, `text-[length:..]`), naming the step to use; `scripts/ds/text-size-scale.ts` holds the mapping above and rewrites a file with `--write`. Never use raw sizes: no `text-[13px]`, `leading-[..]`, `tracking-[..]`, `font-[..]` or inline font styles. Streamdown, the chat's markdown renderer, still writes Tailwind's names in its own markup; `globals.css` sizes them from the same steps inside `[data-streamdown]`.
 
 ## Icons
 
@@ -121,10 +129,10 @@ Hugeicons only: icon data from `@hugeicons/core-free-icons`, rendered with the `
 
 ## Legacy components
 
-Feature code never imports from `src/components/__legacy__`, from any other `legacy/` path or from `@/components/ui`. Import the atom, molecule or organism in `src/components` instead; Storybook shows them. `LegacyButton`, the `legacy-*` Button variants and sizes (`variant="legacy-outline"`, `size="legacy-sm"`) and the Button's internal variant helpers are only for the Button atom itself.
+Feature code never imports from `src/components/__legacy__`, from any other `legacy/` path or from `@/components/ui`. Import the atom, molecule or organism in `src/components` instead; Storybook shows them. `src/components/__legacy__`, `LegacyButton` and the `legacy-*` Button variants and sizes are deleted; the rules below keep them from coming back. The rounded-md look they drew is the Button's `compact-*` variants and sizes. The Button's internal variant helpers are only for the Button atom itself.
 
 - **Rule `design-system/no-legacy-import`:** the imports.
-- **Rule `design-system/no-legacy-button-variant`:** the `legacy-*` variants. The error names the design-system variant to use instead. It doesn't look the same, so check the screen.
+- **Rule `design-system/no-legacy-button-variant`:** the `legacy-*` variants, should one come back. The error names the design-system variant to use instead.
 
 ## Escape hatch
 

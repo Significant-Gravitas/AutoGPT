@@ -73,17 +73,22 @@ function mountedEndpoints() {
 }
 
 async function statusOf(path: string, method: string) {
-  const response = await auth.handler(
-    new Request(`http://localhost:3000/api/auth${path}`, {
-      method,
-      headers: {
-        "content-type": "application/json",
-        origin: "http://localhost:3000",
-      },
-      body: method === "GET" ? undefined : "{}",
-    }),
-  );
-  return response.status;
+  const request = new Request(`http://localhost:3000/api/auth${path}`, {
+    method,
+    headers: {
+      "content-type": "application/json",
+      origin: "http://localhost:3000",
+    },
+    body: method === "GET" ? undefined : "{}",
+  });
+  try {
+    return (await auth.handler(request)).status;
+  } catch (error) {
+    // Past the disabled paths, Better Auth checks the database schema before
+    // anything else, and this test has no database: the request got through.
+    expect(String(error)).toContain("no database in this test");
+    return 500;
+  }
 }
 
 describe("Better Auth endpoints", () => {

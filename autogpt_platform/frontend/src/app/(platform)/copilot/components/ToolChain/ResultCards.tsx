@@ -57,7 +57,7 @@ export function StatusPill({ status, className }: StatusPillProps) {
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-caption-sm font-medium leading-inherit",
+        "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-caption-sm leading-inherit font-medium",
         STATUS_STYLES[normalized] ??
           "bg-surface-hover text-foreground-tertiary",
         className,
@@ -78,13 +78,15 @@ export function StatusCard({ label, ok }: StatusCardProps) {
         <Icon
           icon={CheckmarkCircle02Icon}
           size={16}
-          className="shrink-0 text-success"
+          tone="success"
+          className="shrink-0"
         />
       ) : (
         <Icon
           icon={CancelCircleIcon}
           size={16}
-          className="shrink-0 text-error"
+          tone="error"
+          className="shrink-0"
         />
       )}
       <Text
@@ -101,7 +103,7 @@ export function StatusCard({ label, ok }: StatusCardProps) {
 export function StatCard({ value, label }: StatCardProps) {
   return (
     <div className={`${CARD} ${HALF} flex items-baseline gap-2 p-2.5`}>
-      <span className="text-lg font-semibold leading-none text-foreground-emphasis">
+      <span className="text-lead leading-none font-semibold text-foreground-emphasis">
         {value.toLocaleString()}
       </span>
       <Text
@@ -119,14 +121,14 @@ export function StatCard({ value, label }: StatCardProps) {
 export function ChipList({ label, items }: ChipListProps) {
   return (
     <div className={`${CARD} ${HALF} p-2.5`}>
-      <p className="mb-1.5 text-caption-sm uppercase leading-inherit tracking-wide text-foreground-subtle">
+      <p className="mb-1.5 text-caption-sm leading-inherit tracking-wide text-foreground-subtle uppercase">
         {label}
       </p>
       <div className="flex flex-wrap gap-1">
         {Array.from(new Set(items)).map((item) => (
           <span
             key={item}
-            className="max-w-full truncate rounded-full bg-surface-hover px-2 py-0.5 text-xs text-foreground-secondary"
+            className="max-w-full truncate rounded-full bg-surface-hover px-2 py-0.5 text-caption text-foreground-secondary"
           >
             {item}
           </span>
@@ -149,11 +151,7 @@ export function LinkCard({ url, title, meta, secret }: LinkCardProps) {
       )}
     >
       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-        <Icon
-          icon={GlobeIcon}
-          size={15}
-          className="shrink-0 text-foreground-subtle"
-        />
+        <Icon icon={GlobeIcon} size={15} tone="subtle" className="shrink-0" />
       </div>
       <div className="min-w-0 flex-1">
         <Text

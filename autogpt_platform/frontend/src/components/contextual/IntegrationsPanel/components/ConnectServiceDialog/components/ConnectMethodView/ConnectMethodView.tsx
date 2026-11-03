@@ -145,7 +145,7 @@ export function ConnectMethodView({
           <span className="relative flex h-20 w-20 items-center justify-center rounded-full bg-surface shadow-lg ring-1 ring-separator">
             <AutoGPTLogo
               hideText
-              className="absolute left-1/2 top-1/2 h-8 w-[4.4rem] -translate-x-[77%] -translate-y-1/2"
+              className="absolute top-1/2 left-1/2 h-8 w-[4.4rem] -translate-x-[77%] -translate-y-1/2"
             />
           </span>
           <span aria-hidden className="grid grid-cols-3 gap-1.5">
@@ -210,11 +210,7 @@ export function ConnectMethodView({
                       }
                     >
                       <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-surface shadow-sm">
-                        <Icon
-                          icon={copy.icon}
-                          size={22}
-                          className="text-foreground-body"
-                        />
+                        <Icon icon={copy.icon} size={22} tone="body" />
                       </span>
                       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <span className="flex items-center gap-2">
@@ -226,7 +222,7 @@ export function ConnectMethodView({
                             {copy.label}
                           </Text>
                           {copy.recommended && (
-                            <span className="rounded-md bg-accent-surface px-1.5 py-0.5 text-tiny font-semibold leading-inherit tracking-wide text-accent-strong">
+                            <span className="rounded-md bg-accent-surface px-1.5 py-0.5 text-tiny leading-inherit font-semibold tracking-wide text-accent-strong">
                               RECOMMENDED
                             </span>
                           )}

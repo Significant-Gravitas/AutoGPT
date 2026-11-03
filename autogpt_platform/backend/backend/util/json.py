@@ -14,6 +14,7 @@ import jsonschema.validators
 import orjson
 from fastapi.encoders import jsonable_encoder as to_dict
 from prisma import Json
+from referencing import Registry
 
 from .truncate import truncate
 from .type import type_match
@@ -235,7 +236,8 @@ def _schema_type_fingerprint(value: Any) -> _SchemaTypeFingerprint | None:
 def _new_validator(schema: dict[str, Any]):
     validator_cls = jsonschema.validators.validator_for(schema)
     validator_cls.check_schema(schema)
-    return validator_cls(schema)
+    # Resolve `$ref` only within the schema and the bundled meta-schemas.
+    return validator_cls(schema, registry=Registry())
 
 
 def _remember(key: _SchemaCacheKey, value: Any) -> Any:
@@ -285,6 +287,29 @@ def sanitize_string(value: str) -> str:
     into PostgreSQL text/varchar columns.
     """
     return POSTGRES_CONTROL_CHARS.sub("", value)
+
+
+def nesting_depth(data: Any) -> int:
+    """How many levels of lists and dicts ``data`` contains: 0 for a scalar,
+    1 for a flat list or dict, 2 for a list of dicts, and so on.
+
+    Walks iteratively, so it also measures data too deep for ``to_dict`` or
+    ``orjson`` to serialize.
+    """
+    deepest = 0
+    pending: list[tuple[Any, int]] = [(data, 0)]
+    while pending:
+        current, depth = pending.pop()
+        if isinstance(current, dict):
+            children = current.values()
+        elif isinstance(current, (list, tuple)):
+            children = current
+        else:
+            continue
+        depth += 1
+        deepest = max(deepest, depth)
+        pending.extend((child, depth) for child in children)
+    return deepest
 
 
 def sanitize_json(data: Any) -> Any:

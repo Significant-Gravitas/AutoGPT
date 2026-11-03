@@ -118,7 +118,7 @@ export function MessageAttachments({
           >
             {rendered}
             <div
-              className={`mt-1 flex items-center gap-1 px-0.5 text-xs ${
+              className={`mt-1 flex items-center gap-1 px-0.5 text-caption ${
                 isUser
                   ? "text-foreground-secondary"
                   : "text-foreground-tertiary"
@@ -146,7 +146,8 @@ export function MessageAttachments({
               <div className="flex min-w-0 items-center gap-2">
                 <Icon
                   icon={File02Icon}
-                  className="h-5 w-5 shrink-0 text-foreground-subtle"
+                  tone="subtle"
+                  className="h-5 w-5 shrink-0"
                 />
                 <div className="min-w-0">
                   <Text
@@ -197,7 +198,8 @@ export function MessageAttachments({
               <div className="flex items-center gap-2">
                 <Icon
                   icon={File02Icon}
-                  className="h-5 w-5 shrink-0 text-foreground-subtle"
+                  tone="subtle"
+                  className="h-5 w-5 shrink-0"
                 />
                 <div className="min-w-0">
                   <ContentCardTitle>{file.filename || "file"}</ContentCardTitle>
@@ -242,11 +244,7 @@ function FolderAttachmentCard({
 }) {
   return (
     <div className="flex min-w-0 items-center gap-3 rounded-lg border border-brand/70 bg-accent-surface p-3">
-      <Icon
-        icon={Folder01Icon}
-        size={20}
-        className="shrink-0 text-foreground-body"
-      />
+      <Icon icon={Folder01Icon} size={20} tone="body" className="shrink-0" />
       <div className="flex min-w-0 flex-1 flex-col">
         <Text
           variant="body-medium-tight"

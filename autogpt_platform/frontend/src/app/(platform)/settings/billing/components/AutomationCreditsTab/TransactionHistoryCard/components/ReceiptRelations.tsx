@@ -103,9 +103,9 @@ function RelatedExecution({
       {loaded ? (
         <Button
           variant="ghost"
-          size="small"
-          // oxlint-disable-next-line design-system/no-restyle -- a bare text toggle inside the receipt; no Button variant drops the padding
-          className="min-h-11 min-w-0 whitespace-normal px-0 text-left text-accent-strong"
+          size="inline"
+          tone="accent"
+          className="h-9 min-h-11 text-left whitespace-normal"
           onClick={() => onSelectRelated(execution.execution_id)}
         >
           {name}

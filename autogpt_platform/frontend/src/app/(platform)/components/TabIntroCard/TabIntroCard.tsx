@@ -138,12 +138,12 @@ export function TabIntroCard({
               <GlassPixelBackdrop />
               <div className="flex h-full items-center justify-center">
                 <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-surface shadow-lg">
-                  <Icon icon={icon} size={40} className="text-brand" />
+                  <Icon icon={icon} size={40} tone="brand" />
                 </div>
               </div>
             </div>
 
-            <div className="flex flex-col gap-3 px-7 pb-7 pt-6 text-left">
+            <div className="flex flex-col gap-3 px-7 pt-6 pb-7 text-left">
               <Text variant="lead-semibold" tone="primary" as="h3">
                 {title}
               </Text>

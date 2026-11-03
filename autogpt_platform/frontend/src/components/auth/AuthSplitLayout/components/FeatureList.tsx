@@ -13,7 +13,8 @@ export function FeatureList({ itemsTitle, items }: Props) {
         <Text
           variant="small-medium"
           tone="muted"
-          className="uppercase tracking-caps"
+          transform="uppercase"
+          tracking="caps"
         >
           {itemsTitle}
         </Text>

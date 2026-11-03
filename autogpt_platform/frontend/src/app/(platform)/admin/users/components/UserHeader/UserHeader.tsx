@@ -33,7 +33,7 @@ export function UserHeader({ user, isSelf, canAct }: Props) {
         <Avatar className="h-10 w-10 shrink-0">
           {user.image ? <AvatarImage src={user.image} alt="" /> : null}
           <AvatarFallback accessibleLabel={displayName}>
-            <span className="flex size-full items-center justify-center rounded-full bg-surface-hover text-base font-medium text-foreground-body">
+            <span className="flex size-full items-center justify-center rounded-full bg-surface-hover text-body-lg font-medium text-foreground-body">
               {displayName.charAt(0).toUpperCase()}
             </span>
           </AvatarFallback>

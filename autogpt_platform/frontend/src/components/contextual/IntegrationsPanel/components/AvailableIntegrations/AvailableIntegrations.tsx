@@ -18,7 +18,7 @@ export function AvailableIntegrations({ query, onSelect }: Props) {
   return (
     <section
       aria-labelledby="available-integrations-heading"
-      className="flex flex-col gap-4 pb-6 pt-6"
+      className="flex flex-col gap-4 pt-6 pb-6"
     >
       <div className="flex flex-col gap-1 px-4">
         <Text
@@ -26,7 +26,8 @@ export function AvailableIntegrations({ query, onSelect }: Props) {
           as="h2"
           id="available-integrations-heading"
           tone="secondary"
-          className="uppercase tracking-eyebrow"
+          transform="uppercase"
+          tracking="eyebrow"
         >
           Available integrations
         </Text>
@@ -60,13 +61,15 @@ export function AvailableIntegrations({ query, onSelect }: Props) {
               </li>
             ))}
           </ul>
-          <Text variant="small" tone="muted" className="px-4" role="status">
-            {catalog.total === 0
-              ? query.trim()
-                ? "No available services match your search."
-                : "No available services."
-              : `${catalog.providers.length} of ${catalog.total} services`}
-          </Text>
+          <div className="px-4">
+            <Text variant="small" tone="muted" role="status">
+              {catalog.total === 0
+                ? query.trim()
+                  ? "No available services match your search."
+                  : "No available services."
+                : `${catalog.providers.length} of ${catalog.total} services`}
+            </Text>
+          </div>
           {catalog.hasMore && (
             <Button variant="secondary" size="small" onClick={catalog.showMore}>
               Show more services

@@ -129,15 +129,15 @@ export function FolderRow({
         variant="body"
         as="span"
         tone="muted"
-        // oxlint-disable-next-line design-system/no-restyle -- tabular figures keep the size column aligned; Text has no numeric variant
-        className="hidden tabular-nums md:block"
+        tabular
+        className="hidden md:block"
       >
         {folderSummary(fileCount, subfolderCount)}
       </Text>
       <div
         className={cn(
           ACTIONS_CELL_CLASS,
-          "gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100",
+          "gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100",
         )}
         onClick={(e) => e.stopPropagation()}
       >

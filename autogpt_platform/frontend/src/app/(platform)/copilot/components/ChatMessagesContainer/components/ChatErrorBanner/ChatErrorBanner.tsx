@@ -25,11 +25,11 @@ export function ChatErrorBanner({ error }: Props) {
   return (
     <div
       data-testid="chat-error-banner"
-      className="rounded-lg bg-error-surface p-4 text-sm text-error-foreground"
+      className="rounded-lg bg-error-surface p-4 text-body text-error-foreground"
     >
       <details>
         <summary className="cursor-pointer font-medium">{title}</summary>
-        <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-error-foreground">
+        <pre className="mt-2 max-h-40 overflow-auto text-caption break-words whitespace-pre-wrap text-error-foreground">
           {error.message}
         </pre>
       </details>
