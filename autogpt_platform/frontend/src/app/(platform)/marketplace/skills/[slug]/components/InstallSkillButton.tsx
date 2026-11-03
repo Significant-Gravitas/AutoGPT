@@ -122,7 +122,7 @@ export function ExpertInstallMenu({
                 {expert.name}
               </span>
               {expert.role ? (
-                <span className="block truncate text-xs text-foreground-tertiary">
+                <span className="block truncate text-caption text-foreground-tertiary">
                   {expert.role}
                 </span>
               ) : null}

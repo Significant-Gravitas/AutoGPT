@@ -49,7 +49,7 @@ export function OfferActions(props: Props) {
         <p
           role="alert"
           data-slot="offer-actions-error"
-          className="text-sm text-error"
+          className="text-body text-error"
         >
           {props.trialError}
         </p>

@@ -19,9 +19,9 @@ export type ChipSize = "small" | "medium" | "default";
 export const CHIP_SHAPE =
   "inline-flex items-center rounded-full border border-separator bg-transparent font-medium text-foreground-base";
 export const CHIP_SIZE: Record<ChipSize, string> = {
-  small: "h-7 gap-1 px-2 text-xs",
-  medium: "h-8 gap-1 px-2 text-xs",
-  default: "h-9 gap-1.5 px-3.5 text-sm",
+  small: "h-7 gap-1 px-2 text-caption",
+  medium: "h-8 gap-1 px-2 text-caption",
+  default: "h-9 gap-1.5 px-3.5 text-body",
 };
 
 const CHIP_ICON_SIZE: Record<ChipSize, number> = {

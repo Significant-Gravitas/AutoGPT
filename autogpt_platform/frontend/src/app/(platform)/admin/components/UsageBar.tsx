@@ -5,14 +5,16 @@ import { formatMicrodollarsAsUsd } from "@/app/(platform)/copilot/components/usa
 
 export function UsageBar({ used, limit }: { used: number; limit: number }) {
   if (limit === 0) {
-    return <span className="text-sm text-foreground-tertiary">Unlimited</span>;
+    return (
+      <span className="text-body text-foreground-tertiary">Unlimited</span>
+    );
   }
   const pct = Math.min(Math.max(0, (used / limit) * 100), 100);
   const color = pct >= 90 ? "bg-error" : pct >= 70 ? "bg-yellow" : "bg-success";
 
   return (
     <div className="space-y-1">
-      <div className="flex justify-between text-sm">
+      <div className="flex justify-between text-body">
         <span>{formatMicrodollarsAsUsd(used)} spent</span>
         <span>{formatMicrodollarsAsUsd(limit)} limit</span>
       </div>
@@ -22,7 +24,7 @@ export function UsageBar({ used, limit }: { used: number; limit: number }) {
           style={{ "--usage-width": `${pct}%` } as CSSProperties}
         />
       </div>
-      <div className="text-right text-xs text-foreground-tertiary">
+      <div className="text-right text-caption text-foreground-tertiary">
         {pct.toFixed(1)}% used
       </div>
     </div>

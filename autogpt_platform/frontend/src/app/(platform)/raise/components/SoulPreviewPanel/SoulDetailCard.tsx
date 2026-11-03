@@ -16,7 +16,7 @@ export function SoulDetailCard({ label, value, color }: Props) {
     <div className="w-full rounded-3xl border border-border-base bg-canvas px-6 py-4 shadow-lg duration-500 animate-in fade-in fill-mode-both slide-in-from-bottom-6 motion-reduce:animate-none">
       <p
         className={cn(
-          "mb-1 text-xs font-semibold tracking-caps uppercase",
+          "mb-1 text-caption font-semibold tracking-caps uppercase",
           textClassFor(color) ?? "text-foreground-tertiary",
         )}
       >

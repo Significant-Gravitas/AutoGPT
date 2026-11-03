@@ -41,13 +41,13 @@ export function ReadyView({
         <div className="w-full rounded-xl bg-surface-hover px-6 py-5 text-left">
           <Text variant="body-medium">What happens when you confirm:</Text>
           {forUser ? (
-            <ul className="mt-4 space-y-2.5 text-sm leading-relaxed text-foreground-tertiary">
+            <ul className="mt-4 space-y-2.5 text-body leading-relaxed text-foreground-tertiary">
               <li>{contextLabel} will be linked to your AutoGPT account</li>
               <li>DMs with the bot run as your own private AutoGPT chat</li>
               <li>All usage from those DMs is billed to your account</li>
             </ul>
           ) : (
-            <ul className="mt-4 space-y-2.5 text-sm leading-relaxed text-foreground-tertiary">
+            <ul className="mt-4 space-y-2.5 text-body leading-relaxed text-foreground-tertiary">
               <li>{contextLabel} will be connected to your AutoGPT account</li>
               <li>Anyone in the {serverNoun} can give AutoGPT tasks</li>
               <li>

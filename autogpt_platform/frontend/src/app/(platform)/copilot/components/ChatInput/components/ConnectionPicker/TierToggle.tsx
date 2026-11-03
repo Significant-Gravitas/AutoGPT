@@ -123,7 +123,7 @@ export function TierToggle({
                 {segment.name ?? segment.label}
               </Text>
               {segment.model && (
-                <span className="text-sm leading-snug text-foreground-tertiary">
+                <span className="text-body leading-snug text-foreground-tertiary">
                   <Swap className="max-w-full truncate">{segment.model}</Swap>
                 </span>
               )}
@@ -182,7 +182,7 @@ function LockedSegment({ segment }: { segment: Segment }) {
             {segment.name ?? segment.label}
           </Text>
           {segment.model && (
-            <span className="text-sm leading-snug text-foreground-subtle">
+            <span className="text-body leading-snug text-foreground-subtle">
               <Swap className="max-w-full truncate">{segment.model}</Swap>
             </span>
           )}

@@ -62,7 +62,7 @@ function TeamNode({ member }: Props) {
         width={144}
         height={20}
       >
-        <div className="text-center text-xs leading-4">
+        <div className="text-center text-caption leading-4">
           <span className="block font-medium text-foreground-base">
             {member.name}
           </span>

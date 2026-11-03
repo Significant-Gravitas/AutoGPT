@@ -205,7 +205,7 @@ export function AllVariants() {
           <div>
             <Text
               variant="h2"
-              className="mb-2 text-xl font-semibold text-foreground-emphasis"
+              className="mb-2 text-lead font-semibold text-foreground-emphasis"
             >
               Hugeicons
             </Text>
@@ -215,7 +215,7 @@ export function AllVariants() {
                   href="https://hugeicons.com/icons/stroke-rounded"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mb-2 inline-flex flex-row items-center gap-1 text-base font-semibold text-info-foreground hover:underline"
+                  className="mb-2 inline-flex flex-row items-center gap-1 text-body-lg font-semibold text-info-foreground hover:underline"
                 >
                   Hugeicons Library{" "}
                   <Icon
@@ -227,7 +227,7 @@ export function AllVariants() {
                 <Text variant="body" className="mb-2 text-foreground-secondary">
                   A comprehensive icon family; we use the stroke-rounded variant
                 </Text>
-                <div className="font-mono text-sm text-foreground-emphasis">
+                <div className="font-mono text-body text-foreground-emphasis">
                   @hugeicons/core-free-icons → icon data
                 </div>
               </div>
@@ -242,7 +242,7 @@ export function AllVariants() {
                   There is a single stroke width, owned by the Icon atom - never
                   override it per call site
                 </Text>
-                <div className="space-y-1 font-mono text-sm text-foreground-emphasis">
+                <div className="space-y-1 font-mono text-body text-foreground-emphasis">
                   <div>2px</div>
                 </div>
               </div>
@@ -252,7 +252,7 @@ export function AllVariants() {
           <div>
             <Text
               variant="h2"
-              className="mb-2 text-xl font-semibold text-foreground-emphasis"
+              className="mb-2 text-lead font-semibold text-foreground-emphasis"
             >
               Usage Guidelines
             </Text>
@@ -285,7 +285,7 @@ export function AllVariants() {
               <div>
                 <Text
                   variant="h3"
-                  className="mb-2 text-base font-semibold text-foreground-emphasis"
+                  className="mb-2 text-body-lg font-semibold text-foreground-emphasis"
                 >
                   🎨 Design Consistency
                 </Text>
@@ -311,7 +311,7 @@ export function AllVariants() {
         <div>
           <Text
             variant="h2"
-            className="mb-2 text-xl font-semibold text-foreground-emphasis"
+            className="mb-2 text-lead font-semibold text-foreground-emphasis"
           >
             Matching Design Specifications
           </Text>
@@ -407,7 +407,7 @@ export function AllVariants() {
         <div>
           <Text
             variant="h2"
-            className="mb-2 text-xl font-semibold text-foreground-emphasis"
+            className="mb-2 text-lead font-semibold text-foreground-emphasis"
           >
             Icon Categories
           </Text>
@@ -422,7 +422,7 @@ export function AllVariants() {
             <div>
               <Text
                 variant="h3"
-                className="mb-1 text-lg font-semibold text-foreground-emphasis"
+                className="mb-1 text-lead font-semibold text-foreground-emphasis"
               >
                 {category.name}
               </Text>
@@ -459,7 +459,7 @@ export function AllVariants() {
         <div>
           <Text
             variant="h2"
-            className="mb-2 text-xl font-semibold text-foreground-emphasis"
+            className="mb-2 text-lead font-semibold text-foreground-emphasis"
           >
             Usage Examples
           </Text>

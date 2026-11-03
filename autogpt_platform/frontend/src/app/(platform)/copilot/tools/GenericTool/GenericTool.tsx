@@ -325,7 +325,7 @@ function getWebAccordionData(
       content: (
         <div className="space-y-3">
           {answer && (
-            <div className="rounded-md bg-surface-muted p-3 text-sm whitespace-pre-wrap text-foreground-body">
+            <div className="rounded-md bg-surface-muted p-3 text-body whitespace-pre-wrap text-foreground-body">
               {answer}
             </div>
           )}
@@ -336,9 +336,9 @@ function getWebAccordionData(
             const pageAge = getStringField(r, "page_age");
             const citation = typeof r.n === "number" ? r.n : null;
             return (
-              <div key={i} className="text-sm">
+              <div key={i} className="text-body">
                 {citation !== null && (
-                  <span className="mr-1.5 text-xs text-foreground-tertiary tabular-nums">
+                  <span className="mr-1.5 text-caption text-foreground-tertiary tabular-nums">
                     [{citation}]
                   </span>
                 )}
@@ -355,7 +355,7 @@ function getWebAccordionData(
                   <span className="font-medium">{title}</span>
                 )}
                 {href && (
-                  <div className="text-xs text-foreground-tertiary">
+                  <div className="text-caption text-foreground-tertiary">
                     {truncate(href, 100)}
                   </div>
                 )}
@@ -363,7 +363,7 @@ function getWebAccordionData(
                   <p className="mt-0.5 text-foreground-body">{snippet}</p>
                 )}
                 {pageAge && (
-                  <div className="mt-0.5 text-xs text-foreground-subtle">
+                  <div className="mt-0.5 text-caption text-foreground-subtle">
                     {pageAge}
                   </div>
                 )}
@@ -630,7 +630,7 @@ function getTodoAccordionData(input: unknown): AccordionData {
     content: (
       <div className="space-y-1 py-1">
         {todos.map((todo, i) => (
-          <div key={i} className="flex items-start gap-2 text-xs">
+          <div key={i} className="flex items-start gap-2 text-caption">
             <span className="mt-0.5 flex-shrink-0">
               {todo.status === "completed" ? (
                 <Icon icon={CheckmarkCircle02Icon} size={14} tone="success" />
@@ -800,7 +800,7 @@ export function GenericTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      <div className="flex min-w-0 items-center gap-2 overflow-hidden text-xs text-foreground-tertiary">
+      <div className="flex min-w-0 items-center gap-2 overflow-hidden text-caption text-foreground-tertiary">
         <ToolIcon
           category={category}
           isStreaming={isStreaming}

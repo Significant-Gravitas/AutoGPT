@@ -54,7 +54,7 @@ export function SubscriptionTierSection() {
   if (error) {
     return (
       <div className="space-y-4">
-        <Text variant="lg-medium" as="h3" tone="inherit">
+        <Text variant="lead-medium" as="h3" tone="inherit">
           Subscription Plan
         </Text>
         <div
@@ -76,7 +76,7 @@ export function SubscriptionTierSection() {
   if (currentTier === "ENTERPRISE") {
     return (
       <div className="space-y-4">
-        <Text variant="lg-medium" as="h3" tone="inherit">
+        <Text variant="lead-medium" as="h3" tone="inherit">
           Subscription Plan
         </Text>
         <div className="rounded-lg border border-brand bg-accent-surface p-4 text-accent-strong">
@@ -134,7 +134,7 @@ export function SubscriptionTierSection() {
 
   return (
     <div className="space-y-4">
-      <Text variant="lg-medium" as="h3" tone="inherit">
+      <Text variant="lead-medium" as="h3" tone="inherit">
         Subscription Plan
       </Text>
 
@@ -215,7 +215,12 @@ export function SubscriptionTierSection() {
                 )}
               </div>
 
-              <Text variant="2xl-bold" as="p" tone="inherit" className="mb-1">
+              <Text
+                variant="heading-md-bold"
+                as="p"
+                tone="inherit"
+                className="mb-1"
+              >
                 {formatCost(cost, tier.key)}
               </Text>
               {rateLimitLabel && (

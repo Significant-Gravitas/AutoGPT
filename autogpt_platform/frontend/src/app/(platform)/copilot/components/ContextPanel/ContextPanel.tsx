@@ -98,7 +98,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
         >
           <SheetHeader className="mt-12 px-6 pt-2 pb-1 text-left">
             <SheetTitle>
-              <Text as="span" variant="lg-semibold" tone="primary">
+              <Text as="span" variant="lead-semibold" tone="primary">
                 {TAB_TITLES[activeTab]}
               </Text>
             </SheetTitle>

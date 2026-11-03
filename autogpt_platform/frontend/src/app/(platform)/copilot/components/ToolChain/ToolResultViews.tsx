@@ -104,7 +104,7 @@ export function SearchResults({ items, answer }: SearchResultsProps) {
             className="flex items-center gap-2.5 px-3 py-2"
           >
             {citation !== null && (
-              <span className="shrink-0 text-xs text-foreground-secondary tabular-nums">
+              <span className="shrink-0 text-caption text-foreground-secondary tabular-nums">
                 [{citation}]
               </span>
             )}
@@ -252,7 +252,7 @@ export function FileCard({ row }: RowProps) {
         )}
       </div>
       {preview && (
-        <p className="mt-1.5 line-clamp-2 pl-9 text-xs whitespace-pre-wrap text-foreground-subtle">
+        <p className="mt-1.5 line-clamp-2 pl-9 text-caption whitespace-pre-wrap text-foreground-subtle">
           {preview}
         </p>
       )}
@@ -311,7 +311,7 @@ export function KeyValueList({ value }: ValueProps) {
       {entries.map(([key, entryValue]) => (
         <div
           key={key}
-          className="flex items-baseline gap-3 py-1 text-xs first:pt-0 last:pb-0"
+          className="flex items-baseline gap-3 py-1 text-caption first:pt-0 last:pb-0"
         >
           <span className="shrink-0 text-foreground-subtle">
             {humanizeKey(key)}

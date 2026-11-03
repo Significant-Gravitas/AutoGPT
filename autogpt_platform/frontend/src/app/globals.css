@@ -1,5 +1,6 @@
 @import "./tailwind-v3-preflight.css";
 @import "./tokens/theme.css";
+@import "./tokens/typography.css";
 @config "../../tailwind.config.ts";
 
 /* Defaults Tailwind 4 reads from its own theme, which is not loaded: the
@@ -101,56 +102,37 @@
   --font-mono: var(--font-geist-mono);
   --font-poppins: var(--font-poppins);
 
-  --text-xs: 0.75rem;
-  --text-xs--line-height: 1rem;
-  --text-sm: 0.875rem;
-  --text-sm--line-height: 1.25rem;
-  --text-base: 1rem;
-  --text-base--line-height: 1.5rem;
-  --text-lg: 1.125rem;
-  --text-lg--line-height: 1.75rem;
-  --text-xl: 1.25rem;
-  --text-xl--line-height: 1.75rem;
-  --text-2xl: 1.5rem;
-  --text-2xl--line-height: 2rem;
-  --text-3xl: 1.875rem;
-  --text-3xl--line-height: 2.25rem;
-  --text-4xl: 2.25rem;
-  --text-4xl--line-height: 2.5rem;
-  --text-5xl: 3rem;
-  --text-5xl--line-height: 1;
-  --text-6xl: 3.75rem;
-  --text-6xl--line-height: 1;
-  --text-7xl: 4.5rem;
-  --text-7xl--line-height: 1;
-  --text-8xl: 6rem;
-  --text-8xl--line-height: 1;
-  --text-9xl: 8rem;
-  --text-9xl--line-height: 1;
-  --text-tiny: 0.625rem;
-  --text-tiny--line-height: 0.875rem;
-  --text-caption-sm: 0.6875rem;
-  --text-caption-sm--line-height: 1rem;
-  --text-caption: 0.75rem;
-  --text-caption--line-height: 1.125rem;
-  --text-body-sm: 0.8125rem;
-  --text-body-sm--line-height: 1.25rem;
-  --text-body: 0.875rem;
-  --text-body--line-height: 1.375rem;
-  --text-body-md: 0.9375rem;
-  --text-body-md--line-height: 1.5rem;
-  --text-body-lg: 1rem;
-  --text-body-lg--line-height: 1.625rem;
-  --text-lead: 1.25rem;
-  --text-lead--line-height: 1.75rem;
-  --text-heading-sm: 1.375rem;
-  --text-heading-sm--line-height: 1.5rem;
-  --text-heading: 1.75rem;
-  --text-heading--line-height: 2.5rem;
-  --text-title: 2rem;
-  --text-title--line-height: 2.5rem;
-  --text-display: 2.75rem;
-  --text-display--line-height: 3.5rem;
+  /* The type scale, the values in tokens/typography.css. Tailwind's own
+     sizes (`text-xs` ... `text-9xl`) are reset, so they generate nothing. */
+  --text-*: initial;
+  --text-tiny: var(--text-tiny);
+  --text-tiny--line-height: var(--text-tiny--line-height);
+  --text-caption-sm: var(--text-caption-sm);
+  --text-caption-sm--line-height: var(--text-caption-sm--line-height);
+  --text-caption: var(--text-caption);
+  --text-caption--line-height: var(--text-caption--line-height);
+  --text-body-sm: var(--text-body-sm);
+  --text-body-sm--line-height: var(--text-body-sm--line-height);
+  --text-body: var(--text-body);
+  --text-body--line-height: var(--text-body--line-height);
+  --text-body-md: var(--text-body-md);
+  --text-body-md--line-height: var(--text-body-md--line-height);
+  --text-body-lg: var(--text-body-lg);
+  --text-body-lg--line-height: var(--text-body-lg--line-height);
+  --text-lead: var(--text-lead);
+  --text-lead--line-height: var(--text-lead--line-height);
+  --text-heading-sm: var(--text-heading-sm);
+  --text-heading-sm--line-height: var(--text-heading-sm--line-height);
+  --text-heading-md: var(--text-heading-md);
+  --text-heading-md--line-height: var(--text-heading-md--line-height);
+  --text-heading: var(--text-heading);
+  --text-heading--line-height: var(--text-heading--line-height);
+  --text-title: var(--text-title);
+  --text-title--line-height: var(--text-title--line-height);
+  --text-display: var(--text-display);
+  --text-display--line-height: var(--text-display--line-height);
+  --text-hero: var(--text-hero);
+  --text-hero--line-height: var(--text-hero--line-height);
 
   --leading-3: 0.75rem;
   --leading-4: 1rem;
@@ -459,6 +441,42 @@ textarea,
 
 .agpt-card {
   @apply rounded-2xl border border-border-strong bg-surface p-[1px];
+}
+
+/* Streamdown (the chat's markdown renderer, a dependency) writes Tailwind's
+   size names on its headings, table cells, code and menus, and the theme no
+   longer has them. Inside its markup they take the type scale's step the
+   codemod gives each one (scripts/ds/text-size-scale.ts). This covers every
+   size Streamdown writes today (xs to 3xl); after a Streamdown upgrade,
+   check its dist for larger ones and add them here. They come before
+   the utilities and weigh one class, so a size class the app passes in
+   still wins, as before. */
+:where([data-streamdown], [data-streamdown] *) {
+  &.text-xs {
+    font-size: var(--text-caption);
+    line-height: var(--text-caption--line-height);
+  }
+  &.text-sm {
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+  }
+  &.text-base {
+    font-size: var(--text-body-lg);
+    line-height: var(--text-body-lg--line-height);
+  }
+  &.text-lg,
+  &.text-xl {
+    font-size: var(--text-lead);
+    line-height: var(--text-lead--line-height);
+  }
+  &.text-2xl {
+    font-size: var(--text-heading-md);
+    line-height: var(--text-heading-md--line-height);
+  }
+  &.text-3xl {
+    font-size: var(--text-heading);
+    line-height: var(--text-heading--line-height);
+  }
 }
 
 /*! tailwind-utilities:start (postcss.tailwind3-compat.cjs orders them) */

@@ -162,7 +162,7 @@ export function ContentCodeBlock({
   return (
     <pre
       className={cn(
-        "rounded-lg border bg-surface-hover p-3 text-xs whitespace-pre-wrap text-foreground-emphasis",
+        "rounded-lg border bg-surface-hover p-3 text-caption whitespace-pre-wrap text-foreground-emphasis",
         className,
       )}
     >
@@ -209,7 +209,7 @@ export function ContentLink({
       variant="primary"
       isExternal
       href={href}
-      className={cn("shrink-0 text-xs text-brand", className)}
+      className={cn("shrink-0 text-caption text-brand", className)}
       {...rest}
     >
       {children}

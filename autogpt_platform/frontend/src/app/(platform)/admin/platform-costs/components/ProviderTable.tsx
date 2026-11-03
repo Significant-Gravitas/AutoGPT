@@ -19,8 +19,8 @@ interface Props {
 function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-left text-sm">
-        <thead className="border-b text-xs text-foreground-tertiary uppercase">
+      <table className="w-full text-left text-body">
+        <thead className="border-b text-caption text-foreground-tertiary uppercase">
           <tr>
             <th scope="col" className="px-4 py-3">
               Provider
@@ -125,7 +125,7 @@ function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
                         step="0.0001"
                         min="0"
                         aria-label={`Rate for ${row.provider} (${tt})`}
-                        className="w-24 rounded border px-2 py-1 text-right text-xs"
+                        className="w-24 rounded border px-2 py-1 text-right text-caption"
                         placeholder={fallback !== null ? String(fallback) : "0"}
                         value={currentRate ?? ""}
                         onChange={(e) => {
@@ -143,7 +143,7 @@ function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
                       </span>
                     </div>
                   ) : (
-                    <span className="text-xs text-foreground-tertiary">
+                    <span className="text-caption text-foreground-tertiary">
                       auto
                     </span>
                   )}

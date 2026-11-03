@@ -23,7 +23,7 @@ interface Props {
 export function CompactionCard({ phase, stats, isSettled }: Props) {
   if (isSettled) {
     return (
-      <div className="flex items-center gap-2 py-2 text-xs text-foreground-tertiary">
+      <div className="flex items-center gap-2 py-2 text-caption text-foreground-tertiary">
         <Icon icon={ReloadIcon} size={14} />
         <span
           className="min-w-0 truncate"
@@ -62,7 +62,7 @@ function LiveCompaction({ phase, stats }: LiveProps) {
 
   return (
     <div className="flex flex-col gap-1.5 py-2">
-      <div className="flex items-center gap-2 text-xs text-foreground-tertiary">
+      <div className="flex items-center gap-2 text-caption text-foreground-tertiary">
         <Icon
           icon={ReloadIcon}
           size={14}

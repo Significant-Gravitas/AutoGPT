@@ -30,7 +30,7 @@ interface Props {
 }
 
 const CHIP_CLASSNAME =
-  "ml-2 inline-flex h-9 items-center gap-1.5 rounded-2xl border border-border-base bg-surface pl-1.5 pr-2 text-sm font-medium text-foreground-body shadow-sm";
+  "ml-2 inline-flex h-9 items-center gap-1.5 rounded-2xl border border-border-base bg-surface pl-1.5 pr-2 text-body font-medium text-foreground-body shadow-sm";
 
 export function RecipientChip({
   recipient,

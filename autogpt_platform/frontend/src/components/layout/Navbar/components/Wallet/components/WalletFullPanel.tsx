@@ -1,7 +1,7 @@
 "use client";
 
 import { ScrollArea } from "@/components/molecules/ScrollArea/ScrollArea";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { usePlatformPayment } from "@/hooks/usePlatformPayment";
 import { PopoverClose } from "@radix-ui/react-popover";
 
 import { TaskGroup } from "../helpers";
@@ -17,7 +17,7 @@ interface Props {
 }
 
 export function WalletFullPanel({ groups, formattedCredits }: Props) {
-  const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
+  const { isPaymentEnabled } = usePlatformPayment();
 
   return (
     <>

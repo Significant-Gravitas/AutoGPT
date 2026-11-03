@@ -21,17 +21,17 @@ function OverviewComponent() {
       {/* Header Section */}
       <div className="space-y-8">
         <div className="space-y-4">
-          <h1 className="text-4xl font-bold text-foreground-base">
+          <h1 className="text-title font-bold text-foreground-base">
             AutoGPT Design System
           </h1>
-          <p className="text-xl leading-relaxed text-foreground-secondary">
+          <p className="text-lead leading-relaxed text-foreground-secondary">
             Welcome to the AutoGPT Design System - a comprehensive collection of
             reusable components, design tokens, and guidelines that power the
             AutoGPT Platform. This system ensures consistency, accessibility,
             and efficiency across all our user interfaces.
           </p>
           <div className="inline-flex items-center">
-            <strong className="text-lg">
+            <strong className="text-lead">
               <a
                 href="https://www.figma.com/design/nO9NFynNuicLtkiwvOxrbz/AutoGPT-Design-System?node-id=3-2083&m=dev"
                 target="_blank"
@@ -54,17 +54,17 @@ function OverviewComponent() {
               height={0}
               className="h-auto w-4/5 rounded-lg"
             />
-            <h4 className="text-lg font-bold text-foreground-base">
+            <h4 className="text-lead font-bold text-foreground-base">
               Design Tokens
             </h4>
-            <p className="text-sm leading-relaxed text-foreground-secondary">
+            <p className="text-body leading-relaxed text-foreground-secondary">
               The foundation of our design system. Tokens define colors,
               typography, spacing, shadows, and other visual properties that
               ensure consistency across all components and layouts.
             </p>
             <a
               href="?path=/docs/design-tokens--docs"
-              className={`inline-flex items-center text-sm ${linkStyle}`}
+              className={`inline-flex items-center text-body ${linkStyle}`}
             >
               Explore Tokens
               <RightArrow />
@@ -79,15 +79,15 @@ function OverviewComponent() {
               height={0}
               className="h-auto w-4/5 rounded-lg"
             />
-            <h4 className="text-lg font-bold text-foreground-base">Atoms</h4>
-            <p className="text-sm leading-relaxed text-foreground-secondary">
+            <h4 className="text-lead font-bold text-foreground-base">Atoms</h4>
+            <p className="text-body leading-relaxed text-foreground-secondary">
               The smallest building blocks of our interface. Atoms include
               buttons, inputs, icons, labels, and other fundamental UI elements
               that cannot be broken down further.
             </p>
             <a
               href="?path=/docs/atoms--docs"
-              className={`inline-flex items-center text-sm ${linkStyle}`}
+              className={`inline-flex items-center text-body ${linkStyle}`}
             >
               View Atoms
               <RightArrow />
@@ -102,17 +102,17 @@ function OverviewComponent() {
               height={0}
               className="h-auto w-4/5 rounded-lg"
             />
-            <h4 className="text-lg font-bold text-foreground-base">
+            <h4 className="text-lead font-bold text-foreground-base">
               Molecules
             </h4>
-            <p className="text-sm leading-relaxed text-foreground-secondary">
+            <p className="text-body leading-relaxed text-foreground-secondary">
               Combinations of atoms that work together as a unit. Examples
               include search bars, card components, dropdown menus, and other
               composite UI elements.
             </p>
             <a
               href="?path=/docs/molecules--docs"
-              className={`inline-flex items-center text-sm ${linkStyle}`}
+              className={`inline-flex items-center text-body ${linkStyle}`}
             >
               Browse Molecules
               <RightArrow />
@@ -124,10 +124,10 @@ function OverviewComponent() {
       {/* Technical Foundation */}
       <div className="space-y-8">
         <div className="space-y-4">
-          <h2 className="text-3xl font-bold text-foreground-base">
+          <h2 className="text-heading font-bold text-foreground-base">
             Technical Foundation
           </h2>
-          <p className="text-lg text-foreground-secondary">
+          <p className="text-lead text-foreground-secondary">
             Our design system is built on proven technologies while maintaining
             strict design consistency through custom tokens and components.
           </p>
@@ -135,10 +135,10 @@ function OverviewComponent() {
 
         <div className="grid grid-cols-1 gap-12 md:grid-cols-3">
           <div className="space-y-4">
-            <h4 className="text-lg font-semibold text-foreground-base">
+            <h4 className="text-lead font-semibold text-foreground-base">
               🎨 Built with Tailwind & shadcn/ui
             </h4>
-            <p className="text-sm leading-relaxed text-foreground-secondary">
+            <p className="text-body leading-relaxed text-foreground-secondary">
               The AutoGPT Design System leverages{" "}
               <a
                 href="https://tailwindcss.com/"
@@ -162,10 +162,10 @@ function OverviewComponent() {
           </div>
 
           <div className="space-y-4">
-            <h4 className="text-lg font-semibold text-foreground-base">
+            <h4 className="text-lead font-semibold text-foreground-base">
               🔧 Why This Matters
             </h4>
-            <ul className="space-y-2 text-sm text-foreground-secondary">
+            <ul className="space-y-2 text-body text-foreground-secondary">
               <li>
                 <strong>Visual Consistency:</strong> All interfaces look and
                 feel cohesive
@@ -181,10 +181,10 @@ function OverviewComponent() {
             </ul>
           </div>
           <div className="space-y-4">
-            <h4 className="text-lg font-semibold text-foreground-base">
+            <h4 className="text-lead font-semibold text-foreground-base">
               📚 Getting Started
             </h4>
-            <ol className="list-decimal space-y-2 text-sm text-foreground-secondary">
+            <ol className="list-decimal space-y-2 text-body text-foreground-secondary">
               <li>
                 Review the Design Tokens, Atoms,Molecules and Contextual
                 Components for your use case
@@ -213,10 +213,10 @@ function OverviewComponent() {
       {/* Contributing Section */}
       <div className="space-y-8">
         <div className="space-y-4">
-          <h2 className="text-3xl font-bold text-foreground-base">
+          <h2 className="text-heading font-bold text-foreground-base">
             Contributing to the Design System
           </h2>
-          <p className="text-lg text-foreground-secondary">
+          <p className="text-lead text-foreground-secondary">
             Help us improve and expand the AutoGPT Design System. Whether
             you&apos;re fixing bugs, adding new components, or enhancing
             existing ones, your contributions are valuable to the community.
@@ -229,7 +229,7 @@ function OverviewComponent() {
           </div>
           <div className="relative space-y-6">
             <div className="text-center">
-              <h4 className="bg-gradient-to-r from-info-foreground via-brand-hover to-pink-foreground bg-clip-text text-xl font-bold text-transparent">
+              <h4 className="bg-gradient-to-r from-info-foreground via-brand-hover to-pink-foreground bg-clip-text text-lead font-bold text-transparent">
                 ⚠️ Design System Guidelines
               </h4>
               <p className="mt-2 text-foreground-body">
@@ -240,23 +240,23 @@ function OverviewComponent() {
 
             <div className="grid gap-6 md:grid-cols-2">
               <div className="space-y-4">
-                <h5 className="text-lg font-semibold text-error-foreground">
+                <h5 className="text-lead font-semibold text-error-foreground">
                   ❌ Don&apos;t Do This
                 </h5>
                 <div className="space-y-3">
                   <div>
-                    <p className="mb-2 text-sm font-medium text-foreground-body">
+                    <p className="mb-2 text-body font-medium text-foreground-body">
                       Default Tailwind classes:
                     </p>
-                    <pre className="overflow-x-auto rounded-md bg-surface-hover p-3 text-sm">
+                    <pre className="overflow-x-auto rounded-md bg-surface-hover p-3 text-body">
                       <code className="text-error-foreground">{`className="text-blue-500 p-4 bg-gray-200"`}</code>
                     </pre>
                   </div>
                   <div>
-                    <p className="mb-2 text-sm font-medium text-foreground-body">
+                    <p className="mb-2 text-body font-medium text-foreground-body">
                       Arbitrary values:
                     </p>
-                    <pre className="overflow-x-auto rounded-md bg-surface-hover p-3 text-sm">
+                    <pre className="overflow-x-auto rounded-md bg-surface-hover p-3 text-body">
                       <code className="text-error-foreground">{`className="text-[#1234ff] w-[420px]"`}</code>
                     </pre>
                   </div>
@@ -264,23 +264,23 @@ function OverviewComponent() {
               </div>
 
               <div className="space-y-4">
-                <h5 className="text-lg font-semibold text-success">
+                <h5 className="text-lead font-semibold text-success">
                   ✅ Do This Instead
                 </h5>
                 <div className="space-y-3">
                   <div>
-                    <p className="mb-2 text-sm font-medium text-foreground-body">
+                    <p className="mb-2 text-body font-medium text-foreground-body">
                       Design tokens:
                     </p>
-                    <pre className="overflow-x-auto rounded-md bg-surface-hover p-3 text-sm">
+                    <pre className="overflow-x-auto rounded-md bg-surface-hover p-3 text-body">
                       <code className="text-success">{`className="text-action bg-surface space-4"`}</code>
                     </pre>
                   </div>
                   <div>
-                    <p className="mb-2 text-sm font-medium text-foreground-body">
+                    <p className="mb-2 text-body font-medium text-foreground-body">
                       System components:
                     </p>
-                    <pre className="overflow-x-auto rounded-md bg-surface-hover p-3 text-sm">
+                    <pre className="overflow-x-auto rounded-md bg-surface-hover p-3 text-body">
                       <code className="text-success">{`<Button variant="primary" size="md">
   Click me
 </Button>`}</code>
@@ -294,7 +294,7 @@ function OverviewComponent() {
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <div className="space-y-4">
-            <h4 className="text-lg font-semibold text-foreground-base">
+            <h4 className="text-lead font-semibold text-foreground-base">
               🧢 Development Workflow
             </h4>
             <p className="leading-relaxed text-foreground-secondary">
@@ -333,7 +333,7 @@ function OverviewComponent() {
           </div>
 
           <div className="space-y-4">
-            <h4 className="text-lg font-semibold text-foreground-base">
+            <h4 className="text-lead font-semibold text-foreground-base">
               📋 Component Guidelines
             </h4>
             <p className="leading-relaxed text-foreground-secondary">
@@ -401,7 +401,7 @@ function OverviewComponent() {
 
       {/* Social Links */}
       <div className="space-y-8">
-        <h3 className="text-3xl font-bold text-foreground-base">
+        <h3 className="text-heading font-bold text-foreground-base">
           Get Involved
         </h3>
         <p className="leading-relaxed text-foreground-secondary">
@@ -443,14 +443,14 @@ function OverviewComponent() {
                 height={32}
                 className="h-8 w-8"
               />
-              <p className="text-sm leading-relaxed text-foreground-secondary">
+              <p className="text-body leading-relaxed text-foreground-secondary">
                 {item.title}
               </p>
               <a
                 href={item.link}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center text-sm text-info-foreground hover:text-info-foreground"
+                className="inline-flex items-center text-body text-info-foreground hover:text-info-foreground"
               >
                 {item.linkText}
                 <RightArrow />

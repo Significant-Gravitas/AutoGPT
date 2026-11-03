@@ -74,9 +74,9 @@ export function DiagnosticAlertCard({
           </h3>
         </div>
         <div className="p-6 pt-0">
-          <p className={cn("text-3xl font-bold", colors.value)}>{value}</p>
-          <p className={cn("text-sm", colors.detail)}>{detail}</p>
-          <p className={cn("mt-2 text-xs", colors.hint)}>{hint}</p>
+          <p className={cn("text-heading font-bold", colors.value)}>{value}</p>
+          <p className={cn("text-body", colors.detail)}>{detail}</p>
+          <p className={cn("mt-2 text-caption", colors.hint)}>{hint}</p>
         </div>
       </div>
     </div>

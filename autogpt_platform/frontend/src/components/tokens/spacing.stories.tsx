@@ -99,7 +99,7 @@ export function AllVariants() {
           <div>
             <Text
               variant="h2"
-              className="mb-2 text-xl font-semibold text-foreground-emphasis"
+              className="mb-2 text-lead font-semibold text-foreground-emphasis"
             >
               Tailwind utilities
             </Text>
@@ -109,7 +109,7 @@ export function AllVariants() {
                   href="https://tailwindcss.com/docs/margin"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mb-2 inline-flex flex-row items-center gap-1 text-base font-semibold text-info-foreground hover:underline"
+                  className="mb-2 inline-flex flex-row items-center gap-1 text-body-lg font-semibold text-info-foreground hover:underline"
                 >
                   Margin Classes{" "}
                   <Icon
@@ -121,7 +121,7 @@ export function AllVariants() {
                 <Text variant="body" className="mb-2 text-foreground-secondary">
                   Used for external spacing between elements
                 </Text>
-                <div className="font-mono text-sm text-foreground-emphasis">
+                <div className="font-mono text-body text-foreground-emphasis">
                   m-4 → margin: 1rem (16px)
                 </div>
               </div>
@@ -130,7 +130,7 @@ export function AllVariants() {
                   href="https://tailwindcss.com/docs/padding"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mb-2 inline-flex flex-row items-center gap-1 text-base font-semibold text-info-foreground hover:underline"
+                  className="mb-2 inline-flex flex-row items-center gap-1 text-body-lg font-semibold text-info-foreground hover:underline"
                 >
                   Padding Classes
                   <Icon
@@ -144,7 +144,7 @@ export function AllVariants() {
                   Used for internal spacing within elements (same scale as
                   margin)
                 </Text>
-                <div className="font-mono text-sm text-foreground-emphasis">
+                <div className="font-mono text-body text-foreground-emphasis">
                   p-4 → padding: 1rem (16px)
                 </div>
               </div>
@@ -159,14 +159,14 @@ export function AllVariants() {
           <div>
             <Text
               variant="h2"
-              className="mb-2 text-xl font-semibold text-foreground-emphasis"
+              className="mb-2 text-lead font-semibold text-foreground-emphasis"
             >
               FAQ
             </Text>
             <div className="space-y-4">
               <Text
                 variant="h3"
-                className="mb-2 text-base font-semibold text-foreground-emphasis"
+                className="mb-2 text-body-lg font-semibold text-foreground-emphasis"
               >
                 🤔 Why use spacing tokens?
               </Text>
@@ -175,7 +175,7 @@ export function AllVariants() {
                   Always use spacing classes instead of arbitrary values.
                   Reasons:
                 </Text>
-                <ul className="ml-4 list-disc space-y-1 text-sm">
+                <ul className="ml-4 list-disc space-y-1 text-body">
                   <li>Ensures consistent spacing relationships</li>
                   <li>Makes responsive design easier with consistent ratios</li>
                   <li>Provides a harmonious visual rhythm</li>
@@ -186,7 +186,7 @@ export function AllVariants() {
               <div>
                 <Text
                   variant="h3"
-                  className="mb-2 text-base font-semibold text-foreground-emphasis"
+                  className="mb-2 text-body-lg font-semibold text-foreground-emphasis"
                 >
                   📏 How to choose spacing values?
                 </Text>
@@ -215,7 +215,7 @@ export function AllVariants() {
         <div>
           <Text
             variant="h2"
-            className="mb-2 text-xl font-semibold text-foreground-emphasis"
+            className="mb-2 text-lead font-semibold text-foreground-emphasis"
           >
             Complete Spacing Scale
           </Text>
@@ -246,10 +246,10 @@ export function AllVariants() {
                 </Text>
               </div>
               <div className="flex w-32 flex-col text-right">
-                <p className="font-mono text-xs text-foreground-tertiary">
+                <p className="font-mono text-caption text-foreground-tertiary">
                   {space.rem}
                 </p>
-                <p className="font-mono text-xs text-foreground-tertiary">
+                <p className="font-mono text-caption text-foreground-tertiary">
                   {space.px}
                 </p>
               </div>

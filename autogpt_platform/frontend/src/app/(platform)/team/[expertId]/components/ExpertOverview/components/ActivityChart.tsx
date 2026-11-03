@@ -101,7 +101,7 @@ function ChartTooltip({ active, payload }: TooltipProps) {
   if (!day) return null;
 
   return (
-    <div className="rounded-md bg-action-hover px-3 py-2 text-xs text-action-foreground shadow-sm">
+    <div className="rounded-md bg-action-hover px-3 py-2 text-caption text-action-foreground shadow-sm">
       <p className="mb-1 font-medium">{day.label}</p>
       {SERIES.map((series) => (
         <p key={series.key} className="flex items-center gap-1.5 tabular-nums">

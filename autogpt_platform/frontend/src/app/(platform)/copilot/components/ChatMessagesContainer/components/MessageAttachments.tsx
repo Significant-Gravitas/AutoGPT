@@ -118,7 +118,7 @@ export function MessageAttachments({
           >
             {rendered}
             <div
-              className={`mt-1 flex items-center gap-1 px-0.5 text-xs ${
+              className={`mt-1 flex items-center gap-1 px-0.5 text-caption ${
                 isUser
                   ? "text-foreground-secondary"
                   : "text-foreground-tertiary"

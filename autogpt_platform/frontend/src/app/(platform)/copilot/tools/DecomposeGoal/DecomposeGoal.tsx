@@ -38,7 +38,7 @@ export function DecomposeGoalTool({ part }: Props) {
   return (
     <div className="py-2">
       {isPending && (
-        <div className="flex items-center gap-2 text-sm text-foreground-tertiary">
+        <div className="flex items-center gap-2 text-body text-foreground-tertiary">
           <ToolIcon isStreaming={isStreaming} isError={isError} />
           <MorphingTextAnimation
             text={text}

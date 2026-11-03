@@ -58,7 +58,11 @@ export function ExpertIdentityDetails({
         <Text
           as={size === "page" ? "h1" : "span"}
           variant={
-            size === "page" ? "2xl" : compact ? "body-medium" : "lead-semibold"
+            size === "page"
+              ? "heading-md"
+              : compact
+                ? "body-medium"
+                : "lead-semibold"
           }
           tone="primary"
           weight={size === "page" ? "semibold" : undefined}
@@ -94,8 +98,7 @@ export function ExpertIdentityDetails({
                   className={cn(
                     "bg-clip-text font-medium text-transparent",
                     size === "card" && "text-body-md leading-inherit",
-                    // TODO(tokens): SECRT-3152, no text role for 18px.
-                    size === "page" && "text-lg",
+                    size === "page" && "text-lead",
                   )}
                   style={{
                     // oxlint-disable-next-line design-system/no-inline-styles -- gradient mixes the runtime category colour with the primary role

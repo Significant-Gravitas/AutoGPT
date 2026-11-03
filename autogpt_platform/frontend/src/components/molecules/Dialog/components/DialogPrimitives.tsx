@@ -173,8 +173,7 @@ const DialogFooter = ({
 );
 DialogFooter.displayName = "DialogFooter";
 
-// TODO(tokens): no size role for text-lg (18px) and no tracking role for
-// tracking-tight (-0.025em).
+// TODO(tokens): no tracking role for tracking-tight (-0.025em).
 const DialogTitle = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Title>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
@@ -183,7 +182,7 @@ const DialogTitle = React.forwardRef<
     ref={ref}
     data-slot="dialog-title"
     className={cn(
-      "text-lg leading-none font-semibold tracking-tight",
+      "text-lead leading-none font-semibold tracking-tight",
       className,
     )}
     {...props}

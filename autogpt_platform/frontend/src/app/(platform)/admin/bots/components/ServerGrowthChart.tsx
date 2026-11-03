@@ -74,7 +74,7 @@ export function ServerGrowthChart({ data }: Props) {
           />
         </AreaChart>
       </ResponsiveContainer>
-      <p className="mt-2 text-xs text-foreground-tertiary">
+      <p className="mt-2 text-caption text-foreground-tertiary">
         Sharding threshold: {formatNumber(SHARDING_THRESHOLD)} servers · current
         peak in range: {formatNumber(peak)}
       </p>

@@ -31,7 +31,7 @@ export function KitSearchResults({
           aria-hidden
           className="text-foreground-tertiary/70"
         />
-        <p className="max-w-[24rem] text-sm text-foreground-tertiary">
+        <p className="max-w-[24rem] text-body text-foreground-tertiary">
           {picker.hasQuery ? emptyResultsHint : emptyQueryHint}
         </p>
       </div>

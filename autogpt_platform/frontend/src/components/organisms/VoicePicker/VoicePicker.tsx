@@ -64,8 +64,8 @@ export function VoicePicker({
             className={cn(
               "text-foreground-base",
               compact
-                ? "text-base font-medium"
-                : "text-2xl font-semibold tracking-heading",
+                ? "text-body-lg font-medium"
+                : "text-heading-md font-semibold tracking-heading",
             )}
           >
             {name
@@ -76,7 +76,7 @@ export function VoicePicker({
             data-slot="voice-picker-description"
             className={cn(
               "text-foreground-tertiary",
-              compact ? "text-sm" : "text-base",
+              compact ? "text-body" : "text-body-lg",
             )}
           >
             Pick the voice that feels right. You can fine-tune it anytime in the

@@ -13,7 +13,7 @@ export function SimpleTable({
 }: Props) {
   if (rows.length === 0) {
     return (
-      <p className="py-6 text-center text-sm text-foreground-tertiary">
+      <p className="py-6 text-center text-body text-foreground-tertiary">
         {emptyLabel}
       </p>
     );
@@ -21,7 +21,7 @@ export function SimpleTable({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+      <table className="w-full text-body">
         <thead>
           <tr className="border-b text-left text-foreground-tertiary">
             {columns.map((column, columnIndex) => (

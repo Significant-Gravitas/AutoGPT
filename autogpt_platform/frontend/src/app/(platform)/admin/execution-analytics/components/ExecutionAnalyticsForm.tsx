@@ -394,7 +394,7 @@ export function ExecutionAnalyticsForm() {
         <div className="border-t pt-6">
           <Collapsible
             trigger={
-              <Text variant="lg-semibold" as="h3" tone="body">
+              <Text variant="lead-semibold" as="h3" tone="body">
                 Advanced Options
               </Text>
             }
@@ -545,7 +545,7 @@ export function ExecutionAnalyticsForm() {
       {trendsData && (
         <div className="space-y-4">
           <div className="flex items-start justify-between">
-            <Text variant="lg-semibold" as="h3" tone="inherit">
+            <Text variant="lead-semibold" as="h3" tone="inherit">
               Execution Accuracy Trends
             </Text>
             <div className="rounded-md bg-info-surface px-3 py-2 text-caption leading-4 text-info-foreground">
@@ -564,11 +564,11 @@ export function ExecutionAnalyticsForm() {
           {trendsData.alert && (
             <div className="rounded-lg border-l-4 border-error bg-error-surface p-4">
               <div className="flex items-start">
-                <Text variant="2xl" as="span" tone="inherit">
+                <Text variant="heading-md" as="span" tone="inherit">
                   🚨
                 </Text>
                 <div className="ml-3 space-y-2">
-                  <h4 className="text-lg font-semibold text-error-foreground">
+                  <h4 className="text-lead font-semibold text-error-foreground">
                     Accuracy Alert Detected
                   </h4>
                   <p className="text-error-foreground">
@@ -610,7 +610,7 @@ export function ExecutionAnalyticsForm() {
           {/* Latest Data Summary */}
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             <div className="rounded-lg border bg-surface p-4 text-center text-info-foreground">
-              <Text variant="2xl-bold" as="div" tone="inherit">
+              <Text variant="heading-md-bold" as="div" tone="inherit">
                 {trendsData.latest_data.daily_score?.toFixed(2) || "N/A"}
               </Text>
               <Text variant="body-tight" as="div" tone="secondary">
@@ -618,7 +618,7 @@ export function ExecutionAnalyticsForm() {
               </Text>
             </div>
             <div className="rounded-lg border bg-surface p-4 text-center">
-              <Text variant="2xl-bold" as="div" tone="success">
+              <Text variant="heading-md-bold" as="div" tone="success">
                 {trendsData.latest_data.three_day_avg?.toFixed(2) || "N/A"}
               </Text>
               <Text variant="body-tight" as="div" tone="secondary">
@@ -626,7 +626,7 @@ export function ExecutionAnalyticsForm() {
               </Text>
             </div>
             <div className="rounded-lg border bg-surface p-4 text-center text-orange-foreground">
-              <Text variant="2xl-bold" as="div" tone="inherit">
+              <Text variant="heading-md-bold" as="div" tone="inherit">
                 {trendsData.latest_data.seven_day_avg?.toFixed(2) || "N/A"}
               </Text>
               <Text variant="body-tight" as="div" tone="secondary">
@@ -634,7 +634,7 @@ export function ExecutionAnalyticsForm() {
               </Text>
             </div>
             <div className="rounded-lg border bg-surface p-4 text-center text-brand-hover">
-              <Text variant="2xl-bold" as="div" tone="inherit">
+              <Text variant="heading-md-bold" as="div" tone="inherit">
                 {trendsData.latest_data.fourteen_day_avg?.toFixed(2) || "N/A"}
               </Text>
               <Text variant="body-tight" as="div" tone="secondary">
@@ -647,7 +647,7 @@ export function ExecutionAnalyticsForm() {
           {showAccuracyChart && trendsData?.historical_data && (
             <div className="mt-6">
               <Text
-                variant="lg-semibold"
+                variant="lead-semibold"
                 as="h4"
                 tone="inherit"
                 className="mb-4"

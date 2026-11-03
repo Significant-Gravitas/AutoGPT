@@ -26,7 +26,7 @@ export function AutoGPTBubble({
     >
       <div className="flex items-end gap-2">
         <AutopilotAvatar size={20} />
-        <span className="text-sm font-medium text-foreground-base">
+        <span className="text-body font-medium text-foreground-base">
           {AUTOPILOT_NAME}
         </span>
       </div>

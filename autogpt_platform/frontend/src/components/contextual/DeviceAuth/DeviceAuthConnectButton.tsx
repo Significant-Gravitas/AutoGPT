@@ -89,7 +89,7 @@ export function DeviceAuthConnectButton({
             Your code
           </Text>
           <Text
-            variant="2xl"
+            variant="heading-md"
             as="p"
             align="center"
             tone="emphasis"
@@ -106,7 +106,7 @@ export function DeviceAuthConnectButton({
           href={verificationUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center justify-center gap-2 rounded-md bg-action-hover px-4 py-2.5 text-sm font-medium text-action-foreground transition-colors hover:bg-action"
+          className="inline-flex items-center justify-center gap-2 rounded-md bg-action-hover px-4 py-2.5 text-body font-medium text-action-foreground transition-colors hover:bg-action"
         >
           Open {providerName}
           <Icon icon={LinkSquare01Icon} size={16} />

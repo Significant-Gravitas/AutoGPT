@@ -15,6 +15,7 @@ import {
   colourClassPattern,
 } from "../ds/colour-utilities.ts";
 import { buildPaletteMap, PALETTE_VALUES } from "../ds/palette-to-role.ts";
+import { RAW_TEXT_SIZE, rawTextSizeAdvice } from "../ds/text-size-scale.ts";
 
 // Design-system lint rules (SECRT-3097), loaded by oxlint as a JS plugin
 // (.oxlintrc.json) and run by `pnpm lint`. See
@@ -440,6 +441,27 @@ const noDarkVariant: Rule.RuleModule = {
   },
 };
 
+// Tailwind's sizes (`text-sm`, `md:text-2xl`) and arbitrary ones
+// (`text-[13px]`): the theme resets the first, so they render nothing, and the
+// type scale (src/app/tokens/typography.css) replaces both (SECRT-3152).
+const noRawTextSize: Rule.RuleModule = {
+  meta: {
+    type: "problem",
+    docs: { description: "Disallow text sizes outside the type scale" },
+    schema: [],
+  },
+  create(context) {
+    return stringNodes((node, text) => {
+      for (const match of text.matchAll(RAW_TEXT_SIZE)) {
+        context.report({
+          node,
+          message: `"${match[0]}" is not a step of the type scale. ${rawTextSizeAdvice(match[2], match[3])}`,
+        });
+      }
+    });
+  },
+};
+
 const LEGACY_BUTTON_VARIANTS = new Map([
   ["legacy-default", 'variant="primary"'],
   ["legacy-destructive", 'variant="destructive"'],
@@ -783,6 +805,7 @@ const plugin = {
     "no-palette-colours": ratchet("no-palette-colours", noPaletteColours),
     "no-hex-colours": ratchet("no-hex-colours", noHexColours),
     "no-dark-variant": ratchet("no-dark-variant", noDarkVariant),
+    "no-raw-text-size": ratchet("no-raw-text-size", noRawTextSize),
     "no-legacy-import": ratchet("no-legacy-import", noLegacyImport),
     "no-legacy-button-variant": ratchet(
       "no-legacy-button-variant",
