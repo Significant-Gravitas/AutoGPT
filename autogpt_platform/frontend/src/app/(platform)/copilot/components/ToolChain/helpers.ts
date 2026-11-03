@@ -1,4 +1,5 @@
 import type { ToolUIPart } from "ai";
+import { isTaskPlanPart } from "../../tools/TaskPlan/helpers";
 import { getBlockDisplayName } from "../../helpers/toolDisplay";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
 import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
@@ -212,7 +213,8 @@ export function isChainPart(part: MessagePart): boolean {
   if (
     part.type === COMPACTION_PART_TYPE ||
     part.type === EXPERT_ONBOARDING_PART_TYPE ||
-    isExpertChangePart(part)
+    isExpertChangePart(part) ||
+    isTaskPlanPart(part)
   ) {
     return false;
   }

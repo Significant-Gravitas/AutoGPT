@@ -10,6 +10,7 @@ import { AutoPilotBridgeProvider } from "@/contexts/AutoPilotBridgeContext";
 import { PlatformChrome } from "./PlatformChrome/PlatformChrome";
 import { ProActivationProvider } from "@/services/pro-activation/ProActivationProvider";
 import { TrialStatusSync } from "@/services/trials/TrialStatusSync";
+import { TaskLiveUpdatesMount } from "./tasks/components/TaskLiveUpdatesMount/TaskLiveUpdatesMount";
 
 export default async function PlatformLayout({
   children,
@@ -22,6 +23,7 @@ export default async function PlatformLayout({
       <NetworkStatusMonitor />
       <PushNotificationProvider />
       <TrialStatusSync />
+      <TaskLiveUpdatesMount />
       <ProActivationProvider>
         <PlatformChrome
           persistedSidebarOpen={parseSidebarCookie(sidebarCookie)}
