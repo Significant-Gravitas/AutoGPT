@@ -10,6 +10,7 @@ Covers:
 
 from __future__ import annotations
 
+import os
 import plistlib
 import shlex
 import shutil
@@ -206,7 +207,9 @@ def test_the_console_script_beside_the_interpreter_is_next(
     monkeypatch.setattr(install_mod.sys, "executable", str(bin_dir / "python"))
     monkeypatch.setattr(install_mod.shutil, "which", _which_without_path(None))
 
-    assert install_mod.resolve_shim_command() == (str(script),)
+    # Windows' which() spells the extension from PATHEXT (".EXE").
+    [found] = install_mod.resolve_shim_command()
+    assert os.path.normcase(found) == os.path.normcase(str(script))
 
 
 def test_the_python_fallback_starts_the_cli(monkeypatch: pytest.MonkeyPatch) -> None:
