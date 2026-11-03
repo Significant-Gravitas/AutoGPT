@@ -1,6 +1,7 @@
 """Library reads that don't need each other's answers run side by side: each
 stand-in below answers only once all of them are being awaited."""
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -16,17 +17,29 @@ USER_ID = "user-1"
 
 
 @pytest.mark.asyncio
-async def test_a_library_page_its_total_and_schedules_are_read_side_by_side() -> None:
+async def test_a_library_page_counts_its_runs_while_its_schedules_are_read() -> None:
+    """The page, its total and the schedules meet; the run counts then start
+    from the page alone, so a scheduler still answering doesn't hold them."""
     meeting = Rendezvous(3)
+    counts_started = asyncio.Event()
+
+    async def read_schedules(*_args: object, **_kwargs: object) -> dict[str, str]:
+        await meeting.arrive()
+        async with asyncio.timeout(10):
+            await counts_started.wait()
+        return {"g1": "soon"}
+
+    async def count_runs(*_args: object, **_kwargs: object) -> dict[str, int]:
+        counts_started.set()
+        return {}
+
     agents = MagicMock()
     agents.find_many = meeting.returning([])
     agents.count = meeting.returning(61)
-    execution_counts = AsyncMock(return_value={})
+    execution_counts = AsyncMock(side_effect=count_runs)
     with (
         patch.object(prisma.models.LibraryAgent, "prisma", return_value=agents),
-        patch.object(
-            library_db, "_fetch_schedule_info", meeting.returning({"g1": "soon"})
-        ),
+        patch.object(library_db, "_fetch_schedule_info", read_schedules),
         patch.object(library_db, "_fetch_execution_counts", execution_counts),
     ):
         response = await library_db.list_library_agents(USER_ID, page=2, page_size=30)

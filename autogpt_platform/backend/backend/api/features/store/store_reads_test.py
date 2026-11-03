@@ -2,7 +2,7 @@
 below answers only once both of its reads are being awaited."""
 
 from contextlib import AbstractContextManager
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import prisma.models
 import pytest
@@ -59,6 +59,21 @@ async def test_the_creators_page_and_its_total_are_read_side_by_side() -> None:
     assert response.creators == []
     assert response.pagination.total_items == 45
     assert response.pagination.total_pages == 3
+
+
+@pytest.mark.asyncio
+async def test_a_filtered_creators_total_counts_what_its_page_lists() -> None:
+    meeting = Rendezvous(2)
+    client = MagicMock()
+    client.find_many = AsyncMock(side_effect=meeting.returning([]))
+    client.count = AsyncMock(side_effect=meeting.returning(0))
+    with patch.object(prisma.models.Creator, "prisma", return_value=client):
+        await store_db.get_store_creators(featured=True, search_query="agent")
+
+    page_where = client.find_many.call_args.kwargs["where"]
+    assert client.count.call_args.kwargs["where"] == page_where
+    assert page_where["is_featured"] is True
+    assert "OR" in page_where
 
 
 @pytest.mark.asyncio

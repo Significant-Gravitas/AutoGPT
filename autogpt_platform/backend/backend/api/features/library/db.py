@@ -236,8 +236,12 @@ async def list_library_agents(
             ],
         )
 
-    library_agents, agent_count, schedule_info = await asyncio.gather(
-        prisma.models.LibraryAgent.prisma().find_many(
+    async def page_with_execution_counts() -> (
+        tuple[list[prisma.models.LibraryAgent], dict[str, int]]
+    ):
+        """The page, then its graphs' run counts, beside the total and the
+        schedules: the counts need only the page."""
+        agents = await prisma.models.LibraryAgent.prisma().find_many(
             where=where_clause,
             include=library_agent_include(
                 user_id,
@@ -247,15 +251,19 @@ async def list_library_agents(
             order=order_by,
             skip=(page - 1) * page_size,
             take=page_size,
-        ),
-        prisma.models.LibraryAgent.prisma().count(where=where_clause),
-        _fetch_schedule_info(user_id),
+        )
+        graph_ids = [a.agentGraphId for a in agents if a.agentGraphId]
+        return agents, await _fetch_execution_counts(user_id, graph_ids)
+
+    (library_agents, execution_counts), agent_count, schedule_info = (
+        await asyncio.gather(
+            page_with_execution_counts(),
+            prisma.models.LibraryAgent.prisma().count(where=where_clause),
+            _fetch_schedule_info(user_id),
+        )
     )
 
     logger.debug(f"Retrieved {len(library_agents)} library agents for user #{user_id}")
-
-    graph_ids = [a.agentGraphId for a in library_agents if a.agentGraphId]
-    execution_counts = await _fetch_execution_counts(user_id, graph_ids)
 
     # Only pass valid agents to the response
     valid_library_agents: list[library_model.LibraryAgent] = []

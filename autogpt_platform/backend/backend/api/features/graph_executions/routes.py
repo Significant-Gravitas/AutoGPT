@@ -194,21 +194,17 @@ async def get_graph_execution(
             status_code=404, detail=f"Graph execution #{graph_exec_id} not found."
         )
 
-    # Once the run is known to be the caller's, the onboarding row is read
-    # beside the graph check rather than after it.
-    graph, onboarding = await asyncio.gather(
-        graph_db.get_graph(
-            graph_id=result.graph_id,
-            version=result.graph_version,
-            user_id=user_id,
-            organization_id=ctx.org_id,
-        ),
-        get_user_onboarding(user_id),
-    )
-    if not graph:
+    if not await graph_db.get_graph(
+        graph_id=result.graph_id,
+        version=result.graph_version,
+        user_id=user_id,
+        organization_id=ctx.org_id,
+    ):
         raise HTTPException(
             status_code=HTTP_404_NOT_FOUND, detail=f"Graph #{graph_id} not found"
         )
+
+    onboarding = await get_user_onboarding(user_id)
 
     if (
         onboarding.onboardingAgentExecutionId == graph_exec_id

@@ -1,5 +1,7 @@
-"""A run's page and a workflow's runs read what they need side by side: each
-stand-in below answers only once all of them are being awaited."""
+"""A workflow's runs page reads the user's onboarding beside the runs: each
+stand-in answers only once both are being awaited. A run's page still checks
+its workflow before it reads the onboarding, so a missing workflow stays a 404
+whatever the onboarding read does."""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -23,15 +25,37 @@ def _onboarding(execution_id: str | None) -> SimpleNamespace:
 
 
 @pytest.mark.asyncio
-async def test_a_runs_graph_and_the_users_onboarding_are_read_side_by_side() -> None:
-    meeting = Rendezvous(2)
+async def test_a_missing_workflow_is_a_404_even_when_the_onboarding_cannot_be_read() -> (
+    None
+):
     run = SimpleNamespace(graph_id="g1", graph_version=3)
-    get_graph = AsyncMock(side_effect=meeting.returning(SimpleNamespace(id="g1")))
+    onboarding = AsyncMock(side_effect=RuntimeError("onboarding read failed"))
+    complete_step = AsyncMock()
+    with (
+        patch.object(execution_db, "get_graph_execution", AsyncMock(return_value=run)),
+        patch.object(graph_db, "get_graph", AsyncMock(return_value=None)),
+        patch.object(routes, "get_user_onboarding", onboarding),
+        patch.object(routes, "complete_onboarding_step", complete_step),
+        pytest.raises(HTTPException) as raised,
+    ):
+        await routes.get_graph_execution("g1", "x1", USER_ID, NO_ORG)
+
+    assert raised.value.status_code == 404
+    onboarding.assert_not_awaited()
+    complete_step.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_runs_page_completes_the_results_step_once_its_workflow_is_found() -> (
+    None
+):
+    run = SimpleNamespace(graph_id="g1", graph_version=3)
+    get_graph = AsyncMock(return_value=SimpleNamespace(id="g1"))
     complete_step = AsyncMock()
     with (
         patch.object(execution_db, "get_graph_execution", AsyncMock(return_value=run)),
         patch.object(
-            routes, "get_user_onboarding", meeting.returning(_onboarding("x1"))
+            routes, "get_user_onboarding", AsyncMock(return_value=_onboarding("x1"))
         ),
         patch.object(graph_db, "get_graph", get_graph),
         patch.object(routes, "complete_onboarding_step", complete_step),
