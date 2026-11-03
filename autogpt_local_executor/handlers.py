@@ -24,6 +24,7 @@ import subprocess
 import sys
 import time
 from collections import OrderedDict, deque
+from pathlib import Path
 from typing import Any, Literal, cast
 
 from . import local_llm_limits, platform_info
@@ -35,7 +36,12 @@ from .computer_use import (
 )
 from .config import ShimConfig
 from .local_llm_limits import bounded_chunks, read_json_lines
-from .path_jail import PathJailError, assert_inside_jail, open_jail_file
+from .path_jail import (
+    PathJailError,
+    assert_entry_inside_jail,
+    assert_inside_jail,
+    open_jail_file,
+)
 from .protocol import (
     MAX_WIRE_BASE64_CONTENT_BYTES,
     MAX_WIRE_TEXT_CONTENT_BYTES,
@@ -213,6 +219,12 @@ def _err_result(duration_ms: int, error_code: str, *, exit_code: int | None = No
 
 def _elapsed_ms(start: float) -> int:
     return int((time.monotonic() - start) * 1000)
+
+
+def _is_link(path: Path) -> bool:
+    """A symlink, or a Windows junction: removing either leaves its target."""
+    isjunction = getattr(os.path, "isjunction", None)  # Python 3.12+
+    return path.is_symlink() or bool(isjunction and isjunction(path))
 
 
 async def _audit_jail_violation(
@@ -1009,7 +1021,9 @@ class FileHandler:
         payload = msg.payload
         start = time.monotonic()
         try:
-            path = assert_inside_jail(payload.path, self.config.allowed_root)
+            assert_inside_jail(payload.path, self.config.allowed_root)
+            # A symlink is removed itself; its target is left alone.
+            path = assert_entry_inside_jail(payload.path, self.config.allowed_root)
         except PathJailError as exc:
             await _audit_jail_violation(self.audit, "FILE_DELETE", payload.path, exc)
             return _jail_error_to_message(msg.id, exc)
@@ -1020,7 +1034,7 @@ class FileHandler:
             "missing_ok": payload.missing_ok,
         }
 
-        if not path.exists():
+        if not os.path.lexists(path):
             if payload.missing_ok:
                 await self._emit("FILE_DELETE", msg.id, details, _ok_result(_elapsed_ms(start)))
                 return make_ack(msg.id)
@@ -1033,7 +1047,7 @@ class FileHandler:
             return make_error(msg.id, ErrorCode.PATH_NOT_FOUND, f"{path} does not exist")
 
         try:
-            if path.is_dir() and not path.is_symlink():
+            if path.is_dir() and not _is_link(path):
                 if payload.recursive:
                     await asyncio.to_thread(shutil.rmtree, str(path))
                 else:
@@ -1068,8 +1082,12 @@ class FileHandler:
         payload = msg.payload
         start = time.monotonic()
         try:
-            src = assert_inside_jail(payload.src, self.config.allowed_root)
-            dst = assert_inside_jail(payload.dst, self.config.allowed_root)
+            assert_inside_jail(payload.src, self.config.allowed_root)
+            assert_inside_jail(payload.dst, self.config.allowed_root)
+            # Renaming moves a symlink itself, and overwriting replaces one,
+            # never its target.
+            src = assert_entry_inside_jail(payload.src, self.config.allowed_root)
+            dst = assert_entry_inside_jail(payload.dst, self.config.allowed_root)
         except PathJailError as exc:
             await _audit_jail_violation(
                 self.audit, "FILE_MOVE", f"{payload.src} -> {payload.dst}", exc
@@ -1078,7 +1096,7 @@ class FileHandler:
 
         details = {"src": str(src), "dst": str(dst), "overwrite": payload.overwrite}
 
-        if not src.exists():
+        if not os.path.lexists(src):
             await self._emit(
                 "FILE_MOVE",
                 msg.id,
@@ -1086,7 +1104,7 @@ class FileHandler:
                 _err_result(_elapsed_ms(start), ErrorCode.PATH_NOT_FOUND.value),
             )
             return make_error(msg.id, ErrorCode.PATH_NOT_FOUND, f"{src} does not exist")
-        if dst.exists() and not payload.overwrite:
+        if os.path.lexists(dst) and not payload.overwrite:
             await self._emit(
                 "FILE_MOVE",
                 msg.id,

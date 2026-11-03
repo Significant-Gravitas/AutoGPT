@@ -327,6 +327,11 @@ linked or special-file content indirectly during a cross-device copy. An
 in-root hard-link entry may still be listed, statted, unlinked, or renamed;
 these operations do not grant content access, and its content remains blocked.
 
+FILE_DELETE and FILE_MOVE act on the entry a path names: a symlink or junction
+is removed, renamed or replaced itself, never its target. The path must still
+resolve inside the root, and so must the entry's directory, so neither
+operation can act on the root itself.
+
 ### What the algorithm catches
 
 | Attack | Caught at step |

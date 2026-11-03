@@ -491,6 +491,61 @@ async def test_delete_recursive(tmp_path: Path) -> None:
     assert not d.exists()
 
 
+def _symlink_or_skip(link: Path, target: Path) -> None:
+    try:
+        link.symlink_to(target, target_is_directory=target.is_dir())
+    except (OSError, NotImplementedError):
+        pytest.skip("Symlinks unavailable on this platform/account")
+
+
+def _delete_msg(path: Path, **kw) -> FileDeleteMessage:
+    return FileDeleteMessage(
+        id=new_id(), ts=now_ts(), payload=FileDeletePayload(path=str(path), **kw)
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("recursive", [False, True])
+async def test_delete_removes_a_symlink_not_its_target(tmp_path: Path, recursive: bool) -> None:
+    documents = tmp_path / "documents"
+    documents.mkdir()
+    (documents / "report.txt").write_text("keep")
+    shortcut = tmp_path / "shortcut"
+    _symlink_or_skip(shortcut, documents)
+
+    response = await FileHandler(make_config(tmp_path)).handle_delete(
+        _delete_msg(shortcut, recursive=recursive)
+    )
+
+    assert isinstance(response, AckMessage)
+    assert not os.path.lexists(shortcut)
+    assert (documents / "report.txt").read_text() == "keep"
+
+
+@pytest.mark.asyncio
+async def test_delete_removes_a_dangling_symlink(tmp_path: Path) -> None:
+    link = tmp_path / "stale"
+    _symlink_or_skip(link, tmp_path / "gone.txt")
+
+    response = await FileHandler(make_config(tmp_path)).handle_delete(_delete_msg(link))
+
+    assert isinstance(response, AckMessage)
+    assert not os.path.lexists(link)
+
+
+@pytest.mark.asyncio
+async def test_delete_refuses_the_allowed_root_itself(tmp_path: Path) -> None:
+    root = tmp_path / "workspace"
+    root.mkdir()
+    (root / "notes.txt").write_text("keep")
+
+    response = await FileHandler(make_config(root)).handle_delete(_delete_msg(root, recursive=True))
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.PATH_OUTSIDE_ALLOWED_ROOT
+    assert (root / "notes.txt").read_text() == "keep"
+
+
 # ── FILE_MOVE ────────────────────────────────────────────────────────────────
 
 
@@ -586,6 +641,52 @@ async def test_move_overwrite(tmp_path: Path) -> None:
     resp = await h.handle_move(msg)
     assert isinstance(resp, AckMessage)
     assert dst.read_text() == "new"
+
+
+def _move_msg(src: Path, dst: Path, **kw) -> FileMoveMessage:
+    return FileMoveMessage(
+        id=new_id(), ts=now_ts(), payload=FileMovePayload(src=str(src), dst=str(dst), **kw)
+    )
+
+
+@pytest.mark.asyncio
+async def test_move_renames_a_symlink_not_its_target(tmp_path: Path) -> None:
+    documents = tmp_path / "documents"
+    documents.mkdir()
+    (documents / "report.txt").write_text("keep")
+    shortcut = tmp_path / "shortcut"
+    _symlink_or_skip(shortcut, documents)
+    renamed = tmp_path / "renamed"
+
+    response = await FileHandler(make_config(tmp_path)).handle_move(_move_msg(shortcut, renamed))
+
+    assert isinstance(response, AckMessage)
+    assert renamed.is_symlink()
+    assert not os.path.lexists(shortcut)
+    assert (documents / "report.txt").read_text() == "keep"
+
+
+@pytest.mark.asyncio
+async def test_move_overwrite_replaces_a_symlink_destination_not_its_target(
+    tmp_path: Path,
+) -> None:
+    real = tmp_path / "real.txt"
+    real.write_text("keep")
+    link = tmp_path / "link.txt"
+    _symlink_or_skip(link, real)
+    source = tmp_path / "new.txt"
+    source.write_text("new")
+
+    handler = FileHandler(make_config(tmp_path))
+    refused = await handler.handle_move(_move_msg(source, link))
+    replaced = await handler.handle_move(_move_msg(source, link, overwrite=True))
+
+    assert isinstance(refused, ErrorMessage)
+    assert refused.payload.code == ErrorCode.PATH_EXISTS
+    assert isinstance(replaced, AckMessage)
+    assert not link.is_symlink()
+    assert link.read_text() == "new"
+    assert real.read_text() == "keep"
 
 
 @pytest.mark.asyncio
