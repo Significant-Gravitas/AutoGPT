@@ -7,6 +7,7 @@ import json
 import logging
 import time
 import uuid
+from asyncio import sleep
 
 from fastapi import APIRouter, WebSocket
 from pydantic import BaseModel, ValidationError
@@ -39,6 +40,7 @@ router = APIRouter()
 LOCAL_EXECUTOR_PROTOCOL_VERSION = "1.1"
 MAX_HELLO_BYTES = 64 * 1024
 HELLO_TIMEOUT_SECONDS = 10.0
+_TOKEN_RECHECK_SECONDS = 60.0
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 MAX_CONCURRENT_REQUESTS = 4
 SERVER_SUPPORTED_CAPABILITIES = frozenset(
@@ -93,7 +95,7 @@ async def local_executor_machine_ws(websocket: WebSocket) -> None:
         )
     )
     expiry_task = asyncio.create_task(
-        _close_at_token_expiry(websocket, identity.expires_at)
+        _close_when_token_ends(websocket, identity.expires_at)
     )
     try:
         done, pending = await asyncio.wait(
@@ -156,7 +158,7 @@ async def local_executor_ws(
         )
     )
     expiry_task = asyncio.create_task(
-        _close_at_token_expiry(websocket, identity.expires_at)
+        _close_when_token_ends(websocket, identity.expires_at)
     )
     try:
         done, pending = await asyncio.wait(
@@ -286,9 +288,35 @@ async def _deny(
     )
 
 
-async def _close_at_token_expiry(websocket: WebSocket, expires_at: int) -> None:
-    await asyncio.sleep(max(0.0, expires_at - time.time()))
+async def _close_when_token_ends(websocket: WebSocket, expires_at: int) -> None:
+    """Close the connection when its access token expires or stops being active.
+
+    Revoking the token also pushes SESSION_REVOKED through Redis. Rechecking it
+    bounds how long a connection outlives a revocation that push missed, or one
+    that never pushes, such as a refresh family revoked on reuse."""
+    while (remaining := expires_at - time.time()) > 0:
+        await sleep(min(remaining, _TOKEN_RECHECK_SECONDS))
+        if expires_at - time.time() > 0 and not await _token_still_active(websocket):
+            # 4428, like a pushed revocation, tells the companion not to reconnect.
+            await websocket.close(code=4428, reason="Token revoked")
+            return
     await websocket.close(code=4401, reason="Access token expired")
+
+
+async def _token_still_active(websocket: WebSocket) -> bool:
+    token = _bearer_token(websocket)
+    if token is None:
+        return False
+    try:
+        info = await introspect_token(token, token_type_hint="access_token")
+    except Exception:
+        # A failed lookup says nothing about the token; its expiry still bounds
+        # the connection, and the next check runs on schedule.
+        logger.warning(
+            "[LocalPC] Could not recheck a Local PC access token", exc_info=True
+        )
+        return True
+    return info.active
 
 
 def _bearer_token(websocket: WebSocket) -> str | None:
