@@ -19,10 +19,11 @@ export function escapeLiteralDollars(markdown: string): string {
     extensions: [gfm()],
     mdastExtensions: [gfmFromMarkdown()],
   });
+  const ranges = proseRanges(tree, markdown);
   let result = "";
   let index = 0;
 
-  for (const [start, end] of proseRanges(tree, markdown)) {
+  for (const [start, end] of ranges) {
     result += markdown.slice(index, start);
     // A formula kept whole may run past the end of the text node it opened in.
     index = Math.max(start, index);
@@ -36,7 +37,7 @@ export function escapeLiteralDollars(markdown: string): string {
         result += "$$";
         index += 2;
       } else if (char === "$") {
-        const close = closingDollar(markdown, index);
+        const close = closingDollar(markdown, index, ranges);
         result += close === null ? "\\$" : markdown.slice(index, close + 1);
         index = close === null ? index + 1 : close + 1;
       } else {
@@ -67,7 +68,11 @@ function proseRanges(node: MarkdownNode, markdown: string): [number, number][] {
 // the closer), plus: a span opening on a digit is a price unless it carries LaTeX
 // syntax, a closer that starts the next shell variable ends shell text, and a
 // span with unbalanced brackets and no TeX command is shell text such as "$f ($".
-function closingDollar(text: string, open: number): number | null {
+function closingDollar(
+  text: string,
+  open: number,
+  prose: [number, number][],
+): number | null {
   const first = text[open + 1] ?? "";
   if (!first || /\s/.test(first)) return null;
 
@@ -76,6 +81,8 @@ function closingDollar(text: string, open: number): number | null {
     close += text[close] === "\\" && text[close + 1] !== "\n" ? 2 : 1;
   }
   if (text[close] !== "$" || text[close + 1] === "$") return null;
+  // A "$" in inline code or an HTML tag cannot close a formula opened in prose.
+  if (!inRanges(prose, close)) return null;
   const after = text[close + 1] ?? "";
   if (/\s/.test(text[close - 1]) || /\d/.test(after)) return null;
 
@@ -83,6 +90,19 @@ function closingDollar(text: string, open: number): number | null {
   if (/\d/.test(first) && !LATEX_SYNTAX_RE.test(body)) return null;
   if (startsShellVariable(after, body)) return null;
   return TEX_COMMAND_RE.test(body) || bracketsBalance(body) ? close : null;
+}
+
+function inRanges(ranges: [number, number][], at: number): boolean {
+  let low = 0;
+  let high = ranges.length - 1;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    const [start, end] = ranges[mid];
+    if (at < start) high = mid - 1;
+    else if (at >= end) low = mid + 1;
+    else return true;
+  }
+  return false;
 }
 
 // "$HOME/bin:$PATH", "${A}:${B}", "$HOME$PATH"; a one-letter body keeps "$n$th".

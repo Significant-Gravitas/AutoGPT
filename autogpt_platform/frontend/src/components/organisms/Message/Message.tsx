@@ -406,7 +406,12 @@ function parseEscapedBlocks(markdown: string): string[] {
 
 function escapeBlock(block: string): string {
   const cached = ESCAPED_BLOCKS.get(block);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined) {
+    // Re-inserting keeps the blocks in use last in line for eviction.
+    ESCAPED_BLOCKS.delete(block);
+    ESCAPED_BLOCKS.set(block, cached);
+    return cached;
+  }
   const escaped = escapeLiteralDollars(block);
   if (ESCAPED_BLOCKS.size >= ESCAPED_BLOCKS_LIMIT) {
     ESCAPED_BLOCKS.delete(ESCAPED_BLOCKS.keys().next().value!);

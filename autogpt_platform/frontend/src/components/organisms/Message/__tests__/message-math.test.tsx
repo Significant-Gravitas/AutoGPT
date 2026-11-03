@@ -201,6 +201,15 @@ describe("MessageResponse math", () => {
     vi.restoreAllMocks();
   });
 
+  it("closes no formula on a dollar inside inline code", async () => {
+    const container = await renderReply("Use $HOME and `$` here.");
+
+    await waitFor(() =>
+      expect(container.querySelector("code")?.textContent).toBe("$"),
+    );
+    expect(container.querySelector(".katex")).toBeNull();
+  });
+
   it("pairs no dollars across a line break", async () => {
     const container = await renderReply(
       "Costs $x on one line\nand y$ on the next.",
