@@ -2125,6 +2125,13 @@ async def assert_graph_deletable(
         )
 
 
+_LOCK_GRAPH_ROWS_QUERY = """
+    SELECT 1 FROM {schema_prefix}"AgentGraph"
+     WHERE "id" = $1 AND "userId" = $2
+     FOR UPDATE
+"""
+
+
 async def delete_graph_permanently(
     graph_id: str, user_id: str, organization_id: str | None = None
 ) -> int:
@@ -2139,6 +2146,13 @@ async def delete_graph_permanently(
     """
     try:
         async with transaction() as tx:
+            # A new reference takes a key-share lock on the graph row for its
+            # foreign key check, so with the rows locked the check below sees
+            # every reference that will exist. Without it, another user's run
+            # added in between would cascade away with the graph unnoticed.
+            await query_raw_with_schema(
+                _LOCK_GRAPH_ROWS_QUERY, graph_id, user_id, client=tx
+            )
             await assert_graph_deletable(graph_id, user_id, tx=tx)
             where = _owned_graph_where(graph_id, user_id, organization_id)
             versions = [

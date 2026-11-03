@@ -1331,15 +1331,6 @@ async def cleanup_graph_for_permanent_delete(graph_id: str, user_id: str) -> Non
     )
 
 
-async def delete_library_agent_by_graph_id(graph_id: str, user_id: str) -> None:
-    """
-    Deletes a library agent for the given user
-    """
-    await prisma.models.LibraryAgent.prisma().delete_many(
-        where={"agentGraphId": graph_id, "userId": user_id}
-    )
-
-
 async def is_store_listing_version_available_for_install(
     store_listing_version_id: str,
     *,
