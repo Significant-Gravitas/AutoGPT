@@ -269,12 +269,13 @@ class TestBrowserNavigateExecute:
                 "backend.copilot.tools.agent_browser._run",
                 new_callable=AsyncMock,
             ) as mock_run:
-                # open → success; wait → success; get title; get url
+                # open → success; wait → success; get title; get url; eval
                 mock_run.side_effect = [
                     _run_result(rc=0),  # open
                     _run_result(rc=0),  # wait
                     _run_result(rc=0, stdout="Example Domain"),  # get title
                     _run_result(rc=0, stdout="https://example.com"),  # get url
+                    _run_result(rc=0, stdout='""'),  # eval: page check
                 ]
                 with patch(
                     "backend.copilot.tools.agent_browser._snapshot",
