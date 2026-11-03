@@ -831,9 +831,15 @@ class MacOSBackend(ComputerUseBackend):
         import pyautogui  # type: ignore[import-untyped]
 
         if paste and len(text) >= PASTE_THRESHOLD_CHARS and self._clipboard_enabled:
-            self._do_paste(text, preserve_clipboard=preserve_clipboard)
-            return
+            # A concealed clipboard would lose its marker when restored, so one
+            # that must be preserved is left alone and the text is typed.
+            if not (preserve_clipboard and self._pasteboard_is_concealed()):
+                self._do_paste(text, preserve_clipboard=preserve_clipboard)
+                return
         pyautogui.write(text, interval=0.02)
+
+    def _pasteboard_is_concealed(self) -> bool:
+        return any(t in CONCEALED_PB_TYPES for t in self._read_pasteboard_types())
 
     def _do_paste(self, text: str, *, preserve_clipboard: bool) -> None:
         import pyautogui  # type: ignore[import-untyped]
@@ -856,8 +862,9 @@ class MacOSBackend(ComputerUseBackend):
                 # Anything beyond that means a third party wrote since.
                 if current_seq > prev_seq + 1:
                     return
+                # The restored contents are the user's, not ours, so they are
+                # not recorded as a writeback: a writeback-only read refuses them.
                 self._write_pasteboard_text(previous)
-                self.clipboard_writeback.record_write(previous)
 
     # ── Permissions ──────────────────────────────────────────────────
 

@@ -15,6 +15,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from autogpt_local_executor.computer_use.backends._common import PASTE_THRESHOLD_CHARS
 from autogpt_local_executor.computer_use.backends.macos import (
     CONCEALED_PB_TYPES,
     MacOSBackend,
@@ -422,3 +423,55 @@ def test_permissions_check_unknown_keys_are_not_applicable(tmp_path, monkeypatch
     monkeypatch.setattr(b, "_screen_capture_allowed", lambda: True)
     out = b.permissions_check(["camera", "microphone"])
     assert out == {"camera": "not_applicable", "microphone": "not_applicable"}
+
+
+# ── Paste with preserve_clipboard (Q3/Q4) ───────────────────────────────
+
+
+def _fake_pasteboard(b: MacOSBackend, monkeypatch, *, content: str, types=()) -> dict:
+    state: dict = {"content": content, "seq": 1, "types": list(types), "writes": []}
+
+    def _write(text: str) -> int:
+        state["content"] = text
+        state["seq"] += 1
+        state["writes"].append(text)
+        return state["seq"]
+
+    monkeypatch.setattr(b, "_write_pasteboard_text", _write)
+    monkeypatch.setattr(b, "_read_pasteboard_text", lambda: (state["content"], state["seq"]))
+    monkeypatch.setattr(b, "_read_pasteboard_types", lambda: state["types"])
+    return state
+
+
+def test_a_clipboard_restored_after_a_paste_stays_unreadable(tmp_path, monkeypatch) -> None:
+    """The user's clipboard goes back after the paste, and it is still theirs:
+    a writeback-only read must not return it."""
+    b = MacOSBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setattr(b, "_ax_trusted", lambda: True)
+    monkeypatch.setitem(sys.modules, "pyautogui", MagicMock())
+    clipboard = _fake_pasteboard(b, monkeypatch, content="user secret")
+
+    b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True, preserve_clipboard=True)
+
+    assert clipboard["content"] == "user secret"
+    with pytest.raises(ClipboardConcealedError):
+        b.clipboard_read()
+
+
+def test_a_concealed_clipboard_is_left_alone_and_the_text_typed(tmp_path, monkeypatch) -> None:
+    """Restoring would drop the concealed marker, so the clipboard is never
+    read or replaced."""
+    b = MacOSBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setattr(b, "_ax_trusted", lambda: True)
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    clipboard = _fake_pasteboard(
+        b, monkeypatch, content="password", types=["org.nspasteboard.ConcealedType"]
+    )
+    text = "x" * PASTE_THRESHOLD_CHARS
+
+    b.input_action("type", text=text, paste=True, preserve_clipboard=True)
+
+    assert clipboard["writes"] == []
+    pyautogui.write.assert_called_once_with(text, interval=0.02)
+    pyautogui.hotkey.assert_not_called()
