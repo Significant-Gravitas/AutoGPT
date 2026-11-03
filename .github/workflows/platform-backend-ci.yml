@@ -740,7 +740,7 @@ jobs:
   validate-skip-policy:
     name: Validate backend skip policy
     needs: test
-    if: ${{ always() }}
+    if: ${{ always() && !cancelled() }}
     permissions:
       contents: read
       actions: read

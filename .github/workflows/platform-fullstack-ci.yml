@@ -732,7 +732,7 @@ jobs:
 
   validate-smoke-shards:
     name: Validate complete smoke shards
-    if: ${{ always() && inputs.e2e_suite != 'journeys' }}
+    if: ${{ always() && !cancelled() && inputs.e2e_suite != 'journeys' }}
     needs: e2e_test
     runs-on: ubuntu-latest
     timeout-minutes: 5
