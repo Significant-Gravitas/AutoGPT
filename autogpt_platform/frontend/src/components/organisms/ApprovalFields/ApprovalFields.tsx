@@ -91,8 +91,8 @@ export function ApprovalFields({
       {more > 0 && (
         <Button
           variant="link"
-          size="small"
-          className="h-auto min-w-0 self-start px-0 py-0 text-sm"
+          size="inline"
+          className="self-start"
           onClick={() => setShowAll(true)}
         >
           Show {more} more

@@ -24,16 +24,16 @@ export function PopularProviderTile({ provider, onSelect }: Props) {
           variant="body-medium"
           as="span"
           tone="emphasis"
-          className="truncate leading-5.5"
+          className="truncate"
         >
           {provider.name}
         </Text>
         {provider.description && (
           <Text
-            variant="small"
+            variant="small-tight"
             as="span"
             tone="secondary"
-            className="truncate leading-4"
+            className="truncate"
             title={provider.description}
           >
             {provider.description}
@@ -44,7 +44,9 @@ export function PopularProviderTile({ provider, onSelect }: Props) {
         icon={PlusSignIcon}
         size={16}
         aria-hidden
-        className="shrink-0 text-foreground-secondary transition-colors group-hover:text-foreground-emphasis"
+        tone="secondary"
+        motion="colors"
+        className="shrink-0 group-hover:text-foreground-emphasis"
       />
     </button>
   );

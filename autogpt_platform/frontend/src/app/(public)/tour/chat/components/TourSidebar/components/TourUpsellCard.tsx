@@ -69,8 +69,9 @@ export function TourUpsellCard({ surface }: Props) {
           size="small"
           onClick={handleSelfHostClick}
           leftIcon={<Icon icon={GithubIcon} size={14} aria-hidden />}
-          // oxlint-disable-next-line design-system/no-restyle -- quiet 12px secondary link; no Button variant has small muted text at this height
-          className="w-full text-xs text-foreground-secondary"
+          tone="secondary"
+          // oxlint-disable-next-line design-system/no-restyle -- quiet 12px link; no Button size has caption text at this height
+          className="w-full text-xs"
         >
           Self-host instead
         </Button>
