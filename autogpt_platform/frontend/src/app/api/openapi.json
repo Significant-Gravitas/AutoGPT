@@ -13334,7 +13334,8 @@
                 "schema": { "$ref": "#/components/schemas/TokenResponse" }
               }
             }
-          }
+          },
+          "422": { "description": "The token request is malformed" }
         }
       }
     },
@@ -21152,9 +21153,6 @@
           },
           "code_challenge": {
             "type": "string",
-            "maxLength": 128,
-            "minLength": 43,
-            "pattern": "^[A-Za-z0-9\\-._~]+$",
             "title": "Code Challenge",
             "description": "RFC 7636 PKCE code challenge (required)"
           },

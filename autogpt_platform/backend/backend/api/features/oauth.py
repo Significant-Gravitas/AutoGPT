@@ -201,10 +201,10 @@ class AuthorizeRequest(BaseModel):
     response_type: str = Field(
         default="code", description="Must be 'code' for authorization code flow"
     )
+    # Its format is checked in the handler, once the client and redirect
+    # URI check out, so a bad challenge goes back to the client as
+    # invalid_request rather than a 422 the client never sees.
     code_challenge: str = Field(
-        min_length=43,
-        max_length=128,
-        pattern=r"^[A-Za-z0-9\-._~]+$",
         description="RFC 7636 PKCE code challenge (required)",
     )
     code_challenge_method: Literal["S256", "plain"] = Field(
@@ -316,6 +316,17 @@ async def authorize(
                 request.state,
                 "invalid_request",
                 "S256 code_challenge must be a 43-character base64url value",
+            )
+        if (
+            request.code_challenge_method == "plain"
+            and re.fullmatch(r"[A-Za-z0-9\-._~]{43,128}", request.code_challenge)
+            is None
+        ):
+            return _error_redirect_url(
+                request.redirect_uri,
+                request.state,
+                "invalid_request",
+                "plain code_challenge must be 43 to 128 unreserved characters",
             )
 
         # Parse and validate scopes
@@ -478,7 +489,11 @@ _TOKEN_REQUEST_BODY_SCHEMA = {
 }
 
 
-@router.post("/token", openapi_extra={"requestBody": _TOKEN_REQUEST_BODY_SCHEMA})
+@router.post(
+    "/token",
+    openapi_extra={"requestBody": _TOKEN_REQUEST_BODY_SCHEMA},
+    responses={422: {"description": "The token request is malformed"}},
+)
 async def token(
     http_request: Request,
 ) -> TokenResponse:

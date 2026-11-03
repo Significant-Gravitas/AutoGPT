@@ -58,6 +58,37 @@ async def test_an_unexpected_failure_once_the_redirect_uri_checks_out_goes_back_
     assert parse_qs(sent_to.query)["error"] == ["server_error"]
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("challenge", "method"),
+    [
+        ("too-short", "S256"),
+        ("a" * 44, "S256"),
+        ("short-plain", "plain"),
+        ("x" * 129, "plain"),
+        ("not allowed!" * 5, "plain"),
+    ],
+)
+async def test_a_malformed_challenge_goes_back_to_the_client(
+    challenge: str, method: str
+):
+    """Once the client and redirect URI check out, a bad PKCE challenge is the
+    client's error to receive (RFC 6749 4.1.2.1), not a 422 it never sees."""
+    app = _app(is_active=True)
+    with patch.object(oauth, "get_oauth_application", AsyncMock(return_value=app)):
+        response = await oauth.authorize(
+            request=_request(
+                REGISTERED, code_challenge=challenge, code_challenge_method=method
+            ),
+            user_id="user",
+        )
+
+    sent_to = urlparse(response.redirect_url)
+    assert f"{sent_to.scheme}://{sent_to.netloc}{sent_to.path}" == REGISTERED
+    assert parse_qs(sent_to.query)["error"] == ["invalid_request"]
+    assert parse_qs(sent_to.query)["state"] == ["state-1"]
+
+
 async def _authorize(app_state: str, redirect_uri: str, *, response_type: str):
     app = None if app_state == "unknown" else _app(is_active=app_state == "active")
     with patch.object(oauth, "get_oauth_application", AsyncMock(return_value=app)):
@@ -67,15 +98,22 @@ async def _authorize(app_state: str, redirect_uri: str, *, response_type: str):
         )
 
 
-def _request(redirect_uri: str, *, response_type: str = "code"):
+def _request(
+    redirect_uri: str,
+    *,
+    response_type: str = "code",
+    # RFC 7636 appendix B: a valid S256 challenge.
+    code_challenge: str = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+    code_challenge_method: str = "S256",
+):
     return oauth.AuthorizeRequest(
         client_id="client-123",
         redirect_uri=redirect_uri,
         scopes=[APIKeyPermission.READ_GRAPH.value],
         state="state-1",
         response_type=response_type,
-        # RFC 7636 appendix B: a valid S256 challenge.
-        code_challenge="E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+        code_challenge=code_challenge,
+        code_challenge_method=code_challenge_method,
     )
 
 
