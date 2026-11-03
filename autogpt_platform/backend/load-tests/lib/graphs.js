@@ -4,8 +4,9 @@
 // graph journey runs them.
 //
 // Block ids and pin names are the backend's (backend/blocks/io.py, text.py,
-// iteration.py, maths.py, data_manipulation.py, branching.py). The server
-// assigns new ids to the graph and its nodes; node ids here only wire links.
+// iteration.py, maths.py, basic.py, data_manipulation.py, branching.py). The
+// server assigns new ids to the graph and its nodes; node ids here only wire
+// links.
 
 const BLOCKS = {
   agentInput: "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",

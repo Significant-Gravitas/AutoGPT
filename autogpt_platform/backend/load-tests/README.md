@@ -17,7 +17,7 @@ Docker is the only requirement. `./k6.sh` runs k6 in a container with this direc
    LOAD_PROFILE=smoke ./k6.sh run tests/workload.js
    ```
 
-   `setup()` runs before the load: signing up and subscribing the accounts, seeding them and waiting for the seed runs takes about nine minutes with the default eight accounts.
+   `setup()` runs before the load: signing up and subscribing the accounts, seeding them and waiting for the seed runs takes nine to ten minutes with the default eight accounts.
 
 3. Run the baseline profile, the comparison run: a one-minute warm-up, then ten minutes at the rates below.
 
@@ -84,7 +84,7 @@ Settings: `SCENARIOS=copilot_turn,store_browse` runs a subset; `RATE_SCALE=0.5` 
 The verdict comes from the backend's traces in Sentry through perf-compare, not from k6's client-side numbers: perf-compare resamples by trace, corrects for multiple comparisons and refuses to judge on too little data. The procedure:
 
 1. Deploy the candidate with `!deploy`, and deploy a control the same way: a pull request at the dev commit the candidate branches from, with no changes. Each preview gets its own namespace and database, so they are alike.
-2. Run the baseline profile at both, interleaved, with the same seed. `scripts/ab.sh` does this (A B B A by default, about 45 minutes) and prints the perf-compare command for the steady-phase windows it produced. Runs whose `coverage` differs did not send the same load, so then it prints their coverage instead, and no command:
+2. Run the baseline profile at both, interleaved, with the same seed. `scripts/ab.sh` does this (A B B A by default, about 90 minutes: a baseline run takes about 22, of which about ten are setup) and prints the perf-compare command for the steady-phase windows it produced. Runs whose `coverage` differs did not send the same load, so then it prints their coverage instead, and no command:
 
    ```bash
    scripts/ab.sh <control PR> <candidate PR>

@@ -8,7 +8,8 @@
 # and nothing else changed; candidate is the change. Each round is one run at
 # each preview, and rounds alternate direction (A B, B A, A B, ...) so drift
 # over the session cancels out. Two rounds (A B B A) is the default, about
-# 45 minutes at the baseline profile. Every run uses the same RUN_SEED.
+# 90 minutes at the baseline profile: a run takes about 22, of which about
+# ten are setup and eleven the load. Every run uses the same RUN_SEED.
 #
 # A run that fails its thresholds still counts: a slower candidate is what
 # the comparison is for. Runs that covered different journeys did not send
