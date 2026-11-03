@@ -589,3 +589,31 @@ def test_a_failed_pasteboard_write_is_an_error_and_never_pastes(tmp_path, monkey
         b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True)
 
     pyautogui.hotkey.assert_not_called()
+
+
+def test_input_bounds_are_in_points_on_a_retina_display(tmp_path, monkeypatch) -> None:
+    """Quartz gives origins and logical sizes in points, and pixel counts twice
+    as large; pyautogui clicks in points, so the bounds must be in points too."""
+    retina = [
+        DisplayMonitor(
+            index=0,
+            primary=True,
+            physical_size=(2880, 1800),
+            logical_size=(1440, 900),
+            scale=2.0,
+            origin=(0, 0),
+        )
+    ]
+    b = MacOSBackend(_config(tmp_path))
+    monkeypatch.setattr(b, "display_info", lambda: retina)
+    monkeypatch.setattr(b, "_ax_trusted", lambda: True)
+    fake_pg = MagicMock()
+    fake_pg.FAILSAFE = True
+    monkeypatch.setitem(sys.modules, "pyautogui", fake_pg)
+
+    b.input_action("left_click", coordinate=(1400, 880))
+    with pytest.raises(InputOutOfBoundsError) as ei:
+        b.input_action("left_click", coordinate=(2000, 1000))
+
+    fake_pg.click.assert_called_once_with(1400, 880)
+    assert ei.value.details["displays"] == [{"index": 0, "origin": [0, 0], "size": [1440, 900]}]
