@@ -455,6 +455,18 @@ OVERSIZED_TEMPLATES = {
         _rebuilt_every_iteration(_DICT_LITERAL),
         AFTER_IT_IS_BUILT,
     ),
+    "a tuple of loop values rebuilt every iteration": (
+        _rebuilt_every_iteration(
+            "(i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i)"
+        ),
+        AFTER_IT_IS_BUILT,
+    ),
+    "a tuple literal rebuilt every iteration": (
+        _rebuilt_every_iteration(
+            "(1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1)"
+        ),
+        AFTER_IT_IS_BUILT,
+    ),
     "the % operator without a precision": (
         THIRTY_MEGABYTES + "{{ '%s' % a }}",
         BEFORE_IT_ALLOCATES,
@@ -481,6 +493,14 @@ OVERSIZED_TEMPLATES = {
     ),
     "round to a negative precision": (
         "{{ (10**100)|round(-" + HUGE + ") }}",
+        "Integer too large",
+    ),
+    "round to a precision through ceil": (
+        "{{ 5|round(" + HUGE + ", 'ceil') }}",
+        "Integer too large",
+    ),
+    "round to a precision through floor": (
+        "{{ 5|round(" + HUGE + ", 'floor') }}",
         "Integer too large",
     ),
     "a filter applied once per item": (
@@ -584,6 +604,19 @@ WORKING_TEMPLATES = {
     "slice filter": ("{{ [1,2,3]|slice(2)|list|length }}", {}, "2"),
     "round filter": ("{{ 12345|round(-3) }}", {}, "12000"),
     "round filter on a float": ("{{ 1.5|round(100000000) }}", {}, "1.5"),
+    "round filter through floor": ("{{ 42.55|round(1, 'floor') }}", {}, "42.5"),
+    "a tuple a template builds": (
+        "{% set t = (1, 2, 3) %}{{ t|join('-') }}",
+        {},
+        "1-2-3",
+    ),
+    "a tuple of one": ("{{ (5,)|length }}", {}, "1"),
+    "tuple targets in a for": (
+        "{% for a, b in [(1,2),(3,4)] %}{{ a }}{{ b }}{% endfor %}",
+        {},
+        "1234",
+    ),
+    "round filter through ceil": ("{{ 5|round(-10, 'ceil') }}", {}, "10000000000.0"),
     "string filter": ("{{ [1,2]|string }}", {}, "[1, 2]"),
     "a container emitted whole": ("{{ [1,'a'] }}", {}, "[1, 'a']"),
     "a lazy join": ("{{ range(3)|map('string')|join('-') }}", {}, "0-1-2"),
@@ -687,11 +720,49 @@ def test_the_escape_growth_is_what_escaping_adds(value: str):
     assert len(escape(value)) == len(value) + text._escaped_growth(value)
 
 
+@pytest.mark.parametrize("method", ["ceil", "floor"])
+@pytest.mark.asyncio
+async def test_a_round_whose_power_of_ten_underflows_is_refused(
+    fmt: TextFormatter, method: str
+):
+    # Jinja divides by that power of ten, so a zero reaches the caller as a
+    # 500 unless the filter is refused first
+    with pytest.raises(ValueError, match="precision too small"):
+        await fmt.format_string("{{ 5|round(-1000, '" + method + "') }}")
+
+
+@pytest.mark.parametrize("entries", [2, 4, 8, 16])
+def test_every_entry_of_a_dict_is_charged(entries: int):
+    # Each pair `items()` makes is freed as the walk moves on, so a walk
+    # that measured the pairs could read the one before at the same address.
+    # The values differ in size, or reading the one before would not show.
+    value = {f"k{i}": "q" * (1000 * (i + 1)) for i in range(entries)}
+    assert text._text_size(value) >= sum(1000 * (i + 1) for i in range(entries))
+
+
+@pytest.mark.asyncio
+async def test_a_replace_is_sized_before_escaping_builds_its_operand():
+    # Escaping the value is itself an allocation, so it is sized first
+    value = "&" * (MAX_RENDER_BYTES // 4)
+    with pytest.raises(ValueError, match=BEFORE_IT_ALLOCATES):
+        await TextFormatter(autoescape=True).format_string(
+            "{{ v|replace('x', 'y') }}", {"v": value}
+        )
+
+
+def test_a_container_of_strings_is_charged_for_the_quotes_it_renders_them_in():
+    # A container renders each string item in quotes, and escaping turns
+    # each of those into five characters
+    value = ["a"] * 200
+    assert text._text_size(value, True) >= len(escape(str(value)))
+
+
 def test_a_container_that_holds_itself_is_measured_once():
     loop: list = ["abc"]
     loop.append(loop)
-    # The reference back into it counts for nothing, as `repr` renders it
-    assert text._text_size(loop) == len("abc") + 6
+    # The reference back into it costs what an empty slot costs, which is
+    # what `repr` renders it as
+    assert text._text_size(loop) == text._text_size(["abc", None])
 
 
 def test_a_container_referenced_twice_is_counted_twice():
@@ -711,13 +782,15 @@ def test_the_charge_for_a_container_tracks_the_text_it_renders(depth: int):
     assert rendered / 2 <= text._text_size(value) <= rendered * 2
 
 
-# A thousand tags of forty concatenations each: 0.59 s to compile here, an
-# order of magnitude over the deadline it is given below
+# A thousand tags of forty concatenations each: 0.59 s to compile here, long
+# enough that a millisecond timer gets hundreds of turns while it runs
 SLOW_TO_COMPILE = ("{{ " + " ~ ".join(["'a'"] * 40) + " }}") * 1_000
 
 
 @pytest.mark.asyncio
-async def test_another_task_runs_while_a_template_compiles(fmt: TextFormatter):
+async def test_another_task_runs_while_a_template_compiles(
+    fmt: TextFormatter, monkeypatch: pytest.MonkeyPatch
+):
     served = 0
 
     async def serve_other_requests():
@@ -726,17 +799,26 @@ async def test_another_task_runs_while_a_template_compiles(fmt: TextFormatter):
             await asyncio.sleep(0.001)
             served += 1
 
+    # Read on the compiling thread itself, so what is counted is the turns
+    # the loop took while compiling, and no deadline decides the window
+    marks: list[int] = []
+    compile_template = fmt.env.from_string
+
+    def watched(source: str):
+        marks.append(served)
+        template = compile_template(source)
+        marks.append(served)
+        return template
+
+    monkeypatch.setattr(fmt.env, "from_string", watched)
     other = asyncio.create_task(serve_other_requests())
-    await asyncio.sleep(0.01)
-    before = served
     try:
-        with pytest.raises(ValueError, match="timed out"):
-            await fmt.format_string(SLOW_TO_COMPILE, timeout=0.05)
+        await fmt.format_string(SLOW_TO_COMPILE, timeout=None)
     finally:
         other.cancel()
     # Lexing, parsing and code generation hold the loop solid unless they
-    # run off it, and the deadline cannot be answered while they do
-    assert served > before
+    # run off it
+    assert marks[1] > marks[0]
 
 
 def test_the_wordwrap_line_bound_holds():

@@ -21,7 +21,7 @@ from jinja2.async_utils import auto_aiter
 from jinja2.compiler import CodeGenerator, CompilerExit, Frame
 from jinja2.exceptions import TemplateError
 from jinja2.filters import make_attrgetter
-from jinja2.nodes import Concat, Const, Dict, List, Node
+from jinja2.nodes import Concat, Const, Dict, List, Node, Tuple
 from jinja2.runtime import Context
 from jinja2.sandbox import (
     SandboxedEnvironment,
@@ -421,13 +421,33 @@ def _walk_text_size(value: Any, escaped: bool, measured: dict[int, int]) -> int:
         if already is not None:
             return already
         measured[id(value)] = 0
-        items = value.items() if isinstance(value, dict) else value
-        total = sum(_walk_text_size(i, escaped, measured) + 2 for i in items) + 2
+        total = _walk_items(value, escaped, measured) + 2
         measured[id(value)] = total
         return total
     if _is_plain_int(value):
         return value.bit_length() // 3
     return 0
+
+
+def _walk_items(value: Any, escaped: bool, measured: dict[int, int]) -> int:
+    """What a container's items render as, a dict's keys and values both.
+
+    A dict is walked key by key rather than over the pairs ``items()`` makes,
+    because each pair is freed as the walk moves on and the next one can be
+    built at the same address, which would read as the pair just measured.
+
+    Every item carries the separator beside it, and a string the quotes
+    ``repr`` renders it in, which escaping turns into five characters each.
+    """
+    quoted = 12 if escaped else 4
+
+    def rendered(item: Any) -> int:
+        beside = quoted if isinstance(item, (str, bytes, bytearray)) else 2
+        return _walk_text_size(item, escaped, measured) + beside
+
+    if isinstance(value, dict):
+        return sum(rendered(k) + rendered(v) for k, v in value.items())
+    return sum(rendered(i) for i in value)
 
 
 def _escaped_growth(value: Any) -> int:
@@ -514,10 +534,18 @@ class _BudgetedCodeGenerator(CodeGenerator):
     def visit_Dict(self, node: Dict, frame: Frame) -> None:
         self._charged_literal(super().visit_Dict, node, frame)
 
+    def visit_Tuple(self, node: Tuple, frame: Frame) -> None:
+        # A tuple being assigned to is a target, and a call around it would
+        # not be one
+        if node.ctx == "store":
+            super().visit_Tuple(node, frame)
+        else:
+            self._charged_literal(super().visit_Tuple, node, frame)
+
     def visit_Const(self, node: Const, frame: Frame) -> None:
         # Jinja folds a list or dict of constants to one Const, and emits it
         # as a literal that the line rebuilds every time it runs
-        if isinstance(node.value, (list, dict)):
+        if isinstance(node.value, (list, dict, tuple)):
             self._charged_literal(super().visit_Const, node, frame)
         else:
             super().visit_Const(node, frame)
@@ -570,8 +598,8 @@ class _RestrictedEnvironment(SandboxedEnvironment):
         _current_budget().spend(len(data))
         return data
 
-    def charge_literal(self, value: list | dict) -> list | dict:
-        """Count a list or dict the template builds from a literal.
+    def charge_literal(self, value: list | dict | tuple) -> list | dict | tuple:
+        """Count a list, dict or tuple the template builds from a literal.
 
         Jinja compiles one to a plain Python literal, so nothing else sees
         it being built, however many times a loop runs it.
@@ -889,13 +917,16 @@ def _check_round_filter(
     budget: _RenderBudget,
     passed: Any,
 ) -> None:
-    """Rounding an integer to a negative precision computes that power of ten."""
+    """``round`` raises ten to its precision: to a negative one on an integer,
+    and to either sign of one on the ``ceil`` and ``floor`` paths."""
     precision = _int_arg(own, kwargs, 1, "precision", 0)
-    if (
-        _is_plain_int(own[0])
-        and precision < 0
-        and -precision * _BITS_PER_DIGIT > MAX_RENDER_INT_BITS
-    ):
+    digits = -precision if _is_plain_int(own[0]) and precision < 0 else 0
+    if _own_arg(own, kwargs, 2, "method", "common") in ("ceil", "floor"):
+        # Going down it is a float, and one that has underflowed is divided by
+        if precision < 0 and 10.0**precision == 0:
+            raise OverflowError("round() precision too small for ceil or floor")
+        digits = max(digits, precision)
+    if digits * _BITS_PER_DIGIT > MAX_RENDER_INT_BITS:
         raise OverflowError(f"Integer too large (max {MAX_RENDER_INT_BITS} bits)")
 
 
@@ -913,6 +944,8 @@ def _check_replace_filter(
     if old is _ABSENT or new is _ABSENT:
         return
     count = _own_arg(own, kwargs, 3, "count", None)
+    if passed.autoescape and not hasattr(own[0], "__html__"):
+        budget.check(_text_size(own[0], True))
     value, old, new = _replace_operands(passed.autoescape, own[0], old, new)
     _check_replace_sizes(value, old, new, count, budget)
 
@@ -1070,6 +1103,7 @@ def _check_replace_sizes(
 ) -> None:
     if isinstance(value, Markup):
         # Markup.replace escapes its arguments before it searches or inserts
+        budget.check(_text_size(old, True) + _text_size(new, True))
         old, new = escape(old), escape(new)
     occurrences = value.count(old) if old else len(value) + 1
     if _is_plain_int(count) and 0 <= count < occurrences:
