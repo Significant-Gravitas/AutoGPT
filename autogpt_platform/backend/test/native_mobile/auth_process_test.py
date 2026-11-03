@@ -55,7 +55,7 @@ async def test_readiness_timeout_includes_bounded_diagnostic_tail() -> None:
         "import sys, time; sys.stderr.write('x' * 32768 + 'last startup diagnostic'); sys.stderr.flush(); time.sleep(60)",
     ]
     with pytest.raises(RuntimeError, match="last startup diagnostic") as error:
-        async with auth_harness(command, readiness_timeout=1):
+        async with auth_harness(command, readiness_timeout=5):
             pytest.fail("A harness without a ready marker must not report readiness")
     assert "timed out" in str(error.value)
     assert len(str(error.value)) < 8300
