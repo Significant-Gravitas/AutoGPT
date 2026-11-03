@@ -126,7 +126,7 @@ def _decorate(
     last_turn_status: str | None,
     tools: list[InboxTool],
 ) -> Task:
-    steps = [step for event in events for step in _event_steps(event)]
+    steps = _dedupe([step for event in events for step in _event_steps(event)])
     if task.live.running and task.live.current_step:
         steps.append(
             InboxStep(
@@ -155,6 +155,14 @@ def _decorate(
         tools_used=sorted(tools, key=lambda t: -t.count),
     )
     return task
+
+
+def _dedupe(steps: list[InboxStep]) -> list[InboxStep]:
+    return [
+        step
+        for i, step in enumerate(steps)
+        if i == 0 or step.label != steps[i - 1].label
+    ]
 
 
 def _event_steps(event: dict[str, Any]) -> list[InboxStep]:
