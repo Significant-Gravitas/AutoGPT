@@ -1,15 +1,22 @@
+import codecs
 from unittest.mock import MagicMock
 from urllib.parse import urlparse
 
+import idna
 import pytest
+import pytest_mock
 from aiohttp import web
 
 from backend.util.request import (
+    ALLOWED_RESPONSE_CHARSETS,
     Requests,
+    Response,
     ResponseTooLargeError,
+    _is_cross_origin,
     _is_ip_blocked,
     _read_body,
     _remove_insecure_headers,
+    parse_url,
     pin_url,
     resolve_and_check_blocked,
     validate_url_host,
@@ -314,7 +321,7 @@ def test_sensitive_headers_are_stripped_regardless_of_case(
     headers = {header_name: "secret", "X-Keep": "kept"}
 
     result = _remove_insecure_headers(
-        headers, urlparse("https://example.com/a"), urlparse(new_url)
+        headers, _is_cross_origin(urlparse("https://example.com/a"), urlparse(new_url))
     )
 
     assert (header_name not in result) is expect_stripped
@@ -617,6 +624,252 @@ async def test_credentials_survive_a_same_origin_redirect():
     assert seen["cookie"] == "session=secret_session_value"
 
 
+# The four ways a credential rides a redirect hop: a name in
+# ``SENSITIVE_HEADERS``, the two kwargs aiohttp turns into headers downstream of
+# the strip, and a name the caller declared sensitive. One origin decision in
+# the redirect branch has to cover all four, in both directions.
+CREDENTIAL_CARRIERS = [
+    (
+        {},
+        {"headers": {"Authorization": "Bearer dft_secret_token"}},
+        "Authorization",
+        "Bearer dft_secret_token",
+    ),
+    ({}, {"auth": ("user", "pass")}, "Authorization", "Basic dXNlcjpwYXNz"),
+    (
+        {},
+        {"cookies": {"session": "secret_session_value"}},
+        "Cookie",
+        "session=secret_session_value",
+    ),
+    (
+        {"sensitive_headers": ["X-Custom-Credential"]},
+        {"headers": {"X-Custom-Credential": "credential-value"}},
+        "X-Custom-Credential",
+        "credential-value",
+    ),
+]
+CARRIER_IDS = ["header", "auth-kwarg", "cookies-kwarg", "caller-named-header"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "client_kwargs, call_kwargs, header, expected", CREDENTIAL_CARRIERS, ids=CARRIER_IDS
+)
+async def test_a_redirect_is_judged_by_the_host_the_next_hop_connects_to(
+    client_kwargs: dict, call_kwargs: dict, header: str, expected: str
+):
+    """Every carrier of a credential answers to that one origin decision.
+
+    ``parse_url`` and ``urlparse`` disagree about an authority holding a
+    backslash, and the next hop parses the target with the former, so the
+    comparison has to as well. A header, ``auth=`` and ``cookies=`` are each
+    covered here, because each leaves by a different route.
+    """
+    seen: dict[str, str | None] = {}
+
+    async def collect(request: web.Request) -> web.Response:
+        seen["elsewhere"] = request.headers.get(header)
+        return web.json_response({"ok": True})
+
+    elsewhere = web.Application()
+    # The hop lands on ``/@<origin host>/collect``, so match any path.
+    elsewhere.router.add_get("/{tail:.*}", collect)
+    elsewhere_runner = web.AppRunner(elsewhere)
+    await elsewhere_runner.setup()
+    await web.TCPSite(elsewhere_runner, "127.0.0.1", 0).start()
+    elsewhere_port = elsewhere_runner.addresses[0][1]
+
+    async def redirect(request: web.Request) -> web.Response:
+        # Pinned, so the test cannot pass by the credential never being applied.
+        seen["origin"] = request.headers.get(header)
+        # Raw header, not ``HTTPFound``: that percent-encodes the backslash,
+        # and ``%5C`` is read the same way by both parsers.
+        location = f"http://127.0.0.1:{elsewhere_port}\\@{request.host}/collect"
+        return web.Response(status=302, headers={"Location": location})
+
+    origin = web.Application()
+    origin.router.add_get("/start", redirect)
+    origin_runner = web.AppRunner(origin)
+    await origin_runner.setup()
+    await web.TCPSite(origin_runner, "127.0.0.1", 0).start()
+    origin_port = origin_runner.addresses[0][1]
+
+    try:
+        requests = Requests(trusted_origins=["127.0.0.1"], **client_kwargs)
+        await requests.get(f"http://127.0.0.1:{origin_port}/start", **call_kwargs)
+    finally:
+        await origin_runner.cleanup()
+        await elsewhere_runner.cleanup()
+
+    assert seen["origin"] == expected
+    assert seen["elsewhere"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "client_kwargs, call_kwargs, header, expected", CREDENTIAL_CARRIERS, ids=CARRIER_IDS
+)
+@pytest.mark.parametrize("shape", ["absolute", "path", "path-with-a-backslash"])
+async def test_a_credential_survives_a_hop_that_stays_on_the_origin(
+    shape: str, client_kwargs: dict, call_kwargs: dict, header: str, expected: str
+):
+    """The keep direction of that one decision, for the header carriers too.
+
+    Without this, a branch that stripped the credential headers on every hop
+    would pass the whole file: the other same-origin test carries its credential
+    as ``auth=``/``cookies=``, which aiohttp builds downstream of the strip, so
+    the header dance never sees them. A target whose own path holds a backslash
+    belongs here, because ``urljoin`` runs before the parse and the fold then
+    only moves the backslash further into the path.
+    """
+    seen: dict[str, str | None] = {}
+
+    async def final(request: web.Request) -> web.Response:
+        seen["final"] = request.headers.get(header)
+        return web.json_response({"ok": True})
+
+    async def redirect(request: web.Request) -> web.Response:
+        # Pinned, so the test cannot pass by the credential never being applied.
+        seen["origin"] = request.headers.get(header)
+        target = {
+            "absolute": f"http://{request.host}/final",
+            "path": "/final",
+            # Joins to ``/\final``, which the fold turns into ``//final``.
+            "path-with-a-backslash": "\\final",
+        }[shape]
+        return web.Response(status=302, headers={"Location": target})
+
+    app = web.Application()
+    app.router.add_get("/start", redirect)
+    app.router.add_get("/{tail:.*}", final)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    await web.TCPSite(runner, "127.0.0.1", 0).start()
+    port = runner.addresses[0][1]
+
+    try:
+        requests = Requests(trusted_origins=["127.0.0.1"], **client_kwargs)
+        await requests.get(f"http://127.0.0.1:{port}/start", **call_kwargs)
+    finally:
+        await runner.cleanup()
+
+    assert seen["origin"] == expected
+    assert seen["final"] == expected
+
+
+@pytest.mark.parametrize(
+    "target, by_urlparse, by_parse_url",
+    [
+        (
+            "http://elsewhere.example\\@origin.example/collect",
+            "origin.example",
+            "elsewhere.example",
+        ),
+        (
+            "http://elsewhere.example:8080\\@origin.example/c",
+            "origin.example",
+            "elsewhere.example",
+        ),
+        (
+            "HTTP://Elsewhere.Example\\@Origin.Example/C",
+            "origin.example",
+            "elsewhere.example",
+        ),
+    ],
+)
+def test_parse_url_names_the_host_a_backslashed_authority_resolves_to(
+    target: str, by_urlparse: str, by_parse_url: str
+):
+    """The two parsers are not interchangeable for such an authority.
+
+    The redirect branch parses the target once with ``parse_url`` and passes
+    ``geturl()`` of that same parse to the next hop, which parses it the same
+    way, so what it compares is what gets connected to. Reading the authority
+    with ``urlparse`` instead names a host the request never reaches.
+    """
+    assert urlparse(target).hostname == by_urlparse
+    assert parse_url(target).hostname == by_parse_url
+
+
+@pytest.mark.parametrize("header_name", ["X-Custom-Credential", "x-custom-credential"])
+@pytest.mark.parametrize(
+    "new_url, expect_stripped",
+    [
+        ("https://example.com/b", False),
+        ("https://other.example.com/b", True),
+    ],
+)
+def test_caller_sensitive_headers_are_stripped_cross_origin(
+    header_name: str, new_url: str, expect_stripped: bool
+):
+    """Names passed as ``sensitive_headers`` join ``SENSITIVE_HEADERS``."""
+    headers = {header_name: "secret", "X-Keep": "kept"}
+
+    result = _remove_insecure_headers(
+        headers,
+        _is_cross_origin(urlparse("https://example.com/a"), urlparse(new_url)),
+        sensitive_headers=["X-CUSTOM-Credential"],
+    )
+
+    assert (header_name not in result) is expect_stripped
+    assert result["X-Keep"] == "kept"
+
+
+@pytest.mark.asyncio
+async def test_sensitive_headers_are_not_replayed_across_a_cross_origin_redirect():
+    """``Requests(sensitive_headers=...)`` reaches the redirect branch's strip.
+
+    The unit test above covers ``_remove_insecure_headers``; this one fails if
+    the names are not stored or not handed to it on a redirect.
+    """
+    seen: dict[str, str | None] = {}
+
+    async def collect(request: web.Request) -> web.Response:
+        seen["credential"] = request.headers.get("X-Custom-Credential")
+        seen["accept"] = request.headers.get("Accept")
+        return web.json_response({"ok": True})
+
+    elsewhere = web.Application()
+    elsewhere.router.add_get("/collect", collect)
+    elsewhere_runner = web.AppRunner(elsewhere)
+    await elsewhere_runner.setup()
+    await web.TCPSite(elsewhere_runner, "127.0.0.1", 0).start()
+    elsewhere_port = elsewhere_runner.addresses[0][1]
+
+    async def redirect(request: web.Request) -> web.Response:
+        # Pinned, so the test cannot pass by the header never being sent.
+        seen["origin_credential"] = request.headers.get("X-Custom-Credential")
+        raise web.HTTPFound(f"http://127.0.0.1:{elsewhere_port}/collect")
+
+    origin = web.Application()
+    origin.router.add_get("/start", redirect)
+    origin_runner = web.AppRunner(origin)
+    await origin_runner.setup()
+    await web.TCPSite(origin_runner, "127.0.0.1", 0).start()
+    origin_port = origin_runner.addresses[0][1]
+
+    try:
+        requests = Requests(
+            trusted_origins=["127.0.0.1"],
+            sensitive_headers=["X-Custom-Credential"],
+        )
+        await requests.get(
+            f"http://127.0.0.1:{origin_port}/start",
+            headers={
+                "X-Custom-Credential": "credential-value",
+                "Accept": "application/json",
+            },
+        )
+    finally:
+        await origin_runner.cleanup()
+        await elsewhere_runner.cleanup()
+
+    assert seen["origin_credential"] == "credential-value"
+    assert seen["credential"] is None
+    assert seen["accept"] == "application/json"
+
+
 @pytest.mark.asyncio
 async def test_post_follows_redirect_to_trailing_slash_without_looping():
     from backend.util.request import Requests
@@ -867,3 +1120,129 @@ async def test_a_head_response_is_not_refused_for_the_size_of_the_resource():
 
 def test_the_default_limit_follows_the_file_size_setting():
     assert Requests().max_response_bytes == Config().max_file_size_mb * 1024 * 1024
+
+
+# The longest hostname DNS allows.
+_DNS_MAX_HOSTNAME = 253
+
+
+@pytest.mark.asyncio
+async def test_validate_url_host_refuses_an_overlong_hostname_before_encoding_it(
+    mocker: pytest_mock.MockerFixture,
+):
+    encode = mocker.patch("backend.util.request.idna.encode", wraps=idna.encode)
+
+    with pytest.raises(ValueError, match=f"longer than {_DNS_MAX_HOSTNAME}"):
+        await validate_url_host(f"https://{'a' * 5000}.com/")
+
+    encode.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_validate_url_host_accepts_a_hostname_at_the_length_limit():
+    hostname = ".".join(["a" * 63, "b" * 63, "c" * 63, "d" * 61])
+    assert len(hostname) == _DNS_MAX_HOSTNAME
+
+    url, trusted, _ = await validate_url_host(
+        f"https://{hostname}/", trusted_hostnames=[hostname]
+    )
+
+    assert trusted
+    assert url.hostname == hostname
+
+
+_MAX_LENGTH_HOSTNAME = ".".join(["a" * 63, "b" * 63, "c" * 63, "d" * 61])
+
+
+@pytest.mark.asyncio
+async def test_validate_url_host_accepts_a_hostname_at_the_limit_with_a_root_dot():
+    hostname = f"{_MAX_LENGTH_HOSTNAME}."
+    assert len(hostname) == _DNS_MAX_HOSTNAME + 1
+
+    url, trusted, _ = await validate_url_host(
+        f"https://{hostname}/", trusted_hostnames=[hostname]
+    )
+
+    assert trusted
+    assert url.hostname == hostname
+
+
+@pytest.mark.asyncio
+async def test_validate_url_host_refuses_one_character_over_the_limit_without_a_dot():
+    hostname = f"{_MAX_LENGTH_HOSTNAME}e"
+    assert len(hostname) == _DNS_MAX_HOSTNAME + 1
+
+    with pytest.raises(ValueError, match=f"longer than {_DNS_MAX_HOSTNAME}"):
+        await validate_url_host(f"https://{hostname}/")
+
+
+@pytest.mark.asyncio
+async def test_validate_url_host_refuses_a_double_trailing_dot_at_the_limit():
+    hostname = f"{_MAX_LENGTH_HOSTNAME}.."
+
+    with pytest.raises(ValueError):
+        await validate_url_host(f"https://{hostname}/", trusted_hostnames=[hostname])
+
+
+def _response(body: bytes, content_type: str) -> Response:
+    raw = MagicMock(status=200, headers={"content-type": content_type}, reason="OK")
+    return Response(response=raw, url="https://example.com/", body=body)
+
+
+@pytest.mark.parametrize(
+    "charset",
+    [
+        "punycode",
+        "unicode_escape",
+        "raw_unicode_escape",
+        "idna",
+        "utf-7",
+        "hz",
+        "undefined",
+        "no-such-codec",
+    ],
+)
+def test_response_text_decodes_an_unlisted_charset_as_utf8(charset: str):
+    body = "abc-caf\\xe9-é".encode()
+
+    text = _response(body, f"text/plain; charset={charset}").text()
+
+    assert text == body.decode("utf-8")
+
+
+@pytest.mark.parametrize(
+    "content_type",
+    ["text/plain; charset=ISO-8859-1", 'text/plain; charset="iso-8859-1"'],
+)
+def test_response_text_uses_a_listed_charset(content_type: str):
+    assert _response(b"caf\xe9", content_type).text() == "café"
+
+
+@pytest.mark.parametrize(
+    "charset, body, expected",
+    [
+        ("TIS-620", b"\xa1", "\u0e01"),
+        ("CP874", b"\xa1", "\u0e01"),
+        ("cp950", b"\xa4\xa4\xf9\xd6", "\u4e2d\u7881"),
+        ("Shift_JIS", b"\x82\xa0", "\u3042"),
+        ("Shift_JIS_2004", b"\x82\xa0", "\u3042"),
+        ("ISO-2022-JP-2", b'\x1b$B$"\x1b(B', "\u3042"),
+        ("MacCyrillic", b"\x80", "\u0410"),
+        ("KOI8-T", b"\xf0", "\u041f"),
+        ("johab", b"\x88\x61", "\uac00"),
+        ("IBM866", b"\x8f", "\u041f"),
+        ("cp866", b"\x8f", "\u041f"),
+        ("cp437", b"\x80", "\u00c7"),
+        ("cp1125", b"\x8f", "\u041f"),
+    ],
+)
+def test_response_text_decodes_a_listed_text_charset(
+    charset: str, body: bytes, expected: str
+):
+    assert _response(body, f"text/plain; charset={charset}").text() == expected
+
+
+def test_allowed_response_charsets_are_canonical_codec_names():
+    assert {codecs.lookup(name).name for name in ALLOWED_RESPONSE_CHARSETS} == (
+        ALLOWED_RESPONSE_CHARSETS
+    )

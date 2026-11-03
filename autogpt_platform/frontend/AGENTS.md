@@ -65,7 +65,7 @@ The full rules are in `docs/engineering/design-system.md`; `pnpm lint` enforces 
 - **No arbitrary values** except layout and transitions; no inline `style` for static values; no classes Tailwind does not generate.
 - **Suppressions say why:** `// oxlint-disable-next-line design-system/<rule> -- <reason>`, one line, one rule.
 - **Pixels:** a change to `src/components/**`, `globals.css` or `tailwind*.ts` comes with before/after screenshots at 1440 and 390 px in the PR, or "no pixel change" and how you checked.
-- After removing violations, or moving, renaming or splitting a file, run `pnpm lint:ds-baseline` and commit the baseline. Lint fails new violations and counts above the baseline; grandfathered counts at or below it pass.
+- After removing violations, or moving, renaming or splitting a file, run `pnpm lint:ds-baseline` and commit the baseline. Lint fails new violations, counts above the baseline and counts below it (`design-system/baseline-outdated`, until the lower count is committed); only a count equal to the baseline passes.
 
 ## Architecture
 
@@ -76,7 +76,7 @@ The full rules are in `docs/engineering/design-system.md`; `pnpm lint` enforces 
 - **Workflow Builder**: Visual graph editor using @xyflow/react
 - **UI Components**: shadcn/ui (Radix UI primitives) with Tailwind CSS styling
 - **Icons**: Hugeicons (stroke-rounded) only, rendered through the `Icon` atom
-- **Feature Flags**: read from the backend's `/api/feature-flags` by default, which answers from PostHog
+- **Feature Flags**: read from the backend's `/api/feature-flags`, which answers from PostHog
 - **Error Handling**: ErrorCard for render errors, toast for mutations, Sentry for exceptions
 - **Testing**: Vitest + React Testing Library + MSW for integration tests (primary), Playwright for E2E, Storybook for visual
 

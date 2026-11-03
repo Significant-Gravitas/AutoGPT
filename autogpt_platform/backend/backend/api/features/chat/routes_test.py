@@ -1545,7 +1545,7 @@ def test_stream_chat_returns_503_with_retry_after_when_rate_limit_unavailable(
     mocker.patch.object(chat_routes.config, "daily_cost_limit_microdollars", 10000)
     mocker.patch.object(chat_routes.config, "weekly_cost_limit_microdollars", 50000)
     # Patch the limit-resolution helper so the test does not exercise the
-    # real LaunchDarkly / tier-lookup path — keeps the assertion focused on
+    # real PostHog / tier-lookup path — keeps the assertion focused on
     # the RateLimitUnavailable → 503 mapping.
     mocker.patch(
         "backend.api.features.chat.routes.get_global_rate_limits",
@@ -1611,7 +1611,7 @@ def _mock_usage(
 
     Mocks both ``get_global_rate_limits`` (returns the given limits + tier) and
     ``get_usage_status`` so that tests exercise the endpoint without hitting
-    LaunchDarkly or Prisma.
+    PostHog or Prisma.
     """
     from backend.copilot.rate_limit import CoPilotUsageStatus, UsageWindow
 
@@ -1984,7 +1984,11 @@ def test_list_chat_transports_hosted_omits_codex_without_required_plan(
         ]
     }
     access.assert_awaited_once_with(test_user_id)
-    lookup.assert_awaited_once_with(test_user_id, ProviderName.MICROSOFT_365_COPILOT)
+    # Only Microsoft connections are read; ChatGPT ones are never looked up.
+    assert [call.args for call in lookup.await_args_list] == [
+        (test_user_id, ProviderName.MICROSOFT),
+        (test_user_id, ProviderName.MICROSOFT_365_COPILOT),
+    ]
 
 
 def test_list_chat_transports_omits_invalid_codex_credentials(

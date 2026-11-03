@@ -8,6 +8,7 @@ import {
   buildSizeMap,
   rewriteClassList,
 } from "../codemod-tokens.ts";
+import { RAW_TEXT_SIZE, rawTextSizeAdvice } from "../ds/text-size-scale.ts";
 
 // Design-system lint rules (SECRT-3097), loaded by oxlint as a JS plugin
 // (.oxlintrc.json) and run by `pnpm lint`. See
@@ -17,7 +18,7 @@ import {
 // rule, how many violations the file had when the rule was turned on. A file
 // at or under its count passes; one over it fails with every violation listed;
 // a file missing from the baseline must have none. `pnpm lint:ds-baseline`
-// rewrites the baseline, and `design-system/baseline-outdated` warns when a
+// rewrites the baseline, and `design-system/baseline-outdated` fails when a
 // file has fewer violations than the baseline allows.
 //
 // The @shadcn/lint rules are wrapped rather than enabled directly, so that
@@ -175,6 +176,7 @@ function ratchet(
   name: string,
   inner: Rule.RuleModule,
   rewrite?: Rewrite,
+  keep: (report: Report) => boolean = () => true,
 ): Rule.RuleModule {
   const messages = (inner.meta?.messages ?? {}) as Record<string, string>;
   return {
@@ -187,7 +189,9 @@ function ratchet(
         {
           get(_, key) {
             if (key === "report")
-              return (report: Report) => reports.push(report);
+              return (report: Report) => {
+                if (keep(report)) reports.push(report);
+              };
             const value = Reflect.get(target, key, target);
             return typeof value === "function" ? value.bind(target) : value;
           },
@@ -251,7 +255,8 @@ function readColorRoles(): ColorRole[] {
     path.join(FRONTEND_ROOT, "src/app/globals.css"),
     "utf8",
   );
-  const root = css.slice(css.indexOf(":root {"), css.indexOf(".dark {"));
+  const start = css.indexOf(":root {");
+  const root = css.slice(start, css.indexOf("\n}", start));
   const roles: ColorRole[] = [];
   const line =
     /--color-([a-z-]+):\s*(\d+)\s+(\d+)\s+(\d+);(?:\s*\/\*\s*([a-z]+(?:-\d+)?)\b)?/g;
@@ -346,7 +351,16 @@ export function colorAdvice(className: string) {
   );
   if (same.length > 0)
     return `Use ${same.map((role) => asClass(role.name)).join(" or ")} instead: the design token with the same colour.`;
-  return `No ${utility}- token has this exact colour. Use the ${utility}- role that fits what the element means (${family.map((role) => role.name).join(", ")}) and check the screen, since the colour changes; or add a role in src/app/globals.css and tailwind.config.ts.`;
+  return `No ${utility}- token has this exact colour. Use the ${utility}- role that fits what the element means (${family.map((role) => role.name).join(", ")}) and check the screen, since the colour changes; or add a role in src/app/globals.css (its :root and @theme).`;
+}
+
+// @shadcn/lint also reports any colour-like class that is not a theme token
+// once the theme declares one (globals.css's `@theme`). With scanAllStrings it
+// reads that into every string (`fill-mode-both`, `shadow-subtle`, SVG
+// attributes in generated data), so only the palette and hard-coded colours
+// are reported, as before the roles moved into `@theme`.
+function isPaletteOrHardcodedColor(report: Report) {
+  return !String(report.messageId ?? "").startsWith("undeclaredToken");
 }
 
 function quotedClass(message: string, report: Report) {
@@ -404,7 +418,28 @@ const noDarkVariant: Rule.RuleModule = {
       for (const match of text.matchAll(THEME_VARIANT)) {
         context.report({
           node,
-          message: `"${match[0]}" is a ${match[2]}: class. The app has one theme: tailwind.config.ts ties dark: to a .dark-mode class that is never set, so this never renders. Delete it and keep the light value; the colour tokens (bg-surface, text-foreground-*, border-border-base) carry the theme.`,
+          message: `"${match[0]}" is a ${match[2]}: class. The app has one theme: globals.css ties dark: to a .dark class that is never set, so this never renders. Delete it and keep the light value; the colour tokens (bg-surface, text-foreground-*, border-border-base) carry the theme.`,
+        });
+      }
+    });
+  },
+};
+
+// Tailwind's sizes (`text-sm`, `md:text-2xl`) and arbitrary ones
+// (`text-[13px]`): the theme resets the first, so they render nothing, and the
+// type scale (src/app/tokens/typography.css) replaces both (SECRT-3152).
+const noRawTextSize: Rule.RuleModule = {
+  meta: {
+    type: "problem",
+    docs: { description: "Disallow text sizes outside the type scale" },
+    schema: [],
+  },
+  create(context) {
+    return stringNodes((node, text) => {
+      for (const match of text.matchAll(RAW_TEXT_SIZE)) {
+        context.report({
+          node,
+          message: `"${match[0]}" is not a step of the type scale. ${rawTextSizeAdvice(match[2], match[3])}`,
         });
       }
     });
@@ -593,7 +628,7 @@ const requireSuppressionReason: Rule.RuleModule = {
 };
 
 /**
- * Warns when a file has fewer violations than design-system-baseline.json
+ * Reports a file that has fewer violations than design-system-baseline.json
  * allows, so the entry can be lowered and the count cannot grow back.
  */
 const baselineOutdated = {
@@ -635,6 +670,7 @@ const plugin = {
       "no-raw-colors",
       shadcnRules["no-raw-colors"],
       rewriteRawColor,
+      isPaletteOrHardcodedColor,
     ),
     "no-arbitrary-values": ratchet(
       "no-arbitrary-values",
@@ -655,6 +691,7 @@ const plugin = {
       shadcnRules["no-unknown-classes"],
     ),
     "no-dark-variant": ratchet("no-dark-variant", noDarkVariant),
+    "no-raw-text-size": ratchet("no-raw-text-size", noRawTextSize),
     "no-legacy-import": ratchet("no-legacy-import", noLegacyImport),
     "no-legacy-button-variant": ratchet(
       "no-legacy-button-variant",

@@ -88,13 +88,13 @@ export function ChoiceRow({
               {title}
             </Text>
             {badge && (
-              <span className="rounded-full bg-success/10 px-1.5 py-px text-tiny font-medium leading-inherit text-success-foreground">
+              <span className="rounded-full bg-success/10 px-1.5 py-px text-tiny leading-inherit font-medium text-success-foreground">
                 {badge}
               </span>
             )}
           </span>
           {subtitle && (
-            <span className="break-words text-sm leading-snug text-foreground-tertiary">
+            <span className="text-body leading-snug break-words text-foreground-tertiary">
               {subtitle}
             </span>
           )}
@@ -113,8 +113,9 @@ export function ChoiceRow({
         icon={Tick02Icon}
         size={16}
         aria-hidden
+        motion="opacity"
         className={cn(
-          "flex-none text-primary transition-opacity",
+          "flex-none text-primary",
           isSelected ? "opacity-100" : "opacity-0",
         )}
       />
@@ -141,14 +142,15 @@ function LockedRow({ title, subtitle, notes, lock }: LockedProps) {
         icon={LockIcon}
         size={14}
         aria-hidden
-        className="mt-[3px] flex-none text-foreground-subtle"
+        tone="subtle"
+        className="mt-[3px] flex-none"
       />
       <span className="flex min-w-0 flex-col">
         <Text variant="body-medium-tight" as="span" tone="muted">
           {title}
         </Text>
         {subtitle && (
-          <span className="break-words text-sm leading-snug text-foreground-subtle">
+          <span className="text-body leading-snug break-words text-foreground-subtle">
             {subtitle}
           </span>
         )}
@@ -166,7 +168,7 @@ function LockedRow({ title, subtitle, notes, lock }: LockedProps) {
         {lock.href && (
           <Link
             href={lock.href}
-            className="mt-1 w-fit text-caption-sm font-medium leading-inherit text-foreground-strong underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong"
+            className="mt-1 w-fit text-caption-sm leading-inherit font-medium text-foreground-strong underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:outline-none"
           >
             See plans
           </Link>

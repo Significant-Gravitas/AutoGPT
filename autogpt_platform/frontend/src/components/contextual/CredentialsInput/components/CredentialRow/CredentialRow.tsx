@@ -112,15 +112,16 @@ export function CredentialRow({
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <Text
             variant="body"
+            tracking="tight"
             className={cn(
-              "min-w-0 shrink tracking-tight",
+              "min-w-0 shrink",
               isNodeVariant ? "truncate" : "line-clamp-1 text-ellipsis",
             )}
           >
             {getCredentialDisplayName(credential, displayName)}
           </Text>
           {isRealCredentialType && (
-            <span className="shrink-0 rounded bg-surface-hover px-1.5 py-0.5 text-tiny font-medium leading-tight text-foreground-tertiary">
+            <span className="shrink-0 rounded bg-surface-hover px-1.5 py-0.5 text-tiny leading-tight font-medium text-foreground-tertiary">
               {getCredentialTypeLabel(credType)}
             </span>
           )}
@@ -128,8 +129,10 @@ export function CredentialRow({
         {!(asSelectTrigger && isNodeVariant) && showMaskedKey && (
           <Text
             variant="large"
+            mono
+            tracking="tight"
             className={cn(
-              "absolute top-[65%] -translate-y-1/2 overflow-hidden whitespace-nowrap font-mono tracking-tight",
+              "absolute top-[65%] -translate-y-1/2 overflow-hidden whitespace-nowrap",
               asSelectTrigger ? "right-0" : "right-6",
             )}
           >
@@ -140,7 +143,8 @@ export function CredentialRow({
       {(showCaret || (asSelectTrigger && !readOnly)) && (
         <Icon
           icon={ArrowDown01Icon}
-          className="h-4 w-4 shrink-0 text-foreground-subtle"
+          tone="subtle"
+          className="h-4 w-4 shrink-0"
         />
       )}
       {!readOnly && !showCaret && !asSelectTrigger && onDelete && (
@@ -150,10 +154,7 @@ export function CredentialRow({
               className="ml-auto shrink-0 rounded p-1 hover:bg-surface-hover"
               onClick={(e) => e.stopPropagation()}
             >
-              <Icon
-                icon={MoreVerticalIcon}
-                className="h-5 w-5 text-foreground-subtle"
-              />
+              <Icon icon={MoreVerticalIcon} tone="subtle" className="h-5 w-5" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">

@@ -32,7 +32,7 @@ export function KitResultRow({
       style={{ animationDelay: `${index * 60}ms` }}
       className={cn(
         "flex items-center gap-3 border-b border-border px-3.5 py-3 transition-colors duration-200 last:border-b-0 hover:bg-surface-muted",
-        "duration-300 animate-in fade-in slide-in-from-bottom-1 fill-mode-both motion-reduce:animate-none",
+        "duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-1 motion-reduce:animate-none",
       )}
     >
       <span
@@ -43,21 +43,24 @@ export function KitResultRow({
       </span>
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-foreground">
+        <p className="truncate text-body font-medium text-foreground">
           {hit.name}
         </p>
-        <p className="truncate text-xs text-muted-foreground">{hit.subtitle}</p>
+        <p className="truncate text-caption text-muted-foreground">
+          {hit.subtitle}
+        </p>
       </div>
 
       <Button
         type="button"
         variant={selected ? "ghost" : "secondary"}
         size="small"
+        shape="rounded"
         disabled={selected || atCap}
         loading={isPending}
         onClick={onAdd}
         className={cn(
-          "shrink-0 rounded-xl transition-all duration-200",
+          "shrink-0 transition-all duration-200",
           // The ghost variant greys disabled text down to zinc-200, which
           // reads as broken rather than settled — keep "Added" full strength.
           selected && "disabled:text-foreground-emphasis",

@@ -35,7 +35,7 @@ export function SkillsBrowsePage() {
   const { categories } = useStoreCategories();
 
   return (
-    <main className="mx-auto w-full max-w-[1360px] px-6 pb-16 pt-8 md:px-10 lg:px-14">
+    <main className="mx-auto w-full max-w-[1360px] px-6 pt-8 pb-16 md:px-10 lg:px-14">
       <Link
         href="/marketplace#skills"
         className="mb-6 inline-flex w-fit items-center gap-1.5 text-body-sm leading-inherit text-foreground-tertiary transition-colors hover:text-foreground-strong"
@@ -46,11 +46,11 @@ export function SkillsBrowsePage() {
 
       <div className="mb-7 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="flex items-center gap-2.5 text-3xl font-semibold tracking-heading text-foreground-strong">
+          <h1 className="flex items-center gap-2.5 text-heading font-semibold tracking-heading text-foreground-strong">
             <Icon icon={BookOpen01Icon} size={30} aria-hidden />
             Skills
           </h1>
-          <p className="mt-2 text-base text-foreground-tertiary">
+          <p className="mt-2 text-body-lg text-foreground-tertiary">
             Playbooks your experts follow. Teach them your way of working.
           </p>
         </div>
@@ -100,7 +100,7 @@ export function SkillsBrowsePage() {
         />
       ) : (
         <>
-          <p className="mb-4 text-sm text-foreground-tertiary">
+          <p className="mb-4 text-body text-foreground-tertiary">
             {total.toLocaleString()} {total === 1 ? "skill" : "skills"}
           </p>
           <InfiniteList
@@ -149,14 +149,14 @@ function EmptyResult({
         <button
           type="button"
           onClick={onShowAll}
-          className="text-sm font-medium text-accent transition-colors hover:text-accent/80"
+          className="text-body font-medium text-accent transition-colors hover:text-accent/80"
         >
           Show all
         </button>
       ) : (
         <Link
           href="/library/skills"
-          className="text-sm font-medium text-accent transition-colors hover:text-accent/80"
+          className="text-body font-medium text-accent transition-colors hover:text-accent/80"
         >
           Go to your skills →
         </Link>

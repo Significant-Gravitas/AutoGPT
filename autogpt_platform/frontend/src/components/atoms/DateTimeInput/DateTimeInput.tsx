@@ -1,8 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Calendar as CalendarIcon, Clock } from "lucide-react";
-import { Button } from "@/components/atoms/Button/Button";
+import { Calendar03Icon, Clock01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 
 import { Text } from "../Text/Text";
@@ -133,6 +133,8 @@ export const DateTimeInput = ({
   const isDisabled = disabled || readonly;
 
   const triggerStyles = cn(
+    // The box a ghost Button drew before this became a plain button.
+    "inline-flex h-[2.875rem] min-w-[7.7rem] items-center gap-2 py-2.5 font-sans whitespace-nowrap transition-colors hover:border-surface-muted hover:bg-surface-muted focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none disabled:pointer-events-none disabled:text-surface-active",
     // Base styles matching other form components
     "rounded-3xl border border-border-base bg-surface px-4 shadow-none",
     "font-normal text-foreground-base w-full text-body leading-5",
@@ -182,10 +184,9 @@ export const DateTimeInput = ({
     >
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <Button
+          <button
             data-slot="date-time-input-trigger"
             type="button"
-            variant="ghost"
             className={triggerStyles}
             disabled={isDisabled}
             autoFocus={autoFocus}
@@ -194,16 +195,20 @@ export const DateTimeInput = ({
             aria-labelledby={ariaLabelledBy}
             aria-describedby={ariaDescribedBy}
           >
-            <CalendarIcon
+            <Icon
+              aria-hidden
+              icon={Calendar03Icon}
               data-slot="date-time-input-date-icon"
               className={cn("mr-2", size === "default" ? "h-4 w-4" : "h-3 w-3")}
             />
-            <Clock
+            <Icon
+              aria-hidden
+              icon={Clock01Icon}
               data-slot="date-time-input-time-icon"
               className={cn("mr-2", size === "default" ? "h-4 w-4" : "h-3 w-3")}
             />
             {buttonText}
-          </Button>
+          </button>
         </PopoverTrigger>
         <PopoverContent
           data-slot="date-time-input-popup"
@@ -228,7 +233,7 @@ export const DateTimeInput = ({
               <label
                 data-slot="date-time-input-time-label"
                 htmlFor={timeInputId}
-                className="mb-2 block text-body font-medium leading-5 text-foreground-body"
+                className="mb-2 block text-body leading-5 font-medium text-foreground-body"
               >
                 Time
               </label>
@@ -247,18 +252,22 @@ export const DateTimeInput = ({
         </PopoverContent>
       </Popover>
       {error && (
-        <Text
-          data-slot="date-time-input-error"
-          variant="small-medium"
-          as="span"
-          tone="error"
+        <span
           className={cn(
-            "absolute left-0 top-full mt-1 transition-opacity duration-200",
+            "absolute top-full left-0 mt-1 transition-opacity duration-200",
             error ? "opacity-100" : "opacity-0",
           )}
         >
-          {error || " "}
-        </Text>
+          <Text
+            data-slot="date-time-input-error"
+            variant="small-medium"
+            as="span"
+            tone="error"
+            className="block"
+          >
+            {error || " "}
+          </Text>
+        </span>
       )}
     </div>
   );

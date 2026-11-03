@@ -698,6 +698,7 @@ export type UserPasswordCredentials = BaseCredentials & {
   title: string;
   username: string;
   password: string;
+  scope?: string;
 };
 
 /* Mirror of backend/backend/data/model.py:HostScopedCredentials */

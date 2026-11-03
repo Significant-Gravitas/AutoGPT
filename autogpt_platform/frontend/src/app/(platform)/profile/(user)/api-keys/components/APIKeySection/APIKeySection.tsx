@@ -1,7 +1,8 @@
 "use client";
 
-// oxlint-disable-next-line design-system/hugeicons-only -- glyph swap is P11's
-import { Loader2, MoreVertical } from "lucide-react";
+import { MoreVerticalIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import {
@@ -28,7 +29,7 @@ export function APIKeysSection() {
     <>
       {isLoading ? (
         <div className="flex justify-center p-4">
-          <Loader2 className="h-6 w-6 animate-spin" />
+          <LoadingSpinner variant="circle" size="medium" aria-hidden />
         </div>
       ) : (
         apiKeys &&
@@ -87,7 +88,11 @@ export function APIKeysSection() {
                           variant="compact-ghost"
                           size="compact-sm"
                         >
-                          <MoreVertical className="h-4 w-4" />
+                          <Icon
+                            aria-hidden
+                            icon={MoreVerticalIcon}
+                            className="h-4 w-4"
+                          />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">

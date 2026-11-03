@@ -56,7 +56,7 @@ export function SubmissionSummaryCard({
         ) : null}
       </div>
       {isPending ? (
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-warning-surface px-2.5 py-1 text-caption-sm font-medium leading-inherit text-warning-foreground">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-warning-surface px-2.5 py-1 text-caption-sm leading-inherit font-medium text-warning-foreground">
           <Icon icon={Clock01Icon} size={12} />
           In review
         </span>

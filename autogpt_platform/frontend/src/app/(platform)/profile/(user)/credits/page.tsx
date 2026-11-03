@@ -43,7 +43,7 @@ function CoPilotUsageSection() {
 
   return (
     <div className="my-6 space-y-4">
-      <Text variant="lg-medium" as="h3" tone="inherit">
+      <Text variant="lead-medium" as="h3" tone="inherit">
         Expert Usage & Storage
       </Text>
       <div className="flex flex-col gap-3 rounded-lg border border-border-base p-4">
@@ -169,7 +169,7 @@ export default function CreditsPage() {
 
   return (
     <div className="w-full px-4 sm:px-8 md:min-w-[800px]">
-      <h1 className="mb-6 text-heading font-normal leading-inherit text-foreground-strong sm:mb-8 sm:text-title sm:leading-inherit">
+      <h1 className="mb-6 text-heading leading-inherit font-normal text-foreground-strong sm:mb-8 sm:text-title sm:leading-inherit">
         Billing
       </h1>
 
@@ -181,7 +181,7 @@ export default function CreditsPage() {
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
         {/* Top-up Form */}
         <div className="space-y-4">
-          <Text variant="lg-medium" as="h3" tone="inherit">
+          <Text variant="lead-medium" as="h3" tone="inherit">
             Top-up Credits
           </Text>
 
@@ -233,7 +233,7 @@ export default function CreditsPage() {
 
           {/* Auto Top-up Form */}
           <form onSubmit={submitAutoTopUpConfig} className="my-6 space-y-4">
-            <Text variant="lg-medium" as="h3" tone="inherit">
+            <Text variant="lead-medium" as="h3" tone="inherit">
               Automatic Refill Settings
             </Text>
 
@@ -332,7 +332,7 @@ export default function CreditsPage() {
         <div className="my-6 space-y-4">
           {/* Payment Portal */}
 
-          <Text variant="lg-medium" as="h3" tone="inherit">
+          <Text variant="lead-medium" as="h3" tone="inherit">
             Manage Your Payment Methods
           </Text>
           <p className="text-foreground-secondary">
@@ -351,7 +351,7 @@ export default function CreditsPage() {
 
           {/* Transaction History */}
 
-          <Text variant="lg-medium" as="h3" tone="inherit">
+          <Text variant="lead-medium" as="h3" tone="inherit">
             Transaction History
           </Text>
           {transactionHistory.transactions.length === 0 && (
@@ -413,7 +413,7 @@ export default function CreditsPage() {
 
           {refundRequests.length > 0 && (
             <>
-              <Text variant="lg-medium" as="h3" tone="inherit">
+              <Text variant="lead-medium" as="h3" tone="inherit">
                 Your Refund Requests
               </Text>
               <Table>

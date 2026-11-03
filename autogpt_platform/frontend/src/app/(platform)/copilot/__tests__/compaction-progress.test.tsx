@@ -53,7 +53,6 @@ const streamPath = vi.hoisted(() => ({ runtime: false }));
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     CHAT_MODE_OPTION: "CHAT_MODE_OPTION",
-    ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT",
     COPILOT_STREAM_RUNTIME: "copilot-stream-runtime",
   },
   useGetFlag: (flag: string) =>
@@ -240,7 +239,7 @@ const DEAD_STREAM_TURN: UIMessageChunk[] = [
   closeCompactionRow({ tokensBefore: 128000, tokensAfter: 31000 }),
   { type: "finish-step" },
   REBUILDING_PHASE,
-  // The stream is held before this chunk so the live "Reloading context…"
+  // The stream is held before this chunk so the live "Picking up where we left off…"
   // bar is observable before the stream closes (see DEAD_STREAM_HOLD_INDEX).
   { type: "finish" },
 ];
@@ -381,7 +380,9 @@ describe.each(STREAM_PATHS)("on the %s path", { timeout: 30_000 }, (path) => {
 
       await waitFor(() => {
         expect(screen.getByRole("progressbar")).toBeDefined();
-        expect(screen.getByText("Condensing our conversation…")).toBeDefined();
+        expect(
+          screen.getByText("Summarizing our conversation so far…"),
+        ).toBeDefined();
         // CompactionCard owns its own spinner/label — the generic
         // ThinkingIndicator must not double up alongside it. The tool row
         // (or, before it opens, the step-start marker) keeps `hasInflight`
@@ -397,7 +398,7 @@ describe.each(STREAM_PATHS)("on the %s path", { timeout: 30_000 }, (path) => {
 
       await waitFor(() => {
         expect(
-          screen.getByText(/Condensed 412 messages · 128K → 31K tokens/),
+          screen.getByTitle(/^412 → \d+ messages · 128K → 31K tokens$/),
         ).toBeDefined();
       }, HANG_TIMEOUT);
     });
@@ -420,7 +421,7 @@ describe.each(STREAM_PATHS)("on the %s path", { timeout: 30_000 }, (path) => {
 
       await waitFor(() => {
         expect(
-          screen.getByText(/Condensed 412 messages · 128K → 31K tokens/),
+          screen.getByTitle(/^412 → \d+ messages · 128K → 31K tokens$/),
         ).toBeDefined();
       }, HANG_TIMEOUT);
       // If the compaction row had folded into a CollapsedToolGroup with the
@@ -443,9 +444,9 @@ describe.each(STREAM_PATHS)("on the %s path", { timeout: 30_000 }, (path) => {
         expect(screen.getByText("Carrying on regardless.")).toBeDefined();
       }, HANG_TIMEOUT);
       // A failed compaction condensed nothing — neither the live copy nor
-      // the settled "Condensed…" claim may render for it.
-      expect(screen.queryByText(/Condensing our conversation/)).toBeNull();
-      expect(screen.queryByText(/Condensed/)).toBeNull();
+      // the settled "Summarized…" claim may render for it.
+      expect(screen.queryByText(/Summarizing our conversation/)).toBeNull();
+      expect(screen.queryByText(/Summarized/)).toBeNull();
       expect(screen.queryByRole("progressbar")).toBeNull();
     });
 
@@ -459,12 +460,12 @@ describe.each(STREAM_PATHS)("on the %s path", { timeout: 30_000 }, (path) => {
         expect(screen.getByText("Starting over from here.")).toBeDefined();
         expect(
           screen.getByText(
-            "Started a fresh context — earlier messages were dropped",
+            "Started fresh, so I no longer have our earlier messages",
           ),
         ).toBeDefined();
       }, HANG_TIMEOUT);
       // A drop condensed nothing: no payoff claim, no lingering bar.
-      expect(screen.queryByText(/Condensed/)).toBeNull();
+      expect(screen.queryByText(/Summarized/)).toBeNull();
       expect(screen.queryByRole("progressbar")).toBeNull();
     });
 
@@ -479,8 +480,8 @@ describe.each(STREAM_PATHS)("on the %s path", { timeout: 30_000 }, (path) => {
       }, HANG_TIMEOUT);
       // The abort sentinel (output "") must not read as a real compaction —
       // neither the live copy nor the settled payoff copy may survive.
-      expect(screen.queryByText(/Condensing our conversation/)).toBeNull();
-      expect(screen.queryByText(/Condensed the conversation/)).toBeNull();
+      expect(screen.queryByText(/Summarizing our conversation/)).toBeNull();
+      expect(screen.queryByText(/Summarized our earlier messages/)).toBeNull();
       expect(screen.queryByRole("progressbar")).toBeNull();
     });
 
@@ -492,11 +493,11 @@ describe.each(STREAM_PATHS)("on the %s path", { timeout: 30_000 }, (path) => {
 
       await waitFor(() => {
         // Second cycle live in `summarizing`…
-        expect(screen.getByText("Condensing our conversation…")).toBeDefined();
-        // …while the first row keeps its settled payoff copy…
         expect(
-          screen.getByText(/Condensed the conversation · 128K → 31K tokens/),
+          screen.getByText("Summarizing our conversation so far…"),
         ).toBeDefined();
+        // …while the first row keeps its settled payoff copy…
+        expect(screen.getByTitle("128K → 31K tokens")).toBeDefined();
         // …and only the live row carries a progress bar. Without the
         // per-row phase gate, the second cycle's phase re-animates the
         // first (closed) row and two bars render.
@@ -520,9 +521,7 @@ describe.each(STREAM_PATHS)("on the %s path", { timeout: 30_000 }, (path) => {
       // must null the phase — the row settles instead of spinning forever.
       await waitFor(() => {
         expect(screen.queryByRole("progressbar")).toBeNull();
-        expect(
-          screen.getByText(/Condensed the conversation · 128K → 31K tokens/),
-        ).toBeDefined();
+        expect(screen.getByTitle("128K → 31K tokens")).toBeDefined();
       }, HANG_TIMEOUT);
     });
 
@@ -535,7 +534,7 @@ describe.each(STREAM_PATHS)("on the %s path", { timeout: 30_000 }, (path) => {
       // The tool row has already closed with its JSON output by this point;
       // the row must still be live and narrating the rebuild.
       await waitFor(() => {
-        expect(screen.getByText("Reloading context…")).toBeDefined();
+        expect(screen.getByText("Picking up where we left off…")).toBeDefined();
         // With the row closed, `hasInflight` is false — without the live-
         // compaction gate the ThinkingIndicator would stack its own spinner
         // and timer directly under the CompactionCard's.
@@ -559,12 +558,12 @@ describe.each(STREAM_PATHS)("on the %s path", { timeout: 30_000 }, (path) => {
       }, HANG_TIMEOUT);
       release();
       // The row never closed, so once the stream is gone it is neither a live
-      // bar nor a "Condensed…" claim — it disappears.
+      // bar nor a "Summarized…" claim — it disappears.
       await waitFor(() => {
         expect(screen.queryByRole("progressbar")).toBeNull();
       }, HANG_TIMEOUT);
-      expect(screen.queryByText(/Condensed/)).toBeNull();
-      expect(screen.queryByText(/Condensing/)).toBeNull();
+      expect(screen.queryByText(/Summarized/)).toBeNull();
+      expect(screen.queryByText(/Summarizing/)).toBeNull();
     });
   });
 
@@ -613,9 +612,7 @@ describe.each(STREAM_PATHS)("on the %s path", { timeout: 30_000 }, (path) => {
       renderHost({ sessionOverride: { messages } });
 
       await waitFor(() => {
-        expect(
-          screen.getByText("Condensed the conversation · 128K → 31K tokens"),
-        ).toBeDefined();
+        expect(screen.getByTitle("128K → 31K tokens")).toBeDefined();
       }, HANG_TIMEOUT);
       expect(screen.queryByRole("progressbar")).toBeNull();
     });
@@ -647,7 +644,9 @@ describe.each(STREAM_PATHS)("on the %s path", { timeout: 30_000 }, (path) => {
 
       await waitFor(() => {
         expect(
-          screen.getByText("Condensed the conversation to keep going"),
+          screen.getByText(
+            "Summarized our earlier messages so I can keep going",
+          ),
         ).toBeDefined();
       }, HANG_TIMEOUT);
     });

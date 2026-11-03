@@ -48,11 +48,7 @@ function ResultFavicon({ domain }: { domain: string | null }) {
   const [failed, setFailed] = useState(false);
   if (!domain || failed) {
     return (
-      <Icon
-        icon={GlobeIcon}
-        size={14}
-        className="shrink-0 text-foreground-subtle"
-      />
+      <Icon icon={GlobeIcon} size={14} tone="subtle" className="shrink-0" />
     );
   }
   return (
@@ -108,7 +104,7 @@ export function SearchResults({ items, answer }: SearchResultsProps) {
             className="flex items-center gap-2.5 px-3 py-2"
           >
             {citation !== null && (
-              <span className="shrink-0 text-xs tabular-nums text-foreground-secondary">
+              <span className="shrink-0 text-caption text-foreground-secondary tabular-nums">
                 [{citation}]
               </span>
             )}
@@ -153,13 +149,13 @@ export function Terminal({ row }: RowProps) {
   return (
     <div className="rounded-xl bg-action-hover p-3 font-mono text-caption-sm leading-4">
       {command && (
-        <p className="whitespace-pre-wrap break-words text-foreground-subtle">
-          <span className="select-none text-foreground-tertiary">$ </span>
+        <p className="break-words whitespace-pre-wrap text-foreground-subtle">
+          <span className="text-foreground-tertiary select-none">$ </span>
           {command}
         </p>
       )}
       {stdout && (
-        <pre className="mt-1.5 max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-action-foreground scrollbar-none">
+        <pre className="mt-1.5 scrollbar-none max-h-40 overflow-y-auto break-words whitespace-pre-wrap text-action-foreground">
           {stdout}
         </pre>
       )}
@@ -193,7 +189,8 @@ export function TodoList({ row }: RowProps) {
               <Icon
                 icon={CheckmarkCircle02Icon}
                 size={15}
-                className="shrink-0 text-success"
+                tone="success"
+                className="shrink-0"
               />
             ) : (
               <Icon
@@ -238,11 +235,7 @@ export function FileCard({ row }: RowProps) {
     <div className={`${CARD} ${HALF} p-2.5`}>
       <div className="flex items-center gap-2.5">
         <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-          <Icon
-            icon={fileIcon}
-            size={15}
-            className="text-foreground-secondary"
-          />
+          <Icon icon={fileIcon} size={15} tone="secondary" />
         </div>
         <Text
           variant="small-mono-tight"
@@ -264,7 +257,7 @@ export function FileCard({ row }: RowProps) {
         )}
       </div>
       {preview && (
-        <p className="mt-1.5 line-clamp-2 whitespace-pre-wrap pl-9 text-xs text-foreground-subtle">
+        <p className="mt-1.5 line-clamp-2 pl-9 text-caption whitespace-pre-wrap text-foreground-subtle">
           {preview}
         </p>
       )}
@@ -277,10 +270,10 @@ export function OutputList({ items }: ItemsProps) {
     <div className={`${CARD} ${HALF} divide-y divide-separator`}>
       {items.map((item, i) => (
         <div key={resultItemKey(item, i)} className="p-2.5">
-          <p className="text-caption-sm uppercase leading-inherit tracking-wide text-foreground-subtle">
+          <p className="text-caption-sm leading-inherit tracking-wide text-foreground-subtle uppercase">
             {str(item, "name", "key", "label") ?? `Output ${i + 1}`}
           </p>
-          <p className="mt-0.5 whitespace-pre-wrap break-words text-body-sm leading-inherit text-foreground-emphasis">
+          <p className="mt-0.5 text-body-sm leading-inherit break-words whitespace-pre-wrap text-foreground-emphasis">
             {displayValue(item.value ?? item)}
           </p>
         </div>
@@ -298,7 +291,7 @@ export function KeyValueList({ value }: ValueProps) {
     return (
       <div className={`${CARD} w-full rounded-2xl p-3`}>
         <div className="relative">
-          <p className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-body-sm leading-relaxed text-foreground-secondary scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-active">
+          <p className="scrollbar-thin max-h-40 scrollbar-thumb-surface-active scrollbar-track-transparent overflow-y-auto text-body-sm leading-relaxed break-words whitespace-pre-wrap text-foreground-secondary">
             {truncated?.preview ?? value}
           </p>
           {truncated && (
@@ -323,12 +316,12 @@ export function KeyValueList({ value }: ValueProps) {
       {entries.map(([key, entryValue]) => (
         <div
           key={key}
-          className="flex items-baseline gap-3 py-1 text-xs first:pt-0 last:pb-0"
+          className="flex items-baseline gap-3 py-1 text-caption first:pt-0 last:pb-0"
         >
           <span className="shrink-0 text-foreground-subtle">
             {humanizeKey(key)}
           </span>
-          <span className="ml-auto min-w-0 break-words text-right font-medium text-foreground-body">
+          <span className="ml-auto min-w-0 text-right font-medium break-words text-foreground-body">
             {displayValue(entryValue)}
           </span>
         </div>

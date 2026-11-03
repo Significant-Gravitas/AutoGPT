@@ -62,7 +62,7 @@ export function AmbientCard({
           transition={{ duration: reduceMotion ? 0 : 0.45, ease: EASE }}
           className={cn(content.isQuote && "italic")}
         >
-          <span className="block font-sans text-caption-sm font-semibold uppercase tracking-eyebrow text-accent-strong">
+          <span className="block font-sans text-caption-sm font-semibold tracking-eyebrow text-accent-strong uppercase">
             {content.label}
           </span>
           <span className="block font-sans text-body-sm font-normal text-foreground-secondary">

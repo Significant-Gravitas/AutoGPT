@@ -149,28 +149,16 @@ export function EditAgentForm({
                   as="span"
                   className="flex items-center gap-2"
                 >
-                  <Icon
-                    icon={Store01Icon}
-                    size={18}
-                    className="text-foreground-tertiary"
-                  />
+                  <Icon icon={Store01Icon} size={18} tone="muted" />
                   Listing basics
                   {basicsHasError ? (
-                    <Icon
-                      icon={AlertCircleIcon}
-                      size={16}
-                      className="text-error"
-                    />
+                    <Icon icon={AlertCircleIcon} size={16} tone="error" />
                   ) : basicsComplete ? (
-                    <Icon
-                      icon={CheckmarkCircle02Icon}
-                      size={16}
-                      className="text-brand"
-                    />
+                    <Icon icon={CheckmarkCircle02Icon} size={16} tone="brand" />
                   ) : null}
                 </Text>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pb-4 pt-0">
+              <AccordionContent className="px-1 pt-0 pb-4">
                 <div className="grid gap-x-4 sm:grid-cols-2">
                   <FormField
                     control={form.control}
@@ -241,28 +229,16 @@ export function EditAgentForm({
                   as="span"
                   className="flex items-center gap-2"
                 >
-                  <Icon
-                    icon={Album01Icon}
-                    size={18}
-                    className="text-foreground-tertiary"
-                  />
+                  <Icon icon={Album01Icon} size={18} tone="muted" />
                   Thumbnails
                   {thumbnailsHasError ? (
-                    <Icon
-                      icon={AlertCircleIcon}
-                      size={16}
-                      className="text-error"
-                    />
+                    <Icon icon={AlertCircleIcon} size={16} tone="error" />
                   ) : thumbnailsComplete ? (
-                    <Icon
-                      icon={CheckmarkCircle02Icon}
-                      size={16}
-                      className="text-brand"
-                    />
+                    <Icon icon={CheckmarkCircle02Icon} size={16} tone="brand" />
                   ) : null}
                 </Text>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pb-4 pt-0">
+              <AccordionContent className="px-1 pt-0 pb-4">
                 <ThumbnailImages
                   agentId={submission.graph_id}
                   onImagesChange={handleImagesChange}
@@ -282,28 +258,16 @@ export function EditAgentForm({
                   as="span"
                   className="flex items-center gap-2"
                 >
-                  <Icon
-                    icon={SparklesIcon}
-                    size={18}
-                    className="text-foreground-tertiary"
-                  />
+                  <Icon icon={SparklesIcon} size={18} tone="muted" />
                   Experience details
                   {experienceHasError ? (
-                    <Icon
-                      icon={AlertCircleIcon}
-                      size={16}
-                      className="text-error"
-                    />
+                    <Icon icon={AlertCircleIcon} size={16} tone="error" />
                   ) : experienceComplete ? (
-                    <Icon
-                      icon={CheckmarkCircle02Icon}
-                      size={16}
-                      className="text-brand"
-                    />
+                    <Icon icon={CheckmarkCircle02Icon} size={16} tone="brand" />
                   ) : null}
                 </Text>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pb-4 pt-0">
+              <AccordionContent className="px-1 pt-0 pb-4">
                 <FormField
                   control={form.control}
                   name="description"

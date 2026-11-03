@@ -28,14 +28,14 @@ export function TokenDevtoolPanel({ turns, breakdown, context }: Props) {
         assumes a {formatTokenCount(MODEL_CONTEXT_WINDOW)} window; the backend
         threshold is configurable
       </p>
-      <p className="pb-2.5 pt-0.5 text-right font-mono text-xs text-warning">
+      <p className="pt-0.5 pb-2.5 text-right font-mono text-caption text-warning">
         summarizes ~{formatTokenCount(AUTOCOMPACT_TOKENS)}
       </p>
 
       {breakdown && <BreakdownSection breakdown={breakdown} />}
 
       {!turns?.length ? (
-        <p className="text-sm text-foreground-tertiary">
+        <p className="text-body text-foreground-tertiary">
           Live per-turn data starts with your next message.
         </p>
       ) : (

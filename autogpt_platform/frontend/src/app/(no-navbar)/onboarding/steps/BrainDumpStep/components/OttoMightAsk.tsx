@@ -46,7 +46,7 @@ export function OttoMightAsk({
     >
       <span
         className={cn(
-          "font-sans text-caption-sm font-semibold uppercase tracking-eyebrow text-accent-strong",
+          "font-sans text-caption-sm font-semibold tracking-eyebrow text-accent-strong uppercase",
           isLeft && "col-start-1 row-start-1",
         )}
       >
