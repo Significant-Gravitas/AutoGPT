@@ -187,14 +187,6 @@ export function useLocalFolderPicker({ isOpen, machine, onStale }: Props) {
     });
   }
 
-  function retry() {
-    if (pageFailed && directory?.next_cursor) {
-      loadMore();
-      return;
-    }
-    void loadDirectory(lastTarget);
-  }
-
   function loadMore() {
     if (!machine || !directory?.current || !directory.next_cursor) return;
     const connectionID = machine.connection_id;
@@ -236,6 +228,14 @@ export function useLocalFolderPicker({ isOpen, machine, onStale }: Props) {
       .finally(() => {
         if (requestIDRef.current === requestID) setIsLoadingMore(false);
       });
+  }
+
+  function retry() {
+    if (pageFailed && directory?.next_cursor) {
+      loadMore();
+      return;
+    }
+    void loadDirectory(lastTarget);
   }
 
   return {
