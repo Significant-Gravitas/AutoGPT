@@ -22,9 +22,11 @@ from .chat import resolve_owner
 from .models import CardAnswer, CardTurn, ChannelCard, Platform
 
 AnswerPolicy = Literal["linking_owner", "any_member"]
-# Toran, 2026-09-30: anyone who can message the bot can already make it do
-# anything; the gate follows the user's will, it does not moderate access.
-ANSWER_POLICY: AnswerPolicy = "any_member"
+# Owner-only for now: only the linking owner can chat with the bot in a server
+# (chat.resolve_owner), so no one else answers the cards its chats raise. Go
+# back to "any_member" once members can chat there (Toran, 2026-09-30: anyone
+# who can message the bot can already make it do anything).
+ANSWER_POLICY: AnswerPolicy = "linking_owner"
 
 # As long as the held call it answers is kept.
 CARD_TTL_SECONDS = 30 * 24 * 60 * 60

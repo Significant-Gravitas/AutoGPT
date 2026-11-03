@@ -503,10 +503,9 @@ async def test_the_owners_approve_runs_the_call_in_the_channels_next_turn(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_owner_only_a_members_click_changes_nothing_and_the_owner_answers(
-    linked: _Channel, test_user_id, gate_on, monkeypatch
+async def test_by_default_a_members_click_changes_nothing_and_the_owner_answers(
+    linked: _Channel, test_user_id, gate_on
 ):
-    monkeypatch.setattr(cards, "ANSWER_POLICY", "linking_owner")
     _, review_id, card = await _held_card(linked, test_user_id)
 
     await linked.click(card, linked.member)
@@ -687,8 +686,8 @@ async def test_the_card_offers_the_web_cards_choices_and_each_sets_its_rule(
 async def test_a_rule_set_from_the_channel_holds_only_in_that_bot_chat(
     one_linked: _Channel, test_user_id, gate_on
 ):
-    """Anyone in the channel may click, so no click may change how the owner's
-    own web chats ask."""
+    """A rule answered from the channel holds in that bot chat only, so no click
+    there changes how the owner's own web chats ask."""
     _, _, first = await _held_card(one_linked, test_user_id)
     rules = [o for o in first.options if o not in ("Approve", "Reject")]
     platform = Platform(one_linked.platform.upper())
@@ -702,13 +701,14 @@ async def test_a_rule_set_from_the_channel_holds_only_in_that_bot_chat(
     try:
         for label in rules:
             bot, _, card = await _held_card(one_linked, test_user_id, label)
-            await cards.answer_card(
+            answered = await cards.answer_card(
                 platform,
                 one_linked.server_id,
-                one_linked.member,
+                one_linked.owner,
                 card.token,
                 card.options.index(label),
             )
+            assert answered.follow is not None, label
             web = await upsert_chat_session(
                 ChatSession.new(user_id=test_user_id, dry_run=False)
             )
