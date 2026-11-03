@@ -1,6 +1,6 @@
 "use client";
 
-import { ButtonGroup, ButtonGroupText } from "./components/ButtonGroup";
+import { ButtonGroup } from "./components/ButtonGroup";
 import {
   Tooltip,
   TooltipContent,
@@ -319,15 +319,11 @@ export const MessageBranchPage = ({
   const { currentBranch, totalBranches } = useMessageBranch();
 
   return (
-    <ButtonGroupText
-      className={cn(
-        "border-none bg-transparent text-foreground-tertiary shadow-none",
-        className,
-      )}
-      {...props}
-    >
-      {currentBranch + 1} of {totalBranches}
-    </ButtonGroupText>
+    <div className={cn("flex items-center px-4", className)} {...props}>
+      <Text variant="body-medium-tight" tone="muted" as="span">
+        {currentBranch + 1} of {totalBranches}
+      </Text>
+    </div>
   );
 };
 
@@ -363,12 +359,11 @@ function ExternalLinkModal({
         <Text variant="body">
           You&apos;re about to visit an external website:
         </Text>
-        <Text
-          variant="small-mono"
-          className="mt-2 rounded-md bg-surface-hover p-3 break-all"
-        >
-          {url}
-        </Text>
+        <div className="mt-2 rounded-md bg-surface-hover p-3">
+          <Text variant="small-mono" className="break-all">
+            {url}
+          </Text>
+        </div>
         <Dialog.Footer>
           <Button variant="secondary" onClick={onClose}>
             Cancel

@@ -187,8 +187,8 @@ export const AgentInfo = ({
                     <Icon
                       icon={PlusSignIcon}
                       size={16}
-                      // oxlint-disable-next-line design-system/no-restyle -- the plus spins on hover; Icon has no motion prop
-                      className="transition-transform duration-300 group-hover/add:scale-125 group-hover/add:rotate-90"
+                      motion="transform"
+                      className="group-hover/add:scale-125 group-hover/add:rotate-90"
                     />
                   ) : undefined
                 }
@@ -222,10 +222,15 @@ export const AgentInfo = ({
                 loading={isDownloadingAgent}
                 onClick={() => handleDownload(name)}
                 data-testid="agent-download-button"
-                // oxlint-disable-next-line design-system/no-restyle -- an underlined ghost button; the link variant changes its colour and padding
-                className="underline"
               >
-                {isDownloadingAgent ? "Downloading..." : "Download here"}
+                <Text
+                  variant="body-medium-tight"
+                  as="span"
+                  tone="inherit"
+                  decoration="underline"
+                >
+                  {isDownloadingAgent ? "Downloading..." : "Download here"}
+                </Text>
               </Button>
             </div>
             <Text variant="body" className="shrink-0 whitespace-nowrap">
@@ -298,8 +303,9 @@ export const AgentInfo = ({
                     <Button
                       variant="ghost"
                       size="small"
-                      // oxlint-disable-next-line design-system/no-restyle -- a purple ghost link; no Button variant is brand
-                      className="text-brand hover:text-brand-hover"
+                      tone="brand"
+                      // oxlint-disable-next-line design-system/no-restyle -- a purple ghost link's hover; no Button variant is brand
+                      className="hover:text-brand-hover"
                     >
                       (Changelog)
                     </Button>

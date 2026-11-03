@@ -165,8 +165,8 @@ export function FileRow({
         variant="body"
         as="span"
         tone="muted"
-        // oxlint-disable-next-line design-system/no-restyle -- tabular figures keep the size column aligned; Text has no numeric variant
-        className="hidden tabular-nums md:block"
+        tabular
+        className="hidden md:block"
       >
         {formatFileSize(file.size_bytes)}
       </Text>

@@ -77,7 +77,8 @@ export function NameStep({
             variant="primary"
             size="small"
             disabled={!trimmed}
-            className="h-[2.625rem] rounded-xl py-3"
+            shape="rounded"
+            className="h-[2.625rem]"
           >
             Name me
           </Button>

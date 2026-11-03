@@ -95,7 +95,8 @@ function HomeIcon() {
   return (
     <Icon
       icon={Home10Icon}
-      className="size-4 text-foreground-emphasis/90 group-data-[collapsible=icon]:size-4.5"
+      tone="emphasis-soft"
+      className="size-4 group-data-[collapsible=icon]:size-4.5"
     />
   );
 }
@@ -141,7 +142,8 @@ function NavItem({ link }: NavItemProps) {
         <Link href={link.href}>
           <Icon
             icon={link.icon}
-            className="size-4 text-foreground-emphasis/90 group-data-[collapsible=icon]:size-4.5"
+            tone="emphasis-soft"
+            className="size-4 group-data-[collapsible=icon]:size-4.5"
           />
           <span className="truncate">{link.name}</span>
           <NavLinkLoader />

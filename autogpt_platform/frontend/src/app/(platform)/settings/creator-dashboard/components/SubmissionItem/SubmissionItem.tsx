@@ -134,8 +134,8 @@ export function SubmissionItem({
                   <UIIcon
                     icon={LinkSquare01Icon}
                     size={14}
-                    // oxlint-disable-next-line design-system/no-restyle -- the link glyph is quieter than the name it sits beside
-                    className="shrink-0 text-foreground-tertiary"
+                    tone="muted"
+                    className="shrink-0"
                     aria-hidden
                   />
                 </Link>

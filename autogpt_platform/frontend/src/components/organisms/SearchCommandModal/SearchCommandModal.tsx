@@ -134,7 +134,8 @@ export function SearchCommandModal({
           >
             <Icon
               icon={Search01Icon}
-              className="h-5 w-5 shrink-0 text-foreground-emphasis"
+              tone="emphasis"
+              className="h-5 w-5 shrink-0"
             />
             <Input
               bare
@@ -183,15 +184,17 @@ export function SearchCommandModal({
               )}
             >
               {isError ? (
-                <Text
-                  variant="body-tight"
-                  as="div"
-                  tone="error"
-                  data-slot="search-command-modal-error"
-                  className="px-3 py-8 text-center"
-                >
-                  {errorLabel}
-                </Text>
+                <div className="px-3 py-8">
+                  <Text
+                    variant="body-tight"
+                    as="div"
+                    tone="error"
+                    align="center"
+                    data-slot="search-command-modal-error"
+                  >
+                    {errorLabel}
+                  </Text>
+                </div>
               ) : showResults ? (
                 <SearchCommandResults
                   buckets={buckets}
@@ -211,15 +214,17 @@ export function SearchCommandModal({
                 // Kowalski's strategy-feedback-immediate rule.
                 <SearchCommandSkeleton />
               ) : showEmptyState ? (
-                <Text
-                  variant="body-tight"
-                  as="div"
-                  tone="muted"
-                  data-slot="search-command-modal-empty"
-                  className="px-3 py-8 text-center"
-                >
-                  {isSearching ? searchingEmptyLabel : idleEmptyLabel}
-                </Text>
+                <div className="px-3 py-8">
+                  <Text
+                    variant="body-tight"
+                    as="div"
+                    tone="muted"
+                    align="center"
+                    data-slot="search-command-modal-empty"
+                  >
+                    {isSearching ? searchingEmptyLabel : idleEmptyLabel}
+                  </Text>
+                </div>
               ) : null}
             </div>
           </div>
@@ -236,26 +241,34 @@ export function SearchCommandModal({
                 data-slot="search-command-modal-hint"
                 className="flex items-center gap-1.5"
               >
-                <Text
-                  variant="caption-sm"
-                  as="kbd"
-                  tone="emphasis"
-                  data-slot="search-command-modal-key"
+                <span
                   // oxlint-disable-next-line design-system/no-arbitrary-values -- key-cap shadow, no shadow token holds it
                   className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-border-base bg-surface shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]"
                 >
-                  ↑
-                </Text>
-                <Text
-                  variant="caption-sm"
-                  as="kbd"
-                  tone="emphasis"
-                  data-slot="search-command-modal-key"
+                  <Text
+                    variant="caption-sm"
+                    as="kbd"
+                    tone="emphasis"
+                    data-slot="search-command-modal-key"
+                    className="block"
+                  >
+                    ↑
+                  </Text>
+                </span>
+                <span
                   // oxlint-disable-next-line design-system/no-arbitrary-values -- key-cap shadow, no shadow token holds it
                   className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-border-base bg-surface shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]"
                 >
-                  ↓
-                </Text>
+                  <Text
+                    variant="caption-sm"
+                    as="kbd"
+                    tone="emphasis"
+                    data-slot="search-command-modal-key"
+                    className="block"
+                  >
+                    ↓
+                  </Text>
+                </span>
                 <Text
                   variant="small-tight"
                   as="span"
@@ -269,16 +282,20 @@ export function SearchCommandModal({
                 data-slot="search-command-modal-hint"
                 className="flex items-center gap-1.5"
               >
-                <Text
-                  variant="caption-sm"
-                  as="kbd"
-                  tone="emphasis"
-                  data-slot="search-command-modal-key"
+                <span
                   // oxlint-disable-next-line design-system/no-arbitrary-values -- key-cap shadow, no shadow token holds it
                   className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-border-base bg-surface px-1 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]"
                 >
-                  ↵
-                </Text>
+                  <Text
+                    variant="caption-sm"
+                    as="kbd"
+                    tone="emphasis"
+                    data-slot="search-command-modal-key"
+                    className="block"
+                  >
+                    ↵
+                  </Text>
+                </span>
                 <Text
                   variant="small-tight"
                   as="span"
@@ -293,16 +310,20 @@ export function SearchCommandModal({
               data-slot="search-command-modal-hint"
               className="flex items-center gap-1.5"
             >
-              <Text
-                variant="caption-sm"
-                as="kbd"
-                tone="emphasis"
-                data-slot="search-command-modal-key"
+              <span
                 // oxlint-disable-next-line design-system/no-arbitrary-values -- key-cap shadow, no shadow token holds it
                 className="inline-flex h-5 items-center justify-center rounded-md border border-border-base bg-surface px-1.5 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]"
               >
-                esc
-              </Text>
+                <Text
+                  variant="caption-sm"
+                  as="kbd"
+                  tone="emphasis"
+                  data-slot="search-command-modal-key"
+                  className="block"
+                >
+                  esc
+                </Text>
+              </span>
               <Text
                 variant="small-tight"
                 as="span"

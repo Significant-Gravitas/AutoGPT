@@ -30,9 +30,9 @@
       "reason": "Sticky-note colours are user-picked data, one pastel per note."
     },
     {
-      "files": "src/components/atoms/Text/helpers.ts",
+      "files": "src/components/styles/tones.ts",
       "allow": ["text-emerald-300"],
-      "reason": "The success-light tone, green text on the always-dark toast and terminal; the success roles have no value that reads on dark until the dark theme (D1)."
+      "reason": "The success-light tone (Text and Icon), green text on the always-dark toast and terminal; the success roles have no value that reads on dark until the dark theme (D1)."
     },
     {
       "files": "src/app/(platform)/copilot/components/ToolChain/ToolResultViews.tsx",

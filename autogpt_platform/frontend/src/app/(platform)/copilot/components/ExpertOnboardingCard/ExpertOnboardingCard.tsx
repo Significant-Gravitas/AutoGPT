@@ -114,7 +114,8 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
           <Icon
             icon={CheckmarkCircle02Icon}
             size={16}
-            className="shrink-0 text-foreground-subtle"
+            tone="subtle"
+            className="shrink-0"
           />
           Setup questions from {name}
         </div>

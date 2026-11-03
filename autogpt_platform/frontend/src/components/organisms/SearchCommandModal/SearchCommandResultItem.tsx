@@ -42,10 +42,8 @@ export function SearchCommandResultItem({
       onMouseEnter={onHighlight}
       onClick={onSelect}
       className={cn(
-        "relative h-auto w-full justify-start rounded-md px-3 py-2 text-left transition-colors duration-150",
-        isHighlighted
-          ? "bg-surface-hover hover:bg-surface-hover"
-          : "hover:bg-surface-muted",
+        "relative h-auto w-full justify-start px-3 text-left",
+        isHighlighted ? "bg-surface-hover" : "hover:bg-surface-muted",
       )}
     >
       <span
@@ -84,12 +82,9 @@ export function SearchCommandResultItem({
             variant="body-tight"
             as="div"
             data-slot="search-command-result-item-title"
-            className={cn(
-              "truncate transition-colors duration-150",
-              isHighlighted
-                ? "text-foreground-base"
-                : "text-foreground-emphasis",
-            )}
+            tone={isHighlighted ? "base" : "emphasis"}
+            motion="colors"
+            className="truncate"
           >
             {highlightMatch(item.title, query).map((part, partIndex) => (
               <span

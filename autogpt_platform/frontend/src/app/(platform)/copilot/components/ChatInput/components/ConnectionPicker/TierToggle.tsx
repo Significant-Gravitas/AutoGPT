@@ -110,7 +110,8 @@ export function TierToggle({
               icon={tierIcon(segment.tier)}
               size={18}
               aria-hidden
-              className="flex-none text-foreground-tertiary"
+              tone="muted"
+              className="flex-none"
             />
             <span className="flex min-w-0 flex-1 flex-col">
               <Text
@@ -131,8 +132,9 @@ export function TierToggle({
               icon={Tick02Icon}
               size={16}
               aria-hidden
+              motion="opacity"
               className={cn(
-                "flex-none text-action transition-opacity",
+                "flex-none text-action",
                 segment.tier === value ? "opacity-100" : "opacity-0",
               )}
             />
@@ -167,7 +169,8 @@ function LockedSegment({ segment }: { segment: Segment }) {
           icon={LockIcon}
           size={14}
           aria-hidden
-          className="mt-[3px] flex-none text-foreground-subtle"
+          tone="subtle"
+          className="mt-[3px] flex-none"
         />
         <span className="flex min-w-0 flex-col">
           <Text

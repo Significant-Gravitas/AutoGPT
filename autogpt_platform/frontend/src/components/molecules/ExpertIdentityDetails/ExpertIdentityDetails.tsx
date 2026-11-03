@@ -57,15 +57,16 @@ export function ExpertIdentityDetails({
       >
         <Text
           as={size === "page" ? "h1" : "span"}
-          variant={compact ? "body-medium" : "lead-semibold"}
+          variant={
+            size === "page" ? "2xl" : compact ? "body-medium" : "lead-semibold"
+          }
           tone="primary"
+          weight={size === "page" ? "semibold" : undefined}
           data-slot="expert-identity-name"
           className={cn(
             "min-w-0",
             size === "page" ? "max-w-full break-words" : "truncate",
             compact && "leading-4.5",
-            // TODO(tokens): SECRT-3152, no text role for 24px.
-            size === "page" && "text-2xl leading-8",
           )}
         >
           {name}
@@ -73,13 +74,13 @@ export function ExpertIdentityDetails({
         {titleOnNameLine ? (
           <Text
             as="span"
-            variant="body"
+            variant={size === "card" ? "body-sm-medium-inherit" : "body"}
             tone="secondary"
+            weight={size === "card" ? "normal" : undefined}
             data-slot="expert-identity-title"
             className={cn(
               "min-w-0",
               size === "page" ? "max-w-full break-words" : "truncate",
-              size === "card" && "text-body-sm leading-inherit",
               // oxlint-disable-next-line design-system/require-static-classes -- forwards the caller's areaClassName
               areaClassName,
             )}
@@ -128,11 +129,11 @@ export function ExpertIdentityDetails({
       {compact && area ? (
         <Text
           as="span"
-          variant="small"
-          tone="secondary"
+          variant="small-tight"
           data-slot="expert-identity-area"
+          tone="secondary"
           // oxlint-disable-next-line design-system/require-static-classes -- forwards the caller's areaClassName
-          className={cn("truncate leading-4", areaClassName)}
+          className={cn("truncate", areaClassName)}
           title={area}
         >
           {area}

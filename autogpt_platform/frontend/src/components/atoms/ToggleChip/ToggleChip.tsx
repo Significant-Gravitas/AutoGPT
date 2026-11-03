@@ -72,7 +72,8 @@ export function ToggleChip({
                 data-slot="toggle-chip-icon-hover"
                 icon={ArrowDataTransferVerticalIcon}
                 size={14}
-                className="absolute opacity-0 transition-opacity duration-150 ease-out group-hover:opacity-100"
+                motion="opacity"
+                className="absolute opacity-0 group-hover:opacity-100"
               />
             )}
           </span>

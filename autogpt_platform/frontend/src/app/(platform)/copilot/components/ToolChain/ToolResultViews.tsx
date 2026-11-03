@@ -48,11 +48,7 @@ function ResultFavicon({ domain }: { domain: string | null }) {
   const [failed, setFailed] = useState(false);
   if (!domain || failed) {
     return (
-      <Icon
-        icon={GlobeIcon}
-        size={14}
-        className="shrink-0 text-foreground-subtle"
-      />
+      <Icon icon={GlobeIcon} size={14} tone="subtle" className="shrink-0" />
     );
   }
   return (
@@ -188,7 +184,8 @@ export function TodoList({ row }: RowProps) {
               <Icon
                 icon={CheckmarkCircle02Icon}
                 size={15}
-                className="shrink-0 text-success"
+                tone="success"
+                className="shrink-0"
               />
             ) : (
               <Icon
@@ -233,11 +230,7 @@ export function FileCard({ row }: RowProps) {
     <div className={`${CARD} ${HALF} p-2.5`}>
       <div className="flex items-center gap-2.5">
         <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-          <Icon
-            icon={fileIcon}
-            size={15}
-            className="text-foreground-secondary"
-          />
+          <Icon icon={fileIcon} size={15} tone="secondary" />
         </div>
         <Text
           variant="small-mono-tight"

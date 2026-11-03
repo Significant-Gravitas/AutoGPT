@@ -79,40 +79,39 @@ function ToolIcon({
   isError: boolean;
 }) {
   if (isError) {
-    return <Icon icon={AlertDiamondIcon} size={14} className="text-error" />;
+    return <Icon icon={AlertDiamondIcon} size={14} tone="error" />;
   }
   if (isStreaming) {
     return <OrbitLoader size={14} />;
   }
 
-  const iconClass = "text-success";
   switch (category) {
     case "bash":
-      return <Icon icon={TerminalIcon} size={14} className={iconClass} />;
+      return <Icon icon={TerminalIcon} size={14} tone="success" />;
     case "web":
-      return <Icon icon={Globe02Icon} size={14} className={iconClass} />;
+      return <Icon icon={Globe02Icon} size={14} tone="success" />;
     case "browser":
-      return <Icon icon={ComputerIcon} size={14} className={iconClass} />;
+      return <Icon icon={ComputerIcon} size={14} tone="success" />;
     case "file-read":
-      return <Icon icon={FileEmpty02Icon} size={14} className={iconClass} />;
+      return <Icon icon={FileEmpty02Icon} size={14} tone="success" />;
     case "file-write":
-      return <Icon icon={FileEmpty02Icon} size={14} className={iconClass} />;
+      return <Icon icon={FileEmpty02Icon} size={14} tone="success" />;
     case "file-delete":
-      return <Icon icon={Delete02Icon} size={14} className={iconClass} />;
+      return <Icon icon={Delete02Icon} size={14} tone="success" />;
     case "file-list":
-      return <Icon icon={Files01Icon} size={14} className={iconClass} />;
+      return <Icon icon={Files01Icon} size={14} tone="success" />;
     case "search":
-      return <Icon icon={Search01Icon} size={14} className={iconClass} />;
+      return <Icon icon={Search01Icon} size={14} tone="success" />;
     case "edit":
-      return <Icon icon={PencilIcon} size={14} className={iconClass} />;
+      return <Icon icon={PencilIcon} size={14} tone="success" />;
     case "todo":
-      return <Icon icon={CheckListIcon} size={14} className={iconClass} />;
+      return <Icon icon={CheckListIcon} size={14} tone="success" />;
     case "compaction":
-      return <Icon icon={ReloadIcon} size={14} className={iconClass} />;
+      return <Icon icon={ReloadIcon} size={14} tone="success" />;
     case "agent":
-      return <Icon icon={Robot01Icon} size={14} className={iconClass} />;
+      return <Icon icon={Robot01Icon} size={14} tone="success" />;
     default:
-      return <Icon icon={Settings01Icon} size={14} className={iconClass} />;
+      return <Icon icon={Settings01Icon} size={14} tone="success" />;
   }
 }
 
@@ -634,19 +633,11 @@ function getTodoAccordionData(input: unknown): AccordionData {
           <div key={i} className="flex items-start gap-2 text-xs">
             <span className="mt-0.5 flex-shrink-0">
               {todo.status === "completed" ? (
-                <Icon
-                  icon={CheckmarkCircle02Icon}
-                  size={14}
-                  className="text-success"
-                />
+                <Icon icon={CheckmarkCircle02Icon} size={14} tone="success" />
               ) : todo.status === "in_progress" ? (
-                <Icon icon={CircleDashedIcon} size={14} className="text-info" />
+                <Icon icon={CircleDashedIcon} size={14} tone="info" />
               ) : (
-                <Icon
-                  icon={CircleIcon}
-                  size={14}
-                  className="text-foreground-subtle"
-                />
+                <Icon icon={CircleIcon} size={14} tone="subtle" />
               )}
             </span>
             <span

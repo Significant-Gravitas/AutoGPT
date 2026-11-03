@@ -66,10 +66,8 @@ export function Collapsible({
           <Icon
             icon={ArrowDown01Icon}
             data-slot="collapsible-icon"
-            className={cn(
-              "inline-flex h-4 w-4 transition-transform duration-200",
-              openState && "rotate-180",
-            )}
+            motion="transform"
+            className={cn("inline-flex h-4 w-4", openState && "rotate-180")}
           />
         </div>
       </CollapsibleTrigger>

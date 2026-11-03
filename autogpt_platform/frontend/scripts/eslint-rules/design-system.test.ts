@@ -139,7 +139,7 @@ tester.run("no-palette-colours", rule("no-palette-colours"), {
     // ...or one class a file may keep.
     {
       code: `const tone = "text-emerald-300";`,
-      filename: "src/components/atoms/Text/helpers.ts",
+      filename: "src/components/styles/tones.ts",
     },
   ],
   invalid: [

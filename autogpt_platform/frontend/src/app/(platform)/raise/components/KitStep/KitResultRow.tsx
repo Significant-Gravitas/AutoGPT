@@ -55,11 +55,12 @@ export function KitResultRow({
         type="button"
         variant={selected ? "ghost" : "secondary"}
         size="small"
+        shape="rounded"
         disabled={selected || atCap}
         loading={isPending}
         onClick={onAdd}
         className={cn(
-          "shrink-0 rounded-xl transition-all duration-200",
+          "shrink-0 transition-all duration-200",
           // The ghost variant greys disabled text down to zinc-200, which
           // reads as broken rather than settled — keep "Added" full strength.
           selected && "disabled:text-foreground-emphasis",

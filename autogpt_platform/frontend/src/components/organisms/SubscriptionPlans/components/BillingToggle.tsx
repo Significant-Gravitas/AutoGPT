@@ -18,10 +18,11 @@ export function BillingToggle({ billing, onBillingChange }: Props) {
           type="button"
           variant="ghost"
           size="xs"
+          shape="pill"
           aria-pressed={billing === cycle}
           onClick={() => onBillingChange(cycle)}
           className={cn(
-            "rounded-full px-4 text-xs",
+            "px-4",
             billing === cycle
               ? "bg-surface text-foreground-strong shadow-sm hover:bg-surface"
               : "text-foreground-tertiary",

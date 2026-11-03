@@ -76,7 +76,7 @@ The full rules are in `docs/engineering/design-system.md`; `pnpm lint` enforces 
 - **Workflow Builder**: Visual graph editor using @xyflow/react
 - **UI Components**: shadcn/ui (Radix UI primitives) with Tailwind CSS styling
 - **Icons**: Hugeicons (stroke-rounded) only, rendered through the `Icon` atom
-- **Feature Flags**: read from the backend's `/api/feature-flags` by default, which answers from PostHog
+- **Feature Flags**: read from the backend's `/api/feature-flags`, which answers from PostHog
 - **Error Handling**: ErrorCard for render errors, toast for mutations, Sentry for exceptions
 - **Testing**: Vitest + React Testing Library + MSW for integration tests (primary), Playwright for E2E, Storybook for visual
 

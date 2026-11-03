@@ -292,7 +292,8 @@ const MultiSelectorList = forwardRef<
           variant="body-tight"
           as="span"
           data-slot="multi-select-empty-text"
-          className="block text-foreground-tertiary"
+          tone="muted"
+          className="block"
         >
           No results found
         </Text>

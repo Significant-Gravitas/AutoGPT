@@ -111,10 +111,11 @@ function UsageBar({
         {primary ? (
           <span className="flex items-baseline gap-1 whitespace-nowrap">
             <Text
-              variant="h2"
+              variant="h1"
               as="span"
-              // oxlint-disable-next-line design-system/no-restyle -- the usage figure is a sans display number; no Text variant has it
-              className="font-sans text-display leading-12 font-semibold tracking-display"
+              tracking="display"
+              // oxlint-disable-next-line design-system/no-restyle -- the usage figure is a sans display number on a 48px line; no Text variant has it
+              className="font-sans leading-12"
             >
               {label}
             </Text>

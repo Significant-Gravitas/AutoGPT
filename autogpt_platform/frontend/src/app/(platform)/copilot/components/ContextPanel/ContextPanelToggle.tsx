@@ -99,18 +99,18 @@ export function ContextPanelToggle({
                 toggleClass,
                 "h-8",
                 documentCount > 0 ? "w-auto gap-1 px-2 tabular-nums" : "w-8",
-                isFilesOpen && "bg-surface-hover",
               )}
             >
               <Icon
                 icon={LicenseDraftIcon}
-                className="!size-4 text-foreground-emphasis/90"
+                tone="emphasis-soft"
+                className="!size-4"
               />
               {documentCount > 0 && (
                 <Text
                   variant="small-medium-tight"
                   as="span"
-                  className="text-foreground-emphasis/90"
+                  tone="emphasis-soft"
                 >
                   {documentCount}
                 </Text>
@@ -134,15 +134,12 @@ export function ContextPanelToggle({
               onClick={handleComputerToggle}
               aria-label={isComputerOpen ? "Hide computer" : "Open computer"}
               aria-pressed={isComputerOpen}
-              className={cn(
-                toggleClass,
-                "size-8",
-                isComputerOpen && "bg-surface-hover",
-              )}
+              className={cn(toggleClass, "size-8")}
             >
               <Icon
                 icon={ComputerIcon}
-                className="!size-4 text-foreground-emphasis/90"
+                tone="emphasis-soft"
+                className="!size-4"
               />
             </Button>
           </TooltipTrigger>

@@ -72,7 +72,7 @@ export function InstallSkillButton({
           aria-label={MENU_LABEL}
           disabled={isAdding}
           // oxlint-disable-next-line design-system/no-restyle -- the right half of a split button; Button has no split variant
-          className="!min-w-0 !rounded-l-none border-l border-l-action-foreground/25 px-2.5"
+          className="!min-w-0 !rounded-l-none border-l border-l-action-foreground/25"
         >
           <Icon icon={ArrowDown01Icon} size={16} aria-hidden />
         </Button>

@@ -55,10 +55,7 @@ export function FollowupListItem({ followup }: Props) {
         />
       </div>
       <div className="flex min-w-0 flex-col gap-1">
-        <Text
-          variant="body-medium"
-          className="block w-full truncate text-ellipsis"
-        >
+        <Text variant="body-medium" className="block w-full text-ellipsis">
           {messagePreview}
         </Text>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">

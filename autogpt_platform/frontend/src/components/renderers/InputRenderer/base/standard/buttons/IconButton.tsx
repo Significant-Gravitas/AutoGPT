@@ -41,7 +41,7 @@ export default function IconButton(props: AutogptIconButtonProps) {
     <Button
       size={size}
       variant="secondary"
-      className={cn(className, "w-fit border border-border-base p-1.5 px-4")}
+      className={cn(className, "w-fit p-1.5 px-4")}
       {...otherProps}
       id={id ? getFieldDomId(id, registry.formContext) : undefined}
       title={title}
@@ -103,14 +103,7 @@ export function RemoveButton(props: AutogptIconButtonProps) {
     <IconButton
       title={translateString(TranslatableString.RemoveButton)}
       {...props}
-      className={"border-error"}
-      icon={
-        <Icon
-          icon={Delete02Icon}
-          size={16}
-          className="!text-foreground-emphasis"
-        />
-      }
+      icon={<Icon icon={Delete02Icon} size={16} tone="emphasis" />}
     />
   );
 }

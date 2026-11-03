@@ -554,8 +554,9 @@ export function ExecutionsTable({
                       size="small"
                       onClick={() => confirmStop("all", "requeue")}
                       disabled={isStopping}
-                      // oxlint-disable-next-line design-system/no-restyle -- Button has no info outline variant; outline would turn it grey (deferred)
-                      className="border-info text-info-foreground hover:bg-info-surface"
+                      tone="info-strong"
+                      // oxlint-disable-next-line design-system/no-restyle -- Button has no info outline variant; outline would turn its border and hover grey (deferred)
+                      className="border-info hover:bg-info-surface"
                     >
                       <Icon icon={Refresh01Icon} className="mr-2 h-4 w-4" />
                       Requeue All ({total})
@@ -900,8 +901,9 @@ export function ExecutionsTable({
                                         )
                                       }
                                       disabled={isStopping}
-                                      // oxlint-disable-next-line design-system/no-restyle -- Button has no info ghost variant; ghost would turn it black (deferred)
-                                      className="text-info-foreground hover:bg-info-surface"
+                                      tone="info-strong"
+                                      // oxlint-disable-next-line design-system/no-restyle -- Button has no info ghost variant; ghost would turn its hover grey (deferred)
+                                      className="hover:bg-info-surface"
                                       title="Requeue (send to RabbitMQ)"
                                     >
                                       <Icon

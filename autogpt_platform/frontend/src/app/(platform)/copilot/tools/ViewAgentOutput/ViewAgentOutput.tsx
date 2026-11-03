@@ -154,9 +154,7 @@ export function ViewAgentOutputTool({ part }: Props) {
               {output.execution ? (
                 <ContentGrid>
                   <ContentCard>
-                    <ContentCardTitle className="text-xs">
-                      Execution
-                    </ContentCardTitle>
+                    <ContentCardTitle size="small">Execution</ContentCardTitle>
                     <ContentCardSubtitle className="mt-1">
                       {output.execution.execution_id}
                     </ContentCardSubtitle>
@@ -167,7 +165,7 @@ export function ViewAgentOutputTool({ part }: Props) {
 
                   {output.execution.inputs_summary && (
                     <ContentCard>
-                      <ContentCardTitle className="text-xs">
+                      <ContentCardTitle size="small">
                         Inputs summary
                       </ContentCardTitle>
                       <div className="mt-2">
@@ -182,7 +180,7 @@ export function ViewAgentOutputTool({ part }: Props) {
                     ([key, items]) => (
                       <ContentCard key={key}>
                         <div className="flex items-center justify-between gap-2">
-                          <ContentCardTitle className="text-xs">
+                          <ContentCardTitle size="small">
                             {key}
                           </ContentCardTitle>
                           <ContentBadge>

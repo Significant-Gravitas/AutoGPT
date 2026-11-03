@@ -66,7 +66,9 @@ export function RecipientChip({
           {recipient.name}
           <Icon
             icon={ArrowDown01Icon}
-            className="size-3.5 text-foreground-secondary transition-transform duration-150 group-data-[state=open]:rotate-180"
+            tone="secondary"
+            motion="transform"
+            className="size-3.5 group-data-[state=open]:rotate-180"
           />
         </button>
       </DropdownMenuTrigger>

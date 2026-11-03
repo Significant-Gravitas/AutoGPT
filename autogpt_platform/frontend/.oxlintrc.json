@@ -74,6 +74,11 @@
                   "line-clamp-*",
                   "whitespace-*",
                   "text-balance",
+                  "text-ellipsis",
+                  "text-clip",
+                  "gap-*",
+                  "gap-x-*",
+                  "gap-y-*",
                   "text-pretty",
                   "break-*",
                   "text-start",
@@ -130,7 +135,48 @@
         "src/components/organisms/**"
       ],
       "rules": {
-        "design-system/no-restyle": "off"
+        "design-system/no-restyle": [
+          "error",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-ellipsis",
+                  "text-clip",
+                  "gap-*",
+                  "gap-x-*",
+                  "gap-y-*",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              {
+                "pattern": "^Icon$",
+                "allow": ["layout"]
+              },
+              {
+                "pattern": "^Button$",
+                "allow": ["layout"]
+              },
+              {
+                "pattern": "^(?!(Text|Icon|Button)$)",
+                "allow": ["*"]
+              }
+            ]
+          }
+        ]
       }
     },
     {

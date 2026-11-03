@@ -75,29 +75,21 @@ export function ChangelogPopup() {
             />
           </div>
           <div data-slot="changelog-popup-heading" className="min-w-0 flex-1">
-            <Text
-              variant="body-medium"
-              data-slot="changelog-popup-title"
-              className="text-foreground-base"
-            >
+            <Text variant="body-medium" data-slot="changelog-popup-title">
               What&apos;s new
             </Text>
-            <Text
-              variant="small"
-              data-slot="changelog-popup-date"
-              className="text-foreground-tertiary"
-            >
+            <Text variant="small" data-slot="changelog-popup-date" tone="muted">
               {latestEntry.dateRange}
             </Text>
           </div>
           <Button
             type="button"
-            variant="ghost"
+            variant="ghost-muted"
             size="icon-sm"
             withTooltip={false}
             onClick={dismiss}
             data-slot="changelog-popup-dismiss"
-            className="-mt-1 -mr-1 text-foreground-tertiary hover:text-foreground-base"
+            className="-mt-1 -mr-1"
             aria-label="Dismiss changelog"
           >
             <Icon
@@ -120,11 +112,7 @@ export function ChangelogPopup() {
                 data-slot="changelog-popup-bullet"
                 className="mt-2.5 size-1 shrink-0 rounded-full bg-foreground-tertiary"
               />
-              <Text
-                variant="body"
-                data-slot="changelog-popup-highlight-text"
-                className="text-foreground-base"
-              >
+              <Text variant="body" data-slot="changelog-popup-highlight-text">
                 {item}
               </Text>
             </li>

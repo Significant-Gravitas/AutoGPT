@@ -492,7 +492,7 @@ export function MCPToolDialog({
                 variant="body-tight"
                 role="alert"
                 aria-live="polite"
-                className="text-error-foreground"
+                tone="error-strong"
               >
                 {error}
               </Text>
@@ -656,9 +656,13 @@ function MCPToolCard({
 
       {/* Description (collapsed: truncated) */}
       {cleanDescription && (
-        <Text variant="small-relaxed" tone="muted" className="px-3 pb-1">
-          {expanded ? cleanDescription : truncateDescription(cleanDescription)}
-        </Text>
+        <div className="px-3 pb-1">
+          <Text variant="small-relaxed" tone="muted">
+            {expanded
+              ? cleanDescription
+              : truncateDescription(cleanDescription)}
+          </Text>
+        </div>
       )}
 
       {/* Parameter badges (collapsed view) */}
@@ -686,30 +690,36 @@ function MCPToolCard({
           <table className="w-full">
             <thead>
               <tr className="border-b border-separator">
-                <Text
-                  variant="small-medium-tight"
-                  tone="muted"
-                  as="th"
-                  className="px-2 py-1 text-left"
-                >
-                  Parameter
-                </Text>
-                <Text
-                  variant="small-medium-tight"
-                  tone="muted"
-                  as="th"
-                  className="px-2 py-1 text-left"
-                >
-                  Type
-                </Text>
-                <Text
-                  variant="small-medium-tight"
-                  tone="muted"
-                  as="th"
-                  className="px-2 py-1 text-left"
-                >
-                  Description
-                </Text>
+                <th className="px-2 py-1 text-left">
+                  <Text
+                    variant="small-medium-tight"
+                    tone="muted"
+                    as="span"
+                    className="block"
+                  >
+                    Parameter
+                  </Text>
+                </th>
+                <th className="px-2 py-1 text-left">
+                  <Text
+                    variant="small-medium-tight"
+                    tone="muted"
+                    as="span"
+                    className="block"
+                  >
+                    Type
+                  </Text>
+                </th>
+                <th className="px-2 py-1 text-left">
+                  <Text
+                    variant="small-medium-tight"
+                    tone="muted"
+                    as="span"
+                    className="block"
+                  >
+                    Description
+                  </Text>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -720,33 +730,39 @@ function MCPToolCard({
                     key={name}
                     className="border-b border-surface-muted last:border-0"
                   >
-                    <Text
-                      variant="caption-sm-mono"
-                      tone="body"
-                      as="td"
-                      className="px-2 py-1"
-                    >
-                      {name}
-                      {required.has(name) && (
-                        <span className="ml-0.5 text-error">*</span>
-                      )}
-                    </Text>
-                    <Text
-                      variant="small-tight"
-                      tone="muted"
-                      as="td"
-                      className="px-2 py-1"
-                    >
-                      {schemaTypeLabel(prop)}
-                    </Text>
-                    <Text
-                      variant="small-tight"
-                      tone="muted"
-                      as="td"
-                      className="max-w-[200px] truncate px-2 py-1"
-                    >
-                      {prop.description ?? "—"}
-                    </Text>
+                    <td className="px-2 py-1">
+                      <Text
+                        variant="caption-sm-mono"
+                        tone="body"
+                        as="span"
+                        className="block"
+                      >
+                        {name}
+                        {required.has(name) && (
+                          <span className="ml-0.5 text-error">*</span>
+                        )}
+                      </Text>
+                    </td>
+                    <td className="px-2 py-1">
+                      <Text
+                        variant="small-tight"
+                        tone="muted"
+                        as="span"
+                        className="block"
+                      >
+                        {schemaTypeLabel(prop)}
+                      </Text>
+                    </td>
+                    <td className="max-w-[200px] truncate px-2 py-1">
+                      <Text
+                        variant="small-tight"
+                        tone="muted"
+                        as="span"
+                        className="block truncate"
+                      >
+                        {prop.description ?? "—"}
+                      </Text>
+                    </td>
                   </tr>
                 );
               })}
@@ -770,7 +786,8 @@ function MCPToolCard({
           </Text>
           <Icon
             icon={ArrowDown01Icon}
-            className={`h-3 w-3 transition-transform ${expanded ? "rotate-180" : ""}`}
+            motion="transform"
+            className={`h-3 w-3 ${expanded ? "rotate-180" : ""}`}
           />
         </button>
       )}

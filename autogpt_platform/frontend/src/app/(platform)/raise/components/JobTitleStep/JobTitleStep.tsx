@@ -100,7 +100,8 @@ export function JobTitleStep({
             variant="primary"
             size="small"
             disabled={!trimmed}
-            className="h-[2.625rem] rounded-xl py-3"
+            shape="rounded"
+            className="h-[2.625rem]"
           >
             Add title
           </Button>
@@ -109,7 +110,8 @@ export function JobTitleStep({
             variant="ghost"
             size="small"
             onClick={onSkip}
-            className="h-[2.625rem] rounded-xl py-3"
+            shape="rounded"
+            className="h-[2.625rem]"
           >
             Skip
           </Button>

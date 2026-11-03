@@ -419,11 +419,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
                   {showDone && (
                     <div className="flex items-stretch gap-2.5">
                       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-                        <Icon
-                          icon={Tick02Icon}
-                          size={14}
-                          className="text-foreground-secondary"
-                        />
+                        <Icon icon={Tick02Icon} size={14} tone="secondary" />
                       </div>
                       <div className="flex h-7 items-center text-sm text-foreground-secondary">
                         Done
@@ -479,11 +475,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
         {!readOnly && pendingActions.length > 0 && !hasCardWork && (
           <div className="mt-1 flex flex-col items-start gap-2">
             <span className="flex items-center gap-1.5 text-sm text-foreground-secondary">
-              <Icon
-                icon={SentIcon}
-                size={16}
-                className="text-foreground-subtle"
-              />
+              <Icon icon={SentIcon} size={16} tone="subtle" />
               {allActionsReady
                 ? "Everything's filled in"
                 : "Complete the steps above to continue"}
