@@ -8,8 +8,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   NotificationState,
   categorizeExecutions,
-  enrichExecutionWithAgentInfo,
   handleExecutionUpdate,
+  relabelNotifications,
 } from "./helpers";
 
 export function useAgentActivityDropdown() {
@@ -72,16 +72,7 @@ export function useAgentActivityDropdown() {
   });
 
   return {
-    ...notifications,
-    activeExecutions: notifications.activeExecutions.map((execution) =>
-      enrichExecutionWithAgentInfo(execution, agentInfoMap),
-    ),
-    recentCompletions: notifications.recentCompletions.map((execution) =>
-      enrichExecutionWithAgentInfo(execution, agentInfoMap),
-    ),
-    recentFailures: notifications.recentFailures.map((execution) =>
-      enrichExecutionWithAgentInfo(execution, agentInfoMap),
-    ),
+    ...relabelNotifications(notifications, agentInfoMap),
     libraryError: libraryError && !isFetchingLibrary,
     retryLibrary,
     isReady: executionsSuccess,

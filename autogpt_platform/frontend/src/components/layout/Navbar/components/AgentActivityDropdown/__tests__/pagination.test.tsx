@@ -49,6 +49,32 @@ describe("Activity workflow pagination", () => {
     expect(requests).toEqual([1, 2]);
   });
 
+  it("preserves the twenty-page metadata budget", async () => {
+    const requests: number[] = [];
+    server.use(
+      http.get(libraryURL, ({ request }) => {
+        const current = Number(new URL(request.url).searchParams.get("page"));
+        requests.push(current);
+        const agents = firstPageAgents.map((agent, index) => ({
+          ...agent,
+          id: `library-${current}-${index}`,
+          graph_id: `workflow-${current}-${index}`,
+        }));
+        return HttpResponse.json(page(agents, current, 2100));
+      }),
+    );
+    const { queryClient } = renderActivity();
+    await waitFor(() => expect(requests).toHaveLength(20), { timeout: 10000 });
+    await waitFor(() =>
+      expect(queryClient.isFetching({ queryKey: libraryKey })).toBe(0),
+    );
+    await settleRequests();
+    expect(requests).toEqual(
+      Array.from({ length: 20 }, (_, index) => index + 1),
+    );
+    expect(screen.getByText("Workflow abcdef01")).toBeDefined();
+  });
+
   it("stops automatically fetching a failed page after the query retry budget", async () => {
     const requests: number[] = [];
     server.use(

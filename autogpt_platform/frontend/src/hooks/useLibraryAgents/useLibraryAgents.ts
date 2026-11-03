@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef } from "react";
 import { getNextLibraryPage } from "./helpers";
 import { buildAgentInfoMap } from "./store";
 
+const PAGE_SIZE = 100;
+
 export function useLibraryAgents() {
   const {
     data: agentsQueryData,
@@ -17,7 +19,7 @@ export function useLibraryAgents() {
   } = useGetV2ListLibraryAgentsInfinite(
     {
       page: 1,
-      page_size: 100,
+      page_size: PAGE_SIZE,
       is_hidden: false,
     },
     {

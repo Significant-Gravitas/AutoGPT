@@ -1,6 +1,9 @@
 import type { GetV2ListLibraryAgentsInfiniteQueryResult } from "@/app/api/__generated__/endpoints/library/library";
 import { getPaginationNextPageNumber, okData } from "@/app/api/helpers";
 
+// Preserve the 2000-workflow metadata budget from the library pagination.
+const MAX_PAGES = 20;
+
 export function getNextLibraryPage(
   lastPage: GetV2ListLibraryAgentsInfiniteQueryResult,
   pages: GetV2ListLibraryAgentsInfiniteQueryResult[],
@@ -8,7 +11,8 @@ export function getNextLibraryPage(
 ) {
   const last = okData(lastPage);
   const first = okData(pages[0]);
-  if (!last || !first || !last.agents.length) return undefined;
+  if (!last || !first || !last.agents.length || pages.length >= MAX_PAGES)
+    return undefined;
 
   const pagination = last.pagination;
   if (
