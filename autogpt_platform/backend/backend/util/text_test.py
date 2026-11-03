@@ -1,29 +1,20 @@
 """Tests for TextFormatter resource-exhaustion protections (GHSA-ppw9-h7rv-gwq9)."""
 
 import asyncio
-import random
-from time import monotonic
+import os
+import resource
+from pathlib import Path
 
 import jinja2
 import pytest
-from markupsafe import Markup, escape
+from markupsafe import Markup
 
-from backend.util import text
 from backend.util.text import (
     MAX_FORMAT_FIELD_SIZE,
-    MAX_FORMAT_STRING_LENGTH,
-    MAX_RENDER_BYTES,
-    MAX_TEMPLATE_LENGTH,
-    MAX_TEMPLATE_TAG_LENGTH,
-    MAX_TEMPLATE_TAGS,
-    REMOVED_FILTERS,
-    RENDER_YIELD_INTERVAL,
-    SIZE_CHECKED_FILTERS,
-    SIZE_CHECKED_METHODS,
+    MAX_RENDER_OUTPUT,
+    RENDER_MEMORY_LIMIT,
     TextFormatter,
     _check_percent_format,
-    _render_budget,
-    _RenderBudget,
 )
 
 
@@ -299,26 +290,25 @@ def test_star_sizes_within_the_cap_pass_after_a_literal_percent():
     _check_percent_format("%*%%*d", (1, 5, 1))
 
 
-# --- One render may build only so much, however it builds it ---
+# --- A render runs in a worker process, under its memory and time limits ---
 
-# Each template below builds a 200 MB value by a different route, so every
-# check has a case of its own. The sizes are template literals on purpose: a
-# test that computed them from the limits would pass whatever the limits were.
-# "would exceed" is the refusal an operation gets before it builds anything,
-# because its result size follows from its arguments; "rendering exceeded" is
-# the one a value gets charged for after the fact.
-HUGE = "200000000"
-BIG_VALUE = "{% set a = 'x' * 10000 %}"
-# Five megabytes, built within the budget, so what multiplies it is
-# what the case is about
-MEGABYTES = "{% set a = 'x'|center(5000000) %}"
-# Over half the budget, so what the next operation does with it decides
-THIRTY_MEGABYTES = "{% set a = 'x'|center(30000000) %}"
-BEFORE_IT_ALLOCATES = "would exceed"
-AFTER_IT_IS_BUILT = "rendering exceeded"
+# The templates below build gigabytes by many routes, all past the worker's
+# memory limit or the output cap. The sizes are template literals on purpose:
+# a test that computed them from the limits would pass whatever they were.
+# Some routes are refused for memory, some for output, and the slow ones at
+# the deadline; any of the three is the guarantee.
+REFUSED = "out of memory|output too large|timed out|too large"
+HUGE = "2000000000"
+# Built while rendering, because Jinja folds a constant value into the
+# compiled code, and compiling it costs several times its size
+_X = "('x' ~ range(0)|join)"
+# A hundred thousand characters, every one an "x"
+BIG_VALUE = "{% set a = " + _X + "|center(100000)|replace(' ', 'x') %}"
+# Five megabytes, so what multiplies it is what the case is about
+MEGABYTES = "{% set a = " + _X + "|center(5000000) %}"
+# Most of the memory limit, so what the next operation does with it decides
+MOST_OF_THE_LIMIT = "{% set a = " + _X + "|center(400000000) %}"
 
-# Literals big enough that ten thousand of them pass the budget, each still
-# inside the per-tag length cap
 _LIST_LITERAL = "[" + ",".join(["1"] * 1000) + "]"
 _DICT_LITERAL = "{" + ",".join(f"'k{i}':1" for i in range(500)) + "}"
 # Items the loop supplies, so each pass really does build another tuple
@@ -328,235 +318,142 @@ _CONST_TUPLE = "(" + ",".join(["1"] * 626) + ")"
 
 
 def _rebuilt_every_iteration(literal: str) -> str:
-    """A loop that builds ``literal`` again on every pass."""
+    """A loop that builds ``literal`` again on each of 100,000 passes."""
     return (
-        "{% set acc = [] %}{% for i in range(10000) %}"
+        "{% set acc = [] %}{% for i in range(10000) %}{% for j in range(10) %}"
         f"{{% set _ = acc.append({literal}) %}}"
-        "{% endfor %}{{ acc|length }}"
+        "{% endfor %}{% endfor %}{{ acc|length }}"
     )
 
 
 OVERSIZED_TEMPLATES = {
-    "center filter": (
-        "{{ 'x'|center(" + HUGE + ")|length }}",
-        BEFORE_IT_ALLOCATES,
-    ),
-    "indent filter": (
-        "{{ 'a\nb'|indent(" + HUGE + ")|length }}",
-        BEFORE_IT_ALLOCATES,
-    ),
-    "join filter": (
-        BIG_VALUE + "{{ range(10000)|join(a ~ a)|length }}",
-        BEFORE_IT_ALLOCATES,
-    ),
+    "center filter": "{{ 'x'|center(" + HUGE + ")|length }}",
+    "indent filter": "{{ 'a\nb'|indent(" + HUGE + ")|length }}",
+    "join filter": BIG_VALUE + "{{ range(10000)|join(a ~ a)|length }}",
     "join filter over big items": (
-        BIG_VALUE + "{% set l = [a] * 10000 %}{{ l|join|length }}",
-        BEFORE_IT_ALLOCATES,
+        BIG_VALUE + "{% set l = [a] * 10000 %}{{ l|join|length }}"
     ),
-    "replace filter": (
-        BIG_VALUE + "{{ a|replace('x', a ~ a)|length }}",
-        BEFORE_IT_ALLOCATES,
-    ),
-    "center method": (
-        "{{ 'x'.center(" + HUGE + ")|length }}",
-        BEFORE_IT_ALLOCATES,
-    ),
-    "ljust method": (
-        "{{ 'x'.ljust(" + HUGE + ")|length }}",
-        BEFORE_IT_ALLOCATES,
-    ),
-    "rjust method": (
-        "{{ 'x'.rjust(" + HUGE + ")|length }}",
-        BEFORE_IT_ALLOCATES,
-    ),
-    "zfill method": (
-        "{{ '1'.zfill(" + HUGE + ")|length }}",
-        BEFORE_IT_ALLOCATES,
-    ),
-    "expandtabs method": (
-        "{{ '\t'.expandtabs(" + HUGE + ")|length }}",
-        BEFORE_IT_ALLOCATES,
-    ),
-    "join method": (
-        BIG_VALUE + "{% set l = [a] * 10000 %}{{ (a~a).join(l)|length }}",
-        BEFORE_IT_ALLOCATES,
-    ),
-    "replace method": (
-        BIG_VALUE + "{{ a.replace('x', a ~ a)|length }}",
-        BEFORE_IT_ALLOCATES,
-    ),
-    "translate method": (
-        BIG_VALUE + "{{ (a~a).translate({120: a ~ a})|length }}",
-        BEFORE_IT_ALLOCATES,
-    ),
-    "bytes repeat": (
-        "{{ ('x'.encode() * " + HUGE + ")|length }}",
-        "Sequence repeat too large",
-    ),
+    "replace filter": BIG_VALUE + "{{ a|replace('x', a ~ a)|length }}",
+    "center method": "{{ 'x'.center(" + HUGE + ")|length }}",
+    "ljust method": "{{ 'x'.ljust(" + HUGE + ")|length }}",
+    "rjust method": "{{ 'x'.rjust(" + HUGE + ")|length }}",
+    "zfill method": "{{ '1'.zfill(" + HUGE + ")|length }}",
+    "expandtabs method": "{{ '\t'.expandtabs(" + HUGE + ")|length }}",
+    "join method": (BIG_VALUE + "{% set l = [a] * 10000 %}{{ (a~a).join(l)|length }}"),
+    "replace method": BIG_VALUE + "{{ a.replace('x', a ~ a)|length }}",
+    "translate method": BIG_VALUE + "{{ (a~a).translate({120: a ~ a})|length }}",
+    "bytes repeat": "{{ ('x'.encode() * " + HUGE + ")|length }}",
     "tilde concatenation": (
         "{% set a = 'xx' %}"
-        + "{% set a = a~a~a~a~a~a~a~a~a~a %}" * 8
-        + "{{ a|length }}",
-        BEFORE_IT_ALLOCATES,
+        + "{% set a = a~a~a~a~a~a~a~a~a~a %}" * 9
+        + "{{ a|length }}"
     ),
     "plus concatenation": (
         "{% set a = 'xx' %}"
-        + "{% set a = a+a+a+a+a+a+a+a+a+a %}" * 8
-        + "{{ a|length }}",
-        BEFORE_IT_ALLOCATES,
+        + "{% set a = a+a+a+a+a+a+a+a+a+a %}" * 9
+        + "{{ a|length }}"
     ),
     "a loop's output": (
-        BIG_VALUE + "{% for i in range(10000) %}{{ a }}{{ a }}{% endfor %}",
-        AFTER_IT_IS_BUILT,
+        BIG_VALUE + "{% for i in range(10000) %}{{ a }}{{ a }}{% endfor %}"
     ),
-    "a loop's literal text": (
-        "{% for i in range(10000) %}" + "y" * 20000 + "{% endfor %}",
-        AFTER_IT_IS_BUILT,
-    ),
+    "a loop's literal text": "{% for i in range(10000) %}"
+    + "y" * 20000
+    + "{% endfor %}",
     "a loop into a set block": (
         BIG_VALUE
         + "{% set b %}{% for i in range(10000) %}{{ a }}{{ a }}{% endfor %}{% endset %}"
-        + "{{ b|length }}",
-        AFTER_IT_IS_BUILT,
+        + "{{ b|length }}"
     ),
-    "a lazily mapped chain": (
-        "{{ range(10000)|map('center', 1000000)|join|length }}",
-        BEFORE_IT_ALLOCATES,
-    ),
+    "a lazily mapped chain": "{{ range(10000)|map('center', 1000000)|join|length }}",
     "repeated squaring": (
-        "{% set x = 10**1000 %}" + "{% set x = x*x %}" * 14 + "{{ x|string|length }}",
-        "Integer too large",
+        "{% set x = 10**1000 %}" + "{% set x = x*x %}" * 14 + "{{ x|string|length }}"
     ),
     "list extension": (
-        "{% set l = [1] * 10000 %}" + "{{ l.extend(l) }}" * 25 + "{{ l|length }}",
-        BEFORE_IT_ALLOCATES,
+        "{% set l = [1] * 10000 %}" + "{{ l.extend(l) }}" * 25 + "{{ l|length }}"
     ),
-    "batch filter's fill": (
-        "{{ [1]|batch(" + HUGE + ", 'x')|list|length }}",
-        BEFORE_IT_ALLOCATES,
-    ),
-    "slice filter's count": (
-        "{{ [1]|slice(" + HUGE + ")|list|length }}",
-        BEFORE_IT_ALLOCATES,
-    ),
-    "a container emitted whole": (
-        BIG_VALUE + "{% set l = [a] * 10000 %}{{ l }}",
-        AFTER_IT_IS_BUILT,
-    ),
+    "batch filter's fill": "{{ [1]|batch(" + HUGE + ", 'x')|list|length }}",
+    "slice filter's count": "{{ [1]|slice(" + HUGE + ")|list|length }}",
+    "a container emitted whole": BIG_VALUE + "{% set l = [a] * 10000 %}{{ l }}",
     "a container nested three deep": (
-        # Every level multiplies the text the outer value renders as, while
-        # the references it holds stay few
         BIG_VALUE
-        + "{% set inner = [a] * 60 %}{% set middle = [inner] * 10 %}"
-        + "{{ [middle] * 10 }}",
-        AFTER_IT_IS_BUILT,
+        + "{% set inner = [a] * 100 %}{% set middle = [inner] * 10 %}"
+        + "{{ [middle] * 10 }}"
     ),
-    "a list literal rebuilt every iteration": (
-        _rebuilt_every_iteration(_LIST_LITERAL),
-        AFTER_IT_IS_BUILT,
+    "a list literal rebuilt every iteration": _rebuilt_every_iteration(_LIST_LITERAL),
+    "a dict literal rebuilt every iteration": _rebuilt_every_iteration(_DICT_LITERAL),
+    "a tuple of loop values rebuilt every iteration": _rebuilt_every_iteration(
+        _LOOP_TUPLE
     ),
-    "a dict literal rebuilt every iteration": (
-        _rebuilt_every_iteration(_DICT_LITERAL),
-        AFTER_IT_IS_BUILT,
+    "a constant tuple holding a list, rebuilt every iteration": (
+        _rebuilt_every_iteration("(1, " + _LIST_LITERAL + ")")
     ),
-    "a tuple of loop values rebuilt every iteration": (
-        _rebuilt_every_iteration(_LOOP_TUPLE),
-        AFTER_IT_IS_BUILT,
+    "a list nested in a literal, rebuilt every iteration": _rebuilt_every_iteration(
+        "[" + _LIST_LITERAL + "]"
     ),
-    "a control-character string emitted whole": ("{{ [v] }}", AFTER_IT_IS_BUILT),
-    "the % operator without a precision": (
-        THIRTY_MEGABYTES + "{{ '%s' % a }}",
-        BEFORE_IT_ALLOCATES,
-    ),
-    "str.format's receiver": (
-        THIRTY_MEGABYTES + "{{ a.format() }}",
-        BEFORE_IT_ALLOCATES,
-    ),
+    "a slice taken every iteration": BIG_VALUE + _rebuilt_every_iteration("a[1:]"),
+    "a control-character string emitted whole": "{{ [v] }}",
+    "the % operator without a precision": MOST_OF_THE_LIMIT + "{{ '%s' % a }}",
+    "str.format's receiver": MOST_OF_THE_LIMIT + "{{ a.format() }}",
     "string filter on a container": (
-        BIG_VALUE + "{% set l = [a] * 10000 %}{{ l|string|length }}",
-        BEFORE_IT_ALLOCATES,
+        BIG_VALUE + "{% set l = [a] * 10000 %}{{ l|string|length }}"
     ),
-    "the % operator's arguments": (
-        MEGABYTES + "{{ ('%s' * 5000) % ((a,) * 5000) }}",
-        BEFORE_IT_ALLOCATES,
-    ),
+    "the % operator's arguments": (MEGABYTES + "{{ ('%s' * 5000) % ((a,) * 5000) }}"),
     "str.format's arguments": (
-        MEGABYTES + "{{ ('{}' * 5000).format(*((a,) * 5000)) }}",
-        BEFORE_IT_ALLOCATES,
+        MEGABYTES + "{{ ('{}' * 5000).format(*((a,) * 5000)) }}"
     ),
     "a lazy join's separator": (
-        MEGABYTES + "{{ range(10000)|map('string')|join(a)|length }}",
-        BEFORE_IT_ALLOCATES,
+        MEGABYTES + "{{ range(10000)|map('string')|join(a)|length }}"
     ),
-    "round to a negative precision": (
-        "{{ (10**100)|round(-" + HUGE + ") }}",
-        "Integer too large",
-    ),
-    "round to a precision through ceil": (
-        "{{ 5|round(" + HUGE + ", 'ceil') }}",
-        "Integer too large",
-    ),
-    "round to a precision through floor": (
-        "{{ 5|round(" + HUGE + ", 'floor') }}",
-        "Integer too large",
-    ),
+    "round to a negative precision": "{{ (10**100)|round(-" + HUGE + ") }}",
+    "round to a precision through ceil": "{{ 5|round(" + HUGE + ", 'ceil') }}",
+    "round to a precision through floor": "{{ 5|round(" + HUGE + ", 'floor') }}",
     "a filter applied once per item": (
-        BIG_VALUE + "{% set l = [a] * 10000 %}{{ (l|map('lower')|list)|length }}",
-        AFTER_IT_IS_BUILT,
+        BIG_VALUE + "{% set l = [a] * 10000 %}{{ (l|map('lower')|list)|length }}"
     ),
-    "a filter over a caller's list": (
-        "{{ (l|map('lower')|list)|length }}",
-        AFTER_IT_IS_BUILT,
-    ),
-    "a long %-style format string": (
-        "{% set f = '%s' * 5000 %}{% set f = f ~ f %}{{ (f % ()) }}",
-        "Format string too long",
-    ),
+    "a filter over a caller's list": "{{ (l|map('lower')|list)|length }}",
     "wordwrap filter's wrap string": (
         BIG_VALUE
         + "{% set t = 'a ' * 5000 %}"
-        + "{{ (t ~ t)|wordwrap(1, wrapstring=a)|length }}",
-        BEFORE_IT_ALLOCATES,
+        + "{{ (t ~ t)|wordwrap(1, wrapstring=a)|length }}"
     ),
     "sum filter over big items": (
-        BIG_VALUE + "{% set l = [a] * 10000 %}{{ l|sum(start='')|length }}",
-        BEFORE_IT_ALLOCATES,
-    ),
-    "sum filter's start": (
-        "{% set s = 'x'|center(30000000) %}{{ ['y']|sum(start=s)|length }}",
-        BEFORE_IT_ALLOCATES,
+        BIG_VALUE + "{% set l = [[a]] * 10000 %}{{ l|sum(start=[])|string|length }}"
     ),
     "sum filter by attribute": (
         BIG_VALUE
-        + "{% set l = [{'v': a}] * 10000 %}"
-        + "{{ l|sum(attribute='v', start='')|length }}",
-        BEFORE_IT_ALLOCATES,
+        + "{% set l = [{'v': [a]}] * 10000 %}"
+        + "{{ l|sum(attribute='v', start=[])|string|length }}"
+    ),
+    "markup search over plain text": (
+        BIG_VALUE + "{{ ('&' * 10000)|replace('amp'|safe, a)|length }}"
+    ),
+    "plain replacement into markup": (
+        "{% set q = '\"' * 10000 %}"
+        "{{ ((('x' * 10000) ~ ('x' * 10000))|safe)|replace('x', q)|length }}"
     ),
 }
 
-
-# The one case whose list arrives from the caller rather than the template
+# The cases whose values arrive from the caller rather than the template
 OVERSIZED_VALUES = {
-    "a filter over a caller's list": {"l": ["x" * 10_000] * 6_000},
-    # `repr` renders each of these as four characters, so the text is 4x
+    "a filter over a caller's list": {"l": ["x" * 100_000] * 10_000},
+    # `repr` renders each of these as four characters
     "a control-character string emitted whole": {"v": "\x00" * 16_000_000},
 }
+# These escape what they build
+ESCAPING = {"markup search over plain text", "plain replacement into markup"}
 
 
 @pytest.mark.parametrize(
-    ("name", "template", "refusal"),
-    [(name, *case) for name, case in OVERSIZED_TEMPLATES.items()],
-    ids=OVERSIZED_TEMPLATES,
+    ("name", "template"), OVERSIZED_TEMPLATES.items(), ids=OVERSIZED_TEMPLATES
 )
 @pytest.mark.asyncio
-async def test_an_oversized_render_is_refused(
-    fmt: TextFormatter, name: str, template: str, refusal: str
-):
-    # ValueError, not OverflowError: the app's global handlers answer a
-    # ValueError with 400 and anything else with 500 and a logged error, and
-    # an oversized template is the caller's
-    with pytest.raises(ValueError, match=refusal):
-        await fmt.format_string(template, OVERSIZED_VALUES.get(name))
+async def test_an_oversized_render_is_refused(name: str, template: str):
+    # ValueError, not OverflowError or MemoryError: the app's global handlers
+    # answer a ValueError with 400 and anything else with 500 and a logged
+    # error, and an oversized template is the caller's
+    formatter = TextFormatter(autoescape=name in ESCAPING)
+    with pytest.raises(ValueError, match=REFUSED):
+        await formatter.format_string(template, OVERSIZED_VALUES.get(name), timeout=3)
 
 
 # Twenty items sharing one 5 MB field that a join by another attribute never
@@ -582,7 +479,6 @@ WORKING_TEMPLATES = {
         ",".join("a" * 20),
     ),
     "sum filter": ("{{ [1, 2, 3]|sum }}", {}, "6"),
-    "sum of text": ("{{ ['a', 'b']|sum(start='') }}", {}, "ab"),
     "sum by attribute": ("{{ [{'n': 1}, {'n': 2}]|sum(attribute='n') }}", {}, "3"),
     "sum of large integers": (
         "{% set x = 10**1000 %}"
@@ -612,6 +508,11 @@ WORKING_TEMPLATES = {
         "1-2-3",
     ),
     "a tuple of one": ("{{ (5,)|length }}", {}, "1"),
+    "slices": (
+        "{% set s = 'abcdef' %}{{ s[1:4] }}{{ s[::2] }}{{ s[:i] }}",
+        {"i": 2},
+        "bcdaceab",
+    ),
     "tuple targets in a for": (
         "{% for a, b in [(1,2),(3,4)] %}{{ a }}{{ b }}{% endfor %}",
         {},
@@ -639,7 +540,7 @@ WORKING_TEMPLATES = {
     "plus concatenation": ("{{ 1 + 2 }}", {}, "3"),
     "macro": ("{% macro g(x) %}[{{ x }}]{% endmacro %}{{ g('v') }}", {}, "[v]"),
     "a precision that truncates a big value": (
-        THIRTY_MEGABYTES + "{{ ('%.5s' % a)|length }}",
+        "{% set a = 'x'|center(30000000) %}{{ ('%.5s' % a)|length }}",
         {},
         "5",
     ),
@@ -647,6 +548,40 @@ WORKING_TEMPLATES = {
         "{{ (v|trim|upper|lower|trim)|length }}",
         {"v": "z" * 2_000_000},
         "2000000",
+    ),
+    "a long %-style format string": (
+        "{% set f = '%s' * 5000 %}{% set f = f ~ f %}{{ (f % ((1,) * 10000))|length }}",
+        {},
+        "10000",
+    ),
+    "a format string with thousands of fields": (
+        "{{ f % v }}",
+        {"f": "%s" * 5_000, "v": ("",) * 5_000},
+        "",
+    ),
+    "a bound format method called many times": (
+        (
+            "{% set s = '{:.1}' %}{% set g = s.format %}"
+            "{% for i in range(20) %}{{ g(v) }}{% endfor %}"
+        ),
+        {"v": "x" * 3_000},
+        "x" * 20,
+    ),
+    "a filter that hands its value back": (
+        "{{ v|trim }}",
+        {"v": "x" * 3_000},
+        "x" * 3_000,
+    ),
+    "a constant tuple in a loop": (
+        f"{{% for i in range(10000) %}}{{% set t = {_CONST_TUPLE} %}}{{% endfor %}}ok",
+        {},
+        "ok",
+    ),
+    "ten thousand tags": ("{{ v }}" * 10_000, {"v": ""}, ""),
+    "a ten-thousand-character tag": (
+        '{{ "' + "a" * 9_900 + '"|length }}',
+        {},
+        "9900",
     ),
 }
 
@@ -663,6 +598,66 @@ async def test_a_template_within_the_limits_still_renders(
     assert await fmt.format_string(template, values) == expected
 
 
+# Under autoescape these escape tens of megabytes, which the old in-process
+# budget refused and the worker renders
+ESCAPING_TEMPLATES = {
+    "a markup separator": (
+        "{{ (l|join(''|safe))|length }}",
+        {"l": ["&" * 11_000_000]},
+        "55000000",
+    ),
+    "markup's join method": (
+        "{{ ('x'|safe).join(l)|length }}",
+        {"l": ["&" * 11_000_000]},
+        "55000000",
+    ),
+    "a lazy join with a markup item": (
+        "{{ ([m] + l)|select|join|length }}",
+        {"l": ["&" * 11_000_000], "m": Markup("x")},
+        "55000001",
+    ),
+    "a join": ("{{ (l|join)|length }}", {"l": ["&" * 12_000_000]}, "12000000"),
+    "a lazy join": (
+        "{{ (l|select|join)|length }}",
+        {"l": ["&" * 12_000_000]},
+        "12000000",
+    ),
+    "a replace that does not escape": (
+        "{{ v|replace('&', '') }}",
+        {"v": "&" * 12_000_000},
+        "",
+    ),
+    "a markup replacement": (
+        "{{ v|replace('x', m)|length }}",
+        {"v": "x", "m": Markup("&" * 11_000_000)},
+        "11000000",
+    ),
+    "a markup value": (
+        "{{ v|safe|replace('&'|safe, '') }}",
+        {"v": "&" * 11_000_000},
+        "",
+    ),
+    "a replace on escaped text": (
+        "{{ (v|replace('amp'|safe, 'y'))|length }}",
+        {"v": "&" * 12_500_000},
+        "37500000",
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    ("template", "values", "expected"),
+    ESCAPING_TEMPLATES.values(),
+    ids=ESCAPING_TEMPLATES,
+)
+@pytest.mark.asyncio
+async def test_a_template_that_escapes_megabytes_still_renders(
+    template: str, values: dict, expected: str
+):
+    formatter = TextFormatter(autoescape=True)
+    assert await formatter.format_string(template, values) == expected
+
+
 @pytest.mark.parametrize("autoescape", [False, True])
 @pytest.mark.parametrize(
     "template",
@@ -677,354 +672,26 @@ async def test_a_template_within_the_limits_still_renders(
 async def test_the_replace_filter_answers_as_jinja_does(
     autoescape: bool, template: str
 ):
-    # The check sizes a replace from the operands Jinja's filter uses, so it
-    # takes them the same way: stringified, and escaped under autoescape
     plain = jinja2.Environment(autoescape=autoescape).from_string(template).render()
     assert await TextFormatter(autoescape=autoescape).format_string(template) == plain
 
 
-ESCAPED_REPLACES = {
-    "markup search over plain text": (
-        BIG_VALUE + "{{ ('&' * 10000)|replace('amp'|safe, a)|length }}"
-    ),
-    "plain replacement into markup": (
-        "{% set q = '\"' * 2000 %}{{ (('x' * 10000)|safe)|replace('x', q)|length }}"
-    ),
-}
-
-
-@pytest.mark.parametrize("template", ESCAPED_REPLACES.values(), ids=ESCAPED_REPLACES)
 @pytest.mark.asyncio
-async def test_a_replace_under_autoescape_is_sized_as_escaped(template: str):
-    # Escaping happens before the search and the insert, so the check counts
-    # in the escaped text with the escaped arguments
-    with pytest.raises(ValueError, match=BEFORE_IT_ALLOCATES):
-        await TextFormatter(autoescape=True).format_string(template)
-
-
-@pytest.mark.asyncio
-async def test_a_value_is_charged_for_what_escaping_makes_of_it():
+async def test_an_escaped_value_counts_towards_the_output_cap():
     # Escaping is what reaches the output, and it expands "&" fivefold, so a
-    # value that fits before it is escaped need not fit after
-    value = "&" * (MAX_RENDER_BYTES // 4)
-    assert len(value) < MAX_RENDER_BYTES
-    with pytest.raises(ValueError, match=AFTER_IT_IS_BUILT):
+    # value under the cap before it is escaped need not be under it after
+    value = "&" * 12_500_000
+    assert len(value) < MAX_RENDER_OUTPUT
+    with pytest.raises(ValueError, match="output too large"):
         await TextFormatter(autoescape=True).format_string("{{ v }}", {"v": value})
 
 
-@pytest.mark.parametrize(
-    "value", ["", "plain text", "&<>\"'", "a&b<c>d\"e'f", "&amp;", "<<<&&&"]
-)
-def test_the_escape_growth_is_what_escaping_adds(value: str):
-    # The charge above counts the growth without building it, so the count
-    # is read against what markupsafe really produces
-    assert len(escape(value)) == len(value) + text._escaped_growth(value)
-
-
-@pytest.mark.parametrize("method", ["ceil", "floor"])
 @pytest.mark.asyncio
-async def test_a_round_whose_power_of_ten_underflows_is_refused(
-    fmt: TextFormatter, method: str
-):
-    # Jinja divides by that power of ten, so a zero reaches the caller as a
-    # 500 unless the filter is refused first
-    with pytest.raises(ValueError, match="precision too small"):
-        await fmt.format_string("{{ 5|round(-1000, '" + method + "') }}")
-
-
-@pytest.mark.parametrize("entries", [2, 4, 8, 16])
-def test_every_entry_of_a_dict_is_charged(entries: int):
-    # Each pair `items()` makes is freed as the walk moves on, so a walk
-    # that measured the pairs could read the one before at the same address.
-    # The values differ in size, or reading the one before would not show.
-    value = {f"k{i}": "q" * (1000 * (i + 1)) for i in range(entries)}
-    assert text._text_size(value) >= sum(1000 * (i + 1) for i in range(entries))
-
-
-@pytest.mark.asyncio
-async def test_a_replace_is_sized_before_escaping_builds_its_operand():
-    # A markup argument makes `do_replace` escape the text, and escaping it
-    # is itself an allocation, so it is sized before it is built
-    value = "&" * (MAX_RENDER_BYTES // 4)
-    with pytest.raises(ValueError, match=BEFORE_IT_ALLOCATES):
-        await TextFormatter(autoescape=True).format_string(
-            "{{ v|replace('amp'|safe, 'y') }}", {"v": value}
-        )
-
-
-@pytest.mark.asyncio
-async def test_a_constant_tuple_in_a_loop_is_not_charged_each_pass(
-    fmt: TextFormatter,
-):
-    # Python keeps one object for a tuple of constants, so no pass of the
-    # loop builds another and no pass is charged for one
-    template = (
-        "{% for i in range(10000) %}" f"{{% set t = {_CONST_TUPLE} %}}" "{% endfor %}ok"
-    )
-    assert await fmt.format_string(template) == "ok"
-
-
-@pytest.mark.parametrize(
-    ("template", "values"),
-    [
-        ("{{ v|replace('&', '') }}", {"v": "&" * 12_000_000}),
-        ("{{ v|replace('x', m) }}", {"v": "x", "m": Markup("&" * 11_000_000)}),
-    ],
-    ids=["a replace that does not escape", "a markup replacement"],
-)
-@pytest.mark.asyncio
-async def test_a_replace_is_priced_for_the_escaping_it_actually_does(
-    template: str, values: dict
-):
-    # `do_replace` escapes the text only where one of its arguments is
-    # markup, and `escape` leaves a markup argument as it is
-    await TextFormatter(autoescape=True).format_string(template, values)
-
-
-def test_prose_in_a_container_is_not_priced_as_escaped_control_characters():
-    # A newline grows by one under `repr`, not by four, or a multi-line
-    # prompt would be charged several times what it renders
-    prose = ["a line of perfectly ordinary prose\n" * 1000]
-    assert text._text_size(prose) <= len(str(prose)) * 1.1
-
-
-def test_a_join_measures_a_repeated_reference_once(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    walks = 0
-    walk = text._walk_text_size
-
-    def counted(value, escaped, measured):
-        nonlocal walks
-        walks += 1
-        return walk(value, escaped, measured)
-
-    monkeypatch.setattr(text, "_walk_text_size", counted)
-    # Distinct containers, so walking the structure again is not free
-    inner = [["q"] * 50 for _ in range(50)]
-    text._bounded_join_input([inner] * 100, ",", _RenderBudget(MAX_RENDER_BYTES, None))
-    # The structure is walked once and the other references read the memo,
-    # rather than every reference walking all of it again
-    assert walks < 50 * 51 * 100 / 10
-
-
-def test_a_container_of_strings_is_charged_for_the_quotes_it_renders_them_in():
-    # A container renders each string item in quotes, and escaping turns
-    # each of those into five characters
-    value = ["a"] * 200
-    assert text._text_size(value, True) >= len(escape(str(value)))
-
-
-def test_a_container_that_holds_itself_is_measured_once():
-    loop: list = ["abc"]
-    loop.append(loop)
-    # The reference back into it costs what an empty slot costs, which is
-    # what `repr` renders it as
-    assert text._text_size(loop) == text._text_size(["abc", None])
-
-
-def test_a_container_referenced_twice_is_counted_twice():
-    shared = ["abcde"]
-    assert text._text_size([shared, shared]) == text._text_size([["abcde"], ["abcde"]])
-
-
-@pytest.mark.parametrize("depth", [0, 1, 2, 3, 4])
-def test_the_charge_for_a_container_tracks_the_text_it_renders(depth: int):
-    # The charge is an estimate, so it is held to a factor of two rather
-    # than to the character; what nesting used to cost it was the whole
-    # of every level below the second
-    value: list = ["abcdefghij"] * 3
-    for _ in range(depth):
-        value = [value] * 3
-    rendered = len(str(value))
-    assert rendered / 2 <= text._text_size(value) <= rendered * 2
-
-
-# A thousand tags of forty concatenations each: 0.59 s to compile here, long
-# enough that a millisecond timer gets hundreds of turns while it runs
-SLOW_TO_COMPILE = ("{{ " + " ~ ".join(["'a'"] * 40) + " }}") * 1_000
-
-
-@pytest.mark.asyncio
-async def test_another_task_runs_while_a_template_compiles(
-    fmt: TextFormatter, monkeypatch: pytest.MonkeyPatch
-):
-    served = 0
-
-    async def serve_other_requests():
-        nonlocal served
-        while True:
-            await asyncio.sleep(0.001)
-            served += 1
-
-    # Read on the compiling thread itself, so what is counted is the turns
-    # the loop took while compiling, and no deadline decides the window
-    marks: list[int] = []
-    compile_template = fmt.env.from_string
-
-    def watched(source: str):
-        marks.append(served)
-        template = compile_template(source)
-        marks.append(served)
-        return template
-
-    monkeypatch.setattr(fmt.env, "from_string", watched)
-    other = asyncio.create_task(serve_other_requests())
-    try:
-        await fmt.format_string(SLOW_TO_COMPILE, timeout=None)
-    finally:
-        other.cancel()
-    # Lexing, parsing and code generation hold the loop solid unless they
-    # run off it
-    assert marks[1] > marks[0]
-
-
-def test_the_wordwrap_line_bound_holds():
-    # The check sizes wordwrap's output from this bound, so it must be at
-    # least the number of wrap strings Jinja actually puts in
-    env = jinja2.Environment()
-    wordwrap = env.filters["wordwrap"]
-    rng = random.Random(16493)
-    pieces = ["a", "bb", "cccccc", " ", "  ", "-", "\n", "\r\n", "\t"]
-    for _ in range(3000):
-        value = "".join(rng.choices(pieces, k=rng.randint(0, 80)))
-        if rng.random() < 0.5:
-            # A word a little over half the width sits alone on its line,
-            # which is the case the factor of two in the bound is for
-            value = " ".join(["x" * rng.randint(1, 8)] * rng.randint(1, 30))
-        width = rng.randint(1, 12)
-        long_words, hyphens = rng.choice([True, False]), rng.choice([True, False])
-        wrapped = wordwrap(env, value, width, long_words, "\0", hyphens)
-        assert wrapped.count("\0") <= text._wordwrap_line_count(value, width)
-
-
-# --- The deadline is met, and the event loop is free while a render runs ---
-
-# Four nested loops are 10^16 iterations in 156 bytes of template: more than
-# any deadline allows, and no single operation of it is over a limit.
-NESTED_LOOPS = (
-    "{% for a in range(10000) %}{% for b in range(10000) %}"
-    "{% for c in range(10000) %}{% for d in range(10000) %}"
-    "{% endfor %}{% endfor %}{% endfor %}{% endfor %}"
-)
-# The same with no call inside the loops, so nothing but the loop itself runs
-NESTED_LOOPS_OVER_A_LIST = (
-    "{% set s = range(10000)|list %}"
-    "{% for a in s %}{% for b in s %}{% for c in s %}{% for d in s %}"
-    "{% endfor %}{% endfor %}{% endfor %}{% endfor %}"
-)
-
-
-# A filter Jinja applies item by item runs inside one loop of its own, with
-# no body for a checkpoint to sit at the top of
-ITEM_BY_ITEM = (
-    "{% set l = [1] * 10000 %}"
-    + "{{ l.extend(l) or '' }}" * 7
-    + "{{ l|map('abs')|map('abs')|map('abs')|map('abs')|map('abs')|list|length }}"
-)
-
-
-@pytest.mark.parametrize(
-    "template", [NESTED_LOOPS, NESTED_LOOPS_OVER_A_LIST, ITEM_BY_ITEM]
-)
-@pytest.mark.asyncio
-async def test_a_render_past_its_deadline_is_refused(fmt: TextFormatter, template: str):
-    with pytest.raises(ValueError, match="timed out"):
-        await fmt.format_string(template, timeout=0.5)
-
-
-@pytest.mark.asyncio
-async def test_another_task_runs_while_a_template_renders(fmt: TextFormatter):
-    served = 0
-
-    async def serve_other_requests():
-        nonlocal served
-        while True:
-            await asyncio.sleep(0.01)
-            served += 1
-
-    other = asyncio.create_task(serve_other_requests())
-    try:
-        with pytest.raises(ValueError, match="timed out"):
-            await fmt.format_string(NESTED_LOOPS, timeout=0.5)
-    finally:
-        other.cancel()
-    # Only that the render let go of the loop at all: how many turns a
-    # 10 ms timer gets inside half a second is the runner's to decide
-    assert served > 0
-
-
-@pytest.mark.asyncio
-async def test_a_render_without_a_timeout_still_meets_its_size_budget(
-    fmt: TextFormatter,
-):
-    with pytest.raises(ValueError, match=BEFORE_IT_ALLOCATES):
-        await fmt.format_string(OVERSIZED_TEMPLATES["center filter"][0], timeout=None)
-
-
-@pytest.mark.asyncio
-async def test_the_checkpoint_refuses_a_render_past_its_deadline(fmt: TextFormatter):
-    token = _render_budget.set(_RenderBudget(MAX_RENDER_BYTES, monotonic() - 1))
-    try:
-        with pytest.raises(Exception) as refusal:
-            await fmt.env.checkpoint()
-    finally:
-        _render_budget.reset(token)
-    assert type(refusal.value).__name__ == "_RenderDeadlineExceeded"
-
-
-@pytest.mark.asyncio
-async def test_the_checkpoint_gives_the_event_loop_a_turn(fmt: TextFormatter):
-    ran = False
-
-    async def other_work():
-        nonlocal ran
-        ran = True
-
-    token = _render_budget.set(_RenderBudget(MAX_RENDER_BYTES, monotonic() + 60))
-    try:
-        # A render that has just started is not yet due to give up the loop
-        task = asyncio.create_task(other_work())
-        await fmt.env.checkpoint()
-        assert ran is False
-        await task
-        # Once it has held the loop for the interval, the next one does
-        await asyncio.sleep(RENDER_YIELD_INTERVAL * 2)
-        ran = False
-        task = asyncio.create_task(other_work())
-        await fmt.env.checkpoint()
-        assert ran is True
-        await task
-    finally:
-        _render_budget.reset(token)
-
-
-# These two run against a budget small enough that a modest template reaches
-# it, because the value a lazy filter or an in-place method builds is only
-# charged after it exists: no argument of theirs says how big it will be.
-
-
-@pytest.mark.asyncio
-async def test_what_a_lazy_filter_builds_is_charged(
-    fmt: TextFormatter, monkeypatch: pytest.MonkeyPatch
-):
-    monkeypatch.setattr(text, "MAX_RENDER_BYTES", 5_000)
-    with pytest.raises(ValueError, match="exceed"):
-        # `list` answers a render with a coroutine, so the list of 2,000
-        # one-character strings is only there once that is awaited
-        await fmt.format_string("{{ v|list|length }}", {"v": "x" * 2_000})
-
-
-@pytest.mark.asyncio
-async def test_what_a_method_adds_to_its_own_container_is_charged(
-    fmt: TextFormatter, monkeypatch: pytest.MonkeyPatch
-):
-    monkeypatch.setattr(text, "MAX_RENDER_BYTES", 5_000)
-    with pytest.raises(ValueError, match="exceed"):
-        await fmt.format_string(
-            "{% set l = [] %}"
-            "{% for i in range(10000) %}{{ l.append(i) or '' }}{% endfor %}"
-        )
+async def test_the_output_cap_is_exact(fmt: TextFormatter):
+    at_cap = "{{ 'x'|center(" + str(MAX_RENDER_OUTPUT) + ") }}"
+    assert len(await fmt.format_string(at_cap)) == MAX_RENDER_OUTPUT
+    with pytest.raises(ValueError, match="output too large"):
+        await fmt.format_string("{{ 'x'|center(" + str(MAX_RENDER_OUTPUT + 1) + ") }}")
 
 
 @pytest.mark.parametrize(
@@ -1040,56 +707,104 @@ async def test_the_limits_hold_for_an_autoescaping_formatter(oversized: str):
         await escaping.format_string("a<b{{ c }}{{ d ~ e }}", {"c": "<i>", "d": "&"})
         == "a<b&lt;i&gt;&amp;"
     )
-    with pytest.raises(ValueError, match="exceed"):
-        await escaping.format_string(OVERSIZED_TEMPLATES[oversized][0])
+    with pytest.raises(ValueError, match=REFUSED):
+        await escaping.format_string(OVERSIZED_TEMPLATES[oversized], timeout=3)
 
 
 @pytest.mark.asyncio
-async def test_a_template_longer_than_the_bound_is_refused(fmt: TextFormatter):
-    with pytest.raises(ValueError, match="Template too long"):
-        await fmt.format_string("x" * (MAX_TEMPLATE_LENGTH + 1))
-    assert await fmt.format_string("x" * MAX_TEMPLATE_LENGTH) == (
-        "x" * MAX_TEMPLATE_LENGTH
+async def test_the_memory_limit_binds_the_worker_and_not_the_caller(
+    fmt: TextFormatter,
+):
+    # Two gigabytes, far past the worker's limit: it is refused there, and
+    # this process never holds any of it
+    peak_before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    with pytest.raises(ValueError, match="out of memory"):
+        await fmt.format_string("{{ 'x'|center(" + HUGE + ")|length }}")
+    grown_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss - peak_before
+    assert grown_kb < RENDER_MEMORY_LIMIT // 1024
+    # Most of the limit still renders, so the limit is the worker's own
+    assert await fmt.format_string(MOST_OF_THE_LIMIT + "{{ a|length }}") == (
+        "400000000"
     )
 
 
 @pytest.mark.asyncio
-async def test_a_template_with_too_many_tags_is_refused(fmt: TextFormatter):
-    # Compiling happens before the budget and the deadline exist, and what it
-    # costs follows from the number of tags rather than the length
-    with pytest.raises(ValueError, match="too many tags"):
-        await fmt.format_string("{{ v }}" * (MAX_TEMPLATE_TAGS + 1), {"v": ""})
-    assert await fmt.format_string("{{ v }}" * MAX_TEMPLATE_TAGS, {"v": ""}) == ""
+async def test_a_refused_render_leaves_rendering_working(fmt: TextFormatter):
+    with pytest.raises(ValueError, match="out of memory"):
+        await fmt.format_string(OVERSIZED_TEMPLATES["center filter"])
+    assert await fmt.format_string("{{ v }}!", {"v": "still here"}) == "still here!"
 
 
 @pytest.mark.asyncio
-async def test_comments_count_towards_the_tag_cap(fmt: TextFormatter):
-    # A comment is a tag the lexer still walks, and it renders to nothing, so
-    # neither the tag count nor the output would otherwise see it
-    with pytest.raises(ValueError, match="too many tags"):
-        await fmt.format_string("{# c #}" * (MAX_TEMPLATE_TAGS + 1))
-    assert await fmt.format_string("a{# c #}b") == "ab"
+async def test_a_render_that_fills_the_heap_leaves_the_next_its_whole_limit(
+    fmt: TextFormatter,
+):
+    # A hundred thousand small strings, which the allocator keeps once freed,
+    # so the next render on that worker would start most of its limit down
+    with pytest.raises(ValueError, match="out of memory"):
+        await fmt.format_string(OVERSIZED_TEMPLATES["a slice taken every iteration"])
+    big = "{{ (" + _X + "|center(400000000))|length }}"
+    assert await fmt.format_string(big) == "400000000"
+
+
+@pytest.mark.parametrize("method", ["ceil", "floor"])
+@pytest.mark.asyncio
+async def test_a_round_whose_power_of_ten_underflows_is_refused(
+    fmt: TextFormatter, method: str
+):
+    # Jinja divides by that power of ten, which is zero
+    with pytest.raises(ValueError, match="division"):
+        await fmt.format_string("{{ 5|round(-1000, '" + method + "') }}")
+
+
+@pytest.mark.parametrize(
+    ("template", "refusal"),
+    [
+        ("{{ ", "end of template"),
+        ("{{ 1 / 0 }}", "division by zero"),
+        ("{{ " + "1+" * 2_000 + "1 }}", "recursion"),
+    ],
+    ids=["a syntax error", "a division by zero", "an expression too deep to parse"],
+)
+@pytest.mark.asyncio
+async def test_a_template_error_is_the_callers(
+    fmt: TextFormatter, template: str, refusal: str
+):
+    with pytest.raises(ValueError, match=refusal):
+        await fmt.format_string(template)
 
 
 @pytest.mark.asyncio
-async def test_a_single_tag_longer_than_the_bound_is_refused(fmt: TextFormatter):
-    # The tag count says nothing about what one tag holds, and the length cap
-    # is set where a model's prompt lives, so one tag could carry all of it
-    one_long_tag = "{{ " + "1+" * (MAX_TEMPLATE_TAG_LENGTH // 2) + "1 }}"
-    with pytest.raises(ValueError, match="tag too long"):
-        await fmt.format_string(one_long_tag)
-    # A tag at the bound still compiles, as long as it is not what Jinja's
-    # own parser recurses on
-    flat = '{{ "' + "a" * (MAX_TEMPLATE_TAG_LENGTH - 100) + '"|length }}'
-    assert await fmt.format_string(flat) == str(MAX_TEMPLATE_TAG_LENGTH - 100)
+async def test_a_builtin_error_keeps_its_type(fmt: TextFormatter):
+    # As before the worker: what is not a template refusal is not a 400
+    with pytest.raises(TypeError, match="unsupported operand"):
+        await fmt.format_string("{{ 1 + 'a' }}")
 
 
 @pytest.mark.asyncio
-async def test_a_long_prompt_renders_wherever_its_tag_sits(fmt: TextFormatter):
-    # The bound measures a tag, not the distance to the next one, so text on
-    # either side of it is not what gets counted
-    for prompt in ("y" * 4_000_000 + "{{ v }}", "{{ v }}" + "y" * 4_000_000):
-        assert len(await fmt.format_string(prompt, {"v": "z"})) == 4_000_001
+async def test_markup_and_nested_values_reach_the_worker_intact():
+    values = {"m": Markup("<b>x</b>"), "d": {"l": [1, {"k": "<"}]}, "t": (1, 2)}
+    rendered = await TextFormatter().format_string(
+        "{{ m }}{{ d.l[1].k }}{{ d.l[0] + t[1] }}", values
+    )
+    assert rendered == "<b>x</b>&lt;3"
+
+
+@pytest.mark.asyncio
+async def test_a_value_that_cannot_reach_the_worker_is_the_callers(
+    fmt: TextFormatter,
+):
+    with pytest.raises(ValueError, match="plain data"):
+        await fmt.format_string("{{ v }}", {"v": lambda: 1})
+
+
+@pytest.mark.asyncio
+async def test_concurrent_renders_each_get_their_own_answer(fmt: TextFormatter):
+    # More renders than workers, so some wait for one to come free
+    answers = await asyncio.gather(
+        *(fmt.format_string("{{ i * 3 }}", {"i": i}) for i in range(24))
+    )
+    assert answers == [str(i * 3) for i in range(24)]
 
 
 @pytest.mark.parametrize(
@@ -1097,8 +812,7 @@ async def test_a_long_prompt_renders_wherever_its_tag_sits(fmt: TextFormatter):
     [
         ("hello", "hello"),
         # Jinja's lexer splits on \r\n, \r and \n, drops one trailing
-        # newline of any of the three and rejoins on \n; the shortcut stands
-        # in for that lexer, so it has to answer the same way
+        # newline of any of the three and rejoins on \n
         ("hello\n", "hello"),
         ("hello\n\n", "hello\n"),
         ("hello\r\n", "hello"),
@@ -1122,254 +836,99 @@ async def test_a_template_with_no_tag_comes_back_as_it_came(
 
 
 @pytest.mark.asyncio
-async def test_a_template_with_no_tag_costs_no_budget(
-    fmt: TextFormatter, monkeypatch: pytest.MonkeyPatch
-):
-    # Nothing is built and nothing is emitted: the answer is the string that
-    # came in, so compiling it and charging its text would both be waste
-    monkeypatch.setattr(text, "MAX_RENDER_BYTES", 5_000)
-    assert await fmt.format_string("y" * 10_000) == "y" * 10_000
-
-
-@pytest.mark.asyncio
-async def test_a_long_prompt_with_one_tag_still_renders(fmt: TextFormatter):
+async def test_a_long_prompt_renders_wherever_its_tag_sits(fmt: TextFormatter):
     # The caller `llm.py` renders a prompt before the model call can compress
-    # it, and a model window reaches millions of characters, so length alone
-    # must not be what refuses one
-    prompt = "y" * 4_000_000 + "{{ v }}"
-    assert len(await fmt.format_string(prompt, {"v": "z"})) == 4_000_001
+    # it, and a model window reaches millions of characters
+    for prompt in ("y" * 4_000_000 + "{{ v }}", "{{ v }}" + "y" * 4_000_000):
+        assert len(await fmt.format_string(prompt, {"v": "z"})) == 4_000_001
 
 
-@pytest.mark.asyncio
-async def test_a_format_string_within_the_bound_still_works(fmt: TextFormatter):
-    within = "%s" * (MAX_FORMAT_STRING_LENGTH // 2)
-    assert (
-        await fmt.format_string(
-            "{{ f % v }}", {"f": within, "v": ("",) * (MAX_FORMAT_STRING_LENGTH // 2)}
-        )
-        == ""
-    )
+# --- The deadline is met, and the event loop is free while a render runs ---
 
-
-@pytest.mark.asyncio
-async def test_what_str_format_builds_is_charged(
-    fmt: TextFormatter, monkeypatch: pytest.MonkeyPatch
-):
-    # The field check bounds one field; this is the result the call returns
-    monkeypatch.setattr(text, "MAX_RENDER_BYTES", 5_000)
-    with pytest.raises(ValueError, match="exceed"):
-        await fmt.format_string("{{ '{}'.format(v) }}", {"v": "x" * 3_000})
-
-
-@pytest.mark.asyncio
-async def test_a_bound_format_method_is_charged_per_call(
-    fmt: TextFormatter, monkeypatch: pytest.MonkeyPatch
-):
-    # Jinja builds one formatter per lookup, so a method bound once and called
-    # many times shares one. Each call renders a single character here, and a
-    # running total that spanned the calls would refuse the render for 60,000
-    # characters that never exist at one time.
-    monkeypatch.setattr(text, "MAX_RENDER_BYTES", 50_000)
-    bound_once = (
-        "{% set s = '{:.1}' %}{% set g = s.format %}"
-        "{% for i in range(20) %}{{ g(v) }}{% endfor %}"
-    )
-    assert await fmt.format_string(bound_once, {"v": "x" * 3_000}) == "x" * 20
-
-
-@pytest.mark.asyncio
-async def test_a_filter_that_hands_its_value_back_costs_nothing(
-    fmt: TextFormatter, monkeypatch: pytest.MonkeyPatch
-):
-    # `str.strip()` answers with the same object when it changes nothing, so
-    # the budget pays for the value once, at the output, and not again here
-    monkeypatch.setattr(text, "MAX_RENDER_BYTES", 5_000)
-    assert await fmt.format_string("{{ v|trim }}", {"v": "x" * 3_000}) == "x" * 3_000
-
-
-# Two tails, because the walk has two reasons not to search twice and each
-# shape exercises one: with nothing to find, the first opening ends the walk;
-# with a closing at the far end, the cursor skips every opening inside the tag
-# that was just measured. Either way one search is all it takes.
-@pytest.mark.parametrize("closing_delimiter", ["", "}}"])
-@pytest.mark.asyncio
-async def test_unclosed_tags_are_walked_once(
-    fmt: TextFormatter, monkeypatch: pytest.MonkeyPatch, closing_delimiter: str
-):
-    # Searching for a closing delimiter from every opening costs one scan of
-    # the tail per opening, which is quadratic in the template's size and is
-    # inside every cap. Counting the searches says so without timing anything.
-    searches = 0
-    closing = text._JINJA_TAG_END
-
-    class CountingSearches:
-        def search(self, *args: object, **kwargs: object) -> object:
-            nonlocal searches
-            searches += 1
-            return closing.search(*args, **kwargs)
-
-    monkeypatch.setattr(text, "_JINJA_TAG_END", CountingSearches())
-    template = "{{" * 5_000 + "y" * 100_000 + closing_delimiter
-    with pytest.raises(ValueError, match="tag too long"):
-        await fmt.format_string(template)
-    assert searches == 1
-
-
-@pytest.mark.asyncio
-async def test_the_tag_walk_measures_what_it_did_before(fmt: TextFormatter):
-    # The cursor must not change any answer, only the work taken to reach it
-    assert text._longest_tag("") == 0
-    assert text._longest_tag("no tags here") == 0
-    assert text._longest_tag("{{ v }}") == 7
-    assert text._longest_tag("{{ v }}{% if v %}y{% endif %}") == len("{% endif %}")
-    assert text._longest_tag("a{# c #}b") == 7
-    # An opening inside the tag just measured belongs to that tag
-    assert text._longest_tag("{{ {{ v }}") == 10
-    # An unclosed opening runs to the end
-    assert text._longest_tag("ab{{ cde") == 6
-
-
-@pytest.mark.asyncio
-async def test_an_expression_too_deep_to_parse_is_the_callers_error(
-    fmt: TextFormatter,
-):
-    # Jinja's parser recurses per operator, so a nested expression inside one
-    # tag raises RecursionError while compiling. It is the caller's template,
-    # so it answers the way every other refusal does.
-    with pytest.raises(ValueError, match="recursion"):
-        await fmt.format_string("{{ " + "1+" * 2_000 + "1 }}")
-
-
-# --- A new way to build a value is classified, never allowed by omission ---
-
-# Reviewed as bounded by the length of what they are given, so the budget can
-# charge their result instead of working its size out beforehand. A filter
-# Jinja adds, or one we add, lands in neither set and fails this test.
-BOUNDED_FILTERS = frozenset(
-    {
-        "abs",
-        "attr",
-        "capitalize",
-        "count",
-        "d",
-        "default",
-        "dictsort",
-        "e",
-        "escape",
-        "filesizeformat",
-        "first",
-        "float",
-        "forceescape",
-        "groupby",
-        "int",
-        "items",
-        "last",
-        "length",
-        "list",
-        "lower",
-        "map",
-        "max",
-        "min",
-        "random",
-        "reject",
-        "rejectattr",
-        "reverse",
-        "safe",
-        "select",
-        "selectattr",
-        "sort",
-        "striptags",
-        "title",
-        "trim",
-        "truncate",
-        "unique",
-        "upper",
-        "urlencode",
-        "wordcount",
-    }
+# Four nested loops are 10^16 iterations in 156 bytes of template: more than
+# any deadline allows, and no single operation of it is over a limit.
+NESTED_LOOPS = (
+    "{% for a in range(10000) %}{% for b in range(10000) %}"
+    "{% for c in range(10000) %}{% for d in range(10000) %}"
+    "{% endfor %}{% endfor %}{% endfor %}{% endfor %}"
 )
-
-# The same for the methods a template can call on a str, bytes or bytearray
-BOUNDED_METHODS = frozenset(
-    {
-        "append",
-        "capitalize",
-        "casefold",
-        "clear",
-        "copy",
-        "count",
-        "decode",
-        "encode",
-        "endswith",
-        "find",
-        "fromhex",
-        "hex",
-        "index",
-        "insert",
-        "isalnum",
-        "isalpha",
-        "isascii",
-        "isdecimal",
-        "isdigit",
-        "isidentifier",
-        "islower",
-        "isnumeric",
-        "isprintable",
-        "isspace",
-        "istitle",
-        "isupper",
-        "lower",
-        "lstrip",
-        "maketrans",
-        "partition",
-        "pop",
-        "remove",
-        "removeprefix",
-        "removesuffix",
-        "reverse",
-        "rfind",
-        "rindex",
-        "rpartition",
-        "rsplit",
-        "rstrip",
-        "split",
-        "splitlines",
-        "startswith",
-        "strip",
-        "swapcase",
-        "title",
-        "upper",
-    }
+# The same with no call inside the loops, so nothing but the loop itself runs
+NESTED_LOOPS_OVER_A_LIST = (
+    "{% set s = range(10000)|list %}"
+    "{% for a in s %}{% for b in s %}{% for c in s %}{% for d in s %}"
+    "{% endfor %}{% endfor %}{% endfor %}{% endfor %}"
 )
+# A filter Jinja applies item by item runs inside one loop of its own
+ITEM_BY_ITEM = (
+    "{% set l = [1] * 10000 %}"
+    + "{{ l.extend(l) or '' }}" * 10
+    + "{{ l|map('abs')|map('abs')|map('abs')|map('abs')|map('abs')|list|length }}"
+)
+# A thousand tags of forty concatenations each, slow to compile
+SLOW_TO_COMPILE = ("{{ " + " ~ ".join(["'a'"] * 40) + " }}") * 1_000
 
 
-def test_every_filter_is_classified(fmt: TextFormatter):
-    assert set(fmt.env.filters) == set(SIZE_CHECKED_FILTERS | BOUNDED_FILTERS)
-    assert SIZE_CHECKED_FILTERS.isdisjoint(BOUNDED_FILTERS)
-    assert REMOVED_FILTERS.isdisjoint(fmt.env.filters)
+@pytest.mark.parametrize(
+    "template", [NESTED_LOOPS, NESTED_LOOPS_OVER_A_LIST, ITEM_BY_ITEM]
+)
+@pytest.mark.asyncio
+async def test_a_render_past_its_deadline_is_refused(fmt: TextFormatter, template: str):
+    with pytest.raises(ValueError, match="timed out"):
+        await fmt.format_string(template, timeout=0.5)
 
 
-def test_every_text_method_is_classified():
-    callables = {
-        name
-        for kind in (str, bytes, bytearray)
-        for name in dir(kind)
-        if not name.startswith("_") and callable(getattr(kind, name))
-    }
-    assert callables - SIZE_CHECKED_METHODS == BOUNDED_METHODS
+@pytest.mark.asyncio
+async def test_a_render_past_its_deadline_is_killed(fmt: TextFormatter):
+    render = asyncio.create_task(fmt.format_string(NESTED_LOOPS, timeout=0.5))
+    seen = set()
+    while not render.done():
+        seen |= _render_workers()
+        await asyncio.wait([render], timeout=0.05)
+    with pytest.raises(ValueError, match="timed out"):
+        await render
+    # The worker that ran it is gone, rather than still spinning, and the
+    # next render gets a worker that answers
+    assert len(seen - _render_workers()) == 1
+    assert await fmt.format_string("{{ 1 + 1 }}") == "2"
 
 
-def test_a_loop_body_checks_the_budget_before_it_runs(fmt: TextFormatter):
-    source = fmt.env.compile("{% for i in range(3) %}{{ i }}{% endfor %}", raw=True)
-    assert "await environment.checkpoint()" in source[source.index("async for ") :]
+@pytest.mark.parametrize("template", [NESTED_LOOPS, SLOW_TO_COMPILE])
+@pytest.mark.asyncio
+async def test_another_task_runs_while_a_template_renders(
+    fmt: TextFormatter, template: str
+):
+    served = 0
+
+    async def serve_other_requests():
+        nonlocal served
+        while True:
+            await asyncio.sleep(0.01)
+            served += 1
+
+    other = asyncio.create_task(serve_other_requests())
+    try:
+        try:
+            await fmt.format_string(template, timeout=0.5)
+        except ValueError:
+            pass
+    finally:
+        other.cancel()
+    # Only that the render let go of the loop at all: how many turns a
+    # 10 ms timer gets inside half a second is the runner's to decide
+    assert served > 0
 
 
-def test_concatenation_goes_through_the_checked_join(fmt: TextFormatter):
-    assert "environment.join_checked(" in fmt.env.compile("{{ a ~ b }}", raw=True)
-
-
-def test_an_output_expression_is_left_to_the_render(fmt: TextFormatter):
-    # Jinja evaluates a wholly constant output expression while compiling the
-    # template, where no limit of ours can see it; the environment's finalize
-    # takes the context, which is what stops that.
-    assert "center" in fmt.env.compile("{{ 'x'|center(9) }}", raw=True)
+def _render_workers() -> set[int]:
+    """The pids of this process's live render workers."""
+    pids = set()
+    for proc in Path("/proc").iterdir():
+        if not proc.name.isdigit():
+            continue
+        try:
+            ppid = int((proc / "stat").read_text().rsplit(")", 1)[1].split()[1])
+            command = (proc / "cmdline").read_bytes()
+        except (OSError, IndexError, ValueError):
+            continue
+        if ppid == os.getpid() and b"_serve_renders" in command:
+            pids.add(int(proc.name))
+    return pids
