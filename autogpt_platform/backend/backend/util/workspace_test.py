@@ -341,6 +341,7 @@ def session_manager():
         "/skills/pdf/SKILL.md",
         "/skills/pdf/references/guide.md",
         "/experts/expert-a/skills/pdf/scripts/extract.py",
+        "/sessions/other/report.pdf",
     ],
 )
 def test_shared_roots_resolve_as_written(session_manager, path: str):

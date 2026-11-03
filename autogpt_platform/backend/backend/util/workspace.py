@@ -138,32 +138,33 @@ class WorkspaceManager:
             "user_global_config": self.user_global_config,
         }
 
-    def _matches_session(self, file: WorkspaceFile | None) -> bool:
-        return file is not None and (
-            self.session_id is None or file.session_id == self.session_id
-        )
-
     async def _run_scoped(self, action: Awaitable[T]) -> T:
         if self.user_global_config or self.organization_id is None:
             return await action
-        async with live_resource_lease(
-            self.user_id,
-            self.organization_id,
-            self.team_id,
-            self.access,
-        ) as guard:
-            if not guard:
-                if inspect.iscoroutine(action):
-                    action.close()
-                raise LiveResourceAccessRevoked("workspace_access_revoked")
-            if self.session_id is not None:
-                await require_exact_chat_session_scope(
-                    self.session_id,
-                    self.user_id,
-                    self.organization_id,
-                    self.team_id,
-                )
-            return await guard.run(action)
+        handed_off = False
+        try:
+            async with live_resource_lease(
+                self.user_id,
+                self.organization_id,
+                self.team_id,
+                self.access,
+            ) as guard:
+                if not guard:
+                    raise LiveResourceAccessRevoked("workspace_access_revoked")
+                if self.session_id is not None:
+                    await require_exact_chat_session_scope(
+                        self.session_id,
+                        self.user_id,
+                        self.organization_id,
+                        self.team_id,
+                    )
+                handed_off = True
+                return await guard.run(action)
+        finally:
+            # A refused action never starts; close it rather than leave it
+            # unawaited. Once handed off, guard.run owns it.
+            if not handed_off and inspect.iscoroutine(action):
+                action.close()
 
     def _authorize_path(self, path: str, *, write: bool = False) -> None:
         if self.scope is not None and not self.scope.allows_path(path, write=write):
@@ -217,11 +218,6 @@ class WorkspaceManager:
         Returns:
             Resolved path with session prefix if applicable
         """
-        # Explicit session paths must stay inside the manager's persisted session.
-        if path.startswith("/sessions/"):
-            if self.session_path and not path.startswith(self.session_path + "/"):
-                raise ValueError("Cross-session workspace paths are not allowed")
-            return path
         if path.startswith(SHARED_ROOTS):
             return path
 
@@ -248,8 +244,6 @@ class WorkspaceManager:
         Returns:
             Effective path prefix for database query
         """
-        if include_all_sessions and self.session_id is not None:
-            raise ValueError("Session-scoped managers cannot access other sessions")
         if include_all_sessions:
             # Normalize path to ensure leading slash (stored paths are normalized)
             if path is not None and not path.startswith("/"):
@@ -293,9 +287,8 @@ class WorkspaceManager:
             resolved_path,
             **self._scope_kwargs(),
         )
-        if not self._matches_session(file):
+        if file is None:
             raise FileNotFoundError(f"File not found at path: {resolved_path}")
-        assert file is not None
 
         storage = await get_workspace_storage()
         return await storage.retrieve(file.storage_path)
@@ -322,9 +315,8 @@ class WorkspaceManager:
             self.workspace_id,
             **self._scope_kwargs(),
         )
-        if not self._matches_session(file):
+        if file is None:
             raise FileNotFoundError(f"File not found: {file_id}")
-        assert file is not None
         self._authorize_file(file)
 
         storage = await get_workspace_storage()
@@ -345,9 +337,8 @@ class WorkspaceManager:
             self.workspace_id,
             **self._scope_kwargs(),
         )
-        if not self._matches_session(file):
+        if file is None:
             raise FileNotFoundError(f"File not found: {file_id}")
-        assert file is not None
         self._authorize_file(file)
 
         storage = await get_workspace_storage()
@@ -963,9 +954,8 @@ class WorkspaceManager:
             self.workspace_id,
             **self._scope_kwargs(),
         )
-        if not self._matches_session(file):
+        if file is None:
             return False
-        assert file is not None
         self._authorize_file(file, write=True)
 
         # Delete from storage
@@ -1024,9 +1014,8 @@ class WorkspaceManager:
             self.workspace_id,
             **self._scope_kwargs(),
         )
-        if not self._matches_session(file):
+        if file is None:
             raise FileNotFoundError(f"File not found: {file_id}")
-        assert file is not None
         self._authorize_file(file)
 
         storage = await get_workspace_storage()
@@ -1058,9 +1047,8 @@ class WorkspaceManager:
             self.workspace_id,
             **self._scope_kwargs(),
         )
-        if not self._matches_session(file):
+        if file is None:
             return None
-        assert file is not None
         self._authorize_file(file)
         return file
 
@@ -1083,12 +1071,11 @@ class WorkspaceManager:
         db = workspace_db()
         resolved_path = self._resolve_path(path)
         self._authorize_path(resolved_path)
-        file = await db.get_workspace_file_by_path(
+        return await db.get_workspace_file_by_path(
             self.workspace_id,
             resolved_path,
             **self._scope_kwargs(),
         )
-        return file if self._matches_session(file) else None
 
     async def get_file_count(
         self,
