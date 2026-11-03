@@ -31,6 +31,15 @@ if ! [[ "$rounds" =~ ^[1-9][0-9]*$ ]]; then
   exit 2
 fi
 
+# Each side must reach its own preview; an override would send both sides
+# to the same place while the perf-compare command names the two previews.
+for name in K6_BACKEND_URL K6_FRONTEND_URL K6_WS_URL; do
+  if [ -n "${!name:-}" ]; then
+    echo "ab.sh: $name is set; the A/B runs target the two previews by PR number, so unset it" >&2
+    exit 2
+  fi
+done
+
 cd "$(dirname "$0")/.."
 
 export K6_ENVIRONMENT=PREVIEW
@@ -64,13 +73,21 @@ for ((i = 1; i <= rounds; i++)); do
   fi
 done
 
-# Each journey's coverage status in one line, the same for runs that
-# exercised the same journeys.
+# Each journey's coverage in one line: its status, how many accounts ran it
+# and why not in full, the same for runs that sent the same load.
 coverage() {
   python3 -c '
 import json, sys
 coverage = json.load(open(sys.argv[1])).get("coverage") or {}
-print(" ".join(name + "=" + coverage[name]["status"] for name in sorted(coverage)))
+def entry(name):
+    c = coverage[name]
+    text = name + "=" + c["status"]
+    if c.get("accounts"):
+        text += "(" + c["accounts"] + " accounts)"
+    if c.get("reason"):
+        text += "[" + c["reason"] + "]"
+    return text
+print(" ".join(entry(name) for name in sorted(coverage)))
 ' "$1"
 }
 

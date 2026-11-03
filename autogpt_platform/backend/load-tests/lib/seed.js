@@ -37,6 +37,7 @@ import {
   NOT_SEEDED,
   PAYWALLED,
   SKILLS_UNAVAILABLE,
+  STORE_DISCOVERY_FAILED,
   SUBSCRIBE_FAILED,
   combine,
   isFailure,
@@ -223,9 +224,11 @@ function seedAccounts(auth, wants, data, runId) {
       libraryAgentIds: [],
       sessionIds: [],
       // COVERED, or why this account cannot run graphs or chat: a code from
-      // lib/coverage.js.
+      // lib/coverage.js. `refused` is why the target refused to create a
+      // graph or add a library agent for it, when it did.
       graphRuns: COVERED,
       chat: COVERED,
+      refused: COVERED,
     };
     data.accounts.push(account);
 
@@ -266,13 +269,22 @@ function able(data, field) {
 }
 
 // Graphs from deterministic blocks, each also a library agent, plus one
-// marketplace agent in the library when the store has one.
+// marketplace agent in the library when the store has one. Creating a graph
+// and adding a library agent sit behind the paywall too; a 402 stops the
+// account's seeding there.
 function seedGraphsAndLibrary(account, headers, data, runId) {
   const number = account.index + 1;
   fundAccount(headers);
   for (let g = 0; g < SEED_GRAPHS; g++) {
     const spec = seedGraph(runId, number, g);
-    const created = request("POST", "/graphs", headers, spec.body);
+    const created = request("POST", "/graphs", headers, spec.body, [200, 402]);
+    if (created.status === 402) {
+      account.refused = refusal(created, data);
+      console.warn(
+        `seed: account ${number} cannot create graphs: ${detail(created)}`,
+      );
+      return;
+    }
     if (!created.ok) {
       console.warn(
         `seed: creating graph ${g + 1} for account ${number} failed: ${detail(created)}`,
@@ -302,24 +314,43 @@ function seedGraphsAndLibrary(account, headers, data, runId) {
     account.graphs.push(graph);
   }
   if (data.store.listingVersionId) {
-    const added = request(
-      "POST",
-      "/library/agents",
-      headers,
-      {
-        store_listing_version_id: data.store.listingVersionId,
-        source: "marketplace",
-      },
-      [200, 201],
-    );
-    if (added.ok && added.json && added.json.id) {
-      seedLibraryAdds.add(1);
-      account.libraryAgentIds.push(added.json.id);
-    }
+    addMarketplaceAgent(account, headers, data);
   }
   const credits = request("GET", "/credits", headers);
   if (credits.ok && credits.json)
     seedCredits.add(Number(credits.json.credits) || 0);
+}
+
+// Adds the discovered marketplace agent to the account's library. An
+// account that already has it in its library keeps that entry: the seed
+// neither adds it nor counts it among what teardown deletes.
+function addMarketplaceAgent(account, headers, data) {
+  const number = account.index + 1;
+  const versionId = data.store.listingVersionId;
+  const existing = request(
+    "GET",
+    `/library/agents/marketplace/${versionId}`,
+    headers,
+  );
+  if (existing.ok && existing.json && existing.json.id) return;
+  const added = request(
+    "POST",
+    "/library/agents",
+    headers,
+    { store_listing_version_id: versionId, source: "marketplace" },
+    [200, 201, 402],
+  );
+  if (added.status === 402) {
+    if (account.refused === COVERED) account.refused = refusal(added, data);
+    console.warn(
+      `seed: account ${number} cannot add a marketplace agent: ${detail(added)}`,
+    );
+    return;
+  }
+  if (added.ok && added.json && added.json.id) {
+    seedLibraryAdds.add(1);
+    account.libraryAgentIds.push(added.json.id);
+  }
 }
 
 // SEED_RUNS runs of each of the account's graphs. A 402 keeps this account
@@ -327,7 +358,8 @@ function seedGraphsAndLibrary(account, headers, data, runId) {
 function startSeedRuns(account, headers, data, pendingRuns) {
   const number = account.index + 1;
   if (account.graphs.length === 0) {
-    account.graphRuns = SEED_GRAPHS === 0 ? NOT_SEEDED : NO_GRAPHS;
+    if (account.refused !== COVERED) account.graphRuns = account.refused;
+    else account.graphRuns = SEED_GRAPHS === 0 ? NOT_SEEDED : NO_GRAPHS;
     return;
   }
   for (const graph of account.graphs) {
@@ -458,6 +490,7 @@ function recordRunCoverage(data, journeys) {
 }
 
 function storeCoverage(store) {
+  if (store.failed) return STORE_DISCOVERY_FAILED;
   if (store.agents.length === 0) return MARKETPLACE_EMPTY;
   if (!store.skillsAvailable || store.skillSlugs.length === 0) {
     return SKILLS_UNAVAILABLE;
@@ -469,6 +502,7 @@ function storeCoverage(store) {
 function libraryCoverage(account) {
   if (account.libraryAgentIds.length > 0) return COVERED;
   if (account.graphs.length > 0) return NO_LIBRARY_AGENTS;
+  if (account.refused !== COVERED) return account.refused;
   return SEED_GRAPHS === 0 ? NOT_SEEDED : NO_GRAPHS;
 }
 
@@ -507,13 +541,16 @@ function fundAccount(headers) {
 // store journey reads it: the first page of agents and skills, and one
 // listing version to add to libraries. The skills catalogue sits behind a
 // feature flag that the backend evaluates for anonymous visitors apart from
-// signed-in users.
+// signed-in users; its 404 and an empty list are the target's limits, while
+// any other answer from either list is the store failing, which fails a run
+// that browses it.
 function discoverStore() {
   const store = {
     agents: [],
     skillSlugs: [],
     skillsAvailable: false,
     listingVersionId: null,
+    failed: false,
   };
   const agents = request(
     "GET",
@@ -525,6 +562,7 @@ function discoverStore() {
       .filter((a) => a.creator && a.slug && a.creator !== "Needs Profile")
       .map((a) => ({ creator: a.creator, slug: a.slug }));
   } else {
+    store.failed = true;
     console.warn(`seed: listing store agents failed: ${detail(agents)}`);
   }
   if (store.agents.length > 0) {
@@ -536,7 +574,7 @@ function discoverStore() {
     );
     if (page.ok && page.json)
       store.listingVersionId = page.json.store_listing_version_id || null;
-  } else {
+  } else if (!store.failed) {
     console.warn(
       "seed: the target's store has no agents; the store journey reads empty lists",
     );
@@ -561,10 +599,13 @@ function discoverStore() {
         "seed: the target's skills catalogue is empty; the store journey reads the list only",
       );
     }
-  } else {
+  } else if (skills.status === 404) {
     console.warn(
       `seed: skills are not available to visitors on the target (${detail(skills)}); the store journey skips them`,
     );
+  } else {
+    store.failed = true;
+    console.warn(`seed: listing store skills failed: ${detail(skills)}`);
   }
   storeSkillsFound.add(store.skillSlugs.length);
   return store;

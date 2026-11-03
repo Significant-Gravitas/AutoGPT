@@ -139,15 +139,7 @@ export function handleSummary(data) {
       steadyMs: durationMs(profile.duration),
     },
     scenarios,
-    customMetrics: customMetricNames().concat([
-      "copilot_chunks_per_turn",
-      "copilot_turns",
-      "copilot_turns_queued",
-      "copilot_turns_failed",
-      "graph_runs",
-      "graph_runs_failed",
-      "ws_events",
-    ]),
+    customMetrics: customMetricNames(),
     seeding: seedingReport,
     coverage: (summaryData) => coverageReport(summaryData, journeys),
   });

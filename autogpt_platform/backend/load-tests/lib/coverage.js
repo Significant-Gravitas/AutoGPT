@@ -8,9 +8,9 @@
 // can or skips, and the run passes or fails on what it measured. A failure
 // is the target not doing what the run needs and asked for: no seed run
 // completes, a requested engine fails its probe, the seed cannot create what
-// a journey reads. It fails the run through coverage_failures, whose
-// threshold is in configs/thresholds.js, because the journey's own
-// thresholds have no samples to fail on.
+// a journey reads, the store's lists fail. It fails the run through
+// coverage_failures, whose threshold is in configs/thresholds.js, because
+// the journey's own thresholds have no samples to fail on.
 //
 // setup() cannot hand text to handleSummary, so the state travels as
 // numbers: per journey, a code and how many accounts can run the journey.
@@ -34,6 +34,7 @@ export const NO_CREDITS = 10;
 export const SUBSCRIBE_FAILED = 11;
 export const NOT_SEEDED = 12;
 export const NO_LIBRARY_AGENTS = 13;
+export const STORE_DISCOVERY_FAILED = 14;
 
 const CODES = {
   [PAYWALLED]: {
@@ -98,6 +99,11 @@ const CODES = {
     failure: true,
     reason:
       "the seeded graphs have no library agents, so no library agent detail was read",
+  },
+  [STORE_DISCOVERY_FAILED]: {
+    failure: true,
+    reason:
+      "the store's agents or skills list failed when the seed read it (not a 404 or an empty list); the log says which",
   },
 };
 

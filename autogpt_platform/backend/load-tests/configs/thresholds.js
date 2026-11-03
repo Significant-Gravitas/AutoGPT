@@ -90,6 +90,19 @@ export const CUSTOM_RATES = {
   ws_errors: { journeys: ["graph_run"], max: 0.05 },
 };
 
+// Counts the summary reports for the steady phase alongside the numbers
+// above. k6 keeps a tagged submetric only for a metric with a threshold, so
+// each gets one that every run passes; they decide nothing.
+export const STEADY_COUNTS = {
+  copilot_chunks_per_turn: { journeys: ["copilot_turn"], always: "max>=0" },
+  copilot_turns: { journeys: ["copilot_turn"], always: "count>=0" },
+  copilot_turns_queued: { journeys: ["copilot_turn"], always: "count>=0" },
+  copilot_turns_failed: { journeys: ["copilot_turn"], always: "count>=0" },
+  graph_runs: { journeys: ["graph_run"], always: "count>=0" },
+  graph_runs_failed: { journeys: ["graph_run"], always: "count>=0" },
+  ws_events: { journeys: ["graph_run"], always: "count>=0" },
+};
+
 // Of all steady-phase requests, at most one in fifty may fail, and at least
 // 98% of checks must pass: a healthy target fails none, so this catches a
 // failing route while leaving room for a stray error from the target's own
@@ -140,6 +153,11 @@ export function buildThresholds(profile, journeys) {
     if (!enabledFor(slo, journeys)) continue;
     thresholds[`${name}{phase:steady}`] = [`rate<${slo.max}`];
   }
+  for (const name of Object.keys(STEADY_COUNTS)) {
+    const count = STEADY_COUNTS[name];
+    if (!enabledFor(count, journeys)) continue;
+    thresholds[`${name}{phase:steady}`] = [count.always];
+  }
   for (const name of journeys) {
     // An open-model scenario drops iterations when every VU is busy, which
     // means the target could not take the offered rate. k6 counts a drop
@@ -154,6 +172,10 @@ export function buildThresholds(profile, journeys) {
   return thresholds;
 }
 
+// Every custom metric the summary reports, each with a steady-phase
+// submetric from buildThresholds.
 export function customMetricNames() {
-  return Object.keys(CUSTOM_SLOS).concat(Object.keys(CUSTOM_RATES));
+  return Object.keys(CUSTOM_SLOS)
+    .concat(Object.keys(CUSTOM_RATES))
+    .concat(Object.keys(STEADY_COUNTS));
 }

@@ -124,11 +124,18 @@ function steadyWindow(summary) {
   return `${w.steady_started_at || w.load_started_at} / ${w.steady_ended_at || w.ended_at}`;
 }
 
+// Each journey's status, how many accounts ran it and why not in full: two
+// runs that differ in any of them did not send the same load.
 function coverageLine(summary) {
   const coverage = summary.coverage || {};
   return Object.keys(coverage)
     .sort()
-    .map((name) => `${name}=${coverage[name].status}`)
+    .map((name) => {
+      const c = coverage[name];
+      return `${name}=${c.status}${c.accounts ? `(${c.accounts} accounts)` : ""}${
+        c.reason ? `[${c.reason}]` : ""
+      }`;
+    })
     .join(" ");
 }
 

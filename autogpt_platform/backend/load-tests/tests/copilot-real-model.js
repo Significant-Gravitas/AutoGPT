@@ -11,7 +11,11 @@ import { Trend } from "k6/metrics";
 
 import { getEnvironmentConfig } from "../configs/environment.js";
 import { authHeaders, authSetupTimeout, setupAuth } from "../lib/auth.js";
-import { streamTurn } from "../lib/copilot.js";
+import {
+  copilotTurnErrors,
+  copilotTurnsFailed,
+  streamTurn,
+} from "../lib/copilot.js";
 import { api } from "../lib/http.js";
 import { seededRandom, pick, runSeed } from "../lib/random.js";
 import { summaryOutputs } from "../lib/summary.js";
@@ -92,7 +96,14 @@ export function realTurn(data) {
     phase: "steady",
   });
   const sessionId = created.json && created.json.id;
-  if (!sessionId) return;
+  if (!sessionId) {
+    // A turn that could not start is a failed turn, so a run that sends
+    // none fails copilot_turn_errors instead of passing with no samples.
+    const tags = { phase: "steady", endpoint: "copilot.stream" };
+    copilotTurnsFailed.add(1, tags);
+    copilotTurnErrors.add(true, tags);
+    return;
+  }
   const turn = streamTurn(sessionId, pick(random, MESSAGES), {
     data,
     phase: "steady",

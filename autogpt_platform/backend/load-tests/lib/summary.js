@@ -165,12 +165,16 @@ export function buildSummary(data, meta) {
     byJourney[match[1]].dropped_iterations = dropped[tags].values.count;
   }
 
+  // Steady phase only. A test that reports no phases (meta.phases unset,
+  // tests/copilot-real-model.js) records every sample in the steady phase,
+  // so a metric without a steady submetric is reported whole; the workload
+  // leaves such a metric out rather than mix its warm-up in.
   const custom = {};
   for (const name of meta.customMetrics || []) {
     const steady = data.metrics[`${name}{phase:steady}`];
     const all = data.metrics[name];
     if (steady) custom[name] = trendRow(steady);
-    else if (all) custom[name] = trendRow(all);
+    else if (all && !meta.phases) custom[name] = trendRow(all);
   }
 
   const summary = {
