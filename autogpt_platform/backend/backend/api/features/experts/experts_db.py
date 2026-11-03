@@ -477,9 +477,12 @@ async def list_experts(user_id: str, *, with_metrics: bool = True) -> list[Exper
     )
     if not with_metrics:
         return [_to_model(row) for row in rows]
-    latest_runs = await _latest_runs([row.id for row in rows])
-    weekly_spends = await _weekly_spends([row.id for row in rows])
-    credential_providers = await _credential_providers(user_id, rows)
+    expert_ids = [row.id for row in rows]
+    latest_runs, weekly_spends, credential_providers = await asyncio.gather(
+        _latest_runs(expert_ids),
+        _weekly_spends(expert_ids),
+        _credential_providers(user_id, rows),
+    )
     return [
         _to_model(
             row, latest_runs.get(row.id), weekly_spends.get(row.id, 0)
@@ -631,12 +634,17 @@ async def get_expert(
     )
     if row is None:
         return None
-    latest_runs = await _latest_runs([row.id])
-    expert = _to_model(row, latest_runs.get(row.id), await get_weekly_spend(row.id))
     if not include_credentials:
-        return expert
-    credential_providers = await _credential_providers(user_id, [row])
-    return expert.model_copy(
+        latest_runs, weekly_spend = await asyncio.gather(
+            _latest_runs([row.id]), get_weekly_spend(row.id)
+        )
+        return _to_model(row, latest_runs.get(row.id), weekly_spend)
+    latest_runs, weekly_spend, credential_providers = await asyncio.gather(
+        _latest_runs([row.id]),
+        get_weekly_spend(row.id),
+        _credential_providers(user_id, [row]),
+    )
+    return _to_model(row, latest_runs.get(row.id), weekly_spend).model_copy(
         update=_credential_fields(credential_providers.get(row.id, []))
     )
 
@@ -683,15 +691,17 @@ async def list_expert_runs(
     # Exact per-execution review state (WAITING reviews for exactly these
     # ids) — a page of the user's newest reviews could miss an older run
     # that is still genuinely blocked.
-    waiting_reviews = await prisma.models.PendingHumanReview.prisma().find_many(
-        where={
-            "userId": user_id,
-            "status": prisma.enums.ReviewStatus.WAITING,
-            "graphExecId": {"in": execution_ids},
-        }
+    waiting_reviews, classified = await asyncio.gather(
+        prisma.models.PendingHumanReview.prisma().find_many(
+            where={
+                "userId": user_id,
+                "status": prisma.enums.ReviewStatus.WAITING,
+                "graphExecId": {"in": execution_ids},
+            }
+        ),
+        _classify_run_outputs(execution_ids),
     )
     reviewing = {review.graphExecId for review in waiting_reviews}
-    classified = await _classify_run_outputs(execution_ids)
 
     return [
         _to_expert_run(

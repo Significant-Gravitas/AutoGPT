@@ -236,26 +236,26 @@ async def list_library_agents(
             ],
         )
 
-    library_agents = await prisma.models.LibraryAgent.prisma().find_many(
-        where=where_clause,
-        include=library_agent_include(
-            user_id,
-            include_nodes=include_nodes,
-            include_executions=include_executions,
+    library_agents, agent_count, schedule_info = await asyncio.gather(
+        prisma.models.LibraryAgent.prisma().find_many(
+            where=where_clause,
+            include=library_agent_include(
+                user_id,
+                include_nodes=include_nodes,
+                include_executions=include_executions,
+            ),
+            order=order_by,
+            skip=(page - 1) * page_size,
+            take=page_size,
         ),
-        order=order_by,
-        skip=(page - 1) * page_size,
-        take=page_size,
+        prisma.models.LibraryAgent.prisma().count(where=where_clause),
+        _fetch_schedule_info(user_id),
     )
-    agent_count = await prisma.models.LibraryAgent.prisma().count(where=where_clause)
 
     logger.debug(f"Retrieved {len(library_agents)} library agents for user #{user_id}")
 
     graph_ids = [a.agentGraphId for a in library_agents if a.agentGraphId]
-    execution_counts, schedule_info = await asyncio.gather(
-        _fetch_execution_counts(user_id, graph_ids),
-        _fetch_schedule_info(user_id),
-    )
+    execution_counts = await _fetch_execution_counts(user_id, graph_ids)
 
     # Only pass valid agents to the response
     valid_library_agents: list[library_model.LibraryAgent] = []
@@ -520,8 +520,10 @@ async def get_library_agent_by_graph_id(
 
     assert agent.AgentGraph  # make type checker happy
     # Include sub-graphs so we can make a full credentials input schema
-    sub_graphs = await graph_db.get_sub_graphs(agent.AgentGraph)
-    schedule_info = await _fetch_schedule_info(user_id, graph_id=agent.agentGraphId)
+    sub_graphs, schedule_info = await asyncio.gather(
+        graph_db.get_sub_graphs(agent.AgentGraph),
+        _fetch_schedule_info(user_id, graph_id=agent.agentGraphId),
+    )
     return library_model.LibraryAgent.from_db(
         agent, sub_graphs=sub_graphs, schedule_info=schedule_info
     )
@@ -2231,13 +2233,15 @@ async def list_presets(
             {"OR": [{"organizationId": organization_id}, {"organizationId": None}]}
         ]
 
-    presets_records = await prisma.models.AgentPreset.prisma().find_many(
-        where=query_filter,
-        skip=(page - 1) * page_size,
-        take=page_size,
-        include=AGENT_PRESET_INCLUDE,
+    presets_records, total_items = await asyncio.gather(
+        prisma.models.AgentPreset.prisma().find_many(
+            where=query_filter,
+            skip=(page - 1) * page_size,
+            take=page_size,
+            include=AGENT_PRESET_INCLUDE,
+        ),
+        prisma.models.AgentPreset.prisma().count(where=query_filter),
     )
-    total_items = await prisma.models.AgentPreset.prisma().count(where=query_filter)
     total_pages = (total_items + page_size - 1) // page_size
 
     presets = [

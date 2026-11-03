@@ -148,15 +148,16 @@ async def list_graph_executions(
         25, ge=1, le=100, description="Number of executions per page"
     ),
 ) -> execution_db.GraphExecutionsPaginated:
-    paginated_result = await execution_db.get_graph_executions_paginated(
-        graph_id=graph_id,
-        user_id=user_id,
-        page=page,
-        page_size=page_size,
-        organization_id=ctx.org_id,
+    paginated_result, onboarding = await asyncio.gather(
+        execution_db.get_graph_executions_paginated(
+            graph_id=graph_id,
+            user_id=user_id,
+            page=page,
+            page_size=page_size,
+            organization_id=ctx.org_id,
+        ),
+        get_user_onboarding(user_id),
     )
-
-    onboarding = await get_user_onboarding(user_id)
     if (
         onboarding.onboardingAgentExecutionId
         and onboarding.onboardingAgentExecutionId
@@ -193,17 +194,22 @@ async def get_graph_execution(
             status_code=404, detail=f"Graph execution #{graph_exec_id} not found."
         )
 
-    if not await graph_db.get_graph(
-        graph_id=result.graph_id,
-        version=result.graph_version,
-        user_id=user_id,
-        organization_id=ctx.org_id,
-    ):
+    # Once the run is known to be the caller's, the onboarding row is read
+    # beside the graph check rather than after it.
+    graph, onboarding = await asyncio.gather(
+        graph_db.get_graph(
+            graph_id=result.graph_id,
+            version=result.graph_version,
+            user_id=user_id,
+            organization_id=ctx.org_id,
+        ),
+        get_user_onboarding(user_id),
+    )
+    if not graph:
         raise HTTPException(
             status_code=HTTP_404_NOT_FOUND, detail=f"Graph #{graph_id} not found"
         )
 
-    onboarding = await get_user_onboarding(user_id)
     if (
         onboarding.onboardingAgentExecutionId == graph_exec_id
         and OnboardingStep.GET_RESULTS not in onboarding.completedSteps
