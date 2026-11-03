@@ -1,5 +1,5 @@
-"""A new run reads its user, graph settings and workspace side by side: each
-stand-in answers only once all three are being awaited."""
+"""A new run reads its user and graph settings side by side, and gets or
+creates its workspace only once both have answered, as before."""
 
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
@@ -42,35 +42,9 @@ def _created_run(mocker: MockerFixture) -> MagicMock:
     return run
 
 
-@pytest.mark.asyncio
-async def test_a_new_run_reads_its_user_settings_and_workspace_side_by_side(
-    mocker: MockerFixture,
-) -> None:
-    meeting = Rendezvous(3)
-    now = datetime.now(UTC)
-    user = User(
-        id="user-1",
-        email="user@example.com",
-        name=None,
-        created_at=now,
-        updated_at=now,
-        stripe_customer_id=None,
-        top_up_config=None,
-        timezone="Europe/Paris",
-    )
-    run = _created_run(mocker)
+def _database_manager(mocker: MockerFixture, run: MagicMock) -> MagicMock:
+    """Everything a run start calls but the user, settings and workspace."""
     db = mocker.MagicMock()
-    db.get_user_by_id = AsyncMock(side_effect=meeting.returning(user))
-    db.get_graph_settings = AsyncMock(
-        side_effect=meeting.returning(
-            GraphSettings(
-                human_in_the_loop_safe_mode=False, sensitive_action_safe_mode=True
-            )
-        )
-    )
-    db.get_or_create_workspace = AsyncMock(
-        side_effect=meeting.returning(MagicMock(id="workspace-1"))
-    )
     db.create_graph_execution = AsyncMock(return_value=run)
     db.update_graph_execution_stats = AsyncMock(return_value=run)
     db.update_node_execution_status_batch = AsyncMock()
@@ -92,11 +66,69 @@ async def test_a_new_run_reads_its_user_settings_and_workspace_side_by_side(
     mocker.patch(
         "backend.executor.utils.get_async_execution_event_bus", return_value=event_bus
     )
+    return db
+
+
+@pytest.mark.asyncio
+async def test_a_new_run_reads_its_user_and_settings_side_by_side_then_its_workspace(
+    mocker: MockerFixture,
+) -> None:
+    meeting = Rendezvous(2)
+    answered: list[str] = []
+    answered_before_the_workspace: list[str] = []
+    now = datetime.now(UTC)
+
+    async def read_user(*_args: object, **_kwargs: object) -> User:
+        await meeting.arrive()
+        answered.append("user")
+        return User(
+            id="user-1",
+            email="user@example.com",
+            name=None,
+            created_at=now,
+            updated_at=now,
+            stripe_customer_id=None,
+            top_up_config=None,
+            timezone="Europe/Paris",
+        )
+
+    async def read_settings(*_args: object, **_kwargs: object) -> GraphSettings:
+        await meeting.arrive()
+        answered.append("settings")
+        return GraphSettings(
+            human_in_the_loop_safe_mode=False, sensitive_action_safe_mode=True
+        )
+
+    async def get_or_create_workspace(*_args: object) -> MagicMock:
+        answered_before_the_workspace.extend(answered)
+        return MagicMock(id="workspace-1")
+
+    run = _created_run(mocker)
+    db = _database_manager(mocker, run)
+    db.get_user_by_id = AsyncMock(side_effect=read_user)
+    db.get_graph_settings = AsyncMock(side_effect=read_settings)
+    db.get_or_create_workspace = AsyncMock(side_effect=get_or_create_workspace)
 
     assert await add_graph_execution(graph_id="graph-1", user_id="user-1") is run
 
+    assert sorted(answered_before_the_workspace) == ["settings", "user"]
     context = run.to_graph_execution_entry.call_args.kwargs["execution_context"]
     assert context.user_timezone == "Europe/Paris"
     assert context.workspace_id == "workspace-1"
     assert context.human_in_the_loop_safe_mode is False
     assert context.sensitive_action_safe_mode is True
+
+
+@pytest.mark.asyncio
+async def test_a_run_whose_user_read_fails_gets_no_workspace(
+    mocker: MockerFixture,
+) -> None:
+    db = _database_manager(mocker, _created_run(mocker))
+    db.get_user_by_id = AsyncMock(side_effect=RuntimeError("user read failed"))
+    db.get_graph_settings = AsyncMock(return_value=GraphSettings())
+    db.get_or_create_workspace = AsyncMock()
+
+    with pytest.raises(RuntimeError, match="user read failed"):
+        await add_graph_execution(graph_id="graph-1", user_id="user-1")
+
+    db.get_or_create_workspace.assert_not_awaited()

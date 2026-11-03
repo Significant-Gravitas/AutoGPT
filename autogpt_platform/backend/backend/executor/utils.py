@@ -1825,15 +1825,16 @@ async def _add_graph_execution(
 
     # Generate execution context if it's not provided
     if execution_context is None:
-        user, settings, workspace = await asyncio.gather(
+        # The workspace may be created, so it waits until both reads succeed.
+        user, settings = await asyncio.gather(
             udb.get_user_by_id(user_id),
             gdb.get_graph_settings(
                 user_id=user_id,
                 graph_id=graph_id,
                 graph_version=graph_exec.graph_version,
             ),
-            wdb.get_or_create_workspace(user_id),
         )
+        workspace = await wdb.get_or_create_workspace(user_id)
 
         execution_context = ExecutionContext(
             # Execution identity
