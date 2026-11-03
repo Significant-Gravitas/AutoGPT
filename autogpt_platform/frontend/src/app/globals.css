@@ -565,7 +565,9 @@ textarea,
 /* Streamdown (the chat's markdown renderer, a dependency) writes Tailwind's
    size names on its headings, table cells, code and menus, and the theme no
    longer has them. Inside its markup they take the type scale's step the
-   codemod gives each one (scripts/ds/text-size-scale.ts). They come before
+   codemod gives each one (scripts/ds/text-size-scale.ts). This covers every
+   size Streamdown writes today (xs to 3xl); after a Streamdown upgrade,
+   check its dist for larger ones and add them here. They come before
    the utilities and weigh one class, so a size class the app passes in
    still wins, as before. */
 :where([data-streamdown], [data-streamdown] *) {
