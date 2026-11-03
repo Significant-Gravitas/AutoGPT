@@ -2345,13 +2345,76 @@ def test_create_session_explicit_cloud_uses_normal_creation(
 async def test_local_session_activation_failure_detaches_and_deletes(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
-    target = chat_routes.LocalExecutionTargetRequest(
-        machine_id="machine-1",
-        expected_connection_id="connection-1",
-        browse_id="browse-1",
-        directory_ref="directory-1",
+    detach, delete = _patch_failing_local_activation(mocker)
+
+    with pytest.raises(fastapi.HTTPException) as raised:
+        await chat_routes._create_local_chat_session(
+            user_id="user-1",
+            organization_id="org-1",
+            team_id="team-1",
+            dry_run=False,
+            target=_LOCAL_TARGET,
+        )
+
+    assert raised.value.status_code == 503
+    detach.assert_awaited_once()
+    delete.assert_awaited_once()
+    assert delete.await_args.kwargs["organization_id"] == "org-1"
+
+
+@pytest.mark.asyncio
+async def test_local_session_cleanup_deletes_under_the_tenancy_it_was_saved_with(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """create_chat_session resolves a private expert's tenancy again. If that
+    moved since this request resolved it, the cleanup must delete under the
+    tenancy the row was saved with, or the delete matches nothing and the
+    session is orphaned."""
+    mocker.patch(
+        "backend.api.features.chat.routes.experts_db.resolve_private_expert_tenancy",
+        new_callable=AsyncMock,
+        return_value=("org-resolved", "team-resolved"),
     )
-    presence = SimpleNamespace(connection_id="connection-1")
+
+    async def create_after_a_move(user_id, *, session_id, execution_target, **_):
+        return ChatSession.new(
+            user_id,
+            dry_run=False,
+            session_id=session_id,
+            execution_target=execution_target,
+            organization_id="org-moved",
+            team_id="team-moved",
+        )
+
+    _, delete = _patch_failing_local_activation(mocker, create=create_after_a_move)
+
+    with pytest.raises(fastapi.HTTPException):
+        await chat_routes._create_local_chat_session(
+            user_id="user-1",
+            organization_id="org-1",
+            team_id="team-1",
+            dry_run=False,
+            target=_LOCAL_TARGET,
+            expert_id="expert-1",
+        )
+
+    delete.assert_awaited_once()
+    assert delete.await_args.kwargs["organization_id"] == "org-moved"
+
+
+_LOCAL_TARGET = chat_routes.LocalExecutionTargetRequest(
+    machine_id="machine-1",
+    expected_connection_id="connection-1",
+    browse_id="browse-1",
+    directory_ref="directory-1",
+)
+
+
+def _patch_failing_local_activation(mocker: pytest_mock.MockerFixture, *, create=None):
+    """Stub a Local PC create through attach and save, failing at activation.
+
+    The default ``create`` saves the row under the tenancy it is given, as
+    ``create_chat_session`` does. Returns the detach and delete mocks."""
     binding = MachineSessionBinding(
         session_id="placeholder",
         allowed_root="/workspace",
@@ -2363,12 +2426,16 @@ async def test_local_session_activation_failure_detaches_and_deletes(
     async def _attach(_presence, *, session_id, browse_id, directory_ref):
         return binding.model_copy(update={"session_id": session_id})
 
-    async def _create(user_id, *, session_id, execution_target, **_kwargs):
+    async def _create(
+        user_id, *, session_id, execution_target, organization_id, team_id, **_
+    ):
         return ChatSession.new(
             user_id,
             dry_run=False,
             session_id=session_id,
             execution_target=execution_target,
+            organization_id=organization_id,
+            team_id=team_id,
         )
 
     mocker.patch(
@@ -2386,7 +2453,7 @@ async def test_local_session_activation_failure_detaches_and_deletes(
     mocker.patch(
         "backend.api.features.chat.routes.get_machine_presence",
         new_callable=AsyncMock,
-        return_value=presence,
+        return_value=SimpleNamespace(connection_id="connection-1"),
     )
     mocker.patch(
         "backend.api.features.chat.routes.attach_machine_session",
@@ -2396,7 +2463,7 @@ async def test_local_session_activation_failure_detaches_and_deletes(
     mocker.patch(
         "backend.api.features.chat.routes.create_chat_session",
         new_callable=AsyncMock,
-        side_effect=_create,
+        side_effect=create or _create,
     )
     mocker.patch(
         "backend.api.features.chat.routes.activate_machine_session",
@@ -2412,19 +2479,7 @@ async def test_local_session_activation_failure_detaches_and_deletes(
         new_callable=AsyncMock,
         return_value=True,
     )
-
-    with pytest.raises(fastapi.HTTPException) as raised:
-        await chat_routes._create_local_chat_session(
-            user_id="user-1",
-            organization_id="org-1",
-            team_id="team-1",
-            dry_run=False,
-            target=target,
-        )
-
-    assert raised.value.status_code == 503
-    detach.assert_awaited_once()
-    delete.assert_awaited_once()
+    return detach, delete
 
 
 @pytest.mark.asyncio

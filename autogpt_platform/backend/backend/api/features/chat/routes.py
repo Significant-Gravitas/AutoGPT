@@ -755,6 +755,9 @@ async def _create_local_chat_session(
     # whose attach succeeded owns that id, including a row its create may have
     # committed before a cancellation; one whose attach failed owns nothing.
     attached: MachineSessionBinding | None = None
+    # create_chat_session resolves a private expert's tenancy again, so undo
+    # under the tenancy the row was saved with once it exists.
+    saved_organization_id = organization_id
     try:
         attached = await attach_machine_session(
             presence,
@@ -788,6 +791,7 @@ async def _create_local_chat_session(
             expert_id=expert_id,
             autopilot_mode=autopilot_mode,
         )
+        saved_organization_id = session.organization_id
         activated = await activate_machine_session(presence, attached)
         if not _bindings_match(attached, activated):
             raise MachineControlError(
@@ -818,7 +822,7 @@ async def _create_local_chat_session(
                 presence,
                 session_id,
                 user_id=user_id,
-                organization_id=organization_id,
+                organization_id=saved_organization_id,
                 owned=attached is not None,
             )
         )
