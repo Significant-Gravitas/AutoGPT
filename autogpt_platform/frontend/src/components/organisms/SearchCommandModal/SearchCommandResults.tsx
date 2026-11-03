@@ -55,7 +55,7 @@ export function SearchCommandResults({
           >
             <div
               data-slot="search-command-results-group-label"
-              className="px-3 pb-1 pt-2 text-caption-sm font-semibold uppercase leading-inherit tracking-wide text-foreground-tertiary"
+              className="px-3 pt-2 pb-1 text-caption-sm leading-inherit font-semibold tracking-wide text-foreground-tertiary uppercase"
             >
               {bucket.label}
             </div>

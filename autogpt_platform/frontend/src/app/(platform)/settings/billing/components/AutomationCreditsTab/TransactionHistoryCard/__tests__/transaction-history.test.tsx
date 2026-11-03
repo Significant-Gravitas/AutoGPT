@@ -43,10 +43,8 @@ describe("Transaction history receipts", () => {
     expect(statusLabel.closest("div")?.textContent).toContain("Running");
     expect(within(receipt).getByText("Net change so far")).toBeDefined();
     expect(
-      within(receipt)
-        .getByText("+$0.03")
-        .classList.contains("text-success-foreground"),
-    ).toBe(true);
+      within(receipt).getByText("+$0.03").closest(".text-success-foreground"),
+    ).not.toBeNull();
     expect(
       within(receipt)
         .getByRole("link", { name: /View task/ })
@@ -96,8 +94,8 @@ describe("Transaction history receipts", () => {
     fireEvent.click(screen.getByRole("button", { name: /Retry loading more/ }));
     expect(await screen.findByText("Credits added")).toBeDefined();
     expect(
-      screen.getByText("+$20.00").classList.contains("text-success-foreground"),
-    ).toBe(true);
+      screen.getByText("+$20.00").closest(".text-success-foreground"),
+    ).not.toBeNull();
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: /Load more/ })).toBeNull(),
     );

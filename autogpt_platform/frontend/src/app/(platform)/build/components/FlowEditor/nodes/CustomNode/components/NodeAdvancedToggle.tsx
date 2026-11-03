@@ -31,22 +31,23 @@ export function NodeAdvancedToggle({
       )}
     >
       <Button
-        variant="ghost"
-        className="h-fit min-w-0 p-0 hover:border-transparent hover:bg-transparent"
+        variant="toggle"
+        size="inline"
         onClick={() => setShowAdvanced(nodeId, !showAdvanced)}
         aria-expanded={showAdvanced}
       >
         <Text
           variant="body-semibold"
+          tone="body"
           as="span"
-          // TODO(tokens): no exact role: text-slate-700 #475263
-          className="flex items-center gap-2 text-slate-700"
+          className="flex items-center gap-2"
         >
           Advanced{" "}
           <Icon
             icon={ArrowDown01Icon}
             size={16}
-            className={`transition-transform ${showAdvanced ? "rotate-180" : ""}`}
+            motion="transform"
+            className={showAdvanced ? "rotate-180" : undefined}
             aria-hidden
           />
         </Text>

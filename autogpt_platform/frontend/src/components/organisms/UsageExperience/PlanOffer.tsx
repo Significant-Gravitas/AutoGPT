@@ -60,9 +60,7 @@ export function PlanOffer({
     <section
       aria-label={`${name} plan`}
       data-slot="plan-offer"
-      // TODO(tokens): no role for the purple-200 border or the purple-50 to
-      // blue-50 gradient.
-      className="rounded-2xl border border-purple-200 bg-gradient-to-br from-purple-50 via-white to-blue-50 p-5 sm:p-6"
+      className="rounded-2xl border border-brand/30 bg-gradient-to-br from-accent-surface via-surface to-info-surface p-5 sm:p-6"
     >
       <div
         data-slot="plan-offer-header"
@@ -74,14 +72,12 @@ export function PlanOffer({
         >
           <span
             data-slot="plan-offer-icon"
-            // TODO(tokens): no role for the purple-200 border or purple-600
-            // icon.
-            className="hidden size-10 shrink-0 items-center justify-center rounded-xl border border-purple-200 bg-surface text-purple-600 min-[360px]:flex"
+            className="hidden size-10 shrink-0 items-center justify-center rounded-xl border border-brand/30 bg-surface text-brand min-[360px]:flex"
           >
             <Icon icon={SparklesIcon} size={20} />
           </span>
           <div data-slot="plan-offer-heading">
-            <Text variant="h4" className="!text-xl">
+            <Text variant="h4" className="!text-lead">
               {name}
             </Text>
             <Text variant="small" tone="muted">
@@ -91,7 +87,7 @@ export function PlanOffer({
         </div>
         {amount && (
           <div data-slot="plan-offer-price" className="shrink-0 text-right">
-            <Text variant="h4" className="!text-2xl">
+            <Text variant="h4" className="!text-heading-md">
               {amount}
             </Text>
             <Text variant="small" tone="muted">
@@ -105,14 +101,13 @@ export function PlanOffer({
           <li
             key={feature}
             data-slot="plan-offer-feature"
-            className="flex gap-2.5 text-sm leading-5 text-foreground-body"
+            className="flex gap-2.5 text-body leading-5 text-foreground-body"
           >
             <Icon
               icon={Tick02Icon}
               size={16}
-              // TODO(tokens): no role for the purple-600 icon; brand-hover is a
-              // hover fill.
-              className="mt-0.5 shrink-0 text-purple-600"
+              tone="brand"
+              className="mt-0.5 shrink-0"
             />
             {feature}
           </li>
@@ -131,7 +126,7 @@ export function PlanOffer({
               ? `Start Pro now${amount ? ` · ${amount}` : ""}`
               : "Start Pro")}
       </Button>
-      <Text variant="small" tone="muted" className="mt-3 text-center !text-xs">
+      <Text variant="small-tight" tone="muted" align="center" className="mt-3">
         {freshUsage
           ? "You’ll see the full charge before you pay."
           : tier === "MAX"

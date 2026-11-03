@@ -72,7 +72,7 @@ export function DraftRecoveryPopup({
       {isOpen && (
         <motion.div
           ref={popupRef}
-          className={cn("absolute left-1/2 top-4 z-50")}
+          className={cn("absolute top-4 left-1/2 z-50")}
           initial={{
             opacity: 0,
             x: "-50%",
@@ -101,26 +101,15 @@ export function DraftRecoveryPopup({
               "flex items-center gap-3 rounded-xlarge border border-warning-border bg-warning-surface px-4 py-3 shadow-lg",
             )}
           >
-            <div
-              // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-amber-300 #FCD34D
-              className="flex items-center gap-2 text-warning-foreground dark:text-amber-300"
-            >
+            <div className="flex items-center gap-2 text-warning-foreground">
               <Icon icon={HistoryIcon} className="h-5 w-5" />
             </div>
 
             <div className="flex flex-col">
-              <Text
-                variant="small-medium"
-                // TODO(tokens): no exact role: text-amber-900 #78350F; dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-amber-100 #FEF3C7
-                className="text-amber-900 dark:text-amber-100"
-              >
+              <Text variant="small-medium" tone="warning">
                 Unsaved changes found
               </Text>
-              <Text
-                variant="small"
-                // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-amber-400 #FBBF24
-                className="text-warning-foreground dark:text-amber-400"
-              >
+              <Text variant="small" tone="warning">
                 {diffSummary ||
                   `${nodeCount} block${nodeCount !== 1 ? "s" : ""}, ${edgeCount} connection${edgeCount !== 1 ? "s" : ""}`}{" "}
                 • {formatTimeAgo(new Date(savedAt).toISOString())}
@@ -132,9 +121,10 @@ export function DraftRecoveryPopup({
                 <TooltipTrigger asChild>
                   <Button
                     variant="primary"
-                    size="small"
+                    size="icon-sm"
+                    shape="pill"
                     onClick={onLoad}
-                    className="aspect-square min-w-0 p-1.5"
+                    className="size-9"
                   >
                     <Icon icon={HistoryIcon} size={20} />
                     <span className="sr-only">Restore changes</span>
@@ -146,10 +136,12 @@ export function DraftRecoveryPopup({
                 <TooltipTrigger asChild>
                   <Button
                     variant="destructive"
-                    size="icon"
+                    size="icon-sm"
+                    shape="pill"
+                    withTooltip={false}
                     onClick={onDiscard}
                     aria-label="Discard changes"
-                    className="aspect-square min-w-0 p-1.5"
+                    className="size-9"
                   >
                     <Icon icon={Cancel01Icon} size={20} />
                     <span className="sr-only">Discard changes</span>

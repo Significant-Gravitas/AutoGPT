@@ -338,13 +338,12 @@ export function SetupRequirementsCard({
           below it; standalone the card keeps the full credentials picker. */}
       {needsCredentials && !chainActions && (
         <div className="rounded-2xl border bg-background p-3">
-          <Text
-            variant="small"
-            className="w-fit border-b text-foreground-tertiary"
-          >
-            {credentialsLabel ??
-              (isEditMode ? "Credentials" : "Workflow credentials")}
-          </Text>
+          <div className="w-fit border-b">
+            <Text tone="muted" variant="small">
+              {credentialsLabel ??
+                (isEditMode ? "Credentials" : "Workflow credentials")}
+            </Text>
+          </div>
           <div className="mt-6">
             <CredentialsGroupedView
               credentialFields={credentialFields}
@@ -361,16 +360,15 @@ export function SetupRequirementsCard({
           renders in the card below it, not inside the accordion. */}
       {isEditMode && !chainActions && (inputSchema || hasAdvancedFields) && (
         <div className="rounded-2xl border bg-background p-3 pt-4">
-          <Text
-            variant="small"
-            className="w-fit border-b text-foreground-tertiary"
-          >
-            Inputs
-          </Text>
+          <div className="w-fit border-b">
+            <Text tone="muted" variant="small">
+              Inputs
+            </Text>
+          </div>
           {inputSchema && (
             <FormRenderer
               jsonSchema={inputSchema}
-              className="mb-3 mt-3"
+              className="mt-3 mb-3"
               handleChange={(v) =>
                 setInputValues((prev) => ({ ...prev, ...(v.formData ?? {}) }))
               }
@@ -387,7 +385,7 @@ export function SetupRequirementsCard({
           {hasAdvancedFields && (
             <button
               type="button"
-              className="text-xs text-muted-foreground underline"
+              className="text-caption text-muted-foreground underline"
               onClick={() => setShowAdvanced((v) => !v)}
             >
               {showAdvanced ? "Hide advanced fields" : "Show advanced fields"}
@@ -398,14 +396,12 @@ export function SetupRequirementsCard({
 
       {!isEditMode && expectedInputs.length > 0 && (
         <div className="rounded-2xl border bg-background p-3">
-          <ContentCardTitle className="text-xs">
-            Expected inputs
-          </ContentCardTitle>
+          <ContentCardTitle size="small">Expected inputs</ContentCardTitle>
           <div className="mt-2 grid gap-2">
             {expectedInputs.map((input) => (
               <div key={input.name} className="rounded-xl border p-2">
                 <div className="flex items-center justify-between gap-2">
-                  <ContentCardTitle className="text-xs">
+                  <ContentCardTitle size="small">
                     {input.title}
                   </ContentCardTitle>
                   <ContentBadge>

@@ -34,12 +34,12 @@ export function ShareHeader({ title, subtitle, actions }: Props) {
     >
       <div className="min-w-0 [grid-area:title]">
         {title && (
-          <h1 className="truncate text-sm font-semibold text-foreground-strong">
+          <h1 className="truncate text-body font-semibold text-foreground-strong">
             {title}
           </h1>
         )}
         {subtitle && (
-          <p className="truncate text-xs text-foreground-tertiary">
+          <p className="truncate text-caption text-foreground-tertiary">
             {subtitle}
           </p>
         )}
@@ -62,14 +62,14 @@ function Logo() {
         alt="AutoGPT"
         width={120}
         height={54}
-        className="hidden h-7 w-auto dark:block"
+        className="hidden h-7 w-auto"
       />
       <Image
         src="/autogpt-logo-light-bg.png"
         alt="AutoGPT"
         width={120}
         height={54}
-        className="block h-7 w-auto dark:hidden"
+        className="block h-7 w-auto"
         priority
       />
     </Link>

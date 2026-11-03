@@ -43,7 +43,11 @@ describe("useSyncNotificationsEnabled", () => {
 
   afterEach(() => {
     storage.clean(Key.COPILOT_NOTIFICATIONS_ENABLED);
-    useCopilotUIStore.setState({ isNotificationsEnabled: false });
+    storage.clean(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED);
+    useCopilotUIStore.setState({
+      isNotificationsEnabled: false,
+      isNotificationBannerDismissed: false,
+    });
   });
 
   afterAll(() => {
@@ -126,5 +130,36 @@ describe("useSyncNotificationsEnabled", () => {
     storeValueFromAnotherTab("false");
 
     expect(useCopilotUIStore.getState().isNotificationsEnabled).toBe(true);
+  });
+
+  it("keeps the turn-on banner away when another tab switches notifications off", () => {
+    switchOnInThisTab();
+    useCopilotUIStore.setState({ isNotificationBannerDismissed: false });
+    renderHook(() => useSyncNotificationsEnabled());
+
+    storeValueFromAnotherTab("false");
+
+    expect(useCopilotUIStore.getState().isNotificationBannerDismissed).toBe(
+      true,
+    );
+  });
+
+  it("hides the turn-on banner when another tab dismisses it", () => {
+    useCopilotUIStore.setState({ isNotificationBannerDismissed: false });
+    renderHook(() => useSyncNotificationsEnabled());
+
+    storage.set(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED, "true");
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: Key.COPILOT_NOTIFICATION_BANNER_DISMISSED,
+          newValue: "true",
+        }),
+      );
+    });
+
+    expect(useCopilotUIStore.getState().isNotificationBannerDismissed).toBe(
+      true,
+    );
   });
 });

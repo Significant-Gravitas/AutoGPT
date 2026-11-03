@@ -10,14 +10,18 @@ export default function SlackInstalledPage() {
 
   return (
     <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
-      <AuthCard title="Slack connected" className="max-w-[38rem] gap-6 p-8">
+      <AuthCard
+        title="Slack connected"
+        // oxlint-disable-next-line design-system/no-restyle -- AuthCard has no roomy size; keeps today's p-8 padding and gap-6
+        className="max-w-[38rem] gap-6 p-8"
+      >
         <div className="flex w-full flex-col items-center gap-7">
           <div className="w-full rounded-xl bg-muted px-6 py-5 text-center">
             {/* The page navigates on its own, so announce it rather than
                 letting a screen reader land somewhere unexplained. */}
             <Text
               variant="body-medium"
-              className="text-muted-foreground"
+              tone="muted"
               role="status"
               aria-live="polite"
             >

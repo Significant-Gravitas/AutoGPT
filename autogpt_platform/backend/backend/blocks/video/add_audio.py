@@ -1,7 +1,6 @@
 """AddAudioToVideoBlock - Attach an audio track to a video file."""
 
 from moviepy.audio.io.AudioFileClip import AudioFileClip
-from moviepy.video.io.VideoFileClip import VideoFileClip
 
 from backend.blocks._base import (
     Block,
@@ -11,7 +10,11 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.blocks.video._utils import extract_source_name, strip_chapters_inplace
+from backend.blocks.video._utils import (
+    extract_source_name,
+    open_video_clip,
+    strip_chapters_inplace,
+)
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
@@ -81,7 +84,9 @@ class AddAudioToVideoBlock(Block):
         audio_clip = None
         final_clip = None
         try:
-            video_clip = VideoFileClip(video_abspath)
+            video_clip = open_video_clip(
+                video_abspath, block_name=self.name, block_id=str(self.id)
+            )
             audio_clip = AudioFileClip(audio_abspath)
             # Optionally scale volume
             if input_data.volume != 1.0:

@@ -11,15 +11,13 @@ import {
 } from "../helpers";
 
 const STATUS_DOTS: Record<MemberStatus, string> = {
-  // TODO(tokens): no exact role: bg-sky-500 #0EA5E9
-  installing: "bg-sky-500 animate-pulse",
+  installing: "bg-info animate-pulse",
   unchecked: "bg-warning",
   failed: "bg-error",
   needs_connection: "bg-warning",
   needs_setup: "bg-warning",
   working: "bg-primary animate-pulse",
-  // TODO(tokens): no exact role: bg-emerald-500 #10B981
-  ready: "bg-emerald-500",
+  ready: "bg-success",
 };
 
 interface Props {
@@ -111,7 +109,7 @@ export function TeamCard({ team }: Props) {
           {hidden > 0 && (
             <NextLink
               href="/team"
-              className="ml-auto text-sm font-medium text-foreground-secondary hover:text-foreground-strong"
+              className="ml-auto text-body font-medium text-foreground-secondary hover:text-foreground-strong"
             >
               and {hidden} more
             </NextLink>

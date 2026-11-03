@@ -32,12 +32,7 @@ export function AskCard({
         <Button size="small" onClick={onConnect} disabled={disabled}>
           Connect {ask.service}
         </Button>
-        <Button
-          size="small"
-          variant="ghost"
-          className="text-foreground-tertiary"
-          onClick={onDismissConnect}
-        >
+        <Button size="small" variant="ghost-muted" onClick={onDismissConnect}>
           Not now
         </Button>
       </AskFrame>

@@ -22,10 +22,13 @@ from e2b.exceptions import NotFoundException, TimeoutException
 from pydantic import SecretStr
 
 from backend.copilot import integration_creds
+from backend.copilot.context import bash_command_as_written
+from backend.copilot.sdk.file_ref import text_outside_file_refs
 from backend.data.model import APIKeyCredentials
 
 from ._test_data import make_session
 from .bash_exec import _KILL_TREE_SCRIPT, BashExecTool
+from .e2b_sandbox import SandboxOwner
 from .models import BashExecResponse, ErrorResponse
 
 _USER = "user-bash-exec-test"
@@ -140,10 +143,12 @@ class TestBashExecE2BTokenInjection:
             )
 
         # The session's picks reach the token lookup, not just its scopes.
-        mock_get_env.assert_awaited_once_with(_USER, None, _PICKED, None)
+        mock_get_env.assert_awaited_once_with(
+            _USER, None, _PICKED, None, allowed_ids=None
+        )
         # And the commit identity comes from that same GitHub account, so a
         # commit made with one account's token is not signed as another's.
-        mock_identity.assert_awaited_once_with(_USER, "cred-picked")
+        mock_identity.assert_awaited_once_with(_USER, "cred-picked", allowed_ids=None)
         call_kwargs = sandbox.commands.run.call_args[1]
         assert call_kwargs["envs"]["GH_TOKEN"] == "gh-secret"
         assert call_kwargs["envs"]["GITHUB_TOKEN"] == "gh-secret"
@@ -320,6 +325,106 @@ class TestBashExecSdkToolResultRedirect:
         sandbox.commands.run.assert_not_called()
 
     @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            (
+                "cd /root/.claude/projects/-tmp-copilot-abc/abc/tool-results/ && "
+                "python3 -c \"open('toolu_x.json')\""
+            ),
+            "ls -t /root/.claude/projects/*/*/tool-results/",
+        ],
+    )
+    async def test_redirect_on_sdk_dir_without_file_name(self, cmd):
+        tool = _make_tool()
+        session = make_session(user_id=_USER)
+        sandbox = _make_sandbox()
+        with patch(
+            "backend.copilot.tools.bash_exec.get_current_sandbox",
+            return_value=sandbox,
+        ):
+            result = await tool._execute(
+                user_id=_USER,
+                session=session,
+                command=cmd,
+                timeout=10,
+            )
+        assert isinstance(result, ErrorResponse)
+        assert "read_tool_result" in result.message
+        assert "/root/.claude/projects/" in result.message
+        sandbox.commands.run.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize(
+        "written",
+        [
+            "echo @@agptfile:/home/user/notes.md | wc -l",
+            # The route the redirect hint itself suggests.
+            (
+                "echo @@agptfile:/root/.claude/projects/-tmp-x/"
+                "0f8fad5b-d9cb-469f-a165-70867728950e/tool-results/"
+                "toolu_01.json[1-200] | wc -l"
+            ),
+        ],
+    )
+    async def test_no_redirect_from_agptfile_ref_or_its_content(self, written):
+        """An ``@@agptfile:`` ref, and the text it expands to, are not a
+        sandbox file access: the check reads the command as the model wrote
+        it, minus its refs."""
+        tool = _make_tool()
+        session = make_session(user_id=_USER)
+        sandbox = _make_sandbox(stdout="ok")
+        with (
+            patch(
+                "backend.copilot.tools.bash_exec.get_current_sandbox",
+                return_value=sandbox,
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.get_integration_env_vars",
+                new=AsyncMock(return_value={}),
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.get_github_user_git_identity",
+                new=AsyncMock(return_value=None),
+            ),
+            bash_command_as_written(text_outside_file_refs(written)),
+        ):
+            result = await tool._execute(
+                user_id=_USER,
+                session=session,
+                command="echo 'See /root/.claude/projects' | wc -l",
+                timeout=10,
+            )
+        assert isinstance(result, BashExecResponse)
+        sandbox.commands.run.assert_called_once()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_redirect_on_script_expanded_from_bare_ref(self):
+        """A command that is only an ``@@agptfile:`` ref runs the file it
+        names, so the expanded script is what gets checked."""
+        tool = _make_tool()
+        session = make_session(user_id=_USER)
+        sandbox = _make_sandbox()
+        with (
+            patch(
+                "backend.copilot.tools.bash_exec.get_current_sandbox",
+                return_value=sandbox,
+            ),
+            bash_command_as_written(
+                text_outside_file_refs("@@agptfile:/home/user/run.sh")
+            ),
+        ):
+            result = await tool._execute(
+                user_id=_USER,
+                session=session,
+                command="cat /root/.claude/projects/-tmp-x/a/tool-results/x.json",
+                timeout=10,
+            )
+        assert isinstance(result, ErrorResponse)
+        assert "read_tool_result" in result.message
+        sandbox.commands.run.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_no_redirect_on_user_path_containing_tool_outputs(self):
         """Regression: a user repo path that happens to contain a
         ``tool-outputs`` directory must NOT trigger the redirect, since
@@ -398,6 +503,113 @@ class TestBashExecSdkToolResultRedirect:
         sandbox.commands.run.assert_called_once()
 
 
+class TestBashExecOnAnExpertsBox:
+    """An expert's box is handed only the accounts its owner granted that
+    expert, with or without the swap proxy; a personal chat's box keeps every
+    account the user connected."""
+
+    _GRANTED = "ghp_the_granted_value"
+    _UNGRANTED = "ghp_the_ungranted_value"
+
+    @pytest.fixture(autouse=True)
+    def stored_and_granted(self):
+        # Stored first, so it is the default pick when nothing narrows the lookup.
+        stored = [
+            APIKeyCredentials(
+                id="cred-ungranted",
+                provider="github",
+                api_key=SecretStr(self._UNGRANTED),
+                title="GitHub",
+            ),
+            APIKeyCredentials(
+                id="cred-granted",
+                provider="github",
+                api_key=SecretStr(self._GRANTED),
+                title="GitHub",
+            ),
+        ]
+        manager = MagicMock()
+        manager.store.get_creds_by_provider = AsyncMock(
+            side_effect=lambda _user, provider: stored if provider == "github" else []
+        )
+        self.db = MagicMock()
+        self.db.expert_allowed_credential_ids = AsyncMock(return_value=["cred-granted"])
+        caches = (
+            integration_creds._token_cache,
+            integration_creds._null_cache,
+            integration_creds._credential_id_cache,
+        )
+        with (
+            patch.object(integration_creds, "_manager", manager),
+            patch.object(integration_creds, "_ensure_cache_invalidation_listener"),
+            patch.object(integration_creds, "experts_db", return_value=self.db),
+            patch(
+                "backend.copilot.tools.bash_exec.selected_credentials",
+                new=AsyncMock(return_value={}),
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.grant_to_box", new=AsyncMock()
+            ) as grant,
+            patch(
+                "backend.copilot.tools.bash_exec.get_github_user_git_identity",
+                new=AsyncMock(return_value=None),
+            ) as identity,
+        ):
+            self.grant, self.identity = grant, identity
+            for cache in caches:
+                cache.clear()
+            yield
+            for cache in caches:
+                cache.clear()
+
+    async def _envs(self, owner: SandboxOwner) -> dict[str, str]:
+        sandbox = _make_sandbox(stdout="ok")
+        sandbox.sandbox_id = "sb-1"
+        await _make_tool()._execute_on_e2b(
+            sandbox=sandbox,
+            command="gh repo list",
+            timeout=10,
+            session_id="session-of-an-expert",
+            user_id=_USER,
+            owner=owner,
+        )
+        return sandbox.commands.run.call_args[1]["envs"]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_without_the_proxy_only_the_granted_token_is_injected(self):
+        envs = await self._envs(SandboxOwner(kind="expert", id="expert-1"))
+        assert envs["GH_TOKEN"] == envs["GITHUB_TOKEN"] == self._GRANTED
+        assert all(self._UNGRANTED not in value for value in envs.values())
+        self.db.expert_allowed_credential_ids.assert_awaited_once_with(
+            _USER, "expert-1"
+        )
+        self.identity.assert_awaited_once_with(
+            _USER, None, allowed_ids=frozenset({"cred-granted"})
+        )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_behind_the_proxy_only_the_granted_credential_is_granted(self):
+        with patch(
+            "backend.copilot.tools.bash_exec.proxy_address", return_value="proxy:1080"
+        ):
+            envs = await self._envs(SandboxOwner(kind="expert", id="expert-1"))
+        assert envs["GH_TOKEN"] == "hsurr:github:cred-granted"
+        self.grant.assert_awaited_once_with("sb-1", {"github": "cred-granted"})
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_an_expert_with_no_grant_gets_no_account(self):
+        self.db.expert_allowed_credential_ids.return_value = []
+        envs = await self._envs(SandboxOwner(kind="expert", id="expert-1"))
+        assert "GH_TOKEN" not in envs
+        assert all(self._UNGRANTED not in value for value in envs.values())
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_personal_chats_box_is_not_narrowed(self):
+        envs = await self._envs(SandboxOwner(kind="session", id="session-1"))
+        assert envs["GH_TOKEN"] == self._UNGRANTED
+        self.db.expert_allowed_credential_ids.assert_not_awaited()
+
+
 class TestBashExecBehindTheSwapProxy:
     """With the box's egress through the swap proxy, the command gets
     placeholders: the stored value never reaches the box."""
@@ -459,7 +671,7 @@ class TestBashExecBehindTheSwapProxy:
                 user_id=_USER,
             )
         # Commits stay attributed to the picked account.
-        identity.assert_awaited_once_with(_USER, "cred-picked")
+        identity.assert_awaited_once_with(_USER, "cred-picked", allowed_ids=None)
         assert isinstance(result, BashExecResponse)
         return result
 

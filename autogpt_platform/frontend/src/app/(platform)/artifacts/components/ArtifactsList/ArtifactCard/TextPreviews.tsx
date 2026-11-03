@@ -15,8 +15,7 @@ interface PreviewProps {
 }
 
 const preClass =
-  // TODO(tokens): no exact text token for leading-[1.35]
-  "h-full w-full overflow-hidden whitespace-pre-wrap break-words bg-surface p-3 font-mono text-tiny leading-[1.35] text-foreground-body";
+  "h-full w-full overflow-hidden whitespace-pre-wrap break-words bg-surface p-3 font-mono text-tiny leading-snug text-foreground-body";
 
 // Fetch a larger slice and show more rows than the default so the card table
 // fills the preview area; the container clips overflow under the bottom fade.
@@ -43,25 +42,22 @@ export function CsvPreview({ file, onError }: PreviewProps) {
 // (huge h1, etc.) would overflow without these overrides.
 const MARKDOWN_COMPONENTS: Components = {
   h1: ({ children }) => (
-    <p className="mb-1 text-caption-sm font-semibold leading-inherit text-foreground-strong">
+    <p className="mb-1 text-caption-sm leading-inherit font-semibold text-foreground-strong">
       {children}
     </p>
   ),
   h2: ({ children }) => (
-    <p className="mb-1 text-caption-sm font-semibold leading-inherit text-foreground-strong">
+    <p className="mb-1 text-caption-sm leading-inherit font-semibold text-foreground-strong">
       {children}
     </p>
   ),
   h3: ({ children }) => (
-    <p className="mb-0.5 text-tiny font-semibold leading-inherit text-foreground-emphasis">
+    <p className="mb-0.5 text-tiny leading-inherit font-semibold text-foreground-emphasis">
       {children}
     </p>
   ),
   p: ({ children }) => (
-    <p
-      // TODO(tokens): no exact text token for leading-[1.4]
-      className="mb-1 text-tiny leading-[1.4] text-foreground-secondary"
-    >
+    <p className="mb-1 text-tiny leading-snug text-foreground-secondary">
       {children}
     </p>
   ),
@@ -76,21 +72,14 @@ const MARKDOWN_COMPONENTS: Components = {
     </ol>
   ),
   li: ({ children }) => <li className="mb-0.5">{children}</li>,
-  // TODO(tokens): no exact role for text-violet-600 (#7C3AED)
-  a: ({ children }) => <span className="text-violet-600">{children}</span>,
+  a: ({ children }) => <span className="text-brand">{children}</span>,
   code: ({ children }) => (
-    <code
-      // TODO(tokens): SECRT-3152, rare size text-[9px]
-      className="rounded bg-surface-hover px-1 font-mono text-[9px]"
-    >
+    <code className="rounded bg-surface-hover px-1 font-mono text-tiny leading-inherit">
       {children}
     </code>
   ),
   pre: ({ children }) => (
-    <pre
-      // TODO(tokens): SECRT-3152, rare size text-[9px]
-      className="mb-1 overflow-hidden rounded bg-surface-hover p-1.5 font-mono text-[9px] text-foreground-body"
-    >
+    <pre className="mb-1 overflow-hidden rounded bg-surface-hover p-1.5 font-mono text-tiny leading-inherit text-foreground-body">
       {children}
     </pre>
   ),
@@ -131,10 +120,7 @@ function CsvTable({ preview }: { preview: CsvPreview }) {
     "max-w-[6rem] truncate border-b border-separator px-2 py-1 text-left";
   return (
     <div className="relative h-full w-full overflow-hidden bg-surface">
-      <table
-        // TODO(tokens): SECRT-3152, rare size text-[9px]
-        className="w-full table-fixed border-collapse text-[9px] text-foreground-body"
-      >
+      <table className="w-full table-fixed border-collapse text-tiny leading-inherit text-foreground-body">
         <thead>
           <tr>
             {preview.headers.map((header, i) => (
