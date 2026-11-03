@@ -428,6 +428,9 @@ def test_not_renewing_notices_offer_resume_and_never_mention_a_charge(
         assert email.subject == "Your AutoGPT access ends tomorrow"
     else:
         assert email.subject == "Your AutoGPT trial ends in 3 days"
+    # The plain-text part keeps each block on its own paragraph.
+    assert "Auto-renew: Off\n\nIf you resume:" in email.text
+    assert "added.\n\nYou received this" in email.text
     # A service message: no urgency styling or sales framing.
     assert "Last chance" not in email.subject
     assert "#FFF6E8" not in email.html  # the amber attention strip
