@@ -1,0 +1,257 @@
+name: Validate appliance startup overlap
+'on':
+  push:
+    branches:
+    - codex/ci-appliance-preload-20261103-1930
+permissions:
+  contents: read
+env:
+  DEPLOY_IMAGE: docker.io/significantgravitas/autogpt
+  BUILD_CACHE_IMAGE: ghcr.io/significant-gravitas/autogpt-single-container-buildcache
+jobs:
+  build:
+    name: Appliance startup overlap (${{ matrix.platform }}, ${{ matrix.mode }})
+    permissions:
+      contents: read
+      packages: read
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - platform: linux/amd64
+          runner: ubuntu-24.04
+          suffix: amd64
+          mode: baseline
+        - platform: linux/amd64
+          runner: ubuntu-24.04
+          suffix: amd64
+          mode: preload
+        - platform: linux/arm64
+          runner: ubuntu-24.04-arm
+          suffix: arm64
+          mode: baseline
+        - platform: linux/arm64
+          runner: ubuntu-24.04-arm
+          suffix: arm64
+          mode: preload
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ github.sha }}
+        persist-credentials: false
+        filter: blob:none
+        sparse-checkout-cone-mode: false
+        sparse-checkout: '/*
+
+          !/docs/platform/.gitbook/assets/*.png
+
+          !/docs/platform/.gitbook/assets/*.gif
+
+          '
+    - name: Verify application source and test fixtures are present
+      run: python3 .github/scripts/validate_ci_checkout.py
+    - name: Initialize validation reports
+      shell: bash
+      env:
+        REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+      run: "mkdir -p \"$REPORT_DIR\"\njq -n \\\n  --arg sha \"$GITHUB_SHA\" \\\n  --arg platform \"${{\
+        \ matrix.platform }}\" \\\n  '{sha: $sha, platform: $platform, validated: false}' \\\n  > \"$REPORT_DIR/status.json\"\
+        \n"
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
+      with:
+        version: v0.36.0
+        cleanup: false
+        driver-opts: 'image=docker.io/moby/buildkit:v0.32.0@sha256:1f8167fcb0eca5b7126353d35299386945cbb8949cc516c592a49f80cfce4fa2
+
+          '
+    - name: Authenticate to GHCR build cache
+      continue-on-error: ${{ github.event_name == 'pull_request' }}
+      uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Configure registry build cache
+      id: cache
+      shell: bash
+      env:
+        BUILD_CACHE_ARCH: ${{ matrix.suffix }}
+      run: "python3 - <<'PY'\nimport os, sys\nsys.path.insert(0, '.github/scripts')\nfrom single_container_cache\
+        \ import cache_settings\nsettings=cache_settings('pull_request','',os.environ['BUILD_CACHE_IMAGE'],os.environ['BUILD_CACHE_ARCH'],head_ref='codex/ci-throughput-20261030')\n\
+        assert not any('.cache-to=' in item for item in settings)\nwith open(os.environ['GITHUB_OUTPUT'],'a')\
+        \ as f:\n    f.write('set<<CACHE_EOF\\n'+'\\n'.join(settings)+'\\nCACHE_EOF\\n')\nPY\n"
+    - name: Set the daily OS package refresh
+      id: apt-refresh
+      shell: bash
+      run: echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+    - name: Test appliance runtime helpers
+      shell: bash
+      env:
+        REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+      run: python3 .github/scripts/run_unittest_junit.py --start-directory autogpt_platform/single-container/tests
+        --pattern 'test_*.py' --allow-skip test_documented_operations.DocumentedOperationsTest.test_restored_launch_supports_bash_3_when_available
+        --output "$REPORT_DIR/runtime-helpers.xml"
+    - name: Test publication helpers
+      shell: bash
+      env:
+        REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+      run: python3 .github/scripts/run_command_junit.py --name publication-policy --classname single-container.publication
+        --output "$REPORT_DIR/publication-policy.xml" -- bash .github/scripts/platform-single-container-publish.sh
+        self-test
+    - name: Give each Bake target a distinct source mount
+      id: source-contexts
+      shell: bash
+      run: "{\n  echo 'set<<CONTEXT_EOF'\n  for target in backend-server-base backend-server single-container;\
+        \ do\n    path=\"$RUNNER_TEMP/context-$target\"\n    ln -s \"$GITHUB_WORKSPACE\" \"$path\"\n \
+        \   [[ \"$(readlink -f \"$path\")\" == \"$(readlink -f \"$GITHUB_WORKSPACE\")\" ]]\n    printf\
+        \ '%s.context=%s\\n' \"$target\" \"$path\"\n  done\n  echo CONTEXT_EOF\n} >> \"$GITHUB_OUTPUT\"\
+        \ngit diff --exit-code\n"
+    - name: Build image without publishing
+      id: build-image
+      background: true
+      uses: docker/bake-action@018cb6412ab401ebaa809aa5f85966b74628600f
+      with:
+        source: .
+        files: autogpt_platform/single-container/docker-bake.hcl
+        targets: single-container
+        set: '*.platform=${{ matrix.platform }}
+
+          *.args.APT_REFRESH=${{ steps.apt-refresh.outputs.date }}
+
+          single-container.args.IMAGE_VERSION=sha-${{ github.sha }}
+
+          single-container.args.VCS_REF=${{ github.sha }}
+
+          single-container.output=type=docker,compression=uncompressed
+
+          single-container.tags=autogpt-platform-single-container:ci-${{ matrix.suffix }}
+
+          ${{ steps.cache.outputs.set }}
+
+          ${{ steps.source-contexts.outputs.set }}
+
+          '
+    - name: Wait for image build
+      wait: build-image
+    - name: Install diagnostic startup wrapper without changing image configuration
+      if: matrix.mode == 'preload'
+      shell: bash
+      env:
+        SMOKE_IMAGE: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+      run: 'before=$(docker image inspect "$SMOKE_IMAGE" --format ''{{json .Config}}'' | jq -c ''{Entrypoint,
+        Cmd, Env, Labels, User, WorkingDir, Healthcheck}'')
+
+        container=$(docker create "$SMOKE_IMAGE")
+
+        trap ''docker rm -f "$container" >/dev/null'' EXIT
+
+        chmod 755 .github/benchmarks/appliance-preload/run-app.sh
+
+        docker cp .github/benchmarks/appliance-preload/run-app.sh "$container:/opt/autogpt/single-container/run-app.sh"
+
+        docker cp .github/benchmarks/appliance-preload/run-python-app.py "$container:/opt/autogpt/single-container/run-python-app-preload.py"
+
+        docker commit "$container" "$SMOKE_IMAGE"
+
+        after=$(docker image inspect "$SMOKE_IMAGE" --format ''{{json .Config}}'' | jq -c ''{Entrypoint,
+        Cmd, Env, Labels, User, WorkingDir, Healthcheck}'')
+
+        [[ "$before" == "$after" ]] || { echo ''Image configuration changed unexpectedly'' >&2; exit 1;
+        }
+
+        '
+    - name: Verify image source revision
+      shell: bash
+      env:
+        REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+        SMOKE_IMAGE: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+      run: "actual_revision=\"$(docker image inspect --format '{{ index .Config.Labels \"org.opencontainers.image.revision\"\
+        \ }}' \"$SMOKE_IMAGE\")\"\nif [[ \"$actual_revision\" != \"$GITHUB_SHA\" ]]; then\n  echo \"expected\
+        \ image revision $GITHUB_SHA, got $actual_revision\" >&2\n  exit 1\nfi\nimage_id=\"$(docker image\
+        \ inspect --format '{{ .Id }}' \"$SMOKE_IMAGE\")\"\njq -n \\\n  --arg sha \"$GITHUB_SHA\" \\\n\
+        \  --arg platform \"${{ matrix.platform }}\" \\\n  --arg image \"$SMOKE_IMAGE\" \\\n  --arg image_id\
+        \ \"$image_id\" \\\n  '{sha: $sha, platform: $platform, image: $image, image_id: $image_id, validated:\
+        \ false}' \\\n  > \"$REPORT_DIR/status.json\"\n"
+    - name: Smoke-test the complete image
+      id: complete-image-smoke
+      background: true
+      shell: bash
+      env:
+        REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+        SMOKE_IMAGE: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+        SMOKE_PLATFORM: ${{ matrix.platform }}
+        SMOKE_SCAN_COMPLETION_FILE: ${{ runner.temp }}/platform-single-container-results/scans-complete
+      run: python3 .github/scripts/run_command_junit.py --name complete-image-smoke --classname single-container.smoke
+        --output "$REPORT_DIR/smoke.xml" -- bash .github/scripts/platform-single-container-smoke.sh
+    - name: Scan for fixable critical vulnerabilities
+      id: vulnerability_scan
+      continue-on-error: true
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+      with:
+        image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+        scanners: vuln
+        format: json
+        output: ${{ runner.temp }}/platform-single-container-results/trivy-critical.json
+        ignore-unfixed: true
+        severity: CRITICAL
+        exit-code: '1'
+        timeout: 30m
+        trivyignores: autogpt_platform/single-container/.trivyignore.yaml
+    - name: Scan image filesystem for embedded secrets
+      id: secret_scan
+      continue-on-error: true
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+      with:
+        image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+        scanners: secret
+        format: json
+        output: ${{ runner.temp }}/platform-single-container-results/trivy-secrets.json
+        severity: HIGH,CRITICAL
+        exit-code: '1'
+        timeout: 30m
+        trivyignores: autogpt_platform/single-container/.trivyignore.yaml
+    - name: Signal concurrent scans complete
+      if: ${{ !cancelled() }}
+      shell: bash
+      env:
+        SCAN_COMPLETION_FILE: ${{ runner.temp }}/platform-single-container-results/scans-complete
+      run: touch "$SCAN_COMPLETION_FILE"
+    - name: Wait for complete-image smoke test
+      wait: complete-image-smoke
+    - name: Verify machine-readable reports
+      if: ${{ !cancelled() }}
+      shell: bash
+      env:
+        REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+        SMOKE_IMAGE: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+        SECRET_SCAN_OUTCOME: ${{ steps.secret_scan.outcome }}
+        VULNERABILITY_SCAN_OUTCOME: ${{ steps.vulnerability_scan.outcome }}
+      run: "scan_failed=0\nif [[ \"$VULNERABILITY_SCAN_OUTCOME\" != \"success\" ]]; then\n  echo \"vulnerability\
+        \ scan action concluded $VULNERABILITY_SCAN_OUTCOME\" >&2\n  scan_failed=1\nfi\nif [[ \"$SECRET_SCAN_OUTCOME\"\
+        \ != \"success\" ]]; then\n  echo \"secret scan action concluded $SECRET_SCAN_OUTCOME\" >&2\n\
+        \  scan_failed=1\nfi\nreports=(\n  runtime-helpers.xml\n  publication-policy.xml\n  smoke.xml\n\
+        \  trivy-critical.json\n  trivy-secrets.json\n)\nfor report in \"${reports[@]}\"; do\n  if [[\
+        \ ! -s \"$REPORT_DIR/$report\" ]]; then\n    echo \"missing machine-readable report: $report\"\
+        \ >&2\n    exit 1\n  fi\ndone\npython3 .github/scripts/verify_single_container_reports.py \\\n\
+        \  --report-dir \"$REPORT_DIR\" \\\n  --expected-image \"$SMOKE_IMAGE\"\n((scan_failed == 0))\n"
+    - name: Mark validation complete
+      shell: bash
+      env:
+        REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+      run: 'jq ''.validated = true'' "$REPORT_DIR/status.json" > "$REPORT_DIR/status.complete.json"
+
+        mv "$REPORT_DIR/status.complete.json" "$REPORT_DIR/status.json"
+
+        '
+    - name: Upload single-container reports
+      if: ${{ !cancelled() }}
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: platform-single-container-ci-${{ matrix.suffix }}-${{ matrix.mode }}
+        path: ${{ runner.temp }}/platform-single-container-results
+        if-no-files-found: error
+        retention-days: 3
