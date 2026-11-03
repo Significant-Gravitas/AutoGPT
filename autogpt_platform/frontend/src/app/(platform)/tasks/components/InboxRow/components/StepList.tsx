@@ -33,17 +33,21 @@ export function StepList({ steps, now }: Props) {
                 />
               )}
             </span>
-            <Text
-              as="span"
-              variant="small"
-              tone={live ? "ink" : "text"}
+            <span
               className={cn(
-                "min-w-0 flex-1 truncate",
+                "flex min-w-0 flex-1",
                 live && "animate-pulse motion-reduce:animate-none",
               )}
             >
-              {step.label}
-            </Text>
+              <Text
+                as="span"
+                variant="small"
+                tone={live ? "ink" : "text"}
+                className="truncate"
+              >
+                {step.label}
+              </Text>
+            </span>
             <Text
               as="span"
               variant="small"
