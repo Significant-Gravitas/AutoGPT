@@ -458,3 +458,15 @@ def _fake_open(file_contents: dict[str, str]):
         return real_open(path, *args, **kwargs)
 
     return _opener
+
+
+def test_a_relative_config_path_is_made_absolute(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The service manager runs the shim from its own working directory."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(install_mod, "resolve_shim_command", lambda: ("/usr/bin/autogpt-shim",))
+
+    ctx = install_mod.build_context(Path("conf") / "shim.toml")
+
+    assert ctx.config_path == str(tmp_path.resolve() / "conf" / "shim.toml")
