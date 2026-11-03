@@ -46,14 +46,17 @@ async def read_sandbox_file(
 class OutputLimitedCodeSandbox(AsyncCodeSandbox):
     """The code interpreter sandbox, with ``run_code`` given up on past the limit.
 
-    The response body is counted as it arrives, after decompression, rather
-    than the messages ``run_code`` hands its callbacks, which arrive only once
-    whole. ``run_code`` builds a fresh client from ``_client`` for each request.
+    The response body is counted as it arrives, rather than the messages
+    ``run_code`` hands its callbacks, which arrive only once whole. The body is
+    asked for uncompressed, because httpx decodes above the stream the counter
+    wraps: a compressed body would decode past the limit unmetered.
+    ``run_code`` builds a fresh client from ``_client`` for each request.
     """
 
     @property
     def _client(self) -> httpx.AsyncClient:
         client = super()._client
+        client.headers["accept-encoding"] = "identity"
         client.event_hooks["response"].append(_count_body)
         return client
 
@@ -74,6 +77,14 @@ class _OutputLimit:
 async def _count_body(response: httpx.Response) -> None:
     if not isinstance(response.stream, httpx.AsyncByteStream):
         raise TypeError("Expected an async response stream")
+    # The counter sees the bytes on the wire, so an encoded body would decode
+    # past the limit unmetered however small it arrives.
+    encoding = response.headers.get("content-encoding", "identity").lower()
+    if encoding != "identity":
+        raise SandboxOutputLimitError(
+            f"Sandbox sent a {encoding}-encoded body, which cannot be limited "
+            "while reading"
+        )
     response.stream = _CountedBody(response.stream)
 
 

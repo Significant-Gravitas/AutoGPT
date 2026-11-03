@@ -30,7 +30,11 @@ class _Sent:
     size = 0
 
 
-async def _run_code(body: AsyncIterator[bytes]):
+async def _run_code(
+    body: AsyncIterator[bytes],
+    headers: dict[str, str] | None = None,
+    seen: list[httpx.Request] | None = None,
+):
     sandbox = OutputLimitedCodeSandbox(
         sandbox_id="sb-1",
         envd_version=Version("0.2.0"),
@@ -38,7 +42,13 @@ async def _run_code(body: AsyncIterator[bytes]):
         sandbox_domain=None,
         connection_config=ConnectionConfig(api_key="k"),
     )
-    transport = httpx.MockTransport(lambda request: httpx.Response(200, content=body))
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if seen is not None:
+            seen.append(request)
+        return httpx.Response(200, content=body, headers=headers)
+
+    transport = httpx.MockTransport(respond)
     with patch(
         "e2b_code_interpreter.code_interpreter_async.get_transport",
         return_value=transport,
@@ -74,6 +84,33 @@ async def test_run_code_gives_up_on_a_program_that_keeps_printing():
         await _run_code(body())
 
     assert sent.size <= MAX_SANDBOX_OUTPUT_SIZE + 2 * _MIB
+
+
+@pytest.mark.asyncio
+async def test_run_code_asks_for_an_uncompressed_body():
+    async def body() -> AsyncIterator[bytes]:
+        yield _stdout("hi\n")
+
+    seen: list[httpx.Request] = []
+    await _run_code(body(), seen=seen)
+
+    assert [r.headers.get("accept-encoding") for r in seen] == ["identity"]
+
+
+@pytest.mark.asyncio
+async def test_run_code_refuses_a_body_it_cannot_meter_while_reading():
+    """A compressed body decodes above the counted stream, so it is refused."""
+    sent = _Sent()
+
+    async def body() -> AsyncIterator[bytes]:
+        for _ in range(_PAST_THE_LIMIT):
+            sent.size += _MIB
+            yield b"A" * _MIB
+
+    with pytest.raises(SandboxOutputLimitError, match="gzip"):
+        await _run_code(body(), headers={"Content-Encoding": "gzip"})
+
+    assert sent.size == 0
 
 
 @pytest.mark.asyncio
