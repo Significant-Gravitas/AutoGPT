@@ -140,7 +140,11 @@ describe("onboarding layout", () => {
     expect(result.current.steps.subscription).toBeUndefined();
   });
   it("offers a Microsoft sign-up its connection before anything else", () => {
-    source.payment = { isPaymentEnabled: false, isResolved: true, isError: false };
+    source.payment = {
+      isPaymentEnabled: false,
+      isResolved: true,
+      isError: false,
+    };
     source.signIn = { provider: "microsoft", isReady: true };
     const { result } = renderHook(useOnboardingLayout, { initialProps });
     expect(result.current.steps).toEqual({
@@ -172,21 +176,33 @@ describe("onboarding layout", () => {
     });
   });
   it("doesn't freeze the connection's place while payment is unknown", () => {
-    source.payment = { isPaymentEnabled: false, isResolved: true, isError: true };
+    source.payment = {
+      isPaymentEnabled: false,
+      isResolved: true,
+      isError: true,
+    };
     source.signIn = { provider: "microsoft", isReady: true };
     const { result, rerender } = renderHook(useOnboardingLayout, {
       initialProps,
     });
     expect(result.current.isReady).toBe(true);
     expect(result.current.steps.access).toBe(1);
-    source.payment = { isPaymentEnabled: true, isResolved: true, isError: false };
+    source.payment = {
+      isPaymentEnabled: true,
+      isResolved: true,
+      isError: false,
+    };
     rerender(initialProps);
     // Connecting needs a plan once payment is known to be on.
     expect(result.current.steps.subscription).toBe(6);
     expect(result.current.steps.access).toBe(7);
   });
   it("waits for the sign-in lookup before freezing the steps", () => {
-    source.payment = { isPaymentEnabled: false, isResolved: true, isError: false };
+    source.payment = {
+      isPaymentEnabled: false,
+      isResolved: true,
+      isError: false,
+    };
     source.signIn = { provider: null, isReady: false };
     const { result, rerender } = renderHook(useOnboardingLayout, {
       initialProps,
@@ -198,7 +214,11 @@ describe("onboarding layout", () => {
     expect(result.current.steps.access).toBe(1);
   });
   it("lets an experiment move the access step", () => {
-    source.payment = { isPaymentEnabled: false, isResolved: true, isError: false };
+    source.payment = {
+      isPaymentEnabled: false,
+      isResolved: true,
+      isError: false,
+    };
     source.signIn = { provider: "microsoft", isReady: true };
     source.flags[Flag.ONBOARDING_STEP_ORDER] = {
       value: ["team", "autopilot", "role", "access"],
