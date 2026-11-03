@@ -25,7 +25,7 @@ except ModuleNotFoundError:  # pragma: no cover
     import tomli as tomllib  # type: ignore[no-redef]
 
 from pydantic import Field, ValidationInfo, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, EnvSettingsSource, SettingsConfigDict
 
 from . import platform_info
 
@@ -310,5 +310,8 @@ def load_config(
         for key in ("allowed_root", "audit_log_path", "recording_buffer_dir"):
             if key in file_overrides and isinstance(file_overrides[key], str):
                 file_overrides[key] = Path(file_overrides[key])
-    merged = {**file_overrides, **overrides}
+    # ShimConfig(**kwargs) ranks every kwarg above the environment, so the
+    # environment is read here and layered over the file explicitly.
+    from_env = EnvSettingsSource(ShimConfig)()
+    merged = {**file_overrides, **from_env, **overrides}
     return ShimConfig(**merged)
