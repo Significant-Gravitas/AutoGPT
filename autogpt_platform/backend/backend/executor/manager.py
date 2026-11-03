@@ -275,6 +275,11 @@ SKIPPED_NODE_STATUSES = (ExecutionStatus.RUNNING, ExecutionStatus.COMPLETED)
 # pod died dispatches them without a second charge; gaps: #15327, Known limits.
 BILLED_REDISPATCH_STATUSES = (ExecutionStatus.REVIEW, ExecutionStatus.RUNNING)
 
+# The most nodes one node output registers at once. Each registration makes
+# several database-manager calls, and a graph may wire one output into any
+# number of nodes.
+MAX_SINKS_REGISTERED_AT_ONCE = 8
+
 
 def _propagate_node_failure(
     graph_stats: GraphExecutionStats,
@@ -886,17 +891,20 @@ async def _enqueue_next_nodes(
             return enqueued_executions
 
     # A link only touches its own sink: that node's lock, input rows and queued
-    # status. So links into different nodes register side by side, while links
-    # into one node keep their order; the result keeps the links' order too.
+    # status. So links into different nodes register side by side, up to
+    # MAX_SINKS_REGISTERED_AT_ONCE nodes at a time, while links into one node
+    # keep their order; the result keeps the links' order too.
     links = node.output_links
     registered: list[list[NodeExecutionEntry]] = [[] for _ in links]
     links_by_sink: dict[str, list[int]] = {}
     for index, link in enumerate(links):
         links_by_sink.setdefault(link.sink_id, []).append(index)
+    room = asyncio.Semaphore(MAX_SINKS_REGISTERED_AT_ONCE)
 
     async def register_sink(indexes: list[int]) -> None:
-        for index in indexes:
-            registered[index] = await register_next_executions(links[index])
+        async with room:
+            for index in indexes:
+                registered[index] = await register_next_executions(links[index])
 
     await asyncio.gather(*(register_sink(i) for i in links_by_sink.values()))
     return [execution for executions in registered for execution in executions]

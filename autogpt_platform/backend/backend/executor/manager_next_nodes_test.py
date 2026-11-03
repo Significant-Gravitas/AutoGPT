@@ -1,5 +1,6 @@
-"""A node's output registers the nodes it feeds side by side, while the links
-into one node keep their order and the queue still gets them in link order."""
+"""A node's output registers the nodes it feeds side by side, a bounded number
+at a time, while the links into one node keep their order and the queue still
+gets them in link order."""
 
 import asyncio
 from contextlib import asynccontextmanager
@@ -38,7 +39,10 @@ def _link(sink_id: str, sink_name: str) -> Link:
 
 
 async def _enqueue(events: list[str], meeting: Rendezvous, links: list[Link]):
-    """Register ``links``; every upsert but a ``late`` pin's meets the others."""
+    """Register ``links``; every upsert but a ``late`` pin's meets the others.
+
+    The stand-ins yield after each write, so a registration that overlapped
+    one it should have waited for would interleave its events with it."""
 
     async def get_node(node_id: str) -> Node:
         events.append(f"get {node_id}")
@@ -49,14 +53,20 @@ async def _enqueue(events: list[str], meeting: Rendezvous, links: list[Link]):
         if not input_name.startswith("late"):
             await meeting.arrive()
         events.append(f"end {node_id}:{input_name}")
+        await asyncio.sleep(0)
         return MagicMock(node_exec_id=f"{node_id}:{input_name}"), {
             input_name: input_data
         }
 
+    async def mark_queued(exec_id, status, execution_data=None, stats=None):
+        events.append(f"queued {exec_id}")
+        await asyncio.sleep(0)
+        return MagicMock()
+
     db = MagicMock()
     db.get_node = AsyncMock(side_effect=get_node)
     db.upsert_execution_input = AsyncMock(side_effect=upsert)
-    db.update_node_execution_status = AsyncMock(return_value=MagicMock())
+    db.update_node_execution_status = AsyncMock(side_effect=mark_queued)
     return await manager._enqueue_next_nodes(
         db_client=db,
         node=Node(id="source", block_id="block-source", output_links=links),
@@ -69,6 +79,17 @@ async def _enqueue(events: list[str], meeting: Rendezvous, links: list[Link]):
         nodes_input_masks=None,
         execution_context=ExecutionContext(),
     )
+
+
+def _most_upserts_at_once(events: list[str]) -> int:
+    in_flight = most = 0
+    for event in events:
+        if event.startswith("start "):
+            in_flight += 1
+            most = max(most, in_flight)
+        elif event.startswith("end "):
+            in_flight -= 1
+    return most
 
 
 @pytest.mark.asyncio
@@ -91,8 +112,8 @@ async def test_links_into_different_nodes_register_side_by_side(
 async def test_links_into_one_node_register_one_after_another_in_order(
     enqueue_stand_ins: None,
 ) -> None:
-    """``a`` is fed twice: its second link starts only once its first is done,
-    while ``b`` registers beside the first."""
+    """``a`` is fed twice: its second link starts only once its first is
+    queued, while ``b`` registers beside the first."""
     events: list[str] = []
 
     entries = await _enqueue(
@@ -107,4 +128,22 @@ async def test_links_into_one_node_register_one_after_another_in_order(
         "a:late",
     ]
     second_read_of_a = [i for i, event in enumerate(events) if event == "get a"][1]
-    assert second_read_of_a > events.index("end a:first")
+    assert second_read_of_a > events.index("queued a:first")
+
+
+@pytest.mark.asyncio
+async def test_an_output_registers_at_most_the_cap_of_its_nodes_at_once(
+    enqueue_stand_ins: None, mocker: MockerFixture
+) -> None:
+    """With room for two, four nodes register two by two, and in link order."""
+    mocker.patch.object(manager, "MAX_SINKS_REGISTERED_AT_ONCE", 2)
+    events: list[str] = []
+
+    entries = await _enqueue(
+        events,
+        Rendezvous(2),
+        [_link("a", "w"), _link("b", "x"), _link("c", "y"), _link("d", "z")],
+    )
+
+    assert [entry.node_exec_id for entry in entries] == ["a:w", "b:x", "c:y", "d:z"]
+    assert _most_upserts_at_once(events) == 2
