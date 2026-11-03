@@ -15,11 +15,16 @@ from autogpt_libs.auth.models import RequestContext
 from fastapi.routing import APIRoute
 from pytest_snapshot.plugin import Snapshot
 
-from backend.api.features.billing.credits.routes import get_credit_history, router
+from backend.api.features.billing.credits.routes import (
+    TEAM_ORG_TOP_UP_REFUSED,
+    get_credit_history,
+    router,
+)
 from backend.api.rest_api import app as real_app
 from backend.api.utils.exceptions import add_exception_handlers
 from backend.data.credit import AutoTopUpConfig, UserCredit, UserCreditBase
 from backend.data.model import TransactionHistory
+from backend.data.org_credit import OrgCreditModel
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -250,6 +255,26 @@ def test_request_top_up_without_a_checkout_sends_no_checkout_started(
     )
 
     assert response.status_code == 200
+    track_checkout_started.assert_not_awaited()
+
+
+def test_request_top_up_in_a_team_organization_says_autogpt_adds_its_credits(
+    mocker: pytest_mock.MockFixture,
+    track_checkout_started: AsyncMock,
+) -> None:
+    """A team organization has no checkout of its own yet, so its billing
+    manager hears why instead of a server error."""
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        AsyncMock(return_value=OrgCreditModel("team-org")),
+    )
+
+    response = client.post(
+        "/credits", json={"credit_amount": 500, "surface": "billing"}
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": TEAM_ORG_TOP_UP_REFUSED}
     track_checkout_started.assert_not_awaited()
 
 

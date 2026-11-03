@@ -42,6 +42,12 @@ BillingManagerContext = Annotated[
     requires_org_permission(OrgAction.MANAGE_BILLING),
 ]
 
+# A team organization's wallet has no checkout of its own yet.
+TEAM_ORG_TOP_UP_REFUSED = (
+    "A team organization's credits are added by AutoGPT for now, so they "
+    "can't be bought here."
+)
+
 
 @router.get(
     path="/credits",
@@ -72,12 +78,15 @@ async def request_top_up(
     country: ClientCountry = None,
 ):
     credit_model = await get_credit_model(user_id, ctx.org_id)
-    checkout_url = await credit_model.top_up_intent(
-        user_id,
-        request.credit_amount,
-        datafast_visitor_id=x_datafast_visitor_id,
-        datafast_session_id=x_datafast_session_id,
-    )
+    try:
+        checkout_url = await credit_model.top_up_intent(
+            user_id,
+            request.credit_amount,
+            datafast_visitor_id=x_datafast_visitor_id,
+            datafast_session_id=x_datafast_session_id,
+        )
+    except NotImplementedError as e:
+        raise HTTPException(status_code=409, detail=TEAM_ORG_TOP_UP_REFUSED) from e
     if checkout_url:
         await track_checkout_started(
             user_id=user_id, checkout_kind="top_up", surface=request.surface
