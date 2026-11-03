@@ -10,7 +10,7 @@ import { isKey } from "@/lib/keyboard";
 import { STATUS_LABELS, taskKey } from "../../../../data/helpers";
 import type { TaskDetail } from "../../../../data/types";
 import { STATUS_ICONS } from "../../helpers";
-import { SheetSection } from "../SheetSection/SheetSection";
+import { PanelSection } from "../PanelSection/PanelSection";
 import { AssigneeAvatar } from "../AssigneeAvatar/AssigneeAvatar";
 import { useSubtaskList } from "./useSubtaskList";
 
@@ -49,7 +49,7 @@ export function SubtaskList({ task, onOpenTask }: Props) {
   }
 
   return (
-    <SheetSection
+    <PanelSection
       label="Sub-tasks"
       meta={
         subtasks.length ? `${doneCount} of ${subtasks.length} done` : undefined
@@ -141,6 +141,6 @@ export function SubtaskList({ task, onOpenTask }: Props) {
           The sub-task could not be added. Try again.
         </Text>
       ) : null}
-    </SheetSection>
+    </PanelSection>
   );
 }

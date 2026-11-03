@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import type { ExpertOption, TaskActivity } from "../../../../data/types";
 import { splitMentions } from "../../helpers";
-import { SheetSection } from "../SheetSection/SheetSection";
+import { PanelSection } from "../PanelSection/PanelSection";
 import { AssigneeAvatar } from "../AssigneeAvatar/AssigneeAvatar";
 import { TurnRow } from "./components/TurnRow/TurnRow";
 import { describeActivity } from "./helpers";
@@ -25,7 +25,7 @@ export function ActivityFeed({ items, isLoading, experts }: Props) {
   const names = ["Otto", ...experts.map((e) => e.name)];
 
   return (
-    <SheetSection label="Activity">
+    <PanelSection label="Activity">
       {isLoading ? (
         <div className="flex flex-col gap-2">
           <Skeleton className="h-5 w-2/3" />
@@ -45,7 +45,7 @@ export function ActivityFeed({ items, isLoading, experts }: Props) {
           ))}
         </ol>
       )}
-    </SheetSection>
+    </PanelSection>
   );
 }
 

@@ -7,8 +7,8 @@ interface Props {
   children: ReactNode;
 }
 
-/** One block of the sheet card: a quiet heading over its content. */
-export function SheetSection({ label, meta, children }: Props) {
+/** One block of the task panel: a quiet heading over its content. */
+export function PanelSection({ label, meta, children }: Props) {
   return (
     <section aria-label={label} className="flex flex-col gap-2.5 px-5 py-4">
       <div className="flex items-center gap-2">

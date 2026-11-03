@@ -3,6 +3,7 @@ import { mockApi } from "./mocks";
 import {
   toActivity,
   toExpert,
+  toPlan,
   toTask,
   toTaskCounts,
   toTaskDetail,
@@ -141,6 +142,10 @@ export const tasksApi = {
     call<{ experts: unknown[] }>(`/api/tasks/experts`, json("GET"), () => ({
       experts: mockApi.experts(),
     })).then((r) => r.experts.map(toExpert)),
+  getPlan: (planId: string) =>
+    call<unknown>(`/api/tasks/plans/${planId}`, json("GET"), () => null).then(
+      toPlan,
+    ),
   approvePlan: (plan: TaskPlan) =>
     call<{ parent_task?: unknown } & Record<string, unknown>>(
       `/api/tasks/plans/${plan.id}/confirm`,

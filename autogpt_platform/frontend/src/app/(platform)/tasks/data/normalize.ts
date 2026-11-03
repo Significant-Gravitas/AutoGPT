@@ -75,14 +75,19 @@ function toInbox(v: unknown, status: TaskStatus): TaskInbox {
             label: str(st.label) ?? "",
             time: str(st.time) ?? new Date().toISOString(),
             kind: str(st.kind) ?? "system",
-            status: (str(st.status) as TaskInbox["steps"][number]["status"]) ?? null,
+            status:
+              (str(st.status) as TaskInbox["steps"][number]["status"]) ?? null,
           };
         })
       : [],
     tools_used: Array.isArray(r.tools_used)
       ? r.tools_used.map((x) => {
           const t = obj(x);
-          return { name: str(t.name) ?? "", title: str(t.title) ?? str(t.name) ?? "", count: num(t.count) };
+          return {
+            name: str(t.name) ?? "",
+            title: str(t.title) ?? str(t.name) ?? "",
+            count: num(t.count),
+          };
         })
       : [],
   };
@@ -120,6 +125,7 @@ export function toTask(v: unknown): Task {
     const t = r as unknown as Task;
     return {
       ...t,
+      plan_id: t.plan_id ?? null,
       inbox: t.inbox ?? toInbox(null, t.status),
       elapsed_ms: t.elapsed_ms ?? null,
       started_at: t.started_at ?? null,
@@ -169,6 +175,7 @@ export function toTask(v: unknown): Task {
       : null,
     subtask_counts: { total: num(counts.total), done: num(counts.done) },
     thread_session_id: str(r.work_session_id),
+    plan_id: str(r.plan_id),
     inbox: toInbox(r.inbox, (str(r.status) ?? "todo") as TaskStatus),
     elapsed_ms: typeof r.elapsed_ms === "number" ? r.elapsed_ms : null,
     started_at: str(r.started_at),
@@ -210,7 +217,9 @@ export function toTaskDetail(v: unknown): TaskDetail {
       status: s.status,
       assignee: s.assignee,
     })),
-    artifacts: Array.isArray(r.attachments) ? r.attachments.map(toArtifact) : [],
+    artifacts: Array.isArray(r.attachments)
+      ? r.attachments.map(toArtifact)
+      : [],
   };
 }
 
@@ -238,12 +247,16 @@ export function toActivity(v: unknown): TaskActivity {
       return {
         ...base,
         kind: "status_change",
-        from_status: (str(data.from) ?? str(r.from_status) ?? "todo") as TaskStatus,
+        from_status: (str(data.from) ??
+          str(r.from_status) ??
+          "todo") as TaskStatus,
         to_status: (str(data.to) ?? str(r.to_status) ?? "todo") as TaskStatus,
       };
     case "turn": {
       if ("metrics" in r) return r as unknown as TaskActivity;
-      const cards = Array.isArray(data.tool_call_cards) ? data.tool_call_cards : [];
+      const cards = Array.isArray(data.tool_call_cards)
+        ? data.tool_call_cards
+        : [];
       return {
         ...base,
         kind: "turn",
@@ -261,7 +274,11 @@ export function toActivity(v: unknown): TaskActivity {
             id: String(card.id),
             name: str(card.title) ?? str(card.name) ?? "Tool",
             status:
-              status === "error" ? "error" : status === "running" ? "running" : "ok",
+              status === "error"
+                ? "error"
+                : status === "running"
+                  ? "running"
+                  : "ok",
             input_preview: str(card.input_preview),
             output_preview: str(card.output_preview),
           };
@@ -297,10 +314,16 @@ export function toActivity(v: unknown): TaskActivity {
       return {
         ...base,
         kind: "system",
-        body: body || `Added sub-task ${str(data.subtask_key) ?? ""} ${str(data.title) ?? ""}`.trim(),
+        body:
+          body ||
+          `Added sub-task ${str(data.subtask_key) ?? ""} ${str(data.title) ?? ""}`.trim(),
       };
     case "outcome":
-      return { ...base, kind: "system", body: body ? `Outcome: ${body}` : "Finished" };
+      return {
+        ...base,
+        kind: "system",
+        body: body ? `Outcome: ${body}` : "Finished",
+      };
     case "plan_confirmed":
       return { ...base, kind: "system", body: body || "Plan approved" };
     default:

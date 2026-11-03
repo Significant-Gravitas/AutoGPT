@@ -18,6 +18,7 @@ export const tasksKeys = {
   detail: (id: string) => ["tasks-v1", "detail", id] as const,
   activity: (id: string) => ["tasks-v1", "activity", id] as const,
   experts: ["tasks-v1", "experts"] as const,
+  plan: (id: string) => ["tasks-v1", "plan", id] as const,
 };
 
 export function invalidateTasks(queryClient: QueryClient) {
@@ -74,6 +75,14 @@ export function useTaskExperts() {
     queryKey: tasksKeys.experts,
     queryFn: () => tasksApi.experts(),
     staleTime: 60_000,
+  });
+}
+
+export function useTaskPlan(planId: string | null) {
+  return useQuery({
+    queryKey: tasksKeys.plan(planId ?? ""),
+    queryFn: () => tasksApi.getPlan(planId!),
+    enabled: !!planId,
   });
 }
 

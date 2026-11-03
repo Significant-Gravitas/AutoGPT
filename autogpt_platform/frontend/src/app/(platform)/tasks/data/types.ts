@@ -65,7 +65,12 @@ export interface TaskInboxStep {
 export interface TaskInbox {
   state: InboxState;
   needs_you: boolean;
-  last_activity: { kind: string; text: string; actor_name: string | null; at: string } | null;
+  last_activity: {
+    kind: string;
+    text: string;
+    actor_name: string | null;
+    at: string;
+  } | null;
   steps: TaskInboxStep[];
   tools_used: { name: string; title: string; count: number }[];
 }
@@ -98,6 +103,7 @@ export interface Task {
   open_question: TaskQuestion | null;
   subtask_counts: { total: number; done: number };
   thread_session_id: string | null;
+  plan_id: string | null;
   inbox: TaskInbox;
   elapsed_ms: number | null;
   started_at: string | null;

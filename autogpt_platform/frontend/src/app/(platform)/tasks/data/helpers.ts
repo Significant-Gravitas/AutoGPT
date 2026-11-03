@@ -1,13 +1,25 @@
 import type { TaskMetrics, TaskPriority, TaskStatus } from "./types";
 
-export const BOARD_COLUMNS: { id: string; label: string; statuses: TaskStatus[] }[] = [
+export const BOARD_COLUMNS: {
+  id: string;
+  label: string;
+  statuses: TaskStatus[];
+}[] = [
   { id: "todo", label: "Todo", statuses: ["todo"] },
-  { id: "in_progress", label: "In progress", statuses: ["in_progress", "in_review"] },
+  {
+    id: "in_progress",
+    label: "In progress",
+    statuses: ["in_progress", "in_review"],
+  },
   { id: "needs_you", label: "Needs you", statuses: ["blocked"] },
   { id: "done", label: "Done", statuses: ["done"] },
 ];
 
-export const HIDDEN_COLUMNS: { id: string; label: string; statuses: TaskStatus[] }[] = [
+export const HIDDEN_COLUMNS: {
+  id: string;
+  label: string;
+  statuses: TaskStatus[];
+}[] = [
   { id: "backlog", label: "Backlog", statuses: ["backlog"] },
   { id: "cancelled", label: "Cancelled", statuses: ["cancelled"] },
 ];

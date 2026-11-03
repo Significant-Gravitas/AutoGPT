@@ -78,7 +78,7 @@ function PendingRow({ text }: { text: string }) {
   );
 }
 
-function PlanCard({ plan }: { plan: TaskPlan }) {
+export function PlanCard({ plan }: { plan: TaskPlan }) {
   const card = useTaskPlanCard(plan);
 
   return (
