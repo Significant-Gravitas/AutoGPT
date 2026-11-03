@@ -357,3 +357,34 @@ def test_a_quieter_log_level_also_quiets_websockets() -> None:
     capping websockets at INFO under a WARNING root would let its INFO through."""
     with _logging_set_up_as_main_does("WARNING"):
         assert not logging.getLogger("websockets.client").isEnabledFor(logging.INFO)
+
+
+@pytest.mark.asyncio
+async def test_ctrl_c_stops_the_daemon_and_exits_cleanly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """On Ctrl+C, asyncio.run cancels the main task rather than raising
+    KeyboardInterrupt inside it."""
+    running = asyncio.Event()
+    stopped: list[bool] = []
+
+    class FakeDaemon:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        async def run(self) -> None:
+            running.set()
+            await asyncio.Event().wait()
+
+        async def stop(self) -> None:
+            stopped.append(True)
+
+    monkeypatch.setattr("autogpt_local_executor.daemon.ShimDaemon", FakeDaemon)
+    monkeypatch.setattr("autogpt_local_executor.auth.KeychainTokenStore", lambda _config: object())
+    start = asyncio.create_task(cli._cmd_start(ShimConfig(allowed_root=tmp_path)))
+    await asyncio.wait_for(running.wait(), timeout=30)
+    start.cancel()
+
+    assert await start == 0
+    assert stopped == [True]
+    assert "Shim stopped." in capsys.readouterr().out

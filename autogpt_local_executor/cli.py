@@ -283,7 +283,9 @@ async def _cmd_start(config) -> int:
     except DaemonAuthenticationError as exc:
         print(f"Authentication failed: {exc}", flush=True)
         return 77
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        # On Ctrl+C, asyncio.run cancels this task; KeyboardInterrupt only
+        # reaches code that runs outside the event loop.
         if daemon is not None:
             await daemon.stop()
         print("\nShim stopped.")
