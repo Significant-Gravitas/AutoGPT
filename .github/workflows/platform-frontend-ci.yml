@@ -228,6 +228,16 @@ jobs:
         with:
           ref: ${{ github.sha }}
           submodules: recursive
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/docs/platform/.gitbook/assets/*.png
+            !/docs/platform/.gitbook/assets/*.gif
+
+      - name: Verify application source and test fixtures are present
+        working-directory: .
+        run: python3 .github/scripts/validate_ci_checkout.py
 
       - name: Set up pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0

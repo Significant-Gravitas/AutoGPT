@@ -220,6 +220,16 @@ jobs:
         with:
           ref: ${{ github.sha }}
           submodules: recursive
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/docs/platform/.gitbook/assets/*.png
+            !/docs/platform/.gitbook/assets/*.gif
+
+      - name: Verify application source and test fixtures are present
+        working-directory: .
+        run: python3 .github/scripts/validate_ci_checkout.py
 
       # The seed dump is an image in GHCR, not an Actions cache entry.
       # The key hashes only what changes the dump's content: the seed script

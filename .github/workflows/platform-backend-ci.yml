@@ -362,6 +362,15 @@ jobs:
           fetch-depth: 1
           filter: blob:none
           submodules: true
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/docs/platform/.gitbook/assets/*.png
+            !/docs/platform/.gitbook/assets/*.gif
+
+      - name: Verify application source and test fixtures are present
+        working-directory: .
+        run: python3 .github/scripts/validate_ci_checkout.py
 
       - name: Checkout skills catalog
         # The expert roster and the marketplace skills live in a separate
