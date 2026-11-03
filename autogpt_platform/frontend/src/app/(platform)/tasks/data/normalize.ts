@@ -19,7 +19,9 @@ type Raw = Record<string, unknown>;
 function obj(v: unknown): Raw {
   return v && typeof v === "object" ? (v as Raw) : {};
 }
+// The API client turns ISO date strings into Date objects; read them back.
 function str(v: unknown): string | null {
+  if (v instanceof Date) return v.toISOString();
   return typeof v === "string" ? v : null;
 }
 function num(v: unknown): number {
