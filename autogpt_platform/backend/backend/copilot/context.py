@@ -7,6 +7,7 @@ without creating circular dependencies.
 
 from __future__ import annotations
 
+import asyncio
 import ntpath
 import os
 import posixpath
@@ -559,8 +560,10 @@ async def get_workspace_manager(user_id: str, session_id: str) -> WorkspaceManag
     ``tools/__init__`` import chain. Expert turns get a manager confined to
     the expert's resolved scope (see :func:`current_workspace_scope`).
     """
-    workspace = await workspace_db().get_or_create_workspace(user_id)
-    scope = await current_workspace_scope(user_id, session_id)
+    workspace, scope = await asyncio.gather(
+        workspace_db().get_or_create_workspace(user_id),
+        current_workspace_scope(user_id, session_id),
+    )
     return WorkspaceManager(user_id, workspace.id, session_id, scope=scope)
 
 

@@ -10,11 +10,13 @@ This module states them once, on the side that knows. It is additive —
 ``GET /transports`` keeps its shape, so nothing has to migrate at once.
 """
 
+import asyncio
 import logging
 
 from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider, CopilotLLMModel
+from backend.copilot.model_router import ModelMode
 from backend.copilot.provider_tiers import (
     TIER_LABELS,
     codex_tier_models,
@@ -90,16 +92,26 @@ async def get_connection_offers(user_id: str) -> list[AIConnectionOffer]:
     pick.
     """
     config = ChatConfig()
-    mode = await resolve_engine_mode(user_id, config)
-    models = await platform_tier_models(mode, user_id, config)
+    (mode, models), advanced_allowed, transports = await asyncio.gather(
+        _platform_models(user_id, config),
+        advanced_tier_allowed(user_id),
+        get_chat_transports(user_id),
+    )
     codex_models = codex_tier_models(mode)
-    advanced_allowed = await advanced_tier_allowed(user_id)
     offers = [
         _offer(transport, models, codex_models, advanced_allowed)
-        for transport in await get_chat_transports(user_id)
+        for transport in transports
     ]
     locked = await _locked_codex_offer(user_id, offers, codex_models)
     return offers + ([locked] if locked else [])
+
+
+async def _platform_models(
+    user_id: str, config: ChatConfig
+) -> tuple[ModelMode, dict[CopilotLLMModel, str | None]]:
+    """The engine, and what each platform tier resolves to on it."""
+    mode = await resolve_engine_mode(user_id, config)
+    return mode, await platform_tier_models(mode, user_id, config)
 
 
 async def _locked_codex_offer(
