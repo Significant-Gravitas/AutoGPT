@@ -194,7 +194,8 @@ def _fake_clipboard(b: WindowsBackend, monkeypatch, *, content: str, private=Fal
 
     monkeypatch.setattr(b, "_write_clipboard_text", _write)
     monkeypatch.setattr(b, "_read_clipboard_text", lambda: (state["content"], state["seq"]))
-    monkeypatch.setattr(b, "_has_private_format", lambda: private)
+    # CF_UNICODETEXT (13), plus a CF_PRIVATE format (0x0200) when asked.
+    monkeypatch.setattr(b, "_clipboard_formats", lambda: {13, 0x0200} if private else {13})
     return state
 
 
@@ -266,3 +267,32 @@ def test_a_window_printwindow_cannot_capture_is_an_error(tmp_path, monkeypatch) 
         b._screenshot_window(window_id, quality=75, format="jpeg")
 
     win32gui.ReleaseDC.assert_called_once()
+
+
+@pytest.mark.parametrize("formats", [None, {8}], ids=["unreadable", "image"])
+def test_preserving_a_clipboard_a_text_restore_cannot_rebuild_types_instead(
+    tmp_path, monkeypatch, formats
+) -> None:
+    """The restore puts back text only, so pasting over an image (CF_DIB) or a
+    clipboard whose formats can't be read would lose it."""
+    b = WindowsBackend(_config(tmp_path, enable_clipboard=True))
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    clipboard = _fake_clipboard(b, monkeypatch, content="kept")
+    monkeypatch.setattr(b, "_clipboard_formats", lambda: formats)
+    text = "x" * PASTE_THRESHOLD_CHARS
+
+    b.input_action("type", text=text, paste=True, preserve_clipboard=True)
+
+    assert clipboard["writes"] == []
+    pyautogui.write.assert_called_once_with(text, interval=0.02)
+
+
+def test_a_clipboard_read_refuses_when_its_formats_cannot_be_read(tmp_path, monkeypatch) -> None:
+    """Unreadable formats could be hiding a CF_PRIVATE one."""
+    b = WindowsBackend(_config(tmp_path, enable_clipboard=True, enable_clipboard_read_foreign=True))
+    monkeypatch.setattr(b, "_read_clipboard_text", lambda: ("password", 3))
+    monkeypatch.setattr(b, "_clipboard_formats", lambda: None)
+
+    with pytest.raises(ClipboardConcealedError):
+        b.clipboard_read()
