@@ -132,6 +132,51 @@ class TaskLive(BaseModel):
     turn_started_at: datetime | None = None
 
 
+class InboxState(str, Enum):
+    RUNNING = "running"
+    WAITING = "waiting"
+    DONE = "done"
+    FAILED = "failed"
+
+
+class InboxStep(BaseModel):
+    label: str
+    time: datetime | None = None
+    kind: str
+    status: str | None = None
+
+
+class InboxActivity(BaseModel):
+    kind: str
+    text: str
+    actor_name: str | None = None
+    at: datetime
+
+
+class InboxTool(BaseModel):
+    name: str
+    title: str
+    count: int = 0
+
+
+class TaskInbox(BaseModel):
+    state: InboxState
+    needs_you: bool = False
+    last_activity: InboxActivity | None = None
+    steps: list[InboxStep] = Field(default_factory=list)
+    tools_used: list[InboxTool] = Field(default_factory=list)
+
+
+class TaskCounts(BaseModel):
+    all: int = 0
+    running: int = 0
+    waiting: int = 0
+    done: int = 0
+    failed: int = 0
+    needs_you: int = 0
+    by_status: dict[str, int] = Field(default_factory=dict)
+
+
 class Task(BaseModel):
     id: str
     number: int
@@ -158,6 +203,8 @@ class Task(BaseModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     plan_id: str | None = None
+    elapsed_ms: int | None = None
+    inbox: TaskInbox | None = None
 
 
 class TaskParentRef(BaseModel):
@@ -299,6 +346,7 @@ class TaskFilters(BaseModel):
 
 class TaskListResponse(BaseModel):
     tasks: list[Task]
+    counts: TaskCounts | None = None
 
 
 class ActivityListResponse(BaseModel):

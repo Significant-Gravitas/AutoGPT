@@ -4,7 +4,7 @@ import autogpt_libs.auth as autogpt_auth_lib
 import fastapi
 from fastapi import APIRouter, Depends, Query, Security
 
-from backend.api.features.tasks import db, dispatch, events
+from backend.api.features.tasks import db, dispatch, events, inbox
 from backend.api.features.tasks.models import (
     ActivityEvent,
     ActivityListResponse,
@@ -19,6 +19,7 @@ from backend.api.features.tasks.models import (
     PlanConfirm,
     PlanConfirmResponse,
     Task,
+    TaskCounts,
     TaskCreate,
     TaskDetail,
     TaskFilters,
@@ -83,8 +84,11 @@ async def _emit(
     task_id: str | None = None,
 ) -> None:
     try:
+        snapshot = _snapshot(task)
+        if snapshot is not None:
+            snapshot = await inbox.with_inbox_one(snapshot)
         await events.publish_task_event(
-            user_id, event, _snapshot(task), activity, task_id=task_id
+            user_id, event, snapshot, activity, task_id=task_id
         )
     except Exception:
         logger.exception(f"Failed to publish task event {event}")
@@ -110,6 +114,8 @@ async def _fresh_detail(user_id: str, task_id: str) -> TaskDetail:
     detail = await db.get_task_detail(user_id, task_id)
     if detail is None:
         raise fastapi.HTTPException(status_code=404, detail="Task not found")
+    decorated = await inbox.with_inbox([detail, *detail.subtasks])
+    detail.subtasks = decorated[1:]
     return detail
 
 
@@ -154,7 +160,9 @@ async def list_tasks(
         )
     except ValueError as e:
         raise _bad_request(e)
-    return TaskListResponse(tasks=await db.list_tasks(user_id, filters))
+    tasks = await inbox.with_inbox(await db.list_tasks(user_id, filters))
+    counts = await inbox.count_tasks(user_id, filters)
+    return TaskListResponse(tasks=tasks, counts=counts)
 
 
 @router.post(
@@ -185,6 +193,39 @@ async def _create(user_id: str, body: TaskCreate) -> TaskDetail:
 
 
 @router.get(
+    "/counts",
+    dependencies=_GATE,
+    operation_id="count_tasks",
+    response_model=TaskCounts,
+)
+async def count_tasks(
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+    assignee_type: AssigneeType | None = Query(default=None),
+    assignee_id: str | None = Query(default=None),
+    priority: str | None = Query(default=None),
+    due: str | None = Query(default=None, pattern="^(overdue|today|week|none)$"),
+    parent_id: str | None = Query(default=None),
+    top_level: bool = Query(default=False),
+    mine: bool = Query(default=False),
+    q: str | None = Query(default=None),
+) -> TaskCounts:
+    try:
+        filters = TaskFilters(
+            assignee_type=assignee_type,
+            assignee_id=assignee_id,
+            priority=[TaskPriority(p) for p in _split(priority)] or None,
+            due=due,
+            parent_id=parent_id,
+            top_level=top_level,
+            mine=mine,
+            q=q,
+        )
+    except ValueError as e:
+        raise _bad_request(e)
+    return await inbox.count_tasks(user_id, filters)
+
+
+@router.get(
     "/needs-you",
     dependencies=_GATE,
     operation_id="list_tasks_needing_me",
@@ -193,7 +234,9 @@ async def _create(user_id: str, body: TaskCreate) -> TaskDetail:
 async def list_tasks_needing_me(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> TaskListResponse:
-    return TaskListResponse(tasks=await db.list_tasks_needing_user(user_id))
+    return TaskListResponse(
+        tasks=await inbox.with_inbox(await db.list_tasks_needing_user(user_id))
+    )
 
 
 @router.get(

@@ -96,7 +96,11 @@ def row_to_task(row: prisma.models.Task) -> Task:
         ),
         subtask_counts=SubtaskCounts(
             total=len(subtasks),
-            done=sum(1 for s in subtasks if str(getattr(s.status, "value", s.status)) == "done"),
+            done=sum(
+                1
+                for s in subtasks
+                if str(getattr(s.status, "value", s.status)) == "done"
+            ),
         ),
         pending_input=_pending_input(row.pendingInput),
         live=TaskLive(

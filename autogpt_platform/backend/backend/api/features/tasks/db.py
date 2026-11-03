@@ -113,9 +113,7 @@ async def list_tasks(user_id: str, filters: TaskFilters) -> list[Task]:
 
 
 def _due_filter(due: str) -> dict[str, datetime]:
-    today = datetime.now(UTC).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
+    today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     if due == "overdue":
         return {"lt": today}
     if due == "today":
@@ -250,7 +248,11 @@ async def update_task(
         await _apply_assignee_change(user_id, row, data, actor, patch)
     if patch:
         await prisma.models.Task.prisma().update(where={"id": task_id}, data=patch)
-    if "status" in fields and data.status and data.status.value != str(getattr(row.status, "value", row.status)):
+    if (
+        "status" in fields
+        and data.status
+        and data.status.value != str(getattr(row.status, "value", row.status))
+    ):
         await set_task_status(user_id, task_id, data.status, actor)
     detail = await get_task_detail(user_id, task_id)
     assert detail is not None

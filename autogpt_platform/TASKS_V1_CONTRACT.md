@@ -173,7 +173,40 @@ Frontend: on any `task_event`, invalidate the tasks list/detail/activity queries
 ## Expert / Otto copilot tools (backend only, for reference)
 `list_my_tasks`, `update_task_status`, `comment_on_task`, `request_input`, `link_artifact`, `create_task` (sub-task, 1 level), `propose_plan`, `confirm_task_plan`.
 
+## v2: Inbox fields (for the Agent-Inbox-style /tasks list)
+
+Additive only; nothing existing changes. Every `Task` (list, `/needs-you`, `/{id}`, sub-tasks inside a detail, and WS snapshots sent by REST mutations) now carries `inbox` and `elapsed_ms`. `inbox` may be `null` in WS snapshots sent from inside an expert turn, so refetch on `task_event`.
+
+```jsonc
+Task += {
+  "elapsed_ms": 81000 | null,          // started_at → completed_at (or now while unfinished); null if never started
+  "inbox": {
+    "state": "running" | "waiting" | "done" | "failed",
+      // running = in_progress; done = done; failed = cancelled, or the latest expert turn failed (and not done);
+      // waiting = todo | backlog | blocked | in_review
+    "needs_you": true,                  // blocked or in_review (pending question / review)
+    "last_activity": { "kind": ActivityKind, "text": "Maria commented: keep it short", "actor_name": "Maria", "at": "ISO" } | null,
+    "steps": [                          // last ≤5 steps, OLDEST FIRST; a turn expands into one step per tool call, then its summary
+      { "label": "Web search", "time": "ISO", "kind": "tool" | ActivityKind | "live", "status": "completed" | "running" | "error" | null }
+    ],
+    "tools_used": [ { "name": "web_search", "title": "Web search", "count": 3 } ]  // across all turns, most used first
+  }
+}
+```
+
+Step labels are ready-to-show copy: "Created", "Moved to In progress", "Assigned to Maria", "Maria commented: …", "Asked: …", "Answered: …", "Added launch-email.md", "Sub-task T-12 created", "Outcome: …", "Plan approved", turn summary or "Maria finished a turn · 4 tool calls", "Maria's turn failed". While a turn runs, the last step is the live one (`kind:"live"`, `status:"running"`, label = current step, e.g. "Searching the web").
+
+### Status counts for the filter tabs
+- `GET /api/tasks` response gains `"counts": TaskCounts` (computed over the same filters EXCEPT `status`, with hidden statuses included).
+- Cheap standalone: `GET /api/tasks/counts` (`operation_id: count_tasks`), same query params as the list (status ignored) → `TaskCounts`.
+
+```jsonc
+TaskCounts = { "all": 13, "running": 3, "waiting": 6, "done": 3, "failed": 1, "needs_you": 3,
+               "by_status": { "backlog": 0, "todo": 2, "in_progress": 3, "blocked": 1, "in_review": 2, "done": 3, "cancelled": 1 } }
+```
+
 ## Changelog
 - v1 (initial).
 - v1.1: create/update also accept `assignee: {type, id}` (alias of `assignee_type`/`assignee_id`) and `budget_usd` (alias of `budget_cap_usd`); `POST /api/tasks/plans/{plan_id}/approve` aliases `/confirm`.
 - v1.2 (backend live): Task also carries `plan_id` (uuid|null). `/plans/{plan_id}/approve` has operation_id `approve_task_plan`. Local stack runs with `CHAT_TEST_MODE=true` (no LLM keys), so expert turns reply with a canned message and make no tool calls; a turn that ends without the expert marking the task done moves it to `in_review` with a system note.
+- v2 (inbox): `Task.inbox`, `Task.elapsed_ms`, `TaskListResponse.counts`, `GET /api/tasks/counts`. All additive.

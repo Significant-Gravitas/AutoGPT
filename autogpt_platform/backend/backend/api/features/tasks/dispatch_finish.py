@@ -48,7 +48,10 @@ async def finish_work_turn(session_id: str, status: str) -> None:
     if turn is not None:
         activity = await store.update_activity(
             turn.id,
-            data={**metrics, "status": "completed" if status == "completed" else "failed"},
+            data={
+                **metrics,
+                "status": "completed" if status == "completed" else "failed",
+            },
         )
     await store.set_live(task.id, False)
     task = await store.get_task(user_id, task.id) or task
@@ -104,7 +107,9 @@ async def _turn_metrics(
     started_raw = data.get("started_at")
     started = datetime.fromisoformat(started_raw) if started_raw else now
     session = await get_chat_session(session_id, user_id)
-    messages = session.messages[int(data.get("start_message_count") or 0) :] if session else []
+    messages = (
+        session.messages[int(data.get("start_message_count") or 0) :] if session else []
+    )
     cards = _tool_call_cards(messages)
     prompt = sum(u.prompt_tokens for u in session.usage) if session else 0
     completion = sum(u.completion_tokens for u in session.usage) if session else 0
@@ -191,7 +196,9 @@ async def _maybe_wake_otto(user_id: str, task: Task) -> None:
     _pending_children.setdefault(parent.id, {})[task.id] = line
     if parent.id in _wake_tasks and not _wake_tasks[parent.id].done():
         return
-    wait = OTTO_WAKE_INTERVAL_SECONDS - (time.monotonic() - _last_wake.get(parent.id, 0))
+    wait = OTTO_WAKE_INTERVAL_SECONDS - (
+        time.monotonic() - _last_wake.get(parent.id, 0)
+    )
     _wake_tasks[parent.id] = asyncio.create_task(
         _wake_otto_later(user_id, parent.id, max(0.0, wait))
     )

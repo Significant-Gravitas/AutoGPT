@@ -1,4 +1,3 @@
-
 import prisma.models
 from prisma import Json
 
