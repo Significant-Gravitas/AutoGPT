@@ -71,6 +71,11 @@ select = ["E", "F", "I", "UP"]
 # pre-commit Ruff still enforces it.
 ignore = ["E501", "UP038"]
 
+[tool.ruff.lint.isort]
+# packaging/ holds the installer files; the `packaging` library is
+# third-party, which older Ruff versions can't tell on their own.
+known-third-party = ["packaging"]
+
 [tool.mypy]
 python_version = "3.11"
 strict = false
