@@ -11,6 +11,7 @@ interface Props {
   tasks: Task[];
   tab: InboxTab;
   expandedID: string | null;
+  selectedID: string | null;
   onToggle: (id: string) => void;
   onOpen: (id: string) => void;
 }
@@ -19,6 +20,7 @@ export function InboxBoard({
   tasks,
   tab,
   expandedID,
+  selectedID,
   onToggle,
   onOpen,
 }: Props) {
@@ -59,6 +61,7 @@ export function InboxBoard({
                     key={task.id}
                     task={task}
                     expanded={expandedID === task.id}
+                    selected={selectedID === task.id}
                     onToggle={() => onToggle(task.id)}
                     onOpen={() => onOpen(task.id)}
                   />
@@ -75,11 +78,12 @@ export function InboxBoard({
 interface ItemProps {
   task: Task;
   expanded: boolean;
+  selected: boolean;
   onToggle: () => void;
   onOpen: () => void;
 }
 
-function BoardItem({ task, expanded, onToggle, onOpen }: ItemProps) {
+function BoardItem({ task, expanded, selected, onToggle, onOpen }: ItemProps) {
   const motionProps = useInboxMotion(`inbox-task-${task.id}`);
 
   return (
@@ -87,6 +91,7 @@ function BoardItem({ task, expanded, onToggle, onOpen }: ItemProps) {
       <InboxRow
         task={task}
         expanded={expanded}
+        selected={selected}
         onToggle={onToggle}
         onOpen={onOpen}
         variant="board"

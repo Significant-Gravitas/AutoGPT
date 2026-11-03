@@ -41,10 +41,18 @@ export function useTasksPage() {
   const experts = expertsQuery.data ?? [];
   const allTasks = inboxQuery.data?.tasks ?? [];
 
-  useCollapseOnEscape({
+  function closeTask() {
+    if (!taskID) return;
+    const rowID = inboxRowID(taskID);
+    setTaskID(null);
+    requestAnimationFrame(() => document.getElementById(rowID)?.focus());
+  }
+
+  useInboxEscape({
     expandedID,
-    isSheetOpen: !!taskID,
-    onCollapse: setExpandedID,
+    selectedID: taskID,
+    onCollapse: () => setExpandedID(null),
+    onDeselect: closeTask,
   });
 
   function toggleRow(id: string) {
@@ -60,10 +68,6 @@ export function useTasksPage() {
     setTaskID(id);
   }
 
-  function handleSheetOpenChange(open: boolean) {
-    if (!open) setTaskID(null);
-  }
-
   return {
     view,
     setView,
@@ -73,7 +77,7 @@ export function useTasksPage() {
     setMine,
     taskID,
     openTask,
-    handleSheetOpenChange,
+    closeTask,
     expandedID,
     toggleRow,
     filters,
@@ -118,22 +122,28 @@ function useCreateDialog() {
   };
 }
 
-function useCollapseOnEscape(args: {
+function useInboxEscape(args: {
   expandedID: string | null;
-  isSheetOpen: boolean;
-  onCollapse: (id: null) => void;
+  selectedID: string | null;
+  onCollapse: () => void;
+  onDeselect: () => void;
 }) {
-  const { expandedID, isSheetOpen, onCollapse } = args;
+  const { expandedID, selectedID, onCollapse, onDeselect } = args;
 
   useEffect(() => {
-    if (!expandedID || isSheetOpen) return;
+    if (!expandedID && !selectedID) return;
     function handleKeyDown(e: KeyboardEvent) {
       if (!isKey(e, "Escape") || e.defaultPrevented) return;
-      if (isTypingShortcutTarget(document.activeElement)) return;
-      onCollapse(null);
-      document.getElementById(inboxRowID(expandedID!))?.focus();
+      const active = document.activeElement;
+      if (isEditableElement(active) || isTypingShortcutTarget(active)) return;
+      if (expandedID) {
+        onCollapse();
+        document.getElementById(inboxRowID(expandedID))?.focus();
+        return;
+      }
+      onDeselect();
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [expandedID, isSheetOpen, onCollapse]);
+  }, [expandedID, selectedID, onCollapse, onDeselect]);
 }

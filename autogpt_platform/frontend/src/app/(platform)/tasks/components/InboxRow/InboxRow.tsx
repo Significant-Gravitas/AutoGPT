@@ -14,6 +14,7 @@ interface Props {
   onToggle(): void;
   onOpen(): void;
   variant?: "list" | "board";
+  selected?: boolean;
 }
 
 export function InboxRow({
@@ -22,6 +23,7 @@ export function InboxRow({
   onToggle,
   onOpen,
   variant = "list",
+  selected = false,
 }: Props) {
   const row = useInboxRow(task, expanded);
   const board = variant === "board";
@@ -31,10 +33,12 @@ export function InboxRow({
     <div
       data-testid="inbox-row"
       data-state={task.inbox.state}
+      data-selected={selected || undefined}
       onKeyDown={row.handleKeyDown}
       className={cn(
         "flex flex-col",
         board && "rounded-xl border border-border-card bg-surface shadow-sm",
+        board && selected && "border-border-strong",
       )}
     >
       <button
@@ -42,11 +46,13 @@ export function InboxRow({
         id={`inbox-row-${task.id}`}
         aria-expanded={expanded}
         aria-controls={detailsID}
+        aria-current={selected ? "true" : undefined}
         onClick={onToggle}
         className={cn(
           "w-full text-left transition-[background-color,transform] duration-150 ease-out-expo hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none focus-visible:ring-inset active:scale-99 motion-reduce:transition-none",
           board ? "rounded-xl p-3" : "px-4 py-3",
           expanded && !board && "bg-surface-muted",
+          selected && "bg-surface-tray/60 hover:bg-surface-tray/60",
         )}
       >
         <RowSummary task={task} elapsed={row.elapsed} variant={variant} />
