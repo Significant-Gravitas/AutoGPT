@@ -58,11 +58,7 @@ export function WalletCompactPanel({
           >
             Automation credits
           </Text>
-          <Text
-            variant="large-semibold"
-            tone="primary"
-            className="tabular-nums"
-          >
+          <Text variant="large-semibold" tone="primary" tabular>
             {formattedCredits}
           </Text>
         </div>

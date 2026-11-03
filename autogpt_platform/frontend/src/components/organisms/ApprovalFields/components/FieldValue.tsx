@@ -148,12 +148,7 @@ function LongText({ text, shortened }: LongTextProps) {
         </p>
       </div>
       {!open && (
-        <Button
-          variant="link"
-          size="small"
-          className="h-auto min-w-0 px-0 py-0 text-sm"
-          onClick={() => setOpen(true)}
-        >
+        <Button variant="link" size="inline" onClick={() => setOpen(true)}>
           {lineCount(text) > CLAMP_LINES
             ? `Show all ${lineCount(text)} lines`
             : "Show all"}

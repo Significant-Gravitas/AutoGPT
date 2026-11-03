@@ -78,13 +78,15 @@ export function StatusCard({ label, ok }: StatusCardProps) {
         <Icon
           icon={CheckmarkCircle02Icon}
           size={16}
-          className="shrink-0 text-success"
+          tone="success"
+          className="shrink-0"
         />
       ) : (
         <Icon
           icon={CancelCircleIcon}
           size={16}
-          className="shrink-0 text-error"
+          tone="error"
+          className="shrink-0"
         />
       )}
       <Text
@@ -149,11 +151,7 @@ export function LinkCard({ url, title, meta, secret }: LinkCardProps) {
       )}
     >
       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-        <Icon
-          icon={GlobeIcon}
-          size={15}
-          className="shrink-0 text-foreground-subtle"
-        />
+        <Icon icon={GlobeIcon} size={15} tone="subtle" className="shrink-0" />
       </div>
       <div className="min-w-0 flex-1">
         <Text

@@ -86,11 +86,7 @@ export function ScheduleList({ schedules }: SchedulesProps) {
             className={CARD + " flex items-center gap-2.5 p-2.5"}
           >
             <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-              <Icon
-                icon={ClockIcon}
-                size={15}
-                className="text-foreground-secondary"
-              />
+              <Icon icon={ClockIcon} size={15} tone="secondary" />
             </div>
             <div className="min-w-0 flex-1">
               <Text
@@ -124,11 +120,7 @@ export function ScheduleCreatedCard({ output }: OutputProps) {
   return (
     <div className={`${CARD} ${HALF} flex items-center gap-2.5 p-2.5`}>
       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-        <Icon
-          icon={ClockIcon}
-          size={15}
-          className="text-foreground-secondary"
-        />
+        <Icon icon={ClockIcon} size={15} tone="secondary" />
       </div>
       <div className="min-w-0 flex-1">
         <Text
@@ -163,11 +155,7 @@ export function FolderList({ folders }: FoldersProps) {
             className={CARD + " flex items-center gap-2.5 p-2.5"}
           >
             <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-              <Icon
-                icon={FolderIcon}
-                size={15}
-                className="text-foreground-secondary"
-              />
+              <Icon icon={FolderIcon} size={15} tone="secondary" />
             </div>
             <Text
               variant="body-sm-medium-inherit"
@@ -209,7 +197,8 @@ export function FileList({ files }: FilesProps) {
             <Icon
               icon={fileIcon}
               size={14}
-              className="shrink-0 text-foreground-subtle"
+              tone="subtle"
+              className="shrink-0"
             />
             <Text
               variant="small-mono-tight"
@@ -248,11 +237,7 @@ export function DocsList({ results }: ResultsProps) {
             className={CARD + " flex items-start gap-2.5 p-2.5"}
           >
             <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-              <Icon
-                icon={BookOpenIcon}
-                size={15}
-                className="text-foreground-secondary"
-              />
+              <Icon icon={BookOpenIcon} size={15} tone="secondary" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">

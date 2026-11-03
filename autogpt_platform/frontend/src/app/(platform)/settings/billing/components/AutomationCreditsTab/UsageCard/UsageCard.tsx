@@ -59,7 +59,7 @@ export function UsageCard({ index = 0 }: Props) {
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <div className="flex items-baseline gap-2">
             {/* oxlint-disable-next-line design-system/no-restyle -- the spend total uses tabular figures */}
-            <Text variant="large-medium" as="span" className="tabular-nums">
+            <Text variant="large-medium" as="span" tabular>
               ${totalSpent.toFixed(2)}
             </Text>
             <Text variant="body" as="span" tone="muted">
