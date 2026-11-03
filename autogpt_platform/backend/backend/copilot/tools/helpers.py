@@ -12,6 +12,7 @@ from pydantic_core import PydanticUndefined
 
 from backend.blocks import BlockType, get_block
 from backend.blocks._base import AnyBlockSchema
+from backend.copilot.capabilities import block_meta
 from backend.copilot.capabilities.block_meta import get_block_provider
 from backend.copilot.constants import (
     COPILOT_NODE_EXEC_ID_SEPARATOR,
@@ -61,6 +62,7 @@ from backend.util.exceptions import (
     BlockInputError,
     InsufficientBalanceError,
 )
+from backend.util.json import same_json
 from backend.util.request import HTTPClientError
 from backend.util.settings import Settings
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -1426,14 +1428,9 @@ def block_run_refusal(
     for graphs only, or one the session's permissions or provider ceiling
     keep from the run.  Resuming an approved call answers to it too, since an
     approval from an earlier turn is no exemption from this one's."""
-    from backend.copilot.capabilities.block_meta import (
-        COPILOT_EXCLUDED_BLOCK_IDS,
-        COPILOT_EXCLUDED_BLOCK_TYPES,
-    )
-
     if (
-        block.block_type in COPILOT_EXCLUDED_BLOCK_TYPES
-        or block.id in COPILOT_EXCLUDED_BLOCK_IDS
+        block.block_type in block_meta.COPILOT_EXCLUDED_BLOCK_TYPES
+        or block.id in block_meta.COPILOT_EXCLUDED_BLOCK_IDS
     ):
         if block.block_type == BlockType.MCP_TOOL:
             hint = (
@@ -1534,7 +1531,7 @@ async def check_hitl_review(
             for r in existing_reviews
             if r.node_id == synthetic_node_id
             and r.status.value == "WAITING"
-            and r.payload == input_data
+            and same_json(r.payload, input_data)
         ),
         None,
     )

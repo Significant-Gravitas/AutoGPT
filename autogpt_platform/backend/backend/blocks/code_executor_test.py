@@ -412,6 +412,10 @@ class TestConnectToExistingSandbox:
         )
         with (
             patch("backend.blocks.code_executor.AsyncSandbox") as cls,
+            patch("backend.blocks.code_executor.hold_sandbox", AsyncMock()) as hold,
+            patch(
+                "backend.blocks.code_executor.release_sandbox", AsyncMock()
+            ) as release,
             patch(
                 "backend.blocks.code_executor.connect_sandbox", AsyncMock()
             ) as connect,
@@ -424,8 +428,12 @@ class TestConnectToExistingSandbox:
                     language=ProgrammingLanguage.PYTHON,
                     sandbox_id="sb-claude",
                     dispose_sandbox=False,
+                    pause_when_kept=True,
                     execution_context=context,
                 )
+        # Refused before the box is counted as held, so nothing pauses it.
+        hold.assert_not_awaited()
+        release.assert_not_awaited()
         connect.assert_not_awaited()
         claude_box.run_code.assert_not_awaited()
 

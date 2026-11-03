@@ -7,7 +7,6 @@ input, so every gate (credentials, review, spend) is evaluated again rather
 than trusting the stored approval for different data.
 """
 
-import json
 import logging
 from typing import Any
 
@@ -28,10 +27,12 @@ from backend.copilot.constants import (
 from backend.copilot.model import ChatSession
 from backend.copilot.permissions import BLOCK_GATE, MCP_GATE
 from backend.data.db_accessors import review_db
+from backend.util.json import same_json
 
 from .base import BaseTool
 from .capability_gates import gate_denied, gate_denied_error
 from .continue_run_block import ContinueRunBlockTool, refuse_disabled_block, run_claimed
+from .helpers import block_run_refusal
 from .models import ErrorResponse, ReviewRequiredResponse, ToolResponseBase
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
@@ -174,7 +175,7 @@ async def _resume_mcp(
             session_id=session.session_id,
         ).from_outside()
     arguments = {**payload.arguments, **(input_overrides or {})}
-    if not _same_json(arguments, payload.arguments):
+    if not same_json(arguments, payload.arguments):
         # The user approved one call, not a family of them. This review only
         # exists because the original call needed approving, so the changed
         # call needs approving too. Re-deriving that from the live catalog
@@ -235,6 +236,12 @@ async def _rerun_block(
         return await refuse_disabled_block(
             block_id, review_id, user_id, session.session_id
         )
+    # Before the claim, as on the plain resume: a refusal keeps the approval,
+    # and a parallel resume never finds it held by a run that won't happen.
+    if block is not None and (
+        refusal := block_run_refusal(block, block_id, session.session_id)
+    ):
+        return refusal
     stored = review.payload if isinstance(review.payload, dict) else {}
     return await run_claimed(
         review_id,
@@ -247,9 +254,3 @@ async def _rerun_block(
             input_data={**stored, **input_overrides},
         ),
     )
-
-
-def _same_json(left: dict[str, Any], right: dict[str, Any]) -> bool:
-    """Equal as JSON. Python's ``==`` counts ``True`` as ``1`` and ``1.0`` as
-    ``1``, which an MCP server need not."""
-    return json.dumps(left, sort_keys=True) == json.dumps(right, sort_keys=True)

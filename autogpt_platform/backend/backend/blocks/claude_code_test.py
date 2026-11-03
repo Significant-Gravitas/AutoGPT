@@ -98,7 +98,11 @@ async def test_resuming_the_users_own_box_of_another_kind_is_refused():
             }
         )
     )
-    with patch("backend.blocks.claude_code.BaseAsyncSandbox") as cls:
+    with (
+        patch("backend.blocks.claude_code.BaseAsyncSandbox") as cls,
+        patch("backend.blocks.claude_code.hold_sandbox", AsyncMock()) as hold,
+        patch("backend.blocks.claude_code.release_sandbox", AsyncMock()) as release,
+    ):
         cls.get_info = AsyncMock(return_value=code_box.get_info.return_value)
         cls.connect = AsyncMock(return_value=code_box)
         with pytest.raises(ClaudeCodeExecutionError, match="not a Claude Code sandbox"):
@@ -114,7 +118,11 @@ async def test_resuming_the_users_own_box_of_another_kind_is_refused():
                 conversation_history="",
                 dispose_sandbox=False,
                 execution_context=ExecutionContext(user_id="user-a"),
+                pause_when_kept=True,
             )
+    # Refused before the box is counted as held, so nothing pauses it.
+    hold.assert_not_awaited()
+    release.assert_not_awaited()
     cls.connect.assert_not_awaited()
     code_box.commands.run.assert_not_awaited()
 
