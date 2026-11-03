@@ -96,28 +96,30 @@ No arbitrary values except for layout and transitions (`w-[320px]`, `top-[7px]` 
 
 Text renders through the `Text` atom by default: `<Text variant="body">`, with `as` for the tag (`<Text variant="small" as="span">`), `tone` for the colour and `weight`, `mono` or `tabular` to adjust the variant. `<Text>` owns its typography and colour; `className` takes layout, truncation, wrapping and alignment only (the `Text` contract of `design-system/no-restyle`).
 
-Use a role class only where `Text` can't render the element identically, and inside primitives. Each role bundles its line-height:
+Use a scale class only where `Text` can't render the element identically, and inside primitives. The type scale is the app's only set of text sizes: its values are in `src/app/tokens/typography.css` (one `:root` block, mapped to `text-<step>` by `@theme` in `globals.css`), so a redesign changes that file and every size follows. Each step bundles its line-height:
 
-| Role | Size / line-height |
-| --- | --- |
-| `text-tiny` | 10/14px |
-| `text-caption-sm` | 11/16px |
-| `text-caption` | 12/18px |
-| `text-body-sm` | 13/20px |
-| `text-body` | 14/22px |
-| `text-body-md` | 15/24px |
-| `text-body-lg` | 16/26px |
-| `text-lead` | 20/28px |
-| `text-heading-sm` | 22/24px |
-| `text-heading` | 28/40px |
-| `text-title` | 32/40px |
-| `text-display` | 44/56px |
+| Step | Size / line-height | Replaced (SECRT-3152) |
+| --- | --- | --- |
+| `text-tiny` | 10/14px | |
+| `text-caption-sm` | 11/16px | |
+| `text-caption` | 12/18px | Tailwind `xs` (12/16) |
+| `text-body-sm` | 13/20px | |
+| `text-body` | 14/22px | Tailwind `sm` (14/20) |
+| `text-body-md` | 15/24px | |
+| `text-body-lg` | 16/26px | Tailwind `base` (16/24) |
+| `text-lead` | 20/28px | Tailwind `lg` (18/28) and `xl` (20/28) |
+| `text-heading-sm` | 22/24px | |
+| `text-heading-md` | 24/32px | Tailwind `2xl` (24/32) |
+| `text-heading` | 28/40px | Tailwind `3xl` (30/36) |
+| `text-title` | 32/40px | Tailwind `4xl` (36/40) |
+| `text-display` | 44/56px | Tailwind `5xl` (48/48) |
+| `text-hero` | 64/64px | Tailwind `6xl` to `9xl` |
 
 - **Line-height:** override it only with `leading-inherit`, `leading-4.5`, `leading-5.5`, `leading-6.5` or a Tailwind step.
 - **Letter-spacing:** `tracking-display`, `tracking-heading`, `tracking-title`, `tracking-caps` or `tracking-eyebrow`.
 - **Weight:** Tailwind's scale (`font-medium`, `font-semibold`).
 
-Never use raw sizes: no `text-[13px]`, `leading-[..]`, `tracking-[..]`, `font-[..]` or inline font styles. A few rare sizes are still raw (5, 6, 9, 17, 23, 26, 35, 36, 48 and 64px, plus fractional rems). They carry `// TODO(tokens): SECRT-3152` until they are snapped; never round one to the nearest role.
+Tailwind's own sizes are reset in the theme (`--text-*: initial`), so `text-sm` or `md:text-2xl` renders nothing. Rule `design-system/no-raw-text-size` fails them, and arbitrary sizes (`text-[13px]`, `text-[length:..]`), naming the step to use; `scripts/ds/text-size-scale.ts` holds the mapping above and rewrites a file with `--write`. Never use raw sizes: no `text-[13px]`, `leading-[..]`, `tracking-[..]`, `font-[..]` or inline font styles. Streamdown, the chat's markdown renderer, still writes Tailwind's names in its own markup; `globals.css` sizes them from the same steps inside `[data-streamdown]`.
 
 ## Icons
 
