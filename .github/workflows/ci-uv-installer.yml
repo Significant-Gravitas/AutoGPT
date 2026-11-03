@@ -1,0 +1,274 @@
+name: Validate locked uv installer
+'on':
+  push:
+    branches:
+    - codex/ci-uv-installer-20261103-1900
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+    working-directory: autogpt_platform/backend
+env: {}
+jobs:
+  runtime:
+    name: Installer parity and API tests (${{ matrix.python-version }}, ${{ matrix.order }})
+    permissions:
+      contents: read
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+        - '3.12'
+        - '3.13'
+        order:
+        - baseline,candidate
+        - candidate,baseline
+        test-shard:
+        - api
+        partition:
+        - 4
+    runs-on: ubuntu-latest
+    services:
+      rabbitmq:
+        image: rabbitmq:4.1.4
+        ports:
+        - 5672:5672
+        env:
+          RABBITMQ_DEFAULT_USER: ${{ env.RABBITMQ_DEFAULT_USER }}
+          RABBITMQ_DEFAULT_PASS: ${{ env.RABBITMQ_DEFAULT_PASS }}
+        options: --health-cmd "rabbitmq-diagnostics -q check_running" --health-interval 30s --health-timeout
+          10s --health-retries 5 --health-start-period 10s
+      clamav:
+        image: clamav/clamav-debian:latest
+        ports:
+        - 3310:3310
+        env:
+          CLAMAV_NO_FRESHCLAMD: false
+          CLAMD_CONF_StreamMaxLength: 50M
+          CLAMD_CONF_MaxFileSize: 100M
+          CLAMD_CONF_MaxScanSize: 100M
+          CLAMD_CONF_MaxThreads: 4
+          CLAMD_CONF_ReadTimeout: 300
+        options: --health-cmd "clamdscan --version || exit 1" --health-interval 30s --health-timeout 10s
+          --health-retries 5 --health-start-period 180s
+      falkordb:
+        image: falkordb/falkordb:v4.12.5
+        ports:
+        - 6380:6379
+        env:
+          REDIS_ARGS: --requirepass ci-${{ github.run_id }}-${{ github.run_attempt }}
+        options: --health-cmd "redis-cli -a ci-${{ github.run_id }}-${{ github.run_attempt }} ping ||
+          exit 1" --health-interval 10s --health-timeout 5s --health-retries 10 --health-start-period
+          10s
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      with:
+        ref: ${{ github.sha }}
+        fetch-depth: 1
+        filter: blob:none
+        submodules: true
+        sparse-checkout-cone-mode: false
+        sparse-checkout: '/*
+
+          !/docs/platform/.gitbook/assets/*.png
+
+          !/docs/platform/.gitbook/assets/*.gif
+
+          '
+    - name: Verify application source and test fixtures are present
+      working-directory: .
+      run: python3 .github/scripts/validate_ci_checkout.py
+    - name: Checkout skills catalog
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      with:
+        repository: Significant-Gravitas/skills-catalog
+        ref: 7ed3b73314d5186120e8d4006febfd7e1c92cf08
+        path: skills-catalog
+    - name: Configure test shard
+      shell: bash
+      env:
+        MATRIX_TEST_SHARD: ${{ matrix.test-shard }}
+        MATRIX_TEST_PARTITION: ${{ matrix.partition }}
+      run: "# The trial tests' safety guard only accepts localhost:5432/postgres\n# under GITHUB_ACTIONS,\
+        \ and the per-shard names are cosmetic anyway \xE2\u20AC\u201D\n# each shard already has its own\
+        \ runner and its own Postgres container.\ncase \"$MATRIX_TEST_SHARD\" in\n  data)\n    database_name=\"\
+        postgres\"\n    ;;\n  copilot|memory-experts|sdk-billing|billing-threads|util-executor|api|remainder)\n\
+        \    database_name=\"ci_${MATRIX_TEST_SHARD//-/_}\"\n    ;;\n  *)\n    echo \"Unknown backend\
+        \ test shard: $MATRIX_TEST_SHARD\" >&2\n    exit 1\n    ;;\nesac\n\n{\n  echo \"TEST_SHARD=${MATRIX_TEST_SHARD}-${MATRIX_TEST_PARTITION}\"\
+        \n  echo \"DATABASE_NAME=${database_name}\"\n  echo \"RABBITMQ_VHOST=ci-${MATRIX_TEST_SHARD}\"\
+        \n  echo \"REDIS_PORT=17000\"\n} >> \"$GITHUB_ENV\"\n"
+    - name: Start isolated stateful services
+      id: stateful-services
+      working-directory: autogpt_platform
+      background: true
+      env:
+        CLAMAV_CONTAINER: ${{ job.services.clamav.id }}
+        RABBITMQ_CONTAINER: ${{ job.services.rabbitmq.id }}
+      run: "postgres_image=pgvector/pgvector:pg15\nbash \"$GITHUB_WORKSPACE/.github/scripts/docker-pull-with-retry.sh\"\
+        \ \"$postgres_image\"\ndocker run --pull=never -d --name postgres-test \\\n  -e POSTGRES_USER=postgres\
+        \ \\\n  -e POSTGRES_PASSWORD=postgres \\\n  -e POSTGRES_DB=postgres \\\n  -p 5432:5432 \\\n  -v\
+        \ \"$(pwd)/db/init/00-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro\" \\\n  \"$postgres_image\"\
+        \n\npostgres_ready=false\nfor _ in $(seq 1 30); do\n  if docker exec postgres-test pg_isready\
+        \ -h 127.0.0.1 -U postgres >/dev/null 2>&1; then\n    postgres_ready=true\n    break\n  fi\n \
+        \ sleep 1\ndone\nif [[ \"$postgres_ready\" != \"true\" ]]; then\n  echo \"Postgres failed to start\"\
+        \ >&2\n  docker logs postgres-test >&2\n  exit 1\nfi\n\n# The container's entrypoint already created\
+        \ and initialised `postgres`.\nif [[ \"$DATABASE_NAME\" != \"postgres\" ]]; then\n  docker exec\
+        \ postgres-test createdb -h 127.0.0.1 -U postgres \"$DATABASE_NAME\"\n  docker exec postgres-test\
+        \ psql -h 127.0.0.1 -U postgres \\\n    -v ON_ERROR_STOP=1 -d \"$DATABASE_NAME\" \\\n    -f /docker-entrypoint-initdb.d/00-init.sql\n\
+        fi\n\nif [[ -z \"$RABBITMQ_CONTAINER\" ]]; then\n  echo \"RabbitMQ service container was not found\"\
+        \ >&2\n  exit 1\nfi\ndocker exec \"$RABBITMQ_CONTAINER\" rabbitmqctl add_vhost \"$RABBITMQ_VHOST\"\
+        \ndocker exec \"$RABBITMQ_CONTAINER\" rabbitmqctl set_permissions \\\n  -p \"$RABBITMQ_VHOST\"\
+        \ \"$RABBITMQ_DEFAULT_USER\" \".*\" \".*\" \".*\"\n\nstart_redis_cluster() {\n  local name=\"\
+        $1\"\n  local base_port=\"$2\"\n  local network=\"redis-cluster-ci-${name}\"\n  docker network\
+        \ create \"$network\"\n\n  for offset in 0 1 2; do\n    local port=$((base_port + offset))\n \
+        \   local bus=$((base_port + 10000 + offset))\n    local container=\"redis-${name}-${offset}\"\
+        \n    docker run --pull=never -d --name \"$container\" --network \"$network\" \\\n      --network-alias\
+        \ \"$container\" \\\n      -p \"$port:$port\" \\\n      \"$redis_image\" \\\n      redis-server\
+        \ --port \"$port\" \\\n        --cluster-enabled yes \\\n        --cluster-config-file nodes.conf\
+        \ \\\n        --cluster-node-timeout 5000 \\\n        --cluster-require-full-coverage no \\\n\
+        \        --cluster-announce-hostname \"$container\" \\\n        --cluster-announce-port \"$port\"\
+        \ \\\n        --cluster-announce-bus-port \"$bus\" \\\n        --cluster-preferred-endpoint-type\
+        \ hostname\n  done\n\n  for offset in 0 1 2; do\n    local port=$((base_port + offset))\n    local\
+        \ container=\"redis-${name}-${offset}\"\n    local ready=false\n    for _ in $(seq 1 30); do\n\
+        \      if docker exec \"$container\" redis-cli -p \"$port\" ping 2>/dev/null | grep -q '^PONG$';\
+        \ then\n        ready=true\n        break\n      fi\n      sleep 1\n    done\n    if [[ \"$ready\"\
+        \ != \"true\" ]]; then\n      echo \"$container failed to accept commands\" >&2\n      docker\
+        \ logs \"$container\" >&2\n      return 1\n    fi\n  done\n\n  docker run --pull=never --rm --network\
+        \ \"$network\" \"$redis_image\" \\\n    redis-cli --cluster create \\\n      \"redis-${name}-0:${base_port}\"\
+        \ \\\n      \"redis-${name}-1:$((base_port + 1))\" \\\n      \"redis-${name}-2:$((base_port +\
+        \ 2))\" \\\n      --cluster-replicas 0 --cluster-yes\n\n  for _ in $(seq 1 30); do\n    local\
+        \ info\n    if info=$(docker exec \"redis-${name}-0\" redis-cli -p \"$base_port\" cluster info);\
+        \ then\n      local state\n      state=$(printf '%s\\n' \"$info\" | awk -F: '/^cluster_state:/\
+        \ {print $2}' | tr -d '[:cntrl:]')\n      if [[ \"$state\" == \"ok\" ]]; then\n        echo \"\
+        Redis cluster ${name} ready on ${base_port}-$((base_port + 2))\"\n        return 0\n      fi\n\
+        \    fi\n    sleep 1\n  done\n\n  echo \"Redis cluster ${name} failed to converge\" >&2\n  docker\
+        \ exec \"redis-${name}-0\" redis-cli -p \"$base_port\" cluster info >&2\n  return 1\n}\n\nredis_image=redis:7\n\
+        bash \"$GITHUB_WORKSPACE/.github/scripts/docker-pull-with-retry.sh\" \"$redis_image\"\nstart_redis_cluster\
+        \ \"$TEST_SHARD\" \"$REDIS_PORT\"\n\nif [[ -z \"$CLAMAV_CONTAINER\" ]]; then\n  echo \"ClamAV\
+        \ service container was not found\" >&2\n  exit 1\nfi\nclamav_ready=false\nfor _ in $(seq 1 60);\
+        \ do\n  if nc -z localhost 3310; then\n    clamav_ready=true\n    break\n  fi\n  sleep 5\ndone\n\
+        if [[ \"$clamav_ready\" != \"true\" ]]; then\n  echo \"ClamAV failed to start\" >&2\n  docker\
+        \ logs \"$CLAMAV_CONTAINER\" >&2\n  exit 1\nfi\nif ! timeout 10 bash -c 'echo \"PING\" | nc localhost\
+        \ 3310'; then\n  echo \"ClamAV is not responding to PING\" >&2\n  docker logs \"$CLAMAV_CONTAINER\"\
+        \ >&2\n  exit 1\nfi\n"
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Set up pinned uv
+      uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2
+      with:
+        version: 0.13.6
+        enable-cache: false
+    - name: Compare cold installers and require package parity
+      working-directory: .
+      env:
+        INSTALL_ORDER: ${{ matrix.order }}
+      run: python .github/scripts/benchmark-installer-candidate.py
+    - name: Generate Prisma Client
+      run: poetry run prisma generate && poetry run gen-prisma-stub
+    - name: Wait for isolated stateful services
+      wait: stateful-services
+    - name: Migrate shard database
+      run: 'export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${DATABASE_NAME}"
+
+        export DIRECT_URL="$DATABASE_URL"
+
+        poetry run prisma migrate deploy
+
+        '
+    - name: Generate ephemeral secrets
+      run: 'echo "ENCRYPTION_KEY=$(openssl rand -base64 32 | tr ''+/'' ''-_'')" >> "$GITHUB_ENV"
+
+        echo "UNSUBSCRIBE_SECRET_KEY=$(openssl rand -base64 32 | tr ''+/'' ''-_'')" >> "$GITHUB_ENV"
+
+        echo "INTERNAL_API_KEY=$(openssl rand -base64 32 | tr ''+/'' ''-_'')" >> "$GITHUB_ENV"
+
+        '
+    - name: Test shard
+      timeout-minutes: 10
+      shell: bash
+      env:
+        COVERAGE_FILE: .coverage-${{ matrix.test-shard }}-${{ matrix.partition }}
+        PYTHONUNBUFFERED: '1'
+        BACKEND_TEST_METRICS: shard-metrics-${{ matrix.test-shard }}-${{ matrix.partition }}.json
+        LOG_LEVEL: ${{ runner.debug && 'DEBUG' || 'INFO' }}
+        EXECUTION_MANAGER_PORT: '18002'
+        DATABASE_API_PORT: '18005'
+        AGENT_API_PORT: '18006'
+        EXECUTION_SCHEDULER_PORT: '18003'
+        NOTIFICATION_SERVICE_PORT: '18007'
+        REDIS_HOST: localhost
+        GRAPHITI_FALKORDB_HOST: 127.0.0.1
+        TRIAL_TEST_DATABASE: '1'
+        TEST_LAYOUT: ${{ inputs.test_layout || 'paths' }}
+      run: "export DATABASE_URL=\"postgresql://postgres:postgres@localhost:5432/${DATABASE_NAME}\"\nexport\
+        \ DIRECT_URL=\"$DATABASE_URL\"\npytest_args=(\n  -p no:cacheprovider\n  --durations=30\n  --cov=backend\n\
+        \  --cov-branch\n  --cov-report=\n  --junitxml=\"junit-${TEST_SHARD}.xml\"\n)\nif [[ \"${{ runner.debug\
+        \ }}\" == \"1\" ]]; then\n  pytest_args+=(-s -vv -o log_cli=true -o log_cli_level=DEBUG)\nelse\n\
+        \  pytest_args+=(-v)\nfi\n\nunit=\"ci-backend-${TEST_SHARD}.scope\"\npreserve_env=$(python -c\
+        \ 'import os; print(\",\".join(os.environ))')\nset +e\nsudo --preserve-env=\"$preserve_env\" systemd-run\
+        \ --scope --expand-environment=no --unit=\"$unit\" \\\n  -p RuntimeMaxSec=8min -p TimeoutStopSec=15s\
+        \ -p KillMode=control-group \\\n  /usr/bin/setpriv --reuid \"$(id -u)\" --regid \"$(id -g)\" --init-groups\
+        \ \\\n  /usr/bin/env PATH=\"$PATH\" HOME=\"$HOME\" USER=\"$(id -un)\" LOGNAME=\"$(id -un)\" /usr/bin/time\
+        \ -v \\\n  python ../../.github/scripts/backend_test_shard.py --layout \"$TEST_LAYOUT\" --partition\
+        \ \"${{ matrix.partition }}\" \"${{ matrix.test-shard }}\" -- \"${pytest_args[@]}\"\nstatus=$?\n\
+        if [[ \"$(sudo systemctl show \"$unit\" --property=LoadState --value)\" == loaded ]]; then\n \
+        \ if ! sudo systemctl stop \"$unit\"; then\n    [[ \"$(sudo systemctl show \"$unit\" --property=LoadState\
+        \ --value)\" == not-found ]] || status=1\n  fi\nfi\nsudo systemctl show \"$unit\" --property=Result,MemoryPeak,CPUUsageNSec,TasksCurrent\
+        \ || true\nexit \"$status\"\n"
+    - name: Generate coverage XML once
+      if: ${{ always() }}
+      run: poetry run python ../../.github/scripts/report_backend_coverage.py --data-file ".coverage-${TEST_SHARD}"
+        --output "coverage-${TEST_SHARD}.xml"
+    - name: Validate test reports
+      if: ${{ always() }}
+      run: python ../../.github/scripts/validate_junit.py --synthesize-invalid --allow-skips-from ../../.github/scripts/backend-allowed-skips.json
+        --python-version "${{ matrix.python-version }}" "junit-${TEST_SHARD}.xml"
+    - name: Validate coverage reports
+      if: ${{ always() }}
+      run: "python - \"coverage-${TEST_SHARD}.xml\" <<'PY'\nimport sys\nfrom pathlib import Path\nfrom\
+        \ xml.etree import ElementTree\n\nreport = Path(sys.argv[1])\nif not report.is_file() or not report.stat().st_size:\n\
+        \    raise SystemExit(f\"Missing or empty report: {report}\")\nElementTree.parse(report)\nprint(f\"\
+        Validated nonempty XML report: {report}\")\nPY\n"
+    - name: Upload test and coverage reports
+      if: ${{ always() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: installer-runtime-${{ matrix.python-version }}-${{ matrix.order }}
+        path: 'autogpt_platform/backend/junit-${{ matrix.test-shard }}-${{ matrix.partition }}.xml
+
+          autogpt_platform/backend/coverage-${{ matrix.test-shard }}-${{ matrix.partition }}.xml
+
+          autogpt_platform/backend/shard-metrics-${{ matrix.test-shard }}-${{ matrix.partition }}.json
+
+          autogpt_platform/backend/.coverage-${{ matrix.test-shard }}-${{ matrix.partition }}
+
+          '
+        include-hidden-files: true
+        if-no-files-found: error
+        retention-days: 3
+    - name: Upload installer evidence
+      if: ${{ always() }}
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: installer-parity-${{ matrix.python-version }}-${{ matrix.order }}
+        path: '${{ runner.temp }}/installer-comparison/*.json
+
+          ${{ runner.temp }}/installer-comparison/*.log'
+        if-no-files-found: error
+        retention-days: 3
+    env:
+      CI: true
+      PLAIN_OUTPUT: true
+      RUN_ENV: local
+      PORT: 8080
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      SKILLS_CATALOG_PATH: ${{ github.workspace }}/skills-catalog
+      SKILLS_CATALOG_TOKEN: ${{ github.token }}
+      RABBITMQ_DEFAULT_USER: rabbitmq_user_default
+      RABBITMQ_DEFAULT_PASS: ci-${{ github.run_id }}-${{ github.run_attempt }}
+      GRAPHITI_FALKORDB_PASSWORD: ci-${{ github.run_id }}-${{ github.run_attempt }}
