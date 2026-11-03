@@ -7,11 +7,13 @@ import hashlib
 import hmac
 import json
 import os
+import threading
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+from autogpt_local_executor import cli
 from autogpt_local_executor.audit import (
     AuditWriter,
     canonical_bytes,
@@ -180,6 +182,63 @@ async def test_force_rotate_returns_path_and_resets_seq(tmp_path: Path) -> None:
     rec = json.loads(w.path.read_text().splitlines()[-1])
     assert rec["seq"] == 1
     assert rec["prev_hmac"] is None
+
+
+@pytest.mark.asyncio
+async def test_cli_rotation_while_the_daemon_runs_keeps_both_chains_valid(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """`autogpt-shim audit rotate` has its own writer; the daemon's must notice."""
+    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    daemon = _writer(tmp_path)
+    await daemon.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    await daemon.write("EXECUTE_COMMAND", request_id="b", details={}, result={})
+
+    assert cli._audit_rotate(daemon.path) == 0
+    await daemon.write("EXECUTE_COMMAND", request_id="c", details={}, result={})
+
+    [rotated] = list_rotated_files(daemon.path)
+    assert AuditWriter.verify(rotated, KEY) == []
+    assert AuditWriter.verify(daemon.path, KEY) == []
+    first = json.loads(daemon.path.read_text().splitlines()[0])
+    assert (first["request_id"], first["seq"], first["prev_hmac"]) == ("c", 1, None)
+    AuditWriter(path=daemon.path, audit_key=KEY)  # a restarted daemon accepts the log
+
+
+@pytest.mark.asyncio
+async def test_a_rotation_waits_for_an_append_in_progress(tmp_path: Path, monkeypatch) -> None:
+    daemon = _writer(tmp_path)
+    await daemon.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    appending = threading.Event()
+    release = threading.Event()
+    append = daemon._append
+
+    def held_append(line: str) -> None:
+        appending.set()
+        release.wait(timeout=30)
+        append(line)
+
+    monkeypatch.setattr(daemon, "_append", held_append)
+    write = asyncio.create_task(
+        daemon.write("EXECUTE_COMMAND", request_id="b", details={}, result={})
+    )
+    assert await asyncio.to_thread(appending.wait, 30)
+    rotation = asyncio.create_task(
+        asyncio.to_thread(lambda: AuditWriter(path=daemon.path, audit_key=KEY).force_rotate())
+    )
+    await asyncio.sleep(0.2)
+    rotated_during_the_append = rotation.done()
+    release.set()
+    await write
+    rotated = await rotation
+
+    assert not rotated_during_the_append
+    assert rotated is not None
+    assert [json.loads(line)["request_id"] for line in rotated.read_text().splitlines()] == [
+        "a",
+        "b",
+    ]
+    assert AuditWriter.verify(rotated, KEY) == []
 
 
 @pytest.mark.asyncio

@@ -202,11 +202,17 @@ out-of-band.
 | File reaches **64 MiB** | Rotate to `audit.log.{YYYYMMDD-HHMMSS}` and start fresh |
 | 30 days since first record | Rotate (caps untouched logs in the working set) |
 | Shim restart | No rotation; appends to existing file |
-| User runs `autogpt-shim audit rotate` | Explicit rotation |
+| User runs `autogpt-shim audit rotate` | Explicit rotation, safe while the daemon runs |
 
 Each new file starts with `seq=1` and `prev_hmac=null`. The first
 record (`SHIM_START` for restarts, or just the first op) carries
 `prev_hmac=null` to mark the chain origin.
+
+The daemon and an `autogpt-shim audit` command each open their own
+writer, so appends and rotations hold an exclusive lock on
+`.audit.log.lock` next to the log. A writer that finds the file
+rotated or appended to since its last write reloads the chain state
+from the file before it appends.
 
 If two rotations land within the same wall-clock second (rare, but
 possible under burst writes or explicit `rotate` after a recent
