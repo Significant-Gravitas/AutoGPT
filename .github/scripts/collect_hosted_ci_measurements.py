@@ -29,7 +29,7 @@ def architecture():
         for label, values in data.items():
             text = (path.parent / f'resources-{label}.txt').read_text()
             match = re.search(r'Maximum resident set size \(kbytes\): (\d+)', text)
-            record[label] = {'seconds': values['seconds'], 'cases': len(values['cases']), 'rss_kb': int(match[1]) if match else None, 'metrics': json.loads((path.parent / f'metrics-{label}.json').read_text())}
+            record[label] = {'seconds': values['seconds'], 'cases': len(values['cases']), 'rss_kb': int(match[1]) if match else None, 'metrics': {k: v for k, v in json.loads((path.parent / f'metrics-{label}.json').read_text()).items() if k not in {'nodeids', 'files'}}}
         result[path.parent.name] = record
     return 'architecture-prefilter', result
 
@@ -67,10 +67,22 @@ tasks = [architecture, imports,
          lambda: job_log('backend-util312', '41673952967', '126050601660')]
 with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
     for future in concurrent.futures.as_completed([pool.submit(task) for task in tasks]):
-        title, data = future.result()
+        try:
+            title, data = future.result()
+        except subprocess.CalledProcessError as error:
+            annotation('collector-error', {'command': error.cmd, 'stderr': error.stderr[-2500:]})
+            continue
         (output / f'{title}.json').write_text(json.dumps(data, indent=2))
-        if isinstance(data, list) and len(data) > 70:
-            for start in range(0, len(data), 70):
-                annotation(f'{title}-{start // 70 + 1}', data[start:start+70])
+        if isinstance(data, list):
+            chunk = []
+            number = 0
+            for row in data:
+                if len(json.dumps(chunk + [row])) > 3500 and chunk:
+                    number += 1
+                    annotation(f'{title}-{number}', chunk)
+                    chunk = []
+                chunk.append(row)
+            if chunk:
+                annotation(f'{title}-{number+1}', chunk)
         else:
             annotation(title, data)
