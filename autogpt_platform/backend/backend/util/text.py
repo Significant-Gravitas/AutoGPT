@@ -17,8 +17,10 @@ from time import monotonic
 from typing import Any
 
 from jinja2 import BaseLoader, pass_context
+from jinja2.async_utils import auto_aiter
 from jinja2.compiler import CodeGenerator, CompilerExit, Frame
 from jinja2.exceptions import TemplateError
+from jinja2.filters import make_attrgetter
 from jinja2.nodes import Concat, Node
 from jinja2.runtime import Context
 from jinja2.sandbox import (
@@ -27,7 +29,7 @@ from jinja2.sandbox import (
     SandboxedFormatter,
 )
 from jinja2.utils import _PassArg
-from markupsafe import Markup
+from markupsafe import Markup, escape, soft_str
 
 logger = logging.getLogger(__name__)
 
@@ -646,7 +648,7 @@ def _budgeted_filter(name: str, filter_func: Callable[..., Any]) -> Callable[...
 
     The piped value is the first argument the filter itself declares; Jinja
     puts a context, eval context or environment in front of that for the
-    filters that ask for one.
+    filters that ask for one, and the check is handed it as ``passed``.
     """
     offset = 0 if _PassArg.from_obj(filter_func) is None else 1
     check = _FILTER_SIZE_CHECKS.get(name)
@@ -656,7 +658,7 @@ def _budgeted_filter(name: str, filter_func: Callable[..., Any]) -> Callable[...
         own = args[offset:]
         budget = _current_budget()
         if check is not None:
-            own = check(own, kwargs, budget) or own
+            own = check(own, kwargs, budget, args[0] if offset else None) or own
             args = (*args[:offset], *own)
         result = filter_func(*args, **kwargs)
         if inspect.isawaitable(result):
@@ -723,13 +725,19 @@ def _check_container_extend(
 
 
 def _check_center_filter(
-    own: tuple[Any, ...], kwargs: dict[str, Any], budget: _RenderBudget
+    own: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    budget: _RenderBudget,
+    passed: Any,
 ) -> None:
     budget.check(_int_arg(own, kwargs, 1, "width", 80) - _value_size(own[0]))
 
 
 def _check_indent_filter(
-    own: tuple[Any, ...], kwargs: dict[str, Any], budget: _RenderBudget
+    own: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    budget: _RenderBudget,
+    passed: Any,
 ) -> None:
     lines = str(own[0]).count("\n") + 1
     width = _own_arg(own, kwargs, 1, "width", 4)
@@ -740,21 +748,31 @@ def _check_indent_filter(
 
 
 def _check_join_filter(
-    own: tuple[Any, ...], kwargs: dict[str, Any], budget: _RenderBudget
+    own: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    budget: _RenderBudget,
+    passed: Any,
 ) -> tuple[Any, ...]:
+    own = _projected(own, kwargs, 2, passed.environment)
     separator = _own_arg(own, kwargs, 1, "d", "")
     return (_bounded_join_input(own[0], separator, budget), *own[1:])
 
 
 def _check_string_filter(
-    own: tuple[Any, ...], kwargs: dict[str, Any], budget: _RenderBudget
+    own: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    budget: _RenderBudget,
+    passed: Any,
 ) -> None:
     """string renders its value as the text a container's items hold."""
     budget.check(_text_size(own[0]))
 
 
 def _check_batch_filter(
-    own: tuple[Any, ...], kwargs: dict[str, Any], budget: _RenderBudget
+    own: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    budget: _RenderBudget,
+    passed: Any,
 ) -> None:
     """batch pads its last row with as many references as a row is wide."""
     if _own_arg(own, kwargs, 2, "fill_with", None) is not None:
@@ -762,14 +780,20 @@ def _check_batch_filter(
 
 
 def _check_slice_filter(
-    own: tuple[Any, ...], kwargs: dict[str, Any], budget: _RenderBudget
+    own: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    budget: _RenderBudget,
+    passed: Any,
 ) -> None:
     """slice builds one list per slice, however many the template asks for."""
     budget.check(_int_arg(own, kwargs, 1, "slices", 0) * _REFERENCE_BYTES)
 
 
 def _check_round_filter(
-    own: tuple[Any, ...], kwargs: dict[str, Any], budget: _RenderBudget
+    own: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    budget: _RenderBudget,
+    passed: Any,
 ) -> None:
     """Rounding an integer to a negative precision computes that power of ten."""
     precision = _int_arg(own, kwargs, 1, "precision", 0)
@@ -785,14 +809,138 @@ _BITS_PER_DIGIT = 4
 
 
 def _check_replace_filter(
-    own: tuple[Any, ...], kwargs: dict[str, Any], budget: _RenderBudget
+    own: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    budget: _RenderBudget,
+    passed: Any,
 ) -> None:
-    value = str(own[0])
-    old = _own_arg(own, kwargs, 1, "old", None)
-    new = _own_arg(own, kwargs, 2, "new", None)
+    old = _own_arg(own, kwargs, 1, "old", _ABSENT)
+    new = _own_arg(own, kwargs, 2, "new", _ABSENT)
+    if old is _ABSENT or new is _ABSENT:
+        return
     count = _own_arg(own, kwargs, 3, "count", None)
-    if old is not None and new is not None:
-        _check_replace_sizes(value, old, new, count, budget)
+    value, old, new = _replace_operands(passed.autoescape, own[0], old, new)
+    _check_replace_sizes(value, old, new, count, budget)
+
+
+_ABSENT = object()
+
+
+def _replace_operands(autoescape: bool, value: Any, old: Any, new: Any) -> tuple:
+    """The text, search and replacement Jinja's ``replace`` filter works on.
+
+    It stringifies all three, and under autoescape escapes the text when
+    either argument is markup, as ``do_replace`` does.
+    """
+    if not autoescape:
+        return str(value), str(old), str(new)
+    if hasattr(old, "__html__") or (
+        hasattr(new, "__html__") and not hasattr(value, "__html__")
+    ):
+        value = escape(value)
+    else:
+        value = soft_str(value)
+    return value, soft_str(old), soft_str(new)
+
+
+def _check_wordwrap_filter(
+    own: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    budget: _RenderBudget,
+    passed: Any,
+) -> None:
+    """wordwrap puts its wrap string between every two lines it makes."""
+    text = own[0]
+    if not isinstance(text, str):
+        return
+    width = _own_arg(own, kwargs, 1, "width", 79)
+    wrapstring = _own_arg(own, kwargs, 3, "wrapstring", None)
+    wrap_size = (
+        len(passed.newline_sequence) if wrapstring is None else _text_size(wrapstring)
+    )
+    budget.check(len(text) + _wordwrap_line_count(text, width) * wrap_size)
+
+
+def _wordwrap_line_count(text: str, width: Any) -> int:
+    """At most how many lines wordwrap can make of ``text``.
+
+    Every line holds a character of the input, two lines in a row take more
+    than ``width`` of it between them, and each paragraph is wrapped on its own.
+    """
+    lines = len(text) + 1
+    if isinstance(width, (int, float)) and width >= 1:
+        paragraphs = sum(map(text.count, _LINE_BREAKS)) + 1
+        lines = min(lines, int(2 * len(text) / width) + paragraphs)
+    return lines
+
+
+# What str.splitlines splits on, so wordwrap wraps each piece on its own
+_LINE_BREAKS = (
+    "\n",
+    "\r",
+    "\v",
+    "\f",
+    "\x1c",
+    "\x1d",
+    "\x1e",
+    "\x85",
+    "\u2028",
+    "\u2029",
+)
+
+
+def _check_sum_filter(
+    own: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    budget: _RenderBudget,
+    passed: Any,
+) -> tuple[Any, ...]:
+    """sum adds every item onto its start, so the result holds all of them."""
+    own = _projected(own, kwargs, 1, passed)
+    start = _own_arg(own, kwargs, 2, "start", 0)
+    return (_bounded_sum_input(own[0], _value_size(start), budget), *own[1:])
+
+
+async def _bounded_sum_input(
+    items: Any, total: int, budget: _RenderBudget
+) -> AsyncIterator[Any]:
+    async for item in auto_aiter(items):
+        # Adding an integer grows the sum by a bit or so, not by the item
+        if not _is_plain_int(item):
+            total += _value_size(item)
+            budget.check(total)
+        yield item
+
+
+def _projected(
+    own: tuple[Any, ...], kwargs: dict[str, Any], index: int, environment: Any
+) -> tuple[Any, ...]:
+    """``own`` with the filter's ``attribute`` already applied to its items.
+
+    A check then measures, and the filter is handed, what the attribute picks
+    out of each item rather than the whole item.
+    """
+    attribute = _own_arg(own, kwargs, index, "attribute", None)
+    if attribute is None:
+        return own
+    getter = make_attrgetter(environment, attribute)
+    items = own[0]
+    if isinstance(items, AsyncIterable):
+        projected: Any = _amap(getter, items)
+    else:
+        projected = map(getter, items)
+    if len(own) > index:
+        own = (*own[:index], None, *own[index + 1 :])
+    else:
+        kwargs["attribute"] = None
+    return (projected, *own[1:])
+
+
+async def _amap(
+    func: Callable[[Any], Any], items: AsyncIterable[Any]
+) -> AsyncIterator[Any]:
+    async for item in items:
+        yield func(item)
 
 
 def _bounded_join_input(value: Any, separator: Any, budget: _RenderBudget) -> Any:
@@ -826,6 +974,9 @@ async def _bounded_aiter(
 def _check_replace_sizes(
     value: Any, old: Any, new: Any, count: Any, budget: _RenderBudget
 ) -> None:
+    if isinstance(value, Markup):
+        # Markup.replace escapes its arguments before it searches or inserts
+        old, new = escape(old), escape(new)
     occurrences = value.count(old) if old else len(value) + 1
     if _is_plain_int(count) and 0 <= count < occurrences:
         occurrences = count
@@ -878,6 +1029,8 @@ _FILTER_SIZE_CHECKS: dict[str, Callable[..., Any]] = {
     "round": _check_round_filter,
     "slice": _check_slice_filter,
     "string": _check_string_filter,
+    "sum": _check_sum_filter,
+    "wordwrap": _check_wordwrap_filter,
 }
 SIZE_CHECKED_FILTERS = frozenset(_FILTER_SIZE_CHECKS) | {"format"}
 SIZE_CHECKED_METHODS = frozenset(_METHOD_SIZE_CHECKS) | {"format", "format_map"}

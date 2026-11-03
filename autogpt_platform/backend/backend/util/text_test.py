@@ -1,8 +1,10 @@
 """Tests for TextFormatter resource-exhaustion protections (GHSA-ppw9-h7rv-gwq9)."""
 
 import asyncio
+import random
 from time import monotonic
 
+import jinja2
 import pytest
 
 from backend.util import text
@@ -451,6 +453,26 @@ OVERSIZED_TEMPLATES = {
         "{% set f = '%s' * 5000 %}{% set f = f ~ f %}{{ (f % ()) }}",
         "Format string too long",
     ),
+    "wordwrap filter's wrap string": (
+        BIG_VALUE
+        + "{% set t = 'a ' * 5000 %}"
+        + "{{ (t ~ t)|wordwrap(1, wrapstring=a)|length }}",
+        BEFORE_IT_ALLOCATES,
+    ),
+    "sum filter over big items": (
+        BIG_VALUE + "{% set l = [a] * 10000 %}{{ l|sum(start='')|length }}",
+        BEFORE_IT_ALLOCATES,
+    ),
+    "sum filter's start": (
+        "{% set s = 'x'|center(30000000) %}{{ ['y']|sum(start=s)|length }}",
+        BEFORE_IT_ALLOCATES,
+    ),
+    "sum filter by attribute": (
+        BIG_VALUE
+        + "{% set l = [{'v': a}] * 10000 %}"
+        + "{{ l|sum(attribute='v', start='')|length }}",
+        BEFORE_IT_ALLOCATES,
+    ),
 }
 
 
@@ -474,6 +496,10 @@ async def test_an_oversized_render_is_refused(
         await fmt.format_string(template, OVERSIZED_VALUES.get(name))
 
 
+# Twenty items sharing one 5 MB field that a join by another attribute never
+# reads, so the join is small whatever the items weigh
+ONE_PAYLOAD_TWENTY_TIMES = {"l": [{"name": "a", "payload": "p" * 5_000_000}] * 20}
+
 WORKING_TEMPLATES = {
     "substitution": ("Hello {{ name }}!", {"name": "World"}, "Hello World!"),
     "loop": ("{% for i in range(3) %}{{ i }},{% endfor %}", {}, "0,1,2,"),
@@ -481,10 +507,36 @@ WORKING_TEMPLATES = {
     "indent filter": ("{{ 'a\nb'|indent(2) }}", {}, "a\n  b"),
     "join filter": ("{{ ['a','b','c']|join('-') }}", {}, "a-b-c"),
     "replace filter": ("{{ 'aaa'|replace('a','bb') }}", {}, "bbbbbb"),
+    "replace filter with numbers": ("{{ 123|replace(1, 2) }}", {}, "223"),
+    "a join by attribute": (
+        "{{ l|join(',', attribute='name') }}",
+        ONE_PAYLOAD_TWENTY_TIMES,
+        ",".join("a" * 20),
+    ),
+    "a lazy join by attribute": (
+        "{{ l|select|join(',', attribute='name') }}",
+        ONE_PAYLOAD_TWENTY_TIMES,
+        ",".join("a" * 20),
+    ),
+    "sum filter": ("{{ [1, 2, 3]|sum }}", {}, "6"),
+    "sum of text": ("{{ ['a', 'b']|sum(start='') }}", {}, "ab"),
+    "sum by attribute": ("{{ [{'n': 1}, {'n': 2}]|sum(attribute='n') }}", {}, "3"),
+    "sum of large integers": (
+        "{% set x = 10**1000 %}"
+        + "{% set x = x*x %}" * 4
+        + "{{ ([x] * 10000)|sum == x * 10000 }}",
+        {},
+        "True",
+    ),
     "map filter": ("{{ ['a','b']|map('upper')|join }}", {}, "AB"),
     "select filter": ("{{ [1,2,3]|select('odd')|list|join(',') }}", {}, "1,3"),
     "urlencode filter": ("{{ 'a b'|urlencode }}", {}, "a%20b"),
     "wordwrap filter": ("{{ 'aaa bbb'|wordwrap(3) }}", {}, "aaa\nbbb"),
+    "wordwrap with a wrap string": (
+        "{{ 'aaa bbb ccc'|wordwrap(3, wrapstring='<br>') }}",
+        {},
+        "aaa<br>bbb<br>ccc",
+    ),
     "filesizeformat filter": ("{{ 1000|filesizeformat }}", {}, "1.0 kB"),
     "batch filter": ("{{ [1,2,3]|batch(2, 'x')|list|length }}", {}, "2"),
     "slice filter": ("{{ [1,2,3]|slice(2)|list|length }}", {}, "2"),
@@ -528,6 +580,64 @@ async def test_a_template_within_the_limits_still_renders(
     fmt: TextFormatter, template: str, values: dict, expected: str
 ):
     assert await fmt.format_string(template, values) == expected
+
+
+@pytest.mark.parametrize("autoescape", [False, True])
+@pytest.mark.parametrize(
+    "template",
+    [
+        "{{ 123|replace(1, 2) }}",
+        "{{ 'a1b1'|replace(1, 'x', 1) }}",
+        "{{ 'a&b'|replace('&'|safe, '<') }}",
+        "{{ ('a&b'|safe)|replace('&', '<') }}",
+    ],
+)
+@pytest.mark.asyncio
+async def test_the_replace_filter_answers_as_jinja_does(
+    autoescape: bool, template: str
+):
+    # The check sizes a replace from the operands Jinja's filter uses, so it
+    # takes them the same way: stringified, and escaped under autoescape
+    plain = jinja2.Environment(autoescape=autoescape).from_string(template).render()
+    assert await TextFormatter(autoescape=autoescape).format_string(template) == plain
+
+
+ESCAPED_REPLACES = {
+    "markup search over plain text": (
+        BIG_VALUE + "{{ ('&' * 10000)|replace('amp'|safe, a)|length }}"
+    ),
+    "plain replacement into markup": (
+        "{% set q = '\"' * 2000 %}{{ (('x' * 10000)|safe)|replace('x', q)|length }}"
+    ),
+}
+
+
+@pytest.mark.parametrize("template", ESCAPED_REPLACES.values(), ids=ESCAPED_REPLACES)
+@pytest.mark.asyncio
+async def test_a_replace_under_autoescape_is_sized_as_escaped(template: str):
+    # Escaping happens before the search and the insert, so the check counts
+    # in the escaped text with the escaped arguments
+    with pytest.raises(ValueError, match=BEFORE_IT_ALLOCATES):
+        await TextFormatter(autoescape=True).format_string(template)
+
+
+def test_the_wordwrap_line_bound_holds():
+    # The check sizes wordwrap's output from this bound, so it must be at
+    # least the number of wrap strings Jinja actually puts in
+    env = jinja2.Environment()
+    wordwrap = env.filters["wordwrap"]
+    rng = random.Random(16493)
+    pieces = ["a", "bb", "cccccc", " ", "  ", "-", "\n", "\r\n", "\t"]
+    for _ in range(3000):
+        value = "".join(rng.choices(pieces, k=rng.randint(0, 80)))
+        if rng.random() < 0.5:
+            # A word a little over half the width sits alone on its line,
+            # which is the case the factor of two in the bound is for
+            value = " ".join(["x" * rng.randint(1, 8)] * rng.randint(1, 30))
+        width = rng.randint(1, 12)
+        long_words, hyphens = rng.choice([True, False]), rng.choice([True, False])
+        wrapped = wordwrap(env, value, width, long_words, "\0", hyphens)
+        assert wrapped.count("\0") <= text._wordwrap_line_count(value, width)
 
 
 # --- The deadline is met, and the event loop is free while a render runs ---
@@ -909,7 +1019,6 @@ BOUNDED_FILTERS = frozenset(
         "selectattr",
         "sort",
         "striptags",
-        "sum",
         "title",
         "trim",
         "truncate",
@@ -917,7 +1026,6 @@ BOUNDED_FILTERS = frozenset(
         "upper",
         "urlencode",
         "wordcount",
-        "wordwrap",
     }
 )
 
