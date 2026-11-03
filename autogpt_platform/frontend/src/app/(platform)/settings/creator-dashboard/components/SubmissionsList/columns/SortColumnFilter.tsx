@@ -85,7 +85,7 @@ function SortOption({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm",
+        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-body",
         "transition-[background-color,color,transform] duration-150",
         "active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100",
         active

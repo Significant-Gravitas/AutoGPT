@@ -1417,11 +1417,21 @@ async def test_a_sandbox_files_lines_are_judged_and_an_empty_grep_is_not(
 
 
 async def _agent_without_credentials() -> ToolResponseBase | None:
+    from backend.copilot.tools.expert_scope import CredentialScopeSnapshot
     from backend.copilot.tools.run_agent import RunAgentInput, RunAgentTool
 
-    graph = MagicMock(id="graph-1", version=1, input_schema={})
+    graph = MagicMock(
+        id="graph-1",
+        version=1,
+        input_schema={},
+        regular_credentials_inputs={"credentials": MagicMock()},
+    )
     graph.name = "Daily Scraper"
     with (
+        patch(
+            "backend.copilot.tools.run_agent.resolve_credential_scope",
+            AsyncMock(return_value=CredentialScopeSnapshot([], None)),
+        ),
         patch(
             "backend.copilot.tools.run_agent.match_user_credentials_to_graph",
             AsyncMock(return_value=({}, ["credentials"])),

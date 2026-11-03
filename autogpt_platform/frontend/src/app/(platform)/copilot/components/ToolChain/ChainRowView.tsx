@@ -10,6 +10,7 @@ import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
 import type { ChainRow } from "./helpers";
 import { ProviderIcon, RowIcon } from "./RowIcon";
 import { useSubSessionEffectiveStatus } from "./SubSessionLive";
+import { StepClock } from "./StepClock";
 import { SwapText } from "./SwapText";
 import { HeldTag } from "./HeldCallRowParts";
 import { heldShowsOwnCall } from "./heldRow";
@@ -141,7 +142,7 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
       }
       shimmer={row.state === "running" || stillWorking}
       className={cn(
-        "max-w-full text-sm transition-colors duration-300",
+        "max-w-full text-body transition-colors duration-300",
         row.state === "error"
           ? "text-error"
           : row.held &&
@@ -155,6 +156,13 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
   const heldTag = row.held ? (
     <HeldTag state={row.held.state} read={row.held.read} />
   ) : null;
+  const stepClock =
+    row.state === "running" &&
+    !isReasoning &&
+    !liveSubSession &&
+    row.held?.state !== "waiting" ? (
+      <StepClock stepKey={row.key} />
+    ) : null;
 
   return (
     <div className="flex items-stretch gap-2.5">
@@ -187,12 +195,15 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
           >
             {rowText}
             {heldTag}
+            {stepClock}
             {!liveReasoning && (
               <Icon
                 icon={ArrowDown01Icon}
                 size={10}
+                tone="disabled"
+                motion="transform"
                 className={cn(
-                  "shrink-0 text-foreground-disabled transition-transform duration-300 ease-out-quint group-hover/row:text-foreground-tertiary",
+                  "shrink-0 group-hover/row:text-foreground-tertiary",
                   open && "rotate-180",
                 )}
               />
@@ -202,10 +213,11 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
           <div className="flex h-7 items-center gap-1.5">
             {rowText}
             {heldTag}
+            {stepClock}
           </div>
         )}
         {row.detail && (
-          <p className="animate-fade-in truncate text-xs text-error motion-reduce:animate-none">
+          <p className="animate-fade-in truncate text-caption text-error motion-reduce:animate-none">
             {row.detail}
           </p>
         )}

@@ -3,7 +3,8 @@
 import { downloadAsAdmin } from "@/app/(platform)/admin/marketplace/actions";
 import { Button } from "@/components/atoms/Button/Button";
 import { agentGraphExportFilename, exportAsJSONFile } from "@/lib/utils";
-import { ExternalLink } from "lucide-react";
+import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { useState } from "react";
 
 export function DownloadAgentAdminButton({
@@ -34,7 +35,7 @@ export function DownloadAgentAdminButton({
       onClick={handleDownload}
       disabled={isLoading}
     >
-      <ExternalLink className="h-4 w-4" />
+      <Icon aria-hidden icon={LinkSquare01Icon} className="h-4 w-4" />
       {isLoading ? "Downloading..." : "Download"}
     </Button>
   );

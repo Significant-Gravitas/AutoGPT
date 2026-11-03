@@ -66,8 +66,9 @@ export function TransactionRow({
             id={`transaction-details-${transaction.id}`}
             variant="ghost"
             size="small"
-            // oxlint-disable-next-line design-system/no-restyle -- a bare text toggle inside the receipt; no Button variant drops the padding
-            className="min-h-11 w-full min-w-0 px-1 text-foreground-secondary"
+            tone="secondary"
+            // oxlint-disable-next-line design-system/no-restyle -- a text toggle with 4px side padding; no Button size has it at the small height
+            className="min-h-11 w-full min-w-0 px-1"
             onClick={() => onToggle(transaction.id)}
             aria-label={`${open ? "Close" : "Open"} details for ${activityName(transaction)}, ${posted.date} at ${posted.time}`}
             aria-expanded={open}

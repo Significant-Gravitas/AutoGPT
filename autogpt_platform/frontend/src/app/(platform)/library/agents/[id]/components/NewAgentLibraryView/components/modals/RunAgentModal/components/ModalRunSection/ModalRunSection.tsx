@@ -45,7 +45,7 @@ export function ModalRunSection() {
           <WebhookTriggerBanner />
           <div className="flex flex-col gap-4">
             <div className="flex flex-col space-y-2">
-              <label className="flex items-center gap-1 text-sm font-medium">
+              <label className="flex items-center gap-1 text-body font-medium">
                 Trigger Name
                 <InformationTooltip description="Name of the trigger you are setting up" />
               </label>
@@ -60,7 +60,7 @@ export function ModalRunSection() {
               />
             </div>
             <div className="flex flex-col space-y-2">
-              <label className="flex items-center gap-1 text-sm font-medium">
+              <label className="flex items-center gap-1 text-body font-medium">
                 Trigger Description
                 <InformationTooltip description="Description of the trigger you are setting up" />
               </label>

@@ -5,7 +5,8 @@ import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
-import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import { Alert02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { useState } from "react";
 import { AyrshareConnectButton } from "../AyrshareConnectButton/AyrshareConnectButton";
 import { CredentialRow } from "../CredentialRow/CredentialRow";
@@ -127,7 +128,7 @@ export function CredentialsFlatView({
               )}
               {!isOptional && !selectedCredential && (
                 <span className="inline-flex items-center gap-1 text-error-foreground">
-                  <ExclamationTriangleIcon className="size-3.5" />
+                  <Icon aria-hidden icon={Alert02Icon} className="size-3.5" />
                   <span className="font-normal">required</span>
                 </span>
               )}

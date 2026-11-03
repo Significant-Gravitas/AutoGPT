@@ -388,6 +388,11 @@ class BaseTool:
     # True where ``gate_subject`` is implemented; ``_execute`` then accepts
     # GATE_APPROVED.
     has_gate_subject: bool = False
+    # True where a call can create, change or delete a file another call in
+    # the same message may read (the sandbox or the workspace).  Both engines
+    # run such a call on its own, in the order the model wrote it, so a copy
+    # made beside the command building the file never stores half of it.
+    writes_files: bool = False
 
     @property
     def name(self) -> str:

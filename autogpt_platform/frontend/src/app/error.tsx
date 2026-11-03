@@ -5,6 +5,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { CircleAlertGlyph } from "@/components/atoms/Icon/drawnIcons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import { reloadForChunkLoadError } from "@/lib/chunk-load-reload";
 import Link from "next/link";
 
 export default function Error({
@@ -16,6 +17,7 @@ export default function Error({
 }) {
   useEffect(() => {
     console.error(error);
+    reloadForChunkLoadError(error, "error_boundary");
   }, [error]);
 
   return (
@@ -24,7 +26,7 @@ export default function Error({
         <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-muted">
           <Icon icon={CircleAlertGlyph} aria-label="Icon" className="size-10" />
         </div>
-        <Text variant="2xl-bold-tracking-tight" as="h1" className="mt-8">
+        <Text variant="heading-md-bold-tracking-tight" as="h1" className="mt-8">
           Oops, something went wrong!
         </Text>
         <p className="mt-4 text-muted-foreground">

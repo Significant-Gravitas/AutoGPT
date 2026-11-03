@@ -44,7 +44,7 @@ export function IntroStep({ slide }: Props) {
         </div>
 
         {body && (
-          <p className="max-w-md text-center font-sans text-body-lg font-normal text-foreground-tertiary md:max-w-full md:text-lg md:leading-tight">
+          <p className="max-w-md text-center font-sans text-body-lg font-normal text-foreground-tertiary md:max-w-full md:text-lead md:leading-tight">
             {body}
           </p>
         )}
