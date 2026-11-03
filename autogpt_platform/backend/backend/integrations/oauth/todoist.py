@@ -1,5 +1,8 @@
+import time
 import urllib.parse
 from typing import ClassVar, Optional
+
+from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials, ProviderName
 from backend.integrations.oauth.base import BaseOAuthHandler, parse_granted_scopes
@@ -7,7 +10,14 @@ from backend.util.request import Requests
 
 
 class TodoistOAuthHandler(BaseOAuthHandler):
+    """
+    Apps with refresh tokens enabled get 1-hour access tokens and rotating refresh
+    tokens; legacy apps get a long-lived access token and no refresh token.
+    https://developer.todoist.com/api/v1/#tag/Authorization
+    """
+
     PROVIDER_NAME = ProviderName.TODOIST
+    ROTATES_REFRESH_TOKEN: ClassVar[bool] = True
     DEFAULT_SCOPES: ClassVar[list[str]] = [
         "task:add",
         "data:read",
@@ -63,8 +73,8 @@ class TodoistOAuthHandler(BaseOAuthHandler):
             title=None,
             username=user_email,
             access_token=tokens["access_token"],
-            refresh_token=None,
-            access_token_expires_at=None,
+            refresh_token=tokens.get("refresh_token"),
+            access_token_expires_at=_access_token_expires_at(tokens),
             refresh_token_expires_at=None,
             # Todoist's token response documents no `scope`; the request is then
             # all we know about the grant.
@@ -74,8 +84,38 @@ class TodoistOAuthHandler(BaseOAuthHandler):
     async def _refresh_tokens(
         self, credentials: OAuth2Credentials
     ) -> OAuth2Credentials:
-        # Todoist does not support token refresh
-        return credentials
+        if not credentials.refresh_token:
+            raise ValueError("No refresh token available")
+        response = await Requests().post(
+            self.TOKEN_URL,
+            data={
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
+                "grant_type": "refresh_token",
+                "refresh_token": credentials.refresh_token.get_secret_value(),
+            },
+        )
+        tokens = response.json()
+        # A replayed refresh omits the new token, and the one we sent is spent:
+        # sending it again revokes every token the user gave this app.
+        refresh_token = tokens.get("refresh_token")
+        return credentials.model_copy(
+            update={
+                "access_token": SecretStr(tokens["access_token"]),
+                "refresh_token": SecretStr(refresh_token) if refresh_token else None,
+                "access_token_expires_at": int(time.time()) + int(tokens["expires_in"]),
+                "scopes": parse_granted_scopes(
+                    tokens.get("scope"), fallback=credentials.scopes
+                ),
+            }
+        )
 
     async def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
         return False
+
+
+def _access_token_expires_at(tokens: dict) -> int | None:
+    # Legacy apps send a 10-year placeholder expiry and no refresh token.
+    if not tokens.get("refresh_token") or not tokens.get("expires_in"):
+        return None
+    return int(time.time()) + int(tokens["expires_in"])

@@ -5,34 +5,17 @@ import fastapi
 from fastapi import Depends, Path, Query, Security
 
 from backend.api.features.experts import experts_db
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.tools.skills import SkillLimitError, SkillOwnedError
-from backend.util.feature_flag import Flag, is_feature_enabled
 
 from . import skill_db, skill_model, skill_submission_db
-
-# Browse is anonymous, and LaunchDarkly needs a context key: a non-UUID key is
-# evaluated as an anonymous context, which with the flag off answers False.
-_ANONYMOUS_FLAG_KEY = "anonymous"
 
 # This endpoint is a source viewer for someone deciding to install or approve a
 # package, not a file server: a file past this is refused rather than streamed.
 MAX_VIEWABLE_FILE_BYTES = 256 * 1024
 
 
-async def require_skills_hub_flag(
-    user_id: str | None = Security(autogpt_libs.auth.get_optional_user_id),
-) -> None:
-    """Gate every skills route on the skills-hub flag, fail-closed.
-
-    Deliberately not ``create_feature_flag_dependency``: that helper 404s
-    whenever LaunchDarkly has no SDK key, before consulting the
-    ``FORCE_FLAG_SKILLS_HUB`` override every local environment relies on.
-    """
-    if not await is_feature_enabled(Flag.SKILLS_HUB, user_id or _ANONYMOUS_FLAG_KEY):
-        raise fastapi.HTTPException(status_code=404, detail="Feature not available")
-
-
-router = fastapi.APIRouter(dependencies=[Depends(require_skills_hub_flag)])
+router = fastapi.APIRouter()
 
 
 @router.get(
@@ -64,7 +47,10 @@ async def list_marketplace_skills(
         404: {"description": "Skill not in the caller's library"},
         428: {"description": "Marketplace profile required, or slug taken"},
     },
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def submit_skill(
     request: skill_model.SkillSubmissionRequest,
@@ -95,7 +81,10 @@ async def list_my_skill_submissions(
         404: {"description": "Submission not found"},
         428: {"description": "Only a pending submission can be edited"},
     },
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def edit_skill_submission(
     request: skill_model.SkillSubmissionRequest,
@@ -236,7 +225,10 @@ _TEXT_APPLICATION_TYPES = frozenset(
             )
         },
     },
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def install_marketplace_skill(
     slug: str = Path(..., description="Slug of the skill listing"),

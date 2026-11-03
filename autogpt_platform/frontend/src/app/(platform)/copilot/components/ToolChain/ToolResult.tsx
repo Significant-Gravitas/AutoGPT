@@ -56,7 +56,10 @@ import {
   asObject,
   dictToOutputItems,
   humanizeKey,
+  isBlankOutput,
+  isEmptyResult,
   isWebhookIngressUrl,
+  NOTHING_FOUND,
   str,
   stripBaseFields,
 } from "./resultHelpers";
@@ -69,6 +72,7 @@ import {
   Terminal,
   TodoList,
 } from "./ToolResultViews";
+import { Text } from "@/components/atoms/Text/Text";
 
 const BOOLEAN_LABELS: Record<string, string> = {
   ok: "Done",
@@ -98,7 +102,9 @@ function shapeCard(obj: Record<string, unknown>) {
   if (key === "status" && typeof value === "string")
     return (
       <div className={`${CARD} ${HALF} flex items-center gap-2 p-2.5`}>
-        <span className="text-xs text-zinc-400">Status</span>
+        <Text variant="small-tight" as="span" tone="subtle">
+          Status
+        </Text>
         <span className="ml-auto">
           <StatusPill status={value} />
         </span>
@@ -554,10 +560,12 @@ export function ToolResult({ row, readOnly = false }: Props) {
   const output = asObject(row.output);
   const pendingQuestions = useContext(PendingQuestionsContext);
 
-  // The latest unanswered clarifying questions render as an interactive
-  // answer form right on their chain row (older ones keep the read-only
-  // card from toolCard).
-  if (pendingQuestions?.callIds.includes(row.key)) {
+  // The latest unanswered clarifying questions are one card, so one form
+  // hosts them: on the lifted copy of the first asking row, the one the chain
+  // keeps mounted for its action card. Any other copy (a running row animating
+  // out as its output lands, or a later ask_question in the same message)
+  // keeps the read-only card from toolCard.
+  if (row.lifted && pendingQuestions?.callIds[0] === row.key) {
     return (
       <QuestionsForm
         key={pendingQuestions.dockId}
@@ -604,6 +612,11 @@ function ToolOutput({ row, readOnly }: Required<Props>) {
     (target === row ? null : toolCard(row, output, readOnly));
   if (card) return card;
 
+  if (isBlankOutput(row.output)) return <KeyValueList value={NOTHING_FOUND} />;
+  // An empty list can be the point of a change (the last grant revoked), so
+  // what the tool said comes first.
+  if (output && isEmptyResult(output))
+    return <KeyValueList value={str(output, "message") ?? NOTHING_FOUND} />;
   if (!output) return <KeyValueList value={row.output} />;
 
   const data = stripBaseFields(output);

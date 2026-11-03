@@ -42,6 +42,7 @@ import {
   FolderOpenIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   part: ToolUIPart;
@@ -59,12 +60,12 @@ function ToolStatusIcon({
   isError: boolean;
 }) {
   if (isError) {
-    return <Icon icon={AlertDiamondIcon} size={14} className="text-red-500" />;
+    return <Icon icon={AlertDiamondIcon} size={14} tone="error" />;
   }
   if (isStreaming) {
     return <OrbitLoader size={14} />;
   }
-  return <Icon icon={Folder01Icon} size={14} className="text-neutral-400" />;
+  return <Icon icon={Folder01Icon} size={14} tone="subtle" />;
 }
 
 /* ------------------------------------------------------------------ */
@@ -82,7 +83,7 @@ function FolderCard({ folder }: { folder: FolderInfo }) {
               style={{ backgroundColor: folder.color }}
             />
           ) : (
-            <Icon icon={Folder01Icon} size={14} className="text-neutral-600" />
+            <Icon icon={Folder01Icon} size={14} tone="secondary" />
           )}
           <ContentCardTitle>{folder.name}</ContentCardTitle>
         </div>
@@ -93,15 +94,13 @@ function FolderCard({ folder }: { folder: FolderInfo }) {
           ` · ${folder.subfolder_count} subfolder${folder.subfolder_count !== 1 ? "s" : ""}`}
       </ContentHint>
       {folder.agents && folder.agents.length > 0 && (
-        <div className="mt-2 space-y-1 border-t border-neutral-200 pt-2">
+        <div className="mt-2 space-y-1 border-t border-border-base pt-2">
           {folder.agents.map((a) => (
             <div key={a.id} className="flex items-center gap-1.5">
-              <Icon
-                icon={FileEmpty02Icon}
-                size={12}
-                className="text-neutral-600"
-              />
-              <span className="text-xs text-zinc-600">{a.name}</span>
+              <Icon icon={FileEmpty02Icon} size={12} tone="secondary" />
+              <Text variant="small-tight" as="span" tone="secondary">
+                {a.name}
+              </Text>
             </div>
           ))}
         </div>
@@ -146,12 +145,8 @@ function FolderTreeView({ tree }: { tree: FolderTreeInfo[] }) {
     <Tree
       initialExpandedItems={allIDs}
       elements={elements}
-      openIcon={
-        <Icon icon={FolderOpenIcon} size={16} className="text-neutral-600" />
-      }
-      closeIcon={
-        <Icon icon={Folder01Icon} size={16} className="text-neutral-600" />
-      }
+      openIcon={<Icon icon={FolderOpenIcon} size={16} tone="secondary" />}
+      closeIcon={<Icon icon={Folder01Icon} size={16} tone="secondary" />}
       className="max-h-64"
     >
       {elements.map((el) => (
@@ -166,11 +161,11 @@ function FolderTreeNodes({ element }: { element: TreeNode }) {
     return (
       <TreeFile
         value={element.id}
-        fileIcon={
-          <Icon icon={FileEmpty02Icon} size={14} className="text-neutral-600" />
-        }
+        fileIcon={<Icon icon={FileEmpty02Icon} size={14} tone="secondary" />}
       >
-        <span className="text-sm text-zinc-700">{element.name}</span>
+        <Text variant="body-tight" as="span" tone="body">
+          {element.name}
+        </Text>
       </TreeFile>
     );
   }
@@ -277,7 +272,7 @@ export function FolderTool({ part }: Props) {
         <ToolStatusIcon isStreaming={isStreaming} isError={isError} />
         <MorphingTextAnimation
           text={text}
-          className={isError ? "text-red-500" : undefined}
+          className={isError ? "text-error" : undefined}
         />
       </div>
 

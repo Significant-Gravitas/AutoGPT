@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from backend.copilot.dream.scheduling import ensure_dream_system_scheduled
+from backend.copilot.dream.registry import ensure_dream_system_scheduled
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.data.skill_learning import LearningSourceRecord
 from backend.util.feature_flag import Flag, is_feature_enabled

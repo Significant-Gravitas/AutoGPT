@@ -148,5 +148,8 @@ export function mentionInputFor(root: HTMLElement): MentionInput {
     setSelectionRange(start: number, end: number) {
       setEditorCaret(root, start, end);
     },
+    focus() {
+      root.focus();
+    },
   };
 }

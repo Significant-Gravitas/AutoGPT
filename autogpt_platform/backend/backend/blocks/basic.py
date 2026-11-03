@@ -47,6 +47,7 @@ class FileStoreBlock(Block):
             input_schema=FileStoreBlock.Input,
             output_schema=FileStoreBlock.Output,
             static_output=True,
+            effect=BlockEffect.WORKSPACE,
         )
 
     async def run(

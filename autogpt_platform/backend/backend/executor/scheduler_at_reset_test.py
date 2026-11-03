@@ -1,6 +1,9 @@
 """The scheduler's side of resume and send at the budget reset: the job's
 id and shape, and what a due one does (``copilot/at_reset.py`` decides)."""
 
+import asyncio
+import logging
+import threading
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -8,9 +11,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.at_reset import at_reset_schedule_id, reset_jitter_seconds
+from backend.copilot.at_reset_lock import at_reset_job_lock
+from backend.copilot.at_reset_lock_fixtures import FakeAtResetRedis, FakeTransaction
 from backend.copilot.continuation import RESUMED_AT_RESET_NOTE
 from backend.copilot.db import PaginatedMessages
 from backend.copilot.executor.utils import ScheduledTurnOrigin
@@ -26,11 +32,14 @@ from backend.executor.scheduler import (
     CopilotTurnJobArgs,
     Jobstores,
     Scheduler,
+    _at_reset_cancelled_at,
     _execute_copilot_turn,
+    _share_at_reset_cancel,
 )
 
 _SCHEDULER = "backend.executor.scheduler"
 _AT_RESET = "backend.copilot.at_reset"
+_LOCK = "backend.copilot.at_reset_lock"
 USER = "user-1"
 SESSION = "0d3f7a52-61c4-4f0e-a8b2-9c1e5d7f3a64"
 SET_AT = datetime(2026, 10, 14, 15, 0, tzinfo=UTC)
@@ -74,9 +83,20 @@ async def _fire(args: CopilotTurnJobArgs) -> None:
 
 @pytest.fixture(autouse=True)
 def no_cancels():
-    """Cancels are remembered in process: no test sees another's."""
+    """Each replica also remembers cancels itself: no test sees another's."""
     with patch.dict(f"{_SCHEDULER}._at_reset_cancels", clear=True):
         yield
+
+
+@pytest.fixture(autouse=True)
+def shared_redis():
+    """Redis as every replica sees it: each chat's job lock, and the cancels."""
+    redis = FakeAtResetRedis()
+    with (
+        patch(f"{_SCHEDULER}.get_redis_async", AsyncMock(return_value=redis)),
+        patch(f"{_LOCK}.get_redis_async", AsyncMock(return_value=redis)),
+    ):
+        yield redis
 
 
 @pytest.fixture
@@ -112,14 +132,22 @@ def fire_env():
 
 @pytest.fixture
 def live_scheduler():
-    """The service over an in-memory jobstore, paused so nothing fires."""
+    """The service over an in-memory jobstore, paused so nothing fires, with
+    the event loop its handlers hand their async work to."""
+    loop = asyncio.new_event_loop()
+    loop_thread = threading.Thread(target=loop.run_forever, daemon=True)
+    loop_thread.start()
     service = Scheduler(register_system_tasks=False)
     service.scheduler = BackgroundScheduler(
         jobstores={Jobstores.EXECUTION.value: MemoryJobStore()}
     )
     service.scheduler.start(paused=True)
-    yield service
+    with patch(f"{_SCHEDULER}._event_loop", loop):
+        yield service
     service.scheduler.shutdown(wait=False)
+    loop.call_soon_threadsafe(loop.stop)
+    loop_thread.join()
+    loop.close()
 
 
 def test_a_row_from_before_the_field_loads_as_a_followup():
@@ -248,7 +276,7 @@ async def test_it_fires_into_its_chat(fire_env, kind, message, as_user):
     assert sent["unattended"] is True
     assert sent["llm_auth_provider"] == "platform"
     assert sent["scheduled"] == ScheduledTurnOrigin(
-        schedule_id=f"at-reset-{kind}-{SESSION}"
+        schedule_id=f"at-reset-{kind}-{SESSION}", purpose=kind
     )
 
 
@@ -368,6 +396,172 @@ async def test_a_send_set_again_after_a_cancel_still_fires(fire_env, live_schedu
     live_scheduler.cancel_at_reset_turn(USER, SESSION, "send")
     await _fire(_args("send", created_at=datetime.now(UTC) + timedelta(seconds=1)))
     fire_env.dispatch.assert_awaited_once()
+
+
+def _cancel_on_another_replica(service: Scheduler) -> None:
+    """A cancel taken by a replica other than the one running the job: that
+    replica's own memory of it stays there, and only Redis is shared."""
+    with patch.dict(f"{_SCHEDULER}._at_reset_cancels", clear=True):
+        service.cancel_at_reset_turn(USER, SESSION, "send")
+
+
+def test_a_cancel_is_kept_in_redis_for_two_hours(live_scheduler, shared_redis):
+    before = datetime.now(UTC)
+    assert live_scheduler.cancel_at_reset_turn(USER, SESSION, "send") is False
+    key = f"copilot:at_reset_cancel:at-reset-send-{SESSION}"
+    micros = shared_redis.scores[key]["cancelled_at"]
+    assert datetime(1970, 1, 1, tzinfo=UTC) + timedelta(microseconds=micros) >= before
+    assert shared_redis.expiries[key] == timedelta(hours=2)
+
+
+@pytest.mark.asyncio
+async def test_a_cancel_written_late_never_moves_the_time_back():
+    # A write that stalled can land after a newer cancel on another replica.
+    # The newer time has to stand, or a send set between the two would fire.
+    job = at_reset_schedule_id("send", SESSION)
+    newer = datetime.now(UTC)
+    await _share_at_reset_cancel(job, newer)
+    await _share_at_reset_cancel(job, newer - timedelta(seconds=30))
+    assert await _at_reset_cancelled_at(job) == newer
+
+
+@pytest.mark.asyncio
+async def test_a_redis_that_never_answers_leaves_this_replicas_own_cancels(
+    shared_redis,
+):
+    job = at_reset_schedule_id("send", SESSION)
+    here = datetime.now(UTC)
+
+    async def never_answers(*_: object) -> None:
+        await asyncio.Event().wait()
+
+    with (
+        patch.dict(f"{_SCHEDULER}._at_reset_cancels", {job: here}),
+        patch(f"{_SCHEDULER}._AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS", 0.05),
+        patch.object(shared_redis, "zscore", never_answers),
+    ):
+        assert await asyncio.wait_for(_at_reset_cancelled_at(job), timeout=2) == here
+
+
+@pytest.mark.asyncio
+async def test_a_cancel_redis_never_takes_gives_up_by_itself():
+    # Its waiter in the request thread gives up too, but the write itself
+    # must not linger and land late.
+    never = asyncio.Event()
+    started = asyncio.get_running_loop().time()
+    with (
+        patch(f"{_SCHEDULER}._AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS", 0.05),
+        patch.object(FakeTransaction, "execute", AsyncMock(side_effect=never.wait)),
+        pytest.raises(TimeoutError),
+    ):
+        await asyncio.wait_for(
+            _share_at_reset_cancel(
+                at_reset_schedule_id("send", SESSION), datetime.now(UTC)
+            ),
+            timeout=2,
+        )
+    assert asyncio.get_running_loop().time() - started < 1
+
+
+@pytest.mark.asyncio
+async def test_a_cancel_on_another_replica_stops_the_job_firing(
+    fire_env, live_scheduler
+):
+    _cancel_on_another_replica(live_scheduler)
+    await _fire(_args("send", created_at=datetime.now(UTC) - timedelta(minutes=1)))
+    fire_env.dispatch.assert_not_awaited()
+    fire_env.client.add_copilot_turn_schedule.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_cancel_on_another_replica_keeps_the_job_from_being_put_back(
+    fire_env, live_scheduler
+):
+    # The user cancels while the queue turns the send away: the cancel finds
+    # no job to remove, so only the put-back's own check can stop it.
+    def refused_as_the_user_cancels(**_):
+        _cancel_on_another_replica(live_scheduler)
+        raise ConcurrentTurnLimitError("cap")
+
+    fire_env.dispatch.side_effect = refused_as_the_user_cancels
+    await _fire(_args("send", created_at=datetime.now(UTC) - timedelta(minutes=1)))
+    fire_env.client.add_copilot_turn_schedule.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_send_set_again_after_a_cancel_on_another_replica_fires(
+    fire_env, live_scheduler
+):
+    _cancel_on_another_replica(live_scheduler)
+    await _fire(_args("send", created_at=datetime.now(UTC) + timedelta(seconds=1)))
+    fire_env.dispatch.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_cancel_waits_for_a_put_back_under_way(fire_env, live_scheduler):
+    # A cancel landing between the put-back's check and its re-add found no
+    # job to remove, and the re-add then brought the cancelled job back.
+    job_id = at_reset_schedule_id("send", SESSION)
+    adding, let_go = asyncio.Event(), asyncio.Event()
+
+    async def put_back(**job) -> None:
+        adding.set()
+        await let_go.wait()
+        live_scheduler.add_copilot_turn_schedule(**job)
+
+    async def cancel_as_the_route_does() -> None:
+        async with at_reset_job_lock(job_id) as locked:
+            assert locked
+            live_scheduler.cancel_at_reset_turn(USER, SESSION, "send")
+
+    fire_env.client.add_copilot_turn_schedule.side_effect = put_back
+    fire_env.busy.return_value = True
+    set_at = datetime.now(UTC) - timedelta(minutes=1)
+    firing = asyncio.create_task(_fire(_args("send", created_at=set_at)))
+    await adding.wait()
+    cancelling = asyncio.create_task(cancel_as_the_route_does())
+    await asyncio.wait({cancelling}, timeout=0.2)
+    let_go.set()
+    await asyncio.gather(firing, cancelling)
+
+    assert (
+        live_scheduler.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_put_back_that_cannot_lock_its_job_still_puts_it_back(fire_env, caplog):
+    # Losing the user's turn would be worse than racing their write.
+    fire_env.busy.return_value = True
+    down = AsyncMock(side_effect=RedisConnectionError("down"))
+    with (
+        patch(f"{_LOCK}.get_redis_async", down),
+        caplog.at_level(logging.WARNING, logger=_SCHEDULER),
+    ):
+        await _fire(_args("send"))
+    fire_env.client.add_copilot_turn_schedule.assert_awaited_once()
+    assert any("without its lock" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_without_redis_a_replica_still_keeps_its_own_cancels(
+    fire_env, live_scheduler
+):
+    # As before cancels were shared: the replica that took the cancel keeps
+    # the job from coming back.
+    def refused_as_the_user_cancels(**_):
+        live_scheduler.cancel_at_reset_turn(USER, SESSION, "send")
+        raise ConcurrentTurnLimitError("cap")
+
+    fire_env.dispatch.side_effect = refused_as_the_user_cancels
+    down = AsyncMock(side_effect=RedisConnectionError("down"))
+    with (
+        patch(f"{_SCHEDULER}.get_redis_async", down),
+        patch(f"{_LOCK}.get_redis_async", down),
+    ):
+        await _fire(_args("send", created_at=datetime.now(UTC) - timedelta(minutes=1)))
+    fire_env.client.add_copilot_turn_schedule.assert_not_awaited()
 
 
 @pytest.mark.asyncio

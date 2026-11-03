@@ -19,9 +19,9 @@ interface Props {
 }
 
 const OUTCOME_ICONS = {
-  approved: [Tick02Icon, "text-green-600"],
-  rejected: [Cancel01Icon, "text-zinc-400"],
-  elsewhere: [InformationCircleIcon, "text-zinc-400"],
+  approved: [Tick02Icon, "text-success"],
+  rejected: [Cancel01Icon, "text-foreground-subtle"],
+  elsewhere: [InformationCircleIcon, "text-foreground-subtle"],
 } as const;
 
 export function ReviewSidebar({ carousel, sheet = false }: Props) {
@@ -30,16 +30,11 @@ export function ReviewSidebar({ carousel, sheet = false }: Props) {
       aria-label={sheet ? "All held calls" : "Held calls"}
       className="flex min-h-0 w-full flex-col"
     >
-      <div className="flex items-baseline gap-2 px-4 pb-2 pt-4">
+      <div className="flex items-baseline gap-2 px-4 pt-4 pb-2">
         <Text variant="body-medium" as="h2">
           To review
         </Text>
-        <Text
-          variant="small"
-          as="span"
-          tone="secondary"
-          className="tabular-nums"
-        >
+        <Text variant="small" as="span" tone="secondary" tabular>
           {carousel.left} of {carousel.total} left
         </Text>
       </div>
@@ -54,14 +49,18 @@ export function ReviewSidebar({ carousel, sheet = false }: Props) {
                 aria-current={isCurrent ? "true" : undefined}
                 onClick={() => carousel.jump(item.id)}
                 className={cn(
-                  "flex w-full items-start gap-2.5 border-l-2 py-2 pl-3.5 pr-4 text-left text-sm hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-zinc-300",
-                  isCurrent ? "border-zinc-900 bg-white" : "border-transparent",
-                  receipt ? "text-zinc-400" : "text-zinc-800",
+                  "flex w-full items-start gap-2.5 border-l-2 py-2 pr-4 pl-3.5 text-left text-sm hover:bg-surface focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:outline-none focus-visible:ring-inset",
+                  isCurrent
+                    ? "border-action-hover bg-surface"
+                    : "border-transparent",
+                  receipt
+                    ? "text-foreground-subtle"
+                    : "text-foreground-emphasis",
                 )}
               >
                 <HeldAvatar item={item} size={20} />
                 <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="text-xs text-zinc-500">
+                  <span className="text-xs text-foreground-tertiary">
                     {item.expert?.name ?? AUTOPILOT_NAME}
                   </span>
                   <span className="flex min-w-0 items-center gap-1.5">
@@ -69,6 +68,7 @@ export function ReviewSidebar({ carousel, sheet = false }: Props) {
                       <Icon
                         icon={outcome[0]}
                         size={14}
+                        // oxlint-disable-next-line design-system/require-static-classes -- the outcome map holds whole, static class strings
                         className={cn("shrink-0", outcome[1])}
                         aria-hidden
                       />
@@ -82,7 +82,7 @@ export function ReviewSidebar({ carousel, sheet = false }: Props) {
                   </span>
                 </span>
                 {carousel.isNew(item.id) ? (
-                  <span className="shrink-0 rounded bg-blue-50 px-1.5 text-xs font-medium text-blue-700">
+                  <span className="shrink-0 rounded bg-info-surface px-1.5 text-xs font-medium text-info-foreground">
                     new
                   </span>
                 ) : null}
@@ -91,13 +91,11 @@ export function ReviewSidebar({ carousel, sheet = false }: Props) {
           );
         })}
       </ul>
-      <Text
-        variant="small"
-        tone="secondary"
-        className="border-t border-zinc-100 px-4 py-3"
-      >
-        {sheet ? "Tap an item to jump to it" : "← → move · Esc close"}
-      </Text>
+      <div className="border-t border-separator px-4 py-3">
+        <Text variant="small" tone="secondary">
+          {sheet ? "Tap an item to jump to it" : "← → move · Esc close"}
+        </Text>
+      </div>
     </nav>
   );
 }

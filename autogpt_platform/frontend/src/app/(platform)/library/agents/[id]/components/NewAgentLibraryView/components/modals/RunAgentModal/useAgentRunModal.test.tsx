@@ -15,11 +15,6 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
-const sendDatafastEvent = vi.hoisted(() => vi.fn());
-vi.mock("@/services/analytics", () => ({
-  analytics: { sendDatafastEvent },
-}));
-
 const toastMock = vi.fn();
 vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
   const actual =
@@ -49,12 +44,11 @@ const execution = {
 
 afterEach(() => {
   toastMock.mockClear();
-  sendDatafastEvent.mockClear();
   server.resetHandlers();
 });
 
 describe("useAgentRunModal", () => {
-  test("a real run records the run_agent goal from the library surface", async () => {
+  test("a run hands the new run to onRun", async () => {
     server.use(getPostV1ExecuteGraphAgentMockHandler(execution));
     const onRun = vi.fn();
 
@@ -71,14 +65,9 @@ describe("useAgentRunModal", () => {
         expect.objectContaining({ id: "run-1" }),
       );
     });
-    expect(sendDatafastEvent).toHaveBeenCalledExactlyOnceWith("run_agent", {
-      id: "graph-xyz",
-      name: "My agent",
-      surface: "library",
-    });
   });
 
-  test("a simulation goes through the same mutation but is not an activation", async () => {
+  test("a simulation hands the new run to onRun too", async () => {
     server.use(getPostV1ExecuteGraphAgentMockHandler(execution));
     const onRun = vi.fn();
 
@@ -95,6 +84,5 @@ describe("useAgentRunModal", () => {
         expect.objectContaining({ id: "run-1" }),
       );
     });
-    expect(sendDatafastEvent).not.toHaveBeenCalled();
   });
 });

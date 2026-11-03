@@ -58,7 +58,7 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
   }),
 }));
 
-const flagState = vi.hoisted(() => ({ experts: false, billing: false }));
+const flagState = vi.hoisted(() => ({ billing: false }));
 
 const streamPath = vi.hoisted(() => ({ runtime: false }));
 
@@ -66,17 +66,14 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     CHAT_MODE_OPTION: "CHAT_MODE_OPTION",
     ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT",
-    HIRE_EXPERTS: "HIRE_EXPERTS",
     COPILOT_STREAM_RUNTIME: "copilot-stream-runtime",
   },
   useGetFlag: (flag: string) =>
     flag === "copilot-stream-runtime"
       ? streamPath.runtime
-      : flag === "HIRE_EXPERTS"
-        ? flagState.experts
-        : flag === "ENABLE_PLATFORM_PAYMENT"
-          ? flagState.billing
-          : false,
+      : flag === "ENABLE_PLATFORM_PAYMENT"
+        ? flagState.billing
+        : false,
 }));
 
 beforeEach(() => {
@@ -84,7 +81,6 @@ beforeEach(() => {
   useCopilotStreamStore.getState().resetAll();
   useCopilotUIStore.setState({ initialPrompt: null });
   window.localStorage.clear();
-  flagState.experts = false;
   flagState.billing = false;
 });
 
@@ -93,7 +89,6 @@ afterEach(() => {
   useCopilotStreamStore.getState().resetAll();
   useCopilotUIStore.setState({ initialPrompt: null });
   window.localStorage.clear();
-  flagState.experts = false;
   flagState.billing = false;
 });
 
@@ -214,7 +209,6 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
 
     it("clears kickoff recovery state after an HTTP 429", async () => {
       const expertId = "3f8b0f7e-9f30-4a3b-a6a1-000000000001";
-      flagState.experts = true;
       server.use(
         http.get("*/api/experts/identities", () =>
           HttpResponse.json([
@@ -342,7 +336,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
         ) as HTMLTextAreaElement;
         expect(input.disabled).toBe(false);
       });
-      expect(screen.queryByRole("button", { name: /stop/i })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
     });
   });
 

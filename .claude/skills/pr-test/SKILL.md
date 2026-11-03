@@ -668,10 +668,10 @@ fi
 | Frontend | 3000 | http://localhost:3000 |
 | Backend REST | 8006 | http://localhost:8006 |
 | Supabase Auth (via Kong) | 8000 | http://localhost:8000 |
-| Executor | 8002 | http://localhost:8002 |
-| Copilot Executor | 8008 | http://localhost:8008 |
+| Executor (metrics only) | 8002 | http://localhost:8002 in native mode; not published by Docker Compose |
+| Copilot Executor (metrics only) | 8008 | http://localhost:8008 in native mode; not published by Docker Compose |
 | WebSocket | 8001 | http://localhost:8001 |
-| Database Manager | 8005 | http://localhost:8005 |
+| Database Manager | 8005 | http://localhost:8005 in native mode; not published by Docker Compose. Every method needs `Authorization: Bearer <internal key>` (`backend/util/service_auth.py`) |
 | Redis | 6379 | localhost:6379 |
 | RabbitMQ | 5672 | localhost:5672 |
 

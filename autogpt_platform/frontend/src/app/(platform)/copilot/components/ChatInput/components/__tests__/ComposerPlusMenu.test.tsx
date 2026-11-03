@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCopilotModal } from "../../../../useCopilotModal";
 import { MAX_ATTACHMENTS } from "../../../../helpers/workspaceAttachments";
 import { ComposerPlusMenu } from "../ComposerPlusMenu";
+import { VoiceIcon } from "@hugeicons/core-free-icons";
 
 let mockWorkspaceFilesFlag = false;
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
@@ -32,6 +33,37 @@ function openMenu() {
 }
 
 describe("ComposerPlusMenu", () => {
+  it.each([true, false])(
+    "respects the disabled state of an extra item: %s",
+    async (disabled) => {
+      const onStart = vi.fn();
+      render(
+        <ComposerPlusMenu
+          onFilesSelected={vi.fn()}
+          extraItems={[
+            {
+              key: "voice",
+              label: "Voice mode",
+              icon: VoiceIcon,
+              onSelect: onStart,
+              disabled,
+            },
+          ]}
+        />,
+      );
+      openMenu();
+
+      const item = await screen.findByRole("menuitem", { name: "Voice mode" });
+      expect(item.getAttribute("aria-disabled")).toBe(disabled ? "true" : null);
+      fireEvent.click(item);
+      if (disabled) {
+        fireEvent.keyDown(item, { key: "Enter" });
+        fireEvent.keyDown(item, { key: " " });
+      }
+      expect(onStart).toHaveBeenCalledTimes(disabled ? 0 : 1);
+    },
+  );
+
   it("lists the four actions in fixed order", async () => {
     render(<ComposerPlusMenu onFilesSelected={vi.fn()} />);
     openMenu();

@@ -145,10 +145,10 @@ export function ToolIcon({
   isError?: boolean;
 }) {
   if (isError) {
-    return <Icon icon={AlertDiamondIcon} size={14} className="text-red-500" />;
+    return <Icon icon={AlertDiamondIcon} size={14} tone="error" />;
   }
   if (isStreaming) {
     return <ScaleLoader size={14} />;
   }
-  return <Icon icon={WebhookIcon} size={14} className="text-neutral-400" />;
+  return <Icon icon={WebhookIcon} size={14} tone="subtle" />;
 }

@@ -1,5 +1,6 @@
 """Tests for subscription tier API endpoints."""
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock
 
 import fastapi
@@ -10,7 +11,10 @@ import stripe
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from prisma.enums import SubscriptionTier
 
+from backend.data.credit import PendingChangeUnknown
 from backend.data.pro_activation import UsageActivationState
+from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
+from backend.util.testing import Rendezvous
 
 from .billing.credits_rate_limit import enforce_subscription_status_rate_limit
 from .billing.subscriptions import routes as subscription_routes
@@ -102,6 +106,17 @@ def _stub_cancel_pending_trial(mocker: pytest_mock.MockFixture) -> None:
 
 
 @pytest.fixture(autouse=True)
+def scheduler_client(mocker: pytest_mock.MockFixture) -> Mock:
+    """No schedules by default, so the NO_TIER reads here never reach a scheduler."""
+    client = Mock()
+    client.get_execution_schedules = AsyncMock(return_value=[])
+    mocker.patch.object(
+        subscription_routes, "get_scheduler_client", return_value=client
+    )
+    return client
+
+
+@pytest.fixture(autouse=True)
 def track_checkout_started(mocker: pytest_mock.MockFixture) -> AsyncMock:
     """Keep analytics off the network and let tests assert the event."""
     return mocker.patch(
@@ -175,7 +190,7 @@ def _stub_subscription_status_lookups(mocker: pytest_mock.MockFixture) -> None:
         return_value=0,
     )
     # Default tier-multiplier resolver to the backend defaults so the endpoint
-    # never reaches LaunchDarkly during tests.  Individual tests override for
+    # never reaches PostHog during tests.  Individual tests override for
     # LD-override scenarios. get_tier_multipliers returns a string-keyed dict
     # (per its docstring) so we mirror that shape here — passing the
     # enum-keyed _DEFAULT_TIER_MULTIPLIERS directly would silently mismatch
@@ -379,11 +394,73 @@ def test_get_subscription_status_pro(
     assert data["tier_multipliers"]["BUSINESS"] == 60.0
 
 
+def test_subscription_status_reads_its_independent_parts_side_by_side(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Multipliers, billing cycle, period end and the pending change each wait
+    for none of the others; only the proration needs the cycle's cost."""
+    meeting = Rendezvous(4)
+    mocker.patch.object(
+        subscription_routes,
+        "get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=Mock(subscription_tier=SubscriptionTier.PRO),
+    )
+    amounts = {"price_pro": 1999, "price_pro_yearly": 19990, "price_max": 4999}
+
+    async def price_amount(price_id: str) -> int:
+        return amounts.get(price_id, 0)
+
+    mocker.patch.object(
+        subscription_routes, "_get_stripe_price_amount", side_effect=price_amount
+    )
+    mocker.patch.object(
+        subscription_routes,
+        "get_tier_multipliers",
+        side_effect=meeting.returning({"PRO": 2.0, "MAX": 5.0}),
+    )
+    mocker.patch.object(
+        subscription_routes,
+        "get_user_billing_cycle",
+        side_effect=meeting.returning("yearly"),
+    )
+    mocker.patch.object(
+        subscription_routes,
+        "get_active_subscription_period_end",
+        side_effect=meeting.returning(1_900_000_000),
+    )
+    pending_at = datetime(2030, 1, 1, tzinfo=UTC)
+    mocker.patch.object(
+        subscription_routes,
+        "get_pending_subscription_change",
+        side_effect=meeting.returning((SubscriptionTier.MAX, pending_at, "monthly")),
+    )
+    proration = mocker.patch.object(
+        subscription_routes,
+        "get_proration_credit_cents",
+        new_callable=AsyncMock,
+        return_value=321,
+    )
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["billing_cycle"] == "yearly"
+    assert data["monthly_cost"] == 19990
+    assert data["tier_multipliers"]["PRO"] == 2.0
+    assert data["current_period_end"] == 1_900_000_000
+    assert data["pending_tier"] == "MAX"
+    assert data["proration_credit_cents"] == 321
+    proration.assert_awaited_once_with(TEST_USER_ID, 19990)
+
+
 def test_get_subscription_status_tier_multipliers_ld_override(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """A LaunchDarkly-overridden tier multiplier flows through the response."""
+    """A PostHog-overridden tier multiplier flows through the response."""
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.BASIC
 
@@ -452,6 +529,93 @@ def test_get_subscription_status_defaults_to_no_tier(
     assert data["monthly_cost"] == 0
     assert data["tier_costs"] == {}
     assert data["proration_credit_cents"] == 0
+
+
+def test_no_tier_counts_only_workflow_schedules_as_paused(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    scheduler_client: Mock,
+) -> None:
+    """A scheduled chat explains a lapsed plan in its own chat, so it adds nothing."""
+    _patch_user_tier(mocker, SubscriptionTier.NO_TIER)
+    scheduler_client.get_execution_schedules.return_value = [
+        _workflow_schedule("wf-1"),
+        _workflow_schedule("wf-2"),
+        _chat_schedule("chat-1"),
+    ]
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    assert response.json()["paused_workflow_schedules"] == 2
+    scheduler_client.get_execution_schedules.assert_awaited_once_with(
+        user_id=TEST_USER_ID
+    )
+
+
+def test_paying_tier_reads_no_schedules(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    scheduler_client: Mock,
+) -> None:
+    """Schedules run for a paying user, so nothing is paused and no read is spent."""
+    _patch_user_tier(mocker, SubscriptionTier.PRO)
+    scheduler_client.get_execution_schedules.return_value = [_workflow_schedule("wf-1")]
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    assert response.json()["paused_workflow_schedules"] == 0
+    scheduler_client.get_execution_schedules.assert_not_awaited()
+
+
+def test_a_failed_schedule_read_still_serves_the_status(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    scheduler_client: Mock,
+) -> None:
+    """The paywall reads this route to show its plans, so the count fails soft."""
+    _patch_user_tier(mocker, SubscriptionTier.NO_TIER)
+    scheduler_client.get_execution_schedules.side_effect = ConnectionError("down")
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    assert response.json()["paused_workflow_schedules"] == 0
+
+
+def _patch_user_tier(mocker: pytest_mock.MockFixture, tier: SubscriptionTier) -> None:
+    user = Mock()
+    user.subscription_tier = tier
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=user,
+    )
+
+
+def _workflow_schedule(job_id: str) -> GraphExecutionJobInfo:
+    return GraphExecutionJobInfo(
+        id=job_id,
+        name="Daily digest",
+        next_run_time="2026-10-25T09:00:00+00:00",
+        user_id=TEST_USER_ID,
+        graph_id="graph",
+        graph_version=1,
+        cron="0 9 * * *",
+        input_data={},
+    )
+
+
+def _chat_schedule(job_id: str) -> CopilotTurnJobInfo:
+    return CopilotTurnJobInfo(
+        id=job_id,
+        name="Follow up on the invoice",
+        next_run_time="2026-10-25T09:00:00+00:00",
+        user_id=TEST_USER_ID,
+        cron="0 9 * * *",
+        message="ping",
+    )
 
 
 def test_get_subscription_status_stripe_error_falls_back_to_zero(
@@ -1369,6 +1533,60 @@ def test_stripe_webhook_dispatches_invoice_payment_failed(
     failure_mock.assert_awaited_once_with(invoice_obj)
 
 
+@pytest.mark.parametrize(
+    "event_type", ["invoice.payment_succeeded", "invoice_payment.paid"]
+)
+def test_stripe_webhook_paid_invoice_reconciles_the_wallet_payment_first(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    event_type: str,
+) -> None:
+    """Both paid events settle or refund an unfinished wallet payment before
+    the success handler, whose credit grant reads the settled state."""
+    invoice_obj = {"id": "in_test", "customer": "cus_test", "amount_paid": 1999}
+    data_object = (
+        invoice_obj
+        if event_type == "invoice.payment_succeeded"
+        else {"object": "invoice_payment", "invoice": "in_test"}
+    )
+    event = {"type": event_type, "data": {"object": data_object}}
+    mocker.patch.object(
+        stripe.Invoice, "retrieve_async", AsyncMock(return_value=invoice_obj)
+    )
+
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.settings.secrets.stripe_webhook_secret",
+        new="whsec_test",
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.stripe.Webhook.construct_event",
+        return_value=event,
+    )
+    calls = Mock()
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.reconcile_wallet_payment_on_paid_invoice",
+        new=AsyncMock(side_effect=lambda inv: calls("refund", inv)),
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.handle_subscription_payment_success",
+        new=AsyncMock(side_effect=lambda inv: calls("success", inv)),
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.on_trial_invoice",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/credits/stripe_webhook",
+        content=b"{}",
+        headers={"stripe-signature": "t=1,v1=abc"},
+    )
+
+    assert response.status_code == 200
+    assert [c.args[0] for c in calls.call_args_list] == ["refund", "success"]
+    calls.assert_any_call("refund", invoice_obj)
+
+
 def test_update_subscription_tier_paid_to_paid_modifies_subscription(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
@@ -2019,6 +2237,47 @@ def test_get_subscription_status_no_pending_tier(
     data = response.json()
     assert data["pending_tier"] is None
     assert data["pending_tier_effective_at"] is None
+
+
+@pytest.mark.parametrize(
+    "error",
+    [stripe.StripeError("rate limited"), PendingChangeUnknown("no price ids")],
+    ids=["stripe", "price-lookup"],
+)
+def test_get_subscription_status_reads_a_failed_pending_change_as_none(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    error: Exception,
+) -> None:
+    """A pending change that can't be resolved leaves the status without one
+    instead of failing it, and the failure is logged."""
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=Mock(subscription_tier=SubscriptionTier.PRO),
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_proration_credit_cents",
+        new_callable=AsyncMock,
+        return_value=0,
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_pending_subscription_change",
+        new_callable=AsyncMock,
+        side_effect=error,
+    )
+    logged = mocker.spy(subscription_routes.logger, "exception")
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    assert response.json()["pending_tier"] is None
+    logged.assert_called_once()
 
 
 def test_update_subscription_tier_downgrade_paid_to_paid_schedules(
