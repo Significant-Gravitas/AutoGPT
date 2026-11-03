@@ -22,7 +22,7 @@ export function UsageBar({ label, percentUsed, resetsAt }: Props) {
         <Text tone="body" variant="body-medium">
           {label}
         </Text>
-        <Text tone="muted" variant="body" className="tabular-nums">
+        <Text variant="body" tone="muted" tabular>
           {percentLabel}
         </Text>
       </div>

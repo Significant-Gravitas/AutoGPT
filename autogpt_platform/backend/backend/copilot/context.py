@@ -5,6 +5,7 @@ All context variables and their accessors live here so that
 without creating circular dependencies.
 """
 
+import asyncio
 import os
 import re
 from collections.abc import Iterator
@@ -481,13 +482,21 @@ async def get_workspace_manager(user_id: str, session_id: str) -> WorkspaceManag
     ``tools/__init__`` import chain. Expert turns get a manager confined to
     the expert's resolved scope (see :func:`current_workspace_scope`).
     """
-    workspace = await workspace_db().get_or_create_workspace(user_id)
-    scope = await current_workspace_scope(user_id, session_id)
+    workspace, scope = await asyncio.gather(
+        workspace_db().get_or_create_workspace(user_id),
+        current_workspace_scope(user_id, session_id),
+    )
     return WorkspaceManager(user_id, workspace.id, session_id, scope=scope)
 
 
 def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
-    """Return True if *path* is within an allowed host-filesystem location.
+    """Return True if *path* is within an allowed host-filesystem location."""
+    return resolve_allowed_local_path(path, sdk_cwd) is not None
+
+
+def resolve_allowed_local_path(path: str, sdk_cwd: str | None = None) -> str | None:
+    """The real path of *path* if it is within an allowed host-filesystem
+    location, else ``None``.  Open it with ``host_fs.open_no_follow``.
 
     Allowed:
     - Files under *sdk_cwd* (``/tmp/copilot-<session>/``)
@@ -497,7 +506,7 @@ def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
       the UUID segment is validated with ``_UUID_RE``.
     """
     if not path:
-        return False
+        return None
 
     if path.startswith("~"):
         resolved = os.path.realpath(os.path.expanduser(path))
@@ -509,14 +518,14 @@ def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
     if sdk_cwd:
         norm_cwd = os.path.realpath(sdk_cwd)
         if resolved == norm_cwd or resolved.startswith(norm_cwd + os.sep):
-            return True
+            return resolved
 
     encoded = _current_project_dir.get("")
     if encoded:
         project_dir = os.path.realpath(os.path.join(SDK_PROJECTS_DIR, encoded))
         # Defence-in-depth: ensure project_dir didn't escape the base.
         if not project_dir.startswith(SDK_PROJECTS_DIR + os.sep):
-            return False
+            return None
         # Only allow: <encoded-cwd>/<uuid>/<tool-dir>/<file>
         # The SDK always creates a conversation UUID directory between
         # the project dir and the tool directory.
@@ -532,6 +541,6 @@ def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
                 and _UUID_RE.match(parts[0])
                 and parts[1] in ("tool-results", "tool-outputs")
             ):
-                return True
+                return resolved
 
-    return False
+    return None

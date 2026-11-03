@@ -22,6 +22,7 @@ _MOCK_MODULE = "backend.api.features.admin.impersonation_admin_routes"
 _TARGET_USER_ID = "target-user-id"
 _ADMIN_EMAIL = "admin@agpt.co"
 _TARGET_EMAIL = "target@example.com"
+_BASE_URL = "https://platform.test"
 
 
 @pytest.fixture(autouse=True)
@@ -36,7 +37,12 @@ def _set_token(mocker: pytest_mock.MockerFixture, token: str) -> None:
     """Swap the module's settings for a tiny stub exposing only what's read."""
     mocker.patch(
         f"{_MOCK_MODULE}.settings",
-        SimpleNamespace(secrets=SimpleNamespace(discord_bot_token=token)),
+        SimpleNamespace(
+            secrets=SimpleNamespace(discord_bot_token=token),
+            config=SimpleNamespace(
+                frontend_base_url=_BASE_URL, platform_base_url="unused"
+            ),
+        ),
     )
 
 
@@ -176,10 +182,33 @@ def test_notify_missing_target_user_id_returns_422() -> None:
     assert response.status_code == 422
 
 
-def test_notify_email_lookup_failure_is_non_fatal(
+def test_notify_names_target_by_id_not_email(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
-    """A failed email lookup degrades to 'unknown' but still delivers (200)."""
+    """The target user is shown by ID with an admin link; their email never is."""
+    _set_token(mocker, "fake-token")
+    _patch_emails(mocker)
+    mock_alert = _patch_alert(mocker, return_value="Message sent")
+
+    response = client.post(
+        "/admin/impersonation/notify", json={"target_user_id": _TARGET_USER_ID}
+    )
+
+    assert response.status_code == 200
+    content = mock_alert.await_args.args[0]
+    assert _TARGET_EMAIL not in content
+    assert f"`{_TARGET_USER_ID}`" in content
+    assert f"{_BASE_URL}/admin/spending?search={_TARGET_USER_ID}" in content
+
+
+def test_notify_admin_lookup_failure_is_non_fatal(
+    mocker: pytest_mock.MockerFixture, admin_user_id: str
+) -> None:
+    """A JWT without an email and a failed lookup degrade to 'unknown' (200)."""
+    app.dependency_overrides[get_jwt_payload] = lambda: {
+        "sub": admin_user_id,
+        "role": "admin",
+    }
     _set_token(mocker, "fake-token")
     mocker.patch(
         f"{_MOCK_MODULE}.get_user_email_by_id",
@@ -195,14 +224,13 @@ def test_notify_email_lookup_failure_is_non_fatal(
     assert response.status_code == 200
     assert response.json() == {"alerted": True}
     content = mock_alert.await_args.args[0]
-    assert "test-admin@example.com" in content  # admin email from the JWT
-    assert "unknown" in content  # target lookup failed, degraded gracefully
+    assert f"Admin: unknown (`{admin_user_id}`)" in content
 
 
 def test_notify_admin_email_comes_from_jwt_without_db_lookup(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
-    """The admin email is read from the JWT; only the target is looked up in DB."""
+    """The admin email is read from the JWT, so no email is looked up in the DB."""
     _set_token(mocker, "fake-token")
     mock_email = mocker.patch(
         f"{_MOCK_MODULE}.get_user_email_by_id",
@@ -218,5 +246,4 @@ def test_notify_admin_email_comes_from_jwt_without_db_lookup(
     assert response.status_code == 200
     content = mock_alert.await_args.args[0]
     assert "test-admin@example.com" in content
-    # Admin email came from the JWT, so the DB is only hit for the target.
-    mock_email.assert_awaited_once_with(_TARGET_USER_ID)
+    mock_email.assert_not_awaited()

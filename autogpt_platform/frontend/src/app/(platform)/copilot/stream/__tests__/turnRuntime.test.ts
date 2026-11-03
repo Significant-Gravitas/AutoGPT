@@ -1142,6 +1142,35 @@ describe("the end-of-turn reconcile", () => {
       expect.objectContaining({ diffs: ["2: content"] }),
     );
   });
+
+  it("keeps the reply of a turn longer than the session window rateable", async () => {
+    await sendAndPublish(toolTurn.sse.length - 1);
+    backend.publish();
+    // The session read returns a window that starts inside the turn.
+    vi.spyOn(backend, "view").mockImplementation(() => ({
+      messages: toolTurn.rows
+        .map((row, sequence) => ({ ...row, sequence }))
+        .slice(2),
+      has_more_messages: true,
+      active_stream: null,
+    }));
+    await advance(1_000);
+
+    const turn = turnSegment();
+    expect(turn.reconciled).toBe(false);
+    expect(turn.lastReplySequence).toBe(3);
+    const { stats } = renderTail(snapshot());
+    expect(stats.get(turn.key)?.savedMessageId).toBe("session-1-seq-3");
+
+    // A later window holds none of the turn's replies: the id stays.
+    runtime.observe({
+      messages: [{ role: "user", content: "Another question", sequence: 4 }],
+      has_more_messages: true,
+      active_stream: null,
+    });
+    await advance(0);
+    expect(turnSegment().lastReplySequence).toBe(3);
+  });
 });
 
 function loseSendWhileHidden() {

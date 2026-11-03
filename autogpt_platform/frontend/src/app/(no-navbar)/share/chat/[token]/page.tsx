@@ -153,7 +153,7 @@ export default function SharedChatPage() {
           // revoked link.  Keep the chrome (so the viewer knows the
           // share is real) and show an inline retry instead of the
           // permanent not-found card.
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-warning-border bg-warning-surface px-4 py-2 text-xs text-warning-foreground">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-warning-border bg-warning-surface px-4 py-2 text-caption text-warning-foreground">
             <span>Couldn&apos;t load messages. The share link is valid.</span>
             <button
               onClick={retry}
@@ -164,7 +164,7 @@ export default function SharedChatPage() {
           </div>
         )}
         {hasMore && (
-          <div className="shrink-0 border-b border-border-base bg-surface-muted px-4 py-2 text-center text-xs text-foreground-secondary">
+          <div className="shrink-0 border-b border-border-base bg-surface-muted px-4 py-2 text-center text-caption text-foreground-secondary">
             Showing the most recent {uiMessages.length} messages — older history
             is not visible in this shared view.
           </div>

@@ -4,12 +4,19 @@ with a proxy configured every box is pinned under a credential of its own."""
 import asyncio
 import json
 import re
+import uuid
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from e2b.connection_config import ConnectionConfig
+from e2b.exceptions import SandboxNotFoundException
+from pydantic import SecretStr
 
 import backend
+from backend.data import redis_client
+from backend.data.model import APIKeyCredentials
+from backend.integrations.credentials_store import e2b_credentials
 from backend.util import e2b_network
 from backend.util.e2b_network import (
     EgressOwner,
@@ -18,10 +25,15 @@ from backend.util.e2b_network import (
     create_sandbox,
     credential_record,
     forget_sandbox,
+    hold_sandbox,
     kill_sandbox,
+    pause_sandbox,
     reattach_command,
+    release_sandbox,
     secret_digest,
+    uses_platform_e2b_key,
 )
+from backend.util.testing import is_tcp_port_reachable
 
 _M = "backend.util.e2b_network"
 _OWNER = EgressOwner(kind="expert", id="exp-1", user_id="user-1")
@@ -490,6 +502,36 @@ class TestPinned:
         assert redis.store["e2b:egress:box:sb-1"]
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("pause_error", [None, SandboxNotFoundException("gone")])
+    async def test_pausing_revokes_the_credential_and_keeps_the_ceiling(
+        self, pause_error
+    ):
+        box, redis = _box("sb-1"), _redis()
+        box.pause = AsyncMock(side_effect=pause_error)
+        box.kill = AsyncMock()
+        with _configured(_PROXY), patch(
+            f"{_M}.get_redis_async", AsyncMock(return_value=redis)
+        ):
+            await create_sandbox(_sdk(box), _OWNER, template="t")
+            await pause_sandbox(box)
+        box.pause.assert_awaited_once()
+        box.kill.assert_not_awaited()
+        assert set(redis.store) == {"e2b:egress:ceiling:sb-1"}
+
+    @pytest.mark.asyncio
+    async def test_a_box_that_will_not_pause_is_killed(self):
+        box, redis = _box("sb-1"), _redis()
+        box.pause = AsyncMock(side_effect=RuntimeError("e2b error"))
+        box.kill = AsyncMock()
+        with _configured(_PROXY), patch(
+            f"{_M}.get_redis_async", AsyncMock(return_value=redis)
+        ):
+            await create_sandbox(_sdk(box), _OWNER, template="t")
+            await pause_sandbox(box)
+        box.kill.assert_awaited_once()
+        assert redis.store == {}
+
+    @pytest.mark.asyncio
     async def test_a_revocation_that_fails_does_not_fail_the_kill_it_follows(self):
         with _configured(_PROXY), patch(
             f"{_M}.get_redis_async", AsyncMock(side_effect=ConnectionError("redis"))
@@ -619,3 +661,174 @@ class TestRecordedProviders:
             f"{_M}.get_redis_async", AsyncMock(side_effect=ConnectionError("down"))
         ):
             assert await e2b_network.recorded_providers("sb-1") == ()
+
+
+_live_redis = pytest.mark.skipif(
+    not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
+    reason="no local Redis reachable; the run count is a script that runs on it",
+)
+
+
+class TestKeptBoxRuns:
+    """A box block runs keep is paused by the last of them to release it, and
+    whenever the count of its runs cannot be read."""
+
+    @_live_redis
+    @pytest.mark.asyncio
+    async def test_only_the_last_run_to_release_a_box_pauses_it(self):
+        sandbox_id = f"sb-{uuid.uuid4().hex}"
+        key = e2b_network._HOLDERS_KEY_PREFIX + sandbox_id
+        box = _box(sandbox_id)
+        box.pause = AsyncMock()
+        redis = await redis_client.get_redis_async()
+        try:
+            await hold_sandbox(sandbox_id)
+            await hold_sandbox(sandbox_id)
+            # Outlives any box E2B keeps running, so it never lapses mid-run.
+            assert await redis.ttl(key) > 24 * 3600
+            await release_sandbox(sandbox_id, box)
+            box.pause.assert_not_awaited()
+            await release_sandbox(sandbox_id, box)
+            box.pause.assert_awaited_once()
+            assert not await redis.exists(key)
+        finally:
+            await redis.delete(key)
+
+    @_live_redis
+    @pytest.mark.asyncio
+    async def test_a_run_whose_connect_failed_pauses_the_box_by_id(self):
+        sandbox_id = f"sb-{uuid.uuid4().hex}"
+        box_key, cred_key = f"e2b:egress:box:{sandbox_id}", "e2b:egress:cred:box-x"
+        redis = await redis_client.get_redis_async()
+        try:
+            await redis.set(box_key, "box-x")
+            await redis.set(cred_key, "{}")
+            with patch(f"{_M}.AsyncSandbox") as cls:
+                cls.pause = AsyncMock()
+                await hold_sandbox(sandbox_id)
+                await release_sandbox(sandbox_id, None, api_key="k")
+            cls.pause.assert_awaited_once_with(sandbox_id, api_key="k")
+            assert not await redis.exists(box_key)
+            assert not await redis.exists(cred_key)
+        finally:
+            await redis.delete(box_key)
+            await redis.delete(cred_key)
+
+    @_live_redis
+    @pytest.mark.asyncio
+    async def test_a_hold_during_a_pause_waits_for_the_pause_to_finish(self):
+        """A run counting itself while the last run's pause is in flight lands
+        after the pause, so its connect resumes the box rather than racing it."""
+        sandbox_id = f"sb-{uuid.uuid4().hex}"
+        key = e2b_network._HOLDERS_KEY_PREFIX + sandbox_id
+        pausing, may_finish = asyncio.Event(), asyncio.Event()
+
+        async def pause():
+            pausing.set()
+            await may_finish.wait()
+
+        box = _box(sandbox_id)
+        box.pause = AsyncMock(side_effect=pause)
+        redis = await redis_client.get_redis_async()
+        tasks: list[asyncio.Task] = []
+        try:
+            await hold_sandbox(sandbox_id)
+            tasks.append(asyncio.create_task(release_sandbox(sandbox_id, box)))
+            await asyncio.wait_for(pausing.wait(), timeout=10)
+            tasks.append(asyncio.create_task(hold_sandbox(sandbox_id)))
+            done, _ = await asyncio.wait({tasks[1]}, timeout=1)
+            assert not done, "the hold landed while the pause was in flight"
+            may_finish.set()
+            await asyncio.wait_for(asyncio.gather(*tasks), timeout=15)
+            assert int(await redis.get(key)) == 1
+        finally:
+            may_finish.set()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            await redis.delete(key)
+
+    @pytest.mark.asyncio
+    async def test_a_box_is_paused_when_its_runs_cannot_be_counted(self):
+        box = _box("sb-1")
+        box.pause = AsyncMock()
+        with patch(
+            f"{_M}.get_redis_async", AsyncMock(side_effect=ConnectionError("down"))
+        ):
+            await hold_sandbox("sb-1")
+            await release_sandbox("sb-1", box)
+        box.pause.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_a_box_whose_pause_hangs_is_killed(self):
+        async def hang():
+            await asyncio.Event().wait()
+
+        box = _box("sb-1")
+        box.pause = AsyncMock(side_effect=hang)
+        box.kill = AsyncMock()
+        with patch(f"{_M}._KILL_TIMEOUT_SECONDS", 0.05), patch(
+            f"{_M}.get_redis_async", AsyncMock(return_value=_redis())
+        ):
+            # Bounded here too, so an unbounded pause fails rather than hangs.
+            await asyncio.wait_for(pause_sandbox(box), timeout=5)
+        box.kill.assert_awaited_once()
+
+
+class TestPlatformKey:
+    """Which runs must pause a box they keep: the ones whose boxes E2B opens on
+    the operator's key, which is not only the platform credential's."""
+
+    @pytest.mark.parametrize(
+        "credential_id, api_key, on_platform_key",
+        [
+            (e2b_credentials.id, "e2b_platform", True),
+            ("01234567-89ab-cdef-0123-456789abcdef", "e2b_users_own", False),
+            # The SDK reads ``api_key or $E2B_API_KEY``, so a credential with
+            # no key at all opens the box on the operator's.
+            ("01234567-89ab-cdef-0123-456789abcdef", "", True),
+            # Counted too, to fail safe, though E2B refuses a blank key.
+            ("01234567-89ab-cdef-0123-456789abcdef", "   ", True),
+        ],
+        ids=["platform-credential", "own-key", "empty-key", "blank-key"],
+    )
+    def test_a_run_on_the_operators_key_is_recognised(
+        self, credential_id, api_key, on_platform_key
+    ):
+        credentials = APIKeyCredentials(
+            id=credential_id,
+            provider="e2b",
+            api_key=SecretStr(api_key),
+            title="t",
+            expires_at=None,
+        )
+        assert uses_platform_e2b_key(credentials) is on_platform_key
+
+    def test_the_sdk_falls_back_from_an_empty_key(self):
+        """Why the empty-key case counts, pinned on the installed SDK."""
+        with patch.dict("os.environ", {"E2B_API_KEY": "e2b_platform"}):
+            assert ConnectionConfig(api_key="").api_key == "e2b_platform"
+            assert ConnectionConfig(api_key="e2b_users_own").api_key == "e2b_users_own"
+
+
+class TestReleaseNeverRaises:
+    """A block awaits ``release_sandbox`` in its ``finally``, so a box that
+    will not stop must not cost the run its result."""
+
+    @pytest.mark.asyncio
+    async def test_a_box_that_neither_pauses_nor_kills_does_not_fail_the_run(self):
+        box = _box("sb-1")
+        box.pause = AsyncMock(side_effect=RuntimeError("pause failed"))
+        box.kill = AsyncMock(side_effect=RuntimeError("kill failed"))
+        with patch(f"{_M}.get_redis_async", AsyncMock(return_value=_redis())):
+            await release_sandbox("sb-1", box)
+        box.kill.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_a_box_paused_by_id_it_cannot_forget_does_not_fail_the_run(self):
+        with patch(f"{_M}.AsyncSandbox") as cls, patch(
+            f"{_M}.get_redis_async", AsyncMock(return_value=_redis())
+        ), patch(
+            f"{_M}.forget_sandbox", AsyncMock(side_effect=RuntimeError("redis down"))
+        ):
+            cls.pause = AsyncMock()
+            await release_sandbox("sb-1", None, api_key="k")
+        cls.pause.assert_awaited_once_with("sb-1", api_key="k")

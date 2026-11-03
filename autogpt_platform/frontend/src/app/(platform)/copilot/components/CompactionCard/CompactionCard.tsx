@@ -23,7 +23,7 @@ interface Props {
 export function CompactionCard({ phase, stats, isSettled }: Props) {
   if (isSettled) {
     return (
-      <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+      <div className="flex items-center gap-2 py-2 text-caption text-muted-foreground">
         <Icon icon={ReloadIcon} size={14} />
         <span
           className="min-w-0 truncate"
@@ -62,12 +62,13 @@ function LiveCompaction({ phase, stats }: LiveProps) {
 
   return (
     <div className="flex flex-col gap-1.5 py-2">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+      <div className="flex items-center gap-2 text-caption text-muted-foreground">
         <Icon
           icon={ReloadIcon}
           size={14}
+          spin
           // oxlint-disable-next-line design-system/no-arbitrary-values -- a slow 2.4s pulse; the duration scale stops at 2000ms
-          className="[animation-duration:2.4s] motion-safe:animate-spin"
+          className="[animation-duration:2.4s]"
         />
         {/* Polite live region on the label ONLY — the progressbar's
             aria-valuenow moves every committed percent and would flood the
