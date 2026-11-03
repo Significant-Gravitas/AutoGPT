@@ -118,7 +118,7 @@ jobs:
           \`\`\`
           pipx install autogpt-local-executor==${TAG#v}
           autogpt-shim auth
-          autogpt-shim start --allowed-root ~/autogpt-workspace
+          autogpt-shim start
           \`\`\`
 
           ### Hashes

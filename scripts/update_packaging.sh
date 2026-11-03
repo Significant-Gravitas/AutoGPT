@@ -36,6 +36,14 @@ HOMEBREW_FORMULA="$REPO_ROOT/packaging/homebrew/${PKG}.rb"
 SCOOP_MANIFEST="$REPO_ROOT/packaging/scoop/${PKG}.json"
 
 # Fetch sdist + wheel from PyPI and compute sha256s.
+# macOS has shasum but not sha256sum.
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 
@@ -67,11 +75,11 @@ fi
 
 echo "Fetching sdist: $SDIST_URL"
 curl -fsSL "$SDIST_URL" -o "$TMPDIR/sdist.tar.gz"
-SDIST_SHA=$(sha256sum "$TMPDIR/sdist.tar.gz" | awk '{print $1}')
+SDIST_SHA=$(sha256_of "$TMPDIR/sdist.tar.gz")
 
 echo "Fetching wheel: $WHEEL_URL"
 curl -fsSL "$WHEEL_URL" -o "$TMPDIR/wheel.whl"
-WHEEL_SHA=$(sha256sum "$TMPDIR/wheel.whl" | awk '{print $1}')
+WHEEL_SHA=$(sha256_of "$TMPDIR/wheel.whl")
 
 echo "sdist sha256 = $SDIST_SHA"
 echo "wheel sha256 = $WHEEL_SHA"

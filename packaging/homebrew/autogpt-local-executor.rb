@@ -69,6 +69,6 @@ class AutogptLocalExecutor < Formula
   end
 
   test do
-    assert_match "autogpt-shim", shell_output("#{bin}/autogpt-shim --help")
+    assert_match "autogpt-shim #{version}", shell_output("#{bin}/autogpt-shim --version")
   end
 end
