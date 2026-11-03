@@ -4,16 +4,21 @@ import hashlib
 import os
 
 
-def cache_settings(event: str, ref: str, image: str, arch: str) -> list[str]:
+def cache_settings(
+    event: str, ref: str, image: str, arch: str, *, head_ref: str = ""
+) -> list[str]:
     if arch not in {"amd64", "arm64"}:
         raise ValueError(f"Unsupported cache architecture: {arch}")
     shared = f"{image}:v4-{arch}"
     imports = [shared]
     export = None
-    if event == "workflow_dispatch":
-        branch_digest = hashlib.sha256(ref.encode()).hexdigest()[:20]
-        export = f"{image}:v4-branch-{branch_digest}-{arch}"
-        imports.insert(0, export)
+    if event == "workflow_dispatch" or (event == "pull_request" and head_ref):
+        branch_ref = f"refs/heads/{head_ref}" if event == "pull_request" else ref
+        branch_digest = hashlib.sha256(branch_ref.encode()).hexdigest()[:20]
+        branch_cache = f"{image}:v4-branch-{branch_digest}-{arch}"
+        imports.insert(0, branch_cache)
+        if event == "workflow_dispatch":
+            export = branch_cache
     elif event == "push" and ref == "refs/heads/dev":
         export = shared
     settings = [
@@ -35,6 +40,7 @@ if __name__ == "__main__":
         os.environ["GITHUB_REF"],
         os.environ["BUILD_CACHE_IMAGE"],
         os.environ["BUILD_CACHE_ARCH"],
+        head_ref=os.environ.get("GITHUB_HEAD_REF", ""),
     )
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
         output.write("set<<CACHE_EOF\n" + "\n".join(settings) + "\nCACHE_EOF\n")

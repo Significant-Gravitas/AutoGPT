@@ -3,7 +3,6 @@ import re
 import unittest
 from pathlib import Path
 
-
 SCRIPT = (
     Path(__file__).resolve().parents[3] / ".github/scripts/single_container_cache.py"
 )
@@ -44,6 +43,37 @@ class RegistryCacheTests(unittest.TestCase):
             "continue-on-error: ${{ github.event_name == 'pull_request' }}", login
         )
         self.assertNotIn("if:", login)
+
+    def test_pull_request_reads_its_manually_seeded_branch_without_writing(self):
+        for arch in ("amd64", "arm64"):
+            manual = self.settings("workflow_dispatch", "refs/heads/ci-speed", arch)
+            pull_request = cache.cache_settings(
+                "pull_request",
+                "refs/pull/1/merge",
+                IMAGE,
+                arch,
+                head_ref="ci-speed",
+            )
+            self.assertEqual(
+                pull_request, [line for line in manual if ".cache-from=" in line]
+            )
+            other_branch = cache.cache_settings(
+                "pull_request",
+                "refs/pull/2/merge",
+                IMAGE,
+                arch,
+                head_ref="another-branch",
+            )
+            self.assertNotEqual(pull_request[0], other_branch[0])
+            self.assertEqual(pull_request[1], other_branch[1])
+
+    def test_head_ref_does_not_change_release_cache_policy(self):
+        self.assertEqual(
+            cache.cache_settings(
+                "release", "refs/tags/v1", IMAGE, "amd64", head_ref="ci-speed"
+            ),
+            self.settings("release", "refs/tags/v1"),
+        )
 
     def test_only_dev_push_writes_the_shared_validation_cache(self):
         settings = self.settings("push")

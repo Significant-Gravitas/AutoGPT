@@ -158,7 +158,7 @@ jobs:
             *.args.APT_REFRESH=${{ steps.apt-refresh.outputs.date }}
             single-container.args.IMAGE_VERSION=sha-${{ github.sha }}
             single-container.args.VCS_REF=${{ github.sha }}
-            single-container.output=type=docker
+            single-container.output=type=docker,compression=uncompressed
             single-container.tags=autogpt-platform-single-container:ci-${{ matrix.suffix }}
             ${{ steps.cache.outputs.set }}
 

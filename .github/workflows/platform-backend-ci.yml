@@ -649,7 +649,11 @@ jobs:
             pytest_args+=(-v)
           fi
 
-          timeout --verbose --kill-after=15s 8m \
+          if [[ "${{ matrix.test-shard }}" == "api" ]]; then
+            ulimit -v 8388608
+            echo "API diagnostic limit: 8 GiB virtual address space per process"
+          fi
+          /usr/bin/time -v /usr/bin/timeout --verbose --kill-after=15s 8m \
             python ../../.github/scripts/backend_test_shard.py --layout "$TEST_LAYOUT" --partition "${{ matrix.partition }}" "${{ matrix.test-shard }}" -- "${pytest_args[@]}"
 
       - name: Generate coverage XML once

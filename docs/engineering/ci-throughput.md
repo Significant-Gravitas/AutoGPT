@@ -42,7 +42,13 @@ On `55859c7`, both [appliance architectures](https://github.com/Significant-Grav
 
 The API jobs remained active beyond the GitHub step deadline without downloadable logs. The test command also has an eight-minute process-group deadline, escalating to a forced stop after fifteen seconds. It is intended to leave time for diagnostics before the ten-minute step limit. Healthy test steps in the preceding run finished within 313 seconds. Hosted validation must confirm the new deadline works; it does not establish that the API stall itself is fixed.
 
+On `eb1fd39`, both repaired remainder partitions passed and both appliance architectures passed their lifecycle checks. The API jobs still did not return by their inner deadline, so the next diagnostic adds an 8 GiB per-process virtual-address limit for API shards and GNU time resource reporting. This limit may turn excessive allocation into an actionable error; it is not evidence that memory exhaustion caused the stall, and it is not an aggregate memory limit across child processes. The tests, coverage and failure gates remain unchanged.
+
 Both Docker frontend builds now invoke Next directly after copying the VAD assets. Their intended `NODE_OPTIONS=--max-old-space-size=8192` was being overwritten by the package's `pnpm build` script, which sets 16384. The local build script stays unchanged. The effect on build time and peak memory still needs hosted validation.
+
+The appliance validation build exports uncompressed image layers to the Docker daemon on the same runner. On `55859c7`, export and loading took 114.6 seconds, including 50.9 seconds exporting layers. Docker's [exporter compression option](https://docs.docker.com/build/exporters/oci-docker/) defaults to gzip; avoiding compression for this local transfer is a candidate reduction in that work. Registry cache and release publication compression are unchanged. Image revision verification, complete lifecycle smoke tests and both security scans still run against the loaded image. Hosted export timings and validation are required before claiming a benefit.
+
+Appliance PR runs also read the cache seeded by a manual run on the same branch, then fall back to the shared `dev` cache. Previously, manual runs wrote the branch cache but PR runs could not read it, so repeated validation of changed dependency layers stayed cold. Only manual runs write branch caches; PRs remain read-only, only `dev` pushes write the shared cache, and release digest builds still do not trust validation caches. Cache misses remain ordinary cold builds. The first manual seed must finish before a warm PR comparison is meaningful; source-revision checks and complete image validation remain required on every run.
 
 ## Hosted frontend comparison
 
