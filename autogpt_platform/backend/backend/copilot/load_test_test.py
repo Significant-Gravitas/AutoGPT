@@ -67,6 +67,15 @@ async def test_an_account_whose_email_cannot_be_found_keeps_its_engine() -> None
 
 
 @pytest.mark.asyncio
+async def test_a_failed_email_lookup_fails_the_turn_rather_than_route_it() -> None:
+    # Returning None here would hand a load-test account to the real model.
+    lookup = AsyncMock(side_effect=ConnectionError("user DB unavailable"))
+    with patch.object(load_test, "_email_for", lookup):
+        with pytest.raises(ConnectionError):
+            await load_test_engine("user-1", _config(DOMAIN))
+
+
+@pytest.mark.asyncio
 async def test_a_turn_without_a_user_keeps_its_engine() -> None:
     lookup = AsyncMock()
     with patch.object(load_test, "_email_for", lookup):

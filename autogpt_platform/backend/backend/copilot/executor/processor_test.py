@@ -2204,3 +2204,17 @@ class TestExecuteAsyncLoadTestAccounts:
 
         # Tagged before the check fails it.
         assert [call.args[1] for call in tagged.call_args_list] == ["scripted"]
+
+    @pytest.mark.asyncio
+    async def test_a_banned_load_test_accounts_turn_is_still_tagged(self) -> None:
+        with (
+            patch(
+                "backend.copilot.executor.processor.is_user_banned",
+                new=AsyncMock(return_value=True),
+            ),
+            patch.object(TurnTrace, "load_test_account", autospec=True) as tagged,
+        ):
+            calls = await self._engines_run("dummy")
+
+        assert calls == {}
+        assert [call.args[1] for call in tagged.call_args_list] == ["dummy"]
