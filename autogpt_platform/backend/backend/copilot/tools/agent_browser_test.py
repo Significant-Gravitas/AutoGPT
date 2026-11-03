@@ -1421,9 +1421,10 @@ class TestEnsureSession:
 
 class TestCloseBrowserSession:
     @pytest.mark.asyncio
-    async def test_calls_close_command(self):
+    async def test_closes_a_browser_this_process_runs(self):
         from . import agent_browser as _mod
 
+        _mod._touched_sessions.add("close-sess")
         _mod._alive_sessions.add("close-sess")
         with patch(
             "backend.copilot.tools.agent_browser._run",
@@ -1485,13 +1486,19 @@ class TestCloseBrowserSession:
 
     @pytest.mark.asyncio
     async def test_error_is_swallowed(self):
+        from . import agent_browser as _mod
+
+        _mod._touched_sessions.add("bad-sess")
         with patch(
             "backend.copilot.tools.agent_browser._run",
             new_callable=AsyncMock,
             side_effect=RuntimeError("gone"),
-        ):
+        ) as mock_run:
             # Should not raise
             await close_browser_session("bad-sess")
+
+        mock_run.assert_awaited_once()
+        assert "bad-sess" not in _mod._touched_sessions
 
     @pytest.mark.asyncio
     async def test_session_with_no_browser_here_starts_no_process(self):
@@ -1722,6 +1729,7 @@ class TestCloseBrowserDaemon:
             _mod._touched_sessions.add(session_name)
             return _run_result(rc=0)
 
+        _mod._touched_sessions.add("deleted-sess")
         with patch("backend.copilot.tools.agent_browser._run", run):
             await close_browser_session("deleted-sess")
 
