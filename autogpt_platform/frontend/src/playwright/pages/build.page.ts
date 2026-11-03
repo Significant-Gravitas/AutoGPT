@@ -507,7 +507,10 @@ export class BuildPage extends BasePage {
     }
   }
 
-  async startRun(): Promise<void> {
+  // Starts a run and returns its id. The builder keeps the last run's id in
+  // the URL, so a rerun only counts once the URL holds a different one.
+  async startRun(): Promise<string> {
+    const previousRunID = this.getCurrentRunID();
     await this.clickRunButton();
 
     // The run-input dialog is optional — agents without required inputs skip it
@@ -517,13 +520,32 @@ export class BuildPage extends BasePage {
         .locator('[data-id="run-input-manual-run-button"]')
         .click();
     }
+
+    // The id lands after the builder saves the graph and POSTs /execute; on a
+    // loaded CI runner that outlasts the default 5 s expect timeout.
+    await expect(
+      this.page,
+      "the run should get a new flowExecutionID",
+    ).toHaveURL(
+      (url) => {
+        const runID = url.searchParams.get("flowExecutionID");
+        return Boolean(runID) && runID !== previousRunID;
+      },
+      { timeout: 15_000 },
+    );
+    const runID = this.getCurrentRunID();
+    if (!runID) throw new Error(`No flowExecutionID in ${this.page.url()}`);
+    return runID;
   }
 
-  // The run the builder last started, read back from the API once it ends.
-  async waitForRunToEnd(): Promise<BuilderRun> {
-    await expect(this.page).toHaveURL(/flowExecutionID=/);
-    const { graphId } = this.getSavedGraphRef();
-    const runID = new URL(this.page.url()).searchParams.get("flowExecutionID");
+  getCurrentRunID(): string | null {
+    return new URL(this.page.url()).searchParams.get("flowExecutionID");
+  }
+
+  // Reads the given builder run back from the API once it ends.
+  async waitForRunToEnd(runID: string): Promise<BuilderRun> {
+    const graphId = new URL(this.page.url()).searchParams.get("flowID");
+    expect(graphId, "the builder URL should name the saved graph").toBeTruthy();
     let run: BuilderRun = { status: "UNKNOWN", outputs: {} };
     await expect
       .poll(

@@ -93,11 +93,11 @@ test("builder happy path: user can run the saved agent from builder and see exec
   const buildPage = new BuildPage(page);
   await buildPage.createAndSaveSimpleAgent("Smoke Run Agent");
 
-  await buildPage.startRun();
-  const run = await buildPage.waitForRunToEnd();
+  const firstRunID = await buildPage.startRun();
+  const firstRun = await buildPage.waitForRunToEnd(firstRunID);
 
-  expect(run.status).toBe("COMPLETED");
-  expect(run.outputs, "the run should output the stored value").toEqual({
+  expect(firstRun.status).toBe("COMPLETED");
+  expect(firstRun.outputs, "the run should output the stored value").toEqual({
     [SIMPLE_AGENT.outputName]: [SIMPLE_AGENT.value],
   });
   await expect(
@@ -106,4 +106,16 @@ test("builder happy path: user can run the saved agent from builder and see exec
       .getByText("COMPLETED", { exact: true }),
     "the canvas should show the output node's run state",
   ).toBeVisible({ timeout: 15000 });
+
+  // A second run must be checked on its own id, not the first run's, which
+  // stays in the URL until the new one replaces it.
+  const secondRunID = await buildPage.startRun();
+  expect(secondRunID, "the rerun should be a new execution").not.toBe(
+    firstRunID,
+  );
+  const secondRun = await buildPage.waitForRunToEnd(secondRunID);
+  expect(secondRun.status).toBe("COMPLETED");
+  expect(secondRun.outputs, "the rerun should output the stored value").toEqual(
+    { [SIMPLE_AGENT.outputName]: [SIMPLE_AGENT.value] },
+  );
 });
