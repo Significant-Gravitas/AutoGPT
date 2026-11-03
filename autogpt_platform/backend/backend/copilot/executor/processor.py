@@ -6,6 +6,7 @@ in a thread-local context, following the graph executor pattern.
 
 import asyncio
 import concurrent.futures
+import functools
 import logging
 import os
 import threading
@@ -40,6 +41,7 @@ from backend.copilot.llm_attribution import (
     set_turn_origin,
     set_turn_trace_id,
 )
+from backend.copilot.load_test import LoadTestEngine, load_test_engine
 from backend.copilot.model import maybe_append_user_message
 from backend.copilot.rate_limit import RateLimitUnavailable
 from backend.copilot.response_model import (
@@ -706,6 +708,7 @@ class CoPilotProcessor:
                 # their trial, so the rest of the setup reads both again.
                 trial_reads.forget()
 
+            load_test: LoadTestEngine | None = None
             if entry.llm_auth_provider == "codex":
                 from backend.integrations.codex.access import enforce_codex_access
                 from backend.integrations.codex.credential_codec import (
@@ -800,11 +803,33 @@ class CoPilotProcessor:
                 # Choose service based on PostHog flag.
                 # Claude Code subscription forces SDK mode (CLI subprocess auth).
                 config = ChatConfig()
+                if not config.test_mode:
+                    load_test = await load_test_engine(entry.user_id, config)
 
                 if config.test_mode:
                     stream_fn = stream_chat_completion_dummy
                     engine = "dummy"
                     log.warning("Using DUMMY service (CHAT_TEST_MODE=true)")
+                elif load_test == "dummy":
+                    stream_fn = stream_chat_completion_dummy
+                    engine = "dummy"
+                    log.info("Using DUMMY service: load-test account")
+                elif load_test == "scripted":
+                    if not config.load_test_model_url:
+                        # The account exists to spend nothing, so it never
+                        # falls through to a real model.
+                        raise RuntimeError("load_test_model_url_unset")
+                    stream_fn = cast(
+                        Callable,
+                        functools.partial(
+                            sdk_service.stream_chat_completion_sdk,
+                            stand_in_model_url=config.load_test_model_url,
+                        ),
+                    )
+                    engine = "sdk"
+                    log.info(
+                        "Using SDK service on the scripted model: load-test account"
+                    )
                 else:
                     use_sdk = await resolve_use_sdk(
                         entry.user_id,
@@ -854,7 +879,7 @@ class CoPilotProcessor:
             set_turn_origin(origin)
             set_turn_span(entry.turn_id)
             set_turn_credential_pins(entry.credential_pins)
-            turn.engine_started(engine)
+            turn.engine_started(engine, load_test=load_test)
             raw_stream = stream_fn(
                 session_id=entry.session_id,
                 message=entry.message or None,

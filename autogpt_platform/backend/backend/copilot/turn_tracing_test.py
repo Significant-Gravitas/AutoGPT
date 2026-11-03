@@ -146,3 +146,21 @@ def test_a_turn_that_never_reached_its_engine_sends_nothing(capture: MagicMock):
         turn.set_outcome("copilot_session_not_found", CANCELLED)
 
     capture.assert_not_called()
+
+
+def test_a_load_test_accounts_turn_says_so(capture: MagicMock):
+    with turn_transaction(_entry()) as turn:
+        turn.engine_started("dummy", load_test="dummy")
+        turn.set_outcome(None, CANCELLED)
+
+    properties = capture.call_args.args[2]
+    assert properties["engine"] == "dummy"
+    assert properties["load_test"] == "dummy"
+
+
+def test_a_persons_turn_carries_no_load_test_property(capture: MagicMock):
+    with turn_transaction(_entry()) as turn:
+        turn.engine_started("sdk")
+        turn.set_outcome(None, CANCELLED)
+
+    assert "load_test" not in capture.call_args.args[2]
