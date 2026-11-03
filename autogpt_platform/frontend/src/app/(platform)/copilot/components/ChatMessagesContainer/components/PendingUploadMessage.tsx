@@ -58,7 +58,8 @@ function PendingArtifactCard({ attachment }: CardProps) {
       <Icon
         icon={classification.icon}
         size={20}
-        className="shrink-0 text-foreground-subtle"
+        tone="subtle"
+        className="shrink-0"
       />
       <div className="min-w-0 flex-1">
         <Text variant="body-medium-tight" tone="primary" className="truncate">
@@ -75,7 +76,9 @@ function PendingArtifactCard({ attachment }: CardProps) {
         <Icon
           icon={Loading03Icon}
           size={16}
-          className="shrink-0 animate-spin text-foreground-subtle"
+          spin
+          tone="subtle"
+          className="shrink-0"
         />
       )}
     </div>

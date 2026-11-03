@@ -67,7 +67,8 @@ export function AccountMenuHeader({
           </div>
           <Icon
             icon={ArrowRight01Icon}
-            className="shrink-0 text-foreground-body"
+            tone="body"
+            className="shrink-0"
             size={16}
             aria-hidden="true"
           />

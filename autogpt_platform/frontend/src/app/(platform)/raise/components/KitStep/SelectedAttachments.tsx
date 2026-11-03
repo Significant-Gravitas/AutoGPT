@@ -40,7 +40,8 @@ export function SelectedAttachments({ attachments, color, onRemove }: Props) {
             icon={Cancel01Icon}
             size={12}
             aria-hidden
-            className="opacity-50 transition-opacity duration-200 group-hover:opacity-100 motion-reduce:transition-none"
+            motion="opacity"
+            className="opacity-50 group-hover:opacity-100"
           />
           <span className="sr-only">Remove {attachment.name}</span>
         </button>

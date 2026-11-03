@@ -120,7 +120,8 @@ export function WorkspaceFolderRows({
             <Icon
               icon={ArrowRight01Icon}
               size={16}
-              className="shrink-0 text-foreground-subtle"
+              tone="subtle"
+              className="shrink-0"
               aria-hidden
             />
           </li>

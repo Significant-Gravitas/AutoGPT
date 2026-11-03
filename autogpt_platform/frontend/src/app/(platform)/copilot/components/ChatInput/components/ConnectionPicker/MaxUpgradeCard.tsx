@@ -64,9 +64,10 @@ export function MaxUpgradeCard({ label, name, model, reason, href }: Props) {
       <Button
         as="NextLink"
         href={href}
-        variant="primary"
+        variant="brand"
         size="small"
-        className="mt-5 h-11 w-full rounded-lg border-brand-hover bg-brand-hover text-action-foreground hover:border-accent-strong hover:bg-accent-strong"
+        shape="soft"
+        className="mt-5 h-11 w-full"
       >
         Upgrade to Max
         <Icon icon={ArrowRight02Icon} size={16} aria-hidden />

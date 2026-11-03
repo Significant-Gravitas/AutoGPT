@@ -28,7 +28,8 @@ export function InsetHeaderTitle() {
     <div className="flex items-center gap-2">
       <Icon
         icon={entry.icon}
-        className="size-5 text-foreground-emphasis max-md:hidden"
+        tone="emphasis"
+        className="size-5 max-md:hidden"
       />
       <Text variant="large-medium">{entry.title}</Text>
     </div>

@@ -64,9 +64,15 @@ No `dark:` or `light:` classes. A theme is a set of token values, not a second s
 
 ## Primitives
 
-`src/components/{atoms,molecules,organisms}` own their look. At the call site, pick a `variant` or `size` (and a `tone` on `Text`). Use `className` only for layout: width, flex and grid placement, margin, position. A treatment you repeat becomes a variant on the primitive, never a class string copied between call sites.
+`src/components/{atoms,molecules,organisms}` own their look. At the call site, pick a `variant`, `size`, `tone` or `shape`. Use `className` only for layout: width, flex and grid placement, margin, position. A treatment you repeat becomes a variant on the primitive, never a class string copied between call sites.
 
-`Text` also accepts `truncate`, `line-clamp-*`, `whitespace-*`, `break-*`, `text-balance`, `text-pretty` and text alignment; `Icon` accepts layout only; `Skeleton` also accepts shape. Rule: `design-system/no-restyle`. It is off inside the three design-system directories, which define the looks.
+The props that replace the usual restyles:
+
+- **`Text`:** `tone` (colour), `weight`, `mono`, `tabular`, `italic`, `decoration`, `transform` and `align`, on top of the `variant`. A line height that differs from the variant's is a variant of its own (`body-tight`, `small-loose`, ...), not a `leading-*` class.
+- **`Icon`:** `tone` (the same values as `Text`, from `src/components/styles/tones.ts`; without one the icon takes the colour around it), `spin` for a loading indicator and `motion` (`transform`, `colors`, `opacity`) for an icon that animates a class change, such as a chevron's rotation.
+- **`Button`:** the quiet `ghost-muted`, `ghost-subtle` and `ghost-danger` variants, the `row` (32px), `inline`, `inline-xs` (no box, for a link in copy) and `icon-2xs` (24px) sizes, and `shape` (`pill`, `rounded`, `soft`) for the corner radius.
+
+`Text` also accepts `truncate`, `line-clamp-*`, `whitespace-*`, `break-*`, `text-balance`, `text-pretty`, `text-ellipsis`, `gap-*` and text alignment; `Icon` and `Button` accept layout only; `Skeleton` also accepts shape. Rule: `design-system/no-restyle`. Inside the three design-system directories, which define the looks, it checks only `Text`, `Icon` and `Button`, so a molecule restyles them through their props like any call site.
 
 Classes on a primitive must be static strings the linter can read, so no `` `bg-${tone}` ``; map a prop to whole class names instead. Rule: `design-system/require-static-classes`.
 
@@ -88,7 +94,7 @@ No arbitrary values except for layout and transitions (`w-[320px]`, `top-[7px]` 
 
 ## Typography
 
-Text renders through the `Text` atom by default: `<Text variant="body">`, with `as` for the tag (`<Text variant="small" as="span">`) and `tone` for the colour. `<Text>` owns its typography and colour; `className` takes layout, truncation, wrapping and alignment only (the `Text` contract of `design-system/no-restyle`).
+Text renders through the `Text` atom by default: `<Text variant="body">`, with `as` for the tag (`<Text variant="small" as="span">`), `tone` for the colour and `weight`, `mono` or `tabular` to adjust the variant. `<Text>` owns its typography and colour; `className` takes layout, truncation, wrapping and alignment only (the `Text` contract of `design-system/no-restyle`).
 
 Use a role class only where `Text` can't render the element identically, and inside primitives. Each role bundles its line-height:
 

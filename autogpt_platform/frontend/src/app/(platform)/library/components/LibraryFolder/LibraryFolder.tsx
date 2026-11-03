@@ -112,27 +112,29 @@ export function LibraryFolder({
       >
         <Button
           variant="icon"
-          size="icon"
+          size="icon-sm"
+          shape="pill"
           aria-label="Edit folder"
           onClick={(e) => {
             e.stopPropagation();
             onEdit?.();
           }}
-          // oxlint-disable-next-line design-system/no-restyle -- no Button size is the folder card's translucent 32px round icon button
-          className="h-8 w-8 border border-border-base bg-surface/80 p-2 text-foreground-tertiary hover:bg-surface hover:text-foreground-body"
+          // oxlint-disable-next-line design-system/no-restyle -- no Button variant is the folder card's translucent icon button with grey text
+          className="bg-surface/80 text-foreground-tertiary hover:bg-surface hover:text-foreground-body"
         >
           <Icon icon={PencilIcon} className="h-4 w-4" />
         </Button>
         <Button
           variant="icon"
-          size="icon"
+          size="icon-sm"
+          shape="pill"
           aria-label="Delete folder"
           onClick={(e) => {
             e.stopPropagation();
             onDelete?.();
           }}
-          // oxlint-disable-next-line design-system/no-restyle -- no Button size is the folder card's translucent 32px round icon button
-          className="h-8 w-8 border border-border-base bg-surface/80 p-2 text-foreground-tertiary hover:bg-surface hover:text-foreground-body"
+          // oxlint-disable-next-line design-system/no-restyle -- no Button variant is the folder card's translucent icon button with grey text
+          className="bg-surface/80 text-foreground-tertiary hover:bg-surface hover:text-foreground-body"
         >
           <Icon icon={Delete02Icon} className="h-4 w-4" />
         </Button>

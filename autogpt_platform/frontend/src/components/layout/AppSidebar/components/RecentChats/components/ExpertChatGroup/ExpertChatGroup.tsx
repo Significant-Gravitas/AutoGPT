@@ -119,8 +119,9 @@ export function ExpertChatGroup({
               so nothing shifts. On touch widths it stays visible. */}
           <Icon
             icon={ArrowDown01Icon}
+            tone="subtle"
             className={cn(
-              "shrink-0 text-foreground-subtle transition-[opacity,transform] duration-200 group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 group-data-[state=open]/expert-group:rotate-180 motion-reduce:transition-none md:opacity-0",
+              "shrink-0 transition-[opacity,transform] duration-200 group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 group-data-[state=open]/expert-group:rotate-180 motion-reduce:transition-none md:opacity-0",
               CHEVRON_SIZE_CLASS,
               !newChatHref && "ml-auto",
             )}

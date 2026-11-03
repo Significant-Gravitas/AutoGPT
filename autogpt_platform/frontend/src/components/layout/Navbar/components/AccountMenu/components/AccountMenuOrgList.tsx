@@ -78,7 +78,7 @@ export function AccountMenuOrgList() {
               </Text>
             )}
             {org.id === activeOrg?.id && (
-              <Icon icon={Tick02Icon} size={14} className="text-success" />
+              <Icon icon={Tick02Icon} size={14} tone="success" />
             )}
           </button>
         ))}
@@ -106,7 +106,7 @@ export function AccountMenuOrgList() {
                   </Text>
                 )}
                 {team.id === activeTeam?.id && (
-                  <Icon icon={Tick02Icon} size={14} className="text-success" />
+                  <Icon icon={Tick02Icon} size={14} tone="success" />
                 )}
               </button>
             ))}

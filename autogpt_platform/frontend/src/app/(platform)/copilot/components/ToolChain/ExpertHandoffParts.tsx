@@ -69,19 +69,17 @@ export function HandoffProposal({
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Button
               variant="primary"
-              size="small"
+              size="row"
               disabled={actions.disabled}
               onClick={actions.onStart}
-              className="h-8 !min-w-0 px-3.5"
             >
               Hire and start
             </Button>
             <Button
               variant="ghost"
-              size="small"
+              size="row"
               disabled={actions.disabled}
               onClick={actions.onNotNow}
-              className="h-8 !min-w-0 px-3"
             >
               Not now
             </Button>
@@ -122,10 +120,8 @@ function HandoffDetails({ name, about, task, onShowProfile }: DetailsProps) {
           icon={ArrowDown01Icon}
           size={12}
           aria-hidden
-          className={cn(
-            "transition-transform motion-reduce:transition-none",
-            open && "rotate-180",
-          )}
+          motion="transform"
+          className={cn(open && "rotate-180")}
         />
       </button>
       <div
