@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import logging
+from collections.abc import Iterator
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from websockets.asyncio.server import serve
 
 from autogpt_local_executor import cli
 from autogpt_local_executor.config import ShimConfig
+from autogpt_local_executor.daemon import ShimDaemon
 
 
 def test_platform_oauth_url_cli_override(tmp_path: Path) -> None:
@@ -293,3 +301,59 @@ def test_auth_failure_does_not_print_token_bearing_error(
     assert "Authentication did not complete" in output
     assert "access-secret" not in output
     assert "refresh-secret" not in output
+
+
+@contextlib.contextmanager
+def _logging_set_up_as_main_does(level: str) -> Iterator[None]:
+    """main() configures logging before anything else has. Under pytest the root
+    logger already has handlers, so they come off while this runs, or
+    basicConfig would do nothing."""
+    root = logging.getLogger()
+    websockets_logger = logging.getLogger("websockets")
+    saved = (root.handlers[:], root.level, websockets_logger.level)
+    root.handlers = []
+    try:
+        cli._configure_logging(level)
+        yield
+    finally:
+        root.handlers = saved[0]
+        root.setLevel(saved[1])
+        websockets_logger.setLevel(saved[2])
+
+
+@pytest.mark.asyncio
+async def test_debug_logging_never_prints_the_bearer_token(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """websockets logs every handshake header at DEBUG, Authorization included."""
+    sent: list[str | None] = []
+
+    async def record(_connection, request) -> None:
+        sent.append(request.headers.get("Authorization"))
+
+    async def handler(ws) -> None:
+        await ws.close()
+
+    with _logging_set_up_as_main_does("debug"):
+        async with serve(handler, "127.0.0.1", 0, process_request=record) as server:
+            config = ShimConfig(
+                platform_url=f"http://127.0.0.1:{server.sockets[0].getsockname()[1]}",
+                allowed_root=tmp_path,
+                audit_log_path=tmp_path / "audit.log",
+            )
+            store = SimpleNamespace(get_access_token=AsyncMock(return_value="access-secret"))
+            daemon = ShimDaemon(config, token_store=store, audit=MagicMock())
+            monkeypatch.setattr(daemon, "_run_session", AsyncMock())
+            await asyncio.wait_for(daemon._session(), timeout=30)
+        debug_on = logging.getLogger("autogpt_local_executor").isEnabledFor(logging.DEBUG)
+
+    assert debug_on
+    assert sent == ["Bearer access-secret"]
+    assert "access-secret" not in capsys.readouterr().err
+
+
+def test_a_quieter_log_level_also_quiets_websockets() -> None:
+    """A record passes its own logger's level, then every handler above it:
+    capping websockets at INFO under a WARNING root would let its INFO through."""
+    with _logging_set_up_as_main_does("WARNING"):
+        assert not logging.getLogger("websockets.client").isEnabledFor(logging.INFO)

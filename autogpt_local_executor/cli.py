@@ -25,10 +25,7 @@ from pydantic import ValidationError
 def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
-    logging.basicConfig(
-        level=args.log_level.upper(),
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
+    _configure_logging(args.log_level)
 
     print("WARNING: This is experimental, untested software.")
     print("   It can give the AutoGPT platform access to local files and optional capabilities.")
@@ -77,6 +74,17 @@ def main() -> None:
     else:
         parser.print_help()
         sys.exit(1)
+
+
+def _configure_logging(level: str) -> None:
+    logging.basicConfig(
+        level=level.upper(),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    # websockets logs every handshake header at DEBUG, the bearer token
+    # included, and the start of every frame, so it never goes below INFO.
+    root_level = logging.getLogger().getEffectiveLevel()
+    logging.getLogger("websockets").setLevel(max(logging.INFO, root_level))
 
 
 def _build_parser() -> argparse.ArgumentParser:
