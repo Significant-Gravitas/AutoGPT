@@ -163,7 +163,7 @@ A trial set to cancel at its end gets its own two reminders instead, each with
 Resume my trial as the action. The same `trial_will_end` event queues the
 three-day one (`trial_expiring`, subject `Your AutoGPT trial ends in 3 days`).
 The scheduler's hourly `send_trial_last_calls` pass queues the one-day one
-(`trial_last_call`, subject `Last chance: your AutoGPT access ends tomorrow`)
+(`trial_last_call`, subject `Your AutoGPT access ends tomorrow`)
 while 18 to 25 hours of the trial are left. Neither goes to someone who
 canceled in the last day, since the cancellation notice they just received
 gives the same date and way back. Each is claimed once per trial end date, and

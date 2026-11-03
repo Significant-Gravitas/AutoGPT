@@ -429,7 +429,7 @@ merges the website pageviews into the new user:
 | `trial_started` | backend | live | `trial_id`, `trial_offer_version`, `subscription_tier`, `billing_cycle`, `trial_duration_days` | The trial starts. Like every trial lifecycle event, it is sent only when its notification email is queued. |
 | `trial_ending` | backend | live | as above | The reminder window opens. |
 | `trial_expiring` | backend | live | as above | The reminder window opens on a trial set to cancel at its end: the "ends in 3 days, not set to renew" email is queued. Not sent when the cancellation was made in the last day. |
-| `trial_last_call` | backend | live | as above | About a day before a trial set to cancel at its end runs out, the "last chance" email is queued. Not sent when the cancellation was made in the last day. |
+| `trial_last_call` | backend | live | as above | About a day before a trial set to cancel at its end runs out, the "access ends tomorrow" email is queued. Not sent when the cancellation was made in the last day. |
 | `trial_canceled` | backend | live | as above | The trial is set to cancel at its end: the cancellation is scheduled, trial access continues until the end date, and the card is not charged. |
 | `trial_resumed` | backend | live | as above | A trial set to cancel is resumed before its end date, so it converts to paid at its end as first agreed. |
 | `payment_failed` | backend | live | as above | The conversion charge fails. |

@@ -425,11 +425,13 @@ def test_not_renewing_notices_offer_resume_and_never_mention_a_charge(
         assert "Cancel trial" not in body
         assert "will be charged" not in body
     if kind == "last_call":
-        assert email.subject == "Last chance: your AutoGPT access ends tomorrow"
-        assert "LAST DAY OF YOUR TRIAL" in email.html
+        assert email.subject == "Your AutoGPT access ends tomorrow"
     else:
         assert email.subject == "Your AutoGPT trial ends in 3 days"
-        assert "LAST DAY" not in email.html
+    # A service message: no urgency styling or sales framing.
+    assert "Last chance" not in email.subject
+    assert "#FFF6E8" not in email.html  # the amber attention strip
+    assert "#B45309" not in email.html  # the needs-you eyebrow
 
 
 def test_three_day_reminder_follows_the_renewal_setting(trial):
