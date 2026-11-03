@@ -312,6 +312,17 @@ async def get_content_embedding(
 
     Raises exceptions on failure - caller should handle.
     """
+    return await read_content_embedding(content_type, content_id, user_id, client=None)
+
+
+async def read_content_embedding(
+    content_type: ContentType,
+    content_id: str,
+    user_id: str | None,
+    *,
+    client: prisma.Prisma | None,
+) -> dict[str, Any] | None:
+    """`get_content_embedding` on *client*. Not exposed over RPC."""
     result = await query_raw_with_schema(
         """
         SELECT
@@ -329,6 +340,7 @@ async def get_content_embedding(
         content_type,
         content_id,
         user_id,
+        client=client,
     )
 
     if result and len(result) > 0:
