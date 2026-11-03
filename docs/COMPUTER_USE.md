@@ -165,6 +165,11 @@ Semantics:
 top-left-origin virtual-display pixels.** Always. There is no
 region-local or window-local coordinate mode.
 
+On a HiDPI display these are the OS's logical units (points on macOS),
+the space `DISPLAY_INFO` origins and `logical_size` use. A screenshot can
+be larger than that by its `display_scale`, so divide a point in the
+image by `display_scale` before sending it as a `coordinate`.
+
 - `region` on a screenshot request only crops the **image returned**;
   it does not shift any subsequent `INPUT_ACTION.coordinate`. The shim
   never owns coordinate state. If the platform asks for a 800×500 crop
@@ -420,6 +425,10 @@ the others — same posture for us.
 }
 ```
 
+On macOS, `include_minimized` also lists windows on other Spaces, and
+`is_minimized` is always false: telling the two apart needs each
+window's Accessibility state, which v1 does not read.
+
 ```json
 {
   "type": "WINDOW_LIST_RESPONSE",
@@ -647,7 +656,10 @@ multi-app workflow is half-blind without clipboard access.
 }
 ```
 
-Responds with `ACK`.
+Responds with `ACK`, or `INTERNAL_ERROR` when the text did not land on
+the clipboard (for example, another app holds it open). A paste with
+`paste: true` stops before the paste keystroke in that case, so it never
+pastes what was already there.
 
 Both clipboard directions are bounded by
 `HELLO_ACK.max_file_size_bytes`. `CLIPBOARD_READ` rejects an oversized backend
@@ -804,7 +816,9 @@ agent loop:
 
 2. **Daemon refuses to bind WS when consent is missing.** If
    `computer_use` is in the shim config's requested capabilities AND
-   `AXIsProcessTrusted()` returns false, the daemon writes a structured
+   `AXIsProcessTrusted()` or `CGPreflightScreenCaptureAccess()` returns
+   false (without Screen Recording, macOS captures show only the
+   wallpaper and menu bar), the daemon writes a structured
    record to the audit log (`code: PERMISSION_PENDING`, the missing
    permissions, a hint that the user should run `autogpt-shim doctor`),
    logs to stderr, and exits with code `78`. Without `computer_use` in

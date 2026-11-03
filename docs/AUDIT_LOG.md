@@ -222,14 +222,14 @@ clobbers an existing rotated file.
 
 Rotated files are kept indefinitely by default. `autogpt-shim audit
 prune --older-than 90d` deletes files where the newest record is older
-than the threshold. The shim never auto-prunes — log loss is the
-user's call.
+than the threshold. A file whose newest record has no timestamp is kept.
+The shim never auto-prunes — log loss is the user's call.
 
 ## Reading and exporting
 
 ```bash
 autogpt-shim audit tail        # tail -f the current file
-autogpt-shim audit show {seq}  # pretty-print one record
+autogpt-shim audit show {seq}  # pretty-print every record with that seq (it restarts in each file)
 autogpt-shim audit verify      # chain-verify the current file
 autogpt-shim audit verify-all  # verify every rotated file
 autogpt-shim audit export      # zip + sign for support upload

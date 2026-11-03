@@ -3,7 +3,8 @@
 Local-model protocol, handler, routing-policy, and proxy code are scaffolding.
 The platform chat service does not call the routing policy. The companion never
 advertises `local_llm`, never probes Ollama during HELLO, and refuses startup
-with `--enable-local-llm` or `enable_local_llm=true`. Local file/shell execution
+with `enable_local_llm = true` (in config.toml, or `AUTOGPT_SHIM_ENABLE_LOCAL_LLM`
+in the environment). Local file/shell execution
 is a separate capability and is unaffected.
 
 ## Data boundary

@@ -247,4 +247,4 @@ tells it to, within the bounds of what the user has permitted.
 
 ---
 
-*This document lives in `experimental/local-pc-executor/docs/VISION.md`. Update it as the spec evolves.*
+*This document lives in `docs/VISION.md` of autogpt-local-executor, and in `local_executor/docs/VISION.md` of the AutoGPT monorepo. Update it as the spec evolves.*

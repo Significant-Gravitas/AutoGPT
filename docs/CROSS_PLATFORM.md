@@ -124,7 +124,7 @@ paths only; navigation and selection use short-lived opaque references.
 | Screen capture | `screencapture` / `mss` | `mss` / `pyautogui` | **Blocked** unless using portal+pipewire | `mss` / `pyautogui` | Wayland sessions: `capabilities` omits `computer_use`. |
 | Input injection | `pyautogui` (Quartz) | `xdotool` / `pyautogui` | **Blocked** | `pyautogui` (Win32 SendInput) | Wayland: blocked. |
 | Permission prompt | TCC: Accessibility (input) + Screen Recording (capture) | none | n/a | UAC: non-elevated shim cannot inject into elevated windows | `autogpt-shim doctor` proactively surfaces the macOS dialog via `AXIsProcessTrustedWithOptions({AXTrustedCheckOptionPrompt: True})`; the daemon refuses to bind WS (exit 78) when computer-use is requested but consent is missing, and launchd's `KeepAlive: SuccessfulExit=false` re-launches it after the user grants consent. Revocation mid-session returns `PERMISSION_PENDING` on the next AX-dependent op; the platform LLM retries on the next turn. See [COMPUTER_USE.md §Q5](COMPUTER_USE.md#q5--macos-tcc-first-prompt-ux-locked). |
-| DPI scaling | Logical points; shim multiplies by backing scale factor | 1:1 typically | n/a | Per-monitor DPI; shim sets process DPI aware via `SetProcessDpiAwareness(2)` | Coordinates on the wire are always physical pixels. |
+| DPI scaling | Logical points: input coordinates and display rects are in points; screenshots are captured at the backing resolution | 1:1 typically | n/a | Per-monitor DPI; shim sets process DPI aware via `SetProcessDpiAwareness(2)` | Input coordinates on the wire are display-global logical units (points on macOS). A screenshot can be larger by its `display_scale`; divide a point in the image by it before sending it as a coordinate. |
 | Multi-monitor | Supported | Supported | n/a | Supported | `monitor: -1` stitches; `monitor: N` selects. |
 
 ### Autostart / background daemon
@@ -141,7 +141,7 @@ paths only; navigation and selection use short-lived opaque references.
 | Dimension | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|
 | Primary installer | `pipx` | `pipx` | `pipx` | All paths go through pipx in v0. Until the first PyPI release, install from git: `pipx install git+https://github.com/Significant-Gravitas/autogpt-local-executor.git`. After it, `pipx install autogpt-local-executor` works too. |
-| Secondary | Homebrew tap (`brew install autogpt/tap/local-executor`) | distro packages (deb/rpm) — best-effort | Scoop / winget — best-effort | Future. |
+| Secondary | Homebrew tap (`brew install Significant-Gravitas/tap/autogpt-local-executor`) | distro packages (deb/rpm) — best-effort | Scoop / winget — best-effort | Future. |
 | Signing | Apple Developer ID + notarization for `.pkg` | none (pipx wheels are unsigned) | Authenticode signing for `.exe` wrapper (SmartScreen) | Required if we ship native installers. |
 | Python runtime | 3.11+ via pyenv/pipx-bundled | 3.11+ via distro or pyenv | 3.11+ via python.org or Microsoft Store | Pin to 3.11 minimum in `pyproject.toml`. |
 
@@ -262,9 +262,10 @@ def is_inside_jail(requested_path: str, allowed_root: str) -> bool:
 
     # 4. Canonical-form comparison.
     if is_case_insensitive_fs(root_resolved):
-        # macOS (APFS default), Windows (NTFS default), Linux on case-folded ext4
-        a = os.path.normcase(resolved)
-        b = os.path.normcase(root_resolved)
+        # macOS (APFS default), Windows (NTFS default), Linux on case-folded ext4.
+        # normcase only folds case on Windows, so fold it explicitly.
+        a = os.path.normcase(resolved).casefold()
+        b = os.path.normcase(root_resolved).casefold()
     else:
         a = resolved
         b = root_resolved

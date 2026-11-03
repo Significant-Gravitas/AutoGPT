@@ -203,7 +203,7 @@ When everything is green:
 - Update the platform PR (#13050) description / status if it's still
   open.
 - Post in the relevant Slack channel: "v0.0.1 of autogpt-local-executor
-  is on PyPI / brew / scoop. Gated behind LD flag
+  is on PyPI / brew / scoop. Gated behind the PostHog flag
   `local-pc-executor`. Install instructions at <repo README>."
 
 ---
