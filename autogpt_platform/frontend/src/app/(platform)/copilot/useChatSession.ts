@@ -456,11 +456,7 @@ export function useChatSession({
       return newSessionId;
     } catch (error) {
       if (!(error instanceof TypeError)) pendingCreateRef.current = null;
-      if (
-        error instanceof ApiError &&
-        error.status === 409 &&
-        executionTarget?.kind === "local"
-      ) {
+      if (isLocalTargetConflict(error) && executionTarget?.kind === "local") {
         const message =
           "The selected computer or folder changed. Reconnect it and choose the folder again.";
         setNewChatExecutionTarget({
@@ -641,6 +637,18 @@ function readSessionExecutionTarget(metadata?: PublicChatSessionMetadata) {
     machine_id: target.machine_id,
     allowed_root: target.allowed_root,
   };
+}
+
+// A client-named id another session already holds: the next send names a
+// fresh one, so the chosen computer and folder still stand.
+const SESSION_ID_IN_USE = "Session id already in use";
+
+function isLocalTargetConflict(error: unknown) {
+  return (
+    error instanceof ApiError &&
+    error.status === 409 &&
+    error.message !== SESSION_ID_IN_USE
+  );
 }
 
 function isDefinitiveSessionFailure(error: unknown) {

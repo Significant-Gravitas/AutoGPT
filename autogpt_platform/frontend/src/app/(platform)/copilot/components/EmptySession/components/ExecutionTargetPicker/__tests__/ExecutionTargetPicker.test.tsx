@@ -262,6 +262,91 @@ describe("ExecutionTargetPicker", () => {
     });
   });
 
+  it("retries a failed page without reloading the folder", async () => {
+    const user = userEvent.setup();
+    mockMachines();
+    const requests: Array<Record<string, unknown>> = [];
+    let failNextPage = true;
+    const home = {
+      directory_ref: "home-ref",
+      name: "Home",
+      path: "C:\\Users\\Ada",
+    };
+    server.use(
+      http.post(DIRECTORIES_URL, async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        requests.push(body);
+        if (body.cursor === "next-page") {
+          if (failNextPage) {
+            failNextPage = false;
+            return HttpResponse.json({ detail: "busy" }, { status: 503 });
+          }
+          return HttpResponse.json({
+            connection_id: "connection-1",
+            browse_id: "browse-1",
+            current: home,
+            parent_ref: null,
+            entries: [
+              {
+                directory_ref: "second-ref",
+                name: "Second Page",
+                path: "C:\\Users\\Ada\\Second Page",
+              },
+            ],
+            next_cursor: null,
+            truncated: false,
+            expires_at: 1,
+          });
+        }
+        if (body.directory_ref === "home-ref") {
+          return HttpResponse.json({
+            connection_id: "connection-1",
+            browse_id: "browse-1",
+            current: home,
+            parent_ref: null,
+            entries: [
+              {
+                directory_ref: "first-ref",
+                name: "First Page",
+                path: "C:\\Users\\Ada\\First Page",
+              },
+            ],
+            next_cursor: "next-page",
+            truncated: false,
+            expires_at: 1,
+          });
+        }
+        return HttpResponse.json({
+          connection_id: "connection-1",
+          browse_id: "browse-1",
+          current: null,
+          parent_ref: null,
+          entries: [home],
+          next_cursor: null,
+          truncated: false,
+          expires_at: 1,
+        });
+      }),
+    );
+
+    render(<ExecutionTargetPicker />);
+    await chooseLocalPC(user);
+    await user.click(await screen.findByRole("button", { name: "Home" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Load More Folders" }),
+    );
+    await user.click(await screen.findByRole("button", { name: "Retry" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Second Page" }),
+    ).toBeDefined();
+    expect(screen.getByRole("button", { name: "First Page" })).toBeDefined();
+    expect(requests.slice(-2)).toEqual([
+      expect.objectContaining({ cursor: "next-page" }),
+      expect.objectContaining({ cursor: "next-page" }),
+    ]);
+  });
+
   it("teaches setup and keeps polling when no computer is connected", async () => {
     const user = userEvent.setup();
     mockMachines([]);

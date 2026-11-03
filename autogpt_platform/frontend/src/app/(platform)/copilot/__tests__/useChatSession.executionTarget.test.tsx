@@ -238,6 +238,38 @@ describe("useChatSession execution target", () => {
     });
   });
 
+  it("keeps the chosen folder when only the session id was taken", async () => {
+    server.use(
+      http.post(SESSIONS_URL, () =>
+        HttpResponse.json(
+          { detail: "Session id already in use" },
+          { status: 409 },
+        ),
+      ),
+    );
+    const selected = {
+      kind: "local" as const,
+      machineID: "machine-1",
+      machineLabel: "Workstation",
+      connectionID: "connection-1",
+      browseID: "browse-1",
+      directoryRef: "directory-1",
+      displayPath: "C:\\Projects",
+    };
+
+    const session = renderChatSession(selected);
+    const before = useCopilotUIStore.getState().newChatExecutionTarget;
+    await act(async () => {
+      await expect(session.result.current.createSession()).rejects.toThrow();
+    });
+
+    expect(useCopilotUIStore.getState().newChatExecutionTarget).toEqual(before);
+    expect(useCopilotUIStore.getState().executionTargetError).toBeNull();
+    expect(useCopilotUIStore.getState().isExecutionTargetPickerOpen).toBe(
+      false,
+    );
+  });
+
   it("keeps the feature-off session request free of execution metadata", async () => {
     let requestBody: unknown;
     mockCreatedSession();

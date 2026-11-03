@@ -28,6 +28,9 @@ export function useLocalFolderPicker({ isOpen, machine, onStale }: Props) {
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A failed "load more" keeps the loaded pages and their cursor, so a retry
+  // asks for that page again instead of reloading the folder.
+  const [pageFailed, setPageFailed] = useState(false);
   const [lastTarget, setLastTarget] = useState<NavigationTarget>({
     directoryRef: null,
     history: [],
@@ -50,6 +53,7 @@ export function useLocalFolderPicker({ isOpen, machine, onStale }: Props) {
     setError(null);
     setIsLoading(browseKey !== null);
     setIsLoadingMore(false);
+    setPageFailed(false);
     setLastTarget({ directoryRef: null, history: [] });
   }
 
@@ -128,6 +132,7 @@ export function useLocalFolderPicker({ isOpen, machine, onStale }: Props) {
     requestIDRef.current = requestID;
     setIsLoading(true);
     setIsLoadingMore(false);
+    setPageFailed(false);
     setError(null);
     setLastTarget(target);
     void browseLocalExecutorDirectory(machine.machine_id, {
@@ -183,6 +188,10 @@ export function useLocalFolderPicker({ isOpen, machine, onStale }: Props) {
   }
 
   function retry() {
+    if (pageFailed && directory?.next_cursor) {
+      loadMore();
+      return;
+    }
     void loadDirectory(lastTarget);
   }
 
@@ -194,6 +203,7 @@ export function useLocalFolderPicker({ isOpen, machine, onStale }: Props) {
     const requestID = requestIDRef.current + 1;
     requestIDRef.current = requestID;
     setIsLoadingMore(true);
+    setPageFailed(false);
     setError(null);
     void browseLocalExecutorDirectory(machine.machine_id, {
       expected_connection_id: connectionID,
@@ -220,6 +230,7 @@ export function useLocalFolderPicker({ isOpen, machine, onStale }: Props) {
       })
       .catch((requestError: unknown) => {
         if (requestIDRef.current !== requestID) return;
+        setPageFailed(true);
         handleRequestError(requestError);
       })
       .finally(() => {
