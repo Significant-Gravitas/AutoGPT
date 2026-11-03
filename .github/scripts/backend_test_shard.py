@@ -91,6 +91,10 @@ def main() -> int:
         [
             "poetry",
             "run",
+            "python",
+            "-X",
+            "importtime",
+            "-m",
             "pytest",
             "-p",
             "backend_shard_plugin",
