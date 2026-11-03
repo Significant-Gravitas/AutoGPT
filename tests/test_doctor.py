@@ -243,3 +243,35 @@ async def test_daemon_preflight_fails_closed_when_ax_probe_raises(
 
     with pytest.raises(DaemonPreflightError, match="Could not verify Accessibility"):
         await _daemon(config)._preflight_or_raise()
+
+
+def test_doctor_linux_blocks_when_no_display_session_is_detected(tmp_path, monkeypatch) -> None:
+    """Without XDG_SESSION_TYPE, DISPLAY or WAYLAND_DISPLAY there is no screen to
+    use, which blocks computer use just as Wayland and WSL2 do."""
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
+    for name in ("XDG_SESSION_TYPE", "DISPLAY", "WAYLAND_DISPLAY"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(
+        "autogpt_local_executor.computer_use.get_backend",
+        lambda _: MagicMock(display_info=lambda: []),
+    )
+
+    assert doctor.run_doctor(_config(tmp_path, enable_computer_use=True)) == doctor.EX_CONFIG
+    assert doctor.run_doctor(_config(tmp_path, enable_computer_use=False)) == 0
+
+
+def test_doctor_keychain_warning_states_the_real_requirement(monkeypatch) -> None:
+    """OAuth tokens have no file fallback; only the audit key does, and only
+    with a passphrase."""
+    import sys
+
+    keyring = MagicMock()
+    keyring.get_keyring.side_effect = RuntimeError("no backend")
+    monkeypatch.setitem(sys.modules, "keyring", keyring)
+
+    result = doctor._check_keychain()
+
+    assert result.marker == "WARN"
+    assert "fallback will be used" not in result.detail
+    assert "sign-in" in result.detail
+    assert "AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE" in result.detail
