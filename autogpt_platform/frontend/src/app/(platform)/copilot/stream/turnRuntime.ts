@@ -132,8 +132,9 @@ export interface RuntimeDeps {
 export interface RuntimeHandlers {
   /** A turn's error entry or a refused send, with the provider failure sent before it. */
   onError?: (error: Error, providerFailure: unknown) => void;
-  /** `interrupted`: the stream went away mid-answer, without the turn's finish. */
-  onTurnEnd?: (turn: { interrupted: boolean }) => void;
+  /** `expired`: the stream went away before the turn's finish or error, so
+   *  the stored view stood in for it. */
+  onTurnEnd?: (turn: { expired: boolean }) => void;
 }
 
 export type SendInput =
@@ -834,7 +835,7 @@ export class TurnRuntime {
     this.updateTurn(key, (seg) => ({ ...seg, ended: true }));
     this.resetFailures();
     this.emitNow();
-    this.handlers.onTurnEnd?.({ interrupted: false });
+    this.handlers.onTurnEnd?.({ expired: false });
     const seg = this.segmentByKey(key);
     if (seg?.kind !== "turn") return;
     const continuation =
@@ -1014,7 +1015,7 @@ export class TurnRuntime {
     });
     this.resetFailures();
     this.emitNow();
-    this.handlers.onTurnEnd?.({ interrupted });
+    this.handlers.onTurnEnd?.({ expired: true });
     this.observe(view);
   }
 

@@ -111,7 +111,7 @@ interface Turns {
   held?: { turn: number; hold: StreamHold };
   /** This turn starts answering, then fails the way a provider error does. */
   failedTurn?: number;
-  /** This turn's stream closes mid-answer, and a resume finds it gone. */
+  /** This turn's stream ends before its finish, and a resume finds it gone. */
   cutTurn?: number;
 }
 
@@ -137,8 +137,8 @@ function answeringStreamHandler({ held, failedTurn, cutTurn }: Turns) {
         textPartId: `answer-${turn}-text`,
       });
       if (failed) chunks.splice(-2, 2, { type: "error", errorText: FAILURE });
-      // The text never closes: the stream ends partway through the answer.
-      if (cut) chunks.splice(-3, 3);
+      // The answer's text arrives whole, but the turn's finish never does.
+      if (cut) chunks.splice(-2, 2);
       return streamSseResponse(chunks, {
         abortSignal: request.signal,
         hold: held?.turn === turn ? held.hold : undefined,
@@ -276,24 +276,21 @@ describe.each(STREAM_PATHS)("GitHub star toast on the %s path", (path) => {
   );
 });
 
-// Only the turn runtime ends a turn its stream cut off (`expire`).
+// Only the turn runtime ends a turn whose stream went away (`expire`).
 describe("GitHub star toast on the stream runtime path", () => {
   beforeEach(() => {
     streamPath.runtime = true;
   });
 
-  it("doesn't count an answer the stream cut off", async () => {
+  it("doesn't count an answer whose finish never arrived", async () => {
     vi.stubEnv("NEXT_PUBLIC_APP_ENV", "local");
     renderChat({ cutTurn: 5 });
 
     for (let turn = 1; turn <= 4; turn++) await sendPrompt(turn);
-    await typeAndSend("Prompt 5");
-    expect(
-      await screen.findByText(/Response was interrupted/, undefined, {
-        timeout: 5000,
-      }),
-    ).toBeDefined();
-    await waitForTurnToSettle();
+    await sendPrompt(5);
     expect(screen.queryByText(STAR_TOAST_TITLE)).toBeNull();
+
+    await sendPrompt(6);
+    expect(await screen.findByText(STAR_TOAST_TITLE)).toBeDefined();
   }, 60_000);
 });
