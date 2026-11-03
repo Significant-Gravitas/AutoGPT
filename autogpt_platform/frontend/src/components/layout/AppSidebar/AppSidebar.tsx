@@ -15,6 +15,7 @@ import {
 } from "@/components/molecules/Sidebar/Sidebar";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { isEditableElement } from "@/lib/platform";
+import { isTasksV1Enabled } from "@/app/(platform)/tasks/data/flag";
 import {
   AddTeamIcon,
   FlowIcon,
@@ -22,6 +23,7 @@ import {
   GridViewIcon,
   Home10Icon,
   Store01Icon,
+  TaskDone01Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { tourTarget, type TourTarget } from "@/lib/tour-targets";
@@ -188,6 +190,9 @@ export function AppSidebar(props: Props) {
       icon: AddTeamIcon,
       tourTarget: "team" as const,
     },
+    ...(isTasksV1Enabled()
+      ? [{ name: "Tasks", href: "/tasks", icon: TaskDone01Icon }]
+      : []),
     ...WORKSPACE_LINKS,
   ];
 
