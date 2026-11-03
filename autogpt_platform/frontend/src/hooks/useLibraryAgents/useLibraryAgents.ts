@@ -30,7 +30,6 @@ export function useLibraryAgents() {
         retryOnMount: false,
         refetchOnMount: false,
         refetchOnWindowFocus: false,
-        refetchOnReconnect: false,
         staleTime: 5 * 60 * 1000,
       },
     },

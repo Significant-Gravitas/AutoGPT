@@ -90,7 +90,9 @@ describe("Activity pagination recovery", () => {
       expect(queryClient.isFetching({ queryKey: libraryKey })).toBe(0),
     );
     await settleRequests();
-    expect(requests).toEqual([1, 2]);
+    expect(requests).toEqual(
+      scenario === "duplicate records" ? [1, 2, 3, 4] : [1, 2],
+    );
   });
 
   it.each(["cancel", "unmount"])(

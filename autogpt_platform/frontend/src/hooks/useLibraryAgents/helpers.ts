@@ -28,16 +28,6 @@ export function getNextLibraryPage(
     return undefined;
   }
 
-  if (pages.length > 1) {
-    const previousIDs = new Set(
-      pages
-        .slice(0, -1)
-        .flatMap((page) => okData(page)?.agents.map((agent) => agent.id) ?? []),
-    );
-    if (last.agents.every((agent) => previousIDs.has(agent.id)))
-      return undefined;
-  }
-
   const nextPage = getPaginationNextPageNumber(lastPage);
   // Bound the scan to its initial size even if workflows are added as it runs.
   return nextPage && nextPage <= first.pagination.total_pages

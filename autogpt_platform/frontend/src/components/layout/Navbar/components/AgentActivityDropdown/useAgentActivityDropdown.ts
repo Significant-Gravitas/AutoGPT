@@ -36,10 +36,15 @@ export function useAgentActivityDropdown() {
     query: { select: okData },
   });
 
-  // Get all graph IDs from agentInfoMap
   const graphIds = useMemo(
-    () => Array.from(agentInfoMap.keys()),
-    [agentInfoMap],
+    () =>
+      Array.from(
+        new Set([
+          ...(executions?.map((execution) => execution.graph_id) ?? []),
+          ...agentInfoMap.keys(),
+        ]),
+      ),
+    [executions, agentInfoMap],
   );
 
   // Handle real-time execution updates
@@ -52,15 +57,15 @@ export function useAgentActivityDropdown() {
     [agentInfoMap],
   );
 
-  const processedExecutionsRef = useRef<typeof executions>(undefined);
+  const processedExecutionCount = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (
       executions &&
       executionsSuccess &&
-      processedExecutionsRef.current !== executions
+      processedExecutionCount.current !== executions.length
     ) {
       setNotifications(categorizeExecutions(executions, agentInfoMap));
-      processedExecutionsRef.current = executions;
+      processedExecutionCount.current = executions.length;
     }
   }, [executions, executionsSuccess, agentInfoMap]);
 
