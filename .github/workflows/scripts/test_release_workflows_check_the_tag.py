@@ -7,12 +7,23 @@ production deploy did, so any published release would have deployed prod.
 """
 
 import pathlib
-import re
 import unittest
 
+import yaml
+
 WORKFLOWS = pathlib.Path(__file__).resolve().parents[1]
-RELEASE_TRIGGER = re.compile(r"^  release:\s*$", re.MULTILINE)
 TAG_CHECKS = ("github.event.release.tag_name", "refs/tags/")
+
+
+def triggers(workflow: dict) -> set[str]:
+    """The events a workflow runs on, in any of the forms YAML allows."""
+    # PyYAML reads the bare key `on` as the boolean True (YAML 1.1).
+    on = workflow.get("on", workflow.get(True))
+    if isinstance(on, str):
+        return {on}
+    if isinstance(on, (list, dict)):
+        return set(on)
+    return set()
 
 
 class ReleaseWorkflowsCheckTheTag(unittest.TestCase):
@@ -20,7 +31,7 @@ class ReleaseWorkflowsCheckTheTag(unittest.TestCase):
         unchecked = [
             path.name
             for path in sorted(WORKFLOWS.glob("*.y*ml"))
-            if RELEASE_TRIGGER.search(text := path.read_text())
+            if "release" in triggers(yaml.safe_load(text := path.read_text()))
             and not any(check in text for check in TAG_CHECKS)
         ]
         self.assertEqual(
@@ -30,11 +41,30 @@ class ReleaseWorkflowsCheckTheTag(unittest.TestCase):
             "e.g. startsWith(github.event.release.tag_name, 'autogpt-platform-').",
         )
 
+    def test_every_form_of_the_release_trigger_counts(self) -> None:
+        for source in (
+            "on: release",
+            "on: [push, release]",
+            "on: {release: {types: [published]}}",
+            "on:\n  release:  # a comment\n    types: [published]",
+            "on:\n    release:\n      types: [published]",
+        ):
+            self.assertIn("release", triggers(yaml.safe_load(source)), source)
+        job_named_release = "on: push\njobs:\n  release:\n    runs-on: ubuntu-latest"
+        self.assertNotIn("release", triggers(yaml.safe_load(job_named_release)))
+
     def test_production_deploys_only_platform_releases(self) -> None:
-        text = (WORKFLOWS / "platform-autogpt-deploy-prod.yml").read_text()
-        self.assertIn(
-            "startsWith(github.event.release.tag_name, 'autogpt-platform-')", text
+        workflow = yaml.safe_load(
+            (WORKFLOWS / "platform-autogpt-deploy-prod.yml").read_text()
         )
+        jobs = workflow["jobs"]
+        self.assertIn(
+            "startsWith(github.event.release.tag_name, 'autogpt-platform-')",
+            jobs["migrate"]["if"],
+        )
+        # The jobs after it are skipped with it only while they need it.
+        for job in ("publish-skills", "trigger"):
+            self.assertIn("migrate", jobs[job]["needs"])
 
 
 if __name__ == "__main__":

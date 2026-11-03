@@ -25,7 +25,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests
+          pip install requests pyyaml
       - name: Test status checker
         run: python -m unittest discover -s .github/workflows/scripts -p "test_*.py"
       - name: Check PR Status
