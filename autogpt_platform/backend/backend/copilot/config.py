@@ -808,10 +808,6 @@ class ChatConfig(BaseSettings):
         default=False,
         description="Allow Claude computer-use beta tools when the local PC shim is active.",
     )
-    local_pc_executor_ws_path: str = Field(
-        default="/ws/local-executor",
-        description="WebSocket path prefix for the local executor shim endpoint.",
-    )
     local_pc_executor_oauth_client_id: str = Field(
         default="autogpt-local-executor",
         min_length=1,
