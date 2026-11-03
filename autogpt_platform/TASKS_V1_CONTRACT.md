@@ -176,3 +176,4 @@ Frontend: on any `task_event`, invalidate the tasks list/detail/activity queries
 ## Changelog
 - v1 (initial).
 - v1.1: create/update also accept `assignee: {type, id}` (alias of `assignee_type`/`assignee_id`) and `budget_usd` (alias of `budget_cap_usd`); `POST /api/tasks/plans/{plan_id}/approve` aliases `/confirm`.
+- v1.2 (backend live): Task also carries `plan_id` (uuid|null). `/plans/{plan_id}/approve` has operation_id `approve_task_plan`. Local stack runs with `CHAT_TEST_MODE=true` (no LLM keys), so expert turns reply with a canned message and make no tool calls; a turn that ends without the expert marking the task done moves it to `in_review` with a system note.

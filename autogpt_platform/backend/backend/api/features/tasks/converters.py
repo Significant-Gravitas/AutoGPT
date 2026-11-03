@@ -1,5 +1,5 @@
-from datetime import date, datetime, time, timezone
-from typing import Any, Optional
+from datetime import UTC, date, datetime, time
+from typing import Any
 
 import prisma.models
 import prisma.types
@@ -37,13 +37,13 @@ def task_key(number: int) -> str:
     return f"T-{number}"
 
 
-def to_datetime(value: Optional[date]) -> Optional[datetime]:
+def to_datetime(value: date | None) -> datetime | None:
     if value is None:
         return None
-    return datetime.combine(value, time.min, tzinfo=timezone.utc)
+    return datetime.combine(value, time.min, tzinfo=UTC)
 
 
-def row_assignee(row: prisma.models.Task) -> Optional[Assignee]:
+def row_assignee(row: prisma.models.Task) -> Assignee | None:
     if row.assigneeType is None:
         return None
     kind = AssigneeType(str(getattr(row.assigneeType, "value", row.assigneeType)))
@@ -131,7 +131,7 @@ def row_to_detail(
     )
 
 
-def _pending_input(raw: Any) -> Optional[PendingInput]:
+def _pending_input(raw: Any) -> PendingInput | None:
     if not raw or not isinstance(raw, dict):
         return None
     return PendingInput.model_validate(raw)

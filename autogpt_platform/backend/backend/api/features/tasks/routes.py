@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 import autogpt_libs.auth as autogpt_auth_lib
 import fastapi
@@ -68,7 +67,7 @@ async def get_tasks_enabled(
     return TasksEnabledResponse(enabled=enabled)
 
 
-def _snapshot(task: Optional[Task]) -> Optional[Task]:
+def _snapshot(task: Task | None) -> Task | None:
     if task is None:
         return None
     return Task.model_validate(
@@ -79,9 +78,9 @@ def _snapshot(task: Optional[Task]) -> Optional[Task]:
 async def _emit(
     user_id: str,
     event: str,
-    task: Optional[Task],
-    activity: Optional[ActivityEvent] = None,
-    task_id: Optional[str] = None,
+    task: Task | None,
+    activity: ActivityEvent | None = None,
+    task_id: str | None = None,
 ) -> None:
     try:
         await events.publish_task_event(
@@ -118,7 +117,7 @@ def _bad_request(error: Exception) -> fastapi.HTTPException:
     return fastapi.HTTPException(status_code=400, detail=str(error))
 
 
-def _split(raw: Optional[str]) -> list[str]:
+def _split(raw: str | None) -> list[str]:
     return [part.strip() for part in (raw or "").split(",") if part.strip()]
 
 
@@ -127,16 +126,16 @@ def _split(raw: Optional[str]) -> list[str]:
 )
 async def list_tasks(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
-    status: Optional[str] = Query(default=None),
-    assignee_type: Optional[AssigneeType] = Query(default=None),
-    assignee_id: Optional[str] = Query(default=None),
-    priority: Optional[str] = Query(default=None),
-    due: Optional[str] = Query(default=None, pattern="^(overdue|today|week|none)$"),
-    parent_id: Optional[str] = Query(default=None),
+    status: str | None = Query(default=None),
+    assignee_type: AssigneeType | None = Query(default=None),
+    assignee_id: str | None = Query(default=None),
+    priority: str | None = Query(default=None),
+    due: str | None = Query(default=None, pattern="^(overdue|today|week|none)$"),
+    parent_id: str | None = Query(default=None),
     top_level: bool = Query(default=False),
     mine: bool = Query(default=False),
     include_hidden: bool = Query(default=False),
-    q: Optional[str] = Query(default=None),
+    q: str | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=500),
 ) -> TaskListResponse:
     try:
@@ -233,7 +232,7 @@ async def get_task_plan(
 )
 async def confirm_task_plan(
     plan_id: str,
-    body: Optional[PlanConfirm] = None,
+    body: PlanConfirm | None = None,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> PlanConfirmResponse:
     try:
@@ -261,7 +260,7 @@ async def confirm_task_plan(
 )
 async def approve_task_plan(
     plan_id: str,
-    body: Optional[PlanConfirm] = None,
+    body: PlanConfirm | None = None,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> PlanConfirmResponse:
     return await confirm_task_plan(plan_id, body, user_id)

@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from backend.api.features.tasks.access import tasks_store
@@ -100,7 +100,7 @@ async def _turn_metrics(
     session_id: str, user_id: str, turn: ActivityEvent | None
 ) -> dict[str, Any]:
     data = turn.data if turn else {}
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     started_raw = data.get("started_at")
     started = datetime.fromisoformat(started_raw) if started_raw else now
     session = await get_chat_session(session_id, user_id)

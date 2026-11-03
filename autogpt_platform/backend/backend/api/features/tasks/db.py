@@ -1,8 +1,8 @@
 import logging
 import re
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import prisma.errors
 import prisma.models
@@ -51,18 +51,18 @@ __all__ = ["cancel_plan", "create_plan", "get_plan"]
 _ACTIVE_STATUSES = [TaskStatus.IN_PROGRESS]
 
 
-async def _find_row(user_id: str, task_id: str) -> Optional[prisma.models.Task]:
+async def _find_row(user_id: str, task_id: str) -> prisma.models.Task | None:
     return await prisma.models.Task.prisma().find_first(
         where={"id": task_id, "userId": user_id}, include=TASK_INCLUDE
     )
 
 
-async def get_task(user_id: str, task_id: str) -> Optional[Task]:
+async def get_task(user_id: str, task_id: str) -> Task | None:
     row = await _find_row(user_id, task_id)
     return row_to_task(row) if row else None
 
 
-async def get_task_detail(user_id: str, task_id: str) -> Optional[TaskDetail]:
+async def get_task_detail(user_id: str, task_id: str) -> TaskDetail | None:
     row = await _find_row(user_id, task_id)
     if row is None:
         return None
@@ -113,7 +113,7 @@ async def list_tasks(user_id: str, filters: TaskFilters) -> list[Task]:
 
 
 def _due_filter(due: str) -> dict[str, datetime]:
-    today = datetime.now(timezone.utc).replace(
+    today = datetime.now(UTC).replace(
         hour=0, minute=0, second=0, microsecond=0
     )
     if due == "overdue":
@@ -135,8 +135,8 @@ async def list_tasks_needing_user(user_id: str) -> list[Task]:
 
 
 async def resolve_assignee(
-    user_id: str, assignee_type: Optional[AssigneeType], assignee_id: Optional[str]
-) -> Optional[Assignee]:
+    user_id: str, assignee_type: AssigneeType | None, assignee_id: str | None
+) -> Assignee | None:
     if assignee_type is None:
         return None
     if assignee_type == AssigneeType.USER:
@@ -187,7 +187,7 @@ async def create_task(user_id: str, data: TaskCreate, actor: Actor) -> TaskDetai
         "reviewRequired": bool(data.review_required),
     }
     if status == TaskStatus.IN_PROGRESS:
-        payload["startedAt"] = datetime.now(timezone.utc)
+        payload["startedAt"] = datetime.now(UTC)
     row = await _insert_with_number(user_id, payload)
     await add_activity(user_id, row.id, ActivityKind.CREATED, actor)
     if parent is not None:
@@ -258,8 +258,8 @@ async def update_task(
 
 
 async def _validated_parent(
-    user_id: str, task_id: str, parent_id: Optional[str]
-) -> Optional[str]:
+    user_id: str, task_id: str, parent_id: str | None
+) -> str | None:
     if parent_id is None:
         return None
     if parent_id == task_id:
@@ -313,14 +313,14 @@ async def set_task_status(
     task_id: str,
     status: TaskStatus,
     actor: Actor,
-    note: Optional[str] = None,
-    outcome_summary: Optional[str] = None,
+    note: str | None = None,
+    outcome_summary: str | None = None,
 ) -> Task:
     row = await _find_row(user_id, task_id)
     if row is None:
         raise LookupError("Task not found")
     previous = str(getattr(row.status, "value", row.status))
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     patch: dict[str, Any] = {"status": status.value}
     if status == TaskStatus.IN_PROGRESS and row.startedAt is None:
         patch["startedAt"] = now
@@ -357,8 +357,8 @@ async def add_activity(
     task_id: str,
     kind: ActivityKind,
     actor: Actor,
-    body: Optional[str] = None,
-    data: Optional[dict] = None,
+    body: str | None = None,
+    data: dict | None = None,
 ) -> ActivityEvent:
     row = await prisma.models.TaskActivity.prisma().create(
         data={
@@ -376,7 +376,7 @@ async def add_activity(
 
 
 async def update_activity(
-    event_id: str, data: Optional[dict] = None, body: Optional[str] = None
+    event_id: str, data: dict | None = None, body: str | None = None
 ) -> ActivityEvent:
     row = await prisma.models.TaskActivity.prisma().find_unique(where={"id": event_id})
     if row is None:
@@ -440,7 +440,7 @@ async def request_input(
         question=question,
         options=options,
         asked_by=actor,
-        asked_at=datetime.now(timezone.utc),
+        asked_at=datetime.now(UTC),
     )
     await prisma.models.Task.prisma().update(
         where={"id": task_id},
@@ -459,8 +459,8 @@ async def request_input(
 
 
 async def answer_input(
-    user_id: str, task_id: str, answer: str, input_id: Optional[str], actor: Actor
-) -> Optional[PendingInput]:
+    user_id: str, task_id: str, answer: str, input_id: str | None, actor: Actor
+) -> PendingInput | None:
     task = await get_task(user_id, task_id)
     if task is None:
         raise LookupError("Task not found")
@@ -514,7 +514,7 @@ async def set_work_session(task_id: str, session_id: str) -> None:
     )
 
 
-async def get_task_for_work_session(session_id: str) -> Optional[tuple[str, Task]]:
+async def get_task_for_work_session(session_id: str) -> tuple[str, Task] | None:
     row = await prisma.models.Task.prisma().find_first(
         where={"workSessionId": session_id}, include=TASK_INCLUDE
     )
@@ -526,8 +526,8 @@ async def get_task_for_work_session(session_id: str) -> Optional[tuple[str, Task
 async def set_live(
     task_id: str,
     running: bool,
-    current_step: Optional[str] = None,
-    turn_started_at: Optional[datetime] = None,
+    current_step: str | None = None,
+    turn_started_at: datetime | None = None,
 ) -> None:
     await prisma.models.Task.prisma().update(
         where={"id": task_id},
@@ -559,8 +559,8 @@ async def add_turn_metrics(
 
 
 async def get_busy_task_for_expert(
-    user_id: str, expert_id: str, exclude_task_id: Optional[str] = None
-) -> Optional[Task]:
+    user_id: str, expert_id: str, exclude_task_id: str | None = None
+) -> Task | None:
     where: dict[str, Any] = {
         "userId": user_id,
         "assigneeType": "expert",
@@ -627,7 +627,7 @@ async def list_experts_for_user(user_id: str) -> list[ExpertOption]:
 
 
 async def confirm_plan(
-    user_id: str, plan_id: str, steps: Optional[list[PlanStep]]
+    user_id: str, plan_id: str, steps: list[PlanStep] | None
 ) -> tuple[Plan, TaskDetail]:
     plan = await get_plan(user_id, plan_id)
     if plan is None:

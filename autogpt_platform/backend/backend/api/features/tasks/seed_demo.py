@@ -1,7 +1,7 @@
 import asyncio
 import sys
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import prisma.models
 
@@ -264,7 +264,7 @@ async def seed_tasks(user_id: str, experts: dict[str, prisma.models.Expert]) -> 
         pricing.id,
         True,
         "Checking the site for other broken links",
-        datetime.now(timezone.utc) - timedelta(seconds=40),
+        datetime.now(UTC) - timedelta(seconds=40),
     )
     await add_turn(
         user_id,

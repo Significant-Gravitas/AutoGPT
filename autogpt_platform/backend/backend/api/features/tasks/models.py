@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -63,18 +63,18 @@ DEFAULT_BUDGET_CAP_USD = 2.0
 
 class Assignee(BaseModel):
     type: AssigneeType
-    id: Optional[str] = None
+    id: str | None = None
     name: str
-    avatar_url: Optional[str] = None
-    color: Optional[str] = None
+    avatar_url: str | None = None
+    color: str | None = None
 
 
 class Actor(BaseModel):
     type: ActorType
-    id: Optional[str] = None
+    id: str | None = None
     name: str
-    avatar_url: Optional[str] = None
-    color: Optional[str] = None
+    avatar_url: str | None = None
+    color: str | None = None
 
     @classmethod
     def user(cls, user_id: str) -> "Actor":
@@ -93,8 +93,8 @@ class Actor(BaseModel):
         cls,
         expert_id: str,
         name: str,
-        avatar_url: Optional[str] = None,
-        color: Optional[str] = None,
+        avatar_url: str | None = None,
+        color: str | None = None,
     ) -> "Actor":
         return cls(
             type=ActorType.EXPERT,
@@ -128,8 +128,8 @@ class PendingInput(BaseModel):
 
 class TaskLive(BaseModel):
     running: bool = False
-    current_step: Optional[str] = None
-    turn_started_at: Optional[datetime] = None
+    current_step: str | None = None
+    turn_started_at: datetime | None = None
 
 
 class Task(BaseModel):
@@ -137,27 +137,27 @@ class Task(BaseModel):
     number: int
     key: str
     title: str
-    description: Optional[str] = None
+    description: str | None = None
     status: TaskStatus
     priority: TaskPriority
-    assignee: Optional[Assignee] = None
-    due_date: Optional[date] = None
+    assignee: Assignee | None = None
+    due_date: date | None = None
     labels: list[str] = Field(default_factory=list)
-    parent_id: Optional[str] = None
-    parent_key: Optional[str] = None
-    outcome_summary: Optional[str] = None
-    work_session_id: Optional[str] = None
-    budget_cap_usd: Optional[float] = None
+    parent_id: str | None = None
+    parent_key: str | None = None
+    outcome_summary: str | None = None
+    work_session_id: str | None = None
+    budget_cap_usd: float | None = None
     review_required: bool = False
     metrics: TaskMetrics = Field(default_factory=TaskMetrics)
     subtask_counts: SubtaskCounts = Field(default_factory=SubtaskCounts)
-    pending_input: Optional[PendingInput] = None
+    pending_input: PendingInput | None = None
     live: TaskLive = Field(default_factory=TaskLive)
     created_at: datetime
     updated_at: datetime
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    plan_id: Optional[str] = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    plan_id: str | None = None
 
 
 class TaskParentRef(BaseModel):
@@ -170,8 +170,8 @@ class Attachment(BaseModel):
     id: str
     kind: str
     title: str
-    ref_id: Optional[str] = None
-    url: Optional[str] = None
+    ref_id: str | None = None
+    url: str | None = None
     created_at: datetime
     added_by: Actor
 
@@ -179,7 +179,7 @@ class Attachment(BaseModel):
 class TaskDetail(Task):
     subtasks: list[Task] = Field(default_factory=list)
     attachments: list[Attachment] = Field(default_factory=list)
-    parent: Optional[TaskParentRef] = None
+    parent: TaskParentRef | None = None
 
 
 class ActivityEvent(BaseModel):
@@ -188,56 +188,56 @@ class ActivityEvent(BaseModel):
     created_at: datetime
     actor: Actor
     kind: ActivityKind
-    body: Optional[str] = None
+    body: str | None = None
     data: dict[str, Any] = Field(default_factory=dict)
 
 
 class ExpertOption(BaseModel):
     id: str
     name: str
-    role: Optional[str] = None
-    avatar_url: Optional[str] = None
-    color: Optional[str] = None
-    busy_task_id: Optional[str] = None
-    busy_task_key: Optional[str] = None
+    role: str | None = None
+    avatar_url: str | None = None
+    color: str | None = None
+    busy_task_id: str | None = None
+    busy_task_key: str | None = None
 
 
 class AssigneeRef(BaseModel):
     type: AssigneeType
-    id: Optional[str] = None
+    id: str | None = None
 
 
 class PlanStep(BaseModel):
     title: str
-    description: Optional[str] = None
-    assignee: Optional[Assignee] = None
+    description: str | None = None
+    assignee: Assignee | None = None
 
 
 class Plan(BaseModel):
     id: str
     status: PlanStatus
     goal: str
-    budget_usd: Optional[float] = None
+    budget_usd: float | None = None
     steps: list[PlanStep] = Field(default_factory=list)
-    session_id: Optional[str] = None
-    parent_task_id: Optional[str] = None
+    session_id: str | None = None
+    parent_task_id: str | None = None
     task_ids: list[str] = Field(default_factory=list)
     created_at: datetime
 
 
 class _TaskFields(BaseModel):
-    description: Optional[str] = None
-    status: Optional[TaskStatus] = None
-    priority: Optional[TaskPriority] = None
-    assignee_type: Optional[AssigneeType] = None
-    assignee_id: Optional[str] = None
-    assignee: Optional[AssigneeRef] = None
-    due_date: Optional[date] = None
-    labels: Optional[list[str]] = None
-    parent_id: Optional[str] = None
-    budget_cap_usd: Optional[float] = Field(default=None, ge=0)
-    budget_usd: Optional[float] = Field(default=None, ge=0)
-    review_required: Optional[bool] = None
+    description: str | None = None
+    status: TaskStatus | None = None
+    priority: TaskPriority | None = None
+    assignee_type: AssigneeType | None = None
+    assignee_id: str | None = None
+    assignee: AssigneeRef | None = None
+    due_date: date | None = None
+    labels: list[str] | None = None
+    parent_id: str | None = None
+    budget_cap_usd: float | None = Field(default=None, ge=0)
+    budget_usd: float | None = Field(default=None, ge=0)
+    review_required: bool | None = None
 
     @model_validator(mode="after")
     def apply_aliases(self):
@@ -259,8 +259,8 @@ class TaskCreate(_TaskFields):
 
 
 class TaskUpdate(_TaskFields):
-    title: Optional[str] = Field(default=None, min_length=1, max_length=500)
-    outcome_summary: Optional[str] = None
+    title: str | None = Field(default=None, min_length=1, max_length=500)
+    outcome_summary: str | None = None
 
 
 class CommentCreate(BaseModel):
@@ -269,31 +269,31 @@ class CommentCreate(BaseModel):
 
 class AnswerCreate(BaseModel):
     answer: str = Field(min_length=1)
-    input_id: Optional[str] = None
+    input_id: str | None = None
 
 
 class AttachmentCreate(BaseModel):
     kind: str = Field(pattern="^(file|chat|run|url|text)$")
     title: str = Field(min_length=1)
-    ref_id: Optional[str] = None
-    url: Optional[str] = None
+    ref_id: str | None = None
+    url: str | None = None
 
 
 class PlanConfirm(BaseModel):
-    steps: Optional[list[PlanStep]] = None
+    steps: list[PlanStep] | None = None
 
 
 class TaskFilters(BaseModel):
-    status: Optional[list[TaskStatus]] = None
-    assignee_type: Optional[AssigneeType] = None
-    assignee_id: Optional[str] = None
-    priority: Optional[list[TaskPriority]] = None
-    due: Optional[str] = None
-    parent_id: Optional[str] = None
+    status: list[TaskStatus] | None = None
+    assignee_type: AssigneeType | None = None
+    assignee_id: str | None = None
+    priority: list[TaskPriority] | None = None
+    due: str | None = None
+    parent_id: str | None = None
     top_level: bool = False
     mine: bool = False
     include_hidden: bool = False
-    q: Optional[str] = None
+    q: str | None = None
     limit: int = 200
 
 

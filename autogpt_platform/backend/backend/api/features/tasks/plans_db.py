@@ -1,4 +1,3 @@
-from typing import Optional
 
 import prisma.models
 from prisma import Json
@@ -11,8 +10,8 @@ async def create_plan(
     user_id: str,
     goal: str,
     steps: list[PlanStep],
-    budget_usd: Optional[float],
-    session_id: Optional[str],
+    budget_usd: float | None,
+    session_id: str | None,
 ) -> Plan:
     row = await prisma.models.TaskPlan.prisma().create(
         data={
@@ -26,14 +25,14 @@ async def create_plan(
     return row_to_plan(row)
 
 
-async def get_plan(user_id: str, plan_id: str) -> Optional[Plan]:
+async def get_plan(user_id: str, plan_id: str) -> Plan | None:
     row = await prisma.models.TaskPlan.prisma().find_first(
         where={"id": plan_id, "userId": user_id}
     )
     return row_to_plan(row) if row else None
 
 
-async def cancel_plan(user_id: str, plan_id: str) -> Optional[Plan]:
+async def cancel_plan(user_id: str, plan_id: str) -> Plan | None:
     plan = await get_plan(user_id, plan_id)
     if plan is None:
         return None

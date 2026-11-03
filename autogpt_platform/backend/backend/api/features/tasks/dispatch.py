@@ -11,7 +11,7 @@ Every public function here is best-effort and never raises.
 
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from backend.api.features.tasks.access import tasks_store
 from backend.api.features.tasks.events import publish_task_event
@@ -97,7 +97,7 @@ async def start_task_turn(user_id: str, task: Task, message: str) -> bool:
         )
     session_id = await _ensure_work_session(user_id, task)
     session = await get_chat_session(session_id, user_id)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     prompt_tokens = sum(u.prompt_tokens for u in session.usage) if session else 0
     completion_tokens = (
         sum(u.completion_tokens for u in session.usage) if session else 0
