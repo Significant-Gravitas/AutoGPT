@@ -268,6 +268,7 @@ describe.each(["CLOUD", "LOCAL"])("memory availability in %s", (mode) => {
       expect(await screen.findByText("Harbor Bikes")).toBeDefined();
       expect(screen.getByRole("button", { name: "Forget this" })).toBeDefined();
       expect(screen.queryByRole("button", { name: /erase/i })).toBeNull();
+      await settle();
       expect(graphRequest).not.toHaveBeenCalled();
     },
   );
