@@ -224,9 +224,7 @@ vi.mock("@/app/api/helpers", () => ({
 // independently — they gate different step slots.
 let mockFlags: Record<string, boolean> = {};
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: {
-    ENABLE_PLATFORM_PAYMENT: "enable-platform-payment",
-  },
+  Flag: {},
   useGetFlag: (flag: string) => mockFlags[flag] ?? false,
   useFlagStatus: (flag: string) => ({
     enabled: mockFlags[flag] ?? false,
