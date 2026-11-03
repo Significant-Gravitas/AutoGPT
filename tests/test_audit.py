@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import hashlib
 import hmac
 import json
 import os
+import stat
+import sys
 import threading
+import types
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+import autogpt_local_executor.audit as audit_module
 from autogpt_local_executor import cli
 from autogpt_local_executor.audit import (
     AuditWriter,
@@ -509,3 +514,88 @@ async def test_concurrent_writes_serialize_via_internal_lock(tmp_path: Path) -> 
     assert AuditWriter.verify(w.path, KEY) == []
     lines = w.path.read_text().splitlines()
     assert len(lines) == 20
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file locks and modes")
+@pytest.mark.asyncio
+async def test_audit_verify_reads_the_log_under_the_writers_lock(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A verify that read mid-append could call a valid log truncated."""
+    import fcntl
+
+    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    held: list[bool] = []
+
+    def verify(_path: Path, _key: bytes) -> list:
+        with open(tmp_path / ".audit.log.lock", "a+b") as probe:
+            try:
+                fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                held.append(True)
+            else:
+                fcntl.flock(probe, fcntl.LOCK_UN)
+                held.append(False)
+        return []
+
+    monkeypatch.setattr(AuditWriter, "verify", staticmethod(verify))
+
+    assert cli._audit_verify(writer.path) == 0
+    assert held == [True]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes")
+@pytest.mark.asyncio
+async def test_a_log_removed_between_writes_comes_back_owner_only(tmp_path: Path) -> None:
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    writer.path.unlink()
+    previous = os.umask(0o022)
+    try:
+        await writer.write("EXECUTE_COMMAND", request_id="b", details={}, result={})
+    finally:
+        os.umask(previous)
+
+    assert stat.S_IMODE(writer.path.stat().st_mode) == 0o600
+
+
+def _fake_windows_locking(monkeypatch, failures: list[OSError]) -> list[int]:
+    """Drive _file_lock's Windows branch: msvcrt.locking fails with each of
+    `failures` in turn, then succeeds."""
+    modes: list[int] = []
+
+    def locking(_fd: int, mode: int, _nbytes: int) -> None:
+        modes.append(mode)
+        if mode == 2 and failures:
+            raise failures.pop(0)
+
+    fake = types.SimpleNamespace(LK_NBLCK=2, LK_UNLCK=0, locking=locking)
+    monkeypatch.setitem(sys.modules, "msvcrt", fake)
+    monkeypatch.setattr(sys, "platform", "win32")
+    return modes
+
+
+def test_the_windows_lock_waits_out_another_holder(tmp_path: Path, monkeypatch) -> None:
+    modes = _fake_windows_locking(
+        monkeypatch, [OSError(errno.EACCES, "locked"), OSError(errno.EACCES, "locked")]
+    )
+
+    with audit_module._file_lock(tmp_path / ".audit.log.lock"):
+        pass
+
+    assert modes == [2, 2, 2, 0]
+
+
+def test_the_windows_lock_raises_an_error_that_is_not_contention(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Retrying a permanent failure forever would hang daemon startup."""
+    modes = _fake_windows_locking(monkeypatch, [OSError(errno.EBADF, "bad file descriptor")])
+
+    with pytest.raises(OSError, match="bad file descriptor"):
+        with audit_module._file_lock(tmp_path / ".audit.log.lock"):
+            pass
+
+    assert modes == [2]

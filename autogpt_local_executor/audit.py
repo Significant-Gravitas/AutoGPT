@@ -1,5 +1,6 @@
 """
-Audit log — JSONL records chained by HMAC-SHA256 over RFC 8785 canonical JSON.
+Audit log — JSONL records chained by HMAC-SHA256 over canonical JSON (RFC 8785
+with Python's float spelling; see docs/AUDIT_LOG.md).
 
 Format and verification algorithm live in docs/AUDIT_LOG.md. This module is a
 faithful implementation; if you change behavior here, update the doc first.
@@ -22,8 +23,10 @@ spinning up the full shim.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 import datetime as _dt
+import errno
 import hmac
 import json
 import logging
@@ -53,15 +56,13 @@ KEYCHAIN_AUDIT_KEY_USERNAME = "audit_key"
 
 
 def _canonical_number(n: int | float) -> str:
-    """Best-effort RFC 8785 number serialization for our limited input set.
+    """Number text for the canonical form: RFC 8785 for ints and bools,
+    Python's `repr` for floats.
 
-    AUDIT_LOG.md records only ever embed Python ints, fractional floats
-    (`ts`, `mtime`, `duration_seconds`), and bools (which json.dumps already
-    canonicalizes as `true`/`false`). For ints we use `str(n)`. For floats we
-    use `repr` to retain precision, then strip a trailing `.0` if present so
-    `1.0` round-trips identically to `1` if someone reserialises it. Floats
-    that round to integer values are kept as-is (we don't down-convert to int
-    — that would change types across the chain).
+    `repr` is the shortest round-trippable form, but an integer-valued float
+    keeps its `.0` (`1712345678.0`, where RFC 8785 writes `1712345678`) and
+    exponents use Python's spelling. Existing chains are HMACed over this
+    text, so it can only change with a versioned log format (AUDIT_LOG.md).
     """
     if isinstance(n, bool):  # bool is an int subclass; handle before int
         return "true" if n else "false"
@@ -162,7 +163,7 @@ class AuditWriter:
         # The daemon and `autogpt-shim audit` commands each have a writer for
         # one log, so every read of the chain state, append and rotation also
         # holds this lock file. Its name keeps it out of list_rotated_files.
-        self._file_lock_path = self.path.with_name(f".{self.path.name}.lock")
+        self._file_lock_path = _lock_path(self.path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with _file_lock(self._file_lock_path):
             if self.path.exists():
@@ -264,8 +265,10 @@ class AuditWriter:
 
     def _append(self, line: str) -> None:
         # Open-append-fsync per record. Slow for high throughput but the
-        # audit log is one-line-per-shim-event, not a hot path.
-        with open(self.path, "a", encoding="utf-8") as f:
+        # audit log is one-line-per-shim-event, not a hot path. A log removed
+        # since the last write is recreated owner-only, like the first one.
+        flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_BINARY", 0)
+        with open(os.open(self.path, flags, 0o600), "a", encoding="utf-8") as f:
             f.write(line)
             f.flush()
             try:
@@ -743,6 +746,24 @@ def _file_identity(path: Path) -> tuple[int, int, int] | None:
     return info.st_dev, info.st_ino, info.st_size
 
 
+def _lock_path(log: Path) -> Path:
+    # The leading dot keeps it out of list_rotated_files.
+    return log.with_name(f".{log.name}.lock")
+
+
+@contextmanager
+def holding_log_lock(log: Path) -> Iterator[None]:
+    """Hold the lock that every AuditWriter for `log` appends and rotates
+    under, so a reader never sees a record half written. Where the lock file
+    can't be created, no writer can append either, so the read goes ahead."""
+    with contextlib.ExitStack() as stack:
+        try:
+            stack.enter_context(_file_lock(_lock_path(log)))
+        except OSError:
+            pass
+        yield
+
+
 @contextmanager
 def _file_lock(path: Path) -> Iterator[None]:
     """Hold an exclusive lock on `path`, across processes, while the block runs."""
@@ -750,13 +771,17 @@ def _file_lock(path: Path) -> Iterator[None]:
         if sys.platform == "win32":
             import msvcrt
 
-            # LK_LOCK gives up after ten seconds; wait as long as it takes.
+            # LK_LOCK gives up after ten seconds, so poll LK_NBLCK, which
+            # fails with EACCES while another process holds the lock. Any other
+            # error is permanent and raised, rather than retried forever.
             while True:
                 try:
                     handle.seek(0)
                     msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
                     break
-                except OSError:
+                except OSError as exc:
+                    if exc.errno not in (errno.EACCES, errno.EDEADLK):
+                        raise
                     time.sleep(0.05)
             try:
                 yield
@@ -790,5 +815,6 @@ __all__ = [
     "SessionAuditWriter",
     "canonical_bytes",
     "get_or_create_audit_key",
+    "holding_log_lock",
     "list_rotated_files",
 ]

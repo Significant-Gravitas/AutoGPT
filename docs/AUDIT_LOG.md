@@ -160,18 +160,22 @@ hmac                = HMAC-SHA256(audit_key, canonical_bytes)
 record              = {**record_without_hmac, "hmac": hmac.hex()}
 ```
 
-`json_canonical` is **RFC 8785 JSON Canonicalization Scheme (JCS)**:
-sorted keys, no whitespace, normalized numbers. JCS guarantees byte-
-identical output across Python / Go / Rust verifiers.
+`json_canonical` follows the **RFC 8785 JSON Canonicalization Scheme
+(JCS)** (sorted keys, no whitespace), with one difference in numbers:
+a float is written as Python's `repr` gives it. An integer-valued float
+keeps its `.0` (`1712345678.0`, where RFC 8785 writes `1712345678`),
+and very large or small floats use Python's exponent spelling
+(`1e-07`). Integers and booleans match RFC 8785.
 
-The shim ships a hand-rolled JCS subset over the input shapes used in
-this spec (`str`, `int`, `float`, `bool`, `null`, `list`, `object`) so
-the wheel doesn't carry an extra dependency. Third-party verifiers MUST
-use a full RFC 8785 implementation (e.g. the `rfc8785` PyPI package) —
-the shim's subset is sufficient for the record shape it writes, but
-embedding it elsewhere is not safe. `NaN` and `±Infinity` are rejected:
-the canonicalizer raises on them rather than silently producing
-non-JSON.
+The shim ships this hand-rolled canonicalizer over the input shapes used
+in this spec (`str`, `int`, `float`, `bool`, `null`, `list`, `object`)
+so the wheel doesn't carry an extra dependency. A third-party verifier
+must reproduce the float rule above; a stock RFC 8785 library (e.g. the
+`rfc8785` PyPI package) reports records holding such floats as
+`hmac_mismatch`. Moving to strict RFC 8785 would change the HMAC input
+of every existing record, so it waits for a versioned log format. `NaN`
+and `±Infinity` are rejected: the canonicalizer raises on them rather
+than silently producing non-JSON.
 
 ### Verification
 
