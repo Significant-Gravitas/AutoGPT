@@ -18,6 +18,9 @@ if (!controlPath || !candidatePath) {
 const control = JSON.parse(fs.readFileSync(controlPath, "utf8"));
 const candidate = JSON.parse(fs.readFileSync(candidatePath, "utf8"));
 
+// Wide enough for the longest metric name, copilot_first_chunk_ms{engine:scripted}.
+const NAME_WIDTH = 42;
+
 function pad(text, width, right) {
   const s = String(text);
   if (s.length >= width) return s;
@@ -44,7 +47,7 @@ function table(title, left, right) {
   console.log("");
   console.log(title);
   console.log(
-    `${pad("", 34)} ${pad("n", 11, true)} ${pad("p50 ctl", 8, true)} ${pad(
+    `${pad("", NAME_WIDTH)} ${pad("n", 11, true)} ${pad("p50 ctl", 8, true)} ${pad(
       "p50 cand",
       9,
       true,
@@ -59,7 +62,7 @@ function table(title, left, right) {
     const b = (right || {})[name] || {};
     if (!a.count && !b.count) continue;
     console.log(
-      `${pad(name, 34)} ${pad(`${a.count || 0}/${b.count || 0}`, 11, true)} ${pad(
+      `${pad(name, NAME_WIDTH)} ${pad(`${a.count || 0}/${b.count || 0}`, 11, true)} ${pad(
         ms(a.med),
         8,
         true,
@@ -95,7 +98,7 @@ function rateTable(title, left, right) {
   console.log("");
   console.log(title);
   console.log(
-    `${pad("", 34)} ${pad("n", 11, true)} ${pad("ctl", 8, true)} ${pad(
+    `${pad("", NAME_WIDTH)} ${pad("n", 11, true)} ${pad("ctl", 8, true)} ${pad(
       "cand",
       9,
       true,
@@ -109,7 +112,7 @@ function rateTable(title, left, right) {
         ? `${b.rate >= a.rate ? "+" : ""}${((b.rate - a.rate) * 100).toFixed(2)}pp`
         : "-";
     console.log(
-      `${pad(name, 34)} ${pad(`${samples(a)}/${samples(b)}`, 11, true)} ${pad(
+      `${pad(name, NAME_WIDTH)} ${pad(`${samples(a)}/${samples(b)}`, 11, true)} ${pad(
         percent(a),
         8,
         true,

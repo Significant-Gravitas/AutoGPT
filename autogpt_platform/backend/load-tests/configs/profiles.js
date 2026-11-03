@@ -4,15 +4,23 @@
 // iterations at the configured rate whatever the target's latency, so a
 // slower build cannot quietly send fewer requests, and queueing shows up as
 // latency and as dropped_iterations rather than as a lower request count.
+// The real-model turns are the exception: a fixed, capped number of them,
+// one at a time, because each one costs money.
 //
 // Rates are iterations per minute at the baseline profile, weighted by the
-// share of user-facing traffic each journey has in production (Sentry,
-// autogpt-server, app:prod-behave:cloud). Copilot reads (session list,
-// usage, session detail) are the largest family of user-facing requests,
-// account reads the second, store browsing the third; library and graph runs
-// are rare but slow, so they get more than their share to reach a usable
-// sample size in a ten-minute run. Copilot turns are the product's core and
-// its cost, so they get a sample-size floor rather than their raw share.
+// share of user-facing traffic each family has in production (Sentry,
+// autogpt-server, app:prod-behave:cloud, seven days): copilot about 60% of
+// requests, store about 17%, account reads about 16%, experts about 2%,
+// graphs and the library about 1%. Copilot and experts are the product's
+// primary interaction points. The copilot journeys (opening a chat, the open
+// chat's polling, turns on three engines) make about three-fifths of the
+// run's requests, as in production, and together with the expert journeys
+// about two-thirds. Experts get well above their raw share because users
+// work with them far more often than they hire them: the expert work
+// journey runs six times as often as the hire. Store and account reads
+// follow their production shares. Library browsing, graph runs, scripted
+// turns and hires are rare but slow, so they get a sample-size floor in a
+// ten-minute run rather than their raw share.
 //
 // Graph runs are also bounded by the executor. A preview's executor is at
 // capacity at about ten runs a minute of the seeded graphs: at that rate a
@@ -23,38 +31,86 @@
 // find where it breaks.
 import exec from "k6/execution";
 
+// The most real-model turns a run may send (LOAD_TEST_COPILOT_REAL_TURNS).
+export const MAX_REAL_TURNS = 10;
+
+// How many turns copilot_turn_real sends: LOAD_TEST_COPILOT_REAL_TURNS, 0
+// (the default) to send none. Usable in the init context.
+export function realTurns() {
+  const raw = __ENV.LOAD_TEST_COPILOT_REAL_TURNS;
+  if (raw === undefined || raw === "") return 0;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0 || n > MAX_REAL_TURNS) {
+    throw new Error(
+      `LOAD_TEST_COPILOT_REAL_TURNS must be a whole number from 0 to ${MAX_REAL_TURNS}, got "${raw}"`,
+    );
+  }
+  return n;
+}
+
 // Iterations per minute at the baseline profile, with the requests each
-// iteration makes and the share of production traffic it stands for.
+// iteration makes and the share of production traffic it stands for. A
+// journey with `turns` instead of a rate runs that many iterations once.
 export const JOURNEYS = {
   copilot_reads: {
-    rate: 60,
+    rate: 30,
     exec: "copilotReads",
-    requests: 5,
-    why: "chat session list, usage, session detail and pending reads are the largest user-facing family (about 35% of requests)",
+    requests: 9,
+    why: "opening a chat: the session list (48k requests a week in production), usage (17k), transports, connections and experts, then one session's detail, review cards (75k, the largest single route) and queued messages",
+  },
+  copilot_poll: {
+    rate: 40,
+    exec: "copilotPoll",
+    requests: 6.3,
+    why: "an open chat waiting on a review card: the page polls its cards every 2 s, the session list every 10 s and usage every 30 s, which makes the review route the largest in production (75k requests a week, p95 227 ms)",
   },
   copilot_turn: {
     rate: 15,
     exec: "copilotTurn",
+    requests: 6.1,
+    why: "a streamed turn on the dummy engine, the platform's own path without a model, with the reads the page makes after it: rare by count in production (about 850 streams a week) but it is the product",
+  },
+  copilot_turn_scripted: {
+    rate: 2,
+    exec: "copilotTurnScripted",
     requests: 3,
-    why: "one streamed turn end to end; rare by count in production but it is the product and its cost",
+    why: "a turn on the whole SDK engine (sandbox, CLI, a tool round) against the scripted model, at no model cost; a sample-size floor, since each one starts a sandbox",
+  },
+  copilot_turn_real: {
+    turns: realTurns,
+    exec: "copilotTurnReal",
+    requests: 2,
+    why: "a few capped, opt-in turns on the real model, for what users feel with a model behind the chat; a one-step turn costs about $0.07 in production",
+  },
+  expert_work: {
+    rate: 6,
+    exec: "expertWork",
+    requests: 12,
+    why: "working with a hired expert: its page (the expert, its activity, schedules, home, its chats and files) and a turn in one of its chats; well above the experts' 2% of requests, since users work with experts far more often than they hire them",
+  },
+  expert_hire: {
+    rate: 1,
+    exec: "expertHire",
+    requests: 16,
+    why: "hiring an expert from the marketplace and its kickoff turn, then the team page polling while it installs; rare (about 900 template reads a week in production) but slow, p50 1.3 s for the templates and 3.0 s p95 for an expert's page",
   },
   account_reads: {
-    rate: 30,
+    rate: 16,
     exec: "accountReads",
     requests: 10,
-    why: "credits, subscription, onboarding, credentials and providers: every page load makes them (about 33% of requests)",
+    why: "credits, subscription, onboarding, credentials and providers: every page load makes them (about 16% of requests)",
   },
   store_browse: {
-    rate: 30,
+    rate: 25,
     exec: "storeBrowse",
     requests: 7,
-    why: "skills list and detail, store agents and search (about 25% of requests)",
+    why: "skills list and detail, store agents and search (about 17% of requests)",
   },
   library_browse: {
-    rate: 24,
+    rate: 6,
     exec: "libraryBrowse",
     requests: 3,
-    why: "library list and agent detail: under 1% of requests, but p50 of 11 s and 39 s in production",
+    why: "library list and agent detail: about 1% of requests with graphs, but p50 of 11 s and 39 s in production",
   },
   graph_run: {
     rate: 3,
@@ -66,8 +122,12 @@ export const JOURNEYS = {
 
 // How long each iteration of a journey tends to take, to size the VU pool.
 const EXPECTED_ITERATION_SECONDS = {
-  copilot_reads: 3,
+  copilot_reads: 4,
+  copilot_poll: 10,
   copilot_turn: 10,
+  copilot_turn_scripted: 60,
+  expert_work: 10,
+  expert_hire: 30,
   account_reads: 4,
   store_browse: 3,
   library_browse: 4,
@@ -81,6 +141,15 @@ export const PROFILES = {
   baseline: { scale: 1, warmup: "1m", duration: "10m", thresholdScale: 1 },
   // Three times the baseline, to find what breaks first.
   stress: { scale: 3, warmup: "1m", duration: "10m", thresholdScale: 2 },
+};
+
+// The cap on one turn's stream, per engine. A dummy turn takes about a
+// second; a scripted turn starts a sandbox and the CLI before its first
+// word; a real turn waits on a model that may call tools for minutes.
+export const TURN_TIMEOUTS = {
+  dummy: __ENV.COPILOT_TURN_TIMEOUT || "120s",
+  scripted: __ENV.COPILOT_SCRIPTED_TURN_TIMEOUT || "180s",
+  real: "300s",
 };
 
 export function profileName() {
@@ -108,10 +177,15 @@ export function loadProfile() {
   };
 }
 
-// SCENARIOS=copilot_turn,store_browse runs a subset.
+// SCENARIOS=copilot_turn,store_browse runs a subset. copilot_turn_real runs
+// only when LOAD_TEST_COPILOT_REAL_TURNS asks for turns.
 export function enabledJourneys() {
   const raw = __ENV.SCENARIOS;
-  if (!raw) return Object.keys(JOURNEYS);
+  if (!raw) {
+    return Object.keys(JOURNEYS).filter(
+      (name) => !JOURNEYS[name].turns || JOURNEYS[name].turns() > 0,
+    );
+  }
   const names = raw
     .split(",")
     .map((s) => s.trim())
@@ -120,6 +194,11 @@ export function enabledJourneys() {
     if (!JOURNEYS[name]) {
       throw new Error(
         `Unknown scenario "${name}" in SCENARIOS: use ${Object.keys(JOURNEYS).join(", ")}`,
+      );
+    }
+    if (JOURNEYS[name].turns && JOURNEYS[name].turns() === 0) {
+      throw new Error(
+        `SCENARIOS names ${name}, which needs LOAD_TEST_COPILOT_REAL_TURNS from 1 to ${MAX_REAL_TURNS}`,
       );
     }
   }
@@ -134,11 +213,20 @@ export function durationMs(text) {
 }
 
 // Iterations per minute of a journey under the profile; never below one per
-// run, so smoke runs still exercise every journey.
+// run, so smoke runs still exercise every journey. A journey with a fixed
+// number of turns has no rate.
 export function journeyRate(name, profile) {
+  if (JOURNEYS[name].turns) return null;
   const perMinute = JOURNEYS[name].rate * profile.scale;
   const runMinutes = durationMs(profile.duration) / 60000;
   return Math.max(perMinute, 1 / runMinutes);
+}
+
+// What a journey offers the target under the profile, for the log.
+export function journeyLoad(name, profile) {
+  const journey = JOURNEYS[name];
+  if (journey.turns) return `${journey.turns()} turns`;
+  return `${journeyRate(name, profile).toFixed(1)}/min`;
 }
 
 // The k6 scenarios for the enabled journeys. Each has a warm-up stage that
@@ -149,6 +237,21 @@ export function buildScenarios(profile, names) {
   const scenarios = {};
   for (const name of names) {
     const journey = JOURNEYS[name];
+    if (journey.turns) {
+      // One VU sends the turns back to back through the steady phase, and
+      // whatever it has not sent when the phase ends stays unsent.
+      scenarios[name] = {
+        executor: "shared-iterations",
+        exec: journey.exec,
+        vus: 1,
+        iterations: journey.turns(),
+        startTime: profile.warmup,
+        maxDuration: profile.duration,
+        gracefulStop: "90s",
+        tags: { journey: name },
+      };
+      continue;
+    }
     const rate = journeyRate(name, profile);
     const perHour = Math.max(1, Math.round(rate * 60));
     // Five times the expected concurrency, pre-allocated: k6 starts more VUs
@@ -182,9 +285,12 @@ export function buildScenarios(profile, names) {
 // Warm-up or steady, for the iteration that is starting. Every journey calls
 // it first. The VU carries the phase as a tag until its next iteration, so
 // k6's own per-iteration metrics, iteration_duration among them, split by
-// phase as the requests do.
-export function iterationPhase(profile) {
-  const elapsed = Date.now() - exec.scenario.startTime;
+// phase as the requests do. `startOffsetMs` is how long after the load began
+// the journey's scenario starts: the real-model turns start after the
+// warm-up, so all of them are steady.
+export function iterationPhase(profile, startOffsetMs) {
+  const elapsed =
+    Date.now() - exec.scenario.startTime + (Number(startOffsetMs) || 0);
   const phase = elapsed < durationMs(profile.warmup) ? "warmup" : "steady";
   exec.vu.metrics.tags.phase = phase;
   return phase;

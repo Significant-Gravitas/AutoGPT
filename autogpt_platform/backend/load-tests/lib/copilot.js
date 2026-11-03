@@ -7,6 +7,10 @@
 //   the moment something starts appearing in the chat;
 // - copilot_turn_ms: the `finish` frame, when the reply is complete and saved.
 //
+// Every turn's metrics carry an `engine` tag, the engine the account's turns
+// run on (dummy, scripted or real: lib/auth.js), so each engine is judged on
+// its own numbers.
+//
 // Each frame is `data: <json>` with a `type`; `data: [DONE]` ends the stream;
 // `: heartbeat` and `: usage` comments arrive with empty data. A session that
 // already has a turn running, or a user at the running-turn cap, gets a 200
@@ -18,6 +22,7 @@ import { Counter, Rate, Trend } from "k6/metrics";
 
 import { getEnvironmentConfig } from "../configs/environment.js";
 import { authHeaders } from "./auth.js";
+import { randomUuid } from "./random.js";
 
 const config = getEnvironmentConfig();
 
@@ -31,17 +36,86 @@ export const copilotTurnsFailed = new Counter("copilot_turns_failed");
 export const copilotTurnErrors = new Rate("copilot_turn_errors");
 
 // The reply the dummy engine streams for any message, used to confirm the
-// target runs it before the run sends turns at it.
+// target runs it for the dummy accounts before the run sends turns at it.
 export const DUMMY_REPLY = "I counted: 1... 2... 3. All done!";
 
+// The script the scripted model plays for the scripted accounts' turns,
+// model-scripts/loadtest-turn.json, the same file a preview's scripted model
+// reads. A message picks it with a [[script:loadtest-turn#<nonce>]] marker.
+// The script answers a conversation by how many replies it already holds, so
+// every scripted turn starts a new session.
+export const SCRIPT_NAME = "loadtest-turn";
+const SCRIPT = JSON.parse(open("../model-scripts/loadtest-turn.json"));
+// What the script's last turn says, which ends every scripted turn.
+export const SCRIPTED_FINAL_TEXT = SCRIPT.turns[SCRIPT.turns.length - 1].text;
+// What the script's command prints in the sandbox.
+export const SCRIPTED_TOOL_OUTPUT = "load-test";
+
+// The message the frontend sends as a hire's first turn, with expert_kickoff
+// set on the stream request (frontend/src/app/(platform)/copilot/
+// expertKickoff.ts).
+export const KICKOFF_PROMPT =
+  "You were just hired. Call expert_onboarding once, and nothing else, this " +
+  "turn: a one-sentence greeting introducing yourself in your voice, with " +
+  "no dashes, then " +
+  "2-3 short questions the user can answer by tapping. Every question and " +
+  "every option must come from your own role and area of expertise and from " +
+  "the workflows installed on you — ask which outcome in your area to start " +
+  "with, and which of the services your work depends on you should be " +
+  "connected to, naming the real providers rather than asking in the " +
+  "abstract. Do not ask about work outside your role, whatever else you " +
+  "know about the user or their team. Do not run a workflow, create a " +
+  "schedule, or start any other work before the answers come back.";
+
 const STREAM_ROUTE = "/api/chat/sessions/{session_id}/stream";
+// How much of each tool's output a turn keeps, for a probe to read.
+const TOOL_OUTPUT_CHARS = 2000;
+
+// A scripted turn's message: the marker, with a nonce that finds the turn in
+// the scripted model's journal, then the text.
+export function scriptedMessage(nonce, text) {
+  return `[[script:${SCRIPT_NAME}#${nonce}]] ${text}`;
+}
+
+// Whether a turn's reply holds the script's final text. The platform relays
+// the text of both model turns, the first one's before the tool call and the
+// last one's after it.
+export function hasScriptedReply(turn) {
+  return squash(turn.text).indexOf(squash(SCRIPTED_FINAL_TEXT)) >= 0;
+}
+
+function squash(text) {
+  return String(text || "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// What one real-model turn costs, for the estimate a run that sends them
+// prints and reports: COPILOT_REAL_COST_PER_TURN_USD, by default $0.07,
+// production's median for a one-step turn.
+export function realTurnCostUsd() {
+  const raw = __ENV.COPILOT_REAL_COST_PER_TURN_USD;
+  if (raw === undefined || raw === "") return 0.07;
+  const cost = Number(raw);
+  if (!(cost >= 0)) {
+    throw new Error(
+      `COPILOT_REAL_COST_PER_TURN_USD must be a number of dollars, got "${raw}"`,
+    );
+  }
+  return cost;
+}
 
 // Sends `message` to the session and reads the stream to its end. Returns
-// the turn's outcome and timings; records the metrics when `record` is true.
+// the turn's outcome and timings; records the metrics, tagged with
+// `options.engine` (the engine the account's turns run on), unless
+// `options.record` is false. The turn is `options.account`'s (one of
+// data.accounts), the VU's own account's, or sent with `options.headers`.
 export function streamTurn(sessionId, message, options) {
   const opts = options || {};
   const phase = opts.phase || "steady";
-  const tags = { phase, endpoint: "copilot.stream" };
+  const engine = opts.engine;
+  if (!engine) throw new Error("streamTurn needs the turn's engine");
+  const tags = { phase, endpoint: "copilot.stream", engine };
   const startedAt = Date.now();
   const turn = {
     status: 0,
@@ -52,6 +126,8 @@ export function streamTurn(sessionId, message, options) {
     chunks: 0,
     textDeltas: 0,
     text: "",
+    toolCalls: 0,
+    toolOutputs: [],
     error: null,
     finish: false,
     done: false,
@@ -62,12 +138,21 @@ export function streamTurn(sessionId, message, options) {
     `${config.API_BASE_URL}/chat/sessions/${sessionId}/stream`,
     {
       method: "POST",
-      body: JSON.stringify({ message, is_user_message: true }),
-      headers: opts.headers || authHeaders(opts.data),
+      // As the browser sends it: a fresh idempotency key per send, and the
+      // kickoff flag on a hire's first turn.
+      body: JSON.stringify({
+        message,
+        is_user_message: true,
+        message_id: randomUuid(),
+        expert_kickoff: opts.expertKickoff === true,
+      }),
+      headers:
+        opts.headers ||
+        authHeaders(opts.data, opts.account ? opts.account.index : undefined),
       // A hard cap on the whole stream: without it a turn that never
       // finishes (no copilot executor running) holds the VU for an hour.
       timeout: opts.timeout || "120s",
-      tags: { name: STREAM_ROUTE, endpoint: "copilot.stream", phase },
+      tags: { name: STREAM_ROUTE, endpoint: "copilot.stream", phase, engine },
     },
     (client) => {
       client.on("event", (event) => {
@@ -94,9 +179,20 @@ export function streamTurn(sessionId, message, options) {
             turn.textDeltas++;
             turn.text += frame.delta || "";
             break;
-          case "reasoning-delta":
           case "tool-input-start":
+            turn.toolCalls++;
             if (turn.ttftMs === null) turn.ttftMs = now - startedAt;
+            break;
+          case "reasoning-delta":
+            if (turn.ttftMs === null) turn.ttftMs = now - startedAt;
+            break;
+          case "tool-output-available":
+            turn.toolOutputs.push(
+              (typeof frame.output === "string"
+                ? frame.output
+                : JSON.stringify(frame.output) || ""
+              ).slice(0, TOOL_OUTPUT_CHARS),
+            );
             break;
           case "data-follow-up-queued":
             turn.followUpQueued = true;
@@ -142,6 +238,16 @@ export function streamTurn(sessionId, message, options) {
   return turn;
 }
 
+// A turn that could not start, its session not created: counted as failed,
+// so a journey that starts none fails copilot_turn_errors instead of passing
+// with no samples.
+export function recordUnstartedTurn(engine, phase) {
+  const tags = { phase, endpoint: "copilot.stream", engine };
+  copilotTurns.add(1, tags);
+  copilotTurnsFailed.add(1, tags);
+  copilotTurnErrors.add(true, tags);
+}
+
 function recordTurn(turn, tags) {
   copilotTurns.add(1, tags);
   check(
@@ -166,7 +272,7 @@ function recordTurn(turn, tags) {
     copilotTurnsFailed.add(1, tags);
     copilotTurnErrors.add(true, tags);
     console.warn(
-      `copilot turn ${turn.outcome} after ${turn.chunks} frames: ${turn.error}`,
+      `copilot ${tags.engine} turn ${turn.outcome} after ${turn.chunks} frames: ${turn.error}`,
     );
   }
 }

@@ -1,19 +1,21 @@
 // A few copilot turns against the target's real engine, to measure what a
-// user feels with a real model behind the chat. It spends money, so it runs
-// only with LOAD_TEST_COPILOT_ENGINE=real, sends a capped number of turns
-// (COPILOT_REAL_TURNS, default 5) one or a few at a time
-// (COPILOT_REAL_CONCURRENCY, default 1), and reports the cost: an estimate
-// from COPILOT_REAL_COST_PER_TURN_USD (default 0.10) and how far the
-// account's daily usage meter moved.
+// user feels with a real model behind the chat, on its own rather than
+// within the workload's mix (whose copilot_turn_real sends a few too). It
+// spends money, so it runs only with LOAD_TEST_COPILOT_ENGINE=real, sends a
+// capped number of turns (COPILOT_REAL_TURNS, default 5) one or a few at a
+// time (COPILOT_REAL_CONCURRENCY, default 1), and reports the cost: an
+// estimate from COPILOT_REAL_COST_PER_TURN_USD (default $0.07, production's
+// median one-step turn) and how far the account's daily usage meter moved.
+// Its accounts are all real-model ones (README: Account modes).
 //
 //   LOAD_TEST_COPILOT_ENGINE=real COPILOT_REAL_TURNS=5 ./k6.sh run tests/copilot-real-model.js
 import { Trend } from "k6/metrics";
 
 import { getEnvironmentConfig } from "../configs/environment.js";
-import { authHeaders, authSetupTimeout, setupAuth } from "../lib/auth.js";
+import { authSetupTimeout, setupAuth } from "../lib/auth.js";
 import {
-  copilotTurnErrors,
-  copilotTurnsFailed,
+  realTurnCostUsd,
+  recordUnstartedTurn,
   streamTurn,
 } from "../lib/copilot.js";
 import { api } from "../lib/http.js";
@@ -28,7 +30,7 @@ const CONCURRENCY = Math.max(
   1,
   Math.min(5, Number(__ENV.COPILOT_REAL_CONCURRENCY || 1)),
 );
-const COST_PER_TURN_USD = Number(__ENV.COPILOT_REAL_COST_PER_TURN_USD || 0.1);
+const COST_PER_TURN_USD = realTurnCostUsd();
 const TURN_TIMEOUT = __ENV.COPILOT_TURN_TIMEOUT || "300s";
 
 const setupDuration = new Trend("setup_duration_ms");
@@ -76,7 +78,7 @@ export function setup() {
       ).toFixed(2)} (COPILOT_REAL_COST_PER_TURN_USD to adjust)`,
   );
   const started = Date.now();
-  const data = setupAuth();
+  const data = setupAuth({ mode: "real" });
   const usage = api("GET", "/chat/usage", {
     data,
     endpoint: "copilot.usage",
@@ -99,14 +101,13 @@ export function realTurn(data) {
   if (!sessionId) {
     // A turn that could not start is a failed turn, so a run that sends
     // none fails copilot_turn_errors instead of passing with no samples.
-    const tags = { phase: "steady", endpoint: "copilot.stream" };
-    copilotTurnsFailed.add(1, tags);
-    copilotTurnErrors.add(true, tags);
+    recordUnstartedTurn("real", "steady");
     return;
   }
   const turn = streamTurn(sessionId, pick(random, MESSAGES), {
     data,
     phase: "steady",
+    engine: "real",
     timeout: TURN_TIMEOUT,
   });
   console.log(

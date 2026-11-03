@@ -1,15 +1,23 @@
 // What a run creates under its own accounts before the load starts, so the
 // journeys read and run data that exists and costs that grow with data show
 // up. Everything is scoped to the run's accounts: graphs named after the
-// run, runs of them, chat sessions, and one marketplace agent added to each
-// library. The target's own store listings are discovered, not created.
-// teardown() removes what the API lets it remove (lib/cleanup.js).
+// run, runs of them, chat sessions, one marketplace agent added to each
+// library, and a hired expert with two chats for each dummy and scripted
+// account. The target's own store listings and expert templates are
+// discovered, not created. teardown() removes what the API lets it remove
+// (lib/cleanup.js).
 //
 // A new account on a target with credits enabled has none, and a graph run
 // needs some; the one-time onboarding rewards fund each account first. On a
 // target that paywalls new accounts, STRIPE_TEST_SECRET_KEY lets the seed
 // subscribe each account in Stripe test mode before anything else
 // (lib/stripe.js); teardown cancels those subscriptions.
+//
+// Before a journey sends a copilot turn, a probe confirms the target runs
+// each account's engine (lib/auth.js): one dummy account's turn must come
+// back with the dummy's reply, and only then, so that a target which does
+// not route accounts by address never gets a turn that costs money, one
+// scripted account's turn must end with the script's final text.
 //
 // What one account cannot get (a paywall, no credits, a failed request)
 // keeps that account out of the journey that needs it; the other accounts
@@ -20,31 +28,45 @@ import http from "k6/http";
 import { Counter, Gauge, Trend } from "k6/metrics";
 
 import { getEnvironmentConfig } from "../configs/environment.js";
+import { durationMs, TURN_TIMEOUTS } from "../configs/profiles.js";
 import { accountCount, accountHeaders } from "./auth.js";
 import { removeRunData } from "./cleanup.js";
-import { DUMMY_REPLY, streamTurn } from "./copilot.js";
+import {
+  DUMMY_REPLY,
+  SCRIPTED_TOOL_OUTPUT,
+  hasScriptedReply,
+  scriptedMessage,
+  streamTurn,
+} from "./copilot.js";
 import {
   COVERED,
   ENGINE_NOT_DUMMY,
   ENGINE_PROBE_FAILED,
-  ENGINE_UNSET,
+  ENGINE_UNCONFIRMED,
   MARKETPLACE_EMPTY,
+  NO_ACCOUNTS_OF_MODE,
   NO_CREDITS,
+  NO_EXPERT,
+  NO_EXPERT_TEMPLATES,
   NO_GRAPHS,
   NO_LIBRARY_AGENTS,
   NO_SEED_RUN_COMPLETED,
   NO_SESSIONS,
+  NO_SPARE_TEMPLATE,
   NOT_SEEDED,
   PAYWALLED,
+  SCRIPTED_PROBE_FAILED,
   SKILLS_UNAVAILABLE,
   STORE_DISCOVERY_FAILED,
   SUBSCRIBE_FAILED,
+  TURNS_OFF,
   combine,
   isFailure,
   reasonFor,
   recordCoverage,
 } from "./coverage.js";
 import { seedGraph } from "./graphs.js";
+import { randomUuid } from "./random.js";
 import {
   cancelSubscriptions,
   stripeTestKey,
@@ -59,8 +81,26 @@ export const SEED_GRAPHS = whole("SEED_GRAPHS", 4, 0, 20);
 export const SEED_RUNS = whole("SEED_RUNS", 2, 1, 10);
 export const SEED_SESSIONS = whole("SEED_SESSIONS", 6, 0, 50);
 const SEED_TURNS_PER_ACCOUNT = 3;
+// Each work expert's chats, which expert_work opens and continues.
+const SEED_EXPERT_SESSIONS = 2;
 const SEED_RUN_WAIT_MS = 90000;
+// A hire answers before its workflows, skills and routines are installed;
+// the seed waits for them, every account's at once, up to this long.
+const EXPERT_SETUP_WAIT_MS = 120000;
 const PROBE_TIMEOUT = "60s";
+
+// The journeys that send copilot turns, each on its accounts' engine.
+const TURN_JOURNEYS = {
+  copilot_turn: "dummy",
+  expert_work: "dummy",
+  expert_hire: "dummy",
+  copilot_turn_scripted: "scripted",
+  copilot_turn_real: "real",
+};
+// The journeys that read chat sessions or create them.
+const CHAT_JOURNEYS = ["copilot_reads", "copilot_poll"].concat(
+  Object.keys(TURN_JOURNEYS),
+);
 
 const seedGraphs = new Counter("seed_graphs");
 const seedRuns = new Counter("seed_runs");
@@ -68,9 +108,12 @@ const seedRunsCompleted = new Counter("seed_runs_completed");
 const seedSessions = new Counter("seed_sessions");
 const seedTurns = new Counter("seed_turns");
 const seedLibraryAdds = new Counter("seed_library_adds");
+const seedExpertsHired = new Counter("seed_experts");
+const seedExpertSessions = new Counter("seed_expert_sessions");
 const seedCredits = new Trend("seed_credits_per_account");
 const storeAgentsFound = new Gauge("seed_store_agents_found");
 const storeSkillsFound = new Gauge("seed_store_skills_found");
+const expertTemplatesFound = new Gauge("seed_expert_templates_found");
 
 function whole(variable, fallback, min, max) {
   const raw = __ENV[variable];
@@ -84,9 +127,19 @@ function whole(variable, fallback, min, max) {
   return n;
 }
 
+// LOAD_TEST_COPILOT_TURNS=off sends no copilot turn at all, probes included.
+function copilotTurnsOff() {
+  const raw = (__ENV.LOAD_TEST_COPILOT_TURNS || "").trim().toLowerCase();
+  if (raw === "" || raw === "on") return false;
+  if (raw === "off") return true;
+  throw new Error(`LOAD_TEST_COPILOT_TURNS must be on or off, got "${raw}"`);
+}
+
 // For options.setupTimeout: a request per seeded object, the subscription
-// calls, a wait for the seed runs, and a probe turn.
+// calls, the expert's hire and chats, a wait for the seed runs and one for
+// the experts' setup, and the two probe turns.
 const SUBSCRIBE_REQUESTS = 8;
+const EXPERT_REQUESTS = 4 + SEED_EXPERT_SESSIONS;
 
 export function seedSetupTimeout() {
   const perAccount =
@@ -94,8 +147,14 @@ export function seedSetupTimeout() {
     SUBSCRIBE_REQUESTS +
     SEED_GRAPHS * (2 + SEED_RUNS) +
     SEED_SESSIONS +
-    SEED_TURNS_PER_ACCOUNT;
-  return `${120 + Math.ceil((accountCount() * perAccount * 1500 + SEED_RUN_WAIT_MS) / 1000)}s`;
+    SEED_TURNS_PER_ACCOUNT +
+    EXPERT_REQUESTS;
+  const waits =
+    SEED_RUN_WAIT_MS +
+    EXPERT_SETUP_WAIT_MS +
+    durationMs(PROBE_TIMEOUT) +
+    durationMs(TURN_TIMEOUTS.scripted);
+  return `${120 + Math.ceil((accountCount() * perAccount * 1500 + waits) / 1000)}s`;
 }
 
 function request(method, path, headers, body, expected) {
@@ -130,7 +189,12 @@ function request(method, path, headers, body, expected) {
 function detail(result) {
   const body = result.json;
   if (!body) return `HTTP ${result.status}`;
-  const text = body.detail || body.message || "";
+  const text =
+    typeof body.detail === "string"
+      ? body.detail
+      : (body.detail && (body.detail.code || JSON.stringify(body.detail))) ||
+        body.message ||
+        "";
   return `HTTP ${result.status}${text ? ` ${String(text).slice(0, 120)}` : ""}`;
 }
 
@@ -142,23 +206,44 @@ function refusal(result, data) {
   return data.stripe.enabled ? SUBSCRIBE_FAILED : PAYWALLED;
 }
 
+// An engine's or an expert journey's state before setup decides it: off,
+// with no accounts to run as.
+function undecided() {
+  return {
+    enabled: false,
+    code: COVERED,
+    reason: "not in SCENARIOS",
+    accounts: [],
+  };
+}
+
 export function seedRun(auth, journeys) {
   const wants = (name) => journeys.includes(name);
   const runId = __ENV.RUN_ID || "manual";
-  if (wants("copilot_turn")) copilotEngine();
+  copilotTurnsOff();
+  const wantsExperts =
+    wants("expert_work") ||
+    wants("expert_hire") ||
+    wants("copilot_turn_scripted");
   const data = {
     auth: auth.auth,
-    // Teardown deletes the chat sessions the turn journey created, which it
-    // finds by their creation after this.
+    // The run signed the accounts up, so nothing under them predates it.
+    signedUp: auth.signedUp === true,
+    // The run id as it may appear in a scripted turn's nonce.
+    runTag: runId.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+    // Teardown deletes the chat sessions the journeys and probes created,
+    // which it finds by their creation after this.
     startedAt: new Date().toISOString(),
+    startsSessions: Object.keys(TURN_JOURNEYS).some(wants),
     accounts: [],
     store: discoverStore(),
+    experts: wantsExperts ? discoverExperts() : noExperts(),
     graphs: { enabled: false, code: COVERED, reason: "not in SCENARIOS" },
     copilot: {
-      enabled: false,
-      code: COVERED,
-      reason: "not in SCENARIOS",
-      turnTimeout: __ENV.COPILOT_TURN_TIMEOUT || "120s",
+      timeouts: TURN_TIMEOUTS,
+      dummy: undecided(),
+      scripted: undecided(),
+      real: undecided(),
     },
     stripe: {
       enabled: stripeTestKey(config) !== null,
@@ -188,17 +273,28 @@ export function seedRun(auth, journeys) {
         data.stripe.tier ? ` (${data.stripe.tier})` : ""
       }`
     : "none (STRIPE_TEST_SECRET_KEY is not set)";
+  const turns = ["dummy", "scripted", "real"]
+    .map((engine) => {
+      const state = data.copilot[engine];
+      return state.enabled
+        ? `${engine} on for ${state.accounts.length} account(s)`
+        : `${engine} off (${state.reason})`;
+    })
+    .join(", ");
+  const experts = wantsExperts
+    ? data.experts.code === COVERED
+      ? `${data.experts.templates.length} templates, work expert "${data.experts.workTemplateName}" on ${
+          data.accounts.filter((a) => a.experts && a.experts.workId).length
+        } accounts`
+      : `off (${data.experts.reason})`
+    : "not in SCENARIOS";
   const line = `seed: ${data.accounts.length} accounts; subscriptions ${subscriptions}; store agents ${data.store.agents.length}, skills ${
     data.store.skillsAvailable ? data.store.skillSlugs.length : "unavailable"
   }; graph runs ${
     data.graphs.enabled
       ? `on for ${able(data, "graphRuns")} of ${data.accounts.length} accounts`
       : `off (${data.graphs.reason})`
-  }; copilot turns ${
-    data.copilot.enabled
-      ? `on for ${able(data, "chat")} of ${data.accounts.length} accounts (dummy engine confirmed)`
-      : `off (${data.copilot.reason})`
-  }`;
+  }; experts ${experts}; copilot turns: ${turns}`;
   if (failed.length > 0) {
     console.error(
       `${line}. FAILED ON THE TARGET: ${failed.join(", ")}, which fails the run; NOT COVERED IN FULL: ${off.join(", ")}; the summary's coverage section says why`,
@@ -216,10 +312,14 @@ export function seedRun(auth, journeys) {
 // Subscribes and seeds every account, then decides which journeys can run.
 function seedAccounts(auth, wants, data, runId) {
   const pendingRuns = [];
+  const pendingExperts = [];
+  const wantsChat = CHAT_JOURNEYS.some(wants);
   for (let i = 0; i < auth.auth.length; i++) {
     const headers = accountHeaders(auth, i);
     const account = {
       index: i,
+      // The engine the account's turns run on (lib/auth.js).
+      mode: auth.auth[i].mode,
       graphs: [],
       libraryAgentIds: [],
       sessionIds: [],
@@ -229,6 +329,9 @@ function seedAccounts(auth, wants, data, runId) {
       graphRuns: COVERED,
       chat: COVERED,
       refused: COVERED,
+      // What the seed did about experts on this account (seedExperts), or
+      // null when no expert journey runs as it.
+      experts: null,
     };
     data.accounts.push(account);
 
@@ -255,13 +358,29 @@ function seedAccounts(auth, wants, data, runId) {
     if (wants("graph_run")) {
       startSeedRuns(account, headers, data, pendingRuns);
     }
-    if (wants("copilot_reads") || wants("copilot_turn")) {
+    if (wantsChat) {
       seedChatSessions(account, headers, data);
+    }
+    const hiresWork =
+      (account.mode === "dummy" && wants("expert_work")) ||
+      (account.mode === "scripted" && wants("copilot_turn_scripted"));
+    const hires =
+      hiresWork || (account.mode === "dummy" && wants("expert_hire"));
+    if (hires && data.experts.code === COVERED) {
+      seedExperts(account, headers, data, pendingExperts, hiresWork);
     }
   }
 
   if (wants("graph_run")) decideGraphRuns(data, pendingRuns);
-  if (wants("copilot_turn")) decideCopilot(auth, data);
+  // The probes run while the hires install.
+  decideCopilot(data, wants);
+  if (pendingExperts.length > 0) waitForExperts(pendingExperts);
+  for (const account of data.accounts) {
+    if (account.experts && account.experts.workId) {
+      seedExpertChats(account, accountHeaders(data, account.index), data);
+    }
+  }
+  decideExperts(data, wants);
 }
 
 function able(data, field) {
@@ -425,6 +544,177 @@ function seedChatSessions(account, headers, data) {
   }
 }
 
+// The roster's templates, as the marketplace lists them, and the one each
+// dummy and scripted account hires for expert_work and the scripted expert
+// chats: LOAD_TEST_EXPERT_TEMPLATE, a template's id or name, else the first.
+// A target that lists none cannot serve the expert journeys, which fails a
+// run that has them.
+function discoverExperts() {
+  const experts = noExperts();
+  experts.reason = null;
+  const listed = request("GET", "/experts/templates", {});
+  const templates =
+    listed.ok && Array.isArray(listed.json)
+      ? listed.json.filter((t) => t && t.id)
+      : null;
+  expertTemplatesFound.add(templates ? templates.length : 0);
+  if (!templates || templates.length === 0) {
+    experts.code = NO_EXPERT_TEMPLATES;
+    experts.reason = templates
+      ? "the target lists no expert templates"
+      : `listing the expert templates failed: ${detail(listed)}`;
+    console.warn(`seed: ${experts.reason}; the expert journeys are off`);
+    return experts;
+  }
+  const wanted = (__ENV.LOAD_TEST_EXPERT_TEMPLATE || "").trim();
+  const work = wanted
+    ? templates.find(
+        (t) =>
+          t.id === wanted ||
+          String(t.name || "").toLowerCase() === wanted.toLowerCase(),
+      )
+    : templates[0];
+  if (!work) {
+    throw new Error(
+      `LOAD_TEST_EXPERT_TEMPLATE "${wanted}" is none of the target's ${templates.length} expert templates: ${templates
+        .map((t) => t.name)
+        .join(", ")}`,
+    );
+  }
+  experts.templates = templates.map((t) => t.id);
+  experts.workTemplateId = work.id;
+  experts.workTemplateName = work.name || work.id;
+  return experts;
+}
+
+function noExperts() {
+  return {
+    templates: [],
+    workTemplateId: null,
+    workTemplateName: null,
+    code: COVERED,
+    reason: "not in SCENARIOS",
+    work: undecided(),
+    hire: undecided(),
+  };
+}
+
+// What the account had before the run, and the work template's expert when
+// `hiresWork`. Teardown archives every active expert of the account that is
+// not among `preexisting`, which is the whole list for an account the run
+// signed up; a supplied account whose experts cannot be read gets no hire,
+// so nothing of its own is ever archived. expert_hire hires on the account
+// only templates it has no active expert of: a re-hire would return that
+// expert rather than hire.
+function seedExperts(account, headers, data, pending, hiresWork) {
+  const number = account.index + 1;
+  const experts = {
+    preexisting: null,
+    workId: null,
+    sessionIds: [],
+    hireTemplateIds: [],
+    code: COVERED,
+  };
+  account.experts = experts;
+  if (account.chat !== COVERED) {
+    experts.code = account.chat;
+    return;
+  }
+  const listed = request("GET", "/experts", headers);
+  const active = listed.ok && Array.isArray(listed.json) ? listed.json : null;
+  if (active === null && !data.signedUp) {
+    experts.code = NO_EXPERT;
+    console.warn(
+      `seed: reading account ${number}'s experts failed (${detail(listed)}); the run hires none for it`,
+    );
+    return;
+  }
+  experts.preexisting = (active || []).map((e) => e.id);
+  const held = (active || []).map((e) => e.source_template_id);
+  experts.hireTemplateIds = data.experts.templates.filter(
+    (id) => id !== data.experts.workTemplateId && held.indexOf(id) < 0,
+  );
+  if (!hiresWork) return;
+
+  const hired = request(
+    "POST",
+    "/experts",
+    headers,
+    { template_id: data.experts.workTemplateId, surface: "expert_page" },
+    [200],
+  );
+  const expert = hired.ok && hired.json ? hired.json.expert : null;
+  if (!expert || !expert.id) {
+    experts.code = NO_EXPERT;
+    console.warn(
+      `seed: hiring the work expert for account ${number} failed: ${detail(hired)}`,
+    );
+    return;
+  }
+  experts.workId = expert.id;
+  if (experts.preexisting.indexOf(expert.id) < 0) seedExpertsHired.add(1);
+  if (expert.setup_status === "installing") {
+    pending.push({ headers, number, id: expert.id });
+  }
+}
+
+// Polls the hired experts until none is installing or the wait runs out. An
+// expert whose setup failed, or is still going, still chats.
+function waitForExperts(pending) {
+  const deadline = Date.now() + EXPERT_SETUP_WAIT_MS;
+  let open = pending.slice();
+  while (open.length > 0 && Date.now() < deadline) {
+    sleep(2);
+    const still = [];
+    for (const expert of open) {
+      const res = request("GET", `/experts/${expert.id}`, expert.headers);
+      const status = res.json && res.json.setup_status;
+      if (!res.ok || status === "installing") {
+        still.push(expert);
+      } else if (status === "failed") {
+        console.warn(
+          `seed: account ${expert.number}'s work expert installed with failures: ${(
+            res.json.setup_failures || []
+          ).join(", ")}`,
+        );
+      }
+    }
+    open = still;
+  }
+  if (open.length > 0) {
+    console.warn(
+      `seed: ${open.length} work expert(s) still installing after ${EXPERT_SETUP_WAIT_MS / 1000}s; their chats open anyway`,
+    );
+  }
+}
+
+// The work expert's chats, named by the client as the expert page names
+// them, for expert_work to open and continue.
+function seedExpertChats(account, headers, data) {
+  const number = account.index + 1;
+  const experts = account.experts;
+  for (let s = 0; s < SEED_EXPERT_SESSIONS; s++) {
+    const created = request(
+      "POST",
+      "/chat/sessions",
+      headers,
+      { expert_id: experts.workId, session_id: randomUuid() },
+      [200, 402],
+    );
+    if (!created.ok || !created.json || !created.json.id) {
+      if (created.status === 402 && experts.sessionIds.length === 0) {
+        experts.code = refusal(created, data);
+      }
+      console.warn(
+        `seed: creating a chat with account ${number}'s work expert failed: ${detail(created)}`,
+      );
+      break;
+    }
+    seedExpertSessions.add(1);
+    experts.sessionIds.push(created.json.id);
+  }
+}
+
 // The graph journey runs on the accounts that could start their seed runs,
 // once one of those runs has completed: a target whose executor completes
 // none cannot serve it, and that fails the run.
@@ -453,11 +743,71 @@ function decideGraphRuns(data, pendingRuns) {
   data.graphs.reason = null;
 }
 
+// Which accounts each expert journey runs as. expert_work needs a dummy
+// account with its work expert; expert_hire a dummy account with a template
+// left to hire.
+function decideExperts(data, wants) {
+  const dummy = data.accounts.filter((a) => a.mode === "dummy");
+  const decide = (state, usable, codeFor) => {
+    if (data.experts.code !== COVERED) {
+      state.code = data.experts.code;
+      state.reason = data.experts.reason;
+      return;
+    }
+    if (dummy.length === 0) {
+      state.code = NO_ACCOUNTS_OF_MODE;
+      state.reason = "the run has no dummy account";
+      return;
+    }
+    state.accounts = dummy.filter(usable).map((a) => a.index);
+    state.enabled = state.accounts.length > 0;
+    state.code = combine(dummy.map(codeFor));
+    state.reason = state.code === COVERED ? null : reasonFor(state.code);
+  };
+  if (wants("expert_work")) {
+    decide(
+      data.experts.work,
+      (a) => a.experts && a.experts.workId !== null,
+      (a) => {
+        if (a.chat !== COVERED) return a.chat;
+        if (!a.experts) return NO_EXPERT;
+        return a.experts.workId ? COVERED : a.experts.code || NO_EXPERT;
+      },
+    );
+  }
+  if (wants("expert_hire")) {
+    decide(
+      data.experts.hire,
+      (a) => a.experts && a.experts.hireTemplateIds.length > 0,
+      (a) => {
+        if (a.chat !== COVERED) return a.chat;
+        if (!a.experts || a.experts.preexisting === null) return NO_EXPERT;
+        return a.experts.hireTemplateIds.length > 0
+          ? COVERED
+          : NO_SPARE_TEMPLATE;
+      },
+    );
+  }
+}
+
 // What each enabled journey can exercise, from what the seed found and
 // created. Returns the journeys that cannot run in full and those of them
 // that failed on the target.
 function recordRunCoverage(data, journeys) {
   const library = data.accounts.map(libraryCoverage);
+  const chat = [combine(data.accounts.map((a) => a.chat)), able(data, "chat")];
+  const engine = (state) => [
+    state.code,
+    state.enabled ? state.accounts.length : 0,
+  ];
+  // An expert journey without dummy turns still makes its reads.
+  const dummyTurns = data.copilot.dummy.enabled
+    ? COVERED
+    : data.copilot.dummy.code;
+  const expert = (state) => [
+    combine([state.code, dummyTurns]),
+    state.enabled ? state.accounts.length : 0,
+  ];
   const entries = {
     account_reads: [COVERED],
     store_browse: [storeCoverage(data.store)],
@@ -469,14 +819,13 @@ function recordRunCoverage(data, journeys) {
       data.graphs.code,
       data.graphs.enabled ? able(data, "graphRuns") : 0,
     ],
-    copilot_reads: [
-      combine(data.accounts.map((a) => a.chat)),
-      able(data, "chat"),
-    ],
-    copilot_turn: [
-      data.copilot.code,
-      data.copilot.enabled ? able(data, "chat") : 0,
-    ],
+    copilot_reads: chat,
+    copilot_poll: chat,
+    copilot_turn: engine(data.copilot.dummy),
+    copilot_turn_scripted: engine(data.copilot.scripted),
+    copilot_turn_real: engine(data.copilot.real),
+    expert_work: expert(data.experts.work),
+    expert_hire: expert(data.experts.hire),
   };
   const off = [];
   const failed = [];
@@ -636,59 +985,160 @@ function waitForRuns(pending) {
   return { completed, failed, open: open.length };
 }
 
-// LOAD_TEST_COPILOT_ENGINE, "" or "dummy". seedRun() checks it before it
-// creates anything.
-function copilotEngine() {
-  const engine = __ENV.LOAD_TEST_COPILOT_ENGINE || "";
-  if (engine !== "" && engine !== "dummy") {
-    throw new Error(
-      `LOAD_TEST_COPILOT_ENGINE=${engine}: the workload sends turns only at the dummy engine; tests/copilot-real-model.js is the opt-in real-model test`,
-    );
+// Which engines the turn journeys may send turns at, and as which accounts.
+// The dummy probe comes first and decides for all three: it confirms the
+// copilot executor runs and the target routes accounts by address, so a
+// scripted or real turn is never sent at a target that fails it. A probe
+// that fails is a failure of the target, not a limit.
+function decideCopilot(data, wants) {
+  const wanted = Object.keys(TURN_JOURNEYS)
+    .filter(wants)
+    .map((name) => TURN_JOURNEYS[name]);
+  if (wanted.length === 0) return;
+  const engines = data.copilot;
+  const decided = ["dummy"]
+    .concat(wanted)
+    .filter((engine, i, all) => all.indexOf(engine) === i);
+  for (const engine of decided) engines[engine].reason = null;
+  if (copilotTurnsOff()) {
+    for (const engine of decided) {
+      engines[engine].code = TURNS_OFF;
+      engines[engine].reason = reasonFor(TURNS_OFF);
+    }
+    return;
   }
-  return engine;
+
+  const dummy = engines.dummy;
+  const dummyAccounts = modeAccounts(data, "dummy");
+  const probeAccount = dummyAccounts.find((a) => a.chat === COVERED);
+  if (dummyAccounts.length === 0) {
+    dummy.code = NO_ACCOUNTS_OF_MODE;
+    dummy.reason = "the run has no dummy account";
+  } else if (!probeAccount) {
+    dummy.code = combine(dummyAccounts.map((a) => a.chat));
+    dummy.reason = `no dummy account has a chat session to probe the engine with: ${reasonFor(dummy.code)}`;
+  } else {
+    probeDummy(data, dummy, probeAccount);
+  }
+  if (dummy.enabled) {
+    dummy.accounts = dummyAccounts
+      .filter((a) => a.chat === COVERED)
+      .map((a) => a.index);
+    dummy.code = combine(dummyAccounts.map((a) => a.chat));
+    seedHistory(data, dummy.accounts);
+  }
+
+  for (const engine of ["scripted", "real"]) {
+    if (wanted.indexOf(engine) < 0) continue;
+    const state = engines[engine];
+    const accounts = modeAccounts(data, engine);
+    const usable = accounts.filter((a) => a.chat === COVERED);
+    if (accounts.length === 0) {
+      state.code = NO_ACCOUNTS_OF_MODE;
+      state.reason = `the run has no ${engine} account`;
+    } else if (usable.length === 0) {
+      state.code = combine(accounts.map((a) => a.chat));
+      state.reason = `no ${engine} account can open a chat: ${reasonFor(state.code)}`;
+    } else if (!dummy.enabled) {
+      // A dummy probe that failed is the reason; one that could not run
+      // leaves the engine unconfirmed.
+      state.code = isFailure(dummy.code) ? dummy.code : ENGINE_UNCONFIRMED;
+      state.reason = isFailure(dummy.code)
+        ? dummy.reason
+        : reasonFor(ENGINE_UNCONFIRMED);
+    } else {
+      state.accounts = usable.map((a) => a.index);
+      state.code = combine(accounts.map((a) => a.chat));
+      state.enabled = true;
+    }
+  }
+  if (engines.scripted.enabled) probeScripted(data, engines.scripted);
 }
 
-// Copilot turns are sent only when the operator says the target runs the
-// dummy engine, and after one probe turn confirms it. A probe that fails
-// then is a failure of the target, not a limit.
-function decideCopilot(auth, data) {
-  if (copilotEngine() === "") {
-    data.copilot.code = ENGINE_UNSET;
-    data.copilot.reason =
-      "LOAD_TEST_COPILOT_ENGINE is not set; the turn journey is opt-in for a target that runs the dummy engine, CHAT_TEST_MODE=true (README: Copilot and model spend)";
-    return;
-  }
-  const first = data.accounts.find((a) => a.chat === COVERED);
-  if (!first) {
-    data.copilot.code = combine(data.accounts.map((a) => a.chat));
-    data.copilot.reason = `no account has a chat session to probe the engine with: ${reasonFor(data.copilot.code)}`;
-    return;
-  }
-  const probe = streamTurn(first.sessionIds[0], "Reply with one word.", {
-    headers: accountHeaders(auth, first.index),
+function modeAccounts(data, mode) {
+  return data.accounts.filter((a) => a.mode === mode);
+}
+
+// One turn on a dummy account's seeded session, which must come back with
+// the dummy's reply. Anything else means the account's turns would not run
+// on the dummy engine, and nothing more is sent.
+function probeDummy(data, dummy, account) {
+  const probe = streamTurn(account.sessionIds[0], "Reply with one word.", {
+    headers: accountHeaders(data, account.index),
     phase: "setup",
     timeout: PROBE_TIMEOUT,
     record: false,
+    engine: "dummy",
   });
   if (probe.outcome !== "completed") {
-    data.copilot.code = ENGINE_PROBE_FAILED;
-    data.copilot.reason = `the engine probe ${probe.outcome} (${probe.error || "no error"}); is the copilot executor running?`;
+    dummy.code = ENGINE_PROBE_FAILED;
+    dummy.reason = `the dummy probe ${probe.outcome} (${probe.error || "no error"}); is the copilot executor running?`;
     return;
   }
   if (probe.text.trim() !== DUMMY_REPLY) {
-    data.copilot.code = ENGINE_NOT_DUMMY;
-    data.copilot.reason =
-      "the engine probe's reply was not the dummy's: the target is not in CHAT_TEST_MODE, and the probe spent one real turn";
+    dummy.code = ENGINE_NOT_DUMMY;
+    dummy.reason = reasonFor(ENGINE_NOT_DUMMY);
     return;
   }
-  data.copilot.enabled = true;
-  data.copilot.code = combine(data.accounts.map((a) => a.chat));
-  data.copilot.reason = null;
+  dummy.enabled = true;
+  dummy.reason = null;
+}
 
-  // A little history in the seeded sessions, so session reads carry messages.
-  for (const account of data.accounts) {
-    if (account.chat !== COVERED) continue;
-    const headers = accountHeaders(auth, account.index);
+// One scripted turn on a new session of a scripted account, which must end
+// with the script's final text. Without the scripted model, or without the
+// script, the turn fails and the scripted journey is off; the others run.
+function probeScripted(data, scripted) {
+  const account = data.accounts[scripted.accounts[0]];
+  const headers = accountHeaders(data, account.index);
+  const fail = (why) => {
+    scripted.enabled = false;
+    scripted.accounts = [];
+    scripted.code = SCRIPTED_PROBE_FAILED;
+    scripted.reason = `the scripted probe ${why}: is the scripted model deployed for the target with model-scripts/loadtest-turn.json?`;
+  };
+  const created = request("POST", "/chat/sessions", headers, {}, [200]);
+  if (!created.ok || !created.json || !created.json.id) {
+    fail(`could not open its session (${detail(created)})`);
+    return;
+  }
+  const probe = streamTurn(
+    created.json.id,
+    scriptedMessage(
+      `probe-${data.runTag}`,
+      "Check the sandbox, then answer in one sentence.",
+    ),
+    {
+      headers,
+      phase: "setup",
+      timeout: data.copilot.timeouts.scripted,
+      record: false,
+      engine: "scripted",
+    },
+  );
+  if (probe.outcome !== "completed" || !hasScriptedReply(probe)) {
+    fail(
+      probe.outcome === "completed"
+        ? "completed without the script's final text"
+        : `${probe.outcome} (${probe.error || "no error"})`,
+    );
+    return;
+  }
+  if (
+    !probe.toolOutputs.some((output) => output.includes(SCRIPTED_TOOL_OUTPUT))
+  ) {
+    console.warn(
+      "seed: the scripted probe finished without the sandbox command's output (held for approval, or the sandbox failed); scripted turns still run the engine",
+    );
+  }
+}
+
+// A little history in the dummy accounts' seeded sessions, so session reads
+// carry messages. Only dummy accounts: a scripted turn needs a new session
+// each time, and a real one costs money.
+function seedHistory(data, indices) {
+  for (const index of indices) {
+    const account = data.accounts[index];
+    const headers = accountHeaders(data, index);
     for (const sessionId of account.sessionIds.slice(
       0,
       SEED_TURNS_PER_ACCOUNT,
@@ -698,6 +1148,7 @@ function decideCopilot(auth, data) {
         phase: "setup",
         timeout: PROBE_TIMEOUT,
         record: false,
+        engine: "dummy",
       });
       if (turn.outcome === "completed") seedTurns.add(1);
     }
@@ -725,15 +1176,19 @@ export function seedingReport(summaryData) {
     sessions: count("seed_sessions"),
     turns: count("seed_turns"),
     library_adds: count("seed_library_adds"),
+    experts_hired: count("seed_experts"),
+    expert_sessions: count("seed_expert_sessions"),
     subscriptions: count("seed_subscriptions"),
     subscriptions_cancelled: count("seed_subscriptions_cancelled"),
     store_agents_found: gauge("seed_store_agents_found"),
     store_skills_found: gauge("seed_store_skills_found"),
+    expert_templates_found: gauge("seed_expert_templates_found"),
     credits_per_account_avg:
       credits && credits.values ? Math.round(credits.values.avg) : null,
     executions_deleted: count("cleanup_executions"),
     library_agents_deleted: count("cleanup_library_agents"),
     sessions_deleted: count("cleanup_sessions"),
+    experts_archived: count("cleanup_experts"),
     cleanup_failures: count("cleanup_failures"),
   };
 }

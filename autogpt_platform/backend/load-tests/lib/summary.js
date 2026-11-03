@@ -8,6 +8,7 @@
 import http from "k6/http";
 
 import { getEnvironmentConfig } from "../configs/environment.js";
+import { steadyKey } from "../configs/thresholds.js";
 
 const config = getEnvironmentConfig();
 
@@ -168,10 +169,11 @@ export function buildSummary(data, meta) {
   // Steady phase only. A test that reports no phases (meta.phases unset,
   // tests/copilot-real-model.js) records every sample in the steady phase,
   // so a metric without a steady submetric is reported whole; the workload
-  // leaves such a metric out rather than mix its warm-up in.
+  // leaves such a metric out rather than mix its warm-up in. A name may
+  // carry a tag filter, copilot_ttft_ms{engine:dummy}, reported as named.
   const custom = {};
   for (const name of meta.customMetrics || []) {
-    const steady = data.metrics[`${name}{phase:steady}`];
+    const steady = data.metrics[steadyKey(name)];
     const all = data.metrics[name];
     if (steady) custom[name] = trendRow(steady);
     else if (all && !meta.phases) custom[name] = trendRow(all);
@@ -257,7 +259,7 @@ export function textReport(summary) {
   if (Object.keys(summary.custom_metrics).length > 0) {
     lines.push("");
     lines.push(
-      `${pad("user-facing metric (steady phase)", 36)} ${pad("count", 7)} ${pad(
+      `${pad("user-facing metric (steady phase)", 42)} ${pad("count", 7)} ${pad(
         "p50",
         8,
       )} ${pad("p95", 8)} ${pad("p99", 8)} ${pad("max", 8)}`,
@@ -265,12 +267,16 @@ export function textReport(summary) {
     for (const name of Object.keys(summary.custom_metrics)) {
       const row = summary.custom_metrics[name];
       lines.push(
-        `${pad(name, 36)} ${pad(num(row.count), 7)} ${pad(cell(row, "med", ms), 8)} ${pad(
+        `${pad(name, 42)} ${pad(num(row.count), 7)} ${pad(cell(row, "med", ms), 8)} ${pad(
           cell(row, "p(95)", ms),
           8,
         )} ${pad(cell(row, "p(99)", ms), 8)} ${pad(cell(row, "max", ms), 8)}`,
       );
     }
+  }
+  if (summary.cost) {
+    lines.push("");
+    lines.push(`cost: ${JSON.stringify(summary.cost)}`);
   }
   if (summary.seeding) {
     lines.push("");

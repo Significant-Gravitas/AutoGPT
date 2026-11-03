@@ -4,13 +4,14 @@
 //
 // Each code is a limit or a failure. A limit is the target's configuration
 // or data, or the operator's choice: a paywall with no Stripe key, an empty
-// marketplace, a copilot engine nobody asked for. The journey runs what it
-// can or skips, and the run passes or fails on what it measured. A failure
-// is the target not doing what the run needs and asked for: no seed run
-// completes, a requested engine fails its probe, the seed cannot create what
-// a journey reads, the store's lists fail. It fails the run through
-// coverage_failures, whose threshold is in configs/thresholds.js, because
-// the journey's own thresholds have no samples to fail on.
+// marketplace, turns switched off, no account of a journey's mode. The
+// journey runs what it can or skips, and the run passes or fails on what it
+// measured. A failure is the target not doing what the run needs and asked
+// for: no seed run completes, an engine fails its probe, the seed cannot
+// create what a journey reads, the store's lists fail, there is no expert to
+// hire. It fails the run through coverage_failures, whose threshold is in
+// configs/thresholds.js, because the journey's own thresholds have no
+// samples to fail on.
 //
 // setup() cannot hand text to handleSummary, so the state travels as
 // numbers: per journey, a code and how many accounts can run the journey.
@@ -22,7 +23,7 @@ import { accountCount } from "./auth.js";
 
 export const COVERED = 0;
 export const PAYWALLED = 1;
-export const ENGINE_UNSET = 2;
+export const TURNS_OFF = 2;
 export const ENGINE_PROBE_FAILED = 3;
 export const ENGINE_NOT_DUMMY = 4;
 export const NO_SEED_RUN_COMPLETED = 5;
@@ -35,6 +36,12 @@ export const SUBSCRIBE_FAILED = 11;
 export const NOT_SEEDED = 12;
 export const NO_LIBRARY_AGENTS = 13;
 export const STORE_DISCOVERY_FAILED = 14;
+export const NO_ACCOUNTS_OF_MODE = 15;
+export const ENGINE_UNCONFIRMED = 16;
+export const SCRIPTED_PROBE_FAILED = 17;
+export const NO_EXPERT_TEMPLATES = 18;
+export const NO_EXPERT = 19;
+export const NO_SPARE_TEMPLATE = 20;
 
 const CODES = {
   [PAYWALLED]: {
@@ -42,10 +49,24 @@ const CODES = {
     reason:
       "the target paywalls new accounts (402 A subscription is required); STRIPE_TEST_SECRET_KEY lets the run subscribe its accounts in Stripe test mode (README: Paywalled targets)",
   },
-  [ENGINE_UNSET]: {
+  [TURNS_OFF]: {
+    failure: false,
+    reason: "LOAD_TEST_COPILOT_TURNS=off: the run sent no copilot turn",
+  },
+  [NO_ACCOUNTS_OF_MODE]: {
     failure: false,
     reason:
-      "LOAD_TEST_COPILOT_ENGINE is not set; see README, Copilot and model spend",
+      "the run has no account whose turns run on this journey's engine (LOAD_TEST_SCRIPTED_ACCOUNTS, LOAD_TEST_REAL_ACCOUNTS, or the addresses in LOAD_TEST_ACCOUNTS; README: Account modes)",
+  },
+  [ENGINE_UNCONFIRMED]: {
+    failure: false,
+    reason:
+      "no dummy account could probe the copilot executor first, so no scripted or real turn was sent",
+  },
+  [NO_SPARE_TEMPLATE]: {
+    failure: false,
+    reason:
+      "the target has no expert template besides the one the seed hired for expert_work (LOAD_TEST_EXPERT_TEMPLATE), or the accounts already have them all, so expert_hire hired nothing",
   },
   [MARKETPLACE_EMPTY]: {
     failure: false,
@@ -69,12 +90,27 @@ const CODES = {
   [ENGINE_PROBE_FAILED]: {
     failure: true,
     reason:
-      "the copilot engine probe did not complete; is the copilot executor running?",
+      "the dummy account's probe turn did not complete, so no turn was sent; is the copilot executor running?",
   },
   [ENGINE_NOT_DUMMY]: {
     failure: true,
     reason:
-      "LOAD_TEST_COPILOT_ENGINE=dummy, but the engine probe's reply was not the dummy's: the target is not in CHAT_TEST_MODE",
+      "the dummy account's probe reply was not the dummy engine's: the target does not route load-test accounts by address (CHAT_LOAD_TEST_EMAIL_DOMAIN), the probe spent one real turn, and no other turn was sent; LOAD_TEST_COPILOT_TURNS=off runs the rest (README: Copilot turns and model spend)",
+  },
+  [SCRIPTED_PROBE_FAILED]: {
+    failure: true,
+    reason:
+      "the scripted account's probe turn did not end with the script's final text: is the scripted model deployed for the target (CHAT_LOAD_TEST_MODEL_URL) with model-scripts/loadtest-turn.json? The log says how the probe ended",
+  },
+  [NO_EXPERT_TEMPLATES]: {
+    failure: true,
+    reason:
+      "the target's expert templates (GET /experts/templates) could not be read or there are none, so the seed hired no expert",
+  },
+  [NO_EXPERT]: {
+    failure: true,
+    reason:
+      "the seed could not hire the work expert for an account, so it had no expert to work with; the log says why",
   },
   [NO_SEED_RUN_COMPLETED]: {
     failure: true,
@@ -124,9 +160,17 @@ export function combine(codes) {
   return limit === undefined ? COVERED : limit;
 }
 
-// A code leaves these journeys with nothing to do; the others still make
-// the reads that do not depend on what is missing.
-const SKIPPED_ENTIRELY = { graph_run: true, copilot_turn: true };
+// These journeys do nothing without an account that can run them, so a code
+// that leaves them none skips them; the others still make the reads that do
+// not depend on what is missing.
+const SKIPPED_ENTIRELY = {
+  graph_run: true,
+  copilot_turn: true,
+  copilot_turn_scripted: true,
+  copilot_turn_real: true,
+  expert_work: true,
+  expert_hire: true,
+};
 
 const codeGauges = {};
 const accountGauges = {};

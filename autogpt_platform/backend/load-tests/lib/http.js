@@ -17,12 +17,15 @@ const config = getEnvironmentConfig();
 
 // GET/POST/DELETE a backend route. `path` is relative to /api; `route` is the
 // template the metrics are grouped under (defaults to path without its
-// query).
+// query). The request is the VU's own account's, or `account`'s (one of
+// data.accounts) when given.
 export function api(method, path, options) {
   const opts = options || {};
   const headers = Object.assign(
     { "Content-Type": "application/json" },
-    opts.auth === false ? {} : authHeaders(opts.data),
+    opts.auth === false
+      ? {}
+      : authHeaders(opts.data, opts.account ? opts.account.index : undefined),
     opts.headers || {},
   );
   const expected = opts.expect || [200];
