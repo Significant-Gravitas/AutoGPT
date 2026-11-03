@@ -19,6 +19,7 @@ async def test_production_is_refused_before_connecting(mocker, capsys):
 
 
 async def test_a_clean_run_prints_its_summary_and_succeeds(mocker, capsys):
+    mocker.patch.object(cli, "ensure_seedable")
     mocker.patch("backend.data.db.connect")
     disconnect = mocker.patch("backend.data.db.disconnect")
     mocker.patch.object(
@@ -32,6 +33,7 @@ async def test_a_clean_run_prints_its_summary_and_succeeds(mocker, capsys):
 
 
 async def test_a_listing_that_could_not_be_seeded_fails_the_run(mocker):
+    mocker.patch.object(cli, "ensure_seedable")
     mocker.patch("backend.data.db.connect")
     mocker.patch("backend.data.db.disconnect")
     mocker.patch.object(

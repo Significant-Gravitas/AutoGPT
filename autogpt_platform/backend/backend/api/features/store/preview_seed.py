@@ -18,6 +18,7 @@ approval, and skipped otherwise.
 """
 
 import logging
+import re
 import uuid
 from collections.abc import Iterable
 
@@ -132,22 +133,24 @@ def reviewer_keys(listing: SeedListing) -> list[str]:
 
 
 def ensure_seedable() -> None:
-    """Raise :class:`SeedRefused` unless this is a local database or a PR preview.
+    """Raise :class:`SeedRefused` unless ``APP_ENV`` is ``local`` or this is a
+    PR preview.
 
     A preview runs with ``APP_ENV=dev``, like the shared dev deployment and
     self-hosted installs; its Sentry environment, ``pr-<n>``, is what sets it
-    apart.
+    apart. ``local`` is taken at its word: it is the developer's setting, not
+    a check of where ``DATABASE_URL`` points.
     """
     config = Settings().config
     if config.app_env == AppEnvironment.LOCAL:
         return
-    if config.app_env != AppEnvironment.PRODUCTION and (
-        config.sentry_environment.startswith("pr-")
+    if config.app_env != AppEnvironment.PRODUCTION and re.fullmatch(
+        r"pr-\d+", config.sentry_environment
     ):
         return
     raise SeedRefused(
         f"refusing to seed synthetic data with APP_ENV={config.app_env.value}: "
-        "only local databases and pr-<n> previews are seeded"
+        "only APP_ENV=local and pr-<n> previews are seeded"
     )
 
 
@@ -364,11 +367,13 @@ def _processing(workflow: Workflow) -> tuple[list[_Step], list[_Wire]]:
 
 
 async def _ensure_graph(listing: SeedListing, owner: _SeededUser) -> tuple[str, int]:
-    latest = await prisma.models.AgentGraph.prisma().find_first(
-        where={"id": seed_graph_id(listing)}, order={"version": "desc"}
+    # The seed's own version: a later one is someone's edit, which the seed
+    # must not submit and approve unreviewed.
+    seeded = await prisma.models.AgentGraph.prisma().find_unique(
+        where={"graphVersionId": {"id": seed_graph_id(listing), "version": 1}}
     )
-    if latest is not None:
-        return latest.id, latest.version
+    if seeded is not None:
+        return seeded.id, seeded.version
     graph = make_graph_model(build_graph(listing), owner.id)
     graph.validate_graph(for_run=False)
     created = await create_graph(
@@ -395,12 +400,22 @@ async def _ensure_listing(
             or pending is None
             or (existing.hasApprovedVersion and existing.activeVersionId != pending.id)
         ):
-            live = (
+            active = next(
+                (
+                    v
+                    for v in existing.Versions or []
+                    if v.id == existing.activeVersionId
+                ),
+                None,
+            )
+            # Reviews belong only on a live version the seed itself approved.
+            seeded_live = (
                 not existing.isDeleted
                 and existing.hasApprovedVersion
-                and existing.activeVersionId
+                and active is not None
+                and active.reviewerId == admin_id
             )
-            return "existing", existing.activeVersionId if live else None
+            return "existing", active.id if seeded_live and active else None
         version_id, outcome = pending.id, "approved"
     else:
         request = store_model.StoreSubmissionRequest(
@@ -413,6 +428,7 @@ async def _ensure_listing(
             instructions=listing.instructions,
             categories=list(listing.categories),
             recommended_schedule_cron=listing.recommended_schedule_cron,
+            changes_summary=SEED_NOTE,
         )
         submission = await store_db.create_store_submission(
             user_id=owner.id,
@@ -445,8 +461,9 @@ def _unreviewed_pending(
         prisma.models.StoreListingVersion | prisma.models.SkillListingVersion
     ],
 ):
-    """A pending version nobody has reviewed: what a run that stopped between
-    submitting and approving leaves behind."""
+    """A pending version the seed submitted and nobody has reviewed: what a
+    run that stopped between submitting and approving leaves behind. Anyone
+    else's submission waits for a real review."""
     return next(
         (
             version
@@ -454,6 +471,7 @@ def _unreviewed_pending(
             if version.submissionStatus == prisma.enums.SubmissionStatus.PENDING
             and not version.isDeleted
             and version.reviewerId is None
+            and version.changesSummary == SEED_NOTE
         ),
         None,
     )
@@ -517,7 +535,7 @@ async def _ensure_skill(skill: SeedSkill, owner_id: str, admin_id: str) -> str:
             skill_model.SkillSubmissionRequest(
                 skill_name=skill.slug,
                 categories=list(skill.categories),
-                changes_summary="Initial submission",
+                changes_summary=SEED_NOTE,
             ),
             parse_seed_skill(skill),
             files=[],

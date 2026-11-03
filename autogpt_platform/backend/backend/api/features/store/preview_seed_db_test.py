@@ -190,9 +190,11 @@ async def test_a_listing_rejected_since_stays_rejected(seeded):
     await _assert_live(listing)
 
 
-async def _resubmit(listing) -> store_model.StoreSubmission:
-    """Drop the listing and submit it again, as a run that stopped right after
-    submitting would have left it."""
+async def _resubmit(
+    listing, changes_summary: str = preview_seed.SEED_NOTE
+) -> store_model.StoreSubmission:
+    """Drop the listing and submit it again: by default as a seed run that
+    stopped right after submitting would have left it."""
     graph_id = preview_seed.seed_graph_id(listing)
     owner_id = preview_seed.seed_user_id(
         next(c for c in CREATORS if c.key == listing.creator)
@@ -209,6 +211,7 @@ async def _resubmit(listing) -> store_model.StoreSubmission:
         name=listing.name,
         sub_heading=listing.sub_heading,
         categories=list(listing.categories),
+        changes_summary=changes_summary,
         organization_id=org_id,
     )
 
@@ -254,4 +257,27 @@ async def test_an_approval_interrupted_after_pointing_the_listing_is_finished(se
         summary = await preview_seed.seed_marketplace()
 
     assert summary.listings[listing.slug] == "approved"
+    await _assert_live(listing)
+
+
+async def test_someone_elses_pending_submission_waits_for_a_real_review(seeded):
+    listing = LISTINGS[4]
+    # An admin acting as the synthetic creator, say.
+    submission = await _resubmit(listing, changes_summary="Tweaked the template")
+
+    with patch.object(store_db, "ensure_embedding", AsyncMock(return_value=False)):
+        summary = await preview_seed.seed_marketplace()
+
+    assert summary.listings[listing.slug] == "existing"
+    version = await prisma.models.StoreListingVersion.prisma().find_unique_or_raise(
+        where={"id": submission.listing_version_id}
+    )
+    assert version.submissionStatus == prisma.enums.SubmissionStatus.PENDING
+
+    # Put it back, so the module's other tests see the marketplace as seeded.
+    await prisma.models.StoreListing.prisma().delete_many(
+        where={"agentGraphId": preview_seed.seed_graph_id(listing)}
+    )
+    with patch.object(store_db, "ensure_embedding", AsyncMock(return_value=False)):
+        await preview_seed.seed_marketplace()
     await _assert_live(listing)

@@ -65,6 +65,8 @@ async def test_production_is_refused_before_anything_is_written(mocker):
         # The shared dev deployment and self-hosted installs.
         (AppEnvironment.DEVELOPMENT, "", False),
         (AppEnvironment.DEVELOPMENT, "dev", False),
+        (AppEnvironment.DEVELOPMENT, "pr-", False),
+        (AppEnvironment.DEVELOPMENT, "pr-latest", False),
         (AppEnvironment.PRODUCTION, "pr-15488", False),
     ],
 )
