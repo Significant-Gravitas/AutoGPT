@@ -181,6 +181,20 @@ class TestGating:
 
 class TestObservationHandlers:
     @pytest.mark.asyncio
+    async def test_a_screenshot_without_image_data_is_an_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Metadata alone would read to the model as a successful capture."""
+        shim = _shim()
+        shim.computer.screenshot.return_value = {"width": 800, "height": 600}
+        _install(monkeypatch, shim)
+
+        result = await tools._h_screenshot({})
+
+        assert result["isError"] is True
+        assert _payload(result)["code"] == "INTERNAL_ERROR"
+
+    @pytest.mark.asyncio
     async def test_screenshot_returns_image_and_metadata(
         self, monkeypatch: pytest.MonkeyPatch
     ):

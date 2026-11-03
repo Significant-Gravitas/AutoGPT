@@ -858,10 +858,17 @@ def _local_grep_result(result: Any) -> dict[str, Any]:
     and anything else (a bad pattern, an unreadable file, a timeout) is an
     error that must not read as "No matches found."."""
     output = (result.stdout or "").strip()
+    # Past the companion's output cap the matches shown are not all of them.
+    truncated = (
+        "\n\n[Output truncated: more matches exist. Narrow the pattern, path "
+        "or include filter to see them.]"
+        if result.output_truncated
+        else ""
+    )
     if result.exit_code in (0, 1) and not result.timed_out:
         if not output:
             return _mcp("No matches found.", outside=())
-        return _mcp(output, outside=(output,))
+        return _mcp(f"{output}{truncated}", outside=(output,))
     if result.timed_out:
         errors = f"timed out after {_GREP_TIMEOUT_SECONDS} seconds"
     else:
@@ -871,7 +878,8 @@ def _local_grep_result(result: Any) -> dict[str, Any]:
         return _mcp(f"Grep failed: {errors}", error=True)
     # Matches in the files grep could read are still real results.
     return _mcp(
-        f"{output}\n\n[grep reported errors: {errors}]", outside=(output, errors)
+        f"{output}{truncated}\n\n[grep reported errors: {errors}]",
+        outside=(output, errors),
     )
 
 

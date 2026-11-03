@@ -188,6 +188,8 @@ async def _h_screenshot(args: dict[str, Any]) -> dict[str, Any]:
         return _err("INVALID_ARGUMENT", str(exc))
 
     image_b64 = payload.get("image_base64") or ""
+    if not image_b64:
+        return _err("INTERNAL_ERROR", "The screenshot reply did not include an image.")
     mime = payload.get("mime_type") or (
         "image/png"
         if str(args.get("format", "jpeg")).lower() == "png"
@@ -204,15 +206,8 @@ async def _h_screenshot(args: dict[str, Any]) -> dict[str, Any]:
     }
     content: list[dict[str, Any]] = [
         {"type": "text", "text": json.dumps(meta, default=str)},
+        {"type": "image", "data": image_b64, "mimeType": mime},
     ]
-    if image_b64:
-        content.append(
-            {
-                "type": "image",
-                "data": image_b64,
-                "mimeType": mime,
-            }
-        )
     return {"content": content, "isError": False}
 
 

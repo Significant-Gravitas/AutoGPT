@@ -236,6 +236,27 @@ class TestLocalPCGrep:
         assert payload["timeout_seconds"] == 15
 
     @pytest.mark.asyncio
+    async def test_truncated_matches_say_more_exist(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Past the companion's output cap the matches shown are not all of
+        them, and the model must not read the rest as absent."""
+        _grep_on_shim(
+            monkeypatch,
+            {
+                "stdout": "notes.txt:3:foo\n",
+                "exit_code": 0,
+                "output_truncated": True,
+            },
+        )
+
+        result = await _handle_grep({"pattern": "foo"})
+
+        assert result["isError"] is False
+        assert _text(result).startswith("notes.txt:3:foo")
+        assert "more matches" in _text(result)
+
+    @pytest.mark.asyncio
     async def test_matches_are_returned(self, monkeypatch: pytest.MonkeyPatch):
         _grep_on_shim(
             monkeypatch,

@@ -68,6 +68,7 @@ from backend.util.sandbox_login import (
 from .base import BaseTool
 from .connect_integration import requested_scopes
 from .e2b_sandbox import SandboxOwner, keep_sandbox_running
+from .local_pc_shim import COMMAND_TIMEOUT_SECONDS
 from .models import BashExecResponse, ErrorResponse, ToolResponseBase
 from .sandbox import get_workspace_dir, has_full_sandbox, run_sandboxed
 
@@ -219,7 +220,7 @@ class BashExecTool(BaseTool):
                 f"Execute a command with {shell} on the user's Local PC. "
                 "This is explicitly enabled, full user-level command execution; "
                 "the file API workspace jail does not confine shell commands. "
-                "Killed after `timeout` seconds."
+                f"Killed after `timeout` seconds, at most {COMMAND_TIMEOUT_SECONDS}."
             )
         return (
             "Execute a Bash command or script. Shares filesystem with SDK file tools. "
@@ -236,11 +237,16 @@ class BashExecTool(BaseTool):
     def parameters(self) -> dict[str, Any]:
         sandbox = get_current_sandbox()
         command_description = "Bash command or script."
+        timeout_description = "Timeout in seconds; raise for long-running commands."
         if is_local_pc_executor(sandbox):
             command_description = (
                 "Windows command-shell input."
                 if sandbox.platform.lower() == "windows"
                 else "POSIX-shell command or script."
+            )
+            # The companion stops every command at its own cap.
+            timeout_description = (
+                f"Timeout in seconds, at most {COMMAND_TIMEOUT_SECONDS}."
             )
         return {
             "type": "object",
@@ -251,7 +257,7 @@ class BashExecTool(BaseTool):
                 },
                 "timeout": {
                     "type": "integer",
-                    "description": "Timeout in seconds; raise for long-running commands.",
+                    "description": timeout_description,
                     "default": 120,
                     "title": "Time limit",
                     "format": "seconds",

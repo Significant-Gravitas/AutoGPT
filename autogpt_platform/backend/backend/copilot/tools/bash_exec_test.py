@@ -157,6 +157,28 @@ def test_local_windows_description_does_not_claim_bash_or_confinement() -> None:
         )
 
 
+def test_local_pc_schema_states_the_companions_command_cap() -> None:
+    """The companion stops every command at its cap, so a longer timeout
+    the model asks for would never apply."""
+    sandbox = MagicMock(platform="linux")
+    with (
+        patch(
+            "backend.copilot.tools.bash_exec.get_current_sandbox",
+            return_value=sandbox,
+        ),
+        patch(
+            "backend.copilot.tools.bash_exec.is_local_pc_executor",
+            return_value=True,
+        ),
+    ):
+        tool = _make_tool()
+
+        assert "at most 30" in tool.description
+        assert tool.parameters["properties"]["timeout"]["description"] == (
+            "Timeout in seconds, at most 30."
+        )
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_local_pc_never_receives_platform_integration_secrets() -> None:
     tool = _make_tool()
