@@ -4,6 +4,7 @@ import argparse
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path, PurePosixPath
 
 SHARDS = {
@@ -85,6 +86,7 @@ def main() -> int:
         if args.layout == "paths"
         else ["-c", "pyproject.toml", ".", "../../.github/scripts"]
     )
+    os.environ["BACKEND_TEST_LAUNCH_TIME"] = str(time.perf_counter())
     return subprocess.run(
         [
             "poetry",

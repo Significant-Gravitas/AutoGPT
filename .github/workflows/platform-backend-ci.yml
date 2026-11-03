@@ -609,6 +609,7 @@ jobs:
         shell: bash
         env:
           COVERAGE_FILE: .coverage-${{ matrix.test-shard }}-${{ matrix.partition }}
+          PYTHONUNBUFFERED: "1"
           BACKEND_TEST_METRICS: shard-metrics-${{ matrix.test-shard }}-${{ matrix.partition }}.json
           LOG_LEVEL: ${{ runner.debug && 'DEBUG' || 'INFO' }}
           EXECUTION_MANAGER_PORT: "18002"
@@ -635,7 +636,7 @@ jobs:
           if [[ "${{ runner.debug }}" == "1" ]]; then
             pytest_args+=(-s -vv -o log_cli=true -o log_cli_level=DEBUG)
           else
-            pytest_args+=(-q)
+            pytest_args+=(-v)
           fi
 
           python ../../.github/scripts/backend_test_shard.py --layout "$TEST_LAYOUT" --partition "${{ matrix.partition }}" "${{ matrix.test-shard }}" -- "${pytest_args[@]}"

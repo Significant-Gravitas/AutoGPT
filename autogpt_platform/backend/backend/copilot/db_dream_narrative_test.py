@@ -40,7 +40,7 @@ _NARRATIVE = "Last night I noticed Alice runs the Atlas launch."
 
 
 @pytest.fixture
-async def make_user() -> AsyncIterator[Callable[[], Awaitable[str]]]:
+async def make_user(server) -> AsyncIterator[Callable[[], Awaitable[str]]]:
     created: list[str] = []
 
     async def make() -> str:

@@ -34,6 +34,10 @@ class ShardMetrics:
         self.shard = shard
         self.layout = layout
         self.started = time.perf_counter()
+        self.phases: dict[str, float] = {}
+        self.tests_finished: float | None = None
+        if launch := os.environ.get("BACKEND_TEST_LAUNCH_TIME"):
+            self.phases["launcher_to_configure"] = self.started - float(launch)
         self.nodeids: list[str] = []
         self.item_files: dict[str, str] = {}
         self.files: dict[str, dict[str, float]] = {}
@@ -68,6 +72,22 @@ class ShardMetrics:
                     == shard
                 ]
                 self.partitions = partition_files(selected, weights, PARTITIONS[shard])
+        self.phases["partition_discovery"] = time.perf_counter() - self.started
+
+    @pytest.hookimpl(wrapper=True, trylast=True)
+    def pytest_collection(self):
+        started = time.perf_counter()
+        result = yield
+        self.phases["collection"] = time.perf_counter() - started
+        return result
+
+    @pytest.hookimpl(wrapper=True, trylast=True)
+    def pytest_runtestloop(self):
+        started = time.perf_counter()
+        result = yield
+        self.tests_finished = time.perf_counter()
+        self.phases["test_loop"] = self.tests_finished - started
+        return result
 
     def pytest_ignore_collect(self, collection_path: Path) -> bool | None:
         if collection_path.is_dir():
@@ -139,6 +159,8 @@ class ShardMetrics:
             self.file_metrics(path)["test_seconds"] += report.duration
 
     def pytest_sessionfinish(self, exitstatus: int) -> None:
+        if self.tests_finished is not None:
+            self.phases["after_test_loop"] = time.perf_counter() - self.tests_finished
         report = {
             "version": 1,
             "layout": self.layout,
@@ -146,6 +168,7 @@ class ShardMetrics:
             "partition": self.partition,
             "exit_code": int(exitstatus),
             "pytest_seconds": time.perf_counter() - self.started,
+            "phase_seconds": self.phases,
             "source_sha": source_sha(self.root),
             "python": platform.python_version(),
             "machine": platform.machine(),

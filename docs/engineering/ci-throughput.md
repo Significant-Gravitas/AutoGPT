@@ -24,6 +24,12 @@ Both Docker frontend build paths use `next build --turbopack`, supported by the 
 
 These changes need complete hosted builds, source-map coverage, test inventories, appliance lifecycle tests and final status validation before a speedup can be claimed. Measure trigger-to-green time, including scheduling and setup, against the baseline. More shards may increase scheduling delay, and appliance startup/restart remains a separate cost. Five-minute CI and merge-queue performance are not yet established.
 
+The first partitioned [run on `a2430e2`](https://github.com/Significant-Gravitas/AutoGPT/actions/runs/41629553501) passed all sixteen frontend shards and their report gate; the longest shard job took 4 m 14 s. Journeys passed in 9 m 52 s. The separate AMD64 appliance job passed in 19 m 21 s, including 8 m 6 s building and 10 m 15 s running the lifecycle smoke test. These are observations from one run against merge commit `2180f932`, whose base contains additional changes; they are not an isolated benchmark of the optimizations.
+
+Backend validation failed: two database test modules lacked an explicit `server` fixture dependency and had relied on earlier tests connecting Prisma. Their fixtures now request the server. Three other partitions per Python stalled in async test calls; the run was cancelled for diagnosis. Verbose, unbuffered test output identifies the current test, and shard metrics separately time startup, collection, the test loop and finalization. The appliance logs distinguish migrations from skills catalog publishing. None of these diagnostic changes relaxs a gate.
+
+Branch coverage remains enabled. Coverage.py's faster `sys.monitoring` core does not support branch coverage on Python 3.12/3.13, so it is not selected. See the [coverage core documentation](https://coverage.readthedocs.io/en/7.13.5/config.html#run-core). A later Python upgrade needs compatibility and branch-coverage validation before that optimization is available.
+
 ## Hosted frontend comparison
 
 `frontend-tool-benchmark.yml` runs comparisons by manual dispatch. It uses the selected ref's SHA, the existing pnpm lock, Node 24.22.1 and standard GitHub-hosted runners. Trusted dev/master pushes still seed the experimental dependency cache. Diagnostic comparisons do not run on PR updates: GitHub's PR path filter sees the entire PR diff, so it repeated every experiment on unrelated follow-up commits. Candidate tools live in a temporary directory, without changing the project lock or installed TypeScript used by Next.js.
