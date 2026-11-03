@@ -310,6 +310,14 @@ class GraphValidationError(ValueError):
         )
 
 
+class GraphActivationError(ValueError):
+    """A graph cannot be activated, e.g. a required credential is missing,
+    revoked, or its OAuth token can no longer be refreshed.
+
+    Its message is written for the user; the API layer answers it with a 400.
+    """
+
+
 class InvalidInputError(ValueError):
     """Raised when user input validation fails (e.g., search term too long)"""
 
