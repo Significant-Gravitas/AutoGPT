@@ -254,6 +254,10 @@ def _signal_process_group(pgid: int, sig: int) -> bool:
     return True
 
 
+def _resolved_root(config: ShimConfig) -> Path:
+    return Path(os.path.realpath(config.allowed_root))
+
+
 def _is_link(path: Path) -> bool:
     """A symlink, or a Windows junction: removing either leaves its target."""
     isjunction = getattr(os.path, "isjunction", None)  # Python 3.12+
@@ -869,14 +873,17 @@ class FileHandler:
         start = time.monotonic()
         try:
             path = assert_inside_jail(payload.path, self.config.allowed_root)
+            # Without following, describe the entry the path names, a symlink
+            # included. The root has no entry inside itself, so it is
+            # described as resolved.
+            if not payload.follow_symlinks and path != _resolved_root(self.config):
+                path = assert_entry_inside_jail(payload.path, self.config.allowed_root)
         except PathJailError as exc:
             await _audit_jail_violation(self.audit, "FILE_STAT", payload.path, exc)
             return _jail_error_to_message(msg.id, exc)
 
         details = {"path": str(path), "follow_symlinks": payload.follow_symlinks}
 
-        # Real-resolve here too if follow_symlinks asked (realpath already ran
-        # in the jail; path is the resolved form).
         try:
             if payload.follow_symlinks:
                 st = await asyncio.to_thread(os.stat, str(path))
