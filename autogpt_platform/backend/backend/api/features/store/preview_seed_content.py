@@ -69,12 +69,11 @@ class ReplaceWorkflow:
 
 @dataclass(frozen=True)
 class CountWorkflow:
-    """A pasted text split on a delimiter, then counted."""
+    """A pasted list, one item per line, counted. Blank lines don't count."""
 
     input_name: str
     input_title: str
     example: str
-    delimiter: str
     output_name: str
 
 
@@ -257,13 +256,17 @@ LISTINGS: tuple[SeedListing, ...] = (
             input_name="landing_page_url",
             input_title="Landing page URL",
             example="https://example.com/launch",
+            # Parameters go before any #fragment, after a & when the URL
+            # already has a query string.
             template=(
-                "LinkedIn: {{ landing_page_url }}?utm_source=linkedin"
-                "&utm_medium=social&utm_campaign=launch\n"
-                "Newsletter: {{ landing_page_url }}?utm_source=newsletter"
-                "&utm_medium=email&utm_campaign=launch\n"
-                "Paid search: {{ landing_page_url }}?utm_source=google"
-                "&utm_medium=cpc&utm_campaign=launch"
+                "{% set url, hash, fragment = landing_page_url.partition('#') %}"
+                "{% set sep = '&' if '?' in url else '?' %}"
+                "LinkedIn: {{ url }}{{ sep }}utm_source=linkedin"
+                "&utm_medium=social&utm_campaign=launch{{ hash }}{{ fragment }}\n"
+                "Newsletter: {{ url }}{{ sep }}utm_source=newsletter"
+                "&utm_medium=email&utm_campaign=launch{{ hash }}{{ fragment }}\n"
+                "Paid search: {{ url }}{{ sep }}utm_source=google"
+                "&utm_medium=cpc&utm_campaign=launch{{ hash }}{{ fragment }}"
             ),
             output_name="tagged_links",
         ),
@@ -466,7 +469,6 @@ LISTINGS: tuple[SeedListing, ...] = (
             input_name="checklist",
             input_title="Checklist",
             example="Reset password\nUpdate billing contact\nClose ticket",
-            delimiter="\n",
             output_name="item_count",
         ),
     ),
@@ -570,18 +572,20 @@ LISTINGS: tuple[SeedListing, ...] = (
         slug="news-digest-formatter",
         creator="research",
         name="News Digest Formatter",
-        sub_heading="Summarize news headlines into a daily digest",
+        sub_heading="Number the news you summarize into one daily digest",
         description=(
-            "Paste the day's headlines and summarize the news into a skimmable "
-            "digest you can send to the team each morning."
+            "Paste the news items you summarize each morning, one per line, and "
+            "get them back as a numbered digest ready to send to the team."
         ),
         categories=("research", "content"),
         workflow=TemplateWorkflow(
             input_name="headlines",
-            input_title="Headlines",
+            input_title="News items",
             example="Rates held steady\nNew privacy rules proposed",
             template=(
-                "Daily digest\n\n{{ headlines }}\n\n"
+                "Daily digest\n"
+                "{% for item in headlines.splitlines() if item.strip() %}\n"
+                "{{ loop.index }}. {{ item.strip() }}{% endfor %}\n\n"
                 "Compiled for this morning's read."
             ),
             output_name="digest",
@@ -604,7 +608,6 @@ LISTINGS: tuple[SeedListing, ...] = (
             input_name="responses",
             input_title="Responses",
             example="Loved it\nToo slow\nWould recommend",
-            delimiter="\n",
             output_name="response_count",
         ),
         reviews=(3, 4),
@@ -714,7 +717,6 @@ LISTINGS: tuple[SeedListing, ...] = (
             input_name="changed_files",
             input_title="Changed files",
             example="src/app.py\nsrc/export.py\ntests/test_export.py",
-            delimiter="\n",
             output_name="file_count",
         ),
     ),

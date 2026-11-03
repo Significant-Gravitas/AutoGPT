@@ -73,6 +73,7 @@ async def test_a_second_run_changes_nothing(seeded):
     assert second.failed == {}
     assert set(second.listings.values()) == {"existing"}
     assert set(second.skills.values()) == {"existing"}
+    assert second.reviews == 0
     graph_ids = [preview_seed.seed_graph_id(listing) for listing in LISTINGS]
     assert await prisma.models.StoreListingVersion.prisma().count(
         where={"agentGraphId": {"in": graph_ids}}

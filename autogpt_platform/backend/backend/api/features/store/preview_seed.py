@@ -90,6 +90,7 @@ class SeedSummary(BaseModel):
     # run left pending) or "existing" (left as it was).
     listings: dict[str, str] = {}
     skills: dict[str, str] = {}
+    # Reviews this run added; one that already exists is never rewritten.
     reviews: int = 0
     failed: dict[str, str] = {}
 
@@ -207,15 +208,13 @@ async def _ensure_user(user: SeedUser) -> _SeededUser:
                 links=list(user.links),
             ),
         )
-        if user.featured:
-            await prisma.models.Profile.prisma().update(
-                where={"userId": user_id}, data={"isFeatured": True}
-            )
-    # update_profile stores no avatar as NULL, but the Creator view's avatar_url
-    # is non-null, so one NULL fails the whole creators list. An empty avatar
-    # renders the frontend's generated one.
+    # update_profile leaves a new profile's avatar NULL, but the Creator view's
+    # avatar_url is non-null, so one NULL fails the whole creators list. One
+    # write finishes the profile: a run that stopped before it finishes it next
+    # time, and a profile it already finished keeps any later edit.
     await prisma.models.Profile.prisma().update_many(
-        where={"userId": user_id, "avatarUrl": None}, data={"avatarUrl": ""}
+        where={"userId": user_id, "avatarUrl": None},
+        data={"avatarUrl": "", "isFeatured": user.featured},
     )
     await ensure_personal_org(user_id)
     org_id, team_id = await get_user_default_team(user_id)
@@ -281,16 +280,20 @@ def build_graph(listing: SeedListing) -> Graph:
             ("step", "output", "output", "value"),
         ]
     else:
+        # Drop blank lines first, so a trailing newline isn't an item.
+        lines = f"{workflow.input_name}.splitlines() | map('trim') | select"
         steps = [
             (
-                "split",
-                TextSplitBlock().id,
-                {"delimiter": workflow.delimiter, "strip": True},
+                "tidy",
+                FillTextTemplateBlock().id,
+                {"format": f"{{{{ {lines} | join('\\n') }}}}", "values": {}},
             ),
+            ("split", TextSplitBlock().id, {"delimiter": "\n", "strip": True}),
             ("step", CountItemsBlock().id, {}),
         ]
         wiring = [
-            ("input", "result", "split", "text"),
+            ("input", "result", "tidy", f"values_#_{workflow.input_name}"),
+            ("tidy", "output", "split", "text"),
             ("split", "texts", "step", "collection"),
             ("step", "count", "output", "value"),
         ]
@@ -409,6 +412,12 @@ async def _ensure_listing(
             raise ValueError(f"Submission of '{listing.slug}' returned no version")
         version_id, outcome = submission.listing_version_id, "created"
 
+    # Featured while still pending, so a run that stops after approving has
+    # nothing left to set, and a version already live keeps an admin's choice.
+    if listing.featured:
+        await prisma.models.StoreListingVersion.prisma().update(
+            where={"id": version_id}, data={"isFeatured": True}
+        )
     await store_db.review_store_submission(
         store_listing_version_id=version_id,
         is_approved=True,
@@ -417,10 +426,6 @@ async def _ensure_listing(
         reviewer_id=admin_id,
         notify_creator=False,
     )
-    if listing.featured:
-        await prisma.models.StoreListingVersion.prisma().update(
-            where={"id": version_id}, data={"isFeatured": True}
-        )
     return outcome, version_id
 
 
@@ -446,22 +451,34 @@ def _unreviewed_pending(
 async def _ensure_reviews(
     listing: SeedListing, version_id: str, reviewer_ids: list[str]
 ) -> int:
+    """Adds the reviews the version is missing; returns how many."""
     if len(listing.reviews) > len(reviewer_ids):
         raise ValueError(f"'{listing.slug}' has more reviews than reviewers")
+    added = 0
     for score, reviewer_id in zip(listing.reviews, reviewer_ids):
+        existing = await prisma.models.StoreListingReview.prisma().find_unique(
+            where={
+                "storeListingVersionId_reviewByUserId": {
+                    "storeListingVersionId": version_id,
+                    "reviewByUserId": reviewer_id,
+                }
+            }
+        )
+        if existing is not None:
+            continue
         review = store_model.StoreReviewCreate(
             store_listing_version_id=version_id,
             score=score,
             comments=REVIEW_COMMENTS[score],
         )
-        # An upsert per reviewer and version, so a rerun rewrites the same row.
         await store_db.create_store_review(
             user_id=reviewer_id,
             store_listing_version_id=review.store_listing_version_id,
             score=review.score,
             comments=review.comments,
         )
-    return len(listing.reviews)
+        added += 1
+    return added
 
 
 def parse_seed_skill(skill: SeedSkill) -> ParsedSkill:

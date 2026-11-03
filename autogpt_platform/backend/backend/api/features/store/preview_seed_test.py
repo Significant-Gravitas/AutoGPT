@@ -155,7 +155,7 @@ async def test_workflow_turns_its_example_into_the_expected_output(listing):
     elif isinstance(workflow, ReplaceWorkflow):
         assert result == workflow.example.replace(workflow.old, workflow.new)
     elif isinstance(workflow, CountWorkflow):
-        assert result == len(workflow.example.split(workflow.delimiter))
+        assert result == len(workflow.example.splitlines())
     else:
         assert isinstance(workflow, TemplateWorkflow)
         assert isinstance(result, str) and result.strip()
@@ -177,6 +177,51 @@ async def test_an_amount_keeps_its_cents(listing):
     result = await _run(build_graph(listing), entered="100.55")
 
     assert result == pytest.approx(_calculate(workflow, 100.55))
+
+
+COUNTERS = [
+    listing for listing in LISTINGS if isinstance(listing.workflow, CountWorkflow)
+]
+
+
+@pytest.mark.parametrize("listing", COUNTERS, ids=lambda listing: listing.slug)
+async def test_blank_lines_are_not_counted(listing):
+    result = await _run(build_graph(listing), entered="\nfirst\n\n  second  \n\n")
+
+    assert result == 2
+
+
+@pytest.mark.parametrize(
+    "url, linkedin",
+    [
+        (
+            "https://example.com/launch",
+            "https://example.com/launch?utm_source=linkedin&utm_medium=social"
+            "&utm_campaign=launch",
+        ),
+        (
+            "https://example.com/launch?ref=partner#pricing",
+            "https://example.com/launch?ref=partner&utm_source=linkedin"
+            "&utm_medium=social&utm_campaign=launch#pricing",
+        ),
+    ],
+)
+async def test_utm_links_keep_the_query_and_fragment(url, linkedin):
+    listing = next(item for item in LISTINGS if item.slug == "utm-link-builder")
+
+    result = await _run(build_graph(listing), entered=url)
+
+    assert result.splitlines()[0] == f"LinkedIn: {linkedin}"
+
+
+async def test_the_news_digest_numbers_each_item():
+    listing = next(item for item in LISTINGS if item.slug == "news-digest-formatter")
+
+    result = await _run(
+        build_graph(listing), entered="Rates held steady\n\n  Rules proposed \n"
+    )
+
+    assert "1. Rates held steady\n2. Rules proposed" in result
 
 
 @pytest.mark.parametrize("skill", SKILLS, ids=lambda skill: skill.slug)
