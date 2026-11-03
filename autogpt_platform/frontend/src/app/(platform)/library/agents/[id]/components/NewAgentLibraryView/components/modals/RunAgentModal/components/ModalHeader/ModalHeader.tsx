@@ -15,7 +15,7 @@ export function ModalHeader({ agent }: ModalHeaderProps) {
   return (
     <div className="flex flex-col gap-4">
       <Badge variant="info" className="w-fit">
-        New Task
+        New Run
       </Badge>
       <div>
         <Text variant="h2">{agent.name}</Text>

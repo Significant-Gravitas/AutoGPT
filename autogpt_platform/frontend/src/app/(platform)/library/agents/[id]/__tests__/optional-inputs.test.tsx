@@ -121,7 +121,7 @@ test("the run form offers each optional input and sends what the user picked", a
     </NuqsTestingAdapter>,
   );
   fireEvent.click(
-    await screen.findByRole("button", { name: "Setup your task" }),
+    await screen.findByRole("button", { name: "Set up your run" }),
   );
 
   fireEvent.click(await screen.findByRole("combobox", { name: "Topic" }));
@@ -137,7 +137,7 @@ test("the run form offers each optional input and sends what the user picked", a
   expect(screen.getByText("Tags")).toBeDefined();
   expect(screen.getByText("Limit")).toBeDefined();
 
-  fireEvent.click(screen.getByRole("button", { name: "Start Task" }));
+  fireEvent.click(screen.getByRole("button", { name: "Start Run" }));
 
   await waitFor(() =>
     expect(runInputs).toHaveBeenCalledWith(

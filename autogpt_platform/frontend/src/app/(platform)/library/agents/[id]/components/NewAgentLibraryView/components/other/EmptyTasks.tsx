@@ -130,7 +130,7 @@ export function EmptyTasks({
                   size="large"
                   className="inline-flex w-[19.75rem]"
                 >
-                  Setup your task
+                  Set up your run
                 </Button>
               }
               agent={agent}

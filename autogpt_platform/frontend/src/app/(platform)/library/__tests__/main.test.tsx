@@ -178,7 +178,7 @@ describe("LibraryPage", () => {
 
     await screen.findByText("Linked Agent");
 
-    const runLinks = screen.getAllByText("See tasks");
+    const runLinks = screen.getAllByText("See runs");
     expect(runLinks.length).toBeGreaterThan(0);
   });
 

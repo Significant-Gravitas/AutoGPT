@@ -335,7 +335,7 @@ test("library happy path: user can start and stop a saved task from runner UI", 
     .poll(() => libraryPage.getRunStatus(), { timeout: 45000 })
     .toBe("running");
 
-  const stopTaskButton = page.getByRole("button", { name: /Stop task/i });
+  const stopTaskButton = page.getByRole("button", { name: /Stop run/i });
   await expect(stopTaskButton).toBeVisible({ timeout: 30000 });
   const stopResponsePromise = page.waitForResponse(
     (response) =>
@@ -467,7 +467,7 @@ test("library happy path: user can rerun a completed task from the Library agent
   await libraryPage.waitForRunToComplete();
   await dismissFeedbackDialog(page);
 
-  const rerunTaskButton = page.getByRole("button", { name: /Rerun task/i });
+  const rerunTaskButton = page.getByRole("button", { name: /^Rerun$/i });
   await expect(rerunTaskButton).toBeVisible({ timeout: 45000 });
 
   await expect
@@ -518,14 +518,14 @@ test("library happy path: user can delete a completed task from the run sidebar"
   await expect(moreActionsButton).toBeVisible({ timeout: 15000 });
   await moreActionsButton.click();
 
-  await page.getByRole("menuitem", { name: /Delete( this)? task/i }).click();
+  await page.getByRole("menuitem", { name: /Delete( this)? run/i }).click();
 
-  const confirmDialog = page.getByRole("dialog", { name: /Delete task/i });
+  const confirmDialog = page.getByRole("dialog", { name: /Delete run/i });
   await expect(confirmDialog).toBeVisible({ timeout: 10000 });
-  await confirmDialog.getByRole("button", { name: /^Delete Task$/ }).click();
+  await confirmDialog.getByRole("button", { name: /^Delete Run$/ }).click();
 
   // Toast confirms the backend actually deleted (not just dialog closed).
-  await expect(page.getByText("Task deleted", { exact: true })).toBeVisible({
+  await expect(page.getByText("Run deleted", { exact: true })).toBeVisible({
     timeout: 15000,
   });
 
@@ -533,7 +533,7 @@ test("library happy path: user can delete a completed task from the run sidebar"
   // task-entry state.
   await expect(
     page.getByRole("button", {
-      name: /^(Setup your task|New workflow task)$/i,
+      name: /^(Set up your run|New run)$/i,
     }),
   ).toBeVisible({ timeout: 15000 });
 });
@@ -555,14 +555,14 @@ test("library happy path: user can open the agent in builder from the exact runn
   await libraryPage.waitForRunToComplete();
   await dismissFeedbackDialog(page);
 
-  // The "View task details" eye-icon button on a completed run opens the
+  // The "View run details" eye-icon button on a completed run opens the
   // agent in the builder in a new tab. This exercises the runner → builder
   // navigation that QA item #22 ("Customise Agent" from Runner UI) covers.
   const selectedRunId = getActiveItemId(page);
   expect(selectedRunId).toBeTruthy();
 
   const viewTaskButton = page
-    .locator('[aria-label="View task details"]')
+    .locator('[aria-label="View run details"]')
     .first();
   await expect(viewTaskButton).toBeVisible({ timeout: 15000 });
   const customiseAgentHref = await viewTaskButton.getAttribute("href");

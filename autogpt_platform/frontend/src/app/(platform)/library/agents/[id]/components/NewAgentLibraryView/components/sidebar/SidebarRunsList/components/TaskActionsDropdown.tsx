@@ -49,7 +49,7 @@ export function TaskActionsDropdown({ agent, run, onDeleted }: Props) {
     try {
       await deleteRun({ graphExecId: run.id });
 
-      toast({ title: "Task deleted" });
+      toast({ title: "Run deleted" });
 
       await queryClient.refetchQueries({
         queryKey: getGetV1ListGraphExecutionsQueryKey(agent.graph_id),
@@ -59,7 +59,7 @@ export function TaskActionsDropdown({ agent, run, onDeleted }: Props) {
       onDeleted?.();
     } catch (error: unknown) {
       toast({
-        title: "Failed to delete task",
+        title: "Failed to delete run",
         description:
           error instanceof Error
             ? error.message
@@ -132,7 +132,7 @@ export function TaskActionsDropdown({ agent, run, onDeleted }: Props) {
               setShowDeleteDialog(true);
             }}
           >
-            Delete task
+            Delete run
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -143,12 +143,12 @@ export function TaskActionsDropdown({ agent, run, onDeleted }: Props) {
           set: setShowDeleteDialog,
         }}
         styling={{ maxWidth: "32rem" }}
-        title="Delete task"
+        title="Delete run"
       >
         <Dialog.Content>
           <div>
             <Text variant="large">
-              Are you sure you want to delete this task? This action cannot be
+              Are you sure you want to delete this run? This action cannot be
               undone.
             </Text>
             <Dialog.Footer>
@@ -164,7 +164,7 @@ export function TaskActionsDropdown({ agent, run, onDeleted }: Props) {
                 onClick={handleDeleteRun}
                 loading={isDeletingRun}
               >
-                Delete Task
+                Delete Run
               </Button>
             </Dialog.Footer>
           </div>

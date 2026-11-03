@@ -254,7 +254,7 @@ export function NewAgentLibraryView() {
                     activeTab,
                   })}
                 >
-                  <Icon icon={PlusSignIcon} size={16} /> New workflow task
+                  <Icon icon={PlusSignIcon} size={16} /> New run
                 </Button>
               }
               agent={agent}
@@ -314,8 +314,8 @@ export function NewAgentLibraryView() {
             banner={renderMarketplaceUpdateBanner()}
           >
             <ErrorCard
-              context="workflow tasks"
-              hint="Use Try Again in the sidebar to reload your tasks."
+              context="workflow runs"
+              hint="Use Try Again in the sidebar to reload your runs."
             />
           </SelectedViewLayout>
         ) : sidebarLoading ? (

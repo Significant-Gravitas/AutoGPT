@@ -16,7 +16,7 @@ export function EmptyTemplates() {
           No templates yet
         </Text>
         <Text variant="large" tone="body">
-          Create a task first, then save it as a template to reuse later —
+          Create a run first, then save it as a template to reuse later —
           it&apos;ll show up here.
         </Text>
       </div>

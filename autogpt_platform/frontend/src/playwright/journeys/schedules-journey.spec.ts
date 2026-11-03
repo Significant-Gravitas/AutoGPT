@@ -26,10 +26,10 @@ test.describe("schedules journey", () => {
 
     await new LibraryPage(page).openSavedAgent(agentName);
     await page
-      .getByRole("button", { name: /Setup your task|New workflow task/i })
+      .getByRole("button", { name: /Set up your run|New run/i })
       .first()
       .click();
-    await page.getByRole("button", { name: "Schedule Task" }).click();
+    await page.getByRole("button", { name: "Schedule Run" }).click();
     const createDialog = page.getByRole("dialog", { name: "Schedule Run" });
     await createDialog.getByLabel("Schedule Name").fill("Weekday report");
     await selectOption(page, createDialog.locator("#repeat"), "Weekly");
