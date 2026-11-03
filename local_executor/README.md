@@ -6,6 +6,10 @@
 > Do not run as root. `--allowed-root` protects `FILE_*` operations only; it
 > does not sandbox the shell.
 
+> This package lives in the [AutoGPT repository](https://github.com/Significant-Gravitas/AutoGPT/tree/dev/local_executor),
+> next to the platform it connects to. It was developed in
+> `Significant-Gravitas/autogpt-local-executor` until then.
+
 ---
 
 ## What Is This?

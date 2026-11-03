@@ -62,7 +62,9 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
-ignore = ["E501"]
+# UP038 (isinstance with X | Y) is deprecated upstream; the repo's pinned
+# pre-commit Ruff still enforces it.
+ignore = ["E501", "UP038"]
 
 [tool.mypy]
 python_version = "3.11"
