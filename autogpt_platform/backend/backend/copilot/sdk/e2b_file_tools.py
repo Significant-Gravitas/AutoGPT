@@ -253,7 +253,7 @@ async def _remote_file_size(sandbox: Any, remote: str) -> int:
     """Size of *remote* on the executor: FILE_STAT on a Local PC, the files
     API on E2B."""
     if is_local_pc(sandbox):
-        stat = await sandbox.files.stat(remote, follow_symlinks=True)
+        stat = await stat_via_shim(sandbox, remote, follow_symlinks=True)
         return int(stat.get("size_bytes") or 0)
     return (await sandbox.files.get_info(remote)).size
 

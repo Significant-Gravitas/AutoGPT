@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-import time
+from time import time as wall_clock
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -112,7 +112,7 @@ async def mark_recording_started(
         mode=mode,
         interpretation_route=interpretation_route,
         channels=list(channels),
-        started_at=time.time(),
+        started_at=wall_clock(),
     )
     await _store_state(session_id, state)
     return state
@@ -124,7 +124,7 @@ async def mark_recording_stopped(
     state = await get_recording_state(session_id, recording_id)
     state = state or RecordingState(recording_id=recording_id, status="stopped")
     state.status = "stopped"
-    state.stopped_at = time.time()
+    state.stopped_at = wall_clock()
     state.summary = dict(summary)
     await _store_state(session_id, state)
     return state
@@ -136,7 +136,7 @@ async def mark_recording_reviewed(
     state = await get_recording_state(session_id, recording_id)
     state = state or RecordingState(recording_id=recording_id, status="reviewed")
     state.status = "reviewed"
-    state.reviewed_at = time.time()
+    state.reviewed_at = wall_clock()
     state.step_count = step_count
     await _store_state(session_id, state)
     return state
@@ -153,7 +153,7 @@ async def _store_state(session_id: str, state: RecordingState) -> None:
         order_key,
         state.recording_id,
         state.model_dump_json(),
-        str(time.time()),
+        str(wall_clock()),
         str(_MAX_RECORDINGS_PER_SESSION),
         str(_STATE_TTL_SECONDS),
     )

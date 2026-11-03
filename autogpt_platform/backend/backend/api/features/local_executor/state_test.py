@@ -60,7 +60,7 @@ async def test_recording_state_prunes_oldest_hash_and_order_entries() -> None:
             AsyncMock(return_value=redis),
         ),
         patch(
-            "backend.api.features.local_executor.state.time.time",
+            "backend.api.features.local_executor.state.wall_clock",
             side_effect=lambda: next(clock),
         ),
     ):

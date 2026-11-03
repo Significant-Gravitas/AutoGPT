@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-import time
+from time import monotonic
 from typing import Any
 
 from .local_pc_relay_protocol import (
@@ -41,7 +41,7 @@ class RelayResponseRouter:
                 "Local executor has too many outstanding relay requests"
             )
         target = register_pending_request(message, reply_id, self._pending)
-        now = time.monotonic()
+        now = monotonic()
         self._pending_activity[message["id"]] = now
         self._reply_activity[target.reply_id] = now
 
@@ -54,7 +54,7 @@ class RelayResponseRouter:
         target = validate_response_correlation(message, self._pending)
         if target is not None:
             if message["type"] in NONTERMINAL_RESPONSE_TYPES:
-                self._pending_activity[message["id"]] = time.monotonic()
+                self._pending_activity[message["id"]] = monotonic()
             else:
                 self._pending_activity.pop(message["id"], None)
             await self._append(raw, target.reply_id)
@@ -70,7 +70,7 @@ class RelayResponseRouter:
         await append_response(self._redis, key, raw)
 
     async def _broadcast_status(self, raw: str) -> None:
-        cutoff = time.monotonic() - _REPLY_ACTIVITY_SECONDS
+        cutoff = monotonic() - _REPLY_ACTIVITY_SECONDS
         active = {
             reply_id
             for reply_id, last_seen in self._reply_activity.items()
@@ -132,7 +132,7 @@ class RelayResponseRouter:
             self._recording_owners.pop(recording_id, None)
 
     def _prune_pending_requests(self) -> None:
-        cutoff = time.monotonic() - _REQUEST_CORRELATION_SECONDS
+        cutoff = monotonic() - _REQUEST_CORRELATION_SECONDS
         expired = [
             message_id
             for message_id, last_seen in self._pending_activity.items()

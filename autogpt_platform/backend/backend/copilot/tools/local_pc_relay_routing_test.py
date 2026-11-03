@@ -83,7 +83,7 @@ async def test_expired_request_correlation_is_pruned(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     now = [0.0]
-    monkeypatch.setattr(relay_routing.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(relay_routing, "monotonic", lambda: now[0])
     router = RelayResponseRouter(
         FakeRedis(), session_id="session-1", connection_id="connection-1"
     )
