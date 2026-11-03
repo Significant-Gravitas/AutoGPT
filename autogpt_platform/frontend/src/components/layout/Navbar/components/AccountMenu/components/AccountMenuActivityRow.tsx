@@ -53,7 +53,8 @@ export function AccountMenuActivityRow() {
           <span className="flex-1" aria-hidden="true" />
           <Icon
             icon={ArrowRight01Icon}
-            className="relative z-10 shrink-0 text-foreground-body"
+            tone="body"
+            className="relative z-10 shrink-0"
             size={16}
             aria-hidden="true"
           />

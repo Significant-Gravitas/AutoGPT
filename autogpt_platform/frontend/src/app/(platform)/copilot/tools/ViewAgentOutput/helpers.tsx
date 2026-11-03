@@ -134,13 +134,7 @@ export function ToolIcon({
     <Icon
       icon={EyeIcon}
       size={14}
-      className={
-        isError
-          ? "text-error"
-          : isStreaming
-            ? "text-foreground-tertiary"
-            : "text-foreground-subtle"
-      }
+      tone={isError ? "error" : isStreaming ? "muted" : "subtle"}
     />
   );
 }

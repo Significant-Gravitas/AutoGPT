@@ -124,14 +124,19 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
               </SheetTitle>
               <SheetDescription className="mt-1 text-muted-foreground">
                 <span className="inline-flex items-center gap-1.5">
-                  <Text
-                    variant="small-medium-tight"
-                    as="span"
+                  <span
                     // oxlint-disable-next-line design-system/no-raw-colors -- mustard yellow has no role; the warning roles are amber, deferred until approved
                     className="rounded-md bg-yellow-100 px-2 py-0.5 text-yellow-800"
                   >
-                    Beta
-                  </Text>
+                    <Text
+                      variant="small-medium-tight"
+                      as="span"
+                      tone="inherit"
+                      className="block"
+                    >
+                      Beta
+                    </Text>
+                  </span>
                   <Text variant="body-tight" as="span" tone="inherit">
                     This feature is in beta and may contain bugs
                   </Text>

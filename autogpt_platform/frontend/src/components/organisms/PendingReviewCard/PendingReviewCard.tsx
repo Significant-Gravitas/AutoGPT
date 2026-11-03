@@ -185,10 +185,12 @@ export function PendingReviewCard({
             </Text>
           </div>
           {autoApproveFuture && (
-            <Text variant="small" tone="muted" className="pl-11">
-              Original data will be used for this and all future reviews from
-              this block.
-            </Text>
+            <div className="pl-11">
+              <Text variant="small" tone="muted">
+                Original data will be used for this and all future reviews from
+                this block.
+              </Text>
+            </div>
           )}
         </div>
       )}

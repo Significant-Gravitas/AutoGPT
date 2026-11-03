@@ -30,7 +30,8 @@ function TablePreview({ table }: { table: PreviewTable }) {
             <Icon
               icon={Table01Icon}
               size={16}
-              className="shrink-0 text-foreground-tertiary"
+              tone="muted"
+              className="shrink-0"
             />
             <span
               translate="no"
