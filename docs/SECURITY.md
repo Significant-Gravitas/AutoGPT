@@ -13,7 +13,7 @@ Use a dedicated workspace and enable only the capabilities you need.
 | Threat | Severity | Mitigation |
 |--------|----------|------------|
 | Prompt injection causing arbitrary command execution | Critical | Shell disabled by default; explicit local opt-in; command audit log |
-| Shim token stolen → attacker controls machine | Critical | OS keychain storage; platform ownership/client checks; OAuth uses `USE_TOOLS` |
+| Shim token stolen → attacker controls machine | Critical | OS keychain storage; platform ownership/client checks; OAuth uses the dedicated `CONNECT_LOCAL_EXECUTOR` scope |
 | Path traversal outside allowed_root | High | Shim enforces path jail; platform validates paths before sending |
 | Platform compromise → misuse of paired machines | High | Locally disabled capabilities remain disabled; no per-operation local confirmation is implemented |
 | Man-in-the-middle on WebSocket | High | TLS required except explicit loopback development URLs; certificate verification, no pinning |
@@ -36,7 +36,8 @@ Use a dedicated workspace and enable only the capabilities you need.
 ## Defense Layers
 
 ### Layer 1: OAuth and Local Capability Gates
-The public shim client receives the existing `USE_TOOLS` OAuth permission.
+The public shim client receives only the `CONNECT_LOCAL_EXECUTOR` OAuth permission,
+which grants this connection and nothing else.
 Individual local capabilities are a separate, shim-enforced boundary: shell,
 computer use, clipboard access, local models, and hardware are only advertised
 when their local configuration gates are enabled and their runtime dependencies
@@ -205,7 +206,7 @@ normal network access. OS isolation and destination approval are future work.
   untouched. A network/server error preserves local tokens so revocation can be
   retried instead of falsely reporting success.
 - A successful platform revocation also pushes session revocation to connected shims.
-- Tokens carry `USE_TOOLS`; the WebSocket additionally checks session ownership,
+- Tokens carry `CONNECT_LOCAL_EXECUTOR`; the WebSocket additionally checks session ownership,
   client identity, and local capability gates.
 
 ### Per-OS Keychain Availability

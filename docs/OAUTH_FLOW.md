@@ -27,7 +27,7 @@ platform. It uses Authorization Code + PKCE and has no client secret.
 Client ID:     autogpt-local-executor (well-known)
 Client type:   public (PKCE; no client secret)
 Redirect URI:  http://localhost:{port}/callback   where {port} ∈ 41899..41910
-Scopes:        USE_TOOLS
+Scopes:        CONNECT_LOCAL_EXECUTOR
 Grant types:   authorization_code, refresh_token
 ```
 
@@ -58,7 +58,7 @@ http://localhost:41903/callback,http://localhost:41904/callback,\
 http://localhost:41905/callback,http://localhost:41906/callback,\
 http://localhost:41907/callback,http://localhost:41908/callback,\
 http://localhost:41909/callback,http://localhost:41910/callback" \
-    --scopes "USE_TOOLS"
+    --scopes "CONNECT_LOCAL_EXECUTOR"
 ```
 
 The command prints SQL containing the well-known public client ID and an
@@ -112,7 +112,7 @@ User                    Shim                         AutoGPT Platform
  |                       |      client_id=autogpt-local-executor
  |                       |      redirect_uri=http://localhost:41899/callback
  |                       |      code_challenge=...        |
- |                       |      scope=USE_TOOLS
+ |                       |      scope=CONNECT_LOCAL_EXECUTOR
  |                       |                                |
  |     [Browser opens]   |                                |
  |<====================================================-->|
@@ -149,7 +149,7 @@ Platform validates via `introspect_token(access_token)`:
 - Checks token not expired
 - On data channels, checks token belongs to the session owner
 - On the control channel, registers the online machine under the token's user
-- Checks `USE_TOOLS` scope present
+- Checks `CONNECT_LOCAL_EXECUTOR` scope present (HTTP 403 without it)
 - Returns user_id for the session
 
 ---
@@ -211,8 +211,11 @@ requires explicit authentication rather than falling back to legacy credentials.
 
 ## Scope
 
-The public shim client requests `USE_TOOLS`, an existing AutoGPT
-`APIKeyPermission`. The WebSocket handshake requires that scope in addition to
-an active access token and session ownership. Individual executor capabilities
+The public shim client requests `CONNECT_LOCAL_EXECUTOR`, the AutoGPT
+`APIKeyPermission` for exactly this connection. It grants nothing else: no
+External API tools, and API keys cannot carry it. The WebSocket handshake
+requires that scope in addition to an active access token and session
+ownership. A token issued before the scope existed is refused with HTTP 403, and
+the shim asks for `autogpt-shim auth` to be run again. Individual executor capabilities
 remain opt-in through shim configuration, HELLO capability advertisement,
 platform feature flags, and the per-session computer-use consent gate.

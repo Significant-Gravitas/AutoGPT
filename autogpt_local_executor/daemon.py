@@ -404,7 +404,9 @@ class ShimDaemon:
             status_code = getattr(exc.response, "status_code", None)
             if status_code == 403:
                 raise DaemonAuthenticationError(
-                    "WebSocket session access was denied (HTTP 403); token refresh was not attempted"
+                    "WebSocket session access was denied (HTTP 403); token refresh was "
+                    "not attempted. If this computer signed in before the Local PC "
+                    "permission existed, run `autogpt-shim auth` again."
                 ) from exc
             if status_code != 401:
                 raise

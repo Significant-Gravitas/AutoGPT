@@ -266,7 +266,7 @@ def test_authorize_url_uses_supported_scope_and_explicit_state(tmp_path: Path) -
     query = urllib.parse.parse_qs(parsed.query)
 
     assert parsed.path == "/auth/authorize"
-    assert query["scope"] == ["USE_TOOLS"]
+    assert query["scope"] == ["CONNECT_LOCAL_EXECUTOR"]
     assert query["state"] == ["expected-state"]
     assert query["redirect_uri"] == ["http://localhost:41903/callback"]
 

@@ -159,7 +159,9 @@ class OAuthFlow:
     Runs the Authorization Code + PKCE flow against the AutoGPT OAuth provider.
     """
 
-    SCOPES = ["USE_TOOLS"]
+    # Only what a Local PC connection needs; USE_TOOLS also covers web search
+    # and fetch through the External API.
+    SCOPES = ["CONNECT_LOCAL_EXECUTOR"]
 
     def __init__(self, config: ShimConfig, token_store: KeychainTokenStore) -> None:
         self.config = config
