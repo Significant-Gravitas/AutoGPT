@@ -331,3 +331,66 @@ async def test_leading_blank_line_counts_toward_skip_rows():
     rows = await read_rows(contents="\na,b\n1,2\n3,4", skip_rows=1)
 
     assert rows == [{"a": "1", "b": "2"}, {"a": "3", "b": "4"}]
+
+
+@pytest.mark.asyncio
+async def test_leading_empty_field_line_does_not_steal_header():
+    rows = await read_rows(contents=",\na,b\n1,2")
+
+    assert rows == [{"a": "1", "b": "2"}]
+
+
+# --- Excel goes through the same header handling as CSV --------------------
+
+
+async def read_sheet_rows(rows: list[list[object]], **inputs) -> list[dict[str, str]]:
+    """Write ``rows`` to a one-sheet workbook (None = no cell) and read it."""
+    workbook = Workbook()
+    sheet = workbook.active
+    assert sheet is not None
+    for r, row in enumerate(rows, start=1):
+        for c, value in enumerate(row, start=1):
+            if value is not None:
+                sheet.cell(r, c, value)
+    base = Path(get_exec_file_path(GRAPH_EXEC_ID, ""))
+    base.mkdir(parents=True, exist_ok=True)
+    target = base / "headers.xlsx"
+    workbook.save(target)
+    try:
+        return await read_rows(file_input=MediaFileType("headers.xlsx"), **inputs)
+    finally:
+        target.unlink(missing_ok=True)
+
+
+@pytest.mark.asyncio
+async def test_excel_duplicate_and_blank_headers_match_csv():
+    sheet = [["a", "a", None, "b"], [1, 2, 3, 4]]
+
+    rows = await read_sheet_rows(sheet)
+
+    assert rows == await read_rows(contents="a,a,,b\n1,2,3,4")
+    assert rows == [{"a": "1", "a_2": "2", "column_3": "3", "b": "4"}]
+
+
+@pytest.mark.asyncio
+async def test_excel_without_header_keeps_first_row_values():
+    rows = await read_sheet_rows([["a", "a", None], [1, 2, 3]], has_header=False)
+
+    assert rows == [{"0": "a", "1": "a", "2": ""}, {"0": "1", "1": "2", "2": "3"}]
+
+
+@pytest.mark.asyncio
+async def test_excel_leading_empty_row_does_not_steal_header():
+    rows = await read_sheet_rows([[], ["a", "b"], [1, 2], [None, None], [3, 4]])
+
+    assert rows == [
+        {"a": "1", "b": "2"},
+        {"a": "", "b": ""},
+        {"a": "3", "b": "4"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_excel_header_only_sheet_yields_no_rows():
+    assert await read_sheet_rows([["a", "b"]]) == []
+    assert await read_sheet_rows([["a", "b"]], skip_rows=5) == []

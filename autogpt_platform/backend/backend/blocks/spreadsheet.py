@@ -168,9 +168,14 @@ class ReadSpreadsheetBlock(Block):
                         # values: "N/A"/"NULL"/"NaN" stay text instead of being read as
                         # missing, and a gap in a numeric column no longer upcasts the
                         # whole column to float (turning 12 into "12.0").
+                        # header=None hands every row, header included, to the CSV
+                        # reader below, so pandas doesn't rename duplicate or blank
+                        # headers ("a.1", "Unnamed: 2") and Excel gets the same
+                        # header handling as CSV.
                         return pd.read_excel(
                             io.BytesIO(workbook),
                             sheet_name=input_data.sheet_name or 0,
+                            header=None,
                             dtype=object,
                             keep_default_na=False,
                         )
@@ -183,6 +188,7 @@ class ReadSpreadsheetBlock(Block):
                     df.to_csv(
                         csv_buffer,
                         index=False,
+                        header=False,
                         sep=input_data.delimiter,
                         quotechar=input_data.quotechar,
                     )
@@ -212,14 +218,16 @@ class ReadSpreadsheetBlock(Block):
         )
 
         # Leading blank lines skipped while finding the header count toward
-        # skip_rows, so the same data rows come out as before.
+        # skip_rows, so the same data rows come out as before. A row of only
+        # empty cells counts as blank here: that is how an empty first row of
+        # an Excel sheet reaches the reader.
         skip_rows = input_data.skip_rows
         header = None
         if input_data.has_header:
             # Empty input has no header row; don't let StopIteration escape
             # the async generator (it becomes a RuntimeError).
             header = next(reader, None)
-            while header == []:
+            while header is not None and not any(cell.strip() for cell in header):
                 skip_rows = max(skip_rows - 1, 0)
                 header = next(reader, None)
             if header is not None:
