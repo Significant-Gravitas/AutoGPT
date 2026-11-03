@@ -24,7 +24,8 @@ export function useOnboardingLayout({
   } | null>(null);
   if (snapshot.current?.userID !== userID) snapshot.current = null;
   // Resolve once per account: a setting change must not reorder an active wizard.
-  if (!snapshot.current && flagsReady && !isUserLoading) {
+  // A failed read is laid out as off but not frozen, so a later success still counts.
+  if (!snapshot.current && flagsReady && !payment.isError && !isUserLoading) {
     snapshot.current = {
       userID,
       payment: payment.isPaymentEnabled,

@@ -2,7 +2,7 @@ import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useOnboardingLayout } from "../useOnboardingLayout";
 const source = vi.hoisted(() => ({
-  payment: { isPaymentEnabled: true, isResolved: true },
+  payment: { isPaymentEnabled: true, isResolved: true, isError: false },
   local: false,
   paid: false,
 }));
@@ -31,7 +31,7 @@ const initialProps = {
   trialConfirmation: { ready: true, active: false },
 };
 beforeEach(() => {
-  source.payment = { isPaymentEnabled: true, isResolved: true };
+  source.payment = { isPaymentEnabled: true, isResolved: true, isError: false };
   source.local = false;
   source.paid = false;
 });
@@ -50,14 +50,42 @@ describe("onboarding layout", () => {
     });
   });
   it("waits only for payment before freezing checkout placement", () => {
-    source.payment = { isPaymentEnabled: false, isResolved: false };
+    source.payment = {
+      isPaymentEnabled: false,
+      isResolved: false,
+      isError: false,
+    };
     const { result, rerender } = renderHook(useOnboardingLayout, {
       initialProps,
     });
     expect(result.current.isReady).toBe(false);
-    source.payment = { isPaymentEnabled: true, isResolved: true };
+    source.payment = {
+      isPaymentEnabled: true,
+      isResolved: true,
+      isError: false,
+    };
     rerender(initialProps);
     expect(result.current.isReady).toBe(true);
+    expect(result.current.steps.subscription).toBe(6);
+  });
+  it("lays out a failed read as payment off without freezing it", () => {
+    source.payment = {
+      isPaymentEnabled: false,
+      isResolved: true,
+      isError: true,
+    };
+    const { result, rerender } = renderHook(useOnboardingLayout, {
+      initialProps,
+    });
+    expect(result.current.isReady).toBe(true);
+    expect(result.current.isPaymentEnabled).toBe(false);
+    source.payment = {
+      isPaymentEnabled: true,
+      isResolved: true,
+      isError: false,
+    };
+    rerender(initialProps);
+    expect(result.current.isPaymentEnabled).toBe(true);
     expect(result.current.steps.subscription).toBe(6);
   });
   it("keeps the active account's payment order after a setting change", () => {
@@ -65,7 +93,11 @@ describe("onboarding layout", () => {
       initialProps,
     });
     const steps = result.current.steps;
-    source.payment = { isPaymentEnabled: false, isResolved: true };
+    source.payment = {
+      isPaymentEnabled: false,
+      isResolved: true,
+      isError: false,
+    };
     rerender(initialProps);
     expect(result.current.steps).toEqual(steps);
   });
@@ -73,11 +105,19 @@ describe("onboarding layout", () => {
     const { result, rerender } = renderHook(useOnboardingLayout, {
       initialProps,
     });
-    source.payment = { isPaymentEnabled: false, isResolved: false };
+    source.payment = {
+      isPaymentEnabled: false,
+      isResolved: false,
+      isError: false,
+    };
     const nextUser = { ...initialProps, userID: "second-user" };
     rerender({ ...nextUser, isUserLoading: true });
     expect(result.current.isReady).toBe(false);
-    source.payment = { isPaymentEnabled: false, isResolved: true };
+    source.payment = {
+      isPaymentEnabled: false,
+      isResolved: true,
+      isError: false,
+    };
     rerender(nextUser);
     expect(result.current.isReady).toBe(true);
     expect(result.current.steps.hire).toBe(5);
@@ -93,7 +133,11 @@ describe("onboarding layout", () => {
     (_name, local, paid, trial, paywall) => {
       source.local = local;
       source.paid = paid;
-      source.payment = { isPaymentEnabled: !local, isResolved: true };
+      source.payment = {
+        isPaymentEnabled: !local,
+        isResolved: true,
+        isError: false,
+      };
       const { result } = renderHook(useOnboardingLayout, {
         initialProps: {
           ...initialProps,

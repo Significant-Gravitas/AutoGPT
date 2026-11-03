@@ -29,7 +29,25 @@ describe("usePlatformPayment", () => {
     },
   );
 
-  it("resolves at once with payment off when the backend cannot answer", async () => {
+  it("ends payment-on after a transient failure", async () => {
+    let requests = 0;
+    server.use(
+      http.get("/api/proxy/api/platform-config", () => {
+        requests += 1;
+        return requests === 1
+          ? HttpResponse.json({ detail: "unavailable" }, { status: 503 })
+          : HttpResponse.json({ payment_enabled: true });
+      }),
+    );
+    const { result } = renderPayment();
+    await waitFor(() => expect(result.current.isResolved).toBe(true), {
+      timeout: 5000,
+    });
+    expect(result.current.isPaymentEnabled).toBe(true);
+    expect(result.current.isError).toBe(false);
+  });
+
+  it("settles as an error, not as payment off, when the backend keeps failing", async () => {
     let requests = 0;
     server.use(
       http.get("/api/proxy/api/platform-config", () => {
@@ -38,8 +56,12 @@ describe("usePlatformPayment", () => {
       }),
     );
     const { result } = renderPayment();
-    await waitFor(() => expect(result.current.isResolved).toBe(true));
+    // The old flag read fell back after 5 s; the retries must settle inside that.
+    await waitFor(() => expect(result.current.isResolved).toBe(true), {
+      timeout: 5000,
+    });
+    expect(result.current.isError).toBe(true);
     expect(result.current.isPaymentEnabled).toBe(false);
-    expect(requests).toBe(1);
+    expect(requests).toBe(3);
   });
 });
