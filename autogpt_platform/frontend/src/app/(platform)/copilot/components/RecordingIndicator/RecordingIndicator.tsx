@@ -4,20 +4,16 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { RecordIcon } from "@hugeicons/core-free-icons";
 
-interface Props {
-  stepCount: number;
-}
-
 /**
  * The active-recording indicator shown while a workflow recording is in
  * progress. Distinct from the computer-use indicator: a pulsing red record
- * dot + a live step count, so the user always knows the shim is capturing.
+ * dot, so the user always knows the shim is capturing.
  *
  * Note: the *authoritative* recording indicator is shim-rendered (tray /
  * menu-bar, §9) and the platform can't fake it. This is the in-app
  * companion so the affordance is visible where the user is working.
  */
-export function RecordingIndicator({ stepCount }: Props) {
+export function RecordingIndicator() {
   return (
     <div
       role="status"
@@ -32,9 +28,7 @@ export function RecordingIndicator({ stepCount }: Props) {
           aria-hidden="true"
         />
       </span>
-      <Text variant="small-medium-tight">
-        Recording{stepCount > 0 ? ` · ${stepCount} steps` : ""}
-      </Text>
+      <Text variant="small-medium-tight">Recording</Text>
     </div>
   );
 }

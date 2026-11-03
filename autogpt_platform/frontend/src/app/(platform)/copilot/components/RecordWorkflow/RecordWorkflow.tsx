@@ -54,7 +54,7 @@ function SessionRecordWorkflow({ sessionID }: Props) {
 
       {flow.phase === "recording" ? (
         <div className="flex flex-wrap items-center gap-2">
-          <RecordingIndicator stepCount={flow.steps.length} />
+          <RecordingIndicator />
           <Button
             variant="secondary"
             size="small"
