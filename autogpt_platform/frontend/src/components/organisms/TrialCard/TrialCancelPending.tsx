@@ -42,7 +42,7 @@ export function TrialCancelPending({
           Cancellation pending
         </span>
       </div>
-      <Text variant="body" className="!text-foreground-emphasis">
+      <Text variant="body" tone="emphasis">
         Cancellation confirmed. Your trial will not convert to a paid plan and
         your card won&apos;t be charged. Trial access ends{" "}
         <strong

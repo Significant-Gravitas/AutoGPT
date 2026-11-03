@@ -51,16 +51,11 @@ export function RecentWork({ dashboard, className }: Props) {
           >
             ·
           </span>
-          <Text variant="small" as="span" tone="muted" className="tabular-nums">
+          <Text variant="small" as="span" tone="muted" tabular>
             {completed} completed
           </Text>
           {failed > 0 ? (
-            <Text
-              variant="small"
-              tone="danger"
-              as="span"
-              className="tabular-nums"
-            >
+            <Text variant="small" as="span" tone="danger" tabular>
               {failed} failed
             </Text>
           ) : null}

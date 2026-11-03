@@ -56,9 +56,7 @@ export function MCPToolOutputCard({ output }: Props) {
       <ContentMessage>{output.message}</ContentMessage>
 
       <ContentCard>
-        <ContentCardTitle className="text-xs">
-          {output.tool_name}
-        </ContentCardTitle>
+        <ContentCardTitle size="small">{output.tool_name}</ContentCardTitle>
 
         {isImage ? (
           // eslint-disable-next-line @next/next/no-img-element -- a base64 data URL from the tool output

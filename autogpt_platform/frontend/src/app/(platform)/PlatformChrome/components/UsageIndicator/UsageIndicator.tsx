@@ -19,7 +19,7 @@ export function UsageIndicator() {
           aria-label={label}
           className="relative flex size-8 items-center justify-center rounded-lg p-0 transition-colors hover:bg-surface-hover"
         >
-          <Icon icon={GaugeIcon} className="size-5 text-foreground-base" />
+          <Icon icon={GaugeIcon} tone="base" className="size-5" />
 
           {percent ? (
             <svg

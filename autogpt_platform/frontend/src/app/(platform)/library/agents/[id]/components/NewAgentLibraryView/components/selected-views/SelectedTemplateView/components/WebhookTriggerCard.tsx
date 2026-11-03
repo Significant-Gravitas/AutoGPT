@@ -72,9 +72,9 @@ export function WebhookTriggerCard({ template, triggerSetupInfo }: Props) {
                 </code>
                 <Button
                   variant="outline"
-                  size="icon"
-                  // oxlint-disable-next-line design-system/no-restyle -- a 28px round copy button; icon-xs would make it a rounded square
-                  className="size-7 flex-none p-1"
+                  size="icon-xs"
+                  shape="pill"
+                  className="flex-none"
                   onClick={handleCopyWebhookUrl}
                   title="Copy webhook URL"
                 >

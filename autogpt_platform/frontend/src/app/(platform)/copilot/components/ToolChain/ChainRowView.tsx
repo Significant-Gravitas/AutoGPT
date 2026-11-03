@@ -200,8 +200,10 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
               <Icon
                 icon={ArrowDown01Icon}
                 size={10}
+                tone="disabled"
+                motion="transform"
                 className={cn(
-                  "shrink-0 text-foreground-disabled transition-transform duration-300 ease-out-quint group-hover/row:text-foreground-tertiary",
+                  "shrink-0 group-hover/row:text-foreground-tertiary",
                   open && "rotate-180",
                 )}
               />
