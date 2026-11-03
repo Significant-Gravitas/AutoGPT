@@ -27,6 +27,7 @@ from backend.api.features.billing.credits_rate_limit import (
 from backend.copilot.rate_limit import get_tier_multipliers
 from backend.data import checkout_audience
 from backend.data.credit import (
+    BillingCycle,
     PendingChangeUnknown,
     UserCredit,
     cancel_stripe_subscription,
@@ -281,21 +282,22 @@ async def get_subscription_status(
         SubscriptionTier.MAX,
         SubscriptionTier.BUSINESS,
     ]
-    monthly_price_ids, yearly_price_ids = await asyncio.gather(
-        asyncio.gather(
-            *[get_subscription_price_id(t, "monthly") for t in priceable_tiers]
-        ),
-        asyncio.gather(
-            *[get_subscription_price_id(t, "yearly") for t in priceable_tiers]
-        ),
-    )
-
-    async def _cost(pid: str | None) -> int:
-        return (await _get_stripe_price_amount(pid) or 0) if pid else 0
-
-    monthly_costs, yearly_costs = await asyncio.gather(
-        asyncio.gather(*[_cost(pid) for pid in monthly_price_ids]),
-        asyncio.gather(*[_cost(pid) for pid in yearly_price_ids]),
+    # None of these reads needs another's answer, so they run side by side;
+    # only the proration below needs the current plan's cost.
+    (
+        (monthly_price_ids, yearly_price_ids, monthly_costs, yearly_costs),
+        multipliers,
+        billing_cycle,
+        current_period_end,
+        paused_workflow_schedules,
+        pending,
+    ) = await asyncio.gather(
+        _tier_prices(priceable_tiers),
+        get_tier_multipliers(),
+        get_user_billing_cycle(user_id),
+        get_active_subscription_period_end(user_id),
+        _count_paused_workflow_schedules(user_id, tier),
+        _pending_subscription_change(user_id),
     )
 
     # Row visibility: include a tier if EITHER cycle is configured. Monthly
@@ -320,7 +322,6 @@ async def get_subscription_status(
     # tier without hard-coding backend defaults.  Only emit entries for tiers
     # that land in ``tier_costs`` — rows hidden at the price layer must stay
     # hidden in the multiplier layer too.
-    multipliers = await get_tier_multipliers()
     # get_tier_multipliers() keys by tier string value (see its docstring),
     # so the lookup must use t.value — passing the enum t silently misses
     # every tier and falls back to 1.0, ignoring LD-configured multipliers.
@@ -330,34 +331,12 @@ async def get_subscription_status(
         if t.value in tier_costs
     }
 
-    user_cycle = await get_user_billing_cycle(user_id) or "monthly"
+    user_cycle = billing_cycle or "monthly"
     if user_cycle == "yearly":
         current_monthly_cost = tier_costs_yearly.get(tier.value, 0)
     else:
         current_monthly_cost = tier_costs.get(tier.value, 0)
-    (
-        proration_credit,
-        current_period_end,
-        paused_workflow_schedules,
-    ) = await asyncio.gather(
-        get_proration_credit_cents(user_id, current_monthly_cost),
-        get_active_subscription_period_end(user_id),
-        _count_paused_workflow_schedules(user_id, tier),
-    )
-
-    try:
-        pending = await get_pending_subscription_change(user_id)
-    except (stripe.StripeError, PendingChangeUnknown):
-        # Swallow Stripe-side failures (rate limits, transient network) AND
-        # PendingChangeUnknown (PostHog price-id lookup failed). Both
-        # propagate past the cache so the next request retries fresh instead
-        # of serving a stale None for the TTL window. Let real bugs (KeyError,
-        # AttributeError, etc.) propagate so they surface in Sentry.
-        logger.exception(
-            "get_subscription_status: failed to resolve pending change for user %s",
-            user_id,
-        )
-        pending = None
+    proration_credit = await get_proration_credit_cents(user_id, current_monthly_cost)
 
     response = SubscriptionStatusResponse(
         tier=tier.value,
@@ -400,6 +379,48 @@ async def _count_paused_workflow_schedules(user_id: str, tier: SubscriptionTier)
         logger.warning(f"Could not count paused workflow schedules for user {user_id}")
         return 0
     return sum(schedule.kind == "graph" for schedule in schedules)
+
+
+async def _tier_prices(
+    tiers: list[SubscriptionTier],
+) -> tuple[list[str | None], list[str | None], list[int], list[int]]:
+    """Each tier's monthly and yearly price ids, then what each one costs."""
+    monthly_price_ids, yearly_price_ids = await asyncio.gather(
+        asyncio.gather(*[get_subscription_price_id(t, "monthly") for t in tiers]),
+        asyncio.gather(*[get_subscription_price_id(t, "yearly") for t in tiers]),
+    )
+    monthly_costs, yearly_costs = await asyncio.gather(
+        asyncio.gather(*[_price_cost(pid) for pid in monthly_price_ids]),
+        asyncio.gather(*[_price_cost(pid) for pid in yearly_price_ids]),
+    )
+    return (
+        list(monthly_price_ids),
+        list(yearly_price_ids),
+        list(monthly_costs),
+        list(yearly_costs),
+    )
+
+
+async def _price_cost(price_id: str | None) -> int:
+    return (await _get_stripe_price_amount(price_id) or 0) if price_id else 0
+
+
+async def _pending_subscription_change(
+    user_id: str,
+) -> tuple[SubscriptionTier, datetime, BillingCycle | None] | None:
+    try:
+        return await get_pending_subscription_change(user_id)
+    except (stripe.StripeError, PendingChangeUnknown):
+        # Swallow Stripe-side failures (rate limits, transient network) AND
+        # PendingChangeUnknown (PostHog price-id lookup failed). Both
+        # propagate past the cache so the next request retries fresh instead
+        # of serving a stale None for the TTL window. Let real bugs (KeyError,
+        # AttributeError, etc.) propagate so they surface in Sentry.
+        logger.exception(
+            "get_subscription_status: failed to resolve pending change for user %s",
+            user_id,
+        )
+        return None
 
 
 @router.post(
