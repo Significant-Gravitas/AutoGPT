@@ -22,6 +22,7 @@ import {
   type RuntimeDeps,
   type RuntimeSnapshot,
 } from "../turnRuntime";
+import { tailEndSequence } from "../turnTail";
 import { fakeBackend, type FakeBackend } from "./fakeBackend";
 import { loadRecordedTurn } from "./recordedTurns";
 
@@ -1311,6 +1312,7 @@ describe("recovered terminal errors", () => {
         persistedMarker ? 2 : null,
       );
       expect(onError).toHaveBeenCalledOnce();
+      expect(tailEndSequence([turnSegment()])).toBe(persistedMarker ? 2 : 1);
     },
   );
 
