@@ -14,6 +14,7 @@ on:
       - ".github/scripts/test_validate_cobertura.py"
       - ".github/scripts/test_frontend_cobertura_contract.py"
       - ".github/scripts/run_unittest_junit.py"
+      - ".github/scripts/verify_vitest_reporting.py"
       - "autogpt_platform/frontend/**"
       # The Better Auth tables are Prisma's; auth-schema.test.ts checks them.
       - "autogpt_platform/backend/schema.prisma"
@@ -244,6 +245,11 @@ jobs:
 
       - name: Generate API client
         run: pnpm generate:api
+
+      - name: Verify console output and unhandled-error reporting
+        if: matrix.shard == 1
+        timeout-minutes: 5
+        run: python3 ../../.github/scripts/verify_vitest_reporting.py
 
       - name: Run Integration Tests
         run: >-

@@ -6,6 +6,8 @@ export default defineConfig({
   plugins: [tsconfigPaths(), react()],
   test: {
     environment: "happy-dom",
+    // Avoid Vitest 4's console RPC teardown race; CI still prints stdout/stderr.
+    disableConsoleIntercept: process.env.CI === "true",
     include: [
       "src/**/*.test.tsx",
       "src/**/*.test.ts",
