@@ -92,6 +92,7 @@ from backend.copilot.pending_message_helpers import (
     persist_session_safe,
     persist_unfolded_rows,
 )
+from backend.copilot.pending_message_recovery import recover_pending_on_failure
 from backend.copilot.pending_messages import (
     PendingMessage,
     drain_pending_messages,
@@ -1934,375 +1935,375 @@ async def stream_chat_completion_baseline(
     # inserting a new row, because routes.py has already saved the user message
     # before the executor picks up the turn (using insert_pending_before_last +
     # persist_session_safe would add a duplicate row at sequence N+1).
-    drained_at_start_pending = await drain_pending_safe(
-        session_id, "[Baseline]", drain_backlog=True
-    )
-    if drained_at_start_pending:
-        logger.info(
-            "[Baseline] Draining %d pending message(s) at turn start for session %s",
-            len(drained_at_start_pending),
-            session_id,
-        )
-        # NOTE: combine + per-row persist both happen *after*
-        # ``inject_user_context`` below — see the comment near that
-        # call for the ordering rationale.  At this point ``message``
-        # is still the original turn-starting send.
-
-    # Select model based on the per-request tier toggle (standard / advanced).
-    # The path (fast vs extended_thinking) is already decided — we're in the
-    # baseline (fast) path; ``mode`` is accepted for logging parity only.
-    # Normalize immediately so EVERY downstream helper (E2B context,
-    # ``_compress_session_messages``, the streaming caller) sees the
-    # transport-correct slug — otherwise compaction in direct-Anthropic
-    # mode silently falls back to the non-LLM path because the OR slug
-    # would be rejected by the direct client.  Pass the baseline-side
-    # ``config`` so monkeypatch fixtures targeting this module's
-    # ``config`` symbol drive the decision.
-    resolved_route = await _resolve_baseline_model(model, user_id)
-    resolved_model = resolved_route.model
-    routing_source = resolved_route.source
-    try:
-        active_model = normalize_model_for_transport(resolved_model, config)
-    except ValueError as exc:
-        # Mirror SDK's LD-reject soft-fallback (see ``copilot.sdk.service``):
-        # a per-user LD ``copilot-model-routing`` cell can pin a non-Anthropic
-        # slug (e.g. ``moonshotai/kimi-*``) on a direct-Anthropic deployment
-        # where the baseline transport rejects it.  Fall back to the
-        # TIER-SPECIFIC config default so the request still streams instead
-        # of erroring at the user.  Re-raises the original error if the
-        # config default is also invalid (deployment-level misconfig caught
-        # by the ``model_validator`` at startup).
-        tier_default = (
-            config.fast_advanced_model
-            if model == "advanced"
-            else config.fast_standard_model
-        )
-        try:
-            active_model = normalize_model_for_transport(tier_default, config)
-        except ValueError:
-            raise exc
-        routing_source = "env"
-        logger.warning(
-            "[Baseline] [%s] LD model %r rejected for tier=%s (%s); falling "
-            "back to tier default %s",
-            session_id[:12] if session_id else "?",
-            resolved_model,
-            "advanced" if model == "advanced" else "standard",
-            exc,
-            active_model,
-        )
-
-    # --- E2B sandbox setup (feature parity with SDK path) ---
-    e2b_sandbox = None
-    e2b_api_key = config.active_e2b_api_key
-    if e2b_api_key:
-        try:
-            # An expert session runs on the expert's own persistent box;
-            # everything else gets a per-session sandbox.
-            e2b_sandbox = await get_or_create_sandbox(
+    async with recover_pending_on_failure(
+        session_id, drain_pending_safe(session_id, "[Baseline]", drain_backlog=True)
+    ) as drained_at_start_pending:
+        if drained_at_start_pending:
+            logger.info(
+                "[Baseline] Draining %d pending message(s) at turn start for session %s",
+                len(drained_at_start_pending),
                 session_id,
-                api_key=e2b_api_key,
-                template=config.e2b_sandbox_template,
-                timeout=config.e2b_sandbox_timeout,
-                on_timeout=config.e2b_sandbox_on_timeout,
-                volume_mounts=workspace_volume_mounts(user_id, session.expert_id),
-                expert_id=session.expert_id,
-                user_id=user_id,
-                providers=allowed_providers(permissions),
-                # Counted just before the try/finally that releases it, below:
-                # everything between here and there can still fail or be
-                # stopped, and a count with no release keeps the expert's box
-                # unpaused at every later turn end.
-                count_turn=False,
             )
-        except Exception:
-            logger.warning("[Baseline] E2B sandbox setup failed", exc_info=True)
-            await forget_turn_ceiling(session_id, session.expert_id)
+            # NOTE: combine + per-row persist both happen *after*
+            # ``inject_user_context`` below — see the comment near that
+            # call for the ordering rationale.  At this point ``message``
+            # is still the original turn-starting send.
 
-    # --- Transcript support (feature parity with SDK path) ---
-    transcript_builder = TranscriptBuilder()
-    transcript_upload_safe = True
-
-    # Build system prompt only on the first turn to avoid mid-conversation
-    # changes from concurrent chats updating business understanding.
-    # Use the pre-drain count so queued pending messages don't incorrectly
-    # flip is_first_turn to False on an actual first turn.
-    is_first_turn = _pre_drain_msg_count <= 1
-    # Gate context fetch on both first turn AND user message so that assistant-
-    # role calls (e.g. tool-result submissions) on the first turn don't trigger
-    # a needless DB lookup for user understanding.
-    should_inject_user_context = is_first_turn and is_user_message
-
-    if should_inject_user_context:
-        prompt_task = _build_system_prompt(user_id)
-    else:
-        prompt_task = _build_system_prompt(None)
-
-    # Run download + prompt build concurrently — both are independent I/O
-    # on the request critical path.  Use the pre-drain count so pending
-    # messages drained at turn start don't spuriously trigger a transcript
-    # load on an actual first turn.
-    transcript_download: TranscriptDownload | None = None
-    if user_id and _pre_drain_msg_count > 1:
-        (
-            (transcript_upload_safe, transcript_download),
-            (base_system_prompt, understanding),
-        ) = await asyncio.gather(
-            _load_prior_transcript(
-                user_id=user_id,
-                session_id=session_id,
-                session_messages=session.messages,
-                transcript_builder=transcript_builder,
-            ),
-            prompt_task,
-        )
-    else:
-        base_system_prompt, understanding = await prompt_task
-
-    # Append user message to transcript after context injection below so the
-    # transcript receives the prefixed message when user context is available.
-
-    # NOTE: drained pending messages are folded into the current user
-    # message's content (see the turn-start drain above), so the single
-    # ``transcript_builder.append_user`` call below records the combined
-    # text in the transcript. Do NOT also append drained items
-    # individually here — on the ``transcript_download is None`` path
-    # that would produce N separate pending entries plus the combined
-    # entry, duplicating the pending content in the JSONL uploaded for
-    # the next turn's ``--resume``.
-
-    # Generate title for new sessions. The title model reads the first
-    # message without the memory block an older session stored in it.
-    if is_user_message and not session.title:
-        user_messages = [
-            m
-            for m in without_stored_first_turn_memory(session.messages)
-            if m.role == "user"
-        ]
-        if len(user_messages) == 1:
-            first_message = user_messages[0].content or message or ""
-            if first_message:
-                task = asyncio.create_task(
-                    _update_title_async(
-                        session_id,
-                        first_message,
-                        user_id,
-                        bridge_origin=session.metadata.source_platform is not None,
-                    )
-                )
-                _background_tasks.add(task)
-                task.add_done_callback(_background_tasks.discard)
-
-    message_id = str(uuid.uuid4())
-
-    # Append tool documentation, technical notes, and Graphiti memory instructions
-    graphiti_enabled = bool(user_id)
-
-    graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
-    auto_mode_supplement = approval_mode_supplement(
-        await active_mode(user_id, session),
-        interactive=not is_unattended_turn(),
-    )
-    experts_enabled = bool(user_id)
-    delegation_supplement = get_delegation_supplement() if experts_enabled else ""
-    oversight_supplement = get_expert_oversight_supplement(
-        experts_enabled=experts_enabled, expert_id=session.expert_id
-    )
-    team_building_supplement = get_team_building_supplement(
-        experts_enabled=experts_enabled, expert_id=session.expert_id
-    )
-    chat_platform_supplement = get_chat_platform_supplement(
-        session.metadata.source_platform
-    )
-    # Append the builder-session block (graph id+name + full building guide)
-    # AFTER the shared supplements so the system prompt is byte-identical
-    # across turns of the same builder session — Claude's prompt cache keeps
-    # the ~20KB guide warm for the whole session.  Empty string for
-    # non-builder sessions keeps the cross-user cache hot.
-    builder_session_suffix = await build_builder_system_prompt_suffix(session)
-    system_prompt = (
-        base_system_prompt
-        + SHARED_TOOL_NOTES
-        # Empty unless the run's permissions restrict connected accounts.
-        + get_provider_ceiling_supplement(permissions)
-        + delegation_supplement
-        + oversight_supplement
-        + team_building_supplement
-        + chat_platform_supplement
-        + graphiti_supplement
-        + auto_mode_supplement
-        + builder_session_suffix
-        + expert_session_suffix
-    )
-
-    # Warm context: pre-load relevant facts from Graphiti on first turn.
-    # Use the pre-drain count so pending messages drained at turn start
-    # don't prevent warm context injection on an actual first turn.
-    # Stored here but injected into the user message (not the system prompt)
-    # after openai_messages is built — keeps system prompt static for caching.
-    warm_ctx: str | None = None
-    if graphiti_enabled and user_id and _pre_drain_msg_count <= 1:
-        warm_ctx = await _fetch_graphiti_context(user_id, session, message)
-    # NOTE: the follow-up-turn refresh (SECRT-2378) runs after the pending
-    # drain — see ``_refresh_follow_up_warm_context`` below for why.
-
-    # Context path: transcript content (compacted, isCompactSummary preserved) +
-    # gap (DB messages after watermark) + current user turn.
-    # This avoids re-reading the full session history from DB on every turn.
-    # See extract_context_messages() in transcript.py for the shared primitive.
-    # The last stored message stands for the current turn. A turn that stored
-    # none of its own reads an earlier one, maybe the session's first, which
-    # is read without the memory block an older session stored in it.
-    prior_context = await extract_context_messages(
-        transcript_download, session.messages, session_id=session.session_id
-    )
-    messages_for_context = await _compress_session_messages(
-        prior_context + without_stored_first_turn_memory(session.messages[-1:]),
-        model=active_model,
-    )
-
-    # Build OpenAI message list from session history.
-    # Include tool_calls on assistant messages and tool-role results so the
-    # model retains full context of what tools were invoked and their outcomes.
-    openai_messages: list[dict[str, Any]] = [
-        {"role": "system", "content": system_prompt}
-    ]
-    for msg in messages_for_context:
-        if msg.role == "assistant":
-            entry: dict[str, Any] = {"role": "assistant"}
-            if msg.content:
-                entry["content"] = msg.content
-            if msg.tool_calls:
-                entry["tool_calls"] = tool_calls_for_provider(msg.tool_calls)
-            if msg.content or msg.tool_calls:
-                openai_messages.append(entry)
-        elif msg.role == "tool" and msg.tool_call_id:
-            openai_messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": msg.tool_call_id,
-                    "content": msg.content or "",
-                }
-            )
-        elif msg.role == "user" and msg.content:
-            openai_messages.append({"role": msg.role, "content": msg.content})
-    # Before anything is appended below: this reads the last entry, and the
-    # per-turn blocks then land on the note as they would on a typed message.
-    send_trailing_note_as_user(openai_messages)
-
-    # Inject user context into the first user message on first turn.
-    # Done before attachment/URL injection so the context prefix lands at
-    # the very start of the message content.
-    turn_text = message or ""
-    if not turn_text and session.messages and session.messages[-1].role == "user":
-        turn_text = session.messages[-1].content or ""
-    user_message_for_transcript = turn_text
-    transcript_context_prefix = ""
-    if should_inject_user_context:
-        user_message_for_transcript = strip_user_context_tags(turn_text)
-        # Mirror the SDK path's "model knows about budget" behaviour by
-        # injecting a per-turn ``<budget_context>`` block — the baseline
-        # path has no equivalent of the SDK CLI's native
-        # ``max_budget_usd`` running-cost reminder, so this is the only
-        # signal the model gets about how much USD spend headroom the
-        # user has left.
-        budget_ctx = await build_budget_ctx(
-            user_id=user_id,
-            default_daily_cost_limit=config.daily_cost_limit_microdollars,
-            default_weekly_cost_limit=config.weekly_cost_limit_microdollars,
-        )
-        # Per-session follow-up awareness — gives the baseline model the
-        # current session_id + pending follow-up summary on its first turn
-        # so "cancel that" / "what did I schedule" works without a
-        # round-trip to ``list_schedules``.  Lands in the per-turn user
-        # message (after the last cache breakpoint) so injection does NOT
-        # bust the prefix cache.
-        session_ctx_content = ""
-        if user_id:
-            session_ctx_content = await build_session_context(
-                session_id=session_id, user_id=user_id
-            )
-        # Skill index — same content/contract as the SDK path.  Failures
-        # here MUST NOT block the turn; log and proceed with empty index.
-        skills_ctx = ""
+        # Select model based on the per-request tier toggle (standard / advanced).
+        # The path (fast vs extended_thinking) is already decided — we're in the
+        # baseline (fast) path; ``mode`` is accepted for logging parity only.
+        # Normalize immediately so EVERY downstream helper (E2B context,
+        # ``_compress_session_messages``, the streaming caller) sees the
+        # transport-correct slug — otherwise compaction in direct-Anthropic
+        # mode silently falls back to the non-LLM path because the OR slug
+        # would be rejected by the direct client.  Pass the baseline-side
+        # ``config`` so monkeypatch fixtures targeting this module's
+        # ``config`` symbol drive the decision.
+        resolved_route = await _resolve_baseline_model(model, user_id)
+        resolved_model = resolved_route.model
+        routing_source = resolved_route.source
         try:
-            skills_ctx = await build_skills_context(
-                user_id, expert_id=session.expert_id
+            active_model = normalize_model_for_transport(resolved_model, config)
+        except ValueError as exc:
+            # Mirror SDK's LD-reject soft-fallback (see ``copilot.sdk.service``):
+            # a per-user LD ``copilot-model-routing`` cell can pin a non-Anthropic
+            # slug (e.g. ``moonshotai/kimi-*``) on a direct-Anthropic deployment
+            # where the baseline transport rejects it.  Fall back to the
+            # TIER-SPECIFIC config default so the request still streams instead
+            # of erroring at the user.  Re-raises the original error if the
+            # config default is also invalid (deployment-level misconfig caught
+            # by the ``model_validator`` at startup).
+            tier_default = (
+                config.fast_advanced_model
+                if model == "advanced"
+                else config.fast_standard_model
             )
-        except Exception:
-            logger.exception(
-                "[skills] failed to build skills_ctx — proceeding without it"
+            try:
+                active_model = normalize_model_for_transport(tier_default, config)
+            except ValueError:
+                raise exc
+            routing_source = "env"
+            logger.warning(
+                "[Baseline] [%s] LD model %r rejected for tier=%s (%s); falling "
+                "back to tier default %s",
+                session_id[:12] if session_id else "?",
+                resolved_model,
+                "advanced" if model == "advanced" else "standard",
+                exc,
+                active_model,
             )
-        prefixed = await inject_user_context(
-            understanding,
-            user_message_for_transcript,
-            session_id,
-            session.messages,
-            budget_ctx=budget_ctx,
-            session_ctx=session_ctx_content,
-            skills_ctx=skills_ctx,
-            user_id=user_id,
-            expert_id=session.expert_id,
-        )
-        if prefixed is not None:
-            # Reverse scan so we update the current turn's user message, not
-            # the first (oldest) one when pending messages were drained.
-            for msg in reversed(openai_messages):
-                if msg["role"] == "user":
-                    msg["content"] = prefixed
-                    break
-            transcript_context_prefix = prefixed.removesuffix(
-                user_message_for_transcript
+
+        # --- E2B sandbox setup (feature parity with SDK path) ---
+        e2b_sandbox = None
+        e2b_api_key = config.active_e2b_api_key
+        if e2b_api_key:
+            try:
+                # An expert session runs on the expert's own persistent box;
+                # everything else gets a per-session sandbox.
+                e2b_sandbox = await get_or_create_sandbox(
+                    session_id,
+                    api_key=e2b_api_key,
+                    template=config.e2b_sandbox_template,
+                    timeout=config.e2b_sandbox_timeout,
+                    on_timeout=config.e2b_sandbox_on_timeout,
+                    volume_mounts=workspace_volume_mounts(user_id, session.expert_id),
+                    expert_id=session.expert_id,
+                    user_id=user_id,
+                    providers=allowed_providers(permissions),
+                    # Counted just before the try/finally that releases it, below:
+                    # everything between here and there can still fail or be
+                    # stopped, and a count with no release keeps the expert's box
+                    # unpaused at every later turn end.
+                    count_turn=False,
+                )
+            except Exception:
+                logger.warning("[Baseline] E2B sandbox setup failed", exc_info=True)
+                await forget_turn_ceiling(session_id, session.expert_id)
+
+        # --- Transcript support (feature parity with SDK path) ---
+        transcript_builder = TranscriptBuilder()
+        transcript_upload_safe = True
+
+        # Build system prompt only on the first turn to avoid mid-conversation
+        # changes from concurrent chats updating business understanding.
+        # Use the pre-drain count so queued pending messages don't incorrectly
+        # flip is_first_turn to False on an actual first turn.
+        is_first_turn = _pre_drain_msg_count <= 1
+        # Gate context fetch on both first turn AND user message so that assistant-
+        # role calls (e.g. tool-result submissions) on the first turn don't trigger
+        # a needless DB lookup for user understanding.
+        should_inject_user_context = is_first_turn and is_user_message
+
+        if should_inject_user_context:
+            prompt_task = _build_system_prompt(user_id)
+        else:
+            prompt_task = _build_system_prompt(None)
+
+        # Run download + prompt build concurrently — both are independent I/O
+        # on the request critical path.  Use the pre-drain count so pending
+        # messages drained at turn start don't spuriously trigger a transcript
+        # load on an actual first turn.
+        transcript_download: TranscriptDownload | None = None
+        if user_id and _pre_drain_msg_count > 1:
+            (
+                (transcript_upload_safe, transcript_download),
+                (base_system_prompt, understanding),
+            ) = await asyncio.gather(
+                _load_prior_transcript(
+                    user_id=user_id,
+                    session_id=session_id,
+                    session_messages=session.messages,
+                    transcript_builder=transcript_builder,
+                ),
+                prompt_task,
             )
         else:
-            logger.warning("[Baseline] No user message found for context injection")
-    # Now that ``inject_user_context`` has wrapped + persisted the
-    # original turn-starting send into its row, fold pending into the
-    # model's current-turn input AND persist each pending message as
-    # its own raw-text user row.  Three things to keep in sync:
-    #
-    #  1. ``openai_messages`` (what the model sees this round) — append
-    #     each pending as a separate user entry, matching the mid-turn
-    #     drain pattern below.
-    #  2. ``message`` and ``user_message_for_transcript`` — combine.
-    #  3. ``session.messages`` + DB — one raw row per pending via
-    #     ``persist_pending_as_user_rows(transcript_builder=None)``.
-    #
-    # Order matters: persist must run after inject so inject targets
-    # the routes.py-saved row, not a pending row.
-    if drained_at_start_pending:
-        # Persist FIRST.  Only fold pending into the model's prompt
-        # (``message`` for transcript fallback + ``openai_messages`` for
-        # the live LLM call) when persistence succeeded — if the helper
-        # rolled back and re-queued the pending into Redis, leaving
-        # those untouched ensures the NEXT turn's drain doesn't
-        # double-combine (re-queued pending + combined-from-this-turn)
-        # into the model's context.
-        persisted_ok = await persist_pending_as_user_rows(
-            session,
-            None,
-            drained_at_start_pending,
-            log_prefix="[Baseline]",
+            base_system_prompt, understanding = await prompt_task
+
+        # Append user message to transcript after context injection below so the
+        # transcript receives the prefixed message when user context is available.
+
+        # NOTE: drained pending messages are folded into the current user
+        # message's content (see the turn-start drain above), so the single
+        # ``transcript_builder.append_user`` call below records the combined
+        # text in the transcript. Do NOT also append drained items
+        # individually here — on the ``transcript_download is None`` path
+        # that would produce N separate pending entries plus the combined
+        # entry, duplicating the pending content in the JSONL uploaded for
+        # the next turn's ``--resume``.
+
+        # Generate title for new sessions. The title model reads the first
+        # message without the memory block an older session stored in it.
+        if is_user_message and not session.title:
+            user_messages = [
+                m
+                for m in without_stored_first_turn_memory(session.messages)
+                if m.role == "user"
+            ]
+            if len(user_messages) == 1:
+                first_message = user_messages[0].content or message or ""
+                if first_message:
+                    task = asyncio.create_task(
+                        _update_title_async(
+                            session_id,
+                            first_message,
+                            user_id,
+                            bridge_origin=session.metadata.source_platform is not None,
+                        )
+                    )
+                    _background_tasks.add(task)
+                    task.add_done_callback(_background_tasks.discard)
+
+        message_id = str(uuid.uuid4())
+
+        # Append tool documentation, technical notes, and Graphiti memory instructions
+        graphiti_enabled = bool(user_id)
+
+        graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
+        auto_mode_supplement = approval_mode_supplement(
+            await active_mode(user_id, session),
+            interactive=not is_unattended_turn(),
         )
-        if persisted_ok:
-            opening_entries.append(drained_rows_entry(drained_at_start_pending))
-            user_message_for_transcript = combine_pending_with_current(
-                drained_at_start_pending,
+        experts_enabled = bool(user_id)
+        delegation_supplement = get_delegation_supplement() if experts_enabled else ""
+        oversight_supplement = get_expert_oversight_supplement(
+            experts_enabled=experts_enabled, expert_id=session.expert_id
+        )
+        team_building_supplement = get_team_building_supplement(
+            experts_enabled=experts_enabled, expert_id=session.expert_id
+        )
+        chat_platform_supplement = get_chat_platform_supplement(
+            session.metadata.source_platform
+        )
+        # Append the builder-session block (graph id+name + full building guide)
+        # AFTER the shared supplements so the system prompt is byte-identical
+        # across turns of the same builder session — Claude's prompt cache keeps
+        # the ~20KB guide warm for the whole session.  Empty string for
+        # non-builder sessions keeps the cross-user cache hot.
+        builder_session_suffix = await build_builder_system_prompt_suffix(session)
+        system_prompt = (
+            base_system_prompt
+            + SHARED_TOOL_NOTES
+            # Empty unless the run's permissions restrict connected accounts.
+            + get_provider_ceiling_supplement(permissions)
+            + delegation_supplement
+            + oversight_supplement
+            + team_building_supplement
+            + chat_platform_supplement
+            + graphiti_supplement
+            + auto_mode_supplement
+            + builder_session_suffix
+            + expert_session_suffix
+        )
+
+        # Warm context: pre-load relevant facts from Graphiti on first turn.
+        # Use the pre-drain count so pending messages drained at turn start
+        # don't prevent warm context injection on an actual first turn.
+        # Stored here but injected into the user message (not the system prompt)
+        # after openai_messages is built — keeps system prompt static for caching.
+        warm_ctx: str | None = None
+        if graphiti_enabled and user_id and _pre_drain_msg_count <= 1:
+            warm_ctx = await _fetch_graphiti_context(user_id, session, message)
+        # NOTE: the follow-up-turn refresh (SECRT-2378) runs after the pending
+        # drain — see ``_refresh_follow_up_warm_context`` below for why.
+
+        # Context path: transcript content (compacted, isCompactSummary preserved) +
+        # gap (DB messages after watermark) + current user turn.
+        # This avoids re-reading the full session history from DB on every turn.
+        # See extract_context_messages() in transcript.py for the shared primitive.
+        # The last stored message stands for the current turn. A turn that stored
+        # none of its own reads an earlier one, maybe the session's first, which
+        # is read without the memory block an older session stored in it.
+        prior_context = await extract_context_messages(
+            transcript_download, session.messages, session_id=session.session_id
+        )
+        messages_for_context = await _compress_session_messages(
+            prior_context + without_stored_first_turn_memory(session.messages[-1:]),
+            model=active_model,
+        )
+
+        # Build OpenAI message list from session history.
+        # Include tool_calls on assistant messages and tool-role results so the
+        # model retains full context of what tools were invoked and their outcomes.
+        openai_messages: list[dict[str, Any]] = [
+            {"role": "system", "content": system_prompt}
+        ]
+        for msg in messages_for_context:
+            if msg.role == "assistant":
+                entry: dict[str, Any] = {"role": "assistant"}
+                if msg.content:
+                    entry["content"] = msg.content
+                if msg.tool_calls:
+                    entry["tool_calls"] = tool_calls_for_provider(msg.tool_calls)
+                if msg.content or msg.tool_calls:
+                    openai_messages.append(entry)
+            elif msg.role == "tool" and msg.tool_call_id:
+                openai_messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": msg.tool_call_id,
+                        "content": msg.content or "",
+                    }
+                )
+            elif msg.role == "user" and msg.content:
+                openai_messages.append({"role": msg.role, "content": msg.content})
+        # Before anything is appended below: this reads the last entry, and the
+        # per-turn blocks then land on the note as they would on a typed message.
+        send_trailing_note_as_user(openai_messages)
+
+        # Inject user context into the first user message on first turn.
+        # Done before attachment/URL injection so the context prefix lands at
+        # the very start of the message content.
+        turn_text = message or ""
+        if not turn_text and session.messages and session.messages[-1].role == "user":
+            turn_text = session.messages[-1].content or ""
+        user_message_for_transcript = turn_text
+        transcript_context_prefix = ""
+        if should_inject_user_context:
+            user_message_for_transcript = strip_user_context_tags(turn_text)
+            # Mirror the SDK path's "model knows about budget" behaviour by
+            # injecting a per-turn ``<budget_context>`` block — the baseline
+            # path has no equivalent of the SDK CLI's native
+            # ``max_budget_usd`` running-cost reminder, so this is the only
+            # signal the model gets about how much USD spend headroom the
+            # user has left.
+            budget_ctx = await build_budget_ctx(
+                user_id=user_id,
+                default_daily_cost_limit=config.daily_cost_limit_microdollars,
+                default_weekly_cost_limit=config.weekly_cost_limit_microdollars,
+            )
+            # Per-session follow-up awareness — gives the baseline model the
+            # current session_id + pending follow-up summary on its first turn
+            # so "cancel that" / "what did I schedule" works without a
+            # round-trip to ``list_schedules``.  Lands in the per-turn user
+            # message (after the last cache breakpoint) so injection does NOT
+            # bust the prefix cache.
+            session_ctx_content = ""
+            if user_id:
+                session_ctx_content = await build_session_context(
+                    session_id=session_id, user_id=user_id
+                )
+            # Skill index — same content/contract as the SDK path.  Failures
+            # here MUST NOT block the turn; log and proceed with empty index.
+            skills_ctx = ""
+            try:
+                skills_ctx = await build_skills_context(
+                    user_id, expert_id=session.expert_id
+                )
+            except Exception:
+                logger.exception(
+                    "[skills] failed to build skills_ctx — proceeding without it"
+                )
+            prefixed = await inject_user_context(
+                understanding,
                 user_message_for_transcript,
-                request_arrival_at=request_arrival_at,
+                session_id,
+                session.messages,
+                budget_ctx=budget_ctx,
+                session_ctx=session_ctx_content,
+                skills_ctx=skills_ctx,
+                user_id=user_id,
+                expert_id=session.expert_id,
             )
-            message = combine_pending_with_current(
+            if prefixed is not None:
+                # Reverse scan so we update the current turn's user message, not
+                # the first (oldest) one when pending messages were drained.
+                for msg in reversed(openai_messages):
+                    if msg["role"] == "user":
+                        msg["content"] = prefixed
+                        break
+                transcript_context_prefix = prefixed.removesuffix(
+                    user_message_for_transcript
+                )
+            else:
+                logger.warning("[Baseline] No user message found for context injection")
+        # Now that ``inject_user_context`` has wrapped + persisted the
+        # original turn-starting send into its row, fold pending into the
+        # model's current-turn input AND persist each pending message as
+        # its own raw-text user row.  Three things to keep in sync:
+        #
+        #  1. ``openai_messages`` (what the model sees this round) — append
+        #     each pending as a separate user entry, matching the mid-turn
+        #     drain pattern below.
+        #  2. ``message`` and ``user_message_for_transcript`` — combine.
+        #  3. ``session.messages`` + DB — one raw row per pending via
+        #     ``persist_pending_as_user_rows(transcript_builder=None)``.
+        #
+        # Order matters: persist must run after inject so inject targets
+        # the routes.py-saved row, not a pending row.
+        if drained_at_start_pending:
+            # Persist FIRST.  Only fold pending into the model's prompt
+            # (``message`` for transcript fallback + ``openai_messages`` for
+            # the live LLM call) when persistence succeeded — if the helper
+            # rolled back and re-queued the pending into Redis, leaving
+            # those untouched ensures the NEXT turn's drain doesn't
+            # double-combine (re-queued pending + combined-from-this-turn)
+            # into the model's context.
+            persisted_ok = await persist_pending_as_user_rows(
+                session,
+                None,
                 drained_at_start_pending,
-                message,
-                request_arrival_at=request_arrival_at,
+                log_prefix="[Baseline]",
             )
-            turn_text = combine_pending_with_current(
-                drained_at_start_pending,
-                turn_text,
-                request_arrival_at=request_arrival_at,
-            )
-            for pm in drained_at_start_pending:
-                openai_messages.append(format_pending_as_user_message(pm))
+            if persisted_ok:
+                opening_entries.append(drained_rows_entry(drained_at_start_pending))
+                user_message_for_transcript = combine_pending_with_current(
+                    drained_at_start_pending,
+                    user_message_for_transcript,
+                    request_arrival_at=request_arrival_at,
+                )
+                message = combine_pending_with_current(
+                    drained_at_start_pending,
+                    message,
+                    request_arrival_at=request_arrival_at,
+                )
+                turn_text = combine_pending_with_current(
+                    drained_at_start_pending,
+                    turn_text,
+                    request_arrival_at=request_arrival_at,
+                )
+                for pm in drained_at_start_pending:
+                    openai_messages.append(format_pending_as_user_message(pm))
 
     if is_user_message:
         for msg in reversed(openai_messages):
