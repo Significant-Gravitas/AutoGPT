@@ -52,7 +52,7 @@ export function ExportCreditTransactionsButton() {
       toSummary={(data) => `${data.total_rows} transactions downloaded.`}
     >
       <div className="flex flex-col gap-1">
-        <label className="text-sm" htmlFor="credit-export-type">
+        <label className="text-body" htmlFor="credit-export-type">
           Transaction type
         </label>
         <Select
@@ -72,14 +72,14 @@ export function ExportCreditTransactionsButton() {
         </Select>
       </div>
       <div className="flex flex-col gap-1">
-        <label className="text-sm" htmlFor="credit-export-user-id">
+        <label className="text-body" htmlFor="credit-export-user-id">
           User ID (optional)
         </label>
         <input
           id="credit-export-user-id"
           type="text"
           placeholder="Filter by a single user ID"
-          className="rounded border px-3 py-1.5 text-sm"
+          className="rounded border px-3 py-1.5 text-body"
           value={userId}
           onChange={(e) => setUserId(e.target.value)}
         />

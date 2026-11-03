@@ -45,7 +45,6 @@ jinja2 = "^3.1.6"
 jsonref = "^1.1.0"
 jsonschema = "^4.25.0"
 langfuse = "^3.14.1"
-launchdarkly-server-sdk = "^9.14.1"
 markdown-it-py = "^4.0.0"
 mem0ai = "1.0.8"
 # Pinned to an upstream master commit until a moviepy release allows pillow 13
@@ -107,7 +106,6 @@ stagehand = "^3.4.0"
 gravitas-md2gdocs = "^0.1.0"
 posthog = "^7.6.0"
 fpdf2 = "^2.8.6"
-langsmith = ">=0.8.18,<0.13.0"
 openpyxl = "^3.1.5"
 pymssql = "^2.3.2"
 pymysql = "^1.1.1"
@@ -163,9 +161,7 @@ expert-style-eval = "backend.copilot.eval.style.runner:main"
 memory-schedule-backfill = "backend.copilot.dream.registry_backfill:main"
 oauth-tool = "backend.cli.oauth_tool:cli"
 publish-skills-catalog = "backend.cli.publish_skills_catalog:main"
-
-[tool.poetry.plugins."opentelemetry_otlp_credential_provider"]
-autogpt-copilot-traces = "backend.copilot.sdk.trace_export:create_trace_export_session"
+seed-preview-marketplace = "backend.cli.seed_preview_marketplace:main"
 
 [tool.isort]
 profile = "black"

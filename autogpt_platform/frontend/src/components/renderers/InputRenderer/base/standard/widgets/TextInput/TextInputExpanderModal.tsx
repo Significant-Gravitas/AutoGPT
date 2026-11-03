@@ -82,7 +82,7 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
             value={tempValue}
             className={cn(
               "!min-h-[300px]",
-              inputType === "json" && "font-mono text-sm",
+              inputType === "json" && "font-mono text-body",
             )}
             onChange={(e) => setTempValue(e.target.value)}
             placeholder={placeholder || "Enter text..."}
@@ -91,22 +91,18 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
 
           <div className="flex items-center justify-end gap-1">
             <Button
-              variant="secondary"
-              size="small"
+              variant={isCopied ? "success" : "secondary"}
+              size="icon-sm"
+              shape="pill"
+              tone="base"
+              withTooltip={false}
               onClick={copyValue}
               aria-label={
                 isCopied ? "Copied to clipboard" : "Copy to clipboard"
               }
-              className={cn(
-                // TODO(tokens): no exact role for hover:text-slate-900 #2A313A
-                "h-fit min-w-0 gap-1.5 border border-border-base p-2 text-foreground-base hover:text-slate-900",
-                isCopied &&
-                  // TODO(tokens): no exact role for border-green-400 #45b56e, bg-green-100 #b7e2c7, hover:border-green-400 #45b56e, hover:bg-green-200 #94d5ac
-                  "border-green-400 bg-green-100 hover:border-green-400 hover:bg-green-200",
-              )}
             >
               {isCopied ? (
-                <Icon icon={Tick02Icon} size={16} className="text-success" />
+                <Icon icon={Tick02Icon} size={16} tone="success" />
               ) : (
                 <Icon icon={Copy01Icon} size={16} />
               )}

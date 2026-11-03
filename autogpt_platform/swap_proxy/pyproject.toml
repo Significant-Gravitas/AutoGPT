@@ -8,11 +8,14 @@ packages = [{ include = "swap_proxy" }]
 
 [tool.poetry.dependencies]
 python = ">=3.12,<3.14"
-# These three come with mitmproxy; named because decode.py and addon.py use
-# them directly, and brotli's bounded decode (output_buffer_limit) needs 1.2.
-brotli = ">=1.2.0"
+# brotli and pyopenssl come with mitmproxy.  pyopenssl is named because
+# addon.py uses it directly; brotli is no longer used here (decode.py does not
+# decode it) and is named for its floor, as mitmproxy can.  zstandard is our
+# own: decode.py decodes with it, and mitmproxy has used the standard library's
+# zstd (backports.zstd before 3.14) since 12.3.
+brotli = ">=1.2.1"
 httpx = "^0.28.1"
-mitmproxy = "^12.2.3"
+mitmproxy = "^12.3.1"
 pyopenssl = ">=24"
 redis = "^8.1.0"
 zstandard = ">=0.23.0"

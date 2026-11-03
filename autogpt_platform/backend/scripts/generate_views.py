@@ -32,6 +32,7 @@ Usage
   poetry run analytics-views             # apply all views to DB
   poetry run analytics-views --dry-run   # print all view SQL only
   poetry run analytics-views --only graph_execution,retention_login_weekly
+  poetry run analytics-views --recreate --only user_lifecycle,user_lifecycle_funnel_weekly
 
 Environment variables
 ---------------------
@@ -41,6 +42,14 @@ Notes
 -----
 - .env DB_* vars are read automatically as a fallback.
 - Safe to re-run: uses CREATE OR REPLACE VIEW.
+- CREATE OR REPLACE VIEW cannot drop or rename a column. After such a
+  change, pass --recreate: it drops the selected views and creates them
+  again in the same transaction, with the view-level grants they had
+  (column-level grants are not kept). Run it as the role that owns the
+  views. List every view that reads from them in --only too; if one is
+  missing, Postgres refuses the drop and nothing changes. Views are
+  created in file-name order, so a view must sort after the views it
+  reads.
 - Looker, PostHog Data Warehouse, and Supabase MCP all read from the
   same analytics.* views — no raw tables exposed.
 """
@@ -139,6 +148,16 @@ def run_sql(db_url: str, statements: list[tuple[str, str]]) -> None:
     except Exception as e:
         conn.rollback()
         print(f"\n✗ Error: {e}", file=sys.stderr)
+        message = str(e)
+        if (
+            "cannot drop columns from view" in message
+            or "cannot change name of view column" in message
+        ):
+            print(
+                "A column was removed or renamed: rerun with --recreate, listing "
+                "that view and every view that reads from it in --only.",
+                file=sys.stderr,
+            )
         sys.exit(1)
     finally:
         cur.close()
@@ -150,6 +169,47 @@ def build_view_sql(name: str, query_body: str) -> str:
     # security_invoker = false → view runs as its owner (postgres), not the
     # caller, so analytics_readonly only needs analytics schema access.
     return f"CREATE OR REPLACE VIEW {SCHEMA}.{name} WITH (security_invoker = false) AS\n{body};\n"
+
+
+def build_drop_sql(names: list[str]) -> str:
+    # One statement, no CASCADE: Postgres drops views that depend on each
+    # other together, and refuses when a view outside the list depends on one
+    # of them, so nothing is dropped without being recreated.
+    targets = ", ".join(f"{SCHEMA}.{name}" for name in names)
+    return f"DROP VIEW IF EXISTS {targets};\n"
+
+
+def build_save_grants_sql(names: list[str]) -> str:
+    # A drop removes every grant on the view; keep them to restore after the
+    # views are created again. The owner's own grants come back with
+    # ownership, so they are left out.
+    targets = ", ".join(f"'{name}'" for name in names)
+    return (
+        "CREATE TEMP TABLE analytics_view_grants ON COMMIT DROP AS\n"
+        "SELECT c.relname AS view_name, a.privilege_type, a.is_grantable,\n"
+        "       CASE WHEN a.grantee = 0 THEN 'PUBLIC'\n"
+        "            ELSE quote_ident(r.rolname) END AS grantee\n"
+        "FROM pg_class c\n"
+        "JOIN pg_namespace n ON n.oid = c.relnamespace\n"
+        "CROSS JOIN LATERAL aclexplode(c.relacl) a\n"
+        "LEFT JOIN pg_roles r ON r.oid = a.grantee\n"
+        f"WHERE n.nspname = '{SCHEMA}' AND c.relname IN ({targets})\n"
+        "  AND a.grantee <> c.relowner;\n"
+    )
+
+
+RESTORE_GRANTS_SQL = f"""DO $$
+DECLARE g record;
+BEGIN
+  FOR g IN SELECT * FROM analytics_view_grants LOOP
+    EXECUTE format(
+      'GRANT %s ON {SCHEMA}.%I TO %s%s',
+      g.privilege_type, g.view_name, g.grantee,
+      CASE WHEN g.is_grantable THEN ' WITH GRANT OPTION' ELSE '' END
+    );
+  END LOOP;
+END $$;
+"""
 
 
 def load_views(only: list[str] | None = None) -> list[tuple[str, str]]:
@@ -206,8 +266,23 @@ def cmd_views(args: argparse.Namespace) -> None:
         print("No matching views found.")
         sys.exit(0)
 
+    view_count = len(views)
+    if args.recreate:
+        names = [label.removeprefix(f"view {SCHEMA}.") for label, _ in views]
+        # Fail fast instead of queueing every reader behind a drop that waits
+        # on a long BI query.
+        views = (
+            [
+                ("lock timeout", "SET LOCAL lock_timeout = '30s';\n"),
+                ("save grants", build_save_grants_sql(names)),
+                ("drop views to recreate", build_drop_sql(names)),
+            ]
+            + views
+            + [("restore grants", RESTORE_GRANTS_SQL)]
+        )
+
     if args.dry_run:
-        print(f"-- {len(views)} views\n")
+        print(f"-- {view_count} views\n")
         for label, sql in views:
             print(f"-- {label}")
             print(sql)
@@ -217,7 +292,7 @@ def cmd_views(args: argparse.Namespace) -> None:
     if not db_url:
         no_db_url_error()
     assert db_url
-    print(f"Applying {len(views)} view(s)...")
+    print(f"Applying {view_count} view(s)...")
     # Append grant refresh so the readonly role sees any new views
     grant = f"GRANT SELECT ON ALL TABLES IN SCHEMA {SCHEMA} TO analytics_readonly;"
     run_sql(db_url, views + [("grant analytics_readonly", grant)])
@@ -239,6 +314,11 @@ def main_views() -> None:
     )
     parser.add_argument("--db-url", help="Postgres connection string")
     parser.add_argument("--only", help="Comma-separated view names to update")
+    parser.add_argument(
+        "--recreate",
+        action="store_true",
+        help="Drop the selected views before creating them (needed to remove a column)",
+    )
     cmd_views(parser.parse_args())
 
 

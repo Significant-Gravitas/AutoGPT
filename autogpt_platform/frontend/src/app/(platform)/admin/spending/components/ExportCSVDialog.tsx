@@ -134,36 +134,36 @@ export function ExportCSVDialog<
       <Dialog.Content>
         <div className="flex flex-col gap-4">
           {description && (
-            <p className="text-sm text-muted-foreground">{description}</p>
+            <p className="text-body text-muted-foreground">{description}</p>
           )}
           <div className="flex gap-3">
             <div className="flex flex-1 flex-col gap-1">
-              <label htmlFor={`${idPrefix}-start`} className="text-sm">
+              <label htmlFor={`${idPrefix}-start`} className="text-body">
                 Start date (UTC)
               </label>
               <input
                 id={`${idPrefix}-start`}
                 type="date"
-                className="rounded border px-3 py-1.5 text-sm"
+                className="rounded border px-3 py-1.5 text-body"
                 value={start}
                 onChange={(e) => setStart(e.target.value)}
               />
             </div>
             <div className="flex flex-1 flex-col gap-1">
-              <label htmlFor={`${idPrefix}-end`} className="text-sm">
+              <label htmlFor={`${idPrefix}-end`} className="text-body">
                 End date (UTC)
               </label>
               <input
                 id={`${idPrefix}-end`}
                 type="date"
-                className="rounded border px-3 py-1.5 text-sm"
+                className="rounded border px-3 py-1.5 text-body"
                 value={end}
                 onChange={(e) => setEnd(e.target.value)}
               />
             </div>
           </div>
           {children}
-          <p className="text-xs text-muted-foreground">
+          <p className="text-caption text-muted-foreground">
             {capNoteSuffix ? `${CAP_NOTE} ${capNoteSuffix}` : CAP_NOTE}
           </p>
         </div>

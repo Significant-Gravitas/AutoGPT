@@ -28,6 +28,7 @@ const STATUS_CONFIG: Record<
   scheduled: {
     label: "Scheduled",
     bg: "",
+    // oxlint-disable-next-line design-system/no-raw-colors -- yellow-600 #DFAF00 has no role; gold to amber change deferred (see PR)
     text: "text-yellow-600",
     pulse: false,
   },
@@ -50,7 +51,7 @@ export function StatusBadge({ status, className }: Props) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium",
+        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-caption font-medium",
         config.bg,
         config.text,
         className,
@@ -77,8 +78,9 @@ function statusDotColor(status: AgentStatus): string {
     case "listening":
       return "bg-brand";
     case "scheduled":
+      // oxlint-disable-next-line design-system/no-raw-colors -- yellow-500 #F5C000 has no role; yellow to amber change deferred (see PR)
       return "bg-yellow-500";
     case "idle":
-      return "bg-zinc-400";
+      return "bg-foreground-subtle";
   }
 }

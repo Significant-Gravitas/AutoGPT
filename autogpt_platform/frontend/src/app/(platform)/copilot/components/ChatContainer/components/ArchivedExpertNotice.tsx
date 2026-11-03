@@ -22,7 +22,7 @@ const NOTICE_COPY: Record<ExpertReadOnlyReason, (name: string) => string> = {
 
 export function ArchivedExpertNotice({ expertName, reason }: Props) {
   return (
-    <div className="px-3 pb-6 pt-2">
+    <div className="px-3 pt-2 pb-6">
       <AttentionCard.Root
         variant="muted"
         density="relaxed"
@@ -37,7 +37,7 @@ export function ArchivedExpertNotice({ expertName, reason }: Props) {
               size={16}
             />
           </AttentionCard.Icon>
-          <Text variant="small" className="text-muted-foreground">
+          <Text variant="small" tone="muted">
             {NOTICE_COPY[reason](expertName)}
           </Text>
         </AttentionCard.Row>
