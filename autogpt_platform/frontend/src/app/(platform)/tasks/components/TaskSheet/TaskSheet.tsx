@@ -38,13 +38,13 @@ export function TaskSheet({ taskId, onOpenChange, onOpenTask }: Props) {
       <SheetContent
         side="right"
         aria-describedby={undefined}
-        className="flex w-full flex-col gap-0 p-0 sm:max-w-xl"
+        className="flex w-full flex-col sm:max-w-xl"
       >
         <SheetTitle className="sr-only">{task?.title ?? "Task"}</SheetTitle>
         {isLoading || (!task && !isError) ? (
           <SheetSkeleton />
         ) : isError || !task ? (
-          <div className="p-6">
+          <div>
             <Text variant="body" tone="muted">
               This task could not be loaded.
             </Text>
@@ -52,10 +52,13 @@ export function TaskSheet({ taskId, onOpenChange, onOpenTask }: Props) {
         ) : (
           <>
             <div className="flex-1 overflow-y-auto">
-              <div className="flex flex-col gap-6 px-6 pt-6 pb-8">
+              <div className="flex flex-col gap-6 pb-4">
                 <TaskHeader task={task} experts={experts} onUpdate={update} />
                 {task.open_question ? (
-                  <QuestionCard taskId={task.id} question={task.open_question} />
+                  <QuestionCard
+                    taskId={task.id}
+                    question={task.open_question}
+                  />
                 ) : null}
                 {task.status === "in_progress" && task.live ? (
                   <LiveStrip live={task.live} metrics={task.metrics} />
@@ -92,7 +95,7 @@ export function TaskSheet({ taskId, onOpenChange, onOpenTask }: Props) {
 
 function SheetSkeleton() {
   return (
-    <div className="flex flex-col gap-4 p-6">
+    <div className="flex flex-col gap-4">
       <Skeleton className="h-4 w-16" />
       <Skeleton className="h-7 w-3/4" />
       <div className="flex gap-2">
