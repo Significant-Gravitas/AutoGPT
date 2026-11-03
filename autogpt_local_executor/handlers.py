@@ -19,6 +19,7 @@ import logging
 import mimetypes
 import os
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -219,6 +220,38 @@ def _err_result(duration_ms: int, error_code: str, *, exit_code: int | None = No
 
 def _elapsed_ms(start: float) -> int:
     return int((time.monotonic() - start) * 1000)
+
+
+# How long a command's process group has to exit after SIGTERM before SIGKILL.
+_TERMINATE_GRACE_SECONDS = 2.0
+
+
+async def _terminate_process_group(pgid: int) -> None:
+    """SIGTERM a command's process group, then SIGKILL whatever is left of it.
+
+    The group is signalled by its ID, never through the command's own process,
+    which may exit on SIGTERM while members that ignore it live on.
+    """
+    if not _signal_process_group(pgid, signal.SIGTERM):
+        return
+    deadline = time.monotonic() + _TERMINATE_GRACE_SECONDS
+    while time.monotonic() < deadline:
+        await asyncio.sleep(0.05)
+        if not _signal_process_group(pgid, 0):
+            return
+    _signal_process_group(pgid, signal.SIGKILL)
+
+
+def _signal_process_group(pgid: int, sig: int) -> bool:
+    """Send `sig` to a process group; False once no process is left in it."""
+    try:
+        os.killpg(pgid, sig)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # Only members this user cannot signal are left (a setuid program).
+        return True
+    return True
 
 
 def _is_link(path: Path) -> bool:
@@ -598,19 +631,9 @@ class CommandHandler:
                 if proc.returncode is None:
                     proc.kill()
             else:
-                import signal
-
-                # Kill the whole process group we created with setsid.
-                try:
-                    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-                except (ProcessLookupError, OSError):
-                    pass
-                await asyncio.sleep(2.0)
-                if proc.returncode is None:
-                    try:
-                        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-                    except (ProcessLookupError, OSError):
-                        pass
+                # setsid at spawn made the command its group's leader, so the
+                # group's ID is the command's PID.
+                await _terminate_process_group(proc.pid)
         except Exception:  # pragma: no cover - best-effort
             logger.exception("Error terminating subprocess tree")
 

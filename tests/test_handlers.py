@@ -4,14 +4,19 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import errno
 import os
+import signal
 import sys
+import textwrap
+import time
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+import autogpt_local_executor.handlers as handlers_module
 from autogpt_local_executor.config import ShimConfig
 from autogpt_local_executor.handlers import CommandHandler, FileHandler
 from autogpt_local_executor.protocol import (
@@ -1091,6 +1096,69 @@ async def test_command_timeout(tmp_path: Path) -> None:
 
     assert isinstance(resp, CommandResultMessage)
     assert resp.payload.timed_out is True
+
+
+async def _wait_until(condition, *, timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
+    while not condition():
+        if time.monotonic() > deadline:
+            return False
+        await asyncio.sleep(0.05)
+    return True
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
+@pytest.mark.asyncio
+async def test_terminating_a_command_kills_descendants_that_ignore_sigterm(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The command exits on SIGTERM; its child ignores SIGTERM and must still die."""
+    import fcntl
+
+    monkeypatch.setattr(handlers_module, "_TERMINATE_GRACE_SECONDS", 0.5)
+    lock_path = tmp_path / "child.lock"
+    pid_path = tmp_path / "child.pid"
+    child = textwrap.dedent(
+        f"""
+        import fcntl, os, signal, time
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        lock = open({str(lock_path)!r}, "w")
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        with open({str(pid_path)!r} + ".tmp", "w") as f:
+            f.write(str(os.getpid()))
+        os.replace({str(pid_path)!r} + ".tmp", {str(pid_path)!r})
+        time.sleep(120)
+        """
+    )
+    parent = (
+        "import subprocess, sys, time; "
+        f"subprocess.Popen([sys.executable, '-c', {child!r}]); time.sleep(120)"
+    )
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, "-c", parent, start_new_session=True
+    )
+
+    def child_released_its_lock() -> bool:
+        with open(lock_path, "w") as probe:
+            try:
+                fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return False
+            return True
+
+    try:
+        assert await _wait_until(pid_path.exists, timeout=60)
+        await CommandHandler._terminate_tree(proc)
+        await asyncio.wait_for(proc.wait(), timeout=30)
+
+        assert await _wait_until(child_released_its_lock, timeout=30)
+    finally:
+        if pid_path.exists():
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(int(pid_path.read_text()), signal.SIGKILL)
+        if proc.returncode is None:
+            proc.kill()
+            await proc.wait()
 
 
 @pytest.mark.asyncio

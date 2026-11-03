@@ -96,7 +96,7 @@ paths only; navigation and selection use short-lived opaque references.
 |---|---|---|---|---|
 | Graceful terminate | `SIGTERM` | `SIGTERM` | `CTRL_BREAK_EVENT` for console apps; `TerminateProcess` for GUI apps | Shim picks per-OS in command runner. |
 | Hard kill | `SIGKILL` | `SIGKILL` | `TerminateProcess` | Always available. |
-| Timeout enforcement | `asyncio.wait_for` + SIGTERM → wait 2s → SIGKILL | same | `asyncio.wait_for` + CTRL_BREAK → wait 2s → TerminateProcess | Common timeout sequence; per-OS signal differs. |
+| Timeout enforcement | `asyncio.wait_for` + SIGTERM to the group → SIGKILL to whatever is left of it after 2s, even once the command itself has exited | same | `asyncio.wait_for` + CTRL_BREAK → wait 2s → TerminateProcess | Common timeout sequence; per-OS signal differs. |
 | Process group / job control | `setsid` + kill PGID | same | `CREATE_NEW_PROCESS_GROUP` flag | So we kill child processes spawned by the command. |
 
 ### Environment variables
