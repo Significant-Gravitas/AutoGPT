@@ -14,6 +14,7 @@ import pytest
 
 from backend.api.conn_manager import graph_exec_channel_key
 from backend.api.model import WSMethod
+from backend.data.user import is_user_banned as _read_cached_ban
 from backend.util.clients import get_database_manager_async_client
 from backend.util.test import SpinTestServer
 
@@ -63,7 +64,15 @@ async def test_the_server_answers_sockets_with_no_database_of_its_own(
     server: SpinTestServer,
 ):
     user_id, graph_id, graph_exec_id = await _seed_execution()
-    banned_user_id = await _seed_auth_user(banned=True)
+    banned_user_id = await _seed_auth_user()
+    assert not await _read_cached_ban(user_id)
+    assert not await _read_cached_ban(banned_user_id)
+    await prisma.models.AuthUser.prisma().update(
+        where={"id": banned_user_id}, data={"banned": True}
+    )
+    await prisma.models.AuthSession.prisma().delete_many(
+        where={"userId": banned_user_id}
+    )
     # The probe's reads land here; a cold server is not what is measured.
     await get_database_manager_async_client().health_check_async()
     try:

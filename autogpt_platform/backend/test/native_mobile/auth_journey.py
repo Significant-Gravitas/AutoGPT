@@ -158,6 +158,14 @@ async def test_backend_rechecks_session_authority(
     token = await access_token(client, bearer)
     user = await AuthUser.prisma().find_unique(where={"email": email})
     assert user is not None
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://backend"
+    ) as backend:
+        assert (
+            await backend.get(
+                "/api/auth/user/timezone", headers={"Authorization": f"Bearer {token}"}
+            )
+        ).status_code == 200
     if change == "expire":
         await AuthSession.prisma().update_many(
             where={"userId": user.id},
@@ -197,6 +205,16 @@ async def test_backend_rechecks_session_authority(
             assert response.json()["detail"]["code"] == "account_banned"
         else:
             assert response.status_code == (200 if change == "past_ban" else 401)
+    if change in {"ban", "revoked_ban", "future_ban"}:
+        send = AsyncMock()
+        websocket = WebSocket(
+            {"type": "websocket", "query_string": urlencode({"token": token}).encode()},
+            receive=AsyncMock(return_value={"type": "websocket.connect"}),
+            send=send,
+        )
+        assert await ws_api.authenticate_websocket(websocket) == ""
+        assert send.await_args is not None
+        assert send.await_args.args[0]["code"] == 4004
 
 
 @pytest.mark.asyncio

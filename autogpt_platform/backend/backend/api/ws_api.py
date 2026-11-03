@@ -20,6 +20,7 @@ from backend.api.session_auth import require_active_auth_session
 from backend.api.utils.cors import build_cors_params
 from backend.api.utils.validation_errors import bounded_validation_errors
 from backend.data import redis_client
+from backend.data.db_accessors import auth_session_db
 from backend.data.user import is_user_banned
 from backend.monitoring.instrumentation import (
     instrument_fastapi,
@@ -43,6 +44,8 @@ async def lifespan(app: FastAPI):
     # server needs no database URL. Eager Redis connect to fail fast.
     await redis_client.get_redis_async()
     try:
+        # Cold RPC-client imports must finish before request auth deadlines start.
+        auth_session_db()
         yield
     finally:
         # Silences asyncio's "Unclosed ClusterNode" GC warning at shutdown.

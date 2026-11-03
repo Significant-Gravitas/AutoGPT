@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from backend.data import user as user_store
-from backend.data.db_accessors import auth_session_db
+from backend.data.db_accessors import auth_session_db, user_db
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -53,4 +53,7 @@ async def require_active_auth_session(payload: dict[str, Any]) -> None:
 async def _session_is_active(claims: SessionTokenClaims) -> bool:
     if await user_store.is_user_banned(claims.sub):
         raise HTTPException(status_code=403, detail=ACCOUNT_BANNED_DETAIL)
-    return await auth_session_db().is_auth_session_active(claims.sid, claims.sub)
+    active = await auth_session_db().is_auth_session_active(claims.sid, claims.sub)
+    if not active and await user_db().is_auth_user_banned(claims.sub):
+        raise HTTPException(status_code=403, detail=ACCOUNT_BANNED_DETAIL)
+    return active
