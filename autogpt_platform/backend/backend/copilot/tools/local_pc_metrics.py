@@ -60,6 +60,8 @@ _HANDSHAKE_STAGES = frozenset(
         "invalid_hello_id",
         "invalid_hello",
         "protocol_version_mismatch",
+        "session_binding_mismatch",
+        "machine_control_unsupported",
         "hello_timeout",
         "handshake_error",
     }

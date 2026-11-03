@@ -7,7 +7,11 @@ unregister N times → active gauge is back to 0 for those labels.
 
 from __future__ import annotations
 
+import ast
+from pathlib import Path
+
 from .local_pc_metrics import (
+    _HANDSHAKE_STAGES,
     LOCAL_PC_SHIM_ACTIVE,
     LOCAL_PC_SHIM_CONNECTIONS,
     LOCAL_PC_SHIM_HANDSHAKE_FAILURES,
@@ -152,6 +156,34 @@ class TestHandshakeFailure:
                 _counter_value(LOCAL_PC_SHIM_HANDSHAKE_FAILURES, stage=stage)
                 == before + 1
             )
+
+    def test_every_recorded_stage_keeps_its_own_label(self):
+        # A stage missing from _HANDSHAKE_STAGES is counted as "unknown",
+        # which hides the failure it names. Check every call site in the
+        # backend instead of a hand-copied list.
+        recorded = _recorded_handshake_stages()
+        assert "session_binding_mismatch" in recorded
+        assert recorded - _HANDSHAKE_STAGES == set()
+
+
+def _recorded_handshake_stages() -> set[str]:
+    package_root = Path(__file__).resolve().parents[2]
+    stages: set[str] = set()
+    for path in package_root.rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        if "record_handshake_failure(" not in source:
+            continue
+        for node in ast.walk(ast.parse(source)):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "record_handshake_failure"
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+            ):
+                stages.add(node.args[0].value)
+    return stages
 
 
 class TestRpcMetrics:
