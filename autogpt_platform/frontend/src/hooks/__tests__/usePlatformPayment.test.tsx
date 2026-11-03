@@ -7,10 +7,9 @@ import { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 import { usePlatformPayment } from "../usePlatformPayment";
 
+// The app's client keeps React Query's default retries, so the hook must opt out itself.
 function renderPayment() {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
+  const client = new QueryClient();
   return renderHook(usePlatformPayment, {
     wrapper: ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
@@ -30,14 +29,17 @@ describe("usePlatformPayment", () => {
     },
   );
 
-  it("resolves with payment off when the backend cannot answer", async () => {
+  it("resolves at once with payment off when the backend cannot answer", async () => {
+    let requests = 0;
     server.use(
-      http.get("/api/proxy/api/platform-config", () =>
-        HttpResponse.json({ detail: "unavailable" }, { status: 503 }),
-      ),
+      http.get("/api/proxy/api/platform-config", () => {
+        requests += 1;
+        return HttpResponse.json({ detail: "unavailable" }, { status: 503 });
+      }),
     );
     const { result } = renderPayment();
     await waitFor(() => expect(result.current.isResolved).toBe(true));
     expect(result.current.isPaymentEnabled).toBe(false);
+    expect(requests).toBe(1);
   });
 });

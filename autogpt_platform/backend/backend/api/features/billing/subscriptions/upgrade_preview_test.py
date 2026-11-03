@@ -97,6 +97,15 @@ def test_preview_uses_authenticated_user_and_requested_cycle(client, monkeypatch
     assert preview.await_args.args[1].billing_cycle == "yearly"
 
 
+def test_preview_is_refused_with_payment_off(client, monkeypatch, set_platform_payment):
+    preview = AsyncMock(return_value=PREVIEW)
+    monkeypatch.setattr(routes, "preview_subscription_upgrade", preview)
+    set_platform_payment(False)
+    response = client.post("/credits/subscription/preview", json={"tier": "MAX"})
+    assert response.status_code == 422
+    preview.assert_not_awaited()
+
+
 def test_failed_preview_does_not_mutate_subscription(client, monkeypatch):
     preview = AsyncMock(side_effect=UpgradePreviewUnavailable("Review unavailable"))
     modify = AsyncMock()
