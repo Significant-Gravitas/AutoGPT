@@ -416,6 +416,50 @@ describe("ExecutionTargetPicker", () => {
     expect(screen.queryByText("C:\\Users\\Ada")).toBeNull();
   });
 
+  it("invalidates the folder when opening one returns a different folder", async () => {
+    const user = userEvent.setup();
+    mockMachines();
+    server.use(
+      http.post(DIRECTORIES_URL, async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        const home = {
+          directory_ref: "home-ref",
+          name: "Home",
+          path: "C:\\Users\\Ada",
+        };
+        const other = {
+          directory_ref: "other-ref",
+          name: "Other",
+          path: "C:\\Users\\Other",
+        };
+        return HttpResponse.json({
+          connection_id: "connection-1",
+          browse_id: "browse-1",
+          current: body.directory_ref ? other : null,
+          parent_ref: null,
+          entries: body.directory_ref ? [] : [home],
+          next_cursor: null,
+          truncated: false,
+          expires_at: 1,
+        });
+      }),
+    );
+
+    render(<ExecutionTargetPicker />);
+    await chooseLocalPC(user);
+    await user.click(await screen.findByRole("button", { name: "Home" }));
+
+    await screen.findAllByText(/folder view changed/i);
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Use This Folder",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(screen.queryByText("C:\\Users\\Other")).toBeNull();
+  });
+
   it("preserves a selected folder while the first machine check is pending", async () => {
     const selectedTarget = {
       kind: "local" as const,

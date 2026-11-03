@@ -135,9 +135,12 @@ export function useLocalFolderPicker({ isOpen, machine, onStale }: Props) {
     setPageFailed(false);
     setError(null);
     setLastTarget(target);
+    const browseID = target.directoryRef
+      ? (directory?.browse_id ?? null)
+      : null;
     void browseLocalExecutorDirectory(machine.machine_id, {
       expected_connection_id: connectionID,
-      browse_id: target.directoryRef ? (directory?.browse_id ?? null) : null,
+      browse_id: browseID,
       directory_ref: target.directoryRef,
     })
       .then((response) => {
@@ -145,6 +148,16 @@ export function useLocalFolderPicker({ isOpen, machine, onStale }: Props) {
         if (response.connection_id !== connectionID) {
           invalidateDirectory(
             "Your Local PC reconnected. Choose the folder again.",
+          );
+          return;
+        }
+        if (
+          target.directoryRef &&
+          (response.browse_id !== browseID ||
+            response.current?.directory_ref !== target.directoryRef)
+        ) {
+          invalidateDirectory(
+            "Your Local PC folder view changed. Choose it again.",
           );
           return;
         }
