@@ -1,5 +1,6 @@
 import type { BrowserContext, Route } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { STORAGE_KEY } from "../../../components/molecules/ChangelogPopup/changelog-constants";
 import { markChangelogSeen } from "../changelog";
@@ -35,7 +36,7 @@ beforeEach(() => window.localStorage.clear());
 describe("Playwright changelog input", () => {
   it("serves the local fixture and marks it seen without contacting the publisher", async () => {
     const markdown = readFileSync(
-      new URL("../../fixtures/changelog.md", import.meta.url),
+      path.resolve(__dirname, "../../fixtures/changelog.md"),
       "utf8",
     );
     const { fetch, fulfill } = await requestChangelog(markdown);

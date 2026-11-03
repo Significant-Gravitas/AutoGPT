@@ -2,11 +2,6 @@ name: Backend tool benchmark
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - ".github/workflows/backend-tool-benchmark.yml"
-      - ".github/scripts/benchmark_backend_tools.py"
-      - ".github/scripts/test_backend_tool_benchmark.py"
 
 permissions:
   contents: read
@@ -27,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0

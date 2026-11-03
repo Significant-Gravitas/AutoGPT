@@ -48,7 +48,7 @@ This experiment does not cache test results, disable test isolation, change Pyth
 
 ## Rust tooling comparison
 
-`backend-tool-benchmark.yml` measures installation, formatting, import sorting, and type checking on hosted Python 3.12 and 3.13. It runs when its benchmark files change in a PR, or on manual dispatch. It does not replace the normal CI checks or change the shard layout.
+`backend-tool-benchmark.yml` measures installation, formatting, import sorting, and type checking on hosted Python 3.12 and 3.13. It runs on manual dispatch, so unchanged experiments do not compete with required checks on every PR update. It does not replace the normal CI checks or change the shard layout.
 
 The paired measurements use the same checkout and runner:
 
