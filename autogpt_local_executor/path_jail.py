@@ -190,7 +190,9 @@ def assert_inside_jail(
     #    Probing the requested path would write wherever a rejected path
     #    points.
     if is_case_insensitive_fs(root_resolved):
-        a, b = os.path.normcase(resolved), os.path.normcase(root_resolved)
+        # normcase only folds case on Windows; macOS volumes need it too.
+        a = os.path.normcase(resolved).casefold()
+        b = os.path.normcase(root_resolved).casefold()
     else:
         a, b = resolved, root_resolved
 

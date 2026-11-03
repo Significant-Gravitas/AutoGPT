@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
+import autogpt_local_executor.path_jail as path_jail_module
 from autogpt_local_executor.path_jail import (
     PathJailError,
     assert_inside_jail,
@@ -99,15 +100,22 @@ def test_allows_uppercased_on_case_insensitive_fs(tmp_path: Path) -> None:
     nested = tmp_path / "x.txt"
     nested.write_text("hi")
     upper_root = Path(str(tmp_path).upper())
-    # Result depends on whether normcase rewrites it consistently; mainly we
-    # assert we DON'T raise on a same-volume case toggle.
-    try:
-        assert_inside_jail(nested, upper_root)
-    except PathJailError:
-        # If realpath(upper_root, strict=True) failed because the literal
-        # upper-case path doesn't exist on the FS, that's a different error
-        # and acceptable for this probe.
-        pass
+
+    assert_inside_jail(nested, upper_root)
+
+
+def test_case_differences_are_folded_when_the_root_fs_ignores_case(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """os.path.normcase changes nothing on macOS, so case must be folded
+    explicitly. Linux filesystems are case-sensitive, so the probe is forced."""
+    root = tmp_path / "Work"
+    root.mkdir()
+    monkeypatch.setattr(path_jail_module, "is_case_insensitive_fs", lambda _path: True)
+
+    assert_inside_jail(tmp_path / "WORK" / "notes.txt", root)
+    with pytest.raises(PathJailError):
+        assert_inside_jail(tmp_path / "WORKSHOP" / "notes.txt", root)
 
 
 def test_blocks_prefix_lookalike_dir(tmp_path: Path) -> None:
