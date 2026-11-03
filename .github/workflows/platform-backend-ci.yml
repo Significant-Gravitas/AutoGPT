@@ -649,12 +649,16 @@ jobs:
             pytest_args+=(-v)
           fi
 
-          if [[ "${{ matrix.test-shard }}" == "api" ]]; then
-            ulimit -v 8388608
-            echo "API diagnostic limit: 8 GiB virtual address space per process"
-          fi
-          /usr/bin/time -v /usr/bin/timeout --verbose --kill-after=15s 8m \
+          unit="ci-backend-${TEST_SHARD}.scope"
+          set +e
+          sudo -E systemd-run --scope --expand-environment=no --unit="$unit" \
+            -p RuntimeMaxSec=8min -p TimeoutStopSec=15s -p KillMode=control-group \
+            /usr/bin/setpriv --reuid "$(id -u)" --regid "$(id -g)" --init-groups \
+            /usr/bin/env PATH="$PATH" HOME="$HOME" /usr/bin/time -v \
             python ../../.github/scripts/backend_test_shard.py --layout "$TEST_LAYOUT" --partition "${{ matrix.partition }}" "${{ matrix.test-shard }}" -- "${pytest_args[@]}"
+          status=$?
+          sudo systemctl show "$unit" --property=Result,MemoryPeak,CPUUsageNSec,TasksCurrent || true
+          exit "$status"
 
       - name: Generate coverage XML once
         if: ${{ always() }}

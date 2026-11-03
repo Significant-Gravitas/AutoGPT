@@ -181,15 +181,27 @@ def auth_row(mocker, real_ban_lookup):
         "unbanned": (None, None),
     }
     rows: dict[str, AuthUser] = {}
+    cache_entries: dict[str, bytes] = {}
 
     async def find_unique(where):
         return rows.get(where["id"])
 
+    def cache_setex(key: str, _ttl: int, value: bytes) -> None:
+        cache_entries[key] = value
+
+    mocker.patch(
+        "backend.util.cache._get_redis",
+        return_value=SimpleNamespace(
+            get=cache_entries.get,
+            setex=cache_setex,
+            delete=lambda key: cache_entries.pop(key, None),
+        ),
+    )
+
     # Connected, so the lookup reads the row here rather than over the RPC.
     mocker.patch.object(db, "is_connected", return_value=True)
-    mocker.patch.object(user_module, "AuthUser").prisma.return_value.find_unique = (
-        find_unique
-    )
+    auth_user = mocker.patch.object(user_module, "AuthUser")
+    auth_user.prisma.return_value.find_unique = find_unique
 
     def make(state: str) -> str:
         user_id = str(uuid.uuid4())

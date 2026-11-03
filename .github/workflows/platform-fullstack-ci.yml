@@ -405,7 +405,8 @@ jobs:
           echo "Baking: $targets"
           # The UTC date re-runs the backend's package installs once a day
           # (APT_REFRESH), so E2E tests the OS packages that ship.
-          docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml --load \
+          docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml \
+            --set '*.output=type=docker,compression=uncompressed' \
             --set "*.args.APT_REFRESH=$(date -u +%F)" $targets
 
       - name: Set up Platform - Build frontend Docker image
@@ -414,7 +415,8 @@ jobs:
         background: true
         run: |
           # Lint and type checks run in their own jobs, so the e2e build skips them
-          docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml --load \
+          docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml \
+            --set frontend.output=type=docker,compression=uncompressed \
             --set frontend.args.NEXT_SKIP_BUILD_CHECKS=true frontend
         env:
           NEXT_PUBLIC_PW_TEST: true
