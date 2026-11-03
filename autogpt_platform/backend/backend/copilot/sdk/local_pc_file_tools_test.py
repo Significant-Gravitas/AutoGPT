@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from backend.copilot.context import resolve_executor_path
+from backend.copilot.sdk.e2b_file_tools import _handle_grep
 from backend.copilot.sdk.local_pc_file_tools import (
     describe_workspace,
     is_local_pc,
@@ -14,7 +15,12 @@ from backend.copilot.sdk.local_pc_file_tools import (
     move_via_shim,
     stat_via_shim,
 )
-from backend.copilot.tools.local_pc_shim import LocalPCShim, ShimHello, _FilesProxy
+from backend.copilot.tools.local_pc_shim import (
+    LocalPCShim,
+    ShimHello,
+    _CommandsProxy,
+    _FilesProxy,
+)
 
 
 def _shim(
@@ -181,3 +187,95 @@ class TestMoveViaShim:
         with pytest.raises(ValueError, match="must be within"):
             await move_via_shim(shim, "a.csv", "/etc/passwd")
         shim._rpc.assert_not_called()
+
+
+def _grep_on_shim(monkeypatch: pytest.MonkeyPatch, payload: dict) -> LocalPCShim:
+    """A shim whose EXECUTE_COMMAND answers with ``payload``, wired in as the
+    turn's sandbox so ``_handle_grep`` takes its Local PC branch."""
+    shim = _shim(allowed_root="/Users/test/ws")
+    shim.commands = _CommandsProxy(shim)
+    shim._rpc = AsyncMock(return_value={"type": "COMMAND_RESULT", "payload": payload})
+    monkeypatch.setattr("backend.copilot.sdk.e2b_file_tools._get_sandbox", lambda: shim)
+    return shim
+
+
+def _text(result: dict) -> str:
+    return result["content"][0]["text"]
+
+
+class TestLocalPCGrep:
+    """grep exits 0 with matches, 1 with none and 2 on an error; only 1 may
+    read as "No matches found."."""
+
+    @pytest.mark.asyncio
+    async def test_a_bad_pattern_is_an_error_not_an_empty_search(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        _grep_on_shim(
+            monkeypatch,
+            {"stdout": "", "stderr": "grep: Unmatched [, [^", "exit_code": 2},
+        )
+
+        result = await _handle_grep({"pattern": "foo["})
+
+        assert result["isError"] is True
+        assert "Unmatched [" in _text(result)
+
+    @pytest.mark.asyncio
+    async def test_no_matches_is_a_normal_result(self, monkeypatch: pytest.MonkeyPatch):
+        shim = _grep_on_shim(monkeypatch, {"stdout": "", "exit_code": 1})
+
+        result = await _handle_grep({"pattern": "absent"})
+
+        assert result["isError"] is False
+        assert _text(result) == "No matches found."
+        op, payload = shim._rpc.await_args.args
+        assert op == "EXECUTE_COMMAND"
+        assert payload["argv"][-2:] == ["absent", "/Users/test/ws"]
+        assert payload["cwd"] == "/Users/test/ws"
+        assert payload["timeout_seconds"] == 15
+
+    @pytest.mark.asyncio
+    async def test_matches_are_returned(self, monkeypatch: pytest.MonkeyPatch):
+        _grep_on_shim(
+            monkeypatch,
+            {"stdout": "notes.txt:3:foo\n", "stderr": "", "exit_code": 0},
+        )
+
+        result = await _handle_grep({"pattern": "foo"})
+
+        assert result["isError"] is False
+        assert _text(result) == "notes.txt:3:foo"
+
+    @pytest.mark.asyncio
+    async def test_matches_survive_unreadable_files(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """grep exits 2 when any file was unreadable, even after matching in
+        the others; those matches are real and must not be thrown away."""
+        _grep_on_shim(
+            monkeypatch,
+            {
+                "stdout": "notes.txt:3:foo\n",
+                "stderr": "grep: private/key.pem: Permission denied",
+                "exit_code": 2,
+            },
+        )
+
+        result = await _handle_grep({"pattern": "foo"})
+
+        assert result["isError"] is False
+        assert _text(result).startswith("notes.txt:3:foo")
+        assert "Permission denied" in _text(result)
+
+    @pytest.mark.asyncio
+    async def test_a_timeout_is_an_error(self, monkeypatch: pytest.MonkeyPatch):
+        _grep_on_shim(
+            monkeypatch,
+            {"stdout": "", "stderr": "", "exit_code": -1, "timed_out": True},
+        )
+
+        result = await _handle_grep({"pattern": "foo"})
+
+        assert result["isError"] is True
+        assert "timed out" in _text(result)

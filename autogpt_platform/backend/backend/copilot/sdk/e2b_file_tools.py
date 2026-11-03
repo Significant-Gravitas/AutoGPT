@@ -778,6 +778,10 @@ async def _handle_glob(args: dict[str, Any]) -> dict[str, Any]:
     return _mcp(json.dumps(files, indent=2), outside=tuple(files))
 
 
+_GREP_TIMEOUT_SECONDS = 15
+_GREP_ERROR_CHARS = 1_000
+
+
 async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
     """Search file contents by regex inside the sandbox using ``grep -rn``."""
     if not args:
@@ -818,21 +822,46 @@ async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
     if is_local_pc(sandbox):
         try:
             result = await sandbox.commands.run(
-                argv=parts, cwd=sandbox.allowed_root, timeout=15
+                argv=parts, cwd=sandbox.allowed_root, timeout=_GREP_TIMEOUT_SECONDS
             )
         except Exception as exc:
             return _mcp(f"Grep failed: {exc}", error=True)
-    else:
-        cmd = " ".join(shlex.quote(p) for p in parts) + " 2>/dev/null | head -200"
-        try:
-            result = await run_internal(sandbox, cmd, cwd=E2B_WORKDIR, timeout=15)
-        except Exception as exc:
-            return _mcp(f"Grep failed: {exc}", error=True)
+        return _local_grep_result(result)
+
+    cmd = " ".join(shlex.quote(p) for p in parts) + " 2>/dev/null | head -200"
+    try:
+        result = await run_internal(
+            sandbox, cmd, cwd=E2B_WORKDIR, timeout=_GREP_TIMEOUT_SECONDS
+        )
+    except Exception as exc:
+        return _mcp(f"Grep failed: {exc}", error=True)
 
     output = (result.stdout or "").strip()
     if not output:
         return _mcp("No matches found.", outside=())
     return _mcp(output, outside=(output,))
+
+
+def _local_grep_result(result: Any) -> dict[str, Any]:
+    """Read a Local PC grep by its exit status: 0 found matches, 1 found none,
+    and anything else (a bad pattern, an unreadable file, a timeout) is an
+    error that must not read as "No matches found."."""
+    output = (result.stdout or "").strip()
+    if result.exit_code in (0, 1) and not result.timed_out:
+        if not output:
+            return _mcp("No matches found.", outside=())
+        return _mcp(output, outside=(output,))
+    if result.timed_out:
+        errors = f"timed out after {_GREP_TIMEOUT_SECONDS} seconds"
+    else:
+        stderr = (result.stderr or "").strip()
+        errors = stderr[:_GREP_ERROR_CHARS] or f"exit code {result.exit_code}"
+    if not output:
+        return _mcp(f"Grep failed: {errors}", error=True)
+    # Matches in the files grep could read are still real results.
+    return _mcp(
+        f"{output}\n\n[grep reported errors: {errors}]", outside=(output, errors)
+    )
 
 
 # Bridging: copy SDK-internal files into E2B sandbox
