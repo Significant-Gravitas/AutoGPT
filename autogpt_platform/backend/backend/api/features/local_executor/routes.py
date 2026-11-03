@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
-from typing import Annotated, NoReturn
+from typing import Annotated, Any, NoReturn
 
 from autogpt_libs import auth
 from fastapi import APIRouter, Depends, HTTPException, Security, status
@@ -75,6 +77,9 @@ from backend.copilot.tools.recording_models import (
 router = APIRouter()
 router.include_router(websocket_router)
 logger = logging.getLogger(__name__)
+
+# Strong references, so a rollback stop outliving its request isn't collected.
+_ROLLBACK_TASKS: set[asyncio.Task[bool]] = set()
 
 
 @router.get(
@@ -292,39 +297,16 @@ async def start_session_recording(
             interpretation_route=effective_route,
             channels=list(request.channels),
         )
+    except asyncio.CancelledError:
+        # The caller never learns the id, so the recording is stopped before
+        # the request gives up.
+        await _stop_after_cancellation(shim, recording_id)
+        raise
     except Exception as exc:
-        stopped = False
-        try:
-            await shim.recording.stop(recording_id)
-            stopped = True
-        except Exception:
-            logger.exception(
-                "Failed to stop recording %s after state persistence failed",
-                recording_id,
-            )
-        finally:
-            shim.close_recording(recording_id)
+        stopped = await _stop_orphaned_recording(shim, recording_id)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=(
-                {
-                    "code": "RECORDING_STATE_UNAVAILABLE",
-                    "message": (
-                        "Recording state could not be saved, so the recording "
-                        "was stopped."
-                    ),
-                    "details": {"recording_id": recording_id},
-                }
-                if stopped
-                else {
-                    "code": "RECORDING_STOP_UNCONFIRMED",
-                    "message": (
-                        "Recording state could not be saved, and stopping the "
-                        "recording could not be confirmed."
-                    ),
-                    "details": {"recording_id": recording_id},
-                }
-            ),
+            detail=_rollback_detail(recording_id, stopped=stopped),
         ) from exc
     register_recording_started(
         shim,
@@ -596,6 +578,44 @@ async def _get_stopped_recording_summary(
             detail="Stopped recording state has an invalid recovery summary",
         )
     return summary
+
+
+async def _stop_orphaned_recording(shim: LocalPCShim, recording_id: str) -> bool:
+    """Stop a recording whose state was never saved; True if it stopped."""
+    try:
+        await shim.recording.stop(recording_id)
+        return True
+    except Exception:
+        logger.exception(
+            "Failed to stop recording %s after state persistence failed",
+            recording_id,
+        )
+        return False
+    finally:
+        shim.close_recording(recording_id)
+
+
+async def _stop_after_cancellation(shim: LocalPCShim, recording_id: str) -> None:
+    """Run the stop as its own task. A cancelled scope can cancel every await
+    that follows, and the stop must finish anyway."""
+    stop = asyncio.create_task(_stop_orphaned_recording(shim, recording_id))
+    _ROLLBACK_TASKS.add(stop)
+    stop.add_done_callback(_ROLLBACK_TASKS.discard)
+    with contextlib.suppress(asyncio.CancelledError):
+        await asyncio.shield(stop)
+
+
+def _rollback_detail(recording_id: str, *, stopped: bool) -> dict[str, Any]:
+    if stopped:
+        code = "RECORDING_STATE_UNAVAILABLE"
+        message = "Recording state could not be saved, so the recording was stopped."
+    else:
+        code = "RECORDING_STOP_UNCONFIRMED"
+        message = (
+            "Recording state could not be saved, and stopping the recording "
+            "could not be confirmed."
+        )
+    return {"code": code, "message": message, "details": {"recording_id": recording_id}}
 
 
 def _raise_recording_http_error(exc: ShimRecordingError) -> NoReturn:
