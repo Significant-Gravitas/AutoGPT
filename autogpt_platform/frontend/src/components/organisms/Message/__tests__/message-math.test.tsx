@@ -132,6 +132,12 @@ describe("MessageResponse math", () => {
       "echo $HOME ``` and $PATH",
     ],
     [
+      "a fence opened on a list item's marker line",
+      "- ```bash\n  echo $HOME\n  ```",
+      "pre",
+      "echo $HOME",
+    ],
+    [
       "a code span holding a longer backtick run",
       "Run ``a ```b` $HOME`` now.",
       "code",
@@ -164,6 +170,20 @@ describe("MessageResponse math", () => {
     expect(container.querySelector(".katex")).toBeNull();
   });
 
+  it.each([
+    ["a list item", "Use ` here\n- then $HOME and $PATH` go"],
+    ["a heading", "Use ` here\n# Then $HOME and $PATH` go"],
+    ["a blockquoted HTML block", "> <pre>\nThen $HOME and $PATH go"],
+    ["a sibling list item", "- item\n  ```\n  code\n- Then $HOME and $PATH go"],
+  ])("keeps shell text literal after %s ends a block", async (_, markdown) => {
+    const container = await renderReply(markdown);
+
+    await waitFor(() =>
+      expect(proseOf(container)).toContain("$HOME and $PATH"),
+    );
+    expect(container.querySelector(".katex")).toBeNull();
+  });
+
   it("keeps the dollar in an inline HTML link's address", async () => {
     vi.spyOn(window, "open").mockImplementation(() => null);
     const container = await renderReply('See <a href="/docs/$HOME">docs</a>.');
@@ -179,6 +199,15 @@ describe("MessageResponse math", () => {
     await waitFor(() => expect(window.open).toHaveBeenCalledTimes(1));
     expect(vi.mocked(window.open).mock.calls[0][0]).toBe("/docs/$HOME");
     vi.restoreAllMocks();
+  });
+
+  it("pairs no dollars across a line break", async () => {
+    const container = await renderReply(
+      "Costs $x on one line\nand y$ on the next.",
+    );
+
+    await waitFor(() => expect(proseOf(container)).toContain("$x on one line"));
+    expect(container.querySelector(".katex")).toBeNull();
   });
 
   it("renders a one-letter formula followed by a suffix", async () => {

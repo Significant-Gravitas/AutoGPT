@@ -1,280 +1,85 @@
-// A backtick fence's info string may not contain a backtick; a closer carries none.
-const OPENING_FENCE_RE = /^(?:(`{3,})[^`]*|(~{3,}).*)$/;
-const CLOSING_FENCE_RE = /^(`{3,}|~{3,})[ \t]*$/;
-const QUOTE_PREFIX_RE = /^(?: {0,3}>[ \t]?)*/;
+import { fromMarkdown } from "mdast-util-from-markdown";
+import { gfmFromMarkdown } from "mdast-util-gfm";
+import { gfm } from "micromark-extension-gfm";
+
 const LATEX_SYNTAX_RE = /[\\^_{}]/;
 const TEX_COMMAND_RE = /\\[A-Za-z]/;
-const LIST_MARKER_RE = /^[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+/;
-const HEADING_RE = /^#{1,6}(?:\s|$)/;
-const THEMATIC_BREAK_RE = /^([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
-const SETEXT_UNDERLINE_RE = /^(?:=+|-+)[ \t]*$/;
-// CommonMark HTML blocks: these four run to their closing tag, the rest to a blank line.
-const HTML_RAW_RE = /^<(pre|script|style|textarea)(?=[\s>]|$)/i;
-const HTML_BLOCK_TAG_RE =
-  /^<\/?(?:address|article|aside|blockquote|details|dialog|div|dl|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|li|main|nav|ol|p|section|summary|table|tbody|td|tfoot|th|thead|tr|ul)(?=[\s/>]|$)/i;
-const HTML_TAG_LINE_RE =
-  /^(?:<[A-Za-z][\w-]*(?:\s[^<>]*)?\/?>|<\/[A-Za-z][\w-]*\s*>)\s*$/;
-const AUTOLINK_RE = /<[A-Za-z][\w+.-]{1,31}:[^\s<>]*>/y;
-const INLINE_TAG_RE = /<\/?[A-Za-z][\w-]*(?:\s[^<>]*)?\/?>/y;
-const BARE_URL_RE = /(?:https?:\/\/|www\.)[^\s<]+/iy;
 
-type HTMLBlockEnd = { closer: string } | "blank";
-
-interface CodeSpan {
-  run: string | null;
+interface MarkdownNode {
+  type: string;
+  position?: { start: { offset?: number }; end: { offset?: number } };
+  children?: MarkdownNode[];
 }
 
 // With single-dollar math on, remark-math pairs any two dollars, so "$5 and $10"
-// or shell text like "$f ($" became formulas. Only a "$…$" span on one line that
-// reads as math is kept for it; every other lone "$" in prose is escaped.
+// or shell text like "$f ($" became formulas. In the prose the parser finds, a
+// "$…$" span on one line that reads as math is kept and every other "$" escaped.
 export function escapeLiteralDollars(markdown: string): string {
-  const lines = markdown.split(/\r?\n/);
-  let openFence: { fence: string; depth: number } | null = null;
-  let codeIndent: number | null = null;
-  let htmlEnd: HTMLBlockEnd | null = null;
-  // Content column of each open list item, innermost last.
-  const listIndents: number[] = [];
-  let inParagraph = false;
-  const codeSpan: CodeSpan = { run: null };
-  const listIndent = () => listIndents.at(-1) ?? 0;
-
-  function escapeBlockLine(line: string, depth: number, at: number): string {
-    const indent = indentWidth(line);
-    const content = line.trimStart();
-
-    if (openFence) {
-      if (depth > openFence.depth) return line;
-      if (depth === openFence.depth) {
-        const fence =
-          indent < listIndent() + 4
-            ? CLOSING_FENCE_RE.exec(content)?.[1]
-            : undefined;
-        if (
-          fence &&
-          fence[0] === openFence.fence[0] &&
-          fence.length >= openFence.fence.length
-        ) {
-          openFence = null;
-        }
-        return line;
-      }
-      // The blockquote holding the fence has ended, and the fence with it.
-      openFence = null;
-    }
-
-    if (typeof htmlEnd === "object" && htmlEnd) {
-      if (closesHTMLBlock(line, htmlEnd)) htmlEnd = null;
-      return line;
-    }
-
-    if (!line.trim()) {
-      inParagraph = false;
-      htmlEnd = null;
-      codeSpan.run = null;
-      return line;
-    }
-
-    if (htmlEnd) return line;
-
-    if (codeIndent !== null && indent >= codeIndent) return line;
-    codeIndent = null;
-
-    const marker = LIST_MARKER_RE.exec(line);
-    const startsItem = marker !== null && indent < listIndent() + 4;
-    // A lazy paragraph line stays in its list item; anything else closes the
-    // items it is not indented into.
-    if (startsItem || !inParagraph || HEADING_RE.test(content)) {
-      while (listIndents.length && listIndent() > indent) listIndents.pop();
-    }
-
-    // Block markers may be indented up to three columns past the list item's content.
-    const startsBlock = indent < listIndent() + 4;
-    const opening = startsBlock ? OPENING_FENCE_RE.exec(content) : null;
-    const fence = opening ? (opening[1] ?? opening[2]) : undefined;
-
-    if (fence) {
-      openFence = { fence, depth };
-      inParagraph = false;
-      return line;
-    }
-
-    if (
-      startsBlock &&
-      (THEMATIC_BREAK_RE.test(content) ||
-        (inParagraph && SETEXT_UNDERLINE_RE.test(content)))
-    ) {
-      inParagraph = false;
-      return line;
-    }
-
-    if (startsItem) listIndents.push(columns(marker[0]));
-
-    // Indented code cannot interrupt a paragraph, and CommonMark renders a
-    // backslash escape inside it, or in an HTML block, literally.
-    if (!inParagraph && indent >= listIndent() + 4) {
-      codeIndent = listIndent() + 4;
-      return line;
-    }
-
-    const html = startsBlock ? htmlBlockEnd(content, inParagraph) : null;
-    if (html) {
-      htmlEnd =
-        typeof html === "object" && closesHTMLBlock(content, html)
-          ? null
-          : html;
-      inParagraph = false;
-      return line;
-    }
-
-    inParagraph = !(startsBlock && HEADING_RE.test(content));
-    return escapeLiteralDollarsInLine(line, codeSpan, () =>
-      paragraphAfter(lines, at),
-    );
-  }
-
-  return lines
-    .map((raw, at) => {
-      const quote = QUOTE_PREFIX_RE.exec(raw)?.[0] ?? "";
-      const depth = quote.split(">").length - 1;
-      return quote + escapeBlockLine(raw.slice(quote.length), depth, at);
-    })
-    .join("\n");
-}
-
-function escapeLiteralDollarsInLine(
-  line: string,
-  codeSpan: CodeSpan,
-  rest: () => string,
-): string {
+  const tree = fromMarkdown(markdown, {
+    extensions: [gfm()],
+    mdastExtensions: [gfmFromMarkdown()],
+  });
   let result = "";
   let index = 0;
 
-  if (codeSpan.run) {
-    const close = indexOfRun(line, codeSpan.run, 0);
-    if (close === -1) return line;
-    index = close + codeSpan.run.length;
-    result = line.slice(0, index);
-    codeSpan.run = null;
-  }
+  for (const [start, end] of proseRanges(tree, markdown)) {
+    result += markdown.slice(index, start);
+    // A formula kept whole may run past the end of the text node it opened in.
+    index = Math.max(start, index);
 
-  while (index < line.length) {
-    const char = line[index];
-    const linkEnd = endOfLink(line, index);
-
-    if (linkEnd !== null) {
-      result += line.slice(index, linkEnd);
-      index = linkEnd;
-    } else if (char === "\\") {
-      result += line.slice(index, index + 2);
-      index += 2;
-    } else if (char === "`") {
-      const run = backtickRun(line, index);
-      const close = indexOfRun(line, run, index + run.length);
-      // A code span may close on a later line of its paragraph.
-      if (close === -1 && indexOfRun(rest(), run, 0) !== -1) {
-        codeSpan.run = run;
-        return result + line.slice(index);
+    while (index < end) {
+      const char = markdown[index];
+      if (char === "\\") {
+        result += markdown.slice(index, index + 2);
+        index += 2;
+      } else if (char === "$" && markdown[index + 1] === "$") {
+        result += "$$";
+        index += 2;
+      } else if (char === "$") {
+        const close = closingDollar(markdown, index);
+        result += close === null ? "\\$" : markdown.slice(index, close + 1);
+        index = close === null ? index + 1 : close + 1;
+      } else {
+        result += char;
+        index += 1;
       }
-      const end = close === -1 ? index + run.length : close + run.length;
-      result += line.slice(index, end);
-      index = end;
-    } else if (char === "$" && line[index + 1] === "$") {
-      result += "$$";
-      index += 2;
-    } else if (char === "$") {
-      const close = closingDollar(line, index);
-      result += close === null ? "\\$" : line.slice(index, close + 1);
-      index = close === null ? index + 1 : close + 1;
-    } else {
-      result += char;
-      index += 1;
     }
   }
 
-  return result;
+  return result + markdown.slice(index);
 }
 
-// An autolink, a bare URL or an inline HTML tag keeps a backslash in its
-// address, so it is copied as is.
-function endOfLink(line: string, start: number): number | null {
-  const patterns =
-    line[start] === "<"
-      ? [AUTOLINK_RE, INLINE_TAG_RE]
-      : /[hw]/i.test(line[start]) && !/\w/.test(line[start - 1] ?? "")
-        ? [BARE_URL_RE]
-        : [];
-  for (const pattern of patterns) {
-    pattern.lastIndex = start;
-    const match = pattern.exec(line);
-    if (match) return start + match[0].length;
+// Source ranges of the text nodes, in order. Code and HTML hold none, and an
+// autolink's text is its address.
+function proseRanges(node: MarkdownNode, markdown: string): [number, number][] {
+  const start = node.position?.start.offset;
+  const end = node.position?.end.offset;
+  if (node.type === "link" && start !== undefined && markdown[start] !== "[") {
+    return [];
   }
-  return null;
-}
-
-function backtickRun(line: string, start: number): string {
-  let end = start;
-  while (line[end] === "`") end += 1;
-  return line.slice(start, end);
-}
-
-// A code span closes only on a backtick run of exactly the opening length.
-function indexOfRun(text: string, run: string, from: number): number {
-  for (let at = text.indexOf(run, from); at !== -1; ) {
-    let end = at;
-    while (text[end] === "`") end += 1;
-    if (text[at - 1] !== "`" && end - at === run.length) return at;
-    at = text.indexOf(run, end);
+  if (node.type === "text") {
+    return start === undefined || end === undefined ? [] : [[start, end]];
   }
-  return -1;
-}
-
-// The rest of the paragraph after line `at`, up to a blank line or a fence.
-function paragraphAfter(lines: string[], at: number): string {
-  let end = at + 1;
-  while (end < lines.length) {
-    const line = lines[end].replace(QUOTE_PREFIX_RE, "");
-    if (!line.trim()) break;
-    // A fence indented four columns is paragraph text, not a block.
-    if (indentWidth(line) < 4 && OPENING_FENCE_RE.test(line.trim())) break;
-    end += 1;
-  }
-  return lines.slice(at + 1, end).join("\n");
-}
-
-function closesHTMLBlock(line: string, end: { closer: string }): boolean {
-  return line.toLowerCase().includes(end.closer);
-}
-
-function htmlBlockEnd(
-  content: string,
-  inParagraph: boolean,
-): HTMLBlockEnd | null {
-  const raw = HTML_RAW_RE.exec(content);
-  if (raw) return { closer: `</${raw[1].toLowerCase()}>` };
-  // CommonMark keeps a comment block raw until "-->", even past a "--!>".
-  if (content.startsWith("<!--")) return { closer: "-->" };
-  if (HTML_BLOCK_TAG_RE.test(content)) return "blank";
-  // Any other tag starts a block only on a line of its own, outside a paragraph.
-  return !inParagraph && HTML_TAG_LINE_RE.test(content) ? "blank" : null;
+  return (node.children ?? []).flatMap((child) => proseRanges(child, markdown));
 }
 
 // Pandoc's delimiter rule (no space just inside either "$", no digit right after
 // the closer), plus: a span opening on a digit is a price unless it carries LaTeX
 // syntax, a closer that starts the next shell variable ends shell text, and a
 // span with unbalanced brackets and no TeX command is shell text such as "$f ($".
-function closingDollar(line: string, open: number): number | null {
-  const first = line[open + 1] ?? "";
+function closingDollar(text: string, open: number): number | null {
+  const first = text[open + 1] ?? "";
   if (!first || /\s/.test(first)) return null;
 
   let close = open + 1;
-  while (close < line.length && line[close] !== "$") {
-    close += line[close] === "\\" ? 2 : 1;
+  while (close < text.length && text[close] !== "$" && text[close] !== "\n") {
+    close += text[close] === "\\" && text[close + 1] !== "\n" ? 2 : 1;
   }
-  if (close >= line.length || line[close + 1] === "$") return null;
-  const after = line[close + 1] ?? "";
-  if (/\s/.test(line[close - 1]) || /\d/.test(after)) return null;
+  if (text[close] !== "$" || text[close + 1] === "$") return null;
+  const after = text[close + 1] ?? "";
+  if (/\s/.test(text[close - 1]) || /\d/.test(after)) return null;
 
-  const body = line.slice(open + 1, close);
+  const body = text.slice(open + 1, close);
   if (/\d/.test(first) && !LATEX_SYNTAX_RE.test(body)) return null;
   if (startsShellVariable(after, body)) return null;
   return TEX_COMMAND_RE.test(body) || bracketsBalance(body) ? close : null;
@@ -294,15 +99,4 @@ function bracketsBalance(text: string): boolean {
     if (depth < 0) return false;
   }
   return depth === 0;
-}
-
-function indentWidth(line: string): number {
-  return columns(line.slice(0, line.length - line.trimStart().length));
-}
-
-// A tab advances to the next multiple of four columns.
-function columns(text: string): number {
-  let width = 0;
-  for (const char of text) width += char === "\t" ? 4 - (width % 4) : 1;
-  return width;
 }

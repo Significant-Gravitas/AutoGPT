@@ -29,7 +29,11 @@ import type {
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import { useReadEveryRender } from "@/hooks/useReadEveryRender";
 import type { LinkSafetyModalProps } from "streamdown";
-import { defaultRemarkPlugins, Streamdown } from "streamdown";
+import {
+  defaultRemarkPlugins,
+  parseMarkdownIntoBlocks,
+  Streamdown,
+} from "streamdown";
 import { remarkAppLinks } from "./app-links";
 import {
   createComponentsMerger,
@@ -391,6 +395,26 @@ const math: MathPlugin = {
   ],
 };
 
+// Streamdown renders each block on its own, so each is escaped on its own, and a
+// streamed reply re-parses only the block still growing.
+const ESCAPED_BLOCKS = new Map<string, string>();
+const ESCAPED_BLOCKS_LIMIT = 500;
+
+function parseEscapedBlocks(markdown: string): string[] {
+  return parseMarkdownIntoBlocks(markdown).map(escapeBlock);
+}
+
+function escapeBlock(block: string): string {
+  const cached = ESCAPED_BLOCKS.get(block);
+  if (cached !== undefined) return cached;
+  const escaped = escapeLiteralDollars(block);
+  if (ESCAPED_BLOCKS.size >= ESCAPED_BLOCKS_LIMIT) {
+    ESCAPED_BLOCKS.delete(ESCAPED_BLOCKS.keys().next().value!);
+  }
+  ESCAPED_BLOCKS.set(block, escaped);
+  return escaped;
+}
+
 // Streamdown re-parses every block of a message when the identity of a
 // component in `components` changes, and React remounts any element whose
 // component type changes, so everything handed to Streamdown is built once.
@@ -477,9 +501,10 @@ export const MessageResponse = memo(function MessageResponse({
       plugins={STREAMDOWN_PLUGINS}
       remarkPlugins={REMARK_PLUGINS}
       linkSafety={LINK_SAFETY}
+      parseMarkdownIntoBlocksFn={parseEscapedBlocks}
       {...props}
     >
-      {typeof children === "string" ? escapeLiteralDollars(children) : children}
+      {children}
     </Streamdown>
   );
 }, areSameChildren);
