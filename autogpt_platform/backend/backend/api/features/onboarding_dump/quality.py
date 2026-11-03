@@ -74,6 +74,11 @@ REPETITION_MIN_WORDS = 20
 MIN_UNIQUE_WORD_RATIO = 0.3
 COMPRESSION_MIN_CHARS = 80
 MAX_COMPRESSION_RATIO = 2.4
+# Both are measured on the opening only. A loop shows within its first few
+# sentences, but over a whole long answer zlib finds ever more shared
+# substrings and the vocabulary keeps repeating: a real typed answer of
+# about 18,000 characters compressed like a loop.
+REPETITION_WINDOW_CHARS = 1000
 
 _PROMPT = """A new user of an automation platform was asked to describe \
 their work and what they'd like automated. Below is the raw transcript \
@@ -138,14 +143,7 @@ def _deterministic_verdict(text: str) -> Literal["pass", "reject", "ambiguous"]:
     words = _words(text)
     if not words:
         return "reject"
-    if len(words) >= REPETITION_MIN_WORDS:
-        unique_ratio = len({w.lower() for w in words}) / len(words)
-        if unique_ratio < MIN_UNIQUE_WORD_RATIO:
-            return "reject"
-    if (
-        len(text) >= COMPRESSION_MIN_CHARS
-        and _compression_ratio(text) > MAX_COMPRESSION_RATIO
-    ):
+    if _is_looping(text[:REPETITION_WINDOW_CHARS]):
         return "reject"
 
     alnum_chars = sum(1 for ch in text if ch.isalnum())
@@ -157,14 +155,35 @@ def _deterministic_verdict(text: str) -> Literal["pass", "reject", "ambiguous"]:
     return "ambiguous"
 
 
+def _is_looping(opening: str) -> bool:
+    words = _words(opening)
+    if len(words) >= REPETITION_MIN_WORDS:
+        unique_ratio = len({w.lower() for w in words}) / len(words)
+        if unique_ratio < MIN_UNIQUE_WORD_RATIO:
+            return True
+    return (
+        len(opening) >= COMPRESSION_MIN_CHARS
+        and _compression_ratio(opening) > MAX_COMPRESSION_RATIO
+    )
+
+
 def _words(text: str) -> list[str]:
     return [word for word in text.split() if any(ch.isalnum() for ch in word)]
 
 
 def _compression_ratio(text: str) -> float:
-    """How far zlib collapses ``text`` — high means the decoder was looping."""
-    raw = text.encode("utf-8")
-    return len(raw) / len(zlib.compress(raw))
+    """How far zlib collapses ``text`` — high means the decoder was looping.
+
+    Characters per compressed byte, with each distinct character coded as
+    one symbol first, so the ratio measures repetition and not the script.
+    On raw UTF-8 a Devanagari, Bengali or Tamil letter is three bytes that
+    share a lead byte, and an ordinary Hindi answer scored like a loop
+    while the same answer in English scored 1.8.
+    """
+    codes = {ch: code for code, ch in enumerate(dict.fromkeys(text))}
+    width = 1 if len(codes) <= 256 else 2
+    symbols = b"".join(codes[ch].to_bytes(width, "big") for ch in text)
+    return len(text) / len(zlib.compress(symbols))
 
 
 async def _semantic_verdict(text: str) -> QualityRejection | None:
