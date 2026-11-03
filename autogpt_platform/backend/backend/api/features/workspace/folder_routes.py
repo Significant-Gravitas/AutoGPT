@@ -33,26 +33,26 @@ router = fastapi.APIRouter(
 
 class WorkspaceFolderCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=MAX_NAME_LENGTH)
-    icon: str | None = Field(None, max_length=MAX_NAME_LENGTH)
+    icon: str | None = Field(default=None, max_length=MAX_NAME_LENGTH)
     # None = create at the workspace root. Reject "" so it cannot bypass the
     # truthiness-based ownership check (422 instead of a foreign-key error).
-    parent_id: str | None = Field(None, min_length=1, max_length=MAX_ID_LENGTH)
+    parent_id: str | None = Field(default=None, min_length=1, max_length=MAX_ID_LENGTH)
 
 
 class WorkspaceFolderUpdateRequest(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=MAX_NAME_LENGTH)
-    icon: str | None = Field(None, max_length=MAX_NAME_LENGTH)
+    name: str | None = Field(default=None, min_length=1, max_length=MAX_NAME_LENGTH)
+    icon: str | None = Field(default=None, max_length=MAX_NAME_LENGTH)
     # Present-but-null means "move to the root", absent means "leave where it
     # is", which a plain default cannot express — the handler reads
     # ``model_fields_set`` to tell them apart.
-    parent_id: str | None = Field(None, min_length=1, max_length=MAX_ID_LENGTH)
+    parent_id: str | None = Field(default=None, min_length=1, max_length=MAX_ID_LENGTH)
 
 
 class BulkMoveFilesRequest(BaseModel):
     file_ids: list[IDText]
     # None = move to root. Reject "" so it can't bypass the truthiness-based
     # ownership check and hit a foreign-key error (returns 422 instead).
-    folder_id: str | None = Field(None, min_length=1, max_length=MAX_ID_LENGTH)
+    folder_id: str | None = Field(default=None, min_length=1, max_length=MAX_ID_LENGTH)
 
 
 class WorkspaceFolderListResponse(BaseModel):

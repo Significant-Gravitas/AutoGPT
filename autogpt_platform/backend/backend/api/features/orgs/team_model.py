@@ -13,14 +13,16 @@ from backend.util.text_limits import (
 
 class CreateTeamRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=MAX_NAME_LENGTH)
-    description: str | None = Field(None, max_length=MAX_DESCRIPTION_LENGTH)
+    description: str | None = Field(default=None, max_length=MAX_DESCRIPTION_LENGTH)
     join_policy: str = Field("OPEN", max_length=MAX_NAME_LENGTH)  # OPEN or PRIVATE
 
 
 class UpdateTeamRequest(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=MAX_NAME_LENGTH)
-    description: str | None = Field(None, max_length=MAX_DESCRIPTION_LENGTH)
-    join_policy: str | None = Field(None, max_length=MAX_NAME_LENGTH)  # OPEN or PRIVATE
+    name: str | None = Field(default=None, min_length=1, max_length=MAX_NAME_LENGTH)
+    description: str | None = Field(default=None, max_length=MAX_DESCRIPTION_LENGTH)
+    join_policy: str | None = Field(
+        default=None, max_length=MAX_NAME_LENGTH
+    )  # OPEN or PRIVATE
 
 
 class TeamResponse(BaseModel):

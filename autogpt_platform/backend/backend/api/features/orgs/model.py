@@ -23,19 +23,19 @@ class CreateOrgRequest(BaseModel):
         max_length=MAX_NAME_LENGTH,
         pattern=r"^[a-z0-9][a-z0-9-]*$",
     )
-    description: str | None = Field(None, max_length=MAX_DESCRIPTION_LENGTH)
+    description: str | None = Field(default=None, max_length=MAX_DESCRIPTION_LENGTH)
 
 
 class UpdateOrgRequest(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=MAX_NAME_LENGTH)
+    name: str | None = Field(default=None, min_length=1, max_length=MAX_NAME_LENGTH)
     slug: str | None = Field(
         None,
         min_length=1,
         max_length=MAX_NAME_LENGTH,
         pattern=r"^[a-z0-9][a-z0-9-]*$",
     )
-    description: str | None = Field(None, max_length=MAX_DESCRIPTION_LENGTH)
-    avatar_url: str | None = Field(None, max_length=MAX_URL_LENGTH)
+    description: str | None = Field(default=None, max_length=MAX_DESCRIPTION_LENGTH)
+    avatar_url: str | None = Field(default=None, max_length=MAX_URL_LENGTH)
 
 
 class UpdateOrgData(BaseModel):

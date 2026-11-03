@@ -16,7 +16,7 @@ class CreateTransferRequest(BaseModel):
     resource_type: str = Field(..., max_length=MAX_NAME_LENGTH)
     resource_id: str = Field(..., max_length=MAX_ID_LENGTH)
     target_organization_id: str = Field(..., max_length=MAX_ID_LENGTH)
-    reason: str | None = Field(None, max_length=MAX_DESCRIPTION_LENGTH)
+    reason: str | None = Field(default=None, max_length=MAX_DESCRIPTION_LENGTH)
 
 
 class TransferResponse(BaseModel):

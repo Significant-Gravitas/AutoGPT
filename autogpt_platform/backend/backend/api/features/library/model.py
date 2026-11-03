@@ -88,21 +88,23 @@ class FolderCreateRequest(pydantic.BaseModel):
     """Request model for creating a folder."""
 
     name: str = pydantic.Field(..., min_length=1, max_length=MAX_NAME_LENGTH)
-    icon: str | None = pydantic.Field(None, max_length=MAX_NAME_LENGTH)
+    icon: str | None = pydantic.Field(default=None, max_length=MAX_NAME_LENGTH)
     color: str | None = pydantic.Field(
         None,
         max_length=7,
         pattern=r"^#[0-9A-Fa-f]{6}$",
         description="Hex color code (#RRGGBB)",
     )
-    parent_id: str | None = pydantic.Field(None, max_length=MAX_ID_LENGTH)
+    parent_id: str | None = pydantic.Field(default=None, max_length=MAX_ID_LENGTH)
 
 
 class FolderUpdateRequest(pydantic.BaseModel):
     """Request model for updating a folder."""
 
-    name: str | None = pydantic.Field(None, min_length=1, max_length=MAX_NAME_LENGTH)
-    icon: str | None = pydantic.Field(None, max_length=MAX_NAME_LENGTH)
+    name: str | None = pydantic.Field(
+        default=None, min_length=1, max_length=MAX_NAME_LENGTH
+    )
+    icon: str | None = pydantic.Field(default=None, max_length=MAX_NAME_LENGTH)
     color: str | None = pydantic.Field(
         None,
         max_length=7,
@@ -115,7 +117,9 @@ class FolderMoveRequest(pydantic.BaseModel):
     """Request model for moving a folder to a new parent."""
 
     # None = move to root
-    target_parent_id: str | None = pydantic.Field(None, max_length=MAX_ID_LENGTH)
+    target_parent_id: str | None = pydantic.Field(
+        default=None, max_length=MAX_ID_LENGTH
+    )
 
 
 class BulkMoveAgentsRequest(pydantic.BaseModel):
@@ -123,7 +127,7 @@ class BulkMoveAgentsRequest(pydantic.BaseModel):
 
     agent_ids: list[IDText]
     # None = move to root
-    folder_id: str | None = pydantic.Field(None, max_length=MAX_ID_LENGTH)
+    folder_id: str | None = pydantic.Field(default=None, max_length=MAX_ID_LENGTH)
 
 
 class FolderListResponse(pydantic.BaseModel):
@@ -543,15 +547,17 @@ class LibraryAgentPresetUpdatable(pydantic.BaseModel):
     inputs: Optional[GraphInput] = None
     credentials: Optional[dict[str, CredentialsMetaInput]] = None
 
-    name: Optional[str] = pydantic.Field(None, max_length=MAX_NAME_LENGTH)
-    description: Optional[str] = pydantic.Field(None, max_length=MAX_DESCRIPTION_LENGTH)
+    name: Optional[str] = pydantic.Field(default=None, max_length=MAX_NAME_LENGTH)
+    description: Optional[str] = pydantic.Field(
+        default=None, max_length=MAX_DESCRIPTION_LENGTH
+    )
 
     is_active: Optional[bool] = None
 
 
 class TriggeredPresetSetupRequest(pydantic.BaseModel):
     name: str = pydantic.Field(..., max_length=MAX_NAME_LENGTH)
-    description: str = pydantic.Field("", max_length=MAX_DESCRIPTION_LENGTH)
+    description: str = pydantic.Field(default="", max_length=MAX_DESCRIPTION_LENGTH)
 
     graph_id: str = pydantic.Field(..., max_length=MAX_ID_LENGTH)
     graph_version: int

@@ -281,7 +281,9 @@ class SkillSubmissionRequest(pydantic.BaseModel):
         max_length=MAX_LIST_ENTRIES,
         description="Integrations the skill's instructions assume are connected.",
     )
-    changes_summary: str | None = pydantic.Field(None, max_length=MAX_SUMMARY_LENGTH)
+    changes_summary: str | None = pydantic.Field(
+        default=None, max_length=MAX_SUMMARY_LENGTH
+    )
 
     @pydantic.field_validator("categories")
     @classmethod
