@@ -23,6 +23,10 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   return { ...actual, useGetFlag: vi.fn(() => true) };
 });
 
+vi.mock("@/hooks/usePlatformPayment", () => ({
+  usePlatformPayment: () => ({ isPaymentEnabled: true, isResolved: true }),
+}));
+
 const groups: TaskGroup[] = [
   {
     name: "First Wins",

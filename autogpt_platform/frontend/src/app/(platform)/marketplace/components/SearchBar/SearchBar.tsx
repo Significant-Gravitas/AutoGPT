@@ -32,8 +32,8 @@ export function SearchBar({
       <Icon
         icon={Search01Icon}
         size={20}
-        // oxlint-disable-next-line design-system/no-restyle -- a subtle search glyph beside the input; Icon has no tone
-        className="text-foreground-subtle md:h-6 md:w-6"
+        tone="subtle"
+        className="md:h-6 md:w-6"
         aria-hidden="true"
       />
       <input

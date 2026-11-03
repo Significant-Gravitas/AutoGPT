@@ -45,10 +45,11 @@ export function WorkflowsMovedDialog({ isOpen, onDismiss }: Props) {
           <Button
             variant="icon"
             size="icon-sm"
+            shape="pill"
             aria-label="Close notice"
             onClick={onDismiss}
             withTooltip={false}
-            className="absolute top-4 right-4 z-10 rounded-full border-surface/80 bg-surface/80"
+            className="absolute top-4 right-4 z-10 border-surface/80 bg-surface/80"
           >
             <Icon icon={Cancel01Icon} size={16} aria-hidden />
           </Button>

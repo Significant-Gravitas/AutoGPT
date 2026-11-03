@@ -106,8 +106,9 @@ function StaticField({
     >
       <Text variant="large-medium">{label}</Text>
       <Text
-        variant="body"
-        className={mono ? "font-mono text-sm whitespace-pre-wrap" : undefined}
+        variant={mono ? "body-mono-tight" : "body"}
+        as="p"
+        className={mono ? "whitespace-pre-wrap" : undefined}
       >
         {text}
       </Text>

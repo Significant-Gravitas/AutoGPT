@@ -43,7 +43,8 @@ export function HomeTile({
           <Icon
             icon={icon}
             size={15}
-            className="shrink-0 text-foreground-subtle"
+            tone="subtle"
+            className="shrink-0"
             aria-hidden="true"
           />
           <Text
