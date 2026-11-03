@@ -29,12 +29,15 @@ from autogpt_local_executor.daemon import (
 )
 from autogpt_local_executor.protocol import (
     SESSION_REVOKED_REASONS,
+    FileStatMessage,
+    FileStatPayload,
     HelloAckMessage,
     HelloAckPayload,
     MessageType,
     SessionRevokedMessage,
     SessionRevokedPayload,
     dump_message,
+    make_ack,
     new_id,
     now_ts,
 )
@@ -333,14 +336,29 @@ async def test_close_code_constants_match_spec() -> None:
 
 
 async def test_session_revoked_blocks_further_sends(
-    daemon: ShimDaemon, audit: _RecordingAudit
+    daemon: ShimDaemon, audit: _RecordingAudit, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Once SESSION_REVOKED is handled the WS is closed; any subsequent
-    attempt to send a frame raises — proving the shim isn't going to
-    accidentally emit one more response in flight."""
-    ws = _FakeWebSocket([_session_revoked_frame()])
+    """A request still in flight when SESSION_REVOKED closes the connection
+    finishes without emitting its response or anything else."""
+    ws = _FakeWebSocket([])
     daemon._semaphore = asyncio.Semaphore(4)
-    await daemon._on_frame(ws, await ws.__anext__())
+    handling = asyncio.Event()
+    release = asyncio.Event()
 
-    with pytest.raises(RuntimeError):
-        await ws.send(json.dumps({"type": "PONG"}))
+    async def slow_handle(msg, *, send):
+        handling.set()
+        await release.wait()
+        return make_ack(msg.id)
+
+    monkeypatch.setattr(daemon, "_handle", slow_handle)
+    request = FileStatMessage(id=new_id(), ts=now_ts(), payload=FileStatPayload(path="/tmp/x"))
+    await daemon._on_frame(ws, dump_message(request))
+    await asyncio.wait_for(handling.wait(), timeout=30)
+
+    await daemon._on_frame(ws, _session_revoked_frame())
+    sent_at_close = list(ws.sent)
+    release.set()
+    await asyncio.wait_for(asyncio.gather(*daemon._dispatch_tasks), timeout=30)
+
+    assert ws.close_calls
+    assert ws.sent == sent_at_close
