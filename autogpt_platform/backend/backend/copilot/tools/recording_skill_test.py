@@ -296,6 +296,48 @@ class TestDryRun:
         assert shim.computer.click.await_count >= 1
 
     @pytest.mark.asyncio
+    async def test_a_step_the_dry_run_cannot_replay_fails_its_row(self):
+        """A navigate step is not replayed at the floor level. Counting it as
+        passed would report a row as verified when part of it never ran."""
+        recording = WorkflowRecording.from_payload(
+            {
+                "recording_id": "rec_nav",
+                "steps": [
+                    _step(1, "navigate", label="Open the form"),
+                    _step(
+                        2,
+                        "fill",
+                        label="First Name",
+                        raw="John",
+                        selectors=[{"strategy": "id", "value": "#first_name"}],
+                    ),
+                    _step(
+                        3,
+                        "navigate",
+                        label="Open the form",
+                    ),
+                    _step(
+                        4,
+                        "fill",
+                        label="First Name",
+                        raw="Jane",
+                        selectors=[{"strategy": "id", "value": "#first_name"}],
+                    ),
+                ],
+            }
+        )
+        skill = generate_skill_from_recording(recording)
+        result = await dry_run(skill, [{"first_name": "Alice"}], shim=_mock_shim())
+
+        navigate = [
+            s for r in result.per_row for s in r.steps if s.action == "navigate"
+        ]
+        assert navigate and all(not s.ok for s in navigate)
+        assert all("not executed" in (s.detail or "") for s in navigate)
+        assert result.rows_ok == 0
+        assert result.ok is False
+
+    @pytest.mark.asyncio
     async def test_missing_parameter_in_row_fails_that_row(self):
         skill = generate_skill_from_recording(_two_row_recording())
         shim = _mock_shim()

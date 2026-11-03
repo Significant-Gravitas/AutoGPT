@@ -813,19 +813,19 @@ async def _replay_step(
     # actual element-grounding (DOM/AX/visual) is the shim/replay engine's
     # job — here we drive the floor input so the logic is shim-agnostic and
     # unit-testable.
+    executed = False
     try:
         if binding.action in ("fill", "select", "paste") and value is not None:
             await shim.computer.type(str(value), _guard=connection_guard)
-        elif binding.action == "click":
+            executed = True
+        elif binding.action == "click" or (
+            binding.action == "submit" and allow_destructive
+        ):
             cursor = _binding_cursor(binding)
             if cursor is not None:
                 await shim.computer.click(cursor, _guard=connection_guard)
-        elif binding.action == "submit" and allow_destructive:
-            cursor = _binding_cursor(binding)
-            if cursor is not None:
-                await shim.computer.click(cursor, _guard=connection_guard)
-        # navigate / wait / launch_app etc. are no-ops at the floor level
-        # for the dry-run logic test; the real replay engine handles them.
+                executed = True
+        # navigate / wait / launch_app etc. have no floor-level replay yet.
     except Exception as exc:
         return StepReplayResult(
             seq=binding.seq,
@@ -834,6 +834,18 @@ async def _replay_step(
             asserted=False,
             ok=False,
             detail=f"input failed: {exc}",
+        )
+
+    if not executed:
+        # Counted as passed, the row would read as verified when this step
+        # never ran.
+        return StepReplayResult(
+            seq=binding.seq,
+            action=binding.action,
+            resolved_via=resolved_via,
+            asserted=False,
+            ok=False,
+            detail=f"not executed: the dry run cannot replay this {binding.action} step",
         )
 
     # Read-back assert for mutating steps (§9).
