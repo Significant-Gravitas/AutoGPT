@@ -130,7 +130,7 @@ export function RunAgentInputs({
     case DataType.BOOLEAN:
       innerInputElement = (
         <>
-          <span className="text-sm text-foreground-tertiary">
+          <span className="text-body text-foreground-tertiary">
             {placeholder || (value ? "Enabled" : "Disabled")}
           </span>
           <Switch
@@ -298,7 +298,7 @@ export function RunAgentInputs({
       innerInputElement = (
         <div className="w-full space-y-2">
           <div className="overflow-hidden rounded-md border">
-            <table className="w-full text-sm">
+            <table className="w-full text-body">
               <thead>
                 <tr className="bg-surface-muted">
                   {headers.map((header) => (

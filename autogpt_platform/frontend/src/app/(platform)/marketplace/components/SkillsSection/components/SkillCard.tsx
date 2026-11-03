@@ -54,7 +54,7 @@ export function SkillCard({ skill, isInstalled }: Props) {
           {icon && skill.categories[0] ? (
             <span
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium",
+                "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-body font-medium",
                 accent.pill,
               )}
             >
@@ -67,7 +67,7 @@ export function SkillCard({ skill, isInstalled }: Props) {
         <div className="min-w-0">
           <h3
             title={title}
-            className="line-clamp-1 text-lg font-semibold tracking-title text-foreground-strong"
+            className="line-clamp-1 text-lead font-semibold tracking-title text-foreground-strong"
           >
             {title}
           </h3>
@@ -99,13 +99,13 @@ export function SkillCard({ skill, isInstalled }: Props) {
               </span>
             ) : null}
           </div>
-          <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-foreground-secondary">
+          <p className="mt-2 line-clamp-3 text-body leading-relaxed text-foreground-secondary">
             {skill.description}
           </p>
         </div>
 
         <div className="mt-auto flex items-center justify-between pt-2">
-          <span className="flex items-center gap-2 text-base text-foreground-secondary">
+          <span className="flex items-center gap-2 text-body-lg text-foreground-secondary">
             <Icon
               icon={Download04Icon}
               size={18}
@@ -119,12 +119,12 @@ export function SkillCard({ skill, isInstalled }: Props) {
               : `${skill.install_count.toLocaleString()} installed`}
           </span>
           {isInstalled ? (
-            <span className="flex items-center gap-1.5 text-base font-medium text-success">
+            <span className="flex items-center gap-1.5 text-body-lg font-medium text-success">
               <Icon icon={CheckmarkCircle02Icon} size={18} aria-hidden />
               Added
             </span>
           ) : (
-            <span className="flex items-center gap-1.5 text-base font-medium text-foreground-tertiary transition-colors duration-200 group-hover:text-foreground-strong">
+            <span className="flex items-center gap-1.5 text-body-lg font-medium text-foreground-tertiary transition-colors duration-200 group-hover:text-foreground-strong">
               View
               <Icon
                 icon={ArrowRight02Icon}
