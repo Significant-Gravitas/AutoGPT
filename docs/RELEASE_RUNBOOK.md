@@ -3,10 +3,13 @@
 > One-time setup + per-release steps for publishing
 > `autogpt-local-executor` to PyPI, Homebrew, and Scoop.
 >
-> All of the wire-up (`release.yml`, `scripts/update_packaging.sh`,
-> formula and manifest stubs) is already in the repo. This doc is the
-> "who does what" so the first publisher doesn't have to reverse-
-> engineer it.
+> Releases are built by `.github/workflows/release.yml` in
+> `Significant-Gravitas/autogpt-local-executor`. The copy of this
+> package in the AutoGPT monorepo (`local_executor/`) has no release
+> workflow yet, so run these steps in `autogpt-local-executor`.
+> `scripts/update_packaging.sh` and the formula and manifest stubs in
+> `packaging/` are in both. This doc is the "who does what" so the
+> first publisher doesn't have to reverse-engineer it.
 
 ---
 
@@ -101,7 +104,8 @@ the version.
 
 The Homebrew formula + Scoop manifest in `packaging/` still have
 `PLACEHOLDER-` URLs and hashes. The script fetches the dists from
-PyPI and patches them in place:
+PyPI and patches them in place. Running it again replaces the values
+from the previous run:
 
 ```bash
 scripts/update_packaging.sh v0.0.1
@@ -114,22 +118,46 @@ Fetching sdist: https://files.pythonhosted.org/.../autogpt_local_executor-0.0.1.
 Fetching wheel: https://files.pythonhosted.org/.../autogpt_local_executor-0.0.1-py3-none-any.whl
 sdist sha256 = 7f3b8a91...
 wheel sha256 = 9c81f4a2...
+
 Updated:
   /repo/packaging/homebrew/autogpt-local-executor.rb
   /repo/packaging/scoop/autogpt-local-executor.json
 
+WARNING: /repo/packaging/homebrew/autogpt-local-executor.rb has no resource blocks.
+  Without them, brew install leaves out pydantic, websockets, httpx,
+  keyring and the rest, and autogpt-shim fails to start.
+  Do step 2 below before you copy the formula to the tap.
+
 Next:
   1. Review the diffs.
-  2. Copy them into the tap / bucket repos:
+  2. Generate the formula's resource blocks (needs Homebrew). Do this
+     on every release, because the dependencies change:
+       brew update-python-resources /repo/packaging/homebrew/autogpt-local-executor.rb
+  3. Copy the files into the tap / bucket repos:
      - Significant-Gravitas/homebrew-tap → Formula/autogpt-local-executor.rb
      - Significant-Gravitas/scoop-bucket → bucket/autogpt-local-executor.json
-  3. Open PRs against those repos.
+  4. Open PRs against those repos.
 ```
+
+Then generate the formula's `resource` blocks. This is required.
+Homebrew installs the package with `pip --no-deps`, so a formula
+without them leaves out pydantic, websockets, httpx, keyring and the
+rest, and `autogpt-shim` fails to start. It needs Homebrew, so run it
+on a Mac or on Linux with Homebrew:
+
+```bash
+brew update-python-resources packaging/homebrew/autogpt-local-executor.rb
+```
+
+Homebrew builds every resource from source, and pydantic-core needs
+Rust, so also add `depends_on "rust" => :build` to the formula. Do
+this on every release, because the dependencies change. Don't copy the
+formula to the tap until it has resource blocks.
 
 ### 4. Tap + bucket PRs
 
 ```bash
-# Homebrew
+# Homebrew (the formula must already have its resource blocks; see step 3)
 cd ~/code/Significant-Gravitas/homebrew-tap
 cp /path/to/autogpt-local-executor/packaging/homebrew/autogpt-local-executor.rb Formula/
 git checkout -b bump-autogpt-local-executor-v0.0.1
@@ -195,6 +223,10 @@ When everything is green:
   run uploaded the dists for this version. Either bump the version
   and re-release, or delete the version from PyPI (only possible if
   it was published in the last few minutes; otherwise yank-only).
+- **Homebrew's `autogpt-shim` fails with `ModuleNotFoundError`** for
+  pydantic or another dependency — the formula reached the tap without
+  its resource blocks. Generate them (step 3), add a `revision` line to
+  the formula so Homebrew rebuilds it, and open a new tap PR.
 - **Smoke test pipx install fails** — confirm the wheel uploaded
   correctly: https://pypi.org/project/autogpt-local-executor/0.0.1/
   Files tab. If the wheel is missing but the sdist is there, the

@@ -5,14 +5,16 @@
 #
 #   brew install Significant-Gravitas/tap/autogpt-local-executor
 #
-# Post-PyPI-publish checklist (CI should do this on every tagged release):
+# Post-PyPI-publish checklist (every tagged release;
+# `scripts/update_packaging.sh` does steps 1-3):
 #   1. Bump `version` to the new tag.
 #   2. Replace `url` with the sdist URL on PyPI
 #      (https://files.pythonhosted.org/packages/.../autogpt_local_executor-<v>.tar.gz).
 #   3. Replace `sha256` with the sdist's sha256
 #      (`shasum -a 256` of the downloaded sdist).
-#   4. Re-resolve `resource` blocks for pinned deps with
-#      `brew update-python-resources autogpt-local-executor`.
+#   4. Required before this file goes to the tap: generate the `resource`
+#      blocks with `brew update-python-resources` (see the note above
+#      `def install`).
 #   5. Run `brew test-bot --tap=Significant-Gravitas/tap autogpt-local-executor`.
 #
 # For pre-PyPI testing, point `url` at the GitHub tarball:
@@ -30,22 +32,20 @@ class AutogptLocalExecutor < Formula
 
   depends_on "python@3.11"
 
-  # `brew update-python-resources` will populate these once the package is on
-  # PyPI. Until then, the install will fall back to fetching deps from PyPI
-  # at install time, which Homebrew normally discourages but is acceptable
-  # for an alpha tap.
+  # Every Python dependency needs a `resource` block here. Homebrew's pip
+  # install runs with `--no-deps`, so it fetches nothing else. With no
+  # resource blocks, pydantic, websockets, httpx, keyring and the rest are
+  # missing, and `autogpt-shim` fails on its first import (the `test do`
+  # block catches this). `scripts/update_packaging.sh` warns while there
+  # are none.
   #
-  # resource "pydantic" do
-  #   url "..."
-  #   sha256 "..."
-  # end
+  # Generate them on every release, after `scripts/update_packaging.sh` has
+  # set the PyPI `url`:
   #
-  # resource "websockets" do
-  #   url "..."
-  #   sha256 "..."
-  # end
+  #   brew update-python-resources packaging/homebrew/autogpt-local-executor.rb
   #
-  # ...
+  # Homebrew builds resources from source, and pydantic-core needs Rust to
+  # build, so add `depends_on "rust" => :build` along with them.
 
   def install
     virtualenv_install_with_resources
