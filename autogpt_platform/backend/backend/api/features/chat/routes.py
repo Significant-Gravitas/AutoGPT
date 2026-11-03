@@ -678,13 +678,15 @@ async def _compensate_local_session_creation(
     *,
     user_id: str,
     organization_id: str | None,
-    owned: bool,
+    attach_to_undo: bool,
+    row_to_delete: bool,
 ) -> None:
-    """Undo only what this request did: a client-named retry can race the
-    attempt that already owns the session id, and must not tear that down."""
-    if not owned:
+    """Undo only what this request may have done: detach an attach it made
+    or may have made, and delete the row only once it tried to insert one."""
+    if attach_to_undo:
+        await _best_effort_detach_local_session(presence, session_id)
+    if not row_to_delete:
         return
-    await _best_effort_detach_local_session(presence, session_id)
     try:
         await delete_chat_session(
             session_id,
@@ -721,16 +723,6 @@ async def _create_local_chat_session(
             detail="Local PC execution is unavailable on this deployment",
         )
 
-    try:
-        presence = await get_machine_presence(
-            user_id,
-            config.local_pc_executor_oauth_client_id,
-            target.machine_id,
-            expected_connection_id=target.expected_connection_id,
-        )
-    except (MachineNotConnectedError, MachineConnectionStaleError) as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-
     if expert_id is not None:
         organization_id, team_id = await experts_db.resolve_private_expert_tenancy(
             user_id, expert_id
@@ -751,6 +743,18 @@ async def _create_local_chat_session(
     else:
         session_id = str(uuid4())
 
+    # Checked after adoption: a resend adopts the session its first attempt
+    # committed even if the machine has gone offline since.
+    try:
+        presence = await get_machine_presence(
+            user_id,
+            config.local_pc_executor_oauth_client_id,
+            target.machine_id,
+            expected_connection_id=target.expected_connection_id,
+        )
+    except (MachineNotConnectedError, MachineConnectionStaleError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     # The machine refuses a second attach of a live session id, so a request
     # whose attach succeeded owns that id, including a row its create may have
     # committed before a cancellation. One the machine refused owns nothing.
@@ -762,6 +766,7 @@ async def _create_local_chat_session(
     # create_chat_session resolves a private expert's tenancy again, so undo
     # under the tenancy the row was saved with once it exists.
     saved_organization_id = organization_id
+    create_attempted = False
     try:
         try:
             attached = await attach_machine_session(
@@ -790,6 +795,7 @@ async def _create_local_chat_session(
             root_grant=attached.root_grant,
             revision=attached.revision,
         )
+        create_attempted = True
         session = await create_chat_session(
             user_id,
             dry_run=dry_run,
@@ -834,7 +840,8 @@ async def _create_local_chat_session(
                 session_id,
                 user_id=user_id,
                 organization_id=saved_organization_id,
-                owned=attached is not None or attach_unconfirmed,
+                attach_to_undo=attached is not None or attach_unconfirmed,
+                row_to_delete=create_attempted,
             )
         )
         try:

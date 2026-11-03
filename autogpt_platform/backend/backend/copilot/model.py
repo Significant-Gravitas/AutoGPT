@@ -1807,10 +1807,15 @@ async def get_adoptable_local_client_chat_session(
 
     Raises:
         SessionIdConflictError: the id names a session this create could not
-            have made, including one bound to another machine or folder.
+            have made: another user's, or one bound to another machine or
+            folder.
     """
     existing = await get_chat_session(session_id, user_id)
     if existing is None:
+        # Another user's id would fail the insert only after the machine
+        # had attached a folder; refuse it before anything happens.
+        if await get_chat_session(session_id) is not None:
+            raise SessionIdConflictError(session_id)
         return None
     target = existing.metadata.execution_target
     if (

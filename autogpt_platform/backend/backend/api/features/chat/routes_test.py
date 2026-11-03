@@ -30,6 +30,7 @@ from backend.copilot.rate_limit import SubscriptionTier, UserPaywalledError
 from backend.copilot.response_model import StreamFinish, StreamStatus, StreamTextDelta
 from backend.copilot.tools.local_pc_machine import (
     MachineControlError,
+    MachineNotConnectedError,
     MachineSessionBinding,
 )
 from backend.copilot.tools.local_pc_shim import ShimHello
@@ -2419,7 +2420,7 @@ async def test_an_attach_the_machine_never_answered_is_undone(
     """An attach that timed out may have happened on the machine, and would
     refuse the user's retry as SESSION_ALREADY_ACTIVE; undo it. One the
     machine refused changed nothing there, so leave the machine alone."""
-    detach, _ = _patch_failing_local_activation(mocker, attach_error=attach_error)
+    detach, delete = _patch_failing_local_activation(mocker, attach_error=attach_error)
 
     with pytest.raises(fastapi.HTTPException):
         await chat_routes._create_local_chat_session(
@@ -2431,6 +2432,8 @@ async def test_an_attach_the_machine_never_answered_is_undone(
         )
 
     assert detach.await_count == (1 if undone else 0)
+    # The insert comes after the attach, so no row of this request's exists.
+    delete.assert_not_awaited()
 
 
 _LOCAL_TARGET = chat_routes.LocalExecutionTargetRequest(
@@ -2816,6 +2819,65 @@ async def test_local_session_retry_adopts_the_session_its_first_attempt_made(
     assert session.session_id == session_id
     attach.assert_not_awaited()
     create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_local_session_retry_adopts_even_while_the_machine_is_offline(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Adopting a committed session needs nothing from the machine, so a retry
+    still gets it back after the machine went offline."""
+    session_id = str(uuid4())
+    attach = _mock_local_create_preconditions(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.get_machine_presence",
+        new_callable=AsyncMock,
+        side_effect=MachineNotConnectedError("MACHINE_NOT_CONNECTED", "offline"),
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=AsyncMock,
+        return_value=_bound_local_session(session_id),
+    )
+
+    session = await chat_routes._create_local_chat_session(
+        user_id="user-1",
+        organization_id="org-1",
+        team_id="team-1",
+        dry_run=False,
+        session_id=session_id,
+        target=_LOCAL_TARGET,
+    )
+
+    assert session.session_id == session_id
+    attach.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_local_session_id_of_another_user_is_refused_before_attaching(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The insert would fail on another user's id only after the machine had
+    attached a folder; refuse the id before touching the machine."""
+    session_id = str(uuid4())
+    attach = _mock_local_create_preconditions(mocker)
+
+    async def _get(session_id_: str, user_id: str | None = None):
+        return None if user_id else _bound_local_session(session_id_)
+
+    mocker.patch("backend.copilot.model.get_chat_session", side_effect=_get)
+
+    with pytest.raises(SessionIdConflictError):
+        await chat_routes._create_local_chat_session(
+            user_id="user-1",
+            organization_id="org-1",
+            team_id="team-1",
+            dry_run=False,
+            session_id=session_id,
+            target=_LOCAL_TARGET,
+        )
+
+    attach.assert_not_awaited()
 
 
 @pytest.mark.asyncio
