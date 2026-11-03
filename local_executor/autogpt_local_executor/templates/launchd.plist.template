@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Source template: autogpt_local_executor/templates/launchd.plist.template
+  Rendered file:   ~/Library/LaunchAgents/net.autogpt.shim.plist
+  Re-render with:  autogpt-shim install
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>net.autogpt.shim</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{shim_executable_path}</string>
+        <string>--config</string>
+        <string>{config_path}</string>
+        <string>start</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!--
+      KeepAlive: SuccessfulExit=false re-launches the daemon on any
+      non-zero exit. The Q5 TCC chain relies on this: when computer-use
+      is requested but Accessibility / Screen Recording aren't granted,
+      the daemon exits 78 (EX_CONFIG); a TCC.db change (user granting
+      consent in System Settings) lets the next launch succeed.
+      See docs/COMPUTER_USE.md Q5 and docs/CROSS_PLATFORM.md "Autostart".
+    -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <key>StandardOutPath</key>
+    <string>{stdout_log}</string>
+
+    <key>StandardErrorPath</key>
+    <string>{stderr_log}</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
+</dict>
+</plist>

@@ -1,0 +1,28 @@
+# Source template: autogpt_local_executor/templates/systemd.service.template
+# Rendered file:   ~/.config/systemd/user/autogpt-shim.service
+# Re-render with:  autogpt-shim install
+#
+# After install, enable the unit with:
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now autogpt-shim.service
+#
+# For headless / no-login start-at-boot, also run:
+#   loginctl enable-linger $USER
+
+[Unit]
+Description=AutoGPT Local PC Executor shim
+Documentation=https://github.com/Significant-Gravitas/autogpt-local-executor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart={shim_executable_path} --config {config_path} start
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:{stdout_log}
+StandardError=append:{stderr_log}
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

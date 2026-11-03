@@ -1,0 +1,103 @@
+name: ci
+
+# Runs on every push + PR. Three jobs:
+#
+#   - test:     pytest across Linux / macOS / Windows × Python 3.11 / 3.12.
+#               The optional extras (computer-use / hardware / local-llm) are
+#               install-best-effort because some wheels are OS-specific
+#               (RPi.GPIO is Linux/ARM only, etc.) — we don't want a failing
+#               extras install to block the unit tests.
+#   - lint:     ruff check + ruff format --check. CI never auto-fixes; the
+#               author runs `ruff check --fix` locally and re-pushes.
+#   - coverage: single run on ubuntu/3.12 that prints a coverage report.
+#               No upload target yet (no codecov token), just visibility.
+
+on:
+  push:
+  pull_request:
+
+# Cancel in-flight runs for the same ref when a new push comes in. Keeps the
+# Actions queue from clogging up during a rebase storm.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }} / py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: "pip"
+
+      - name: Install the package (core only)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      # Optional extras — install best-effort. RPi.GPIO refuses to build on
+      # non-Linux-ARM platforms, pyusb needs libusb on macOS/Windows, etc.
+      # The unit tests don't require these; what we want from CI is a signal
+      # that the core package always installs cleanly on every supported OS.
+      - name: Install optional extras (best-effort)
+        continue-on-error: true
+        run: python -m pip install -e ".[computer-use,hardware,local-llm]"
+
+      - name: Install test deps
+        run: python -m pip install pytest pytest-asyncio pytest-mock
+
+      - name: Run pytest
+        run: python -m pytest tests/ -v
+
+  lint:
+    name: lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install ruff
+        run: python -m pip install "ruff>=0.4"
+
+      - name: ruff check
+        run: ruff check .
+
+      - name: ruff format --check
+        run: ruff format --check .
+
+  coverage:
+    name: coverage (ubuntu / py3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install package + test deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install pytest pytest-asyncio pytest-mock coverage
+
+      - name: Run coverage
+        # No upload target yet (no codecov token); printing the report inline
+        # is enough to spot regressions during PR review.
+        run: |
+          coverage run -m pytest tests/ -v
+          coverage report -m

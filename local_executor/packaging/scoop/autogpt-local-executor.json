@@ -1,0 +1,60 @@
+{
+  "$comment": [
+    "Scoop manifest stub for autogpt-local-executor.",
+    "Drop into a Scoop bucket (e.g. Significant-Gravitas/scoop-bucket) at",
+    "bucket/autogpt-local-executor.json. Users then install with:",
+    "  scoop bucket add autogpt https://github.com/Significant-Gravitas/scoop-bucket",
+    "  scoop install autogpt/autogpt-local-executor",
+    "",
+    "Post-PyPI-publish checklist:",
+    "  1. Bump `version` to the new tag.",
+    "  2. Replace `url` with the wheel URL on PyPI.",
+    "  3. Replace `hash` with the wheel's sha256 (Get-FileHash on Windows).",
+    "  4. Run `scoop checkver autogpt-local-executor` to verify the autoupdate stanza."
+  ],
+  "version": "0.0.1",
+  "description": "EXPERIMENTAL local PC shim for the AutoGPT hosted platform.",
+  "homepage": "https://github.com/Significant-Gravitas/autogpt-local-executor",
+  "license": "MIT",
+  "notes": [
+    "EXPERIMENTAL: gives the AutoGPT hosted platform code execution access",
+    "to this machine. Read docs/SECURITY.md before running it.",
+    "",
+    "One-time setup:",
+    "  autogpt-shim auth",
+    "  autogpt-shim install",
+    "  schtasks /Create /TN \"\\AutoGPT\\Shim\" /XML \"%LOCALAPPDATA%\\autogpt-local-executor\\autogpt-shim.xml\"",
+    "",
+    "Uninstall the autostart entry with:",
+    "  autogpt-shim uninstall",
+    "  schtasks /Delete /TN \"\\AutoGPT\\Shim\" /F"
+  ],
+  "depends": [
+    "python"
+  ],
+  "suggest": {
+    "Python 3.11+": "python"
+  },
+  "url": "PLACEHOLDER-https://files.pythonhosted.org/packages/py3/a/autogpt-local-executor/autogpt_local_executor-0.0.1-py3-none-any.whl",
+  "hash": "PLACEHOLDER-0000000000000000000000000000000000000000000000000000000000000000",
+  "installer": {
+    "script": [
+      "Push-Location $dir",
+      "python -m pip install --no-warn-script-location --target=\"$dir\\site-packages\" \"$url\"",
+      "Pop-Location"
+    ]
+  },
+  "bin": [
+    [
+      "site-packages\\bin\\autogpt-shim.exe",
+      "autogpt-shim"
+    ]
+  ],
+  "checkver": {
+    "url": "https://pypi.org/pypi/autogpt-local-executor/json",
+    "jsonpath": "$.info.version"
+  },
+  "autoupdate": {
+    "url": "https://files.pythonhosted.org/packages/py3/a/autogpt-local-executor/autogpt_local_executor-$version-py3-none-any.whl"
+  }
+}

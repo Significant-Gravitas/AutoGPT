@@ -1,0 +1,138 @@
+name: release
+
+# Builds sdist + wheel on every push to a v*.*.* tag and publishes them to
+# PyPI via trusted-publisher OIDC (no PYPI_API_TOKEN secret needed — set up
+# the trusted publisher once at https://pypi.org/manage/account/publishing/).
+#
+# After publish, attaches the dists to a GitHub release for direct-download
+# users (Homebrew formula + Scoop manifest reference the tarball URL).
+#
+# Manual run: `gh workflow run release.yml --ref v0.0.1` after pushing the tag.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write    # for GitHub release upload
+  id-token: write    # for PyPI trusted-publisher OIDC
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Resolve version from tag
+        id: version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          echo "value=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify pyproject version matches tag
+        run: |
+          PYPROJECT_VERSION=$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')
+          TAG_VERSION="${{ steps.version.outputs.value }}"
+          if [ "$PYPROJECT_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::pyproject.toml version ($PYPROJECT_VERSION) doesn't match tag ($TAG_VERSION)"
+            exit 1
+          fi
+
+      - name: Install build deps
+        run: python -m pip install --upgrade build
+
+      - name: Build sdist + wheel
+        run: python -m build --sdist --wheel --outdir dist
+
+      - name: Verify dists
+        run: |
+          ls -la dist/
+          python -m pip install --upgrade twine
+          twine check dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish-pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    # Trusted publisher OIDC: register this repo + workflow + environment
+    # at https://pypi.org/manage/account/publishing/ before first publish.
+    environment:
+      name: pypi
+      url: https://pypi.org/p/autogpt-local-executor
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        # no `password` arg → uses trusted publisher OIDC
+
+  github-release:
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Compute sdist sha256 for downstream packagers
+        id: hashes
+        run: |
+          SDIST=$(ls dist/*.tar.gz)
+          WHEEL=$(ls dist/*.whl)
+          SDIST_SHA=$(sha256sum "$SDIST" | awk '{print $1}')
+          WHEEL_SHA=$(sha256sum "$WHEEL" | awk '{print $1}')
+          echo "sdist_path=$SDIST" >> "$GITHUB_OUTPUT"
+          echo "wheel_path=$WHEEL" >> "$GITHUB_OUTPUT"
+          echo "sdist_sha=$SDIST_SHA" >> "$GITHUB_OUTPUT"
+          echo "wheel_sha=$WHEEL_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          cat > /tmp/notes.md <<EOF
+          ## autogpt-local-executor ${TAG}
+
+          \`\`\`
+          pipx install autogpt-local-executor==${TAG#v}
+          autogpt-shim auth
+          autogpt-shim start --allowed-root ~/autogpt-workspace
+          \`\`\`
+
+          ### Hashes
+          - sdist: \`${{ steps.hashes.outputs.sdist_sha }}\`
+          - wheel: \`${{ steps.hashes.outputs.wheel_sha }}\`
+
+          ### Downstream packagers
+          Run \`scripts/update_packaging.sh ${TAG}\` from a checkout of this
+          repo to refresh the Homebrew formula and Scoop manifest stubs in
+          \`packaging/\`. Copy the rendered files into your tap / bucket
+          repo.
+          EOF
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes-file /tmp/notes.md \
+            "${{ steps.hashes.outputs.sdist_path }}" \
+            "${{ steps.hashes.outputs.wheel_path }}"
