@@ -1533,6 +1533,43 @@ class TestBackpressureBlocking:
         await asyncio.wait_for(task, timeout=1.0)
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_replacement_connection_starts_with_open_capacity(self):
+        """The old connection's "no headroom" says nothing about the new one.
+        Keeping it would hold every request until the new one's first STATUS
+        frame, and fail them with SHIM_OVERLOADED if none came within 30 s."""
+        shim = _make_backpressure_shim()
+        shim._connection_generation = 1
+        shim._streaming = {}
+        shim._recording_steps = {}
+        stop = asyncio.Event()
+
+        class Transport:
+            async def send_text(self, data: str) -> None:
+                return None
+
+            async def iter_text(self):
+                await stop.wait()
+                if False:
+                    yield ""
+
+            async def close(self) -> None:
+                return None
+
+        shim._ws = Transport()
+        shim._recv_task = asyncio.create_task(shim._recv_loop(shim._ws))
+        shim._update_pending_capacity(0, source="seed")
+
+        previous_reader = shim._replace_connection(Transport(), ShimHello())
+        try:
+            await shim._await_capacity("FILE_READ", timeout=0.05)
+        finally:
+            stop.set()
+            await asyncio.gather(
+                *(task for task in (previous_reader, shim._recv_task) if task),
+                return_exceptions=True,
+            )
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_rpc_raises_shim_overloaded_after_timeout(self):
         shim = _make_backpressure_shim()
         shim._send_and_wait = AsyncMock()  # should never fire

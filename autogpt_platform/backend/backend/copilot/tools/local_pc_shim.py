@@ -1915,6 +1915,10 @@ class LocalPCShim(LocalPCExecutorMarker):
             return None
         previous_reader = self._recv_task
         self._ws = websocket
+        # The old connection's headroom says nothing about the new one; its
+        # first response or STATUS frame reports the new figure.
+        self._pending_capacity = None
+        self._capacity_available.set()
         self._recv_task = asyncio.create_task(self._recv_loop(websocket))
         return previous_reader
 
