@@ -4,6 +4,8 @@ import type {
   TaskActivity,
   TaskArtifact,
   TaskAssignee,
+  TaskCounts,
+  TaskInbox,
   TaskDetail,
   TaskPlan,
   TaskStatus,
@@ -40,9 +42,88 @@ function actor(v: unknown): TaskAssignee {
   return toAssignee(v) ?? { type: "otto", id: null, name: "Otto" };
 }
 
+function inboxState(status: TaskStatus): TaskInbox["state"] {
+  if (status === "in_progress") return "running";
+  if (status === "done") return "done";
+  if (status === "cancelled") return "failed";
+  return "waiting";
+}
+
+function toInbox(v: unknown, status: TaskStatus): TaskInbox {
+  const r = obj(v);
+  const last = r.last_activity ? obj(r.last_activity) : null;
+  return {
+    state: (str(r.state) as TaskInbox["state"]) ?? inboxState(status),
+    needs_you:
+      typeof r.needs_you === "boolean"
+        ? r.needs_you
+        : status === "blocked" || status === "in_review",
+    last_activity: last
+      ? {
+          kind: str(last.kind) ?? "system",
+          text: str(last.text) ?? "",
+          actor_name: str(last.actor_name),
+          at: str(last.at) ?? new Date().toISOString(),
+        }
+      : null,
+    steps: Array.isArray(r.steps)
+      ? r.steps.map((x) => {
+          const st = obj(x);
+          return {
+            label: str(st.label) ?? "",
+            time: str(st.time) ?? new Date().toISOString(),
+            kind: str(st.kind) ?? "system",
+            status: (str(st.status) as TaskInbox["steps"][number]["status"]) ?? null,
+          };
+        })
+      : [],
+    tools_used: Array.isArray(r.tools_used)
+      ? r.tools_used.map((x) => {
+          const t = obj(x);
+          return { name: str(t.name) ?? "", title: str(t.title) ?? str(t.name) ?? "", count: num(t.count) };
+        })
+      : [],
+  };
+}
+
+export function toTaskCounts(v: unknown, tasks: Task[]): TaskCounts {
+  const r = obj(v);
+  if (typeof r.all === "number") {
+    return {
+      all: num(r.all),
+      running: num(r.running),
+      waiting: num(r.waiting),
+      done: num(r.done),
+      failed: num(r.failed),
+      needs_you: num(r.needs_you),
+      by_status: obj(r.by_status) as TaskCounts["by_status"],
+    };
+  }
+  const by_status = {} as TaskCounts["by_status"];
+  for (const t of tasks) by_status[t.status] = (by_status[t.status] ?? 0) + 1;
+  return {
+    all: tasks.length,
+    running: tasks.filter((t) => t.inbox.state === "running").length,
+    waiting: tasks.filter((t) => t.inbox.state === "waiting").length,
+    done: tasks.filter((t) => t.inbox.state === "done").length,
+    failed: tasks.filter((t) => t.inbox.state === "failed").length,
+    needs_you: tasks.filter((t) => t.inbox.needs_you).length,
+    by_status,
+  };
+}
+
 export function toTask(v: unknown): Task {
   const r = obj(v);
-  if ("open_question" in r) return r as unknown as Task;
+  if ("open_question" in r) {
+    const t = r as unknown as Task;
+    return {
+      ...t,
+      inbox: t.inbox ?? toInbox(null, t.status),
+      elapsed_ms: t.elapsed_ms ?? null,
+      started_at: t.started_at ?? null,
+      completed_at: t.completed_at ?? null,
+    };
+  }
   const metrics = obj(r.metrics);
   const live = obj(r.live);
   const pending = r.pending_input ? obj(r.pending_input) : null;
@@ -86,6 +167,10 @@ export function toTask(v: unknown): Task {
       : null,
     subtask_counts: { total: num(counts.total), done: num(counts.done) },
     thread_session_id: str(r.work_session_id),
+    inbox: toInbox(r.inbox, (str(r.status) ?? "todo") as TaskStatus),
+    elapsed_ms: typeof r.elapsed_ms === "number" ? r.elapsed_ms : null,
+    started_at: str(r.started_at),
+    completed_at: str(r.completed_at),
     created_at: str(r.created_at) ?? new Date().toISOString(),
     updated_at: str(r.updated_at) ?? new Date().toISOString(),
   };

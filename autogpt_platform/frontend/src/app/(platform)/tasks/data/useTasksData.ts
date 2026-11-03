@@ -35,6 +35,17 @@ export function useTaskList(
   });
 }
 
+export function useTaskInbox(
+  filters: TaskFilters,
+  { enabled = true }: { enabled?: boolean } = {},
+) {
+  return useQuery({
+    queryKey: [...tasksKeys.list(filters), "inbox"],
+    queryFn: () => tasksApi.listWithCounts(filters),
+    enabled,
+  });
+}
+
 export function useTasksNeedingMe() {
   return useQuery({
     queryKey: [...tasksKeys.all, "needs-you"],

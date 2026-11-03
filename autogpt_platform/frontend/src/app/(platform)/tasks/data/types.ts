@@ -53,6 +53,33 @@ export interface TaskSubtaskSummary {
   assignee: TaskAssignee | null;
 }
 
+export type InboxState = "running" | "waiting" | "done" | "failed";
+
+export interface TaskInboxStep {
+  label: string;
+  time: string;
+  kind: string;
+  status: "completed" | "running" | "error" | null;
+}
+
+export interface TaskInbox {
+  state: InboxState;
+  needs_you: boolean;
+  last_activity: { kind: string; text: string; actor_name: string | null; at: string } | null;
+  steps: TaskInboxStep[];
+  tools_used: { name: string; title: string; count: number }[];
+}
+
+export interface TaskCounts {
+  all: number;
+  running: number;
+  waiting: number;
+  done: number;
+  failed: number;
+  needs_you: number;
+  by_status: Record<TaskStatus, number>;
+}
+
 export interface Task {
   id: string;
   number: number;
@@ -71,6 +98,10 @@ export interface Task {
   open_question: TaskQuestion | null;
   subtask_counts: { total: number; done: number };
   thread_session_id: string | null;
+  inbox: TaskInbox;
+  elapsed_ms: number | null;
+  started_at: string | null;
+  completed_at: string | null;
   created_at: string;
   updated_at: string;
 }

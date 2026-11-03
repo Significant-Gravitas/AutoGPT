@@ -4,6 +4,7 @@ import {
   toActivity,
   toExpert,
   toTask,
+  toTaskCounts,
   toTaskDetail,
 } from "./normalize";
 import type {
@@ -70,6 +71,19 @@ function toQuery(filters: TaskFilters) {
 }
 
 export const tasksApi = {
+  listWithCounts: (filters: TaskFilters) =>
+    call<{ tasks: unknown[]; counts?: unknown }>(
+      `/api/tasks${toQuery(filters)}`,
+      json("GET"),
+      () => ({ tasks: mockApi.list(filters) }),
+    ).then((r) => {
+      const all = r.tasks.map(toTask);
+      const tasks =
+        filters.assignee_ids && filters.assignee_ids.length > 1
+          ? all.filter((t) => filters.assignee_ids!.includes(t.assignee?.id ?? ""))
+          : all;
+      return { tasks, counts: toTaskCounts(r.counts, all) };
+    }),
   list: (filters: TaskFilters) =>
     call<{ tasks: unknown[] }>(
       `/api/tasks${toQuery(filters)}`,
