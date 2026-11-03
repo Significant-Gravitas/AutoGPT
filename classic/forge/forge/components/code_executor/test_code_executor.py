@@ -1,5 +1,6 @@
 import random
 import string
+import sys
 import tempfile
 from pathlib import Path
 
@@ -105,12 +106,31 @@ def test_execute_python_file_not_found(code_executor_component: CodeExecutorComp
         code_executor_component.execute_python_file(Path("notexist.py"))
 
 
+def _echo_command(message: str) -> str:
+    """A command line that prints *message* on the current platform.
+
+    ``echo`` is a cmd.exe builtin on Windows, so there is no ``echo``
+    executable for ``subprocess.run(shell=False)`` to launch; run the
+    builtin through ``cmd /c`` instead.
+    """
+    if sys.platform == "win32":
+        return f"cmd /c echo '{message}'"
+    return f"echo '{message}'"
+
+
+def _echo_command_name() -> str:
+    """The command name the shell allow/deny lists have to mention."""
+    return "cmd" if sys.platform == "win32" else "echo"
+
+
 def test_execute_shell(
     code_executor_component: CodeExecutorComponent, random_string: str
 ):
     code_executor_component.config.shell_command_control = "allowlist"
-    code_executor_component.config.shell_allowlist = ["echo"]
-    result = code_executor_component.execute_shell(f"echo 'Hello {random_string}!'")
+    code_executor_component.config.shell_allowlist = [_echo_command_name()]
+    result = code_executor_component.execute_shell(
+        _echo_command(f"Hello {random_string}!")
+    )
     assert f"Hello {random_string}!" in result
 
 
@@ -118,17 +138,17 @@ def test_execute_shell_local_commands_not_allowed(
     code_executor_component: CodeExecutorComponent, random_string: str
 ):
     with pytest.raises(OperationNotAllowedError, match="not allowed"):
-        code_executor_component.execute_shell(f"echo 'Hello {random_string}!'")
+        code_executor_component.execute_shell(_echo_command(f"Hello {random_string}!"))
 
 
 def test_execute_shell_denylist_should_deny(
     code_executor_component: CodeExecutorComponent, random_string: str
 ):
     code_executor_component.config.shell_command_control = "denylist"
-    code_executor_component.config.shell_denylist = ["echo"]
+    code_executor_component.config.shell_denylist = [_echo_command_name()]
 
     with pytest.raises(OperationNotAllowedError, match="not allowed"):
-        code_executor_component.execute_shell(f"echo 'Hello {random_string}!'")
+        code_executor_component.execute_shell(_echo_command(f"Hello {random_string}!"))
 
 
 def test_execute_shell_denylist_should_allow(
@@ -137,7 +157,9 @@ def test_execute_shell_denylist_should_allow(
     code_executor_component.config.shell_command_control = "denylist"
     code_executor_component.config.shell_denylist = ["cat"]
 
-    result = code_executor_component.execute_shell(f"echo 'Hello {random_string}!'")
+    result = code_executor_component.execute_shell(
+        _echo_command(f"Hello {random_string}!")
+    )
     assert "Hello" in result and random_string in result
 
 
@@ -148,14 +170,16 @@ def test_execute_shell_allowlist_should_deny(
     code_executor_component.config.shell_allowlist = ["cat"]
 
     with pytest.raises(OperationNotAllowedError, match="not allowed"):
-        code_executor_component.execute_shell(f"echo 'Hello {random_string}!'")
+        code_executor_component.execute_shell(_echo_command(f"Hello {random_string}!"))
 
 
 def test_execute_shell_allowlist_should_allow(
     code_executor_component: CodeExecutorComponent, random_string: str
 ):
     code_executor_component.config.shell_command_control = "allowlist"
-    code_executor_component.config.shell_allowlist = ["echo"]
+    code_executor_component.config.shell_allowlist = [_echo_command_name()]
 
-    result = code_executor_component.execute_shell(f"echo 'Hello {random_string}!'")
+    result = code_executor_component.execute_shell(
+        _echo_command(f"Hello {random_string}!")
+    )
     assert "Hello" in result and random_string in result
