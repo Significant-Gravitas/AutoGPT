@@ -310,3 +310,26 @@ async def test_a_reused_id_keeps_the_outstanding_request() -> None:
     await router.route(json.dumps(answered), answered)
     assert _stream_types(redis, original) == ["FILE_CONTENTS"]
     assert _stream_types(redis, duplicate) == []
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_recording_start_records_no_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A worker that never saw RECORDING_STARTED does not own the recording,
+    so its steps are not appended to the stream that just refused it."""
+    redis = FakeRedis()
+    router = RelayResponseRouter(
+        redis, session_id="session-1", connection_id="connection-1"
+    )
+    reply_id = "b" * 32
+    full_key = response_stream_key("session-1", "connection-1", reply_id)
+    router.register_request(_message("START_RECORDING", "start-1"), reply_id)
+    attempts = _full_stream(monkeypatch, {full_key})
+
+    started = _message("RECORDING_STARTED", "start-1", {"recording_id": "rec-1"})
+    await router.route(json.dumps(started), started)
+    step = _message("RECORDING_STEP", "step-1", {"recording_id": "rec-1"})
+    await router.route(json.dumps(step), step)
+
+    assert attempts == [full_key]

@@ -94,15 +94,17 @@ class RelayResponseRouter:
         self._prune_pending_requests()
         target = validate_response_correlation(message, self._pending)
         if target is not None:
-            await self._deliver(raw, message, target.reply_id)
-            self._update_recording_owner(message, target)
+            delivered = await self._deliver(raw, message, target.reply_id)
+            # A worker that never saw RECORDING_STARTED does not own it.
+            if delivered or message["type"] != "RECORDING_STARTED":
+                self._update_recording_owner(message, target)
             return
         if message["type"] == "STATUS":
             await self._broadcast_status(raw)
             return
         await self._route_recording_step(raw, message)
 
-    async def _deliver(self, raw: str, message: dict[str, Any], reply_id: str) -> None:
+    async def _deliver(self, raw: str, message: dict[str, Any], reply_id: str) -> bool:
         message_id = message["id"]
         terminal = message["type"] not in NONTERMINAL_RESPONSE_TYPES
         if terminal:
@@ -112,9 +114,11 @@ class RelayResponseRouter:
         if message_id in self._abandoned:
             if terminal:
                 self._abandoned.discard(message_id)
-            return
-        if not await self._append_or_drop(raw, reply_id) and not terminal:
+            return False
+        delivered = await self._append_or_drop(raw, reply_id)
+        if not delivered and not terminal:
             self._abandoned.add(message_id)
+        return delivered
 
     async def _append_or_drop(self, raw: str, reply_id: str) -> bool:
         """Append to one worker's reply stream, or drop the frame if that stream
