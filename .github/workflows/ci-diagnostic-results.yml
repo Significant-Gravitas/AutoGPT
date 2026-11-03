@@ -17,9 +17,3 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: Significant-Gravitas/AutoGPT
         run: python .github/scripts/collect_hosted_ci_measurements.py
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        if: always()
-        with:
-          name: ci-measurement-summary
-          path: ${{ runner.temp }}/ci-measurements
-          retention-days: 3
