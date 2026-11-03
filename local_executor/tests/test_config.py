@@ -50,6 +50,24 @@ def test_load_config_overrides_win(tmp_path: Path) -> None:
     assert cfg.oauth_redirect_port == 42050
 
 
+def test_the_environment_outranks_the_config_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Defaults, then the TOML file, then AUTOGPT_SHIM_* variables, then the
+    caller's overrides: a variable set for one run must beat the file."""
+    toml_file = tmp_path / "config.toml"
+    toml_file.write_text('platform_url = "http://localhost:8000"\noauth_redirect_port = 42010\n')
+    monkeypatch.setenv("AUTOGPT_SHIM_PLATFORM_URL", "http://localhost:9000")
+    monkeypatch.setenv("AUTOGPT_SHIM_OAUTH_REDIRECT_PORT", "42020")
+
+    from_env = load_config(config_path=toml_file)
+    overridden = load_config(config_path=toml_file, overrides={"oauth_redirect_port": 42050})
+
+    assert from_env.platform_url == "http://localhost:9000"
+    assert from_env.oauth_redirect_port == 42020
+    assert overridden.oauth_redirect_port == 42050
+
+
 def test_derived_ws_url_from_https() -> None:
     cfg = ShimConfig(platform_url="https://platform.example.com")
     assert cfg.derived_ws_url == "wss://platform.example.com/ws/local-executor"

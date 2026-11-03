@@ -103,13 +103,6 @@ def _exceeds_path_max(raw: str) -> bool:
     return len(raw) > limit
 
 
-def _normalize_for_compare(path: str) -> str:
-    """Case-fold via os.path.normcase when the FS is case-insensitive."""
-    if is_case_insensitive_fs(path):
-        return os.path.normcase(path)
-    return path
-
-
 def is_inside_jail(
     requested_path: str | os.PathLike[str], allowed_root: str | os.PathLike[str]
 ) -> bool:
@@ -191,10 +184,15 @@ def assert_inside_jail(
             f"allowed_root {str(allowed_root)!r} does not exist: {exc}",
         ) from exc
 
-    # 3. Canonical-form comparison, case-folded only when the FS is
-    #    case-insensitive.
-    a = _normalize_for_compare(resolved)
-    b = _normalize_for_compare(root_resolved)
+    # 3. Canonical-form comparison, case-folded only when the root's FS is
+    #    case-insensitive. Only the root is probed: the probe creates and
+    #    deletes a file, and a path inside the root is on the root's FS.
+    #    Probing the requested path would write wherever a rejected path
+    #    points.
+    if is_case_insensitive_fs(root_resolved):
+        a, b = os.path.normcase(resolved), os.path.normcase(root_resolved)
+    else:
+        a, b = resolved, root_resolved
 
     # 4. Strict prefix with path separator boundary — append os.sep so that
     #    /workspace doesn't match /workspaceother.
