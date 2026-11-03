@@ -381,10 +381,11 @@ async def test_dev_an_orchestrator_launch_keeps_only_the_users_key_and_the_runti
 
 
 @pytest.mark.asyncio
-async def test_dev_an_orchestrator_launch_keeps_the_users_key_on_anthropic(
+async def test_dev_an_orchestrator_launch_sends_the_users_key_where_anthropic_is_reached(
     dev_parent: None, monkeypatch: pytest.MonkeyPatch
 ):
-    """A user-key CLI launch keeps no endpoint or token from the deployment."""
+    """A base URL the deployment points Anthropic traffic at still applies,
+    without a password embedded in it or the deployment's auth token."""
     monkeypatch.setenv(
         "ANTHROPIC_BASE_URL",
         "https://svc:FAKE-gateway-password@anthropic-proxy.example:8443/v",
@@ -392,7 +393,7 @@ async def test_dev_an_orchestrator_launch_keeps_the_users_key_on_anthropic(
     monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "FAKE-deployment-bearer")
     options = await dev_orchestrator_launch("anthropic")
     spawned = await dev_spawned_env(monkeypatch, options)
-    assert spawned["ANTHROPIC_BASE_URL"] == ""
+    assert spawned["ANTHROPIC_BASE_URL"] == "https://anthropic-proxy.example:8443/v"
     assert spawned["ANTHROPIC_API_KEY"] == DEV_ROUTE_KEY
     assert spawned["ANTHROPIC_AUTH_TOKEN"] == ""
     assert not any(("FAKE-gateway-password" in value for value in spawned.values()))

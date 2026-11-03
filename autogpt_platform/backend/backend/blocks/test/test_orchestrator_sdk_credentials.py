@@ -1,9 +1,10 @@
 """The orchestrator block's SDK launch carries the user's key and nothing else.
 
 A host may hold a Claude login (``CLAUDE_CODE_OAUTH_TOKEN``, a deployment
-``ANTHROPIC_API_KEY``, a base URL) and every other backend secret in its own
-environment, which the SDK merges under ``options.env``.  The launch must
-override every one of them.
+``ANTHROPIC_API_KEY``) and every other backend secret in its own environment,
+which the SDK merges under ``options.env``.  The launch must override every one
+of them.  Only the endpoint the deployment points Anthropic traffic at carries
+over, without any credentials embedded in it.
 """
 
 import os
@@ -98,11 +99,11 @@ async def _launch_env(provider: str, key: str) -> dict[str, str]:
 
 
 @pytest.mark.asyncio
-async def test_anthropic_key_goes_direct_without_oauth():
+async def test_anthropic_key_reaches_the_deployments_endpoint_without_oauth():
     env = await _launch_env("anthropic", "sk-ant-user-key")
     assert env["ANTHROPIC_API_KEY"] == "sk-ant-user-key"
     assert env["ANTHROPIC_AUTH_TOKEN"] == ""
-    assert env["ANTHROPIC_BASE_URL"] == ""
+    assert env["ANTHROPIC_BASE_URL"] == "https://remote-gateway.example.com"
     assert env["CLAUDE_CODE_OAUTH_TOKEN"] == ""
 
 

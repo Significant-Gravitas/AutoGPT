@@ -1,6 +1,7 @@
 import asyncio
 import contextvars
 import logging
+import os
 import re
 import shutil
 import tempfile
@@ -31,7 +32,7 @@ from backend.copilot.sdk.cli_io import send_user_text
 from backend.copilot.sdk.cli_version import require_verbatim_prompts_cli
 from backend.copilot.sdk.env import common_launch_options
 from backend.copilot.sdk.env import config as chat_config
-from backend.copilot.sdk.env import route_launch_env
+from backend.copilot.sdk.env import route_launch_env, without_url_credentials
 from backend.copilot.sdk.launch_env import launch_options
 from backend.data.dynamic_fields import (
     extract_base_field_name,
@@ -1691,7 +1692,9 @@ class OrchestratorBlock(Block):
                 base_url=(
                     chat_config.openrouter_base_url
                     if credentials.provider == "open_router"
-                    else None
+                    else without_url_credentials(
+                        os.environ.get("ANTHROPIC_BASE_URL", "")
+                    )
                 ),
             ),
             sdk_cwd=sdk_cwd,
