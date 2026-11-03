@@ -25,7 +25,7 @@ import httpx
 import pytest
 import pytest_asyncio
 from autogpt_libs.api_key.keysmith import APIKeySmith
-from autogpt_libs.auth import get_user_id
+from autogpt_libs.auth import get_user_id, requires_live_session
 from prisma.enums import APIKeyPermission
 from prisma.models import AuthUser as PrismaAuthUser
 from prisma.models import OAuthAccessToken as PrismaOAuthAccessToken
@@ -164,7 +164,6 @@ async def client(server, test_user: str) -> AsyncGenerator[httpx.AsyncClient, No
     Depends on `server` to ensure the DB is connected and `test_user` to ensure
     the user exists in the database before running tests.
     """
-
     # Override get_user_id dependency to return our test user
     def override_get_user_id():
         return test_user
@@ -174,6 +173,7 @@ async def client(server, test_user: str) -> AsyncGenerator[httpx.AsyncClient, No
 
     # Set our override
     app.dependency_overrides[get_user_id] = override_get_user_id
+    app.dependency_overrides[requires_live_session] = lambda: {}
 
     try:
         async with httpx.AsyncClient(
@@ -187,6 +187,7 @@ async def client(server, test_user: str) -> AsyncGenerator[httpx.AsyncClient, No
             app.dependency_overrides[get_user_id] = original_override
         else:
             app.dependency_overrides.pop(get_user_id, None)
+        app.dependency_overrides.pop(requires_live_session, None)
 
 
 # ============================================================================

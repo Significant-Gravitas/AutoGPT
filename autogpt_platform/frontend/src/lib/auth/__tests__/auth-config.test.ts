@@ -30,7 +30,9 @@ interface JwtPluginOptions {
     expirationTime: string;
     definePayload: (args: {
       user: { id: string; email: string; name: string; role?: string };
+      session: { id: string };
     }) => {
+      sid: string;
       email: string;
       role: string;
       user_metadata: { name: string };
@@ -152,7 +154,7 @@ describe("auth config", () => {
     expect(jwtPlugin?.opts?.jwt.expirationTime).toBe("1h");
   });
 
-  it("maps admin users to the admin role and everyone else to authenticated in the JWT payload", async () => {
+  it("puts the session id in the JWT payload, with admins as admin and everyone else as authenticated", async () => {
     const options = await loadAuthOptions();
     const jwtPlugin = options.plugins.find((plugin) => plugin.id === "jwt");
     const definePayload = jwtPlugin?.opts?.jwt.definePayload;
@@ -166,8 +168,10 @@ describe("auth config", () => {
           name: "Admin",
           role: "admin",
         },
+        session: { id: "s1" },
       }),
     ).toEqual({
+      sid: "s1",
       email: "admin@example.com",
       role: "admin",
       user_metadata: { name: "Admin" },
@@ -180,8 +184,10 @@ describe("auth config", () => {
           name: "Regular",
           role: "user",
         },
+        session: { id: "s2" },
       }),
     ).toEqual({
+      sid: "s2",
       email: "user@example.com",
       role: "authenticated",
       user_metadata: { name: "Regular" },

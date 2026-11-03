@@ -111,6 +111,41 @@ describe("copilotStreamTransport refusals", () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it("signs out when the session behind the token has ended", async () => {
+    const replace = vi.fn();
+    vi.stubGlobal("location", { pathname: "/copilot", replace });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            detail: { code: "session_revoked", message: "Session ended" },
+          }),
+          { status: 401, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    try {
+      const transport = createCopilotTransport({
+        sessionId: "sess-ended",
+        ...makeRefs(),
+      });
+      await transport
+        .sendMessages({
+          trigger: "submit-message",
+          chatId: "sess-ended",
+          messageId: undefined,
+          messages: lastMessage("hello"),
+          abortSignal: undefined,
+        })
+        .catch(() => undefined);
+
+      expect(replace).toHaveBeenCalledWith("/logout");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe("copilotStreamTransport.prepareSendMessagesRequest", () => {

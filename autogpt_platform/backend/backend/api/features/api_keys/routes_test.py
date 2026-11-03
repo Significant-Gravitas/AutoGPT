@@ -5,7 +5,9 @@ either silently renames the generated frontend client's method.
 """
 
 import pytest
+from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from fastapi.routing import APIRoute
+from fastapi.testclient import TestClient
 
 from backend.api.rest_api import app
 
@@ -47,3 +49,29 @@ def test_api_key_path_is_served_by_this_module(path: str):
         if isinstance(route, APIRoute) and route.path == path
     }
     assert handlers == {"backend.api.features.api_keys.routes"}
+
+
+@pytest.mark.parametrize(
+    "method,path",
+    [("post", "/api/api-keys"), ("put", "/api/api-keys/key-1/permissions")],
+)
+def test_minting_a_key_needs_a_token_from_a_live_session(
+    method: str, path: str, mocker
+):
+    mocker.patch(
+        "autogpt_libs.auth.session._is_session_live",
+        mocker.AsyncMock(return_value=False),
+    )
+    app.dependency_overrides[get_jwt_payload] = lambda: {
+        "sub": "user-1",
+        "sid": "ended-session",
+        "role": "authenticated",
+        "email": "user@example.com",
+    }
+    try:
+        response = TestClient(app).request(method, path, json={"name": "k"})
+    finally:
+        app.dependency_overrides.pop(get_jwt_payload, None)
+
+    assert response.status_code == 401
+    assert response.json()["detail"]["code"] == "session_revoked"
