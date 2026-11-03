@@ -133,3 +133,107 @@ async def test_status_broadcast_survives_a_reply_stream_nobody_drains(
         json.loads(fields["envelope"])["type"] for _, fields in redis.streams[live_key]
     ] == ["STATUS", "STATUS"]
     assert attempts.count(full_key) == 1
+
+
+def _full_stream(monkeypatch: pytest.MonkeyPatch, full_keys: set[str]) -> list[str]:
+    """Make append_response refuse the streams in ``full_keys``, as Redis does
+    once a reply stream hits its backlog cap. Returns every attempted key."""
+    attempts: list[str] = []
+    real_append = relay_routing.append_response
+
+    async def append(redis_: Any, key: str, raw: str) -> None:
+        attempts.append(key)
+        if key in full_keys:
+            raise RelayBacklogExceeded("full")
+        await real_append(redis_, key, raw)
+
+    monkeypatch.setattr(relay_routing, "append_response", append)
+    return attempts
+
+
+def _stream_types(redis: FakeRedis, reply_id: str) -> list[str]:
+    key = response_stream_key("session-1", "connection-1", reply_id)
+    return [
+        json.loads(fields["envelope"])["type"]
+        for _, fields in redis.streams.get(key, [])
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_full_reply_stream_drops_its_response_and_keeps_the_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The shim's answer to a worker that stopped reading must not end the
+    shim connection, which would fail every other worker's requests."""
+    redis = FakeRedis()
+    router = RelayResponseRouter(
+        redis, session_id="session-1", connection_id="connection-1"
+    )
+    stalled, live = "a" * 32, "b" * 32
+    router.register_request(_message("FILE_READ", "request-1"), stalled)
+    router.register_request(_message("FILE_READ", "request-2"), live)
+    _full_stream(
+        monkeypatch, {response_stream_key("session-1", "connection-1", stalled)}
+    )
+
+    dropped = _message("FILE_CONTENTS", "request-1", {"content": "lost"})
+    await router.route(json.dumps(dropped), dropped)
+    answered = _message("FILE_CONTENTS", "request-2", {"content": "ok"})
+    await router.route(json.dumps(answered), answered)
+
+    assert _stream_types(redis, stalled) == []
+    assert _stream_types(redis, live) == ["FILE_CONTENTS"]
+
+
+@pytest.mark.asyncio
+async def test_a_stream_that_loses_a_chunk_drops_the_rest_of_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Once a chunk is dropped, later chunks and the final response are dropped
+    too, even if the worker drains its stream: it must time out rather than
+    read a completion with a hole in it. Its next request is unaffected."""
+    redis = FakeRedis()
+    router = RelayResponseRouter(
+        redis, session_id="session-1", connection_id="connection-1"
+    )
+    reply_id = "a" * 32
+    key = response_stream_key("session-1", "connection-1", reply_id)
+    router.register_request(_message("LOCAL_LLM_COMPLETION", "request-1"), reply_id)
+    full = {key}
+    _full_stream(monkeypatch, full)
+
+    first = _message("LOCAL_LLM_COMPLETION_CHUNK", "request-1", {"delta": "a"})
+    await router.route(json.dumps(first), first)
+    full.clear()
+    second = _message("LOCAL_LLM_COMPLETION_CHUNK", "request-1", {"delta": "b"})
+    await router.route(json.dumps(second), second)
+    final = _message("LOCAL_LLM_COMPLETION_RESPONSE", "request-1", {"text": "ab"})
+    await router.route(json.dumps(final), final)
+    assert _stream_types(redis, reply_id) == []
+
+    router.register_request(_message("FILE_READ", "request-2"), reply_id)
+    answered = _message("FILE_CONTENTS", "request-2", {"content": "ok"})
+    await router.route(json.dumps(answered), answered)
+    assert _stream_types(redis, reply_id) == ["FILE_CONTENTS"]
+
+
+@pytest.mark.asyncio
+async def test_a_recording_step_for_a_full_stream_is_dropped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    redis = FakeRedis()
+    router = RelayResponseRouter(
+        redis, session_id="session-1", connection_id="connection-1"
+    )
+    reply_id = "b" * 32
+    router.register_request(_message("START_RECORDING", "start-1"), reply_id)
+    started = _message("RECORDING_STARTED", "start-1", {"recording_id": "rec-1"})
+    await router.route(json.dumps(started), started)
+    _full_stream(
+        monkeypatch, {response_stream_key("session-1", "connection-1", reply_id)}
+    )
+
+    step = _message("RECORDING_STEP", "step-1", {"recording_id": "rec-1"})
+    await router.route(json.dumps(step), step)
+
+    assert _stream_types(redis, reply_id) == ["RECORDING_STARTED"]

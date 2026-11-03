@@ -33,6 +33,9 @@ class RelayResponseRouter:
         self._pending_activity: dict[str, float] = {}
         self._reply_activity: dict[str, float] = {}
         self._recording_owners: dict[str, str] = {}
+        # Streaming requests that lost a chunk to a full reply stream: the rest
+        # of their stream is dropped too, so the worker never reads a gap.
+        self._abandoned: set[str] = set()
 
     def register_request(self, message: dict[str, Any], reply_id: str) -> None:
         self._prune_pending_requests()
@@ -48,16 +51,13 @@ class RelayResponseRouter:
     def remove_request(self, message_id: str) -> None:
         self._pending.pop(message_id, None)
         self._pending_activity.pop(message_id, None)
+        self._abandoned.discard(message_id)
 
     async def route(self, raw: str, message: dict[str, Any]) -> None:
         self._prune_pending_requests()
         target = validate_response_correlation(message, self._pending)
         if target is not None:
-            if message["type"] in NONTERMINAL_RESPONSE_TYPES:
-                self._pending_activity[message["id"]] = monotonic()
-            else:
-                self._pending_activity.pop(message["id"], None)
-            await self._append(raw, target.reply_id)
+            await self._deliver(raw, message, target.reply_id)
             self._update_recording_owner(message, target)
             return
         if message["type"] == "STATUS":
@@ -65,9 +65,36 @@ class RelayResponseRouter:
             return
         await self._route_recording_step(raw, message)
 
-    async def _append(self, raw: str, reply_id: str) -> None:
+    async def _deliver(self, raw: str, message: dict[str, Any], reply_id: str) -> None:
+        message_id = message["id"]
+        terminal = message["type"] not in NONTERMINAL_RESPONSE_TYPES
+        if terminal:
+            self._pending_activity.pop(message_id, None)
+        else:
+            self._pending_activity[message_id] = monotonic()
+        if message_id in self._abandoned:
+            if terminal:
+                self._abandoned.discard(message_id)
+            return
+        if not await self._append_or_drop(raw, reply_id) and not terminal:
+            self._abandoned.add(message_id)
+
+    async def _append_or_drop(self, raw: str, reply_id: str) -> bool:
+        """Append to one worker's reply stream, or drop the frame if that stream
+        is full. A full stream belongs to a worker that stopped reading; ending
+        the shim connection over it would fail every other worker's requests,
+        and the stalled worker's own request times out on its side."""
         key = response_stream_key(self._session_id, self._connection_id, reply_id)
-        await append_response(self._redis, key, raw)
+        try:
+            await append_response(self._redis, key, raw)
+        except RelayBacklogExceeded:
+            self._reply_activity.pop(reply_id, None)
+            logger.warning(
+                "Dropping a Local PC response for a full reply stream %s",
+                reply_id[:8],
+            )
+            return False
+        return True
 
     async def _broadcast_status(self, raw: str) -> None:
         cutoff = monotonic() - _REPLY_ACTIVITY_SECONDS
@@ -83,19 +110,10 @@ class RelayResponseRouter:
             for reply_id, last_seen in self._reply_activity.items()
             if reply_id in active
         }
+        # A full stream drops out of _reply_activity, so a worker that stopped
+        # reading and has nothing pending stops getting STATUS.
         for reply_id in active:
-            try:
-                await self._append(raw, reply_id)
-            except RelayBacklogExceeded:
-                # STATUS is advisory. A full reply stream belongs to a worker
-                # that stopped reading; ending the shim connection over it
-                # would drop every other worker's requests. Stop broadcasting
-                # to it until it shows activity again.
-                self._reply_activity.pop(reply_id, None)
-                logger.warning(
-                    "Skipping STATUS for a full Local PC reply stream %s",
-                    reply_id[:8],
-                )
+            await self._append_or_drop(raw, reply_id)
 
     async def _route_recording_step(self, raw: str, message: dict[str, Any]) -> None:
         recording_id = message["payload"].get("recording_id")
@@ -106,7 +124,7 @@ class RelayResponseRouter:
         if reply_id is None:
             logger.warning("Dropping Local PC recording step without an active owner")
             return
-        await self._append(raw, reply_id)
+        await self._append_or_drop(raw, reply_id)
 
     def _update_recording_owner(
         self, message: dict[str, Any], target: RelayRequestTarget
