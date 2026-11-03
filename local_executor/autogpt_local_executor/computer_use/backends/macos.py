@@ -312,6 +312,13 @@ class MacOSBackend(ComputerUseBackend):
 
         bounds = entry.extra.get("bounds", (0, 0, img.width, img.height))
         origin = (int(bounds[0]), int(bounds[1]))
+        # The capture comes back at the display's backing resolution, while
+        # the window's bounds are in points.
+        logical_size = (
+            max(int(bounds[2]) - int(bounds[0]), 1),
+            max(int(bounds[3]) - int(bounds[1]), 1),
+        )
+        scale = round(img.width / logical_size[0], 2)
         img_bytes, mime = image_to_base64(img, format=format, quality=quality)
         return ScreenshotResult(
             image_bytes=img_bytes,
@@ -320,8 +327,8 @@ class MacOSBackend(ComputerUseBackend):
             height=img.height,
             monitor=int(entry.extra.get("monitor", 0)),
             region=None,
-            display_scale=1.0,
-            logical_size=(img.width, img.height),
+            display_scale=scale,
+            logical_size=logical_size,
             origin=origin,
             display_id=int(entry.extra.get("monitor", 0)),
         )
@@ -495,6 +502,9 @@ class MacOSBackend(ComputerUseBackend):
         try:
             from Quartz import (  # type: ignore[import-not-found]
                 CGDisplayBounds,
+                CGDisplayCopyDisplayMode,
+                CGDisplayModeGetPixelHeight,
+                CGDisplayModeGetPixelWidth,
                 CGDisplayPixelsHigh,
                 CGDisplayPixelsWide,
                 CGGetActiveDisplayList,
@@ -511,8 +521,15 @@ class MacOSBackend(ComputerUseBackend):
                 bounds = CGDisplayBounds(did)
                 logical_w = int(bounds.size.width)
                 logical_h = int(bounds.size.height)
-                physical_w = int(CGDisplayPixelsWide(did))
-                physical_h = int(CGDisplayPixelsHigh(did))
+                # CGDisplayPixelsWide gives the mode's size in points on a
+                # Retina display; the mode's pixel size is the backing store.
+                mode = CGDisplayCopyDisplayMode(did)
+                if mode is not None:
+                    physical_w = int(CGDisplayModeGetPixelWidth(mode))
+                    physical_h = int(CGDisplayModeGetPixelHeight(mode))
+                else:
+                    physical_w = int(CGDisplayPixelsWide(did))
+                    physical_h = int(CGDisplayPixelsHigh(did))
                 scale = round(physical_w / logical_w, 2) if logical_w else 1.0
                 out.append(
                     DisplayMonitor(
@@ -972,6 +989,15 @@ class MacOSBackend(ComputerUseBackend):
             raise ClipboardWriteError("the pasteboard refused the text")
         return change_count
 
+    def _clear_pasteboard(self) -> int:
+        pb = self._pasteboard()
+        if pb is None:
+            raise ClipboardWriteError("the pasteboard is unavailable")
+        try:
+            return int(pb.clearContents())
+        except Exception as exc:
+            raise ClipboardWriteError(str(exc)) from exc
+
     def _read_pasteboard_types(self) -> list[str] | None:
         """The pasteboard's types, or None if they can't be read."""
         pb = self._pasteboard()
@@ -1003,8 +1029,10 @@ class MacOSBackend(ComputerUseBackend):
         import pyautogui  # type: ignore[import-untyped]
 
         snapshot: tuple[str | None, int | None] | None = None
+        was_empty = False
         if preserve_clipboard:
             snapshot = self._read_pasteboard_text()
+            was_empty = self._read_pasteboard_types() == []
         written_count = self._write_pasteboard_text(text)
         # Re-record writeback so the inner read sees us as the writer.
         self.clipboard_writeback.record_write(text, sequence=written_count)
@@ -1016,11 +1044,16 @@ class MacOSBackend(ComputerUseBackend):
             # Restore only if nothing has changed the pasteboard since our
             # write (a changed changeCount means the user copied during the
             # paste). Compare with what our write left, not the snapshot.
-            if previous is not None and current_count == written_count:
+            if current_count == written_count:
                 # The restored contents are the user's, not ours, so they are
                 # not recorded as a writeback: a writeback-only read refuses them.
+                # An empty pasteboard is emptied again, so the pasted text is
+                # not left for other apps to read.
                 try:
-                    self._write_pasteboard_text(previous)
+                    if previous is not None:
+                        self._write_pasteboard_text(previous)
+                    elif was_empty:
+                        self._clear_pasteboard()
                 except ClipboardWriteError:
                     logger.warning("Could not restore the clipboard after pasting", exc_info=True)
 

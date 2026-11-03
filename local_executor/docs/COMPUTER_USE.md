@@ -310,8 +310,9 @@ trips IME/autocomplete on web forms.
    plain text only, so a clipboard holding anything else (an image, rich
    text, a concealed marker such as `ConcealedType` / `CF_PRIVATE`), or
    one whose formats can't be read, is never read or replaced; the text
-   is typed instead. A `CLIPBOARD_READ` whose formats can't be read
-   counts as concealed.
+   is typed instead. A clipboard that was empty is emptied again after
+   the paste. A `CLIPBOARD_READ` whose formats can't be read counts as
+   concealed.
 4. **Race window.** Snapshot → write → hotkey → wait-for-paste → restore
    is 50–500 ms wall-time depending on OS and target app. During that
    window other apps see the pasted text on the clipboard. This is **not

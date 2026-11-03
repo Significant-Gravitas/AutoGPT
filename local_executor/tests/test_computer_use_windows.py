@@ -338,3 +338,26 @@ def test_the_clipboard_is_not_restored_over_a_copy_made_during_the_paste(
     b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True, preserve_clipboard=True)
 
     assert clipboard["content"] == "copied during the paste"
+
+
+def test_pasting_onto_an_empty_clipboard_leaves_it_empty(tmp_path, monkeypatch) -> None:
+    """The restore has no text to put back, so it must clear the pasted text
+    rather than leave it for every other app to read."""
+    b = WindowsBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setitem(sys.modules, "pyautogui", MagicMock())
+    clipboard = _fake_clipboard(b, monkeypatch, content=None)
+    monkeypatch.setattr(
+        b, "_clipboard_formats", lambda: set() if clipboard["content"] is None else {13}
+    )
+
+    def clear() -> int:
+        clipboard["content"] = None
+        clipboard["seq"] += 1
+        return clipboard["seq"]
+
+    monkeypatch.setattr(b, "_clear_clipboard", clear)
+
+    b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True, preserve_clipboard=True)
+
+    assert clipboard["writes"] == ["x" * PASTE_THRESHOLD_CHARS]
+    assert clipboard["content"] is None

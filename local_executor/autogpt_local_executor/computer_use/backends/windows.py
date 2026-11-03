@@ -674,6 +674,19 @@ class WindowsBackend(ComputerUseBackend):
             raise ClipboardWriteError(str(exc)) from exc
         return self._clipboard_sequence()
 
+    def _clear_clipboard(self) -> int | None:
+        try:
+            import win32clipboard  # type: ignore[import-not-found]
+
+            win32clipboard.OpenClipboard()
+            try:
+                win32clipboard.EmptyClipboard()
+            finally:
+                win32clipboard.CloseClipboard()
+        except Exception as exc:
+            raise ClipboardWriteError(str(exc)) from exc
+        return self._clipboard_sequence()
+
     def _clipboard_sequence(self) -> int | None:
         try:
             import ctypes
@@ -728,8 +741,10 @@ class WindowsBackend(ComputerUseBackend):
         import pyautogui  # type: ignore[import-untyped]
 
         snapshot: tuple[str | None, int | None] | None = None
+        was_empty = False
         if preserve_clipboard:
             snapshot = self._read_clipboard_text()
+            was_empty = self._clipboard_formats() == set()
         written_seq = self._write_clipboard_text(text)
         self.clipboard_writeback.record_write(text, sequence=written_seq)
         pyautogui.hotkey("ctrl", "v")
@@ -740,11 +755,16 @@ class WindowsBackend(ComputerUseBackend):
             # Restore only if nothing has changed the clipboard since our
             # write. EmptyClipboard and SetClipboardData each advance the
             # sequence number, so compare with what our write left behind.
-            if previous is not None and written_seq is not None and current_seq == written_seq:
+            if written_seq is not None and current_seq == written_seq:
                 # The restored contents are the user's, not ours, so they are
                 # not recorded as a writeback: a writeback-only read refuses them.
+                # An empty clipboard is emptied again, so the pasted text is
+                # not left for other apps to read.
                 try:
-                    self._write_clipboard_text(previous)
+                    if previous is not None:
+                        self._write_clipboard_text(previous)
+                    elif was_empty:
+                        self._clear_clipboard()
                 except ClipboardWriteError:
                     logger.warning("Could not restore the clipboard after pasting", exc_info=True)
 
