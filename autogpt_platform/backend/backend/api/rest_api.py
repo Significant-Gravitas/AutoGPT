@@ -4,7 +4,7 @@ import logging
 import platform
 from collections.abc import Awaitable, Callable
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 import fastapi
 import starlette.middleware.cors
@@ -90,6 +90,7 @@ import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
 import backend.util.settings
+from backend.api.session_auth import require_active_auth_session
 from backend.api.utils.exceptions import add_exception_handlers
 from backend.blocks.llm import DEFAULT_LLM_MODEL
 from backend.copilot.bot.bot_backend import BotBackend
@@ -291,6 +292,8 @@ app = fastapi.FastAPI(
     docs_url=docs_url,
     generate_unique_id_function=custom_generate_unique_id,
 )
+
+app.state.jwt_payload_validator = require_active_auth_session
 
 # First, so it sits inside the others and its 413 carries their headers. It
 # covers the mounted apps too.
@@ -653,6 +656,7 @@ class AgentServer(backend.util.service.AppProcess):
             allow_credentials=True,
             allow_methods=["*"],  # Allows all methods
             allow_headers=["*"],  # Allows all headers
+            expose_headers=["X-Error-Code"],
         )
 
         # Only add debug in local environment (not supported in all uvicorn versions)
@@ -683,8 +687,8 @@ class AgentServer(backend.util.service.AppProcess):
     async def test_execute_graph(
         graph_id: str,
         user_id: str,
-        graph_version: Optional[int] = None,
-        node_input: Optional[dict[str, Any]] = None,
+        graph_version: int | None = None,
+        node_input: dict[str, Any] | None = None,
     ):
         from autogpt_libs.auth.models import RequestContext
 
@@ -841,7 +845,7 @@ class AgentServer(backend.util.service.AppProcess):
     async def test_execute_preset(
         preset_id: str,
         user_id: str,
-        inputs: Optional[dict[str, Any]] = None,
+        inputs: dict[str, Any] | None = None,
     ):
         from autogpt_libs.auth.models import RequestContext
 

@@ -6,7 +6,7 @@ import {
   isAPIError,
 } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
-import { admin, jwt } from "better-auth/plugins";
+import { admin, bearer, jwt } from "better-auth/plugins";
 import { compare, hash } from "bcryptjs";
 import { PostgresDialect } from "kysely";
 import { Pool } from "pg";
@@ -468,6 +468,7 @@ export const auth = betterAuth({
   socialProviders: getSocialProviders(),
   plugins: [
     admin(),
+    bearer({ requireSignature: true }),
     jwt({
       schema: {
         jwks: { modelName: "UserAuthJwks" },
@@ -484,7 +485,8 @@ export const auth = betterAuth({
         // interchangeable during the migration window.
         audience: "authenticated",
         expirationTime: "1h",
-        definePayload: ({ user }) => ({
+        definePayload: ({ user, session }) => ({
+          sid: session.id,
           email: user.email,
           role: user.role === "admin" ? "admin" : "authenticated",
           user_metadata: { name: user.name },

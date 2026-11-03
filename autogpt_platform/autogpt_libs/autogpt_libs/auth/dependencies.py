@@ -8,11 +8,12 @@ import asyncio
 import logging
 import time
 from collections import OrderedDict
+from typing import Annotated
 
 import fastapi
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from .jwt_utils import get_jwt_payload, parse_jwt_token_async, verify_user
+from .jwt_utils import get_jwt_payload, verify_user
 from .models import RequestContext, User
 from .permissions import (
     OrgAction,
@@ -111,9 +112,10 @@ async def _settle_heal(user_id: str, jwt_payload: dict) -> None:
 
 
 async def get_optional_user_id(
-    credentials: HTTPAuthorizationCredentials | None = fastapi.Security(
-        optional_bearer
-    ),
+    request: fastapi.Request,
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None, fastapi.Security(optional_bearer)
+    ] = None,
 ) -> str | None:
     """
     Attempts to extract the user ID ("sub" claim) from a Bearer JWT if provided.
@@ -133,9 +135,10 @@ async def get_optional_user_id(
         return None
 
     try:
-        # Off the event loop: a JWKS cache miss is a blocking fetch.
-        payload = await parse_jwt_token_async(credentials.credentials)
-    except Exception as e:
+        payload = await get_jwt_payload(request, credentials)
+    except fastapi.HTTPException as e:
+        if e.status_code >= 500:
+            raise
         logger.debug(f"Auth token validation failed (anonymous access): {e}")
         return None
     user_id = payload.get("sub")

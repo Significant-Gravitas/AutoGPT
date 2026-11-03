@@ -553,7 +553,10 @@ async def test_authenticate_websocket_happy_path_returns_sub(mocker) -> None:
 
     mocker.patch(
         "backend.api.ws_api.parse_jwt_token_async",
-        new=AsyncMock(return_value={"sub": "user-X"}),
+        new=AsyncMock(return_value={"sub": "user-X", "sid": "session-X"}),
+    )
+    validate = mocker.patch(
+        "backend.api.ws_api.require_active_auth_session", new=AsyncMock()
     )
     ws = AsyncMock(spec=WebSocket)
     ws.query_params = {"token": "abc"}
@@ -561,6 +564,7 @@ async def test_authenticate_websocket_happy_path_returns_sub(mocker) -> None:
     user_id = await authenticate_websocket(ws)
 
     assert user_id == "user-X"
+    validate.assert_awaited_once_with({"sub": "user-X", "sid": "session-X"})
 
 
 @pytest.mark.asyncio

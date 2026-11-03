@@ -6,7 +6,7 @@ import {
   installCookiebot,
   removeCookiebot,
 } from "@/tests/integrations/cookiebot";
-import { act, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { PostHog, type CaptureResult } from "posthog-js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -57,6 +57,7 @@ let flagsRequests: FlagsRequest[] = [];
 let captured: string[] = [];
 let capturedEvents: CaptureResult[] = [];
 let clients: PostHog[] = [];
+let captureQueueCleanups: Array<() => void> = [];
 
 interface RenderOptions {
   user?: User | null;
@@ -87,13 +88,16 @@ async function renderPostHog({
     { resetAnalyticsIdentity },
     { setAnalyticsIdentitySignedIn },
     { buildAttributionPayload },
+    { resetPostHogCaptureQueueForTests },
   ] = await Promise.all([
     import("@/providers/posthog/posthog-provider"),
     import("@/services/onboarding/tab-intro-analytics"),
     import("@/services/analytics/reset-identity"),
     import("@/services/analytics/anonymous-id"),
     import("@/services/analytics/attribution-payload"),
+    import("@/services/analytics/posthog-capture"),
   ]);
+  captureQueueCleanups.push(resetPostHogCaptureQueueForTests);
   // What the auth store reports once the session is known.
   if (sessionKnown) setAnalyticsIdentitySignedIn(Boolean(user));
   const startSessionRecording = vi.spyOn(client, "startSessionRecording");
@@ -235,6 +239,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
+  captureQueueCleanups.forEach((reset) => reset());
+  captureQueueCleanups = [];
   // A client from an earlier test would otherwise keep writing (and
   // deleting) the next test's cookies when a late response arrives.
   clients.forEach((client) => client.set_config({ persistence: "memory" }));
