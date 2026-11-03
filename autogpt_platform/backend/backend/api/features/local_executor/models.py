@@ -89,6 +89,9 @@ class ExecutorStatus(BaseModel):
     capabilities: list[str] | None = None
     computer_use_features: list[str] | None = None
     computer_use_features_coarse: list[str] | None = None
+    # The tools approving computer use would grant: what the consent dialog
+    # describes, so it never claims an action the machine can't take.
+    computer_use_tools: list[str] | None = None
     recording_channels: list[str] | None = None
     recording_routes: list[str] | None = None
 

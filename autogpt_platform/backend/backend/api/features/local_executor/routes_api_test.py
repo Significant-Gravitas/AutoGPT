@@ -322,6 +322,43 @@ def test_executor_status_remains_readable_after_feature_is_disabled() -> None:
     manager.get_hello_async.assert_awaited_once_with("session-1")
 
 
+def test_executor_status_lists_exactly_the_tools_consent_would_grant() -> None:
+    """The consent dialog describes these, so it never claims an action that
+    approving would not grant, such as typing for a click-only machine."""
+    manager = MagicMock()
+    manager.get_hello_async = AsyncMock(
+        return_value=ShimHello(
+            machine_id="machine-1",
+            allowed_root="C:\\Users\\Ada\\Projects",
+            capabilities=["computer_use"],
+            computer_use_features_coarse=["screenshot"],
+            computer_use_features=["input.click", "clipboard.read", "input.wait"],
+        )
+    )
+    with (
+        patch(
+            "backend.api.features.local_executor.routes.get_chat_session_metadata",
+            AsyncMock(return_value=_owned_session()),
+        ),
+        patch(
+            "backend.api.features.local_executor.routes.get_shim_manager",
+            return_value=manager,
+        ),
+        patch(
+            "backend.api.features.local_executor.routes.get_computer_use_consent",
+            AsyncMock(return_value="pending"),
+        ),
+    ):
+        response = _make_client().get("/api/copilot/sessions/session-1/executor")
+
+    assert response.status_code == 200
+    assert response.json()["computer_use_tools"] == [
+        "local_pc_click",
+        "local_pc_clipboard_read",
+        "local_pc_screenshot",
+    ]
+
+
 def test_executor_status_includes_server_side_consent() -> None:
     client = _make_client()
     manager = MagicMock()
@@ -355,6 +392,7 @@ def test_executor_status_includes_server_side_consent() -> None:
         "capabilities": None,
         "computer_use_features": None,
         "computer_use_features_coarse": None,
+        "computer_use_tools": None,
         "recording_channels": None,
         "recording_routes": None,
     }

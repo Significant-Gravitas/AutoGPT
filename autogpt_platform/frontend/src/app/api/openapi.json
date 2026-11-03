@@ -25999,6 +25999,13 @@
             ],
             "title": "Computer Use Features Coarse"
           },
+          "computer_use_tools": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Computer Use Tools"
+          },
           "recording_channels": {
             "anyOf": [
               { "items": { "type": "string" }, "type": "array" },

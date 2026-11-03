@@ -44,6 +44,7 @@ from backend.api.features.local_executor.websocket import router as websocket_ro
 from backend.copilot.config import ChatConfig
 from backend.copilot.model import ChatSessionInfo, get_chat_session_metadata
 from backend.copilot.rate_limit import enforce_payment_paywall
+from backend.copilot.sdk.computer_use_policy import local_pc_tool_names_for_features
 from backend.copilot.sdk.recording_tools import (
     register_recording_reviewed,
     register_recording_started,
@@ -199,6 +200,7 @@ async def get_session_executor(
         capabilities=hello.capabilities or None,
         computer_use_features=hello.computer_use_features or None,
         computer_use_features_coarse=hello.computer_use_features_coarse or None,
+        computer_use_tools=_grantable_computer_use_tools(hello),
         recording_channels=hello.recording_channels or None,
         recording_routes=hello.recording_routes or None,
     )
@@ -536,6 +538,16 @@ def _require_recording_capability(shim: LocalPCShim) -> None:
             status_code=status.HTTP_409_CONFLICT,
             detail="The connected Local PC executor does not support recording",
         )
+
+
+def _grantable_computer_use_tools(hello: ShimHello) -> list[str] | None:
+    """The same grant the computer-use tools enforce at each call."""
+    if "computer_use" not in hello.capabilities:
+        return None
+    tools = local_pc_tool_names_for_features(
+        hello.computer_use_features_coarse, hello.computer_use_features
+    )
+    return sorted(tools) or None
 
 
 def _normalized_computer_use_features_coarse(hello: ShimHello) -> list[str]:
