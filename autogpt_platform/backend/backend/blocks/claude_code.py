@@ -26,7 +26,10 @@ from backend.util.e2b_network import (
     EgressOwner,
     connect_sandbox,
     create_sandbox,
+    hold_sandbox,
     kill_sandbox,
+    release_sandbox,
+    uses_platform_e2b_key,
 )
 from backend.util.sandbox_files import (
     SandboxFileOutput,
@@ -135,9 +138,8 @@ class ClaudeCodeBlock(Block):
             description=(
                 "Sandbox timeout in seconds. Claude Code tasks can take "
                 "a while, so set this appropriately for your task complexity. "
-                "Note: This only applies when creating a new sandbox. "
-                "When reconnecting to an existing sandbox via sandbox_id, "
-                "the original timeout is retained."
+                "When reconnecting via sandbox_id, the sandbox runs for at "
+                "least this long."
             ),
             default=300,  # 5 minutes default
             advanced=True,
@@ -318,9 +320,14 @@ class ClaudeCodeBlock(Block):
         conversation_history: str,
         dispose_sandbox: bool,
         execution_context: "ExecutionContext",
+        pause_when_kept: bool = False,
     ) -> tuple[str, list[SandboxFileOutput], str, str, str]:
         """
         Execute Claude Code in an E2B sandbox.
+
+        With pause_when_kept, a sandbox that is not disposed is paused when
+        this returns, unless another run still holds it; resuming the session
+        reconnects and resumes it.
 
         Returns:
             Tuple of (response, files, conversation_history, session_id, sandbox_id)
@@ -337,6 +344,8 @@ class ClaudeCodeBlock(Block):
 
         sandbox = None
         sandbox_id = ""
+        # The box this run is counted on (``hold_sandbox``) while it keeps it.
+        held = ""
         egress_owner = EgressOwner(
             kind="block",
             id=execution_context.user_id or "anonymous",
@@ -359,11 +368,17 @@ class ClaudeCodeBlock(Block):
                     raise PermissionError(
                         f"Sandbox {existing_sandbox_id} does not belong to this user"
                     )
+                if pause_when_kept and not dispose_sandbox:
+                    # Counted before the connect: a run on this box returning
+                    # meanwhile must leave it running for this one.
+                    held = existing_sandbox_id
+                    await hold_sandbox(held)
                 sandbox = await connect_sandbox(
                     BaseAsyncSandbox,
                     existing_sandbox_id,
                     egress_owner,
                     api_key=e2b_api_key,
+                    timeout=timeout,
                 )
             else:
                 # Create new sandbox
@@ -378,6 +393,9 @@ class ClaudeCodeBlock(Block):
                         execution_context, "claude_code", self.id, self.DEFAULT_TEMPLATE
                     ).as_e2b(),
                 )
+                if pause_when_kept and not dispose_sandbox:
+                    held = sandbox.sandbox_id
+                    await hold_sandbox(held)
 
                 # Install Claude Code from npm (ensures we get the latest version)
                 install_result = await sandbox.commands.run(
@@ -528,6 +546,8 @@ class ClaudeCodeBlock(Block):
         finally:
             if dispose_sandbox and sandbox:
                 await kill_sandbox(sandbox)
+            elif held:
+                await release_sandbox(held, sandbox, api_key=e2b_api_key)
 
     def _escape_prompt(self, prompt: str) -> str:
         """Escape the prompt for safe shell execution."""
@@ -586,6 +606,7 @@ class ClaudeCodeBlock(Block):
                 conversation_history=input_data.conversation_history,
                 dispose_sandbox=input_data.dispose_sandbox,
                 execution_context=execution_context,
+                pause_when_kept=uses_platform_e2b_key(e2b_credentials),
             )
 
             yield "response", response

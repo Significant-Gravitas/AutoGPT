@@ -199,7 +199,7 @@ function JSONViewer({ data }: { data: any }) {
   };
 
   return (
-    <div className="overflow-x-auto rounded-md bg-muted p-3 font-mono text-sm">
+    <div className="overflow-x-auto rounded-md bg-muted p-3 font-mono text-body">
       {renderValue(data, "root")}
     </div>
   );

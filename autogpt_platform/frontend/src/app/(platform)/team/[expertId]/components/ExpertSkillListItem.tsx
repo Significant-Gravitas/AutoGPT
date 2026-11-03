@@ -116,8 +116,7 @@ export function ExpertSkillListItem({
             leadingIcon={WorkHistoryIcon}
             onClick={learning.onDetails}
             aria-label={`Learning details for ${entry.name}`}
-            // oxlint-disable-next-line design-system/no-restyle -- the ghost Button has no muted-icon variant (src/components is P9's)
-            className="text-foreground-tertiary"
+            tone="muted"
           />
         ) : null}
         {entry.library ? (
@@ -128,8 +127,7 @@ export function ExpertSkillListItem({
             size="icon-sm"
             aria-label="Open in library"
             leadingIcon={LinkSquare02Icon}
-            // oxlint-disable-next-line design-system/no-restyle -- the ghost Button has no muted-icon variant (src/components is P9's)
-            className="text-foreground-tertiary"
+            tone="muted"
           />
         ) : null}
         {onRemove ? (
@@ -140,8 +138,9 @@ export function ExpertSkillListItem({
             disabled={isSaving}
             onClick={() => onRemove(entry.name)}
             aria-label={`Remove ${entry.name}`}
-            // oxlint-disable-next-line design-system/no-restyle -- the ghost Button has no muted-icon variant (src/components is P9's)
-            className="text-foreground-tertiary hover:text-error-foreground"
+            tone="muted"
+            // oxlint-disable-next-line design-system/no-restyle -- ghost-danger turns #EF4444 on hover; this remove action turns the darker error-foreground red
+            className="hover:text-error-foreground"
           />
         ) : null}
       </div>

@@ -94,13 +94,12 @@ function InputGroupButton({
       type={type}
       data-size={size}
       variant={INPUT_GROUP_BUTTON_VARIANT[variant]}
-      size="compact"
+      size={size === "icon-sm" ? "compact-icon-sm" : "compact"}
       className={cn(
-        "flex min-w-0 items-center gap-2 text-body leading-5 shadow-none",
-        size === "xs" && "h-6 gap-1 rounded-md px-2 has-[>svg]:px-2",
-        size === "sm" && "h-8 gap-1.5 rounded-md px-2.5 has-[>svg]:px-2.5",
-        size === "icon-xs" && "size-6 rounded-md p-0 has-[>svg]:p-0",
-        size === "icon-sm" && "size-8 rounded-md p-0 has-[>svg]:p-0",
+        "flex items-center shadow-none",
+        size === "xs" && "h-6 gap-1 px-2 has-[>svg]:px-2",
+        size === "sm" && "h-8 gap-1.5 px-2.5 has-[>svg]:px-2.5",
+        size === "icon-xs" && "size-6 p-0 has-[>svg]:p-0",
         className,
       )}
       {...props}

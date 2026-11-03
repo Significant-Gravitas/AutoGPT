@@ -74,6 +74,11 @@
                   "line-clamp-*",
                   "whitespace-*",
                   "text-balance",
+                  "text-ellipsis",
+                  "text-clip",
+                  "gap-*",
+                  "gap-x-*",
+                  "gap-y-*",
                   "text-pretty",
                   "break-*",
                   "text-start",
@@ -113,6 +118,7 @@
           }
         ],
         "design-system/no-dark-variant": "error",
+        "design-system/no-raw-text-size": "error",
         "design-system/no-legacy-import": "error",
         "design-system/no-legacy-button-variant": "error",
         "design-system/hugeicons-only": "error",
@@ -127,7 +133,48 @@
         "src/components/organisms/**"
       ],
       "rules": {
-        "design-system/no-restyle": "off"
+        "design-system/no-restyle": [
+          "error",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-ellipsis",
+                  "text-clip",
+                  "gap-*",
+                  "gap-x-*",
+                  "gap-y-*",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              {
+                "pattern": "^Icon$",
+                "allow": ["layout"]
+              },
+              {
+                "pattern": "^Button$",
+                "allow": ["layout"]
+              },
+              {
+                "pattern": "^(?!(Text|Icon|Button)$)",
+                "allow": ["*"]
+              }
+            ]
+          }
+        ]
       }
     },
     {
@@ -177,6 +224,7 @@
         "design-system/require-static-classes": "off",
         "design-system/no-unknown-classes": "off",
         "design-system/no-dark-variant": "off",
+        "design-system/no-raw-text-size": "off",
         "design-system/no-legacy-import": "off",
         "design-system/no-legacy-button-variant": "off",
         "design-system/hugeicons-only": "off",

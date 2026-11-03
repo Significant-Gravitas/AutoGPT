@@ -79,40 +79,39 @@ function ToolIcon({
   isError: boolean;
 }) {
   if (isError) {
-    return <Icon icon={AlertDiamondIcon} size={14} className="text-error" />;
+    return <Icon icon={AlertDiamondIcon} size={14} tone="error" />;
   }
   if (isStreaming) {
     return <OrbitLoader size={14} />;
   }
 
-  const iconClass = "text-success";
   switch (category) {
     case "bash":
-      return <Icon icon={TerminalIcon} size={14} className={iconClass} />;
+      return <Icon icon={TerminalIcon} size={14} tone="success" />;
     case "web":
-      return <Icon icon={Globe02Icon} size={14} className={iconClass} />;
+      return <Icon icon={Globe02Icon} size={14} tone="success" />;
     case "browser":
-      return <Icon icon={ComputerIcon} size={14} className={iconClass} />;
+      return <Icon icon={ComputerIcon} size={14} tone="success" />;
     case "file-read":
-      return <Icon icon={FileEmpty02Icon} size={14} className={iconClass} />;
+      return <Icon icon={FileEmpty02Icon} size={14} tone="success" />;
     case "file-write":
-      return <Icon icon={FileEmpty02Icon} size={14} className={iconClass} />;
+      return <Icon icon={FileEmpty02Icon} size={14} tone="success" />;
     case "file-delete":
-      return <Icon icon={Delete02Icon} size={14} className={iconClass} />;
+      return <Icon icon={Delete02Icon} size={14} tone="success" />;
     case "file-list":
-      return <Icon icon={Files01Icon} size={14} className={iconClass} />;
+      return <Icon icon={Files01Icon} size={14} tone="success" />;
     case "search":
-      return <Icon icon={Search01Icon} size={14} className={iconClass} />;
+      return <Icon icon={Search01Icon} size={14} tone="success" />;
     case "edit":
-      return <Icon icon={PencilIcon} size={14} className={iconClass} />;
+      return <Icon icon={PencilIcon} size={14} tone="success" />;
     case "todo":
-      return <Icon icon={CheckListIcon} size={14} className={iconClass} />;
+      return <Icon icon={CheckListIcon} size={14} tone="success" />;
     case "compaction":
-      return <Icon icon={ReloadIcon} size={14} className={iconClass} />;
+      return <Icon icon={ReloadIcon} size={14} tone="success" />;
     case "agent":
-      return <Icon icon={Robot01Icon} size={14} className={iconClass} />;
+      return <Icon icon={Robot01Icon} size={14} tone="success" />;
     default:
-      return <Icon icon={Settings01Icon} size={14} className={iconClass} />;
+      return <Icon icon={Settings01Icon} size={14} tone="success" />;
   }
 }
 
@@ -326,7 +325,7 @@ function getWebAccordionData(
       content: (
         <div className="space-y-3">
           {answer && (
-            <div className="rounded-md bg-surface-muted p-3 text-sm whitespace-pre-wrap text-foreground-body">
+            <div className="rounded-md bg-surface-muted p-3 text-body whitespace-pre-wrap text-foreground-body">
               {answer}
             </div>
           )}
@@ -337,9 +336,9 @@ function getWebAccordionData(
             const pageAge = getStringField(r, "page_age");
             const citation = typeof r.n === "number" ? r.n : null;
             return (
-              <div key={i} className="text-sm">
+              <div key={i} className="text-body">
                 {citation !== null && (
-                  <span className="mr-1.5 text-xs text-foreground-tertiary tabular-nums">
+                  <span className="mr-1.5 text-caption text-foreground-tertiary tabular-nums">
                     [{citation}]
                   </span>
                 )}
@@ -356,7 +355,7 @@ function getWebAccordionData(
                   <span className="font-medium">{title}</span>
                 )}
                 {href && (
-                  <div className="text-xs text-foreground-tertiary">
+                  <div className="text-caption text-foreground-tertiary">
                     {truncate(href, 100)}
                   </div>
                 )}
@@ -364,7 +363,7 @@ function getWebAccordionData(
                   <p className="mt-0.5 text-foreground-body">{snippet}</p>
                 )}
                 {pageAge && (
-                  <div className="mt-0.5 text-xs text-foreground-subtle">
+                  <div className="mt-0.5 text-caption text-foreground-subtle">
                     {pageAge}
                   </div>
                 )}
@@ -631,22 +630,14 @@ function getTodoAccordionData(input: unknown): AccordionData {
     content: (
       <div className="space-y-1 py-1">
         {todos.map((todo, i) => (
-          <div key={i} className="flex items-start gap-2 text-xs">
+          <div key={i} className="flex items-start gap-2 text-caption">
             <span className="mt-0.5 flex-shrink-0">
               {todo.status === "completed" ? (
-                <Icon
-                  icon={CheckmarkCircle02Icon}
-                  size={14}
-                  className="text-success"
-                />
+                <Icon icon={CheckmarkCircle02Icon} size={14} tone="success" />
               ) : todo.status === "in_progress" ? (
-                <Icon icon={CircleDashedIcon} size={14} className="text-info" />
+                <Icon icon={CircleDashedIcon} size={14} tone="info" />
               ) : (
-                <Icon
-                  icon={CircleIcon}
-                  size={14}
-                  className="text-foreground-subtle"
-                />
+                <Icon icon={CircleIcon} size={14} tone="subtle" />
               )}
             </span>
             <span
@@ -809,7 +800,7 @@ export function GenericTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      <div className="flex min-w-0 items-center gap-2 overflow-hidden text-xs text-muted-foreground">
+      <div className="flex min-w-0 items-center gap-2 overflow-hidden text-caption text-muted-foreground">
         <ToolIcon
           category={category}
           isStreaming={isStreaming}
