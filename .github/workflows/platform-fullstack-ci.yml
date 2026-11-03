@@ -350,6 +350,7 @@ jobs:
           fi
 
           # Generated runtime credentials must not invalidate the build cache.
+          cp frontend/.env "$RUNNER_TEMP/frontend-test.env"
           python ../.github/scripts/frontend_ci_env.py \
             --compose docker-compose.resolved.yml --env frontend/.env
 
@@ -523,6 +524,9 @@ jobs:
       # runner out of memory and freeze or lose it (OPEN-3734, SECRT-3254).
       - name: Wait for frontend image build
         wait: [platform-build-frontend]
+
+      - name: Restore runtime configuration for Playwright
+        run: cp "$RUNNER_TEMP/frontend-test.env" .env
 
       - name: Set up Platform - Start (all other services)
         run: |

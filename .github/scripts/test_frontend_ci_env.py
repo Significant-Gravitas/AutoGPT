@@ -82,6 +82,34 @@ class FrontendBuildEnvironmentTests(unittest.TestCase):
         prepare_build_environment(self.compose, self.env)
         self.assertNotEqual(first, self.env.read_text(encoding="utf-8"))
 
+    def test_playwright_receives_the_original_environment_after_image_build(self):
+        root = Path(__file__).resolve().parents[2]
+        workflow = yaml.safe_load(
+            (root / ".github/workflows/platform-fullstack-ci.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        steps = workflow["jobs"]["e2e_test"]["steps"]
+        prepare = next(
+            step for step in steps if "frontend_ci_env.py" in step.get("run", "")
+        )
+        backup = 'cp frontend/.env "$RUNNER_TEMP/frontend-test.env"'
+        self.assertIn(backup, prepare["run"])
+        self.assertLess(
+            prepare["run"].index(backup), prepare["run"].index("frontend_ci_env.py")
+        )
+        restore = next(
+            step
+            for step in steps
+            if step.get("run") == 'cp "$RUNNER_TEMP/frontend-test.env" .env'
+        )
+        wait = next(
+            step for step in steps if step.get("wait") == ["platform-build-frontend"]
+        )
+        tests = next(step for step in steps if step.get("id") == "e2e-playwright")
+        self.assertLess(steps.index(wait), steps.index(restore))
+        self.assertLess(steps.index(restore), steps.index(tests))
+
 
 if __name__ == "__main__":
     unittest.main()
