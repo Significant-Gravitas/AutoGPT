@@ -82,8 +82,8 @@ class TestWebhooksManager(BaseWebhooksManager):
         pass
 
 
-class TestWebhookBlock(Block):
-    """Test webhook block implementation."""
+class WebhookTestBase(Block):
+    """SDK-only helper; the Base suffix excludes it from platform discovery."""
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = CredentialsField(
@@ -116,8 +116,8 @@ class TestWebhookBlock(Block):
             id="test-webhook-block",
             description="Test webhook block",
             categories={BlockCategory.DEVELOPER_TOOLS},
-            input_schema=TestWebhookBlock.Input,
-            output_schema=TestWebhookBlock.Output,
+            input_schema=WebhookTestBase.Input,
+            output_schema=WebhookTestBase.Output,
             webhook_config=BlockWebhookConfig(
                 provider="test_webhooks",  # type: ignore
                 webhook_type="test",
@@ -154,7 +154,7 @@ class TestWebhookBlockCreation:
     @pytest.mark.asyncio
     async def test_basic_webhook_block(self):
         """Test creating a basic webhook block."""
-        block = TestWebhookBlock()
+        block = WebhookTestBase()
 
         # Verify block configuration
         assert block.webhook_config is not None
@@ -172,7 +172,7 @@ class TestWebhookBlockCreation:
 
         outputs = {}
         async for name, value in block.run(
-            TestWebhookBlock.Input(
+            WebhookTestBase.Input(
                 credentials={  # type: ignore
                     "provider": "test_webhooks",
                     "id": "test-webhook-creds",
