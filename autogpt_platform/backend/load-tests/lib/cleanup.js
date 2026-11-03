@@ -1,15 +1,14 @@
 // What teardown() removes of what the run created, through the routes the
 // app deletes with: the runs of the seeded graphs (the seed's and the graph
-// journey's) and the library agents the seed created or added. The backend
-// soft-deletes both, as it does for a user.
+// journey's), the library agents the seed created or added, the seeded chat
+// sessions, and the chat sessions the turn journey started. The backend
+// soft-deletes runs and library agents, as it does for a user, and deletes
+// chat sessions outright.
 //
 // What stays is in the README (Seeding): the graphs, which the backend does
-// not delete while a library entry refers to them, deleted or not; the chat
-// sessions, since deleting one also starts the copilot's browser cleanup
-// for it on the backend, work a teardown should not add to the target it
-// has just measured; the onboarding steps the seed completed and the
-// credits they granted; the Stripe test-mode customers; and the throwaway
-// accounts.
+// not delete while a library entry refers to them, deleted or not; the
+// onboarding steps the seed completed and the credits they granted; the
+// Stripe test-mode customers; and the throwaway accounts.
 //
 // A target that is briefly unavailable (no answer, or 502 to 504 from its
 // ingress while a pod restarts) gets each request again, a few times and
@@ -32,6 +31,7 @@ const RETRY_PAUSE_SECONDS = 5;
 
 const executionsDeleted = new Counter("cleanup_executions");
 const libraryAgentsDeleted = new Counter("cleanup_library_agents");
+const sessionsDeleted = new Counter("cleanup_sessions");
 const cleanupFailures = new Counter("cleanup_failures");
 
 // For options.teardownTimeout: the deletes go ten at a time, but an account
@@ -43,16 +43,19 @@ export function cleanupTimeout() {
 // `when` names the caller in the log: teardown, or a setup() that threw.
 export function removeRunData(data, when) {
   if (!data || !Array.isArray(data.accounts)) return;
-  const done = { executions: 0, libraryAgents: 0, failed: 0 };
+  const done = { executions: 0, libraryAgents: 0, sessions: 0, failed: 0 };
   for (const account of data.accounts) {
     const headers = accountHeaders(data, account.index);
     const runs = [];
+    // A listing that could not be read counts once: what it held stays.
     let unlisted = 0;
     for (const graph of account.graphs) {
       const listed = graphRuns(graph.graphId, headers);
       for (const id of listed.ids) runs.push(id);
       if (!listed.complete) unlisted++;
     }
+    const sessionList = runSessions(account, data, headers);
+    if (!sessionList.complete) unlisted++;
     const executions = deleteAll(
       runs.map((id) => `/executions/${id}`),
       "/executions/{graph_exec_id}",
@@ -63,21 +66,28 @@ export function removeRunData(data, when) {
       "/library/agents/{library_agent_id}",
       headers,
     );
+    const sessions = deleteAll(
+      sessionList.ids.map((id) => `/chat/sessions/${id}`),
+      "/chat/sessions/{session_id}",
+      headers,
+    );
     if (executions.deleted) executionsDeleted.add(executions.deleted);
     if (libraryAgents.deleted) libraryAgentsDeleted.add(libraryAgents.deleted);
-    // A graph whose runs could not be listed counts once: its runs stay.
-    const failed = executions.failed + libraryAgents.failed + unlisted;
+    if (sessions.deleted) sessionsDeleted.add(sessions.deleted);
+    const failed =
+      executions.failed + libraryAgents.failed + sessions.failed + unlisted;
     if (failed) cleanupFailures.add(failed);
     done.executions += executions.deleted;
     done.libraryAgents += libraryAgents.deleted;
+    done.sessions += sessions.deleted;
     done.failed += failed;
   }
   console.log(
-    `${when}: deleted ${done.executions} graph runs and ${done.libraryAgents} library agents${
+    `${when}: deleted ${done.executions} graph runs, ${done.libraryAgents} library agents and ${done.sessions} chat sessions${
       done.failed > 0
         ? `; ${done.failed} deletes or listings failed, the log above says which`
         : ""
-    }; the graphs and chat sessions stay (README: Seeding)`,
+    }; the graphs stay (README: Seeding)`,
   );
 }
 
@@ -101,6 +111,50 @@ function graphRuns(graphId, headers) {
     if (body.executions.length === 0 || page >= pages) break;
   }
   return { ids, complete: true };
+}
+
+// The seeded sessions and, when the turn journey ran, every session the
+// account started after the run's setup began. The list is sorted by last
+// update, so it is read until it reaches sessions untouched since then.
+function runSessions(account, data, headers) {
+  const ids = new Set(account.sessionIds);
+  if (!data.copilot || !data.copilot.enabled) {
+    return { ids: Array.from(ids), complete: true };
+  }
+  const since = timestamp(data.startedAt);
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const body = read(
+      `/chat/sessions?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&pinned_first=false`,
+      "/chat/sessions",
+      headers,
+    );
+    if (!body || !Array.isArray(body.sessions)) {
+      return { ids: Array.from(ids), complete: false };
+    }
+    for (const session of body.sessions) {
+      if (timestamp(session.created_at) >= since) ids.add(session.id);
+    }
+    const last = body.sessions[body.sessions.length - 1];
+    if (
+      body.sessions.length < PAGE_SIZE ||
+      timestamp(last.updated_at) < since
+    ) {
+      break;
+    }
+  }
+  return { ids: Array.from(ids), complete: true };
+}
+
+// The backend's timestamps carry microseconds and an offset, or no zone for
+// UTC; Date.parse is only specified for milliseconds.
+function timestamp(text) {
+  const match =
+    /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/.exec(
+      String(text || ""),
+    );
+  if (!match) return NaN;
+  const fraction = (match[2] || ".").slice(0, 4).padEnd(4, "0");
+  return Date.parse(`${match[1]}${fraction}${match[3] || "Z"}`);
 }
 
 function params(route, headers, expected) {

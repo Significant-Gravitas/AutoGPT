@@ -147,6 +147,9 @@ export function seedRun(auth, journeys) {
   if (wants("copilot_turn")) copilotEngine();
   const data = {
     auth: auth.auth,
+    // Teardown deletes the chat sessions the turn journey created, which it
+    // finds by their creation after this.
+    startedAt: new Date().toISOString(),
     accounts: [],
     store: discoverStore(),
     graphs: { enabled: false, code: COVERED, reason: "not in SCENARIOS" },
@@ -689,6 +692,7 @@ export function seedingReport(summaryData) {
       credits && credits.values ? Math.round(credits.values.avg) : null,
     executions_deleted: count("cleanup_executions"),
     library_agents_deleted: count("cleanup_library_agents"),
+    sessions_deleted: count("cleanup_sessions"),
     cleanup_failures: count("cleanup_failures"),
   };
 }
