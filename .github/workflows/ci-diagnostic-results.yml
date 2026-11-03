@@ -1,0 +1,25 @@
+name: Collect hosted CI measurements
+on:
+  push:
+    branches: [codex/ci-diagnostic-results-20261103-1655]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  collect:
+    name: Collect existing hosted measurements
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Summarize completed measurements
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: Significant-Gravitas/AutoGPT
+        run: python .github/scripts/collect_hosted_ci_measurements.py
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: ci-measurement-summary
+          path: ${{ runner.temp }}/ci-measurements
+          retention-days: 3
